@@ -1,5 +1,6 @@
 package com.linkedin.venice.offsets;
 
+import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.Utils;
 import org.testng.Assert;
@@ -13,11 +14,11 @@ public class TestInMemoryOffsetManager {
 
     OffsetManager om = new InMemoryOffsetManager();
     OffsetRecord record = new OffsetRecord(AvroProtocolDefinition.PARTITION_STATE.getSerializer());
-    record.setCheckpointLocalVersionTopicOffset(1234);
+    record.checkpointLocalVtPosition(ApacheKafkaOffsetPosition.of(1234));
     OffsetRecord oldRecord = new OffsetRecord(AvroProtocolDefinition.PARTITION_STATE.getSerializer());
-    oldRecord.setCheckpointLocalVersionTopicOffset(234);
+    oldRecord.checkpointLocalVtPosition(ApacheKafkaOffsetPosition.of(234));
     OffsetRecord newRecord = new OffsetRecord(AvroProtocolDefinition.PARTITION_STATE.getSerializer());
-    newRecord.setCheckpointLocalVersionTopicOffset(11234);
+    newRecord.checkpointLocalVtPosition(ApacheKafkaOffsetPosition.of(11234));
 
     om.put(topic, 0, record);
     Assert.assertEquals(om.getLastOffset(topic, 0), record);

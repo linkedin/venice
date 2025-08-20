@@ -768,27 +768,28 @@ public class ActiveActiveStoreIngestionTaskTest {
     when(mockServerConfig.getKafkaClusterUrlToIdMap()).thenReturn(kafkaClusterUrlToIdMap);
 
     // Set up real method call
-    doCallRealMethod().when(ingestionTask).consumerSubscribe(any(), anyLong(), anyString());
+    doCallRealMethod().when(ingestionTask).consumerSubscribe(any(), any(), anyString());
 
     PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(TOPIC_REPOSITORY.getTopic("test"), 0);
+    PubSubPosition p100 = ApacheKafkaOffsetPosition.of(100L);
     VeniceException exception = expectThrows(
         VeniceException.class,
-        () -> ingestionTask.consumerSubscribe(pubSubTopicPartition, 100L, "invalidPubSubAddress"));
+        () -> ingestionTask.consumerSubscribe(pubSubTopicPartition, p100, "invalidPubSubAddress"));
     assertNotNull(exception.getMessage(), "Exception message should not be null");
     assertTrue(
         exception.getMessage().contains("is not in the pubsub cluster map"),
         "Exception message should contain the expected message but found: " + exception.getMessage());
 
-    verify(ingestionTask, times(1)).consumerSubscribe(pubSubTopicPartition, 100L, "invalidPubSubAddress");
+    verify(ingestionTask, times(1)).consumerSubscribe(pubSubTopicPartition, p100, "invalidPubSubAddress");
 
     // Case 2: DaVinci client
     ActiveActiveStoreIngestionTask dvcIngestionTask = mock(ActiveActiveStoreIngestionTask.class);
-    doCallRealMethod().when(dvcIngestionTask).consumerSubscribe(any(), anyLong(), anyString());
+    doCallRealMethod().when(dvcIngestionTask).consumerSubscribe(any(), any(), anyString());
     when(dvcIngestionTask.getServerConfig()).thenReturn(mockServerConfig);
     when(dvcIngestionTask.isDaVinciClient()).thenReturn(true);
     when(mockServerConfig.getKafkaClusterUrlToIdMap()).thenReturn(Object2IntMaps.emptyMap());
     try {
-      dvcIngestionTask.consumerSubscribe(pubSubTopicPartition, 100L, "validPubSubAddress");
+      dvcIngestionTask.consumerSubscribe(pubSubTopicPartition, p100, "validPubSubAddress");
     } catch (Exception e) {
       if (e.getMessage() != null) {
         assertFalse(
@@ -796,7 +797,7 @@ public class ActiveActiveStoreIngestionTaskTest {
             "Exception message should not contain the expected message but found: " + e.getMessage());
       }
     }
-    verify(dvcIngestionTask, times(1)).consumerSubscribe(pubSubTopicPartition, 100L, "validPubSubAddress");
+    verify(dvcIngestionTask, times(1)).consumerSubscribe(pubSubTopicPartition, p100, "validPubSubAddress");
   }
 
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)

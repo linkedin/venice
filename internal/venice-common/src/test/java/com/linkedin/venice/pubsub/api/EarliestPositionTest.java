@@ -51,8 +51,8 @@ public class EarliestPositionTest {
     assertEquals(reflectionInstance.toString(), "EARLIEST");
 
     // Check equality
-    assertTrue(instance.equals(reflectionInstance), "Instances should be equal despite being different objects");
-    assertTrue(reflectionInstance.equals(instance), "Equality should be symmetric");
+    assertEquals(reflectionInstance, instance, "Instances should be equal despite being different objects");
+    assertEquals(instance, reflectionInstance, "Equality should be symmetric");
 
     // Check hashCode consistency
     assertEquals(instance.hashCode(), reflectionInstance.hashCode(), "Hash codes must match for equal instances");

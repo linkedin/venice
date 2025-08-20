@@ -23,6 +23,7 @@ import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
+import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.manager.TopicManager;
@@ -131,15 +132,22 @@ public class AggKafkaConsumerServiceTest {
         topicPartition,
         PartitionReplicaIngestionContext.VersionRole.CURRENT,
         PartitionReplicaIngestionContext.WorkloadType.NON_AA_OR_WRITE_COMPUTE);
-    StorePartitionDataReceiver dataReceiver = (StorePartitionDataReceiver) aggKafkaConsumerServiceSpy
-        .subscribeConsumerFor(PUBSUB_URL, storeIngestionTask, partitionReplicaIngestionContext, -1);
+    StorePartitionDataReceiver dataReceiver =
+        (StorePartitionDataReceiver) aggKafkaConsumerServiceSpy.subscribeConsumerFor(
+            PUBSUB_URL,
+            storeIngestionTask,
+            partitionReplicaIngestionContext,
+            PubSubSymbolicPosition.EARLIEST);
 
     // regular pubsub url uses the default cluster id
     Assert.assertEquals(dataReceiver.getKafkaClusterId(), 0);
     verify(topicManager).prefetchAndCacheLatestOffset(topicPartition);
 
-    dataReceiver = (StorePartitionDataReceiver) aggKafkaConsumerServiceSpy
-        .subscribeConsumerFor(PUBSUB_URL_SEP, storeIngestionTask, partitionReplicaIngestionContext, -1);
+    dataReceiver = (StorePartitionDataReceiver) aggKafkaConsumerServiceSpy.subscribeConsumerFor(
+        PUBSUB_URL_SEP,
+        storeIngestionTask,
+        partitionReplicaIngestionContext,
+        PubSubSymbolicPosition.EARLIEST);
     // pubsub url for sep topic uses a different cluster id
     Assert.assertEquals(dataReceiver.getKafkaClusterId(), 1);
 

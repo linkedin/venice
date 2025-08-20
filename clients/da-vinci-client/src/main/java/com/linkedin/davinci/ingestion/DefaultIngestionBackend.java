@@ -16,6 +16,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreVersionInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -298,8 +299,11 @@ public class DefaultIngestionBackend implements IngestionBackend {
         return false;
       }
     } else {
-      if (offsetRecord.getOffsetLag() == 0 && offsetRecord.getLocalVersionTopicOffset() == -1) {
-        LOGGER.info("Offset lag is 0 and topic offset is -1 for replica {}.", Utils.getReplicaId(topicName, partition));
+      if (offsetRecord.getOffsetLag() == 0
+          && PubSubSymbolicPosition.EARLIEST.equals(offsetRecord.getCheckpointedLocalVtPosition())) {
+        LOGGER.info(
+            "Offset lag is 0 and topic offset is EARLIEST for replica {}.",
+            Utils.getReplicaId(topicName, partition));
         return true;
       }
 

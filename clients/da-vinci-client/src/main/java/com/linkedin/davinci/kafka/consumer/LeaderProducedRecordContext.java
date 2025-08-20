@@ -5,7 +5,6 @@ import static com.linkedin.venice.kafka.protocol.enums.MessageType.DELETE;
 import static com.linkedin.venice.kafka.protocol.enums.MessageType.PUT;
 import static com.linkedin.venice.memory.ClassSizeEstimator.getClassOverhead;
 import static com.linkedin.venice.memory.InstanceSizeEstimator.getSize;
-import static com.linkedin.venice.pubsub.api.PubSubSymbolicPosition.EARLIEST;
 
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.Delete;
@@ -34,7 +33,6 @@ public class LeaderProducedRecordContext implements Measurable {
   private static final int PARTIAL_CLASS_OVERHEAD =
       getClassOverhead(LeaderProducedRecordContext.class) + getClassOverhead(CompletableFuture.class);
   private static final int NO_UPSTREAM = -1;
-  protected static final PubSubPosition NO_UPSTREAM_POSITION = EARLIEST;
 
   /**
    * Kafka cluster ID where the source kafka consumer record was consumed from.
@@ -62,7 +60,7 @@ public class LeaderProducedRecordContext implements Measurable {
   /**
    * This is the position at which the message was produced in the Version Topic.
    */
-  private PubSubPosition producedPosition = NO_UPSTREAM_POSITION;
+  private PubSubPosition producedPosition = PubSubSymbolicPosition.EARLIEST;
 
   /**
    * This is the timestamp at which the message was produced in the Version Topic as
@@ -96,7 +94,12 @@ public class LeaderProducedRecordContext implements Measurable {
   }
 
   public static LeaderProducedRecordContext newControlMessageRecord(byte[] keyBytes, ControlMessage valueUnion) {
-    return new LeaderProducedRecordContext(NO_UPSTREAM, NO_UPSTREAM_POSITION, CONTROL_MESSAGE, keyBytes, valueUnion);
+    return new LeaderProducedRecordContext(
+        NO_UPSTREAM,
+        PubSubSymbolicPosition.EARLIEST,
+        CONTROL_MESSAGE,
+        keyBytes,
+        valueUnion);
   }
 
   public static LeaderProducedRecordContext newPutRecord(
@@ -109,11 +112,11 @@ public class LeaderProducedRecordContext implements Measurable {
   }
 
   public static LeaderProducedRecordContext newChunkPutRecord(byte[] keyBytes, Put valueUnion) {
-    return new LeaderProducedRecordContext(NO_UPSTREAM, NO_UPSTREAM_POSITION, PUT, keyBytes, valueUnion);
+    return new LeaderProducedRecordContext(NO_UPSTREAM, PubSubSymbolicPosition.EARLIEST, PUT, keyBytes, valueUnion);
   }
 
   public static LeaderProducedRecordContext newChunkDeleteRecord(byte[] keyBytes, Delete valueUnion) {
-    return new LeaderProducedRecordContext(NO_UPSTREAM, NO_UPSTREAM_POSITION, DELETE, keyBytes, valueUnion);
+    return new LeaderProducedRecordContext(NO_UPSTREAM, PubSubSymbolicPosition.EARLIEST, DELETE, keyBytes, valueUnion);
   }
 
   public static LeaderProducedRecordContext newPutRecordWithFuture(
@@ -236,11 +239,12 @@ public class LeaderProducedRecordContext implements Measurable {
    *         false if the message does not (e.g. happens in cases of leader-generated chunks or TopicSwitch)
    */
   public boolean hasCorrespondingUpstreamMessage() {
-    return consumedPosition != NO_UPSTREAM_POSITION;
+    return !PubSubSymbolicPosition.EARLIEST.equals(consumedPosition);
   }
 
   private static void checkConsumedOffsetParam(PubSubPosition consumedOffset) {
-    if (consumedOffset == null || consumedOffset == EARLIEST || consumedOffset == PubSubSymbolicPosition.LATEST) {
+    if (consumedOffset == null || PubSubSymbolicPosition.EARLIEST.equals(consumedOffset)
+        || PubSubSymbolicPosition.LATEST.equals(consumedOffset)) {
       throw new IllegalArgumentException("consumedOffset cannot be null or symbolic");
     }
   }

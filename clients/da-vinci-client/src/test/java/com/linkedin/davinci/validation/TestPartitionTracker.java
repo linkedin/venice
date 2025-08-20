@@ -452,7 +452,7 @@ public class TestPartitionTracker {
     Segment firstSegment = new Segment(partitionId, 0, checkSumType);
     Segment secondSegment = new Segment(partitionId, 1, checkSumType);
     long offset = 10;
-    OffsetRecord record = TestUtils.getOffsetRecord(offset);
+    OffsetRecord record = TestUtils.getOffsetRecord(ApacheKafkaOffsetPosition.of(offset), Optional.empty());
 
     // Send SOS with check sum type set to checkpoint-able checkSumType.
     ControlMessage startOfSegment = getStartOfSegment(checkSumType);

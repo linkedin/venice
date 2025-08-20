@@ -23,6 +23,8 @@ import com.linkedin.venice.kafka.validation.Segment;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
+import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.CollectionUtils;
 import com.linkedin.venice.utils.LatencyUtils;
@@ -37,7 +39,7 @@ import java.util.Iterator;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.apache.logging.log4j.LogManager;
@@ -81,7 +83,8 @@ public class PartitionTracker {
   /**
    * The equivalent for RT is not stored. It's the instantaneous offset when a DIV sync is triggered.
    */
-  private final AtomicLong latestConsumedVtOffset = new AtomicLong(0L);
+  private final AtomicReference<PubSubPosition> latestConsumedVtPosition =
+      new AtomicReference(PubSubSymbolicPosition.EARLIEST);
 
   /**
    * rtSegments is a map of source broker URL to a map of GUID to Segment.
@@ -104,12 +107,12 @@ public class PartitionTracker {
     return partition;
   }
 
-  public long getLatestConsumedVtOffset() {
-    return latestConsumedVtOffset.get();
+  public PubSubPosition getLatestConsumedVtPosition() {
+    return latestConsumedVtPosition.get();
   }
 
-  public void updateLatestConsumedVtOffset(long offset) {
-    latestConsumedVtOffset.updateAndGet(current -> offset);
+  public void updateLatestConsumedVtPosition(PubSubPosition vtPosition) {
+    latestConsumedVtPosition.updateAndGet(current -> vtPosition);
   }
 
   public final String toString() {
@@ -198,7 +201,7 @@ public class PartitionTracker {
     for (Map.Entry<GUID, Segment> entry: vtSegments.entrySet()) {
       destProducerTracker.setSegment(PartitionTracker.VERSION_TOPIC, entry.getKey(), new Segment(entry.getValue()));
     }
-    destProducerTracker.updateLatestConsumedVtOffset(latestConsumedVtOffset.get());
+    destProducerTracker.updateLatestConsumedVtPosition(latestConsumedVtPosition.get());
   }
 
   /**
@@ -226,7 +229,7 @@ public class PartitionTracker {
     ProducerPartitionState state;
     if (TopicType.isVersionTopic(type)) {
       state = offsetRecord.getProducerPartitionState(guid);
-      offsetRecord.setLatestConsumedVtOffset(getLatestConsumedVtOffset());
+      offsetRecord.setLatestConsumedVtPosition(getLatestConsumedVtPosition());
     } else {
       state = offsetRecord.getRealTimeProducerState(type.getKafkaUrl(), guid);
     }
