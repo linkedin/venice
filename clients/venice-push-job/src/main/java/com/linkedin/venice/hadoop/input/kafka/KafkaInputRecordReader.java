@@ -1,10 +1,10 @@
 package com.linkedin.venice.hadoop.input.kafka;
 
 import static com.linkedin.venice.utils.Utils.EMPTY_BYTE_BUFFER;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_PUBSUB_INPUT_SECONDARY_COMPARATOR_USE_NUMERIC_RECORD_OFFSET;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_PUBSUB_INPUT_SECONDARY_COMPARATOR_USE_LOCAL_LOGICAL_INDEX;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_SOURCE_TOPIC_CHUNKING_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.PUBSUB_INPUT_SECONDARY_COMPARATOR_USE_NUMERIC_RECORD_OFFSET;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUBSUB_INPUT_SECONDARY_COMPARATOR_USE_LOCAL_LOGICAL_INDEX;
 
 import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.chunking.ChunkKeyValueTransformer;
@@ -103,9 +103,9 @@ public class KafkaInputRecordReader implements RecordReader<KafkaInputMapperKey,
     consumer = (consumer != null) ? consumer : createConsumer(job);
     PubSubPartitionSplit pubSubSplit = inputSplit.getSplit();
     this.topicPartition = pubSubSplit.getPubSubTopicPartition();
-    boolean useLogicalIndexOffset = !job.getBoolean(
-        PUBSUB_INPUT_SECONDARY_COMPARATOR_USE_NUMERIC_RECORD_OFFSET,
-        DEFAULT_PUBSUB_INPUT_SECONDARY_COMPARATOR_USE_NUMERIC_RECORD_OFFSET);
+    boolean useLogicalIndexOffset = job.getBoolean(
+        PUBSUB_INPUT_SECONDARY_COMPARATOR_USE_LOCAL_LOGICAL_INDEX,
+        DEFAULT_PUBSUB_INPUT_SECONDARY_COMPARATOR_USE_LOCAL_LOGICAL_INDEX);
 
     // Build iterator directly from the split
     this.pubSubSplitIterator = new PubSubSplitIterator(consumer, pubSubSplit, useLogicalIndexOffset);
