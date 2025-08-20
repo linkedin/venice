@@ -27,6 +27,7 @@ import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.security.SSLFactory;
+import com.linkedin.venice.utils.ConfigCommonUtils;
 import com.linkedin.venice.utils.Utils;
 import java.io.File;
 import java.io.FileOutputStream;
@@ -255,6 +256,8 @@ public class RecoverStoreMetadata {
             .setMaxRecordSizeBytes(deletedStore.getMaxRecordSizeBytes())
             .setMaxNearlineRecordSizeBytes(deletedStore.getMaxNearlineRecordSizeBytes())
             .setBlobTransferEnabled(deletedStore.isBlobTransferEnabled())
+            .setBlobTransferInServerEnabled(
+                ConfigCommonUtils.ActivationState.valueOf(deletedStore.getBlobTransferInServerEnabled()))
             .setTargetRegionSwap(deletedStore.getTargetSwapRegion())
             .setTargetRegionSwapWaitTime(deletedStore.getTargetSwapRegionWaitTime())
             .setIsDavinciHeartbeatReported(deletedStore.getIsDavinciHeartbeatReported())

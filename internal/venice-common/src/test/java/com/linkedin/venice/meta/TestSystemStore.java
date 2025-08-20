@@ -1,5 +1,6 @@
 package com.linkedin.venice.meta;
 
+import static com.linkedin.venice.utils.ConfigCommonUtils.ActivationState;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
@@ -103,6 +104,7 @@ public class TestSystemStore {
     assertEquals(systemStore.getNativeReplicationSourceFabric(), "");
     assertFalse(systemStore.isDaVinciPushStatusStoreEnabled());
     assertFalse(systemStore.isBlobTransferEnabled());
+    assertEquals(systemStore.getBlobTransferInServerEnabled(), ActivationState.NOT_SPECIFIED.name());
     assertEquals(systemStore.getMaxRecordSizeBytes(), VeniceWriter.UNLIMITED_MAX_RECORD_SIZE);
     assertEquals(systemStore.getMaxNearlineRecordSizeBytes(), VeniceWriter.UNLIMITED_MAX_RECORD_SIZE);
     assertEquals(systemStore.getStoreLifecycleHooks(), Collections.emptyList());
