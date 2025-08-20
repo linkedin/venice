@@ -7586,14 +7586,20 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    * Get all live instance controllers from ZK /LIVEINSTANCES
    */
   public List<Instance> getAllLiveInstanceControllers() {
-    final int maxAttempts = 10;
+    return getAllLiveInstanceControllers(10);
+  }
+
+  @VisibleForTesting
+  List<Instance> getAllLiveInstanceControllers(int maxAttempts) {
     PropertyKey.Builder keyBuilder = new PropertyKey.Builder(getControllerClusterName());
     for (int attempt = 1; attempt <= maxAttempts; ++attempt) {
       List<String> liveInstances = getHelixManager().getHelixDataAccessor().getChildNames(keyBuilder.liveInstances());
       if (liveInstances == null || liveInstances.isEmpty()) {
         // Assignment is incomplete, try again later
         LOGGER.warn("No live instance controllers found, attempt: {}/{}", attempt, maxAttempts);
-        Utils.sleep(5 * Time.MS_PER_SECOND);
+        if (attempt < maxAttempts) {
+          Utils.sleep(5 * Time.MS_PER_SECOND);
+        }
         continue;
       }
 
@@ -7954,7 +7960,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           : AdminTopicMetadataAccessor
               .generateMetadataMap(Optional.of(-1L), Optional.of(-1L), Optional.of(executionId), Optional.of(-1L));
     }
-    return getAdminConsumerService(clusterName).getAdminTopicMetadata(clusterName);
+    return getAdminConsumerService(clusterName).getAdminTopicMetadata(clusterName).toLegacyMap();
   }
 
   /**

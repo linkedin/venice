@@ -224,6 +224,7 @@ import com.linkedin.venice.meta.ReadStrategy;
 import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.pubsub.PubSubAdminAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
+import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
 import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.PubSubUtil;
 import com.linkedin.venice.pushmonitor.LeakedPushStatusCleanUpService;
@@ -457,6 +458,7 @@ public class VeniceControllerClusterConfig {
   private final boolean useDaVinciSpecificExecutionStatusForError;
   private final PubSubClientsFactory pubSubClientsFactory;
   private final PubSubPositionTypeRegistry pubSubPositionTypeRegistry;
+  private final PubSubPositionDeserializer pubSubPositionDeserializer;
 
   private final PubSubAdminAdapterFactory sourceOfTruthAdminAdapterFactory;
 
@@ -586,6 +588,7 @@ public class VeniceControllerClusterConfig {
 
   private final Set<PushJobCheckpoints> pushJobUserErrorCheckpoints;
   private final boolean isRealTimeTopicVersioningEnabled;
+  private final boolean useV2AdminTopicMetadata;
   private final boolean isHybridStorePartitionCountUpdateEnabled;
 
   /**
@@ -1099,6 +1102,7 @@ public class VeniceControllerClusterConfig {
         props.getBoolean(USE_DA_VINCI_SPECIFIC_EXECUTION_STATUS_FOR_ERROR, false);
     this.pubSubClientsFactory = new PubSubClientsFactory(props);
     this.pubSubPositionTypeRegistry = PubSubPositionTypeRegistry.fromPropertiesOrDefault(props);
+    this.pubSubPositionDeserializer = new PubSubPositionDeserializer(pubSubPositionTypeRegistry);
     this.sourceOfTruthAdminAdapterFactory = PubSubClientsFactory.createSourceOfTruthAdminFactory(props);
     this.danglingTopicCleanupIntervalSeconds = props.getLong(CONTROLLER_DANGLING_TOPIC_CLEAN_UP_INTERVAL_SECOND, -1);
     this.danglingTopicOccurrenceThresholdForCleanup =
@@ -1134,6 +1138,7 @@ public class VeniceControllerClusterConfig {
     this.isRealTimeTopicVersioningEnabled = props.getBoolean(
         ConfigKeys.CONTROLLER_ENABLE_REAL_TIME_TOPIC_VERSIONING,
         DEFAULT_CONTROLLER_ENABLE_REAL_TIME_TOPIC_VERSIONING);
+    this.useV2AdminTopicMetadata = props.getBoolean(ConfigKeys.USE_V2_ADMIN_TOPIC_METADATA, false);
     this.isHybridStorePartitionCountUpdateEnabled =
         props.getBoolean(ConfigKeys.CONTROLLER_ENABLE_HYBRID_STORE_PARTITION_COUNT_UPDATE, false);
 
@@ -1967,6 +1972,10 @@ public class VeniceControllerClusterConfig {
     return pubSubPositionTypeRegistry;
   }
 
+  public PubSubPositionDeserializer getPubSubPositionDeserializer() {
+    return pubSubPositionDeserializer;
+  }
+
   public PubSubAdminAdapterFactory getSourceOfTruthAdminAdapterFactory() {
     return sourceOfTruthAdminAdapterFactory;
   }
@@ -2093,6 +2102,10 @@ public class VeniceControllerClusterConfig {
 
   public boolean getRealTimeTopicVersioningEnabled() {
     return isRealTimeTopicVersioningEnabled;
+  }
+
+  public boolean useV2AdminTopicMetadata() {
+    return useV2AdminTopicMetadata;
   }
 
   public boolean isProtocolVersionAutoDetectionServiceEnabled() {

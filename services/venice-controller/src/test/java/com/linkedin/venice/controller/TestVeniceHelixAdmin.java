@@ -31,6 +31,7 @@ import static org.testng.Assert.fail;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
+import com.linkedin.venice.controller.kafka.consumer.AdminMetadata;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
 import com.linkedin.venice.controller.logcompaction.CompactionManager;
 import com.linkedin.venice.controller.multitaskscheduler.MultiTaskSchedulerService;
@@ -96,6 +97,9 @@ import org.testng.TestException;
 import org.testng.annotations.Test;
 
 
+/**
+ * Unit tests for {@link VeniceHelixAdmin}.
+ */
 public class TestVeniceHelixAdmin {
   private static final PubSubTopicRepository PUB_SUB_TOPIC_REPOSITORY = new PubSubTopicRepository();
 
@@ -583,11 +587,10 @@ public class TestVeniceHelixAdmin {
     int partitionCount = 10;
     Store store = mock(Store.class);
     Version referenceHybridVersion = mock(Version.class, RETURNS_DEEP_STUBS);
+    when(referenceHybridVersion.getStoreName()).thenReturn(storeName);
+    when(referenceHybridVersion.getPartitionCount()).thenReturn(partitionCount);
+    when(store.getName()).thenReturn(storeName);
     PubSubTopicRepository topicRepository = new PubSubTopicRepository();
-
-    doReturn(storeName).when(store).getName();
-    doReturn(storeName).when(referenceHybridVersion).getStoreName();
-    doReturn(partitionCount).when(referenceHybridVersion).getPartitionCount();
     PubSubTopic rtTopic = topicRepository.getTopic(Utils.getRealTimeTopicName(referenceHybridVersion));
     PubSubTopic separateRtTopic = topicRepository.getTopic(Utils.getSeparateRealTimeTopicName(rtTopic.getName()));
 
@@ -928,7 +931,7 @@ public class TestVeniceHelixAdmin {
     HelixVeniceClusterResources mockClusterResource = mock(HelixVeniceClusterResources.class);
     doReturn(mockClusterResource).when(veniceHelixAdmin).getHelixVeniceClusterResources(clusterName);
     VeniceControllerClusterConfig mockClusterConfig = mock(VeniceControllerClusterConfig.class);
-    doReturn(true).when(mockClusterConfig).isKafkaLogCompactionForHybridStoresEnabled();
+    when(mockClusterConfig.isKafkaLogCompactionForHybridStoresEnabled()).thenReturn(true);
     doReturn(mockClusterConfig).when(mockClusterResource).getConfig();
     ReadWriteStoreRepository mockStoreRepo = mock(ReadWriteStoreRepository.class);
     doReturn(mockStoreRepo).when(mockClusterResource).getStoreMetadataRepository();
@@ -972,7 +975,8 @@ public class TestVeniceHelixAdmin {
         .generateMetadataMap(Optional.of(10L), Optional.of(-1L), Optional.of(1L), Optional.of(1L));
     AdminConsumerService adminConsumerService = mock(AdminConsumerService.class);
     when(veniceHelixAdmin.getAdminConsumerService(clusterName)).thenReturn(adminConsumerService);
-    when(adminConsumerService.getAdminTopicMetadata(anyString())).thenReturn(remoteMetadata);
+    when(adminConsumerService.getAdminTopicMetadata(anyString()))
+        .thenReturn(AdminMetadata.fromLegacyMap(remoteMetadata));
 
     Map<String, Long> metadata = veniceHelixAdmin.getAdminTopicMetadata(clusterName, Optional.empty());
     assertEquals(metadata, remoteMetadata);
@@ -984,7 +988,8 @@ public class TestVeniceHelixAdmin {
     when(veniceHelixAdmin.getExecutionIdAccessor()).thenReturn(executionIdAccessor);
     when(executionIdAccessor.getLastSucceededExecutionIdMap(anyString())).thenReturn(executionIdMap);
     when(veniceHelixAdmin.getExecutionIdAccessor()).thenReturn(executionIdAccessor);
-    when(adminConsumerService.getAdminTopicMetadata(anyString())).thenReturn(remoteMetadata);
+    when(adminConsumerService.getAdminTopicMetadata(anyString()))
+        .thenReturn(AdminMetadata.fromLegacyMap(remoteMetadata));
 
     Map<String, Long> expectedMetadata = AdminTopicMetadataAccessor
         .generateMetadataMap(Optional.of(-1L), Optional.of(-1L), Optional.of(10L), Optional.of(-1L));
@@ -1182,7 +1187,7 @@ public class TestVeniceHelixAdmin {
     SafeHelixDataAccessor safeHelixDataAccessor = mock(SafeHelixDataAccessor.class);
     VeniceControllerMultiClusterConfig controllerMultiClusterConfig = mock(VeniceControllerMultiClusterConfig.class);
 
-    doCallRealMethod().when(veniceHelixAdmin).getAllLiveInstanceControllers();
+    doCallRealMethod().when(veniceHelixAdmin).getAllLiveInstanceControllers(anyInt());
     doReturn(safeHelixManager).when(veniceHelixAdmin).getHelixManager();
     doReturn(safeHelixDataAccessor).when(safeHelixManager).getHelixDataAccessor();
     doReturn(controllerMultiClusterConfig).when(veniceHelixAdmin).getMultiClusterConfigs();
@@ -1193,12 +1198,12 @@ public class TestVeniceHelixAdmin {
 
     // When there is no live instance controller, it should throw an exception
     doReturn(Collections.emptyList()).when(safeHelixDataAccessor).getChildNames(any());
-    expectThrows(VeniceException.class, () -> veniceHelixAdmin.getAllLiveInstanceControllers());
+    expectThrows(VeniceException.class, () -> veniceHelixAdmin.getAllLiveInstanceControllers(1));
 
     // When there are live instance controllers, it should return the list
     List<String> liveInstances = Arrays.asList("controller1_1234", "controller2_1234");
     doReturn(liveInstances).when(safeHelixDataAccessor).getChildNames(any());
-    List<Instance> liveInstanceControllers = veniceHelixAdmin.getAllLiveInstanceControllers();
+    List<Instance> liveInstanceControllers = veniceHelixAdmin.getAllLiveInstanceControllers(1);
     assertEquals(liveInstanceControllers.size(), 2);
   }
 

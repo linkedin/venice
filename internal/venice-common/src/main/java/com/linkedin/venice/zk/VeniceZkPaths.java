@@ -11,6 +11,8 @@ import java.util.Set;
  */
 public class VeniceZkPaths {
   public static final String ADMIN_TOPIC_METADATA = "adminTopicMetadata";
+  // new admin topic metadata structure is incompatible with the old one, so creating a new "v2" path
+  public static final String ADMIN_TOPIC_METADATA_V2 = "adminTopicMetadataV2";
   public static final String CLUSTER_CONFIG = "ClusterConfig";
   public static final String EXECUTION_IDS = "executionids";
   public static final String OFFLINE_PUSHES = "OfflinePushes";
