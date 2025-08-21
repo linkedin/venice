@@ -181,12 +181,8 @@ public class MetricTypeTest {
     final long[] gaugeValue = { 100L };
     LongSupplier supplier = () -> gaugeValue[0];
 
-    MetricEntityStateBase.createAsyncMetric(
-        metricEntityAsyncGauge,
-        otelMetricsRepository,
-        getBaseDimensionsMap(),
-        getBaseAttributes(),
-        supplier);
+    AsyncMetricEntityStateBase
+        .create(metricEntityAsyncGauge, otelMetricsRepository, getBaseDimensionsMap(), getBaseAttributes(), supplier);
 
     Collection<MetricData> metrics = inMemoryMetricReader.collectAllMetrics();
     assertFalse(metrics.isEmpty(), "Metrics should not be empty");

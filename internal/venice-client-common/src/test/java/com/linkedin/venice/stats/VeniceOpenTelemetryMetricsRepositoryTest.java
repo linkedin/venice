@@ -15,6 +15,8 @@ import static org.testng.Assert.fail;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
+import com.linkedin.venice.stats.metrics.AsyncMetricEntityState;
+import com.linkedin.venice.stats.metrics.AsyncMetricEntityStateBase;
 import com.linkedin.venice.stats.metrics.MetricEntity;
 import com.linkedin.venice.stats.metrics.MetricEntityState;
 import com.linkedin.venice.stats.metrics.MetricEntityStateBase;
@@ -162,10 +164,10 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
 
       assertNotNull(instrument, "Instrument should not be null for metric type: " + metricType);
 
-      MetricEntityState metricEntityState;
+      AsyncMetricEntityState metricEntityState;
       if (metricType.isAsyncMetric()) {
-        metricEntityState = MetricEntityStateBase
-            .createAsyncMetric(metricEntity, metricsRepository, baseDimensionsMap, baseAttributes, () -> 10);
+        metricEntityState = AsyncMetricEntityStateBase
+            .create(metricEntity, metricsRepository, baseDimensionsMap, baseAttributes, () -> 10);
       } else {
         metricEntityState =
             MetricEntityStateBase.create(metricEntity, metricsRepository, baseDimensionsMap, baseAttributes);
@@ -179,29 +181,32 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
       switch (metricType) {
         case HISTOGRAM:
         case MIN_MAX_COUNT_SUM_AGGREGATIONS:
+          MetricEntityStateBase metricEntityStateBase = (MetricEntityStateBase) metricEntityState;
           assertTrue(
               instrument instanceof DoubleHistogram,
               "Instrument should be a DoubleHistogram for metric type: " + metricType);
-          metricEntityState.recordOtelMetric(value, attributes);
+          metricEntityStateBase.recordOtelMetric(value, attributes);
           break;
         case COUNTER:
+          metricEntityStateBase = (MetricEntityStateBase) metricEntityState;
           assertTrue(
               instrument instanceof LongCounter,
               "Instrument should be a LongCounter for metric type: " + metricType);
-          metricEntityState.recordOtelMetric(value, attributes);
+          metricEntityStateBase.recordOtelMetric(value, attributes);
           break;
         case GAUGE:
+          metricEntityStateBase = (MetricEntityStateBase) metricEntityState;
           assertTrue(
               instrument instanceof LongGauge,
               "Instrument should be a LongGauge for metric type: " + metricType);
-          metricEntityState.recordOtelMetric(value, attributes);
+          metricEntityStateBase.recordOtelMetric(value, attributes);
           break;
 
         case ASYNC_GAUGE:
           assertTrue(
               instrument instanceof ObservableLongGauge,
               "Instrument should be a ObservableLongGauge for metric type: " + metricType);
-          metricEntityState.recordOtelMetric(value, attributes);
+          // async metrics should not be recorded directly
           break;
 
         default:

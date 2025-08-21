@@ -2,19 +2,14 @@ package com.linkedin.venice.stats.metrics;
 
 import static com.linkedin.venice.read.RequestType.MULTI_GET_STREAMING;
 import static com.linkedin.venice.stats.dimensions.RequestRetryType.ERROR_RETRY;
-import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE;
-import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE_CATEGORY;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_METHOD;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_RETRY_TYPE;
-import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
-import static com.linkedin.venice.stats.metrics.MetricType.HISTOGRAM;
+import static com.linkedin.venice.stats.metrics.MetricType.ASYNC_GAUGE;
 import static java.util.Collections.singletonList;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
@@ -22,31 +17,30 @@ import static org.testng.Assert.fail;
 
 import com.linkedin.venice.stats.VeniceOpenTelemetryMetricNamingFormat;
 import com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository;
-import com.linkedin.venice.stats.dimensions.VeniceDimensionInterface;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.utils.Utils;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.common.AttributesBuilder;
-import io.opentelemetry.api.metrics.DoubleHistogram;
 import io.opentelemetry.api.metrics.LongCounter;
 import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.AsyncGauge;
 import io.tehuti.metrics.stats.Count;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.LongSupplier;
 import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 
-public class MetricEntityStateTest {
+public class AsyncMetricEntityStateTest {
   private VeniceOpenTelemetryMetricsRepository mockOtelRepository;
   private MetricEntity mockMetricEntity;
   private MetricEntityState.TehutiSensorRegistrationFunction sensorRegistrationFunction;
-  private Sensor mockSensor;
   private Map<VeniceMetricsDimensions, String> baseDimensionsMap;
   private Attributes baseAttributes;
   private MetricEntityStateBase recordFailureMetric;
@@ -76,12 +70,11 @@ public class MetricEntityStateTest {
     recordFailureMetric = Mockito.mock(MetricEntityStateBase.class);
     when(mockOtelRepository.getRecordFailureMetric()).thenReturn(recordFailureMetric);
     mockMetricEntity = mock(MetricEntity.class);
-    doReturn(HISTOGRAM).when(mockMetricEntity).getMetricType();
+    doReturn(ASYNC_GAUGE).when(mockMetricEntity).getMetricType();
     Set<VeniceMetricsDimensions> dimensionsSet = new HashSet<>();
     dimensionsSet.add(VENICE_REQUEST_METHOD);
     doReturn(dimensionsSet).when(mockMetricEntity).getDimensionsList();
     sensorRegistrationFunction = (name, stats) -> mock(Sensor.class);
-    mockSensor = mock(Sensor.class);
     baseDimensionsMap = new HashMap<>();
     baseDimensionsMap.put(VENICE_REQUEST_METHOD, MULTI_GET_STREAMING.getDimensionValue());
     baseAttributes = Attributes.builder()
@@ -93,141 +86,59 @@ public class MetricEntityStateTest {
 
   @Test
   public void testCreateMetricWithOtelDisabled() {
-    when(mockMetricEntity.getMetricType()).thenReturn(MetricType.COUNTER);
+    when(mockMetricEntity.getMetricType()).thenReturn(ASYNC_GAUGE);
     LongCounter longCounter = mock(LongCounter.class);
     when(mockOtelRepository.createInstrument(mockMetricEntity)).thenReturn(longCounter);
 
     // without tehuti sensor
-    MetricEntityState metricEntityState =
-        MetricEntityStateBase.create(mockMetricEntity, null, baseDimensionsMap, baseAttributes);
+    AsyncMetricEntityState metricEntityState =
+        AsyncMetricEntityStateBase.create(mockMetricEntity, null, baseDimensionsMap, baseAttributes, () -> 0L);
     Assert.assertNotNull(metricEntityState);
     Assert.assertNull(metricEntityState.getOtelMetric());
     Assert.assertNull(metricEntityState.getTehutiSensor()); // No Tehuti sensors added
-    Assert.assertEquals(((MetricEntityStateBase) metricEntityState).getAttributes(), baseAttributes);
-
-    // without tehuti sensor with empty attributes
-    metricEntityState = MetricEntityStateBase.create(mockMetricEntity, null, baseDimensionsMap, null);
-    Assert.assertNotNull(metricEntityState);
-    Assert.assertNull(metricEntityState.getOtelMetric());
-    Assert.assertNull(metricEntityState.getTehutiSensor()); // No Tehuti sensors added
-    Assert.assertNull(((MetricEntityStateBase) metricEntityState).getAttributes());
 
     // with tehuti sensor
-    metricEntityState = MetricEntityStateBase.create(
+    metricEntityState = AsyncMetricEntityStateBase.create(
         mockMetricEntity,
         null,
         sensorRegistrationFunction,
         TestTehutiMetricNameEnum.TEST_METRIC,
-        singletonList(new Count()),
+        singletonList(new AsyncGauge((ignored1, ignored2) -> 0, "test")),
         baseDimensionsMap,
-        baseAttributes);
+        baseAttributes,
+        () -> 0L);
     Assert.assertNotNull(metricEntityState);
     Assert.assertNull(metricEntityState.getOtelMetric());
     Assert.assertNotNull(metricEntityState.getTehutiSensor());
-    Assert.assertEquals(((MetricEntityStateBase) metricEntityState).getAttributes(), baseAttributes);
   }
 
   @Test
   public void testCreateMetricWithOtelEnabled() {
-    when(mockMetricEntity.getMetricType()).thenReturn(MetricType.COUNTER);
+    when(mockMetricEntity.getMetricType()).thenReturn(ASYNC_GAUGE);
     LongCounter longCounter = mock(LongCounter.class);
-    when(mockOtelRepository.createInstrument(mockMetricEntity, null, null)).thenReturn(longCounter);
+    when(mockOtelRepository.createInstrument(any(MetricEntity.class), any(LongSupplier.class), any(Attributes.class)))
+        .thenReturn(longCounter);
 
     // without tehuti sensor
-    MetricEntityState metricEntityState =
-        MetricEntityStateBase.create(mockMetricEntity, mockOtelRepository, baseDimensionsMap, baseAttributes);
+    AsyncMetricEntityState metricEntityState = AsyncMetricEntityStateBase
+        .create(mockMetricEntity, mockOtelRepository, baseDimensionsMap, baseAttributes, () -> 0L);
     Assert.assertNotNull(metricEntityState);
     Assert.assertNotNull(metricEntityState.getOtelMetric());
     Assert.assertNull(metricEntityState.getTehutiSensor()); // No Tehuti sensors added
-    Assert.assertEquals(((MetricEntityStateBase) metricEntityState).getAttributes(), baseAttributes);
-
-    // without tehuti sensor but with empty attributes
-    try {
-      MetricEntityStateBase.create(mockMetricEntity, mockOtelRepository, baseDimensionsMap, null);
-      fail();
-    } catch (IllegalArgumentException e) {
-      Assert.assertTrue(e.getMessage().contains("Base attributes cannot be null for MetricEntityStateBase"));
-    }
 
     // with tehuti sensor
-    metricEntityState = MetricEntityStateBase.create(
+    metricEntityState = AsyncMetricEntityStateBase.create(
         mockMetricEntity,
         mockOtelRepository,
         sensorRegistrationFunction,
         TestTehutiMetricNameEnum.TEST_METRIC,
-        singletonList(new Count()),
+        singletonList(new AsyncGauge((ignored1, ignored2) -> 0, "test")),
         baseDimensionsMap,
-        baseAttributes);
+        baseAttributes,
+        () -> 0L);
     Assert.assertNotNull(metricEntityState);
     Assert.assertNotNull(metricEntityState.getOtelMetric());
     Assert.assertNotNull(metricEntityState.getTehutiSensor());
-    Assert.assertEquals(((MetricEntityStateBase) metricEntityState).getAttributes(), baseAttributes);
-  }
-
-  @Test
-  public void testRecordOtelMetricHistogram() {
-    DoubleHistogram doubleHistogram = mock(DoubleHistogram.class);
-    when(mockMetricEntity.getMetricType()).thenReturn(HISTOGRAM);
-
-    MetricEntityState metricEntityState =
-        MetricEntityStateBase.create(mockMetricEntity, mockOtelRepository, baseDimensionsMap, baseAttributes);
-    metricEntityState.setOtelMetric(doubleHistogram);
-
-    Attributes attributes = Attributes.builder().put("key", "value").build();
-    metricEntityState.recordOtelMetric(5.5, attributes);
-
-    verify(doubleHistogram, times(1)).record(5.5, attributes);
-  }
-
-  @Test
-  public void testRecordOtelMetricCounter() {
-    LongCounter longCounter = mock(LongCounter.class);
-    when(mockMetricEntity.getMetricType()).thenReturn(MetricType.COUNTER);
-
-    MetricEntityState metricEntityState =
-        MetricEntityStateBase.create(mockMetricEntity, mockOtelRepository, baseDimensionsMap, baseAttributes);
-    metricEntityState.setOtelMetric(longCounter);
-
-    Attributes attributes = Attributes.builder().put("key", "value").build();
-    metricEntityState.recordOtelMetric(10, attributes);
-
-    verify(longCounter, times(1)).add(10, attributes);
-  }
-
-  @Test
-  public void testRecordTehutiMetric() {
-    MetricEntityState metricEntityState =
-        MetricEntityStateBase.create(mockMetricEntity, mockOtelRepository, baseDimensionsMap, baseAttributes);
-    metricEntityState.setTehutiSensor(mockSensor);
-    metricEntityState.recordTehutiMetric(15.0);
-    verify(mockSensor, times(1)).record(15.0);
-  }
-
-  @Test
-  public void testRecordMetricsWithBothOtelAndTehuti() {
-    DoubleHistogram doubleHistogram = mock(DoubleHistogram.class);
-    when(mockMetricEntity.getMetricType()).thenReturn(HISTOGRAM);
-
-    MetricEntityState metricEntityState =
-        MetricEntityStateBase.create(mockMetricEntity, mockOtelRepository, baseDimensionsMap, baseAttributes);
-    metricEntityState.setOtelMetric(doubleHistogram);
-    metricEntityState.setTehutiSensor(mockSensor);
-
-    Attributes attributes = Attributes.builder().put("key", "value").build();
-
-    // called 0 times
-    verify(doubleHistogram, times(0)).record(20.0, attributes);
-    verify(mockSensor, times(0)).record(20.0);
-
-    // called 1 time
-    metricEntityState.record(20.0, attributes);
-    verify(doubleHistogram, times(1)).record(20.0, attributes);
-    verify(mockSensor, times(1)).record(20.0);
-
-    // called 2 times
-    metricEntityState.record(20.0, attributes);
-    verify(doubleHistogram, times(2)).record(20.0, attributes);
-    verify(mockSensor, times(2)).record(20.0);
   }
 
   @Test
@@ -236,14 +147,15 @@ public class MetricEntityStateTest {
     // case 1: right values
     baseDimensionsMap.put(VENICE_REQUEST_METHOD, MULTI_GET_STREAMING.getDimensionValue());
     Attributes baseAttributes1 = getBaseAttributes(baseDimensionsMap);
-    MetricEntityState metricEntityState =
-        MetricEntityStateBase.create(mockMetricEntity, mockOtelRepository, baseDimensionsMap, baseAttributes1);
+    AsyncMetricEntityState metricEntityState = AsyncMetricEntityStateBase
+        .create(mockMetricEntity, mockOtelRepository, baseDimensionsMap, baseAttributes1, () -> 0L);
     assertNotNull(metricEntityState);
 
     // case 2: baseAttributes have different count than baseDimensionsMap
     Attributes baseAttributes2 = Attributes.builder().build();
     try {
-      MetricEntityStateBase.create(mockMetricEntity, mockOtelRepository, baseDimensionsMap, baseAttributes2);
+      AsyncMetricEntityStateBase
+          .create(mockMetricEntity, mockOtelRepository, baseDimensionsMap, baseAttributes2, () -> 0L);
       fail();
     } catch (IllegalArgumentException e) {
       assertTrue(e.getMessage().contains("should have the same size and values"));
@@ -254,7 +166,8 @@ public class MetricEntityStateTest {
     baseAttributes3Map.put(VENICE_REQUEST_RETRY_TYPE, ERROR_RETRY.getDimensionValue());
     Attributes baseAttributes3 = getBaseAttributes(baseAttributes3Map);
     try {
-      MetricEntityStateBase.create(mockMetricEntity, mockOtelRepository, baseDimensionsMap, baseAttributes3);
+      AsyncMetricEntityStateBase
+          .create(mockMetricEntity, mockOtelRepository, baseDimensionsMap, baseAttributes3, () -> 0L);
       fail();
     } catch (IllegalArgumentException e) {
       assertTrue(e.getMessage().contains("should contain all the keys and same values as in baseDimensionsMap"));
@@ -266,7 +179,8 @@ public class MetricEntityStateTest {
     baseDimensionsMap.put(VENICE_REQUEST_RETRY_TYPE, ERROR_RETRY.getDimensionValue());
     Attributes baseAttributes4 = getBaseAttributes(baseDimensionsMap);
     try {
-      MetricEntityStateBase.create(mockMetricEntity, mockOtelRepository, baseDimensionsMap, baseAttributes4);
+      AsyncMetricEntityStateBase
+          .create(mockMetricEntity, mockOtelRepository, baseDimensionsMap, baseAttributes4, () -> 0L);
       fail();
     } catch (IllegalArgumentException e) {
       assertTrue(e.getMessage().contains("doesn't match with the required dimensions"));
@@ -276,7 +190,8 @@ public class MetricEntityStateTest {
     baseDimensionsMap.clear();
     Attributes baseAttributes5 = Attributes.builder().build();
     try {
-      MetricEntityStateBase.create(mockMetricEntity, mockOtelRepository, baseDimensionsMap, baseAttributes5);
+      AsyncMetricEntityStateBase
+          .create(mockMetricEntity, mockOtelRepository, baseDimensionsMap, baseAttributes5, () -> 0L);
       fail();
     } catch (IllegalArgumentException e) {
       assertTrue(e.getMessage().contains("doesn't match with the required dimensions"));
@@ -287,7 +202,8 @@ public class MetricEntityStateTest {
     baseDimensionsMap.put(VENICE_REQUEST_RETRY_TYPE, ERROR_RETRY.getDimensionValue());
     Attributes baseAttributes6 = getBaseAttributes(baseDimensionsMap);
     try {
-      MetricEntityStateBase.create(mockMetricEntity, mockOtelRepository, baseDimensionsMap, baseAttributes6);
+      AsyncMetricEntityStateBase
+          .create(mockMetricEntity, mockOtelRepository, baseDimensionsMap, baseAttributes6, () -> 0L);
       fail();
     } catch (IllegalArgumentException e) {
       assertTrue(e.getMessage().contains("doesn't match with the required dimensions"));
@@ -300,7 +216,8 @@ public class MetricEntityStateTest {
     baseDimensionsMap.clear();
     baseDimensionsMap.put(VENICE_REQUEST_METHOD, MULTI_GET_STREAMING.getDimensionValue());
     try {
-      MetricEntityStateBase.create(mockMetricEntity, mockOtelRepository, baseDimensionsMap, baseAttributes7);
+      AsyncMetricEntityStateBase
+          .create(mockMetricEntity, mockOtelRepository, baseDimensionsMap, baseAttributes7, () -> 0L);
       fail();
     } catch (IllegalArgumentException e) {
       assertTrue(e.getMessage().contains("should have the same size and values"));
@@ -311,62 +228,83 @@ public class MetricEntityStateTest {
     baseDimensionsMap.clear();
     baseDimensionsMap.put(VENICE_REQUEST_METHOD, null);
     try {
-      MetricEntityStateBase.create(mockMetricEntity, mockOtelRepository, baseDimensionsMap, baseAttributes8);
+      AsyncMetricEntityStateBase
+          .create(mockMetricEntity, mockOtelRepository, baseDimensionsMap, baseAttributes8, () -> 0L);
       fail();
     } catch (IllegalArgumentException e) {
       assertTrue(e.getMessage().contains("should contain all the keys and same values as in baseDimensionsMap"));
     }
-
   }
 
   @Test
   public void testValidateMetric() {
-    // MetricType is ASYNC_GAUGE, but using MetricEntityStateBase rather than AsyncMetricEntityStateBase
+    // case 1: MetricType is ASYNC_GAUGE, but tehuti does not have AsyncGauge() in stats
     MetricEntity metricEntity = new MetricEntity(
         "test_metric",
-        MetricType.ASYNC_GAUGE,
+        ASYNC_GAUGE,
         MetricUnit.NUMBER,
         "Test description",
         Utils.setOf(VENICE_REQUEST_METHOD));
     try {
-      MetricEntityStateBase.create(
+      AsyncMetricEntityStateBase.create(
           metricEntity,
           mockOtelRepository,
           sensorRegistrationFunction,
-          TestTehutiMetricNameEnum.TEST_METRIC,
-          singletonList(new AsyncGauge((ignored, ignored2) -> 0, "test")),
+          AsyncMetricEntityStateTest.TestTehutiMetricNameEnum.TEST_METRIC,
+          singletonList(new Count()), // No AsyncGauge in stats
           baseDimensionsMap,
-          baseAttributes); // No async callback provided
-      fail();
-    } catch (IllegalArgumentException e) {
-      assertTrue(
-          e.getMessage().contains("Async callback is not provided, but the metric type is async for metric"),
-          e.getMessage());
-    }
-
-    // case 2: MetricType is not ASYNC_GAUGE, but tehuti has AsyncGauge() in stats
-    metricEntity = new MetricEntity(
-        "test_metric",
-        HISTOGRAM,
-        MetricUnit.NUMBER,
-        "Test description",
-        Utils.setOf(VENICE_REQUEST_METHOD));
-    try {
-      MetricEntityStateBase.create(
-          metricEntity,
-          mockOtelRepository,
-          sensorRegistrationFunction,
-          TestTehutiMetricNameEnum.TEST_METRIC,
-          singletonList(new AsyncGauge((ignored, ignored2) -> 0, "test")),
-          baseDimensionsMap,
-          baseAttributes);
+          baseAttributes,
+          () -> 0L);
       fail();
     } catch (IllegalArgumentException e) {
       assertTrue(
           e.getMessage()
               .contains(
-                  "Tehuti metric stats contains AsyncGauge, but the otel metric type is not ASYNC_GAUGE for metric"));
+                  "Tehuti metric stats does not contain AsyncGauge, but the otel metric type is ASYNC_GAUGE for metric"),
+          e.getMessage());
     }
+
+    // case 2: MetricType is ASYNC_GAUGE and tehuti stats have AsyncGauge() but have other stats as well
+    metricEntity = new MetricEntity(
+        "test_metric",
+        ASYNC_GAUGE,
+        MetricUnit.NUMBER,
+        "Test description",
+        Utils.setOf(VENICE_REQUEST_METHOD));
+    try {
+      AsyncMetricEntityStateBase.create(
+          metricEntity,
+          mockOtelRepository,
+          sensorRegistrationFunction,
+          AsyncMetricEntityStateTest.TestTehutiMetricNameEnum.TEST_METRIC,
+          Arrays.asList(new AsyncGauge((ignored, ignored2) -> 0, "test"), new Count()),
+          baseDimensionsMap,
+          baseAttributes,
+          () -> 0L);
+      fail();
+    } catch (IllegalArgumentException e) {
+      assertTrue(
+          e.getMessage().contains("Tehuti metric stats contains AsyncGauge, but it should be the only stat for metric"),
+          e.getMessage());
+    }
+
+    // case 3: MetricType is ASYNC_GAUGE and tehuti stats have AsyncGauge(): No exception
+    metricEntity = new MetricEntity(
+        "test_metric",
+        ASYNC_GAUGE,
+        MetricUnit.NUMBER,
+        "Test description",
+        Utils.setOf(VENICE_REQUEST_METHOD));
+    AsyncMetricEntityStateBase metricEntityState = AsyncMetricEntityStateBase.create(
+        metricEntity,
+        mockOtelRepository,
+        sensorRegistrationFunction,
+        AsyncMetricEntityStateTest.TestTehutiMetricNameEnum.TEST_METRIC,
+        Arrays.asList(new AsyncGauge((ignored, ignored2) -> 0, "test")),
+        baseDimensionsMap,
+        baseAttributes,
+        () -> 0L);
+    assertNotNull(metricEntityState);
   }
 
   private Attributes getBaseAttributes(Map<VeniceMetricsDimensions, String> inputMap) {
@@ -377,98 +315,5 @@ public class MetricEntityStateTest {
           entry.getValue());
     }
     return builder.build();
-  }
-
-  enum DimensionEnum1 implements VeniceDimensionInterface {
-    DIMENSION_ONE(), DIMENSION_TWO();
-
-    private final String dimensionValue;
-
-    DimensionEnum1() {
-      this.dimensionValue = "value_" + name().toLowerCase();
-    }
-
-    @Override
-    public VeniceMetricsDimensions getDimensionName() {
-      return VENICE_STORE_NAME; // Dummy dimension
-    }
-
-    @Override
-    public String getDimensionValue() {
-      return dimensionValue;
-    }
-  }
-
-  enum DimensionEnum1Duplicate implements VeniceDimensionInterface {
-    DIMENSION_ONE(), DIMENSION_TWO();
-
-    private final String dimensionValue;
-
-    DimensionEnum1Duplicate() {
-      this.dimensionValue = "value_" + name().toLowerCase();
-    }
-
-    @Override
-    public VeniceMetricsDimensions getDimensionName() {
-      return VENICE_STORE_NAME; // Dummy dimension
-    }
-
-    @Override
-    public String getDimensionValue() {
-      return dimensionValue;
-    }
-  }
-
-  enum DimensionEnum2 implements VeniceDimensionInterface {
-    DIMENSION_ONE(), DIMENSION_TWO();
-
-    private final String dimensionValue;
-
-    DimensionEnum2() {
-      this.dimensionValue = "value_" + name().toLowerCase();
-    }
-
-    @Override
-    public VeniceMetricsDimensions getDimensionName() {
-      return HTTP_RESPONSE_STATUS_CODE; // Dummy dimension
-    }
-
-    @Override
-    public String getDimensionValue() {
-      return dimensionValue;
-    }
-  }
-
-  enum DimensionEnum3 implements VeniceDimensionInterface {
-    DIMENSION_ONE(), DIMENSION_TWO();
-
-    private final String dimensionValue;
-
-    DimensionEnum3() {
-      this.dimensionValue = "value_" + name().toLowerCase();
-    }
-
-    @Override
-    public VeniceMetricsDimensions getDimensionName() {
-      return HTTP_RESPONSE_STATUS_CODE_CATEGORY; // Dummy dimension
-    }
-
-    @Override
-    public String getDimensionValue() {
-      return dimensionValue;
-    }
-  }
-
-  enum EmptyDimensionEnum implements VeniceDimensionInterface {
-    ; // Empty enum
-    @Override
-    public VeniceMetricsDimensions getDimensionName() {
-      return VENICE_REQUEST_METHOD;
-    }
-
-    @Override
-    public String getDimensionValue() {
-      throw new UnsupportedOperationException(); // Should not be called in this test context
-    }
   }
 }
