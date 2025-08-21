@@ -26,7 +26,7 @@ import com.linkedin.davinci.store.rocksdb.RocksDBServerConfig;
 import com.linkedin.davinci.transformer.TestStringRecordTransformer;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.ClientConfig;
-import com.linkedin.venice.client.store.schemas.TestRecord;
+import com.linkedin.venice.client.store.schemas.TestValueRecord;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.schema.SchemaEntry;
@@ -108,7 +108,7 @@ public class AvroGenericDaVinciClientTest {
 
   @Test
   public void testSpecificClientSchemaValidation() throws NoSuchFieldException, IllegalAccessException {
-    ClientConfig clientConfig = ClientConfig.defaultSpecificClientConfig(storeName, TestRecord.class);
+    ClientConfig clientConfig = ClientConfig.defaultSpecificClientConfig(storeName, TestValueRecord.class);
     DaVinciClient client = setUpSpecificClient(clientConfig, true);
     try {
       client.start();
