@@ -224,11 +224,6 @@ public final class PubSubUtil {
     return Long.compare(position1.getNumericOffset(), position2.getNumericOffset());
   }
 
-  @FunctionalInterface
-  public interface OffsetExtractor<T extends PubSubPosition> {
-    long getInternalOffset(T position);
-  }
-
   public static <T extends PubSubPosition> long computeOffsetDelta(
       PubSubTopicPartition partition,
       PubSubPosition position1,
