@@ -36,7 +36,7 @@ public abstract class AbstractVeniceRecordReader<INPUT_KEY, INPUT_VALUE> {
   }
 
   Schema getDefaultRmdSchema() {
-    return Schema.create(Schema.Type.BYTES);
+    return Schema.create(Schema.Type.LONG);
   }
 
   /**

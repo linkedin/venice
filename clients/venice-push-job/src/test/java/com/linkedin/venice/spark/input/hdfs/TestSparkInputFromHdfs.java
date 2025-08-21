@@ -18,7 +18,6 @@ import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
 import java.io.File;
 import java.io.IOException;
-import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.Map;
 import org.apache.avro.Schema;
@@ -262,7 +261,7 @@ public class TestSparkInputFromHdfs {
 
     Schema recordSchema = includeTimestamps ? AVRO_FILE_WITH_TIMESTAMPS_SCHEMA : AVRO_FILE_SCHEMA;
     DatumWriter<GenericRecord> datumWriter = new GenericDatumWriter<>(recordSchema);
-    byte[] timestampBytes = String.valueOf(123456789L).getBytes();
+    long timestampBytes = 123456789L;
     try (DataFileWriter<GenericRecord> dataFileWriter = new DataFileWriter<>(datumWriter)) {
       dataFileWriter.create(recordSchema, file);
       for (int i = start; i <= end; ++i) {
@@ -270,7 +269,7 @@ public class TestSparkInputFromHdfs {
         user.put(DEFAULT_KEY_FIELD_PROP, Integer.toString(i));
         user.put(DEFAULT_VALUE_FIELD_PROP, DEFAULT_USER_DATA_VALUE_PREFIX + i);
         if (includeTimestamps) {
-          user.put(DEFAULT_RMD_FIELD_PROP, ByteBuffer.wrap(timestampBytes));
+          user.put(DEFAULT_RMD_FIELD_PROP, timestampBytes);
         }
         dataFileWriter.append(user);
       }

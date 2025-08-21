@@ -26,6 +26,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_GRID_FABRIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VALUE_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_DISCOVER_URL_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_STORE_NAME_PROP;
+import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
 
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -414,6 +415,7 @@ public class IntegrationTestPushUtils {
     ControllerClient controllerClient = getControllerClient(veniceClusterName, props);
     NewStoreResponse newStoreResponse = controllerClient
         .createNewStore(props.getProperty(VENICE_STORE_NAME_PROP), "test@linkedin.com", keySchemaStr, valueSchemaStr);
+    assertFalse(newStoreResponse.isError());
 
     if (newStoreResponse.isError()) {
       throw new VeniceException("Could not create store " + props.getProperty(VENICE_STORE_NAME_PROP));
