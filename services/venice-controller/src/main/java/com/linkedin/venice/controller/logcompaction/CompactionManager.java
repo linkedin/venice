@@ -2,6 +2,7 @@ package com.linkedin.venice.controller.logcompaction;
 
 import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
+import com.linkedin.venice.controller.VeniceControllerClusterConfig;
 import com.linkedin.venice.controller.VeniceControllerMultiClusterConfig;
 import com.linkedin.venice.controller.repush.RepushJobRequest;
 import com.linkedin.venice.controller.repush.RepushOrchestrator;
@@ -32,15 +33,21 @@ public class CompactionManager {
 
   private final RepushOrchestrator repushOrchestrator;
   private final Map<String, LogCompactionStats> statsMap;
-  private final VeniceControllerMultiClusterConfig multiClusterConfig;
+  private final Map<String, Long> LogCompactionThresholdsByCluster = new HashMap<>();
+  private final Map<String, Boolean> LogCompactionEnabledByCluster = new HashMap<>();
 
   public CompactionManager(
       RepushOrchestrator repushOrchestrator,
       VeniceControllerMultiClusterConfig multiClusterConfig,
       Map<String, LogCompactionStats> statsMap) {
     this.repushOrchestrator = repushOrchestrator;
-    this.multiClusterConfig = multiClusterConfig;
     this.statsMap = statsMap;
+
+    for (String clusterName: multiClusterConfig.getClusters()) {
+      VeniceControllerClusterConfig config = multiClusterConfig.getControllerConfig(clusterName);
+      this.LogCompactionThresholdsByCluster.put(clusterName, config.getLogCompactionThresholdMS());
+      this.LogCompactionEnabledByCluster.put(clusterName, config.isLogCompactionEnabled());
+    }
   }
 
   /**
@@ -90,7 +97,7 @@ public class CompactionManager {
   public boolean isCompactionReady(StoreInfo storeInfo, String clusterName) {
 
     // Cluster level config
-    if (!multiClusterConfig.getControllerConfig(clusterName).isLogCompactionEnabled()) {
+    if (Boolean.FALSE.equals(this.LogCompactionEnabledByCluster.get(clusterName))) {
       return false;
     }
 
@@ -197,6 +204,6 @@ public class CompactionManager {
   private long getLogCompactionThresholdMs(StoreInfo storeInfo, String clusterName) {
     return storeInfo.getCompactionThreshold() > -1
         ? storeInfo.getCompactionThreshold()
-        : multiClusterConfig.getControllerConfig(clusterName).getLogCompactionThresholdMS();
+        : this.LogCompactionThresholdsByCluster.get(clusterName);
   }
 }

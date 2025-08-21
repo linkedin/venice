@@ -25,6 +25,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -65,6 +66,8 @@ public class CompactionManagerTest {
     when(cluster3Config.getLogCompactionThresholdMS()).thenReturn(TimeUnit.HOURS.toMillis(48));
 
     VeniceControllerMultiClusterConfig multiClusterConfig = mock(VeniceControllerMultiClusterConfig.class);
+    when(multiClusterConfig.getClusters())
+        .thenReturn(new HashSet<>(Arrays.asList(TEST_CLUSTER_NAME_1, TEST_CLUSTER_NAME_2, TEST_CLUSTER_NAME_3)));
     when(multiClusterConfig.getControllerConfig(TEST_CLUSTER_NAME_1)).thenReturn(cluster1Config);
     when(multiClusterConfig.getControllerConfig(TEST_CLUSTER_NAME_2)).thenReturn(cluster2Config);
     when(multiClusterConfig.getControllerConfig(TEST_CLUSTER_NAME_3)).thenReturn(cluster3Config);
