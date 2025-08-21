@@ -178,7 +178,7 @@ public class AdminMetadata {
       } else {
         return PubSubSymbolicPosition.EARLIEST;
       }
-    } else if (offset > position.getNumericOffset()) {
+    } else if (offset != null && offset > position.getNumericOffset()) {
       LOGGER.warn(
           "Offset {} is greater than position {}. Resetting position to offset.",
           offset,
@@ -191,12 +191,20 @@ public class AdminMetadata {
 
   public void setPubSubPosition(PubSubPosition pubSubPosition) {
     this.position = pubSubPosition;
-    this.offset = pubSubPosition.getNumericOffset();
+    if (pubSubPosition != null) {
+      this.offset = pubSubPosition.getNumericOffset();
+    } else {
+      this.offset = UNDEFINED_VALUE;
+    }
   }
 
   public void setUpstreamPubSubPosition(PubSubPosition upstreamPubPosition) {
     this.upstreamPosition = upstreamPubPosition;
-    this.upstreamOffset = upstreamPubPosition.getNumericOffset();
+    if (upstreamPubPosition != null) {
+      this.upstreamOffset = upstreamPubPosition.getNumericOffset();
+    } else {
+      this.upstreamOffset = UNDEFINED_VALUE;
+    }
   }
 
   @Override
