@@ -59,7 +59,10 @@ public class RmdSchemaGenerator {
     GenericRecord record = new GenericData.Record(schema);
     record.put(RmdConstants.TIMESTAMP_FIELD_NAME, timestamp);
     record.put(RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD_NAME, Collections.emptyList());
+<<<<<<< HEAD
 
+=======
+>>>>>>> e0de8532b (Add integration test for default long RMD pushes)
     return FastSerializerDeserializerFactory.getFastAvroGenericSerializer(schema).serialize(record);
   }
 

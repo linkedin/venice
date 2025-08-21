@@ -250,12 +250,21 @@ public class TestWriteUtils {
     return writeSimpleAvroFileWithStringToStringSchema(parentDir, DEFAULT_USER_DATA_RECORD_COUNT);
   }
 
-  public static void writeSimpleAvroFileWithStringToStringAndTimestampSchema(
+  public static Schema writeSimpleAvroFileWithStringToStringAndTimestampSchema(File parentDir, long timestamp)
+      throws IOException {
+    return writeSimpleAvroFileWithStringToStringAndTimestampSchema(
+        parentDir,
+        DEFAULT_USER_DATA_RECORD_COUNT,
+        "string2string_with_timestamp.avro",
+        timestamp);
+  }
+
+  public static Schema writeSimpleAvroFileWithStringToStringAndTimestampSchema(
       File parentDir,
       int recordCount,
       String fileName,
       long timestamp) throws IOException {
-    writeAvroFile(parentDir, fileName, STRING_TO_STRING_WITH_TIMESTAMP, (recordSchema, writer) -> {
+    return writeAvroFile(parentDir, fileName, STRING_TO_STRING_WITH_TIMESTAMP, (recordSchema, writer) -> {
       for (int i = 1; i <= recordCount; ++i) {
         GenericRecord user = new GenericData.Record(recordSchema);
         user.put(DEFAULT_KEY_FIELD_PROP, Integer.toString(i));
