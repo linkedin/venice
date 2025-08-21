@@ -5,7 +5,6 @@ import static com.linkedin.venice.spark.SparkConstants.RMD_COLUMN_NAME;
 import static com.linkedin.venice.spark.SparkConstants.VALUE_COLUMN_NAME;
 
 import com.linkedin.venice.hadoop.task.datawriter.AbstractPartitionWriter;
-import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
 import com.linkedin.venice.spark.datawriter.task.DataWriterAccumulators;
 import com.linkedin.venice.spark.datawriter.task.SparkDataWriterTaskTracker;
 import com.linkedin.venice.spark.engine.SparkEngineTaskConfigProvider;
@@ -67,12 +66,5 @@ public class SparkPartitionWriter extends AbstractPartitionWriter {
     if (key != null) {
       super.processValuesForKey(key, valueRecordsForKey.iterator(), dataWriterTaskTracker);
     }
-  }
-
-  byte[] convertLogicalTimestampToRmd(Long logicalTimestamp) {
-    if (logicalTimestamp == -1L) {
-      return null;
-    }
-    return RmdSchemaGenerator.generateRecordLevelTimestampMetadata(getRmdSchema(), logicalTimestamp);
   }
 }

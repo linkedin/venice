@@ -17,9 +17,11 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.VALUE_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VSON_PUSH;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
+import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.hadoop.PushJobSetting;
 import com.linkedin.venice.hadoop.input.recordreader.avro.VeniceAvroRecordReader;
 import com.linkedin.venice.hadoop.input.recordreader.vson.VeniceVsonRecordReader;
+import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
 import com.linkedin.venice.spark.input.hdfs.VeniceHdfsSource;
 import com.linkedin.venice.spark.utils.RowToAvroConverter;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -116,11 +118,45 @@ public class DataWriterSparkJob extends AbstractDataWriterSparkJob {
       AvroWrapper<IndexedRecord> recordAvroWrapper = new AvroWrapper<>(rowRecord);
       final byte[] inputKeyBytes = recordReader.getKeyBytes(recordAvroWrapper, null);
       final byte[] inputValueBytes = recordReader.getValueBytes(recordAvroWrapper, null);
-      final byte[] timestamp = recordReader.getRmdBytes(recordAvroWrapper, null);
-      return new GenericRowWithSchema(new Object[] { inputKeyBytes, inputValueBytes, timestamp }, DEFAULT_SCHEMA);
+
+      byte[] rmdBytes = null;
+      if (rmdFieldPresent(pushJobSetting) && containsRmdSchema(pushJobSetting)) {
+        if (containsLogicalTimestamp(pushJobSetting)) {
+          Object logicalTimestamp = recordReader.getRmdValue(recordAvroWrapper, null);
+          rmdBytes = convertLogicalTimestampToRmd(
+              AvroCompatibilityHelper.parse(pushJobSetting.replicationMetadataSchemaString),
+              (Long) logicalTimestamp);
+        } else {
+          rmdBytes = recordReader.getRmdBytes(recordAvroWrapper, null);
+        }
+      }
+
+      return new GenericRowWithSchema(new Object[] { inputKeyBytes, inputValueBytes, rmdBytes }, DEFAULT_SCHEMA);
     }, RowEncoder.apply(DEFAULT_SCHEMA));
 
     return df;
+  }
+
+  static boolean containsLogicalTimestamp(PushJobSetting pushJobSetting) {
+    Schema inputRmdSchema = pushJobSetting.inputDataSchema.getField(pushJobSetting.rmdField).schema();
+    return inputRmdSchema.getType() == Schema.Type.LONG;
+  }
+
+  static boolean containsRmdSchema(PushJobSetting pushJobSetting) {
+    return pushJobSetting.replicationMetadataSchemaString != null
+        && !pushJobSetting.replicationMetadataSchemaString.isEmpty();
+  }
+
+  static boolean rmdFieldPresent(PushJobSetting pushJobSetting) {
+    return pushJobSetting.rmdField != null && !pushJobSetting.rmdField.isEmpty();
+  }
+
+  @VisibleForTesting
+  static byte[] convertLogicalTimestampToRmd(Schema rmdSchema, Long logicalTimestamp) {
+    if (logicalTimestamp == -1L) {
+      return null;
+    }
+    return RmdSchemaGenerator.generateRecordLevelTimestampMetadata(rmdSchema, logicalTimestamp);
   }
 
   @Deprecated
@@ -137,12 +173,8 @@ public class DataWriterSparkJob extends AbstractDataWriterSparkJob {
 
           final byte[] inputKeyBytes = recordReader.getKeyBytes(record._1, record._2);
           final byte[] inputValueBytes = recordReader.getValueBytes(record._1, record._2);
-          final byte[] inputRmdBytes = recordReader.getRmdBytes(record._1, record._2);
-
           // timestamp isn't supported for vson
-          return new GenericRowWithSchema(
-              new Object[] { inputKeyBytes, inputValueBytes, inputRmdBytes },
-              DEFAULT_SCHEMA);
+          return new GenericRowWithSchema(new Object[] { inputKeyBytes, inputValueBytes, null }, DEFAULT_SCHEMA);
         });
     return sparkSession.createDataFrame(rdd, DEFAULT_SCHEMA);
   }

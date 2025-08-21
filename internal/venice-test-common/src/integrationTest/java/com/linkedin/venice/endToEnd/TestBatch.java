@@ -34,22 +34,7 @@ import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithCu
 import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithDuplicateKey;
 import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema;
 import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema2;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.ALLOW_DUPLICATE_KEY;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.COMPRESSION_METRIC_COLLECTION_ENABLED;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.DATA_WRITER_COMPUTE_JOB_CLASS;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_BROKER_URL;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_COMBINER_ENABLED;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_MAX_RECORDS_PER_MAPPER;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.SEND_CONTROL_MESSAGES_DIRECTLY;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_ETL;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_KAFKA;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.SPARK_NATIVE_INPUT_FORMAT_ENABLED;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_STORE_NAME_PROP;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.ZSTD_COMPRESSION_LEVEL;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.*;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
@@ -710,6 +695,37 @@ public abstract class TestBatch {
         validator,
         storeName,
         new UpdateStoreQueryParams());
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testBatchWithTimestampFromETL() throws Exception {
+    testBatchStore(inputDir -> {
+      writeETLFileWithUserSchema(inputDir, true);
+      return new KeyAndValueSchemas(ETL_KEY_SCHEMA, ETL_VALUE_SCHEMA);
+    }, properties -> {
+      properties.setProperty(SOURCE_ETL, "true");
+      properties.setProperty(RMD_FIELD_PROP, "rmd");
+    }, (avroClient, vsonClient, metricsRepository) -> {
+      // test single get
+      for (int i = 1; i <= 50; i++) {
+        GenericRecord key = new GenericData.Record(ETL_KEY_SCHEMA);
+        GenericRecord value = new GenericData.Record(ETL_VALUE_SCHEMA);
+        key.put(DEFAULT_KEY_FIELD_PROP, Integer.toString(i));
+        value.put(DEFAULT_VALUE_FIELD_PROP, "test_name_" + i);
+        Assert.assertEquals(avroClient.get(key).get().toString(), value.toString());
+      }
+
+      for (int i = 51; i <= 100; i++) {
+        GenericRecord key = new GenericData.Record(ETL_KEY_SCHEMA);
+        key.put(DEFAULT_KEY_FIELD_PROP, Integer.toString(i));
+        Assert.assertNull(avroClient.get(key).get());
+      }
+    },
+        new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true)
+            .setPartitionCount(1)
+            .setHybridRewindSeconds(5)
+            .setHybridOffsetLagThreshold(2)
+            .setNativeReplicationEnabled(true));
   }
 
   @Test(timeOut = TEST_TIMEOUT)
