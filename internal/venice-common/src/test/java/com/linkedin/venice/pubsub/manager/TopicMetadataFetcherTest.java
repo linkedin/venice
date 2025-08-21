@@ -28,6 +28,7 @@ import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition
 import com.linkedin.venice.pubsub.api.PubSubAdminAdapter;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
+import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubClientException;
@@ -89,6 +90,72 @@ public class TopicMetadataFetcherTest {
         threadPoolExecutor,
         cachedEntryTtlInNs);
     assertEquals(pubSubConsumerPool.size(), 1);
+  }
+
+  @Test
+  public void testGetLatestPositionCachedSuccessAndInvalidatePartition() {
+    PubSubTopicPartition tp0 = new PubSubTopicPartitionImpl(pubSubTopic, 0);
+    when(adminMock.containsTopic(pubSubTopic)).thenReturn(true);
+
+    TopicMetadataFetcher spyFetcher = spy(topicMetadataFetcher);
+
+    // First population of cache returns position=100
+    PubSubPosition pos100 = ApacheKafkaOffsetPosition.of(100L);
+    doReturn(pos100).when(spyFetcher).getLatestPositionWithRetries(tp0, 5);
+
+    PubSubPosition cached1 = spyFetcher.getLatestPositionCached(tp0);
+    assertEquals(cached1, pos100);
+
+    // Invalidate partition-level cache, then change the position to 200 and expect refreshed value
+    spyFetcher.invalidateKey(tp0);
+
+    PubSubPosition pos200 = ApacheKafkaOffsetPosition.of(200L);
+    doReturn(pos200).when(spyFetcher).getLatestPositionWithRetries(tp0, 5);
+
+    PubSubPosition cached2 = spyFetcher.getLatestPositionCached(tp0);
+    assertEquals(cached2, pos200);
+  }
+
+  @Test
+  public void testGetLatestPositionCachedReturnsEarliestOnExceptions() {
+    PubSubTopicPartition tp0 = new PubSubTopicPartitionImpl(pubSubTopic, 0);
+    when(adminMock.containsTopic(pubSubTopic)).thenReturn(true);
+
+    TopicMetadataFetcher spyFetcher = spy(topicMetadataFetcher);
+    doThrow(new PubSubTopicDoesNotExistException("no topic")).when(spyFetcher).getLatestPositionWithRetries(tp0, 5);
+
+    PubSubPosition cached = spyFetcher.getLatestPositionCached(tp0);
+    assertEquals(cached, PubSubSymbolicPosition.EARLIEST);
+  }
+
+  @Test
+  public void testInvalidateTopicClearsAllPartitionsCache() {
+    PubSubTopicPartition tp0 = new PubSubTopicPartitionImpl(pubSubTopic, 0);
+    PubSubTopicPartition tp1 = new PubSubTopicPartitionImpl(pubSubTopic, 1);
+    when(adminMock.containsTopic(pubSubTopic)).thenReturn(true);
+
+    TopicMetadataFetcher spyFetcher = spy(topicMetadataFetcher);
+
+    PubSubPosition pos10 = ApacheKafkaOffsetPosition.of(10L);
+    PubSubPosition pos20 = ApacheKafkaOffsetPosition.of(20L);
+    doReturn(pos10).when(spyFetcher).getLatestPositionWithRetries(tp0, 5);
+    doReturn(pos20).when(spyFetcher).getLatestPositionWithRetries(tp1, 5);
+
+    // Populate cache for two partitions
+    assertEquals(spyFetcher.getLatestPositionCached(tp0), pos10);
+    assertEquals(spyFetcher.getLatestPositionCached(tp1), pos20);
+
+    // Invalidate by topic
+    spyFetcher.invalidateKey(pubSubTopic);
+
+    // Change stubs to new values and ensure cache was cleared and repopulated
+    PubSubPosition pos11 = ApacheKafkaOffsetPosition.of(11L);
+    PubSubPosition pos21 = ApacheKafkaOffsetPosition.of(21L);
+    doReturn(pos11).when(spyFetcher).getLatestPositionWithRetries(tp0, 5);
+    doReturn(pos21).when(spyFetcher).getLatestPositionWithRetries(tp1, 5);
+
+    assertEquals(spyFetcher.getLatestPositionCached(tp0), pos11);
+    assertEquals(spyFetcher.getLatestPositionCached(tp1), pos21);
   }
 
   @Test
@@ -252,7 +319,8 @@ public class TopicMetadataFetcherTest {
     assertEquals(res.get(tp0Info.getTopicPartition()), ApacheKafkaOffsetPosition.of(111L));
     assertEquals(res.get(tp1Info.getTopicPartition()), ApacheKafkaOffsetPosition.of(222L));
     assertEquals(
-        topicMetadataFetcher.getLatestPositionCachedNonBlocking(new PubSubTopicPartitionImpl(pubSubTopic, 0)),
+        topicMetadataFetcher.getLatestPositionCachedNonBlocking(new PubSubTopicPartitionImpl(pubSubTopic, 0))
+            .getNumericOffset(),
         PubSubConstants.UNKNOWN_LATEST_OFFSET);
 
     verify(consumerMock, times(3)).partitionsFor(pubSubTopic);
@@ -338,7 +406,7 @@ public class TopicMetadataFetcherTest {
     Map<PubSubTopicPartition, PubSubPosition> offsetMap = new HashMap<>();
     offsetMap.put(tp0, ApacheKafkaOffsetPosition.of(1001L));
     when(consumerMock.endPositions(eq(offsetMap.keySet()), any(Duration.class))).thenReturn(offsetMap);
-    long latestOffset = topicMetadataFetcher.getLatestPosition(tp0);
+    long latestOffset = topicMetadataFetcher.getLatestPosition(tp0).getNumericOffset();
     assertEquals(latestOffset, 1001L);
 
     // test when endOffsets returns null
@@ -350,16 +418,17 @@ public class TopicMetadataFetcherTest {
 
   @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testGetLatestPositionWithRetries() throws ExecutionException, InterruptedException {
+    PubSubPosition position = ApacheKafkaOffsetPosition.of(99L);
     PubSubTopicPartition tp0 = new PubSubTopicPartitionImpl(pubSubTopic, 0);
     when(adminMock.containsTopic(pubSubTopic)).thenReturn(true);
 
     TopicMetadataFetcher topicMetadataFetcherSpy = spy(topicMetadataFetcher);
     doThrow(new PubSubTopicDoesNotExistException("Test1")).doThrow(new PubSubOpTimeoutException("Test2"))
         .doThrow(new PubSubOpTimeoutException("Test3"))
-        .doReturn(99L)
+        .doReturn(position)
         .when(topicMetadataFetcherSpy)
         .getLatestPosition(tp0);
-    assertEquals((long) topicMetadataFetcherSpy.getLatestOffsetWithRetriesAsync(tp0, 5).get(), 99L);
+    assertEquals(topicMetadataFetcherSpy.getLatestOffsetWithRetriesAsync(tp0, 5).get(), position);
     verify(topicMetadataFetcherSpy, times(4)).getLatestPosition(tp0);
 
     doThrow(new PubSubTopicDoesNotExistException("Test1")).when(topicMetadataFetcherSpy).getLatestPosition(tp0);
@@ -370,7 +439,7 @@ public class TopicMetadataFetcherTest {
     Map<PubSubTopicPartition, PubSubPosition> offsetMap = new HashMap<>();
     offsetMap.put(tp0, ApacheKafkaOffsetPosition.of(1001L));
     when(consumerMock.endPositions(eq(offsetMap.keySet()), any(Duration.class))).thenReturn(offsetMap);
-    long latestOffset = topicMetadataFetcher.getLatestPositionWithRetries(tp0, 1);
+    long latestOffset = topicMetadataFetcher.getLatestPositionWithRetries(tp0, 1).getNumericOffset();
     assertEquals(latestOffset, 1001L);
 
     // test when endOffsets returns null
@@ -384,18 +453,18 @@ public class TopicMetadataFetcherTest {
   public void testGetOffsetForTime() {
     PubSubTopicPartition tp0 = new PubSubTopicPartitionImpl(pubSubTopic, 0);
     when(adminMock.containsTopic(pubSubTopic)).thenReturn(true);
-    long latestOffset = 12321L;
+    PubSubPosition latestPosition = ApacheKafkaOffsetPosition.of(12321L);
     TopicMetadataFetcher topicMetadataFetcherSpy = spy(topicMetadataFetcher);
-    doReturn(latestOffset).when(topicMetadataFetcherSpy).getLatestPosition(tp0);
+    doReturn(latestPosition).when(topicMetadataFetcherSpy).getLatestPosition(tp0);
 
     long ts = System.currentTimeMillis();
     when(consumerMock.offsetForTime(eq(tp0), eq(ts), any(Duration.class))).thenReturn(9988L);
-    assertEquals(topicMetadataFetcherSpy.getOffsetForTime(tp0, ts), 9988L);
+    assertEquals(topicMetadataFetcherSpy.getOffsetForTime(tp0, ts), latestPosition);
     assertEquals(pubSubConsumerPool.size(), 1);
 
     // test when offsetForTime returns null
     when(consumerMock.offsetForTime(eq(tp0), eq(ts), any(Duration.class))).thenReturn(null);
-    assertEquals(topicMetadataFetcherSpy.getOffsetForTime(tp0, ts), latestOffset);
+    assertEquals(topicMetadataFetcherSpy.getOffsetForTime(tp0, ts), latestPosition);
     assertEquals(pubSubConsumerPool.size(), 1);
   }
 

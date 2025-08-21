@@ -194,12 +194,12 @@ public class TopicManagerE2ETest {
     Runnable t6 = () -> assertFalse(topicManager.containsTopicCached(nonExistentTopic));
 
     // get latest offset with retries for an existing topic
-    Runnable t7 = () -> assertEquals(topicManager.getLatestOffsetWithRetries(topicPartition, 1), numMessages);
+    Runnable t7 = () -> assertEquals(topicManager.getLatestPositionWithRetries(topicPartition, 1), numMessages);
 
     // get latest offset with retries for a non-existent topic
     Runnable t8 = () -> assertThrows(
         PubSubTopicDoesNotExistException.class,
-        () -> topicManager.getLatestOffsetWithRetries(nonExistentTopicPartition, 1));
+        () -> topicManager.getLatestPositionWithRetries(nonExistentTopicPartition, 1));
 
     // get latest offset cached for an existing topic
     Runnable t9 = () -> assertEquals(topicManager.getLatestOffsetCached(testTopic, 0), numMessages);
@@ -261,7 +261,7 @@ public class TopicManagerE2ETest {
     topicManager.invalidateCache(nonExistentTopic).get(1, TimeUnit.MINUTES); // should not throw an exception
     assertThrows(
         PubSubTopicDoesNotExistException.class,
-        () -> topicManager.getLatestOffsetWithRetries(new PubSubTopicPartitionImpl(nonExistentTopic, 0), 1));
+        () -> topicManager.getLatestPositionWithRetries(new PubSubTopicPartitionImpl(nonExistentTopic, 0), 1));
     assertEquals(topicManager.getLatestOffsetCached(nonExistentTopic, 1), StatsErrorCode.LAG_MEASUREMENT_FAILURE.code);
   }
 
@@ -344,7 +344,7 @@ public class TopicManagerE2ETest {
         p0Messages.size(),
         "Number of records in partition p0 should match produced messages size. " + "Expected: " + p0Messages.size()
             + ", Actual: " + numRecordsInP0);
-    assertEquals(topicManager.getLatestOffsetWithRetries(p0, 5), p0Messages.size());
+    assertEquals(topicManager.getLatestPositionWithRetries(p0, 5), p0Messages.size());
     assertEquals(topicManager.getLatestOffsetCached(p0.getPubSubTopic(), 0), p0Messages.size());
 
     long numRecordsInP1 = topicManager.getNumRecordsInPartition(p1);
@@ -353,7 +353,7 @@ public class TopicManagerE2ETest {
         p1Messages.size(),
         "Number of records in partition p1 should match produced messages size. " + "Expected: " + p1Messages.size()
             + ", Actual: " + numRecordsInP1);
-    assertEquals(topicManager.getLatestOffsetWithRetries(p1, 5), p1Messages.size());
+    assertEquals(topicManager.getLatestPositionWithRetries(p1, 5), p1Messages.size());
     assertEquals(topicManager.getLatestOffsetCached(p1.getPubSubTopic(), 1), p1Messages.size());
 
     long numRecordsInP2 = topicManager.getNumRecordsInPartition(p2);
@@ -362,7 +362,7 @@ public class TopicManagerE2ETest {
         p2Messages.size(),
         "Number of records in partition p2 should match produced messages size. " + "Expected: " + p2Messages.size()
             + ", Actual: " + numRecordsInP2);
-    assertEquals(topicManager.getLatestOffsetWithRetries(p2, 5), p2Messages.size());
+    assertEquals(topicManager.getLatestPositionWithRetries(p2, 5), p2Messages.size());
     assertEquals(topicManager.getLatestOffsetCached(p2.getPubSubTopic(), 2), p2Messages.size());
 
     // except for the first 3 partitions, the latest offset should be 0
@@ -373,7 +373,7 @@ public class TopicManagerE2ETest {
           numRecordsInPartition,
           0L,
           "Number of records in partition " + partition + " should be 0. Actual: " + numRecordsInPartition);
-      assertEquals(topicManager.getLatestOffsetWithRetries(new PubSubTopicPartitionImpl(existingTopic, i), 5), 0L);
+      assertEquals(topicManager.getLatestPositionWithRetries(new PubSubTopicPartitionImpl(existingTopic, i), 5), 0L);
       assertEquals(topicManager.getLatestOffsetCached(existingTopic, i), 0L);
     }
 
@@ -402,7 +402,7 @@ public class TopicManagerE2ETest {
       topicManager.getLatestOffsetCached(nonExistentTopic, 1);
     }, () -> {
       latch.countDown();
-      topicManager.getLatestOffsetWithRetries(new PubSubTopicPartitionImpl(nonExistentTopic, 0), 1);
+      topicManager.getLatestPositionWithRetries(new PubSubTopicPartitionImpl(nonExistentTopic, 0), 1);
     } };
 
     ExecutorService executorService = Executors.newFixedThreadPool(5);

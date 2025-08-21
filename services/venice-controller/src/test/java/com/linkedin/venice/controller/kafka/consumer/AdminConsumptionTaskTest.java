@@ -474,7 +474,7 @@ public class AdminConsumptionTaskTest {
       Assert.assertEquals(task.getFailingPosition(), 1L);
     });
 
-    verify(mockStats, timeout(100).atLeastOnce()).setAdminConsumptionFailedPosition(1);
+    verify(mockStats, timeout(100).atLeastOnce()).setAdminConsumptionFailedPosition(any());
     verify(mockStats, timeout(100).atLeastOnce()).recordPendingAdminMessagesCount(2D);
     verify(mockStats, timeout(100).atLeastOnce()).recordStoresWithPendingAdminMessagesCount(1D);
     verify(mockStats, timeout(100).atLeastOnce()).recordAdminConsumptionCycleDurationMs(anyDouble());

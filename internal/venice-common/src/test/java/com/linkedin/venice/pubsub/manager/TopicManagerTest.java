@@ -402,6 +402,48 @@ public class TopicManagerTest {
   }
 
   @Test
+  public void testLatestPositionDelegatesAndCacheVariants() throws Exception {
+    // Create a topic and produce some records
+    PubSubTopic topic = getTopic();
+    PubSubTopicPartition p0 = new PubSubTopicPartitionImpl(topic, 0);
+
+    // produce 5 data records with increasing timestamps
+    long baseTs = System.currentTimeMillis();
+    for (int i = 0; i < 5; i++) {
+      produceRandomPubSubMessage(topic, true, baseTs + i);
+    }
+
+    // Expected end position via existing covered API
+    Map<PubSubTopicPartition, PubSubPosition> endPositions = topicManager.getEndPositionsForTopicWithRetries(topic);
+    PubSubPosition expectedEnd = endPositions.get(p0);
+
+    // 1) getLatestPositionWithRetries should match expected end position
+    PubSubPosition latestWithRetries = topicManager.getLatestPositionWithRetries(p0, 3);
+    assertEquals(
+        topicManager.comparePosition(p0, latestWithRetries, expectedEnd),
+        0L,
+        "latestWithRetries should equal expected end position");
+
+    // 2) Non-blocking cached should return EARLIEST before prefetch
+    PubSubPosition cachedNBBefore = topicManager.getLatestOffsetCachedNonBlocking(topic, 0);
+    assertEquals(
+        cachedNBBefore,
+        PubSubSymbolicPosition.EARLIEST,
+        "Non-blocking cached should be EARLIEST before cache population");
+
+    // Prefetch cache asynchronously and assert it eventually matches expected end
+    topicManager.prefetchAndCacheLatestOffset(p0);
+    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+      PubSubPosition cachedAfter = topicManager.getLatestOffsetCachedNonBlocking(topic, 0);
+      assertEquals(topicManager.comparePosition(p0, cachedAfter, expectedEnd), 0L);
+    });
+
+    // 3) Blocking cached getter should return the correct end position
+    PubSubPosition cachedBlocking = topicManager.getLatestOffsetCached(topic, 0);
+    assertEquals(topicManager.comparePosition(p0, cachedBlocking, expectedEnd), 0L);
+  }
+
+  @Test
   public void testGetAllTopicRetentions() {
     PubSubTopic topic1 = pubSubTopicRepository.getTopic(TestUtils.getUniqueTopicString("topic"));
     PubSubTopic topic2 = pubSubTopicRepository.getTopic(TestUtils.getUniqueTopicString("topic"));
@@ -478,7 +520,7 @@ public class TopicManagerTest {
     PubSubTopic nonExistingTopic = pubSubTopicRepository.getTopic(TestUtils.getUniqueTopicString("non-existing-topic"));
     Assert.assertThrows(
         PubSubTopicDoesNotExistException.class,
-        () -> topicManager.getLatestOffsetWithRetries(new PubSubTopicPartitionImpl(nonExistingTopic, 0), 10));
+        () -> topicManager.getLatestPositionWithRetries(new PubSubTopicPartitionImpl(nonExistingTopic, 0), 10));
   }
 
   @Test
@@ -584,7 +626,7 @@ public class TopicManagerTest {
         new TopicManagerRepository(topicManagerContext, localPubSubBrokerAddress).getLocalTopicManager()) {
       Assert.assertThrows(
           PubSubOpTimeoutException.class,
-          () -> topicManagerForThisTest.getLatestOffsetWithRetries(pubSubTopicPartition, 10));
+          () -> topicManagerForThisTest.getLatestPositionWithRetries(pubSubTopicPartition, 10));
     }
   }
 

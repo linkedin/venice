@@ -1107,7 +1107,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
       PubSubTopicPartition adminTopicPartition =
           new PubSubTopicPartitionImpl(pubSubTopic, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID);
       long sourceAdminTopicEndOffset =
-          sourceKafkaClusterTopicManager.getLatestOffsetWithRetries(adminTopicPartition, 10).getNumericOffset() - 1;
+          sourceKafkaClusterTopicManager.getLatestPositionWithRetries(adminTopicPartition, 10).getNumericOffset() - 1;
       /**
        * If the first consumer poll returns nothing, "lastConsumedOffset" will remain as {@link #UNASSIGNED_VALUE}, so a
        * huge lag will be reported, but actually that's not case since consumer is subscribed to the last checkpoint offset.

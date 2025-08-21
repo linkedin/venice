@@ -411,10 +411,10 @@ public class TestActiveActiveReplicationForIncPush {
             childDatacenters.get(dcIndexForSourceRegion).getKafkaBrokerWrapper().getAddress());
         for (int dcIndex = 0; dcIndex < childDatacenters.size(); dcIndex++) {
           long separateTopicOffset = topicManagers.get(dcIndex)
-              .getLatestOffsetWithRetries(separateRealTimeTopicPartition, 3)
+              .getLatestPositionWithRetries(separateRealTimeTopicPartition, 3)
               .getNumericOffset();
           long realTimeTopicOffset =
-              topicManagers.get(dcIndex).getLatestOffsetWithRetries(realTimeTopicPartition, 3).getNumericOffset();
+              topicManagers.get(dcIndex).getLatestPositionWithRetries(realTimeTopicPartition, 3).getNumericOffset();
           // Real-time topic will have heartbeat messages, so the offset will be non-zero but smaller than the record
           // count.
           // DC 2 separeate real-time topic should get enough data.

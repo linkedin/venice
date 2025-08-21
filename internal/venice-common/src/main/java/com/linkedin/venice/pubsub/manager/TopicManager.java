@@ -802,7 +802,7 @@ public class TopicManager implements Closeable {
     return topicMetadataFetcher.containsTopicWithRetries(pubSubTopic, retries);
   }
 
-  public PubSubPosition getLatestOffsetWithRetries(PubSubTopicPartition pubSubTopicPartition, int retries) {
+  public PubSubPosition getLatestPositionWithRetries(PubSubTopicPartition pubSubTopicPartition, int retries) {
     return topicMetadataFetcher.getLatestPositionWithRetries(pubSubTopicPartition, retries);
   }
 
