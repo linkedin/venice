@@ -1471,11 +1471,12 @@ public class VenicePushJobTest {
       if (VersionStatus.PARTIALLY_ONLINE.equals(versionStatus)) {
         Assert.assertEquals(
             e.getMessage(),
-            "Version 1 is only partially online in some regions. Check nuage to see which regions are not serving the latest version");
+            "Version kafka-topic is only partially online in some regions. Check nuage to see which regions are not serving the latest version."
+                + " It is possible that there was a failure in rolling forward on the controller side or ingestion failed in some regions.");
       } else {
         Assert.assertEquals(
             e.getMessage(),
-            "Version 1 was rolled back after ingestion completed due to validation failure");
+            "Version kafka-topic was rolled back after ingestion completed due to validation failure");
       }
     }
   }

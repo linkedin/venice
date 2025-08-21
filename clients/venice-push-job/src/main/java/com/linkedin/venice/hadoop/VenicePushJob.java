@@ -2541,17 +2541,13 @@ public class VenicePushJob implements AutoCloseable {
           throw new VeniceException(errorMsg.toString());
         }
 
-        // Every known datacenter have successfully reported a completed status at least once.
-        if (isTargetedRegionPush) {
-          LOGGER.info("Successfully pushed {} to targeted region {}", pushJobSetting.topic, targetedRegions);
-        } else {
-          LOGGER.info("Successfully pushed {} to all the regions", pushJobSetting.topic);
-        }
-
         // For target region push with deferred swap, stall push completion until version swap is complete
         // Version swap is complete when the parent version is online, partially online, or error
         if (isTargetRegionPushWithDeferredSwap) {
-          versionSwapStartTimeMs = versionSwapStartTimeMs == 0 ? System.currentTimeMillis() : versionSwapStartTimeMs;
+          if (versionSwapStartTimeMs == 0) {
+            LOGGER.info("Starting to monitor version swap status for {}", pushJobSetting.topic);
+            versionSwapStartTimeMs = System.currentTimeMillis();
+          }
           StoreResponse parentStoreResponse = getStoreResponse(pushJobSetting.storeName, true);
 
           StoreInfo parentStoreInfo = parentStoreResponse.getStore();
@@ -2576,13 +2572,18 @@ public class VenicePushJob implements AutoCloseable {
           if (VersionStatus.ERROR.equals(parentVersionStatus)
               && ExecutionStatus.COMPLETED.equals(overallStatus.getRootStatus())) {
             throw new VeniceException(
-                "Version " + latestUsedVersionNumber
+                "Version " + pushJobSetting.topic
                     + " was rolled back after ingestion completed due to validation failure");
           } else if (VersionStatus.PARTIALLY_ONLINE.equals(parentVersionStatus)) {
             throw new VeniceException(
-                "Version " + latestUsedVersionNumber + " is only partially online in some regions. "
-                    + "Check nuage to see which regions are not serving the latest version");
+                "Version " + pushJobSetting.topic + " is only partially online in some regions. "
+                    + "Check nuage to see which regions are not serving the latest version. It is possible that there"
+                    + " was a failure in rolling forward on the controller side or ingestion failed in some regions.");
           } else if (VersionStatus.ONLINE.equals(parentVersionStatus)) {
+            LOGGER.info(
+                "Successfully pushed and swapped to {} in all regions. The version status is {} and it is now being served in all regions",
+                pushJobSetting.topic,
+                parentVersionStatus);
             return;
           }
 
@@ -2597,7 +2598,11 @@ public class VenicePushJob implements AutoCloseable {
           }
 
           LOGGER.info("Version status is {} and version swap is not complete yet", parentVersion.getStatus());
+        } else if (isTargetedRegionPush) {
+          LOGGER.info("Successfully pushed {} to targeted region {}", pushJobSetting.topic, targetedRegions);
+          return;
         } else {
+          LOGGER.info("Successfully pushed {} to all the regions", pushJobSetting.topic);
           return;
         }
       }
