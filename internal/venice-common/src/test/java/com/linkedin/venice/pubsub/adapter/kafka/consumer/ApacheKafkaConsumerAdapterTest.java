@@ -783,12 +783,6 @@ public class ApacheKafkaConsumerAdapterTest {
     kafkaConsumerAdapter.comparePositions(pubSubTopicPartition, null, PubSubSymbolicPosition.LATEST);
   }
 
-  @Test(expectedExceptions = IllegalArgumentException.class)
-  public void testComparePositionsWithUnsupportedType() {
-    PubSubPosition unsupported = mock(PubSubPosition.class);
-    kafkaConsumerAdapter.comparePositions(pubSubTopicPartition, unsupported, new ApacheKafkaOffsetPosition(1L));
-  }
-
   @Test
   public void testPositionDifferenceWithSymbolicPositions() {
     when(internalKafkaConsumer.beginningOffsets(eq(Collections.singleton(topicPartition)), any(Duration.class)))

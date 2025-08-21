@@ -233,9 +233,7 @@ public final class PubSubUtil {
       PubSubTopicPartition partition,
       PubSubPosition position1,
       PubSubPosition position2,
-      PubSubConsumerAdapter consumerAdapter,
-      Class<T> concretePositionClass,
-      OffsetExtractor<T> offsetExtractor) {
+      PubSubConsumerAdapter consumerAdapter) {
 
     if (position1 == null || position2 == null) {
       throw new IllegalArgumentException("Positions cannot be null");
@@ -244,10 +242,10 @@ public final class PubSubUtil {
     PubSubPosition resolved1 = resolveSymbolicPosition(partition, position1, consumerAdapter);
     PubSubPosition resolved2 = resolveSymbolicPosition(partition, position2, consumerAdapter);
 
-    // Case 1: Both resolved to concrete type
-    if (concretePositionClass.isInstance(resolved1) && concretePositionClass.isInstance(resolved2)) {
-      long offset1 = offsetExtractor.getInternalOffset(concretePositionClass.cast(resolved1));
-      long offset2 = offsetExtractor.getInternalOffset(concretePositionClass.cast(resolved2));
+    // Case 1: Both resolved to non-symbolic positions
+    if (!resolved1.isSymbolic() && !resolved2.isSymbolic()) {
+      long offset1 = resolved1.getNumericOffset();
+      long offset2 = resolved2.getNumericOffset();
       return offset1 - offset2;
     }
 
@@ -257,20 +255,21 @@ public final class PubSubUtil {
       return 0L;
     }
 
-    // Case 3: One is EARLIEST, one is concrete
-    if (PubSubSymbolicPosition.EARLIEST.equals(resolved1) && concretePositionClass.isInstance(resolved2)) {
-      return -offsetExtractor.getInternalOffset(concretePositionClass.cast(resolved2));
+    // Case 3: One is EARLIEST, one is non-symbolic
+    if (PubSubSymbolicPosition.EARLIEST.equals(resolved1) && !resolved2.isSymbolic()) {
+      long offset2 = resolved2.getNumericOffset();
+      return -offset2;
     }
-    if (PubSubSymbolicPosition.EARLIEST.equals(resolved2) && concretePositionClass.isInstance(resolved1)) {
-      return offsetExtractor.getInternalOffset(concretePositionClass.cast(resolved1));
+    if (PubSubSymbolicPosition.EARLIEST.equals(resolved2) && !resolved1.isSymbolic()) {
+      return resolved1.getNumericOffset();
     }
 
-    // Case 4: One is LATEST, one is concrete
-    if (PubSubSymbolicPosition.LATEST.equals(resolved1) && concretePositionClass.isInstance(resolved2)) {
-      return Long.MAX_VALUE - offsetExtractor.getInternalOffset(concretePositionClass.cast(resolved2));
+    // Case 4: One is LATEST, one is non-symbolic
+    if (PubSubSymbolicPosition.LATEST.equals(resolved1) && !resolved2.isSymbolic()) {
+      return Long.MAX_VALUE - resolved2.getNumericOffset();
     }
-    if (PubSubSymbolicPosition.LATEST.equals(resolved2) && concretePositionClass.isInstance(resolved1)) {
-      return offsetExtractor.getInternalOffset(concretePositionClass.cast(resolved1)) - Long.MAX_VALUE;
+    if (PubSubSymbolicPosition.LATEST.equals(resolved2) && !resolved1.isSymbolic()) {
+      return resolved1.getNumericOffset() - Long.MAX_VALUE;
     }
 
     throw new IllegalArgumentException(
