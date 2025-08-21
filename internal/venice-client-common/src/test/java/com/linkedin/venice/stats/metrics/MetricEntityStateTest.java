@@ -321,7 +321,7 @@ public class MetricEntityStateTest {
 
   @Test
   public void testValidateMetric() {
-    // MetricType is ASYNC_GAUGE, but using MetricEntityStateBase rather than AsyncMetricEntityStateBase
+    // case 1: MetricType is ASYNC_GAUGE, but using MetricEntityStateBase rather than AsyncMetricEntityStateBase
     MetricEntity metricEntity = new MetricEntity(
         "test_metric",
         MetricType.ASYNC_GAUGE,
