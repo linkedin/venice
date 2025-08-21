@@ -125,20 +125,22 @@ public final class VenicePushJobConstants {
   public static final long DEFAULT_PUBSUB_INPUT_MAX_RECORDS_PER_MAPPER = 5_000_000L;
 
   /**
-   * Use the numeric offset as the secondary comparator after comparing keys in repush mappers.
-   * Both strategies order records latest first:
-   * - Enabled: use offset, higher offsets first.
-   * - Disabled: use a locally generated logical index (assigned after poll call), higher indices first.
-   * We keep this configurable because the local index can misorder in a rare case:
-   * if log compaction occurs during repush consumption and a split fails or runs speculatively,
-   * a higher record may receive a lower logical index. Offsets avoid this risk.
-   * Once we stop relying on PubSub log compaction, the local index alone is sufficient.
+   * Use a locally generated logical index as the secondary comparator after comparing keys
+   * in repush mappers. Both strategies order records latest first:
+   * - Disabled: use PubSub position/offset, higher position first.
+   * - Enabled: use a local logical index (assigned after poll call), higher indices first.
    *
-   * Default: true
+   * This remains configurable because the local index may misorder records in rare cases:
+   * for example, if log compaction occurs during repush consumption and a split fails or
+   * runs speculatively, a newer record could get a lower logical index. Offsets avoid that risk.
+   *
+   * Once we no longer depend on PubSub log compaction, the logical index alone will be sufficient.
+   *
+   * Default: false
    */
-  public static final String PUBSUB_INPUT_SECONDARY_COMPARATOR_USE_NUMERIC_RECORD_OFFSET =
-      PUBSUB_CLIENT_CONFIG_PREFIX + "input.secondary.comparator.use.numeric.record.offset";
-  public static final boolean DEFAULT_PUBSUB_INPUT_SECONDARY_COMPARATOR_USE_NUMERIC_RECORD_OFFSET = true;
+  public static final String PUBSUB_INPUT_SECONDARY_COMPARATOR_USE_LOCAL_LOGICAL_INDEX =
+      PUBSUB_CLIENT_CONFIG_PREFIX + "input.secondary.comparator.use.local.logical.index";
+  public static final boolean DEFAULT_PUBSUB_INPUT_SECONDARY_COMPARATOR_USE_LOCAL_LOGICAL_INDEX = false;
 
   /**
    * Configuration key for specifying the PubSub input split strategy.

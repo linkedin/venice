@@ -1451,7 +1451,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   @Override
   public void sendPushJobDetails(PushJobStatusRecordKey key, PushJobDetails value) {
     String pushJobDetailsStoreClusterName = getPushJobStatusStoreClusterName();
-    if (pushJobDetailsStoreClusterName == null || pushJobDetailsStoreClusterName.isEmpty()) {
+    if (StringUtils.isBlank(pushJobDetailsStoreClusterName)) {
+      LOGGER.warn(
+          "Push job status store cluster name is not configured, skipping sending push job details for key: {}",
+          key);
       return;
     }
     if (isParent()) {
@@ -1493,7 +1496,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     // Emit push job status metrics
     emitPushJobStatusMetrics(pushJobStatusStatsMap, logCompactionStatsMap, key, value, pushJobUserErrorCheckpoints);
     // Send push job details to the push job status system store
-    if (getPushJobStatusStoreClusterName().isEmpty()) {
+    if (StringUtils.isBlank(getPushJobStatusStoreClusterName()) && multiClusterConfigs.isMultiRegion()) {
       throw new VeniceException(
           ("Unable to send the push job details because " + ConfigKeys.PUSH_JOB_STATUS_STORE_CLUSTER_NAME)
               + " is not configured");

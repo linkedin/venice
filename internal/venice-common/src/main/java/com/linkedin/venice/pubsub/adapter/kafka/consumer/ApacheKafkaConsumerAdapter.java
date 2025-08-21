@@ -666,13 +666,7 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
 
   @Override
   public long positionDifference(PubSubTopicPartition partition, PubSubPosition position1, PubSubPosition position2) {
-    return PubSubUtil.computeOffsetDelta(
-        partition,
-        position1,
-        position2,
-        this,
-        ApacheKafkaOffsetPosition.class,
-        ApacheKafkaOffsetPosition::getInternalOffset);
+    return PubSubUtil.computeOffsetDelta(partition, position1, position2, this);
   }
 
   @Override

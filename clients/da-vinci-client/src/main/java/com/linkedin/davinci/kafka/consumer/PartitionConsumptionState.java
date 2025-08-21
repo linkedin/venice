@@ -38,12 +38,12 @@ import org.apache.avro.generic.GenericRecord;
  * In-memory state that represents a replica's view of partition consumption.
  *
  * <p>This class tracks everything the replica cares about: how far it's consumed
- * from the real-time (RT) and version topics, what data has been processed, and
- * what’s been committed. For hybrid setups, it also tracks remote version topic
- * positions from upstream sources.
+ * from the real-time (RT) and version topics (VT), what data has been processed,
+ * and what's been committed.
  *
  * <p>This state is not durable — it's periodically checkpointed by updating the
  * {@link OffsetRecord}, which wraps the persisted {@code PartitionState} on disk.
+ * Note: OffsetRecord is not persisted to disk until the flush/sync operation is called.
  *
  * <p>When the replica is the leader for the partition, RT and remote VT positions are
  * updated by directly consuming from the corresponding topics. For followers, these
