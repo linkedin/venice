@@ -26,6 +26,7 @@ import com.linkedin.davinci.store.rocksdb.RocksDBServerConfig;
 import com.linkedin.davinci.transformer.TestStringRecordTransformer;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.ClientConfig;
+import com.linkedin.venice.client.store.schemas.TestRecord;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.schema.SchemaEntry;
@@ -60,6 +61,65 @@ public class AvroGenericDaVinciClientTest {
       ClientConfig clientConfig,
       DaVinciConfig daVinciConfig) throws NoSuchFieldException, IllegalAccessException {
     return setUpClientWithRecordTransformer(clientConfig, daVinciConfig, false, false, false);
+  }
+
+  public AvroGenericDaVinciClient setUpSpecificClient(ClientConfig clientConfig, boolean validateSpecificSchema)
+      throws NoSuchFieldException, IllegalAccessException {
+    DaVinciConfig daVinciConfig = new DaVinciConfig();
+    daVinciConfig.setValidateSpecificSchemaEnabled(validateSpecificSchema);
+    VeniceProperties backendConfig = new PropertyBuilder().put(SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED, false)
+        .put(DA_VINCI_SUBSCRIBE_ON_DISK_PARTITIONS_AUTOMATICALLY, false)
+        .build();
+
+    AvroGenericDaVinciClient<Integer, String> dvcClient =
+        spy(new AvroGenericDaVinciClient<>(daVinciConfig, clientConfig, backendConfig, Optional.empty()));
+    doReturn(false).when(dvcClient).isReady();
+    doNothing().when(dvcClient).initBackend(any(), any(), any(), any(), any());
+
+    D2ServiceDiscoveryResponse mockDiscoveryResponse = mock(D2ServiceDiscoveryResponse.class);
+    when(mockDiscoveryResponse.getCluster()).thenReturn("test_cluster");
+    when(mockDiscoveryResponse.getZkAddress()).thenReturn("mock_zk_address");
+    when(mockDiscoveryResponse.getKafkaBootstrapServers()).thenReturn("mock_kafka_bootstrap_servers");
+    doReturn(mockDiscoveryResponse).when(dvcClient).discoverService();
+
+    DaVinciBackend mockBackend = mock(DaVinciBackend.class);
+    when(mockBackend.getSchemaRepository()).thenReturn(mock(ReadOnlySchemaRepository.class));
+    when(mockBackend.getStoreOrThrow(anyString())).thenReturn(mock(StoreBackend.class));
+    when(mockBackend.getObjectCache()).thenReturn(null);
+
+    ReadOnlySchemaRepository mockSchemaRepository = mock(ReadOnlySchemaRepository.class);
+    Schema mockKeySchema = new Schema.Parser().parse("{\"type\": \"int\"}");
+    SchemaEntry mockValueSchemaEntry = mock(SchemaEntry.class);
+    when(mockValueSchemaEntry.getId()).thenReturn(1);
+    when(mockSchemaRepository.getKeySchema(anyString())).thenReturn(new SchemaEntry(1, mockKeySchema));
+    when(mockSchemaRepository.getSupersetOrLatestValueSchema(anyString())).thenReturn(mockValueSchemaEntry);
+    when(mockBackend.getSchemaRepository()).thenReturn(mockSchemaRepository);
+
+    // Use reflection to set the private static daVinciBackend field
+    Field backendField = AvroGenericDaVinciClient.class.getDeclaredField("daVinciBackend");
+    AccessController.doPrivileged((PrivilegedAction<Void>) () -> {
+      backendField.setAccessible(true);
+      return null;
+    });
+    backendField.set(null, new ReferenceCounted<>(mockBackend, ignored -> {}));
+
+    return dvcClient;
+  }
+
+  @Test
+  public void testSpecificClientSchemaValidation() throws NoSuchFieldException, IllegalAccessException {
+    ClientConfig clientConfig = ClientConfig.defaultSpecificClientConfig(storeName, TestRecord.class);
+    DaVinciClient client = setUpSpecificClient(clientConfig, true);
+    try {
+      client.start();
+      Assert.fail("Should fail to start client");
+    } catch (Exception e) {
+      Assert.assertTrue(e instanceof VeniceClientException);
+      Assert.assertTrue(
+          e.getCause().getMessage().contains("For store: test_store, cannot find the specific value class:"));
+    }
+    client = setUpSpecificClient(clientConfig, false);
+    client.start();
   }
 
   public AvroGenericDaVinciClient setUpClientWithRecordTransformer(

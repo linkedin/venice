@@ -52,6 +52,7 @@ public class DaVinciConfig {
    * By default, metadata is retrieved from a system store via a thin client.
    */
   private boolean useRequestBasedMetaRepository = false;
+  private boolean validateSpecificSchemaEnabled = true;
 
   public DaVinciConfig() {
   }
@@ -76,6 +77,8 @@ public class DaVinciConfig {
         .append(cacheConfig)
         .append(", largeBatchRequestSplitThreshold=")
         .append(largeBatchRequestSplitThreshold)
+        .append(", validateSpecificSchemaEnabled=")
+        .append(validateSpecificSchemaEnabled)
         .append("}");
     return sb.toString();
   }
@@ -161,5 +164,14 @@ public class DaVinciConfig {
   public DaVinciConfig setUseRequestBasedMetaRepository(boolean useRequestBasedMetaRepository) {
     this.useRequestBasedMetaRepository = useRequestBasedMetaRepository;
     return this;
+  }
+
+  public DaVinciConfig setValidateSpecificSchemaEnabled(boolean validateSpecificSchemaEnabled) {
+    this.validateSpecificSchemaEnabled = validateSpecificSchemaEnabled;
+    return this;
+  }
+
+  public boolean isValidateSpecificSchemaEnabled() {
+    return validateSpecificSchemaEnabled;
   }
 }

@@ -825,9 +825,16 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
               .getSchemaRepository()
               .getValueSchemaId(getStoreName(), specificValueSchema.toString());
           if (schemaId <= 0) {
-            throw new VeniceClientException(
-                "Cannot find the specific value class: " + clientConfig.getSpecificValueClass()
-                    + " in schema repository, returned schema Id: " + schemaId);
+            if (daVinciConfig.isValidateSpecificSchemaEnabled()) {
+              throw new VeniceClientException(
+                  "For store: " + getStoreName() + ", cannot find the specific value class: "
+                      + clientConfig.getSpecificValueClass() + " with schema: " + specificValueSchema);
+            } else {
+              logger.warn(
+                  "For store: " + getStoreName() + ", cannot find the specific value class: "
+                      + clientConfig.getSpecificValueClass() + " with schema: " + specificValueSchema);
+              schemaId = DO_NOT_USE_READER_SCHEMA_ID;
+            }
           }
         }
         this.readerSchemaId = schemaId;
