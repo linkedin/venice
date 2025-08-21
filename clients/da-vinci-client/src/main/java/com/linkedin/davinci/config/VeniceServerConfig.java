@@ -12,6 +12,7 @@ import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_MANAGER_ENABLED;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_MAX_CONCURRENT_SNAPSHOT_USER;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_MAX_TIMEOUT_IN_MIN;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_PEERS_CONNECTIVITY_FRESHNESS_IN_SECONDS;
+import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_RECEIVER_SERVER_POLICY;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_SERVICE_WRITE_LIMIT_BYTES_PER_SEC;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_SNAPSHOT_CLEANUP_INTERVAL_IN_MINS;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_SNAPSHOT_RETENTION_TIME_IN_MIN;
@@ -223,6 +224,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.IngestionMode;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.throttle.VeniceRateLimiter;
+import com.linkedin.venice.utils.ConfigCommonUtils;
 import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -588,6 +590,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final boolean recordLevelMetricWhenBootstrappingCurrentVersionEnabled;
   private final String identityParserClassName;
   private final boolean blobTransferManagerEnabled;
+  private final ConfigCommonUtils.ActivationState blobTransferReceiverServerPolicy;
   private final boolean blobTransferSslEnabled;
   private final boolean blobTransferAclEnabled;
   private final int snapshotRetentionTimeInMin;
@@ -670,6 +673,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
         serverProperties.getInt(MAX_LEADER_FOLLOWER_STATE_TRANSITION_THREAD_NUMBER, 20);
 
     blobTransferManagerEnabled = serverProperties.getBoolean(BLOB_TRANSFER_MANAGER_ENABLED, false);
+    blobTransferReceiverServerPolicy = ConfigCommonUtils.ActivationState.valueOf(
+        serverProperties
+            .getString(BLOB_TRANSFER_RECEIVER_SERVER_POLICY, ConfigCommonUtils.ActivationState.NOT_SPECIFIED.name()));
     blobTransferSslEnabled = serverProperties.getBoolean(BLOB_TRANSFER_SSL_ENABLED, false);
     blobTransferAclEnabled = serverProperties.getBoolean(BLOB_TRANSFER_ACL_ENABLED, false);
 
@@ -1135,6 +1141,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public boolean isBlobTransferManagerEnabled() {
     return blobTransferManagerEnabled;
+  }
+
+  public ConfigCommonUtils.ActivationState getBlobTransferReceiverServerPolicy() {
+    return blobTransferReceiverServerPolicy;
   }
 
   public boolean isBlobTransferSslEnabled() {

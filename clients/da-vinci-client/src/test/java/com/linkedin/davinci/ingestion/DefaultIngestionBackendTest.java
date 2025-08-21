@@ -33,6 +33,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.PubSubUtil;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
+import com.linkedin.venice.utils.ConfigCommonUtils;
 import java.io.InputStream;
 import java.time.Duration;
 import java.util.concurrent.CompletableFuture;
@@ -112,14 +113,111 @@ public class DefaultIngestionBackendTest {
         veniceServerConfig);
   }
 
-  // verify that blobTransferManager was called given it is blob enabled
+  // verify that blobTransferManager was called based on different conditions
   @Test
   public void testStartConsumptionWithBlobTransfer() {
+    // Case 1: DaVinci client
     when(store.isBlobTransferEnabled()).thenReturn(true);
+    when(storeIngestionService.isDaVinciClient()).thenReturn(true);
     when(store.isHybrid()).thenReturn(true);
     when(blobTransferManager.get(eq(STORE_NAME), eq(VERSION_NUMBER), eq(PARTITION), eq(BLOB_TRANSFER_FORMAT)))
         .thenReturn(CompletableFuture.completedFuture(null));
     when(veniceServerConfig.getRocksDBPath()).thenReturn(BASE_DIR);
+    RocksDBServerConfig rocksDBServerConfig = Mockito.mock(RocksDBServerConfig.class);
+    when(rocksDBServerConfig.isRocksDBPlainTableFormatEnabled()).thenReturn(false);
+    when(veniceServerConfig.getRocksDBServerConfig()).thenReturn(rocksDBServerConfig);
+
+    ingestionBackend.startConsumption(storeConfig, PARTITION);
+    verifyBlobTransfer(true);
+    verify(aggVersionedBlobTransferStats).recordBlobTransferResponsesCount(eq(STORE_NAME), eq(VERSION_NUMBER));
+    verify(aggVersionedBlobTransferStats)
+        .recordBlobTransferResponsesBasedOnBoostrapStatus(eq(STORE_NAME), eq(VERSION_NUMBER), eq(true));
+
+    // Case 2: Server client (DaVinci = false, store.isBlobTransferEnabled = false)
+    when(storeIngestionService.isDaVinciClient()).thenReturn(false);
+    when(store.isBlobTransferEnabled()).thenReturn(false);
+
+    // 2.1 store level blobTransferInServerEnabled = enabled, server level blobTransferReceiverServerPolicy =
+    // not_specified
+    runBlobTransferCase(
+        ConfigCommonUtils.ActivationState.ENABLED.name(),
+        ConfigCommonUtils.ActivationState.NOT_SPECIFIED,
+        true);
+    // 2.2: store level blobTransferInServerEnabled = not_specified, server level blobTransferReceiverServerPolicy =
+    // enabled
+    runBlobTransferCase(
+        ConfigCommonUtils.ActivationState.NOT_SPECIFIED.name(),
+        ConfigCommonUtils.ActivationState.ENABLED,
+        true);
+
+    // case 2.3: store level blobTransferInServerEnabled = disabled, server level blobTransferReceiverServerPolicy =
+    // enabled
+    runBlobTransferCase(
+        ConfigCommonUtils.ActivationState.DISABLED.name(),
+        ConfigCommonUtils.ActivationState.ENABLED,
+        false);
+    // case 2.4: store level blobTransferInServerEnabled = enabled , server level blobTransferReceiverServerPolicy =
+    // disabled
+    runBlobTransferCase(
+        ConfigCommonUtils.ActivationState.ENABLED.name(),
+        ConfigCommonUtils.ActivationState.DISABLED,
+        false);
+
+    // case 2.5: store level blobTransferInServerEnabled = not_specified, server level blobTransferReceiverServerPolicy
+    // = disabled
+    runBlobTransferCase(
+        ConfigCommonUtils.ActivationState.NOT_SPECIFIED.name(),
+        ConfigCommonUtils.ActivationState.DISABLED,
+        false);
+    // case 2.6: store level blobTransferInServerEnabled = disabled, server level blobTransferReceiverServerPolicy =
+    // not_specified
+    runBlobTransferCase(
+        ConfigCommonUtils.ActivationState.DISABLED.name(),
+        ConfigCommonUtils.ActivationState.NOT_SPECIFIED,
+        false);
+
+    // case 2.7: store level blobTransferInServerEnabled = not_specified, server level blobTransferReceiverServerPolicy
+    // = not_specified
+    runBlobTransferCase(
+        ConfigCommonUtils.ActivationState.NOT_SPECIFIED.name(),
+        ConfigCommonUtils.ActivationState.NOT_SPECIFIED,
+        false);
+  }
+
+  private void runBlobTransferCase(
+      String storeSetting,
+      ConfigCommonUtils.ActivationState serverSetting,
+      boolean expectEnabled) {
+    Mockito.reset(blobTransferManager);
+    when(blobTransferManager.get(eq(STORE_NAME), eq(VERSION_NUMBER), eq(PARTITION), eq(BLOB_TRANSFER_FORMAT)))
+        .thenReturn(CompletableFuture.completedFuture(null));
+    when(store.getBlobTransferInServerEnabled()).thenReturn(storeSetting);
+    when(veniceServerConfig.getBlobTransferReceiverServerPolicy()).thenReturn(serverSetting);
+
+    ingestionBackend.startConsumption(storeConfig, PARTITION);
+    verifyBlobTransfer(expectEnabled);
+  }
+
+  private void verifyBlobTransfer(boolean expectEnabled) {
+    if (expectEnabled) {
+      verify(blobTransferManager).get(eq(STORE_NAME), eq(VERSION_NUMBER), eq(PARTITION), eq(BLOB_TRANSFER_FORMAT));
+    } else {
+      verify(blobTransferManager, never())
+          .get(eq(STORE_NAME), eq(VERSION_NUMBER), eq(PARTITION), eq(BLOB_TRANSFER_FORMAT));
+    }
+  }
+
+  @Test
+  public void testStartConsumptionWithBlobTransferStoreLevelConfigDisabled() {
+    when(store.isBlobTransferEnabled()).thenReturn(false); // disable store level config
+    when(store.getBlobTransferInServerEnabled()).thenReturn(ConfigCommonUtils.ActivationState.NOT_SPECIFIED.name());
+    when(veniceServerConfig.getBlobTransferReceiverServerPolicy())
+        .thenReturn(ConfigCommonUtils.ActivationState.ENABLED);
+    when(store.isHybrid()).thenReturn(false);
+    when(blobTransferManager.get(eq(STORE_NAME), eq(VERSION_NUMBER), eq(PARTITION), eq(BLOB_TRANSFER_FORMAT)))
+        .thenReturn(CompletableFuture.completedFuture(null));
+    when(veniceServerConfig.getRocksDBPath()).thenReturn(BASE_DIR);
+
     RocksDBServerConfig rocksDBServerConfig = Mockito.mock(RocksDBServerConfig.class);
     when(rocksDBServerConfig.isRocksDBPlainTableFormatEnabled()).thenReturn(false);
     when(veniceServerConfig.getRocksDBServerConfig()).thenReturn(rocksDBServerConfig);
@@ -137,6 +235,7 @@ public class DefaultIngestionBackendTest {
         .thenReturn(storageEngine);
 
     when(store.isBlobTransferEnabled()).thenReturn(true);
+    when(storeIngestionService.isDaVinciClient()).thenReturn(true);
     when(store.isHybrid()).thenReturn(true);
     when(blobTransferManager.get(eq(STORE_NAME), eq(VERSION_NUMBER), eq(PARTITION), eq(BLOB_TRANSFER_FORMAT)))
         .thenReturn(CompletableFuture.completedFuture(null));
@@ -169,6 +268,7 @@ public class DefaultIngestionBackendTest {
   @Test
   public void testStartConsumptionWithBlobTransferWhenNoPeerFound() {
     when(store.isBlobTransferEnabled()).thenReturn(true);
+    when(storeIngestionService.isDaVinciClient()).thenReturn(true);
     when(store.isHybrid()).thenReturn(false);
     CompletableFuture<InputStream> errorFuture = new CompletableFuture<>();
     errorFuture.completeExceptionally(new VenicePeersNotFoundException("No peers found"));
@@ -193,6 +293,7 @@ public class DefaultIngestionBackendTest {
         .thenReturn(offsetRecord);
 
     when(store.isBlobTransferEnabled()).thenReturn(true);
+    when(storeIngestionService.isDaVinciClient()).thenReturn(true);
     when(store.isHybrid()).thenReturn(true); // hybrid store
     CompletableFuture<InputStream> future = new CompletableFuture<>();
     when(blobTransferManager.get(eq(STORE_NAME), eq(VERSION_NUMBER), eq(PARTITION), eq(BLOB_TRANSFER_FORMAT)))
@@ -217,6 +318,7 @@ public class DefaultIngestionBackendTest {
         .thenReturn(offsetRecord);
 
     when(store.isBlobTransferEnabled()).thenReturn(true);
+    when(storeIngestionService.isDaVinciClient()).thenReturn(true);
     when(store.isHybrid()).thenReturn(false);
     CompletableFuture<InputStream> future = new CompletableFuture<>();
     when(blobTransferManager.get(eq(STORE_NAME), eq(VERSION_NUMBER), eq(PARTITION), eq(BLOB_TRANSFER_FORMAT)))
@@ -241,6 +343,7 @@ public class DefaultIngestionBackendTest {
 
     String kafkaTopic = Version.composeKafkaTopic(STORE_NAME, VERSION_NUMBER);
     when(store.isBlobTransferEnabled()).thenReturn(true);
+    when(storeIngestionService.isDaVinciClient()).thenReturn(true);
     when(store.isHybrid()).thenReturn(true);
     when(blobTransferManager.get(eq(STORE_NAME), eq(VERSION_NUMBER), eq(PARTITION), eq(BLOB_TRANSFER_FORMAT)))
         .thenReturn(CompletableFuture.completedFuture(null));
