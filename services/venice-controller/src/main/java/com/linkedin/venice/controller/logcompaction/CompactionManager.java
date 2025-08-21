@@ -94,28 +94,15 @@ public class CompactionManager {
       return false;
     }
 
-    // Filter system stores
-    if (VeniceSystemStoreUtils.isSystemStore(storeInfo.getName())) {
+    // Filter ineligible category of stores
+    if (VeniceSystemStoreUtils.isSystemStore(storeInfo.getName()) || storeInfo.getHybridStoreConfig() == null
+        || !storeInfo.isActiveActiveReplicationEnabled()) {
       return false;
     }
 
-    // Filter non-Hybrid stores
-    if (storeInfo.getHybridStoreConfig() == null) {
-      return false;
-    }
-
-    // Filter non-AA
-    if (!storeInfo.isActiveActiveReplicationEnabled()) {
-      return false;
-    }
-
-    // Store level config
-    if (!storeInfo.isCompactionEnabled()) {
-      return false;
-    }
-
-    // Check version staleness
-    if (!isLatestVersionStale(getLogCompactionThresholdMs(storeInfo, clusterName), storeInfo)) {
+    // Store criteria
+    if (!storeInfo.isCompactionEnabled()
+        || !isLatestVersionStale(getLogCompactionThresholdMs(storeInfo, clusterName), storeInfo)) {
       return false;
     }
 
