@@ -120,6 +120,12 @@ public class DataWriterSparkJob extends AbstractDataWriterSparkJob {
       final byte[] inputValueBytes = recordReader.getValueBytes(recordAvroWrapper, null);
 
       byte[] rmdBytes = null;
+      /*
+       * We check for presence of rmd field in the input and also ensure we have a valid RMD schema for the store
+       * in order to successfully convert logical timestamp to RMD bytes. In case of non-long RMD input, we perform
+       * validation upstream to ensure the schema of the data and RMD schema of the store are compatible. Thus it is
+       * safe to just get the RMD bytes directly from the record reader.
+       */
       if (rmdFieldPresent(pushJobSetting) && containsRmdSchema(pushJobSetting)) {
         if (containsLogicalTimestamp(pushJobSetting)) {
           Object logicalTimestamp = recordReader.getRmdValue(recordAvroWrapper, null);
