@@ -256,7 +256,7 @@ public class VeniceOpenTelemetryMetricsRepository {
     }
   }
 
-  public DoubleHistogram createHistogram(MetricEntity metricEntity) {
+  public DoubleHistogram createDoubleHistogram(MetricEntity metricEntity) {
     if (!emitOpenTelemetryMetrics()) {
       return null;
     }
@@ -273,7 +273,7 @@ public class VeniceOpenTelemetryMetricsRepository {
     });
   }
 
-  public LongCounter createCounter(MetricEntity metricEntity) {
+  public LongCounter createLongCounter(MetricEntity metricEntity) {
     if (!emitOpenTelemetryMetrics()) {
       return null;
     }
@@ -286,7 +286,7 @@ public class VeniceOpenTelemetryMetricsRepository {
     });
   }
 
-  public LongGauge createGuage(MetricEntity metricEntity) {
+  public LongGauge createLongGuage(MetricEntity metricEntity) {
     if (!emitOpenTelemetryMetrics()) {
       return null;
     }
@@ -306,7 +306,7 @@ public class VeniceOpenTelemetryMetricsRepository {
    * For now, the attributes are passed in as a parameter while creating the gauge, ie, only
    * {@link MetricEntityStateBase} is supported for now.
    */
-  public ObservableLongGauge createAsyncGauge(
+  public ObservableLongGauge createAsyncLongGauge(
       MetricEntity metricEntity,
       @Nonnull LongSupplier asyncCallback,
       @Nonnull Attributes attributes) {
@@ -338,16 +338,16 @@ public class VeniceOpenTelemetryMetricsRepository {
     switch (metricType) {
       case HISTOGRAM:
       case MIN_MAX_COUNT_SUM_AGGREGATIONS:
-        return createHistogram(metricEntity);
+        return createDoubleHistogram(metricEntity);
 
       case COUNTER:
-        return createCounter(metricEntity);
+        return createLongCounter(metricEntity);
 
       case GAUGE:
-        return createGuage(metricEntity);
+        return createLongGuage(metricEntity);
 
       case ASYNC_GAUGE:
-        return createAsyncGauge(metricEntity, asyncCallback, attributes);
+        return createAsyncLongGauge(metricEntity, asyncCallback, attributes);
 
       default:
         throw new VeniceException("Unknown metric type: " + metricType);
@@ -471,7 +471,14 @@ public class VeniceOpenTelemetryMetricsRepository {
   public void recordFailureMetric(MetricEntity metricEntity, Exception e) {
     getRecordFailureMetric().record(1);
     if (!REDUNDANT_LOG_FILTER.isRedundantLog(e.getMessage())) {
-      LOGGER.error("Error recording metric {} with exception:", metricEntity.getMetricName(), e);
+      LOGGER.error("Error recording metric {} with exception: ", metricEntity.getMetricName(), e);
+    }
+  }
+
+  public void recordFailureMetric(MetricEntity metricEntity, String error) {
+    getRecordFailureMetric().record(1);
+    if (!REDUNDANT_LOG_FILTER.isRedundantLog(error)) {
+      LOGGER.error("Error recording metric {} with error: {}", metricEntity.getMetricName(), error);
     }
   }
 

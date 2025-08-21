@@ -18,7 +18,7 @@ public enum MetricType {
   /**
    * To get min/max/count/sum aggregation without the memory overhead to calculate percentiles, use
    * Otel Explicit bucket Histogram but without buckets .
-   * check {@link VeniceOpenTelemetryMetricsRepository#createHistogram} and
+   * check {@link VeniceOpenTelemetryMetricsRepository#createDoubleHistogram} and
    * {@link VeniceOpenTelemetryMetricsRepository#setExponentialHistogramAggregation} for more details
    */
   MIN_MAX_COUNT_SUM_AGGREGATIONS(false),

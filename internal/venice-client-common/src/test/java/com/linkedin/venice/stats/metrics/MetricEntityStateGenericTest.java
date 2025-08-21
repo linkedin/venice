@@ -55,7 +55,7 @@ public class MetricEntityStateGenericTest {
     when(mockOtelRepository.getMetricFormat()).thenReturn(getDefaultFormat());
     when(mockOtelRepository.getDimensionName(any())).thenCallRealMethod();
     when(mockOtelRepository.createAttributes(any(), any(), (Map) any())).thenCallRealMethod();
-    doCallRealMethod().when(mockOtelRepository).recordFailureMetric(any(), any());
+    doCallRealMethod().when(mockOtelRepository).recordFailureMetric(any(), any(Exception.class));
     recordFailureMetric = Mockito.mock(MetricEntityStateBase.class);
     when(mockOtelRepository.getRecordFailureMetric()).thenReturn(recordFailureMetric);
     VeniceMetricsConfig mockMetricsConfig = Mockito.mock(VeniceMetricsConfig.class);

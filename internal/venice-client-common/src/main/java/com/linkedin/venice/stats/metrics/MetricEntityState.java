@@ -193,17 +193,17 @@ public abstract class MetricEntityState {
   }
 
   final void record(long value, Attributes attributes) {
-    if (metricEntity.getMetricType().isAsyncMetric()) {
-      // Async gauge metrics should be updated by the callback function.
-      return;
-    }
-    recordOtelMetric(value, attributes);
-    recordTehutiMetric(value);
+    record(Double.valueOf(value), attributes);
   }
 
   final void record(double value, Attributes attributes) {
     if (metricEntity.getMetricType().isAsyncMetric()) {
-      // Async gauge metrics should be updated by the callback function.
+      // Async gauge metrics should be updated only by the callback function.
+      if (otelRepository != null) {
+        otelRepository.recordFailureMetric(
+            metricEntity,
+            "Async gauge metrics should not call record() for metric: " + metricEntity.getMetricName());
+      }
       return;
     }
     recordOtelMetric(value, attributes);

@@ -10,8 +10,10 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static com.linkedin.venice.stats.metrics.MetricType.HISTOGRAM;
 import static java.util.Collections.singletonList;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -36,6 +38,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
+import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -48,6 +51,7 @@ public class MetricEntityStateTest {
   private Sensor mockSensor;
   private Map<VeniceMetricsDimensions, String> baseDimensionsMap;
   private Attributes baseAttributes;
+  private MetricEntityStateBase recordFailureMetric;
 
   private enum TestTehutiMetricNameEnum implements TehutiMetricNameEnum {
     TEST_METRIC;
@@ -70,6 +74,9 @@ public class MetricEntityStateTest {
     when(mockOtelRepository.emitOpenTelemetryMetrics()).thenReturn(true);
     when(mockOtelRepository.getMetricFormat()).thenReturn(VeniceOpenTelemetryMetricNamingFormat.getDefaultFormat());
     when(mockOtelRepository.getDimensionName(any())).thenCallRealMethod();
+    doCallRealMethod().when(mockOtelRepository).recordFailureMetric(any(), any(String.class));
+    recordFailureMetric = Mockito.mock(MetricEntityStateBase.class);
+    when(mockOtelRepository.getRecordFailureMetric()).thenReturn(recordFailureMetric);
     mockMetricEntity = mock(MetricEntity.class);
     doReturn(HISTOGRAM).when(mockMetricEntity).getMetricType();
     Set<VeniceMetricsDimensions> dimensionsSet = new HashSet<>();
@@ -322,7 +329,7 @@ public class MetricEntityStateTest {
         MetricType.ASYNC_GAUGE,
         MetricUnit.NUMBER,
         "Test description",
-        Utils.setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD));
+        Utils.setOf(VENICE_REQUEST_METHOD));
     try {
       MetricEntityStateBase.create(
           metricEntity,
@@ -339,13 +346,13 @@ public class MetricEntityStateTest {
           e.getMessage());
     }
 
-    // case 1: MetricType is not ASYNC_GAUGE, but tehuti has AsyncGauge() in stats
+    // case 2: MetricType is not ASYNC_GAUGE, but tehuti has AsyncGauge() in stats
     metricEntity = new MetricEntity(
         "test_metric",
         HISTOGRAM,
         MetricUnit.NUMBER,
         "Test description",
-        Utils.setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD));
+        Utils.setOf(VENICE_REQUEST_METHOD));
     try {
       MetricEntityStateBase.create(
           metricEntity,
@@ -363,13 +370,13 @@ public class MetricEntityStateTest {
                   "Tehuti metric stats contains AsyncGauge, but the otel metric type is not ASYNC_GAUGE for metric"));
     }
 
-    // case 2: MetricType is ASYNC_GAUGE, but tehuti does not have AsyncGauge() in stats
+    // case 3: MetricType is ASYNC_GAUGE, but tehuti does not have AsyncGauge() in stats
     metricEntity = new MetricEntity(
         "test_metric",
         MetricType.ASYNC_GAUGE,
         MetricUnit.NUMBER,
         "Test description",
-        Utils.setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD));
+        Utils.setOf(VENICE_REQUEST_METHOD));
     try {
       MetricEntityStateBase.createAsyncMetric(
           metricEntity,
@@ -389,13 +396,13 @@ public class MetricEntityStateTest {
           e.getMessage());
     }
 
-    // case 3: MetricType is ASYNC_GAUGE and tehuti stats have AsyncGauge() but have other stats as well
+    // case 4: MetricType is ASYNC_GAUGE and tehuti stats have AsyncGauge() but have other stats as well
     metricEntity = new MetricEntity(
         "test_metric",
         MetricType.ASYNC_GAUGE,
         MetricUnit.NUMBER,
         "Test description",
-        Utils.setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD));
+        Utils.setOf(VENICE_REQUEST_METHOD));
     try {
       MetricEntityStateBase.createAsyncMetric(
           metricEntity,
@@ -412,6 +419,50 @@ public class MetricEntityStateTest {
           e.getMessage().contains("Tehuti metric stats contains AsyncGauge, but it should be the only stat for metric"),
           e.getMessage());
     }
+
+    // case 5: MetricType is ASYNC_GAUGE and tehuti stats have AsyncGauge(): No exception
+    metricEntity = new MetricEntity(
+        "test_metric",
+        MetricType.ASYNC_GAUGE,
+        MetricUnit.NUMBER,
+        "Test description",
+        Utils.setOf(VENICE_REQUEST_METHOD));
+    MetricEntityStateBase metricEntityState = MetricEntityStateBase.createAsyncMetric(
+        metricEntity,
+        mockOtelRepository,
+        sensorRegistrationFunction,
+        TestTehutiMetricNameEnum.TEST_METRIC,
+        Arrays.asList(new AsyncGauge((ignored, ignored2) -> 0, "test")),
+        baseDimensionsMap,
+        baseAttributes,
+        () -> 0L);
+    assertNotNull(metricEntityState);
+  }
+
+  @Test
+  public void testAsyncRecordFailure() {
+    verify(recordFailureMetric, never()).record(1);
+
+    MetricEntity metricEntity = new MetricEntity(
+        "test_metric",
+        MetricType.ASYNC_GAUGE,
+        MetricUnit.NUMBER,
+        "Test description",
+        Utils.setOf(VENICE_REQUEST_METHOD));
+    MetricEntityStateBase metricEntityState = MetricEntityStateBase.createAsyncMetric(
+        metricEntity,
+        mockOtelRepository,
+        sensorRegistrationFunction,
+        TestTehutiMetricNameEnum.TEST_METRIC,
+        Arrays.asList(new AsyncGauge((ignored, ignored2) -> 0, "test")),
+        baseDimensionsMap,
+        baseAttributes,
+        () -> 0L);
+    assertNotNull(metricEntityState);
+
+    // calling record() should increment recordFailureMetric
+    metricEntityState.record(1L);
+    verify(recordFailureMetric, times(1)).record(1);
   }
 
   private Attributes getBaseAttributes(Map<VeniceMetricsDimensions, String> inputMap) {
