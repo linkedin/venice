@@ -493,6 +493,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
       stats.recordStoresWithPendingAdminMessagesCount(UNASSIGNED_VALUE);
       resetConsumptionLag();
       isSubscribed = false;
+      isFirstRecordProcessed = false;
       LOGGER.info(
           "Unsubscribed from topic name: {}. Remote consumption flag before unsubscription: {}",
           topic,
