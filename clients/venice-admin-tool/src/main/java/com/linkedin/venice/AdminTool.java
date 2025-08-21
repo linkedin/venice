@@ -1424,7 +1424,7 @@ public class AdminTool {
   protected static UpdateDarkClusterConfigQueryParams getUpdateDarkClusterConfigQueryParams(CommandLine cmd) {
     UpdateDarkClusterConfigQueryParams params = new UpdateDarkClusterConfigQueryParams();
 
-    String darkRegionTargetStoresStr = getOptionalArgument(cmd, Arg.STORES);
+    String darkRegionTargetStoresStr = getOptionalArgument(cmd, Arg.DARK_CLUSTER_TARGET_STORES);
     if (darkRegionTargetStoresStr != null) {
       List<String> targetStores = Utils.parseCommaSeparatedStringToList(darkRegionTargetStoresStr);
       params.setTargetStores(targetStores);
