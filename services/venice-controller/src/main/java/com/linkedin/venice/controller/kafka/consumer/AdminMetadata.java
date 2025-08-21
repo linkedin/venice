@@ -9,6 +9,7 @@ import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -23,7 +24,7 @@ public class AdminMetadata {
   private Long adminOperationProtocolVersion;
   private PubSubPosition position;
   private PubSubPosition upstreamPosition;
-  private final Logger LOGGER = LogManager.getLogger(getClass().getSimpleName());
+  private static final Logger LOGGER = LogManager.getLogger(AdminMetadata.class);
 
   public AdminMetadata() {
   }
@@ -203,5 +204,33 @@ public class AdminMetadata {
     return "AdminMetadata{" + "executionId=" + executionId + ", offset=" + offset + ", upstreamOffset=" + upstreamOffset
         + ", adminOperationProtocolVersion=" + adminOperationProtocolVersion + ", position=" + position
         + ", upstreamPosition=" + upstreamPosition + '}';
+  }
+
+  @Override
+  public boolean equals(Object o) {
+    if (this == o) {
+      return true;
+    }
+    if (o == null || getClass() != o.getClass()) {
+      return false;
+    }
+    AdminMetadata that = (AdminMetadata) o;
+    return Objects.equals(this.getExecutionId(), that.getExecutionId())
+        && Objects.equals(this.getOffset(), that.getOffset())
+        && Objects.equals(this.getUpstreamOffset(), that.getUpstreamOffset())
+        && Objects.equals(this.getAdminOperationProtocolVersion(), that.getAdminOperationProtocolVersion())
+        && Objects.equals(this.getPosition(), that.getPosition())
+        && Objects.equals(this.getUpstreamPosition(), that.getUpstreamPosition());
+  }
+
+  @Override
+  public int hashCode() {
+    return Objects.hash(
+        this.getExecutionId(),
+        this.getOffset(),
+        this.getUpstreamOffset(),
+        this.getAdminOperationProtocolVersion(),
+        this.getPosition(),
+        this.getUpstreamPosition());
   }
 }

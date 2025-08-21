@@ -815,6 +815,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     } catch (DuplicateDataException e) {
       // Previously processed message, safe to skip
       isFirstRecordProcessed = true;
+      LOGGER.info("Received duplicate message, now setting testRunWithBiggerStartingOffset to false.");
       if (consecutiveDuplicateMessageCount < MAX_DUPLICATE_MESSAGE_LOGS) {
         consecutiveDuplicateMessageCount++;
         LOGGER.info(e.getMessage());

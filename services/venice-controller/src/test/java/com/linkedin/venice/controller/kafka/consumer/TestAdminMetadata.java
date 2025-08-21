@@ -4,7 +4,6 @@ import static com.linkedin.venice.controller.AdminTopicMetadataAccessor.UNDEFINE
 import static com.linkedin.venice.pubsub.PubSubPositionTypeRegistry.APACHE_KAFKA_OFFSET_POSITION_TYPE_ID;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
-import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.controller.AdminTopicMetadataAccessor;
@@ -134,7 +133,7 @@ public class TestAdminMetadata {
     assertNotNull(deserializedMetadata);
 
     // All fields should be null
-    assertNull(deserializedMetadata.getExecutionId());
+    assertEquals(deserializedMetadata.getExecutionId(), UNDEFINED_VALUE);
     assertEquals(deserializedMetadata.getOffset().longValue(), PubSubSymbolicPosition.EARLIEST.getNumericOffset());
     assertEquals(
         deserializedMetadata.getUpstreamOffset().longValue(),
