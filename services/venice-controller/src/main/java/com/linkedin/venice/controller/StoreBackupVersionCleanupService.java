@@ -318,7 +318,7 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
     }
 
     // Do not remove all repush source versions if it results in no backup version, unless older than the retention time
-    if (readyToBeRemovedVersions.size() >= versions.size() - 1) {
+    if (isCurrentVersionRepushed && readyToBeRemovedVersions.size() >= versions.size() - 1) {
       for (int i = 0; i < readyToBeRemovedVersions.size(); i++) {
         Version v = readyToBeRemovedVersions.get(i);
         if (v.getCreatedTime() + defaultBackupVersionRetentionMs > time.getMilliseconds()) {
