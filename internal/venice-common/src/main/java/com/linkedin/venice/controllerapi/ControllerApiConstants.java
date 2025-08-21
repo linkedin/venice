@@ -92,6 +92,7 @@ public class ControllerApiConstants {
   public static final String PUSH_STRATEGY = "push_strategy";
 
   public static final String ACCESS_CONTROLLED = "access_controlled";
+
   /**
    * @deprecated Use {@link #ENABLE_STORE_MIGRATION} instead. This constant is kept for backward compatibility
    * and will be removed in a future release.
@@ -278,4 +279,9 @@ public class ControllerApiConstants {
    */
   public static final String SOURCE_REGION = "source_region";
   public static final String TTL_REPUSH_ENABLED = "ttl_repush_enabled";
+
+  /**
+   * Params for dark cluster
+   */
+  public static final String DARK_CLUSTER_TARGET_STORES = "dark_cluster_target_stores";
 }

@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller;
 
+import static com.linkedin.venice.AdminTool.*;
 import static com.linkedin.venice.ConfigKeys.ALLOW_CLUSTER_WIPE;
 import static com.linkedin.venice.ConfigKeys.LOCAL_REGION_NAME;
 import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_ENABLED;
@@ -22,6 +23,7 @@ import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.endToEnd.TestHybrid;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
+import com.linkedin.venice.helix.HelixReadOnlyDarkClusterConfigRepository;
 import com.linkedin.venice.helix.HelixReadOnlyLiveClusterConfigRepository;
 import com.linkedin.venice.helix.ZkClientFactory;
 import com.linkedin.venice.integration.utils.ServiceFactory;
@@ -137,6 +139,51 @@ public class TestAdminToolEndToEnd {
       Assert.fail("Store migration should be denied");
     } catch (VeniceException e) {
       Assert.assertTrue(e.getMessage().contains("does not allow store migration"));
+    }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testUpdateDarkClusterConfig() throws Exception {
+    ZkClient zkClient = ZkClientFactory.newZkClient(venice.getZk().getAddress());
+    HelixAdapterSerializer adapterSerializer = new HelixAdapterSerializer();
+    HelixReadOnlyDarkClusterConfigRepository darkClusterConfigRepository =
+        new HelixReadOnlyDarkClusterConfigRepository(zkClient, adapterSerializer, clusterName);
+
+    try (ControllerClient controllerClient =
+        new ControllerClient(clusterName, venice.getLeaderVeniceController().getControllerUrl())) {
+      String testStoreName1 = Utils.getUniqueString("test-store");
+      NewStoreResponse newStoreResponse =
+          controllerClient.createNewStore(testStoreName1, "test", "\"string\"", "\"string\"");
+      Assert.assertFalse(newStoreResponse.isError());
+
+      String testStoreName2 = Utils.getUniqueString("test-store");
+      newStoreResponse = controllerClient.createNewStore(testStoreName2, "test", "\"string\"", "\"string\"");
+      Assert.assertFalse(newStoreResponse.isError());
+
+      String storesParam = testStoreName1 + "," + testStoreName2;
+      String[] adminToolArgs =
+          { "--update-dark-cluster-config", "--url", venice.getLeaderVeniceController().getControllerUrl(), "--cluster",
+              clusterName, "--dark-cluster-target-stores", storesParam };
+      AdminTool.main(adminToolArgs);
+
+      TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
+        darkClusterConfigRepository.refresh();
+        Assert.assertTrue(darkClusterConfigRepository.getConfigs().getTargetStores().contains(testStoreName1));
+        Assert.assertTrue(darkClusterConfigRepository.getConfigs().getTargetStores().contains(testStoreName2));
+      });
+
+      // Update the list to contain only test store 1
+      String[] adminToolArgsWithOnlyOneStore =
+          { "--update-dark-cluster-config", "--url", venice.getLeaderVeniceController().getControllerUrl(), "--cluster",
+              clusterName, "--dark-cluster-target-stores", testStoreName1 };
+      AdminTool.main(adminToolArgsWithOnlyOneStore);
+
+      TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
+        darkClusterConfigRepository.refresh();
+        Assert.assertEquals(darkClusterConfigRepository.getConfigs().getTargetStores().size(), 1);
+        Assert.assertTrue(darkClusterConfigRepository.getConfigs().getTargetStores().contains(testStoreName1));
+        Assert.assertFalse(darkClusterConfigRepository.getConfigs().getTargetStores().contains(testStoreName2));
+      });
     }
   }
 

@@ -5424,6 +5424,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           getReadWriteDarkClusterConfigRepository(clusterName);
       DarkClusterConfig clonedDarkClusterConfig = new DarkClusterConfig(clusterConfigRepository.getConfigs());
       targetStores.ifPresent(clonedDarkClusterConfig::setTargetStores);
+      clusterConfigRepository.updateConfigs(clonedDarkClusterConfig);
     }
   }
 
