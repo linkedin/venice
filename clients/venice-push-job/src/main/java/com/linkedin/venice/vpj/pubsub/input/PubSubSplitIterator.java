@@ -52,7 +52,7 @@ public class PubSubSplitIterator implements AutoCloseable {
   private final long splitStartIndex;
   private final OffsetMode mode;
   private Iterator<DefaultPubSubMessage> consumedRecordsIterator;
-  PubSubPosition currentPosition;
+  private PubSubPosition currentPosition;
   private boolean closed;
 
   // Total messages consumed from the broker, including control messages.
@@ -107,7 +107,6 @@ public class PubSubSplitIterator implements AutoCloseable {
     // defensive if caller reuses consumer
     pubSubConsumer.batchUnsubscribe(pubSubConsumer.getAssignment());
     pubSubConsumer.subscribe(topicPartition, startPosition, true);
-    this.currentPosition = startPosition;
   }
 
   public boolean hasNext() {
@@ -235,6 +234,11 @@ public class PubSubSplitIterator implements AutoCloseable {
   @VisibleForTesting
   void setReadSoFar(long readSoFar) {
     this.readSoFar = readSoFar;
+  }
+
+  @VisibleForTesting
+  void setCurrentPosition(PubSubPosition currentPosition) {
+    this.currentPosition = currentPosition;
   }
 
   public static class PubSubInputRecord {

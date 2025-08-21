@@ -63,7 +63,7 @@ public class PubSubSplitIteratorTest {
     PubSubSplitIterator iterator1 = new PubSubSplitIterator(mockConsumer, testSplit, false);
     assertEquals(iterator1.getTopicPartition(), testTopicPartition);
     assertEquals(iterator1.recordsRead(), 0L);
-    assertNotNull(iterator1.getCurrentPosition());
+    assertNull(iterator1.getCurrentPosition());
     verify(mockConsumer).batchUnsubscribe(any());
     verify(mockConsumer).subscribe(eq(testTopicPartition), any(PubSubPosition.class), eq(true));
     iterator1.close();
@@ -360,7 +360,7 @@ public class PubSubSplitIteratorTest {
     // Case 3: hasNext boundary conditions
     when(mockConsumer.positionDifference(any(), any(), any())).thenReturn(1L); // At boundary
     PubSubSplitIterator boundaryIterator = new PubSubSplitIterator(mockConsumer, testSplit, false);
-    boundaryIterator.currentPosition = ApacheKafkaOffsetPosition.of(9L);
+    boundaryIterator.setCurrentPosition(ApacheKafkaOffsetPosition.of(9L));
     assertFalse(boundaryIterator.hasNext());
     boundaryIterator.close();
   }
