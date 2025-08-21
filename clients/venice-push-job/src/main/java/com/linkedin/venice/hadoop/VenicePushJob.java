@@ -1141,13 +1141,19 @@ public class VenicePushJob implements AutoCloseable {
     }
   }
 
-  private void checkLastModificationTimeAndLog() throws IOException {
-    long lastModificationTime = getInputDataInfoProvider().getInputLastModificationTime(pushJobSetting.inputURI);
-    if (lastModificationTime > inputDataInfo.getInputModificationTime()) {
-      updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.DATASET_CHANGED);
-      LOGGER.error(
-          "Dataset changed during the push job. Please investigate if the change caused the failure and "
-              + "rerun the job without changing the dataset while the job is running.");
+  @VisibleForTesting
+  void checkLastModificationTimeAndLog() throws IOException {
+    try {
+      InputDataInfoProvider dataInfoProvider = getInputDataInfoProvider();
+      long lastModificationTime = dataInfoProvider.getInputLastModificationTime(getPushJobSetting().inputURI);
+      if (lastModificationTime > getInputDataInfo().getInputModificationTime()) {
+        updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.DATASET_CHANGED);
+        LOGGER.error(
+            "Dataset changed during the push job. Please investigate if the change caused the failure and "
+                + "rerun the job without changing the dataset while the job is running.");
+      }
+    } catch (VeniceInvalidInputException e) {
+      updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.INVALID_INPUT_FILE);
     }
   }
 
@@ -1242,6 +1248,11 @@ public class VenicePushJob implements AutoCloseable {
       inputDataInfoProvider = constructInputDataInfoProvider();
     }
     return inputDataInfoProvider;
+  }
+
+  @VisibleForTesting
+  InputDataInfoProvider.InputDataInfo getInputDataInfo() {
+    return this.inputDataInfo;
   }
 
   /**
@@ -1504,7 +1515,8 @@ public class VenicePushJob implements AutoCloseable {
         String.valueOf(pushJobSetting.livenessHeartbeatEnabled));
   }
 
-  private void updatePushJobDetailsWithCheckpoint(PushJobCheckpoints checkpoint) {
+  @VisibleForTesting
+  void updatePushJobDetailsWithCheckpoint(PushJobCheckpoints checkpoint) {
     pushJobDetails.pushJobLatestCheckpoint = checkpoint.getValue();
   }
 
