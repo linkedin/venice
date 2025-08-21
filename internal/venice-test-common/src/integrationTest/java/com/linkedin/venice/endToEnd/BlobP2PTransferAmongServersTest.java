@@ -313,7 +313,7 @@ public class BlobP2PTransferAmongServersTest {
         new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
             .setHybridRewindSeconds(streamingRewindSeconds)
             .setHybridOffsetLagThreshold(streamingMessageLag)
-            .setBlobTransferEnabled(true));
+            .setBlobTransferInServerEnabled(ConfigCommonUtils.ActivationState.ENABLED));
 
     TestUtils.assertCommand(
         controllerClient.sendEmptyPushAndWait(storeName, Utils.getUniqueString("empty-hybrid-push"), 1L, 120000));
