@@ -69,6 +69,7 @@ import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
+import com.linkedin.venice.etl.ETLValueSchemaTransformation;
 import com.linkedin.venice.exceptions.UndefinedPropertyException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.exceptions.VeniceValidationException;
@@ -167,6 +168,8 @@ public class VenicePushJobTest {
 
     PushJobSetting pushJobSetting = new PushJobSetting();
     pushJobSetting.inputURI = inputUri;
+    pushJobSetting.etlValueSchemaTransformation = ETLValueSchemaTransformation.NONE;
+    pushJobSetting.isZstdDictCreationRequired = false;
     VeniceProperties props = VeniceProperties.empty();
 
     try (DefaultInputDataInfoProvider provider = new DefaultInputDataInfoProvider(pushJobSetting, props);
