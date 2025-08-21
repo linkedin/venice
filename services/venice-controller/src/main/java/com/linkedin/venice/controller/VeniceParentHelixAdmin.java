@@ -717,6 +717,7 @@ public class VeniceParentHelixAdmin implements Admin {
               null,
               null,
               pubSubMessageHeaders);
+          veniceWriter.flush();
           PubSubProduceResult produceResult = future.get();
 
           LOGGER.info("Sent message: {} to kafka, offset: {}", message, produceResult.getOffset());
