@@ -19,11 +19,11 @@ public class HelixReadWriteDarkClusterConfigRepository extends HelixReadOnlyDark
 
   public void updateConfigs(DarkClusterConfig darkClusterConfig) {
     logger.info("Updating dark cluster configs to:\n{}.", darkClusterConfig);
-    HelixUtils.update(zkDataAccessor, clusterConfigZkPath, darkClusterConfig);
+    HelixUtils.update(getZkDataAccessor(), getClusterConfigZkPath(), darkClusterConfig);
   }
 
   public void deleteConfigs() {
-    logger.info("Deleting dynamic dark cluster configs.");
-    HelixUtils.remove(zkDataAccessor, clusterConfigZkPath);
+    logger.info("Deleting dark cluster configs.");
+    HelixUtils.remove(getZkDataAccessor(), getClusterConfigZkPath());
   }
 }

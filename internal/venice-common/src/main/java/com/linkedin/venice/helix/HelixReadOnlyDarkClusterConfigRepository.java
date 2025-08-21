@@ -26,21 +26,22 @@ public class HelixReadOnlyDarkClusterConfigRepository implements ReadOnlyDarkClu
       RedundantExceptionFilter.getRedundantExceptionFilter();
   private static final DarkClusterConfig DEFAULT_DARK_CLUSTER_CONFIG = new DarkClusterConfig();
 
-  protected final ZkBaseDataAccessor<DarkClusterConfig> zkDataAccessor;
+  protected ZkBaseDataAccessor<DarkClusterConfig> zkDataAccessor;
   protected final String clusterConfigZkPath;
   protected DarkClusterConfig darkClusterConfig = DEFAULT_DARK_CLUSTER_CONFIG;
 
   // Listener to handle modifications to cluster config
   private final IZkDataListener clusterConfigListener = new ClusterConfigZkListener();
 
-  private static final String CLUSTER_CONFIG_PATH = "/" + DARK_CLUSTER_CONFIG;
+  private static final String DARK_CLUSTER_CONFIG_PATH = "/" + DARK_CLUSTER_CONFIG;
 
   public HelixReadOnlyDarkClusterConfigRepository(
       ZkClient zkClient,
       HelixAdapterSerializer adapter,
       String clusterName) {
     this.zkDataAccessor = new ZkBaseDataAccessor<>(zkClient);
-    this.clusterConfigZkPath = Paths.get(HelixUtils.getHelixClusterZkPath(clusterName), CLUSTER_CONFIG_PATH).toString();
+    this.clusterConfigZkPath =
+        Paths.get(HelixUtils.getHelixClusterZkPath(clusterName), DARK_CLUSTER_CONFIG_PATH).toString();
     adapter.registerSerializer(clusterConfigZkPath, new VeniceJsonSerializer<>(DarkClusterConfig.class));
     zkClient.setZkSerializer(adapter);
   }
@@ -52,21 +53,21 @@ public class HelixReadOnlyDarkClusterConfigRepository implements ReadOnlyDarkClu
 
   @Override
   public void refresh() {
-    zkDataAccessor.subscribeDataChanges(clusterConfigZkPath, clusterConfigListener);
-    DarkClusterConfig config = zkDataAccessor.get(clusterConfigZkPath, null, AccessOption.PERSISTENT);
+    getZkDataAccessor().subscribeDataChanges(clusterConfigZkPath, clusterConfigListener);
+    DarkClusterConfig config = getZkDataAccessor().get(clusterConfigZkPath, null, AccessOption.PERSISTENT);
     darkClusterConfig = config == null ? DEFAULT_DARK_CLUSTER_CONFIG : config;
   }
 
   @Override
   public void clear() {
-    zkDataAccessor.unsubscribeDataChanges(clusterConfigZkPath, clusterConfigListener);
+    getZkDataAccessor().unsubscribeDataChanges(clusterConfigZkPath, clusterConfigListener);
   }
 
-  private class ClusterConfigZkListener implements IZkDataListener {
+  protected class ClusterConfigZkListener implements IZkDataListener {
     @Override
     public void handleDataChange(String dataPath, Object data) {
       if (!(data instanceof DarkClusterConfig)) {
-        throw new VeniceException("Invalid notification, changed data is not:" + DarkClusterConfig.class.getName());
+        throw new VeniceException("Invalid config data, changed data is not:" + DarkClusterConfig.class.getName());
       }
       darkClusterConfig = (DarkClusterConfig) data;
       String logMessage = "Received updated DarkClusterConfig:\n" + darkClusterConfig;
@@ -80,5 +81,22 @@ public class HelixReadOnlyDarkClusterConfigRepository implements ReadOnlyDarkClu
       LOGGER.info("{} ZNode deleted. Resetting configs to default.", dataPath);
       darkClusterConfig = DEFAULT_DARK_CLUSTER_CONFIG;
     }
+  }
+
+  // For test purposes
+  ClusterConfigZkListener getClusterConfigZkListener() {
+    return new ClusterConfigZkListener();
+  }
+
+  void setZkDataAccessor(ZkBaseDataAccessor<DarkClusterConfig> accessor) {
+    this.zkDataAccessor = accessor;
+  }
+
+  String getClusterConfigZkPath() {
+    return clusterConfigZkPath;
+  }
+
+  ZkBaseDataAccessor<DarkClusterConfig> getZkDataAccessor() {
+    return zkDataAccessor;
   }
 }

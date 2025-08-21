@@ -6,6 +6,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.ObjectMapperFactory;
+import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -24,11 +25,11 @@ public class UpdateDarkClusterConfigQueryParams extends QueryParams {
 
   // ***************** below this line are getters and setters *****************
   public Optional<List<String>> getTargetStores() {
-    String stores = getString(DARK_CLUSTER_TARGET_STORES).orElse(null);
-    if (stores != null) {
-      return Optional.of(com.linkedin.venice.utils.Utils.parseCommaSeparatedStringToList(stores));
+    if (params.get(DARK_CLUSTER_TARGET_STORES) == null) {
+      return Optional.empty();
     }
-    return Optional.empty();
+
+    return getStringList(DARK_CLUSTER_TARGET_STORES);
   }
 
   public UpdateDarkClusterConfigQueryParams setTargetStores(List<String> targetStores) {
@@ -41,6 +42,18 @@ public class UpdateDarkClusterConfigQueryParams extends QueryParams {
       return (UpdateDarkClusterConfigQueryParams) add(name, OBJECT_MAPPER.writeValueAsString(value));
     } catch (JsonProcessingException e) {
       throw new VeniceException(e.getMessage());
+    }
+  }
+
+  public Optional<List<String>> getStringList(String name) {
+    if (!params.containsKey(name)) {
+      return Optional.empty();
+    } else {
+      try {
+        return Optional.of(OBJECT_MAPPER.readValue(params.get(name), List.class));
+      } catch (IOException e) {
+        throw new VeniceException(e);
+      }
     }
   }
 }
