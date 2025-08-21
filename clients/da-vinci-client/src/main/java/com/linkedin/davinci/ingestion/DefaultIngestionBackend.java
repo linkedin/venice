@@ -454,7 +454,8 @@ public class DefaultIngestionBackend implements IngestionBackend {
 
     // For server mode, apply the combined logic
     String blobTransferInServerPolicyForStoreLevel = store.getBlobTransferInServerEnabled(); // Store-level
-    String blobTransferInServerPolicyForNodeLevel = serverConfig.getBlobTransferReceiverServerPolicy(); // Server-level
+    ConfigCommonUtils.ActivationState blobTransferInServerPolicyForNodeLevel =
+        serverConfig.getBlobTransferReceiverServerPolicy(); // Server-level
 
     LOGGER.info(
         "Evaluating blob transfer enablement for store {}. Store-level: {}, Server-level: {} in Server.",
@@ -464,13 +465,13 @@ public class DefaultIngestionBackend implements IngestionBackend {
 
     // case 1: If either configuration explicitly disables, feature is disabled
     if (ConfigCommonUtils.ActivationState.DISABLED.name().equals(blobTransferInServerPolicyForStoreLevel)
-        || ConfigCommonUtils.ActivationState.DISABLED.name().equals(blobTransferInServerPolicyForNodeLevel)) {
+        || ConfigCommonUtils.ActivationState.DISABLED.equals(blobTransferInServerPolicyForNodeLevel)) {
       return false;
     }
 
     // case 2: If either configuration enables (and the other is not disabled), feature is enabled
     if (ConfigCommonUtils.ActivationState.ENABLED.name().equals(blobTransferInServerPolicyForStoreLevel)
-        || ConfigCommonUtils.ActivationState.ENABLED.name().equals(blobTransferInServerPolicyForNodeLevel)) {
+        || ConfigCommonUtils.ActivationState.ENABLED.equals(blobTransferInServerPolicyForNodeLevel)) {
       return true;
     }
 

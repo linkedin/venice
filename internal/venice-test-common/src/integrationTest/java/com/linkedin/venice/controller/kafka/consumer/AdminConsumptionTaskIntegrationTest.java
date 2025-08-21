@@ -26,6 +26,7 @@ import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.manager.TopicManager;
+import com.linkedin.venice.utils.ConfigCommonUtils;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
@@ -382,7 +383,7 @@ public class AdminConsumptionTaskIntegrationTest {
     adminMessage.payloadUnion = updateStore;
     adminMessage.executionId = executionId;
     updateStore.storeLifecycleHooks = Collections.emptyList();
-    updateStore.blobTransferInServerEnabled = "";
+    updateStore.blobTransferInServerEnabled = ConfigCommonUtils.ActivationState.NOT_SPECIFIED.name();
     return adminOperationSerializer.serialize(adminMessage, writerSchemaId);
   }
 
