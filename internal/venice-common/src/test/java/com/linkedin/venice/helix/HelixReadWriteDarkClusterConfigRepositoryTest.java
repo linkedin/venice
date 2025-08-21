@@ -24,7 +24,7 @@ public class HelixReadWriteDarkClusterConfigRepositoryTest {
   private HelixReadWriteDarkClusterConfigRepository repo;
   private ZkBaseDataAccessor<DarkClusterConfig> accessor;
   private String clusterConfigZkPath;
-  private final String clusterName = "testCluster";
+  private final static String clusterName = "testCluster";
 
   @BeforeMethod
   public void setUp() {

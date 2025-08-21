@@ -14,7 +14,7 @@ public class HelixReadOnlyDarkClusterConfigRepositoryTest {
   private HelixAdapterSerializer adapter;
   private HelixReadOnlyDarkClusterConfigRepository repo;
   HelixReadOnlyDarkClusterConfigRepository.ClusterConfigZkListener listener;
-  private final String clusterName = "testCluster";
+  private final static String clusterName = "testCluster";
 
   @BeforeMethod
   public void setUp() {
