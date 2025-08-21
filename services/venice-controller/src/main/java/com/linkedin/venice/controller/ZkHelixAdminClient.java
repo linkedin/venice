@@ -49,7 +49,6 @@ public class ZkHelixAdminClient implements HelixAdminClient {
   private final VeniceControllerMultiClusterConfig multiClusterConfigs;
   private final String haasSuperClusterName;
   private final String controllerClusterName;
-  private final int controllerClusterReplicaCount;
 
   public ZkHelixAdminClient(
       VeniceControllerMultiClusterConfig multiClusterConfigs,
@@ -57,7 +56,6 @@ public class ZkHelixAdminClient implements HelixAdminClient {
     this.multiClusterConfigs = multiClusterConfigs;
     haasSuperClusterName = multiClusterConfigs.getControllerHAASSuperClusterName();
     controllerClusterName = multiClusterConfigs.getControllerClusterName();
-    controllerClusterReplicaCount = multiClusterConfigs.getControllerClusterReplica();
     ZkClient helixAdminZkClient = ZkClientFactory.newZkClient(multiClusterConfigs.getZkAddress());
     helixAdminZkClient
         .subscribeStateChanges(new ZkClientStatusStats(metricsRepository, CONTROLLER_HAAS_ZK_CLIENT_NAME));
@@ -193,25 +191,34 @@ public class ZkHelixAdminClient implements HelixAdminClient {
           LeaderStandbySMD.name,
           IdealState.RebalanceMode.FULL_AUTO.toString(),
           AutoRebalanceStrategy.class.getName());
-      VeniceControllerClusterConfig config = multiClusterConfigs.getControllerConfig(clusterName);
-      IdealState idealState = helixAdmin.getResourceIdealState(controllerClusterName, clusterName);
-      idealState.setMinActiveReplicas(Math.max(controllerClusterReplicaCount - 1, 1));
-      idealState.setRebalancerClassName(WagedRebalancer.class.getName());
-
-      String instanceGroupTag = config.getControllerResourceInstanceGroupTag();
-      if (!instanceGroupTag.isEmpty()) {
-        idealState.setInstanceGroupTag(instanceGroupTag);
-      }
-
-      helixAdmin.setResourceIdealState(controllerClusterName, clusterName, idealState);
-      helixAdmin.rebalance(controllerClusterName, clusterName, controllerClusterReplicaCount);
     } catch (Exception e) {
       // Check if the cluster resource is already added to the controller cluster by another Venice controller
       // concurrently.
       if (!isVeniceStorageClusterInControllerCluster(clusterName)) {
         throw e;
+      } else {
+        LOGGER.info(
+            "Controller cluster resource for storage cluster: {} already exists in controller cluster: {}",
+            clusterName,
+            controllerClusterName);
       }
+      return;
     }
+
+    VeniceControllerClusterConfig config = multiClusterConfigs.getControllerConfig(clusterName);
+    IdealState idealState = helixAdmin.getResourceIdealState(controllerClusterName, clusterName);
+    int controllerClusterReplicaCount = config.getControllerClusterReplica();
+    idealState.setReplicas(String.valueOf(controllerClusterReplicaCount));
+    idealState.setMinActiveReplicas(Math.max(controllerClusterReplicaCount - 1, 1));
+    idealState.setRebalancerClassName(WagedRebalancer.class.getName());
+
+    String instanceGroupTag = config.getControllerResourceInstanceGroupTag();
+    if (!instanceGroupTag.isEmpty()) {
+      idealState.setInstanceGroupTag(instanceGroupTag);
+    }
+
+    helixAdmin.setResourceIdealState(controllerClusterName, clusterName, idealState);
+    helixAdmin.rebalance(controllerClusterName, clusterName, controllerClusterReplicaCount);
   }
 
   /**
@@ -376,5 +383,13 @@ public class ZkHelixAdminClient implements HelixAdminClient {
       InstanceConstants.InstanceOperation instanceOperation,
       String reason) {
     helixAdmin.setInstanceOperation(clusterName, instanceName, instanceOperation, reason);
+  }
+
+  public IdealState getResourceIdealState(String clusterName, String resourceName) {
+    return helixAdmin.getResourceIdealState(clusterName, resourceName);
+  }
+
+  public void updateIdealState(String clusterName, String resourceName, IdealState idealState) {
+    helixAdmin.updateIdealState(clusterName, resourceName, idealState);
   }
 }

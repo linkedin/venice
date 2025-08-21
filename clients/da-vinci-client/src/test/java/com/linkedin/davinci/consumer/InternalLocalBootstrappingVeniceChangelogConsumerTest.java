@@ -4,7 +4,6 @@ import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 import static com.linkedin.venice.offsets.OffsetRecord.LOWEST_OFFSET;
-import static com.linkedin.venice.pubsub.api.PubSubSymbolicPosition.EARLIEST;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -50,6 +49,7 @@ import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
+import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.schema.SchemaEntry;
@@ -232,8 +232,8 @@ public class InternalLocalBootstrappingVeniceChangelogConsumerTest {
     verify(mockStorageService, times(1)).openStoreForNewPartition(any(), eq(1), any());
     verify(metadataRepository, times(2)).subscribe(storeName);
     // During reading from lo
-    verify(pubSubConsumer, times(1)).subscribe(topicPartition_0, EARLIEST, true);
-    verify(pubSubConsumer, times(1)).subscribe(topicPartition_1, EARLIEST, true);
+    verify(pubSubConsumer, times(1)).subscribe(topicPartition_0, PubSubSymbolicPosition.EARLIEST, true);
+    verify(pubSubConsumer, times(1)).subscribe(topicPartition_1, PubSubSymbolicPosition.EARLIEST, true);
     verify(pubSubConsumer, times(1)).subscribe(topicPartition_0, p1, true);
     verify(pubSubConsumer, times(1)).subscribe(topicPartition_1, p1, true);
     verify(pubSubConsumer, times(2)).poll(anyLong());

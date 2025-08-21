@@ -58,7 +58,7 @@ public class PubSubPositionDeserializer {
       throw new VeniceException("Cannot convert to position. Unknown position type: " + typeId);
     }
     // deserialize the position using the factory
-    return factory.fromPositionRawBytes(positionWireFormat);
+    return factory.fromWireFormat(positionWireFormat);
   }
 
   public PubSubPosition toPosition(byte[] positionWireFormatBytes) {
@@ -129,7 +129,7 @@ public class PubSubPositionDeserializer {
    * @return a {@link PubSubPosition} instance deserialized from the wire format
    * @throws VeniceException if instantiation or deserialization fails
    */
-  private static PubSubPosition deserializePositionUsingFactoryClassName(
+  public static PubSubPosition deserializePositionUsingFactoryClassName(
       PubSubPositionWireFormat wireFormat,
       String factoryClassName) {
 
@@ -145,8 +145,7 @@ public class PubSubPositionDeserializer {
       PubSubPositionFactory factory =
           ReflectUtils.callConstructor(factoryClass, new Class<?>[] { int.class }, new Object[] { wireFormat.type });
 
-      return factory.fromPositionRawBytes(wireFormat);
-
+      return factory.fromWireFormat(wireFormat);
     } catch (Exception e) {
       throw new VeniceException("Failed to deserialize PubSubPosition using factory class: " + factoryClassName, e);
     }

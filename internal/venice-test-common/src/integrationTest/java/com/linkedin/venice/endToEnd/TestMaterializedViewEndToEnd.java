@@ -20,7 +20,9 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_KEY_FIELD_P
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_BROKER_URL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_KAFKA;
+import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertTrue;
 
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.davinci.client.DaVinciClient;
@@ -36,6 +38,7 @@ import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.ServiceFactory;
@@ -50,7 +53,11 @@ import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.ViewConfig;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
+import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.PropertyBuilder;
@@ -67,6 +74,7 @@ import com.linkedin.venice.writer.update.UpdateBuilderImpl;
 import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
 import it.unimi.dsi.fastutil.ints.Int2LongMap;
+import it.unimi.dsi.fastutil.ints.Int2LongOpenHashMap;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -159,11 +167,9 @@ public class TestMaterializedViewEndToEnd {
           .retryableRequest(5, controllerClient1 -> controllerClient.updateStore(storeName, updateViewParam));
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, () -> {
         Map<String, ViewConfig> viewConfigMap = controllerClient.getStore(storeName).getStore().getViewConfigs();
-        Assert.assertEquals(viewConfigMap.size(), 1);
-        Assert.assertEquals(
-            viewConfigMap.get(testViewName).getViewClassName(),
-            MaterializedView.class.getCanonicalName());
-        Assert.assertEquals(viewConfigMap.get(testViewName).getViewParameters().size(), 3);
+        assertEquals(viewConfigMap.size(), 1);
+        assertEquals(viewConfigMap.get(testViewName).getViewClassName(), MaterializedView.class.getCanonicalName());
+        assertEquals(viewConfigMap.get(testViewName).getViewParameters().size(), 3);
       });
 
       IntegrationTestPushUtils.runVPJ(props);
@@ -183,6 +189,20 @@ public class TestMaterializedViewEndToEnd {
       rePushProps.setProperty(SOURCE_KAFKA, "true");
       rePushProps.setProperty(KAFKA_INPUT_BROKER_URL, childDatacenters.get(0).getPubSubBrokerWrapper().getAddress());
       IntegrationTestPushUtils.runVPJ(rePushProps);
+
+      for (VeniceMultiClusterWrapper veniceClusterWrapper: childDatacenters) {
+        try (ControllerClient childControllerClient =
+            new ControllerClient(clusterName, veniceClusterWrapper.getRandomController().getControllerUrl())) {
+          TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+            StoreResponse storeResponse = childControllerClient.getStore(storeName);
+            Assert.assertFalse(storeResponse.isError());
+            Assert.assertEquals(
+                storeResponse.getStore().getCurrentVersion(),
+                2,
+                "Version 2 should be created for the store: " + storeName);
+          });
+        }
+      }
       String rePushViewTopicName =
           Version.composeKafkaTopic(storeName, 2) + VIEW_NAME_SEPARATOR + testViewName + MATERIALIZED_VIEW_TOPIC_SUFFIX;
       String rePushVersionTopicName = Version.composeKafkaTopic(storeName, 2);
@@ -222,10 +242,8 @@ public class TestMaterializedViewEndToEnd {
           .retryableRequest(5, controllerClient1 -> controllerClient.updateStore(storeName, updateViewParam));
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, () -> {
         Map<String, ViewConfig> viewConfigMap = controllerClient.getStore(storeName).getStore().getViewConfigs();
-        Assert.assertEquals(viewConfigMap.size(), 1);
-        Assert.assertEquals(
-            viewConfigMap.get(testViewName).getViewClassName(),
-            MaterializedView.class.getCanonicalName());
+        assertEquals(viewConfigMap.size(), 1);
+        assertEquals(viewConfigMap.get(testViewName).getViewClassName(), MaterializedView.class.getCanonicalName());
       });
     }
     IntegrationTestPushUtils.runVPJ(props);
@@ -255,19 +273,19 @@ public class TestMaterializedViewEndToEnd {
       storeClient.subscribeAll().get();
       // writeSimpleAvroFileWithStringToStringSchema writes input starting at 1 and stops with <= recordCount (100)
       for (int i = 1; i <= 100; i++) {
-        Assert.assertEquals(storeClient.get(Integer.toString(i)).get().toString(), DEFAULT_USER_DATA_VALUE_PREFIX + i);
+        assertEquals(storeClient.get(Integer.toString(i)).get().toString(), DEFAULT_USER_DATA_VALUE_PREFIX + i);
       }
       DaVinciClient<String, Object> viewClient =
           factory.getAndStartGenericAvroClient(storeName, testViewName, daVinciConfig);
       viewClient.subscribe(Collections.singleton(0)).get();
-      Assert.assertEquals(
+      assertEquals(
           getMetric(
               dvcMetricsRepo,
               "current_version_number.Gauge",
               VeniceView.getViewStoreName(storeName, testViewName)),
           (double) 1);
       for (int i = 1; i <= 100; i++) {
-        Assert.assertEquals(viewClient.get(Integer.toString(i)).get().toString(), DEFAULT_USER_DATA_VALUE_PREFIX + i);
+        assertEquals(viewClient.get(Integer.toString(i)).get().toString(), DEFAULT_USER_DATA_VALUE_PREFIX + i);
       }
       // Perform another push with 200 keys to verify future version ingestion and version swap
       File newPushInputDir = getTempDataDirectory();
@@ -282,7 +300,7 @@ public class TestMaterializedViewEndToEnd {
       TestUtils.waitForNonDeterministicAssertion(
           10,
           TimeUnit.SECONDS,
-          () -> Assert.assertEquals(
+          () -> assertEquals(
               getMetric(
                   dvcMetricsRepo,
                   "current_version_number.Gauge",
@@ -290,7 +308,7 @@ public class TestMaterializedViewEndToEnd {
               (double) 2));
       // The materialized view DVC client should be able to read all the keys from the new push
       for (int i = 1; i <= 200; i++) {
-        Assert.assertEquals(viewClient.get(Integer.toString(i)).get().toString(), DEFAULT_USER_DATA_VALUE_PREFIX + i);
+        assertEquals(viewClient.get(Integer.toString(i)).get().toString(), DEFAULT_USER_DATA_VALUE_PREFIX + i);
       }
     } finally {
       D2ClientUtils.shutdownClient(daVinciD2RemoteFabric);
@@ -315,7 +333,7 @@ public class TestMaterializedViewEndToEnd {
           factory.getAndStartGenericAvroClient(storeName, testViewName, daVinciConfig);
       viewClient.subscribe(Collections.singleton(0)).get();
       for (int i = 1; i <= 200; i++) {
-        Assert.assertEquals(viewClient.get(Integer.toString(i)).get().toString(), DEFAULT_USER_DATA_VALUE_PREFIX + i);
+        assertEquals(viewClient.get(Integer.toString(i)).get().toString(), DEFAULT_USER_DATA_VALUE_PREFIX + i);
       }
     } finally {
       D2ClientUtils.shutdownClient(daVinciD2SourceFabric);
@@ -359,10 +377,8 @@ public class TestMaterializedViewEndToEnd {
           .retryableRequest(5, controllerClient1 -> controllerClient.updateStore(storeName, updateViewParam));
       TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, false, () -> {
         Map<String, ViewConfig> viewConfigMap = controllerClient.getStore(storeName).getStore().getViewConfigs();
-        Assert.assertEquals(viewConfigMap.size(), 1);
-        Assert.assertEquals(
-            viewConfigMap.get(testViewName).getViewClassName(),
-            MaterializedView.class.getCanonicalName());
+        assertEquals(viewConfigMap.size(), 1);
+        assertEquals(viewConfigMap.get(testViewName).getViewClassName(), MaterializedView.class.getCanonicalName());
       });
     }
     IntegrationTestPushUtils.runVPJ(props);
@@ -434,10 +450,8 @@ public class TestMaterializedViewEndToEnd {
           .retryableRequest(5, controllerClient1 -> controllerClient.updateStore(storeName, updateViewParam));
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, () -> {
         Map<String, ViewConfig> viewConfigMap = controllerClient.getStore(storeName).getStore().getViewConfigs();
-        Assert.assertEquals(viewConfigMap.size(), 1);
-        Assert.assertEquals(
-            viewConfigMap.get(testViewName).getViewClassName(),
-            MaterializedView.class.getCanonicalName());
+        assertEquals(viewConfigMap.size(), 1);
+        assertEquals(viewConfigMap.get(testViewName).getViewClassName(), MaterializedView.class.getCanonicalName());
       });
     }
     IntegrationTestPushUtils.runVPJ(props);
@@ -463,7 +477,7 @@ public class TestMaterializedViewEndToEnd {
         new VeniceChangelogConsumerClientFactory(viewChangeLogClientConfig, metricsRepository);
     VeniceChangelogConsumer<Utf8, Utf8> viewTopicConsumer =
         veniceViewChangelogConsumerClientFactory.getChangelogConsumer(storeName);
-    Assert.assertTrue(viewTopicConsumer instanceof VeniceAfterImageConsumerImpl);
+    assertTrue(viewTopicConsumer instanceof VeniceAfterImageConsumerImpl);
     viewTopicConsumer.subscribeAll().get();
     // Verify we can get the records
     final List<PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessages = new ArrayList<>();
@@ -516,10 +530,8 @@ public class TestMaterializedViewEndToEnd {
           .retryableRequest(5, controllerClient1 -> controllerClient.updateStore(storeName, updateViewParam));
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, () -> {
         Map<String, ViewConfig> viewConfigMap = controllerClient.getStore(storeName).getStore().getViewConfigs();
-        Assert.assertEquals(viewConfigMap.size(), 1);
-        Assert.assertEquals(
-            viewConfigMap.get(testViewName).getViewClassName(),
-            MaterializedView.class.getCanonicalName());
+        assertEquals(viewConfigMap.size(), 1);
+        assertEquals(viewConfigMap.get(testViewName).getViewClassName(), MaterializedView.class.getCanonicalName());
       });
     }
     IntegrationTestPushUtils.runVPJ(props);
@@ -530,9 +542,16 @@ public class TestMaterializedViewEndToEnd {
     for (VeniceMultiClusterWrapper veniceClusterWrapper: childDatacenters) {
       VeniceHelixAdmin admin = veniceClusterWrapper.getRandomController().getVeniceHelixAdmin();
       PubSubTopic viewPubSubTopic = admin.getPubSubTopicRepository().getTopic(viewTopicName);
-      Int2LongMap viewTopicOffsetMap = admin.getTopicManager().getTopicLatestOffsets(viewPubSubTopic);
-      for (long endOffset: viewTopicOffsetMap.values()) {
-        Assert.assertTrue(endOffset <= expectedMaxEndOffset);
+      Int2LongMap viewTopicPerPartitionRecords =
+          getNumberOfRecordsPerPartition(admin.getTopicManager(), viewPubSubTopic);
+      for (Int2LongMap.Entry entry: viewTopicPerPartitionRecords.int2LongEntrySet()) {
+        int partition = entry.getIntKey();
+        long recordCount = entry.getLongValue();
+        // p0 and p1 should have more records than p2
+        assertTrue(
+            recordCount <= expectedMaxEndOffset,
+            "Expected partition " + partition + " to have at most " + expectedMaxEndOffset + " records, but found: "
+                + recordCount);
       }
     }
     // Perform some partial updates in the non-NR source fabric
@@ -555,9 +574,16 @@ public class TestMaterializedViewEndToEnd {
       VeniceHelixAdmin admin = veniceClusterWrapper.getRandomController().getVeniceHelixAdmin();
       PubSubTopic viewPubSubTopic = admin.getPubSubTopicRepository().getTopic(viewTopicName);
       TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
-        Int2LongMap viewTopicOffsetMap = admin.getTopicManager().getTopicLatestOffsets(viewPubSubTopic);
-        for (long endOffset: viewTopicOffsetMap.values()) {
-          Assert.assertTrue(endOffset >= newMinEndOffset);
+        Int2LongMap viewTopicPerPartitionRecords =
+            getNumberOfRecordsPerPartition(admin.getTopicManager(), viewPubSubTopic);
+        for (Int2LongMap.Entry entry: viewTopicPerPartitionRecords.int2LongEntrySet()) {
+          int partition = entry.getIntKey();
+          long recordCount = entry.getLongValue();
+          // p0 and p1 should have more records than p2
+          assertTrue(
+              recordCount >= newMinEndOffset,
+              "Expected partition " + partition + " to have at least " + newMinEndOffset + " records, but found: "
+                  + recordCount);
         }
       });
     }
@@ -586,27 +612,46 @@ public class TestMaterializedViewEndToEnd {
       int minRecordCount) {
     for (VeniceMultiClusterWrapper veniceClusterWrapper: childDatacenters) {
       VeniceHelixAdmin admin = veniceClusterWrapper.getRandomController().getVeniceHelixAdmin();
+      TopicManager topicManager = admin.getTopicManager();
       PubSubTopic viewPubSubTopic = admin.getPubSubTopicRepository().getTopic(viewTopicName);
       PubSubTopic versionPubSubTopic = admin.getPubSubTopicRepository().getTopic(versionTopicName);
-      Assert.assertTrue(admin.getTopicManager().containsTopic(viewPubSubTopic));
-      long records = 0;
-      long versionTopicRecords = 0;
-      Int2LongMap viewTopicOffsetMap = admin.getTopicManager().getTopicLatestOffsets(viewPubSubTopic);
-      Int2LongMap versionTopicOffsetMap = admin.getTopicManager().getTopicLatestOffsets(versionPubSubTopic);
-      Assert.assertEquals(
-          versionTopicOffsetMap.keySet().size(),
-          versionTopicPartitionCount,
-          "Unexpected version partition count");
-      Assert
-          .assertEquals(viewTopicOffsetMap.keySet().size(), viewTopicPartitionCount, "Unexpected view partition count");
-      for (long endOffset: viewTopicOffsetMap.values()) {
-        records += endOffset;
-      }
-      for (long endOffset: versionTopicOffsetMap.values()) {
-        versionTopicRecords += endOffset;
-      }
-      Assert.assertTrue(versionTopicRecords > minRecordCount, "Version topic records size: " + versionTopicRecords);
-      Assert.assertTrue(records > minRecordCount, "View topic records size: " + records);
+      assertTrue(admin.getTopicManager().containsTopic(viewPubSubTopic));
+
+      TestUtils.waitForNonDeterministicAssertion(120, TimeUnit.SECONDS, () -> {
+        long records = getNumberOfRecordsInTopic(topicManager, viewPubSubTopic);
+        long versionTopicRecords = getNumberOfRecordsInTopic(topicManager, versionPubSubTopic);
+        assertEquals(
+            topicManager.getTopicPartitionInfo(versionPubSubTopic).size(),
+            versionTopicPartitionCount,
+            "Unexpected version partition count");
+        assertEquals(
+            topicManager.getTopicPartitionInfo(viewPubSubTopic).size(),
+            viewTopicPartitionCount,
+            "Unexpected view partition count");
+        assertTrue(versionTopicRecords > minRecordCount, "Version topic records size: " + versionTopicRecords);
+        assertTrue(records > minRecordCount, "View topic records size: " + records);
+      });
     }
+  }
+
+  private static Int2LongMap getNumberOfRecordsPerPartition(TopicManager topicManager, PubSubTopic topic) {
+    Map<PubSubTopicPartition, PubSubPosition> topicPositions = topicManager.getEndPositionsForTopicWithRetries(topic);
+    Int2LongMap partitionRecordCount = new Int2LongOpenHashMap(topicPositions.size());
+    for (Map.Entry<PubSubTopicPartition, PubSubPosition> entry: topicPositions.entrySet()) {
+      PubSubTopicPartition partition = entry.getKey();
+      long delta = topicManager.diffPosition(partition, entry.getValue(), PubSubSymbolicPosition.EARLIEST);
+      partitionRecordCount.put(partition.getPartitionNumber(), delta);
+    }
+    return partitionRecordCount;
+  }
+
+  // count records across all partitions in a topic
+  public static long getNumberOfRecordsInTopic(TopicManager topicManager, PubSubTopic topic) {
+    Int2LongMap partitionRecordCount = getNumberOfRecordsPerPartition(topicManager, topic);
+    long totalRecords = 0;
+    for (Int2LongMap.Entry entry: partitionRecordCount.int2LongEntrySet()) {
+      totalRecords += entry.getLongValue();
+    }
+    return totalRecords;
   }
 }

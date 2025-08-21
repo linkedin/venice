@@ -41,6 +41,8 @@ import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.PubSubConstants;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
+import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.schema.rmd.RmdUtils;
@@ -950,7 +952,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   }
 
   @Override
-  protected Map<String, Long> calculateLeaderUpstreamOffsetWithTopicSwitch(
+  protected Map<String, PubSubPosition> calculateLeaderUpstreamOffsetWithTopicSwitch(
       PartitionConsumptionState partitionConsumptionState,
       PubSubTopic newSourceTopic,
       List<CharSequence> unreachableBrokerList) {
@@ -966,31 +968,31 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       rewindStartTimestamp = calculateRewindStartTime(partitionConsumptionState);
       LOGGER.info(
           "{} leader calculated rewindStartTimestamp: {} for topic-partition: {}",
-          ingestionTaskName,
+          partitionConsumptionState.getReplicaId(),
           rewindStartTimestamp,
           sourceTopicPartition);
     } else {
       rewindStartTimestamp = topicSwitch.rewindStartTimestamp;
     }
     Set<String> sourceKafkaServers = getKafkaUrlSetFromTopicSwitch(partitionConsumptionState.getTopicSwitch());
-    Map<String, Long> upstreamOffsetsByKafkaURLs = new HashMap<>(sourceKafkaServers.size());
+    Map<String, PubSubPosition> rtPositionsByPubSubAddress = new HashMap<>(sourceKafkaServers.size());
     sourceKafkaServers.forEach(sourceKafkaURL -> {
-      long upstreamStartOffset = partitionConsumptionState.getLatestProcessedUpstreamRTOffset(sourceKafkaURL);
-      if (upstreamStartOffset < 0) {
+      PubSubPosition rtStartPosition = partitionConsumptionState.getLatestProcessedRtPosition(sourceKafkaURL);
+      if (PubSubSymbolicPosition.EARLIEST.equals(rtStartPosition)) {
         if (rewindStartTimestamp > 0) {
           PubSubTopicPartition newSourceTopicPartition =
               resolveTopicPartitionWithKafkaURL(newSourceTopic, partitionConsumptionState, sourceKafkaURL);
           try {
-            upstreamStartOffset =
+            rtStartPosition =
                 getTopicPartitionOffsetByKafkaURL(sourceKafkaURL, newSourceTopicPartition, rewindStartTimestamp);
             LOGGER.info(
-                "{} get upstreamStartOffset: {} for source URL: {}, topic-partition: {}, rewind timestamp: {}",
-                ingestionTaskName,
-                upstreamStartOffset,
+                "{} get rtStartPosition: {} for source URL: {}, topic-partition: {}, rewind timestamp: {}",
+                partitionConsumptionState.getReplicaId(),
+                rtStartPosition,
                 sourceKafkaURL,
                 newSourceTopicPartition,
                 rewindStartTimestamp);
-            upstreamOffsetsByKafkaURLs.put(sourceKafkaURL, upstreamStartOffset);
+            rtPositionsByPubSubAddress.put(sourceKafkaURL, rtStartPosition);
           } catch (Exception e) {
             /**
              * This is actually tricky. Potentially we could return a -1 value here, but this has the gotcha that if we
@@ -1003,12 +1005,13 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
              * this happens we can detect and repair the inconsistency from the offline DCR validator.
              */
             unreachableBrokerList.add(sourceKafkaURL);
-            upstreamStartOffset = OffsetRecord.LOWEST_OFFSET;
+            rtStartPosition = PubSubSymbolicPosition.EARLIEST;
             LOGGER.error(
-                "Failed contacting broker {} when processing topic switch! for {}. Setting upstream start offset to {}",
+                "Failed contacting {}/{} when processing topic switch for replica {}. Setting upstream start offset to {}",
                 sourceKafkaURL,
                 sourceTopicPartition,
-                upstreamStartOffset);
+                partitionConsumptionState.getReplicaId(),
+                rtStartPosition);
             hostLevelIngestionStats.recordIngestionFailure();
             /**
              *  Add to repair queue. We won't attempt to resubscribe for brokers we couldn't compute an upstream offset
@@ -1027,29 +1030,32 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
               // propagated up
               throw new VeniceException(
                   String.format(
-                      "Failed contacting broker (%s) and no repair service available!  Aborting topic switch processing for %s. Setting upstream start offset to %d",
+                      "Failed contacting (%s/%s) and no repair service available!  Aborting topic switch processing for %s. Setting upstream start offset to %s",
                       sourceKafkaURL,
                       sourceTopicPartition,
-                      upstreamStartOffset));
+                      partitionConsumptionState.getReplicaId(),
+                      rtStartPosition));
             }
           }
         } else {
           LOGGER.warn(
-              "{} got unexpected rewind time: {}, will start ingesting upstream from the beginning",
-              ingestionTaskName,
-              rewindStartTimestamp);
-          upstreamStartOffset = OffsetRecord.LOWEST_OFFSET;
-          upstreamOffsetsByKafkaURLs.put(sourceKafkaURL, upstreamStartOffset);
+              "Got unexpected rewind time: {} for: {}/{}, will start ingesting upstream from the beginning for replica: {}",
+              sourceKafkaURL,
+              sourceTopicPartition,
+              rewindStartTimestamp,
+              partitionConsumptionState.getReplicaId());
+          rtStartPosition = PubSubSymbolicPosition.EARLIEST;
+          rtPositionsByPubSubAddress.put(sourceKafkaURL, rtStartPosition);
         }
       } else {
-        upstreamOffsetsByKafkaURLs.put(sourceKafkaURL, upstreamStartOffset);
+        rtPositionsByPubSubAddress.put(sourceKafkaURL, rtStartPosition);
       }
     });
     if (unreachableBrokerList.size() >= ((sourceKafkaServers.size() + 1) / 2)) {
       // We couldn't reach a quorum of brokers and that's a red flag, so throw exception and abort!
       throw new VeniceException("Couldn't reach any broker!!  Aborting topic switch triggered consumer subscription!");
     }
-    return upstreamOffsetsByKafkaURLs;
+    return rtPositionsByPubSubAddress;
   }
 
   @Override
@@ -1076,10 +1082,13 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
    * Ensures the PubSub URL is present in the PubSub cluster URL-to-ID map before subscribing to a topic.
    * Prevents subscription to unknown PubSub URLs, which can cause issues during message consumption.
    */
-  public void consumerSubscribe(PubSubTopicPartition pubSubTopicPartition, long startOffset, String pubSubAddress) {
+  public void consumerSubscribe(
+      PubSubTopicPartition pubSubTopicPartition,
+      PubSubPosition startPosition,
+      String pubSubAddress) {
     VeniceServerConfig serverConfig = getServerConfig();
     if (isDaVinciClient() || serverConfig.getKafkaClusterUrlToIdMap().containsKey(pubSubAddress)) {
-      super.consumerSubscribe(pubSubTopicPartition, startOffset, pubSubAddress);
+      super.consumerSubscribe(pubSubTopicPartition, startPosition, pubSubAddress);
       return;
     }
     LOGGER.error(
@@ -1137,13 +1146,13 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   }
 
   /**
-   * Process {@link TopicSwitch} control message at given partition offset for a specific {@link PartitionConsumptionState}.
+   * Process {@link TopicSwitch} control message at given partition position for a specific {@link PartitionConsumptionState}.
    */
   @Override
   protected void processTopicSwitch(
       ControlMessage controlMessage,
       int partition,
-      long offset,
+      PubSubPosition position,
       PartitionConsumptionState partitionConsumptionState) {
     TopicSwitch topicSwitch = (TopicSwitch) controlMessage.controlMessageUnion;
     ingestionNotificationDispatcher.reportTopicSwitchReceived(partitionConsumptionState);
@@ -1171,17 +1180,17 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         partitionConsumptionState,
         consumerRecord,
         leaderProducedRecordContext,
-        partitionConsumptionState::updateLatestProcessedLocalVersionTopicOffset,
+        partitionConsumptionState::setLatestProcessedVtPosition,
         (sourceKafkaUrl, upstreamTopic, upstreamTopicOffset) -> {
           if (upstreamTopic.isRealTime()) {
-            partitionConsumptionState.updateLatestProcessedUpstreamRTOffset(sourceKafkaUrl, upstreamTopicOffset);
+            partitionConsumptionState.setLatestProcessedRtPosition(sourceKafkaUrl, upstreamTopicOffset);
           } else {
-            partitionConsumptionState.updateLatestProcessedUpstreamVersionTopicOffset(upstreamTopicOffset);
+            partitionConsumptionState.setLatestProcessedRemoteVtPosition(upstreamTopicOffset);
           }
         },
         (sourceKafkaUrl, upstreamTopic) -> upstreamTopic.isRealTime()
-            ? partitionConsumptionState.getLatestProcessedUpstreamRTOffset(sourceKafkaUrl)
-            : partitionConsumptionState.getLatestProcessedUpstreamVersionTopicOffset(),
+            ? partitionConsumptionState.getLatestProcessedRtPosition(sourceKafkaUrl)
+            : partitionConsumptionState.getLatestProcessedRemoteVtPosition(),
         () -> getUpstreamKafkaUrl(partitionConsumptionState, consumerRecord, kafkaUrl),
         dryRun);
   }
@@ -1242,10 +1251,10 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
    * used in conjunction with lag from other regions to determine ready-to-serve status.
    */
   @Override
-  protected long getLatestPersistedUpstreamOffsetForHybridOffsetLagMeasurement(
+  protected PubSubPosition getLatestPersistedUpstreamOffsetForHybridOffsetLagMeasurement(
       PartitionConsumptionState pcs,
       String upstreamKafkaUrl) {
-    return pcs.getLatestProcessedUpstreamRTOffset(upstreamKafkaUrl);
+    return pcs.getLatestProcessedRtPosition(upstreamKafkaUrl);
   }
 
   /**
@@ -1253,18 +1262,18 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
    * for each individual Kafka url.
    */
   @Override
-  protected long getLatestConsumedUpstreamOffsetForHybridOffsetLagMeasurement(
+  protected PubSubPosition getLatestConsumedUpstreamOffsetForHybridOffsetLagMeasurement(
       PartitionConsumptionState pcs,
       String upstreamKafkaUrl) {
-    return pcs.getLeaderConsumedUpstreamRTOffset(upstreamKafkaUrl);
+    return pcs.getLatestConsumedRtPosition(upstreamKafkaUrl);
   }
 
   @Override
-  protected void updateLatestInMemoryLeaderConsumedRTOffset(
+  protected void updateLatestConsumedRtPositions(
       PartitionConsumptionState pcs,
-      String kafkaUrl,
-      long offset) {
-    pcs.updateLeaderConsumedUpstreamRTOffset(kafkaUrl, offset);
+      String pubSubBrokerAddress,
+      PubSubPosition pubSubPosition) {
+    pcs.setLatestConsumedRtPosition(pubSubBrokerAddress, pubSubPosition);
   }
 
   /**
@@ -1388,12 +1397,12 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       PubSubTopic pubSubTopic = sourceTopicPartition.getPubSubTopic();
       PubSubTopicPartition resolvedTopicPartition = resolveTopicPartitionWithKafkaURL(pubSubTopic, pcs, sourceKafkaUrl);
       // Calculate upstream offset
-      long upstreamOffset =
+      PubSubPosition upstreamOffset =
           getTopicPartitionOffsetByKafkaURL(sourceKafkaUrl, resolvedTopicPartition, rewindStartTimestamp);
       // Subscribe (unsubscribe should have processed correctly regardless of remote broker state)
       consumerSubscribe(pubSubTopic, pcs, upstreamOffset, sourceKafkaUrl);
       // syncConsumedUpstreamRTOffsetMapIfNeeded
-      Map<String, Long> urlToOffsetMap = new HashMap<>();
+      Map<String, PubSubPosition> urlToOffsetMap = new HashMap<>();
       urlToOffsetMap.put(sourceKafkaUrl, upstreamOffset);
       syncConsumedUpstreamRTOffsetMapIfNeeded(pcs, urlToOffsetMap);
 
@@ -1464,15 +1473,15 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       PartitionConsumptionState partitionConsumptionState,
       boolean isTransition) {
     Set<String> leaderSourceKafkaURLs = getConsumptionSourceKafkaAddress(partitionConsumptionState);
-    Map<String, Long> leaderOffsetByKafkaURL = new HashMap<>(leaderSourceKafkaURLs.size());
+    Map<String, PubSubPosition> leaderOffsetByKafkaURL = new HashMap<>(leaderSourceKafkaURLs.size());
     List<CharSequence> unreachableBrokerList = new ArrayList<>();
-    boolean useLcro = isTransition && isGlobalRtDivEnabled();
+    boolean shouldUseDivRtPosition = isTransition && isGlobalRtDivEnabled();
     // Read previously checkpointed offset and maybe fallback to TopicSwitch if any of upstream offset is missing.
     for (String kafkaURL: leaderSourceKafkaURLs) {
       leaderOffsetByKafkaURL
-          .put(kafkaURL, partitionConsumptionState.getLeaderOffset(kafkaURL, pubSubTopicRepository, useLcro));
+          .put(kafkaURL, partitionConsumptionState.getLeaderPosition(kafkaURL, shouldUseDivRtPosition));
     }
-    if (leaderTopic.isRealTime() && leaderOffsetByKafkaURL.containsValue(OffsetRecord.LOWEST_OFFSET)) {
+    if (leaderTopic.isRealTime() && leaderOffsetByKafkaURL.containsValue(PubSubSymbolicPosition.EARLIEST)) {
       leaderOffsetByKafkaURL =
           calculateLeaderUpstreamOffsetWithTopicSwitch(partitionConsumptionState, leaderTopic, unreachableBrokerList);
     }

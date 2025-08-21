@@ -54,7 +54,7 @@ public class ExecutionStatusTest extends VeniceEnumValueTest<ExecutionStatus> {
         .put(16, ExecutionStatus.NOT_STARTED)
         .put(17, ExecutionStatus.DATA_RECOVERY_COMPLETED)
         .put(18, ExecutionStatus.DVC_INGESTION_ERROR_DISK_FULL)
-        .put(19, ExecutionStatus.DVC_INGESTION_ERROR_MEMORY_LIMIT_REACHED)
+        .put(19, DVC_INGESTION_ERROR_MEMORY_LIMIT_REACHED)
         .put(20, ExecutionStatus.DVC_INGESTION_ERROR_TOO_MANY_DEAD_INSTANCES)
         .put(21, ExecutionStatus.DVC_INGESTION_ERROR_OTHER)
         .build();
@@ -89,7 +89,6 @@ public class ExecutionStatusTest extends VeniceEnumValueTest<ExecutionStatus> {
   public void testIsErrorWithInputString() {
     assertTrue(ExecutionStatus.isError(ERROR.toString()));
     assertTrue(ExecutionStatus.isError(DVC_INGESTION_ERROR_DISK_FULL.toString()));
-    assertTrue(ExecutionStatus.isError(DVC_INGESTION_ERROR_MEMORY_LIMIT_REACHED.toString()));
     assertTrue(ExecutionStatus.isError(DVC_INGESTION_ERROR_TOO_MANY_DEAD_INSTANCES.toString()));
     assertTrue(ExecutionStatus.isError(DVC_INGESTION_ERROR_OTHER.toString()));
     assertFalse(ExecutionStatus.isError(STARTED.toString()));

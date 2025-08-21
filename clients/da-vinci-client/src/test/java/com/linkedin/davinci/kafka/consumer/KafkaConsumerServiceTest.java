@@ -25,6 +25,7 @@ import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapter;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
@@ -190,7 +191,10 @@ public class KafkaConsumerServiceTest {
 
     ConsumedDataReceiver consumedDataReceiver = mock(ConsumedDataReceiver.class);
     when(consumedDataReceiver.destinationIdentifier()).thenReturn(versionTopic);
-    consumerService.startConsumptionIntoDataReceiver(partitionReplicaIngestionContext, 0, consumedDataReceiver);
+    consumerService.startConsumptionIntoDataReceiver(
+        partitionReplicaIngestionContext,
+        ApacheKafkaOffsetPosition.of(0),
+        consumedDataReceiver);
 
     SharedKafkaConsumer assignedConsumer = consumerService.assignConsumerFor(versionTopic, topicPartition);
     Set<PubSubTopicPartition> consumerAssignedPartitions = new HashSet<>();

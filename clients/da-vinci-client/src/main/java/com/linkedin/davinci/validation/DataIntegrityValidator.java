@@ -5,6 +5,7 @@ import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.state.ProducerPartitionState;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.utils.SparseConcurrentList;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.util.HashSet;
@@ -166,9 +167,9 @@ public class DataIntegrityValidator {
         this.logCompactionDelayInMs);
   }
 
-  public void updateLatestConsumedVtOffset(int partition, long offset) {
+  public void updateLatestConsumedVtOffset(int partition, PubSubPosition offset) {
     PartitionTracker partitionTracker = registerPartition(partition);
-    partitionTracker.updateLatestConsumedVtOffset(offset);
+    partitionTracker.updateLatestConsumedVtPosition(offset);
   }
 
   /**

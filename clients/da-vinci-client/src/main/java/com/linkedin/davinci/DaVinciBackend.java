@@ -4,7 +4,6 @@ import static com.linkedin.venice.ConfigKeys.DA_VINCI_SUBSCRIBE_ON_DISK_PARTITIO
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_INSTANCE_NAME_SUFFIX;
 import static com.linkedin.venice.ConfigKeys.VALIDATE_VENICE_INTERNAL_SCHEMA_VERSION;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.DVC_INGESTION_ERROR_DISK_FULL;
-import static com.linkedin.venice.pushmonitor.ExecutionStatus.DVC_INGESTION_ERROR_MEMORY_LIMIT_REACHED;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.DVC_INGESTION_ERROR_OTHER;
 import static com.linkedin.venice.stats.ClientType.DAVINCI_CLIENT;
 import static java.lang.Thread.currentThread;
@@ -45,7 +44,6 @@ import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.exceptions.DiskLimitExhaustedException;
-import com.linkedin.venice.exceptions.MemoryLimitExhaustedException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
@@ -843,10 +841,7 @@ public class DaVinciBackend implements Closeable {
     if (useDaVinciSpecificExecutionStatusForError) {
       status = DVC_INGESTION_ERROR_OTHER;
       if (e instanceof VeniceException) {
-        if (e instanceof MemoryLimitExhaustedException
-            || (e.getCause() != null && e.getCause() instanceof MemoryLimitExhaustedException)) {
-          status = DVC_INGESTION_ERROR_MEMORY_LIMIT_REACHED;
-        } else if (e instanceof DiskLimitExhaustedException
+        if (e instanceof DiskLimitExhaustedException
             || (e.getCause() != null && e.getCause() instanceof DiskLimitExhaustedException)) {
           status = DVC_INGESTION_ERROR_DISK_FULL;
         }

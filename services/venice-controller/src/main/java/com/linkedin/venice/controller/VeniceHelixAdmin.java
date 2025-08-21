@@ -355,7 +355,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   private final VeniceControllerMultiClusterConfig multiClusterConfigs;
   private final String controllerClusterName;
-  private final int controllerClusterReplica;
   private final String controllerName;
   private final String kafkaBootstrapServers;
   private final String kafkaSSLBootstrapServers;
@@ -517,7 +516,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     this.controllerName =
         Utils.getHelixNodeIdentifier(multiClusterConfigs.getAdminHostname(), multiClusterConfigs.getAdminPort());
     this.controllerClusterName = multiClusterConfigs.getControllerClusterName();
-    this.controllerClusterReplica = multiClusterConfigs.getControllerClusterReplica();
     this.kafkaBootstrapServers = multiClusterConfigs.getKafkaBootstrapServers();
     this.kafkaSSLBootstrapServers = multiClusterConfigs.getSslKafkaBootstrapServers();
     this.deprecatedJobTopicRetentionMs = multiClusterConfigs.getDeprecatedJobTopicRetentionMs();
@@ -1452,9 +1450,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    */
   @Override
   public void sendPushJobDetails(PushJobStatusRecordKey key, PushJobDetails value) {
+    String pushJobDetailsStoreClusterName = getPushJobStatusStoreClusterName();
+    if (pushJobDetailsStoreClusterName == null || pushJobDetailsStoreClusterName.isEmpty()) {
+      return;
+    }
     if (isParent()) {
       String lastDualWriteError = "";
-      for (Map.Entry<String, ControllerClient> entry: getControllerClientMap(getPushJobStatusStoreClusterName())
+      for (Map.Entry<String, ControllerClient> entry: getControllerClientMap(pushJobDetailsStoreClusterName)
           .entrySet()) {
         LOGGER.info(
             "Sending controller request to send push job details: {} to region: {} for: {}",
@@ -1539,7 +1541,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     Validate.notNull(key);
     ConcurrencyUtils.executeUnderConditionalLock(() -> {
       String storeName = VeniceSystemStoreUtils.getPushJobDetailsStoreName();
-      String d2Service = discoverCluster(storeName).getSecond();
+      String d2Service = getRouterD2Service(discoverCluster(storeName));
       pushJobDetailsStoreClient = ClientFactory.getAndStartSpecificAvroClient(
           ClientConfig.defaultSpecificClientConfig(storeName, PushJobDetails.class)
               .setD2ServiceName(d2Service)
@@ -1560,7 +1562,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     Validate.notNull(batchJobHeartbeatKey);
     ConcurrencyUtils.executeUnderConditionalLock(() -> {
       String storeName = VeniceSystemStoreType.BATCH_JOB_HEARTBEAT_STORE.getPrefix();
-      String d2Service = discoverCluster(storeName).getSecond();
+      String d2Service = getRouterD2Service(discoverCluster(storeName));
       livenessHeartbeatStoreClient = ClientFactory.getAndStartSpecificAvroClient(
           ClientConfig.defaultSpecificClientConfig(storeName, BatchJobHeartbeatValue.class)
               .setD2ServiceName(d2Service)
@@ -2031,7 +2033,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
      * Force update cluster discovery so that it will always point to the source cluster.
      * Whichever cluster it currently belongs to do not matter.
      */
-    String clusterDiscovered = this.discoverCluster(storeName).getFirst();
+    String clusterDiscovered = this.discoverCluster(storeName);
     this.updateClusterDiscovery(storeName, clusterDiscovered, srcClusterName, srcClusterName);
   }
 
@@ -5063,7 +5065,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   @Override
   public StoreMetaValue getMetaStoreValue(StoreMetaKey metaKey, String storeName) {
     String metaStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName);
-    String d2Service = discoverCluster(storeName).getSecond();
+    String d2Service = getRouterD2Service(discoverCluster(storeName));
 
     try (AvroSpecificStoreClient<StoreMetaKey, StoreMetaValue> client = ClientFactory.getAndStartSpecificAvroClient(
         ClientConfig.defaultSpecificClientConfig(metaStoreName, StoreMetaValue.class)
@@ -5501,6 +5503,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     Optional<Integer> maxNearlineRecordSizeBytes = params.getMaxNearlineRecordSizeBytes();
     Optional<Boolean> unusedSchemaDeletionEnabled = params.getUnusedSchemaDeletionEnabled();
     Optional<Boolean> blobTransferEnabled = params.getBlobTransferEnabled();
+    Optional<String> blobTransferInServerEnabled = params.getBlobTransferInServerEnabled();
     Optional<Boolean> nearlineProducerCompressionEnabled = params.getNearlineProducerCompressionEnabled();
     Optional<Integer> nearlineProducerCountPerWriter = params.getNearlineProducerCountPerWriter();
     Optional<String> targetSwapRegion = params.getTargetSwapRegion();
@@ -5812,6 +5815,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
       blobTransferEnabled.ifPresent(aBoolean -> storeMetadataUpdate(clusterName, storeName, store -> {
         store.setBlobTransferEnabled(aBoolean);
+        return store;
+      }));
+
+      blobTransferInServerEnabled.ifPresent(aString -> storeMetadataUpdate(clusterName, storeName, store -> {
+        store.setBlobTransferInServerEnabled(aString);
         return store;
       }));
 
@@ -7181,11 +7189,27 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         AutoRebalanceStrategy.class.getName());
     IdealState idealState = admin.getResourceIdealState(controllerClusterName, clusterName);
     // Use crush alg to allocate controller as well.
+    int controllerClusterReplica = config.getControllerClusterReplica();
+    idealState.setReplicas(String.valueOf(controllerClusterReplica));
     idealState.setMinActiveReplicas(controllerClusterReplica);
     idealState.setRebalancerClassName(DelayedAutoRebalancer.class.getName());
     idealState.setRebalanceStrategy(CrushRebalanceStrategy.class.getName());
     admin.setResourceIdealState(controllerClusterName, clusterName, idealState);
     admin.rebalance(controllerClusterName, clusterName, controllerClusterReplica);
+  }
+
+  public boolean updateIdealState(String clusterName, String resourceName, int minReplica) {
+    IdealState idealState = helixAdminClient.getResourceIdealState(clusterName, resourceName);
+    if (idealState == null || idealState.getMinActiveReplicas() == minReplica) {
+      return false;
+    }
+    idealState.setMinActiveReplicas(minReplica);
+    helixAdminClient.updateIdealState(clusterName, resourceName, idealState);
+    return true;
+  }
+
+  public IdealState getIdealState(String clusterName, String resourceName) {
+    return helixAdminClient.getResourceIdealState(clusterName, resourceName);
   }
 
   private void throwStoreAlreadyExists(String clusterName, String storeName) {
@@ -7568,14 +7592,20 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    * Get all live instance controllers from ZK /LIVEINSTANCES
    */
   public List<Instance> getAllLiveInstanceControllers() {
-    final int maxAttempts = 10;
+    return getAllLiveInstanceControllers(10);
+  }
+
+  @VisibleForTesting
+  List<Instance> getAllLiveInstanceControllers(int maxAttempts) {
     PropertyKey.Builder keyBuilder = new PropertyKey.Builder(getControllerClusterName());
     for (int attempt = 1; attempt <= maxAttempts; ++attempt) {
       List<String> liveInstances = getHelixManager().getHelixDataAccessor().getChildNames(keyBuilder.liveInstances());
       if (liveInstances == null || liveInstances.isEmpty()) {
         // Assignment is incomplete, try again later
         LOGGER.warn("No live instance controllers found, attempt: {}/{}", attempt, maxAttempts);
-        Utils.sleep(5 * Time.MS_PER_SECOND);
+        if (attempt < maxAttempts) {
+          Utils.sleep(5 * Time.MS_PER_SECOND);
+        }
         continue;
       }
 
@@ -7936,7 +7966,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           : AdminTopicMetadataAccessor
               .generateMetadataMap(Optional.of(-1L), Optional.of(-1L), Optional.of(executionId), Optional.of(-1L));
     }
-    return getAdminConsumerService(clusterName).getAdminTopicMetadata(clusterName);
+    return getAdminConsumerService(clusterName).getAdminTopicMetadata(clusterName).toLegacyMap();
   }
 
   /**
@@ -8084,7 +8114,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    * @see Admin#discoverCluster(String)
    */
   @Override
-  public Pair<String, String> discoverCluster(String storeName) {
+  public String discoverCluster(String storeName) {
     StoreConfig config = storeConfigRepo.getStoreConfigOrThrow(storeName);
     if (config == null || StringUtils.isEmpty(config.getCluster())) {
       throw new VeniceNoStoreException(
@@ -8092,12 +8122,20 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           null,
           "Make sure the store is created and the provided store name is correct");
     }
-    String clusterName = config.getCluster();
+    return config.getCluster();
+  }
+
+  /**
+   * @see Admin#getRouterD2Service(String)
+   */
+  @Override
+  public String getRouterD2Service(String clusterName) {
     String d2Service = multiClusterConfigs.getClusterToD2Map().get(clusterName);
     if (d2Service == null) {
       throw new VeniceException("Could not find d2 service by given cluster: " + clusterName);
     }
-    return new Pair<>(clusterName, d2Service);
+
+    return d2Service;
   }
 
   /**

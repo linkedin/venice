@@ -21,6 +21,8 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
+import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -69,22 +71,20 @@ public class ChangeCaptureViewWriterTest {
 
   @Test
   public void testConstructVersionSwapMessage() {
-    Map<String, Long> highWaterMarks = new HashMap<>();
-    highWaterMarks.put(LOR_1, 111L);
-    highWaterMarks.put(LTX_1, 99L);
-    highWaterMarks.put(LVA_1, 22222L);
+    Map<String, PubSubPosition> highWaterMarks = new HashMap<>();
+    highWaterMarks.put(LOR_1, ApacheKafkaOffsetPosition.of(111L));
+    highWaterMarks.put(LTX_1, ApacheKafkaOffsetPosition.of(99L));
+    highWaterMarks.put(LVA_1, ApacheKafkaOffsetPosition.of(22222L));
     PartitionConsumptionState mockLeaderPartitionConsumptionState = mock(PartitionConsumptionState.class);
     Mockito.when(mockLeaderPartitionConsumptionState.getLeaderFollowerState())
         .thenReturn(LeaderFollowerStateType.LEADER);
-    Mockito.when(mockLeaderPartitionConsumptionState.getLatestProcessedUpstreamRTOffsetMap())
-        .thenReturn(highWaterMarks);
+    Mockito.when(mockLeaderPartitionConsumptionState.getLatestProcessedRtPositions()).thenReturn(highWaterMarks);
     Mockito.when(mockLeaderPartitionConsumptionState.getPartition()).thenReturn(1);
 
     PartitionConsumptionState mockFollowerPartitionConsumptionState = mock(PartitionConsumptionState.class);
     Mockito.when(mockFollowerPartitionConsumptionState.getLeaderFollowerState())
         .thenReturn(LeaderFollowerStateType.STANDBY);
-    Mockito.when(mockFollowerPartitionConsumptionState.getLatestProcessedUpstreamRTOffsetMap())
-        .thenReturn(highWaterMarks);
+    Mockito.when(mockFollowerPartitionConsumptionState.getLatestProcessedRtPositions()).thenReturn(highWaterMarks);
     Mockito.when(mockFollowerPartitionConsumptionState.getPartition()).thenReturn(1);
 
     VersionSwap versionSwapMessage = new VersionSwap();
@@ -183,9 +183,16 @@ public class ChangeCaptureViewWriterTest {
     VersionSwap sentVersionSwapMessage = (VersionSwap) sentControlMessage.controlMessageUnion;
     Assert.assertEquals(sentVersionSwapMessage.oldServingVersionTopic, Version.composeKafkaTopic(STORE_NAME, 1));
     Assert.assertEquals(sentVersionSwapMessage.newServingVersionTopic, Version.composeKafkaTopic(STORE_NAME, 2));
-    Assert.assertEquals(sentVersionSwapMessage.localHighWatermarks.get(0), highWaterMarks.get(LTX_1));
-    Assert.assertEquals(sentVersionSwapMessage.localHighWatermarks.get(1), highWaterMarks.get(LVA_1));
-    Assert.assertEquals(sentVersionSwapMessage.localHighWatermarks.get(2), highWaterMarks.get(LOR_1));
+    Assert.assertEquals(
+        (long) sentVersionSwapMessage.localHighWatermarks.get(0),
+        highWaterMarks.get(LTX_1).getNumericOffset());
+    Assert.assertEquals(
+        (long) sentVersionSwapMessage.localHighWatermarks.get(1),
+        highWaterMarks.get(LVA_1).getNumericOffset());
+    Assert.assertEquals(
+        (long) sentVersionSwapMessage.localHighWatermarks.get(2),
+        highWaterMarks.get(LOR_1).getNumericOffset());
+    // TODO(sushantmane): Add assertions to verify the correctness localHighWatermarks with PubSubPosition
   }
 
   @Test

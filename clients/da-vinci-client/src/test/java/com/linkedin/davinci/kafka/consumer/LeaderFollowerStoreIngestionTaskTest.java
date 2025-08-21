@@ -522,11 +522,10 @@ public class LeaderFollowerStoreIngestionTaskTest {
     DefaultPubSubMessage mockMessage = mock(DefaultPubSubMessage.class);
     PubSubTopicPartition mockTopicPartition = mock(PubSubTopicPartition.class);
     LeaderProducedRecordContext context = mock(LeaderProducedRecordContext.class);
-    PubSubPosition positionMock = mock(PubSubPosition.class);
-    doReturn(positionMock).when(context).getConsumedPosition();
+    PubSubPosition p3 = ApacheKafkaOffsetPosition.of(offset);
+    doReturn(p3).when(context).getConsumedPosition();
     doReturn(partition).when(mockTopicPartition).getPartitionNumber();
-    doReturn(offset).when(positionMock).getNumericOffset();
-    doReturn(positionMock).when(mockMessage).getPosition();
+    doReturn(p3).when(mockMessage).getPosition();
     doReturn(mockTopicPartition).when(mockMessage).getTopicPartition();
     doReturn(messageTime).when(mockMessage).getPubSubMessageTime();
     VeniceWriter mockWriter = mock(VeniceWriter.class);
@@ -599,9 +598,9 @@ public class LeaderFollowerStoreIngestionTaskTest {
     doReturn(consumerDiv).when(mockIngestionTask).getConsumerDiv();
     doReturn(true).when(mockIngestionTask).isGlobalRtDivEnabled();
 
-    // delegateConsumerRecord() should cause updateLatestConsumedVtOffset() to be called
+    // delegateConsumerRecord() should cause updateLatestConsumedVtPosition() to be called
     mockIngestionTask.delegateConsumerRecord(cm, 0, "testURL", 0, 0, 0);
-    verify(consumerDiv, times(1)).updateLatestConsumedVtOffset(0, 1L);
+    verify(consumerDiv, times(1)).updateLatestConsumedVtOffset(0, cm.getMessage().getPosition());
   }
 
   @Test
@@ -669,6 +668,9 @@ public class LeaderFollowerStoreIngestionTaskTest {
     OffsetRecord mockOffsetRecord = mock(OffsetRecord.class);
     when(mockOffsetRecord.getLeaderTopic()).thenReturn("test");
     when(mockOffsetRecord.isEndOfPushReceived()).thenReturn(true);
+    PubSubPosition p0 = ApacheKafkaOffsetPosition.of(0L);
+    doReturn(p0).when(mockOffsetRecord).getCheckpointedLocalVtPosition();
+
     when(mockStorageMetadataService.getLastOffset(any(), anyInt())).thenReturn(mockOffsetRecord);
     when(mockConsumerAction.getTopicPartition()).thenReturn(mockTopicPartition);
     when(mockPartitionConsumptionState.getOffsetRecord()).thenReturn(mockOffsetRecord);
