@@ -37,6 +37,8 @@ public class BlobTransferManagerBuilder {
   private AggVersionedBlobTransferStats aggVersionedBlobTransferStats;
   private Optional<SSLFactory> sslFactory;
   private Optional<BlobTransferAclHandler> aclHandler;
+  private VeniceAdaptiveBlobTransferTrafficThrottler adaptiveBlobTransferWriteTrafficThrottler;
+  private VeniceAdaptiveBlobTransferTrafficThrottler adaptiveBlobTransferReadTrafficThrottler;
 
   public BlobTransferManagerBuilder() {
   }
@@ -90,11 +92,23 @@ public class BlobTransferManagerBuilder {
     return this;
   }
 
+  public BlobTransferManagerBuilder setAdaptiveBlobTransferWriteTrafficThrottler(
+      VeniceAdaptiveBlobTransferTrafficThrottler adaptiveBlobTransferWriteTrafficThrottler) {
+    this.adaptiveBlobTransferWriteTrafficThrottler = adaptiveBlobTransferWriteTrafficThrottler;
+    return this;
+  }
+
+  public BlobTransferManagerBuilder setAdaptiveBlobTransferReadTrafficThrottler(
+      VeniceAdaptiveBlobTransferTrafficThrottler adaptiveBlobTransferReadTrafficThrottler) {
+    this.adaptiveBlobTransferReadTrafficThrottler = adaptiveBlobTransferReadTrafficThrottler;
+    return this;
+  }
+
   public BlobTransferManager<Void> build() {
     try {
       validateFields();
       // initialize the P2P blob transfer manager
-      BlobFinder blobFinder = null;
+      BlobFinder blobFinder;
       if (customizedViewFuture != null && clientConfig == null) {
         blobFinder = new ServerBlobFinder(customizedViewFuture);
       } else if (customizedViewFuture == null && clientConfig != null) {
@@ -107,6 +121,12 @@ public class BlobTransferManagerBuilder {
       GlobalChannelTrafficShapingHandler globalTrafficHandler = getGlobalChannelTrafficShapingHandlerInstance(
           blobTransferConfig.getBlobTransferClientReadLimitBytesPerSec(),
           blobTransferConfig.getBlobTransferServiceWriteLimitBytesPerSec());
+      if (adaptiveBlobTransferWriteTrafficThrottler != null) {
+        adaptiveBlobTransferWriteTrafficThrottler.setGlobalChannelTrafficShapingHandler(globalTrafficHandler);
+      }
+      if (adaptiveBlobTransferReadTrafficThrottler != null) {
+        adaptiveBlobTransferReadTrafficThrottler.setGlobalChannelTrafficShapingHandler(globalTrafficHandler);
+      }
 
       BlobSnapshotManager blobSnapshotManager = new BlobSnapshotManager(
           storageEngineRepository,
