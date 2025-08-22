@@ -52,7 +52,7 @@ public class DaVinciConfig {
    * By default, metadata is retrieved from a system store via a thin client.
    */
   private boolean useRequestBasedMetaRepository = false;
-  private boolean validateSpecificSchemaEnabled = true;
+  private boolean validateSpecificSchemaEnabled = false;
 
   public DaVinciConfig() {
   }
