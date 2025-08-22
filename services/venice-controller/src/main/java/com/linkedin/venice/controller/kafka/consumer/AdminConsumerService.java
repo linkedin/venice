@@ -141,7 +141,7 @@ public class AdminConsumerService extends AbstractVeniceService {
     } else {
       throw new VeniceException(
           "This AdminConsumptionService is for cluster " + config.getClusterName()
-              + ".  Cannot skip admin message with offset " + executionId + " for cluster " + clusterName);
+              + ".  Cannot skip admin message with execution ID " + executionId + " for cluster " + clusterName);
     }
   }
 
@@ -156,7 +156,7 @@ public class AdminConsumerService extends AbstractVeniceService {
     } else {
       throw new VeniceException(
           "This AdminConsumptionService is for cluster: " + config.getClusterName()
-              + ".  Cannot get the last succeed execution Id for cluster: " + clusterName);
+              + ".  Cannot get the last succeed execution ID for cluster: " + clusterName);
     }
   }
 

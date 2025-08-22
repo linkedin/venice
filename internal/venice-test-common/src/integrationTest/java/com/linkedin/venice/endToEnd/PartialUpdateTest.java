@@ -1146,9 +1146,8 @@ public class PartialUpdateTest {
     Assert.assertTrue(totalCountMetric <= 2.0d);
   }
 
-  @Test(timeOut = TEST_TIMEOUT_MS)
-  public void testRepushWithTTLWithActiveActivePartialUpdateStore() {
-    CompressionStrategy compressionStrategy = CompressionStrategy.GZIP;
+  @Test(timeOut = TEST_TIMEOUT_MS, dataProvider = "Compression-Strategies", dataProviderClass = DataProviderUtils.class)
+  public void testRepushWithTTLWithActiveActivePartialUpdateStore(CompressionStrategy compressionStrategy) {
     final String storeName = Utils.getUniqueString("ttlRepushAAWC");
     String parentControllerUrl = parentController.getControllerUrl();
     Schema valueSchema = AvroCompatibilityHelper.parse(loadFileAsString("CollectionRecordV1.avsc"));

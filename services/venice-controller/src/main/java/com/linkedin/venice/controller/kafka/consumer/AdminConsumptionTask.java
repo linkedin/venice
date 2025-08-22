@@ -395,7 +395,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
           if (record == null) {
             break;
           }
-          long executionId = -2L;
+          long executionId = UNASSIGNED_VALUE;
           try {
             executionId = delegateMessage(record);
             if (executionId == lastDelegatedExecutionId) {
@@ -489,7 +489,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
       problematicStores.clear();
       undelegatedRecords.clear();
       failingPosition = PubSubSymbolicPosition.EARLIEST;
-      failingExecutionId = -2L;
+      failingExecutionId = UNASSIGNED_VALUE;
       offsetToSkip = UNASSIGNED_VALUE;
       executionIdToSkip = UNASSIGNED_VALUE;
       offsetToSkipDIV = UNASSIGNED_VALUE;
@@ -628,7 +628,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
               }
 
               PubSubPosition position = nextOp != null ? nextOp.getPosition() : PubSubSymbolicPosition.EARLIEST;
-              long executionId = nextOp != null ? nextOp.getAdminOperation().getExecutionId() : -2L;
+              long executionId = nextOp != null ? nextOp.getAdminOperation().getExecutionId() : UNASSIGNED_VALUE;
               int currentRetryCount = retryCountMap.getOrDefault(position, 0);
 
               if (currentRetryCount >= MAX_RETRIES_FOR_NONEXISTENT_STORE && allowAutoSkip) {
@@ -706,7 +706,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
           // Ensure failingPosition from the delegateMessage is not overwritten.
           if (PubSubUtil.comparePubSubPositions(failingPosition, lastPosition) <= 0) {
             failingPosition = PubSubSymbolicPosition.EARLIEST;
-            failingExecutionId = -2L;
+            failingExecutionId = UNASSIGNED_VALUE;
           }
           persistAdminTopicMetadata();
         } else {
@@ -714,7 +714,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
           // 1. Do not persist the latest position (cluster wide) to ZK.
           // 2. Find and set the smallest failing position amongst the problematic stores.
           PubSubPosition smallestPosition = PubSubSymbolicPosition.EARLIEST;
-          long smallestExecutionId = -2L;
+          long smallestExecutionId = UNASSIGNED_VALUE;
 
           for (Map.Entry<String, AdminErrorInfo> problematicStore: problematicStores.entrySet()) {
             if (smallestPosition.equals(PubSubSymbolicPosition.EARLIEST)
@@ -750,7 +750,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
   private long getNextOperationExecutionIdIfAvailable(String storeName) {
     Queue<AdminOperationWrapper> storeQueue = storeAdminOperationsMapWithPosition.get(storeName);
     AdminOperationWrapper nextOperation = storeQueue == null ? null : storeQueue.peek();
-    return nextOperation == null ? -2L : nextOperation.getAdminOperation().getExecutionId();
+    return nextOperation == null ? UNASSIGNED_VALUE : nextOperation.getAdminOperation().getExecutionId();
   }
 
   private void internalClose() {
@@ -803,7 +803,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     KafkaMessageEnvelope kafkaValue = record.getValue();
     MessageType messageType = MessageType.valueOf(kafkaValue);
     AdminOperation adminOperation = null;
-    long executionId = -2L; // -2, to make it different from UNASSIGNED_VALUE
+    long executionId = UNASSIGNED_VALUE;
     if (MessageType.PUT == messageType) {
       Put put = (Put) kafkaValue.payloadUnion;
       adminOperation = deserializer.deserialize(put.putValue, put.schemaId);
