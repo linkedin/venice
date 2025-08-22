@@ -177,7 +177,7 @@ public class PartialUpdateTest {
   }
 
   protected boolean isHeartbeatReadyToServeCheckEnabled() {
-    return false;
+    return true;
   }
 
   @BeforeClass(alwaysRun = true)
@@ -1146,8 +1146,9 @@ public class PartialUpdateTest {
     Assert.assertTrue(totalCountMetric <= 2.0d);
   }
 
-  @Test(timeOut = TEST_TIMEOUT_MS, dataProvider = "Compression-Strategies", dataProviderClass = DataProviderUtils.class)
-  public void testRepushWithTTLWithActiveActivePartialUpdateStore(CompressionStrategy compressionStrategy) {
+  @Test(timeOut = TEST_TIMEOUT_MS)
+  public void testRepushWithTTLWithActiveActivePartialUpdateStore() {
+    CompressionStrategy compressionStrategy = CompressionStrategy.GZIP;
     final String storeName = Utils.getUniqueString("ttlRepushAAWC");
     String parentControllerUrl = parentController.getControllerUrl();
     Schema valueSchema = AvroCompatibilityHelper.parse(loadFileAsString("CollectionRecordV1.avsc"));

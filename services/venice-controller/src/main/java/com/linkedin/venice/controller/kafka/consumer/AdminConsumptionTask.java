@@ -1051,12 +1051,10 @@ public class AdminConsumptionTask implements Runnable, Closeable {
   }
 
   void skipMessageWithExecutionId(long executionId) {
-    // todo arjun come back here to fix the condition
     if (executionId == failingExecutionId) {
       executionIdToSkip = executionId;
     } else {
       throw new VeniceException(
-          // todo here too
           "Cannot skip an execution id that isn't the first one failing.  Last failed execution id is: "
               + failingExecutionId);
     }

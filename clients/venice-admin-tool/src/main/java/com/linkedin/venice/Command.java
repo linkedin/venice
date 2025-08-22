@@ -214,7 +214,7 @@ public enum Command {
       new Arg[] { URL, STORE }, new Arg[] { CLUSTER, VERSION }
   ), KILL_JOB("kill-job", "Kill a running push job", new Arg[] { URL, STORE, VERSION }, new Arg[] { CLUSTER }),
   SKIP_ADMIN(
-      "skip-admin", "Skip an admin message", new Arg[] { URL, CLUSTER, OFFSET }, new Arg[] { SKIP_DIV, EXECUTION_ID }
+      "skip-admin", "Skip an admin message", new Arg[] { URL, CLUSTER }, new Arg[] { SKIP_DIV, OFFSET, EXECUTION_ID }
   ),
   NEW_STORE(
       "new-store", "", new Arg[] { URL, CLUSTER, STORE, KEY_SCHEMA, VALUE_SCHEMA }, new Arg[] { OWNER, VSON_STORE }
