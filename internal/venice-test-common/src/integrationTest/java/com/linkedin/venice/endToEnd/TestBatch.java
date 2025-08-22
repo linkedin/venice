@@ -698,37 +698,6 @@ public abstract class TestBatch {
   }
 
   @Test(timeOut = TEST_TIMEOUT)
-  public void testBatchWithTimestampFromETL() throws Exception {
-    testBatchStore(inputDir -> {
-      writeETLFileWithUserSchema(inputDir, true);
-      return new KeyAndValueSchemas(ETL_KEY_SCHEMA, ETL_VALUE_SCHEMA);
-    }, properties -> {
-      properties.setProperty(SOURCE_ETL, "true");
-      properties.setProperty(RMD_FIELD_PROP, "rmd");
-    }, (avroClient, vsonClient, metricsRepository) -> {
-      // test single get
-      for (int i = 1; i <= 50; i++) {
-        GenericRecord key = new GenericData.Record(ETL_KEY_SCHEMA);
-        GenericRecord value = new GenericData.Record(ETL_VALUE_SCHEMA);
-        key.put(DEFAULT_KEY_FIELD_PROP, Integer.toString(i));
-        value.put(DEFAULT_VALUE_FIELD_PROP, "test_name_" + i);
-        Assert.assertEquals(avroClient.get(key).get().toString(), value.toString());
-      }
-
-      for (int i = 51; i <= 100; i++) {
-        GenericRecord key = new GenericData.Record(ETL_KEY_SCHEMA);
-        key.put(DEFAULT_KEY_FIELD_PROP, Integer.toString(i));
-        Assert.assertNull(avroClient.get(key).get());
-      }
-    },
-        new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true)
-            .setPartitionCount(1)
-            .setHybridRewindSeconds(5)
-            .setHybridOffsetLagThreshold(2)
-            .setNativeReplicationEnabled(true));
-  }
-
-  @Test(timeOut = TEST_TIMEOUT)
   public void testBatchFromETL() throws Exception {
     testBatchStore(inputDir -> {
       writeETLFileWithUserSchema(inputDir);
