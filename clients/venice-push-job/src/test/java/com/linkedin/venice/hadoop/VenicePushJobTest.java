@@ -1440,7 +1440,7 @@ public class VenicePushJobTest {
     extraInfo2.put("dc-1", ExecutionStatus.COMPLETED.toString());
 
     return new Object[][] { { VersionStatus.ONLINE, extraInfo }, { VersionStatus.ERROR, extraInfo2 },
-        { VersionStatus.PARTIALLY_ONLINE, extraInfo } };
+        { VersionStatus.PARTIALLY_ONLINE, extraInfo }, { VersionStatus.KILLED, extraInfo } };
   }
 
   @Test(dataProvider = "versionStatuses")
@@ -1473,6 +1473,8 @@ public class VenicePushJobTest {
             e.getMessage(),
             "Version kafka-topic is only partially online in some regions. Check nuage to see which regions are not serving the latest version."
                 + " It is possible that there was a failure in rolling forward on the controller side or ingestion failed in some regions.");
+      } else if (VersionStatus.KILLED.equals(versionStatus)) {
+        Assert.assertEquals(e.getMessage(), "Version kafka-topic was killed and cannot be served.");
       } else {
         Assert.assertEquals(
             e.getMessage(),

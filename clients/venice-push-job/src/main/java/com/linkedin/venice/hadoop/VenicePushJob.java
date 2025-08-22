@@ -2574,6 +2574,8 @@ public class VenicePushJob implements AutoCloseable {
             throw new VeniceException(
                 "Version " + pushJobSetting.topic
                     + " was rolled back after ingestion completed due to validation failure");
+          } else if (VersionStatus.KILLED.equals(parentVersionStatus)) {
+            throw new VeniceException("Version " + pushJobSetting.topic + " was killed and cannot be served.");
           } else if (VersionStatus.PARTIALLY_ONLINE.equals(parentVersionStatus)) {
             throw new VeniceException(
                 "Version " + pushJobSetting.topic + " is only partially online in some regions. "
