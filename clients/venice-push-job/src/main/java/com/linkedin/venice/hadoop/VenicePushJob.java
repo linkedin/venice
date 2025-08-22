@@ -136,6 +136,7 @@ import com.linkedin.venice.schema.writecompute.WriteComputeOperation;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
+import com.linkedin.venice.spark.utils.RmdPushUtils;
 import com.linkedin.venice.status.PushJobDetailsStatus;
 import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.status.protocol.PushJobDetailsStatusTuple;
@@ -2087,6 +2088,12 @@ public class VenicePushJob implements AutoCloseable {
               "No replication schema found for value schema id: {} in store: {}",
               pushJobSetting.valueSchemaId,
               setting.storeName);
+        }
+
+        if (!foundRmdSchema && RmdPushUtils.rmdFieldPresent(pushJobSetting)) {
+          throw new VeniceException(
+              "Failed to find replication metadata schema for value schema id: " + pushJobSetting.valueSchemaId
+                  + " in store: " + setting.storeName + ". Cannot proceed with push to include RMD.");
         }
       } else {
         LOGGER.info("No replication schemas associated with the store!");
