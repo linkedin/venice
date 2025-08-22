@@ -1,15 +1,15 @@
 package com.linkedin.venice.router.stats;
 
-import static com.linkedin.venice.read.RequestType.*;
 import static com.linkedin.venice.router.stats.RouterHttpRequestStats.RouterTehutiMetricNameEnum.HEALTHY_REQUEST;
 import static com.linkedin.venice.router.stats.RouterHttpRequestStats.RouterTehutiMetricNameEnum.KEY_SIZE_IN_BYTE;
 import static com.linkedin.venice.router.stats.RouterHttpRequestStats.RouterTehutiMetricNameEnum.REQUEST_SIZE;
 import static com.linkedin.venice.router.stats.RouterHttpRequestStats.RouterTehutiMetricNameEnum.RESPONSE_SIZE;
-import static com.linkedin.venice.stats.VeniceMetricsRepository.*;
 import static com.linkedin.venice.stats.VeniceOpenTelemetryMetricNamingFormat.PASCAL_CASE;
-import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.*;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_MESSAGE_TYPE;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_METHOD;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
 import static com.linkedin.venice.utils.OpenTelemetryDataPointTestUtils.validateExponentialHistogramPointData;
-import static com.linkedin.venice.utils.metrics.MetricsRepositoryUtils.*;
 import static org.mockito.Mockito.mock;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
@@ -208,6 +208,20 @@ public class RouterHttpRequestStatsTest {
         MessageType.REQUEST,
         "",
         512.0,
+        "call_size");
+
+    // drain the previous metrics
+    inMemoryMetricReader.collectAllMetrics();
+    // validate response size metrics
+    routerHttpRequestStats.recordResponseSize(1024.0);
+    validateOtelMetrics(
+        inMemoryMetricReader,
+        storeName,
+        clusterName,
+        RequestType.SINGLE_GET,
+        MessageType.RESPONSE,
+        "",
+        1024.0,
         "call_size");
 
   }
