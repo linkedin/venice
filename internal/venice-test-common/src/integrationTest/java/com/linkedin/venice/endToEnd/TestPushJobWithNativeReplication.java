@@ -4,6 +4,8 @@ import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_BLO
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS;
 import static com.linkedin.venice.ConfigKeys.CLIENT_USE_SYSTEM_STORE_REPOSITORY;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_DEFERRED_VERSION_SWAP_SERVICE_ENABLED;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_DEFERRED_VERSION_SWAP_SLEEP_MS;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_MAX_NUMBER_OF_PARTITIONS;
 import static com.linkedin.venice.ConfigKeys.EMERGENCY_SOURCE_REGION;
@@ -163,6 +165,8 @@ public class TestPushJobWithNativeReplication {
     controllerProps.put(BatchJobHeartbeatConfigs.HEARTBEAT_ENABLED_CONFIG.getConfigName(), true);
     controllerProps.put(PUSH_JOB_STATUS_STORE_CLUSTER_NAME, SYSTEM_STORE_CLUSTER);
     controllerProps.put(EMERGENCY_SOURCE_REGION, "dc-0");
+    controllerProps.put(CONTROLLER_DEFERRED_VERSION_SWAP_SERVICE_ENABLED, true);
+    controllerProps.put(CONTROLLER_DEFERRED_VERSION_SWAP_SLEEP_MS, 100);
 
     VeniceMultiRegionClusterCreateOptions.Builder optionsBuilder =
         new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(NUMBER_OF_CHILD_DATACENTERS)
@@ -743,7 +747,7 @@ public class TestPushJobWithNativeReplication {
   public void testTargetRegionPushWithDeferredVersionSwap() throws Exception {
     motherOfAllTests(
         "testTargetRegionPushWithDeferredVersionSwap",
-        updateStoreQueryParams -> updateStoreQueryParams.setPartitionCount(1),
+        updateStoreQueryParams -> updateStoreQueryParams.setPartitionCount(1).setTargetRegionSwapWaitTime(1),
         100,
         (parentControllerClient, clusterName, storeName, props, inputDir) -> {
           // start a regular push job
@@ -774,11 +778,7 @@ public class TestPushJobWithNativeReplication {
                   parentControllerClient.getStore(storeName).getStore().getColoToCurrentVersions();
 
               coloVersions.forEach((colo, version) -> {
-                if (colo.equals(DEFAULT_NATIVE_REPLICATION_SOURCE)) {
-                  Assert.assertEquals((int) version, 2); // Version should only be swapped in dc-0
-                } else {
-                  Assert.assertEquals((int) version, 1); // The remaining regions shouldn't be swapped
-                }
+                Assert.assertEquals((int) version, 2);
               });
             });
           }

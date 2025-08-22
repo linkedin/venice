@@ -124,7 +124,9 @@ import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.meta.ViewConfig;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
@@ -253,6 +255,7 @@ public class VenicePushJob implements AutoCloseable {
   private PushJobHeartbeatSender pushJobHeartbeatSender = null;
   private volatile boolean pushJobStatusUploadDisabledHasBeenLogged = false;
   private final ScheduledExecutorService timeoutExecutor;
+  private static final int VERSION_SWAP_BUFFER_TIME_MINUTES = 20;
 
   /**
    * @param jobId  id of the job
@@ -2477,11 +2480,19 @@ public class VenicePushJob implements AutoCloseable {
      */
     long unknownStateStartTimeMs = 0;
 
+    /**
+     * The start time for when a push reaches terminal state.
+     * If 0, it seems that the push has not reached terminal state yet.
+     * This will be used to calculate how long the push is stalled for version swap and it is allowed to stay
+     * in this state from terminal state time + store wait time + {@link DEFAULT_JOB_STATUS_IN_UNKNOWN_STATE_TIMEOUT_MS}
+     */
+    long versionSwapStartTimeMs = 0;
+
     String topicToMonitor = getTopicToMonitor(pushJobSetting);
 
     List<ExecutionStatus> successfulStatuses =
         Arrays.asList(ExecutionStatus.COMPLETED, ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED);
-
+    int fetchParentVersionRetryCount = 0;
     for (;;) {
       long currentTime = System.currentTimeMillis();
       if (currentTime < nextPollingTime) {
@@ -2537,13 +2548,72 @@ public class VenicePushJob implements AutoCloseable {
           throw new VeniceException(errorMsg.toString());
         }
 
-        // Every known datacenter have successfully reported a completed status at least once.
-        if (isTargetedRegionPush) {
+        // For target region push with deferred swap, stall push completion until version swap is complete
+        // Version swap is complete when the parent version is online, partially online, or error
+        if (isTargetRegionPushWithDeferredSwap) {
+          if (versionSwapStartTimeMs == 0) {
+            LOGGER.info("Starting to monitor version swap status for {}", pushJobSetting.topic);
+            versionSwapStartTimeMs = System.currentTimeMillis();
+          }
+          StoreResponse parentStoreResponse = getStoreResponse(pushJobSetting.storeName, true);
+
+          StoreInfo parentStoreInfo = parentStoreResponse.getStore();
+          int latestUsedVersionNumber = parentStoreInfo.getLargestUsedVersionNumber();
+          Optional<Version> parentVersionFromStore = parentStoreInfo.getVersion(latestUsedVersionNumber);
+          if (!parentVersionFromStore.isPresent()) {
+            LOGGER.warn("Failed to get parent version for store: {}", pushJobSetting.storeName);
+            fetchParentVersionRetryCount++;
+            if (fetchParentVersionRetryCount > 5) {
+              throw new VeniceException(
+                  "Failed to get parent version from parent store after 5 attempts "
+                      + "and cannot infer version swap status after ingestion completed. Check nuage if the latest"
+                      + "version is being served");
+            }
+
+            continue;
+          }
+
+          fetchParentVersionRetryCount = 0; // Reset retry counter if we are able to get parent version
+          Version parentVersion = parentVersionFromStore.get();
+          VersionStatus parentVersionStatus = parentVersion.getStatus();
+          if (VersionStatus.ERROR.equals(parentVersionStatus)
+              && ExecutionStatus.COMPLETED.equals(overallStatus.getRootStatus())) {
+            throw new VeniceException(
+                "Version " + pushJobSetting.topic
+                    + " was rolled back after ingestion completed due to validation failure");
+          } else if (VersionStatus.KILLED.equals(parentVersionStatus)) {
+            throw new VeniceException("Version " + pushJobSetting.topic + " was killed and cannot be served.");
+          } else if (VersionStatus.PARTIALLY_ONLINE.equals(parentVersionStatus)) {
+            throw new VeniceException(
+                "Version " + pushJobSetting.topic + " is only partially online in some regions. "
+                    + "Check nuage to see which regions are not serving the latest version. It is possible that there"
+                    + " was a failure in rolling forward on the controller side or ingestion failed in some regions.");
+          } else if (VersionStatus.ONLINE.equals(parentVersionStatus)) {
+            LOGGER.info(
+                "Successfully pushed {} and it is being served in all regions. The version status is {}.",
+                pushJobSetting.topic,
+                parentVersionStatus);
+            return;
+          }
+
+          long timeoutTimeMs =
+              versionSwapStartTimeMs + TimeUnit.MINUTES.toMillis(parentStoreInfo.getTargetRegionSwapWaitTime())
+                  + TimeUnit.MINUTES.toMillis(VERSION_SWAP_BUFFER_TIME_MINUTES);
+          if (versionSwapStartTimeMs > 0
+              && LatencyUtils.getElapsedTimeFromMsToMs(versionSwapStartTimeMs) > timeoutTimeMs) {
+            throw new VeniceException(
+                "After waiting for " + timeoutTimeMs / Time.MS_PER_MINUTE
+                    + " minutes, version swap is still not complete.");
+          }
+
+          LOGGER.info("Version status is {} and version swap is not complete yet", parentVersion.getStatus());
+        } else if (isTargetedRegionPush) {
           LOGGER.info("Successfully pushed {} to targeted region {}", pushJobSetting.topic, targetedRegions);
+          return;
         } else {
           LOGGER.info("Successfully pushed {} to all the regions", pushJobSetting.topic);
+          return;
         }
-        return;
       }
       if (!overallStatus.equals(ExecutionStatus.UNKNOWN)) {
         unknownStateStartTimeMs = 0;
