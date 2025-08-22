@@ -43,7 +43,7 @@ public class SparkPartitionWriter extends AbstractPartitionWriter {
       Row row = rows.next();
       byte[] incomingKey = Objects.requireNonNull(row.getAs(KEY_COLUMN_NAME), "Key cannot be null");
 
-      byte[] rmd;
+      byte[] rmd = null;
       try {
         rmd = row.getAs(RMD_COLUMN_NAME);
       } catch (IllegalArgumentException e) {
