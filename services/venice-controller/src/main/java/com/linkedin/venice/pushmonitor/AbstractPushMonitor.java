@@ -1213,9 +1213,7 @@ public abstract class AbstractPushMonitor
                 regionName,
                 isTargetRegionPushWithDeferredSwap,
                 isNormalPush);
-            int previousVersion = store.getCurrentVersion();
             store.setCurrentVersion(versionNumber);
-            realTimeTopicSwitcher.transmitVersionSwapMessage(store, previousVersion, versionNumber);
           } else {
             LOGGER.info(
                 "Version swap is deferred for store {} on version {} in region {} because "

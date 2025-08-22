@@ -211,7 +211,7 @@ public class RealTimeTopicSwitcher {
     Version previousStoreVersion = store.getVersionOrThrow(previousVersion);
     Version nextStoreVersion = store.getVersionOrThrow(nextVersion);
 
-    // If there exists an RT, then broadcast the Version Swap message to it, otherwise broadcast it to the VT
+    // If there exists an RT, then broadcast the Version Swap message to it
     String storeName = store.getName();
     String rtForPreviousVersion = Utils.getRealTimeTopicName(previousStoreVersion);
     String rtForNextVersion = Utils.getRealTimeTopicName(nextStoreVersion);
@@ -247,21 +247,6 @@ public class RealTimeTopicSwitcher {
         // it is not clear yet, how to make CDC client, that depends on this `Version Swap` message, work in that case
         broadcastVersionSwap(previousStoreVersion, nextStoreVersion, rtForNextVersion);
       }
-    } else {
-      // ToDo: Broadcast the Version Swap message to batch only view topics
-      LOGGER.info("RT topic doesn't exist for store: {}. Broadcasting Version Swap message directly to VT.", storeName);
-
-      /*
-       * In a hybrid mode, the VSM gets emitted to the previous and next version topics by the Leader.
-       * In a batch only mode, we will need to do the same in the controller. This is because there exists a
-       * race-condition inside DaVinci. If we only emit the VSM to the previous version, it's possible that DaVinci
-       * can complete consumption of the next version before the previous can consume the VSM. When this happens,
-       * DaVinci will delete the previous version inside StoreBackend::setDaVinciCurrentVersion. Thus, the previous
-       * version will never be able to consume the VSM.
-       * Because of this, we need to emit the VSM to both the previous and next version.
-       */
-      broadcastVersionSwap(previousStoreVersion, nextStoreVersion, previousStoreVersion.kafkaTopicName());
-      broadcastVersionSwap(previousStoreVersion, nextStoreVersion, nextStoreVersion.kafkaTopicName());
     }
   }
 
@@ -269,11 +254,6 @@ public class RealTimeTopicSwitcher {
     String storeName = previousStoreVersion.getStoreName();
     int partitionCount;
 
-    /*
-     * Partition count across versions for a batch-only store can vary, so we need to determine the correct
-     * number of partitions. For a hybrid store, the partition count always stays the same between versions,
-     * until the hybrid repartitioning project is finished.
-     */
     if (topicName.equals(previousStoreVersion.kafkaTopicName())) {
       partitionCount = previousStoreVersion.getPartitionCount();
     } else {
