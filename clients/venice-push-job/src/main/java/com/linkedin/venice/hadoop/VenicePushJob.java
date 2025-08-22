@@ -2583,7 +2583,7 @@ public class VenicePushJob implements AutoCloseable {
                     + " was a failure in rolling forward on the controller side or ingestion failed in some regions.");
           } else if (VersionStatus.ONLINE.equals(parentVersionStatus)) {
             LOGGER.info(
-                "Successfully pushed and swapped to {} in all regions. The version status is {} and it is now being served in all regions",
+                "Successfully pushed {} and it is being served in all regions. The version status is {}.",
                 pushJobSetting.topic,
                 parentVersionStatus);
             return;
