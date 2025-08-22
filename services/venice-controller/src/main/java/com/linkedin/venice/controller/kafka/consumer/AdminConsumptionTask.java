@@ -158,7 +158,9 @@ public class AdminConsumptionTask implements Runnable, Closeable {
   private boolean isSubscribed;
   private final PubSubConsumerAdapter consumer;
   private volatile long offsetToSkip = UNASSIGNED_VALUE;
+  private volatile long executionIdToSkip = UNASSIGNED_VALUE;
   private volatile long offsetToSkipDIV = UNASSIGNED_VALUE;
+  private volatile long executionIdToSkipDIV = UNASSIGNED_VALUE;
   /**
    * The smallest or first failing position.
    */
@@ -483,7 +485,9 @@ public class AdminConsumptionTask implements Runnable, Closeable {
       undelegatedRecords.clear();
       failingPosition = PubSubSymbolicPosition.EARLIEST;
       offsetToSkip = UNASSIGNED_VALUE;
+      executionIdToSkip = UNASSIGNED_VALUE;
       offsetToSkipDIV = UNASSIGNED_VALUE;
+      executionIdToSkipDIV = UNASSIGNED_VALUE;
       lastDelegatedExecutionId = UNASSIGNED_VALUE;
       lastPersistedExecutionId = UNASSIGNED_VALUE;
       lastPosition = PubSubSymbolicPosition.EARLIEST;
@@ -535,6 +539,11 @@ public class AdminConsumptionTask implements Runnable, Closeable {
         }
         PubSubPosition adminMessagePosition = nextOp.getPosition();
         if (checkOffsetToSkip(adminMessagePosition.getNumericOffset(), false)) {
+          storeQueue.remove();
+          skipOffsetCommandHasBeenProcessed = true;
+        }
+        // todo arjun pass execution id instead of offset
+        if (checkExecutionIdToSkip(adminMessagePosition.getNumericOffset(), false)) {
           storeQueue.remove();
           skipOffsetCommandHasBeenProcessed = true;
         }
@@ -771,7 +780,9 @@ public class AdminConsumptionTask implements Runnable, Closeable {
    * @return corresponding executionId if applicable.
    */
   private long delegateMessage(DefaultPubSubMessage record) {
-    if (checkOffsetToSkip(record.getPosition().getNumericOffset(), true) || !shouldProcessRecord(record)) {
+    // arjun todo correct the if condition
+    if (checkOffsetToSkip(record.getPosition().getNumericOffset(), true)
+        || checkExecutionIdToSkip(record.getPosition().getNumericOffset(), true) || !shouldProcessRecord(record)) {
       // Return lastDelegatedExecutionId to update the offset without changing the execution id. Skip DIV should/can be
       // used if the skip requires executionId to be reset because this skip here is skipping the message without doing
       // any processing. This may be the case when a message cannot be deserialized properly therefore we don't know
@@ -876,7 +887,8 @@ public class AdminConsumptionTask implements Runnable, Closeable {
 
   private void checkAndValidateMessage(AdminOperation message, DefaultPubSubMessage record) {
     long incomingExecutionId = message.executionId;
-    if (checkOffsetToSkipDIV(record.getPosition().getNumericOffset()) || lastDelegatedExecutionId == UNASSIGNED_VALUE) {
+    if (checkOffsetToSkipDIV(record.getPosition().getNumericOffset()) || checkExecutionIdToSkipDIV(incomingExecutionId)
+        || lastDelegatedExecutionId == UNASSIGNED_VALUE) {
       lastDelegatedExecutionId = incomingExecutionId;
       LOGGER.info(
           "Updated lastDelegatedExecutionId to {} because lastDelegatedExecutionId is currently UNASSIGNED",
@@ -1004,9 +1016,11 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     }
   }
 
-  void skipMessageWithOffset(long offset) {
+  void skipMessageWithOffset(long offset, long executionId) {
     if (offset == failingPosition.getNumericOffset()) {
       offsetToSkip = offset;
+      // todo arjun come back here to fix the condition
+      executionIdToSkip = executionId;
     } else {
       throw new VeniceException(
           "Cannot skip an offset that isn't the first one failing.  Last failed offset is: "
@@ -1014,9 +1028,11 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     }
   }
 
-  void skipMessageDIVWithOffset(long offset) {
+  void skipMessageDIVWithOffset(long offset, long executionId) {
     if (offset == failingPosition.getNumericOffset()) {
       offsetToSkipDIV = offset;
+      // todo arjun come back here to fix the condition
+      executionIdToSkipDIV = executionId;
     } else {
       throw new VeniceException(
           "Cannot skip an offset that isn't the first one failing.  Last failed offset is: "
@@ -1026,6 +1042,10 @@ public class AdminConsumptionTask implements Runnable, Closeable {
 
   private void resetOffsetToSkip() {
     offsetToSkip = UNASSIGNED_VALUE;
+  }
+
+  private void resetExecutionToSkip() {
+    executionIdToSkip = UNASSIGNED_VALUE;
   }
 
   private boolean checkOffsetToSkip(long offset, boolean reset) {
@@ -1040,11 +1060,33 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     return skip;
   }
 
+  private boolean checkExecutionIdToSkip(long executionId, boolean reset) {
+    boolean skip = false;
+    if (executionId == executionIdToSkip) {
+      LOGGER.warn("Skipping admin message with executionId {} as instructed", executionId);
+      if (reset) {
+        resetExecutionToSkip();
+      }
+      skip = true;
+    }
+    return skip;
+  }
+
   private boolean checkOffsetToSkipDIV(long offset) {
     boolean skip = false;
     if (offset == offsetToSkipDIV) {
       LOGGER.warn("Skipping DIV for admin message with offset {} as instructed", offset);
       offsetToSkipDIV = UNASSIGNED_VALUE;
+      skip = true;
+    }
+    return skip;
+  }
+
+  private boolean checkExecutionIdToSkipDIV(long executionId) {
+    boolean skip = false;
+    if (executionId == executionIdToSkipDIV) {
+      LOGGER.warn("Skipping DIV for admin message with executionId {} as instructed", executionId);
+      executionIdToSkipDIV = UNASSIGNED_VALUE;
       skip = true;
     }
     return skip;

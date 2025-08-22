@@ -501,7 +501,7 @@ public class AdminConsumptionTaskTest {
     executor.submit(task);
     TestUtils.waitForNonDeterministicCompletion(5, TimeUnit.SECONDS, () -> {
       try {
-        task.skipMessageWithOffset(1L); // won't accept skip command until task has failed on this offset.
+        task.skipMessageWithOffset(1L, -1L); // won't accept skip command until task has failed on this offset.
       } catch (VeniceException e) {
         return false;
       }
@@ -611,7 +611,7 @@ public class AdminConsumptionTaskTest {
         TIMEOUT,
         TimeUnit.MILLISECONDS,
         () -> Assert.assertEquals(task.getFailingPosition().getNumericOffset(), 3L));
-    task.skipMessageWithOffset(3L);
+    task.skipMessageWithOffset(3L, -1L);
     TestUtils.waitForNonDeterministicAssertion(
         TIMEOUT,
         TimeUnit.MILLISECONDS,
@@ -1094,7 +1094,7 @@ public class AdminConsumptionTaskTest {
     Assert.assertEquals(getLastExecutionId(clusterName), -1L);
 
     // skip the blocking message
-    task.skipMessageWithOffset(1);
+    task.skipMessageWithOffset(1, -1L);
     TestUtils.waitForNonDeterministicAssertion(
         TIMEOUT,
         TimeUnit.MILLISECONDS,
@@ -1330,7 +1330,7 @@ public class AdminConsumptionTaskTest {
         TimeUnit.MILLISECONDS,
         () -> Assert.assertEquals(task.getFailingPosition().getNumericOffset(), offset));
     // Skip the DIV check, make sure the sequence number is updated and new admin messages can also be processed
-    task.skipMessageDIVWithOffset(offset);
+    task.skipMessageDIVWithOffset(offset, -1L);
     TestUtils.waitForNonDeterministicAssertion(
         TIMEOUT,
         TimeUnit.MILLISECONDS,
@@ -1752,7 +1752,7 @@ public class AdminConsumptionTaskTest {
 
     // Once we skip the failing message , the store should recover
 
-    task.skipMessageWithOffset(1);
+    task.skipMessageWithOffset(1, -1L);
     TestUtils.waitForNonDeterministicAssertion(
         TIMEOUT,
         TimeUnit.MILLISECONDS,

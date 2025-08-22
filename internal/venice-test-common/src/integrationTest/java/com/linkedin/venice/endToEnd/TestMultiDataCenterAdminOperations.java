@@ -203,7 +203,7 @@ public class TestMultiDataCenterAdminOperations {
     for (VeniceControllerWrapper controller: controllersToTest) {
       AdminConsumerService adminConsumerService = controller.getAdminConsumerServiceByCluster(clusterName);
       adminConsumerService
-          .setOffsetToSkip(clusterName, adminConsumerService.getFailingPosition().getNumericOffset(), false);
+          .setOffsetToSkip(clusterName, adminConsumerService.getFailingPosition().getNumericOffset(), false, -1L);
     }
 
     AdminConsumerService parentAdminConsumerService = parentController.getAdminConsumerServiceByCluster(clusterName);
