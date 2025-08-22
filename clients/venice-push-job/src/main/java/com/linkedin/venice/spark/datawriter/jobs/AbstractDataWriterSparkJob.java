@@ -314,12 +314,14 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
    * Otherwise, check for subset check with the RMD schema associated with the store for the given input value schema.
    */
   protected void validateRmdSchema(PushJobSetting pushJobSetting) {
-    Schema inputRmdSchema = RmdPushUtils.getInputRmdSchema(pushJobSetting);
-    if (RmdPushUtils.rmdFieldPresent(pushJobSetting) && (!RmdPushUtils.containsLogicalTimestamp(pushJobSetting)
-        && !validateSubsetValueSchema(inputRmdSchema, pushJobSetting.replicationMetadataSchemaString))) {
-      throw new VeniceException(
-          "Input rmd schema is not subset of superset schema. Input rmd schema: " + inputRmdSchema
-              + " , superset schema: " + pushJobSetting.replicationMetadataSchemaString);
+    if (RmdPushUtils.rmdFieldPresent(pushJobSetting)) {
+      Schema inputRmdSchema = RmdPushUtils.getInputRmdSchema(pushJobSetting);
+      if ((!RmdPushUtils.containsLogicalTimestamp(pushJobSetting)
+          && !validateSubsetValueSchema(inputRmdSchema, pushJobSetting.replicationMetadataSchemaString))) {
+        throw new VeniceException(
+            "Input rmd schema is not subset of superset schema. Input rmd schema: " + inputRmdSchema
+                + " , superset schema: " + pushJobSetting.replicationMetadataSchemaString);
+      }
     }
   }
 
