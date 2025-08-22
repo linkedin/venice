@@ -11,6 +11,7 @@ import com.linkedin.venice.client.store.InternalAvroStoreClient;
 import com.linkedin.venice.controllerapi.MultiSchemaIdResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.schema.AvroSchemaParseUtils;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
@@ -20,6 +21,7 @@ import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.utils.AvroSchemaUtils;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.ObjectMapperFactory;
+import com.linkedin.venice.utils.RetryUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.IOException;
 import java.time.Duration;
@@ -47,6 +49,8 @@ import org.apache.logging.log4j.Logger;
 
 
 public class RouterBackedSchemaReader implements SchemaReader {
+  private static final List<Class<? extends Throwable>> RETRY_FAILURE_TYPES =
+      Collections.singletonList(VeniceException.class);
   public static final String TYPE_KEY_SCHEMA = "key_schema";
   public static final String TYPE_VALUE_SCHEMA = "value_schema";
   public static final String TYPE_ALL_VALUE_SCHEMA_IDS = "all_value_schema_ids";
@@ -187,12 +191,20 @@ public class RouterBackedSchemaReader implements SchemaReader {
   public Schema getValueSchema(int id) {
     // Should call with refresh as any router transient error can lead to null schema stored in the map
     // `valueSchemaEntryMap`
-    SchemaEntry valueSchemaEntry = maybeFetchValueSchemaEntryById(id, true);
-    if (!isValidSchemaEntry(valueSchemaEntry)) {
-      LOGGER.warn("Got null value schema from Venice for store: {} and id: {}", storeName, id);
+    Schema valueSchema;
+    try {
+      valueSchema = RetryUtils.executeWithMaxAttemptAndExponentialBackoff(() -> {
+        SchemaEntry schemaEntry = maybeFetchValueSchemaEntryById(id, true);
+        if (!isValidSchemaEntry(schemaEntry)) {
+          throw new VeniceException("Got null value schema from Venice for store " + storeName + " and id " + id);
+        }
+        return schemaEntry.getSchema();
+      }, 5, Duration.ofMillis(10), Duration.ofMillis(500), Duration.ofSeconds(5), RETRY_FAILURE_TYPES);
+    } catch (Exception e) {
+      LOGGER.error("Could not fetch value schema from Venice for store: {} and id: {}", storeName, id);
       return null;
     }
-    return valueSchemaEntry.getSchema();
+    return valueSchema;
   }
 
   @Override
