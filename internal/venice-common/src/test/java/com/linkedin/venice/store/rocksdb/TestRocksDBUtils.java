@@ -1,6 +1,5 @@
 package com.linkedin.venice.store.rocksdb;
 
-import static com.linkedin.venice.store.rocksdb.RocksDBUtils.deletePartitionDir;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
 
@@ -42,44 +41,51 @@ public class TestRocksDBUtils {
     // assert files exist
     assertTrue(Files.exists(baseDir.resolve("storeName_v1/storeName_v1_1/file1.txt")));
     assertTrue(Files.exists(baseDir.resolve("storeName_v1/storeName_v1_1/file2.txt")));
-
-    deletePartitionDir(baseDir.toString(), "storeName", 1, 1);
+    String deletePath = RocksDBUtils.composePartitionDbDir(baseDir.toString(), "storeName_v1", 1);
+    RocksDBUtils.deleteDirectory(deletePath);
 
     // assert directory does not exist
     assertFalse(Files.exists(baseDir.resolve("storeName_v1/storeName_v1_1")));
   }
 
   @Test
-  public void testDeletePartitionDir_multiplePaths() throws IOException {
-    // version 5, partition 5 should exist
-    // version 5, partition 6 should be deleted
-    // tmp path1 "rocksdb/storeName/5/5/file1.txt"
-    // tmp path2 "rocksdb/storeName/5/6/file1.txt"
-
-    Files.createDirectories(baseDir.resolve("storeName_v5/storeName_v5_5"));
-    Files.createDirectories(baseDir.resolve("storeName_v5/storeName_v5_6"));
-
-    Files.createFile(baseDir.resolve("storeName_v5/storeName_v5_5/file1.txt"));
-    Files.createFile(baseDir.resolve("storeName_v5/storeName_v5_6/file2.txt"));
-
-    // assert files exist
-    assertTrue(Files.exists(baseDir.resolve("storeName_v5/storeName_v5_5/file1.txt")));
-    assertTrue(Files.exists(baseDir.resolve("storeName_v5/storeName_v5_6/file2.txt")));
-
-    deletePartitionDir(baseDir.toString(), "storeName", 5, 6);
-
-    // assert version 5, partition 5 should exist
-    assertTrue(Files.exists(baseDir.resolve("storeName_v5/storeName_v5_5")));
-
-    // assert version 5, partition 6 should not exist
-    assertFalse(Files.exists(baseDir.resolve("storeName_v5/storeName_v5_6")));
-  }
-
-  @Test
   public void testDeletePartitionDir_EmptyFiles() throws IOException {
     Files.createDirectories(baseDir.resolve("storeName_v2/storeName_v2_2"));
     // assert the temp base directory does exist
-    assertTrue(Files.exists(baseDir));
-    deletePartitionDir(baseDir.toString(), "storeName", 2, 2);
+    assertTrue(Files.exists(baseDir.resolve("storeName_v2/storeName_v2_2")));
+
+    String deletePath = RocksDBUtils.composePartitionDbDir(baseDir.toString(), "storeName_v2", 2);
+    RocksDBUtils.deleteDirectory(deletePath);
+
+    // assert the temp base directory does not exist
+    assertFalse(Files.exists(baseDir.resolve("storeName_v2/storeName_v2_2")));
+  }
+
+  @Test
+  public void testRenameTempTransferredPartitionDirToPartitionDir() throws IOException {
+    Path tempDir = baseDir.resolve("storeName_v1/temp_transferred_storeName_v1_1");
+    Files.createDirectories(tempDir);
+    Files.createFile(tempDir.resolve("file1.sst"));
+    Files.createFile(tempDir.resolve("MANIFEST-000001"));
+    Files.createFile(tempDir.resolve("CURRENT"));
+
+    // Verify temp directory and files exist
+    assertTrue(Files.exists(tempDir));
+    assertTrue(Files.exists(tempDir.resolve("file1.sst")));
+    assertTrue(Files.exists(tempDir.resolve("MANIFEST-000001")));
+    assertTrue(Files.exists(tempDir.resolve("CURRENT")));
+
+    // Execute
+    RocksDBUtils.renameTempTransferredPartitionDirToPartitionDir(baseDir.toString(), "storeName_v1", 1);
+
+    // Verify temp directory no longer exists
+    assertFalse(Files.exists(tempDir));
+
+    // Verify final directory exists with all files
+    Path finalDir = baseDir.resolve("storeName_v1/storeName_v1_1");
+    assertTrue(Files.exists(finalDir));
+    assertTrue(Files.exists(finalDir.resolve("file1.sst")));
+    assertTrue(Files.exists(finalDir.resolve("MANIFEST-000001")));
+    assertTrue(Files.exists(finalDir.resolve("CURRENT")));
   }
 }
