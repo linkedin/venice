@@ -247,6 +247,8 @@ public class RealTimeTopicSwitcher {
         // it is not clear yet, how to make CDC client, that depends on this `Version Swap` message, work in that case
         broadcastVersionSwap(previousStoreVersion, nextStoreVersion, rtForNextVersion);
       }
+    } else {
+      LOGGER.info("RT doesn't exist for store: {}. Skipping broadcast for Version Swap message.");
     }
   }
 
