@@ -57,10 +57,12 @@ public enum RouterMetricEntity implements ModuleMetricEntityInterface {
       setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REQUEST_METHOD, VENICE_MESSAGE_TYPE)
   ),
   /**
-   * Key Size: Size of keys in bytes during response handling
+   * Key Size: Measures the size of keys in the request
+   * - For single get, request = key size
+   * - for multi gets, measure each key in the request
    */
   KEY_SIZE(
-      MetricType.HISTOGRAM, MetricUnit.BYTES, "Size of keys in bytes during response handling",
+      MetricType.HISTOGRAM, MetricUnit.BYTES, "Size of keys in bytes",
       setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REQUEST_METHOD)
   ),
   /**
