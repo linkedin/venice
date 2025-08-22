@@ -50,7 +50,7 @@ import org.apache.logging.log4j.Logger;
 
 public class RouterBackedSchemaReader implements SchemaReader {
   private static final List<Class<? extends Throwable>> RETRY_FAILURE_TYPES =
-      Collections.singletonList(VeniceException.class);
+      Collections.singletonList(Exception.class);
   public static final String TYPE_KEY_SCHEMA = "key_schema";
   public static final String TYPE_VALUE_SCHEMA = "value_schema";
   public static final String TYPE_ALL_VALUE_SCHEMA_IDS = "all_value_schema_ids";
