@@ -77,4 +77,5 @@ public class MetricsRepositoryUtils {
             .setMaxMetricsMeasurementTimeoutInMs(maxMetricsMeasurementTimeoutMs)
             .build());
   }
+
 }
