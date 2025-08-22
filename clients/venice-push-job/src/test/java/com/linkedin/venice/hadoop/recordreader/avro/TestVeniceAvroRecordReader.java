@@ -86,7 +86,7 @@ public class TestVeniceAvroRecordReader {
 
     GenericRecord record = new GenericData.Record(STRING_TO_NAME_WITH_TIMESTAMP_RECORD_V1_SCHEMA);
     record.put("key", "123");
-    record.put("timestamp", timestampBytes);
+    record.put("rmd", timestampBytes);
     GenericRecord valueRecord = new GenericData.Record(TestWriteUtils.NAME_RECORD_V1_SCHEMA);
     valueRecord.put("firstName", "FN");
     valueRecord.put("lastName", "LN");
