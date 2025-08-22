@@ -64,7 +64,6 @@ import java.util.Collections;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
-import org.apache.avro.Schema;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -100,8 +99,6 @@ public class TestHybridMultiRegion {
   @Test(timeOut = 180 * Time.MS_PER_SECOND)
   public void testHybridBatchPushWithRmd() throws IOException {
     String clusterName = sharedVenice.getClusterNames()[0];
-    VeniceClusterWrapper sharedVeniceClusterWrapper =
-        sharedVenice.getChildRegions().get(0).getClusters().get(clusterName);
     try (ControllerClient controllerClient =
         new ControllerClient(clusterName, sharedVenice.getControllerConnectString())) {
       long streamingRewindSeconds = 25L;
@@ -118,8 +115,7 @@ public class TestHybridMultiRegion {
               .setHybridOffsetLagThreshold(streamingMessageLag));
       File inputDir = getTempDataDirectory();
       String inputDirPath = "file://" + inputDir.getAbsolutePath();
-      Schema recordSchema =
-          TestWriteUtils.writeSimpleAvroFileWithStringToStringAndTimestampSchema(inputDir, 123456789L); // records 1-100
+      TestWriteUtils.writeSimpleAvroFileWithStringToStringAndTimestampSchema(inputDir, 123456789L); // records 1-100
       Properties vpjProperties = defaultVPJProps(sharedVenice, inputDirPath, storeName);
       vpjProperties.setProperty(RMD_FIELD_PROP, "rmd");
       vpjProperties.setProperty(DATA_WRITER_COMPUTE_JOB_CLASS, DataWriterSparkJob.class.getCanonicalName());

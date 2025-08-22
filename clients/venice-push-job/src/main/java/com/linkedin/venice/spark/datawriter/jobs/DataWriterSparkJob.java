@@ -1,6 +1,8 @@
 package com.linkedin.venice.spark.datawriter.jobs;
 
 import static com.linkedin.venice.spark.SparkConstants.DEFAULT_SCHEMA;
+import static com.linkedin.venice.spark.utils.RmdPushUtils.containsLogicalTimestamp;
+import static com.linkedin.venice.spark.utils.RmdPushUtils.rmdFieldPresent;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.ETL_VALUE_SCHEMA_TRANSFORMATION;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.FILE_KEY_SCHEMA;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.FILE_VALUE_SCHEMA;
@@ -126,7 +128,7 @@ public class DataWriterSparkJob extends AbstractDataWriterSparkJob {
        * validation upstream to ensure the schema of the data and RMD schema of the store are compatible. Thus it is
        * safe to just get the RMD bytes directly from the record reader.
        */
-      if (rmdFieldPresent(pushJobSetting) && containsRmdSchema(pushJobSetting)) {
+      if (rmdFieldPresent(pushJobSetting)) {
         if (containsLogicalTimestamp(pushJobSetting)) {
           Object logicalTimestamp = recordReader.getRmdValue(recordAvroWrapper, null);
           rmdBytes = convertLogicalTimestampToRmd(
@@ -141,20 +143,6 @@ public class DataWriterSparkJob extends AbstractDataWriterSparkJob {
     }, RowEncoder.apply(DEFAULT_SCHEMA));
 
     return df;
-  }
-
-  static boolean containsLogicalTimestamp(PushJobSetting pushJobSetting) {
-    Schema inputRmdSchema = pushJobSetting.inputDataSchema.getField(pushJobSetting.rmdField).schema();
-    return inputRmdSchema.getType() == Schema.Type.LONG;
-  }
-
-  static boolean containsRmdSchema(PushJobSetting pushJobSetting) {
-    return pushJobSetting.replicationMetadataSchemaString != null
-        && !pushJobSetting.replicationMetadataSchemaString.isEmpty();
-  }
-
-  static boolean rmdFieldPresent(PushJobSetting pushJobSetting) {
-    return pushJobSetting.rmdField != null && !pushJobSetting.rmdField.isEmpty();
   }
 
   @VisibleForTesting
