@@ -273,6 +273,8 @@ public class ControllerApiConstants {
   public static final String GLOBAL_RT_DIV_ENABLED = "global_rt_div_enabled";
   public static final String ENUM_SCHEMA_EVOLUTION_ALLOWED = "enum_schema_evolution_allowed";
   public static final String STORE_LIFECYCLE_HOOKS_LIST = "store_lifecycle_hooks_list";
+  public static final String KEY_URN_COMPRESSION_ENABLED = "key_urn_compression_enabled";
+  public static final String KEY_URN_FIELDS = "key_urn_fields";
 
   /**
    * Params for repush job

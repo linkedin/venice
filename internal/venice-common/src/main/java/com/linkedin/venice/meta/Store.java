@@ -373,4 +373,12 @@ public interface Store {
   List<LifecycleHooksRecord> getStoreLifecycleHooks();
 
   void setStoreLifecycleHooks(List<LifecycleHooksRecord> storeLifecycleHooks);
+
+  void setKeyUrnCompressionEnabled(boolean keyUrnCompressionEnabled);
+
+  boolean isKeyUrnCompressionEnabled();
+
+  void setKeyUrnFields(List<String> keyUrnFields);
+
+  List<String> getKeyUrnFields();
 }
