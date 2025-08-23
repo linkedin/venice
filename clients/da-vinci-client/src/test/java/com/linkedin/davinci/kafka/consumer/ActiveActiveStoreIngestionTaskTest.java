@@ -668,7 +668,7 @@ public class ActiveActiveStoreIngestionTaskTest {
           .getUpstreamKafkaUrlFromKafkaValue(msgWithAbsentUpstreamCluster, sourceKafka, kafkaClusterIdToUrlMap);
     } catch (VeniceException e) {
       LOGGER.info("kmeWithAbsentUpstreamCluster", e);
-      assertTrue(e.getMessage().startsWith("No Kafka cluster ID found in the cluster ID to Kafka URL map."));
+      assertTrue(e.getMessage().startsWith("No PubSub cluster ID found in the cluster ID to PubSub URL map."));
       assertTrue(e.getMessage().contains("Message type: " + MessageType.PUT));
     }
 
@@ -692,7 +692,7 @@ public class ActiveActiveStoreIngestionTaskTest {
           .getUpstreamKafkaUrlFromKafkaValue(msgForControlMessage, sourceKafka, kafkaClusterIdToUrlMap);
     } catch (VeniceException e) {
       LOGGER.info("kmeForControlMessage", e);
-      assertTrue(e.getMessage().startsWith("No Kafka cluster ID found in the cluster ID to Kafka URL map."));
+      assertTrue(e.getMessage().startsWith("No PubSub cluster ID found in the cluster ID to PubSub URL map."));
       assertTrue(
           e.getMessage()
               .contains("Message type: " + MessageType.CONTROL_MESSAGE + "/" + ControlMessageType.TOPIC_SWITCH));

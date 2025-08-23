@@ -543,11 +543,12 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           partitionConsumptionState.setLeaderFollowerState(STANDBY);
           updateLeaderTopicOnFollower(partitionConsumptionState);
           // subscribe back to local VT/partition
-          PubSubPosition subscribeOffset = getLocalVtSubscribeOffset(partitionConsumptionState);
+          PubSubPosition subscribePosition = getLocalVtSubscribePosition(partitionConsumptionState);
           if (isGlobalRtDivEnabled()) {
-            consumerDiv.updateLatestConsumedVtOffset(partition, subscribeOffset); // latest consumed vt offset (LCVO)
+            // latest consumed vt position (LCVP)
+            consumerDiv.updateLatestConsumedVtPosition(partition, subscribePosition);
           }
-          consumerSubscribe(topic, partitionConsumptionState, subscribeOffset, localKafkaServer);
+          consumerSubscribe(topic, partitionConsumptionState, subscribePosition, localKafkaServer);
           /**
            * When switching leader to follower, we may adjust the underlying storage partition to optimize the performance.
            * Only adjust the storage engine after the batch portion as compaction tuning is meaningless for the batch portion.
@@ -2421,7 +2422,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
         // Update the latest consumed VT offset since we're consuming from the version topic
         if (isGlobalRtDivEnabled()) {
-          getConsumerDiv().updateLatestConsumedVtOffset(partition, consumerRecord.getPosition());
+          getConsumerDiv().updateLatestConsumedVtPosition(partition, consumerRecord.getPosition());
 
           if (shouldSyncOffsetFromSnapshot(consumerRecord, partitionConsumptionState)) {
             PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(getVersionTopic(), partition);
@@ -3444,11 +3445,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       String brokerUrl,
       Map<CharSequence, ProducerPartitionState> rtDivPartitionStates) {
     final PubSubPosition previousPosition = previousMessage.getPosition();
-    GlobalRtDivState globalRtDiv = new GlobalRtDivState(
-        brokerUrl,
-        rtDivPartitionStates,
-        previousPosition.getNumericOffset(),
-        previousPosition.toWireFormatBuffer());
+    GlobalRtDivState globalRtDiv =
+        new GlobalRtDivState(brokerUrl, rtDivPartitionStates, previousPosition.toWireFormatBuffer());
     byte[] valueBytes = ByteUtils.extractByteArray(globalRtDivStateSerializer.serialize(globalRtDiv));
     try {
       valueBytes = compressor.get().compress(valueBytes);
@@ -3636,8 +3634,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       final Map<CharSequence, ProducerPartitionState> producerStates = globalRtDivState.getProducerStates();
       PartitionTracker.TopicType realTimeTopicType = PartitionTracker.TopicType.of(REALTIME_TOPIC_TYPE, brokerUrl);
       getConsumerDiv().setPartitionState(realTimeTopicType, pcs.getPartition(), producerStates);
-      final PubSubPosition latestConsumedRtOffset = PubSubUtil.fromKafkaOffset(globalRtDivState.getLatestOffset()); // LCRO
-      pcs.setDivRtCheckpointPosition(brokerUrl, latestConsumedRtOffset);
+      final PubSubPosition divRtCheckpointPosition =
+          getPubSubContext().getPubSubPositionDeserializer().toPosition(globalRtDivState.getLatestPubSubPositionWf());
+      pcs.setDivRtCheckpointPosition(brokerUrl, divRtCheckpointPosition);
     } else {
       LOGGER.warn(
           "Unable to load Global RT DIV from storage engine for replica: {} brokerUrl: {}",

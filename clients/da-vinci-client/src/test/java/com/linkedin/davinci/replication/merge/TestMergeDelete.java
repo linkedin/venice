@@ -48,7 +48,7 @@ public class TestMergeDelete extends TestMergeBase {
         Lazy.of(() -> serializeValueRecord(oldValueRecord)),
         new RmdWithValueSchemaId(schemaSet.getValueSchemaId(), RMD_VERSION_ID, oldRmdRecord),
         2L,
-        1L,
+        P1,
         0,
         0);
 
@@ -97,7 +97,7 @@ public class TestMergeDelete extends TestMergeBase {
         Lazy.of(() -> serializeValueRecord(oldValueRecord)),
         new RmdWithValueSchemaId(schemaSet.getValueSchemaId(), RMD_VERSION_ID, oldRmdRecord),
         2L,
-        1L,
+        P1,
         0,
         0);
 
@@ -121,7 +121,7 @@ public class TestMergeDelete extends TestMergeBase {
         Lazy.of(() -> serializeValueRecord(oldValueRecord)),
         new RmdWithValueSchemaId(schemaSet.getValueSchemaId(), RMD_VERSION_ID, oldRmdRecord),
         4L,
-        1L,
+        P1,
         0,
         -1); // Default colo ID = -1, any coloID >= -1 will be accepted.
     Assert.assertFalse(result.isUpdateIgnored());
@@ -167,7 +167,7 @@ public class TestMergeDelete extends TestMergeBase {
         Lazy.of(() -> serializeValueRecord(oldValueRecord)),
         new RmdWithValueSchemaId(schemaSet.getValueSchemaId(), RMD_VERSION_ID, oldRmdRecord),
         2L,
-        1L,
+        P1,
         0,
         0);
     Assert.assertTrue(result.isUpdateIgnored());
@@ -183,7 +183,7 @@ public class TestMergeDelete extends TestMergeBase {
         Lazy.of(() -> serializeValueRecord(oldValueRecord)),
         new RmdWithValueSchemaId(schemaSet.getValueSchemaId(), RMD_VERSION_ID, oldRmdRecord),
         3L,
-        1L,
+        P1,
         0,
         -2);
     Assert.assertTrue(result.isUpdateIgnored());
@@ -199,7 +199,7 @@ public class TestMergeDelete extends TestMergeBase {
         Lazy.of(() -> serializeValueRecord(oldValueRecord)),
         new RmdWithValueSchemaId(schemaSet.getValueSchemaId(), RMD_VERSION_ID, oldRmdRecord),
         3L,
-        1L,
+        P1,
         0,
         -2);
     Assert.assertTrue(result.isUpdateIgnored());

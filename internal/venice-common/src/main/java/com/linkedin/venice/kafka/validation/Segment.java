@@ -17,6 +17,7 @@ import com.linkedin.venice.kafka.protocol.state.ProducerPartitionState;
 import com.linkedin.venice.kafka.validation.checksum.CheckSum;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.utils.CollectionUtils;
 import it.unimi.dsi.fastutil.objects.Object2ObjectArrayMap;
 import java.nio.ByteBuffer;
@@ -70,7 +71,7 @@ public class Segment {
    * after checking incoming message's sequence number.
    */
   private volatile boolean newSegment;
-  private volatile long lastSuccessfulOffset;
+  private volatile PubSubPosition lastSuccessfulPosition;
   // record the last timestamp that a validation for this segment happened and passed.
   private volatile long lastRecordTimestamp = -1;
   // record the last producer message time stamp passed within the ConsumerRecord
@@ -202,12 +203,12 @@ public class Segment {
     return this.registered;
   }
 
-  public long getLastSuccessfulOffset() {
-    return lastSuccessfulOffset;
+  public PubSubPosition getLastSuccessfulPosition() {
+    return lastSuccessfulPosition;
   }
 
-  public void setLastSuccessfulOffset(long lastSuccessfulOffset) {
-    this.lastSuccessfulOffset = lastSuccessfulOffset;
+  public void setLastSuccessfulPosition(PubSubPosition lastSuccessfulPosition) {
+    this.lastSuccessfulPosition = lastSuccessfulPosition;
   }
 
   public long getLastRecordTimestamp() {
