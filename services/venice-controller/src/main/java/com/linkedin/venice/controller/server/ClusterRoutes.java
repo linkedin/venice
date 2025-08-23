@@ -7,6 +7,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.VERSION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.CLEANUP_INSTANCE_CUSTOMIZED_STATES;
 import static com.linkedin.venice.controllerapi.ControllerRoute.STORE_MIGRATION_ALLOWED;
 import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_CLUSTER_CONFIG;
+import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_DARK_CLUSTER_CONFIG;
 import static com.linkedin.venice.controllerapi.ControllerRoute.WIPE_CLUSTER;
 
 import com.linkedin.venice.acl.DynamicAccessController;
@@ -15,6 +16,7 @@ import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.MultiStoreTopicsResponse;
 import com.linkedin.venice.controllerapi.StoreMigrationResponse;
 import com.linkedin.venice.controllerapi.UpdateClusterConfigQueryParams;
+import com.linkedin.venice.controllerapi.UpdateDarkClusterConfigQueryParams;
 import com.linkedin.venice.utils.Utils;
 import java.util.Map;
 import java.util.Optional;
@@ -51,6 +53,28 @@ public class ClusterRoutes extends AbstractRoute {
           veniceResponse.setError(
               "Failed when updating configs for cluster: " + clusterName + ". Exception type: "
                   + e.getClass().toString() + ". Detailed message = " + e.getMessage());
+        }
+      }
+    };
+  }
+
+  /**
+   * @see Admin#updateDarkClusterConfig(String, UpdateDarkClusterConfigQueryParams)
+   */
+  public Route updateDarkClusterConfig(Admin admin) {
+    return new VeniceRouteHandler<ControllerResponse>(ControllerResponse.class) {
+      @Override
+      public void internalHandle(Request request, ControllerResponse veniceResponse) {
+        AdminSparkServer.validateParams(request, UPDATE_DARK_CLUSTER_CONFIG.getParams(), admin);
+        String clusterName = request.queryParams(CLUSTER);
+        veniceResponse.setCluster(clusterName);
+        Map<String, String> params = Utils.extractQueryParamsFromRequest(request.queryMap().toMap(), veniceResponse);
+        try {
+          admin.updateDarkClusterConfig(clusterName, new UpdateDarkClusterConfigQueryParams(params));
+        } catch (Exception e) {
+          veniceResponse.setError(
+              "Failed when updating dark configs for cluster: " + clusterName + ". Exception type: " + e.getClass()
+                  + ". Detailed message = " + e.getMessage());
         }
       }
     };

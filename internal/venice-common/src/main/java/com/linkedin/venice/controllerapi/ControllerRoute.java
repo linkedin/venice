@@ -14,6 +14,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLIENT_DE
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER_DEST;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.COMPRESSION_STRATEGY;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.DARK_CLUSTER_TARGET_STORES;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.DATA_RECOVERY_COPY_ALL_VERSION_CONFIGS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.DERIVED_SCHEMA;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.DERIVED_SCHEMA_ID;
@@ -151,8 +152,9 @@ public enum ControllerRoute {
       "/update_cluster_config", HttpMethod.POST, Collections.singletonList(CLUSTER),
       SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND
   ),
-
-  JOB("/job", HttpMethod.GET, Arrays.asList(NAME, VERSION)),
+  UPDATE_DARK_CLUSTER_CONFIG(
+      "/update_dark_cluster_config", HttpMethod.POST, Collections.singletonList(CLUSTER), DARK_CLUSTER_TARGET_STORES
+  ), JOB("/job", HttpMethod.GET, Arrays.asList(NAME, VERSION)),
   KILL_OFFLINE_PUSH_JOB("/kill_offline_push_job", HttpMethod.POST, Collections.singletonList(TOPIC)),
   LIST_STORES("/list_stores", HttpMethod.GET, Collections.emptyList(), INCLUDE_SYSTEM_STORES),
   CLEAN_EXECUTION_IDS("/clean_execution_ids", HttpMethod.GET, Collections.emptyList(), CLUSTER),

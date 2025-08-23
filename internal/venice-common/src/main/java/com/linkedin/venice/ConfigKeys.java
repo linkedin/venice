@@ -2830,6 +2830,13 @@ public class ConfigKeys {
    */
   public static final String SERVER_INGESTION_TASK_REUSABLE_OBJECTS_STRATEGY =
       "server.ingestion.task.reusable.objects.strategy";
+
   public static final String CONTROLLER_BACKUP_VERSION_REPLICA_REDUCTION_ENABLED =
       "controller.backup.version.replica.reduction.enabled";
+
+  /**
+   * List of stores to be treated as dark cluster target stores. If a store is in this list, all
+   * writes to this store will be replicated to dark clusters. If empty, no store will be treated as a dark cluster target store.
+   */
+  public static final String DARK_CLUSTER_TARGET_STORES = "dark.cluster.target.stores";
 }

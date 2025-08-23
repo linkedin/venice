@@ -25,6 +25,7 @@ import static com.linkedin.venice.Arg.CLUSTER_LIST;
 import static com.linkedin.venice.Arg.CLUSTER_SRC;
 import static com.linkedin.venice.Arg.COMPACTION_THRESHOLD_MILLISECONDS;
 import static com.linkedin.venice.Arg.COMPRESSION_STRATEGY;
+import static com.linkedin.venice.Arg.DARK_CLUSTER_TARGET_STORES;
 import static com.linkedin.venice.Arg.DATETIME;
 import static com.linkedin.venice.Arg.DAVINCI_HEARTBEAT_REPORTED;
 import static com.linkedin.venice.Arg.DEBUG;
@@ -317,6 +318,10 @@ public enum Command {
       "update-cluster-config", "Update live cluster configs", new Arg[] { URL, CLUSTER },
       new Arg[] { FABRIC, SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND, ALLOW_STORE_MIGRATION,
           CHILD_CONTROLLER_ADMIN_TOPIC_CONSUMPTION_ENABLED }
+  ),
+  UPDATE_DARK_CLUSTER_CONFIG(
+      "update-dark-cluster-config", "Update dark cluster configs", new Arg[] { URL, CLUSTER },
+      new Arg[] { DARK_CLUSTER_TARGET_STORES }
   ),
   EMPTY_PUSH(
       "empty-push", "Do an empty push into an existing store", new Arg[] { URL, STORE, PUSH_ID, STORE_SIZE },
