@@ -187,6 +187,9 @@ public abstract class AbstractStore implements Store {
 
       version.setActiveActiveReplicationEnabled(isActiveActiveReplicationEnabled());
       version.setViewConfigs(getViewConfigs());
+
+      version.setKeyUrnCompressionEnabled(isKeyUrnCompressionEnabled());
+      version.setKeyUrnFields(getKeyUrnFields());
     }
 
     storeVersionsSupplier.getForUpdate().add(index, version.dataModel());
