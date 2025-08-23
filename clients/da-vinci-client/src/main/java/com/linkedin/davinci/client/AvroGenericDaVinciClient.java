@@ -139,6 +139,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
 
   private final DaVinciRecordTransformerConfig recordTransformerConfig;
   private int readerSchemaId;
+  private boolean isValidateSpecificSchemaEnabled;
 
   public AvroGenericDaVinciClient(
       DaVinciConfig daVinciConfig,
@@ -780,7 +781,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
     }
     logger.info("Starting client, storeName={}", getStoreName());
     VeniceConfigLoader configLoader = buildVeniceConfig();
-
+    this.isValidateSpecificSchemaEnabled = configLoader.getVeniceServerConfig().isValidateSpecificSchemaEnabled();
     Optional<ObjectCacheConfig> cacheConfig = Optional.ofNullable(daVinciConfig.getCacheConfig());
     initBackend(clientConfig, configLoader, managedClients, icProvider, cacheConfig);
 
@@ -825,7 +826,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
               .getSchemaRepository()
               .getValueSchemaId(getStoreName(), specificValueSchema.toString());
           if (schemaId <= 0) {
-            if (daVinciConfig.isValidateSpecificSchemaEnabled()) {
+            if (isValidateSpecificSchemaEnabled) {
               throw new VeniceClientException(
                   "For store: " + getStoreName() + ", cannot find the specific value class: "
                       + clientConfig.getSpecificValueClass() + " with schema: " + specificValueSchema);

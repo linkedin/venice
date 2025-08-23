@@ -2826,4 +2826,5 @@ public class ConfigKeys {
       "server.ingestion.task.reusable.objects.strategy";
   public static final String CONTROLLER_BACKUP_VERSION_REPLICA_REDUCTION_ENABLED =
       "controller.backup.version.replica.reduction.enabled";
+  public static final String DAVINCI_VALIDATE_SPECIFIC_SCHEMA_ENABLED = "davinci.validate.specific.schema.enabled";
 }
