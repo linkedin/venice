@@ -2,8 +2,11 @@ package com.linkedin.davinci.kafka.consumer;
 
 import static java.util.concurrent.TimeUnit.MINUTES;
 
+import com.linkedin.davinci.compression.KeyUrnCompressor;
+import com.linkedin.davinci.compression.UrnDictV1;
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
 import com.linkedin.davinci.utils.ByteArrayKey;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.TopicSwitch;
@@ -18,12 +21,14 @@ import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.server.state.KeyUrnCompressionDict;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.writer.LeaderCompleteState;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.nio.ByteBuffer;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -31,7 +36,11 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
+import java.util.stream.Collectors;
+import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -51,6 +60,7 @@ import org.apache.avro.generic.GenericRecord;
  * or from global DIV snapshots — if global DIV is enabled.
  */
 public class PartitionConsumptionState {
+  private static final Logger LOGGER = LogManager.getLogger(PartitionConsumptionState.class);
   private static final int MAX_INCREMENTAL_PUSH_ENTRY_NUM = 50;
   private static final long DEFAULT_HEARTBEAT_LAG_THRESHOLD_MS = MINUTES.toMillis(2); // Default is 2 minutes.
   private static final String PREVIOUSLY_READY_TO_SERVE = "previouslyReadyToServe";
@@ -256,15 +266,20 @@ public class PartitionConsumptionState {
 
   private long readyToServeTimeLagThresholdInMs = DEFAULT_HEARTBEAT_LAG_THRESHOLD_MS;
 
+  private final Schema keySchema;
+  private KeyUrnCompressor keyUrnCompressor;
+
   public PartitionConsumptionState(
       String replicaId,
       int partition,
       OffsetRecord offsetRecord,
       PubSubContext pubSubContext,
-      boolean hybrid) {
+      boolean hybrid,
+      Schema keySchema) {
     this.replicaId = replicaId;
     this.partition = partition;
     this.hybrid = hybrid;
+    this.keySchema = keySchema;
     this.offsetRecord = offsetRecord;
     this.pubSubContext = pubSubContext;
     this.errorReported = false;
@@ -303,6 +318,20 @@ public class PartitionConsumptionState {
     this.leaderCompleteState = LeaderCompleteState.LEADER_NOT_COMPLETED;
     this.lastLeaderCompleteStateUpdateInMs = 0;
     this.pendingReportIncPushVersionList = offsetRecord.getPendingReportIncPushVersionList();
+
+    KeyUrnCompressionDict keyUrnCompressionDict = offsetRecord.getKeyUrnCompressionDict();
+    if (keyUrnCompressionDict != null) {
+      if (keyUrnCompressionDict.keyUrnCompressionDictionaryVersion != 1) {
+        throw new VeniceException(
+            "Unsupported key urn compression dictionary version: "
+                + keyUrnCompressionDict.keyUrnCompressionDictionaryVersion);
+      }
+      UrnDictV1 urnDictV1 = UrnDictV1.loadDict(keyUrnCompressionDict.keyUrnCompressionDictionary);
+      this.keyUrnCompressor = new KeyUrnCompressor(
+          keySchema,
+          keyUrnCompressionDict.keyUrnFields.stream().map(Object::toString).collect(Collectors.toList()),
+          urnDictV1);
+    }
   }
 
   public int getPartition() {
@@ -1012,5 +1041,29 @@ public class PartitionConsumptionState {
 
   public void setReadyToServeTimeLagThresholdInMs(long readyToServeTimeLagThresholdInMs) {
     this.readyToServeTimeLagThresholdInMs = readyToServeTimeLagThresholdInMs;
+  }
+
+  public void enableKeyUrnCompressionUponStartOfPush(List<String> keyUrnFields) {
+    if (keyUrnCompressor == null) {
+      LOGGER.info("Enabling key urn compression for replicaId: {} with fields: {}", replicaId, keyUrnFields);
+    } else {
+      LOGGER.info("Previous key urn compression dict will be overridden for replicaId: {}", replicaId);
+    }
+    this.keyUrnCompressor = new KeyUrnCompressor(keySchema, keyUrnFields, UrnDictV1.loadDict(Collections.emptyMap()));
+  }
+
+  public KeyUrnCompressionDict getKeyUrnCompressionDict() {
+    if (keyUrnCompressor == null) {
+      return null;
+    }
+    KeyUrnCompressionDict dict = new KeyUrnCompressionDict();
+    dict.keyUrnCompressionDictionaryVersion = 1;
+    dict.keyUrnFields = keyUrnCompressor.getUrnFieldNames().stream().map(Object::toString).collect(Collectors.toList());
+    dict.keyUrnCompressionDictionary = ByteBuffer.wrap(keyUrnCompressor.getUrnDict().serializeDict());
+    return dict;
+  }
+
+  public KeyUrnCompressor getKeyDictCompression() {
+    return keyUrnCompressor;
   }
 }

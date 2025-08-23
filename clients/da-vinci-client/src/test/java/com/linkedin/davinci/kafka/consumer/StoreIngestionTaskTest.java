@@ -3940,7 +3940,8 @@ public abstract class StoreIngestionTaskTest {
         PARTITION_FOO,
         mockOffsetRecord,
         pubSubContext,
-        true);
+        true,
+        Schema.create(Schema.Type.STRING));
 
     long producerTimestamp = System.currentTimeMillis();
     LeaderMetadataWrapper mockLeaderMetadataWrapper = mock(LeaderMetadataWrapper.class);
@@ -4238,8 +4239,13 @@ public abstract class StoreIngestionTaskTest {
 
     OffsetRecord offsetRecord = mock(OffsetRecord.class);
     doReturn(pubSubTopicRepository.getTopic(versionTopicName)).when(offsetRecord).getLeaderTopic(any());
-    PartitionConsumptionState partitionConsumptionState =
-        new PartitionConsumptionState(Utils.getReplicaId(versionTopicName, 0), 0, offsetRecord, pubSubContext, false);
+    PartitionConsumptionState partitionConsumptionState = new PartitionConsumptionState(
+        Utils.getReplicaId(versionTopicName, 0),
+        0,
+        offsetRecord,
+        pubSubContext,
+        false,
+        Schema.create(Schema.Type.STRING));
 
     PubSubPosition localVersionTopicOffset = InMemoryPubSubPosition.of(100L);
     PubSubPosition remoteVersionTopicOffset = InMemoryPubSubPosition.of(200L);
@@ -4878,8 +4884,13 @@ public abstract class StoreIngestionTaskTest {
         null);
     OffsetRecord offsetRecord = mock(OffsetRecord.class);
     doReturn(pubSubTopic).when(offsetRecord).getLeaderTopic(any());
-    PartitionConsumptionState partitionConsumptionState =
-        new PartitionConsumptionState(Utils.getReplicaId(pubSubTopic, 0), 0, offsetRecord, pubSubContext, false);
+    PartitionConsumptionState partitionConsumptionState = new PartitionConsumptionState(
+        Utils.getReplicaId(pubSubTopic, 0),
+        0,
+        offsetRecord,
+        pubSubContext,
+        false,
+        Schema.create(Schema.Type.STRING));
 
     storeIngestionTaskUnderTest.updateLeaderTopicOnFollower(partitionConsumptionState);
     storeIngestionTaskUnderTest.startConsumingAsLeader(partitionConsumptionState);

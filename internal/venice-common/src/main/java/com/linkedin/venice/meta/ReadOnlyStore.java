@@ -650,6 +650,26 @@ public class ReadOnlyStore implements Store {
     }
 
     @Override
+    public void setKeyUrnCompressionEnabled(boolean keyUrnCompressionEnabled) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public boolean isKeyUrnCompressionEnabled() {
+      return this.delegate.isKeyUrnCompressionEnabled();
+    }
+
+    @Override
+    public void setKeyUrnFields(List<String> keyUrnFields) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public List<String> getKeyUrnFields() {
+      return delegate.getKeyUrnFields();
+    }
+
+    @Override
     public void setRepushSourceVersion(int version) {
       throw new UnsupportedOperationException();
     }
@@ -1691,6 +1711,26 @@ public class ReadOnlyStore implements Store {
   @Override
   public void setStoreLifecycleHooks(List<LifecycleHooksRecord> storeLifecycleHooks) {
     throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public void setKeyUrnCompressionEnabled(boolean keyUrnCompressionEnabled) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public boolean isKeyUrnCompressionEnabled() {
+    return delegate.isKeyUrnCompressionEnabled();
+  }
+
+  @Override
+  public void setKeyUrnFields(List<String> keyUrnFieldList) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public List<String> getKeyUrnFields() {
+    return delegate.getKeyUrnFields();
   }
 
   @Override
