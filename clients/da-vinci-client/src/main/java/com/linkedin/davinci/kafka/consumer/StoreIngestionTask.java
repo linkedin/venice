@@ -1095,10 +1095,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return isLagAcceptable;
   }
 
-  public boolean isReadyToServeAnnouncedWithRTLag() {
-    return false;
-  }
-
   IngestionNotificationDispatcher getIngestionNotificationDispatcher() {
     return ingestionNotificationDispatcher;
   }
