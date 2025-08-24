@@ -1,0 +1,5 @@
+-cp
+/Users/lizifeng/.gradle/caches/modules-2/files-2.1/org.apache.avro/avro/1.10.2/a65aaa91c1aeceb3dd4859dbb9765d1c2063f5a2/avro-1.10.2.jar:/Users/lizifeng/.gradle/caches/modules-2/files-2.1/com.linkedin.avroutil1/avro-fastserde/0.4.30/37b46bd6f00228a50ff96c0422d1e992f4347785/avro-fastserde-0.4.30.jar
+-XDuseUnsharedTable
+-proc:none
+/var/folders/2d/xm0p82_j053_x6x6d4h4f8z00000gn/T/generated6436694719409051973/com/linkedin/avro/fastserde/generated/deserialization/AVRO_1_10/MultiGetResponseRecordV1_GenericDeserializer_433464781_433464781.java
