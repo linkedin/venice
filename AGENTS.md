@@ -1,7 +1,5 @@
 # AGENTS.md
 
-# AGENTS.md
-
 ## Navigating the Project
 
 The Venice codebase is split across these directories:
@@ -40,7 +38,6 @@ Besides code, the repository also contains:
 - `scripts`, which contains a few simple operational scripts that have not yet been folded into the venice-admin-tool.
 - `specs`, which contains formal specifications, in TLA+ and FizzBee, for some aspects of the Venice architecture.
 
-If you have any questions about where some contribution belongs, do not hesitate to reach out on the [community slack](http://slack.venicedb.org).
 
 ---
 
@@ -90,7 +87,6 @@ Venice has 4 modules: `all-modules`, `clients`, `internal` and `services`. Each 
 - **What it does**:  
   Checks coverage for new/changed code only.  
   Uses DiffCoverage (extension of Jacoco) comparing local branch vs. upstream main.  
-  Threshold is **60% branch coverage**.
 
 - **Run**:
   ```bash
@@ -128,6 +124,167 @@ Use **Mockito** for mocking.
 - Name test classes `<ClassName>Test`.
 - Use `@BeforeMethod` and `@AfterMethod` for setup and teardown.
 - Prefer small, focused test methods. One behavior per test.
-- Use timeouts on tests that could potentially hang or take a long time.  
+- Use timeouts on tests that could potentially hang or take a long time.
+
+---
+
+## Integration Testing
+
+Integration tests in Venice verify end-to-end functionality across multiple components. They are located in `src/integrationTest/java` directories and use real Venice services rather than mocks.
+
+### Test Structure and Location
+
+- **Location**: `src/integrationTest/java` (separate from unit tests in `src/test/java`)
+- **Framework**: TestNG with Java 8 compatibility
+- **Naming**: Test classes should end with `Test` (e.g., `TestActiveActiveIngestion`)
+- **Execution**: Run via `./gradlew integrationTest` or specific test tasks
+
+### ServiceFactory - Central Test Infrastructure
+
+The `ServiceFactory` class (`internal/venice-test-common/src/integrationTest/java/com/linkedin/venice/integration/utils/ServiceFactory.java`) is the central factory for creating Venice services and external dependencies used in integration tests.
+
+#### Core Services
+
+**Infrastructure Services:**
+- `getZkServer()` - Creates ZooKeeper server instances
+- `getPubSubBroker()` - Creates Kafka/PubSub broker instances with configurable options
+- `getHelixController()` - Creates Helix controller for cluster management
+
+**Venice Core Services:**
+- `getVeniceController()` - Creates Venice controller instances (parent or child)
+- `getVeniceServer()` - Creates Venice server instances with multi-fabric support
+- `getVeniceRouter()` - Creates Venice router instances for request routing
+
+**Cluster Management:**
+- `getVeniceCluster()` - Creates complete Venice cluster setups
+- `getVeniceMultiClusterWrapper()` - Creates multi-cluster environments
+- `getVeniceTwoLayerMultiRegionMultiClusterWrapper()` - Creates complex multi-region setups
+
+#### Client Creation
+
+**DaVinci Clients:**
+- `getGenericAvroDaVinciClient()` - Creates generic Avro DaVinci clients
+- `getGenericAvroDaVinciClientWithRetries()` - Creates clients with retry logic
+- `getGenericAvroDaVinciFactoryAndClientWithRetries()` - Creates factory and client with retries
+
+#### Mock Services
+
+**Testing Utilities:**
+- `getMockAdminSparkServer()` - Creates mock admin servers for testing
+- `getMockVeniceRouter()` - Creates mock router instances
+- `getMockD2Server()` - Creates mock D2 service discovery servers
+- `getMockHttpServer()` - Creates simple HTTP servers for testing
+
+#### Process Isolation
+
+**Multi-Process Testing:**
+- `startVeniceClusterInAnotherProcess()` - Starts Venice cluster in separate process for maximum isolation
+- `stopVeniceClusterInAnotherProcess()` - Stops external process clusters
+
+#### Key Features
+
+**Retry Logic:**
+- Configurable retry attempts via `withMaxAttempt()`
+- Automatic retry on service startup failures
+- Comprehensive error handling with detailed logging
+
+**Resource Management:**
+- Automatic cleanup of failed service instances
+- Process lifecycle management
+- Memory and file descriptor monitoring
+
+**Pluggable Broker Support:**
+- Configurable PubSub broker factory via system property `pubSubBrokerFactory`
+- Default Kafka implementation with extensibility for other message brokers
+
+### Handling Non-Deterministic Assertions
+
+**⚠️ CRITICAL**: Integration tests often involve asynchronous operations and eventual consistency. Always use wait-based assertions for non-deterministic results to avoid flaky tests.
+
+#### Use TestUtils.waitForNonDeterministicAssertion()
+
+```java
+// ❌ BAD - Direct assertion on async result
+Assert.assertTrue(client.isReady()); // May fail due to timing
+
+// ✅ GOOD - Wait for async condition
+TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+  Assert.assertTrue(client.isReady());
+});
+```
+
+#### Common Scenarios Requiring Wait-Based Assertions
+
+1. **Data Ingestion and Replication**:
+   ```java
+   // Wait for data to be ingested and replicated
+   TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
+     String value = client.get(key).get();
+     Assert.assertEquals(value, expectedValue);
+   });
+   ```
+
+2. **Store State Changes**:
+   ```java
+   // Wait for store to become ready
+   TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+     Assert.assertEquals(admin.getStore(storeName).getCurrentVersion(), expectedVersion);
+   });
+   ```
+
+3. **Cluster Topology Updates**:
+   ```java
+   // Wait for partition assignment
+   TestUtils.waitForNonDeterministicAssertion(45, TimeUnit.SECONDS, () -> {
+     Assert.assertTrue(cluster.getVeniceServers().get(0).isPartitionReady(storeName, partition));
+   });
+   ```
+
+4. **Cross-Region Replication**:
+   ```java
+   // Wait for cross-region data propagation
+   TestUtils.waitForNonDeterministicAssertion(120, TimeUnit.SECONDS, () -> {
+     String remoteValue = remoteClient.get(key).get();
+     Assert.assertEquals(remoteValue, localValue);
+   });
+   ```
+
+#### Best Practices for Reliable Tests
+
+- **Use appropriate timeouts**: 30s for local operations, 60-120s for cross-region
+- **Provide meaningful error messages**: Include context about what was being waited for
+- **Test cleanup**: Always clean up resources in `@AfterMethod` or `@AfterClass`
+- **Avoid Thread.sleep()**: Use wait-based assertions instead of fixed delays
+- **Test isolation**: Each test should be independent and not rely on previous test state
+
+### Usage Patterns
+
+```java
+// Basic cluster setup
+VeniceClusterWrapper cluster = ServiceFactory.getVeniceCluster(options);
+
+// Multi-region setup
+VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegion = 
+    ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(options);
+
+// DaVinci client creation with proper wait
+DaVinciClient<String, String> client = 
+    ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster);
+
+// Wait for client to be ready before using
+TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+  Assert.assertTrue(client.isReady());
+});
+
+// Process isolation for benchmarks
+ServiceFactory.startVeniceClusterInAnotherProcess(clusterInfoFilePath);
+```
+
+### Error Handling and Debugging
+
+- **Log extensively**: Use detailed logging to understand test failures
+- **Resource cleanup**: Ensure proper cleanup even when tests fail
+- **Timeout tuning**: Adjust timeouts based on test environment (CI vs local)
+- **Retry logic**: Use ServiceFactory's built-in retry mechanisms for service startup
 
 
