@@ -1,8 +1,6 @@
 package com.linkedin.venice.listener.grpc;
 
 import com.linkedin.venice.listener.grpc.handlers.VeniceServerGrpcRequestProcessor;
-import com.linkedin.venice.protocols.CountByValueRequest;
-import com.linkedin.venice.protocols.CountByValueResponse;
 import com.linkedin.venice.protocols.VeniceClientRequest;
 import com.linkedin.venice.protocols.VeniceReadServiceGrpc;
 import com.linkedin.venice.protocols.VeniceServerResponse;
@@ -32,10 +30,8 @@ public class VeniceReadServiceImpl extends VeniceReadServiceGrpc.VeniceReadServi
   }
 
   @Override
-  public void countByValue(CountByValueRequest request, StreamObserver<CountByValueResponse> responseObserver) {
-    CountByValueResponse.Builder responseBuilder = CountByValueResponse.newBuilder();
-    GrpcRequestContext ctx = new GrpcRequestContext(request, responseBuilder, responseObserver);
-    requestProcessor.process(ctx);
+  public void compute(VeniceClientRequest request, StreamObserver<VeniceServerResponse> responseObserver) {
+    handleRequest(request, responseObserver);
   }
 
   private void handleRequest(VeniceClientRequest request, StreamObserver<VeniceServerResponse> responseObserver) {

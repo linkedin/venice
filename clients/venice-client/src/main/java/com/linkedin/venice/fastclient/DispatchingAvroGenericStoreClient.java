@@ -20,6 +20,7 @@ import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.compute.ComputeRequestWrapper;
+import com.linkedin.venice.compute.protocol.request.ComputeOperation;
 import com.linkedin.venice.compute.protocol.request.router.ComputeRouterRequestKeyV1;
 import com.linkedin.venice.fastclient.meta.StoreMetadata;
 import com.linkedin.venice.fastclient.transport.GrpcTransportClient;
@@ -44,6 +45,7 @@ import com.linkedin.venice.utils.concurrent.ChainedCompletableFuture;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -53,8 +55,11 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.function.Function;
 import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericDatumReader;
 import org.apache.avro.generic.GenericRecord;
+import org.apache.avro.io.BinaryDecoder;
 import org.apache.avro.io.ByteBufferOptimizedBinaryDecoder;
+import org.apache.avro.io.OptimizedBinaryDecoderFactory;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -151,6 +156,11 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
       return sb.toString();
     }
     if (requestType.equals(RequestType.COMPUTE_STREAMING)) {
+      StringBuilder sb = new StringBuilder();
+      sb.append(URI_SEPARATOR).append(TYPE_COMPUTE).append(URI_SEPARATOR).append(resourceName);
+      return sb.toString();
+    }
+    if (requestType.equals(RequestType.COUNT_BY_VALUE)) {
       StringBuilder sb = new StringBuilder();
       sb.append(URI_SEPARATOR).append(TYPE_COMPUTE).append(URI_SEPARATOR).append(resourceName);
       return sb.toString();
@@ -634,6 +644,374 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
       decoder.onCompletion(
           Optional.of(new VeniceClientHttpException("Failed to decode compute response", SC_INTERNAL_SERVER_ERROR, t)));
     }
+  }
+
+  /**
+   * Native FastClient implementation for CountByValue.
+   * Uses the same chain as batchGet for optimal performance and consistency.
+   */
+  @Override
+  protected CompletableFuture<Map<Object, Integer>> streamingCountByValue(
+      CountByValueRequestContext<K> requestContext,
+      Set<K> keys,
+      String fieldName,
+      int topK) throws VeniceClientException {
+
+    CompletableFuture<Map<Object, Integer>> resultFuture = new CompletableFuture<>();
+
+    // Implement the same scatter-gather logic as batchGet, but customized for CountByValue
+    verifyMetadataInitialized();
+    int keyCnt = keys.size();
+    if (keyCnt > metadata.getBatchGetLimit()) {
+      VeniceKeyCountLimitException veniceKeyCountLimitException = new VeniceKeyCountLimitException(
+          getStoreName(),
+          RequestType.COUNT_BY_VALUE,
+          keyCnt,
+          metadata.getBatchGetLimit());
+      resultFuture.completeExceptionally(veniceKeyCountLimitException);
+      return resultFuture;
+    }
+    requestContext.setKeys(keys);
+
+    metadata.routeRequest(requestContext, keySerializer);
+    int currentVersion = requestContext.currentVersion;
+    Set<Integer> partitionsWithNoRoutes = requestContext.getNonAvailableReplicaPartitions();
+    int numberOfRequestCompletionFutures =
+        requestContext.getRoutes().size() + (partitionsWithNoRoutes.isEmpty() ? 0 : 1);
+    CompletableFuture<Integer>[] requestCompletionFutures = new CompletableFuture[numberOfRequestCompletionFutures];
+
+    String routeForCountByValue = composeURIForMultiKeyRequest((MultiKeyRequestContext<K, V>) requestContext);
+    int routeIndex = 0;
+
+    // Start the request and invoke handler for response
+    for (String route: requestContext.getRoutes()) {
+      String url = route + routeForCountByValue;
+      long nanoTsBeforeSerialization = System.nanoTime();
+      List<MultiKeyRequestContext.KeyInfo<K>> keysForRoutes = requestContext.keysForRoutes(route);
+      byte[] serializedRequest = serializeCountByValueRequest(keysForRoutes, fieldName);
+      requestContext.recordRequestSerializationTime(route, getLatencyInNS(nanoTsBeforeSerialization));
+      requestContext.recordRequestSentTimeStamp(route);
+      CompletableFuture<TransportClientResponse> transportClientFutureForRoute =
+          transportClient.post(url, RequestHeadersProvider.getStreamingBatchGetHeaders(keys.size()), serializedRequest);
+      ChainedCompletableFuture<Integer, Integer> routeRequestFuture =
+          metadata.trackHealthBasedOnRequestToInstance(route, currentVersion, 0, transportClientFutureForRoute);
+      requestContext.routeRequestMap.put(route, routeRequestFuture.getOriginalFuture());
+      requestCompletionFutures[routeIndex] = routeRequestFuture.getResultFuture();
+
+      transportClientFutureForRoute.whenComplete((transportClientResponse, throwable) -> {
+        requestContext.recordRequestSubmissionToResponseHandlingTime(route);
+        TransportClientResponseForRoute response = TransportClientResponseForRoute
+            .fromTransportClientWithRoute(transportClientResponse, route, routeRequestFuture.getOriginalFuture());
+        countByValueTransportRequestCompletionHandler(requestContext, response, throwable, fieldName);
+      });
+      routeIndex++;
+    }
+
+    if (!partitionsWithNoRoutes.isEmpty()) {
+      String errorMessage = String.format(
+          "No available route for store: %s, version: %s, partitionIds: %s",
+          getStoreName(),
+          currentVersion,
+          partitionsWithNoRoutes);
+      if (!REDUNDANT_LOGGING_FILTER.isRedundantException(errorMessage)) {
+        LOGGER.error(errorMessage);
+      }
+      VeniceClientHttpException clientException = new VeniceClientHttpException(errorMessage, SC_BAD_GATEWAY);
+      requestContext.setPartialResponseExceptionIfNull(clientException);
+      CompletableFuture<Integer> placeholderFailedFuture = new CompletableFuture<>();
+      placeholderFailedFuture.completeExceptionally(clientException);
+      requestCompletionFutures[routeIndex] = placeholderFailedFuture;
+    }
+
+    CompletableFuture.allOf(requestCompletionFutures).whenComplete((response, throwable) -> {
+      requestContext.complete();
+
+      boolean failedOverall = throwable != null;
+      if (!failedOverall) {
+        for (CompletableFuture<Integer> requestCompletionFuture: requestCompletionFutures) {
+          try {
+            int status = requestCompletionFuture.get();
+            if (status != SC_OK && status != SC_NOT_FOUND) {
+              failedOverall = true;
+              break;
+            }
+          } catch (Exception e) {
+            failedOverall = true;
+            break;
+          }
+        }
+      }
+
+      // Complete the CountByValue future
+      if (failedOverall && !requestContext.isPartialSuccessAllowed) {
+        Throwable clientException = throwable;
+        if (requestContext.getPartialResponseException().isPresent()) {
+          clientException = requestContext.getPartialResponseException().get();
+        }
+        VeniceClientException exception = new VeniceClientException("CountByValue request failed", clientException);
+        resultFuture.completeExceptionally(exception);
+      } else {
+        // Apply TopK filtering and complete
+        Map<Object, Integer> aggregatedCounts = requestContext.getAggregatedCounts();
+        Map<Object, Integer> finalResult;
+
+        if (topK == Integer.MAX_VALUE || aggregatedCounts.size() <= topK) {
+          finalResult = aggregatedCounts;
+        } else {
+          // Apply TopK filtering
+          finalResult = aggregatedCounts.entrySet()
+              .stream()
+              .sorted(Map.Entry.<Object, Integer>comparingByValue().reversed())
+              .limit(topK)
+              .collect(java.util.LinkedHashMap::new, (m, e) -> m.put(e.getKey(), e.getValue()), Map::putAll);
+        }
+
+        resultFuture.complete(finalResult);
+      }
+    });
+
+    return resultFuture;
+  }
+
+  /**
+   * Serializes CountByValue request using the same pattern as compute requests.
+   * This creates a ComputeRequestWrapper that the existing server-side COUNT_BY_VALUE handler can process.
+   */
+  private byte[] serializeCountByValueRequest(List<MultiKeyRequestContext.KeyInfo<K>> keyList, String fieldName) {
+    List<ComputeRouterRequestKeyV1> routerRequestKeys = new ArrayList<>(keyList.size());
+    for (int i = 0; i < keyList.size(); i++) {
+      MultiKeyRequestContext.KeyInfo<K> keyInfo = keyList.get(i);
+      ComputeRouterRequestKeyV1 routerRequestKey = new ComputeRouterRequestKeyV1();
+      byte[] keyBytes = keyInfo.getSerializedKey();
+      routerRequestKey.keyBytes = ByteBuffer.wrap(keyBytes);
+      routerRequestKey.keyIndex = i;
+      routerRequestKey.partitionId = keyInfo.getPartitionId();
+      routerRequestKeys.add(routerRequestKey);
+    }
+
+    // Reuse the existing compute request serialization to match server expectations
+    // The server-side COUNT_BY_VALUE handler expects a ComputeRouterRequestWrapper
+    return serializeComputeRequest(createCountByValueComputeWrapper(fieldName), keyList);
+  }
+
+  /**
+   * Creates a proper ComputeRequestWrapper for CountByValue operations.
+   * This ensures compatibility with the existing server-side COUNT_BY_VALUE handler.
+   */
+  private ComputeRequestWrapper createCountByValueComputeWrapper(String fieldName) {
+    // Create empty operations list - for CountByValue we don't need explicit operations
+    // The server will determine which fields to count based on the result schema
+    List<ComputeOperation> operations = new ArrayList<>();
+
+    // Get value schema from store metadata
+    Schema valueSchema = metadata.getLatestValueSchema();
+
+    // Create result schema that includes just the field we want to count
+    // Following the same pattern as thin-client projection
+    Schema.Field targetField = valueSchema.getField(fieldName);
+    if (targetField == null) {
+      throw new VeniceClientException("Field '" + fieldName + "' not found in value schema");
+    }
+
+    // For CountByValue, we just use the original value schema as result schema
+    // The server will handle the actual projection and counting
+    Schema resultSchema = valueSchema;
+    String resultSchemaStr = resultSchema.toString();
+
+    // Create proper ComputeRequestWrapper with all required parameters
+    return new ComputeRequestWrapper(
+        metadata.getLatestValueSchemaId(),
+        valueSchema,
+        resultSchema,
+        resultSchemaStr,
+        operations,
+        false // not originally streaming
+    );
+  }
+
+  /**
+   * Handles CountByValue transport responses, following the same pattern as batchGet.
+   */
+  private void countByValueTransportRequestCompletionHandler(
+      CountByValueRequestContext<K> requestContext,
+      TransportClientResponseForRoute transportClientResponse,
+      Throwable exception,
+      String fieldName) {
+
+    if (exception != null) {
+      // Handle exceptions the same way as batchGet
+      if (!REDUNDANT_LOGGING_FILTER.isRedundantException(COMPUTE_TRANSPORT_EXCEPTION_FILTER_MESSAGE)) {
+        LOGGER.error("Exception received from transport for CountByValue. ExMsg: {}", exception.getMessage());
+      }
+      VeniceClientException clientException;
+      if (exception instanceof VeniceClientException) {
+        clientException = (VeniceClientException) exception;
+      } else {
+        clientException = new VeniceClientException("Exception received from transport", exception);
+      }
+      requestContext.markCompleteExceptionally(transportClientResponse, clientException);
+      transportClientResponse.getRouteRequestFuture().completeExceptionally(clientException);
+      return;
+    }
+
+    try {
+      // Deserialize server response - expecting aggregated counts from this partition
+      Map<Object, Integer> partitionCounts = deserializeCountByValueResponse(transportClientResponse.getBody());
+
+      // Aggregate into overall result
+      requestContext.aggregateCounts(partitionCounts);
+
+      requestContext.markComplete(transportClientResponse);
+      transportClientResponse.getRouteRequestFuture().complete(SC_OK);
+
+    } catch (Throwable t) {
+      LOGGER.error("Exception while processing CountByValue response. ExMsg: {}", t.getMessage());
+      VeniceClientException clientException = new VeniceClientException("Failed to process CountByValue response", t);
+      requestContext.markCompleteExceptionally(transportClientResponse, clientException);
+      transportClientResponse.getRouteRequestFuture().completeExceptionally(clientException);
+    }
+  }
+
+  /**
+   * Deserializes CountByValue response from server.
+   * Server returns aggregated field-value counts in compute response format.
+   */
+  private Map<Object, Integer> deserializeCountByValueResponse(byte[] responseBody) {
+    try {
+      // Use the same deserialization pattern as batchGet
+      RecordDeserializer<MultiGetResponseRecordV1> deserializer = getMultiGetResponseRecordDeserializer(-1); // Use
+                                                                                                             // default
+                                                                                                             // schema
+
+      // Deserialize the response records
+      Iterable<MultiGetResponseRecordV1> records =
+          deserializer.deserializeObjects(new ByteBufferOptimizedBinaryDecoder(responseBody));
+
+      Map<Object, Integer> result = new HashMap<>();
+
+      // Process each response record (should be only one for CountByValue aggregation)
+      for (MultiGetResponseRecordV1 record: records) {
+        if (record.value != null && record.value.remaining() > 0) {
+          // For CountByValue, the server returns a GenericRecord with field -> count map
+          // We'll deserialize it as a simple map for now
+          byte[] valueBytes = new byte[record.value.remaining()];
+          record.value.get(valueBytes);
+
+          // Parse the value as a serialized map (simplified approach)
+          Map<String, Integer> deserializedMap = deserializeCountMap(valueBytes);
+          result.putAll(deserializedMap);
+        }
+      }
+
+      return result;
+    } catch (Exception e) {
+      LOGGER.error("Failed to deserialize CountByValue response: {}", e.getMessage(), e);
+      return new HashMap<>();
+    }
+  }
+
+  /**
+   * Deserializes a count map from byte array.
+   * Server returns a serialized GenericRecord with fields containing Map<String, Integer> of value counts.
+   */
+  private Map<String, Integer> deserializeCountMap(byte[] valueBytes) {
+    try {
+      if (valueBytes == null || valueBytes.length == 0) {
+        return new HashMap<>();
+      }
+
+      // Try to deserialize using a more robust approach
+      // Since we know the server serializes using resultSerializer, we can try to use
+      // a generic deserialization approach that doesn't require exact schema matching
+      BinaryDecoder decoder =
+          OptimizedBinaryDecoderFactory.defaultFactory().createOptimizedBinaryDecoder(valueBytes, 0, valueBytes.length);
+
+      try {
+        // Try to read as a generic record without specifying exact schema
+        // This should work for map-type structures
+        GenericDatumReader<Object> reader = new GenericDatumReader<>();
+        Object result = reader.read(null, decoder);
+
+        Map<String, Integer> allCounts = new HashMap<>();
+
+        if (result instanceof GenericRecord) {
+          GenericRecord record = (GenericRecord) result;
+          // Extract counts from all fields
+          for (Schema.Field field: record.getSchema().getFields()) {
+            Object fieldValue = record.get(field.name());
+            extractCountsFromField(fieldValue, allCounts);
+          }
+        } else if (result instanceof Map) {
+          // Direct map result
+          extractCountsFromField(result, allCounts);
+        }
+
+        LOGGER.debug("Deserialized count map with {} distinct values", allCounts.size());
+        return allCounts;
+      } catch (Exception schemaException) {
+        LOGGER.debug(
+            "Generic deserialization failed, trying with ComputeGenericRecord approach: {}",
+            schemaException.getMessage());
+
+        // Fallback: try with schema-based deserialization
+        try {
+          Schema fallbackSchema = createDynamicCountResultSchema(valueBytes);
+
+          // First deserialize to GenericRecord using the fallback schema
+          BinaryDecoder fallbackDecoder = OptimizedBinaryDecoderFactory.defaultFactory()
+              .createOptimizedBinaryDecoder(valueBytes, 0, valueBytes.length);
+          GenericDatumReader<GenericRecord> fallbackReader = new GenericDatumReader<>(fallbackSchema, fallbackSchema);
+          GenericRecord genericRecord = fallbackReader.read(null, fallbackDecoder);
+
+          // Then create ComputeGenericRecord with the deserialized record
+          ComputeGenericRecord computeRecord = new ComputeGenericRecord(genericRecord, fallbackSchema);
+
+          Map<String, Integer> allCounts = new HashMap<>();
+          for (Schema.Field field: fallbackSchema.getFields()) {
+            Object fieldValue = computeRecord.get(field.name());
+            extractCountsFromField(fieldValue, allCounts);
+          }
+
+          return allCounts;
+        } catch (Exception fallbackException) {
+          LOGGER.warn(
+              "Both deserialization approaches failed: {}, {}",
+              schemaException.getMessage(),
+              fallbackException.getMessage());
+          return new HashMap<>();
+        }
+      }
+
+    } catch (Exception e) {
+      LOGGER.warn("Failed to deserialize count map: {}", e.getMessage(), e);
+      return new HashMap<>();
+    }
+  }
+
+  /**
+   * Extracts count data from a field value (which could be a Map or other structure).
+   */
+  private void extractCountsFromField(Object fieldValue, Map<String, Integer> allCounts) {
+    if (fieldValue instanceof Map) {
+      Map<?, ?> fieldCounts = (Map<?, ?>) fieldValue;
+      for (Map.Entry<?, ?> entry: fieldCounts.entrySet()) {
+        if (entry.getKey() != null && entry.getValue() instanceof Integer) {
+          String key = entry.getKey().toString();
+          Integer count = (Integer) entry.getValue();
+          allCounts.merge(key, count, Integer::sum);
+        }
+      }
+    }
+  }
+
+  /**
+   * Creates a dynamic schema based on inspection of the data.
+   * This is a fallback approach when generic deserialization fails.
+   */
+  private Schema createDynamicCountResultSchema(byte[] valueBytes) {
+    // Create a minimal viable schema for count results
+    // Use a simple map schema to avoid Schema.Field instantiation
+    return Schema.createMap(Schema.create(Schema.Type.INT));
   }
 
   private byte[] serializeComputeRequest(

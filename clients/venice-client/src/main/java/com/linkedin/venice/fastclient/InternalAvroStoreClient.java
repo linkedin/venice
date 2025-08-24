@@ -1,7 +1,9 @@
 package com.linkedin.venice.fastclient;
 
 import com.linkedin.venice.client.exceptions.VeniceClientException;
+import com.linkedin.venice.client.store.AvroComputeAggregationRequestBuilder;
 import com.linkedin.venice.client.store.AvroGenericReadComputeStoreClient;
+import com.linkedin.venice.client.store.ComputeAggregationRequestBuilder;
 import com.linkedin.venice.client.store.ComputeGenericRecord;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
 import com.linkedin.venice.client.store.streaming.VeniceResponseCompletableFuture;
@@ -135,5 +137,32 @@ public abstract class InternalAvroStoreClient<K, V> implements AvroGenericReadCo
       ComputeRequestWrapper computeRequestWrapper,
       StreamingCallback<GenericRecord, GenericRecord> callback) {
     throw new VeniceClientException("'computeWithKeyPrefixFilter' is not supported by Venice Avro Store Client");
+  }
+
+  /**
+   * Native FastClient implementation for CountByValue aggregation.
+   * This uses the same chain as get/batchGet for optimal performance.
+   */
+  public final CompletableFuture<Map<Object, Integer>> countByValue(Set<K> keys, String fieldName)
+      throws VeniceClientException {
+    return countByValue(keys, fieldName, Integer.MAX_VALUE);
+  }
+
+  public final CompletableFuture<Map<Object, Integer>> countByValue(Set<K> keys, String fieldName, int topK)
+      throws VeniceClientException {
+    // Use the same RequestContext pattern as batchGet for consistency
+    CountByValueRequestContext<K> requestContext = new CountByValueRequestContext<>(keys.size(), fieldName, topK);
+    return streamingCountByValue(requestContext, keys, fieldName, topK);
+  }
+
+  protected abstract CompletableFuture<Map<Object, Integer>> streamingCountByValue(
+      CountByValueRequestContext<K> requestContext,
+      Set<K> keys,
+      String fieldName,
+      int topK) throws VeniceClientException;
+
+  @Override
+  public ComputeAggregationRequestBuilder<K> computeAggregation() throws VeniceClientException {
+    return new AvroComputeAggregationRequestBuilder<>(this, getSchemaReader());
   }
 }

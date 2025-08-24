@@ -28,7 +28,7 @@ public class ClientTestUtils {
 
   // Small => No explicit "_STREAMING" RequestTypes
   public static final Object[] REQUEST_TYPES_SMALL =
-      { RequestType.SINGLE_GET, RequestType.MULTI_GET, RequestType.COMPUTE };
+      { RequestType.SINGLE_GET, RequestType.MULTI_GET, RequestType.COMPUTE, RequestType.COUNT_BY_VALUE };
 
   public static final Object[] STORE_METADATA_FETCH_MODES = { StoreMetadataFetchMode.SERVER_BASED_METADATA };
 
@@ -73,6 +73,10 @@ public class ClientTestUtils {
         metricPrefix += "--" + RequestType.MULTI_GET_STREAMING.getMetricPrefix();
         break;
       case COMPUTE:
+        metricPrefix += "--" + RequestType.COMPUTE_STREAMING.getMetricPrefix();
+        break;
+      case COUNT_BY_VALUE:
+        // CountByValue uses compute infrastructure, so use compute metrics
         metricPrefix += "--" + RequestType.COMPUTE_STREAMING.getMetricPrefix();
         break;
       case MULTI_GET_STREAMING:
