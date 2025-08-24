@@ -22,6 +22,7 @@ import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.compute.ComputeRequestWrapper;
 import com.linkedin.venice.compute.protocol.request.ComputeOperation;
 import com.linkedin.venice.compute.protocol.request.router.ComputeRouterRequestKeyV1;
+import com.linkedin.venice.compute.protocol.response.ComputeResponseRecordV1;
 import com.linkedin.venice.fastclient.meta.StoreMetadata;
 import com.linkedin.venice.fastclient.transport.GrpcTransportClient;
 import com.linkedin.venice.fastclient.transport.R2TransportClient;
@@ -879,19 +880,17 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
   private Map<Object, Integer> deserializeCountByValueResponse(byte[] responseBody) {
     try {
       // CountByValue responses use ComputeResponseRecordV1 format, not MultiGetResponseRecordV1
-      RecordDeserializer<com.linkedin.venice.compute.protocol.response.ComputeResponseRecordV1> deserializer =
-          FastSerializerDeserializerFactory.getFastAvroSpecificDeserializer(
-              com.linkedin.venice.compute.protocol.response.ComputeResponseRecordV1.SCHEMA$,
-              com.linkedin.venice.compute.protocol.response.ComputeResponseRecordV1.class);
+      RecordDeserializer<ComputeResponseRecordV1> deserializer = FastSerializerDeserializerFactory
+          .getFastAvroSpecificDeserializer(ComputeResponseRecordV1.SCHEMA$, ComputeResponseRecordV1.class);
 
       // Deserialize the response records
-      Iterable<com.linkedin.venice.compute.protocol.response.ComputeResponseRecordV1> records =
+      Iterable<ComputeResponseRecordV1> records =
           deserializer.deserializeObjects(new ByteBufferOptimizedBinaryDecoder(responseBody));
 
       Map<Object, Integer> result = new HashMap<>();
 
       // Process each response record (should be only one for CountByValue aggregation)
-      for (com.linkedin.venice.compute.protocol.response.ComputeResponseRecordV1 record: records) {
+      for (ComputeResponseRecordV1 record: records) {
         if (record.value != null && record.value.remaining() > 0) {
           // For CountByValue, the server returns a GenericRecord with field -> count map
           byte[] valueBytes = new byte[record.value.remaining()];

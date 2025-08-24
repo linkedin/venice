@@ -979,7 +979,9 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
   }
 
   private Schema getComputeResultSchema(ComputeRequest computeRequest, Schema valueSchema) {
-    Utf8 resultSchemaStr = (Utf8) computeRequest.getResultSchemaStr();
+    CharSequence resultSchemaSeq = computeRequest.getResultSchemaStr();
+    Utf8 resultSchemaStr =
+        resultSchemaSeq instanceof Utf8 ? (Utf8) resultSchemaSeq : new Utf8(resultSchemaSeq.toString());
     Schema resultSchema = computeResultSchemaCache.get(resultSchemaStr);
     if (resultSchema == null) {
       resultSchema = new Schema.Parser().parse(resultSchemaStr.toString());
@@ -1119,7 +1121,8 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
 
       // Additional check: CountByValue requests typically use the same schema for result and value
       // This helps distinguish from other compute requests that might have empty operations
-      String resultSchemaStr = computeRequest.getResultSchemaStr();
+      CharSequence resultSchemaSeq = computeRequest.getResultSchemaStr();
+      String resultSchemaStr = resultSchemaSeq != null ? resultSchemaSeq.toString() : null;
       if (resultSchemaStr != null) {
         try {
           // For CountByValue, FastClient creates ComputeRequestWrapper with value schema as result schema
