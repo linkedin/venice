@@ -10,6 +10,7 @@ import com.linkedin.venice.fastclient.GetRequestContext;
 import com.linkedin.venice.fastclient.MultiKeyRequestContext;
 import com.linkedin.venice.fastclient.RequestContext;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.utils.LatencyUtils;
@@ -159,7 +160,7 @@ public abstract class AbstractStoreMetadata implements StoreMetadata {
   }
 
   private String getResourceName(int version) {
-    return storeName + "_v" + version;
+    return Version.composeKafkaTopic(storeName, version);
   }
 
   @Override

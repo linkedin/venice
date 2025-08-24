@@ -23,9 +23,21 @@ public class GrpcOutboundResponseHandler extends VeniceServerGrpcHandler {
     ReadResponse obj = ctx.getReadResponse();
     ServerStatsContext statsContext = ctx.getGrpcStatsContext();
     VeniceServerResponse.Builder veniceServerResponseBuilder = ctx.getVeniceServerResponseBuilder();
+
     if (ctx.hasError()) {
       statsContext.setResponseStatus(HttpResponseStatus.BAD_REQUEST);
       veniceServerResponseBuilder.setData(ByteString.EMPTY).setCompressionStrategy(compressionStrategy.getValue());
+      invokeNextHandler(ctx);
+      return;
+    }
+
+    // Handle null ReadResponse
+    if (obj == null) {
+      ctx.setError();
+      statsContext.setResponseStatus(HttpResponseStatus.INTERNAL_SERVER_ERROR);
+      veniceServerResponseBuilder.setData(ByteString.EMPTY);
+      veniceServerResponseBuilder.setErrorCode(VeniceReadResponseStatus.INTERNAL_ERROR);
+      veniceServerResponseBuilder.setErrorMessage("ReadResponse is null");
       invokeNextHandler(ctx);
       return;
     }
