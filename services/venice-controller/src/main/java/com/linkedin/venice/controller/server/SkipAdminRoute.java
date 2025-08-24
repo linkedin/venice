@@ -1,6 +1,7 @@
 package com.linkedin.venice.controller.server;
 
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.EXECUTION_ID;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.OFFSET;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.SKIP_DIV;
 import static com.linkedin.venice.controllerapi.ControllerRoute.SKIP_ADMIN;
@@ -22,7 +23,7 @@ public class SkipAdminRoute extends AbstractRoute {
   }
 
   /**
-   * @see Admin#skipAdminMessage(String, long, boolean)
+   * @see Admin#skipAdminMessage(String, long, boolean, long)
    */
   public Route skipAdminMessage(Admin admin) {
     return (request, response) -> {
@@ -38,9 +39,11 @@ public class SkipAdminRoute extends AbstractRoute {
         }
         AdminSparkServer.validateParams(request, SKIP_ADMIN.getParams(), admin);
         responseObject.setCluster(request.queryParams(CLUSTER));
-        long offset = Utils.parseLongFromString(request.queryParams(OFFSET), OFFSET);
+        long offset = request.queryParams(OFFSET) == null ? -1L : Long.parseLong(request.queryParams(OFFSET));
+        long executionId =
+            request.queryParams(EXECUTION_ID) == null ? -1L : Long.parseLong(request.queryParams(EXECUTION_ID));
         boolean skipDIV = Utils.parseBooleanOrThrow(request.queryParams(SKIP_DIV), SKIP_DIV);
-        admin.skipAdminMessage(responseObject.getCluster(), offset, skipDIV);
+        admin.skipAdminMessage(responseObject.getCluster(), offset, skipDIV, executionId);
       } catch (Throwable e) {
         responseObject.setError(e);
         AdminSparkServer.handleError(e, request, response);

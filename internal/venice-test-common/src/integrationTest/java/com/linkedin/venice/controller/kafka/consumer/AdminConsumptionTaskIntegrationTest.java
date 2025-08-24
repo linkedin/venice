@@ -141,7 +141,7 @@ public class AdminConsumptionTaskIntegrationTest {
       Assert.assertTrue(parentControllerClient.getStore(storeName).isError());
     });
 
-    parentControllerClient.skipAdminMessage(Long.toString(badOffset), false);
+    parentControllerClient.skipAdminMessage(Long.toString(badOffset), false, null);
     TestUtils.waitForNonDeterministicAssertion(TIMEOUT * 3, TimeUnit.MILLISECONDS, () -> {
       Assert.assertFalse(parentControllerClient.getStore(storeName).isError());
     });

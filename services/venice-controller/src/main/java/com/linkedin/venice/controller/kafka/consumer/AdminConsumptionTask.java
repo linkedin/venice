@@ -25,17 +25,19 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.PubSubUtil;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeader;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeaders;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
+import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.LatencyUtils;
-import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
@@ -75,8 +77,9 @@ public class AdminConsumptionTask implements Runnable, Closeable {
   private static final int MAX_WORKER_QUEUE_SIZE = 10000;
 
   private static class AdminErrorInfo {
-    long offset;
+    PubSubPosition position;
     Exception exception;
+    long executionId;
   }
 
   public static final int MAX_RETRIES_FOR_NONEXISTENT_STORE = 10;
@@ -156,26 +159,29 @@ public class AdminConsumptionTask implements Runnable, Closeable {
   private boolean isSubscribed;
   private final PubSubConsumerAdapter consumer;
   private volatile long offsetToSkip = UNASSIGNED_VALUE;
+  private volatile long executionIdToSkip = UNASSIGNED_VALUE;
   private volatile long offsetToSkipDIV = UNASSIGNED_VALUE;
+  private volatile long executionIdToSkipDIV = UNASSIGNED_VALUE;
   /**
-   * The smallest or first failing offset.
+   * The smallest or first failing position.
    */
-  private volatile long failingOffset = UNASSIGNED_VALUE;
+  private volatile PubSubPosition failingPosition = PubSubSymbolicPosition.EARLIEST;
+  private volatile long failingExecutionId = UNASSIGNED_VALUE;
   private boolean topicExists;
   /**
-   * A {@link Map} of stores to admin operations belonging to each store. The corresponding kafka offset and other
+   * A {@link Map} of stores to admin operations belonging to each store. The corresponding pubsub position and other
    * metadata of each admin operation are included in the {@link AdminOperationWrapper}.
    */
-  private final Map<String, Queue<AdminOperationWrapper>> storeAdminOperationsMapWithOffset;
+  private final Map<String, Queue<AdminOperationWrapper>> storeAdminOperationsMapWithPosition;
 
   /**
    * Map of store names that have encountered some sort of exception during consumption to {@link AdminErrorInfo}
-   * that has the details about the exception and the offset of the problematic admin message.
+   * that has the details about the exception and the position of the problematic admin message.
    */
   private final ConcurrentHashMap<String, AdminErrorInfo> problematicStores;
   private final Queue<DefaultPubSubMessage> undelegatedRecords;
 
-  private final Map<String, Map<Long, Integer>> storeRetryCountMap;
+  private final Map<String, Map<PubSubPosition, Integer>> storeRetryCountMap;
 
   private final ExecutionIdAccessor executionIdAccessor;
   private ExecutorService executorService;
@@ -188,44 +194,47 @@ public class AdminConsumptionTask implements Runnable, Closeable {
 
   private final long processingCycleTimeoutInMs;
   /**
-   * Once all admin messages in a cycle is processed successfully, the id would be updated together with the offset.
+   * Once all admin messages in a cycle is processed successfully, the id would be updated together with the position.
    * It represents a kind of comparable progress of admin topic consumption among all controllers.
    */
   private long lastPersistedExecutionId = UNASSIGNED_VALUE;
   /**
-   * The corresponding offset to {@code lastPersistedExecutionId}
+   * The corresponding position to {@code lastPersistedExecutionId}
    */
-  private long lastPersistedOffset = UNASSIGNED_VALUE;
+  private PubSubPosition lastPersistedPosition = PubSubSymbolicPosition.EARLIEST;
   /**
    * The execution id of the last message that was delegated to a store's queue. Used for DIV check when fetching
    * messages from the admin topic.
    */
   private long lastDelegatedExecutionId = UNASSIGNED_VALUE;
   /**
-   * The corresponding offset to {@code lastDelegatedExecutionId}
+   * The corresponding position to {@code lastDelegatedExecutionId}
    */
-  private long lastOffset = UNASSIGNED_VALUE;
+  private PubSubPosition lastPosition = PubSubSymbolicPosition.EARLIEST;
   /**
-   * Track the latest consumed offset; this variable is updated as long as the consumer consumes new messages,
+   * A flag used immediately after subscribe to allow processing (or at least reading) the first
+   * checkpoint record so we can initialize producerInfo, without relying on offset arithmetic.
+   * This is an alternative to the previous approach (see https://github.com/linkedin/venice/pull/84)
+   * which subtracted 1 from the offset to read one older record.
+   * With inclusive subscription at the checkpoint position, the first record may be a duplicate;
+   * we use this flag to handle that case and initialize producerInfo safely, then set it to true.
+   */
+  private boolean isFirstRecordProcessed = false;
+  /**
+   * Track the latest consumed position; this variable is updated as long as the consumer consumes new messages,
    * no matter whether the message has any issue or not.
    */
-  private long lastConsumedOffset = UNASSIGNED_VALUE;
+  private PubSubPosition lastConsumedPosition = PubSubSymbolicPosition.EARLIEST;
   /**
-   * The local offset value in ZK during initialization phase; the value will not be updated during admin topic consumption.
+   * The local position value in ZK during initialization phase; the value will not be updated during admin topic consumption.
    *
-   * Currently, there are two potential offset: local offset and upstream offset, and we only update and
-   * maintain one of them. While persisting the offset to ZK, we would like to keep the original value
+   * Currently, there are two potential position: local position and upstream position, and we only update and
+   * maintain one of them. While persisting the position to ZK, we would like to keep the original value
    * for the other one, so that rollback/roll-forward of the remote consumption feature can be faster.
    */
-  private long localOffsetCheckpointAtStartTime = UNASSIGNED_VALUE;
-  /**
-   * The upstream offset value in ZK during initialization phase; the value will not be updated during admin topic consumption.
-   *
-   * Currently, there are two potential offset: local offset and upstream offset, and we only update and
-   * maintain one of them. While persisting the offset to ZK, we would like to keep the original value
-   * for the other one, so that rollback/roll-forward of the remote consumption feature can be faster.
-   */
-  private long upstreamOffsetCheckpointAtStartTime = UNASSIGNED_VALUE;
+  private PubSubPosition localPositionCheckpointAtStartTime = PubSubSymbolicPosition.EARLIEST;
+  private PubSubPosition upstreamPositionCheckpointAtStartTime = PubSubSymbolicPosition.EARLIEST;
+
   /**
    * Map of store names to their last succeeded execution id
    */
@@ -244,9 +253,9 @@ public class AdminConsumptionTask implements Runnable, Closeable {
   private int consecutiveDuplicateMessageCount = 0;
 
   /**
-   * Timestamp in millisecond: the last time when updating the consumption offset lag metric
+   * Timestamp in millisecond: the last time when updating the consumption position lag metric
    */
-  private long lastUpdateTimeForConsumptionOffsetLag = 0;
+  private long lastUpdateTimeForConsumptionPositionLag = 0;
 
   /**
    * The local region name of the controller.
@@ -288,7 +297,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     this.executionIdAccessor = executionIdAccessor;
     this.processingCycleTimeoutInMs = processingCycleTimeoutInMs;
 
-    this.storeAdminOperationsMapWithOffset = new ConcurrentHashMap<>();
+    this.storeAdminOperationsMapWithPosition = new ConcurrentHashMap<>();
     this.problematicStores = new ConcurrentHashMap<>();
     // since we use an unbounded queue the core pool size is really the max pool size
     this.executorService = new ThreadPoolExecutor(
@@ -299,7 +308,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
         new LinkedBlockingQueue<>(MAX_WORKER_QUEUE_SIZE),
         new DaemonThreadFactory(String.format("Venice-Admin-Execution-Task-%s", clusterName), admin.getLogContext()));
     this.undelegatedRecords = new LinkedList<>();
-    this.stats.setAdminConsumptionFailedOffset(failingOffset);
+    this.stats.setAdminConsumptionFailedPosition(failingPosition);
     this.pubSubTopic = pubSubTopicRepository.getTopic(topic);
     this.regionName = regionName;
     this.storeRetryCountMap = new ConcurrentHashMap<>();
@@ -370,7 +379,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
             recordsIterator = Utils.iterateOnMapOfLists(messages);
             while (recordsIterator.hasNext()) {
               DefaultPubSubMessage newRecord = recordsIterator.next();
-              lastConsumedOffset = newRecord.getPosition().getNumericOffset();
+              lastConsumedPosition = newRecord.getPosition();
               undelegatedRecords.add(newRecord);
             }
           }
@@ -386,37 +395,41 @@ public class AdminConsumptionTask implements Runnable, Closeable {
           if (record == null) {
             break;
           }
+          long executionId = UNASSIGNED_VALUE;
           try {
-            long executionId = delegateMessage(record);
+            executionId = delegateMessage(record);
             if (executionId == lastDelegatedExecutionId) {
-              updateLastOffset(record.getPosition().getNumericOffset());
+              updateLastPosition(record.getPosition());
             }
             undelegatedRecords.remove();
           } catch (DataValidationException dve) {
             // Very unlikely but DataValidationException could be thrown here.
             LOGGER.error(
-                "Admin consumption task is blocked due to DataValidationException with offset {}",
+                "Admin consumption task is blocked due to DataValidationException with position {}",
                 record.getPosition(),
                 dve);
-            failingOffset = record.getPosition().getNumericOffset();
+            failingPosition = record.getPosition();
+            failingExecutionId = executionId;
             stats.recordFailedAdminConsumption();
             stats.recordAdminTopicDIVErrorReportCount();
             break;
           } catch (Exception e) {
-            LOGGER.error("Admin consumption task is blocked due to Exception with offset {}", record.getPosition(), e);
-            failingOffset = record.getPosition().getNumericOffset();
+            LOGGER
+                .error("Admin consumption task is blocked due to Exception with position {}", record.getPosition(), e);
+            failingPosition = record.getPosition();
+            failingExecutionId = executionId;
             stats.recordFailedAdminConsumption();
             break;
           }
         }
 
-        if (remoteConsumptionEnabled && LatencyUtils
-            .getElapsedTimeFromMsToMs(lastUpdateTimeForConsumptionOffsetLag) > getConsumptionLagUpdateIntervalInMs()) {
+        if (remoteConsumptionEnabled && LatencyUtils.getElapsedTimeFromMsToMs(
+            lastUpdateTimeForConsumptionPositionLag) > getConsumptionLagUpdateIntervalInMs()) {
           recordConsumptionLag();
-          lastUpdateTimeForConsumptionOffsetLag = System.currentTimeMillis();
+          lastUpdateTimeForConsumptionPositionLag = System.currentTimeMillis();
         }
         executeMessagesAndCollectResults();
-        stats.setAdminConsumptionFailedOffset(failingOffset);
+        stats.setAdminConsumptionFailedPosition(failingPosition);
       } catch (Exception e) {
         LOGGER.error("Exception thrown while running admin consumption task", e);
         // Unsubscribe and resubscribe in the next cycle to start over and avoid missing messages from poll.
@@ -428,36 +441,43 @@ public class AdminConsumptionTask implements Runnable, Closeable {
   }
 
   private void subscribe() {
-    Map<String, Long> metaData = adminTopicMetadataAccessor.getMetadata(clusterName).toLegacyMap();
-    if (!metaData.isEmpty()) {
-      Pair<Long, Long> localAndUpstreamOffsets = AdminTopicMetadataAccessor.getOffsets(metaData);
-      localOffsetCheckpointAtStartTime = localAndUpstreamOffsets.getFirst();
-      upstreamOffsetCheckpointAtStartTime = localAndUpstreamOffsets.getSecond();
-      lastPersistedOffset =
-          remoteConsumptionEnabled ? upstreamOffsetCheckpointAtStartTime : localOffsetCheckpointAtStartTime;
-      lastPersistedExecutionId = AdminTopicMetadataAccessor.getExecutionId(metaData);
+    AdminMetadata metaData = adminTopicMetadataAccessor.getMetadata(clusterName);
+    if (!metaData.getPosition().equals(PubSubSymbolicPosition.EARLIEST)) {
+      localPositionCheckpointAtStartTime = metaData.getPosition();
+      upstreamPositionCheckpointAtStartTime = metaData.getUpstreamPosition();
+      lastPersistedPosition =
+          remoteConsumptionEnabled ? upstreamPositionCheckpointAtStartTime : localPositionCheckpointAtStartTime;
+      lastPersistedExecutionId = metaData.getExecutionId();
       /**
-       * For the first poll after subscription, Controller will try to consume one message older than {@link #lastPersistedOffset}
+       * For the first poll after subscription, Controller will try to consume one message older than {@link #lastPersistedPosition}
        * to initialize the {@link #producerInfo}, which will be used to decide whether an execution id gap is a false alarm or not
        * in {@link #checkAndValidateMessage}.
        *
        */
-      lastOffset = lastPersistedOffset - 1;
+      lastPosition = lastPersistedPosition;
       lastDelegatedExecutionId = lastPersistedExecutionId;
+      // Subscribe the admin topic
+      consumer.subscribe(
+          new PubSubTopicPartitionImpl(pubSubTopic, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID),
+          lastPosition,
+          true);
     } else {
-      LOGGER.info("Admin topic metadata is empty, will resume consumption from the starting offset");
-      lastOffset = UNASSIGNED_VALUE;
+      LOGGER.info("Admin topic metadata is empty, will resume consumption from the starting position");
+      lastPosition = PubSubSymbolicPosition.EARLIEST;
       lastDelegatedExecutionId = UNASSIGNED_VALUE;
+      // Subscribe the admin topic
+      consumer.subscribe(
+          new PubSubTopicPartitionImpl(pubSubTopic, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID),
+          lastPosition,
+          false);
     }
-    stats.setAdminConsumptionCheckpointOffset(lastPersistedOffset);
-    stats.registerAdminConsumptionCheckpointOffset();
-    // Subscribe the admin topic
-    consumer.subscribe(new PubSubTopicPartitionImpl(pubSubTopic, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID), lastOffset);
+    stats.setAdminConsumptionCheckpointPosition(lastPersistedPosition);
+    stats.registerAdminConsumptionCheckpointPosition();
     isSubscribed = true;
     LOGGER.info(
-        "Subscribed to topic name: {}, with offset: {} and execution id: {}. Remote consumption flag: {}",
+        "Subscribed to topic name: {}, with position: {} and execution id: {}. Remote consumption flag: {}",
         topic,
-        lastOffset,
+        lastPosition,
         lastPersistedExecutionId,
         remoteConsumptionEnabled);
   }
@@ -465,21 +485,25 @@ public class AdminConsumptionTask implements Runnable, Closeable {
   private void unSubscribe() {
     if (isSubscribed) {
       consumer.unSubscribe(new PubSubTopicPartitionImpl(pubSubTopic, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID));
-      storeAdminOperationsMapWithOffset.clear();
+      storeAdminOperationsMapWithPosition.clear();
       problematicStores.clear();
       undelegatedRecords.clear();
-      failingOffset = UNASSIGNED_VALUE;
+      failingPosition = PubSubSymbolicPosition.EARLIEST;
+      failingExecutionId = UNASSIGNED_VALUE;
       offsetToSkip = UNASSIGNED_VALUE;
+      executionIdToSkip = UNASSIGNED_VALUE;
       offsetToSkipDIV = UNASSIGNED_VALUE;
+      executionIdToSkipDIV = UNASSIGNED_VALUE;
       lastDelegatedExecutionId = UNASSIGNED_VALUE;
       lastPersistedExecutionId = UNASSIGNED_VALUE;
-      lastOffset = UNASSIGNED_VALUE;
-      lastPersistedOffset = UNASSIGNED_VALUE;
+      lastPosition = PubSubSymbolicPosition.EARLIEST;
+      lastPersistedPosition = PubSubSymbolicPosition.EARLIEST;
       producerInfo = null;
       stats.recordPendingAdminMessagesCount(UNASSIGNED_VALUE);
       stats.recordStoresWithPendingAdminMessagesCount(UNASSIGNED_VALUE);
       resetConsumptionLag();
       isSubscribed = false;
+      isFirstRecordProcessed = false;
       LOGGER.info(
           "Unsubscribed from topic name: {}. Remote consumption flag before unsubscription: {}",
           topic,
@@ -490,7 +514,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
   /**
    * Package private for testing purpose
    *
-   * Delegate work from the {@code storeAdminOperationsMapWithOffset} to the worker threads. Wait for the worker threads
+   * Delegate work from the {@link #storeAdminOperationsMapWithPosition} to the worker threads. Wait for the worker threads
    * to complete or when timeout {@code processingCycleTimeoutInMs} is reached. Collect the result of each thread.
    * The result can either be success: all given {@link AdminOperation}s were processed successfully or made progress
    * but couldn't finish processing all of it within the time limit for each cycle. Failure is when either an exception
@@ -511,7 +535,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     List<String> stores = new ArrayList<>();
     // Create a task for each store that has admin messages pending to be processed.
     boolean skipOffsetCommandHasBeenProcessed = false;
-    for (Map.Entry<String, Queue<AdminOperationWrapper>> entry: storeAdminOperationsMapWithOffset.entrySet()) {
+    for (Map.Entry<String, Queue<AdminOperationWrapper>> entry: storeAdminOperationsMapWithPosition.entrySet()) {
       String storeName = entry.getKey();
       Queue<AdminOperationWrapper> storeQueue = entry.getValue();
       if (!storeQueue.isEmpty()) {
@@ -519,8 +543,12 @@ public class AdminConsumptionTask implements Runnable, Closeable {
         if (nextOp == null) {
           continue;
         }
-        long adminMessageOffset = nextOp.getOffset();
-        if (checkOffsetToSkip(nextOp.getOffset(), false)) {
+        PubSubPosition adminMessagePosition = nextOp.getPosition();
+        if (checkOffsetToSkip(adminMessagePosition.getNumericOffset(), false)) {
+          storeQueue.remove();
+          skipOffsetCommandHasBeenProcessed = true;
+        }
+        if (checkExecutionIdToSkip(nextOp.getAdminOperation().getExecutionId(), false)) {
           storeQueue.remove();
           skipOffsetCommandHasBeenProcessed = true;
         }
@@ -538,11 +566,11 @@ public class AdminConsumptionTask implements Runnable, Closeable {
             regionName);
         // Check if there is previously created scheduled task still occupying one thread from the pool.
         if (storesWithScheduledTask.add(storeName)) {
-          // Log the store name and the offset of the task being added into the task list
+          // Log the store name and the position of the task being added into the task list
           LOGGER.info(
-              "Adding admin message from store {} with offset {} to the task list",
+              "Adding admin message from store {} with position {} to the task list",
               storeName,
-              adminMessageOffset);
+              adminMessagePosition);
           tasks.add(newTask);
           stores.add(storeName);
         }
@@ -571,7 +599,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
             result.get();
             problematicStores.remove(storeName);
             if (internalQueuesEmptied) {
-              Queue<AdminOperationWrapper> storeQueue = storeAdminOperationsMapWithOffset.get(storeName);
+              Queue<AdminOperationWrapper> storeQueue = storeAdminOperationsMapWithPosition.get(storeName);
               if (storeQueue != null && !storeQueue.isEmpty()) {
                 internalQueuesEmptied = false;
               }
@@ -579,7 +607,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
           } catch (ExecutionException | CancellationException e) {
             internalQueuesEmptied = false;
             AdminErrorInfo errorInfo = new AdminErrorInfo();
-            Queue<AdminOperationWrapper> storeQueue = storeAdminOperationsMapWithOffset.get(storeName);
+            Queue<AdminOperationWrapper> storeQueue = storeAdminOperationsMapWithPosition.get(storeName);
             int perStorePendingMessagesCount = storeQueue == null ? 0 : storeQueue.size();
             pendingAdminMessagesCount += perStorePendingMessagesCount;
             storesWithPendingAdminMessagesCount += perStorePendingMessagesCount > 0 ? 1 : 0;
@@ -588,7 +616,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
             Throwable cause = e.getCause();
             if (cause instanceof VeniceNoStoreException) {
               // Get the retry count for this store and version combination
-              Map<Long, Integer> retryCountMap =
+              Map<PubSubPosition, Integer> retryCountMap =
                   storeRetryCountMap.computeIfAbsent(storeName, s -> new ConcurrentHashMap<>());
               AdminOperationWrapper nextOp = storeQueue != null ? storeQueue.peek() : null;
               boolean allowAutoSkip = false;
@@ -599,8 +627,9 @@ public class AdminConsumptionTask implements Runnable, Closeable {
                     messageType == AdminMessageType.UPDATE_STORE || messageType == AdminMessageType.DELETE_STORE;
               }
 
-              long offset = nextOp != null ? nextOp.getOffset() : UNASSIGNED_VALUE;
-              int currentRetryCount = retryCountMap.getOrDefault(offset, 0);
+              PubSubPosition position = nextOp != null ? nextOp.getPosition() : PubSubSymbolicPosition.EARLIEST;
+              long executionId = nextOp != null ? nextOp.getAdminOperation().getExecutionId() : UNASSIGNED_VALUE;
+              int currentRetryCount = retryCountMap.getOrDefault(position, 0);
 
               if (currentRetryCount >= MAX_RETRIES_FOR_NONEXISTENT_STORE && allowAutoSkip) {
                 // We've reached the maximum retry limit for this store/message, so remove it from the queue
@@ -610,24 +639,25 @@ public class AdminConsumptionTask implements Runnable, Closeable {
                       "Exceeded maximum retry attempts ({}) for store {} that does not exist. Skipping admin message with offset {}.",
                       MAX_RETRIES_FOR_NONEXISTENT_STORE,
                       storeName,
-                      removedOp.getOffset());
-                  retryCountMap.remove(offset);
+                      removedOp.getPosition().getNumericOffset());
+                  retryCountMap.remove(position);
                   problematicStores.remove(storeName);
                   continue;
                 }
               } else {
                 // Increment the retry count
-                retryCountMap.put(offset, currentRetryCount + 1);
+                retryCountMap.put(position, currentRetryCount + 1);
                 LOGGER.warn(
-                    "Store {} does not exist. Retry attempt {}/{}. Will retry admin message with offset {}.",
+                    "Store {} does not exist. Retry attempt {}/{}. Will retry admin message with position {}.",
                     storeName,
                     currentRetryCount + 1,
                     MAX_RETRIES_FOR_NONEXISTENT_STORE,
-                    offset);
+                    position);
 
                 // Add the error info as normal for retry
                 errorInfo.exception = (VeniceNoStoreException) cause;
-                errorInfo.offset = offset;
+                errorInfo.position = position;
+                errorInfo.executionId = executionId;
                 problematicStores.put(storeName, errorInfo);
               }
             } else if (e instanceof CancellationException) {
@@ -642,25 +672,27 @@ public class AdminConsumptionTask implements Runnable, Closeable {
                 // only mark the store problematic if no progress is made and there are still message(s) in the queue.
                 errorInfo.exception = new VeniceException(
                     "Could not finish processing admin message for store " + storeName + " in time");
-                errorInfo.offset = getNextOperationOffsetIfAvailable(storeName);
+                errorInfo.position = getNextOperationPositionIfAvailable(storeName);
+                errorInfo.executionId = getNextOperationExecutionIdIfAvailable(storeName);
                 problematicStores.put(storeName, errorInfo);
                 LOGGER.warn(errorInfo.exception.getMessage());
               }
             } else {
               errorInfo.exception = e;
-              errorInfo.offset = getNextOperationOffsetIfAvailable(storeName);
+              errorInfo.position = getNextOperationPositionIfAvailable(storeName);
+              errorInfo.executionId = getNextOperationExecutionIdIfAvailable(storeName);
               problematicStores.put(storeName, errorInfo);
             }
           } catch (Throwable e) {
-            long errorMsgOffset = getNextOperationOffsetIfAvailable(storeName);
-            if (errorMsgOffset == UNASSIGNED_VALUE) {
-              LOGGER.error("Could not get the offset of the problematic admin message for store {}", storeName);
+            PubSubPosition errorMsgPosition = getNextOperationPositionIfAvailable(storeName);
+            if (PubSubSymbolicPosition.EARLIEST.equals(errorMsgPosition)) {
+              LOGGER.error("Could not get the position of the problematic admin message for store {}", storeName);
             }
 
             LOGGER.error(
-                "Unexpected exception thrown while processing admin message for store {} at offset {}",
+                "Unexpected exception thrown while processing admin message for store {} at position {}",
                 storeName,
-                errorMsgOffset,
+                errorMsgPosition,
                 e);
             // Throw it above to have the consistent behavior as before
             throw e;
@@ -668,28 +700,33 @@ public class AdminConsumptionTask implements Runnable, Closeable {
         }
         if (problematicStores.isEmpty() && internalQueuesEmptied) {
           // All admin operations were successfully executed or skipped.
-          // 1. Clear the failing offset.
-          // 3. Persist the latest execution id and offset (cluster wide) to ZK.
+          // 1. Clear the failing position.
+          // 3. Persist the latest execution id and position (cluster wide) to ZK.
 
-          // Ensure failingOffset from the delegateMessage is not overwritten.
-          if (failingOffset <= lastOffset) {
-            failingOffset = UNASSIGNED_VALUE;
+          // Ensure failingPosition from the delegateMessage is not overwritten.
+          if (PubSubUtil.comparePubSubPositions(failingPosition, lastPosition) <= 0) {
+            failingPosition = PubSubSymbolicPosition.EARLIEST;
+            failingExecutionId = UNASSIGNED_VALUE;
           }
           persistAdminTopicMetadata();
         } else {
           // One or more stores encountered problems while executing their admin operations.
-          // 1. Do not persist the latest offset (cluster wide) to ZK.
-          // 2. Find and set the smallest failing offset amongst the problematic stores.
-          long smallestOffset = UNASSIGNED_VALUE;
+          // 1. Do not persist the latest position (cluster wide) to ZK.
+          // 2. Find and set the smallest failing position amongst the problematic stores.
+          PubSubPosition smallestPosition = PubSubSymbolicPosition.EARLIEST;
+          long smallestExecutionId = UNASSIGNED_VALUE;
 
           for (Map.Entry<String, AdminErrorInfo> problematicStore: problematicStores.entrySet()) {
-            if (smallestOffset == UNASSIGNED_VALUE || problematicStore.getValue().offset < smallestOffset) {
-              smallestOffset = problematicStore.getValue().offset;
+            if (smallestPosition.equals(PubSubSymbolicPosition.EARLIEST)
+                || PubSubUtil.comparePubSubPositions(problematicStore.getValue().position, smallestPosition) < 0) {
+              smallestPosition = problematicStore.getValue().position;
+              smallestExecutionId = problematicStore.getValue().executionId;
             }
           }
-          // Ensure failingOffset from the delegateMessage is not overwritten.
-          if (failingOffset <= lastOffset) {
-            failingOffset = smallestOffset;
+          // Ensure failingPosition from the delegateMessage is not overwritten.
+          if (PubSubUtil.comparePubSubPositions(failingPosition, lastPosition) <= 0) {
+            failingPosition = smallestPosition;
+            failingExecutionId = smallestExecutionId;
           }
         }
         stats.recordPendingAdminMessagesCount(pendingAdminMessagesCount);
@@ -702,12 +739,18 @@ public class AdminConsumptionTask implements Runnable, Closeable {
   }
 
   /**
-   * @return the offset of the next enqueued operation for the given store name, or {@link #UNASSIGNED_VALUE} if unavailable.
+   * @return the position of the next enqueued operation for the given store name, or {@link #UNASSIGNED_VALUE} if unavailable.
    */
-  private long getNextOperationOffsetIfAvailable(String storeName) {
-    Queue<AdminOperationWrapper> storeQueue = storeAdminOperationsMapWithOffset.get(storeName);
+  private PubSubPosition getNextOperationPositionIfAvailable(String storeName) {
+    Queue<AdminOperationWrapper> storeQueue = storeAdminOperationsMapWithPosition.get(storeName);
     AdminOperationWrapper nextOperation = storeQueue == null ? null : storeQueue.peek();
-    return nextOperation == null ? UNASSIGNED_VALUE : nextOperation.getOffset();
+    return nextOperation == null ? PubSubSymbolicPosition.EARLIEST : nextOperation.getPosition();
+  }
+
+  private long getNextOperationExecutionIdIfAvailable(String storeName) {
+    Queue<AdminOperationWrapper> storeQueue = storeAdminOperationsMapWithPosition.get(storeName);
+    AdminOperationWrapper nextOperation = storeQueue == null ? null : storeQueue.peek();
+    return nextOperation == null ? UNASSIGNED_VALUE : nextOperation.getAdminOperation().getExecutionId();
   }
 
   private void internalClose() {
@@ -756,56 +799,65 @@ public class AdminConsumptionTask implements Runnable, Closeable {
    * @return corresponding executionId if applicable.
    */
   private long delegateMessage(DefaultPubSubMessage record) {
-    if (checkOffsetToSkip(record.getPosition().getNumericOffset(), true) || !shouldProcessRecord(record)) {
+    KafkaKey kafkaKey = record.getKey();
+    KafkaMessageEnvelope kafkaValue = record.getValue();
+    MessageType messageType = MessageType.valueOf(kafkaValue);
+    AdminOperation adminOperation = null;
+    long executionId = UNASSIGNED_VALUE;
+    if (MessageType.PUT == messageType) {
+      Put put = (Put) kafkaValue.payloadUnion;
+      adminOperation = deserializer.deserialize(put.putValue, put.schemaId);
+      PubSubMessageHeader header = record.getPubSubMessageHeaders().get(PubSubMessageHeaders.EXECUTION_ID_KEY);
+      executionId = adminOperation.executionId; // fallback default
+      if (header != null) {
+        try {
+          executionId = ByteBuffer.wrap(header.value()).getLong();
+          if (executionId != adminOperation.executionId) {
+            LOGGER.error(
+                "Execution id in header does not match the one in the message payload. Fallback to reading it from the payload");
+            executionId = adminOperation.executionId;
+          }
+        } catch (Exception e) {
+          LOGGER
+              .error("Failed to read execution id from the message header, fallback to reading it from the payload", e);
+        }
+      }
+    }
+
+    if (checkOffsetToSkip(record.getPosition().getNumericOffset(), true) || checkExecutionIdToSkip(executionId, true)
+        || !shouldProcessRecord(record)) {
       // Return lastDelegatedExecutionId to update the offset without changing the execution id. Skip DIV should/can be
       // used if the skip requires executionId to be reset because this skip here is skipping the message without doing
       // any processing. This may be the case when a message cannot be deserialized properly therefore we don't know
       // what's the right execution id and producer info to set moving forward.
       return lastDelegatedExecutionId;
     }
-    KafkaKey kafkaKey = record.getKey();
-    KafkaMessageEnvelope kafkaValue = record.getValue();
     if (kafkaKey.isControlMessage()) {
       LOGGER.debug("Received control message: {}", kafkaValue);
       return UNASSIGNED_VALUE;
     }
     // check message type
-    MessageType messageType = MessageType.valueOf(kafkaValue);
     if (MessageType.PUT != messageType) {
       throw new VeniceException("Received unexpected message type: " + messageType);
-    }
-    Put put = (Put) kafkaValue.payloadUnion;
-    AdminOperation adminOperation = deserializer.deserialize(put.putValue, put.schemaId);
-    PubSubMessageHeader header = record.getPubSubMessageHeaders().get(PubSubMessageHeaders.EXECUTION_ID_KEY);
-    long executionId = adminOperation.executionId; // fallback default
-    if (header != null) {
-      try {
-        executionId = ByteBuffer.wrap(header.value()).getLong();
-        if (executionId != adminOperation.executionId) {
-          LOGGER.error(
-              "Execution id in header does not match the one in the message payload. Fallback to reading it from the payload");
-          executionId = adminOperation.executionId;
-        }
-      } catch (Exception e) {
-        LOGGER.error("Failed to read execution id from the message header, fallback to reading it from the payload", e);
-      }
     }
     try {
       checkAndValidateMessage(adminOperation, record);
       LOGGER.info(
-          "Received admin operation: {}, message {} offset: {}",
+          "Received admin operation: {}, message {} position: {}",
           AdminMessageType.valueOf(adminOperation).name(),
           adminOperation,
           record.getPosition());
       consecutiveDuplicateMessageCount = 0;
     } catch (DuplicateDataException e) {
       // Previously processed message, safe to skip
+      isFirstRecordProcessed = true;
+      LOGGER.info("Received duplicate message, now setting testRunWithBiggerStartingOffset to false.");
       if (consecutiveDuplicateMessageCount < MAX_DUPLICATE_MESSAGE_LOGS) {
         consecutiveDuplicateMessageCount++;
         LOGGER.info(e.getMessage());
       } else if (consecutiveDuplicateMessageCount == MAX_DUPLICATE_MESSAGE_LOGS) {
         LOGGER.info(
-            "It appears that controller is consuming from a low offset and encounters many admin messages that "
+            "It appears that controller is consuming from a low position and encounters many admin messages that "
                 + "have already been processed. Will stop logging duplicate messages until a fresh admin message.");
       }
       return executionId;
@@ -819,10 +871,10 @@ public class AdminConsumptionTask implements Runnable, Closeable {
       for (Store store: stores) {
         String storeName = store.getName();
         Queue<AdminOperationWrapper> operationQueue =
-            storeAdminOperationsMapWithOffset.computeIfAbsent(storeName, n -> new LinkedList<>());
+            storeAdminOperationsMapWithPosition.computeIfAbsent(storeName, n -> new LinkedList<>());
         AdminOperationWrapper adminOperationWrapper = new AdminOperationWrapper(
             adminOperation,
-            record.getPosition().getNumericOffset(),
+            record.getPosition(),
             producerTimestamp,
             brokerTimestamp,
             System.currentTimeMillis());
@@ -841,7 +893,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
       long brokerTimestamp = record.getPubSubMessageTime();
       AdminOperationWrapper adminOperationWrapper = new AdminOperationWrapper(
           adminOperation,
-          record.getPosition().getNumericOffset(),
+          record.getPosition(),
           producerTimestamp,
           brokerTimestamp,
           System.currentTimeMillis());
@@ -850,8 +902,8 @@ public class AdminConsumptionTask implements Runnable, Closeable {
       stats.recordAdminMessageDelegateLatency(
           Math.max(0, adminOperationWrapper.getDelegateTimestamp() - adminOperationWrapper.getLocalBrokerTimestamp()));
       String storeName = extractStoreName(adminOperation);
-      storeAdminOperationsMapWithOffset.putIfAbsent(storeName, new LinkedList<>());
-      storeAdminOperationsMapWithOffset.get(storeName).add(adminOperationWrapper);
+      storeAdminOperationsMapWithPosition.putIfAbsent(storeName, new LinkedList<>());
+      storeAdminOperationsMapWithPosition.get(storeName).add(adminOperationWrapper);
 
     }
     return executionId;
@@ -859,7 +911,8 @@ public class AdminConsumptionTask implements Runnable, Closeable {
 
   private void checkAndValidateMessage(AdminOperation message, DefaultPubSubMessage record) {
     long incomingExecutionId = message.executionId;
-    if (checkOffsetToSkipDIV(record.getPosition().getNumericOffset()) || lastDelegatedExecutionId == UNASSIGNED_VALUE) {
+    if (checkOffsetToSkipDIV(record.getPosition().getNumericOffset()) || checkExecutionIdToSkipDIV(incomingExecutionId)
+        || lastDelegatedExecutionId == UNASSIGNED_VALUE) {
       lastDelegatedExecutionId = incomingExecutionId;
       LOGGER.info(
           "Updated lastDelegatedExecutionId to {} because lastDelegatedExecutionId is currently UNASSIGNED",
@@ -957,58 +1010,82 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     return storeName;
   }
 
-  private void updateLastOffset(long offset) {
-    if (offset > lastOffset) {
-      lastOffset = offset;
+  private void updateLastPosition(PubSubPosition position) {
+    if (PubSubUtil.comparePubSubPositions(position, lastPosition) > 0) {
+      lastPosition = position;
     }
   }
 
   private void persistAdminTopicMetadata() {
-    if (lastDelegatedExecutionId == lastPersistedExecutionId && lastOffset == lastPersistedOffset) {
+    if (lastDelegatedExecutionId == lastPersistedExecutionId && lastPosition == lastPersistedPosition) {
       // Skip since there are no new admin messages processed.
       return;
     }
     try (AutoCloseableLock ignore =
         admin.getHelixVeniceClusterResources(clusterName).getClusterLockManager().createClusterWriteLock()) {
-      Map<String, Long> metadata = remoteConsumptionEnabled
-          ? AdminTopicMetadataAccessor.generateMetadataMap(
-              Optional.of(localOffsetCheckpointAtStartTime),
-              Optional.of(lastOffset),
-              Optional.of(lastDelegatedExecutionId),
-              Optional.empty())
-          : AdminTopicMetadataAccessor.generateMetadataMap(
-              Optional.of(lastOffset),
-              Optional.of(upstreamOffsetCheckpointAtStartTime),
-              Optional.of(lastDelegatedExecutionId),
-              Optional.empty());
-      adminTopicMetadataAccessor.updateMetadata(clusterName, AdminMetadata.fromLegacyMap(metadata));
-      lastPersistedOffset = lastOffset;
+      AdminMetadata adminMetadata = new AdminMetadata();
+      adminMetadata.setExecutionId(lastDelegatedExecutionId);
+      if (remoteConsumptionEnabled) {
+        adminMetadata.setPubSubPosition(localPositionCheckpointAtStartTime);
+        adminMetadata.setUpstreamPubSubPosition(lastPosition);
+      } else {
+        adminMetadata.setPubSubPosition(lastPosition);
+        adminMetadata.setUpstreamPubSubPosition(upstreamPositionCheckpointAtStartTime);
+      }
+      adminTopicMetadataAccessor.updateMetadata(clusterName, adminMetadata);
+      lastPersistedPosition = lastPosition;
       lastPersistedExecutionId = lastDelegatedExecutionId;
-      LOGGER.info("Updated lastPersistedOffset to {}", lastPersistedOffset);
-      stats.setAdminConsumptionCheckpointOffset(lastPersistedOffset);
+      LOGGER.info("Updated lastPersistedPosition to {}", lastPersistedPosition);
+      stats.setAdminConsumptionCheckpointPosition(lastPersistedPosition);
     }
   }
 
   void skipMessageWithOffset(long offset) {
-    if (offset == failingOffset) {
+    if (offset == failingPosition.getNumericOffset()) {
       offsetToSkip = offset;
     } else {
       throw new VeniceException(
-          "Cannot skip an offset that isn't the first one failing.  Last failed offset is: " + failingOffset);
+          "Cannot skip an offset that isn't the first one failing.  Last failed offset is: "
+              + failingPosition.getNumericOffset());
+    }
+  }
+
+  void skipMessageWithExecutionId(long executionId) {
+    if (executionId == failingExecutionId) {
+      executionIdToSkip = executionId;
+    } else {
+      throw new VeniceException(
+          "Cannot skip an execution id that isn't the first one failing.  Last failed execution id is: "
+              + failingExecutionId);
     }
   }
 
   void skipMessageDIVWithOffset(long offset) {
-    if (offset == failingOffset) {
+    if (offset == failingPosition.getNumericOffset()) {
       offsetToSkipDIV = offset;
     } else {
       throw new VeniceException(
-          "Cannot skip an offset that isn't the first one failing.  Last failed offset is: " + failingOffset);
+          "Cannot skip an offset that isn't the first one failing.  Last failed offset is: "
+              + failingPosition.getNumericOffset());
+    }
+  }
+
+  void skipMessageDIVWithExecutionId(long executionId) {
+    if (executionId == failingExecutionId) {
+      executionIdToSkipDIV = executionId;
+    } else {
+      throw new VeniceException(
+          "Cannot skip an execution id that isn't the first one failing.  Last failed execution id is: "
+              + failingExecutionId);
     }
   }
 
   private void resetOffsetToSkip() {
     offsetToSkip = UNASSIGNED_VALUE;
+  }
+
+  private void resetExecutionToSkip() {
+    executionIdToSkip = UNASSIGNED_VALUE;
   }
 
   private boolean checkOffsetToSkip(long offset, boolean reset) {
@@ -1023,11 +1100,33 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     return skip;
   }
 
+  private boolean checkExecutionIdToSkip(long executionId, boolean reset) {
+    boolean skip = false;
+    if (executionId == executionIdToSkip) {
+      LOGGER.warn("Skipping admin message with executionId {} as instructed", executionId);
+      if (reset) {
+        resetExecutionToSkip();
+      }
+      skip = true;
+    }
+    return skip;
+  }
+
   private boolean checkOffsetToSkipDIV(long offset) {
     boolean skip = false;
     if (offset == offsetToSkipDIV) {
       LOGGER.warn("Skipping DIV for admin message with offset {} as instructed", offset);
       offsetToSkipDIV = UNASSIGNED_VALUE;
+      skip = true;
+    }
+    return skip;
+  }
+
+  private boolean checkExecutionIdToSkipDIV(long executionId) {
+    boolean skip = false;
+    if (executionId == executionIdToSkipDIV) {
+      LOGGER.warn("Skipping DIV for admin message with executionId {} as instructed", executionId);
+      executionIdToSkipDIV = UNASSIGNED_VALUE;
       skip = true;
     }
     return skip;
@@ -1053,8 +1152,12 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     }
   }
 
-  long getFailingOffset() {
-    return failingOffset;
+  PubSubPosition getFailingPosition() {
+    return failingPosition;
+  }
+
+  long getFailingExecutionId() {
+    return failingExecutionId;
   }
 
   private boolean shouldProcessRecord(DefaultPubSubMessage record) {
@@ -1071,13 +1174,13 @@ public class AdminConsumptionTask implements Runnable, Closeable {
           consumerTaskId + " received message from different partition: " + recordPartition + ", expected: "
               + AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID);
     }
-    long recordOffset = record.getPosition().getNumericOffset();
-    // check offset
-    if (lastOffset >= recordOffset) {
+    PubSubPosition recordPosition = record.getPosition();
+    // check position
+    if (isFirstRecordProcessed && PubSubUtil.comparePubSubPositions(lastPosition, recordPosition) >= 0) {
       LOGGER.error(
-          "Current record has been processed, last known offset: {}, current offset: {}",
-          lastOffset,
-          recordOffset);
+          "Current record has been processed, last known position: {}, current position: {}",
+          lastPosition,
+          recordPosition);
       return false;
     }
 
@@ -1101,10 +1204,10 @@ public class AdminConsumptionTask implements Runnable, Closeable {
        * If the first consumer poll returns nothing, "lastConsumedOffset" will remain as {@link #UNASSIGNED_VALUE}, so a
        * huge lag will be reported, but actually that's not case since consumer is subscribed to the last checkpoint offset.
        */
-      if (lastConsumedOffset != UNASSIGNED_VALUE) {
-        stats.setAdminConsumptionOffsetLag(sourceAdminTopicEndOffset - lastConsumedOffset);
+      if (!lastConsumedPosition.equals(PubSubSymbolicPosition.EARLIEST)) {
+        stats.setAdminConsumptionOffsetLag(sourceAdminTopicEndOffset - lastConsumedPosition.getNumericOffset());
       }
-      stats.setMaxAdminConsumptionOffsetLag(sourceAdminTopicEndOffset - lastPersistedOffset);
+      stats.setMaxAdminConsumptionOffsetLag(sourceAdminTopicEndOffset - lastPersistedPosition.getNumericOffset());
     } catch (Exception e) {
       LOGGER.error(
           "Error when emitting admin consumption lag metrics; only log for warning; admin channel will continue to work.");

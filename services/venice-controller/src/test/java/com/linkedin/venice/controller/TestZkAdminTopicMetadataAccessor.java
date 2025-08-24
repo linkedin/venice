@@ -1,7 +1,6 @@
 package com.linkedin.venice.controller;
 
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
@@ -88,15 +87,15 @@ public class TestZkAdminTopicMetadataAccessor {
     Long newOffset = 100L;
 
     // Original metadata
-    Map<String, Long> currentMetadata = AdminTopicMetadataAccessor
-        .generateMetadataMap(Optional.of(originalOffset), Optional.of(-1L), Optional.of(1L), Optional.of(18L));
-    AdminMetadata currentV2Metadata = AdminMetadata.fromLegacyMap(currentMetadata);
+    AdminMetadata currentMetadata = new AdminMetadata();
+    currentMetadata.setOffset(originalOffset);
+    currentMetadata.setExecutionId(1L);
+    currentMetadata.setAdminOperationProtocolVersion(18L);
 
     // metadata that we are trying to update
-    Map<String, Long> metadataDelta = new HashMap<>();
-    metadataDelta.put("offset", newOffset);
-    AdminMetadata v2MetadataDelta = AdminMetadata.fromLegacyMap(metadataDelta);
-    v2MetadataDelta.setUpstreamPubSubPosition(position);
+    AdminMetadata metadataDelta = new AdminMetadata();
+    metadataDelta.setOffset(newOffset);
+    metadataDelta.setUpstreamPubSubPosition(position);
 
     String metadataPath = ZkAdminTopicMetadataAccessor.getAdminTopicMetadataNodePath(clusterName);
     String v2MetadataPath = ZkAdminTopicMetadataAccessor.getAdminTopicV2MetadataNodePath(clusterName);
@@ -105,33 +104,29 @@ public class TestZkAdminTopicMetadataAccessor {
       dataTreeMockedStatic.when(() -> DataTree.copyStat(any(), any())).thenAnswer(invocation -> null);
       Stat readStat = new Stat();
 
-      when(zkClient.readData(metadataPath, readStat)).thenReturn(currentMetadata); // Case 2: the metadata is not null
-      when(zkClient.readData(v2MetadataPath, readStat)).thenReturn(currentV2Metadata);
+      when(zkClient.readData(metadataPath, readStat)).thenReturn(currentMetadata.toLegacyMap()); // Case 2: the metadata
+                                                                                                 // is not null
+      when(zkClient.readData(v2MetadataPath, readStat)).thenReturn(currentMetadata);
 
       // Update the metadata on prod with new offset
-      zkAdminTopicMetadataAccessor.updateMetadata(clusterName, v2MetadataDelta);
+      zkAdminTopicMetadataAccessor.updateMetadata(clusterName, metadataDelta);
 
       // The updated metadata should be the original metadata with the offset/position updated
-      Map<String, Long> updatedMetadata = AdminTopicMetadataAccessor
-          .generateMetadataMap(Optional.of(newOffset), Optional.of(-1L), Optional.of(1L), Optional.of(18L));
-      AdminMetadata updatedV2Metadata = AdminMetadata.fromLegacyMap(updatedMetadata);
-      updatedV2Metadata.setUpstreamPubSubPosition(position);
+      AdminMetadata updatedMetadata = new AdminMetadata();
+      updatedMetadata.setOffset(newOffset);
+      updatedMetadata.setPubSubPosition(ApacheKafkaOffsetPosition.of(newOffset));
+      updatedMetadata.setUpstreamOffset(position.getNumericOffset());
+      updatedMetadata.setUpstreamPubSubPosition(position);
+      updatedMetadata.setExecutionId(1L);
+      updatedMetadata.setAdminOperationProtocolVersion(18L);
 
       // Verify that the metadata path got read 1 times
       verify(zkClient, times(1)).readData(eq(metadataPath), eq(readStat));
       verify(zkClient, times(1)).readData(eq(v2MetadataPath), eq(readStat));
 
       // Verify that the metadata path got written with the correct updated metadata
-      verify(zkClient, times(1)).writeDataGetStat(eq(metadataPath), eq(updatedMetadata), eq(0));
-      verify(zkClient, times(1)).writeDataGetStat(eq(v2MetadataPath), argThat(metadata -> {
-        if (!(metadata instanceof AdminMetadata)) {
-          return false;
-        }
-        AdminMetadata adminMetadata = (AdminMetadata) metadata;
-        Map<String, Object> actualMap = adminMetadata.toMap();
-        Map<String, Object> expectedMap = updatedV2Metadata.toMap();
-        return actualMap.equals(expectedMap);
-      }), eq(0));
+      verify(zkClient, times(1)).writeDataGetStat(eq(metadataPath), eq(updatedMetadata.toLegacyMap()), eq(0));
+      verify(zkClient, times(1)).writeDataGetStat(eq(v2MetadataPath), eq(updatedMetadata), eq(0));
     }
   }
 

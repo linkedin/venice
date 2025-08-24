@@ -177,7 +177,7 @@ public class PartialUpdateTest {
   }
 
   protected boolean isHeartbeatReadyToServeCheckEnabled() {
-    return false;
+    return true;
   }
 
   @BeforeClass(alwaysRun = true)

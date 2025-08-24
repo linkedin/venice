@@ -341,6 +341,25 @@ public class AdminToolE2ETest {
     AdminTool.main(adminToolArgs);
   }
 
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testSkipAdminMessage() throws Exception {
+    String storeName1 = Utils.getUniqueString("testSkipAdminMessage");
+    List<VeniceControllerWrapper> parentControllers = multiRegionMultiClusterWrapper.getParentControllers();
+    String clusterName = clusterNames[0];
+    String parentControllerURLs =
+        parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(Collectors.joining(","));
+    ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerURLs);
+    ControllerClient childControllerClient = ControllerClient
+        .constructClusterControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
+
+    createStore(parentControllerClient, childControllerClient, storeName1);
+
+    String[] adminToolArgs = new String[] { "--execution-id", "10", "--url",
+        childControllerClient.getLeaderControllerUrl(), "--cluster", clusterName, "--skip-admin" };
+
+    AdminTool.main(adminToolArgs);
+  }
+
   private void createStore(
       ControllerClient parentControllerClient,
       ControllerClient childControllerClient,
