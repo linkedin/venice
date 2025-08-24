@@ -1097,17 +1097,50 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
 
   /**
    * Determines if a ComputeRouterRequestWrapper is actually a CountByValue request.
-   * CountByValue requests have empty operations list and are sent via compute endpoint.
+   * CountByValue requests have a specific result schema pattern and empty operations.
+   * This is a more robust check than just empty operations.
    */
   private boolean isCountByValueRequest(ComputeRouterRequestWrapper computeWrapper) {
     try {
       ComputeRequest computeRequest = computeWrapper.getComputeRequest();
-      // CountByValue requests are created with empty operations list
-      // Regular compute requests should have non-empty operations
-      return computeRequest != null
-          && (computeRequest.getOperations() == null || computeRequest.getOperations().isEmpty());
+      if (computeRequest == null) {
+        return false;
+      }
+
+      // CountByValue requests have specific characteristics:
+      // 1. Empty operations list
+      // 2. Result schema matches the value schema (no projection)
+      // 3. Originally created by FastClient CountByValue API
+      boolean hasEmptyOperations = computeRequest.getOperations() == null || computeRequest.getOperations().isEmpty();
+
+      if (!hasEmptyOperations) {
+        return false;
+      }
+
+      // Additional check: CountByValue requests typically use the same schema for result and value
+      // This helps distinguish from other compute requests that might have empty operations
+      String resultSchemaStr = computeRequest.getResultSchemaStr();
+      if (resultSchemaStr != null) {
+        try {
+          // For CountByValue, FastClient creates ComputeRequestWrapper with value schema as result schema
+          SchemaEntry valueSchemaEntry = getComputeValueSchema(computeWrapper);
+          if (valueSchemaEntry != null) {
+            String valueSchemaStr = valueSchemaEntry.getSchema().toString();
+            // CountByValue requests have result schema matching value schema
+            return resultSchemaStr.equals(valueSchemaStr);
+          }
+        } catch (Exception schemaException) {
+          // If schema comparison fails, fall back to operations check only
+          LOGGER.debug("Schema comparison failed for CountByValue detection: {}", schemaException.getMessage());
+        }
+      }
+
+      // Fallback: if result schema is same as value schema, likely CountByValue
+      return hasEmptyOperations;
+
     } catch (Exception e) {
       // If we can't determine the request type, default to regular compute
+      LOGGER.debug("Failed to determine if request is CountByValue: {}", e.getMessage());
       return false;
     }
   }

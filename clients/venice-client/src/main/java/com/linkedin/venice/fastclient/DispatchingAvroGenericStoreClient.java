@@ -878,22 +878,22 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
    */
   private Map<Object, Integer> deserializeCountByValueResponse(byte[] responseBody) {
     try {
-      // Use the same deserialization pattern as batchGet
-      RecordDeserializer<MultiGetResponseRecordV1> deserializer = getMultiGetResponseRecordDeserializer(-1); // Use
-                                                                                                             // default
-                                                                                                             // schema
+      // CountByValue responses use ComputeResponseRecordV1 format, not MultiGetResponseRecordV1
+      RecordDeserializer<com.linkedin.venice.compute.protocol.response.ComputeResponseRecordV1> deserializer =
+          FastSerializerDeserializerFactory.getFastAvroSpecificDeserializer(
+              com.linkedin.venice.compute.protocol.response.ComputeResponseRecordV1.SCHEMA$,
+              com.linkedin.venice.compute.protocol.response.ComputeResponseRecordV1.class);
 
       // Deserialize the response records
-      Iterable<MultiGetResponseRecordV1> records =
+      Iterable<com.linkedin.venice.compute.protocol.response.ComputeResponseRecordV1> records =
           deserializer.deserializeObjects(new ByteBufferOptimizedBinaryDecoder(responseBody));
 
       Map<Object, Integer> result = new HashMap<>();
 
       // Process each response record (should be only one for CountByValue aggregation)
-      for (MultiGetResponseRecordV1 record: records) {
+      for (com.linkedin.venice.compute.protocol.response.ComputeResponseRecordV1 record: records) {
         if (record.value != null && record.value.remaining() > 0) {
           // For CountByValue, the server returns a GenericRecord with field -> count map
-          // We'll deserialize it as a simple map for now
           byte[] valueBytes = new byte[record.value.remaining()];
           record.value.get(valueBytes);
 

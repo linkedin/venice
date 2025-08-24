@@ -222,8 +222,13 @@ public class GrpcTransportClient extends InternalTransportClient {
     VeniceClientRequest veniceClientRequest = buildVeniceClientRequest(requestParts, requestBody, isSingleGet);
     VeniceReadServiceGrpc.VeniceReadServiceStub clientStub = getOrCreateStub(requestParts[2]);
 
+    String queryAction = requestParts[3];
+
     if (isSingleGet) {
       clientStub.get(veniceClientRequest, new VeniceGrpcStreamObserver(responseFuture));
+    } else if (COMPUTE_ACTION.equalsIgnoreCase(queryAction)) {
+      // For compute requests (including CountByValue), use the compute RPC
+      clientStub.compute(veniceClientRequest, new VeniceGrpcStreamObserver(responseFuture));
     } else {
       clientStub.batchGet(veniceClientRequest, new VeniceGrpcStreamObserver(responseFuture));
     }
