@@ -203,11 +203,11 @@ public class RealTimeTopicSwitcherTest {
     Assert.assertEquals(oldVersionCaptor.getValue(), version2.kafkaTopicName());
     Assert.assertEquals(newVersionCaptor.getValue(), version3.kafkaTopicName());
 
-    // VSM should be broadcasted to both versions when there doesn't exist an RT topic
+    // VSM should never be broadcasted to both versions when there doesn't exist an RT topic
     clearInvocations(mockVeniceWriter);
     when(mockTopicManager.containsTopic(realTimeTopic)).thenReturn(false);
     realTimeTopicSwitcher.transmitVersionSwapMessage(mockStore, 2, 3);
-    verify(mockVeniceWriter, times(2)).broadcastVersionSwap(anyString(), anyString(), anyMap());
+    verify(mockVeniceWriter, never()).broadcastVersionSwap(anyString(), anyString(), anyMap());
   }
 
   @Test
