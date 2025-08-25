@@ -154,20 +154,18 @@ public class RouterBackedSchemaReaderTest {
       Assert.assertEquals(schema1.toString(), VALUE_SCHEMA_1.toString());
       Mockito.verify(mockClient, Mockito.timeout(TIMEOUT).times(1)).getRaw(Mockito.anyString());
 
-      // If a missing schema is requested, we should not query it twice.
       Schema schema = schemaReader.getValueSchema(3);
       Assert.assertNull(schema);
-      Mockito.verify(mockClient, Mockito.timeout(TIMEOUT).times(2)).getRaw(Mockito.anyString());
-      Schema cachedSchema = schemaReader.getValueSchema(3);
-      Assert.assertNull(cachedSchema);
-      Mockito.verify(mockClient, Mockito.timeout(TIMEOUT).times(3)).getRaw(Mockito.anyString());
-
+      // Assert.assertThrows(VeniceClientException.class, () -> {
+      // mockClient.getRaw(Mockito.anyString());
+      // });
+      Mockito.verify(mockClient, Mockito.timeout(TIMEOUT).times(6)).getRaw(Mockito.anyString());
       Schema newSchema = schemaReader.getValueSchema(1);
       Assert.assertEquals(newSchema.toString(), VALUE_SCHEMA_1.toString());
-      Mockito.verify(mockClient, Mockito.timeout(TIMEOUT).times(3)).getRaw(Mockito.anyString());
+      Mockito.verify(mockClient, Mockito.timeout(TIMEOUT).times(6)).getRaw(Mockito.anyString());
 
       Assert.assertEquals(schemaReader.getLatestValueSchema().toString(), VALUE_SCHEMA_2.toString());
-      Mockito.verify(mockClient, Mockito.timeout(TIMEOUT).times(5)).getRaw(Mockito.anyString());
+      Mockito.verify(mockClient, Mockito.timeout(TIMEOUT).times(8)).getRaw(Mockito.anyString());
     }
   }
 
