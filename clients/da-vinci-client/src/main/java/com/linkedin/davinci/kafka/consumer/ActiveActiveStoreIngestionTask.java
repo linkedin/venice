@@ -522,7 +522,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         : Collections.singletonList(0L);
 
     // get the source offset and the id
-    long sourceOffset = consumerRecord.getPosition().getNumericOffset();
+    PubSubPosition sourcePosition = consumerRecord.getPosition();
     final MergeConflictResult mergeConflictResult;
 
     aggVersionedIngestionStats.recordTotalDCR(storeName, versionNumber);
@@ -538,7 +538,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
             ((Put) kafkaValue.payloadUnion).putValue,
             writeTimestamp,
             incomingValueSchemaId,
-            sourceOffset,
+            sourcePosition,
             kafkaClusterId,
             kafkaClusterId // Use the kafka cluster ID as the colo ID for now because one colo/fabric has only one
         // Kafka cluster. TODO: evaluate whether it is enough this way, or we need to add a new
@@ -553,7 +553,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
             oldValueByteBufferProvider,
             rmdWithValueSchemaID,
             writeTimestamp,
-            sourceOffset,
+            sourcePosition,
             kafkaClusterId,
             kafkaClusterId);
         getHostLevelIngestionStats()
@@ -568,7 +568,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
             incomingValueSchemaId,
             incomingWriteComputeSchemaId,
             writeTimestamp,
-            sourceOffset,
+            sourcePosition,
             kafkaClusterId,
             kafkaClusterId,
             valueManifestContainer);
@@ -1292,14 +1292,14 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       MessageType type = MessageType.valueOf(kafkaValue.messageType);
       throw new VeniceException(
           String.format(
-              "No Kafka cluster ID found in the cluster ID to Kafka URL map. "
-                  + "Got cluster ID %d and ID to cluster URL map %s. Source Kafka: %s; "
-                  + "%s; Offset: %d; Message type: %s; ProducerMetadata: %s; LeaderMetadataFooter: %s",
+              "No PubSub cluster ID found in the cluster ID to PubSub URL map. "
+                  + "Got cluster ID %d and ID to cluster URL map %s. Source topic-partition: %s; "
+                  + "%s; Position: %s; Message type: %s; ProducerMetadata: %s; LeaderMetadataFooter: %s",
               kafkaValue.leaderMetadataFooter.upstreamKafkaClusterId,
               kafkaClusterIdToUrlMap,
               recordSourceKafkaUrl,
               consumerRecord.getTopicPartition(),
-              consumerRecord.getPosition().getNumericOffset(),
+              consumerRecord.getPosition(),
               type.toString() + (type == MessageType.CONTROL_MESSAGE
                   ? "/" + ControlMessageType.valueOf((ControlMessage) kafkaValue.getPayloadUnion())
                   : ""),
