@@ -22,7 +22,9 @@ public class TestRmdPushUtils {
     final String rmdField = "rmd";
     Schema mockSchema = mock(Schema.class);
     Schema rmdSchema = Schema.create(Schema.Type.LONG);
-    when(mockSchema.getField(eq(rmdField))).thenReturn(new Schema.Field(rmdField, rmdSchema));
+    Schema.Field mockField = mock(Schema.Field.class);
+    when(mockSchema.getField(eq(rmdField))).thenReturn(mockField);
+    when(mockField.schema()).thenReturn(rmdSchema);
 
     PushJobSetting pushJobSetting = new PushJobSetting();
     pushJobSetting.rmdField = rmdField;
@@ -42,7 +44,9 @@ public class TestRmdPushUtils {
     final String rmdField = "rmd";
     Schema mockSchema = mock(Schema.class);
     Schema rmdSchema = Schema.create(Schema.Type.LONG);
-    when(mockSchema.getField(eq(rmdField))).thenReturn(new Schema.Field(rmdField, rmdSchema));
+    Schema.Field mockField = mock(Schema.Field.class);
+    when(mockSchema.getField(eq(rmdField))).thenReturn(mockField);
+    when(mockField.schema()).thenReturn(rmdSchema);
 
     PushJobSetting pushJobSetting = new PushJobSetting();
     pushJobSetting.rmdField = rmdField;
@@ -50,7 +54,8 @@ public class TestRmdPushUtils {
 
     assertTrue(RmdPushUtils.containsLogicalTimestamp(pushJobSetting));
 
-    when(mockSchema.getField(eq(rmdField))).thenReturn(new Schema.Field(rmdField, Schema.create(Schema.Type.BYTES)));
+    when(mockSchema.getField(eq(rmdField))).thenReturn(mockField);
+    when(mockField.schema()).thenReturn(Schema.create(Schema.Type.BYTES));
     assertFalse(RmdPushUtils.containsLogicalTimestamp(pushJobSetting));
   }
 
