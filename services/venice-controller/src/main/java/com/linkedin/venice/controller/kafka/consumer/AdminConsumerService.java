@@ -1,6 +1,5 @@
 package com.linkedin.venice.controller.kafka.consumer;
 
-import com.linkedin.venice.controller.AdminTopicMetadataAccessor;
 import com.linkedin.venice.controller.VeniceControllerClusterConfig;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controller.ZkAdminTopicMetadataAccessor;
@@ -11,13 +10,13 @@ import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import io.tehuti.metrics.MetricsRepository;
-import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.ThreadFactory;
@@ -166,14 +165,14 @@ public class AdminConsumerService extends AbstractVeniceService {
   }
 
   /**
-   * @return The first or the smallest failing offset.
+   * @return The first or the smallest failing position.
    */
-  public long getFailingOffset() {
-    return consumerTask.getFailingOffset();
+  public PubSubPosition getFailingPosition() {
+    return consumerTask.getFailingPosition();
   }
 
   /**
-   * @return cluster-level execution id, offset, and upstream offset in a child colo.
+   * @return cluster-level execution id, position, and upstream position in a child colo.
    */
   public AdminMetadata getAdminTopicMetadata(String clusterName) {
     if (clusterName.equals(config.getClusterName())) {
@@ -186,18 +185,17 @@ public class AdminConsumerService extends AbstractVeniceService {
   }
 
   /**
-   * Update cluster-level execution id, offset, and upstream offset in a child colo.
+   * Update cluster-level execution id, position, and upstream position in a child colo.
    */
   public void updateAdminTopicMetadata(String clusterName, long executionId, long offset, long upstreamOffset) {
     if (clusterName.equals(config.getClusterName())) {
       try (AutoCloseableLock ignore =
           admin.getHelixVeniceClusterResources(clusterName).getClusterLockManager().createClusterWriteLock()) {
-        Map<String, Long> metadata = AdminTopicMetadataAccessor.generateMetadataMap(
-            Optional.of(offset),
-            Optional.of(upstreamOffset),
-            Optional.of(executionId),
-            Optional.empty());
-        adminTopicMetadataAccessor.updateMetadata(clusterName, AdminMetadata.fromLegacyMap(metadata));
+        AdminMetadata metadata = new AdminMetadata();
+        metadata.setOffset(offset);
+        metadata.setUpstreamOffset(upstreamOffset);
+        metadata.setExecutionId(executionId);
+        adminTopicMetadataAccessor.updateMetadata(clusterName, metadata);
       }
     } else {
       throw new VeniceException(
@@ -213,12 +211,9 @@ public class AdminConsumerService extends AbstractVeniceService {
     if (clusterName.equals(config.getClusterName())) {
       try (AutoCloseableLock ignore =
           admin.getHelixVeniceClusterResources(clusterName).getClusterLockManager().createClusterWriteLock()) {
-        Map<String, Long> metadata = AdminTopicMetadataAccessor.generateMetadataMap(
-            Optional.empty(),
-            Optional.empty(),
-            Optional.empty(),
-            Optional.of(adminOperationProtocolVersion));
-        adminTopicMetadataAccessor.updateMetadata(clusterName, AdminMetadata.fromLegacyMap(metadata));
+        AdminMetadata metadata = new AdminMetadata();
+        metadata.setAdminOperationProtocolVersion(adminOperationProtocolVersion);
+        adminTopicMetadataAccessor.updateMetadata(clusterName, metadata);
       }
     } else {
       throw new VeniceException(

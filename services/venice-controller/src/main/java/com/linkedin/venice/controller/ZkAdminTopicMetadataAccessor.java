@@ -118,13 +118,13 @@ public class ZkAdminTopicMetadataAccessor extends AdminTopicMetadataAccessor {
           metadata);
 
       // Merge the metadata objects
-      if (metadata.getExecutionId() != null) {
+      if (!metadata.getExecutionId().equals(UNDEFINED_VALUE)) {
         currentMetadata.setExecutionId(metadata.getExecutionId());
       }
-      if (metadata.getOffset() != null) {
+      if (!metadata.getOffset().equals(UNDEFINED_VALUE)) {
         currentMetadata.setOffset(metadata.getOffset());
       }
-      if (metadata.getUpstreamOffset() != null) {
+      if (!metadata.getUpstreamOffset().equals(UNDEFINED_VALUE)) {
         currentMetadata.setUpstreamOffset(metadata.getUpstreamOffset());
       }
       if (!metadata.getAdminOperationProtocolVersion().equals(UNDEFINED_VALUE)) {
