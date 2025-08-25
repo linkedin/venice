@@ -748,16 +748,18 @@ public class DaVinciBackend implements Closeable {
     public void error(String kafkaTopic, int partitionId, String message, Exception e) {
       ingestionReportExecutor.submit(() -> {
         VersionBackend versionBackend = versionByTopicMap.get(kafkaTopic);
-        if (versionBackend != null) {
-          /**
-           * Report push status needs to be executed before deleting the {@link VersionBackend}.
-           */
-          ExecutionStatus status = getDaVinciErrorStatus(e, useDaVinciSpecificExecutionStatusForError);
-          reportPushStatus(kafkaTopic, partitionId, status);
-
-          versionBackend.completePartitionExceptionally(partitionId, e);
-          versionBackend.tryStopHeartbeat();
+        if (versionBackend == null) {
+          return;
         }
+        /**
+         * Report push status needs to be executed before deleting the {@link VersionBackend}.
+         */
+        ExecutionStatus status = getDaVinciErrorStatus(e, useDaVinciSpecificExecutionStatusForError);
+        reportPushStatus(kafkaTopic, partitionId, status);
+
+        LOGGER.error("Ingestion error for replica: {} : {}", Utils.getReplicaId(kafkaTopic, partitionId), message, e);
+        versionBackend.completePartitionExceptionally(partitionId, e);
+        versionBackend.tryStopHeartbeat();
       });
     }
 
