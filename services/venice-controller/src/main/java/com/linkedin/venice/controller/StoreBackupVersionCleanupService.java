@@ -21,6 +21,7 @@ import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -69,7 +70,7 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
   private final Thread cleanupThread;
   private final long sleepInterval;
   private final long defaultBackupVersionRetentionMs;
-  private static long waitTimeDeleteRepushSourceVersion = TimeUnit.HOURS.toMillis(1);
+  private static long waitTimeDeleteRepushSourceVersion = TimeUnit.MINUTES.toMillis(30);
   private final AtomicBoolean stop = new AtomicBoolean(false);
 
   private final Map<String, StoreBackupVersionCleanupServiceStats> clusterNameCleanupStatsMap =
@@ -293,21 +294,40 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
     }
 
     // This will delete backup versions which satisfy any of the following conditions
-    // 1. If the current version is from repush, delete the repush source backup version
+    // 1. If the current version is from repush, only keep 1 backup version in the chain of repushes into the current
+    // version.
     // 2. Current version is from a repush, but still a lingering version older than retention period.
     // 3. Current version is not repush and is older than retention, delete any versions < current version.
     int repushSourceVersion = store.getVersionOrThrow(currentVersion).getRepushSourceVersion();
+    boolean isCurrentVersionRepushed = repushSourceVersion > NON_EXISTING_VERSION;
+    HashSet<Integer> repushChainVersions = new HashSet<>(); // all versions repushed into the current version
     List<Version> readyToBeRemovedVersions = versions.stream()
-        .filter(
-            v -> repushSourceVersion > NON_EXISTING_VERSION
-                ? (v.getNumber() == repushSourceVersion || v.getNumber() < currentVersion
-                    && v.getCreatedTime() + defaultBackupVersionRetentionMs < time.getMilliseconds())
-                : v.getNumber() < currentVersion)
+        .sorted((v1, v2) -> Integer.compare(v2.getNumber(), v1.getNumber())) // sort in descending order
+        .filter(v -> {
+          if (!isCurrentVersionRepushed) {
+            return v.getNumber() < currentVersion;
+          }
+          repushChainVersions.add(v.getRepushSourceVersion()); // descending order, so source can only appear later
+          return v.getNumber() < currentVersion && (repushChainVersions.contains(v.getNumber())
+              || v.getCreatedTime() + defaultBackupVersionRetentionMs < time.getMilliseconds());
+        })
         .collect(Collectors.toList());
 
     if (readyToBeRemovedVersions.isEmpty()) {
       return false;
     }
+
+    // Do not remove all repush source versions if it results in no backup version, unless older than the retention time
+    if (isCurrentVersionRepushed && readyToBeRemovedVersions.size() >= versions.size() - 1) {
+      for (int i = 0; i < readyToBeRemovedVersions.size(); i++) {
+        Version v = readyToBeRemovedVersions.get(i);
+        if (v.getCreatedTime() + defaultBackupVersionRetentionMs > time.getMilliseconds()) {
+          readyToBeRemovedVersions.remove(i);
+          break; // Remove only the first match
+        }
+      }
+    }
+
     String storeName = store.getName();
     LOGGER.info(
         "Started removing backup versions according to retention policy for store: {} in cluster: {}",
