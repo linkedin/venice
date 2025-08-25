@@ -7,6 +7,7 @@ import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceTimeoutException;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
@@ -87,6 +88,7 @@ public class StateModelIngestionProgressNotifier implements VeniceNotifier {
 
   @Override
   public void error(String resourceName, int partitionId, String message, Exception ex) {
+    logger.error("Ingestion failed for replica: {} : {}", Utils.getReplicaId(resourceName, partitionId), message, ex);
     CountDownLatch ingestionCompleteFlag = getIngestionCompleteFlag(resourceName, partitionId);
     if (ingestionCompleteFlag != null) {
       ingestionCompleteFlag.countDown();

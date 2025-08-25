@@ -1839,16 +1839,16 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   private void handleIngestionException(Exception e) {
-    LOGGER.error(
-        "Ingestion failed due to {}. Will propagate to reporters.",
-        ingestionTaskName,
-        e.getClass().getSimpleName());
+    // TODO: Remove the logged exception stack trace, once it's verified the downstream reporters all log it
+    String errorType = e.getClass().getSimpleName();
+    LOGGER.error("Ingestion failed for {} due to {}. Will propagate to reporters.", ingestionTaskName, errorType, e);
     reportError(partitionConsumptionStateMap.values(), errorPartitionId, "Caught Exception during ingestion.", e);
     hostLevelIngestionStats.recordIngestionFailure();
   }
 
   private void handleIngestionThrowable(Throwable t) {
-    LOGGER.error("{} has failed.", ingestionTaskName, t);
+    String errorType = t.getClass().getSimpleName();
+    LOGGER.error("Ingestion failed for {} due to {}. Will propagate to reporters.", ingestionTaskName, errorType, t);
     reportError(
         partitionConsumptionStateMap.values(),
         errorPartitionId,
