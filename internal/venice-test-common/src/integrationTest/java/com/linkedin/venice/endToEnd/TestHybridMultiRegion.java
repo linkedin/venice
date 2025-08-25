@@ -25,9 +25,11 @@ import static org.testng.Assert.assertTrue;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
+import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.controllerapi.VersionResponse;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
@@ -106,13 +108,17 @@ public class TestHybridMultiRegion {
       final String storeName = Utils.getUniqueString("multi-colo-hybrid-store");
 
       // Create store at parent, make it a hybrid store
-      controllerClient.createNewStore(storeName, "owner", STRING_SCHEMA.toString(), STRING_SCHEMA.toString());
-      ControllerResponse response = controllerClient.updateStore(
-          storeName,
-          new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true)
-              .setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
-              .setHybridRewindSeconds(streamingRewindSeconds)
-              .setHybridOffsetLagThreshold(streamingMessageLag));
+      TestUtils.assertCommand(
+          controllerClient.createNewStore(storeName, "owner", STRING_SCHEMA.toString(), STRING_SCHEMA.toString()));
+      ControllerResponse response = TestUtils.assertCommand(
+          controllerClient.updateStore(
+              storeName,
+              new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true)
+                  .setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
+                  .setHybridRewindSeconds(streamingRewindSeconds)
+                  .setHybridOffsetLagThreshold(streamingMessageLag)));
+      VersionCreationResponse vcr =
+          controllerClient.emptyPush(storeName, Utils.getUniqueString("empty-hybrid-push"), 1L);
       File inputDir = getTempDataDirectory();
       String inputDirPath = "file://" + inputDir.getAbsolutePath();
       TestWriteUtils.writeSimpleAvroFileWithStringToStringAndTimestampSchema(inputDir, 123456789L); // records 1-100
@@ -123,6 +129,46 @@ public class TestHybridMultiRegion {
 
       Assert.assertFalse(response.isError());
       // Do a VPJ push normally to make sure everything is working fine.
+      IntegrationTestPushUtils.runVPJ(vpjProperties);
+      StoreResponse storeResponse = controllerClient.getStore(storeName);
+      Assert.assertFalse(storeResponse.isError());
+      Assert.assertEquals(storeResponse.getStore().getVersions().size(), 2);
+    }
+  }
+
+  @Test(timeOut = 180 * Time.MS_PER_SECOND, expectedExceptions = VeniceException.class)
+  public void testHybridBatchPushWithInvalidRmd() throws IOException {
+    String clusterName = sharedVenice.getClusterNames()[0];
+    try (ControllerClient controllerClient =
+        new ControllerClient(clusterName, sharedVenice.getControllerConnectString())) {
+      long streamingRewindSeconds = 25L;
+      long streamingMessageLag = 2L;
+      final String storeName = Utils.getUniqueString("multi-colo-hybrid-store");
+
+      // Create store at parent, make it a hybrid store
+      TestUtils.assertCommand(
+          controllerClient.createNewStore(storeName, "owner", STRING_SCHEMA.toString(), STRING_SCHEMA.toString()));
+      ControllerResponse response = TestUtils.assertCommand(
+          controllerClient.updateStore(
+              storeName,
+              new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true)
+                  .setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
+                  .setHybridRewindSeconds(streamingRewindSeconds)
+                  .setHybridOffsetLagThreshold(streamingMessageLag)));
+      VersionCreationResponse vcr =
+          controllerClient.emptyPush(storeName, Utils.getUniqueString("empty-hybrid-push"), 1L);
+      File inputDir = getTempDataDirectory();
+      String inputDirPath = "file://" + inputDir.getAbsolutePath();
+      TestWriteUtils
+          .writeSimpleAvroFileWithStringToStringAndTimestampSchema(inputDir, String.valueOf(123456789L).getBytes()); // records
+                                                                                                                     // 1-100
+      Properties vpjProperties = defaultVPJProps(sharedVenice, inputDirPath, storeName);
+      vpjProperties.setProperty(RMD_FIELD_PROP, "rmd");
+      vpjProperties.setProperty(DATA_WRITER_COMPUTE_JOB_CLASS, DataWriterSparkJob.class.getCanonicalName());
+      vpjProperties.setProperty(SPARK_NATIVE_INPUT_FORMAT_ENABLED, String.valueOf(true));
+
+      Assert.assertFalse(response.isError());
+      // push should fail validation
       IntegrationTestPushUtils.runVPJ(vpjProperties);
     }
   }
