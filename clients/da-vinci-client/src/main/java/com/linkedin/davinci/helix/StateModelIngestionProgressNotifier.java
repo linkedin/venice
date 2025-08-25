@@ -88,7 +88,7 @@ public class StateModelIngestionProgressNotifier implements VeniceNotifier {
 
   @Override
   public void error(String resourceName, int partitionId, String message, Exception ex) {
-    logger.error("Ingestion error for replica: {} : {}", Utils.getReplicaId(resourceName, partitionId), message, ex);
+    logger.error("Ingestion failed for replica: {} : {}", Utils.getReplicaId(resourceName, partitionId), message, ex);
     CountDownLatch ingestionCompleteFlag = getIngestionCompleteFlag(resourceName, partitionId);
     if (ingestionCompleteFlag != null) {
       ingestionCompleteFlag.countDown();

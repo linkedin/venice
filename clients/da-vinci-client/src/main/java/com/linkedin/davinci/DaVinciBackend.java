@@ -757,7 +757,7 @@ public class DaVinciBackend implements Closeable {
         ExecutionStatus status = getDaVinciErrorStatus(e, useDaVinciSpecificExecutionStatusForError);
         reportPushStatus(kafkaTopic, partitionId, status);
 
-        LOGGER.error("Ingestion error for replica: {} : {}", Utils.getReplicaId(kafkaTopic, partitionId), message, e);
+        LOGGER.error("Ingestion failed for replica: {} : {}", Utils.getReplicaId(kafkaTopic, partitionId), message, e);
         versionBackend.completePartitionExceptionally(partitionId, e);
         versionBackend.tryStopHeartbeat();
       });

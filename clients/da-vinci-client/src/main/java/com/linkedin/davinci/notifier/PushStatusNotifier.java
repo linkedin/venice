@@ -211,7 +211,7 @@ public class PushStatusNotifier implements VeniceNotifier {
 
   @Override
   public void error(String topic, int partitionId, String message, Exception ex) {
-    LOGGER.error("Ingestion error for replica: {} : {}", Utils.getReplicaId(topic, partitionId), message, ex);
+    LOGGER.error("Ingestion failed for replica: {} : {}", Utils.getReplicaId(topic, partitionId), message, ex);
     helixPartitionStatusAccessor.updateReplicaStatus(topic, partitionId, ERROR);
     offLinePushAccessor.updateReplicaStatus(topic, partitionId, instanceId, ERROR, message);
   }
