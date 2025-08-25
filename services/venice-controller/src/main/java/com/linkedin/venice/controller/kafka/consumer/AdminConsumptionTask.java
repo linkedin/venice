@@ -140,8 +140,8 @@ public class AdminConsumptionTask implements Runnable, Closeable {
   private final Logger LOGGER;
 
   private final String clusterName;
-  private final String topic;
-  private final PubSubTopic pubSubTopic;
+  private final PubSubTopic pubSubAdminTopic;
+  private final PubSubTopicPartition adminTopicPartition;
   private final String consumerTaskId;
   private final AdminTopicMetadataAccessor adminTopicMetadataAccessor;
   private final VeniceHelixAdmin admin;
@@ -270,8 +270,9 @@ public class AdminConsumptionTask implements Runnable, Closeable {
       PubSubTopicRepository pubSubTopicRepository,
       String regionName) {
     this.clusterName = clusterName;
-    this.topic = AdminTopicUtils.getTopicNameFromClusterName(clusterName);
-    this.consumerTaskId = String.format(CONSUMER_TASK_ID_FORMAT, this.topic);
+    this.pubSubAdminTopic = pubSubTopicRepository.getTopic(AdminTopicUtils.getTopicNameFromClusterName(clusterName));
+    this.adminTopicPartition = new PubSubTopicPartitionImpl(pubSubAdminTopic, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID);
+    this.consumerTaskId = String.format(CONSUMER_TASK_ID_FORMAT, pubSubAdminTopic.getName());
     this.LOGGER = LogManager.getLogger(consumerTaskId);
     this.admin = admin;
     this.isParentController = isParentController;
@@ -300,7 +301,6 @@ public class AdminConsumptionTask implements Runnable, Closeable {
         new DaemonThreadFactory(String.format("Venice-Admin-Execution-Task-%s", clusterName), admin.getLogContext()));
     this.undelegatedRecords = new LinkedList<>();
     this.stats.setAdminConsumptionFailedOffset(failingOffset);
-    this.pubSubTopic = pubSubTopicRepository.getTopic(topic);
     this.regionName = regionName;
     this.storeRetryCountMap = new ConcurrentHashMap<>();
 
@@ -335,9 +335,9 @@ public class AdminConsumptionTask implements Runnable, Closeable {
           continue;
         }
         if (!isSubscribed) {
-          if (whetherTopicExists(pubSubTopic)) {
+          if (whetherTopicExists(pubSubAdminTopic)) {
             // Topic was not created by this process, so we make sure it has the right retention.
-            makeSureAdminTopicUsingInfiniteRetentionPolicy(pubSubTopic);
+            makeSureAdminTopicUsingInfiniteRetentionPolicy(pubSubAdminTopic);
           } else {
             String logMessageFormat = "Admin topic: {} hasn't been created yet. {}";
             if (!isParentController) {
@@ -345,16 +345,19 @@ public class AdminConsumptionTask implements Runnable, Closeable {
               if (System.currentTimeMillis() - lastLogTime > 60 * Time.MS_PER_SECOND) {
                 LOGGER.info(
                     logMessageFormat,
-                    topic,
+                    pubSubAdminTopic,
                     "Since this is a child controller, it will not be created by this process.");
                 lastLogTime = System.currentTimeMillis();
               }
               continue;
             }
-            LOGGER.info(logMessageFormat, topic, "Since this is the parent controller, it will be created now.");
+            LOGGER.info(
+                logMessageFormat,
+                pubSubAdminTopic,
+                "Since this is the parent controller, it will be created now.");
             admin.getTopicManager()
-                .createTopic(pubSubTopic, 1, adminTopicReplicationFactor, true, false, minInSyncReplicas);
-            LOGGER.info("Admin topic {} is created.", topic);
+                .createTopic(pubSubAdminTopic, 1, adminTopicReplicationFactor, true, false, minInSyncReplicas);
+            LOGGER.info("Admin topic {} is created.", pubSubAdminTopic);
           }
           subscribe();
         }
@@ -452,11 +455,11 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     stats.setAdminConsumptionCheckpointOffset(lastPersistedOffset);
     stats.registerAdminConsumptionCheckpointOffset();
     // Subscribe the admin topic
-    consumer.subscribe(new PubSubTopicPartitionImpl(pubSubTopic, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID), lastOffset);
+    consumer.subscribe(adminTopicPartition, lastOffset);
     isSubscribed = true;
     LOGGER.info(
-        "Subscribed to topic name: {}, with offset: {} and execution id: {}. Remote consumption flag: {}",
-        topic,
+        "Subscribed to topic-partition: {}, with offset: {} and execution id: {}. Remote consumption flag: {}",
+        adminTopicPartition,
         lastOffset,
         lastPersistedExecutionId,
         remoteConsumptionEnabled);
@@ -464,7 +467,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
 
   private void unSubscribe() {
     if (isSubscribed) {
-      consumer.unSubscribe(new PubSubTopicPartitionImpl(pubSubTopic, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID));
+      consumer.unSubscribe(adminTopicPartition);
       storeAdminOperationsMapWithOffset.clear();
       problematicStores.clear();
       undelegatedRecords.clear();
@@ -482,7 +485,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
       isSubscribed = false;
       LOGGER.info(
           "Unsubscribed from topic name: {}. Remote consumption flag before unsubscription: {}",
-          topic,
+          adminTopicPartition,
           remoteConsumptionEnabled);
     }
   }
@@ -724,7 +727,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
           "consumer Task Id {}: Interrupted while waiting for worker executor thread pool to shutdown",
           consumerTaskId);
     }
-    LOGGER.info("Closed consumer for admin topic: {}", topic);
+    LOGGER.info("Closed consumer for admin topic: {}", adminTopicPartition);
     consumer.close();
   }
 
@@ -747,7 +750,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     } else {
       admin.getTopicManager().updateTopicRetention(topicName, Long.MAX_VALUE);
     }
-    LOGGER.info("Admin topic: {} has been updated to use infinite retention policy", topic);
+    LOGGER.info("Admin topic: {} has been updated to use infinite retention policy", adminTopicPartition);
   }
 
   /**
@@ -1060,9 +1063,10 @@ public class AdminConsumptionTask implements Runnable, Closeable {
   private boolean shouldProcessRecord(DefaultPubSubMessage record) {
     // check topic
     PubSubTopic recordTopic = record.getTopicPartition().getPubSubTopic();
-    if (!pubSubTopic.equals(recordTopic)) {
+    if (!pubSubAdminTopic.equals(recordTopic)) {
       throw new VeniceException(
-          consumerTaskId + " received message from different topic: " + recordTopic + ", expected: " + topic);
+          consumerTaskId + " received message from different topic: " + recordTopic + ", expected: "
+              + pubSubAdminTopic);
     }
     // check partition
     int recordPartition = record.getTopicPartition().getPartitionNumber();
@@ -1093,8 +1097,6 @@ public class AdminConsumptionTask implements Runnable, Closeable {
        *  In the default read_uncommitted isolation level, the end offset is the high watermark (that is, the offset of
        *  the last successfully replicated message plus one), so subtract 1 from the max offset result.
        */
-      PubSubTopicPartition adminTopicPartition =
-          new PubSubTopicPartitionImpl(pubSubTopic, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID);
       long sourceAdminTopicEndOffset =
           sourceKafkaClusterTopicManager.getLatestOffsetWithRetries(adminTopicPartition, 10) - 1;
       /**
