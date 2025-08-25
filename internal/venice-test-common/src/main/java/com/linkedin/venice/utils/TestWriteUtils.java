@@ -155,6 +155,12 @@ public class TestWriteUtils {
       .setFieldSchema(DEFAULT_RMD_FIELD_PROP, Schema.create(Schema.Type.LONG))
       .build();
 
+  public static final Schema STRING_TO_STRING_WITH_TIMESTAMP_BYTES =
+      new PushInputSchemaBuilder().setKeySchema(STRING_SCHEMA)
+          .setValueSchema(STRING_SCHEMA)
+          .setFieldSchema(DEFAULT_RMD_FIELD_PROP, Schema.create(Schema.Type.BYTES))
+          .build();
+
   public static final Schema STRING_TO_NAME_WITH_TIMESTAMP_RECORD_V1_SCHEMA =
       new PushInputSchemaBuilder().setKeySchema(STRING_SCHEMA)
           .setValueSchema(NAME_RECORD_V1_SCHEMA)
@@ -273,6 +279,23 @@ public class TestWriteUtils {
         writer.append(user);
       }
     });
+  }
+
+  public static Schema writeSimpleAvroFileWithStringToStringAndTimestampSchema(File parentDir, byte[] timestamp)
+      throws IOException {
+    return writeAvroFile(
+        parentDir,
+        "string2string_with_timestamp.avro",
+        STRING_TO_STRING_WITH_TIMESTAMP_BYTES,
+        (recordSchema, writer) -> {
+          for (int i = 1; i <= DEFAULT_USER_DATA_RECORD_COUNT; ++i) {
+            GenericRecord user = new GenericData.Record(recordSchema);
+            user.put(DEFAULT_KEY_FIELD_PROP, Integer.toString(i));
+            user.put(DEFAULT_VALUE_FIELD_PROP, DEFAULT_USER_DATA_VALUE_PREFIX + i);
+            user.put(DEFAULT_RMD_FIELD_PROP, ByteBuffer.wrap(timestamp));
+            writer.append(user);
+          }
+        });
   }
 
   public static Schema writeSimpleAvroFileWithStringToStringSchema(File parentDir, int recordCount) throws IOException {

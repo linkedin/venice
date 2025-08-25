@@ -9,17 +9,16 @@ import org.apache.avro.Schema;
  */
 public class RmdPushUtils {
   public static Schema getInputRmdSchema(PushJobSetting pushJobSetting) {
+    if (!rmdFieldPresent(pushJobSetting)) {
+      throw new IllegalArgumentException(
+          "Push job setting missing rmd field. Please set the rmd field in the job properties.");
+    }
     return pushJobSetting.inputDataSchema.getField(pushJobSetting.rmdField).schema();
   }
 
   public static boolean containsLogicalTimestamp(PushJobSetting pushJobSetting) {
     Schema inputRmdSchema = getInputRmdSchema(pushJobSetting);
     return inputRmdSchema.getType() == Schema.Type.LONG;
-  }
-
-  public static boolean containsRmdSchema(PushJobSetting pushJobSetting) {
-    return pushJobSetting.replicationMetadataSchemaString != null
-        && !pushJobSetting.replicationMetadataSchemaString.isEmpty();
   }
 
   public static boolean rmdFieldPresent(PushJobSetting pushJobSetting) {
