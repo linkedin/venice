@@ -2210,13 +2210,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         updateLeaderTopicOnFollower(newPartitionConsumptionState);
 
         // Subscribe to local version topic.
-        PubSubPosition subscribeOffset = getLocalVtSubscribePosition(newPartitionConsumptionState);
+        PubSubPosition localVtSubscribePosition = getLocalVtSubscribePosition(newPartitionConsumptionState);
         consumerSubscribe(
             topicPartition.getPubSubTopic(),
             newPartitionConsumptionState,
-            subscribeOffset,
+            localVtSubscribePosition,
             localKafkaServer);
-        LOGGER.info("Subscribed to: {} Offset {}", topicPartition, subscribeOffset);
+        LOGGER.info("Subscribed to: {} position: {}", topicPartition, localVtSubscribePosition);
         storageUtilizationManager.initPartition(partition);
         break;
       case UNSUBSCRIBE:

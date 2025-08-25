@@ -3635,7 +3635,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       PartitionTracker.TopicType realTimeTopicType = PartitionTracker.TopicType.of(REALTIME_TOPIC_TYPE, brokerUrl);
       getConsumerDiv().setPartitionState(realTimeTopicType, pcs.getPartition(), producerStates);
       final PubSubPosition divRtCheckpointPosition =
-          getPubSubContext().getPubSubPositionDeserializer().toPosition(globalRtDivState.getLatestPubSubPositionWf());
+          getPubSubContext().getPubSubPositionDeserializer().toPosition(globalRtDivState.getLatestPubSubPosition());
       pcs.setDivRtCheckpointPosition(brokerUrl, divRtCheckpointPosition);
     } else {
       LOGGER.warn(

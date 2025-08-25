@@ -1293,8 +1293,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       throw new VeniceException(
           String.format(
               "No PubSub cluster ID found in the cluster ID to PubSub URL map. "
-                  + "Got cluster ID %d and ID to cluster URL map %s. Source PubSub: %s; "
-                  + "%s; Offset: %s; Message type: %s; ProducerMetadata: %s; LeaderMetadataFooter: %s",
+                  + "Got cluster ID %d and ID to cluster URL map %s. Source topic-partition: %s; "
+                  + "%s; Position: %s; Message type: %s; ProducerMetadata: %s; LeaderMetadataFooter: %s",
               kafkaValue.leaderMetadataFooter.upstreamKafkaClusterId,
               kafkaClusterIdToUrlMap,
               recordSourceKafkaUrl,

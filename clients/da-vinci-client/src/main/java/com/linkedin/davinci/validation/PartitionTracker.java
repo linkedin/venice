@@ -878,7 +878,7 @@ public class PartitionTracker {
 
       sb.append("; partition: ").append(consumerRecord.getTopicPartition().getPartitionNumber());
       if (segment != null) {
-        sb.append("; previous successful offset (in same segment): ").append(segment.getLastSuccessfulPosition());
+        sb.append("; previous successful position (in same segment): ").append(segment.getLastSuccessfulPosition());
       }
       sb.append("; incoming offset: ")
           .append(consumerRecord.getPosition())
@@ -900,7 +900,7 @@ public class PartitionTracker {
           .append(new Date(producerMetadata.messageTimestamp))
           .append(")");
       if (consumerRecord.getValue().leaderMetadataFooter != null) {
-        sb.append("; LeaderMetadata { upstream offset: ")
+        sb.append("; LeaderMetadata { upstream position: ")
             .append(consumerRecord.getValue().leaderMetadataFooter.upstreamOffset)
             .append("; upstream pub sub cluster ID: ")
             .append(consumerRecord.getValue().leaderMetadataFooter.upstreamKafkaClusterId)

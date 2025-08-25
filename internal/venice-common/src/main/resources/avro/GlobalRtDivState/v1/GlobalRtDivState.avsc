@@ -82,7 +82,7 @@
       "default": {}
     },
     {
-      "name": "latestPubSubPositionWf",
+      "name": "latestPubSubPosition",
       "doc": "The last PubSubPosition consumed successfully in this partition.",
       "type": "bytes",
       "default": ""
