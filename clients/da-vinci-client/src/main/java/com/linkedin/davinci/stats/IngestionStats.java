@@ -44,7 +44,6 @@ public class IngestionStats {
   protected static final String TIMESTAMP_REGRESSION_DCR_ERROR = "timestamp_regression_dcr_error";
   protected static final String OFFSET_REGRESSION_DCR_ERROR = "offset_regression_dcr_error";
   protected static final String TOMBSTONE_CREATION_DCR = "tombstone_creation_dcr";
-  protected static final String READY_TO_SERVE_WITH_RT_LAG_METRIC_NAME = "ready_to_serve_with_rt_lag";
   public static final String NEARLINE_PRODUCER_TO_LOCAL_BROKER_LATENCY = "nearline_producer_to_local_broker_latency";
   public static final String NEARLINE_LOCAL_BROKER_TO_READY_TO_SERVE_LATENCY =
       "nearline_local_broker_to_ready_to_serve_latency";
@@ -230,16 +229,6 @@ public class IngestionStats {
       return INACTIVE_STORE_INGESTION_TASK.code;
     }
     return ingestionTask.getWriteComputeErrorCode();
-  }
-
-  public double getReadyToServeWithRTLag() {
-    if (!hasActiveIngestionTask()) {
-      return 0;
-    }
-    if (ingestionTask.isReadyToServeAnnouncedWithRTLag()) {
-      return 1;
-    }
-    return 0;
   }
 
   public double getSubscribePrepLatencyAvg() {
