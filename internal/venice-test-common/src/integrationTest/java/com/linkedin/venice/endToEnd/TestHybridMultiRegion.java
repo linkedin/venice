@@ -117,8 +117,7 @@ public class TestHybridMultiRegion {
                   .setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
                   .setHybridRewindSeconds(streamingRewindSeconds)
                   .setHybridOffsetLagThreshold(streamingMessageLag)));
-      VersionCreationResponse vcr =
-          controllerClient.emptyPush(storeName, Utils.getUniqueString("empty-hybrid-push"), 1L);
+      controllerClient.emptyPush(storeName, Utils.getUniqueString("empty-hybrid-push"), 1L);
       File inputDir = getTempDataDirectory();
       String inputDirPath = "file://" + inputDir.getAbsolutePath();
       TestWriteUtils.writeSimpleAvroFileWithStringToStringAndTimestampSchema(inputDir, 123456789L); // records 1-100
@@ -155,8 +154,7 @@ public class TestHybridMultiRegion {
                   .setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
                   .setHybridRewindSeconds(streamingRewindSeconds)
                   .setHybridOffsetLagThreshold(streamingMessageLag)));
-      VersionCreationResponse vcr =
-          controllerClient.emptyPush(storeName, Utils.getUniqueString("empty-hybrid-push"), 1L);
+      controllerClient.emptyPush(storeName, Utils.getUniqueString("empty-hybrid-push"), 1L);
       File inputDir = getTempDataDirectory();
       String inputDirPath = "file://" + inputDir.getAbsolutePath();
       TestWriteUtils
