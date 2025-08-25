@@ -29,6 +29,11 @@ public class VeniceReadServiceImpl extends VeniceReadServiceGrpc.VeniceReadServi
     handleRequest(request, responseObserver);
   }
 
+  @Override
+  public void compute(VeniceClientRequest request, StreamObserver<VeniceServerResponse> responseObserver) {
+    handleRequest(request, responseObserver);
+  }
+
   private void handleRequest(VeniceClientRequest request, StreamObserver<VeniceServerResponse> responseObserver) {
     VeniceServerResponse.Builder responseBuilder =
         VeniceServerResponse.newBuilder().setErrorCode(VeniceReadResponseStatus.OK);
