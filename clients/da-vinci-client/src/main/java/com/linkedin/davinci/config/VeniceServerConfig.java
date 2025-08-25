@@ -69,6 +69,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_ADAPTIVE_THROTTLER_SIGNAL_ID
 import static com.linkedin.venice.ConfigKeys.SERVER_ADAPTIVE_THROTTLER_SINGLE_GET_LATENCY_THRESHOLD;
 import static com.linkedin.venice.ConfigKeys.SERVER_BATCH_REPORT_END_OF_INCREMENTAL_PUSH_STATUS_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_BLOB_TRANSFER_ADAPTIVE_THROTTLER_ENABLED;
+import static com.linkedin.venice.ConfigKeys.SERVER_BLOB_TRANSFER_ADAPTIVE_THROTTLER_UPDATE_PERCENTAGE;
 import static com.linkedin.venice.ConfigKeys.SERVER_BLOCKING_QUEUE_TYPE;
 import static com.linkedin.venice.ConfigKeys.SERVER_CHANNEL_OPTION_WRITE_BUFFER_WATERMARK_HIGH_BYTES;
 import static com.linkedin.venice.ConfigKeys.SERVER_COMPUTE_FAST_AVRO_ENABLED;
@@ -531,6 +532,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   private final boolean adaptiveThrottlerEnabled;
   private final boolean blobTransferAdaptiveThrottlerEnabled;
+  private final int blobTransferAdaptiveThrottlerUpdatePercentage;
   private final boolean skipChecksAfterUnSubEnabled;
 
   private final int adaptiveThrottlerSignalIdleThreshold;
@@ -760,6 +762,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     adaptiveThrottlerEnabled = serverProperties.getBoolean(SERVER_ADAPTIVE_THROTTLER_ENABLED, false);
     blobTransferAdaptiveThrottlerEnabled =
         serverProperties.getBoolean(SERVER_BLOB_TRANSFER_ADAPTIVE_THROTTLER_ENABLED, false);
+    blobTransferAdaptiveThrottlerUpdatePercentage =
+        serverProperties.getInt(SERVER_BLOB_TRANSFER_ADAPTIVE_THROTTLER_UPDATE_PERCENTAGE, 20);
     skipChecksAfterUnSubEnabled = serverProperties.getBoolean(SERVER_SKIP_CHECK_AFTER_UNSUB_ENABLED, false);
     adaptiveThrottlerSignalIdleThreshold = serverProperties.getInt(SERVER_ADAPTIVE_THROTTLER_SIGNAL_IDLE_THRESHOLD, 10);
     adaptiveThrottlerSingleGetLatencyThreshold =
@@ -1602,6 +1606,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public boolean isBlobTransferAdaptiveThrottlerEnabled() {
     return blobTransferAdaptiveThrottlerEnabled;
+  }
+
+  public int getBlobTransferAdaptiveThrottlerUpdatePercentage() {
+    return blobTransferAdaptiveThrottlerUpdatePercentage;
   }
 
   public boolean isSkipChecksAfterUnSubEnabled() {

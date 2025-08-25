@@ -984,9 +984,22 @@ public class ConfigKeys {
       "server.db.read.only.for.batch.only.store.enabled";
   public static final String SERVER_RESET_ERROR_REPLICA_ENABLED = "server.reset.error.replica.enabled";
 
+  /**
+   * Config for enable/disable adaptive throttler service feature
+   */
   public static final String SERVER_ADAPTIVE_THROTTLER_ENABLED = "server.adaptive.throttler.enabled";
+
+  /**
+   * Config for enable/disable blob transfer adaptive throttler feature (when adaptive throttler service is enabled)
+   */
   public static final String SERVER_BLOB_TRANSFER_ADAPTIVE_THROTTLER_ENABLED =
       "server.blob.transfer.adaptive.throttler.enabled";
+
+  /**
+   * Config for update percentage for blob transfer adaptive throttler
+   */
+  public static final String SERVER_BLOB_TRANSFER_ADAPTIVE_THROTTLER_UPDATE_PERCENTAGE =
+      "server.blob.transfer.adaptive.throttler.update.percentage";
 
   public static final String SERVER_SKIP_CHECK_AFTER_UNSUB_ENABLED = "server.skip.check.after.unsub.enabled";
   public static final String SERVER_ADAPTIVE_THROTTLER_SIGNAL_IDLE_THRESHOLD =

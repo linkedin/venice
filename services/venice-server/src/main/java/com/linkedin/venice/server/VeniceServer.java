@@ -509,13 +509,24 @@ public class VeniceServer {
         writeThrottler = new VeniceAdaptiveBlobTransferTrafficThrottler(
             serverConfig.getAdaptiveThrottlerSignalIdleThreshold(),
             serverConfig.getBlobTransferServiceWriteLimitBytesPerSec(),
+            serverConfig.getBlobTransferAdaptiveThrottlerUpdatePercentage(),
             true);
         readThrottler = new VeniceAdaptiveBlobTransferTrafficThrottler(
             serverConfig.getAdaptiveThrottlerSignalIdleThreshold(),
             serverConfig.getBlobTransferClientReadLimitBytesPerSec(),
+            serverConfig.getBlobTransferAdaptiveThrottlerUpdatePercentage(),
             false);
+        // Setup Limiter Signal for Read
         readThrottler.registerLimiterSignal(adaptiveThrottlerSignalService::isReadLatencySignalActive);
+        readThrottler
+            .registerLimiterSignal(adaptiveThrottlerSignalService::isCurrentFollowerMaxHeartbeatLagSignalActive);
+        readThrottler.registerLimiterSignal(adaptiveThrottlerSignalService::isCurrentLeaderMaxHeartbeatLagSignalActive);
+        // Setup Limiter Signal for Write
         writeThrottler.registerLimiterSignal(adaptiveThrottlerSignalService::isReadLatencySignalActive);
+        writeThrottler
+            .registerLimiterSignal(adaptiveThrottlerSignalService::isCurrentFollowerMaxHeartbeatLagSignalActive);
+        writeThrottler
+            .registerLimiterSignal(adaptiveThrottlerSignalService::isCurrentLeaderMaxHeartbeatLagSignalActive);
         adaptiveThrottlerSignalService.registerThrottler(writeThrottler);
         adaptiveThrottlerSignalService.registerThrottler(readThrottler);
       }

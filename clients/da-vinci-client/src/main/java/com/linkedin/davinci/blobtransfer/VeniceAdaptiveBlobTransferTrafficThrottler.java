@@ -31,21 +31,31 @@ public class VeniceAdaptiveBlobTransferTrafficThrottler implements VeniceAdaptiv
   private final String throttlerName;
   private final List<BooleanSupplier> limiterSuppliers = new ArrayList<>();
   private final List<BooleanSupplier> boosterSuppliers = new ArrayList<>();
-  private GlobalChannelTrafficShapingHandler globalChannelTrafficShapingHandler;
+  private GlobalChannelTrafficShapingHandler globalChannelTrafficShapingHandler = null;
   private final long baseRate;
   private final int signalIdleThreshold;
-  private double currentFactor = 1.0;
-  private static final double MIN_FACTOR = 0.2;
-  private static final double MAX_FACTOR = 2.0;
+  private int currentFactor = 100;
+  private static final int MIN_FACTOR = 20;
+  private static final int MAX_FACTOR = 200;
+  private final int rateUpdatePercentage;
   private final boolean isWriteThrottler;
   private int signalIdleCount;
 
-  public VeniceAdaptiveBlobTransferTrafficThrottler(int singleIdleThreshold, long baseRate, boolean isWriteThrottler) {
+  public VeniceAdaptiveBlobTransferTrafficThrottler(
+      int singleIdleThreshold,
+      long baseRate,
+      int rateUpdatePercentage,
+      boolean isWriteThrottler) {
     this.throttlerName = (isWriteThrottler ? "Write" : "Read") + THROTTLER_NAME_SUFFIX;
     this.baseRate = baseRate;
     this.signalIdleThreshold = singleIdleThreshold;
     this.isWriteThrottler = isWriteThrottler;
-    LOGGER.info("Created adaptive throttler with name: {}, base rate: {}", throttlerName, baseRate);
+    this.rateUpdatePercentage = rateUpdatePercentage;
+    LOGGER.info(
+        "Created adaptive throttler with name: {}, base rate: {}, change delta: {}",
+        throttlerName,
+        baseRate,
+        rateUpdatePercentage);
   }
 
   @Override
@@ -65,53 +75,67 @@ public class VeniceAdaptiveBlobTransferTrafficThrottler implements VeniceAdaptiv
       return;
     }
     boolean isSignalIdle = true;
-    boolean hasLimitedRate = false;
+    boolean hasLimiterRate = false;
     for (BooleanSupplier supplier: limiterSuppliers) {
       if (supplier.getAsBoolean()) {
-        hasLimitedRate = true;
+        hasLimiterRate = true;
         isSignalIdle = false;
         signalIdleCount = 0;
-        if (currentFactor > MIN_FACTOR) {
-          currentFactor -= 0.2;
-          updateThrottlerNumber();
-          LOGGER.info(
-              "Found limiter signal for {}, adjusting throttler factor to: {} with throttle rate: {}",
-              throttlerName,
-              currentFactor,
-              currentFactor * baseRate);
-        }
       }
     }
     // If any limiter signal is true do not booster the throttler
-    if (hasLimitedRate) {
+    if (hasLimiterRate) {
+      if (currentFactor > MIN_FACTOR) {
+        currentFactor -= rateUpdatePercentage;
+        if (currentFactor < MIN_FACTOR) {
+          currentFactor = MIN_FACTOR;
+        }
+        updateThrottlerNumber();
+        LOGGER.info(
+            "Found limiter signal for {}, adjusting throttler factor to: {} with throttle rate: {}",
+            throttlerName,
+            currentFactor,
+            currentFactor * baseRate / 100);
+      }
       return;
     }
-
+    boolean hasBoosterRate = false;
     for (BooleanSupplier supplier: boosterSuppliers) {
       if (supplier.getAsBoolean()) {
         isSignalIdle = false;
         signalIdleCount = 0;
-        if (currentFactor < MAX_FACTOR) {
-          currentFactor += 0.2;
-          updateThrottlerNumber();
-          LOGGER.info(
-              "Found booster signal for {}, adjusting throttler factor to: {} with throttle rate: {}",
-              throttlerName,
-              currentFactor,
-              currentFactor * baseRate);
-        }
+        hasBoosterRate = true;
       }
     }
+
+    if (hasBoosterRate) {
+      if (currentFactor < MAX_FACTOR) {
+        currentFactor += rateUpdatePercentage;
+        if (currentFactor > MAX_FACTOR) {
+          currentFactor = MAX_FACTOR;
+        }
+        updateThrottlerNumber();
+        LOGGER.info(
+            "Found booster signal for {}, adjusting throttler factor to: {} with throttle rate: {}",
+            throttlerName,
+            currentFactor,
+            currentFactor * baseRate);
+      }
+    }
+
     if (isSignalIdle) {
       signalIdleCount += 1;
       if (signalIdleCount == signalIdleThreshold) {
         if (currentFactor < MAX_FACTOR) {
-          currentFactor += 0.2;
+          currentFactor += rateUpdatePercentage;
+          if (currentFactor > MAX_FACTOR) {
+            currentFactor = MAX_FACTOR;
+          }
           updateThrottlerNumber();
           LOGGER.info(
               "Reach max signal idle count, adjusting throttler factor to: {} with throttle rate: {}",
               currentFactor,
-              currentFactor * baseRate);
+              currentFactor * baseRate / 100);
         }
         signalIdleCount = 0;
       }
@@ -120,7 +144,7 @@ public class VeniceAdaptiveBlobTransferTrafficThrottler implements VeniceAdaptiv
 
   @Override
   public long getCurrentThrottlerRate() {
-    return (long) (currentFactor * baseRate);
+    return (long) (currentFactor * baseRate / 100.0);
   }
 
   @Override
@@ -128,16 +152,21 @@ public class VeniceAdaptiveBlobTransferTrafficThrottler implements VeniceAdaptiv
     return throttlerName;
   }
 
-  public void setGlobalChannelTrafficShapingHandler(
+  public synchronized void setGlobalChannelTrafficShapingHandler(
       GlobalChannelTrafficShapingHandler globalChannelTrafficShapingHandler) {
-    this.globalChannelTrafficShapingHandler = globalChannelTrafficShapingHandler;
+    if (this.globalChannelTrafficShapingHandler == null
+        || this.globalChannelTrafficShapingHandler == globalChannelTrafficShapingHandler) {
+      this.globalChannelTrafficShapingHandler = globalChannelTrafficShapingHandler;
+    } else {
+      throw new UnsupportedOperationException("Cannot update GlobalChannelTrafficShapingHandler once initialized.");
+    }
   }
 
   void updateThrottlerNumber() {
     if (isWriteThrottler) {
-      globalChannelTrafficShapingHandler.setWriteLimit((long) (currentFactor * baseRate));
+      globalChannelTrafficShapingHandler.setWriteLimit((long) (currentFactor * baseRate / 100.0));
     } else {
-      globalChannelTrafficShapingHandler.setReadLimit((long) (currentFactor * baseRate));
+      globalChannelTrafficShapingHandler.setReadLimit((long) (currentFactor * baseRate / 100.0));
     }
   }
 }
