@@ -14,7 +14,7 @@ public class SparkConstants {
   // Required column names for input dataframes
   public static final String KEY_COLUMN_NAME = "key";
   public static final String VALUE_COLUMN_NAME = "value";
-  public static final String TIMESTAMP_COLUMN_NAME = "timestamp";
+  public static final String RMD_COLUMN_NAME = "rmd";
 
   // Internal column names, hence begins with "_"
   public static final String PARTITION_COLUMN_NAME = "__partition__";
@@ -22,12 +22,12 @@ public class SparkConstants {
   public static final StructType DEFAULT_SCHEMA = new StructType(
       new StructField[] { new StructField(KEY_COLUMN_NAME, BinaryType, false, Metadata.empty()),
           new StructField(VALUE_COLUMN_NAME, BinaryType, true, Metadata.empty()),
-          new StructField(TIMESTAMP_COLUMN_NAME, LongType, true, Metadata.empty()) });
+          new StructField(RMD_COLUMN_NAME, BinaryType, true, Metadata.empty()) });
 
   public static final StructType DEFAULT_SCHEMA_WITH_PARTITION = new StructType(
       new StructField[] { new StructField(KEY_COLUMN_NAME, BinaryType, false, Metadata.empty()),
           new StructField(VALUE_COLUMN_NAME, BinaryType, true, Metadata.empty()),
-          new StructField(TIMESTAMP_COLUMN_NAME, LongType, true, Metadata.empty()),
+          new StructField(RMD_COLUMN_NAME, BinaryType, true, Metadata.empty()),
           new StructField(PARTITION_COLUMN_NAME, IntegerType, false, Metadata.empty()) });
 
   /**

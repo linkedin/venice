@@ -35,6 +35,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.REDUCER_SPECULATIVE
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_ENABLE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_POLICY;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_START_TIMESTAMP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.RMD_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.RMD_SCHEMA_DIR;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SCHEMA_STRING_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_PREFIX;
@@ -43,7 +44,6 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.SYSTEM_SCHEMA_CLUST
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SYSTEM_SCHEMA_CLUSTER_D2_ZK_HOST;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SYSTEM_SCHEMA_READER_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TELEMETRY_MESSAGE_INTERVAL;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.TIMESTAMP_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TOPIC_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.UPDATE_SCHEMA_STRING_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VALUE_FIELD_PROP;
@@ -257,7 +257,7 @@ public class DataWriterMRJob extends DataWriterComputeJob {
 
       jobConf.set(KEY_FIELD_PROP, pushJobSetting.keyField);
       jobConf.set(VALUE_FIELD_PROP, pushJobSetting.valueField);
-      jobConf.set(TIMESTAMP_FIELD_PROP, pushJobSetting.timestampField);
+      jobConf.set(RMD_FIELD_PROP, pushJobSetting.rmdField);
       if (pushJobSetting.etlValueSchemaTransformation != null) {
         jobConf.set(ETL_VALUE_SCHEMA_TRANSFORMATION, pushJobSetting.etlValueSchemaTransformation.name());
       }

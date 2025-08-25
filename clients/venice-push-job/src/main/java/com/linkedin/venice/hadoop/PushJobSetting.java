@@ -123,10 +123,11 @@ public class PushJobSetting implements Serializable {
   // Schema-properties
   public boolean isAvro = true;
   public int valueSchemaId; // Value schema id retrieved from backend for valueSchemaString
+  public int rmdSchemaId; // Replication metadata schema id retrieved from backend for replicationMetadataSchemaString
   public int derivedSchemaId = -1;
   public String keyField;
   public String valueField;
-  public String timestampField;
+  public String rmdField;
 
   public Schema inputDataSchema;
   public String inputDataSchemaString;

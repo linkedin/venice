@@ -5,7 +5,6 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.schema.rmd.v1.RmdSchemaGeneratorV1;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import io.tehuti.utils.Utils;
-import java.nio.ByteBuffer;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
@@ -54,12 +53,13 @@ public class RmdSchemaGenerator {
    *
    * @param schema metadata schema.  This schema MUST contain a root level timestamp field
    * @param timestamp the timestamp to place in the record
-   * @return a bytebuffer containing the serialized metadata payload with the passed timestamp
+   * @return a byte array containing the serialized metadata payload with the passed timestamp
    */
-  public static ByteBuffer generateRecordLevelTimestampMetadata(Schema schema, Long timestamp) {
+  public static byte[] generateRecordLevelTimestampMetadata(Schema schema, Long timestamp) {
     GenericRecord record = new GenericData.Record(schema);
     record.put(RmdConstants.TIMESTAMP_FIELD_NAME, timestamp);
-    return ByteBuffer.wrap(FastSerializerDeserializerFactory.getFastAvroGenericSerializer(schema).serialize(record));
+    record.put(RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD_NAME, Collections.emptyList());
+    return FastSerializerDeserializerFactory.getFastAvroGenericSerializer(schema).serialize(record);
   }
 
   public static int getLatestVersion() {

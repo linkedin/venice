@@ -21,6 +21,8 @@ import static com.linkedin.venice.spark.SparkConstants.SPARK_DATA_WRITER_CONF_PR
 import static com.linkedin.venice.spark.SparkConstants.SPARK_LEADER_CONFIG;
 import static com.linkedin.venice.spark.SparkConstants.SPARK_SESSION_CONF_PREFIX;
 import static com.linkedin.venice.spark.SparkConstants.VALUE_COLUMN_NAME;
+import static com.linkedin.venice.spark.utils.RmdPushUtils.*;
+import static com.linkedin.venice.utils.AvroSupersetSchemaUtils.validateSubsetValueSchema;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.ALLOW_DUPLICATE_KEY;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.BATCH_NUM_BYTES_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.COMPRESSION_METRIC_COLLECTION_ENABLED;
@@ -37,6 +39,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_ENABLE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_POLICY;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_START_TIMESTAMP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.RMD_SCHEMA_DIR;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.RMD_SCHEMA_ID_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.RMD_SCHEMA_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_CONFIGURATOR_CLASS_CONFIG;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_KEY_PASSWORD_PROPERTY_NAME;
@@ -55,6 +58,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.ZSTD_DICTIONARY_CRE
 import com.github.luben.zstd.Zstd;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.hadoop.PushJobSetting;
 import com.linkedin.venice.hadoop.exceptions.VeniceInvalidInputException;
@@ -69,6 +73,7 @@ import com.linkedin.venice.spark.datawriter.recordprocessor.SparkInputRecordProc
 import com.linkedin.venice.spark.datawriter.task.DataWriterAccumulators;
 import com.linkedin.venice.spark.datawriter.task.SparkDataWriterTaskTracker;
 import com.linkedin.venice.spark.datawriter.writer.SparkPartitionWriterFactory;
+import com.linkedin.venice.spark.utils.RmdPushUtils;
 import com.linkedin.venice.spark.utils.SparkPartitionUtils;
 import com.linkedin.venice.spark.utils.SparkScalaUtils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -76,6 +81,7 @@ import com.linkedin.venice.writer.VeniceWriter;
 import java.io.IOException;
 import java.util.Properties;
 import java.util.UUID;
+import org.apache.avro.Schema;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.spark.SparkConf;
@@ -221,6 +227,7 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
     } else {
       jobConf.set(VALUE_SCHEMA_ID_PROP, pushJobSetting.valueSchemaId);
       jobConf.set(DERIVED_SCHEMA_ID_PROP, pushJobSetting.derivedSchemaId);
+      jobConf.set(RMD_SCHEMA_ID_PROP, pushJobSetting.rmdSchemaId);
     }
     jobConf.set(ENABLE_WRITE_COMPUTE, pushJobSetting.enableWriteCompute);
     if (pushJobSetting.replicationMetadataSchemaString != null) {
@@ -301,6 +308,23 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
    */
   protected abstract Dataset<Row> getUserInputDataFrame();
 
+  /*
+   * Validates the presence of RMD field and then ensures the input schema is valid for the rest of the pipeline to run.
+   * In case of input RMD being logical timestamp, we adapt the timestamp to RMD in # getUserInputDataFrame().
+   * Otherwise, check for subset check with the RMD schema associated with the store for the given input value schema.
+   */
+  protected void validateRmdSchema(PushJobSetting pushJobSetting) {
+    if (RmdPushUtils.rmdFieldPresent(pushJobSetting)) {
+      Schema inputRmdSchema = RmdPushUtils.getInputRmdSchema(pushJobSetting);
+      if ((!RmdPushUtils.containsLogicalTimestamp(pushJobSetting)
+          && !validateSubsetValueSchema(inputRmdSchema, pushJobSetting.replicationMetadataSchemaString))) {
+        throw new VeniceException(
+            "Input rmd schema is not subset of superset schema. Input rmd schema: " + inputRmdSchema
+                + " , superset schema: " + pushJobSetting.replicationMetadataSchemaString);
+      }
+    }
+  }
+
   private Dataset<Row> getInputDataFrame() {
     if (pushJobSetting.isSourceKafka) {
       throw new VeniceUnsupportedOperationException("Spark push job for repush workloads");
@@ -337,6 +361,7 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
     // Load data from input path
     Dataset<Row> dataFrame = getInputDataFrame();
     validateDataFrame(dataFrame);
+    validateRmdSchema(pushJobSetting);
 
     ExpressionEncoder<Row> rowEncoder = RowEncoder.apply(DEFAULT_SCHEMA);
     ExpressionEncoder<Row> rowEncoderWithPartition = RowEncoder.apply(DEFAULT_SCHEMA_WITH_PARTITION);

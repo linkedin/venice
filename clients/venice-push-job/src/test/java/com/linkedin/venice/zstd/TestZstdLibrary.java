@@ -5,7 +5,7 @@ import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_MB;
 import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.COMPRESSION_DICTIONARY_SAMPLE_SIZE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.COMPRESSION_DICTIONARY_SIZE_LIMIT;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_TIMESTAMP_FIELD_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_RMD_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PATH_FILTER;
 
 import com.github.luben.zstd.ZstdDictTrainer;
@@ -58,7 +58,7 @@ public class TestZstdLibrary {
             HdfsAvroUtils.getFileSchema(fs, fileStatus.getPath()),
             "key",
             "value",
-            DEFAULT_TIMESTAMP_FIELD_PROP,
+            DEFAULT_RMD_FIELD_PROP,
             ETLValueSchemaTransformation.NONE,
             null);
         VeniceAvroFileIterator avroFileIterator = new VeniceAvroFileIterator(fs, fileStatus.getPath(), recordReader);
