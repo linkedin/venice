@@ -9,9 +9,11 @@ import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.ClientType;
 import com.linkedin.venice.stats.TehutiUtils;
+import com.linkedin.venice.stats.dimensions.Granularity;
 import com.linkedin.venice.stats.dimensions.MessageType;
 import com.linkedin.venice.stats.dimensions.RequestRetryType;
 import com.linkedin.venice.stats.metrics.MetricEntityStateOneEnum;
+import com.linkedin.venice.stats.metrics.MetricEntityStateTwoEnums;
 import com.linkedin.venice.stats.metrics.TehutiMetricNameEnum;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
@@ -26,18 +28,12 @@ import java.util.Collections;
 import java.util.Map;
 
 
+/**
+ * This class is responsible for tracking client side metrics.
+ */
 public class ClientStats extends BasicClientStats {
   private final Map<Integer, Sensor> httpStatusSensorMap = new VeniceConcurrentHashMap<>();
   private final Sensor successRequestDuplicateKeyCountSensor;
-  private final Sensor requestSerializationTime;
-  private final Sensor requestSubmissionToResponseHandlingTime;
-  private final Sensor responseDeserializationTime;
-  private final Sensor responseDecompressionTimeSensor;
-  private final Sensor streamingResponseTimeToReceiveFirstRecord;
-  private final Sensor streamingResponseTimeToReceive50PctRecord;
-  private final Sensor streamingResponseTimeToReceive90PctRecord;
-  private final Sensor streamingResponseTimeToReceive95PctRecord;
-  private final Sensor streamingResponseTimeToReceive99PctRecord;
   private final Sensor appTimedOutRequestSensor;
   private final Sensor appTimedOutRequestResultRatioSensor;
   private final Sensor clientFutureTimeoutSensor;
@@ -47,9 +43,18 @@ public class ClientStats extends BasicClientStats {
    */
   private final Sensor multiGetFallbackSensor;
 
-  private MetricEntityStateOneEnum<RequestRetryType> errorRetryRequest;
-  private MetricEntityStateOneEnum<MessageType> retryKeyCount;
-  private MetricEntityStateOneEnum<MessageType> retrySuccessKeyCount;
+  private final MetricEntityStateOneEnum<RequestRetryType> errorRetryRequest;
+  private final MetricEntityStateOneEnum<MessageType> retryKeyCount;
+  private final MetricEntityStateOneEnum<MessageType> retrySuccessKeyCount;
+  private final MetricEntityStateTwoEnums<Granularity, MessageType> requestSerializationTime;
+  private final MetricEntityStateTwoEnums<Granularity, MessageType> requestSubmissionToResponseHandlingTime;
+  private final MetricEntityStateTwoEnums<Granularity, MessageType> responseDeserializationTime;
+  private final MetricEntityStateTwoEnums<Granularity, MessageType> responseDecompressionTime;
+  private final MetricEntityStateTwoEnums<Granularity, MessageType> streamingResponseTimeToReceiveFirstRecord;
+  private final MetricEntityStateTwoEnums<Granularity, MessageType> streamingResponseTimeToReceive50PctRecord;
+  private final MetricEntityStateTwoEnums<Granularity, MessageType> streamingResponseTimeToReceive90PctRecord;
+  private final MetricEntityStateTwoEnums<Granularity, MessageType> streamingResponseTimeToReceive95PctRecord;
+  private final MetricEntityStateTwoEnums<Granularity, MessageType> streamingResponseTimeToReceive99PctRecord;
 
   public static ClientStats getClientStats(
       MetricsRepository metricsRepository,
@@ -85,36 +90,6 @@ public class ClientStats extends BasicClientStats {
         RequestRetryType.class);
 
     successRequestDuplicateKeyCountSensor = registerSensor("success_request_duplicate_key_count", new Rate());
-    /**
-     * The time it took to serialize the request, to be sent to the router. This is done in a blocking fashion
-     * on the caller's thread.
-     */
-    requestSerializationTime =
-        registerSensorWithDetailedPercentiles("request_serialization_time", new Avg(), new Max());
-
-    /**
-     * The time it took between sending the request to the router and beginning to process the response.
-     */
-    requestSubmissionToResponseHandlingTime =
-        registerSensorWithDetailedPercentiles("request_submission_to_response_handling_time", new Avg(), new Max());
-
-    /**
-     * The total time it took to process the response.
-     */
-    responseDeserializationTime =
-        registerSensorWithDetailedPercentiles("response_deserialization_time", new Avg(), new Max());
-
-    responseDecompressionTimeSensor =
-        registerSensorWithDetailedPercentiles("response_decompression_time", new Avg(), new Max());
-
-    /**
-     * Metrics to track the latency of each proportion of results received.
-     */
-    streamingResponseTimeToReceiveFirstRecord = registerSensorWithDetailedPercentiles("response_ttfr", new Avg());
-    streamingResponseTimeToReceive50PctRecord = registerSensorWithDetailedPercentiles("response_tt50pr", new Avg());
-    streamingResponseTimeToReceive90PctRecord = registerSensorWithDetailedPercentiles("response_tt90pr", new Avg());
-    streamingResponseTimeToReceive95PctRecord = registerSensorWithDetailedPercentiles("response_tt95pr", new Avg());
-    streamingResponseTimeToReceive99PctRecord = registerSensorWithDetailedPercentiles("response_tt99pr", new Avg());
 
     /**
      * Metrics to track the timed-out requests.
@@ -150,6 +125,99 @@ public class ClientStats extends BasicClientStats {
         baseDimensionsMap,
         MessageType.class);
 
+    requestSerializationTime = MetricEntityStateTwoEnums.create(
+        ClientMetricEntity.GRANULARITY_CALL_TIME.getMetricEntity(),
+        otelRepository,
+        this::registerSensorWithDetailedPercentiles,
+        ClientTehutiMetricName.REQUEST_SERIALIZATION_TIME,
+        Arrays.asList(new Avg(), new Max()),
+        baseDimensionsMap,
+        Granularity.class,
+        MessageType.class);
+
+    // The total time it took to process the response.
+    responseDeserializationTime = MetricEntityStateTwoEnums.create(
+        ClientMetricEntity.GRANULARITY_CALL_TIME.getMetricEntity(),
+        otelRepository,
+        this::registerSensorWithDetailedPercentiles,
+        ClientTehutiMetricName.RESPONSE_DESERIALIZATION_TIME,
+        Arrays.asList(new Avg(), new Max()),
+        baseDimensionsMap,
+        Granularity.class,
+        MessageType.class);
+
+    responseDecompressionTime = MetricEntityStateTwoEnums.create(
+        ClientMetricEntity.GRANULARITY_CALL_TIME.getMetricEntity(),
+        otelRepository,
+        this::registerSensorWithDetailedPercentiles,
+        ClientTehutiMetricName.RESPONSE_DECOMPRESSION_TIME,
+        Arrays.asList(new Avg(), new Max()),
+        baseDimensionsMap,
+        Granularity.class,
+        MessageType.class);
+
+    // The time it took between sending the request to the router and beginning to process the response.
+    requestSubmissionToResponseHandlingTime = MetricEntityStateTwoEnums.create(
+        ClientMetricEntity.GRANULARITY_CALL_TIME.getMetricEntity(),
+        otelRepository,
+        this::registerSensorWithDetailedPercentiles,
+        ClientTehutiMetricName.REQUEST_SUBMISSION_TO_RESPONSE_HANDLING_TIME,
+        Arrays.asList(new Avg(), new Max()),
+        baseDimensionsMap,
+        Granularity.class,
+        MessageType.class);
+
+    // Metrics to track the latency of each proportion of results received.
+    streamingResponseTimeToReceiveFirstRecord = MetricEntityStateTwoEnums.create(
+        ClientMetricEntity.GRANULARITY_CALL_TIME.getMetricEntity(),
+        otelRepository,
+        this::registerSensorWithDetailedPercentiles,
+        ClientTehutiMetricName.RESPONSE_TTFR,
+        Collections.singletonList(new Avg()),
+        baseDimensionsMap,
+        Granularity.class,
+        MessageType.class);
+
+    streamingResponseTimeToReceive50PctRecord = MetricEntityStateTwoEnums.create(
+        ClientMetricEntity.GRANULARITY_CALL_TIME.getMetricEntity(),
+        otelRepository,
+        this::registerSensorWithDetailedPercentiles,
+        ClientTehutiMetricName.RESPONSE_TT50PR,
+        Collections.singletonList(new Avg()),
+        baseDimensionsMap,
+        Granularity.class,
+        MessageType.class);
+
+    streamingResponseTimeToReceive90PctRecord = MetricEntityStateTwoEnums.create(
+        ClientMetricEntity.GRANULARITY_CALL_TIME.getMetricEntity(),
+        otelRepository,
+        this::registerSensorWithDetailedPercentiles,
+        ClientTehutiMetricName.RESPONSE_TT90PR,
+        Collections.singletonList(new Avg()),
+        baseDimensionsMap,
+        Granularity.class,
+        MessageType.class);
+
+    streamingResponseTimeToReceive95PctRecord = MetricEntityStateTwoEnums.create(
+        ClientMetricEntity.GRANULARITY_CALL_TIME.getMetricEntity(),
+        otelRepository,
+        this::registerSensorWithDetailedPercentiles,
+        ClientTehutiMetricName.RESPONSE_TT95PR,
+        Collections.singletonList(new Avg()),
+        baseDimensionsMap,
+        Granularity.class,
+        MessageType.class);
+
+    streamingResponseTimeToReceive99PctRecord = MetricEntityStateTwoEnums.create(
+        ClientMetricEntity.GRANULARITY_CALL_TIME.getMetricEntity(),
+        otelRepository,
+        this::registerSensorWithDetailedPercentiles,
+        ClientTehutiMetricName.RESPONSE_TT99PR,
+        Collections.singletonList(new Avg()),
+        baseDimensionsMap,
+        Granularity.class,
+        MessageType.class);
+
     retryKeySuccessRatioSensor = registerSensor(
         new TehutiUtils.SimpleRatioStat(
             retryRequestSuccessKeyCount,
@@ -173,39 +241,39 @@ public class ClientStats extends BasicClientStats {
   }
 
   public void recordRequestSerializationTime(double latency) {
-    requestSerializationTime.record(latency);
+    requestSerializationTime.record(latency, Granularity.SERIALIZATION, REQUEST);
   }
 
   public void recordRequestSubmissionToResponseHandlingTime(double latency) {
-    requestSubmissionToResponseHandlingTime.record(latency);
+    requestSubmissionToResponseHandlingTime.record(latency, Granularity.SUBMISSION_TO_RESPONSE, REQUEST);
   }
 
   public void recordResponseDeserializationTime(double latency) {
-    responseDeserializationTime.record(latency);
+    responseDeserializationTime.record(latency, Granularity.DESERIALIZATION, RESPONSE);
   }
 
   public void recordResponseDecompressionTime(double latency) {
-    responseDecompressionTimeSensor.record(latency);
+    responseDecompressionTime.record(latency, Granularity.DECOMPRESSION, RESPONSE);
   }
 
   public void recordStreamingResponseTimeToReceiveFirstRecord(double latency) {
-    streamingResponseTimeToReceiveFirstRecord.record(latency);
+    streamingResponseTimeToReceiveFirstRecord.record(latency, Granularity.FIRST_RECORD, RESPONSE);
   }
 
   public void recordStreamingResponseTimeToReceive50PctRecord(double latency) {
-    streamingResponseTimeToReceive50PctRecord.record(latency);
+    streamingResponseTimeToReceive50PctRecord.record(latency, Granularity.PCT_50_RECORD, RESPONSE);
   }
 
   public void recordStreamingResponseTimeToReceive90PctRecord(double latency) {
-    streamingResponseTimeToReceive90PctRecord.record(latency);
+    streamingResponseTimeToReceive90PctRecord.record(latency, Granularity.PCT_90_RECORD, RESPONSE);
   }
 
   public void recordStreamingResponseTimeToReceive95PctRecord(double latency) {
-    streamingResponseTimeToReceive95PctRecord.record(latency);
+    streamingResponseTimeToReceive95PctRecord.record(latency, Granularity.PCT_95_RECORD, RESPONSE);
   }
 
   public void recordStreamingResponseTimeToReceive99PctRecord(double latency) {
-    streamingResponseTimeToReceive99PctRecord.record(latency);
+    streamingResponseTimeToReceive99PctRecord.record(latency, Granularity.PCT_99_RECORD, RESPONSE);
   }
 
   public void recordAppTimedOutRequest() {
@@ -236,7 +304,9 @@ public class ClientStats extends BasicClientStats {
    * Metric names for tehuti metrics used in this class.
    */
   public enum ClientTehutiMetricName implements TehutiMetricNameEnum {
-    REQUEST_RETRY_COUNT, RETRY_REQUEST_KEY_COUNT, RETRY_REQUEST_SUCCESS_KEY_COUNT;
+    REQUEST_RETRY_COUNT, RETRY_REQUEST_KEY_COUNT, RETRY_REQUEST_SUCCESS_KEY_COUNT, REQUEST_SERIALIZATION_TIME,
+    RESPONSE_DESERIALIZATION_TIME, RESPONSE_DECOMPRESSION_TIME, REQUEST_SUBMISSION_TO_RESPONSE_HANDLING_TIME,
+    RESPONSE_TTFR, RESPONSE_TT50PR, RESPONSE_TT90PR, RESPONSE_TT95PR, RESPONSE_TT99PR;
 
     private final String metricName;
 
