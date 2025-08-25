@@ -1008,9 +1008,19 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
    * This is a fallback approach when generic deserialization fails.
    */
   private Schema createDynamicCountResultSchema(byte[] valueBytes) {
-    // Create a minimal viable schema for count results
-    // Use a simple map schema to avoid Schema.Field instantiation
-    return Schema.createMap(Schema.create(Schema.Type.INT));
+    // Create a record schema for count results that's compatible with server-side processing
+    // This matches the approach used by other compute operations in Venice
+    Schema recordSchema = Schema.createRecord("CountByValueResult", "", "", false);
+
+    // Add a field to hold the count results as a map
+    Schema.Field countsField = new Schema.Field(
+        "counts",
+        Schema.createMap(Schema.create(Schema.Type.INT)),
+        "Field value to count mappings",
+        null);
+
+    recordSchema.setFields(java.util.Arrays.asList(countsField));
+    return recordSchema;
   }
 
   private byte[] serializeComputeRequest(

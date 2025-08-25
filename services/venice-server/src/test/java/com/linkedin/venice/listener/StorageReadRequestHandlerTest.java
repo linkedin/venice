@@ -1227,4 +1227,52 @@ public class StorageReadRequestHandlerTest {
               || e.getCause().getMessage().contains("terminated"));
     }
   }
+
+  @Test
+  public void testCreateAggregatedCountByValueResponseForCountByValueResultSchema() throws Exception {
+    // Test the new CountByValueResult record schema path
+    StorageReadRequestHandler requestHandler = createStorageReadRequestHandler();
+
+    // Create test data
+    Map<String, Map<Object, Integer>> fieldAggregations = new HashMap<>();
+    Map<Object, Integer> field1Counts = new HashMap<>();
+    field1Counts.put("value1", 3);
+    field1Counts.put("value2", 2);
+    fieldAggregations.put("testField", field1Counts);
+
+    // Create CountByValueResult record schema (new format used by client)
+    Schema resultSchema = Schema.createRecord("CountByValueResult", "", "", false);
+    Schema.Field countsField = new Schema.Field(
+        "counts",
+        Schema.createMap(Schema.create(Schema.Type.INT)),
+        "Field value to count mappings",
+        null);
+    resultSchema.setFields(java.util.Arrays.asList(countsField));
+
+    // Use reflection to call the private method
+    java.lang.reflect.Method method = StorageReadRequestHandler.class
+        .getDeclaredMethod("createAggregatedCountByValueResponse", Map.class, Schema.class);
+    method.setAccessible(true);
+
+    Object result = method.invoke(requestHandler, fieldAggregations, resultSchema);
+
+    // Verify result
+    assertNotNull(result);
+    assertTrue(result instanceof GenericRecord);
+
+    GenericRecord record = (GenericRecord) result;
+    Object countsValue = record.get("counts");
+    assertNotNull(countsValue);
+    assertTrue(countsValue instanceof Map);
+
+    @SuppressWarnings("unchecked")
+    Map<String, Integer> counts = (Map<String, Integer>) countsValue;
+
+    // Verify the aggregated counts contain expected field:value pairs
+    assertTrue(counts.containsKey("testField:value1"));
+    assertTrue(counts.containsKey("testField:value2"));
+    assertEquals(Integer.valueOf(3), counts.get("testField:value1"));
+    assertEquals(Integer.valueOf(2), counts.get("testField:value2"));
+  }
+
 }

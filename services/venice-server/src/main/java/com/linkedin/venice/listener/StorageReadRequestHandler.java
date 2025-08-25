@@ -823,6 +823,31 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
       Map<String, Map<Object, Integer>> fieldAggregations,
       Schema resultSchema) {
 
+    // Handle CountByValue record schema with "counts" field (new approach)
+    // Check for CountByValueResult record schema
+    if (resultSchema.getType() == Schema.Type.RECORD && resultSchema.getFields().size() == 1
+        && resultSchema.getFields().get(0).name().equals("counts")) {
+
+      // Create aggregated map for all field counts
+      Map<String, Integer> allCounts = new HashMap<>();
+      for (Map.Entry<String, Map<Object, Integer>> fieldEntry: fieldAggregations.entrySet()) {
+        Map<Object, Integer> counts = fieldEntry.getValue();
+        if (counts != null) {
+          for (Map.Entry<Object, Integer> countEntry: counts.entrySet()) {
+            // Use field:value as key for uniqueness across all fields
+            String mapKey = fieldEntry.getKey() + ":" + countEntry.getKey().toString();
+            allCounts.put(mapKey, countEntry.getValue());
+          }
+        }
+      }
+
+      // Create the record with counts field
+      GenericRecord result = new GenericData.Record(resultSchema);
+      result.put("counts", allCounts);
+      return result;
+    }
+
+    // Handle record schema (legacy path)
     GenericRecord result = new GenericData.Record(resultSchema);
 
     // For each field in the result schema, set the aggregated counts as a map
