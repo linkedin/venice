@@ -1091,7 +1091,8 @@ public class TestHybrid {
 
     StoreInfo compactionReadyStore = sharedVenice.getControllerClient().getStore(storeName).getStore();
     Assert.assertNotNull(compactionReadyStore.getHybridStoreConfig());
-    Assert.assertTrue(admin.getCompactionManager().isCompactionReady(compactionReadyStore));
+    Assert.assertTrue(
+        admin.getCompactionManager().isCompactionReady(compactionReadyStore, sharedVenice.getClusterName()));
 
     // Wait for the latch to count down
     try {
