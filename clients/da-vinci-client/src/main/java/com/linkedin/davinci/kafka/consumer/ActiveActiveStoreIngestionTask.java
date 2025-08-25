@@ -1364,30 +1364,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     return maxLag;
   }
 
-  /** used for metric purposes **/
-  @Override
-  public boolean isReadyToServeAnnouncedWithRTLag() {
-    if (!hybridStoreConfig.isPresent() || partitionConsumptionStateMap.isEmpty()) {
-      return false;
-    }
-    long offsetLagThreshold = hybridStoreConfig.get().getOffsetLagThresholdToGoOnline();
-    for (PartitionConsumptionState pcs: partitionConsumptionStateMap.values()) {
-      if (pcs.hasLagCaughtUp() && offsetLagThreshold >= 0) {
-        // If pcs is marked as having caught up, but we're not ready to serve, that means we're lagging
-        // after having announced that we are ready to serve.
-        try {
-          if (!this.isReadyToServe(pcs)) {
-            return true;
-          }
-        } catch (Exception e) {
-          // Something wasn't reachable, we'll report that something is amiss.
-          return true;
-        }
-      }
-    }
-    return false;
-  }
-
   Runnable buildRepairTask(
       String sourceKafkaUrl,
       PubSubTopicPartition sourceTopicPartition,
