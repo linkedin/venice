@@ -14,6 +14,7 @@ import static com.linkedin.venice.VeniceConstants.DEFAULT_SSL_FACTORY_CLASS_NAME
 import static com.linkedin.venice.VeniceConstants.NATIVE_REPLICATION_DEFAULT_SOURCE_FABRIC;
 import static com.linkedin.venice.VeniceConstants.SYSTEM_PROPERTY_FOR_APP_RUNNING_REGION;
 
+import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.security.SSLFactory;
@@ -116,6 +117,17 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
    * the status of the SystemProducer.
    */
   private final Map<SystemProducer, Pair<Boolean, Boolean>> systemProducerStatues;
+
+  private Optional<D2Client> providedPrimaryControllerColoD2Client = Optional.empty();
+
+  private Optional<D2Client> providedChildColoD2Client = Optional.empty();
+
+  public void setProvidedD2Clients(
+      Optional<D2Client> providedChildColoD2Client,
+      Optional<D2Client> providedPrimaryControllerColoD2Client) {
+    this.providedChildColoD2Client = providedChildColoD2Client;
+    this.providedPrimaryControllerColoD2Client = providedPrimaryControllerColoD2Client;
+  }
 
   /**
    * All the required configs to build a SSL Factory
@@ -251,6 +263,32 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
         samzaJobId,
         runningFabric,
         verifyLatestProtocolPresent,
+        sslFactory,
+        partitioners);
+  }
+
+  protected VeniceSystemProducer createSystemProducer(
+      D2Client providedChildColoD2Client,
+      D2Client providedPrimaryControllerColoD2Client,
+      String primaryControllerD2Service,
+      String storeName,
+      Version.PushType venicePushType,
+      String samzaJobId,
+      String runningFabric,
+      boolean verifyLatestProtocolPresent,
+      Config config,
+      Optional<SSLFactory> sslFactory,
+      Optional<String> partitioners) {
+    return new VeniceSystemProducer(
+        providedChildColoD2Client,
+        providedPrimaryControllerColoD2Client,
+        primaryControllerD2Service,
+        storeName,
+        venicePushType,
+        samzaJobId,
+        runningFabric,
+        verifyLatestProtocolPresent,
+        this,
         sslFactory,
         partitioners);
   }
@@ -430,19 +468,35 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
         primaryControllerColoD2ZKHost,
         primaryControllerD2Service);
 
-    VeniceSystemProducer systemProducer = createSystemProducer(
-        localVeniceZKHosts,
-        primaryControllerColoD2ZKHost,
-        primaryControllerD2Service,
-        storeName,
-        venicePushType,
-        samzaJobId,
-        runningFabric,
-        verifyLatestProtocolPresent,
-        config, // Although we don't use this config in our default implementation, overridden implementations might
-        // need this
-        sslFactory,
-        partitioners);
+    VeniceSystemProducer systemProducer;
+    if (providedChildColoD2Client.isPresent() && providedPrimaryControllerColoD2Client.isPresent()) {
+      LOGGER.info("Using provided D2 clients for child and primary controller colo");
+      systemProducer = createSystemProducer(
+          providedChildColoD2Client.get(),
+          providedPrimaryControllerColoD2Client.get(),
+          primaryControllerD2Service,
+          storeName,
+          venicePushType,
+          samzaJobId,
+          runningFabric,
+          verifyLatestProtocolPresent,
+          config,
+          sslFactory,
+          partitioners);
+    } else {
+      LOGGER.info("Creating new D2 clients for child and primary controller colo by zk hosts");
+      systemProducer = createSystemProducer(
+          localVeniceZKHosts,
+          primaryControllerColoD2ZKHost,
+          primaryControllerD2Service,
+          storeName,
+          venicePushType,
+          samzaJobId,
+          runningFabric,
+          verifyLatestProtocolPresent,
+          sslFactory,
+          partitioners);
+    }
     systemProducer.applyAdditionalConfigs(config);
     this.systemProducerStatues.computeIfAbsent(systemProducer, k -> Pair.create(true, false));
     return systemProducer;
