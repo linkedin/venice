@@ -6,7 +6,6 @@ import static org.testng.Assert.assertNotNull;
 import static org.testng.AssertJUnit.assertFalse;
 
 import io.opentelemetry.api.common.Attributes;
-import io.opentelemetry.sdk.metrics.data.DoublePointData;
 import io.opentelemetry.sdk.metrics.data.ExponentialHistogramPointData;
 import io.opentelemetry.sdk.metrics.data.HistogramPointData;
 import io.opentelemetry.sdk.metrics.data.LongPointData;
@@ -33,7 +32,7 @@ public abstract class OpenTelemetryDataPointTestUtils {
         .orElse(null);
   }
 
-  public static DoublePointData getDoublePointDataFromGauge(
+  public static LongPointData getLongPointDataFromGauge(
       Collection<MetricData> metricsData,
       String metricName,
       String prefix) {
@@ -41,7 +40,7 @@ public abstract class OpenTelemetryDataPointTestUtils {
         .filter(metricData -> metricData.getName().equals(DEFAULT_METRIC_PREFIX + prefix + "." + metricName))
         .findFirst()
         .orElse(null)
-        .getDoubleGaugeData()
+        .getLongGaugeData()
         .getPoints()
         .stream()
         .findFirst()
@@ -93,19 +92,19 @@ public abstract class OpenTelemetryDataPointTestUtils {
     assertEquals(longPointData.getAttributes(), expectedAttributes, "LongPointData attributes should match");
   }
 
-  public static void validateDoublePointDataFromGauge(
+  public static void validateLongPointDataFromGauge(
       InMemoryMetricReader inMemoryMetricReader,
-      double expectedValue,
+      long expectedValue,
       Attributes expectedAttributes,
       String metricName,
       String metricPrefix) {
     Collection<MetricData> metricsData = inMemoryMetricReader.collectAllMetrics();
     assertFalse(metricsData.isEmpty());
 
-    DoublePointData doublePointData = getDoublePointDataFromGauge(metricsData, metricName, metricPrefix);
-    assertNotNull(doublePointData, "DoublePointData should not be null");
-    assertEquals(doublePointData.getValue(), expectedValue, "DoublePointData value should be " + expectedValue);
-    assertEquals(doublePointData.getAttributes(), expectedAttributes, "DoublePointData attributes should match");
+    LongPointData longPointData = getLongPointDataFromGauge(metricsData, metricName, metricPrefix);
+    assertNotNull(longPointData, "LongPointData should not be null");
+    assertEquals(longPointData.getValue(), expectedValue, "LongPointData value should be " + expectedValue);
+    assertEquals(longPointData.getAttributes(), expectedAttributes, "LongPointData attributes should match");
   }
 
   public static void validateExponentialHistogramPointData(
