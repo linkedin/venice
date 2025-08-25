@@ -4,6 +4,7 @@ import com.linkedin.venice.throttle.VeniceAdaptiveThrottler;
 import io.netty.handler.traffic.GlobalChannelTrafficShapingHandler;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -31,7 +32,8 @@ public class VeniceAdaptiveBlobTransferTrafficThrottler implements VeniceAdaptiv
   private final String throttlerName;
   private final List<BooleanSupplier> limiterSuppliers = new ArrayList<>();
   private final List<BooleanSupplier> boosterSuppliers = new ArrayList<>();
-  private GlobalChannelTrafficShapingHandler globalChannelTrafficShapingHandler = null;
+  private final AtomicReference<GlobalChannelTrafficShapingHandler> globalChannelTrafficShapingHandler =
+      new AtomicReference<>();
   private final long baseRate;
   private final int signalIdleThreshold;
   private int currentFactor = 100;
@@ -70,7 +72,7 @@ public class VeniceAdaptiveBlobTransferTrafficThrottler implements VeniceAdaptiv
 
   @Override
   public void checkSignalAndAdjustThrottler() {
-    if (globalChannelTrafficShapingHandler == null) {
+    if (globalChannelTrafficShapingHandler.get() == null) {
       LOGGER.info("Related traffic shaping handler does not exist, will not update the throttling number");
       return;
     }
@@ -152,21 +154,18 @@ public class VeniceAdaptiveBlobTransferTrafficThrottler implements VeniceAdaptiv
     return throttlerName;
   }
 
-  public synchronized void setGlobalChannelTrafficShapingHandler(
+  public void setGlobalChannelTrafficShapingHandler(
       GlobalChannelTrafficShapingHandler globalChannelTrafficShapingHandler) {
-    if (this.globalChannelTrafficShapingHandler == null
-        || this.globalChannelTrafficShapingHandler == globalChannelTrafficShapingHandler) {
-      this.globalChannelTrafficShapingHandler = globalChannelTrafficShapingHandler;
-    } else {
+    if (!this.globalChannelTrafficShapingHandler.compareAndSet(null, globalChannelTrafficShapingHandler)) {
       throw new UnsupportedOperationException("Cannot update GlobalChannelTrafficShapingHandler once initialized.");
     }
   }
 
   void updateThrottlerNumber() {
     if (isWriteThrottler) {
-      globalChannelTrafficShapingHandler.setWriteLimit((long) (currentFactor * baseRate / 100.0));
+      globalChannelTrafficShapingHandler.get().setWriteLimit((long) (currentFactor * baseRate / 100.0));
     } else {
-      globalChannelTrafficShapingHandler.setReadLimit((long) (currentFactor * baseRate / 100.0));
+      globalChannelTrafficShapingHandler.get().setReadLimit((long) (currentFactor * baseRate / 100.0));
     }
   }
 }
