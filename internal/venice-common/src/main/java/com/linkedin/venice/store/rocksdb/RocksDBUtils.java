@@ -160,11 +160,13 @@ public class RocksDBUtils {
     Path finalPartitionDir = Paths.get(partitionPathStr);
 
     // If the partition folder already exists and is not empty, we should not rename the temp folder to it.
-    if (Files.exists(finalPartitionDir) && Files.isDirectory(finalPartitionDir)
-        && finalPartitionDir.toFile().list().length > 0) {
-      throw new VeniceException(
-          "Final partition directory is not empty: " + finalPartitionDir + ", cannot rename temp directory: "
-              + tempPartitionDir);
+    if (Files.exists(finalPartitionDir) && Files.isDirectory(finalPartitionDir)) {
+      String[] files = finalPartitionDir.toFile().list();
+      if (files != null && files.length > 0) {
+        throw new VeniceException(
+            "Final partition directory is not empty: " + finalPartitionDir + ", cannot rename temp directory: "
+                + tempPartitionDir);
+      }
     }
 
     if (Files.exists(tempPartitionDir)) {
