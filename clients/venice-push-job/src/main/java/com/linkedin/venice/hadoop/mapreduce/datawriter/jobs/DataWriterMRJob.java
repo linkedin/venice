@@ -29,6 +29,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_SOURCE_
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KEY_FIELD_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.LATEST_KAFKA_MESSAGE_ENVELOPE_SCHEMA_STRING;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.MAP_REDUCE_PARTITIONER_CLASS_CONFIG;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PARTITION_COUNT;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REDUCER_SPECULATIVE_EXECUTION_ENABLE;
@@ -238,6 +239,7 @@ public class DataWriterMRJob extends DataWriterComputeJob {
       Schema keySchemaFromController = pushJobSetting.storeKeySchema;
       String keySchemaString = AvroCompatibilityHelper.toParsingForm(keySchemaFromController);
       jobConf.set(KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP, keySchemaString);
+      jobConf.set(LATEST_KAFKA_MESSAGE_ENVELOPE_SCHEMA_STRING, pushJobSetting.kafkaMessageEnvelopeSchema);
       jobConf.setInputFormat(KafkaInputFormat.class);
       jobConf.setMapperClass(VeniceKafkaInputMapper.class);
       if (pushJobSetting.kafkaInputCombinerEnabled) {
