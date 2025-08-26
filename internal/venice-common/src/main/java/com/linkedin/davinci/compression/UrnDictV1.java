@@ -142,7 +142,6 @@ public class UrnDictV1 {
   }
 
   public byte[] serializeDict() {
-    LOGGER.info("Serializing URN dictionary: {}", urnToIdMap);
     return DICT_SERIALIZER.serialize(urnToIdMap);
   }
 
