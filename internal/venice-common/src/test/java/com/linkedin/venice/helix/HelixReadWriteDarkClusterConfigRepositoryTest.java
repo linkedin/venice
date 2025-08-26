@@ -41,7 +41,7 @@ public class HelixReadWriteDarkClusterConfigRepositoryTest {
   @Test
   public void testUpdateConfigs() {
     DarkClusterConfig config = new DarkClusterConfig();
-    config.getTargetStores().add("storeA");
+    config.getStoresToReplicate().add("storeA");
     doReturn(true).when(accessor).set(anyString(), any(), anyInt());
 
     repo.updateConfigs(config);

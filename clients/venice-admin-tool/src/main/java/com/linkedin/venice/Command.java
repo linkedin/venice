@@ -25,7 +25,6 @@ import static com.linkedin.venice.Arg.CLUSTER_LIST;
 import static com.linkedin.venice.Arg.CLUSTER_SRC;
 import static com.linkedin.venice.Arg.COMPACTION_THRESHOLD_MILLISECONDS;
 import static com.linkedin.venice.Arg.COMPRESSION_STRATEGY;
-import static com.linkedin.venice.Arg.DARK_CLUSTER_TARGET_STORES;
 import static com.linkedin.venice.Arg.DATETIME;
 import static com.linkedin.venice.Arg.DAVINCI_HEARTBEAT_REPORTED;
 import static com.linkedin.venice.Arg.DEBUG;
@@ -133,6 +132,7 @@ import static com.linkedin.venice.Arg.STORAGE_PERSONA;
 import static com.linkedin.venice.Arg.STORAGE_QUOTA;
 import static com.linkedin.venice.Arg.STORE;
 import static com.linkedin.venice.Arg.STORES;
+import static com.linkedin.venice.Arg.STORES_TO_REPLICATE;
 import static com.linkedin.venice.Arg.STORE_FILTER_FILE;
 import static com.linkedin.venice.Arg.STORE_LIFECYCLE_HOOKS_LIST;
 import static com.linkedin.venice.Arg.STORE_SIZE;
@@ -321,7 +321,7 @@ public enum Command {
   ),
   UPDATE_DARK_CLUSTER_CONFIG(
       "update-dark-cluster-config", "Update dark cluster configs", new Arg[] { URL, CLUSTER },
-      new Arg[] { DARK_CLUSTER_TARGET_STORES }
+      new Arg[] { STORES_TO_REPLICATE }
   ),
   EMPTY_PUSH(
       "empty-push", "Do an empty push into an existing store", new Arg[] { URL, STORE, PUSH_ID, STORE_SIZE },

@@ -1,7 +1,7 @@
 package com.linkedin.venice;
 
-import static com.linkedin.venice.Arg.DARK_CLUSTER_TARGET_STORES;
 import static com.linkedin.venice.Arg.SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND;
+import static com.linkedin.venice.Arg.STORES_TO_REPLICATE;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.doReturn;
@@ -149,13 +149,16 @@ public class TestAdminTool {
     String storeNames = "store1,store2,store3";
 
     String[] args = { "--update-dark-cluster-config", "--url", controllerUrl, "--cluster", clusterName,
-        "--" + DARK_CLUSTER_TARGET_STORES.getArgName(), storeNames };
+        "--" + STORES_TO_REPLICATE.getArgName(), storeNames, "--is-dark-cluster", "true" };
 
     CommandLine commandLine = AdminTool.getCommandLine(args);
     UpdateDarkClusterConfigQueryParams params = AdminTool.getUpdateDarkClusterConfigQueryParams(commandLine);
-    Optional<List<String>> targetStores = params.getTargetStores();
-    Assert.assertTrue(targetStores.isPresent(), "Target stores not parsed from args");
-    Assert.assertEquals(targetStores.get().size(), 3);
+    Optional<List<String>> storesToReplicate = params.getStoresToReplicate();
+    Assert.assertTrue(storesToReplicate.isPresent(), "Stores to replicate not parsed from args");
+    Assert.assertEquals(storesToReplicate.get().size(), 3);
+
+    Assert.assertTrue(params.getIsDarkCluster().isPresent());
+    Assert.assertTrue(params.getIsDarkCluster().get());
   }
 
   @Test

@@ -44,7 +44,8 @@ public class ClusterRoutesTest {
 
     Map<String, String[]> queryMapData = new HashMap<>();
     queryMapData.put(ControllerApiConstants.CLUSTER, new String[] { TEST_CLUSTER });
-    queryMapData.put(ControllerApiConstants.DARK_CLUSTER_TARGET_STORES, new String[] { "store1,store2" });
+    queryMapData.put(ControllerApiConstants.STORES_TO_REPLICATE, new String[] { "store1,store2" });
+    queryMapData.put(ControllerApiConstants.IS_DARK_CLUSTER, new String[] { "true" });
 
     when(queryParamsMap.toMap()).thenReturn(queryMapData);
     when(request.queryParams(ControllerApiConstants.CLUSTER)).thenReturn(TEST_CLUSTER);

@@ -1,6 +1,5 @@
 package com.linkedin.venice.controller;
 
-import static com.linkedin.venice.AdminTool.*;
 import static com.linkedin.venice.ConfigKeys.ALLOW_CLUSTER_WIPE;
 import static com.linkedin.venice.ConfigKeys.LOCAL_REGION_NAME;
 import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_ENABLED;
@@ -163,26 +162,34 @@ public class TestAdminToolEndToEnd {
       String storesParam = testStoreName1 + "," + testStoreName2;
       String[] adminToolArgs =
           { "--update-dark-cluster-config", "--url", venice.getLeaderVeniceController().getControllerUrl(), "--cluster",
-              clusterName, "--dark-cluster-target-stores", storesParam };
+              clusterName, "--" + Arg.STORES_TO_REPLICATE.getArgName(), storesParam };
       AdminTool.main(adminToolArgs);
 
       TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
         darkClusterConfigRepository.refresh();
-        Assert.assertTrue(darkClusterConfigRepository.getConfigs().getTargetStores().contains(testStoreName1));
-        Assert.assertTrue(darkClusterConfigRepository.getConfigs().getTargetStores().contains(testStoreName2));
+        Assert.assertTrue(darkClusterConfigRepository.getConfigs().getStoresToReplicate().contains(testStoreName1));
+        Assert.assertTrue(darkClusterConfigRepository.getConfigs().getStoresToReplicate().contains(testStoreName2));
+        Assert.assertEquals(darkClusterConfigRepository.getConfigs().getStoresToReplicate().size(), 2);
+
+        // Verify isDarkCluster flag is false by default
+        Assert.assertFalse(darkClusterConfigRepository.getConfigs().getIsDarkCluster());
       });
 
       // Update the list to contain only test store 1
       String[] adminToolArgsWithOnlyOneStore =
           { "--update-dark-cluster-config", "--url", venice.getLeaderVeniceController().getControllerUrl(), "--cluster",
-              clusterName, "--dark-cluster-target-stores", testStoreName1 };
+              clusterName, "--" + Arg.IS_DARK_CLUSTER.getArgName(), "true", "--" + Arg.STORES_TO_REPLICATE.getArgName(),
+              testStoreName1 };
       AdminTool.main(adminToolArgsWithOnlyOneStore);
 
       TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
         darkClusterConfigRepository.refresh();
-        Assert.assertEquals(darkClusterConfigRepository.getConfigs().getTargetStores().size(), 1);
-        Assert.assertTrue(darkClusterConfigRepository.getConfigs().getTargetStores().contains(testStoreName1));
-        Assert.assertFalse(darkClusterConfigRepository.getConfigs().getTargetStores().contains(testStoreName2));
+        Assert.assertEquals(darkClusterConfigRepository.getConfigs().getStoresToReplicate().size(), 1);
+        Assert.assertTrue(darkClusterConfigRepository.getConfigs().getStoresToReplicate().contains(testStoreName1));
+        Assert.assertFalse(darkClusterConfigRepository.getConfigs().getStoresToReplicate().contains(testStoreName2));
+
+        // Verify isDarkCluster flag is updated to true
+        Assert.assertTrue(darkClusterConfigRepository.getConfigs().getIsDarkCluster());
       });
     }
   }

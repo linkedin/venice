@@ -1,6 +1,7 @@
 package com.linkedin.venice.controllerapi;
 
-import static com.linkedin.venice.ConfigKeys.DARK_CLUSTER_TARGET_STORES;
+import static com.linkedin.venice.ConfigKeys.IS_DARK_CLUSTER;
+import static com.linkedin.venice.ConfigKeys.STORES_TO_REPLICATE;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -24,16 +25,24 @@ public class UpdateDarkClusterConfigQueryParams extends QueryParams {
   }
 
   // ***************** below this line are getters and setters *****************
-  public Optional<List<String>> getTargetStores() {
-    if (params.get(DARK_CLUSTER_TARGET_STORES) == null) {
+  public Optional<Boolean> getIsDarkCluster() {
+    return getBoolean(IS_DARK_CLUSTER);
+  }
+
+  public UpdateDarkClusterConfigQueryParams setIsDarkCluster(boolean isDarkCluster) {
+    return putBoolean(IS_DARK_CLUSTER, isDarkCluster);
+  }
+
+  public Optional<List<String>> getStoresToReplicate() {
+    if (params.get(STORES_TO_REPLICATE) == null) {
       return Optional.empty();
     }
 
-    return getStringList(DARK_CLUSTER_TARGET_STORES);
+    return getStringList(STORES_TO_REPLICATE);
   }
 
-  public UpdateDarkClusterConfigQueryParams setTargetStores(List<String> targetStores) {
-    return putStringList(DARK_CLUSTER_TARGET_STORES, targetStores);
+  public UpdateDarkClusterConfigQueryParams setStoresToReplicate(List<String> storesToReplicate) {
+    return putStringList(STORES_TO_REPLICATE, storesToReplicate);
   }
 
   // ***************** above this line are getters and setters *****************
@@ -55,5 +64,13 @@ public class UpdateDarkClusterConfigQueryParams extends QueryParams {
         throw new VeniceException(e);
       }
     }
+  }
+
+  private UpdateDarkClusterConfigQueryParams putBoolean(String name, boolean value) {
+    return (UpdateDarkClusterConfigQueryParams) add(name, value);
+  }
+
+  private Optional<Boolean> getBoolean(String name) {
+    return Optional.ofNullable(params.get(name)).map(Boolean::valueOf);
   }
 }

@@ -2840,5 +2840,11 @@ public class ConfigKeys {
    * List of stores to be treated as dark cluster target stores. If a store is in this list, all
    * writes to this store will be replicated to dark clusters. If empty, no store will be treated as a dark cluster target store.
    */
-  public static final String DARK_CLUSTER_TARGET_STORES = "dark.cluster.target.stores";
+  public static final String STORES_TO_REPLICATE = "stores.to.replicate";
+
+  /**
+   * Whether the current cluster is a dark cluster. If true, all writes to the stores in {@link #STORES_TO_REPLICATE}
+   * will be replicated to this cluster. If false, ALL write will be replicated to this cluster.
+   */
+  public static final String IS_DARK_CLUSTER = "is.dark.cluster";
 }

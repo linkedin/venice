@@ -11,17 +11,28 @@ import org.testng.annotations.Test;
 
 public class UpdateDarkClusterConfigQueryParamsTest {
   @Test
-  public void testSetAndGetTargetStores() {
+  public void testSetAndGetStoresToReplicate() {
     Map<String, String> params = new HashMap<>();
     UpdateDarkClusterConfigQueryParams emptyQueryParams = new UpdateDarkClusterConfigQueryParams(params);
-    Assert.assertEquals(emptyQueryParams.getTargetStores(), Optional.empty());
+    Assert.assertEquals(emptyQueryParams.getStoresToReplicate(), Optional.empty());
 
     UpdateDarkClusterConfigQueryParams queryParams = new UpdateDarkClusterConfigQueryParams(params);
-    queryParams.setTargetStores(Arrays.asList("a", "b", "c"));
-    Assert.assertEquals(queryParams.getTargetStores(), Optional.of(Arrays.asList("a", "b", "c")));
+    queryParams.setStoresToReplicate(Arrays.asList("a", "b", "c"));
+    Assert.assertEquals(queryParams.getStoresToReplicate(), Optional.of(Arrays.asList("a", "b", "c")));
 
     UpdateDarkClusterConfigQueryParams emptyStoresQueryParams = new UpdateDarkClusterConfigQueryParams(params);
-    emptyStoresQueryParams.setTargetStores(new ArrayList<>());
-    Assert.assertEquals(emptyStoresQueryParams.getTargetStores(), Optional.of(new ArrayList<>()));
+    emptyStoresQueryParams.setStoresToReplicate(new ArrayList<>());
+    Assert.assertEquals(emptyStoresQueryParams.getStoresToReplicate(), Optional.of(new ArrayList<>()));
+  }
+
+  @Test
+  public void testSetAndGetIsDarkCluster() {
+    Map<String, String> params = new HashMap<>();
+    UpdateDarkClusterConfigQueryParams emptyQueryParams = new UpdateDarkClusterConfigQueryParams(params);
+    Assert.assertEquals(emptyQueryParams.getIsDarkCluster(), Optional.empty());
+
+    UpdateDarkClusterConfigQueryParams queryParams = new UpdateDarkClusterConfigQueryParams(params);
+    queryParams.setIsDarkCluster(true);
+    Assert.assertEquals(queryParams.getIsDarkCluster(), Optional.of(true));
   }
 }

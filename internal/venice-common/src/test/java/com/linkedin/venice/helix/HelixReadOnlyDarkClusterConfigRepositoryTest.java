@@ -28,18 +28,18 @@ public class HelixReadOnlyDarkClusterConfigRepositoryTest {
   public void testDefaultConfigIsEmpty() {
     DarkClusterConfig config = repo.getConfigs();
     assertNotNull(config);
-    assertTrue(config.getTargetStores().isEmpty());
+    assertTrue(config.getStoresToReplicate().isEmpty());
   }
 
   @Test
   public void testClusterConfigListenerHandlesDataChangeAndDelete() {
     DarkClusterConfig config = new DarkClusterConfig();
-    config.getTargetStores().add("storeA");
-    config.getTargetStores().add("storeB");
+    config.getStoresToReplicate().add("storeA");
+    config.getStoresToReplicate().add("storeB");
 
     // Data change: should update config
     listener.handleDataChange("/path", config);
-    assertEquals(repo.getConfigs().getTargetStores(), config.getTargetStores());
+    assertEquals(repo.getConfigs().getStoresToReplicate(), config.getStoresToReplicate());
 
     // Data change with invalid type: should throw
     try {
@@ -51,6 +51,6 @@ public class HelixReadOnlyDarkClusterConfigRepositoryTest {
 
     // Data deleted: should reset config to default
     listener.handleDataDeleted("/path");
-    assertTrue(repo.getConfigs().getTargetStores().isEmpty());
+    assertTrue(repo.getConfigs().getStoresToReplicate().isEmpty());
   }
 }

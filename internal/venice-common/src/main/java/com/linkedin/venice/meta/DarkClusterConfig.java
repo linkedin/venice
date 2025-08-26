@@ -7,23 +7,34 @@ import java.util.List;
 
 
 public class DarkClusterConfig {
-  @JsonProperty(ConfigKeys.DARK_CLUSTER_TARGET_STORES)
-  private List<String> targetStores = new ArrayList<>();
+  @JsonProperty(ConfigKeys.IS_DARK_CLUSTER)
+  private boolean isDarkCluster = false;
+
+  @JsonProperty(ConfigKeys.STORES_TO_REPLICATE)
+  private List<String> storesToReplicate = new ArrayList<>();
 
   public DarkClusterConfig() {
   }
 
   public DarkClusterConfig(DarkClusterConfig clone) {
-    if (clone.getTargetStores() != null) {
-      targetStores = new ArrayList<>(clone.getTargetStores());
+    if (clone.getStoresToReplicate() != null) {
+      storesToReplicate = new ArrayList<>(clone.getStoresToReplicate());
     }
   }
 
-  public List<String> getTargetStores() {
-    return targetStores;
+  public boolean getIsDarkCluster() {
+    return isDarkCluster;
   }
 
-  public void setTargetStores(List<String> targetStores) {
-    this.targetStores = targetStores;
+  public void setIsDarkCluster(boolean darkCluster) {
+    isDarkCluster = darkCluster;
+  }
+
+  public List<String> getStoresToReplicate() {
+    return storesToReplicate;
+  }
+
+  public void setStoresToReplicate(List<String> storesToReplicate) {
+    this.storesToReplicate = storesToReplicate;
   }
 }

@@ -54,7 +54,7 @@ public class TestHelixReadWriteDarkClusterConfigRepository {
   @Test
   public void testDarkClusterConfigGetsUpdated() {
     DarkClusterConfig darkClusterConfig = new DarkClusterConfig();
-    darkClusterConfig.setTargetStores(java.util.Arrays.asList("store1", "store2"));
+    darkClusterConfig.setStoresToReplicate(java.util.Arrays.asList("store1", "store2"));
 
     darkClusterConfigRWRepo.updateConfigs(darkClusterConfig);
 
@@ -65,7 +65,7 @@ public class TestHelixReadWriteDarkClusterConfigRepository {
       }
 
       DarkClusterConfig clusterConfig = (DarkClusterConfig) zkData;
-      return clusterConfig.getTargetStores().equals(darkClusterConfig.getTargetStores());
+      return clusterConfig.getStoresToReplicate().equals(darkClusterConfig.getStoresToReplicate());
     });
   }
 
@@ -76,7 +76,7 @@ public class TestHelixReadWriteDarkClusterConfigRepository {
     localDarkClusterConfigRWRepo.refresh();
 
     DarkClusterConfig darkClusterConfig = new DarkClusterConfig();
-    darkClusterConfig.setTargetStores(java.util.Arrays.asList("storeA", "storeB"));
+    darkClusterConfig.setStoresToReplicate(java.util.Arrays.asList("storeA", "storeB"));
 
     // Update dark cluster config
     darkClusterConfigRWRepo.updateConfigs(darkClusterConfig);
@@ -85,14 +85,15 @@ public class TestHelixReadWriteDarkClusterConfigRepository {
     TestUtils.waitForNonDeterministicCompletion(
         3,
         TimeUnit.SECONDS,
-        () -> localDarkClusterConfigRWRepo.getConfigs() != null
-            && localDarkClusterConfigRWRepo.getConfigs().getTargetStores().equals(darkClusterConfig.getTargetStores()));
+        () -> localDarkClusterConfigRWRepo.getConfigs() != null && localDarkClusterConfigRWRepo.getConfigs()
+            .getStoresToReplicate()
+            .equals(darkClusterConfig.getStoresToReplicate()));
   }
 
   @Test
   public void testDarkClusterConfigCanDeleteZNode() {
     DarkClusterConfig darkClusterConfig = new DarkClusterConfig();
-    darkClusterConfig.setTargetStores(java.util.Arrays.asList("store1", "store2"));
+    darkClusterConfig.setStoresToReplicate(java.util.Arrays.asList("store1", "store2"));
 
     darkClusterConfigRWRepo.updateConfigs(darkClusterConfig);
 
@@ -103,7 +104,7 @@ public class TestHelixReadWriteDarkClusterConfigRepository {
       }
 
       DarkClusterConfig clusterConfig = (DarkClusterConfig) zkData;
-      return clusterConfig.getTargetStores().equals(darkClusterConfig.getTargetStores());
+      return clusterConfig.getStoresToReplicate().equals(darkClusterConfig.getStoresToReplicate());
     });
 
     darkClusterConfigRWRepo.deleteConfigs();

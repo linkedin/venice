@@ -57,7 +57,7 @@ public class TestHelixReadOnlyDarkClusterConfigRepository {
   @Test
   public void testDarkClusterConfigGetsPropagated() {
     DarkClusterConfig darkClusterConfig = new DarkClusterConfig();
-    darkClusterConfig.setTargetStores(java.util.Arrays.asList("store1", "store2"));
+    darkClusterConfig.setStoresToReplicate(java.util.Arrays.asList("store1", "store2"));
 
     // Serialize dark configs and store in Zk
     zkClient.writeData(clusterPath + clusterConfigPath, darkClusterConfig);
@@ -67,7 +67,7 @@ public class TestHelixReadOnlyDarkClusterConfigRepository {
         3,
         TimeUnit.SECONDS,
         () -> darkClusterConfigRORepo.getConfigs() != null && darkClusterConfigRORepo.getConfigs()
-            .getTargetStores()
+            .getStoresToReplicate()
             .equals(java.util.Arrays.asList("store1", "store2")));
   }
 
@@ -83,7 +83,7 @@ public class TestHelixReadOnlyDarkClusterConfigRepository {
         3,
         TimeUnit.SECONDS,
         () -> darkClusterConfigRORepo.getConfigs() != null
-            && darkClusterConfigRORepo.getConfigs().getTargetStores().isEmpty());
+            && darkClusterConfigRORepo.getConfigs().getStoresToReplicate().isEmpty());
 
     // Trigger a deletion of the dark config ZNode
     zkClient.delete(clusterPath + clusterConfigPath);
@@ -93,13 +93,13 @@ public class TestHelixReadOnlyDarkClusterConfigRepository {
         3,
         TimeUnit.SECONDS,
         () -> darkClusterConfigRORepo.getConfigs() != null
-            && darkClusterConfigRORepo.getConfigs().getTargetStores().isEmpty());
+            && darkClusterConfigRORepo.getConfigs().getStoresToReplicate().isEmpty());
   }
 
   @Test
   public void testDarkClusterConfigGetsPropagatedOnServiceStart() {
     DarkClusterConfig darkClusterConfig = new DarkClusterConfig();
-    darkClusterConfig.setTargetStores(java.util.Arrays.asList("store1", "store2"));
+    darkClusterConfig.setStoresToReplicate(java.util.Arrays.asList("store1", "store2"));
 
     // Serialize dark configs and store in Zk
     zkClient.writeData(clusterPath + clusterConfigPath, darkClusterConfig);
@@ -109,7 +109,7 @@ public class TestHelixReadOnlyDarkClusterConfigRepository {
         3,
         TimeUnit.SECONDS,
         () -> darkClusterConfigRORepo.getConfigs() != null
-            && darkClusterConfigRORepo.getConfigs().getTargetStores().size() == 2);
+            && darkClusterConfigRORepo.getConfigs().getStoresToReplicate().size() == 2);
 
     // Create a HelixReadOnlyDarkClusterConfigRepository to simulate service start up
     HelixReadOnlyDarkClusterConfigRepository darkClusterConfigRORepo2 =
@@ -121,7 +121,7 @@ public class TestHelixReadOnlyDarkClusterConfigRepository {
         30,
         TimeUnit.SECONDS,
         () -> darkClusterConfigRORepo2.getConfigs() != null && darkClusterConfigRORepo2.getConfigs()
-            .getTargetStores()
+            .getStoresToReplicate()
             .equals(java.util.Arrays.asList("store1", "store2")));
   }
 }
