@@ -320,8 +320,7 @@ public enum Arg {
   STORES_TO_REPLICATE(
       "stores-to-replicate", "str", true,
       "Comma separated list of stores to be replicated to dark cluster, eg. store1,store2,..."
-  ), IS_DARK_CLUSTER("is-dark-cluster", "idc", true, "Mark this cluster as a dark cluster"),
-  GLOBAL_RT_DIV_ENABLED("global-rt-div-enabled", "grde", true, "Enable Global RT DIV for a store"),
+  ), GLOBAL_RT_DIV_ENABLED("global-rt-div-enabled", "grde", true, "Enable Global RT DIV for a store"),
   ENUM_SCHEMA_EVOLUTION_ALLOWED(
       "enum-schema-evolution-allowed", "esea", true, "Allow enum schema evolution for a store"
   ), INITIAL_STEP("initial-step", "is", true, "Initial step of the auto store migration"),

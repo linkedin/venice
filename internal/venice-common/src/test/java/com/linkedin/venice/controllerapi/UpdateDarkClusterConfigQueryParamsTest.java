@@ -24,15 +24,4 @@ public class UpdateDarkClusterConfigQueryParamsTest {
     emptyStoresQueryParams.setStoresToReplicate(new ArrayList<>());
     Assert.assertEquals(emptyStoresQueryParams.getStoresToReplicate(), Optional.of(new ArrayList<>()));
   }
-
-  @Test
-  public void testSetAndGetIsDarkCluster() {
-    Map<String, String> params = new HashMap<>();
-    UpdateDarkClusterConfigQueryParams emptyQueryParams = new UpdateDarkClusterConfigQueryParams(params);
-    Assert.assertEquals(emptyQueryParams.getIsDarkCluster(), Optional.empty());
-
-    UpdateDarkClusterConfigQueryParams queryParams = new UpdateDarkClusterConfigQueryParams(params);
-    queryParams.setIsDarkCluster(true);
-    Assert.assertEquals(queryParams.getIsDarkCluster(), Optional.of(true));
-  }
 }

@@ -5416,7 +5416,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   public void updateDarkClusterConfig(String clusterName, UpdateDarkClusterConfigQueryParams params) {
     checkControllerLeadershipFor(clusterName);
-    Optional<Boolean> isDarkCluster = params.getIsDarkCluster();
     Optional<List<String>> storesToReplicate = params.getStoresToReplicate();
 
     HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
@@ -5425,7 +5424,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           getReadWriteDarkClusterConfigRepository(clusterName);
       DarkClusterConfig clonedDarkClusterConfig = new DarkClusterConfig(clusterConfigRepository.getConfigs());
       storesToReplicate.ifPresent(clonedDarkClusterConfig::setStoresToReplicate);
-      isDarkCluster.ifPresent(clonedDarkClusterConfig::setIsDarkCluster);
       clusterConfigRepository.updateConfigs(clonedDarkClusterConfig);
     }
   }

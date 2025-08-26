@@ -283,6 +283,5 @@ public class ControllerApiConstants {
   /**
    * Params for dark cluster
    */
-  public static final String IS_DARK_CLUSTER = "is_dark_cluster";
   public static final String STORES_TO_REPLICATE = "stores_to_replicate";
 }

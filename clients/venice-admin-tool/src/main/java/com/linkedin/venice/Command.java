@@ -64,7 +64,6 @@ import static com.linkedin.venice.Arg.INFILE;
 import static com.linkedin.venice.Arg.INITIAL_STEP;
 import static com.linkedin.venice.Arg.INSTANCES;
 import static com.linkedin.venice.Arg.INTERVAL;
-import static com.linkedin.venice.Arg.IS_DARK_CLUSTER;
 import static com.linkedin.venice.Arg.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.Arg.KAFKA_CONSUMER_CONFIG_FILE;
 import static com.linkedin.venice.Arg.KAFKA_OPERATION_TIMEOUT;
@@ -322,7 +321,7 @@ public enum Command {
   ),
   UPDATE_DARK_CLUSTER_CONFIG(
       "update-dark-cluster-config", "Update dark cluster configs", new Arg[] { URL, CLUSTER },
-      new Arg[] { STORES_TO_REPLICATE, IS_DARK_CLUSTER }
+      new Arg[] { STORES_TO_REPLICATE }
   ),
   EMPTY_PUSH(
       "empty-push", "Do an empty push into an existing store", new Arg[] { URL, STORE, PUSH_ID, STORE_SIZE },

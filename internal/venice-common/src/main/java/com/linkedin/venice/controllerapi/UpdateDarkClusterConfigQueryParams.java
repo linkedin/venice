@@ -1,6 +1,5 @@
 package com.linkedin.venice.controllerapi;
 
-import static com.linkedin.venice.ConfigKeys.IS_DARK_CLUSTER;
 import static com.linkedin.venice.ConfigKeys.STORES_TO_REPLICATE;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -25,14 +24,6 @@ public class UpdateDarkClusterConfigQueryParams extends QueryParams {
   }
 
   // ***************** below this line are getters and setters *****************
-  public Optional<Boolean> getIsDarkCluster() {
-    return getBoolean(IS_DARK_CLUSTER);
-  }
-
-  public UpdateDarkClusterConfigQueryParams setIsDarkCluster(boolean isDarkCluster) {
-    return putBoolean(IS_DARK_CLUSTER, isDarkCluster);
-  }
-
   public Optional<List<String>> getStoresToReplicate() {
     if (params.get(STORES_TO_REPLICATE) == null) {
       return Optional.empty();
@@ -64,13 +55,5 @@ public class UpdateDarkClusterConfigQueryParams extends QueryParams {
         throw new VeniceException(e);
       }
     }
-  }
-
-  private UpdateDarkClusterConfigQueryParams putBoolean(String name, boolean value) {
-    return (UpdateDarkClusterConfigQueryParams) add(name, value);
-  }
-
-  private Optional<Boolean> getBoolean(String name) {
-    return Optional.ofNullable(params.get(name)).map(Boolean::valueOf);
   }
 }

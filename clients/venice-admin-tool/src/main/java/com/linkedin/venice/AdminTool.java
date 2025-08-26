@@ -1424,11 +1424,6 @@ public class AdminTool {
   protected static UpdateDarkClusterConfigQueryParams getUpdateDarkClusterConfigQueryParams(CommandLine cmd) {
     UpdateDarkClusterConfigQueryParams params = new UpdateDarkClusterConfigQueryParams();
 
-    String isDarkClusterStr = getOptionalArgument(cmd, Arg.IS_DARK_CLUSTER);
-    if (isDarkClusterStr != null) {
-      params.setIsDarkCluster(Boolean.parseBoolean(isDarkClusterStr));
-    }
-
     String storesToReplicateStr = getOptionalArgument(cmd, Arg.STORES_TO_REPLICATE);
     if (storesToReplicateStr != null) {
       List<String> storeToReplicate = Utils.parseCommaSeparatedStringToList(storesToReplicateStr);
