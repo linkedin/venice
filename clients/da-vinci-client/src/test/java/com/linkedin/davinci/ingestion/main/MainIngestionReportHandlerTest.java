@@ -1,7 +1,7 @@
 package com.linkedin.davinci.ingestion.main;
 
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
-import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
@@ -14,6 +14,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.ingestion.protocol.IngestionMetricsReport;
 import com.linkedin.venice.ingestion.protocol.IngestionTaskReport;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionReportType;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelHandlerContext;
@@ -85,8 +86,8 @@ public class MainIngestionReportHandlerTest {
         Unpooled.wrappedBuffer(
             AvroProtocolDefinition.INGESTION_TASK_REPORT.getSerializer().serialize(null, ingestionTaskReport)));
     ingestionReportHandler.channelRead0(ctx, msg);
-    verify(ingestionNotifier, times(1)).completed(anyString(), anyInt(), anyLong(), anyString());
-    verify(pushStatusNotifier, times(1)).completed(anyString(), anyInt(), anyLong(), anyString());
+    verify(ingestionNotifier, times(1)).completed(anyString(), anyInt(), any(PubSubPosition.class), anyString());
+    verify(pushStatusNotifier, times(1)).completed(anyString(), anyInt(), any(PubSubPosition.class), anyString());
   }
 
   @Test
