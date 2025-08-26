@@ -43,6 +43,7 @@ import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Map;
+import java.util.function.BiConsumer;
 import org.testng.annotations.Test;
 
 
@@ -179,7 +180,20 @@ public class RouterHttpRequestStatsTest {
   }
 
   @Test
-  public void testEmitCallSizeMetrics() {
+  public void testEmitRequestSizeMetrics() {
+    runCallSizeMetricTest(MessageType.REQUEST, 512, RouterHttpRequestStats::recordRequestSize);
+  }
+
+  @Test
+  public void testEmitResponseSizeMetrics() {
+    runCallSizeMetricTest(MessageType.RESPONSE, 1024, RouterHttpRequestStats::recordResponseSize);
+  }
+
+  private void runCallSizeMetricTest(
+      MessageType messageType,
+      int size,
+      BiConsumer<RouterHttpRequestStats, Integer> recorder) {
+
     String storeName = "test-store";
     String clusterName = "test-cluster";
     InMemoryMetricReader inMemoryMetricReader = InMemoryMetricReader.create();
@@ -191,25 +205,22 @@ public class RouterHttpRequestStatsTest {
         clusterName,
         RequestType.SINGLE_GET,
         mock(ScatterGatherStats.class),
-        false, // keyValueProfilingEnabled = true
+        false,
         null);
 
-    int requestSize = 512;
+    // Record
+    recorder.accept(routerHttpRequestStats, size);
 
-    // Record call size metrics
-    routerHttpRequestStats.recordRequestSize(requestSize);
-
-    // validate request size metrics
+    // Validate
     validateOtelMetrics(
         inMemoryMetricReader,
         storeName,
         clusterName,
         RequestType.SINGLE_GET,
-        MessageType.REQUEST,
+        messageType,
         "",
-        512.0,
+        (double) size,
         "call_size");
-
   }
 
   private void validateOtelMetrics(
