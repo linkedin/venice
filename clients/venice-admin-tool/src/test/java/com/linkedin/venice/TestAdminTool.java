@@ -1,5 +1,6 @@
 package com.linkedin.venice;
 
+import static com.linkedin.venice.Arg.IS_DARK_CLUSTER;
 import static com.linkedin.venice.Arg.SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND;
 import static com.linkedin.venice.Arg.STORES_TO_REPLICATE;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -149,7 +150,7 @@ public class TestAdminTool {
     String storeNames = "store1,store2,store3";
 
     String[] args = { "--update-dark-cluster-config", "--url", controllerUrl, "--cluster", clusterName,
-        "--" + STORES_TO_REPLICATE.getArgName(), storeNames, "--is-dark-cluster", "true" };
+        "--" + STORES_TO_REPLICATE.getArgName(), storeNames, "--" + IS_DARK_CLUSTER.getArgName(), "true" };
 
     CommandLine commandLine = AdminTool.getCommandLine(args);
     UpdateDarkClusterConfigQueryParams params = AdminTool.getUpdateDarkClusterConfigQueryParams(commandLine);
