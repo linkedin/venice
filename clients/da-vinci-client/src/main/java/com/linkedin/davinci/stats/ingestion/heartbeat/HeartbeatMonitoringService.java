@@ -1,6 +1,7 @@
 package com.linkedin.davinci.stats.ingestion.heartbeat;
 
 import com.linkedin.davinci.config.VeniceServerConfig;
+import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType;
 import com.linkedin.davinci.kafka.consumer.PartitionConsumptionState;
 import com.linkedin.davinci.kafka.consumer.ReplicaHeartbeatInfo;
@@ -76,6 +77,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
   private final CompletableFuture<HelixCustomizedViewOfflinePushRepository> customizedViewRepositoryFuture;
   private final String nodeId;
   private HelixCustomizedViewOfflinePushRepository customizedViewRepository;
+  private KafkaStoreIngestionService kafkaStoreIngestionService;
 
   public HeartbeatMonitoringService(
       MetricsRepository metricsRepository,
@@ -468,7 +470,8 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
      */
     for (Map.Entry<String, HeartbeatTimeStampEntry> entry: replicaTimestampMap.entrySet()) {
       // Skip separate RT topic as it is not tracked towards replication latency goal.
-      if (Utils.isSeparateTopicRegion(entry.getKey())) {
+      String regionName = entry.getKey();
+      if (Utils.isSeparateTopicRegion(regionName)) {
         continue;
       }
       if (!entry.getValue().consumedFromUpstream) {
@@ -476,7 +479,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
           LOGGER.info(
               "Replica: {} has not received any valid leader heartbeat from region: {}.",
               partitionConsumptionState.getReplicaId(),
-              entry.getKey());
+              regionName);
         }
         maxLag = Long.MAX_VALUE;
       } else {
@@ -486,7 +489,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
               "Replica: {} has leader heartbeat lag: {}ms from region: {}.",
               partitionConsumptionState.getReplicaId(),
               heartbeatLag,
-              entry.getKey());
+              regionName);
         }
         maxLag = Math.max(maxLag, heartbeatLag);
       }
@@ -613,6 +616,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
   protected void checkAndMaybeLogHeartbeatDelayMap(
       Map<String, Map<Integer, Map<Integer, Map<String, HeartbeatTimeStampEntry>>>> heartbeatTimestamps) {
     long currentTimestamp = System.currentTimeMillis();
+    boolean isLeader = heartbeatTimestamps == leaderHeartbeatTimeStamps;
     for (Map.Entry<String, Map<Integer, Map<Integer, Map<String, HeartbeatTimeStampEntry>>>> storeName: heartbeatTimestamps
         .entrySet()) {
       for (Map.Entry<Integer, Map<Integer, Map<String, HeartbeatTimeStampEntry>>> version: storeName.getValue()
@@ -624,13 +628,18 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
             if (lag > DEFAULT_STALE_HEARTBEAT_LOG_THRESHOLD_MILLIS && region.getValue().readyToServe) {
               String replicaId = Utils
                   .getReplicaId(Version.composeKafkaTopic(storeName.getKey(), version.getKey()), partition.getKey());
+              String ingestionInfoForReplica = kafkaStoreIngestionService
+                  .prepareIngestionInfoFor(storeName.getKey(), version.getKey(), partition.getKey(), region.getKey());
+              String leaderOrFollower = isLeader ? "leader" : "follower";
               LOGGER.warn(
-                  "Replica: {}, region: {} is having heartbeat lag: {}, latest heartbeat: {}, current timestamp: {}",
+                  "Replica: {}, region: {} is having {} heartbeat lag: {}, latest heartbeat: {}, current timestamp: {}, ingestion info: {}",
                   replicaId,
                   region.getKey(),
+                  leaderOrFollower,
                   lag,
                   heartbeatTs,
-                  currentTimestamp);
+                  currentTimestamp,
+                  ingestionInfoForReplica);
             }
           }
         }
@@ -857,5 +866,9 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
 
   String getLocalRegionName() {
     return localRegionName;
+  }
+
+  public void setKafkaStoreIngestionService(KafkaStoreIngestionService kafkaStoreIngestionService) {
+    this.kafkaStoreIngestionService = kafkaStoreIngestionService;
   }
 }
