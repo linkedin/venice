@@ -64,10 +64,10 @@ public class RouterMetricEntityTest {
     expectedMetrics.put(
         RouterMetricEntity.KEY_SIZE,
         new MetricEntity(
-            "key_size",
+            "key_size_in_bytes",
             MetricType.HISTOGRAM,
             MetricUnit.BYTES,
-            "Size of keys in bytes during response handling",
+            "Size of keys in bytes",
             Utils.setOf(
                 VeniceMetricsDimensions.VENICE_STORE_NAME,
                 VeniceMetricsDimensions.VENICE_CLUSTER_NAME,
