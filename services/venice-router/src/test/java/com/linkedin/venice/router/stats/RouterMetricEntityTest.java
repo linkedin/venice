@@ -64,7 +64,7 @@ public class RouterMetricEntityTest {
     expectedMetrics.put(
         RouterMetricEntity.KEY_SIZE,
         new MetricEntity(
-            "key_size_in_bytes",
+            "key_size",
             MetricType.HISTOGRAM,
             MetricUnit.BYTES,
             "Size of keys in bytes",
