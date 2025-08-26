@@ -14,6 +14,8 @@ import com.linkedin.venice.ingestion.protocol.IngestionTaskReport;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionAction;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionReportType;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
+import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.utils.ExceptionUtils;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
@@ -109,7 +111,8 @@ public class MainIngestionReportHandler extends SimpleChannelInboundHandler<Full
     // Relay the notification to parent service's listener.
     switch (reportType) {
       case COMPLETED:
-        notifierHelper(notifier -> notifier.completed(topicName, partitionId, report.offset, message));
+        PubSubPosition completedPosition = ApacheKafkaOffsetPosition.of(report.offset);
+        notifierHelper(notifier -> notifier.completed(topicName, partitionId, completedPosition, message));
         break;
       case ERROR:
         mainIngestionMonitorService.setVersionPartitionToLocalIngestion(topicName, partitionId);
@@ -124,32 +127,41 @@ public class MainIngestionReportHandler extends SimpleChannelInboundHandler<Full
         notifierHelper(notifier -> notifier.started(topicName, partitionId));
         break;
       case RESTARTED:
-        notifierHelper(notifier -> notifier.restarted(topicName, partitionId, offset));
+        PubSubPosition position = ApacheKafkaOffsetPosition.of(offset);
+        notifierHelper(notifier -> notifier.restarted(topicName, partitionId, position));
         break;
       case PROGRESS:
-        notifierHelper(notifier -> notifier.progress(topicName, partitionId, offset));
+        PubSubPosition progressPosition = ApacheKafkaOffsetPosition.of(offset);
+        notifierHelper(notifier -> notifier.progress(topicName, partitionId, progressPosition));
         break;
       case END_OF_PUSH_RECEIVED:
-        notifierHelper(notifier -> notifier.endOfPushReceived(topicName, partitionId, offset));
+        PubSubPosition endOfPushPosition = ApacheKafkaOffsetPosition.of(offset);
+        notifierHelper(notifier -> notifier.endOfPushReceived(topicName, partitionId, endOfPushPosition, ""));
         break;
       case START_OF_INCREMENTAL_PUSH_RECEIVED:
+        PubSubPosition startIncPosition = ApacheKafkaOffsetPosition.of(offset);
         notifierHelper(
             notifier -> notifier
-                .startOfIncrementalPushReceived(topicName, partitionId, offset, report.message.toString()));
+                .startOfIncrementalPushReceived(topicName, partitionId, startIncPosition, report.message.toString()));
         break;
       case END_OF_INCREMENTAL_PUSH_RECEIVED:
+        PubSubPosition endIncPosition = ApacheKafkaOffsetPosition.of(offset);
         notifierHelper(
             notifier -> notifier
-                .endOfIncrementalPushReceived(topicName, partitionId, offset, report.message.toString()));
+                .endOfIncrementalPushReceived(topicName, partitionId, endIncPosition, report.message.toString()));
         break;
       case TOPIC_SWITCH_RECEIVED:
-        notifierHelper(notifier -> notifier.topicSwitchReceived(topicName, partitionId, offset));
+        PubSubPosition topicSwitchPosition = ApacheKafkaOffsetPosition.of(offset);
+        notifierHelper(notifier -> notifier.topicSwitchReceived(topicName, partitionId, topicSwitchPosition, ""));
         break;
       case DATA_RECOVERY_COMPLETED:
-        notifierHelper(notifier -> notifier.dataRecoveryCompleted(topicName, partitionId, offset, message));
+        PubSubPosition dataRecoveryPosition = ApacheKafkaOffsetPosition.of(offset);
+        notifierHelper(
+            notifier -> notifier.dataRecoveryCompleted(topicName, partitionId, dataRecoveryPosition, message));
         break;
       case STOPPED:
-        notifierHelper(notifier -> notifier.stopped(topicName, partitionId, offset));
+        PubSubPosition stoppedPosition = ApacheKafkaOffsetPosition.of(offset);
+        notifierHelper(notifier -> notifier.stopped(topicName, partitionId, stoppedPosition));
         break;
       default:
         LOGGER.warn("Received unsupported ingestion report: {} it will be ignored for now.", report);

@@ -21,6 +21,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionCommandType;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionComponentType;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
@@ -280,7 +281,7 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend implements
   VeniceNotifier getIsolatedIngestionNotifier(VeniceNotifier notifier) {
     return new RelayNotifier(notifier) {
       @Override
-      public void completed(String kafkaTopic, int partition, long offset, String message) {
+      public void completed(String kafkaTopic, int partition, PubSubPosition position, String message) {
         // Use thread pool to handle the completion reporting to make sure it is not blocking the report.
         if (isTopicPartitionHosted(kafkaTopic, partition)) {
           getCompletionHandlingExecutor().submit(() -> {
