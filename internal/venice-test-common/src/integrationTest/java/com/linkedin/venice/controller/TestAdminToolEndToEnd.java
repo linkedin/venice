@@ -1,6 +1,7 @@
 package com.linkedin.venice.controller;
 
 import static com.linkedin.venice.ConfigKeys.ALLOW_CLUSTER_WIPE;
+import static com.linkedin.venice.ConfigKeys.IS_DARK_CLUSTER;
 import static com.linkedin.venice.ConfigKeys.LOCAL_REGION_NAME;
 import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.REPUSH_ORCHESTRATOR_CLASS_NAME;
@@ -74,6 +75,9 @@ public class TestAdminToolEndToEnd {
     // repushStore() configs
     properties.setProperty(REPUSH_ORCHESTRATOR_CLASS_NAME, TestHybrid.TestRepushOrchestratorImpl.class.getName());
     properties.setProperty(LOG_COMPACTION_ENABLED, "true");
+
+    // dark cluster configs
+    properties.setProperty(IS_DARK_CLUSTER, "true");
 
     VeniceClusterCreateOptions options = new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
         .regionName(regionName)

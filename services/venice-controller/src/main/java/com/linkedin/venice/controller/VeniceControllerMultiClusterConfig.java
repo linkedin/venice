@@ -387,6 +387,10 @@ public class VeniceControllerMultiClusterConfig {
     return getCommonConfig().getRealTimeTopicVersioningEnabled();
   }
 
+  public boolean isDarkCluster() {
+    return getCommonConfig().isDarkCluster();
+  }
+
   public LogContext getLogContext() {
     return getCommonConfig().getLogContext();
   }

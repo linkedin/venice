@@ -7,15 +7,14 @@ import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertFalse;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.linkedin.venice.controller.Admin;
-import com.linkedin.venice.controller.VeniceParentHelixAdmin;
+import com.linkedin.venice.controller.VeniceControllerMultiClusterConfig;
+import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controllerapi.ControllerApiConstants;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
-import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 import spark.QueryParamsMap;
 import spark.Request;
@@ -26,16 +25,15 @@ import spark.Route;
 public class ClusterRoutesTest {
   private static final ObjectMapper OBJECT_MAPPER = ObjectMapperFactory.getInstance();
   private static final String TEST_CLUSTER = "test_cluster";
-  private Admin mockAdmin;
-
-  @BeforeMethod(alwaysRun = true)
-  public void setUp() {
-    mockAdmin = mock(VeniceParentHelixAdmin.class);
-  }
 
   @Test
   public void testUpdateDarkClusterConfig() throws Exception {
-    doReturn(true).when(mockAdmin).isLeaderControllerFor(anyString());
+    VeniceHelixAdmin mockVeniceHelixAdmin = mock(VeniceHelixAdmin.class);
+    VeniceControllerMultiClusterConfig controllerMultiClusterConfig = mock(VeniceControllerMultiClusterConfig.class);
+
+    doReturn(true).when(mockVeniceHelixAdmin).isLeaderControllerFor(anyString());
+    when(mockVeniceHelixAdmin.getMultiClusterConfigs()).thenReturn(controllerMultiClusterConfig);
+    doReturn(true).when(controllerMultiClusterConfig).isDarkCluster();
 
     Request request = mock(Request.class);
 
@@ -48,7 +46,8 @@ public class ClusterRoutesTest {
 
     when(queryParamsMap.toMap()).thenReturn(queryMapData);
     when(request.queryParams(ControllerApiConstants.CLUSTER)).thenReturn(TEST_CLUSTER);
-    Route updateDarkClusterConfigRoute = new ClusterRoutes(false, Optional.empty()).updateDarkClusterConfig(mockAdmin);
+    Route updateDarkClusterConfigRoute =
+        new ClusterRoutes(false, Optional.empty()).updateDarkClusterConfig(mockVeniceHelixAdmin);
 
     ControllerResponse response = OBJECT_MAPPER.readValue(
         updateDarkClusterConfigRoute.handle(request, mock(Response.class)).toString(),
