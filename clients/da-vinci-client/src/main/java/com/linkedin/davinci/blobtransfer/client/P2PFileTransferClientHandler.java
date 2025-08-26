@@ -286,11 +286,8 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
               + "the transfer future will be completed exceptionally. ",
           Utils.getReplicaId(payload.getTopicName(), payload.getPartition()),
           e);
-      // Even the NettyP2PBlobTransferManager#handlePeerFetchException will do dir cleanup for all done with exception
-      // case per host,
-      // but we still immediate cleanup on rename failure
-      cleanupTempDirectoryOnRenameFail();
-      // Complete future exceptionally
+      // Complete future exceptionally, no need to do resource cleanup here because if files are all received, means
+      // that reset was done.
       inputStreamFuture.toCompletableFuture().completeExceptionally(e);
     } finally {
       ctx.close();
@@ -343,25 +340,6 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
       LOGGER.error(errorMessage);
       cleanupResources();
       inputStreamFuture.toCompletableFuture().completeExceptionally(new VeniceException(errorMessage));
-    }
-  }
-
-  private void cleanupTempDirectoryOnRenameFail() {
-    try {
-      String tempPartitionDir = payload.getTempPartitionDir();
-      Path tempDir = Paths.get(tempPartitionDir);
-
-      if (Files.exists(tempDir)) {
-        RocksDBUtils.deleteDirectory(tempPartitionDir);
-        LOGGER.info(
-            "Cleaned up temp directory after rename failure for {}",
-            Utils.getReplicaId(payload.getTopicName(), payload.getPartition()));
-      }
-    } catch (Exception cleanupEx) {
-      LOGGER.error(
-          "Failed to cleanup temp directory after rename failure for {}: {}",
-          Utils.getReplicaId(payload.getTopicName(), payload.getPartition()),
-          cleanupEx.getMessage());
     }
   }
 }
