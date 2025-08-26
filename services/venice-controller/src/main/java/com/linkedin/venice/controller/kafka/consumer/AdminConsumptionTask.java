@@ -208,15 +208,6 @@ public class AdminConsumptionTask implements Runnable, Closeable {
    */
   private PubSubPosition lastPosition = PubSubSymbolicPosition.EARLIEST;
   /**
-   * A flag used immediately after subscribe to allow processing (or at least reading) the first
-   * checkpoint record so we can initialize producerInfo, without relying on offset arithmetic.
-   * This is an alternative to the previous approach (see https://github.com/linkedin/venice/pull/84)
-   * which subtracted 1 from the offset to read one older record.
-   * With inclusive subscription at the checkpoint position, the first record may be a duplicate;
-   * we use this flag to handle that case and initialize producerInfo safely, then set it to true.
-   */
-  private boolean isFirstRecordProcessed = false;
-  /**
    * Track the latest consumed position; this variable is updated as long as the consumer consumes new messages,
    * no matter whether the message has any issue or not.
    */
@@ -488,7 +479,6 @@ public class AdminConsumptionTask implements Runnable, Closeable {
       stats.recordStoresWithPendingAdminMessagesCount(UNASSIGNED_VALUE);
       resetConsumptionLag();
       isSubscribed = false;
-      isFirstRecordProcessed = false;
       LOGGER.info(
           "Unsubscribed from topic name: {}. Remote consumption flag before unsubscription: {}",
           adminTopicPartition,
@@ -809,7 +799,6 @@ public class AdminConsumptionTask implements Runnable, Closeable {
       consecutiveDuplicateMessageCount = 0;
     } catch (DuplicateDataException e) {
       // Previously processed message, safe to skip
-      isFirstRecordProcessed = true;
       LOGGER.info("Received duplicate message, now setting testRunWithBiggerStartingOffset to false.");
       if (consecutiveDuplicateMessageCount < MAX_DUPLICATE_MESSAGE_LOGS) {
         consecutiveDuplicateMessageCount++;
@@ -1085,7 +1074,9 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     }
     PubSubPosition recordPosition = record.getPosition();
     // check position
-    if (isFirstRecordProcessed && PubSubUtil.comparePubSubPositions(lastPosition, recordPosition) >= 0) {
+    // if it is the first record, we want to consume it even it is a duplicate
+    // we use producerInfo to check if it is the first record
+    if (producerInfo != null && PubSubUtil.comparePubSubPositions(recordPosition, lastPosition) <= 0) {
       LOGGER.error(
           "Current record has been processed, last known position: {}, current position: {}",
           lastPosition,

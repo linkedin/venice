@@ -686,7 +686,6 @@ public class AdminConsumptionTaskTest {
     adminMetadata.setPubSubPosition(pubSubProduceResult.getPubSubPosition());
     adminMetadata.setExecutionId(1L);
     adminTopicMetadataAccessor.updateMetadata(clusterName, adminMetadata);
-    adminTopicMetadataAccessor.updateMetadata(clusterName, adminMetadata);
 
     // Write a message with a skipped execution id but a different producer metadata.
     veniceWriter.put(

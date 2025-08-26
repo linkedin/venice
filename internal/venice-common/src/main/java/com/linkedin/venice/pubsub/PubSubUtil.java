@@ -293,7 +293,8 @@ public final class PubSubUtil {
    * @return the calculated seek offset
    */
   public static long calculateSeekOffset(long baseOffset, boolean isInclusive) {
-    return Math.max(0L, isInclusive ? baseOffset : baseOffset + 1);
+    // return Math.max(0L, isInclusive ? baseOffset : baseOffset + 1);
+    return isInclusive ? baseOffset : baseOffset + 1;
   }
 
   /**
