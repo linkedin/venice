@@ -15,6 +15,7 @@ import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperKey;
 import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperValue;
+import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
@@ -54,6 +55,7 @@ public class TestKafkaInputDictTrainer {
         .setDictSampleSize(sampleSize)
         .setSslProperties(new Properties())
         .setSourceVersionCompressionStrategy(sourceVersionCompressionStrategy)
+        .setLatestKMESchema(KafkaMessageEnvelope.SCHEMA$.toString())
         .build();
   }
 
