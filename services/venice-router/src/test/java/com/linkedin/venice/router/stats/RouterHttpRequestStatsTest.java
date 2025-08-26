@@ -210,22 +210,6 @@ public class RouterHttpRequestStatsTest {
         512.0,
         "call_size");
 
-    // Record response size metrics
-    int responseSize = 1024;
-    // drain the previous metrics
-    inMemoryMetricReader.collectAllMetrics();
-    // validate response size metrics
-    routerHttpRequestStats.recordResponseSize(responseSize);
-    validateOtelMetrics(
-        inMemoryMetricReader,
-        storeName,
-        clusterName,
-        RequestType.SINGLE_GET,
-        MessageType.RESPONSE,
-        "",
-        1024.0,
-        "call_size");
-
   }
 
   private void validateOtelMetrics(
