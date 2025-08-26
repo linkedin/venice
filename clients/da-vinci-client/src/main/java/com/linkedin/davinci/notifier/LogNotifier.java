@@ -77,21 +77,16 @@ public class LogNotifier implements VeniceNotifier {
       PubSubPosition position,
       String message,
       Exception ex) {
+    String logMessageString = String.format(
+        "%s for replica: %s%s%s",
+        header,
+        Utils.getReplicaId(pubSubTopic, partitionId),
+        position == null ? "" : " position " + position,
+        (message == null || message.isEmpty()) ? "" : " message " + message);
     if (ex == null) {
-      LOGGER.info(
-          "{} for replica: {}{}{}",
-          header,
-          Utils.getReplicaId(pubSubTopic, partitionId),
-          position == null ? "" : " position " + position,
-          (message == null || message.isEmpty()) ? "" : " message " + message);
+      LOGGER.info(logMessageString);
     } else {
-      LOGGER.error(
-          "{} for replica: {}{}{}",
-          header,
-          Utils.getReplicaId(pubSubTopic, partitionId),
-          position == null ? "" : " position " + position,
-          (message == null || message.isEmpty()) ? "" : " message " + message,
-          ex);
+      LOGGER.error(logMessageString, ex);
     }
   }
 
