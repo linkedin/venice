@@ -272,7 +272,7 @@ public class TestActiveActiveIngestion {
         .writeSimpleAvroFileWithStringToStringAndTimestampSchema(inputDir, 100, "string2string.avro", oldTimestamp);
     props.setProperty(DATA_WRITER_COMPUTE_JOB_CLASS, DataWriterSparkJob.class.getCanonicalName());
     props.setProperty(SPARK_NATIVE_INPUT_FORMAT_ENABLED, String.valueOf(true));
-    props.setProperty(RMD_FIELD_PROP, "timestamp");
+    props.setProperty(RMD_FIELD_PROP, "rmd");
     IntegrationTestPushUtils.runVPJ(props);
 
     // All streaming writes should succeed
