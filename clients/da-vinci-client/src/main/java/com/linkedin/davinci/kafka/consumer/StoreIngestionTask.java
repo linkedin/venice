@@ -567,7 +567,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           internalRecordTransformerConfig);
       this.recordTransformerOnRecoveryThreadPool = Executors.newFixedThreadPool(
           serverConfig.getDaVinciRecordTransformerOnRecoveryThreadPoolSize(),
-          new DaemonThreadFactory("DaVinci_Record_Transformer_On_Recovery_Executor", serverConfig.getLogContext()));
+          new DaemonThreadFactory("DVRT-OnRecovery", serverConfig.getLogContext()));
       this.recordTransformerPausedConsumptionQueue = new ConcurrentLinkedQueue<>();
       this.schemaIdToSchemaMap = new VeniceConcurrentHashMap<>();
 
