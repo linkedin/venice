@@ -4204,6 +4204,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     // resources before exiting.
 
     if (recordTransformer != null) {
+      // shut down the threadpool first, since tasks running in it may require a valid recordTransformer object
+      this.recordTransformerOnRecoveryThreadPool.shutdownNow();
+
       long startTime = System.nanoTime();
       Store store = storeRepository.getStoreOrThrow(storeName);
       recordTransformer.onEndVersionIngestion(store.getCurrentVersion());
@@ -4212,7 +4215,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           LatencyUtils.getElapsedTimeFromNSToMS(startTime),
           storeVersionName);
       Utils.closeQuietlyWithErrorLogged(this.recordTransformer);
-      this.recordTransformerOnRecoveryThreadPool.shutdownNow();
     }
   }
 
