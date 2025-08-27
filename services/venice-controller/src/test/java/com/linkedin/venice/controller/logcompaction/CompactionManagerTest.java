@@ -8,6 +8,8 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
 
+import com.linkedin.venice.controller.VeniceControllerClusterConfig;
+import com.linkedin.venice.controller.VeniceControllerMultiClusterConfig;
 import com.linkedin.venice.controller.repush.RepushJobRequest;
 import com.linkedin.venice.controller.repush.RepushOrchestrator;
 import com.linkedin.venice.controller.stats.LogCompactionStats;
@@ -23,6 +25,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -36,6 +39,7 @@ public class CompactionManagerTest {
   private static final String TEST_STORE_NAME_PREFIX = "test-store";
   private static final String TEST_CLUSTER_NAME_1 = "test-cluster-1";
   private static final String TEST_CLUSTER_NAME_2 = "test-cluster-2";
+  private static final String TEST_CLUSTER_NAME_3 = "test-cluster-3";
   private CompactionManager testCompactionManager;
   private RepushOrchestrator mockRepushOrchestrator;
   private LogCompactionStats mockLogCompactionStats;
@@ -49,8 +53,26 @@ public class CompactionManagerTest {
     statsMap.put(TEST_CLUSTER_NAME_1, mockLogCompactionStats);
     statsMap.put(TEST_CLUSTER_NAME_2, mockLogCompactionStats);
 
-    testCompactionManager =
-        new CompactionManager(mockRepushOrchestrator, TimeUnit.HOURS.toMillis(COMPACTION_THRESHOLD), statsMap);
+    VeniceControllerClusterConfig cluster1Config = mock(VeniceControllerClusterConfig.class);
+    when(cluster1Config.isLogCompactionEnabled()).thenReturn(true);
+    when(cluster1Config.getLogCompactionThresholdMS()).thenReturn(TimeUnit.HOURS.toMillis(24));
+
+    VeniceControllerClusterConfig cluster2Config = mock(VeniceControllerClusterConfig.class);
+    when(cluster2Config.isLogCompactionEnabled()).thenReturn(true);
+    when(cluster2Config.getLogCompactionThresholdMS()).thenReturn(TimeUnit.HOURS.toMillis(48));
+
+    VeniceControllerClusterConfig cluster3Config = mock(VeniceControllerClusterConfig.class);
+    when(cluster3Config.isLogCompactionEnabled()).thenReturn(false);
+    when(cluster3Config.getLogCompactionThresholdMS()).thenReturn(TimeUnit.HOURS.toMillis(48));
+
+    VeniceControllerMultiClusterConfig multiClusterConfig = mock(VeniceControllerMultiClusterConfig.class);
+    when(multiClusterConfig.getClusters())
+        .thenReturn(new HashSet<>(Arrays.asList(TEST_CLUSTER_NAME_1, TEST_CLUSTER_NAME_2, TEST_CLUSTER_NAME_3)));
+    when(multiClusterConfig.getControllerConfig(TEST_CLUSTER_NAME_1)).thenReturn(cluster1Config);
+    when(multiClusterConfig.getControllerConfig(TEST_CLUSTER_NAME_2)).thenReturn(cluster2Config);
+    when(multiClusterConfig.getControllerConfig(TEST_CLUSTER_NAME_3)).thenReturn(cluster3Config);
+
+    testCompactionManager = new CompactionManager(mockRepushOrchestrator, multiClusterConfig, statsMap);
   }
 
   @Test
@@ -199,14 +221,24 @@ public class CompactionManagerTest {
     storeInfoList.add(store8);
 
     // Verify stores compaction-ready status
-    assertTrue(testCompactionManager.isCompactionReady(store1)); // compacted more than threshold (>24hrs)
-    assertTrue(testCompactionManager.isCompactionReady(store2)); // compacted more than threshold (>24hrs)
-    assertFalse(testCompactionManager.isCompactionReady(store3)); // compacted within threshold (<24hrs)
-    assertFalse(testCompactionManager.isCompactionReady(store4)); // ongoing push version threshold (<24hrs)
-    assertFalse(testCompactionManager.isCompactionReady(store5)); // non-AA store
-    assertFalse(testCompactionManager.isCompactionReady(store6)); // Store level compaction disabled
-    assertFalse(testCompactionManager.isCompactionReady(store7)); // Store level threshold not reached
-    assertTrue(testCompactionManager.isCompactionReady(store8)); // Store level threshold reached
+    assertTrue(testCompactionManager.isCompactionReady(store1, TEST_CLUSTER_NAME_1)); // compacted more than threshold
+                                                                                      // (>24hrs)
+    assertFalse(testCompactionManager.isCompactionReady(store1, TEST_CLUSTER_NAME_2)); // compacted less than threshold
+                                                                                       // (<48hrs)
+    assertFalse(testCompactionManager.isCompactionReady(store1, TEST_CLUSTER_NAME_3)); // cluster level config false
+                                                                                       // (<48hrs)
+    assertTrue(testCompactionManager.isCompactionReady(store2, TEST_CLUSTER_NAME_1)); // compacted more than threshold
+                                                                                      // (>24hrs)
+    assertFalse(testCompactionManager.isCompactionReady(store3, TEST_CLUSTER_NAME_1)); // compacted within threshold
+                                                                                       // (<24hrs)
+    assertFalse(testCompactionManager.isCompactionReady(store4, TEST_CLUSTER_NAME_1)); // ongoing push version threshold
+                                                                                       // (<24hrs)
+    assertFalse(testCompactionManager.isCompactionReady(store5, TEST_CLUSTER_NAME_1)); // non-AA store
+    assertFalse(testCompactionManager.isCompactionReady(store6, TEST_CLUSTER_NAME_1)); // Store level compaction
+                                                                                       // disabled
+    assertFalse(testCompactionManager.isCompactionReady(store7, TEST_CLUSTER_NAME_1)); // Store level threshold not
+                                                                                       // reached
+    assertTrue(testCompactionManager.isCompactionReady(store8, TEST_CLUSTER_NAME_1)); // Store level threshold reached
 
     // Test
     List<StoreInfo> compactionReadyStores =

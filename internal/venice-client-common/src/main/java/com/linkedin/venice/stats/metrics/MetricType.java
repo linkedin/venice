@@ -13,24 +13,39 @@ public enum MetricType {
    * be exponential or explicit bucket <br>
    * check {@link VeniceMetricsConfig.Builder#extractAndSetOtelConfigs} for more details
    */
-  HISTOGRAM,
+  HISTOGRAM(false),
 
   /**
    * To get min/max/count/sum aggregation without the memory overhead to calculate percentiles, use
    * Otel Explicit bucket Histogram but without buckets .
-   * check {@link VeniceOpenTelemetryMetricsRepository#createHistogram} and
+   * check {@link VeniceOpenTelemetryMetricsRepository#createDoubleHistogram} and
    * {@link VeniceOpenTelemetryMetricsRepository#setExponentialHistogramAggregation} for more details
    */
-  MIN_MAX_COUNT_SUM_AGGREGATIONS,
+  MIN_MAX_COUNT_SUM_AGGREGATIONS(false),
 
   /**
    * For Counter: A simple counter that can be added to.
    */
-  COUNTER,
+  COUNTER(false),
 
   /**
-   * For Gauge: Emits the absolute value of the metric value.
-   * In order to use asynchronous double gauge, refer {@link io.opentelemetry.api.metrics.ObservableDoubleGauge} instead
+   * {@link io.opentelemetry.api.metrics.LongGauge}: Emits the absolute value of the metric value.
    */
-  GAUGE;
+  GAUGE(false),
+
+  /**
+   * For Async Gauge: Emits the absolute value of the metric value asynchronously.
+   * Refer {@link io.opentelemetry.api.metrics.ObservableLongGauge}
+   */
+  ASYNC_GAUGE(true);
+
+  private final boolean isAsyncMetric;
+
+  MetricType(boolean isAsyncMetric) {
+    this.isAsyncMetric = isAsyncMetric;
+  }
+
+  public boolean isAsyncMetric() {
+    return isAsyncMetric;
+  }
 }

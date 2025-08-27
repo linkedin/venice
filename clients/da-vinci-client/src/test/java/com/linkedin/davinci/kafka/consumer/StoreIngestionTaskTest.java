@@ -5777,7 +5777,9 @@ public abstract class StoreIngestionTaskTest {
     doReturn(true).when(ingestionTask).isGlobalRtDivEnabled();
 
     GenericRecord valueRecord = mock(GenericRecord.class);
-    GlobalRtDivState globalRtDivState = mock(GlobalRtDivState.class);
+    InMemoryPubSubPosition p1 = InMemoryPubSubPosition.of(11);
+    GlobalRtDivState globalRtDivState =
+        new GlobalRtDivState("localhost:1234", Collections.emptyMap(), p1.toWireFormatBuffer());
     doReturn(globalRtDivState).when(valueRecord).get(any());
     doReturn(valueRecord).when(ingestionTask).readStoredValueRecord(any(), any(), anyInt(), any(), any());
     DataIntegrityValidator consumerDiv = mock(DataIntegrityValidator.class);
@@ -5792,13 +5794,29 @@ public abstract class StoreIngestionTaskTest {
     PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
     doReturn(offsetRecord).when(pcs).getOffsetRecord();
     doReturn(pcs).when(ingestionTask).getPartitionConsumptionState(PARTITION_FOO);
+    doReturn(pubSubContext).when(ingestionTask).getPubSubContext();
 
     ingestionTask.restoreProducerStatesForLeaderConsumption(PARTITION_FOO);
     verify(ingestionTask, times(1)).loadGlobalRtDiv(eq(PARTITION_FOO));
     brokerIdToUrlMap.forEach((brokerId, url) -> {
       verify(ingestionTask, times(1)).loadGlobalRtDiv(eq(PARTITION_FOO), eq(url));
     });
-    verify(pcs, times(brokerIdToUrlMap.size())).setDivRtCheckpointPosition(any(), any());
+    ArgumentCaptor<PubSubPosition> positionCaptor = ArgumentCaptor.forClass(PubSubPosition.class);
+    ArgumentCaptor<String> urlCaptor = ArgumentCaptor.forClass(String.class);
+    verify(pcs, times(brokerIdToUrlMap.size()))
+        .setDivRtCheckpointPosition(urlCaptor.capture(), positionCaptor.capture());
+    List<PubSubPosition> capturedPositions = positionCaptor.getAllValues();
+    List<String> capturedUrls = urlCaptor.getAllValues();
+    assertEquals(capturedPositions.size(), brokerIdToUrlMap.size());
+    assertEquals(capturedUrls.size(), brokerIdToUrlMap.size());
+
+    for (int i = 0; i < capturedUrls.size(); i++) {
+      PubSubPosition position = capturedPositions.get(i);
+      assertEquals(position, p1);
+      assertTrue(position instanceof InMemoryPubSubPosition);
+      InMemoryPubSubPosition p1Prime = (InMemoryPubSubPosition) position;
+      assertEquals(p1Prime.getInternalOffset(), p1.getInternalOffset());
+    }
   }
 
   @Test

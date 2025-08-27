@@ -33,10 +33,13 @@
         uses: gradle/actions/setup-gradle@v4
         with:
           add-job-summary: never
+      - name: Free up disk space in the background
+        run: |
+          bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
       - name: Run Integration Tests
         run: ./gradlew $GradleArguments
       - name: Package Build Artifacts
-        if: success() || failure()
+        if: always()
         shell: bash
         run: |
           mkdir ${{ github.job }}-artifacts
@@ -76,7 +79,7 @@
           detailed_summary: true
           report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
-        if: success() || failure()
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: ${{ github.job }}

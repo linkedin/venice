@@ -77,7 +77,7 @@ public class PartitionTracker {
   private final int partition;
   // TODO: clear vtSegments
   /**
-   * There should only be one {@link ConsumptionTask} for VT, so there shouldn't need to be any locking.
+   * There should only be one {@code ConsumptionTask} for VT, so there shouldn't need to be any locking.
    */
   private final VeniceConcurrentHashMap<GUID, Segment> vtSegments = new VeniceConcurrentHashMap<>();
   /**
@@ -88,7 +88,7 @@ public class PartitionTracker {
 
   /**
    * rtSegments is a map of source broker URL to a map of GUID to Segment.
-   * There should only be one {@link ConsumptionTask} for each broker URL, so there shouldn't need to be any locking.
+   * There should only be one {@code ConsumptionTask} for each broker URL, so there shouldn't need to be any locking.
    *
    * TODO: Refactor this so the {@link #rtSegments} map is keyed by region ID (numeric), rather than URL. URLs could
    *       change over time but the ID should remain fixed. It is also more compact (and the outer collection could even
@@ -308,7 +308,7 @@ public class PartitionTracker {
     trackSequenceNumber(segment, consumerRecord, endOfPushReceived, tolerateMissingMsgs, hasPreviousSegment);
     // This is the last step, because we want failures in the previous steps to short-circuit execution.
     trackCheckSum(segment, consumerRecord, endOfPushReceived, tolerateMissingMsgs);
-    segment.setLastSuccessfulOffset(consumerRecord.getPosition().getNumericOffset());
+    segment.setLastSuccessfulPosition(consumerRecord.getPosition());
     segment.setNewSegment(false);
   }
 
@@ -878,7 +878,7 @@ public class PartitionTracker {
 
       sb.append("; partition: ").append(consumerRecord.getTopicPartition().getPartitionNumber());
       if (segment != null) {
-        sb.append("; previous successful offset (in same segment): ").append(segment.getLastSuccessfulOffset());
+        sb.append("; previous successful position (in same segment): ").append(segment.getLastSuccessfulPosition());
       }
       sb.append("; incoming offset: ")
           .append(consumerRecord.getPosition())
@@ -900,7 +900,7 @@ public class PartitionTracker {
           .append(new Date(producerMetadata.messageTimestamp))
           .append(")");
       if (consumerRecord.getValue().leaderMetadataFooter != null) {
-        sb.append("; LeaderMetadata { upstream offset: ")
+        sb.append("; LeaderMetadata { upstream position: ")
             .append(consumerRecord.getValue().leaderMetadataFooter.upstreamOffset)
             .append("; upstream pub sub cluster ID: ")
             .append(consumerRecord.getValue().leaderMetadataFooter.upstreamKafkaClusterId)

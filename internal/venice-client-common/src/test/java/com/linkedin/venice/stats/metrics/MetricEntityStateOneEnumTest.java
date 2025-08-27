@@ -50,6 +50,7 @@ public class MetricEntityStateOneEnumTest {
     when(mockOtelRepository.getMetricsConfig()).thenReturn(mockMetricsConfig);
     mockMetricEntity = Mockito.mock(MetricEntity.class);
     when(mockMetricEntity.getMetricName()).thenReturn("test_metric");
+    when(mockMetricEntity.getMetricType()).thenReturn(MetricType.COUNTER);
     Set<VeniceMetricsDimensions> dimensionsSet = new HashSet<>();
     dimensionsSet.add(VENICE_REQUEST_METHOD);
     dimensionsSet.add(MetricEntityStateTest.DimensionEnum1.DIMENSION_ONE.getDimensionName());

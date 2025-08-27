@@ -20,6 +20,7 @@ import com.linkedin.venice.pushmonitor.HybridStoreQuotaStatus;
 import com.linkedin.venice.pushmonitor.OfflinePushAccessor;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreWriter;
 import com.linkedin.venice.utils.RetryUtils;
+import com.linkedin.venice.utils.Utils;
 import java.time.Duration;
 import java.util.Collections;
 import java.util.List;
@@ -210,6 +211,7 @@ public class PushStatusNotifier implements VeniceNotifier {
 
   @Override
   public void error(String topic, int partitionId, String message, Exception ex) {
+    LOGGER.error("Ingestion failed for replica: {} : {}", Utils.getReplicaId(topic, partitionId), message, ex);
     helixPartitionStatusAccessor.updateReplicaStatus(topic, partitionId, ERROR);
     offLinePushAccessor.updateReplicaStatus(topic, partitionId, instanceId, ERROR, message);
   }

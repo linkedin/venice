@@ -1095,10 +1095,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return isLagAcceptable;
   }
 
-  public boolean isReadyToServeAnnouncedWithRTLag() {
-    return false;
-  }
-
   IngestionNotificationDispatcher getIngestionNotificationDispatcher() {
     return ingestionNotificationDispatcher;
   }
@@ -1839,16 +1835,16 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   private void handleIngestionException(Exception e) {
-    LOGGER.error(
-        "Ingestion failed due to {}. Will propagate to reporters.",
-        ingestionTaskName,
-        e.getClass().getSimpleName());
+    // TODO: Remove the logged exception stack trace, once it's verified the downstream reporters all log it
+    String errorType = e.getClass().getSimpleName();
+    LOGGER.error("Ingestion failed for {} due to {}. Will propagate to reporters.", ingestionTaskName, errorType, e);
     reportError(partitionConsumptionStateMap.values(), errorPartitionId, "Caught Exception during ingestion.", e);
     hostLevelIngestionStats.recordIngestionFailure();
   }
 
   private void handleIngestionThrowable(Throwable t) {
-    LOGGER.error("{} has failed.", ingestionTaskName, t);
+    String errorType = t.getClass().getSimpleName();
+    LOGGER.error("Ingestion failed for {} due to {}. Will propagate to reporters.", ingestionTaskName, errorType, t);
     reportError(
         partitionConsumptionStateMap.values(),
         errorPartitionId,
@@ -2210,13 +2206,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         updateLeaderTopicOnFollower(newPartitionConsumptionState);
 
         // Subscribe to local version topic.
-        PubSubPosition subscribeOffset = getLocalVtSubscribeOffset(newPartitionConsumptionState);
+        PubSubPosition localVtSubscribePosition = getLocalVtSubscribePosition(newPartitionConsumptionState);
         consumerSubscribe(
             topicPartition.getPubSubTopic(),
             newPartitionConsumptionState,
-            subscribeOffset,
+            localVtSubscribePosition,
             localKafkaServer);
-        LOGGER.info("Subscribed to: {} Offset {}", topicPartition, subscribeOffset);
+        LOGGER.info("Subscribed to: {} position: {}", topicPartition, localVtSubscribePosition);
         storageUtilizationManager.initPartition(partition);
         break;
       case UNSUBSCRIBE:
@@ -4767,7 +4763,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * When Global RT DIV is enabled, the latest consumed VT offset (LCVO) should be used during subscription.
    * Otherwise, the drainer's latest processed VT offset is traditionally used.
    */
-  PubSubPosition getLocalVtSubscribeOffset(PartitionConsumptionState pcs) {
+  PubSubPosition getLocalVtSubscribePosition(PartitionConsumptionState pcs) {
     return (isGlobalRtDivEnabled()) ? pcs.getLatestConsumedVtPosition() : pcs.getLatestProcessedVtPosition();
   }
 
@@ -4911,5 +4907,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   boolean isOffsetLagDeltaRelaxEnabled() {
     return offsetLagDeltaRelaxEnabled;
+  }
+
+  @VisibleForTesting
+  PubSubContext getPubSubContext() {
+    return pubSubContext;
   }
 }
