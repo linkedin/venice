@@ -31,10 +31,10 @@ public class InMemoryAdminTopicMetadataAccessor extends AdminTopicMetadataAccess
     if (!metadataDelta.getAdminOperationProtocolVersion().equals(UNDEFINED_VALUE)) {
       inMemoryMetadata.setAdminOperationProtocolVersion(metadataDelta.getAdminOperationProtocolVersion());
     }
-    if (!newPosition.equals(PubSubSymbolicPosition.EARLIEST)) {
+    if (!PubSubSymbolicPosition.EARLIEST.equals(newPosition)) {
       inMemoryMetadata.setPubSubPosition(newPosition);
     }
-    if (!newUpstreamPosition.equals(PubSubSymbolicPosition.EARLIEST)) {
+    if (!PubSubSymbolicPosition.EARLIEST.equals(newUpstreamPosition)) {
       inMemoryMetadata.setUpstreamPubSubPosition(newUpstreamPosition);
     }
 

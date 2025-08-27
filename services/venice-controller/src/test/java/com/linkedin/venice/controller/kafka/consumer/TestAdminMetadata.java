@@ -96,7 +96,6 @@ public class TestAdminMetadata {
     assertEquals(deserializedMetadata.getExecutionId(), Long.valueOf(999L));
     assertEquals(deserializedMetadata.getOffset(), Long.valueOf(1234L));
 
-    // Verify null fields remain null
     assertEquals(deserializedMetadata.getUpstreamOffset(), UNDEFINED_VALUE);
     assertEquals(deserializedMetadata.getAdminOperationProtocolVersion(), UNDEFINED_VALUE);
 
@@ -132,7 +131,6 @@ public class TestAdminMetadata {
     AdminMetadata deserializedMetadata = serializer.deserialize(jsonBytes, "test-path");
     assertNotNull(deserializedMetadata);
 
-    // All fields should be null
     assertEquals(deserializedMetadata.getExecutionId(), UNDEFINED_VALUE);
     assertEquals(deserializedMetadata.getOffset().longValue(), PubSubSymbolicPosition.EARLIEST.getNumericOffset());
     assertEquals(

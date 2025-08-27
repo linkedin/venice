@@ -682,7 +682,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
           PubSubPosition smallestPosition = PubSubSymbolicPosition.EARLIEST;
 
           for (Map.Entry<String, AdminErrorInfo> problematicStore: problematicStores.entrySet()) {
-            if (smallestPosition.equals(PubSubSymbolicPosition.EARLIEST)
+            if (PubSubSymbolicPosition.EARLIEST.equals(smallestPosition)
                 || PubSubUtil.comparePubSubPositions(problematicStore.getValue().position, smallestPosition) < 0) {
               smallestPosition = problematicStore.getValue().position;
             }
@@ -800,7 +800,6 @@ public class AdminConsumptionTask implements Runnable, Closeable {
       consecutiveDuplicateMessageCount = 0;
     } catch (DuplicateDataException e) {
       // Previously processed message, safe to skip
-      LOGGER.info("Received duplicate message, now setting testRunWithBiggerStartingOffset to false.");
       if (consecutiveDuplicateMessageCount < MAX_DUPLICATE_MESSAGE_LOGS) {
         consecutiveDuplicateMessageCount++;
         LOGGER.info(e.getMessage());
