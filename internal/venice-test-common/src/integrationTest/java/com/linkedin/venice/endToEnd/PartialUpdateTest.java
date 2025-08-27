@@ -2409,12 +2409,8 @@ public class PartialUpdateTest {
 
   @AfterClass(alwaysRun = true)
   public void cleanUp() {
-    System.out.println(">>> Starting test teardown...");
-    System.out.println(">>> Shutting down D2 client...");
     D2ClientUtils.shutdownClient(d2ClientDC0);
-    System.out.println(">>> Shutting down multi region multi cluster wrapper...");
     Utils.closeQuietlyWithErrorLogged(multiRegionMultiClusterWrapper);
-    System.out.println(">>> Test teardown complete.");
   }
 
   private byte[] serializeStringKeyToByteArray(String key) {
