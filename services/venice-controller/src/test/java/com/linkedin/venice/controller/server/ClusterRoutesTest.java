@@ -7,7 +7,7 @@ import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertFalse;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.linkedin.venice.controller.VeniceControllerMultiClusterConfig;
+import com.linkedin.venice.controller.VeniceControllerClusterConfig;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controllerapi.ControllerApiConstants;
 import com.linkedin.venice.controllerapi.ControllerResponse;
@@ -29,11 +29,11 @@ public class ClusterRoutesTest {
   @Test
   public void testUpdateDarkClusterConfig() throws Exception {
     VeniceHelixAdmin mockVeniceHelixAdmin = mock(VeniceHelixAdmin.class);
-    VeniceControllerMultiClusterConfig controllerMultiClusterConfig = mock(VeniceControllerMultiClusterConfig.class);
+    VeniceControllerClusterConfig veniceControllerClusterConfig = mock(VeniceControllerClusterConfig.class);
 
     doReturn(true).when(mockVeniceHelixAdmin).isLeaderControllerFor(anyString());
-    when(mockVeniceHelixAdmin.getMultiClusterConfigs()).thenReturn(controllerMultiClusterConfig);
-    doReturn(true).when(controllerMultiClusterConfig).isDarkCluster();
+    when(mockVeniceHelixAdmin.getControllerConfig(anyString())).thenReturn(veniceControllerClusterConfig);
+    doReturn(true).when(veniceControllerClusterConfig).isDarkCluster();
 
     Request request = mock(Request.class);
 

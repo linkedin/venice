@@ -17,7 +17,10 @@ import org.apache.logging.log4j.Logger;
 
 
 /**
- * This class is used to configure dark cluster.
+ * This class is a read-only implementation of {@link ReadOnlyDarkClusterConfigRepository}.
+ * It listens to changes in the dark cluster configuration stored in ZooKeeper and updates its
+ * in-memory representation accordingly.
+ * ZK Config Path: {@see com.linkedin.venice.zk.VeniceZkPaths.DARK_CLUSTER_CONFIG}
  */
 public class HelixReadOnlyDarkClusterConfigRepository implements ReadOnlyDarkClusterConfigRepository {
   private static final Logger LOGGER = LogManager.getLogger(HelixReadOnlyDarkClusterConfigRepository.class);

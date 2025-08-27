@@ -320,8 +320,8 @@ public enum Command {
           CHILD_CONTROLLER_ADMIN_TOPIC_CONSUMPTION_ENABLED }
   ),
   UPDATE_DARK_CLUSTER_CONFIG(
-      "update-dark-cluster-config", "Update dark cluster configs", new Arg[] { URL, CLUSTER },
-      new Arg[] { STORES_TO_REPLICATE }
+      "update-dark-cluster-config", "Update dark cluster configs under /darkClusterConfig znode",
+      new Arg[] { URL, CLUSTER }, new Arg[] { STORES_TO_REPLICATE }
   ),
   EMPTY_PUSH(
       "empty-push", "Do an empty push into an existing store", new Arg[] { URL, STORE, PUSH_ID, STORE_SIZE },
