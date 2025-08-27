@@ -132,6 +132,15 @@ def integrationTestConfigs = {
   testClassesDirs = sourceSets.integrationTest.output.classesDirs
   forkEvery = Integer.parseInt(project.properties.get('integrationTest.forkEvery', "$forkEvery"))
   maxParallelForks = Integer.parseInt(project.properties.get('integrationTest.maxParallelForks', "$maxParallelForks"))
+
+  // Set heap size to 8GB for integration tests
+  minHeapSize = '4g'
+  maxHeapSize = '8g'
+
+  // Disable JaCoCo for integration tests
+  jacoco {
+    enabled = false
+  }
 }
 
 def integrationTestBuckets = [
