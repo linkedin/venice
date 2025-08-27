@@ -206,7 +206,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
   /**
    * The corresponding position to {@code lastDelegatedExecutionId}
    */
-  private PubSubPosition lastPosition = PubSubSymbolicPosition.EARLIEST;
+  private PubSubPosition lastDelegatedPosition = PubSubSymbolicPosition.EARLIEST;
   /**
    * Track the latest consumed position; this variable is updated as long as the consumer consumes new messages,
    * no matter whether the message has any issue or not.
@@ -441,22 +441,22 @@ public class AdminConsumptionTask implements Runnable, Closeable {
        * in {@link #checkAndValidateMessage}.
        *
        */
-      lastPosition = lastPersistedPosition;
+      lastDelegatedPosition = lastPersistedPosition;
       lastDelegatedExecutionId = lastPersistedExecutionId;
     } else {
       LOGGER.info("Admin topic metadata is empty, will resume consumption from the starting position");
-      lastPosition = PubSubSymbolicPosition.EARLIEST;
+      lastDelegatedPosition = PubSubSymbolicPosition.EARLIEST;
       lastDelegatedExecutionId = UNASSIGNED_VALUE;
     }
     stats.setAdminConsumptionCheckpointPosition(lastPersistedPosition);
     stats.registerAdminConsumptionCheckpointPosition();
     // Subscribe the admin topic
-    consumer.subscribe(adminTopicPartition, lastPosition, true);
+    consumer.subscribe(adminTopicPartition, lastDelegatedPosition, true);
     isSubscribed = true;
     LOGGER.info(
         "Subscribed to topic name: {}, with position: {} and execution id: {}. Remote consumption flag: {}",
         adminTopicPartition,
-        lastPosition,
+        lastDelegatedPosition,
         lastPersistedExecutionId,
         remoteConsumptionEnabled);
   }
@@ -472,7 +472,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
       offsetToSkipDIV = UNASSIGNED_VALUE;
       lastDelegatedExecutionId = UNASSIGNED_VALUE;
       lastPersistedExecutionId = UNASSIGNED_VALUE;
-      lastPosition = PubSubSymbolicPosition.EARLIEST;
+      lastDelegatedPosition = PubSubSymbolicPosition.EARLIEST;
       lastPersistedPosition = PubSubSymbolicPosition.EARLIEST;
       producerInfo = null;
       stats.recordPendingAdminMessagesCount(UNASSIGNED_VALUE);
@@ -670,7 +670,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
           // 3. Persist the latest execution id and position (cluster wide) to ZK.
 
           // Ensure failingPosition from the delegateMessage is not overwritten.
-          if (PubSubUtil.comparePubSubPositions(failingPosition, lastPosition) <= 0) {
+          if (PubSubUtil.comparePubSubPositions(failingPosition, lastDelegatedPosition) <= 0) {
             failingPosition = PubSubSymbolicPosition.EARLIEST;
           }
           persistAdminTopicMetadata();
@@ -687,7 +687,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
             }
           }
           // Ensure failingPosition from the delegateMessage is not overwritten.
-          if (PubSubUtil.comparePubSubPositions(failingPosition, lastPosition) <= 0) {
+          if (PubSubUtil.comparePubSubPositions(failingPosition, lastDelegatedPosition) <= 0) {
             failingPosition = smallestPosition;
           }
         }
@@ -958,13 +958,13 @@ public class AdminConsumptionTask implements Runnable, Closeable {
   }
 
   private void updateLastPosition(PubSubPosition position) {
-    if (PubSubUtil.comparePubSubPositions(position, lastPosition) > 0) {
-      lastPosition = position;
+    if (PubSubUtil.comparePubSubPositions(position, lastDelegatedPosition) > 0) {
+      lastDelegatedPosition = position;
     }
   }
 
   private void persistAdminTopicMetadata() {
-    if (lastDelegatedExecutionId == lastPersistedExecutionId && lastPosition == lastPersistedPosition) {
+    if (lastDelegatedExecutionId == lastPersistedExecutionId && lastDelegatedPosition == lastPersistedPosition) {
       // Skip since there are no new admin messages processed.
       return;
     }
@@ -974,13 +974,13 @@ public class AdminConsumptionTask implements Runnable, Closeable {
       adminMetadata.setExecutionId(lastDelegatedExecutionId);
       if (remoteConsumptionEnabled) {
         adminMetadata.setPubSubPosition(localPositionCheckpointAtStartTime);
-        adminMetadata.setUpstreamPubSubPosition(lastPosition);
+        adminMetadata.setUpstreamPubSubPosition(lastDelegatedPosition);
       } else {
-        adminMetadata.setPubSubPosition(lastPosition);
+        adminMetadata.setPubSubPosition(lastDelegatedPosition);
         adminMetadata.setUpstreamPubSubPosition(upstreamPositionCheckpointAtStartTime);
       }
       adminTopicMetadataAccessor.updateMetadata(clusterName, adminMetadata);
-      lastPersistedPosition = lastPosition;
+      lastPersistedPosition = lastDelegatedPosition;
       lastPersistedExecutionId = lastDelegatedExecutionId;
       LOGGER.info("Updated lastPersistedPosition to {}", lastPersistedPosition);
       stats.setAdminConsumptionCheckpointPosition(lastPersistedPosition);
@@ -1076,10 +1076,10 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     // check position
     // if it is the first record, we want to consume it even it is a duplicate
     // we use producerInfo to check if it is the first record
-    if (producerInfo != null && PubSubUtil.comparePubSubPositions(recordPosition, lastPosition) <= 0) {
+    if (producerInfo != null && PubSubUtil.comparePubSubPositions(recordPosition, lastDelegatedPosition) <= 0) {
       LOGGER.error(
           "Current record has been processed, last known position: {}, current position: {}",
-          lastPosition,
+          lastDelegatedPosition,
           recordPosition);
       return false;
     }
