@@ -114,39 +114,40 @@ public class BasicConsumerStatsTest {
   }
 
   @Test
-  public void testEmitVersionSwapSuccessCountMetrics() {
-    VeniceResponseStatusCategory responseStatusCategory = SUCCESS;
-    consumerStats.emitVersionSwapCountMetrics(responseStatusCategory);
-
+  public void testEmitVersionSwapCountMetrics() {
+    int defaultNum = 0;
     int expectedNum = 1;
+
+    // Default Tehuti metrics
+    validateTehutiMetric(tehutiMetricPrefix + "--" + VERSION_SWAP_SUCCESS_COUNT.getMetricName() + ".Gauge", defaultNum);
+    validateTehutiMetric(tehutiMetricPrefix + "--" + VERSION_SWAP_FAIL_COUNT.getMetricName() + ".Gauge", defaultNum);
+
+    consumerStats.emitVersionSwapCountMetrics(SUCCESS);
+    consumerStats.emitVersionSwapCountMetrics(FAIL);
+
+    // Success metrics
     validateTehutiMetric(
         tehutiMetricPrefix + "--" + VERSION_SWAP_SUCCESS_COUNT.getMetricName() + ".Gauge",
         expectedNum);
     validateMinMaxSumAggregationsOtelMetric(
         storeName,
         VERSION_SWAP_COUNT.getMetricEntity().getMetricName(),
-        0, // min includes default 0 recorded at construction
+        defaultNum, // min includes default 0 recorded at construction
         expectedNum, // max after first increment
         2, // count includes default 0 and this increment
         expectedNum, // sum is 1 (0 + 1)
-        responseStatusCategory);
-  }
+        SUCCESS);
 
-  @Test
-  public void testEmitVersionSwapFailCountMetrics() {
-    VeniceResponseStatusCategory responseStatusCategory = FAIL;
-    consumerStats.emitVersionSwapCountMetrics(responseStatusCategory);
-
-    int expectedNum = 1;
+    // Fail metrics
     validateTehutiMetric(tehutiMetricPrefix + "--" + VERSION_SWAP_FAIL_COUNT.getMetricName() + ".Gauge", expectedNum);
     validateMinMaxSumAggregationsOtelMetric(
         storeName,
         VERSION_SWAP_COUNT.getMetricEntity().getMetricName(),
-        0, // min includes default 0 recorded at construction
+        defaultNum, // min includes default 0 recorded at construction
         expectedNum, // max after first increment
         2, // count includes default 0 and this increment
         expectedNum, // sum is 1 (0 + 1)
-        responseStatusCategory);
+        FAIL);
   }
 
   @Test
