@@ -69,3 +69,10 @@ is updated with the new keys, and the old chunks are deleted.
 The diagram below illustrates the aforementioned chunking system. ([Link to diagram source](https://whimsical.com/venice-docs-diagrams-SvH4RAc9mED9JdAycS5w2v))
 
 ![Large Record Value Chunking Diagram](https://github.com/user-attachments/assets/f0ed6eb2-7558-4300-a75c-5fc842bb2fb5)
+
+### Push Job
+
+[More details about push jobs](../user_guide/write_api/push_job)
+
+![Venice Push Job Diagram](https://github.com/user-attachments/assets/bdcefd28-a550-4ab8-9e84-5654efdcb0c0)
+
