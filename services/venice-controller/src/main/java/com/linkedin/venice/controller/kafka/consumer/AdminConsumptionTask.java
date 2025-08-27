@@ -168,7 +168,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
    * A {@link Map} of stores to admin operations belonging to each store. The corresponding pubsub position and other
    * metadata of each admin operation are included in the {@link AdminOperationWrapper}.
    */
-  private final Map<String, Queue<AdminOperationWrapper>> storeAdminOperationsMapWithPosition;
+  private final Map<String, Queue<AdminOperationWrapper>> adminOperationsByStore;
 
   /**
    * Map of store names that have encountered some sort of exception during consumption to {@link AdminErrorInfo}
@@ -285,7 +285,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     this.executionIdAccessor = executionIdAccessor;
     this.processingCycleTimeoutInMs = processingCycleTimeoutInMs;
 
-    this.storeAdminOperationsMapWithPosition = new ConcurrentHashMap<>();
+    this.adminOperationsByStore = new ConcurrentHashMap<>();
     this.problematicStores = new ConcurrentHashMap<>();
     // since we use an unbounded queue the core pool size is really the max pool size
     this.executorService = new ThreadPoolExecutor(
@@ -464,7 +464,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
   private void unSubscribe() {
     if (isSubscribed) {
       consumer.unSubscribe(adminTopicPartition);
-      storeAdminOperationsMapWithPosition.clear();
+      adminOperationsByStore.clear();
       problematicStores.clear();
       undelegatedRecords.clear();
       failingPosition = PubSubSymbolicPosition.EARLIEST;
@@ -489,7 +489,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
   /**
    * Package private for testing purpose
    *
-   * Delegate work from the {@link #storeAdminOperationsMapWithPosition} to the worker threads. Wait for the worker threads
+   * Delegate work from the {@link #adminOperationsByStore} to the worker threads. Wait for the worker threads
    * to complete or when timeout {@code processingCycleTimeoutInMs} is reached. Collect the result of each thread.
    * The result can either be success: all given {@link AdminOperation}s were processed successfully or made progress
    * but couldn't finish processing all of it within the time limit for each cycle. Failure is when either an exception
@@ -510,7 +510,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     List<String> stores = new ArrayList<>();
     // Create a task for each store that has admin messages pending to be processed.
     boolean skipOffsetCommandHasBeenProcessed = false;
-    for (Map.Entry<String, Queue<AdminOperationWrapper>> entry: storeAdminOperationsMapWithPosition.entrySet()) {
+    for (Map.Entry<String, Queue<AdminOperationWrapper>> entry: adminOperationsByStore.entrySet()) {
       String storeName = entry.getKey();
       Queue<AdminOperationWrapper> storeQueue = entry.getValue();
       if (!storeQueue.isEmpty()) {
@@ -569,7 +569,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
             result.get();
             problematicStores.remove(storeName);
             if (internalQueuesEmptied) {
-              Queue<AdminOperationWrapper> storeQueue = storeAdminOperationsMapWithPosition.get(storeName);
+              Queue<AdminOperationWrapper> storeQueue = adminOperationsByStore.get(storeName);
               if (storeQueue != null && !storeQueue.isEmpty()) {
                 internalQueuesEmptied = false;
               }
@@ -577,7 +577,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
           } catch (ExecutionException | CancellationException e) {
             internalQueuesEmptied = false;
             AdminErrorInfo errorInfo = new AdminErrorInfo();
-            Queue<AdminOperationWrapper> storeQueue = storeAdminOperationsMapWithPosition.get(storeName);
+            Queue<AdminOperationWrapper> storeQueue = adminOperationsByStore.get(storeName);
             int perStorePendingMessagesCount = storeQueue == null ? 0 : storeQueue.size();
             pendingAdminMessagesCount += perStorePendingMessagesCount;
             storesWithPendingAdminMessagesCount += perStorePendingMessagesCount > 0 ? 1 : 0;
@@ -704,7 +704,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
    * @return the position of the next enqueued operation for the given store name, or {@link #UNASSIGNED_VALUE} if unavailable.
    */
   private PubSubPosition getNextOperationPositionIfAvailable(String storeName) {
-    Queue<AdminOperationWrapper> storeQueue = storeAdminOperationsMapWithPosition.get(storeName);
+    Queue<AdminOperationWrapper> storeQueue = adminOperationsByStore.get(storeName);
     AdminOperationWrapper nextOperation = storeQueue == null ? null : storeQueue.peek();
     return nextOperation == null ? PubSubSymbolicPosition.EARLIEST : nextOperation.getPosition();
   }
@@ -819,7 +819,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
       for (Store store: stores) {
         String storeName = store.getName();
         Queue<AdminOperationWrapper> operationQueue =
-            storeAdminOperationsMapWithPosition.computeIfAbsent(storeName, n -> new LinkedList<>());
+            adminOperationsByStore.computeIfAbsent(storeName, n -> new LinkedList<>());
         AdminOperationWrapper adminOperationWrapper = new AdminOperationWrapper(
             adminOperation,
             record.getPosition(),
@@ -850,8 +850,8 @@ public class AdminConsumptionTask implements Runnable, Closeable {
       stats.recordAdminMessageDelegateLatency(
           Math.max(0, adminOperationWrapper.getDelegateTimestamp() - adminOperationWrapper.getLocalBrokerTimestamp()));
       String storeName = extractStoreName(adminOperation);
-      storeAdminOperationsMapWithPosition.putIfAbsent(storeName, new LinkedList<>());
-      storeAdminOperationsMapWithPosition.get(storeName).add(adminOperationWrapper);
+      adminOperationsByStore.putIfAbsent(storeName, new LinkedList<>());
+      adminOperationsByStore.get(storeName).add(adminOperationWrapper);
 
     }
     return executionId;
