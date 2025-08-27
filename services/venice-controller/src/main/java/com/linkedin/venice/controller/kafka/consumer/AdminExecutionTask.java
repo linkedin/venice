@@ -68,7 +68,6 @@ import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
-import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 
@@ -93,6 +92,7 @@ public class AdminExecutionTask implements Callable<Void> {
   private final long lastPersistedExecutionId;
 
   AdminExecutionTask(
+      Logger LOGGER,
       String clusterName,
       String storeName,
       ConcurrentHashMap<String, Long> lastSucceededExecutionIdMap,
@@ -103,7 +103,7 @@ public class AdminExecutionTask implements Callable<Void> {
       boolean isParentController,
       AdminConsumptionStats stats,
       String regionName) {
-    this.LOGGER = LogManager.getLogger(AdminExecutionTask.class);
+    this.LOGGER = LOGGER;
     this.clusterName = clusterName;
     this.storeName = storeName;
     this.lastSucceededExecutionIdMap = lastSucceededExecutionIdMap;

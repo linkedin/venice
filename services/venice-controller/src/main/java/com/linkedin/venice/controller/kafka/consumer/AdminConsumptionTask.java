@@ -524,6 +524,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
           skipOffsetCommandHasBeenProcessed = true;
         }
         AdminExecutionTask newTask = new AdminExecutionTask(
+            LOGGER,
             clusterName,
             storeName,
             lastSucceededExecutionIdMap,
@@ -964,7 +965,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
   }
 
   private void persistAdminTopicMetadata() {
-    if (lastDelegatedExecutionId == lastPersistedExecutionId && lastDelegatedPosition == lastPersistedPosition) {
+    if (lastDelegatedExecutionId == lastPersistedExecutionId && lastDelegatedPosition.equals(lastPersistedPosition)) {
       // Skip since there are no new admin messages processed.
       return;
     }
@@ -1102,7 +1103,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
        * If the first consumer poll returns nothing, "lastConsumedOffset" will remain as {@link #UNASSIGNED_VALUE}, so a
        * huge lag will be reported, but actually that's not case since consumer is subscribed to the last checkpoint offset.
        */
-      if (!lastConsumedPosition.equals(PubSubSymbolicPosition.EARLIEST)) {
+      if (!PubSubSymbolicPosition.EARLIEST.equals(lastConsumedPosition)) {
         stats.setAdminConsumptionOffsetLag(sourceAdminTopicEndOffset - lastConsumedPosition.getNumericOffset());
       }
       stats.setMaxAdminConsumptionOffsetLag(sourceAdminTopicEndOffset - lastPersistedPosition.getNumericOffset());
