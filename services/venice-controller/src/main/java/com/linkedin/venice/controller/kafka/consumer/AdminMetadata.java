@@ -119,11 +119,11 @@ public class AdminMetadata {
       metadata.setAdminOperationProtocolVersion(
           legacyMap.get(AdminTopicMetadataAccessor.ADMIN_OPERATION_PROTOCOL_VERSION_KEY));
       metadata.setPubSubPosition(
-          metadata.getOffset() == null
+          metadata.getOffset().longValue() == UNDEFINED_VALUE
               ? PubSubSymbolicPosition.EARLIEST
               : ApacheKafkaOffsetPosition.of(metadata.getOffset()));
       metadata.setUpstreamPubSubPosition(
-          metadata.getUpstreamOffset() == null
+          metadata.getUpstreamOffset().longValue() == UNDEFINED_VALUE
               ? PubSubSymbolicPosition.EARLIEST
               : ApacheKafkaOffsetPosition.of(metadata.getUpstreamOffset()));
     }
