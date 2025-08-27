@@ -47,6 +47,9 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           add-job-summary: never
+      - name: Free up disk space
+        run: |
+          bash scripts/ci/util_free_space.sh
       - name: Run Integration Tests
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1
       - name: Package Build Artifacts
@@ -141,6 +144,9 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           add-job-summary: never
+      - name: Free up disk space
+        run: |
+          bash scripts/ci/util_free_space.sh
       - name: Run Integration Tests
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_2
       - name: Package Build Artifacts
@@ -235,6 +241,9 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           add-job-summary: never
+      - name: Free up disk space
+        run: |
+          bash scripts/ci/util_free_space.sh
       - name: Run Integration Tests
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_3
       - name: Package Build Artifacts
@@ -329,6 +338,9 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           add-job-summary: never
+      - name: Free up disk space
+        run: |
+          bash scripts/ci/util_free_space.sh
       - name: Run Integration Tests
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_4
       - name: Package Build Artifacts
@@ -423,6 +435,9 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           add-job-summary: never
+      - name: Free up disk space
+        run: |
+          bash scripts/ci/util_free_space.sh
       - name: Run Integration Tests
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_5
       - name: Package Build Artifacts
@@ -517,6 +532,9 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           add-job-summary: never
+      - name: Free up disk space
+        run: |
+          bash scripts/ci/util_free_space.sh
       - name: Run Integration Tests
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_6
       - name: Package Build Artifacts
@@ -611,6 +629,9 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           add-job-summary: never
+      - name: Free up disk space
+        run: |
+          bash scripts/ci/util_free_space.sh
       - name: Run Integration Tests
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_7
       - name: Package Build Artifacts
@@ -705,6 +726,9 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           add-job-summary: never
+      - name: Free up disk space
+        run: |
+          bash scripts/ci/util_free_space.sh
       - name: Run Integration Tests
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_8
       - name: Package Build Artifacts
@@ -799,6 +823,9 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           add-job-summary: never
+      - name: Free up disk space
+        run: |
+          bash scripts/ci/util_free_space.sh
       - name: Run Integration Tests
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_9
       - name: Package Build Artifacts
@@ -893,6 +920,9 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           add-job-summary: never
+      - name: Free up disk space
+        run: |
+          bash scripts/ci/util_free_space.sh
       - name: Run Integration Tests
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_10
       - name: Package Build Artifacts
@@ -987,6 +1017,9 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           add-job-summary: never
+      - name: Free up disk space
+        run: |
+          bash scripts/ci/util_free_space.sh
       - name: Run Integration Tests
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_11
       - name: Package Build Artifacts
@@ -1081,6 +1114,9 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           add-job-summary: never
+      - name: Free up disk space
+        run: |
+          bash scripts/ci/util_free_space.sh
       - name: Run Integration Tests
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_12
       - name: Package Build Artifacts
@@ -1175,6 +1211,9 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           add-job-summary: never
+      - name: Free up disk space
+        run: |
+          bash scripts/ci/util_free_space.sh
       - name: Run Integration Tests
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_13
       - name: Package Build Artifacts
@@ -1269,6 +1308,9 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           add-job-summary: never
+      - name: Free up disk space
+        run: |
+          bash scripts/ci/util_free_space.sh
       - name: Run Integration Tests
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_14
       - name: Package Build Artifacts
@@ -1363,6 +1405,9 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           add-job-summary: never
+      - name: Free up disk space
+        run: |
+          bash scripts/ci/util_free_space.sh
       - name: Run Integration Tests
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_15
       - name: Package Build Artifacts
@@ -1457,6 +1502,9 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           add-job-summary: never
+      - name: Free up disk space
+        run: |
+          bash scripts/ci/util_free_space.sh
       - name: Run Integration Tests
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_16
       - name: Package Build Artifacts
@@ -1551,6 +1599,9 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           add-job-summary: never
+      - name: Free up disk space
+        run: |
+          bash scripts/ci/util_free_space.sh
       - name: Run Integration Tests
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_17
       - name: Package Build Artifacts
@@ -1645,6 +1696,9 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           add-job-summary: never
+      - name: Free up disk space
+        run: |
+          bash scripts/ci/util_free_space.sh
       - name: Run Integration Tests
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_18
       - name: Package Build Artifacts
@@ -1739,6 +1793,9 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           add-job-summary: never
+      - name: Free up disk space
+        run: |
+          bash scripts/ci/util_free_space.sh
       - name: Run Integration Tests
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_19
       - name: Package Build Artifacts
@@ -1833,6 +1890,9 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           add-job-summary: never
+      - name: Free up disk space
+        run: |
+          bash scripts/ci/util_free_space.sh
       - name: Run Integration Tests
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_20
       - name: Package Build Artifacts
@@ -1927,6 +1987,9 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           add-job-summary: never
+      - name: Free up disk space
+        run: |
+          bash scripts/ci/util_free_space.sh
       - name: Run Integration Tests
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_21
       - name: Package Build Artifacts
@@ -2021,6 +2084,9 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           add-job-summary: never
+      - name: Free up disk space
+        run: |
+          bash scripts/ci/util_free_space.sh
       - name: Run Integration Tests
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_22
       - name: Package Build Artifacts
@@ -2115,6 +2181,9 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           add-job-summary: never
+      - name: Free up disk space
+        run: |
+          bash scripts/ci/util_free_space.sh
       - name: Run Integration Tests
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_23
       - name: Package Build Artifacts
@@ -2209,6 +2278,9 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           add-job-summary: never
+      - name: Free up disk space
+        run: |
+          bash scripts/ci/util_free_space.sh
       - name: Run Integration Tests
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_99
       - name: Package Build Artifacts

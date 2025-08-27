@@ -33,6 +33,9 @@
         uses: gradle/actions/setup-gradle@v4
         with:
           add-job-summary: never
+      - name: Free up disk space
+        run: |
+          bash scripts/ci/util_free_space.sh
       - name: Run Integration Tests
         run: ./gradlew $GradleArguments
       - name: Package Build Artifacts
