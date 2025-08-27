@@ -33,9 +33,9 @@
         uses: gradle/actions/setup-gradle@v4
         with:
           add-job-summary: never
-      - name: Free up disk space
+      - name: Free up disk space in the background
         run: |
-          bash scripts/ci/util_free_space.sh
+          bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
       - name: Run Integration Tests
         run: ./gradlew $GradleArguments
       - name: Package Build Artifacts

@@ -21,6 +21,7 @@
 # Lifted and adapted from: https://raw.githubusercontent.com/apache/arrow/refs/heads/main/ci/scripts/util_free_space.sh
 set -eux
 
+echo "Disk usage before background cleanup:"
 df -h
 echo "::group::/usr/local/*"
 du -hsc /usr/local/*
@@ -93,6 +94,8 @@ sudo apt purge -y \
   firefox \
   google-chrome-stable \
   microsoft-edge-stable
+
+echo "Disk usage after background cleanup:"
 df -h
 
 
