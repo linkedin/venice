@@ -117,6 +117,7 @@ import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.ComplementSet;
+import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.DiskUsage;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.HelixUtils;
@@ -564,8 +565,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           this.recordTransformerInputValueSchema,
           outputValueSchema,
           internalRecordTransformerConfig);
-      this.recordTransformerOnRecoveryThreadPool =
-          Executors.newFixedThreadPool(serverConfig.getDaVinciRecordTransformerOnRecoveryThreadPoolSize());
+      this.recordTransformerOnRecoveryThreadPool = Executors.newFixedThreadPool(
+          serverConfig.getDaVinciRecordTransformerOnRecoveryThreadPoolSize(),
+          new DaemonThreadFactory("DaVinci_Record_Transformer_On_Recovery_Executor", serverConfig.getLogContext()));
       this.recordTransformerPausedConsumptionQueue = new ConcurrentLinkedQueue<>();
       this.schemaIdToSchemaMap = new VeniceConcurrentHashMap<>();
 
