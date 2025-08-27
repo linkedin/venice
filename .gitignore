@@ -21,6 +21,15 @@ internal/venice-test-common/file:/
 clients/da-vinci-client/classHash*.txt
 integrations/venice-duckdb/classHash*.txt
 
+# Ignore bin directories
+clients/*/bin/
+integrations/*/bin/
+internal/*/bin/
+internal/*/*/bin/
+internal/*/*/*/bin/
+services/*/bin/
+tests/*/bin/
+
 # Stuff related to running the docs server locally
 .jekyll-cache/
 _site/
@@ -28,4 +37,3 @@ Gemfile.lock
 .bundles_cache
 docs/vendor/
 docs/_site/
-
