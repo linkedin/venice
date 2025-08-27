@@ -207,12 +207,9 @@ public class BlobP2PTransferAmongServersTest {
     }
 
     // stop server 1
-    cluster.stopAndRestartVeniceServer(server1Port);
-    TestUtils.waitForNonDeterministicAssertion(3, TimeUnit.MINUTES, () -> {
-      Assert.assertTrue(server1.isRunning());
-    });
+    cluster.stopVeniceServer(server1Port);
 
-    // move the partition folders to temp folders to simulate the restore from temp folder scenario
+    // prepare temp folder: move the partition folders to temp folders to simulate the restore from temp folder scenario
     for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
       String partitionPath = RocksDBUtils.composePartitionDbDir(path1 + "/rocksdb", storeName + "_v1", partitionId);
       String tempPartitionFolder =
@@ -222,7 +219,13 @@ public class BlobP2PTransferAmongServersTest {
       Assert.assertTrue(Files.exists(Paths.get(tempPartitionFolder)));
     }
 
-    // wait for server 1
+    // restart server 1
+    cluster.restartVeniceServer(server1.getPort());
+    TestUtils.waitForNonDeterministicAssertion(3, TimeUnit.MINUTES, () -> {
+      Assert.assertTrue(server1.isRunning());
+    });
+
+    // wait for server 1 is fully replicated
     cluster.getVeniceControllers().forEach(controller -> {
       TestUtils.waitForNonDeterministicAssertion(3, TimeUnit.MINUTES, () -> {
         Assert.assertEquals(
