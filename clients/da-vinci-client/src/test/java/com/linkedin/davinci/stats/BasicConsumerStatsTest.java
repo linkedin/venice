@@ -125,10 +125,10 @@ public class BasicConsumerStatsTest {
     validateMinMaxSumAggregationsOtelMetric(
         storeName,
         VERSION_SWAP_COUNT.getMetricEntity().getMetricName(),
-        expectedNum,
-        expectedNum,
-        expectedNum,
-        expectedNum,
+        0, // min includes default 0 recorded at construction
+        expectedNum, // max after first increment
+        2, // count includes default 0 and this increment
+        expectedNum, // sum is 1 (0 + 1)
         responseStatusCategory);
   }
 
@@ -142,10 +142,10 @@ public class BasicConsumerStatsTest {
     validateMinMaxSumAggregationsOtelMetric(
         storeName,
         VERSION_SWAP_COUNT.getMetricEntity().getMetricName(),
-        expectedNum,
-        expectedNum,
-        expectedNum,
-        expectedNum,
+        0, // min includes default 0 recorded at construction
+        expectedNum, // max after first increment
+        2, // count includes default 0 and this increment
+        expectedNum, // sum is 1 (0 + 1)
         responseStatusCategory);
   }
 
