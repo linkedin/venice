@@ -1891,6 +1891,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     this.missingSOPCheckExecutor.shutdownNow();
 
+    // Shut down record transformer recovery executor to avoid dangling non-daemon threads keeping the JVM alive.
+    if (this.recordTransformerOnRecoveryThreadPool != null) {
+      this.recordTransformerOnRecoveryThreadPool.shutdownNow();
+    }
+
     // Only reset Offset and Drop Partition Messages are important, subscribe/unsubscribe will be handled
     // on the restart by Helix Controller notifications on the new StoreIngestionTask.
     this.storeRepository.unregisterStoreDataChangedListener(this.storageUtilizationManager);
