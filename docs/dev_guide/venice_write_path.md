@@ -48,7 +48,7 @@ When working on the codebase, I find it helpful to keep track of the quantities 
 Below, you'll find some visualizations of data structures and other things that are per-store, per-version, and per-partition.
 ([Link to diagram source](https://whimsical.com/venice-docs-diagrams-SvH4RAc9mED9JdAycS5w2v))
 
-![Write Path Quantities Diagram](https://github.com/user-attachments/assets/f0ed6eb2-7558-4300-a75c-5fc842bb2fb5)
+![Write Path Quantities Diagram](https://github.com/user-attachments/assets/cc2dee5d-1513-4f9a-be3b-1a51a53bc7bb)
 
 ### Venice Large Record Value Chunking
 

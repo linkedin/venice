@@ -9,7 +9,7 @@ permalink: /docs/user_guide/write_api/push_job
 
 The diagram below illustrates the high-level picture of the push job. ([Link to diagram source](https://whimsical.com/venice-docs-diagrams-SvH4RAc9mED9JdAycS5w2v))
 
-![Venice Push Job Diagram](https://github.com/user-attachments/assets/f0ed6eb2-7558-4300-a75c-5fc842bb2fb5)
+![Venice Push Job Diagram](https://github.com/user-attachments/assets/1ee827c3-53b1-4d79-b990-f4c37c27ed81)
 
 The Push Job takes data from a Hadoop grid and writes it to Venice. 
 
