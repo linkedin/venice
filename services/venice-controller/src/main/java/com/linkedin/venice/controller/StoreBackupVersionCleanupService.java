@@ -70,7 +70,7 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
   private final Thread cleanupThread;
   private final long sleepInterval;
   private final long defaultBackupVersionRetentionMs;
-  private static long waitTimeDeleteRepushSourceVersion = TimeUnit.MINUTES.toMillis(30);
+  private static long waitTimeDeleteRepushSourceVersion = TimeUnit.HOURS.toMillis(1);
   private final AtomicBoolean stop = new AtomicBoolean(false);
 
   private final Map<String, StoreBackupVersionCleanupServiceStats> clusterNameCleanupStatsMap =
