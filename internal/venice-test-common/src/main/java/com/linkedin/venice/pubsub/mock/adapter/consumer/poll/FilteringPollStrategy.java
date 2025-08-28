@@ -20,7 +20,6 @@ public class FilteringPollStrategy extends AbstractPollStrategy {
     super(basePollStrategy.keepPollingWhenEmpty);
     this.topicPartitionOffsetsToFilterOut = topicPartitionOffsetsToFilterOut;
     this.basePollStrategy = basePollStrategy;
-
   }
 
   @Override
