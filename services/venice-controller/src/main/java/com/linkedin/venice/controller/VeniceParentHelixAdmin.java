@@ -1502,6 +1502,13 @@ public class VeniceParentHelixAdmin implements Admin {
     int lastVersionNum = store.getLargestUsedVersionNumber();
     Version lastVersion = lastVersionNum > 0 ? store.getVersion(lastVersionNum) : null;
     Optional<String> latestTopic = Optional.empty();
+    if (lastVersion != null) {
+      LOGGER.info(
+          "Found latest version status: {} for store: {}, version: {}",
+          lastVersion.getStatus(),
+          storeName,
+          lastVersion);
+    }
     if (lastVersion != null && lastVersion.getStatus() != ERROR && lastVersion.getStatus() != KILLED
         && lastVersion.getStatus() != ONLINE && lastVersion.getStatus() != PARTIALLY_ONLINE) {
       latestTopic = Optional.of(Version.composeKafkaTopic(storeName, lastVersionNum));
@@ -1510,7 +1517,6 @@ public class VeniceParentHelixAdmin implements Admin {
     if (latestTopic.isPresent()) {
       final String latestTopicName = latestTopic.get();
       int versionNumber = Version.parseVersionFromKafkaTopicName(latestTopicName);
-
       Version version = store.getVersion(versionNumber);
       if (version != null && version.isVersionSwapDeferred()
           && (version.getStatus() == STARTED || version.getStatus() == PUSHED)) {
