@@ -321,12 +321,9 @@ public class TestStoreBackupVersionCleanupService {
     verify(admin, never()).deleteOldVersionInStore(clusterName, repushedStore.getName(), maxRepushedVersion - 1);
     verify(admin, never()).deleteOldVersionInStore(clusterName, repushedStore.getName(), maxRepushedVersion);
 
-    // If the retention period has passed, that version (9) should be deleted as well
+    // If the retention period has passed since promotion to current version, that version (9) should be deleted as well
     clearInvocations(admin);
-    for (int v = 1; v < maxRepushedVersion; v++) {
-      version = repushedStore.getVersion(v);
-      doReturn(0L).when(version).getCreatedTime();
-    }
+    doReturn(0L).when(repushedStore).getLatestVersionPromoteToCurrentTimestamp();
     Assert.assertTrue(service.cleanupBackupVersion(repushedStore, clusterName));
     for (int v = 1; v < maxRepushedVersion; v++) { // version 1, 2, 3, ..., 9
       int versionNumber = v; // for compiler warning

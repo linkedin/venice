@@ -294,10 +294,11 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
     }
 
     // This will delete backup versions which satisfy any of the following conditions
-    // 1. If the current version is from repush, only keep 1 backup version in the chain of repushes into the current
-    // version.
+    // 1. Current version is from a repush, the version is from the chain of repushes into current version.
     // 2. Current version is from a repush, but still a lingering version older than retention period.
     // 3. Current version is not repush and is older than retention, delete any versions < current version.
+    long retentionThreshold = store.getLatestVersionPromoteToCurrentTimestamp() + defaultBackupVersionRetentionMs;
+    boolean pastRetentionPeriod = time.getMilliseconds() > retentionThreshold;
     int repushSourceVersion = store.getVersionOrThrow(currentVersion).getRepushSourceVersion();
     boolean isCurrentVersionRepushed = repushSourceVersion > NON_EXISTING_VERSION;
     HashSet<Integer> repushChainVersions = new HashSet<>(); // all versions repushed into the current version
@@ -308,8 +309,7 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
             return v.getNumber() < currentVersion;
           }
           repushChainVersions.add(v.getRepushSourceVersion()); // descending order, so source can only appear later
-          return v.getNumber() < currentVersion && (repushChainVersions.contains(v.getNumber())
-              || v.getCreatedTime() + defaultBackupVersionRetentionMs < time.getMilliseconds());
+          return v.getNumber() < currentVersion && (repushChainVersions.contains(v.getNumber()) || pastRetentionPeriod);
         })
         .collect(Collectors.toList());
 
@@ -317,15 +317,9 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
       return false;
     }
 
-    // Do not remove all repush source versions if it results in no backup version, unless older than the retention time
-    if (isCurrentVersionRepushed && readyToBeRemovedVersions.size() >= versions.size() - 1) {
-      for (int i = 0; i < readyToBeRemovedVersions.size(); i++) {
-        Version v = readyToBeRemovedVersions.get(i);
-        if (v.getCreatedTime() + defaultBackupVersionRetentionMs > time.getMilliseconds()) {
-          readyToBeRemovedVersions.remove(i);
-          break; // Remove only the first match
-        }
-      }
+    // Keep at least 1 backup version until we are past the retention period.
+    if (isCurrentVersionRepushed && readyToBeRemovedVersions.size() >= versions.size() - 1 && !pastRetentionPeriod) {
+      readyToBeRemovedVersions.remove(0); // choose the newest version
     }
 
     String storeName = store.getName();
