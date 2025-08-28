@@ -305,10 +305,20 @@ public class AdminTool {
           response = controllerClient.killOfflinePushJob(topicName);
           printObject(response);
           break;
-        case SKIP_ADMIN:
-          String offset = getRequiredArgument(cmd, Arg.OFFSET, Command.SKIP_ADMIN);
+        case SKIP_ADMIN_MESSAGE:
+          if (!cmd.hasOption(Arg.OFFSET.first()) && !cmd.hasOption(Arg.EXECUTION_ID.first())) {
+            printErrAndExit(
+                "At least one of " + Arg.OFFSET.getArgName() + " or " + Arg.EXECUTION_ID.getArgName()
+                    + " is required.");
+          }
+          if (cmd.hasOption(Arg.OFFSET.first()) && cmd.hasOption(Arg.EXECUTION_ID.first())) {
+            printErrAndExit(
+                "Only one of " + Arg.OFFSET.getArgName() + " or " + Arg.EXECUTION_ID.getArgName() + " is allowed.");
+          }
+          String offset = getOptionalArgument(cmd, Arg.OFFSET);
+          String executionId = getOptionalArgument(cmd, Arg.EXECUTION_ID);
           boolean skipDIV = Boolean.parseBoolean(getOptionalArgument(cmd, Arg.SKIP_DIV, "false"));
-          response = controllerClient.skipAdminMessage(offset, skipDIV);
+          response = controllerClient.skipAdminMessage(offset, skipDIV, executionId);
           printObject(response);
           break;
         case NEW_STORE:

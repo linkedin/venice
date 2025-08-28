@@ -21,9 +21,11 @@ import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.StoreInfo;
+import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Utils;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
@@ -339,6 +341,41 @@ public class AdminToolE2ETest {
     });
 
     AdminTool.main(adminToolArgs);
+  }
+
+  @Test(timeOut = TEST_TIMEOUT, dataProvider = "skipAdminOptions", dataProviderClass = DataProviderUtils.class)
+  public void testSkipAdminMessage(String[] extraArgs, boolean expectFailure) throws Exception {
+    String storeName1 = Utils.getUniqueString("testSkipAdminMessage");
+    List<VeniceControllerWrapper> parentControllers = multiRegionMultiClusterWrapper.getParentControllers();
+    String clusterName = clusterNames[0];
+    String parentControllerURLs =
+        parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(Collectors.joining(","));
+    ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerURLs);
+    ControllerClient childControllerClient = ControllerClient
+        .constructClusterControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
+
+    createStore(parentControllerClient, childControllerClient, storeName1);
+
+    // Build full args: base + data-driven extras
+    List<String> args = new ArrayList<>();
+    args.add("--url");
+    args.add(childControllerClient.getLeaderControllerUrl());
+    args.add("--cluster");
+    args.add(clusterName);
+    args.add("--skip-admin-message");
+    args.addAll(Arrays.asList(extraArgs));
+    String[] adminToolArgs = args.toArray(new String[0]);
+
+    if (expectFailure) {
+      try {
+        AdminTool.main(adminToolArgs);
+        Assert.fail("Expected failure for args: " + java.util.Arrays.toString(adminToolArgs));
+      } catch (RuntimeException e) {
+        // expected
+      }
+    } else {
+      AdminTool.main(adminToolArgs);
+    }
   }
 
   private void createStore(

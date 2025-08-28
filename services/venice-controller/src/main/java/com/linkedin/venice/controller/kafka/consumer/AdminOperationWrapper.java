@@ -7,6 +7,7 @@ import com.linkedin.venice.pubsub.api.PubSubPosition;
 public class AdminOperationWrapper {
   private final AdminOperation adminOperation;
   private final PubSubPosition position;
+  private final long executionId;
   private final long producerTimestamp;
   private final long localBrokerTimestamp;
   private final long delegateTimestamp;
@@ -25,11 +26,13 @@ public class AdminOperationWrapper {
   AdminOperationWrapper(
       AdminOperation adminOperation,
       PubSubPosition position,
+      long executionId,
       long producerTimestamp,
       long localBrokerTimestamp,
       long delegateTimestamp) {
     this.adminOperation = adminOperation;
     this.position = position;
+    this.executionId = executionId;
     this.producerTimestamp = producerTimestamp;
     this.localBrokerTimestamp = localBrokerTimestamp;
     this.delegateTimestamp = delegateTimestamp;
@@ -41,6 +44,10 @@ public class AdminOperationWrapper {
 
   public PubSubPosition getPosition() {
     return position;
+  }
+
+  public long getExecutionId() {
+    return executionId;
   }
 
   public long getProducerTimestamp() {

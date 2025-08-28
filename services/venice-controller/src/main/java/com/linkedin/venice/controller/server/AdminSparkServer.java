@@ -97,7 +97,7 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.SET_OWNER;
 import static com.linkedin.venice.controllerapi.ControllerRoute.SET_PARTITION_COUNT;
 import static com.linkedin.venice.controllerapi.ControllerRoute.SET_TOPIC_COMPACTION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.SET_VERSION;
-import static com.linkedin.venice.controllerapi.ControllerRoute.SKIP_ADMIN;
+import static com.linkedin.venice.controllerapi.ControllerRoute.SKIP_ADMIN_MESSAGE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.STORAGE_ENGINE_OVERHEAD_RATIO;
 import static com.linkedin.venice.controllerapi.ControllerRoute.STORE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.STORE_MIGRATION_ALLOWED;
@@ -367,7 +367,7 @@ public class AdminSparkServer extends AbstractVeniceService {
         KILL_OFFLINE_PUSH_JOB.getPath(),
         new VeniceParentControllerRegionStateHandler(admin, jobRoutes.killOfflinePushJob(admin)));
     httpService.post(
-        SKIP_ADMIN.getPath(),
+        SKIP_ADMIN_MESSAGE.getPath(),
         new VeniceParentControllerRegionStateHandler(admin, skipAdminRoute.skipAdminMessage(admin)));
 
     httpService.post(

@@ -42,6 +42,7 @@ import static com.linkedin.venice.Arg.END_DATE;
 import static com.linkedin.venice.Arg.ENUM_SCHEMA_EVOLUTION_ALLOWED;
 import static com.linkedin.venice.Arg.ETLED_PROXY_USER_ACCOUNT;
 import static com.linkedin.venice.Arg.EXECUTION;
+import static com.linkedin.venice.Arg.EXECUTION_ID;
 import static com.linkedin.venice.Arg.EXPECTED_ROUTER_COUNT;
 import static com.linkedin.venice.Arg.EXTRA_COMMAND_ARGS;
 import static com.linkedin.venice.Arg.FABRIC;
@@ -213,7 +214,10 @@ public enum Command {
       "Query the ingest status of a running push job. If a version is not specified, the job status of the last job will be printed.",
       new Arg[] { URL, STORE }, new Arg[] { CLUSTER, VERSION }
   ), KILL_JOB("kill-job", "Kill a running push job", new Arg[] { URL, STORE, VERSION }, new Arg[] { CLUSTER }),
-  SKIP_ADMIN("skip-admin", "Skip an admin message", new Arg[] { URL, CLUSTER, OFFSET }, new Arg[] { SKIP_DIV }),
+  SKIP_ADMIN_MESSAGE(
+      "skip-admin-message", "Skip an admin message", new Arg[] { URL, CLUSTER },
+      new Arg[] { SKIP_DIV, OFFSET, EXECUTION_ID }
+  ),
   NEW_STORE(
       "new-store", "", new Arg[] { URL, CLUSTER, STORE, KEY_SCHEMA, VALUE_SCHEMA }, new Arg[] { OWNER, VSON_STORE }
   ),
