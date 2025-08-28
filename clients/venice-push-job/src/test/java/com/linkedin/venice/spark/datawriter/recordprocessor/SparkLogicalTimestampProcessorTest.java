@@ -26,7 +26,7 @@ public class SparkLogicalTimestampProcessorTest {
 
   @Test(expectedExceptions = IllegalArgumentException.class)
   public void testInvalidRmdSchemaString() {
-    SparkLogicalTimestampProcessor processor = new SparkLogicalTimestampProcessor(true, "");
+    new SparkLogicalTimestampProcessor(true, "");
   }
 
   @Test
