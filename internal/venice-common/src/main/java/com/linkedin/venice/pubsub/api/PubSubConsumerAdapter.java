@@ -207,7 +207,10 @@ public interface PubSubConsumerAdapter extends AutoCloseable, Closeable {
    * @throws PubSubOpTimeoutException If the operation times out while fetching the offset.
    * @throws PubSubClientException If there is an error while attempting to fetch the offset.
    */
-  Long offsetForTime(PubSubTopicPartition pubSubTopicPartition, long timestamp, Duration timeout);
+  @Deprecated
+  default Long offsetForTime(PubSubTopicPartition pubSubTopicPartition, long timestamp, Duration timeout) {
+    return getPositionByTimestamp(pubSubTopicPartition, timestamp, timeout).getNumericOffset();
+  }
 
   /**
    * Retrieves the offset of the first message with a timestamp greater than or equal to the target
@@ -236,7 +239,10 @@ public interface PubSubConsumerAdapter extends AutoCloseable, Closeable {
    * @throws PubSubOpTimeoutException If the operation times out while fetching the offset.
    * @throws PubSubClientException If there is an error while attempting to fetch the offset.
    */
-  Long offsetForTime(PubSubTopicPartition pubSubTopicPartition, long timestamp);
+  @Deprecated
+  default Long offsetForTime(PubSubTopicPartition pubSubTopicPartition, long timestamp) {
+    return getPositionByTimestamp(pubSubTopicPartition, timestamp).getNumericOffset();
+  }
 
   /**
    * Retrieves the offset of the first message with a timestamp greater than or equal to the target

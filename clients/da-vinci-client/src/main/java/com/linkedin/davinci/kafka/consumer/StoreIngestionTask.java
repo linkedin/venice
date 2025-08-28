@@ -3705,11 +3705,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       PubSubPosition startOffset,
       String kafkaURL) {
     PubSubTopicPartition resolvedTopicPartition =
-        resolveTopicPartitionWithKafkaURL(pubSubTopic, partitionConsumptionState, kafkaURL);
+        resolveRtTopicPartitionWithPubSubBrokerAddress(pubSubTopic, partitionConsumptionState, kafkaURL);
     consumerSubscribe(resolvedTopicPartition, startOffset, kafkaURL);
   }
 
-  void consumerSubscribe(PubSubTopicPartition pubSubTopicPartition, PubSubPosition startOffset, String kafkaURL) {
+  void consumerSubscribe(PubSubTopicPartition pubSubTopicPartition, PubSubPosition startPosition, String kafkaURL) {
     String resolvedKafkaURL = kafkaClusterUrlResolver != null ? kafkaClusterUrlResolver.apply(kafkaURL) : kafkaURL;
     if (!Objects.equals(resolvedKafkaURL, kafkaURL) && !isSeparatedRealtimeTopicEnabled()
         && pubSubTopicPartition.getPubSubTopic().isRealTime()) {
@@ -3723,14 +3723,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         new PartitionReplicaIngestionContext(versionTopic, pubSubTopicPartition, versionRole, workloadType);
     // localKafkaServer doesn't have suffix but kafkaURL may have suffix,
     // and we don't want to pass the resolvedKafkaURL as it will be passed to data receiver for parsing cluster id
-    aggKafkaConsumerService.subscribeConsumerFor(kafkaURL, this, partitionReplicaIngestionContext, startOffset);
+    aggKafkaConsumerService.subscribeConsumerFor(kafkaURL, this, partitionReplicaIngestionContext, startPosition);
 
     // If the record transformer is enabled, consumption should be paused until RocksDB scan for all partitions
     // has completed. Otherwise, there will be resource contention.
     if (recordTransformer != null && recordTransformer.getCountDownStartConsumptionLatchCount() > 0) {
-      LOGGER.info("DaVinciRecordTransformer pausing consumption for: {}", getReplicaId(pubSubTopicPartition));
+      LOGGER.info("DaVinciRecordTransformer pausing consumption for: {}", pubSubTopicPartition);
       aggKafkaConsumerService.pauseConsumerFor(versionTopic, pubSubTopicPartition);
-      LOGGER.info("DaVinciRecordTransformer paused consumption for: {}", getReplicaId(pubSubTopicPartition));
+      LOGGER.info("DaVinciRecordTransformer paused consumption for: {}", pubSubTopicPartition);
       recordTransformerPausedConsumptionQueue.add(pubSubTopicPartition);
     }
   }
@@ -4708,13 +4708,17 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * For RT input topic with separate-RT kafka URL, this method will return topic-partition with separated-RT topic.
    * For other case, it will return topic-partition with input topic.
    */
-  PubSubTopicPartition resolveTopicPartitionWithKafkaURL(
+  PubSubTopicPartition resolveRtTopicPartitionWithPubSubBrokerAddress(
       PubSubTopic topic,
       PartitionConsumptionState partitionConsumptionState,
-      String kafkaURL) {
-    PubSubTopic resolvedTopic = resolveTopicWithKafkaURL(topic, kafkaURL);
+      String pubSubBrokerAddress) {
+    PubSubTopic resolvedTopic = resolveRtTopicWithPubSubBrokerAddress(topic, pubSubBrokerAddress);
     PubSubTopicPartition pubSubTopicPartition = partitionConsumptionState.getSourceTopicPartition(resolvedTopic);
-    LOGGER.info("Resolved topic-partition: {} from kafkaURL: {}", pubSubTopicPartition, kafkaURL);
+    LOGGER.info(
+        "Resolved topic-partition: {} for: {} from pubSubAddress: {}",
+        pubSubTopicPartition,
+        partitionConsumptionState.getReplicaId(),
+        pubSubBrokerAddress);
     return pubSubTopicPartition;
   }
 
@@ -4722,9 +4726,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * This method will return resolve topic from input Kafka URL. If it is a separated topic Kafka URL and input topic
    * is RT topic, it will return separate RT topic, otherwise it will return input topic.
    */
-  PubSubTopic resolveTopicWithKafkaURL(PubSubTopic topic, String kafkaURL) {
+  PubSubTopic resolveRtTopicWithPubSubBrokerAddress(PubSubTopic topic, String pubSubBrokerAddress) {
     if (topic.isRealTime() && getKafkaClusterUrlResolver() != null
-        && !kafkaURL.equals(getKafkaClusterUrlResolver().apply(kafkaURL))) {
+        && !pubSubBrokerAddress.equals(getKafkaClusterUrlResolver().apply(pubSubBrokerAddress))) {
       return separateRealTimeTopic;
     }
     return topic;

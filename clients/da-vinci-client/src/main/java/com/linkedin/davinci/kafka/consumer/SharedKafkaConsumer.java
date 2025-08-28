@@ -361,21 +361,11 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
   }
 
   @Override
-  public Long offsetForTime(PubSubTopicPartition pubSubTopicPartition, long timestamp, Duration timeout) {
-    throw new UnsupportedOperationException("offsetForTime is not supported in SharedKafkaConsumer");
-  }
-
-  @Override
   public PubSubPosition getPositionByTimestamp(
       PubSubTopicPartition pubSubTopicPartition,
       long timestamp,
       Duration timeout) {
     throw new UnsupportedOperationException("getPositionByTimestamp is not supported in SharedKafkaConsumer");
-  }
-
-  @Override
-  public Long offsetForTime(PubSubTopicPartition pubSubTopicPartition, long timestamp) {
-    throw new UnsupportedOperationException("offsetForTime is not supported in SharedKafkaConsumer");
   }
 
   @Override
