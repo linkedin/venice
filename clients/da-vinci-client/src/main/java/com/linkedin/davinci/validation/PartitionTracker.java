@@ -177,7 +177,7 @@ public class PartitionTracker {
         .stream()
         .collect(
             Collectors.toMap(
-                entry -> GuidUtils.getCharSequenceFromGuid(entry.getKey()),
+                entry -> GuidUtils.getHexFromGuid(entry.getKey()),
                 entry -> entry.getValue().toProducerPartitionState()));
   }
 

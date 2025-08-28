@@ -484,6 +484,8 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
           SingleGetChunkingAdapter.get(storageEngine, request.getPartition(), key, isChunked, response.getStats());
       response.setValueRecord(valueRecord);
 
+      // LOGGER.warn("Key Bytes: {} bytes: {}", new String(key), key);
+
       response.getStats().addKeySize(key.length);
       response.getStats().setStorageExecutionSubmissionWaitTime(submissionWaitTime);
       response.getStats().setStorageExecutionQueueLen(queueLen);
