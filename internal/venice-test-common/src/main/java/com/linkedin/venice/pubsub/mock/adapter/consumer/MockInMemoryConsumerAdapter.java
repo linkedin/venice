@@ -216,20 +216,10 @@ public class MockInMemoryConsumerAdapter implements PubSubConsumerAdapter {
   }
 
   @Override
-  public synchronized Long offsetForTime(PubSubTopicPartition pubSubTopicPartition, long timestamp, Duration timeout) {
-    return null;
-  }
-
-  @Override
   public synchronized PubSubPosition getPositionByTimestamp(
       PubSubTopicPartition pubSubTopicPartition,
       long timestamp,
       Duration timeout) {
-    return null;
-  }
-
-  @Override
-  public synchronized Long offsetForTime(PubSubTopicPartition pubSubTopicPartition, long timestamp) {
     return null;
   }
 

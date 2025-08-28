@@ -816,10 +816,10 @@ public class TopicManager implements Closeable {
   }
 
   /**
-   * Get offsets for only one partition with a specific timestamp.
+   * Get position for only one partition with a specific timestamp.
    */
-  public long getOffsetByTime(PubSubTopicPartition pubSubTopicPartition, long timestamp) {
-    return topicMetadataFetcher.getOffsetForTimeWithRetries(pubSubTopicPartition, timestamp, 25);
+  public PubSubPosition getPositionByTime(PubSubTopicPartition pubSubTopicPartition, long timestamp) {
+    return topicMetadataFetcher.getPositionForTimeWithRetries(pubSubTopicPartition, timestamp, 25);
   }
 
   /**

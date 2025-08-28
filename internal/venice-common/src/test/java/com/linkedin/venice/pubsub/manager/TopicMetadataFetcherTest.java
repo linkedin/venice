@@ -381,21 +381,22 @@ public class TopicMetadataFetcherTest {
   }
 
   @Test
-  public void testGetOffsetForTime() {
+  public void testGetPositionForTime() {
     PubSubTopicPartition tp0 = new PubSubTopicPartitionImpl(pubSubTopic, 0);
     when(adminMock.containsTopic(pubSubTopic)).thenReturn(true);
-    long latestOffset = 12321L;
     TopicMetadataFetcher topicMetadataFetcherSpy = spy(topicMetadataFetcher);
-    doReturn(latestOffset).when(topicMetadataFetcherSpy).getLatestOffset(tp0);
+    ApacheKafkaOffsetPosition endPosition = ApacheKafkaOffsetPosition.of(1234L);
+    doReturn(endPosition).when(topicMetadataFetcherSpy).getEndPositionsForPartition(tp0);
 
     long ts = System.currentTimeMillis();
-    when(consumerMock.offsetForTime(eq(tp0), eq(ts), any(Duration.class))).thenReturn(9988L);
-    assertEquals(topicMetadataFetcherSpy.getOffsetForTime(tp0, ts), 9988L);
+    ApacheKafkaOffsetPosition p9988 = ApacheKafkaOffsetPosition.of(9988L);
+    when(consumerMock.getPositionByTimestamp(eq(tp0), eq(ts), any(Duration.class))).thenReturn(p9988);
+    assertEquals(topicMetadataFetcherSpy.getPositionForTime(tp0, ts), p9988);
     assertEquals(pubSubConsumerPool.size(), 1);
 
     // test when offsetForTime returns null
-    when(consumerMock.offsetForTime(eq(tp0), eq(ts), any(Duration.class))).thenReturn(null);
-    assertEquals(topicMetadataFetcherSpy.getOffsetForTime(tp0, ts), latestOffset);
+    when(consumerMock.getPositionByTimestamp(eq(tp0), eq(ts), any(Duration.class))).thenReturn(null);
+    assertEquals(topicMetadataFetcherSpy.getPositionForTime(tp0, ts), endPosition);
     assertEquals(pubSubConsumerPool.size(), 1);
   }
 
