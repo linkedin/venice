@@ -113,7 +113,7 @@ public class TestHybridMultiRegion {
       // Create store at parent, make it a hybrid store
       TestUtils.assertCommand(
           controllerClient.createNewStore(storeName, "owner", STRING_SCHEMA.toString(), STRING_SCHEMA.toString()));
-      ControllerResponse response = TestUtils.assertCommand(
+      TestUtils.assertCommand(
           controllerClient.updateStore(
               storeName,
               new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true)

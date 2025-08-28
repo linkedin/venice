@@ -15,6 +15,7 @@ import org.apache.spark.sql.catalyst.expressions.GenericRowWithSchema;
  * to the actual RMD byte array if necessary. It acts as pass through for non-long RMD types.
  */
 public class SparkLogicalTimestampProcessor implements MapFunction<Row, Row> {
+  private static final long serialVersionUID = 1L;
   private final boolean containsLogicalTimestamp;
   private final Schema rmdSchema;
 
