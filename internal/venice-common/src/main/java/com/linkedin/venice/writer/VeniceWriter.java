@@ -1554,6 +1554,12 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       PubSubProducerCallback callback,
       boolean updateDIV,
       PubSubMessageHeaders pubSubMessageHeaders) {
+    if (isClosed) {
+      CompletableFuture<PubSubProduceResult> future = new CompletableFuture<>();
+      future.completedFuture(null);
+      logger.warn("VeniceWriter already closed for topic {} partition {}" + topicName, partition);
+      return future;
+    }
     synchronized (this.partitionLocks[partition]) {
       KafkaMessageEnvelope kafkaValue = valueProvider.getKafkaMessageEnvelope();
       KafkaKey key = keyProvider.getKey(kafkaValue.producerMetadata);
