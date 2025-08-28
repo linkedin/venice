@@ -117,6 +117,7 @@ import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.ComplementSet;
+import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.DiskUsage;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.HelixUtils;
@@ -564,8 +565,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           this.recordTransformerInputValueSchema,
           outputValueSchema,
           internalRecordTransformerConfig);
-      this.recordTransformerOnRecoveryThreadPool =
-          Executors.newFixedThreadPool(serverConfig.getDaVinciRecordTransformerOnRecoveryThreadPoolSize());
+      this.recordTransformerOnRecoveryThreadPool = Executors.newFixedThreadPool(
+          serverConfig.getDaVinciRecordTransformerOnRecoveryThreadPoolSize(),
+          new DaemonThreadFactory("DVRT-OnRecovery", serverConfig.getLogContext()));
       this.recordTransformerPausedConsumptionQueue = new ConcurrentLinkedQueue<>();
       this.schemaIdToSchemaMap = new VeniceConcurrentHashMap<>();
 
@@ -4202,6 +4204,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     // resources before exiting.
 
     if (recordTransformer != null) {
+      // shut down the threadpool first, since tasks running in it may require a valid recordTransformer object
+      this.recordTransformerOnRecoveryThreadPool.shutdownNow();
+
       long startTime = System.nanoTime();
       Store store = storeRepository.getStoreOrThrow(storeName);
       recordTransformer.onEndVersionIngestion(store.getCurrentVersion());
