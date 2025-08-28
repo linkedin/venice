@@ -10,6 +10,7 @@ import com.linkedin.venice.client.store.streaming.StreamingCallback;
 import com.linkedin.venice.compute.ComputeRequestWrapper;
 import com.linkedin.venice.fastclient.factory.ClientFactory;
 import com.linkedin.venice.schema.SchemaReader;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -108,6 +109,15 @@ public class DelegatingAvroStoreClient<K, V> extends InternalAvroStoreClient<K, 
       StreamingCallback<K, ComputeGenericRecord> callback,
       long preRequestTimeInNS) throws VeniceClientException {
     delegate.compute(requestContext, computeRequestWrapper, keys, resultSchema, callback, preRequestTimeInNS);
+  }
+
+  @Override
+  protected CompletableFuture<Map<Object, Integer>> streamingCountByValue(
+      CountByValueRequestContext<K> requestContext,
+      Set<K> keys,
+      String fieldName,
+      int topK) throws VeniceClientException {
+    return delegate.streamingCountByValue(requestContext, keys, fieldName, topK);
   }
 
   @Override

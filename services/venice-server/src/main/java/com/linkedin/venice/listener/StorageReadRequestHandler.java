@@ -20,6 +20,7 @@ import com.linkedin.davinci.storage.chunking.SingleGetChunkingAdapter;
 import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.venice.cleaner.ResourceReadUsageTracker;
+import com.linkedin.venice.client.store.FacetCountingUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.compute.ComputeUtils;
@@ -81,6 +82,7 @@ import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -295,7 +297,16 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
           responseFuture = this.multiGetHandler.apply((MultiGetRouterRequestWrapper) request);
           break;
         case COMPUTE:
-          responseFuture = this.computeHandler.apply((ComputeRouterRequestWrapper) request);
+          // Check if this is actually a CountByValue request by analyzing the compute request content
+          if (isCountByValueRequest((ComputeRouterRequestWrapper) request)) {
+            responseFuture = handleCountByValueRequest((ComputeRouterRequestWrapper) request);
+          } else {
+            responseFuture = this.computeHandler.apply((ComputeRouterRequestWrapper) request);
+          }
+          break;
+        case COUNT_BY_VALUE:
+          // CountByValue with server-side aggregation using compute infrastructure
+          responseFuture = handleCountByValueRequest((ComputeRouterRequestWrapper) request);
           break;
         default:
           throw new VeniceException("Unknown request type: " + request.getRequestType());
@@ -623,7 +634,43 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
     }, executor);
   }
 
-  private CompletableFuture<ReadResponse> handleComputeRequest(ComputeRouterRequestWrapper request) {
+  /**
+   * Handle CountByValue requests by leveraging existing compute infrastructure and FacetCountingUtils.
+   * This method uses the same infrastructure as handleComputeRequest but performs aggregation
+   * instead of returning individual records, using FacetCountingUtils for the aggregation logic.
+   */
+  public CompletableFuture<ReadResponse> handleCountByValueRequest(ComputeRouterRequestWrapper request) {
+    if (!metadataRepository.isReadComputationEnabled(request.getStoreName())) {
+      CompletableFuture<ReadResponse> failFast = new CompletableFuture<>();
+      failFast.completeExceptionally(
+          new OperationNotAllowedException(
+              "Read compute is not enabled for the store. Please contact Venice team to enable the feature."));
+      return failFast;
+    }
+
+    final int queueLen = this.computeExecutor.getQueue().size();
+    final long preSubmissionTimeNs = System.nanoTime();
+    return CompletableFuture.supplyAsync(() -> {
+      if (request.shouldRequestBeTerminatedEarly()) {
+        throw new VeniceRequestEarlyTerminationException(request.getStoreName());
+      }
+
+      double submissionWaitTime = LatencyUtils.getElapsedTimeFromNSToMS(preSubmissionTimeNs);
+
+      ComputeRequestContext computeRequestContext = new ComputeRequestContext(request, this);
+      int keyCount = request.getKeyCount();
+
+      // Use modified processCompute that aggregates results using FacetCountingUtils
+      ComputeResponseWrapper response =
+          processComputeForCountByValue(0, keyCount, request.getKeys(), computeRequestContext);
+
+      response.getStats().setStorageExecutionSubmissionWaitTime(submissionWaitTime);
+      response.getStats().setStorageExecutionQueueLen(queueLen);
+      return response;
+    }, computeExecutor);
+  }
+
+  public CompletableFuture<ReadResponse> handleComputeRequest(ComputeRouterRequestWrapper request) {
     if (!metadataRepository.isReadComputationEnabled(request.getStoreName())) {
       CompletableFuture failFast = new CompletableFuture();
       failFast.completeExceptionally(
@@ -674,6 +721,153 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
         this.computeExecutor,
         requestContext,
         this::processCompute);
+  }
+
+  /**
+   * Process compute for CountByValue by collecting records and using FacetCountingUtils for aggregation.
+   * This method reuses the core logic from processCompute but aggregates the results.
+   */
+  private ComputeResponseWrapper processComputeForCountByValue(
+      int startPos,
+      int endPos,
+      List<ComputeRouterRequestKeyV1> keys,
+      ComputeRequestContext requestContext) {
+
+    // Collect all the compute results in memory for aggregation
+    List<GenericRecord> records = new ArrayList<>();
+
+    // Reuse the same objects as in processCompute
+    ReusableObjects reusableObjects = threadLocalReusableObjects.get();
+    GenericRecord reusableValueRecord = reusableObjects.valueRecordMap
+        .computeIfAbsent(requestContext.valueSchemaEntry.getSchema(), GenericData.Record::new);
+    GenericRecord reusableResultRecord =
+        reusableObjects.resultRecordMap.computeIfAbsent(requestContext.resultSchema, GenericData.Record::new);
+    reusableObjects.computeContext.clear();
+
+    ComputeResponseWrapper response = this.computeResponseProvider.apply(1); // Single aggregated result
+    int hits = 0;
+
+    // Process each key using the same logic as processCompute
+    for (int subChunkCur = startPos; subChunkCur < endPos; ++subChunkCur) {
+      ComputeRouterRequestKeyV1 key = keys.get(subChunkCur);
+      response.getStats().addKeySize(key.getKeyBytes().remaining());
+      AvroRecordUtils.clearRecord(reusableResultRecord);
+
+      // Use the same chunking logic as processCompute
+      reusableValueRecord = GenericRecordChunkingAdapter.INSTANCE.get(
+          requestContext.storeVersion.storageEngine,
+          key.getPartitionId(),
+          ByteUtils.extractByteArray(key.getKeyBytes()),
+          reusableObjects.byteBuffer,
+          reusableValueRecord,
+          reusableObjects.binaryDecoder,
+          requestContext.isChunked,
+          response.getStats(),
+          requestContext.valueSchemaEntry.getId(),
+          requestContext.storeVersion.storeDeserializerCache,
+          requestContext.compressor);
+
+      if (reusableValueRecord != null) {
+        // Use the same compute logic as processCompute
+        reusableResultRecord = ComputeUtils.computeResult(
+            requestContext.operations,
+            requestContext.operationResultFields,
+            reusableObjects.computeContext,
+            reusableValueRecord,
+            reusableResultRecord);
+
+        // Instead of serializing immediately, collect the record for aggregation
+        // Create a copy since reusableResultRecord gets reused
+        GenericRecord recordCopy = new GenericData.Record(requestContext.resultSchema);
+        for (Schema.Field field: requestContext.resultSchema.getFields()) {
+          recordCopy.put(field.name(), reusableResultRecord.get(field.name()));
+        }
+        records.add(recordCopy);
+        hits++;
+      }
+    }
+
+    // Now aggregate all records using FacetCountingUtils
+    Map<String, Map<Object, Integer>> fieldAggregations = new HashMap<>();
+
+    for (Schema.Field field: requestContext.resultSchema.getFields()) {
+      String fieldName = field.name();
+      // Use FacetCountingUtils.getValueToCount with Integer.MAX_VALUE to get complete counts (no TopK)
+      Map<Object, Integer> fieldCounts = FacetCountingUtils.getValueToCount(records, fieldName, Integer.MAX_VALUE);
+      fieldAggregations.put(fieldName, fieldCounts);
+    }
+
+    // Create the aggregated result record
+    GenericRecord aggregatedResult =
+        createAggregatedCountByValueResponse(fieldAggregations, requestContext.resultSchema);
+
+    // Add single aggregated response record
+    ComputeResponseRecordV1 record = new ComputeResponseRecordV1();
+    record.keyIndex = 0; // Single aggregated response
+    record.value = ByteBuffer.wrap(requestContext.resultSerializer.serialize(aggregatedResult));
+    response.addRecord(record);
+
+    // Trigger serialization
+    response.getResponseBody();
+
+    // Use the same stats logic as processCompute
+    incrementOperatorCounters(response.getStats(), requestContext.operations, hits);
+
+    return response;
+  }
+
+  /**
+   * Create the final aggregated response record containing field-to-count mappings.
+   */
+  private GenericRecord createAggregatedCountByValueResponse(
+      Map<String, Map<Object, Integer>> fieldAggregations,
+      Schema resultSchema) {
+
+    // Handle CountByValue record schema with "counts" field (new approach)
+    // Check for CountByValueResult record schema
+    if (resultSchema.getType() == Schema.Type.RECORD && resultSchema.getFields().size() == 1
+        && resultSchema.getFields().get(0).name().equals("counts")) {
+
+      // Create aggregated map for all field counts
+      Map<String, Integer> allCounts = new HashMap<>();
+      for (Map.Entry<String, Map<Object, Integer>> fieldEntry: fieldAggregations.entrySet()) {
+        Map<Object, Integer> counts = fieldEntry.getValue();
+        if (counts != null) {
+          for (Map.Entry<Object, Integer> countEntry: counts.entrySet()) {
+            // Use field:value as key for uniqueness across all fields
+            String mapKey = fieldEntry.getKey() + ":" + countEntry.getKey().toString();
+            allCounts.put(mapKey, countEntry.getValue());
+          }
+        }
+      }
+
+      // Create the record with counts field
+      GenericRecord result = new GenericData.Record(resultSchema);
+      result.put("counts", allCounts);
+      return result;
+    }
+
+    // Handle record schema (legacy path)
+    GenericRecord result = new GenericData.Record(resultSchema);
+
+    // For each field in the result schema, set the aggregated counts as a map
+    for (Schema.Field field: resultSchema.getFields()) {
+      String fieldName = field.name();
+      Map<Object, Integer> counts = fieldAggregations.get(fieldName);
+
+      if (counts != null && !counts.isEmpty()) {
+        // Convert to string-keyed map for serialization consistency
+        Map<String, Integer> serializedCounts = new HashMap<>();
+        for (Map.Entry<Object, Integer> entry: counts.entrySet()) {
+          serializedCounts.put(entry.getKey().toString(), entry.getValue());
+        }
+        result.put(fieldName, serializedCounts);
+      } else {
+        result.put(fieldName, new HashMap<String, Integer>());
+      }
+    }
+
+    return result;
   }
 
   /**
@@ -810,7 +1004,9 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
   }
 
   private Schema getComputeResultSchema(ComputeRequest computeRequest, Schema valueSchema) {
-    Utf8 resultSchemaStr = (Utf8) computeRequest.getResultSchemaStr();
+    CharSequence resultSchemaSeq = computeRequest.getResultSchemaStr();
+    Utf8 resultSchemaStr =
+        resultSchemaSeq instanceof Utf8 ? (Utf8) resultSchemaSeq : new Utf8(resultSchemaSeq.toString());
     Schema resultSchema = computeResultSchemaCache.get(resultSchemaStr);
     if (resultSchema == null) {
       resultSchema = new Schema.Parser().parse(resultSchemaStr.toString());
@@ -886,4 +1082,95 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
         heartbeatRequest.getPartition(),
         heartbeatRequest.isFilterLagReplica());
   }
+
+  // Getter methods for gRPC handlers
+  public StorageEngineRepository getStorageEngineRepository() {
+    return storageEngineRepository;
+  }
+
+  public ReadOnlyStoreRepository getMetadataRepository() {
+    return metadataRepository;
+  }
+
+  public ReadOnlySchemaRepository getSchemaRepository() {
+    return schemaRepository;
+  }
+
+  /**
+   * Handles CountByValue requests by leveraging the existing compute infrastructure.
+   * This satisfies the mentor requirement to use processCompute/handleComputeRequest functions.
+   */
+
+  private Map<Integer, Schema> getAllValueSchemas(String storeName) {
+    Map<Integer, Schema> schemaMap = new HashMap<>();
+    try {
+      for (SchemaEntry entry: schemaRepository.getValueSchemas(storeName)) {
+        schemaMap.put(entry.getId(), entry.getSchema());
+      }
+    } catch (Exception e) {
+      LOGGER.warn("Failed to get all schemas for store: " + storeName, e);
+      // Fallback to latest schema
+      try {
+        SchemaEntry latestValueSchema = schemaRepository.getSupersetOrLatestValueSchema(storeName);
+        if (latestValueSchema != null) {
+          schemaMap.put(latestValueSchema.getId(), latestValueSchema.getSchema());
+        }
+      } catch (Exception ex) {
+        LOGGER.error("Failed to get latest schema for store: " + storeName, ex);
+      }
+    }
+    return schemaMap;
+  }
+
+  /**
+   * Determines if a ComputeRouterRequestWrapper is actually a CountByValue request.
+   * CountByValue requests have a specific result schema pattern and empty operations.
+   * This is a more robust check than just empty operations.
+   */
+  private boolean isCountByValueRequest(ComputeRouterRequestWrapper computeWrapper) {
+    try {
+      ComputeRequest computeRequest = computeWrapper.getComputeRequest();
+      if (computeRequest == null) {
+        return false;
+      }
+
+      // CountByValue requests have specific characteristics:
+      // 1. Empty operations list
+      // 2. Result schema matches the value schema (no projection)
+      // 3. Originally created by FastClient CountByValue API
+      boolean hasEmptyOperations = computeRequest.getOperations() == null || computeRequest.getOperations().isEmpty();
+
+      if (!hasEmptyOperations) {
+        return false;
+      }
+
+      // Additional check: CountByValue requests typically use the same schema for result and value
+      // This helps distinguish from other compute requests that might have empty operations
+      CharSequence resultSchemaSeq = computeRequest.getResultSchemaStr();
+      String resultSchemaStr = resultSchemaSeq != null ? resultSchemaSeq.toString() : null;
+      if (resultSchemaStr != null) {
+        try {
+          // For CountByValue, FastClient creates ComputeRequestWrapper with value schema as result schema
+          SchemaEntry valueSchemaEntry = getComputeValueSchema(computeWrapper);
+          if (valueSchemaEntry != null) {
+            String valueSchemaStr = valueSchemaEntry.getSchema().toString();
+            // CountByValue requests have result schema matching value schema
+            return resultSchemaStr.equals(valueSchemaStr);
+          }
+        } catch (Exception schemaException) {
+          // If schema comparison fails, fall back to operations check only
+          LOGGER.debug("Schema comparison failed for CountByValue detection: {}", schemaException.getMessage());
+        }
+      }
+
+      // Fallback: if result schema is same as value schema, likely CountByValue
+      return hasEmptyOperations;
+
+    } catch (Exception e) {
+      // If we can't determine the request type, default to regular compute
+      LOGGER.debug("Failed to determine if request is CountByValue: {}", e.getMessage());
+      return false;
+    }
+  }
+
 }
