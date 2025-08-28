@@ -97,19 +97,13 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
    * through vanilla spark rows. However, that is tabled for a separate refactoring effort.
    */
   public static class VeniceRecordWithMetadata {
-    private final byte[] key;
     private final byte[] value;
 
     private final byte[] rmd;
 
-    public VeniceRecordWithMetadata(byte[] key, byte[] value, byte[] rmd) {
-      this.key = key;
+    public VeniceRecordWithMetadata(byte[] value, byte[] rmd) {
       this.value = value;
       this.rmd = rmd;
-    }
-
-    public byte[] getKey() {
-      return key;
     }
 
     public byte[] getValue() {
@@ -246,10 +240,6 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
    * there is error from producer.
    */
   private final ScheduledExecutorService taskProgressHeartbeatScheduler = Executors.newScheduledThreadPool(1);
-
-  public VeniceRecordWithMetadata createVeniceValueRecord(byte[] keyBytes, byte[] valueBytes, byte[] rmdBytes) {
-    return new VeniceRecordWithMetadata(keyBytes, valueBytes, rmdBytes);
-  }
 
   public void processValuesForKey(
       byte[] key,

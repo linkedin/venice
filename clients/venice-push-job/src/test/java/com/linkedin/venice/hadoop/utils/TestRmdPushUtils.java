@@ -13,9 +13,6 @@ import org.apache.avro.Schema;
 import org.testng.annotations.Test;
 
 
-/**
- * A unit test class for {@link RmdPushUtils}.
- */
 public class TestRmdPushUtils {
   @Test
   public void testGetInputRmdSchema() {
@@ -25,7 +22,6 @@ public class TestRmdPushUtils {
     Schema.Field mockField = mock(Schema.Field.class);
     when(mockSchema.getField(eq(rmdField))).thenReturn(mockField);
     when(mockField.schema()).thenReturn(rmdSchema);
-
     PushJobSetting pushJobSetting = new PushJobSetting();
     pushJobSetting.rmdField = rmdField;
     pushJobSetting.inputDataSchema = mockSchema;

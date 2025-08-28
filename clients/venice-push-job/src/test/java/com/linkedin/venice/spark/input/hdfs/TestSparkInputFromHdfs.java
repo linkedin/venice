@@ -71,7 +71,7 @@ public class TestSparkInputFromHdfs {
     config.put(VALUE_FIELD_PROP, DEFAULT_VALUE_FIELD_PROP);
     if (useRecordLevelTimestamp) {
       config.put(SCHEMA_STRING_PROP, AVRO_FILE_WITH_TIMESTAMPS_SCHEMA.toString());
-      config.put(RMD_FIELD_PROP, "rmd");
+      config.put(RMD_FIELD_PROP, DEFAULT_RMD_FIELD_PROP);
     } else {
       config.put(SCHEMA_STRING_PROP, AVRO_FILE_SCHEMA.toString());
     }

@@ -737,6 +737,10 @@ public class VenicePushJob implements AutoCloseable {
             controllerClient,
             pushJobSetting,
             pushJobSetting.isSchemaAutoRegisterFromPushJobEnabled);
+        // Retrieve metadata and timestamp schemas, we should do this last as this is pending potentially newly
+        // registered
+        // schemas with the push job
+        validateAndSetRmdSchemas(controllerClient, pushJobSetting);
       }
 
       Optional<ByteBuffer> optionalCompressionDictionary = getCompressionDictionary();
@@ -2056,29 +2060,40 @@ public class VenicePushJob implements AutoCloseable {
       // Get value schema ID successfully
       setSchemaIdPropInPushJobSetting(pushJobSetting, getValueSchemaIdResponse, setting.enableWriteCompute);
     }
+    LOGGER.info(
+        "Got schema id: {} for value schema: {} of store: {}",
+        pushJobSetting.valueSchemaId,
+        pushJobSetting.valueSchemaString,
+        setting.storeName);
+  }
 
-    // Retrieve metadata and timestamp schemas, we should do this last as this is pending potentially newly registered
-    // schemas
-    // with the push job
+  /**
+   * Fetch RMD schemas if the push job contains RMD on top of key and value. Additionally, perform validations to ensure
+   * RMD schemas are fetched and disallow RMD pushes if the RMD schemas have evolved for the given value schema.
+   */
+  @VisibleForTesting
+  void validateAndSetRmdSchemas(ControllerClient controllerClient, PushJobSetting pushJobSetting) {
+    // No need to fetch RMD schema if the push does not include RMD or timestamp
+    if (!RmdPushUtils.rmdFieldPresent(pushJobSetting)) {
+      return;
+    }
+
     MultiSchemaResponse replicationSchemasResponse = ControllerClient.retryableRequest(
         controllerClient,
-        setting.controllerRetries,
-        c -> c.getAllReplicationMetadataSchemas(setting.storeName));
+        pushJobSetting.controllerRetries,
+        c -> c.getAllReplicationMetadataSchemas(pushJobSetting.storeName));
     if (replicationSchemasResponse.isError()) {
       LOGGER.error("Failed to fetch replication metadata schemas!" + replicationSchemasResponse.getError());
     } else {
       if (replicationSchemasResponse.getSchemas() != null && replicationSchemasResponse.getSchemas().length > 0) {
-        boolean foundRmdSchema = false;
         for (MultiSchemaResponse.Schema schema: replicationSchemasResponse.getSchemas()) {
-          if (schema.getRmdValueSchemaId() == pushJobSetting.valueSchemaId
-              && schema.getId() > pushJobSetting.rmdSchemaId) {
+          if (schema.getRmdValueSchemaId() == pushJobSetting.valueSchemaId) {
             pushJobSetting.rmdSchemaId = schema.getId();
             pushJobSetting.replicationMetadataSchemaString = schema.getSchemaStr();
-            foundRmdSchema = true;
           }
         }
 
-        if (foundRmdSchema) {
+        if (pushJobSetting.rmdSchemaId == 1) {
           LOGGER.info(
               "Retrieved and using schema with id: {}, and string: {}",
               pushJobSetting.rmdSchemaId,
@@ -2087,24 +2102,23 @@ public class VenicePushJob implements AutoCloseable {
           LOGGER.info(
               "No replication schema found for value schema id: {} in store: {}",
               pushJobSetting.valueSchemaId,
-              setting.storeName);
-        }
-
-        if (!foundRmdSchema && RmdPushUtils.rmdFieldPresent(pushJobSetting)) {
-          throw new VeniceException(
-              "Failed to find replication metadata schema for value schema id: " + pushJobSetting.valueSchemaId
-                  + " in store: " + setting.storeName + ". Cannot proceed with push to include RMD.");
+              pushJobSetting.storeName);
         }
       } else {
         LOGGER.info("No replication schemas associated with the store!");
       }
     }
 
-    LOGGER.info(
-        "Got schema id: {} for value schema: {} of store: {}",
-        pushJobSetting.valueSchemaId,
-        pushJobSetting.valueSchemaString,
-        setting.storeName);
+    if (pushJobSetting.rmdSchemaId == -1) {
+      throw new VeniceException(
+          "Failed to find replication metadata schema for value schema id: " + pushJobSetting.valueSchemaId
+              + " in store: " + pushJobSetting.storeName + ". Cannot proceed with push to include RMD.");
+    } else if (pushJobSetting.rmdSchemaId > 1) {
+      throw new VeniceException(
+          "Cannot continue with push with RMD since the RMD schema for the value: " + pushJobSetting.valueSchemaId
+              + "has evolved to " + pushJobSetting.rmdSchemaId + ". RMD schema evolution is not supported yet.");
+
+    }
   }
 
   // Visible for unit testing

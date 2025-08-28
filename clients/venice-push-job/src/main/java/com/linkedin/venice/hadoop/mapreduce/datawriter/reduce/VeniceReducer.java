@@ -71,7 +71,7 @@ public class VeniceReducer extends AbstractPartitionWriter
 
     processValuesForKey(
         key.copyBytes(),
-        IteratorUtils.mapIterator(values, x -> new VeniceRecordWithMetadata(key.copyBytes(), x.copyBytes(), null)),
+        IteratorUtils.mapIterator(values, x -> new VeniceRecordWithMetadata(x.copyBytes(), null)),
         dataWriterTaskTracker);
   }
 

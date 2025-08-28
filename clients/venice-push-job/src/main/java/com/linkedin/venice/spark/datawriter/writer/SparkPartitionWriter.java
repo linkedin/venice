@@ -60,7 +60,7 @@ public class SparkPartitionWriter extends AbstractPartitionWriter {
       }
 
       byte[] incomingValue = row.getAs(VALUE_COLUMN_NAME);
-      valueRecordsForKey.add(createVeniceValueRecord(key, incomingValue, rmd));
+      valueRecordsForKey.add(new AbstractPartitionWriter.VeniceRecordWithMetadata(incomingValue, rmd));
     }
 
     if (key != null) {
