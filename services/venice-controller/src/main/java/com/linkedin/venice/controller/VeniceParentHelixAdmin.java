@@ -1507,7 +1507,7 @@ public class VeniceParentHelixAdmin implements Admin {
           "Found latest version status: {} for store: {}, version: {}",
           lastVersion.getStatus(),
           storeName,
-          lastVersion);
+          lastVersionNum);
     }
     if (lastVersion != null && lastVersion.getStatus() != ERROR && lastVersion.getStatus() != KILLED
         && lastVersion.getStatus() != ONLINE && lastVersion.getStatus() != PARTIALLY_ONLINE) {
@@ -4212,7 +4212,7 @@ public class VeniceParentHelixAdmin implements Admin {
     // separately
     // in DeferredVersionSwapService
     if (currentReturnStatus.equals(ExecutionStatus.COMPLETED)) {
-      if (storeVersion != null && storeVersion.getStatus() == ONLINE) {
+      if (storeVersion != null && storeVersion.getStatus().equals(ONLINE)) {
         LOGGER.info("Parent store version {} status is already ONLINE, no need to update it.", kafkaTopic);
         return;
       }
@@ -4702,7 +4702,7 @@ public class VeniceParentHelixAdmin implements Admin {
         int version = Version.parseVersionFromKafkaTopicName(kafkaTopic);
         parentStore.updateVersionStatus(version, VersionStatus.KILLED);
         repository.updateStore(parentStore);
-        LOGGER.info("Updated store {} version status to KILLED", storeName);
+        LOGGER.info("Updated store {} version {} status to KILLED", storeName, version);
       }
 
       KillOfflinePushJob killJob = (KillOfflinePushJob) AdminMessageType.KILL_OFFLINE_PUSH_JOB.getNewInstance();
