@@ -4702,6 +4702,7 @@ public class VeniceParentHelixAdmin implements Admin {
         int version = Version.parseVersionFromKafkaTopicName(kafkaTopic);
         parentStore.updateVersionStatus(version, VersionStatus.KILLED);
         repository.updateStore(parentStore);
+        LOGGER.info("Updated store {} version status to KILLED", storeName);
       }
 
       KillOfflinePushJob killJob = (KillOfflinePushJob) AdminMessageType.KILL_OFFLINE_PUSH_JOB.getNewInstance();
