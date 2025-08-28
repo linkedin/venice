@@ -193,7 +193,6 @@ public class TestVeniceKafkaInputReducer {
       byte[] serializedValue = KAFKA_INPUT_MAPPER_VALUE_SERIALIZER.serialize(value);
       values.add(
           new AbstractPartitionWriter.VeniceRecordWithMetadata(
-              keyBytes,
               serializedValue,
               value.replicationMetadataPayload.array()));
     }

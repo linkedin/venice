@@ -13,9 +13,12 @@ import static com.linkedin.venice.ConfigKeys.SSL_TO_KAFKA_LEGACY;
 import static com.linkedin.venice.meta.BufferReplayPolicy.REWIND_FROM_EOP;
 import static com.linkedin.venice.meta.BufferReplayPolicy.REWIND_FROM_SOP;
 import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_OPERATION_TIMEOUT_MS_DEFAULT_VALUE;
-import static com.linkedin.venice.utils.IntegrationTestPushUtils.*;
-import static com.linkedin.venice.utils.TestWriteUtils.*;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.*;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJProps;
+import static com.linkedin.venice.utils.TestWriteUtils.STRING_SCHEMA;
+import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DATA_WRITER_COMPUTE_JOB_CLASS;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.RMD_FIELD_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SPARK_NATIVE_INPUT_FORMAT_ENABLED;
 import static com.linkedin.venice.writer.VeniceWriter.DEFAULT_TERM_ID;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
@@ -126,16 +129,14 @@ public class TestHybridMultiRegion {
       vpjProperties.setProperty(DATA_WRITER_COMPUTE_JOB_CLASS, DataWriterSparkJob.class.getCanonicalName());
       vpjProperties.setProperty(SPARK_NATIVE_INPUT_FORMAT_ENABLED, String.valueOf(true));
 
-      Assert.assertFalse(response.isError());
       // Do a VPJ push normally to make sure everything is working fine.
       IntegrationTestPushUtils.runVPJ(vpjProperties);
-      StoreResponse storeResponse = controllerClient.getStore(storeName);
-      Assert.assertFalse(storeResponse.isError());
+      StoreResponse storeResponse = TestUtils.assertCommand(controllerClient.getStore(storeName));
       Assert.assertEquals(storeResponse.getStore().getVersions().size(), 2);
     }
   }
 
-  @Test(timeOut = 180 * Time.MS_PER_SECOND, expectedExceptions = VeniceException.class)
+  @Test(timeOut = 180 * Time.MS_PER_SECOND)
   public void testHybridBatchPushWithInvalidRmd() throws IOException {
     String clusterName = sharedVenice.getClusterNames()[0];
     try (ControllerClient controllerClient =
@@ -167,7 +168,9 @@ public class TestHybridMultiRegion {
 
       Assert.assertFalse(response.isError());
       // push should fail validation
-      IntegrationTestPushUtils.runVPJ(vpjProperties);
+      VeniceException failureException =
+          Assert.expectThrows(VeniceException.class, () -> IntegrationTestPushUtils.runVPJ(vpjProperties));
+      System.out.println(failureException.getMessage());
     }
   }
 
