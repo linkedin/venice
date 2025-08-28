@@ -50,6 +50,29 @@ public class RouterMetricEntityTest {
                 VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE_CATEGORY,
                 VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY)));
     expectedMetrics.put(
+        RouterMetricEntity.CALL_SIZE,
+        new MetricEntity(
+            "call_size",
+            MetricType.HISTOGRAM,
+            MetricUnit.BYTES,
+            "Size of request and response in bytes",
+            Utils.setOf(
+                VeniceMetricsDimensions.VENICE_STORE_NAME,
+                VeniceMetricsDimensions.VENICE_CLUSTER_NAME,
+                VeniceMetricsDimensions.VENICE_REQUEST_METHOD,
+                VeniceMetricsDimensions.VENICE_MESSAGE_TYPE)));
+    expectedMetrics.put(
+        RouterMetricEntity.KEY_SIZE,
+        new MetricEntity(
+            "key_size",
+            MetricType.HISTOGRAM,
+            MetricUnit.BYTES,
+            "Size of keys in bytes",
+            Utils.setOf(
+                VeniceMetricsDimensions.VENICE_STORE_NAME,
+                VeniceMetricsDimensions.VENICE_CLUSTER_NAME,
+                VeniceMetricsDimensions.VENICE_REQUEST_METHOD)));
+    expectedMetrics.put(
         RouterMetricEntity.KEY_COUNT,
         new MetricEntity(
             "key_count",
