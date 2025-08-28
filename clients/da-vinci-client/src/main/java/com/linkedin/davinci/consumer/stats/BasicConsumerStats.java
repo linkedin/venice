@@ -2,6 +2,7 @@ package com.linkedin.davinci.consumer.stats;
 
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
+import static com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory.FAIL;
 import static com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory.SUCCESS;
 import static com.linkedin.venice.stats.metrics.ModuleMetricEntityInterface.getUniqueMetricEntities;
 import static com.linkedin.venice.utils.CollectionUtils.setOf;
@@ -177,6 +178,10 @@ public class BasicConsumerStats extends AbstractVeniceStats {
         Collections.singletonList(new Rate()),
         baseDimensionsMap,
         VeniceResponseStatusCategory.class);
+
+    // Record default value for version swap metrics so histograms include initial zero
+    versionSwapSuccessCountMetric.record(0, SUCCESS);
+    versionSwapFailCountMetric.record(0, FAIL);
   }
 
   public void emitCurrentConsumingVersionMetrics(int minVersion, int maxVersion) {
