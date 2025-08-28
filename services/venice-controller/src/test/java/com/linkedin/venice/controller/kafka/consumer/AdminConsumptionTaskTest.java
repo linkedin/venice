@@ -77,6 +77,7 @@ import com.linkedin.venice.offsets.OffsetManager;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.PubSubUtil;
 import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeader;
@@ -207,6 +208,14 @@ public class AdminConsumptionTaskTest {
     doReturn(resources).when(admin).getHelixVeniceClusterResources(clusterName);
     doReturn(lockManager).when(resources).getClusterLockManager();
     doCallRealMethod().when(resources).getStoreMetadataRepository();
+
+    when(mockKafkaConsumer.beginningPosition(any())).thenReturn(ApacheKafkaOffsetPosition.of(-1L));
+    doAnswer(invocation -> {
+      PubSubTopicPartition partition = invocation.getArgument(0);
+      PubSubPosition position1 = invocation.getArgument(1);
+      PubSubPosition position2 = invocation.getArgument(2);
+      return PubSubUtil.computeOffsetDelta(partition, position1, position2, mockKafkaConsumer);
+    }).when(topicManager).diffPosition(any(), any(), any());
   }
 
   @AfterMethod
@@ -1683,6 +1692,7 @@ public class AdminConsumptionTaskTest {
   public void testAddVersionMsgHandlingForTargetedRegionPush() throws Exception {
     AdminConsumptionStats stats = mock(AdminConsumptionStats.class);
     AdminConsumptionTask task = getAdminConsumptionTask(new RandomPollStrategy(), false, stats, 10000);
+
     executor.submit(task);
     String mockPushJobId = "mock push job id";
     int versionNumber = 1;
@@ -1909,7 +1919,7 @@ public class AdminConsumptionTaskTest {
     TopicManager topicManager = mock(TopicManager.class);
     doReturn(topicManager).when(admin).getTopicManager("remote.pubsub");
     AdminConsumptionTask task = getAdminConsumptionTask(null, true, stats, 0, true, "remote.pubsub", 3);
-    Assert.assertEquals(task.getSourceKafkaClusterTopicManager(), topicManager);
+    Assert.assertEquals(task.getTopicManager(), topicManager);
   }
 
   @Test(timeOut = TIMEOUT)

@@ -25,7 +25,6 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
-import com.linkedin.venice.pubsub.PubSubUtil;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
@@ -187,7 +186,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
   private final ExecutionIdAccessor executionIdAccessor;
   private ExecutorService executorService;
 
-  private TopicManager sourceKafkaClusterTopicManager;
+  private TopicManager topicManager;
 
   public ExecutorService getExecutorService() {
     return executorService;
@@ -310,7 +309,9 @@ public class AdminConsumptionTask implements Runnable, Closeable {
         throw new VeniceException(
             "Admin topic remote consumption is enabled but no config found for the source Kafka bootstrap server url");
       }
-      this.sourceKafkaClusterTopicManager = admin.getTopicManager(remoteKafkaServerUrl.get());
+      this.topicManager = admin.getTopicManager(remoteKafkaServerUrl.get());
+    } else {
+      this.topicManager = admin.getTopicManager();
     }
   }
 
@@ -704,7 +705,8 @@ public class AdminConsumptionTask implements Runnable, Closeable {
           // 3. Persist the latest execution id and position (cluster wide) to ZK.
 
           // Ensure failingPosition from the delegateMessage is not overwritten.
-          if (PubSubUtil.comparePubSubPositions(failingPosition, lastDelegatedPosition) <= 0) {
+
+          if (topicManager.diffPosition(adminTopicPartition, failingPosition, lastDelegatedPosition) <= 0) {
             failingPosition = PubSubSymbolicPosition.EARLIEST;
           }
           if (failingExecutionId <= lastDelegatedExecutionId) {
@@ -719,14 +721,14 @@ public class AdminConsumptionTask implements Runnable, Closeable {
           long smallestExecutionId = UNASSIGNED_VALUE;
 
           for (Map.Entry<String, AdminErrorInfo> problematicStore: problematicStores.entrySet()) {
-            if (PubSubSymbolicPosition.EARLIEST.equals(smallestPosition)
-                || PubSubUtil.comparePubSubPositions(problematicStore.getValue().position, smallestPosition) < 0) {
+            if (PubSubSymbolicPosition.EARLIEST.equals(smallestPosition) || topicManager
+                .diffPosition(adminTopicPartition, problematicStore.getValue().position, smallestPosition) < 0) {
               smallestPosition = problematicStore.getValue().position;
               smallestExecutionId = problematicStore.getValue().executionId;
             }
           }
           // Ensure failingPosition from the delegateMessage is not overwritten.
-          if (PubSubUtil.comparePubSubPositions(failingPosition, lastDelegatedPosition) <= 0) {
+          if (topicManager.diffPosition(adminTopicPartition, failingPosition, lastDelegatedPosition) <= 0) {
             failingPosition = smallestPosition;
             failingExecutionId = smallestExecutionId;
           }
@@ -778,20 +780,11 @@ public class AdminConsumptionTask implements Runnable, Closeable {
       return true;
     }
     // Check it again if it is false
-    if (remoteConsumptionEnabled) {
-      topicExists = sourceKafkaClusterTopicManager.containsTopicAndAllPartitionsAreOnline(topicName);
-    } else {
-      topicExists = admin.getTopicManager().containsTopicAndAllPartitionsAreOnline(topicName);
-    }
-    return topicExists;
+    return admin.getTopicManager().containsTopicAndAllPartitionsAreOnline(topicName);
   }
 
   private void makeSureAdminTopicUsingInfiniteRetentionPolicy(PubSubTopic topicName) {
-    if (remoteConsumptionEnabled) {
-      sourceKafkaClusterTopicManager.updateTopicRetention(topicName, Long.MAX_VALUE);
-    } else {
-      admin.getTopicManager().updateTopicRetention(topicName, Long.MAX_VALUE);
-    }
+    admin.getTopicManager().updateTopicRetention(topicName, Long.MAX_VALUE);
     LOGGER.info("Admin topic: {} has been updated to use infinite retention policy", adminTopicPartition);
   }
 
@@ -1045,7 +1038,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
   }
 
   private void updateLastPosition(PubSubPosition position) {
-    if (PubSubUtil.comparePubSubPositions(position, lastDelegatedPosition) > 0) {
+    if (topicManager.diffPosition(adminTopicPartition, position, lastDelegatedPosition) > 0) {
       lastDelegatedPosition = position;
     }
   }
@@ -1213,7 +1206,8 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     // check position
     // if it is the first record, we want to consume it even it is a duplicate
     // we use producerInfo to check if it is the first record
-    if (producerInfo != null && PubSubUtil.comparePubSubPositions(recordPosition, lastDelegatedPosition) <= 0) {
+    if (producerInfo != null
+        && topicManager.diffPosition(adminTopicPartition, recordPosition, lastDelegatedPosition) <= 0) {
       LOGGER.error(
           "Current record has been processed, last known position: {}, current position: {}",
           lastDelegatedPosition,
@@ -1234,8 +1228,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
        *  of the last successfully replicated message plus one), so subtract 1 from the max position result.
        */
 
-      PubSubPosition latestPosition =
-          sourceKafkaClusterTopicManager.getLatestPositionWithRetries(adminTopicPartition, 10);
+      PubSubPosition latestPosition = topicManager.getLatestPositionWithRetries(adminTopicPartition, 10);
       if (PubSubSymbolicPosition.LATEST.equals(latestPosition)) {
         LOGGER.debug(
             "Cannot get latest position for admin topic: {}, skip this round of lag metrics emission",
@@ -1250,10 +1243,10 @@ public class AdminConsumptionTask implements Runnable, Closeable {
        */
       if (!PubSubSymbolicPosition.EARLIEST.equals(lastConsumedPosition)) {
         stats.setAdminConsumptionOffsetLag(
-            sourceKafkaClusterTopicManager.diffPosition(adminTopicPartition, latestPosition, lastConsumedPosition) - 1);
+            topicManager.diffPosition(adminTopicPartition, latestPosition, lastConsumedPosition) - 1);
       }
       stats.setMaxAdminConsumptionOffsetLag(
-          sourceKafkaClusterTopicManager.diffPosition(adminTopicPartition, latestPosition, lastPersistedPosition) - 1);
+          topicManager.diffPosition(adminTopicPartition, latestPosition, lastPersistedPosition) - 1);
     } catch (Exception e) {
       LOGGER.error(
           "Error when emitting admin consumption lag metrics; only log for warning; admin channel will continue to work.");
@@ -1270,8 +1263,8 @@ public class AdminConsumptionTask implements Runnable, Closeable {
   }
 
   // Visible for testing
-  TopicManager getSourceKafkaClusterTopicManager() {
-    return sourceKafkaClusterTopicManager;
+  TopicManager getTopicManager() {
+    return topicManager;
   }
 
   // Visible for testing

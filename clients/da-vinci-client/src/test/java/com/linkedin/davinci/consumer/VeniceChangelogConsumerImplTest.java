@@ -13,6 +13,7 @@ import static org.mockito.ArgumentMatchers.anySet;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyString;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
@@ -58,6 +59,7 @@ import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.pubsub.ImmutablePubSubMessage;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.PubSubUtil;
 import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
@@ -325,6 +327,12 @@ public class VeniceChangelogConsumerImplTest {
     Map<Integer, VeniceChangeCoordinate> checkpoints = new HashMap<>();
     Map<Integer, Long> currentVersionLastHeartbeat = new HashMap<>();
     List<PubSubTopicPartition> topicPartitionList = new ArrayList<>();
+    doAnswer(invocation -> {
+      PubSubTopicPartition partition = invocation.getArgument(0);
+      PubSubPosition position1 = invocation.getArgument(1);
+      PubSubPosition position2 = invocation.getArgument(2);
+      return PubSubUtil.computeOffsetDelta(partition, position1, position2, mockConsumer);
+    }).when(mockConsumer).positionDifference(any(), any(), any());
 
     PubSubTopicPartition partition0 =
         new PubSubTopicPartitionImpl(new TestPubSubTopic("topic1", "store1", PubSubTopicType.VERSION_TOPIC), 0);
