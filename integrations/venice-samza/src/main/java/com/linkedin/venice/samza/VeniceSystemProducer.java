@@ -67,6 +67,7 @@ import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.Supplier;
+import org.antlr.v4.runtime.misc.NotNull;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericDatumWriter;
 import org.apache.avro.generic.GenericRecord;
@@ -146,6 +147,10 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
   private D2Client primaryControllerColoD2Client;
   private D2Client childColoD2Client;
   private ControllerClient controllerClient;
+  // Optional D2Client instances that can be passed in constructor
+  private Optional<D2Client> providedPrimaryControllerColoD2Client = Optional.empty();
+
+  private Optional<D2Client> providedChildColoD2Client = Optional.empty();
   private StoreSchemaFetcher schemaFetcher;
   // It can be version topic, real-time topic or stream reprocessing topic, depending on push type
   private String topicName;
@@ -167,32 +172,6 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
 
   private TransportClient transportClient;
   private RouterBasedHybridStoreQuotaMonitor.TransportClientReinitProvider reinitProvider;
-
-  @Deprecated
-  public VeniceSystemProducer(
-      String primaryControllerColoD2ZKHost,
-      String primaryControllerD2ServiceName,
-      String storeName,
-      Version.PushType pushType,
-      String samzaJobId,
-      String runningFabric,
-      boolean verifyLatestProtocolPresent,
-      VeniceSystemFactory factory,
-      Optional<SSLFactory> sslFactory,
-      Optional<String> partitioners) {
-    this(
-        primaryControllerColoD2ZKHost,
-        primaryControllerColoD2ZKHost,
-        primaryControllerD2ServiceName,
-        storeName,
-        pushType,
-        samzaJobId,
-        runningFabric,
-        verifyLatestProtocolPresent,
-        factory,
-        sslFactory,
-        partitioners);
-  }
 
   /**
    * Constructs a new instance of {@link VeniceSystemProducer}.
@@ -308,6 +287,52 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
     this.time = time;
   }
 
+  /**
+   * Constructs a new instance of {@link VeniceSystemProducer} with D2Client instances.
+   * <p>
+   * This constructor accepts pre-configured D2Client instances.
+   *
+   * @param childColoD2Client                   D2Client for child colo. If null, will be created using veniceChildD2ZkHost.
+   * @param primaryControllerColoD2Client       D2Client for primary controller colo. If null, will be created using primaryControllerColoD2ZKHost.
+   * @param primaryControllerD2ServiceName      D2 service name of the primary controller.
+   * @param storeName                           Name of the Venice store.
+   * @param pushType                            The push type (e.g., batch, stream).
+   * @param samzaJobId                          The Samza job ID.
+   * @param runningFabric                       The name of the current fabric.
+   * @param verifyLatestProtocolPresent         Whether to verify that the latest protocol is present.
+   * @param factory                             The system factory used to create producer components.
+   * @param sslFactory                          Optional SSL factory for secure communication.
+   * @param partitioners                        Optional partitioner class name(s) for custom partitioning.
+   */
+  public VeniceSystemProducer(
+      @NotNull D2Client childColoD2Client,
+      @NotNull D2Client primaryControllerColoD2Client,
+      String primaryControllerD2ServiceName,
+      String storeName,
+      Version.PushType pushType,
+      String samzaJobId,
+      String runningFabric,
+      boolean verifyLatestProtocolPresent,
+      VeniceSystemFactory factory,
+      Optional<SSLFactory> sslFactory,
+      Optional<String> partitioners) {
+    this(
+        null,
+        null,
+        primaryControllerD2ServiceName,
+        storeName,
+        pushType,
+        samzaJobId,
+        runningFabric,
+        verifyLatestProtocolPresent,
+        factory,
+        sslFactory,
+        partitioners,
+        SystemTime.INSTANCE);
+    this.providedPrimaryControllerColoD2Client = Optional.ofNullable(primaryControllerColoD2Client);
+    this.providedChildColoD2Client = Optional.ofNullable(childColoD2Client);
+  }
+
   public VeniceSystemProducer(
       String discoveryUrl,
       String storeName,
@@ -339,6 +364,8 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
     this.sslFactory = sslFactory;
     this.partitioners = partitioners;
     this.time = time;
+    this.providedPrimaryControllerColoD2Client = Optional.empty();
+    this.providedChildColoD2Client = Optional.empty();
   }
 
   public void applyAdditionalConfigs(Map<String, String> additionalConfigs) {
@@ -499,8 +526,21 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
       }
       transportClient = reinitProvider.apply();
     } else {
-      this.primaryControllerColoD2Client = getStartedD2Client(primaryControllerColoD2ZKHost);
-      this.childColoD2Client = getStartedD2Client(veniceChildD2ZkHost);
+      // Use provided D2Client instances if available, otherwise create them using ZK hosts
+      this.primaryControllerColoD2Client = providedPrimaryControllerColoD2Client.orElseGet(() -> {
+        if (primaryControllerColoD2ZKHost == null) {
+          throw new IllegalStateException(
+              "Cannot create primary controller colo D2Client: no D2Client provided and no ZK host available");
+        }
+        return getStartedD2Client(primaryControllerColoD2ZKHost);
+      });
+      this.childColoD2Client = providedChildColoD2Client.orElseGet(() -> {
+        if (veniceChildD2ZkHost == null) {
+          throw new IllegalStateException(
+              "Cannot create child colo D2Client: no D2Client provided and no ZK host available");
+        }
+        return getStartedD2Client(veniceChildD2ZkHost);
+      });
 
       // Discover cluster
       D2ServiceDiscoveryResponse discoveryResponse = (D2ServiceDiscoveryResponse) controllerRequestWithRetry(
@@ -952,6 +992,24 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
 
   public AbstractVeniceWriter<byte[], byte[], byte[]> getInternalWriter() {
     return this.veniceWriter;
+  }
+
+  /**
+   * Get the primary controller colo D2Client instance.
+   * @return The D2Client instance for the primary controller colo
+   * Test only
+   */
+  D2Client getPrimaryControllerColoD2Client() {
+    return this.primaryControllerColoD2Client;
+  }
+
+  /**
+   * Get the child colo D2Client instance.
+   * @return The D2Client instance for the child colo
+   * Test only
+   */
+  D2Client getChildColoD2Client() {
+    return this.childColoD2Client;
   }
 
   protected void setControllerClient(D2ControllerClient controllerClient) {
