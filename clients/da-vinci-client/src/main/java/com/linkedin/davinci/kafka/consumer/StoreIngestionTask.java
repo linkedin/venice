@@ -3293,6 +3293,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           if (controlMessage.controlMessageType == START_OF_SEGMENT.getValue()
               && Arrays.equals(consumerRecord.getKey().getKey(), KafkaKey.HEART_BEAT.getKey())) {
             recordHeartbeatReceived(partitionConsumptionState, consumerRecord, kafkaUrl);
+            if (recordTransformer != null) {
+              recordTransformer.onHeartbeat(
+                  consumerRecord.getTopicPartition().getPartitionNumber(),
+                  consumerRecord.getPubSubMessageTime());
+            }
           }
         } catch (Exception e) {
           LOGGER.error("Failed to record Record heartbeat with message: ", e);

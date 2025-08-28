@@ -78,13 +78,23 @@ public class InternalDaVinciRecordTransformer<K, V, O> extends DaVinciRecordTran
 
   /**
    * Lifecycle event triggered when a version swap is detected for partitionId
-   *
    * It is used for DVRT CDC.
    */
   public void onVersionSwap(int currentVersion, int futureVersion, int partitionId) {
     if (this.recordTransformer instanceof BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl.DaVinciRecordTransformerBootstrappingChangelogConsumer) {
       ((BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl.DaVinciRecordTransformerBootstrappingChangelogConsumer) this.recordTransformer)
           .onVersionSwap(currentVersion, futureVersion, partitionId);
+    }
+  }
+
+  /**
+   * Lifecycle event triggered when a heartbeat is detected for partitionId.
+   * It is used for DVRT CDC to record latest heartbeat timestamps per partition.
+   */
+  public void onHeartbeat(int partitionId, long heartbeatTimestamp) {
+    if (this.recordTransformer instanceof BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl.DaVinciRecordTransformerBootstrappingChangelogConsumer) {
+      ((BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl.DaVinciRecordTransformerBootstrappingChangelogConsumer) this.recordTransformer)
+          .onHeartbeat(partitionId, heartbeatTimestamp);
     }
   }
 

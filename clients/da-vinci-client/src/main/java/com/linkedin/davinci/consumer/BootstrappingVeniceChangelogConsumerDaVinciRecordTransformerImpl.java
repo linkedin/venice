@@ -87,6 +87,7 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
   private long backgroundReporterThreadSleepIntervalSeconds = 60L;
   private final BasicConsumerStats changeCaptureStats;
   private final AtomicBoolean isCaughtUp = new AtomicBoolean(false);
+  private final ConcurrentHashMap<Integer, Long> currentVersionLastHeartbeat = new ConcurrentHashMap<>();
   private final VeniceConcurrentHashMap<Integer, AtomicLong> consumerSequenceIdGeneratorMap;
   private final long consumerSequenceIdStartingValue;
 
@@ -318,6 +319,19 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
     }
 
     private void recordStats() {
+      // Emit heartbeat delay metrics based on last heartbeat per partition
+      long now = System.currentTimeMillis();
+      long maxLag = Long.MIN_VALUE;
+      Map<Integer, Long> heartbeatSnapshot = new HashMap<>(currentVersionLastHeartbeat);
+      for (Long heartBeatTimestamp: heartbeatSnapshot.values()) {
+        if (heartBeatTimestamp != null) {
+          maxLag = Math.max(maxLag, now - heartBeatTimestamp);
+        }
+      }
+      if (maxLag != Long.MIN_VALUE) {
+        changeCaptureStats.emitHeartBeatDelayMetrics(maxLag);
+      }
+
       int minVersion = Integer.MAX_VALUE;
       int maxVersion = -1;
 
@@ -374,6 +388,9 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
         // Caching these objects, so we don't need to recreate them on every single message received
         pubSubTopicPartitionMap
             .put(partitionId, new PubSubTopicPartitionImpl(new PubSubTopicImpl(topicName), partitionId));
+
+        // Initialize heartbeat timestamp for the partition to avoid empty lag until first heartbeat arrives
+        currentVersionLastHeartbeat.putIfAbsent(partitionId, System.currentTimeMillis());
       }
     }
 
@@ -497,6 +514,15 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
             storeName,
             partitionId);
         throw exception;
+      }
+    }
+
+    /**
+     * Receive heartbeat timestamp for a partition and update latest seen time.
+     */
+    public void onHeartbeat(int partitionId, long heartbeatTimestamp) {
+      if (partitionToVersionToServe.get(partitionId) == getStoreVersion()) {
+        currentVersionLastHeartbeat.put(partitionId, heartbeatTimestamp);
       }
     }
 

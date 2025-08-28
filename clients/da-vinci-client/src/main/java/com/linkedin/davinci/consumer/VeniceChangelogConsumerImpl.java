@@ -82,7 +82,6 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -1387,11 +1386,14 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
         BasicConsumerStats changeCaptureStats,
         Set<PubSubTopicPartition> assignment) {
 
-      Iterator<Map.Entry<Integer, Long>> heartbeatIterator = currentVersionLastHeartbeat.entrySet().iterator();
+      // Snapshot the heartbeat map to avoid iterating while it is being updated concurrently
+      long now = System.currentTimeMillis();
       long maxLag = Long.MIN_VALUE;
-
-      while (heartbeatIterator.hasNext()) {
-        maxLag = Math.max(maxLag, System.currentTimeMillis() - heartbeatIterator.next().getValue());
+      Map<Integer, Long> heartbeatSnapshot = new HashMap<>(currentVersionLastHeartbeat);
+      for (Long heartBeatTimestamp: heartbeatSnapshot.values()) {
+        if (heartBeatTimestamp != null) {
+          maxLag = Math.max(maxLag, now - heartBeatTimestamp);
+        }
       }
 
       if (maxLag != Long.MIN_VALUE) {
