@@ -105,6 +105,7 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_ACL;
 import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_ADMIN_OPERATION_PROTOCOL_VERSION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_ADMIN_TOPIC_METADATA;
 import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_CLUSTER_CONFIG;
+import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_DARK_CLUSTER_CONFIG;
 import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_KAFKA_TOPIC_LOG_COMPACTION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_KAFKA_TOPIC_MIN_IN_SYNC_REPLICA;
 import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_KAFKA_TOPIC_RETENTION;
@@ -349,6 +350,9 @@ public class AdminSparkServer extends AbstractVeniceService {
     httpService.post(
         UPDATE_CLUSTER_CONFIG.getPath(),
         new VeniceParentControllerRegionStateHandler(admin, clusterRoutes.updateClusterConfig(admin)));
+    httpService.post(
+        UPDATE_DARK_CLUSTER_CONFIG.getPath(),
+        new VeniceParentControllerRegionStateHandler(admin, clusterRoutes.updateDarkClusterConfig(admin)));
     httpService.post(
         WIPE_CLUSTER.getPath(),
         new VeniceParentControllerRegionStateHandler(admin, clusterRoutes.wipeCluster(admin)));

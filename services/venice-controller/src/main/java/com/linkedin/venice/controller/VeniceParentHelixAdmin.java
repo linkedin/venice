@@ -184,6 +184,7 @@ import com.linkedin.venice.controllerapi.StoreComparisonInfo;
 import com.linkedin.venice.controllerapi.StoreDeletedValidationResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateClusterConfigQueryParams;
+import com.linkedin.venice.controllerapi.UpdateDarkClusterConfigQueryParams;
 import com.linkedin.venice.controllerapi.UpdateStoragePersonaQueryParams;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionResponse;
@@ -3285,6 +3286,11 @@ public class VeniceParentHelixAdmin implements Admin {
   @Override
   public void updateClusterConfig(String clusterName, UpdateClusterConfigQueryParams params) {
     getVeniceHelixAdmin().updateClusterConfig(clusterName, params);
+  }
+
+  @Override
+  public void updateDarkClusterConfig(String clusterName, UpdateDarkClusterConfigQueryParams params) {
+    getVeniceHelixAdmin().updateDarkClusterConfig(clusterName, params);
   }
 
   private void validateActiveActiveReplicationEnableConfigs(

@@ -137,6 +137,7 @@ import static com.linkedin.venice.ConfigKeys.FORCE_LEADER_ERROR_REPLICA_FAIL_OVE
 import static com.linkedin.venice.ConfigKeys.HELIX_REBALANCE_ALG;
 import static com.linkedin.venice.ConfigKeys.HELIX_SEND_MESSAGE_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.IDENTITY_PARSER_CLASS;
+import static com.linkedin.venice.ConfigKeys.IS_DARK_CLUSTER;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_LOG_COMPACTION_FOR_HYBRID_STORES;
 import static com.linkedin.venice.ConfigKeys.KAFKA_MIN_IN_SYNC_REPLICAS;
@@ -632,6 +633,11 @@ public class VeniceControllerClusterConfig {
   */
   private final boolean isProtocolVersionAutoDetectionServiceEnabled;
   private final long protocolVersionAutoDetectionSleepMS;
+
+  /**
+   * Configs for dark cluster
+   */
+  private final boolean isDarkCluster;
 
   /**
    * Configs for MultiTaskSchedulerService
@@ -1146,6 +1152,8 @@ public class VeniceControllerClusterConfig {
         props.getBoolean(CONTROLLER_PROTOCOL_VERSION_AUTO_DETECTION_SERVICE_ENABLED, false);
     this.protocolVersionAutoDetectionSleepMS =
         props.getLong(CONTROLLER_PROTOCOL_VERSION_AUTO_DETECTION_SLEEP_MS, TimeUnit.MINUTES.toMillis(10));
+
+    this.isDarkCluster = props.getBoolean(IS_DARK_CLUSTER, false);
 
     Integer helixRebalancePreferenceEvenness =
         props.getOptionalInt(CONTROLLER_HELIX_REBALANCE_PREFERENCE_EVENNESS).orElse(null);
@@ -2102,6 +2110,10 @@ public class VeniceControllerClusterConfig {
 
   public boolean getRealTimeTopicVersioningEnabled() {
     return isRealTimeTopicVersioningEnabled;
+  }
+
+  public boolean isDarkCluster() {
+    return isDarkCluster;
   }
 
   public boolean useV2AdminTopicMetadata() {

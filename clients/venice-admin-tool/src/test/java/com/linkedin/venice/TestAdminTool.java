@@ -1,6 +1,7 @@
 package com.linkedin.venice;
 
 import static com.linkedin.venice.Arg.SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND;
+import static com.linkedin.venice.Arg.STORES_TO_REPLICATE;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.doReturn;
@@ -23,6 +24,7 @@ import com.linkedin.venice.controllerapi.StoreMigrationResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.TrackableControllerResponse;
 import com.linkedin.venice.controllerapi.UpdateClusterConfigQueryParams;
+import com.linkedin.venice.controllerapi.UpdateDarkClusterConfigQueryParams;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.LifecycleHooksRecord;
@@ -138,6 +140,22 @@ public class TestAdminTool {
         (int) serverKafkaFetchQuotaRecordsPerSecond.get().get(regionName),
         kafkaFetchQuota,
         "Kafka fetch quota has incorrect info for region");
+  }
+
+  @Test
+  public void testAdminUpdateDarkClusterConfigArg() throws ParseException, IOException {
+    String controllerUrl = "controllerUrl";
+    String clusterName = "clusterName";
+    String storeNames = "store1,store2,store3";
+
+    String[] args = { "--update-dark-cluster-config", "--url", controllerUrl, "--cluster", clusterName,
+        "--" + STORES_TO_REPLICATE.getArgName(), storeNames };
+
+    CommandLine commandLine = AdminTool.getCommandLine(args);
+    UpdateDarkClusterConfigQueryParams params = AdminTool.getUpdateDarkClusterConfigQueryParams(commandLine);
+    Optional<List<String>> storesToReplicate = params.getStoresToReplicate();
+    Assert.assertTrue(storesToReplicate.isPresent(), "Stores to replicate not parsed from args");
+    Assert.assertEquals(storesToReplicate.get().size(), 3);
   }
 
   @Test
