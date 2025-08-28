@@ -4201,10 +4201,15 @@ public class VeniceParentHelixAdmin implements Admin {
           currentReturnStatus,
           currentReturnStatusDetails);
     }
+
     // Update the parent version status for all pushes except for target region push w/ deferred swap as it's handled
     // separately
     // in DeferredVersionSwapService
     if (currentReturnStatus.equals(ExecutionStatus.COMPLETED)) {
+      if (storeVersion != null && storeVersion.getStatus() == ONLINE) {
+        LOGGER.info("Parent store version {} status is already ONLINE, no need to update it.", kafkaTopic);
+        return;
+      }
       if (isTargetRegionPush && !isPushCompleteInAllRegionsForTargetRegionPush) {
         parentStore.updateVersionStatus(versionNum, PUSHED); // Push is complete in the target regions & only target
                                                              // regions are serving traffic
