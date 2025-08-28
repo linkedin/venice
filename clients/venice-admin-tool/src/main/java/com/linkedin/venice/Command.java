@@ -126,6 +126,7 @@ import static com.linkedin.venice.Arg.SOURCE_FABRIC;
 import static com.linkedin.venice.Arg.SRC_ZK_SSL_CONFIG_FILE;
 import static com.linkedin.venice.Arg.SRC_ZOOKEEPER_URL;
 import static com.linkedin.venice.Arg.STARTING_OFFSET;
+import static com.linkedin.venice.Arg.STARTING_POSITION;
 import static com.linkedin.venice.Arg.START_DATE;
 import static com.linkedin.venice.Arg.STORAGE_NODE;
 import static com.linkedin.venice.Arg.STORAGE_NODE_READ_QUOTA_ENABLED;
@@ -388,7 +389,8 @@ public enum Command {
   ),
   DUMP_ADMIN_MESSAGES(
       "dump-admin-messages", "Dump admin messages",
-      new Arg[] { CLUSTER, KAFKA_BOOTSTRAP_SERVERS, STARTING_OFFSET, MESSAGE_COUNT, KAFKA_CONSUMER_CONFIG_FILE }
+      new Arg[] { CLUSTER, KAFKA_BOOTSTRAP_SERVERS, MESSAGE_COUNT, KAFKA_CONSUMER_CONFIG_FILE },
+      new Arg[] { STARTING_OFFSET, STARTING_POSITION }
   ),
   DUMP_CONTROL_MESSAGES(
       "dump-control-messages", "Dump control messages in a partition",
