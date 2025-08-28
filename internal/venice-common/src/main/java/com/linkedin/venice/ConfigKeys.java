@@ -2847,11 +2847,4 @@ public class ConfigKeys {
    * Default is false (i.e. not a dark cluster).
    */
   public static final String IS_DARK_CLUSTER = "is.dark.cluster";
-
-  public static final String DAVINCI_VALIDATE_SPECIFIC_SCHEMA_ENABLED = "davinci.validate.specific.schema.enabled";
-  /**
-   * Whether the current cluster is a dark cluster. If true, all writes to the stores in {@link #STORES_TO_REPLICATE}
-   * will be replicated to this cluster. If false, ALL write will be replicated to this cluster.
-   */
-  public static final String IS_DARK_CLUSTER = "is.dark.cluster";
 }
