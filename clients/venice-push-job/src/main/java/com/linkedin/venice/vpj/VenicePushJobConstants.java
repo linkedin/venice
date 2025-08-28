@@ -27,10 +27,10 @@ public final class VenicePushJobConstants {
 
   public static final String KEY_FIELD_PROP = "key.field";
   public static final String VALUE_FIELD_PROP = "value.field";
-  public static final String TIMESTAMP_FIELD_PROP = "timestamp.field";
+  public static final String RMD_FIELD_PROP = "timestamp.field";
   public static final String DEFAULT_KEY_FIELD_PROP = "key";
   public static final String DEFAULT_VALUE_FIELD_PROP = "value";
-  public static final String DEFAULT_TIMESTAMP_FIELD_PROP = "timestamp";
+  public static final String DEFAULT_RMD_FIELD_PROP = "rmd";
   public static final boolean DEFAULT_SSL_ENABLED = false;
   public static final String SCHEMA_STRING_PROP = "schema";
   public static final String KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP = "kafka.source.key.schema";
@@ -298,6 +298,8 @@ public final class VenicePushJobConstants {
   public static final FsPermission PERMISSION_700 = FsPermission.createImmutable((short) 0700);
 
   public static final String VALUE_SCHEMA_ID_PROP = "value.schema.id";
+
+  public static final String RMD_SCHEMA_ID_PROP = "rmd.schema.id";
   public static final String DERIVED_SCHEMA_ID_PROP = "derived.schema.id";
   public static final String TOPIC_PROP = "venice.kafka.topic";
   public static final String HADOOP_VALIDATE_SCHEMA_AND_BUILD_DICT_PREFIX = "hadoop-dict-build-conf.";

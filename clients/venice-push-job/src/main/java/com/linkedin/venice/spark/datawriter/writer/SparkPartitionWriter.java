@@ -1,10 +1,9 @@
 package com.linkedin.venice.spark.datawriter.writer;
 
 import static com.linkedin.venice.spark.SparkConstants.KEY_COLUMN_NAME;
-import static com.linkedin.venice.spark.SparkConstants.TIMESTAMP_COLUMN_NAME;
+import static com.linkedin.venice.spark.SparkConstants.RMD_COLUMN_NAME;
 import static com.linkedin.venice.spark.SparkConstants.VALUE_COLUMN_NAME;
 
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.task.datawriter.AbstractPartitionWriter;
 import com.linkedin.venice.spark.datawriter.task.DataWriterAccumulators;
 import com.linkedin.venice.spark.datawriter.task.SparkDataWriterTaskTracker;
@@ -37,44 +36,35 @@ public class SparkPartitionWriter extends AbstractPartitionWriter {
   }
 
   void processRows(Iterator<Row> rows) {
+    List<VeniceRecordWithMetadata> valueRecordsForKey = new ArrayList<>();
     byte[] key = null;
-    List<byte[]> valuesForKey = null;
-    List<Long> logicalTimestamps = null;
-    Long logicalTimestamp;
+
     while (rows.hasNext()) {
       Row row = rows.next();
       byte[] incomingKey = Objects.requireNonNull(row.getAs(KEY_COLUMN_NAME), "Key cannot be null");
 
-      logicalTimestamp = -1L;
+      byte[] rmd = null;
       try {
-        logicalTimestamp = row.getAs(TIMESTAMP_COLUMN_NAME);
+        rmd = row.getAs(RMD_COLUMN_NAME);
       } catch (IllegalArgumentException e) {
         // Ignore if timestamp is not present
-      } catch (ClassCastException e) {
-        LOGGER.error("Passed timestamp column is not of type long!!!");
-        throw e;
       }
 
       if (!Arrays.equals(incomingKey, key)) {
         if (key != null) {
-          if (!logicalTimestamps.isEmpty() && valuesForKey.size() != logicalTimestamps.size()) {
-            throw new VeniceException("Count mismatch between logical timestamps and input records, aborting!!");
-          }
           // Key is different from the prev one and is not null. Write it out to PubSub.
-          super.processValuesForKey(key, valuesForKey.iterator(), logicalTimestamps.iterator(), dataWriterTaskTracker);
+          super.processValuesForKey(key, valueRecordsForKey.iterator(), dataWriterTaskTracker);
         }
         key = incomingKey;
-        valuesForKey = new ArrayList<>();
-        logicalTimestamps = new ArrayList<>();
+        valueRecordsForKey = new ArrayList<>();
       }
 
       byte[] incomingValue = row.getAs(VALUE_COLUMN_NAME);
-      valuesForKey.add(incomingValue);
-      logicalTimestamps.add(logicalTimestamp);
+      valueRecordsForKey.add(new AbstractPartitionWriter.VeniceRecordWithMetadata(incomingValue, rmd));
     }
 
     if (key != null) {
-      super.processValuesForKey(key, valuesForKey.iterator(), logicalTimestamps.iterator(), dataWriterTaskTracker);
+      super.processValuesForKey(key, valueRecordsForKey.iterator(), dataWriterTaskTracker);
     }
   }
 }
