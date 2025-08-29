@@ -45,7 +45,6 @@ public class BlobTransferGlobalTrafficShapingHandlerHolder {
     // Set limits before getting the instance to ensure they're used during initialization
     BlobTransferGlobalTrafficShapingHandlerHolder.readLimit = readLimit;
     BlobTransferGlobalTrafficShapingHandlerHolder.writeLimit = writeLimit;
-
     GlobalChannelTrafficShapingHandler handler = GLOBAL_CHANNEL_TRAFFIC_SHAPING_HANDLER.get();
 
     return handler;
