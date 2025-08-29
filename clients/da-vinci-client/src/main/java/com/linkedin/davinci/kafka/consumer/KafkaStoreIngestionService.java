@@ -716,9 +716,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         versionedIngestionStats.setIngestionTask(topic, storeIngestionTask);
         if (!isRunning()) {
           LOGGER.info(
-              "Ignore start consumption for topic: {}, partition: {} as service is stopping.",
-              topic,
-              partitionId);
+              "Ignore start consumption for replica: {} as service is stopping.",
+              Utils.getReplicaId(topic, partitionId));
           return;
         }
         ingestionExecutorService.submit(storeIngestionTask);
@@ -777,7 +776,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       int partitionId,
       LeaderFollowerPartitionStateModel.LeaderSessionIdChecker checker) {
     final String topic = veniceStoreVersionConfig.getStoreVersionName();
-    LOGGER.info("Promoting partition: {} of topic: {} to leader.", partitionId, topic);
+    LOGGER.info("Promoting replica: {} to leader.", Utils.getReplicaId(topic, partitionId));
     try (AutoCloseableLock ignore = topicLockManager.getLockForResource(topic)) {
       StoreIngestionTask consumerTask = topicNameToIngestionTaskMap.get(topic);
       PubSubTopicPartition replica = new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partitionId);
@@ -798,7 +797,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       int partitionId,
       LeaderFollowerPartitionStateModel.LeaderSessionIdChecker checker) {
     final String topic = veniceStoreVersionConfig.getStoreVersionName();
-    LOGGER.info("Demoting partition: {} of topic: {} to standby.", partitionId, topic);
+    LOGGER.info("Demoting replica: {} to standby.", Utils.getReplicaId(topic, partitionId));
     try (AutoCloseableLock ignore = topicLockManager.getLockForResource(topic)) {
       StoreIngestionTask consumerTask = topicNameToIngestionTaskMap.get(topic);
       PubSubTopicPartition pubSubTopicPartition =
@@ -819,9 +818,10 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       int partition,
       long retryIntervalInMs,
       int numRetries) {
-    LOGGER.info("Waiting all ingestion action to complete for topic: {}, partition: {}", topicName, partition);
+    String replicaId = Utils.getReplicaId(topicName, partition);
+    LOGGER.info("Waiting all ingestion action to complete for replica: {}", Utils.getReplicaId(topicName, partition));
     if (!topicPartitionHasAnyPendingActions(topicName, partition)) {
-      LOGGER.info("Topic: {}, partition: {} has no pending ingestion action.", topicName, partition);
+      LOGGER.info("Replica: {} has no pending ingestion action.", Utils.getReplicaId(topicName, partition));
       return;
     }
 
@@ -830,18 +830,16 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       for (int i = 0; i < numRetries; i++) {
         if (!topicPartitionHasAnyPendingActions(topicName, partition)) {
           LOGGER.info(
-              "Partition: {} of topic: {} has stopped consumption in {} ms.",
-              partition,
-              topicName,
+              "Replica: {} has stopped consumption in {} ms.",
+              replicaId,
               LatencyUtils.getElapsedTimeFromMsToMs(startTimeInMs));
           return;
         }
         sleep(retryIntervalInMs);
       }
       LOGGER.warn(
-          "Topic: {}, partition: {} is still having pending ingestion action for it to stop for {} ms.",
-          topicName,
-          partition,
+          "Replica: {} is still having pending ingestion action for it to stop for {} ms.",
+          replicaId,
           numRetries * retryIntervalInMs);
     } catch (InterruptedException e) {
       LOGGER.warn("Waiting for partition to clear up pending ingestion action was interrupted", e);
@@ -977,6 +975,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       int numRetries,
       boolean whetherToResetOffset) {
     String topicName = veniceStore.getStoreVersionName();
+    String replicaId = Utils.getReplicaId(topicName, partitionId);
     if (isPartitionConsuming(topicName, partitionId)) {
       stopConsumption(veniceStore, partitionId);
       try {
@@ -984,9 +983,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         for (int i = 0; i < numRetries; i++) {
           if (!isPartitionConsuming(topicName, partitionId)) {
             LOGGER.info(
-                "Partition: {} of topic: {} has stopped consumption in {} ms.",
-                partitionId,
-                topicName,
+                "Replica: {} has stopped consumption in {} ms.",
+                replicaId,
                 LatencyUtils.getElapsedTimeFromMsToMs(startTimeInMs));
             return;
           }
@@ -1002,11 +1000,11 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         currentThread().interrupt();
       }
     } else {
-      LOGGER.warn("Partition: {} of topic: {} is not consuming, skipped the stop consumption.", partitionId, topicName);
+      LOGGER.warn("Replica: {} is not consuming, skipped the stop consumption.", replicaId);
     }
     if (whetherToResetOffset) {
       resetConsumptionOffset(veniceStore, partitionId);
-      LOGGER.info("Reset consumption offset for topic: {}, partition: {}", topicName, partitionId);
+      LOGGER.info("Reset consumption offset for replica: {}", replicaId);
     }
     if (!ingestionTaskHasAnySubscription(topicName)) {
       shutdownIdleIngestionTask(topicName);

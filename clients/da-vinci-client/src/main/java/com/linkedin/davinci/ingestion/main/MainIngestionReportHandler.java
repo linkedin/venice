@@ -18,6 +18,7 @@ import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.utils.ExceptionUtils;
+import com.linkedin.venice.utils.Utils;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.codec.http.FullHttpRequest;
@@ -106,10 +107,9 @@ public class MainIngestionReportHandler extends SimpleChannelInboundHandler<Full
     PubSubPosition position = offset == -1 ? PubSubSymbolicPosition.EARLIEST : new ApacheKafkaOffsetPosition(offset);
     String message = report.message.toString();
     LOGGER.info(
-        "Received ingestion report {} for topic: {}, partition: {} position: {} from ingestion service. ",
+        "Received ingestion report {} for replica: {} position: {} from ingestion service. ",
         reportType.name(),
-        topicName,
-        partitionId,
+        Utils.getReplicaId(topicName, partitionId),
         position);
     updateLocalStorageMetadata(report);
     // Relay the notification to parent service's listener.

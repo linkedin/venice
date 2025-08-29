@@ -284,10 +284,8 @@ public class OfflinePushStatus {
   public boolean hasFatalDataValidationError() {
     return partitionIdToStatus.values().stream().anyMatch(partitionStatus -> {
       if (partitionStatus.hasFatalDataValidationError()) {
-        LOGGER.warn(
-            "Fatal data validation error found in topic: {}, partition: {}",
-            kafkaTopic,
-            partitionStatus.getPartitionId());
+        String replicaId = Utils.getReplicaId(kafkaTopic, partitionStatus.getPartitionId());
+        LOGGER.warn("Fatal data validation error found in replica: {}", replicaId);
         return true;
       }
       return false;

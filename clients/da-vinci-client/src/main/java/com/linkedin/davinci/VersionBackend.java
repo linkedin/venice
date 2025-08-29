@@ -26,6 +26,7 @@ import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.utils.ComplementSet;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.PartitionUtils;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.nio.ByteBuffer;
@@ -514,10 +515,9 @@ public class VersionBackend {
       return;
     }
     LOGGER.info(
-        "Adding incremental push version: {} to pending report list for topic: {}, partition: {}",
+        "Adding incremental push version: {} to pending report list for replica: {}",
         incrementalPushVersion,
-        getVersion().kafkaTopicName(),
-        partition);
+        Utils.getReplicaId(getVersion().kafkaTopicName(), partition));
     List<String> pendingReportIncPushVersionList =
         getPartitionToPendingReportIncrementalPushList().computeIfAbsent(partition, p -> new ArrayList<>());
     pendingReportIncPushVersionList.add(incrementalPushVersion);
