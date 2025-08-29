@@ -173,14 +173,14 @@ public class KeyUrnCompressor {
                   field.name(),
                   URN_SCHEMA_WITH_COMPRESSION,
                   field.doc(),
-                  AvroCompatibilityHelper.getGenericDefaultValue(field)));
+                  field.hasDefaultValue() ? AvroCompatibilityHelper.getGenericDefaultValue(field) : null));
         } else {
           newFields.add(
               AvroCompatibilityHelper.createSchemaField(
                   field.name(),
                   field.schema(),
                   field.doc(),
-                  AvroCompatibilityHelper.getGenericDefaultValue(field)));
+                  field.hasDefaultValue() ? AvroCompatibilityHelper.getGenericDefaultValue(field) : null));
         }
       }
       return Schema.createRecord(keySchema.getName(), keySchema.getDoc(), keySchema.getNamespace(), false, newFields);

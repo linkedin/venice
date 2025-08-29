@@ -45,6 +45,9 @@ public class DelegatingStorageEngine<P extends AbstractStoragePartition> impleme
 
   public void setKeyDictCompressionFunction(Function<Integer, KeyUrnCompressor> keyDictCompressionFunction) {
     this.keyDictCompressionFunction = Objects.requireNonNull(keyDictCompressionFunction);
+    if (delegate instanceof DelegatingStorageEngine) {
+      ((DelegatingStorageEngine<?>) delegate).setKeyDictCompressionFunction(keyDictCompressionFunction);
+    }
   }
 
   private byte[] compressKeyIfNeeded(int partitionId, byte[] key, boolean updateDictionary) {
