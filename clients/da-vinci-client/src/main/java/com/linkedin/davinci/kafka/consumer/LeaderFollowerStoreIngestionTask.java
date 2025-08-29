@@ -1041,10 +1041,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         partitionConsumptionState,
         Collections.singletonMap(leaderSourceKafkaURL, upstreamStartPosition));
     LOGGER.info(
-        "{}, as a leader, started consuming from topic: {}, partition: {} with offset: {}",
+        "{}, as a leader, started consuming from replica: {} with offset: {}",
         partitionConsumptionState.getReplicaId(),
-        leaderTopic,
-        partitionConsumptionState.getPartition(),
+        Utils.getReplicaId(leaderTopic, partitionConsumptionState.getPartition()),
         upstreamStartPosition);
   }
 
@@ -2259,10 +2258,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     final PartitionConsumptionState pcs = partitionConsumptionStateMap.get(topicPartition.getPartitionNumber());
     if (pcs == null) {
       // The partition is likely unsubscribed, will skip these messages.
-      LOGGER.warn(
-          "No partition consumption state for store version: {}, partition: {}, will filter out all the messages",
-          kafkaVersionTopic,
-          topicPartition.getPartitionNumber());
+      String replicaId = Utils.getReplicaId(kafkaVersionTopic, topicPartition.getPartitionNumber());
+      LOGGER.warn("No partition consumption state for replica: {}, will filter out all the messages", replicaId);
       return Collections.emptyList();
     }
     boolean isEndOfPushReceived = pcs.isEndOfPushReceived();
@@ -2378,6 +2375,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
        * return early if it needs not be produced to local VT such as cases like
        * (i) it's a follower or (ii) leader is consuming from VT
        */
+      String replicaId = Utils.getReplicaId(getVersionTopic(), partition);
       if (!produceToLocalKafka) {
         /**
          * For the local consumption, the batch data won't be produce to the local VT again, so we will switch
@@ -2386,10 +2384,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
          */
         if (isLeader(partitionConsumptionState) && msgType == MessageType.CONTROL_MESSAGE
             && ControlMessageType.valueOf((ControlMessage) kafkaValue.payloadUnion).equals(END_OF_PUSH)) {
-          LOGGER.info(
-              "Switching to the VeniceWriter for real-time workload for topic: {}, partition: {}",
-              getVersionTopic().getName(),
-              partition);
+          LOGGER.info("Switching to the VeniceWriter for real-time workload for replica: {}", replicaId);
           // Just to be extra safe
           partitionConsumptionState.getVeniceWriterLazyRef().ifPresent(vw -> vw.flush());
           partitionConsumptionState.setVeniceWriterLazyRef(veniceWriterForRealTime);
@@ -2495,10 +2490,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                 beforeProcessingPerRecordTimestampNs);
             partitionConsumptionState.getVeniceWriterLazyRef().get().flush();
             // Switch the writer for real-time workload
-            LOGGER.info(
-                "Switching to the VeniceWriter for real-time workload for topic: {}, partition: {}",
-                getVersionTopic().getName(),
-                partition);
+            LOGGER.info("Switching to the VeniceWriter for real-time workload for replica: {}", replicaId);
             partitionConsumptionState.setVeniceWriterLazyRef(veniceWriterForRealTime);
             break;
           case START_OF_SEGMENT:
@@ -2934,11 +2926,11 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         return result;
       } catch (IOException e) {
         // throw a loud exception if something goes wrong here
+        PubSubTopic leaderTopic = partitionConsumptionState.getOffsetRecord().getLeaderTopic(pubSubTopicRepository);
         throw new RuntimeException(
             String.format(
-                "Failed to compress value in venice writer! Aborting write! partition: %d, leader topic: %s, compressor: %s",
-                partition,
-                partitionConsumptionState.getOffsetRecord().getLeaderTopic(pubSubTopicRepository),
+                "Failed to compress value in venice writer! Aborting write! replica: %s, compressor: %s",
+                Utils.getReplicaId(leaderTopic, partition),
                 compressor.getClass().getName()),
             e);
       }

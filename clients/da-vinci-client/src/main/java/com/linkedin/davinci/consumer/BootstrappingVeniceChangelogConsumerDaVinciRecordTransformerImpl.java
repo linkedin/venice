@@ -28,6 +28,7 @@ import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.PropertyBuilder;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.lazy.Lazy;
@@ -488,15 +489,11 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
        * This early swap causes the buffer to fill with records before the EOP, which is undesirable.
        * By only allowing the futureVersion to perform the version swap, we ensure that only nearline events are served.
        */
+      String replicaId = Utils.getReplicaId(storeName, futureVersion, partitionId);
       try {
         if (futureVersion == getStoreVersion()) {
           partitionToVersionToServe.put(partitionId, futureVersion);
-          LOGGER.info(
-              "Swapped from version: {} to version: {} for store: {} for partition: {}",
-              currentVersion,
-              futureVersion,
-              storeName,
-              partitionId);
+          LOGGER.info("Swapped versions from: {} to: {} for replica: {}", currentVersion, futureVersion, replicaId);
 
           if (changeCaptureStats != null) {
             changeCaptureStats.emitVersionSwapCountMetrics(SUCCESS);
@@ -508,11 +505,10 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
         }
 
         LOGGER.error(
-            "Encountered an exception when processing Version Swap from version: {} to version: {} for store: {} for partition: {}",
+            "Encountered an exception when processing Version Swap from version: {} to version: {} for replica: {}",
             currentVersion,
             futureVersion,
-            storeName,
-            partitionId);
+            replicaId);
         throw exception;
       }
     }

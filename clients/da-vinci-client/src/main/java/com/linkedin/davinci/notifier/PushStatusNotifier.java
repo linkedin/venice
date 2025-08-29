@@ -212,9 +212,8 @@ public class PushStatusNotifier implements VeniceNotifier {
           e);
     }
     LOGGER.info(
-        "Update server inc push status for topic: {}, partition: {}, inc push version: {}, status: {} to push status store",
-        kafkaTopic,
-        partitionId,
+        "Update server inc push status for replica: {}, inc push version: {}, status: {} to push status store",
+        Utils.getReplicaId(kafkaTopic, partitionId),
         incPushVersion,
         status);
     pushStatusStoreWriter.writePushStatus(

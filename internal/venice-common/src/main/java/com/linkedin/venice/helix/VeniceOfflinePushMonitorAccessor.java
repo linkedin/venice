@@ -14,6 +14,7 @@ import com.linkedin.venice.pushmonitor.ReplicaStatus;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.PathResourceRegistry;
+import com.linkedin.venice.utils.Utils;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Iterator;
@@ -283,11 +284,8 @@ public class VeniceOfflinePushMonitorAccessor implements OfflinePushAccessor {
     if (!pushStatusExists(topic)) {
       return;
     }
-    LOGGER.info(
-        "Start update replica status for topic: {}, partition: {} in cluster: {}.",
-        topic,
-        partitionId,
-        clusterName);
+    String replicaId = Utils.getReplicaId(topic, partitionId);
+    LOGGER.info("Start update replica status for replica: {} in cluster: {}.", replicaId, clusterName);
     HelixUtils.compareAndUpdate(partitionStatusAccessor, getPartitionStatusPath(topic, partitionId), currentData -> {
 
       // currentData can be null if the path read out of zk is blank to start with (as current data is read and passed
@@ -301,12 +299,7 @@ public class VeniceOfflinePushMonitorAccessor implements OfflinePushAccessor {
       currentData.updateReplicaStatus(instanceId, status, incrementalPushVersion, progress);
       return currentData;
     });
-    LOGGER.info(
-        "Updated replica status for topic: {} partition: {} status: {} in cluster: {}.",
-        topic,
-        partitionId,
-        status,
-        clusterName);
+    LOGGER.info("Updated replica status for replica: {} status: {} in cluster: {}.", replicaId, status, clusterName);
   }
 
   private void compareAndBatchUpdateReplicaStatus(
@@ -318,11 +311,8 @@ public class VeniceOfflinePushMonitorAccessor implements OfflinePushAccessor {
     if (!pushStatusExists(topic)) {
       return;
     }
-    LOGGER.info(
-        "Start batch update replica status for topic: {}, partition: {} in cluster: {}.",
-        topic,
-        partitionId,
-        clusterName);
+    String replicaId = Utils.getReplicaId(topic, partitionId);
+    LOGGER.info("Start batch update replica status for replica: {} in cluster: {}.", replicaId, clusterName);
     HelixUtils.compareAndUpdate(partitionStatusAccessor, getPartitionStatusPath(topic, partitionId), currentData -> {
       if (currentData == null) {
         currentData = new PartitionStatus(partitionId);
@@ -331,9 +321,8 @@ public class VeniceOfflinePushMonitorAccessor implements OfflinePushAccessor {
       return currentData;
     });
     LOGGER.info(
-        "Updated replica status for topic: {} partition: {}, EOIP for incremental push versions: {} in cluster: {}.",
-        topic,
-        partitionId,
+        "Updated replica status for replica: {}, EOIP for incremental push versions: {} in cluster: {}",
+        replicaId,
         incPushBatchStatus,
         clusterName);
   }
@@ -381,8 +370,8 @@ public class VeniceOfflinePushMonitorAccessor implements OfflinePushAccessor {
   protected PartitionStatus getPartitionStatus(String topic, int partitionId) {
     PartitionStatus partitionStatus =
         partitionStatusAccessor.get(getPartitionStatusPath(topic, partitionId), null, AccessOption.PERSISTENT);
-    LOGGER
-        .debug("Read partition status for topic: {} in partition: {} in cluster: {}.", topic, partitionId, clusterName);
+    String replicaId = Utils.getReplicaId(topic, partitionId);
+    LOGGER.debug("Read partition status for replica: {} in cluster: {}.", replicaId, clusterName);
     return partitionStatus;
   }
 
