@@ -2258,10 +2258,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     final PartitionConsumptionState pcs = partitionConsumptionStateMap.get(topicPartition.getPartitionNumber());
     if (pcs == null) {
       // The partition is likely unsubscribed, will skip these messages.
-      LOGGER.warn(
-          "No partition consumption state for store version: {}, partition: {}, will filter out all the messages",
-          kafkaVersionTopic,
-          topicPartition.getPartitionNumber());
+      String replicaId = Utils.getReplicaId(kafkaVersionTopic, topicPartition.getPartitionNumber());
+      LOGGER.warn("No partition consumption state for replica: {}, will filter out all the messages", replicaId);
       return Collections.emptyList();
     }
     boolean isEndOfPushReceived = pcs.isEndOfPushReceived();
@@ -2928,11 +2926,11 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         return result;
       } catch (IOException e) {
         // throw a loud exception if something goes wrong here
+        PubSubTopic leaderTopic = partitionConsumptionState.getOffsetRecord().getLeaderTopic(pubSubTopicRepository);
         throw new RuntimeException(
             String.format(
-                "Failed to compress value in venice writer! Aborting write! partition: %d, leader topic: %s, compressor: %s",
-                partition,
-                partitionConsumptionState.getOffsetRecord().getLeaderTopic(pubSubTopicRepository),
+                "Failed to compress value in venice writer! Aborting write! replica: %s, compressor: %s",
+                Utils.getReplicaId(leaderTopic, partition),
                 compressor.getClass().getName()),
             e);
       }

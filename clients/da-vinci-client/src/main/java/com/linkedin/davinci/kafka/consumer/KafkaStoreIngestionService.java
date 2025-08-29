@@ -750,7 +750,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       storeIngestionTask
           .subscribePartition(new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partitionId));
     }
-    LOGGER.info("Started Consuming - Kafka Partition: {}-{}.", topic, partitionId);
+    LOGGER.info("Started Consuming - Replica: {}.", Utils.getReplicaId(topic, partitionId));
   }
 
   /**
@@ -991,9 +991,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
           sleep((long) sleepSeconds * Time.MS_PER_SECOND);
         }
         LOGGER.warn(
-            "Partition: {} of store: {} is still consuming after waiting for it to stop for {} seconds.",
-            partitionId,
-            topicName,
+            "Replica: {} is still consuming after waiting for it to stop for {} seconds.",
+            Utils.getReplicaId(topicName, partitionId),
             numRetries * sleepSeconds);
       } catch (InterruptedException e) {
         LOGGER.warn("Waiting for partition to stop consumption was interrupted", e);
@@ -1408,7 +1407,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       consumerTask.resetPartitionConsumptionOffset(
           new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partitionId));
     }
-    LOGGER.info("Offset reset to beginning - Kafka Partition: {}-{}.", topic, partitionId);
+    LOGGER.info("Offset reset to beginning - Replica: {}.", Utils.getReplicaId(topic, partitionId));
   }
 
   @VisibleForTesting

@@ -485,9 +485,8 @@ public class VersionBackend {
       return;
     }
     LOGGER.info(
-        "Topic: {}, partition: {} batch report END_OF_INCREMENTAL_PUSH for inc push versions: {}",
-        getVersion().kafkaTopicName(),
-        partition,
+        "Replica: {} batch report END_OF_INCREMENTAL_PUSH for inc push versions: {}",
+        Utils.getReplicaId(getVersion().kafkaTopicName(), partition),
         pendingReportIncPushVersionList);
     for (String incPushVersion: pendingReportIncPushVersionList) {
       reportConsumer.accept(incPushVersion);

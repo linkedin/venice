@@ -382,11 +382,8 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
        * it will be executed inside main process.
        */
       report.isPositive = false;
-      LOGGER.info(
-          "Topic: {}, partition {} is being unsubscribed, will reject command {}",
-          topic,
-          partition,
-          command.name());
+      String replicaId = Utils.getReplicaId(topic, partition);
+      LOGGER.info("Replica: {} is being unsubscribed, will reject command {}", replicaId, command.name());
     }
   }
 }

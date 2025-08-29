@@ -306,9 +306,8 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend implements
           });
         } else {
           LOGGER.error(
-              "Partition: {} of topic: {} is not assigned to this host, will not resume the ingestion on main process.",
-              partition,
-              kafkaTopic);
+              "Replica: {} is not assigned to this host, will not resume the ingestion on main process.",
+              Utils.getReplicaId(kafkaTopic, partition));
         }
       }
     };
