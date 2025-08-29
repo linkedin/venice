@@ -499,6 +499,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.storageEngine = Objects.requireNonNull(refCountedStorageEngine.get());
     if ((this.storageEngine instanceof DelegatingStorageEngine)) {
       DelegatingStorageEngine delegatingStorageEngine = (DelegatingStorageEngine) this.storageEngine;
+      System.out.println("Setting up key dict compression function for store version: " + storeVersionName);
       delegatingStorageEngine.setKeyDictCompressionFunction(p -> {
         PartitionConsumptionState pcs = partitionConsumptionStateMap.get(p);
         if (pcs == null) {

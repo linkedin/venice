@@ -104,6 +104,7 @@ import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.AbstractStorageIterator;
 import com.linkedin.davinci.store.AbstractStoragePartition;
+import com.linkedin.davinci.store.DelegatingStorageEngine;
 import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.davinci.store.StorageEngineNoOpStats;
 import com.linkedin.davinci.store.StoragePartitionConfig;
@@ -603,6 +604,8 @@ public abstract class StoreIngestionTaskTest {
         .when(mockSchemaRepo)
         .getReplicationMetadataSchema(storeNameWithoutVersionInfo, EXISTING_SCHEMA_ID, REPLICATION_METADATA_VERSION_ID);
 
+    doReturn(new SchemaEntry(1, STRING_SCHEMA)).when(mockSchemaRepo).getKeySchema(any());
+
     setDefaultStoreVersionStateSupplier();
 
     KafkaConsumerServiceStats regionStats = mock(KafkaConsumerServiceStats.class);
@@ -1047,21 +1050,20 @@ public abstract class StoreIngestionTaskTest {
       DaVinciRecordTransformerConfig recordTransformerConfig,
       OffsetRecord optionalOffsetRecord,
       StorageService storageService) {
-    StorageEngine storageEngineToUse;
+    DelegatingStorageEngine storageEngineToUse;
     if (recordTransformerConfig != null && recordTransformerConfig.getRecordTransformerFunction() != null) {
       LOGGER.info("Storage engine to use is the mockAbstractStorageEngine");
-      storageEngineToUse = this.mockAbstractStorageEngine;
+      storageEngineToUse = new DelegatingStorageEngine(this.mockAbstractStorageEngine);
 
       AbstractStorageIterator iterator = mock(AbstractStorageIterator.class);
       when(iterator.isValid()).thenReturn(true).thenReturn(false);
       when(iterator.key()).thenReturn("mockKey".getBytes());
       when(iterator.value()).thenReturn("mockValue".getBytes());
       when(this.mockAbstractStorageEngine.getIterator(anyInt())).thenReturn(iterator);
-
     } else {
       this.mockDeepCopyStorageEngine = spy(new DeepCopyStorageEngine(this.mockAbstractStorageEngine));
       LOGGER.info("Storage engine to use is the mockDeepCopyStorageEngine");
-      storageEngineToUse = this.mockDeepCopyStorageEngine;
+      storageEngineToUse = new DelegatingStorageEngine(this.mockDeepCopyStorageEngine);
     }
     assertNotNull(
         storageEngineToUse,
