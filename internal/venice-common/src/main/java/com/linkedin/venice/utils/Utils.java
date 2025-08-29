@@ -1151,6 +1151,10 @@ public class Utils {
     return orig.replace('.', '_');
   }
 
+  public static String getReplicaId(String storeName, int version, int partition) {
+    return getReplicaId(Version.composeKafkaTopic(storeName, version), partition);
+  }
+
   /**
    * Standard logging format for TopicPartition
    */
