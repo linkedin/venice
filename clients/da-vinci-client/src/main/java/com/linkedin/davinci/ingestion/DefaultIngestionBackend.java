@@ -161,18 +161,8 @@ public class DefaultIngestionBackend implements IngestionBackend {
           partitionId);
     }
 
-    // double check that the partition folder is not existed before bootstrapping from blobs transfer,
-    // as the partition should not exist due to previous dropPartition call.
-    String partitionFolder = RocksDBUtils.composePartitionDbDir(serverConfig.getRocksDBPath(), kafkaTopic, partitionId);
-    File partitionFolderDir = new File(partitionFolder);
-    if (partitionFolderDir.exists()) {
-      LOGGER.error(
-          "Partition folder {} for {} is existed with files {}.",
-          partitionFolder,
-          Utils.getReplicaId(kafkaTopic, partitionId),
-          Arrays.toString(partitionFolderDir.list()));
-    }
-
+    // Pre-transfer validation and cleanup
+    validateDirectoriesBeforeBlobTransfer(storeName, versionNumber, partitionId);
     addStoragePartitionWhenBlobTransferStart(partitionId, storeConfig, svsSupplier);
 
     return blobTransferManager.get(storeName, versionNumber, partitionId, tableFormat)
@@ -189,14 +179,10 @@ public class DefaultIngestionBackend implements IngestionBackend {
                 "Successfully bootstrapped partition {} from blobs transfer for store {}",
                 partitionId,
                 storeName);
-
-            if (partitionFolderDir.exists()) {
-              LOGGER.info(
-                  "Successfully bootstrapped from blob transfer {} with files: {}",
-                  Utils.getReplicaId(kafkaTopic, partitionId),
-                  Arrays.toString(partitionFolderDir.list()));
-            }
           }
+
+          // Post-transfer validation and cleanup
+          validateDirectoriesAfterBlobTransfer(storeName, versionNumber, partitionId, throwable == null);
           adjustStoragePartitionWhenBlobTransferComplete(storageService.getStorageEngine(kafkaTopic), partitionId);
           return null;
         });
@@ -225,6 +211,65 @@ public class DefaultIngestionBackend implements IngestionBackend {
         StoragePartitionAdjustmentTrigger.BEGIN_BLOB_TRANSFER,
         Utils.getReplicaId(storeConfig.getStoreVersionName(), partitionId),
         storagePartitionConfig);
+  }
+
+  /**
+   * Before bootstrapping from blobs transfer, validate the partition directory and temp partition directory.
+   * If either of them exists, delete them to ensure a clean state for blob transfer.
+   */
+  private void validateDirectoriesBeforeBlobTransfer(String storeName, int versionNumber, int partitionId) {
+    RocksDBUtils.cleanupBothPartitionDirAndTempTransferredDir(
+        storeName,
+        versionNumber,
+        partitionId,
+        serverConfig.getRocksDBPath());
+  }
+
+  /**
+   * After bootstrapping from blobs transfer, validate the partition directory and temp partition directory.
+   */
+  private void validateDirectoriesAfterBlobTransfer(
+      String storeName,
+      int versionNumber,
+      int partitionId,
+      boolean transferSuccessful) {
+    String rocksDBPath = serverConfig.getRocksDBPath();
+    String kafkaTopic = Version.composeKafkaTopic(storeName, versionNumber);
+    String replicaId = Utils.getReplicaId(kafkaTopic, partitionId);
+
+    String tempPartitionDir = RocksDBUtils.composeTempPartitionDir(rocksDBPath, kafkaTopic, partitionId);
+    String partitionDir = RocksDBUtils.composePartitionDbDir(rocksDBPath, kafkaTopic, partitionId);
+
+    File tempPartitionDirFile = new File(tempPartitionDir);
+    File partitionDirFile = new File(partitionDir);
+
+    // After successful transfer, temp directory should not exist due to rename and partition directory should exist
+    if (transferSuccessful) {
+      if (tempPartitionDirFile.exists()) {
+        LOGGER
+            .error("Temp directory {} still exists after successful blob transfer for {}", tempPartitionDir, replicaId);
+        try {
+          RocksDBUtils.deleteDirectory(tempPartitionDir);
+        } catch (Exception e) {
+          LOGGER.error("Failed to clean up remaining temp directory: {}", tempPartitionDir, e);
+        }
+      }
+
+      if (!partitionDirFile.exists()) {
+        LOGGER.error(
+            "Partition directory {} does not exist after successful blob transfer for {}",
+            partitionDir,
+            replicaId);
+      } else {
+        LOGGER.info(
+            "Successfully bootstrapped from blob transfer {} with files: {}",
+            Utils.getReplicaId(kafkaTopic, partitionId),
+            Arrays.toString(partitionDirFile.list()));
+      }
+    } else {
+      // After failed transfer, both directories should be cleaned up
+      RocksDBUtils.cleanupBothPartitionDirAndTempTransferredDir(storeName, versionNumber, partitionId, rocksDBPath);
+    }
   }
 
   /**

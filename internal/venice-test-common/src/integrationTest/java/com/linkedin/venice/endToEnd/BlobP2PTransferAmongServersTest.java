@@ -192,6 +192,93 @@ public class BlobP2PTransferAmongServersTest {
     });
   }
 
+  @Test(singleThreaded = true, timeOut = 240000)
+  public void testBlobP2PTransferAmongServersForBatchStoreWithRestoreTempFolder() throws Exception {
+    cluster = initializeVeniceCluster();
+
+    String storeName = "test-store";
+    Consumer<UpdateStoreQueryParams> paramsConsumer =
+        params -> params.setBlobTransferInServerEnabled(ConfigCommonUtils.ActivationState.ENABLED);
+    setUpBatchStore(cluster, storeName, paramsConsumer, properties -> {}, true);
+
+    VeniceServerWrapper server1 = cluster.getVeniceServerByPort(server1Port);
+    VeniceServerWrapper server2 = cluster.getVeniceServerByPort(server2Port);
+
+    // verify the snapshot is not generated for both servers after the job is done
+    for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
+      String snapshotPath1 = RocksDBUtils.composeSnapshotDir(path1 + "/rocksdb", storeName + "_v1", partitionId);
+      Assert.assertFalse(Files.exists(Paths.get(snapshotPath1)));
+      String snapshotPath2 = RocksDBUtils.composeSnapshotDir(path2 + "/rocksdb", storeName + "_v1", partitionId);
+      Assert.assertFalse(Files.exists(Paths.get(snapshotPath2)));
+    }
+
+    // stop server 1
+    cluster.stopVeniceServer(server1Port);
+
+    // prepare temp folder: move the partition folders to temp folders to simulate the restore from temp folder scenario
+    for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
+      String partitionPath = RocksDBUtils.composePartitionDbDir(path1 + "/rocksdb", storeName + "_v1", partitionId);
+      String tempPartitionFolder =
+          RocksDBUtils.composeTempPartitionDir(path1 + "/rocksdb", storeName + "_v1", partitionId);
+      Files.move(Paths.get(partitionPath), Paths.get(tempPartitionFolder));
+      Assert.assertFalse(Files.exists(Paths.get(partitionPath)));
+      Assert.assertTrue(Files.exists(Paths.get(tempPartitionFolder)));
+    }
+
+    // restart server 1
+    cluster.restartVeniceServer(server1.getPort());
+    TestUtils.waitForNonDeterministicAssertion(3, TimeUnit.MINUTES, () -> {
+      Assert.assertTrue(server1.isRunning());
+    });
+
+    // wait for server 1 is fully replicated
+    cluster.getVeniceControllers().forEach(controller -> {
+      TestUtils.waitForNonDeterministicAssertion(3, TimeUnit.MINUTES, () -> {
+        Assert.assertEquals(
+            controller.getController()
+                .getVeniceControllerService()
+                .getVeniceHelixAdmin()
+                .getAllStoreStatuses(cluster.getClusterName())
+                .get(storeName),
+            FULLLY_REPLICATED.toString());
+      });
+    });
+
+    // the partition files should be transferred to server 1 and offset should be the same
+    TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.MINUTES, () -> {
+      for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
+        File file = new File(RocksDBUtils.composePartitionDbDir(path1 + "/rocksdb", storeName + "_v1", partitionId));
+        boolean fileExisted = Files.exists(file.toPath());
+        Assert.assertTrue(fileExisted);
+        // ensure the snapshot file is not generated
+        File snapshotFile =
+            new File(RocksDBUtils.composeSnapshotDir(path1 + "/rocksdb", storeName + "_v1", partitionId));
+        boolean snapshotFileExisted = Files.exists(snapshotFile.toPath());
+        Assert.assertFalse(snapshotFileExisted);
+        // at that moment, the path 2 snapshot should be created
+        String snapshotPath2 = RocksDBUtils.composeSnapshotDir(path2 + "/rocksdb", storeName + "_v1", partitionId);
+        Assert.assertTrue(Files.exists(Paths.get(snapshotPath2)));
+
+        // validate that no temp folder existed anymore
+        String tempPartitionFolderPath1 =
+            RocksDBUtils.composeTempPartitionDir(path1 + "/rocksdb", storeName + "_v1", partitionId);
+        Assert.assertFalse(Files.exists(Paths.get(tempPartitionFolderPath1)));
+      }
+    });
+
+    TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.MINUTES, () -> {
+      for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
+        OffsetRecord offsetServer1 =
+            server1.getVeniceServer().getStorageMetadataService().getLastOffset("test-store_v1", partitionId);
+        OffsetRecord offsetServer2 =
+            server2.getVeniceServer().getStorageMetadataService().getLastOffset("test-store_v1", partitionId);
+        Assert.assertEquals(
+            offsetServer1.getCheckpointedLocalVtPosition(),
+            offsetServer2.getCheckpointedLocalVtPosition());
+      }
+    });
+  }
+
   public VeniceClusterWrapper initializeVeniceCluster() {
     return initializeVeniceCluster(Collections.emptyMap());
   }

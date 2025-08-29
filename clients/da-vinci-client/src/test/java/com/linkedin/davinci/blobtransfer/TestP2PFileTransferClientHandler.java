@@ -231,6 +231,10 @@ public class TestP2PFileTransferClientHandler {
     Path file1 = dest.resolve("test_file.txt");
     Assert.assertTrue(Files.exists(file1));
     Assert.assertEquals(Files.size(file1), 5);
+
+    // Verify the temp directory is cleaned up
+    Path tempDir = Paths.get(payload.getTempPartitionDir());
+    Assert.assertFalse(Files.exists(tempDir), "Temporary directory should be cleaned up after transfer.");
   }
 
   @Test
@@ -420,6 +424,10 @@ public class TestP2PFileTransferClientHandler {
     Assert.assertEquals(actualMetadata.getTopicName(), expectMetadata.getTopicName());
     Assert.assertEquals(actualMetadata.getPartitionId(), expectMetadata.getPartitionId());
     Assert.assertEquals(actualMetadata.getOffsetRecord(), expectMetadata.getOffsetRecord());
+
+    // Verify the temp directory is cleaned up
+    Path tempDir = Paths.get(payload.getTempPartitionDir());
+    Assert.assertFalse(Files.exists(tempDir), "Temporary directory should be cleaned up after transfer.");
 
     // Ensure the future is completed
     Assert.assertTrue(inputStreamFuture.toCompletableFuture().isDone());

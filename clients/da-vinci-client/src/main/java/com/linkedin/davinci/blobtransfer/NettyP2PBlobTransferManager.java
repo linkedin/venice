@@ -209,7 +209,7 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
     } else {
       // error case 5: other exceptions (InterruptedException, ExecutionException, TimeoutException) that are not
       // expected, move to the next possible host
-      RocksDBUtils.deletePartitionDir(baseDir, storeName, version, partition);
+      RocksDBUtils.cleanupBothPartitionDirAndTempTransferredDir(storeName, version, partition, baseDir);
       LOGGER.error(FAILED_TO_FETCH_BLOB_MSG, replicaId, chosenHost, ex.getMessage());
     }
   }
