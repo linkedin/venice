@@ -1475,8 +1475,9 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     syncConsumedUpstreamRTOffsetMapIfNeeded(partitionConsumptionState, leaderOffsetByKafkaURL);
 
     LOGGER.info(
-        "{}, as a leader, started consuming from replica: {}: with offset by Kafka URL mapping: {}",
+        "{}, as a leader, started consuming from topic-partition: {} replica: {}: with offset by Kafka URL mapping: {}",
         ingestionTaskName,
+        Utils.getReplicaId(leaderTopic, partitionConsumptionState.getPartition()),
         partitionConsumptionState.getReplicaId(),
         leaderOffsetByKafkaURL);
   }
