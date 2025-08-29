@@ -21,6 +21,7 @@ import com.linkedin.davinci.stats.RocksDBMemoryStats;
 import com.linkedin.davinci.storage.StorageEngineMetadataService;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
+import com.linkedin.davinci.store.DelegatingStorageEngine;
 import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.venice.client.change.capture.protocol.RecordChangeEvent;
@@ -184,6 +185,17 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceAfte
     };
   }
 
+  StorageEngine getStorageEngine(String resourceName) {
+    StorageEngine storageEngine = storageService.getStorageEngine(resourceName);
+    if (!(storageEngine instanceof DelegatingStorageEngine)) {
+      throw new VeniceException("Storage engine for store: " + resourceName + " isn't a DelegatingStorageEngine");
+    } else {
+      // Key urn compression is not supported for changelog consumer
+      ((DelegatingStorageEngine) storageEngine).setKeyDictCompressionFunction(ignored -> null);
+    }
+    return storageEngine;
+  }
+
   @Override
   protected boolean handleVersionSwapControlMessage(
       ControlMessage controlMessage,
@@ -270,18 +282,17 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceAfte
         // read from storage engine
         Collection<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> resultSet = new ArrayList<>();
         AtomicBoolean completed = new AtomicBoolean(false);
-        storageService.getStorageEngine(localStateTopicName)
-            .getByKeyPrefix(state.getKey(), null, new BytesStreamingCallback() {
-              @Override
-              public void onRecordReceived(byte[] key, byte[] value) {
-                onRecordReceivedFromStorage(key, value, state.getKey(), resultSet);
-              }
+        getStorageEngine(localStateTopicName).getByKeyPrefix(state.getKey(), null, new BytesStreamingCallback() {
+          @Override
+          public void onRecordReceived(byte[] key, byte[] value) {
+            onRecordReceivedFromStorage(key, value, state.getKey(), resultSet);
+          }
 
-              @Override
-              public void onCompletion() {
-                onCompletionForStorage(state.getKey(), state.getValue(), resultSet, completed);
-              }
-            });
+          @Override
+          public void onCompletion() {
+            onCompletionForStorage(state.getKey(), state.getValue(), resultSet, completed);
+          }
+        });
         if (!completed.get()) {
           throw new VeniceException("Interrupted while reading local bootstrap data!");
         }
@@ -296,8 +307,7 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceAfte
    */
   private void syncOffset(int partitionId, BootstrapState bootstrapState) {
     OffsetRecord lastOffset = storageMetadataService.getLastOffset(localStateTopicName, partitionId);
-    StorageEngine storageEngineReloadedFromRepo =
-        storageService.getStorageEngineRepository().getLocalStorageEngine(localStateTopicName);
+    StorageEngine storageEngineReloadedFromRepo = getStorageEngine(localStateTopicName);
     if (storageEngineReloadedFromRepo == null) {
       LOGGER.warn(
           "Storage engine has been removed. Could not execute sync offset for topic: {} and partition: {}",
@@ -432,19 +442,17 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceAfte
     if (deserializedValue instanceof RecordChangeEvent) {
       RecordChangeEvent recordChangeEvent = (RecordChangeEvent) deserializedValue;
       if (recordChangeEvent.currentValue == null) {
-        storageService.getStorageEngine(localStateTopicName).delete(partition.getPartitionNumber(), key);
+        getStorageEngine(localStateTopicName).delete(partition.getPartitionNumber(), key);
       } else {
-        storageService.getStorageEngine(localStateTopicName)
-            .put(
-                partition.getPartitionNumber(),
-                key,
-                ValueRecord
-                    .create(recordChangeEvent.currentValue.schemaId, recordChangeEvent.currentValue.value.array())
-                    .serialize());
+        getStorageEngine(localStateTopicName).put(
+            partition.getPartitionNumber(),
+            key,
+            ValueRecord.create(recordChangeEvent.currentValue.schemaId, recordChangeEvent.currentValue.value.array())
+                .serialize());
       }
     } else {
       byte[] valueBytes = ByteUtils.extractByteArray(decompressedBytes);
-      storageService.getStorageEngine(localStateTopicName)
+      getStorageEngine(localStateTopicName)
           .put(partition.getPartitionNumber(), key, ValueRecord.create(readerSchemaId, valueBytes).serialize());
     }
 
