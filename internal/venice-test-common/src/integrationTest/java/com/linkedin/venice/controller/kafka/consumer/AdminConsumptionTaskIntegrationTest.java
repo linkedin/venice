@@ -51,7 +51,7 @@ import org.testng.annotations.Test;
 /**
  * Slow test class, given fast priority
  */
-@Test(priority = -5)
+@Test(priority = -5, singleThreaded = true)
 public class AdminConsumptionTaskIntegrationTest {
   private static final int TIMEOUT = 1 * Time.MS_PER_MINUTE;
 
@@ -141,8 +141,44 @@ public class AdminConsumptionTaskIntegrationTest {
       Assert.assertTrue(parentControllerClient.getStore(storeName).isError());
     });
 
-    parentControllerClient.skipAdminMessage(Long.toString(badOffset), false);
+    parentControllerClient.skipAdminMessage(Long.toString(badOffset), false, null);
     TestUtils.waitForNonDeterministicAssertion(TIMEOUT * 3, TimeUnit.MILLISECONDS, () -> {
+      Assert.assertFalse(parentControllerClient.getStore(storeName).isError());
+    });
+  }
+
+  @Test(timeOut = TIMEOUT * 2)
+  public void testSkipMessageWithExecutionIdEndToEnd() {
+    String storeName = Utils.getUniqueString("test-store");
+
+    long badMessageExecutionId = nextExecutionId();
+    byte[] message = getStoreCreationMessage(
+        clusterName,
+        storeName,
+        owner,
+        "invalid_key_schema",
+        valueSchema,
+        badMessageExecutionId,
+        AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+    writer.put(new byte[0], message, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+
+    byte[] goodMessage = getStoreCreationMessage(
+        clusterName,
+        storeName,
+        owner,
+        keySchema,
+        valueSchema,
+        nextExecutionId(),
+        AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+    writer.put(new byte[0], goodMessage, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+
+    TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
+      Assert.assertTrue(parentControllerClient.getStore(storeName).isError());
+    });
+
+    parentControllerClient.skipAdminMessage(null, false, String.valueOf(badMessageExecutionId));
+
+    TestUtils.waitForNonDeterministicAssertion(TIMEOUT * 2, TimeUnit.MILLISECONDS, () -> {
       Assert.assertFalse(parentControllerClient.getStore(storeName).isError());
     });
   }

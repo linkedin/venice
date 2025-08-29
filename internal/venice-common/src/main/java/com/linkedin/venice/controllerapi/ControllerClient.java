@@ -693,8 +693,14 @@ public class ControllerClient implements Closeable {
     return request(ControllerRoute.KILL_OFFLINE_PUSH_JOB, params, ControllerResponse.class);
   }
 
-  public ControllerResponse skipAdminMessage(String offset, boolean skipDIV) {
-    QueryParams params = newParams().add(OFFSET, offset).add(SKIP_DIV, skipDIV);
+  public ControllerResponse skipAdminMessage(String offset, boolean skipDIV, String executionId) {
+    QueryParams params = newParams().add(SKIP_DIV, skipDIV);
+    if (offset != null) {
+      params.add(OFFSET, offset);
+    }
+    if (executionId != null) {
+      params.add(EXECUTION_ID, executionId);
+    }
     return request(ControllerRoute.SKIP_ADMIN, params, ControllerResponse.class);
   }
 

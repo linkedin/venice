@@ -131,6 +131,20 @@ public class AdminConsumerService extends AbstractVeniceService {
     }
   }
 
+  public void setExecutionIdToSkip(String clusterName, long executionId, boolean skipDIV) {
+    if (clusterName.equals(config.getClusterName())) {
+      if (skipDIV) {
+        consumerTask.skipMessageDIVWithExecutionId(executionId);
+      } else {
+        consumerTask.skipMessageWithExecutionId(executionId);
+      }
+    } else {
+      throw new VeniceException(
+          "This AdminConsumptionService is for cluster " + config.getClusterName()
+              + ".  Cannot skip admin message with execution ID " + executionId + " for cluster " + clusterName);
+    }
+  }
+
   /**
    * Get the last succeeded execution id for the given cluster.
    * @param clusterName name of the Venice cluster.

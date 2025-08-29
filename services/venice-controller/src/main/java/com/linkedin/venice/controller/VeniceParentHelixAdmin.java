@@ -4754,11 +4754,11 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   /**
-   * @see Admin#skipAdminMessage(String, long, boolean)
+   * @see Admin#skipAdminMessage(String, long, boolean, long)
    */
   @Override
-  public void skipAdminMessage(String clusterName, long offset, boolean skipDIV) {
-    getVeniceHelixAdmin().skipAdminMessage(clusterName, offset, skipDIV);
+  public void skipAdminMessage(String clusterName, long offset, boolean skipDIV, long executionId) {
+    getVeniceHelixAdmin().skipAdminMessage(clusterName, offset, skipDIV, executionId);
   }
 
   /**
