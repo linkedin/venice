@@ -437,7 +437,7 @@ public class PartitionTracker {
     if (endOfPushReceived && tolerateAnyMessageType) {
       String errorMsgIdentifier = consumerRecord.getTopicPartition() + "-" + DataFaultType.UNREGISTERED_PRODUCER;
       if (!REDUNDANT_LOGGING_FILTER.isRedundantException(errorMsgIdentifier)) {
-        logger.warn("Will {}, endOfPushReceived=true, tolerateAnyMessageType=true", scenario);
+        logger.debug("Will {}, endOfPushReceived=true, tolerateAnyMessageType=true", scenario);
       }
     } else {
       throw DataFaultType.UNREGISTERED_PRODUCER.getNewException(
