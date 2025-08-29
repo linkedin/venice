@@ -137,11 +137,6 @@ public class SslInitializer extends ChannelInitializer<Channel> {
     if (_sslEnabled) {
       _sslFactory = sslFactory;
       SSLSessionContext sessionContext = _sslFactory.sessionContext(true);
-      LOG.info(
-          "factory={} sessionTimeout={} sessionCacheSize={}",
-          _sslFactory,
-          sessionContext.getSessionTimeout(),
-          sessionContext.getSessionCacheSize());
       _postHandshakeHandler = postHandshakeHandler;
     } else {
       _sslFactory = null;

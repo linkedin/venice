@@ -606,8 +606,6 @@ public final class SSLContextBuilder {
     final TrustManagerFactory trustFact = TrustManagerFactory.getInstance(DEFAULT_ALGORITHM);
     trustFact.init(trustStore);
 
-    LOG.info("setupContext provider={} sslContextProvider={}", provider, sslContextProvider);
-
     return builder -> builder.apply(kmf)
         .sslProvider(provider)
         .sslContextProvider(sslContextProvider)

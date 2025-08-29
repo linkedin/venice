@@ -460,9 +460,6 @@ public class RocksDBServerConfig {
      *  https://github.com/facebook/rocksdb/wiki/BlobDB
      */
     this.blobFilesEnabled = props.getBoolean(ROCKSDB_BLOB_FILES_ENABLED, false);
-    if (this.blobFilesEnabled) {
-      LOGGER.info("RocksDB Blob files feature is enabled");
-    }
     this.minBlobSizeInBytes = props.getSizeInBytes(ROCKSDB_MIN_BLOB_SIZE_IN_BYTES, 4 * 1024); // default: 4KB
     this.blobFileSizeInBytes = props.getSizeInBytes(ROCKSDB_BLOB_FILE_SIZE_IN_BYTES, 256 * 1024 * 1024); // default:
                                                                                                          // 256MB

@@ -26,7 +26,7 @@ public class VeniceHttp2PipelineInitializerBuilder {
 
   private static final ActiveStreamsCountHandler ACTIVE_STREAMS_COUNT_HANDLER = new ActiveStreamsCountHandler();
   private static final Http2SettingsFrameLogger HTTP2_SETTINGS_FRAME_LOGGER =
-      new Http2SettingsFrameLogger(LogLevel.INFO);
+      new Http2SettingsFrameLogger(LogLevel.WARN);
 
   public VeniceHttp2PipelineInitializerBuilder(VeniceServerConfig serverConfig) {
     this.serverConfig = serverConfig;
