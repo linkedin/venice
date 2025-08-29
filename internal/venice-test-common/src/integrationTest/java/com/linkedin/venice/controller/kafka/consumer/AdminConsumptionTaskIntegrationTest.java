@@ -148,21 +148,19 @@ public class AdminConsumptionTaskIntegrationTest {
   }
 
   @Test(timeOut = TIMEOUT * 2)
-  public void testSkipMessageWithExecutionIdEndToEnd() throws ExecutionException, InterruptedException {
+  public void testSkipMessageWithExecutionIdEndToEnd() {
     String storeName = Utils.getUniqueString("test-store");
 
-    long badExecutionId = nextExecutionId();
+    long badMessageExecutionId = nextExecutionId();
     byte[] message = getStoreCreationMessage(
         clusterName,
         storeName,
         owner,
         "invalid_key_schema",
         valueSchema,
-        badExecutionId,
+        badMessageExecutionId,
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
-    long badOffset = writer.put(new byte[0], message, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION)
-        .get()
-        .getOffset();
+    writer.put(new byte[0], message, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
 
     byte[] goodMessage = getStoreCreationMessage(
         clusterName,
@@ -178,7 +176,7 @@ public class AdminConsumptionTaskIntegrationTest {
       Assert.assertTrue(parentControllerClient.getStore(storeName).isError());
     });
 
-    parentControllerClient.skipAdminMessage(null, false, String.valueOf(badExecutionId));
+    parentControllerClient.skipAdminMessage(null, false, String.valueOf(badMessageExecutionId));
 
     TestUtils.waitForNonDeterministicAssertion(TIMEOUT * 2, TimeUnit.MILLISECONDS, () -> {
       Assert.assertFalse(parentControllerClient.getStore(storeName).isError());
