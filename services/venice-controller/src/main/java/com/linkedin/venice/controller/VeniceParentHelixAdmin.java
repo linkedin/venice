@@ -2347,14 +2347,20 @@ public class VeniceParentHelixAdmin implements Admin {
       try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
         ReadWriteStoreRepository repository = resources.getStoreMetadataRepository();
         Store parentStore = repository.getStore(storeName);
-        int version = Version.parseVersionFromKafkaTopicName(kafkaTopic);
-        parentStore.updateVersionStatus(version, ONLINE);
-        repository.updateStore(parentStore);
-        LOGGER.info(
-            "Updating parent store {} version {} status to {} after roll-forward",
-            parentStore.getName(),
-            version,
-            ONLINE);
+
+        // Mark the parent store as ONLINE if it's a deferred version swap. Otherwise, it will be handled by
+        // DeferredVersionSwapService
+        Version parentVersion = parentStore.getVersion(futureVersionBeforeRollForward);
+        if (parentStore.getTargetSwapRegion() == null && parentVersion.isVersionSwapDeferred()) {
+          int version = Version.parseVersionFromKafkaTopicName(kafkaTopic);
+          parentStore.updateVersionStatus(version, ONLINE);
+          repository.updateStore(parentStore);
+          LOGGER.info(
+              "Updating parent store {} version {} status to {} after roll-forward",
+              parentStore.getName(),
+              version,
+              ONLINE);
+        }
       }
       LOGGER.info(
           "Roll forward to future version {} is successful in all regions for store {}",
