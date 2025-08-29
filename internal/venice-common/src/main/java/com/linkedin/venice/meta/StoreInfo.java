@@ -90,6 +90,7 @@ public class StoreInfo {
     storeInfo.setTTLRepushEnabled(store.isTTLRepushEnabled());
     storeInfo.setEnumSchemaEvolutionAllowed(store.isEnumSchemaEvolutionAllowed());
     storeInfo.setStoreLifecycleHooks(store.getStoreLifecycleHooks());
+    storeInfo.setLatestVersionPromoteToCurrentTimestamp(store.getLatestVersionPromoteToCurrentTimestamp());
     return storeInfo;
   }
 
@@ -370,6 +371,7 @@ public class StoreInfo {
   private boolean ttlRepushEnabled = false;
   private boolean enumSchemaEvolutionAllowed = false;
   private List<LifecycleHooksRecord> storeLifecycleHooks = new ArrayList<>();
+  private long getLatestVersionPromoteToCurrentTimestamp;
 
   public StoreInfo() {
   }
@@ -978,5 +980,13 @@ public class StoreInfo {
 
   public void setStoreLifecycleHooks(List<LifecycleHooksRecord> storeLifecycleHooks) {
     this.storeLifecycleHooks = storeLifecycleHooks;
+  }
+
+  public long getLatestVersionPromoteToCurrentTimestamp() {
+    return this.getLatestVersionPromoteToCurrentTimestamp;
+  }
+
+  public void setLatestVersionPromoteToCurrentTimestamp(long latestVersionPromoteToCurrentTimestamp) {
+    this.getLatestVersionPromoteToCurrentTimestamp = latestVersionPromoteToCurrentTimestamp;
   }
 }
