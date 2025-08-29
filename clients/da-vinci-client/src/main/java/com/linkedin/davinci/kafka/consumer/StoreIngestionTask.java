@@ -1839,7 +1839,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     String errorType = e.getClass().getSimpleName();
     LOGGER.error("Ingestion failed for {} due to {}. Will propagate to reporters.", ingestionTaskName, errorType, e);
     reportError(partitionConsumptionStateMap.values(), errorPartitionId, "Caught Exception during ingestion.", e);
-    hostLevelIngestionStats.recordIngestionFailure();
+    if (isRunning.get()) {
+      hostLevelIngestionStats.recordIngestionFailure();
+    }
   }
 
   private void handleIngestionThrowable(Throwable t) {
@@ -1850,7 +1852,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         errorPartitionId,
         "Caught non-exception Throwable during ingestion.",
         new VeniceException(t));
-    hostLevelIngestionStats.recordIngestionFailure();
+    if (isRunning.get()) {
+      hostLevelIngestionStats.recordIngestionFailure();
+    }
   }
 
   private void reportError(
