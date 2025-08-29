@@ -6,6 +6,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_BROKER_
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_SOURCE_TOPIC_CHUNKING_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.LATEST_KAFKA_MESSAGE_ENVELOPE_SCHEMA_STRING;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUBSUB_INPUT_SPLIT_STRATEGY;
 
 import com.github.luben.zstd.ZstdDictTrainer;
@@ -54,6 +55,7 @@ public class KafkaInputDictTrainer {
     private final CompressionStrategy sourceVersionCompressionStrategy;
 
     private final boolean sourceVersionChunkingEnabled;
+    private String latestKMESchema;
 
     Param(ParamBuilder builder) {
       this.kafkaInputBroker = builder.kafkaInputBroker;
@@ -64,6 +66,7 @@ public class KafkaInputDictTrainer {
       this.dictSampleSize = builder.dictSampleSize;
       this.sourceVersionCompressionStrategy = builder.sourceVersionCompressionStrategy;
       this.sourceVersionChunkingEnabled = builder.sourceVersionChunkingEnabled;
+      this.latestKMESchema = builder.latestKMESchema;
     }
   }
 
@@ -76,6 +79,7 @@ public class KafkaInputDictTrainer {
     private int dictSampleSize;
     private CompressionStrategy sourceVersionCompressionStrategy;
     private boolean sourceVersionChunkingEnabled;
+    private String latestKMESchema;
 
     public ParamBuilder setKafkaInputBroker(String kafkaInputBroker) {
       this.kafkaInputBroker = kafkaInputBroker;
@@ -114,6 +118,11 @@ public class KafkaInputDictTrainer {
 
     public ParamBuilder setSourceVersionChunkingEnabled(boolean chunkingEnabled) {
       this.sourceVersionChunkingEnabled = chunkingEnabled;
+      return this;
+    }
+
+    public ParamBuilder setLatestKMESchema(String latestKMESchema) {
+      this.latestKMESchema = latestKMESchema;
       return this;
     }
 
@@ -164,6 +173,7 @@ public class KafkaInputDictTrainer {
     properties.setProperty(COMPRESSION_DICTIONARY_SAMPLE_SIZE, Integer.toString(param.dictSampleSize));
     properties
         .setProperty(KAFKA_INPUT_SOURCE_TOPIC_CHUNKING_ENABLED, Boolean.toString(param.sourceVersionChunkingEnabled));
+    properties.setProperty(LATEST_KAFKA_MESSAGE_ENVELOPE_SCHEMA_STRING, param.latestKMESchema);
 
     props = new VeniceProperties(properties);
     jobConf = new JobConf();
