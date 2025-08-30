@@ -12,6 +12,7 @@ import static com.linkedin.venice.stats.dimensions.MessageType.*;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE_CATEGORY;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_MESSAGE_TYPE;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_GRANULARITY;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_METHOD;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_RETRY_TYPE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY;
@@ -28,6 +29,7 @@ import static org.testng.Assert.assertTrue;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.stats.ClientType;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
+import com.linkedin.venice.stats.dimensions.Granularity;
 import com.linkedin.venice.stats.dimensions.MessageType;
 import com.linkedin.venice.stats.dimensions.RequestRetryType;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
@@ -54,6 +56,9 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
+/**
+ * Unit tests for {@link BasicClientStats}.
+ */
 public class BasicClientStatsTest {
   @Test
   public void testMetricPrefix() {
@@ -412,6 +417,14 @@ public class BasicClientStatsTest {
             MetricUnit.NUMBER,
             "Key count of retry requests for client",
             Utils.setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD, VENICE_MESSAGE_TYPE)));
+    expectedMetrics.put(
+        ClientMetricEntity.GRANULARITY_CALL_TIME,
+        new MetricEntity(
+            "granularity_call_time",
+            MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS,
+            MetricUnit.MILLISECOND,
+            "Time taken for each granularity call",
+            Utils.setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD, VENICE_REQUEST_GRANULARITY, VENICE_MESSAGE_TYPE)));
 
     Set<String> uniqueMetricEntitiesNames = new HashSet<>();
 
@@ -517,5 +530,345 @@ public class BasicClientStatsTest {
         .put(VENICE_REQUEST_METHOD.getDimensionNameInDefaultFormat(), SINGLE_GET.getDimensionValue())
         .put(VENICE_MESSAGE_TYPE.getDimensionNameInDefaultFormat(), type.getDimensionValue());
     return builder.build();
+  }
+
+  @Test
+  public void testRequestSerializationTimeMetrics() {
+    for (ClientType client: ClientType.values()) {
+      InMemoryMetricReader inMemoryMetricReader = InMemoryMetricReader.create();
+      ClientStats stats = createClientStats(inMemoryMetricReader, client);
+
+      double latency = 12.0;
+      stats.recordRequestSerializationTime(latency);
+
+      // Tehuti
+      Map<String, ? extends Metric> metrics = stats.getMetricsRepository().metrics();
+      String storeName = "test_store";
+      Assert
+          .assertEquals(metrics.get(String.format(".%s--request_serialization_time.Avg", storeName)).value(), latency);
+      Assert
+          .assertEquals(metrics.get(String.format(".%s--request_serialization_time.Max", storeName)).value(), latency);
+
+      // OTel
+      Attributes expectedAttributes = Attributes.builder()
+          .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), storeName)
+          .put(VENICE_REQUEST_METHOD.getDimensionNameInDefaultFormat(), SINGLE_GET.getDimensionValue())
+          .put(
+              VENICE_REQUEST_GRANULARITY.getDimensionNameInDefaultFormat(),
+              Granularity.SERIALIZATION.getDimensionValue())
+          .put(VENICE_MESSAGE_TYPE.getDimensionNameInDefaultFormat(), REQUEST.getDimensionValue())
+          .build();
+
+      validateHistogramPointData(
+          inMemoryMetricReader,
+          latency,
+          latency,
+          1,
+          latency,
+          expectedAttributes,
+          ClientMetricEntity.GRANULARITY_CALL_TIME.getMetricEntity().getMetricName(),
+          client.getMetricsPrefix());
+    }
+  }
+
+  @Test
+  public void testRequestSubmissionToResponseHandlingTimeMetrics() {
+    for (ClientType client: ClientType.values()) {
+      InMemoryMetricReader inMemoryMetricReader = InMemoryMetricReader.create();
+      ClientStats stats = createClientStats(inMemoryMetricReader, client);
+
+      double latency = 15.5;
+      stats.recordRequestSubmissionToResponseHandlingTime(latency);
+
+      // Tehuti
+      Map<String, ? extends Metric> metrics = stats.getMetricsRepository().metrics();
+      String storeName = "test_store";
+      Assert.assertEquals(
+          metrics.get(String.format(".%s--request_submission_to_response_handling_time.Avg", storeName)).value(),
+          latency);
+      Assert.assertEquals(
+          metrics.get(String.format(".%s--request_submission_to_response_handling_time.Max", storeName)).value(),
+          latency);
+
+      // OTel
+      Attributes expectedAttributes = Attributes.builder()
+          .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), storeName)
+          .put(VENICE_REQUEST_METHOD.getDimensionNameInDefaultFormat(), SINGLE_GET.getDimensionValue())
+          .put(
+              VENICE_REQUEST_GRANULARITY.getDimensionNameInDefaultFormat(),
+              Granularity.SUBMISSION_TO_RESPONSE.getDimensionValue())
+          .put(VENICE_MESSAGE_TYPE.getDimensionNameInDefaultFormat(), REQUEST.getDimensionValue())
+          .build();
+
+      validateHistogramPointData(
+          inMemoryMetricReader,
+          latency,
+          latency,
+          1,
+          latency,
+          expectedAttributes,
+          ClientMetricEntity.GRANULARITY_CALL_TIME.getMetricEntity().getMetricName(),
+          client.getMetricsPrefix());
+    }
+  }
+
+  @Test
+  public void testResponseDeserializationTimeMetrics() {
+    for (ClientType client: ClientType.values()) {
+      InMemoryMetricReader inMemoryMetricReader = InMemoryMetricReader.create();
+      ClientStats stats = createClientStats(inMemoryMetricReader, client);
+
+      double latency = 8.0;
+      stats.recordResponseDeserializationTime(latency);
+
+      // Tehuti
+      Map<String, ? extends Metric> metrics = stats.getMetricsRepository().metrics();
+      String storeName = "test_store";
+      Assert.assertEquals(
+          metrics.get(String.format(".%s--response_deserialization_time.Avg", storeName)).value(),
+          latency);
+      Assert.assertEquals(
+          metrics.get(String.format(".%s--response_deserialization_time.Max", storeName)).value(),
+          latency);
+
+      // OTel
+      Attributes expectedAttributes = Attributes.builder()
+          .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), storeName)
+          .put(VENICE_REQUEST_METHOD.getDimensionNameInDefaultFormat(), SINGLE_GET.getDimensionValue())
+          .put(
+              VENICE_REQUEST_GRANULARITY.getDimensionNameInDefaultFormat(),
+              Granularity.DESERIALIZATION.getDimensionValue())
+          .put(VENICE_MESSAGE_TYPE.getDimensionNameInDefaultFormat(), RESPONSE.getDimensionValue())
+          .build();
+
+      validateHistogramPointData(
+          inMemoryMetricReader,
+          latency,
+          latency,
+          1,
+          latency,
+          expectedAttributes,
+          ClientMetricEntity.GRANULARITY_CALL_TIME.getMetricEntity().getMetricName(),
+          client.getMetricsPrefix());
+    }
+  }
+
+  @Test
+  public void testResponseDecompressionTimeMetrics() {
+    for (ClientType client: ClientType.values()) {
+      InMemoryMetricReader inMemoryMetricReader = InMemoryMetricReader.create();
+      ClientStats stats = createClientStats(inMemoryMetricReader, client);
+
+      double latency = 4.0;
+      stats.recordResponseDecompressionTime(latency);
+
+      // Tehuti
+      Map<String, ? extends Metric> metrics = stats.getMetricsRepository().metrics();
+      String storeName = "test_store";
+      Assert
+          .assertEquals(metrics.get(String.format(".%s--response_decompression_time.Avg", storeName)).value(), latency);
+      Assert
+          .assertEquals(metrics.get(String.format(".%s--response_decompression_time.Max", storeName)).value(), latency);
+
+      // OTel
+      Attributes expectedAttributes = Attributes.builder()
+          .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), storeName)
+          .put(VENICE_REQUEST_METHOD.getDimensionNameInDefaultFormat(), SINGLE_GET.getDimensionValue())
+          .put(
+              VENICE_REQUEST_GRANULARITY.getDimensionNameInDefaultFormat(),
+              Granularity.DECOMPRESSION.getDimensionValue())
+          .put(VENICE_MESSAGE_TYPE.getDimensionNameInDefaultFormat(), RESPONSE.getDimensionValue())
+          .build();
+
+      validateHistogramPointData(
+          inMemoryMetricReader,
+          latency,
+          latency,
+          1,
+          latency,
+          expectedAttributes,
+          ClientMetricEntity.GRANULARITY_CALL_TIME.getMetricEntity().getMetricName(),
+          client.getMetricsPrefix());
+    }
+  }
+
+  @Test
+  public void testStreamingResponseTimeToReceiveFirstRecordMetrics() {
+    for (ClientType client: ClientType.values()) {
+      InMemoryMetricReader inMemoryMetricReader = InMemoryMetricReader.create();
+      ClientStats stats = createClientStats(inMemoryMetricReader, client);
+
+      double latency = 5.0;
+      stats.recordStreamingResponseTimeToReceiveFirstRecord(latency);
+
+      // Tehuti
+      Map<String, ? extends Metric> metrics = stats.getMetricsRepository().metrics();
+      String storeName = "test_store";
+      Assert.assertEquals(metrics.get(String.format(".%s--response_ttfr.Avg", storeName)).value(), latency);
+
+      // OTel
+      Attributes expectedAttributes = Attributes.builder()
+          .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), storeName)
+          .put(VENICE_REQUEST_METHOD.getDimensionNameInDefaultFormat(), SINGLE_GET.getDimensionValue())
+          .put(
+              VENICE_REQUEST_GRANULARITY.getDimensionNameInDefaultFormat(),
+              Granularity.FIRST_RECORD.getDimensionValue())
+          .put(VENICE_MESSAGE_TYPE.getDimensionNameInDefaultFormat(), RESPONSE.getDimensionValue())
+          .build();
+
+      validateHistogramPointData(
+          inMemoryMetricReader,
+          latency,
+          latency,
+          1,
+          latency,
+          expectedAttributes,
+          ClientMetricEntity.GRANULARITY_CALL_TIME.getMetricEntity().getMetricName(),
+          client.getMetricsPrefix());
+    }
+  }
+
+  @Test
+  public void testStreamingResponseTimeToReceive50PctRecordMetrics() {
+    for (ClientType client: ClientType.values()) {
+      InMemoryMetricReader inMemoryMetricReader = InMemoryMetricReader.create();
+      ClientStats stats = createClientStats(inMemoryMetricReader, client);
+
+      double latency = 6.0;
+      stats.recordStreamingResponseTimeToReceive50PctRecord(latency);
+
+      // Tehuti
+      Map<String, ? extends Metric> metrics = stats.getMetricsRepository().metrics();
+      String storeName = "test_store";
+      Assert.assertEquals(metrics.get(String.format(".%s--response_tt50pr.Avg", storeName)).value(), latency);
+
+      // OTel
+      Attributes expectedAttributes = Attributes.builder()
+          .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), storeName)
+          .put(VENICE_REQUEST_METHOD.getDimensionNameInDefaultFormat(), SINGLE_GET.getDimensionValue())
+          .put(
+              VENICE_REQUEST_GRANULARITY.getDimensionNameInDefaultFormat(),
+              Granularity.PCT_50_RECORD.getDimensionValue())
+          .put(VENICE_MESSAGE_TYPE.getDimensionNameInDefaultFormat(), RESPONSE.getDimensionValue())
+          .build();
+
+      validateHistogramPointData(
+          inMemoryMetricReader,
+          latency,
+          latency,
+          1,
+          latency,
+          expectedAttributes,
+          ClientMetricEntity.GRANULARITY_CALL_TIME.getMetricEntity().getMetricName(),
+          client.getMetricsPrefix());
+    }
+  }
+
+  @Test
+  public void testStreamingResponseTimeToReceive90PctRecordMetrics() {
+    for (ClientType client: ClientType.values()) {
+      InMemoryMetricReader inMemoryMetricReader = InMemoryMetricReader.create();
+      ClientStats stats = createClientStats(inMemoryMetricReader, client);
+
+      double latency = 7.0;
+      stats.recordStreamingResponseTimeToReceive90PctRecord(latency);
+
+      // Tehuti
+      Map<String, ? extends Metric> metrics = stats.getMetricsRepository().metrics();
+      String storeName = "test_store";
+      Assert.assertEquals(metrics.get(String.format(".%s--response_tt90pr.Avg", storeName)).value(), latency);
+
+      // OTel
+      Attributes expectedAttributes = Attributes.builder()
+          .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), storeName)
+          .put(VENICE_REQUEST_METHOD.getDimensionNameInDefaultFormat(), SINGLE_GET.getDimensionValue())
+          .put(
+              VENICE_REQUEST_GRANULARITY.getDimensionNameInDefaultFormat(),
+              Granularity.PCT_90_RECORD.getDimensionValue())
+          .put(VENICE_MESSAGE_TYPE.getDimensionNameInDefaultFormat(), RESPONSE.getDimensionValue())
+          .build();
+
+      validateHistogramPointData(
+          inMemoryMetricReader,
+          latency,
+          latency,
+          1,
+          latency,
+          expectedAttributes,
+          ClientMetricEntity.GRANULARITY_CALL_TIME.getMetricEntity().getMetricName(),
+          client.getMetricsPrefix());
+    }
+  }
+
+  @Test
+  public void testStreamingResponseTimeToReceive95PctRecordMetrics() {
+    for (ClientType client: ClientType.values()) {
+      InMemoryMetricReader inMemoryMetricReader = InMemoryMetricReader.create();
+      ClientStats stats = createClientStats(inMemoryMetricReader, client);
+
+      double latency = 9.0;
+      stats.recordStreamingResponseTimeToReceive95PctRecord(latency);
+
+      // Tehuti
+      Map<String, ? extends Metric> metrics = stats.getMetricsRepository().metrics();
+      String storeName = "test_store";
+      Assert.assertEquals(metrics.get(String.format(".%s--response_tt95pr.Avg", storeName)).value(), latency);
+
+      // OTel
+      Attributes expectedAttributes = Attributes.builder()
+          .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), storeName)
+          .put(VENICE_REQUEST_METHOD.getDimensionNameInDefaultFormat(), SINGLE_GET.getDimensionValue())
+          .put(
+              VENICE_REQUEST_GRANULARITY.getDimensionNameInDefaultFormat(),
+              Granularity.PCT_95_RECORD.getDimensionValue())
+          .put(VENICE_MESSAGE_TYPE.getDimensionNameInDefaultFormat(), RESPONSE.getDimensionValue())
+          .build();
+
+      validateHistogramPointData(
+          inMemoryMetricReader,
+          latency,
+          latency,
+          1,
+          latency,
+          expectedAttributes,
+          ClientMetricEntity.GRANULARITY_CALL_TIME.getMetricEntity().getMetricName(),
+          client.getMetricsPrefix());
+    }
+  }
+
+  @Test
+  public void testStreamingResponseTimeToReceive99PctRecordMetrics() {
+    for (ClientType client: ClientType.values()) {
+      InMemoryMetricReader inMemoryMetricReader = InMemoryMetricReader.create();
+      ClientStats stats = createClientStats(inMemoryMetricReader, client);
+
+      double latency = 11.0;
+      stats.recordStreamingResponseTimeToReceive99PctRecord(latency);
+
+      // Tehuti
+      Map<String, ? extends Metric> metrics = stats.getMetricsRepository().metrics();
+      String storeName = "test_store";
+      Assert.assertEquals(metrics.get(String.format(".%s--response_tt99pr.Avg", storeName)).value(), latency);
+
+      // OTel
+      Attributes expectedAttributes = Attributes.builder()
+          .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), storeName)
+          .put(VENICE_REQUEST_METHOD.getDimensionNameInDefaultFormat(), SINGLE_GET.getDimensionValue())
+          .put(
+              VENICE_REQUEST_GRANULARITY.getDimensionNameInDefaultFormat(),
+              Granularity.PCT_99_RECORD.getDimensionValue())
+          .put(VENICE_MESSAGE_TYPE.getDimensionNameInDefaultFormat(), RESPONSE.getDimensionValue())
+          .build();
+
+      validateHistogramPointData(
+          inMemoryMetricReader,
+          latency,
+          latency,
+          1,
+          latency,
+          expectedAttributes,
+          ClientMetricEntity.GRANULARITY_CALL_TIME.getMetricEntity().getMetricName(),
+          client.getMetricsPrefix());
+    }
   }
 }

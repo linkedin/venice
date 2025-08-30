@@ -43,6 +43,9 @@ public class VeniceMetricsDimensionsTest {
         case REPUSH_TRIGGER_SOURCE:
           assertEquals(dimension.getDimensionName(format), "repush.trigger.source");
           break;
+        case VENICE_REQUEST_GRANULARITY:
+          assertEquals(dimension.getDimensionName(format), "venice.request.granularity");
+          break;
         default:
           throw new IllegalArgumentException("Unknown dimension: " + dimension);
       }
@@ -84,6 +87,9 @@ public class VeniceMetricsDimensionsTest {
         case REPUSH_TRIGGER_SOURCE:
           assertEquals(dimension.getDimensionName(format), "repush.trigger.source");
           break;
+        case VENICE_REQUEST_GRANULARITY:
+          assertEquals(dimension.getDimensionName(format), "venice.request.granularity");
+          break;
         default:
           throw new IllegalArgumentException("Unknown dimension: " + dimension);
       }
@@ -124,6 +130,9 @@ public class VeniceMetricsDimensionsTest {
           break;
         case REPUSH_TRIGGER_SOURCE:
           assertEquals(dimension.getDimensionName(format), "Repush.Trigger.Source");
+          break;
+        case VENICE_REQUEST_GRANULARITY:
+          assertEquals(dimension.getDimensionName(format), "Venice.Request.Granularity");
           break;
         default:
           throw new IllegalArgumentException("Unknown dimension: " + dimension);
