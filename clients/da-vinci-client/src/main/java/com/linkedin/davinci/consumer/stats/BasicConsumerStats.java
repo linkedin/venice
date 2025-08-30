@@ -280,8 +280,8 @@ public class BasicConsumerStats extends AbstractVeniceStats {
      * Measures the min/max consuming version across all subscribed partitions
      */
     CURRENT_CONSUMING_VERSION(
-        MetricType.GAUGE, MetricUnit.NUMBER, "Measures the min/max consuming version across all subscribed partitions",
-        setOf(VENICE_STORE_NAME)
+        MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS, MetricUnit.NUMBER,
+        "Measures the min/max consuming version across all subscribed partitions", setOf(VENICE_STORE_NAME)
     ),
     /**
      * Measures the count of records consumed
