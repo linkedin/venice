@@ -208,6 +208,14 @@ public class BasicConsumerStats extends AbstractVeniceStats {
     }
   }
 
+  public void emitVersionSwapCountMetrics(VeniceResponseStatusCategory responseStatusCategory, long count) {
+    if (responseStatusCategory == SUCCESS) {
+      versionSwapSuccessCountMetric.record(count, responseStatusCategory);
+    } else {
+      versionSwapFailCountMetric.record(count, responseStatusCategory);
+    }
+  }
+
   public void emitVersionSwapCountMetrics(VeniceResponseStatusCategory responseStatusCategory) {
     if (responseStatusCategory == SUCCESS) {
       versionSwapSuccessCountMetric.record(versionSwapSuccessCount.incrementAndGet(), responseStatusCategory);
@@ -230,6 +238,14 @@ public class BasicConsumerStats extends AbstractVeniceStats {
   @VisibleForTesting
   public Attributes getBaseAttributes() {
     return baseAttributes;
+  }
+
+  public int getVersionSwapSuccessCount() {
+    return versionSwapSuccessCount.get();
+  }
+
+  public int getVersionSwapFailCount() {
+    return versionSwapFailCount.get();
   }
 
   /**
@@ -257,15 +273,15 @@ public class BasicConsumerStats extends AbstractVeniceStats {
      * Measures the max heartbeat delay across all subscribed partitions
      */
     HEART_BEAT_DELAY(
-        MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS, MetricUnit.MILLISECOND,
-        "Measures the max heartbeat delay across all subscribed partitions", setOf(VENICE_STORE_NAME)
+        MetricType.GAUGE, MetricUnit.MILLISECOND, "Measures the max heartbeat delay across all subscribed partitions",
+        setOf(VENICE_STORE_NAME)
     ),
     /**
      * Measures the min/max consuming version across all subscribed partitions
      */
     CURRENT_CONSUMING_VERSION(
-        MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS, MetricUnit.NUMBER,
-        "Measures the min/max consuming version across all subscribed partitions", setOf(VENICE_STORE_NAME)
+        MetricType.GAUGE, MetricUnit.NUMBER, "Measures the min/max consuming version across all subscribed partitions",
+        setOf(VENICE_STORE_NAME)
     ),
     /**
      * Measures the count of records consumed
@@ -284,7 +300,7 @@ public class BasicConsumerStats extends AbstractVeniceStats {
      * Measures the count of version swaps
      */
     VERSION_SWAP_COUNT(
-        MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS, MetricUnit.NUMBER, "Measures the count of version swaps",
+        MetricType.GAUGE, MetricUnit.NUMBER, "Measures the count of version swaps",
         setOf(VENICE_STORE_NAME, VENICE_RESPONSE_STATUS_CODE_CATEGORY)
     ),
     /**
