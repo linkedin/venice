@@ -336,4 +336,112 @@ public class AggKafkaConsumerServiceTest {
         killIngestionTaskRunnable);
     return repairRunnable;
   }
+
+  @Test
+  public void testGetIngestionInfoForSuccess() {
+    String regionName = "region1";
+    String kafkaUrl = "kafka://test-cluster:9092";
+
+    Map<String, String> kafkaClusterUrlToAliasMap = new HashMap<>();
+    kafkaClusterUrlToAliasMap.put(kafkaUrl, regionName);
+    when(serverConfig.getKafkaClusterUrlToAliasMap()).thenReturn(kafkaClusterUrlToAliasMap);
+
+    AggKafkaConsumerService testService = createTestService();
+    AggKafkaConsumerService serviceSpy = spy(testService);
+
+    AbstractKafkaConsumerService mockConsumerService = mock(AbstractKafkaConsumerService.class);
+    doReturn(mockConsumerService).when(serviceSpy).getKafkaConsumerService(kafkaUrl);
+
+    TopicPartitionIngestionInfo mockIngestionInfo =
+        new TopicPartitionIngestionInfo(1000L, 50L, 10.5, 1024.0, "consumer-1", 100L, 200L, topic.getName());
+    Map<PubSubTopicPartition, TopicPartitionIngestionInfo> mockIngestionInfoMap = new HashMap<>();
+    mockIngestionInfoMap.put(topicPartition, mockIngestionInfo);
+    when(mockConsumerService.getIngestionInfoFor(topic, topicPartition)).thenReturn(mockIngestionInfoMap);
+
+    String result = serviceSpy.getIngestionInfoFor(topic, topicPartition, regionName);
+
+    Assert.assertNotNull(result);
+    Assert.assertTrue(result.contains(topicPartition.toString()));
+    Assert.assertTrue(result.contains("latestOffset:1000"));
+    Assert.assertTrue(result.contains("offsetLag:50"));
+    Assert.assertTrue(result.contains("msgRate:10.5"));
+    Assert.assertTrue(result.contains("consumer-1"));
+
+    verify(mockConsumerService).getIngestionInfoFor(topic, topicPartition);
+  }
+
+  @Test
+  public void testGetIngestionInfoForNullRegionName() {
+    String result = aggKafkaConsumerService.getIngestionInfoFor(topic, topicPartition, null);
+    Assert.assertTrue(result.contains("kafkaUrl is not found for region"));
+  }
+
+  @Test
+  public void testGetIngestionInfoForUnknownRegionName() {
+    Map<String, String> kafkaClusterUrlToAliasMap = new HashMap<>();
+    kafkaClusterUrlToAliasMap.put("kafka://existing:9092", "existing-region");
+    when(serverConfig.getKafkaClusterUrlToAliasMap()).thenReturn(kafkaClusterUrlToAliasMap);
+
+    AggKafkaConsumerService testService = createTestService();
+    String result = testService.getIngestionInfoFor(topic, topicPartition, "unknown-region");
+    Assert.assertTrue(result.contains("kafkaUrl is not found for region"));
+  }
+
+  @Test
+  public void testGetIngestionInfoForNullConsumerService() {
+    String regionName = "region1";
+    String kafkaUrl = "kafka://test-cluster:9092";
+
+    Map<String, String> kafkaClusterUrlToAliasMap = new HashMap<>();
+    kafkaClusterUrlToAliasMap.put(kafkaUrl, regionName);
+    when(serverConfig.getKafkaClusterUrlToAliasMap()).thenReturn(kafkaClusterUrlToAliasMap);
+
+    AggKafkaConsumerService testService = createTestService();
+    AggKafkaConsumerService serviceSpy = spy(testService);
+
+    doReturn(null).when(serviceSpy).getKafkaConsumerService(kafkaUrl);
+
+    String result = serviceSpy.getIngestionInfoFor(topic, topicPartition, regionName);
+    Assert.assertTrue(result.contains("Kafka consumer service is not found"));
+  }
+
+  @Test
+  public void testGetIngestionInfoForEmptyIngestionInfo() {
+    String regionName = "region1";
+    String kafkaUrl = "kafka://test-cluster:9092";
+
+    Map<String, String> kafkaClusterUrlToAliasMap = new HashMap<>();
+    kafkaClusterUrlToAliasMap.put(kafkaUrl, regionName);
+    when(serverConfig.getKafkaClusterUrlToAliasMap()).thenReturn(kafkaClusterUrlToAliasMap);
+
+    AggKafkaConsumerService testService = createTestService();
+    AggKafkaConsumerService serviceSpy = spy(testService);
+
+    AbstractKafkaConsumerService mockConsumerService = mock(AbstractKafkaConsumerService.class);
+    doReturn(mockConsumerService).when(serviceSpy).getKafkaConsumerService(kafkaUrl);
+
+    when(mockConsumerService.getIngestionInfoFor(topic, topicPartition)).thenReturn(new HashMap<>());
+
+    String result = serviceSpy.getIngestionInfoFor(topic, topicPartition, regionName);
+
+    Assert.assertNotNull(result);
+    Assert.assertEquals(result, "");
+
+    verify(mockConsumerService).getIngestionInfoFor(topic, topicPartition);
+  }
+
+  private AggKafkaConsumerService createTestService() {
+    return new AggKafkaConsumerService(
+        consumerFactory,
+        pubSubPropertiesSupplier,
+        serverConfig,
+        ingestionThrottler,
+        kafkaClusterBasedRecordThrottler,
+        metricsRepository,
+        staleTopicChecker,
+        pubSubDeserializer,
+        killIngestionTaskRunnable,
+        t -> false,
+        metadataRepository);
+  }
 }

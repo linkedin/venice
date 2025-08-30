@@ -28,6 +28,7 @@ import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
 import com.linkedin.davinci.ingestion.utils.IngestionTaskReusableObjects;
+import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.store.AbstractStorageEngineTest;
@@ -130,6 +131,8 @@ public abstract class KafkaStoreIngestionServiceTest {
 
     setupMockConfig();
 
+    HeartbeatMonitoringService mockHeartbeatMonitoringService = mock(HeartbeatMonitoringService.class);
+
     kafkaStoreIngestionService = new KafkaStoreIngestionService(
         mockStorageService,
         mockVeniceConfigLoader,
@@ -151,7 +154,7 @@ public abstract class KafkaStoreIngestionServiceTest {
         null,
         mockPubSubClientsFactory,
         Optional.empty(),
-        null,
+        mockHeartbeatMonitoringService,
         null,
         null,
         Optional.empty());
@@ -388,6 +391,7 @@ public abstract class KafkaStoreIngestionServiceTest {
 
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testStoreIngestionTaskShutdownLastPartition(boolean isIsolatedIngestion) {
+    HeartbeatMonitoringService mockHeartbeatMonitoringService = mock(HeartbeatMonitoringService.class);
     kafkaStoreIngestionService = new KafkaStoreIngestionService(
         mockStorageService,
         mockVeniceConfigLoader,
@@ -409,7 +413,7 @@ public abstract class KafkaStoreIngestionServiceTest {
         null,
         mockPubSubClientsFactory,
         Optional.empty(),
-        null,
+        mockHeartbeatMonitoringService,
         null,
         null,
         Optional.empty());
