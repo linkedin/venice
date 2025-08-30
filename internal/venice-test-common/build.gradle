@@ -151,7 +151,8 @@ def integrationTestBuckets = [
         "com.linkedin.venice.endToEnd.PartialUpdateTest"
     ],
     "3": [
-        "com.linkedin.venice.endToEnd.PartialUpdateWithParallelProcessingTest"
+        "com.linkedin.venice.endToEnd.TestRepush",
+        "com.linkedin.venice.endToEnd.TestIncrementalPush"
     ],
     "4": [
         "com.linkedin.venice.endToEnd.TestDeferredVersionSwap",
