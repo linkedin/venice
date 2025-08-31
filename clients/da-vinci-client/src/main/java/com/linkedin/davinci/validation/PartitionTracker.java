@@ -909,6 +909,7 @@ public class PartitionTracker {
             .append(" }");
       }
       if (segment != null) {
+        sb.append("; unregisteredProducer: ").append(!segment.isRegistered());
         if (!CollectionUtils.isEmpty(segment.getAggregates())) {
           sb.append("; aggregates: ");
           printMap(segment.getAggregates(), sb);
