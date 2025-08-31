@@ -215,6 +215,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   private final VeniceWriterFactory veniceWriterFactory;
   private final MetricsRepository metricsRepository;
 
+  private final HeartbeatMonitoringService heartbeatMonitoringService;
+
   public KafkaStoreIngestionService(
       StorageService storageService,
       VeniceConfigLoader veniceConfigLoader,
@@ -252,6 +254,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     this.partitionStateSerializer = partitionStateSerializer;
     this.compressorFactory = compressorFactory;
     this.zkHelixAdmin = zkHelixAdmin;
+    this.heartbeatMonitoringService = heartbeatMonitoringService;
     // Each topic that has any partition ingested by this class has its own lock.
     this.topicLockManager = new ResourceAutoClosableLockManager<>(ReentrantLock::new);
     this.serverConfig = veniceConfigLoader.getVeniceServerConfig();
@@ -550,6 +553,9 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
    */
   @Override
   public boolean startInner() {
+    if (heartbeatMonitoringService != null) {
+      heartbeatMonitoringService.setKafkaStoreIngestionService(this);
+    }
     ingestionExecutorService = Executors.newCachedThreadPool();
     topicNameToIngestionTaskMap.values().forEach(ingestionExecutorService::submit);
 
@@ -1435,4 +1441,33 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   public InternalDaVinciRecordTransformerConfig getInternalRecordTransformerConfig(String storeName) {
     return storeNameToInternalRecordTransformerConfig.get(storeName);
   }
+
+  public String prepareIngestionInfoFor(String storeName, Integer version, Integer partition, String regionName) {
+    try {
+      PubSubTopic versionTopic = pubSubTopicRepository.getTopic(Version.composeKafkaTopic(storeName, version));
+      StoreIngestionTask storeIngestionTask = getStoreIngestionTask(versionTopic.getName());
+      PartitionConsumptionState partitionConsumptionState = storeIngestionTask.getPartitionConsumptionState(partition);
+      if (partitionConsumptionState == null) {
+        return "PartitionConsumptionState is not available.";
+      }
+      PubSubTopic ingestingTopic = versionTopic;
+      String infoPrefix = "isCurrentVersion: " + (storeIngestionTask.isCurrentVersion()) + "\n";
+      if (storeIngestionTask.isHybridMode() && partitionConsumptionState.isEndOfPushReceived()
+          && partitionConsumptionState.getLeaderFollowerState() == LeaderFollowerStateType.LEADER) {
+        ingestingTopic = pubSubTopicRepository.getTopic(Utils.composeRealTimeTopic(storeName));
+      }
+      PubSubTopicPartition ingestingTopicPartition = new PubSubTopicPartitionImpl(ingestingTopic, partition);
+      return infoPrefix
+          + aggKafkaConsumerService.getIngestionInfoFor(versionTopic, ingestingTopicPartition, regionName);
+    } catch (Exception e) {
+      LOGGER.error(
+          "Error on preparing ingestion info for store: {}, version: {}, partition: {}",
+          storeName,
+          version,
+          partition,
+          e);
+      return "Error on preparing ingestion info: " + e.getMessage();
+    }
+  }
+
 }

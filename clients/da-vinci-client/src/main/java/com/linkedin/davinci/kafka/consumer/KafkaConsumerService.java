@@ -407,12 +407,7 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
         SharedKafkaConsumer consumer = consumerToConsumptionTask.getByIndex(slowestTaskId).getKey();
         Map<PubSubTopicPartition, TopicPartitionIngestionInfo> topicPartitionIngestionInfoMap =
             getIngestionInfoFromConsumer(consumer);
-        // Convert Map of ingestion info for this consumer to String for logging with each partition line by line
-        StringBuilder sb = new StringBuilder();
-        for (Map.Entry<PubSubTopicPartition, TopicPartitionIngestionInfo> entry: topicPartitionIngestionInfoMap
-            .entrySet()) {
-          sb.append(entry.getKey().toString()).append(": ").append(entry.getValue().toString()).append("\n");
-        }
+        String consumerIngestionInfoStr = convertTopicPartitionIngestionInfoMapToStr(topicPartitionIngestionInfoMap);
         // log the slowest consumer id if it couldn't make any progress in a minute!
         LOGGER.warn(
             "Shared consumer ({} - task {}) couldn't make any progress for over {} ms, thread name: {}, stack trace:\n{}, consumer info:\n{}",
@@ -421,10 +416,21 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
             maxElapsedTimeSinceLastPollInConsumerPool,
             slowestThread != null ? slowestThread.getName() : null,
             ExceptionUtils.threadToThrowableToString(slowestThread),
-            sb.toString());
+            consumerIngestionInfoStr);
       }
     }
     return maxElapsedTimeSinceLastPollInConsumerPool;
+  }
+
+  public static String convertTopicPartitionIngestionInfoMapToStr(
+      // Convert Map of ingestion info for this consumer to String for logging with each partition line by line
+      Map<PubSubTopicPartition, TopicPartitionIngestionInfo> topicPartitionIngestionInfoMap) {
+    StringBuilder sb = new StringBuilder();
+    for (Map.Entry<PubSubTopicPartition, TopicPartitionIngestionInfo> entry: topicPartitionIngestionInfoMap
+        .entrySet()) {
+      sb.append(entry.getKey().toString()).append(": ").append(entry.getValue().toString()).append("\n");
+    }
+    return sb.toString();
   }
 
   @Override
