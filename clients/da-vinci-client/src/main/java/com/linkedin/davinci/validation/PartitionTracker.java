@@ -334,12 +334,8 @@ public class PartitionTracker {
     int incomingSegmentNumber = consumerRecord.getValue().producerMetadata.segmentNumber;
     if (previousSegment == null) {
       if (incomingSegmentNumber != 0) {
-        handleUnregisteredProducer(
-            "track new segment with non-zero incomingSegment=" + incomingSegmentNumber,
-            consumerRecord,
-            null,
-            endOfPushReceived,
-            true);
+        final String scenario = "track new segment with non-zero incomingSegment=" + incomingSegmentNumber;
+        handleUnregisteredProducer(scenario, consumerRecord, endOfPushReceived, true);
       }
       return initializeNewSegment(type, consumerRecord, endOfPushReceived, true);
     }
@@ -410,12 +406,7 @@ public class PartitionTracker {
     getSegments(type).put(consumerRecord.getValue().getProducerMetadata().getProducerGUID(), newSegment);
 
     if (unregisteredProducer) {
-      handleUnregisteredProducer(
-          "initialize new segment with a non-" + ControlMessageType.START_OF_SEGMENT.name() + " message",
-          consumerRecord,
-          null,
-          endOfPushReceived,
-          tolerateAnyMessageType);
+      handleUnregisteredProducer(NON_SOS_SCENARIO, consumerRecord, endOfPushReceived, tolerateAnyMessageType);
     } else {
       newSegment.registeredSegment();
     }
@@ -425,26 +416,18 @@ public class PartitionTracker {
 
   /**
    * Found an unregistered producer when creating a segment.
-   * @param endOfPushReceived Whether end of push is received for this partition.
+   * @param endOfPushReceived      Whether end of push is received for this partition.
    * @param tolerateAnyMessageType If true, then a segment can be initialized without "START_OF_SEGMENT".
    */
   private void handleUnregisteredProducer(
       String scenario,
       DefaultPubSubMessage consumerRecord,
-      Segment segment,
       boolean endOfPushReceived,
       boolean tolerateAnyMessageType) {
-    if (endOfPushReceived && tolerateAnyMessageType) {
-      String errorMsgIdentifier = consumerRecord.getTopicPartition() + "-" + DataFaultType.UNREGISTERED_PRODUCER;
-      if (!REDUNDANT_LOGGING_FILTER.isRedundantException(errorMsgIdentifier)) {
-        logger.debug("Will {}, endOfPushReceived=true, tolerateAnyMessageType=true", scenario);
-      }
-    } else {
-      throw DataFaultType.UNREGISTERED_PRODUCER.getNewException(
-          segment,
-          consumerRecord,
-          "Cannot " + scenario + ", endOfPushReceived=" + endOfPushReceived + ", tolerateAnyMessageType="
-              + tolerateAnyMessageType);
+    if (!endOfPushReceived || !tolerateAnyMessageType) {
+      String extraInfo = "Cannot " + scenario + ", endOfPushReceived=" + endOfPushReceived + ", tolerateAnyMessageType="
+          + tolerateAnyMessageType;
+      throw DataFaultType.UNREGISTERED_PRODUCER.getNewException(null, consumerRecord, extraInfo);
     }
   }
 
@@ -772,6 +755,9 @@ public class PartitionTracker {
 
     throw new IllegalArgumentException("Unsupported TopicType: " + type);
   }
+
+  private static final String NON_SOS_SCENARIO =
+      "initialize new segment with a non-" + ControlMessageType.START_OF_SEGMENT.name() + " message";
 
   /**
    * Pre-allocated, as this is a hot path exception. In order to avoid confusion with where the exception comes from,
