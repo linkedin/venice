@@ -980,7 +980,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     if (topicSwitch.rewindStartTimestamp == REWIND_TIME_DECIDED_BY_SERVER) {
       rewindStartTimestamp = calculateRewindStartTime(pcs);
       LOGGER.info(
-          "{} leader calculated rewindStartTimestamp: {} for topic-partition: {}",
+          "Leader replica: {} calculated rewind timestamp: {} for tp: {}",
           pcs.getReplicaId(),
           rewindStartTimestamp,
           sourceTopicPartition);
@@ -999,7 +999,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       if (PubSubSymbolicPosition.EARLIEST.equals(rtStartPosition)) {
         if (rewindStartTimestamp > 0) {
           LOGGER.info(
-              "{} needs to rewind to timestamp: {} for source URL: {}, topic-partition: {} since no prior position found",
+              "Leader replica: {} needs to rewind to timestamp: {} for pubSubAddress: {}, tp: {} since no prior position found",
               pcs.getReplicaId(),
               rewindStartTimestamp,
               pubSubAddress,
@@ -1010,12 +1010,12 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
             rtStartPosition =
                 getRewindStartPositionForRealTimeTopic(pubSubAddress, newSourceTopicPartition, rewindStartTimestamp);
             LOGGER.info(
-                "{} get rtStartPosition: {} for source URL: {}, topic-partition: {}, rewind timestamp: {}",
+                "Leader replica: {} got rtPosition: {} for rewindTime: {} from pubSubAddress: {}/{}",
                 pcs.getReplicaId(),
                 rtStartPosition,
+                rewindStartTimestamp,
                 pubSubAddress,
-                newSourceTopicPartition,
-                rewindStartTimestamp);
+                newSourceTopicPartition);
             rtPositionsByPubSubAddress.put(pubSubAddress, rtStartPosition);
           } catch (Exception e) {
             /**
@@ -1031,10 +1031,10 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
             unreachableBrokerList.add(pubSubAddress);
             rtStartPosition = PubSubSymbolicPosition.EARLIEST;
             LOGGER.error(
-                "Failed contacting {}/{} when processing topic switch for replica {}. Setting upstream start position to {}",
+                "Leader replica: {} failed contacting {}/{} when processing topic switch. Setting upstream start position to: {}",
+                pcs.getReplicaId(),
                 pubSubAddress,
                 sourceTopicPartition,
-                pcs.getReplicaId(),
                 rtStartPosition);
             hostLevelIngestionStats.recordIngestionFailure();
             /**
@@ -1059,11 +1059,11 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           }
         } else {
           LOGGER.warn(
-              "Got unexpected rewind time: {} for: {}/{}, will start ingesting upstream from the beginning for replica: {}",
-              pubSubAddress,
-              sourceTopicPartition,
+              "Leader replica: {} got unexpected rewind time: {} for: {}/{}, will start ingesting upstream from the beginning",
+              pcs.getReplicaId(),
               rewindStartTimestamp,
-              pcs.getReplicaId());
+              pubSubAddress,
+              sourceTopicPartition);
           rtStartPosition = PubSubSymbolicPosition.EARLIEST;
           rtPositionsByPubSubAddress.put(pubSubAddress, rtStartPosition);
         }

@@ -4277,25 +4277,25 @@ public abstract class StoreIngestionTaskTest {
         LOGGER.info("Received null OffsetRecord!");
       } else {
         PubSubTopicPartition pubSubTopicPartition = topicPartitionOffset.getPubSubTopicPartition();
-        InMemoryPubSubPosition offset = topicPartitionOffset.getPubSubPosition();
+        InMemoryPubSubPosition position = topicPartitionOffset.getPubSubPosition();
         LOGGER.info(
-            "TopicPartition: {}, Offset: {}",
+            "Topic-partition: {}, position: {}",
             topicPartitionOffset.getPubSubTopicPartition(),
             topicPartitionOffset.getPubSubPosition());
-        if (pubSubTopicPartition.getPubSubTopic().isVersionTopic() && resubscriptionOffsetForVT.contains(offset)) {
+        if (pubSubTopicPartition.getPubSubTopic().isVersionTopic() && resubscriptionOffsetForVT.contains(position)) {
           storeIngestionTaskUnderTest.setVersionRole(PartitionReplicaIngestionContext.VersionRole.BACKUP);
           resubscriptionLatch.countDown();
           LOGGER.info(
-              "Trigger re-subscription after consuming message for {} at offset {} ",
+              "Trigger re-subscription after consuming message for {} at position {} ",
               pubSubTopicPartition,
-              offset);
-        } else if (pubSubTopicPartition.getPubSubTopic().isRealTime() && resubscriptionOffsetForRT.contains(offset)) {
+              position);
+        } else if (pubSubTopicPartition.getPubSubTopic().isRealTime() && resubscriptionOffsetForRT.contains(position)) {
           storeIngestionTaskUnderTest.setVersionRole(PartitionReplicaIngestionContext.VersionRole.BACKUP);
           resubscriptionLatch.countDown();
           LOGGER.info(
-              "Trigger re-subscription after consuming message for {} at offset {}.",
+              "Trigger re-subscription after consuming message for {} at position {}.",
               pubSubTopicPartition,
-              offset);
+              position);
         }
       }
     };
@@ -4423,37 +4423,22 @@ public abstract class StoreIngestionTaskTest {
 
           PubSubTopicPartition fooRtTopicPartition = new PubSubTopicPartitionImpl(realTimeTopic, PARTITION_FOO);
 
-          waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+          waitForNonDeterministicAssertion(120, TimeUnit.SECONDS, () -> {
+            // Verify unsubscribe calls
             verify(mockLocalKafkaConsumer, atLeast(totalLocalVtResubscriptionTriggered))
                 .unSubscribe(eq(fooTopicPartition));
-          });
-
-          waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
             verify(mockLocalKafkaConsumer, atLeast(totalLocalVtResubscriptionTriggered))
                 .unSubscribe(eq(barTopicPartition));
-          });
-
-          waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
             verify(mockLocalKafkaConsumer, atLeast(totalLocalRtResubscriptionTriggered))
                 .unSubscribe(fooRtTopicPartition);
-          });
-
-          waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
             verify(mockRemoteKafkaConsumer, atLeast(totalRemoteRtResubscriptionTriggered))
                 .unSubscribe(fooRtTopicPartition);
-          });
 
-          waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+            // Verify subscribe calls
             verify(mockLocalKafkaConsumer, atLeast(totalLocalVtResubscriptionTriggered))
                 .subscribe(eq(fooTopicPartition), any(PubSubPosition.class));
-          });
-
-          waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
             verify(mockLocalKafkaConsumer, atLeast(totalLocalRtResubscriptionTriggered))
                 .subscribe(eq(fooRtTopicPartition), any(PubSubPosition.class));
-          });
-
-          waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
             verify(mockRemoteKafkaConsumer, atLeast(totalRemoteRtResubscriptionTriggered))
                 .subscribe(eq(fooRtTopicPartition), any(PubSubPosition.class));
           });

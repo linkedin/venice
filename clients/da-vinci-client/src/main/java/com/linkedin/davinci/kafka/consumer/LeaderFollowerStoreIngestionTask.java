@@ -910,12 +910,12 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           newSourceTopicPartition,
           topicSwitch.rewindStartTimestamp);
       LOGGER.info(
-          "UpstreamStartPosition: {} for source URL: {}, tp: {}, rewind timestamp: {}. Replica: {}",
+          "Leader replica: {} got rtPosition: {} for rewindTime: {} from pubSubAddress: {}/{}",
+          partitionConsumptionState.getReplicaId(),
           upstreamStartPosition,
-          rtPubSubAddress,
-          Utils.getReplicaId(newSourceTopic, partitionConsumptionState.getPartition()),
           topicSwitch.rewindStartTimestamp,
-          partitionConsumptionState.getReplicaId());
+          rtPubSubAddress,
+          newSourceTopicPartition);
     }
     return Collections.singletonMap(NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY, upstreamStartPosition);
   }
@@ -1091,10 +1091,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       CharSequence pubSubAddress,
       PubSubTopicPartition rtTopicPartition,
       long rewindStartTimestamp) {
-    LOGGER.info(
-        "Getting rewind start position for RT topic-partition: {} at timestamp: {}",
-        rtTopicPartition,
-        rewindStartTimestamp);
     TopicManager topicManager = getTopicManager(pubSubAddress.toString());
     return topicManager.getPositionByTime(rtTopicPartition, rewindStartTimestamp);
   }

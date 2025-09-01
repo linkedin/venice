@@ -292,7 +292,8 @@ public class KafkaTopicDumper implements AutoCloseable {
             "Failed to find an offset for the requested timestamp: " + startingTimestamp + " in topic-partition: "
                 + partition + ". Ensure that messages exist in the specified time range.");
       }
-      LOGGER.info("Found offset: {} for timestamp: {} in topic-partition: {}", position, startingTimestamp, partition);
+      LOGGER
+          .info("Found position: {} for timestamp: {} in topic-partition: {}", position, startingTimestamp, partition);
       startingOffset = position.getNumericOffset();
     }
     return Math.max(
