@@ -23,7 +23,6 @@ import static com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory.
 import static com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory.SUCCESS;
 import static com.linkedin.venice.utils.OpenTelemetryDataPointTestUtils.validateHistogramPointData;
 import static com.linkedin.venice.utils.OpenTelemetryDataPointTestUtils.validateLongPointDataFromCounter;
-import static com.linkedin.venice.utils.OpenTelemetryDataPointTestUtils.validateLongPointDataFromGauge;
 import static org.testng.Assert.assertEquals;
 import static org.testng.AssertJUnit.assertTrue;
 
@@ -86,7 +85,14 @@ public class BasicConsumerStatsTest {
     consumerStats.emitHeartBeatDelayMetrics((long) delay);
 
     validateTehutiMetric(tehutiMetricPrefix + "--" + MAX_PARTITION_LAG.getMetricName() + ".Max", delay);
-    validateGaugeOtelMetric(storeName, HEART_BEAT_DELAY.getMetricEntity().getMetricName(), delay, null);
+    validateMinMaxSumAggregationsOtelMetric(
+        storeName,
+        HEART_BEAT_DELAY.getMetricEntity().getMetricName(),
+        delay,
+        delay,
+        1,
+        delay,
+        null);
   }
 
   @Test
@@ -207,28 +213,6 @@ public class BasicConsumerStatsTest {
       VeniceResponseStatusCategory responseStatusCategory) {
     Attributes expectedAttributes = getExpectedAttributes(storeName, responseStatusCategory);
     validateLongPointDataFromCounter(
-        inMemoryMetricReader,
-        (long) expectedValue,
-        expectedAttributes,
-        metricName,
-        otelMetricPrefix);
-  }
-
-  private void validateGaugeOtelMetric(
-      String storeName,
-      String metricName,
-      double expectedValue,
-      VeniceResponseStatusCategory responseStatusCategory) {
-
-    Attributes expectedAttributes;
-
-    if (responseStatusCategory == null) {
-      expectedAttributes = getExpectedBaseAttributes(storeName);
-    } else {
-      expectedAttributes = getExpectedAttributes(storeName, responseStatusCategory);
-    }
-
-    validateLongPointDataFromGauge(
         inMemoryMetricReader,
         (long) expectedValue,
         expectedAttributes,
