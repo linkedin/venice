@@ -2248,7 +2248,6 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       kafkaValue.leaderMetadataFooter.upstreamKafkaClusterId = leaderMetadataWrapper.getUpstreamKafkaClusterId();
       kafkaValue.leaderMetadataFooter.termId = leaderMetadataWrapper.getTermId();
     }
-
     return kafkaValue;
   }
 

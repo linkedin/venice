@@ -726,7 +726,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
    * to process each {@link PubSubMessage} buffered in {@link BlockingQueue}.
    */
   private static class StoreBufferDrainer implements Runnable {
-    private static final Logger LOGGER = LogManager.getLogger(StoreBufferDrainer.class);
+    public static final Logger LOGGER = LogManager.getLogger(StoreBufferDrainer.class);
     private final BlockingQueue<QueueNode> blockingQueue;
     private final AtomicBoolean isRunning = new AtomicBoolean(true);
     private final int drainerIndex;

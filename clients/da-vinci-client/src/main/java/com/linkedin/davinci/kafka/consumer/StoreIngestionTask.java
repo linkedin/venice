@@ -3473,9 +3473,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     KafkaKey key = consumerRecord.getKey();
     if (key.isControlMessage() && Arrays.equals(KafkaKey.HEART_BEAT.getKey(), key.getKey())) {
       return; // Skip validation for ingestion heartbeat records.
-    } else if (key.isGlobalRtDiv()) {
-      return; // Skip validation for Global RT DIV messages.
     }
+    // Don't skip validation for global RT DIV messages.
 
     Lazy<Boolean> tolerateMissingMsgs = Lazy.of(() -> {
       PubSubTopic pubSubTopic = consumerRecord.getTopic();

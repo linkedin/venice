@@ -10,9 +10,13 @@ import static com.linkedin.venice.ConfigKeys.SERVER_SHARED_CONSUMER_ASSIGNMENT_S
 import static com.linkedin.venice.ConfigKeys.SSL_TO_KAFKA_LEGACY;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.DEFAULT_KEY_SCHEMA;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.DEFAULT_VALUE_SCHEMA;
-import static com.linkedin.venice.utils.IntegrationTestPushUtils.*;
-import static com.linkedin.venice.utils.TestWriteUtils.*;
-import static org.testng.Assert.*;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJProps;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.runVPJ;
+import static com.linkedin.venice.utils.TestWriteUtils.STRING_SCHEMA;
+import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertNotNull;
 
 import com.github.luben.zstd.Zstd;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
@@ -64,6 +68,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.IntStream;
 import org.apache.avro.Schema;
 import org.apache.logging.log4j.LogManager;
@@ -81,6 +86,7 @@ public class TestGlobalRtDiv {
 
   @BeforeClass
   public void setUp() {
+    int numberOfServers = 3;
     Properties extraProperties = new Properties();
     extraProperties.setProperty(PERSISTENCE_TYPE, PersistenceType.ROCKS_DB.name());
     extraProperties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1L));
@@ -92,7 +98,7 @@ public class TestGlobalRtDiv {
         new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
             .numberOfServers(0)
             .numberOfRouters(0)
-            .replicationFactor(2)
+            .replicationFactor(numberOfServers) // set RF to number of servers so that all servers have all partitions
             .partitionSize(1000000)
             .sslToStorageNodes(false)
             .sslToKafka(false)
@@ -114,9 +120,9 @@ public class TestGlobalRtDiv {
     // Enable global div feature in the integration test.
     // extraProperties.setProperty(SERVER_GLOBAL_RT_DIV_ENABLED, "true");
 
-    sharedVenice.addVeniceServer(serverPropertiesWithSharedConsumer, extraProperties);
-    sharedVenice.addVeniceServer(serverPropertiesWithSharedConsumer, extraProperties);
-    // sharedVenice.addVeniceServer(serverPropertiesWithSharedConsumer, extraProperties);
+    for (int i = 0; i < numberOfServers; i++) {
+      sharedVenice.addVeniceServer(serverPropertiesWithSharedConsumer, extraProperties);
+    }
     LOGGER.info("Finished creating VeniceClusterWrapper");
   }
 
@@ -211,7 +217,7 @@ public class TestGlobalRtDiv {
           venice.getPubSubBrokerWrapper().getPubSubClientsFactory().getProducerAdapterFactory();
       StoreInfo storeInfo = TestUtils.assertCommand(controllerClient.getStore(storeName)).getStore();
 
-      String resourceName = Version.composeKafkaTopic(storeName, 1);
+      String kafkaTopicName = Version.composeKafkaTopic(storeName, 1);
       PubSubBrokerWrapper pubSubBrokerWrapper = venice.getPubSubBrokerWrapper();
       // chunk the data into 2 parts and send each part by different producers. Also, close the producers
       // as soon as it finishes writing. This makes sure that closing or switching producers won't impact the ingestion
@@ -245,30 +251,32 @@ public class TestGlobalRtDiv {
         }
       });
 
-      // /**
-      // * Restart leader SN (server1) to trigger leadership handover during batch consumption.
-      // * When server1 stops, server2 will be promoted to leader. When server1 starts, due to full-auto rebalance,
-      // server2:
-      // * 1) Will be demoted to follower. Leader->standby transition during remote consumption will be tested.
-      // * 2) Or remain as leader. In this case, Leader->standby transition during remote consumption won't be tested.
-      // * TODO: Use semi-auto rebalance and assign a server as the leader to make sure leader->standby always happen.
-      // */
+      /**
+      * Restart leader SN (server1) to trigger leadership handover during batch consumption.
+      * When server1 stops, server2 will be promoted to leader. When server1 starts, due to full-auto rebalance,
+      server2:
+      * 1) Will be demoted to follower. Leader->standby transition during remote consumption will be tested.
+      * 2) Or remain as leader. In this case, Leader->standby transition during remote consumption won't be tested.
+      * TODO: Use semi-auto rebalance and assign a server as the leader to make sure leader->standby always happen.
+      */
       HelixExternalViewRepository routingDataRepo = sharedVenice.getLeaderVeniceController()
           .getVeniceHelixAdmin()
           .getHelixVeniceClusterResources(sharedVenice.getClusterName())
           .getRoutingDataRepository();
-      Assert.assertTrue(routingDataRepo.containsKafkaTopic(resourceName), "Topic " + resourceName + " should exist");
-      Instance leaderNode = routingDataRepo.getLeaderInstance(resourceName, 0);
+      Assert
+          .assertTrue(routingDataRepo.containsKafkaTopic(kafkaTopicName), "Topic " + kafkaTopicName + " should exist");
+      Instance leaderNode = routingDataRepo.getLeaderInstance(kafkaTopicName, 0);
       Assert.assertNotNull(leaderNode);
 
       List<VeniceServerWrapper> servers = sharedVenice.getVeniceServers();
+
       servers.forEach(server -> {
         TestVeniceServer testVeniceServer = server.getVeniceServer();
-        StoreIngestionTask sit = testVeniceServer.getKafkaStoreIngestionService().getStoreIngestionTask(resourceName);
+        StoreIngestionTask sit = testVeniceServer.getKafkaStoreIngestionService().getStoreIngestionTask(kafkaTopicName);
         DataIntegrityValidator div = sit.getDataIntegrityValidator();
         boolean isLeader = server.getPort() == leaderNode.getPort();
         // server.getVeniceServer().getStorageService().get;
-        StorageEngine storageEngine = testVeniceServer.getStorageService().getStorageEngine(resourceName);
+        StorageEngine storageEngine = testVeniceServer.getStorageService().getStorageEngine(kafkaTopicName);
         String key = "GLOBAL_RT_DIV_KEY." + venice.getPubSubBrokerWrapper().getAddress();
         byte[] keyBytes = key.getBytes();
         if (isChunkingEnabled) {
@@ -305,19 +313,111 @@ public class TestGlobalRtDiv {
         GlobalRtDivState globalRtDiv = globalRtDivStateSerializer.deserialize(
             ByteUtils.extractByteArray(value),
             AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion());
-        Assert.assertNotNull(globalRtDiv);
+        LOGGER.info("Global RT div state: {}", globalRtDiv);
+        validateGlobalDivState(globalRtDiv);
       });
 
-      // TODO: shutdown hosts and restart them to verify that the global RT div state gets loaded correctly
-      // TODO: shutdown leader for leader transition
+      // Before shutting down the leader, verify that the leader has the global RT div state, but not the followers.
+      Instance oldLeaderNode = verifyGlobalDivStateOnAllServers(kafkaTopicName, partition);
 
-      // LOGGER.info("Restart server port {}", leaderNode.getPort());
-      // leaderNode.
-      // sharedVenice.stopAndRestartVeniceServer(leaderNode.getPort());
+      // Shutdown leader to trigger a FOLLOWER -> LEADER transition.
+      LOGGER.info("Stopping leader server: {}", leaderNode.getNodeId());
+      sharedVenice.stopVeniceServer(leaderNode.getPort());
 
-      // Utils.sleep(1000000);
-      // Object value = client.get(key).get();
-      // assertNull(value, "Key " + key + " should be missing!");
+      // Verify that the other server is promoted to leader and load the global RT div state correctly.
+      Instance newLeader = verifyGlobalDivStateOnAllServers(kafkaTopicName, partition);
+      LOGGER.info("New leader server: {}", newLeader.getNodeId());
+      // Confirm that leader has changed.
+      Assert.assertNotEquals(newLeader.getNodeId(), oldLeaderNode.getNodeId());
+
+      // Restart the old leader server to test if it can load the global RT div state correctly as a follower.
+      LOGGER.info("Restarting old leader server: {}", oldLeaderNode.getNodeId());
+      sharedVenice.restartVeniceServer(oldLeaderNode.getPort());
+
+      // Wait oldLeaderNode to be the leader again after restart.
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
+        Instance leader = routingDataRepo.getLeaderInstance(kafkaTopicName, 0);
+        if (leader == null) {
+          throw new VeniceException("Leader not found yet");
+        }
+        Assert.assertEquals(leader.getNodeId(), oldLeaderNode.getNodeId());
+      });
+
+      LOGGER.info("Old leader server: {} is now the current leader", oldLeaderNode.getNodeId());
+      // Verify the state transition LEADER -> FOLLOWER happened on the old leader node.
+      Instance curLeader = verifyGlobalDivStateOnAllServers(kafkaTopicName, partition);
+      Assert.assertEquals(curLeader.getNodeId(), oldLeaderNode.getNodeId());
     }
+  }
+
+  Instance verifyGlobalDivStateOnAllServers(String resourceName, int partition) {
+    HelixExternalViewRepository routingDataRepo = sharedVenice.getLeaderVeniceController()
+        .getVeniceHelixAdmin()
+        .getHelixVeniceClusterResources(sharedVenice.getClusterName())
+        .getRoutingDataRepository();
+    Assert.assertTrue(routingDataRepo.containsKafkaTopic(resourceName), "Topic " + resourceName + " should exist");
+    // Verify that the other server is promoted to leader and load the global RT div state correctly.
+    AtomicReference<Instance> LeaderNode = new AtomicReference<>();
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
+      // Find the leader node
+      LeaderNode.set(routingDataRepo.getLeaderInstance(resourceName, 0));
+      List<VeniceServerWrapper> servers = sharedVenice.getVeniceServers();
+      servers.forEach(server -> {
+        if (LeaderNode.get() == null) {
+          throw new VeniceException("Leader not found yet");
+        }
+        LOGGER.info("Leader server: {}", LeaderNode.get().getNodeId());
+        if (!server.isRunning()) {
+          LOGGER.info("Server: {} is not running", server.getVeniceServer());
+          return;
+        }
+        boolean isLeader = server.getPort() == LeaderNode.get().getPort();
+        verifyGlobalDivState(server, resourceName, partition, isLeader);
+      });
+    });
+    return LeaderNode.get();
+  }
+
+  void verifyGlobalDivState(VeniceServerWrapper server, String resourceName, int partition, boolean isLeader) {
+    TestVeniceServer testVeniceServer = server.getVeniceServer();
+    StoreIngestionTask sit = testVeniceServer.getKafkaStoreIngestionService().getStoreIngestionTask(resourceName);
+    DataIntegrityValidator consumerDiv = sit.getDataIntegrityValidator(); // This is the consumer DIV.
+    if (consumerDiv == null) {
+      throw new VeniceException("consumerDiv on server: " + server.getAddress() + " is not initialized yet");
+    }
+    if (isLeader) {
+      LOGGER.info("Verifying global RT DIV state on leader: {}", server.getAddress());
+      Assert.assertTrue(consumerDiv.hasGlobalRtDivState(partition));
+      Assert.assertTrue(consumerDiv.hasVtDivState(partition));
+    } else {
+      LOGGER.info("Verifying global RT DIV state on follower: {}", server.getAddress());
+      Assert.assertFalse(consumerDiv.hasGlobalRtDivState(partition));
+      Assert.assertTrue(consumerDiv.hasVtDivState(partition));
+    }
+  }
+
+  void validateGlobalDivState(GlobalRtDivState state) {
+    Assert.assertNotNull(state);
+    Assert.assertNotNull(state.getSrcUrl());
+    Assert.assertNotNull(state.getProducerStates());
+    Assert.assertFalse(state.getProducerStates().isEmpty());
+    state.getProducerStates().forEach((producerId, producerState) -> {
+      Assert.assertNotNull(producerId);
+      Assert.assertNotNull(producerState);
+      // Segment number should be non-negative
+      Assert.assertTrue(producerState.getSegmentNumber() >= 0);
+      // Message sequence number should be non-negative
+      Assert.assertTrue(producerState.getMessageSequenceNumber() >= 0);
+      // Message timestamp should be non-negative
+      Assert.assertTrue(producerState.getMessageTimestamp() >= 0);
+      // Checksum type should be valid
+      Assert.assertTrue(producerState.getChecksumType() >= 0 && producerState.getChecksumType() <= 3);
+      // Checksum state should not be null
+      Assert.assertNotNull(producerState.getChecksumState());
+      // Aggregates should not be null
+      Assert.assertNotNull(producerState.getAggregates());
+      // Debug info should not be null
+      Assert.assertNotNull(producerState.getDebugInfo());
+    });
   }
 }

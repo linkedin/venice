@@ -3,6 +3,7 @@ package com.linkedin.davinci.validation;
 import static com.linkedin.davinci.validation.DataIntegrityValidator.DISABLED;
 
 import com.linkedin.venice.annotation.Threadsafe;
+import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.exceptions.validation.CorruptDataException;
 import com.linkedin.venice.exceptions.validation.DataValidationException;
 import com.linkedin.venice.exceptions.validation.DuplicateDataException;
@@ -62,6 +63,7 @@ import org.apache.logging.log4j.Logger;
  */
 @Threadsafe
 public class PartitionTracker {
+  private static final Logger LOGGER = LogManager.getLogger(PartitionTracker.class);
   /**
    * If an exception will be tolerated, there is no need to print a log for each single message;
    * we can log only once a minute. The error message identifier pattern for log throttling is:
@@ -129,6 +131,14 @@ public class PartitionTracker {
       return vtSegments;
     }
     return rtSegments.computeIfAbsent(type.getKafkaUrl(), k -> new VeniceConcurrentHashMap<>());
+  }
+
+  public void clearSegments(TopicType type) {
+    if (TopicType.isVersionTopic(type)) {
+      vtSegments.clear();
+    } else {
+      rtSegments.clear();
+    }
   }
 
   /**
@@ -754,6 +764,18 @@ public class PartitionTracker {
     }
 
     throw new IllegalArgumentException("Unsupported TopicType: " + type);
+  }
+
+  @VisibleForTesting
+  Map<String, Map<GUID, Segment>> getAllRtSegmentsForTesting() {
+    return rtSegments.entrySet()
+        .stream()
+        .collect(Collectors.toMap(Map.Entry::getKey, entry -> Collections.unmodifiableMap(entry.getValue())));
+  }
+
+  @VisibleForTesting
+  Map<GUID, Segment> getVtSegmentsForTesting() {
+    return vtSegments;
   }
 
   private static final String NON_SOS_SCENARIO =

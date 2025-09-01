@@ -54,6 +54,8 @@ import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.Delete;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
+import com.linkedin.venice.kafka.protocol.LeaderMetadata;
+import com.linkedin.venice.kafka.protocol.ProducerMetadata;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.TopicSwitch;
 import com.linkedin.venice.kafka.protocol.Update;
@@ -551,6 +553,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           if (isGlobalRtDivEnabled()) {
             // latest consumed vt position (LCVP)
             consumerDiv.updateLatestConsumedVtPosition(partition, subscribePosition);
+            // Clear current RT segment information as we are switching back to VT consumption.
+            // TODO: we may trigger a sendGlobalRTDIV message for optimization.
+            consumerDiv.clearPartitionSegments(partition, TopicType.of(REALTIME_TOPIC_TYPE));
           }
           consumerSubscribe(topic, partitionConsumptionState, subscribePosition, localKafkaServer);
           /**
@@ -2269,7 +2274,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       return Collections.emptyList();
     }
     boolean isEndOfPushReceived = pcs.isEndOfPushReceived();
-    if (!shouldProduceToVersionTopic(pcs)) {
+    if (!isGlobalRtDivEnabled() && !shouldProduceToVersionTopic(pcs)) {
       return records;
     }
     /**
@@ -2279,6 +2284,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     Iterator<DefaultPubSubMessage> iter = records.iterator();
     while (iter.hasNext()) {
       DefaultPubSubMessage record = iter.next();
+      // logRecordMetadata(record, topicPartition);
       boolean isRealTimeTopic = record.getTopicPartition().getPubSubTopic().isRealTime();
       try {
         /**
@@ -2309,6 +2315,46 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       }
     }
     return records;
+  }
+
+  /**
+   * Log the metadata for each kafka message.
+   */
+  private void logRecordMetadata(DefaultPubSubMessage record, PubSubTopicPartition topicPartition) {
+    try {
+      KafkaKey kafkaKey = record.getKey();
+      KafkaMessageEnvelope kafkaMessageEnvelope = record.getValue();
+      ProducerMetadata producerMetadata = kafkaMessageEnvelope.producerMetadata;
+
+      String msgType = kafkaKey.isControlMessage()
+          ? ControlMessageType.valueOf((ControlMessage) kafkaMessageEnvelope.payloadUnion).toString()
+          : MessageType.valueOf(kafkaMessageEnvelope).toString();
+
+      LeaderMetadata leaderMetadata = kafkaMessageEnvelope.leaderMetadataFooter;
+
+      // final String chunkMetadata = getChunkMetadataLog(record);
+      final String REGULAR_REC = "REG";
+      final String CONTROL_REC = "CTRL";
+      LOGGER.info(
+          "Offset:{}; {}; {}; ProducerMd=(guid:{},seg:{},seq:{},mts:{},lts:{}); LeaderMd=(host:{},uo:{},ukcId:{}){}",
+          record.getPosition().getNumericOffset(),
+          kafkaKey.isControlMessage() ? CONTROL_REC : REGULAR_REC,
+          msgType,
+          GuidUtils.getHexFromGuid(producerMetadata.producerGUID),
+          producerMetadata.segmentNumber,
+          producerMetadata.messageSequenceNumber,
+          producerMetadata.messageTimestamp,
+          producerMetadata.logicalTimestamp,
+          leaderMetadata == null ? "-" : leaderMetadata.hostName,
+          leaderMetadata == null ? "-" : leaderMetadata.upstreamOffset,
+          leaderMetadata == null ? "-" : leaderMetadata.upstreamKafkaClusterId,
+          topicPartition);
+    } catch (Exception e) {
+      LOGGER.error(
+          "Encounter exception when processing record for offset {}",
+          record.getPosition().getNumericOffset(),
+          e);
+    }
   }
 
   /**
@@ -3367,7 +3413,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     final byte[] keyBytes = getGlobalRtDivKeyBytes(brokerUrl);
     final PubSubTopicPartition topicPartition = previousMessage.getTopicPartition();
     TopicType realTimeTopicType = TopicType.of(REALTIME_TOPIC_TYPE, brokerUrl);
-    LOGGER.warn("ASDF sendGlobalRtDivMessage()");
+    LOGGER.warn("ASDF sendGlobalRtDivMessage(): partition={}, brokerUrl={}", partition, brokerUrl);
 
     // Snapshot the RT DIV (single broker URL) in preparation to be produced
     PartitionTracker vtDiv = consumerDiv.cloneVtProducerStates(partition); // includes latest consumed vt offset (LCVO)
@@ -3449,12 +3495,14 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       PartitionTracker vtDiv) {
     final int schemaId = AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion();
     KafkaKey divKey = new KafkaKey(MessageType.GLOBAL_RT_DIV, keyBytes);
+    // TODO: this has a bug, it will increase the sequence number during the getKafkaMessageEnvelope call.
+    // Fix it by setting the 'incrementSequenceNumber' flag in getKafkaMessageEnvelope to false.
     KafkaMessageEnvelope divEnvelope = getVeniceWriter(partitionConsumptionState).get()
         .getKafkaMessageEnvelope(
             MessageType.PUT,
             false,
             partition,
-            true,
+            false,
             DEFAULT_LEADER_METADATA_WRAPPER,
             APP_DEFAULT_LOGICAL_TS);
     Put put = new Put();
@@ -3490,7 +3538,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     return divCallback;
   }
 
-  private Optional<GlobalRtDivState> readGlobalRtDivState(
+  Optional<GlobalRtDivState> readGlobalRtDivState(
       byte[] keyBytes,
       int readerValueSchemaID,
       PubSubTopicPartition topicPartition,
@@ -3597,7 +3645,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    * MISSING message DIV error immediately.
    */
   void restoreProducerStatesForLeaderConsumption(int partition) {
-    getConsumerDiv().clearPartition(partition);
+    // we can't clear the consumer DIV here, because for VT, the consumer DIV may already contain some producer states
+    // from previous consumption and those states should be retained. For RT, the consumer DIV should be empty at this
+    // point.
+    getConsumerDiv().clearPartitionSegments(partition, TopicType.of(REALTIME_TOPIC_TYPE));
     if (isGlobalRtDivEnabled()) {
       loadGlobalRtDiv(partition);
     } else {
@@ -3642,9 +3693,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
     final Map<CharSequence, ProducerPartitionState> producerStates = globalRtDivState.get().getProducerStates();
     PartitionTracker.TopicType realTimeTopicType = PartitionTracker.TopicType.of(REALTIME_TOPIC_TYPE, brokerUrl);
-    consumerDiv.setPartitionState(realTimeTopicType, pcs.getPartition(), producerStates);
+    getConsumerDiv().setPartitionState(realTimeTopicType, pcs.getPartition(), producerStates);
     ByteBuffer checkpointBytes = globalRtDivState.get().getLatestPubSubPosition(); // LCRP
-    final PubSubPosition divRtCheckpointPosition = getPubSubContext().getPubSubPositionDeserializer().toPosition(bytes);
+    final PubSubPosition divRtCheckpointPosition =
+        getPubSubContext().getPubSubPositionDeserializer().toPosition(checkpointBytes);
     pcs.setDivRtCheckpointPosition(brokerUrl, divRtCheckpointPosition);
   }
 
