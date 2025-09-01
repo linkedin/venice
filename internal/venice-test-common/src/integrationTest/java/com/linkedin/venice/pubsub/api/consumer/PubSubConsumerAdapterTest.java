@@ -11,6 +11,7 @@ import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.ConfigKeys;
+import com.linkedin.venice.annotation.PubSubAgnosticTest;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
@@ -28,6 +29,7 @@ import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubAdminAdapter;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
@@ -65,6 +67,7 @@ import org.testng.annotations.Test;
 /**
  * Tests to verify the contract of {@link PubSubConsumerAdapter}
  */
+@PubSubAgnosticTest
 public class PubSubConsumerAdapterTest {
   // timeout for pub-sub operations
   private static final Duration PUBSUB_OP_TIMEOUT = Duration.ofSeconds(15);
@@ -404,9 +407,9 @@ public class PubSubConsumerAdapterTest {
         "Timeout should be around the specified timeout but not too much greater");
   }
 
-  // Test: When offsetForTime is called on a non-existent topic, it should throw PubSubOpTimeoutException
+  // Test: When getPositionByTimestamp is called on a non-existent topic, it should throw PubSubOpTimeoutException
   @Test(timeOut = 3 * Time.MS_PER_MINUTE)
-  public void testOffsetForTimeForNonExistentTopic() {
+  public void testGetPositionByTimestampForNonExistentTopic() {
     PubSubTopic nonExistentPubSubTopic = pubSubTopicRepository.getTopic(Utils.getUniqueString("non-existent-topic-"));
     PubSubTopicPartition partition = new PubSubTopicPartitionImpl(nonExistentPubSubTopic, 0);
 
@@ -414,17 +417,17 @@ public class PubSubConsumerAdapterTest {
     long startTime = System.currentTimeMillis();
     assertThrows(
         PubSubOpTimeoutException.class,
-        () -> pubSubConsumerAdapter.offsetForTime(partition, 0, PUBSUB_OP_TIMEOUT));
+        () -> pubSubConsumerAdapter.getPositionByTimestamp(partition, 0, PUBSUB_OP_TIMEOUT));
     long elapsedTime = System.currentTimeMillis() - startTime;
     assertTrue(
         elapsedTime <= PUBSUB_OP_TIMEOUT_WITH_VARIANCE,
         "Timeout should be around the specified timeout but not too much greater");
   }
 
-  // Test: When offsetForTime is called on an existing topic with a valid partition but no messages, it should return
-  // null
+  // Test: When getPositionByTimestamp is called on an existing topic with a valid partition but no messages,
+  // it should return null
   @Test(timeOut = 3 * Time.MS_PER_MINUTE)
-  public void testOffsetForTimeForExistingTopicWithValidPartitionsButNoMessages() {
+  public void testGetPositionByTimestampForExistingTopicWithValidPartitionsButNoMessages() {
     PubSubTopic existingPubSubTopic = pubSubTopicRepository.getTopic(Utils.getUniqueString("existing-topic-"));
     int numPartitions = 2;
 
@@ -434,23 +437,24 @@ public class PubSubConsumerAdapterTest {
 
     PubSubTopicPartition partition = new PubSubTopicPartitionImpl(existingPubSubTopic, 0);
     long startTime = System.currentTimeMillis();
-    Long offset = pubSubConsumerAdapter.offsetForTime(partition, System.currentTimeMillis(), PUBSUB_OP_TIMEOUT);
+    PubSubPosition position =
+        pubSubConsumerAdapter.getPositionByTimestamp(partition, System.currentTimeMillis(), PUBSUB_OP_TIMEOUT);
     long elapsedTime = System.currentTimeMillis() - startTime;
-    assertNull(offset, "Offset should be null for an existing topic with no messages");
-    assertTrue(elapsedTime <= PUBSUB_OP_TIMEOUT_WITH_VARIANCE, "offsetForTime should not block");
+    assertNull(position, "PubSubPosition should be null for an existing topic with no messages");
+    assertTrue(elapsedTime <= PUBSUB_OP_TIMEOUT_WITH_VARIANCE, "getPositionByTimestamp should not block");
 
     partition = new PubSubTopicPartitionImpl(existingPubSubTopic, 1);
     startTime = System.currentTimeMillis();
-    offset = pubSubConsumerAdapter.offsetForTime(partition, System.currentTimeMillis(), PUBSUB_OP_TIMEOUT);
+    position = pubSubConsumerAdapter.getPositionByTimestamp(partition, System.currentTimeMillis(), PUBSUB_OP_TIMEOUT);
     elapsedTime = System.currentTimeMillis() - startTime;
-    assertNull(offset, "Offset should be null for an existing topic with no messages");
-    assertTrue(elapsedTime <= PUBSUB_OP_TIMEOUT_WITH_VARIANCE, "offsetForTime should not block");
+    assertNull(position, "PubSubPosition should be null for an existing topic with no messages");
+    assertTrue(elapsedTime <= PUBSUB_OP_TIMEOUT_WITH_VARIANCE, "getPositionByTimestamp should not block");
   }
 
-  // Test: When offsetForTime is called on an existing topic with invalid partition, it should throw
+  // Test: When getPositionByTimestamp is called on an existing topic with invalid partition, it should throw
   // PubSubOpTimeoutException
   @Test(timeOut = 3 * Time.MS_PER_MINUTE)
-  public void testOffsetForTimeForExistingTopicWithInvalidPartition() {
+  public void testGetPositionByTimestampForExistingTopicWithInvalidPartition() {
     PubSubTopic existingPubSubTopic = pubSubTopicRepository.getTopic(Utils.getUniqueString("existing-topic-"));
     int numPartitions = 1;
 
@@ -464,26 +468,28 @@ public class PubSubConsumerAdapterTest {
 
     PubSubTopicPartition partition = new PubSubTopicPartitionImpl(existingPubSubTopic, 0);
     long startTime = System.currentTimeMillis();
-    Long offset = pubSubConsumerAdapter.offsetForTime(partition, System.currentTimeMillis(), PUBSUB_OP_TIMEOUT);
+    PubSubPosition position =
+        pubSubConsumerAdapter.getPositionByTimestamp(partition, System.currentTimeMillis(), PUBSUB_OP_TIMEOUT);
     long elapsedTime = System.currentTimeMillis() - startTime;
-    assertNull(offset, "Offset should be null for an existing topic with no messages");
-    assertTrue(elapsedTime <= PUBSUB_OP_TIMEOUT_WITH_VARIANCE, "offsetForTime should not block");
+    assertNull(position, "PubSubPosition should be null for an existing topic with no messages");
+    assertTrue(elapsedTime <= PUBSUB_OP_TIMEOUT_WITH_VARIANCE, "getPositionByTimestamp should not block");
 
     PubSubTopicPartition invalidPartition = new PubSubTopicPartitionImpl(existingPubSubTopic, 1);
     startTime = System.currentTimeMillis();
     assertThrows(
         PubSubOpTimeoutException.class,
-        () -> pubSubConsumerAdapter.offsetForTime(invalidPartition, System.currentTimeMillis(), PUBSUB_OP_TIMEOUT));
+        () -> pubSubConsumerAdapter
+            .getPositionByTimestamp(invalidPartition, System.currentTimeMillis(), PUBSUB_OP_TIMEOUT));
     elapsedTime = System.currentTimeMillis() - startTime;
     assertTrue(
         elapsedTime <= PUBSUB_OP_TIMEOUT_WITH_VARIANCE,
         "Timeout should be around the specified timeout but not too much greater");
   }
 
-  // Test: When offsetForTime is called on an existing topic with a valid partition and messages, it should return an
-  // offset
+  // Test: When getPositionByTimestamp is called on an existing topic with a valid partition and messages,
+  // it should return a PubSubPosition
   @Test(timeOut = 3 * Time.MS_PER_MINUTE)
-  public void testOffsetForTimeForExistingTopicWithValidPartitionsAndMessages()
+  public void testGetPositionByTimestampForExistingTopicWithValidPartitionsAndMessages()
       throws ExecutionException, InterruptedException, TimeoutException {
     PubSubTopic existingPubSubTopic = pubSubTopicRepository.getTopic(Utils.getUniqueString("existing-topic-"));
     int numPartitions = 2;
@@ -494,7 +500,7 @@ public class PubSubConsumerAdapterTest {
     assertTrue(pubSubAdminAdapterLazy.get().containsTopic(existingPubSubTopic), "Topic should exist");
 
     Map<Integer, Long> timestamps = new HashMap<>(10);
-    Map<Integer, Long> offsets = new HashMap<>(10);
+    Map<Integer, PubSubPosition> msgIdxToPositionsMap = new HashMap<>(10);
 
     PubSubProducerAdapter pubSubProducerAdapter = pubSubProducerAdapterLazy.get();
     /*
@@ -513,79 +519,92 @@ public class PubSubConsumerAdapterTest {
       PubSubProduceResult pubSubProduceResult = pubSubProducerAdapter
           .sendMessage(existingPubSubTopic.getName(), 0, PubSubHelper.getDummyKey(), value, null, null)
           .get(15, TimeUnit.SECONDS);
-      offsets.put(i, pubSubProduceResult.getOffset());
+      msgIdxToPositionsMap.put(i, pubSubProduceResult.getPubSubPosition());
       Thread.sleep(1);
     }
 
     long startTime;
     long elapsedTime;
-    PubSubTopicPartition partitionWitMessages = new PubSubTopicPartitionImpl(existingPubSubTopic, 0);
-    // iterate over the messages and verify the offset for each timestamp
+    PubSubTopicPartition partitionWithMessages = new PubSubTopicPartitionImpl(existingPubSubTopic, 0);
+    // iterate over the messages and verify the position for each timestamp
     for (int i = 0; i < numMessages; i++) {
       startTime = System.currentTimeMillis();
-      Long offset = pubSubConsumerAdapter.offsetForTime(partitionWitMessages, timestamps.get(i), PUBSUB_OP_TIMEOUT);
+      PubSubPosition position =
+          pubSubConsumerAdapter.getPositionByTimestamp(partitionWithMessages, timestamps.get(i), PUBSUB_OP_TIMEOUT);
       elapsedTime = System.currentTimeMillis() - startTime;
-      assertNotNull(offset, "Offset should not be null for an existing topic with messages");
-      assertEquals(offset, offsets.get(i), "Offset should match for an existing topic with messages");
-      assertTrue(elapsedTime <= PUBSUB_OP_TIMEOUT_WITH_VARIANCE, "offsetForTime should not block");
+      assertNotNull(position, "PubSubPosition should not be null for an existing topic with messages");
+      assertEquals(
+          position,
+          msgIdxToPositionsMap.get(i),
+          "PubSubPosition should match for an existing topic with messages");
+      assertTrue(elapsedTime <= PUBSUB_OP_TIMEOUT_WITH_VARIANCE, "getPositionByTimestamp should not block");
     }
 
-    // try 0 as timestamp; this should return the first offset
+    // try 0 as timestamp; this should return the first position
     startTime = System.currentTimeMillis();
-    Long offset = pubSubConsumerAdapter.offsetForTime(partitionWitMessages, 0, PUBSUB_OP_TIMEOUT);
+    PubSubPosition position = pubSubConsumerAdapter.getPositionByTimestamp(partitionWithMessages, 0, PUBSUB_OP_TIMEOUT);
     elapsedTime = System.currentTimeMillis() - startTime;
-    assertNotNull(offset, "Offset should not be null for an existing topic with messages");
-    assertEquals(offset, Long.valueOf(0), "Offset should match for an existing topic with messages");
-    assertTrue(elapsedTime <= PUBSUB_OP_TIMEOUT_WITH_VARIANCE, "offsetForTime should not block");
+    assertNotNull(position, "PubSubPosition should not be null for an existing topic with messages");
+    assertTrue(
+        pubSubConsumerAdapter.positionDifference(
+            partitionWithMessages,
+            position,
+            pubSubConsumerAdapter.beginningPosition(partitionWithMessages, PUBSUB_OP_TIMEOUT)) == 0,
+        "Position should be at the beginning");
+    assertTrue(elapsedTime <= PUBSUB_OP_TIMEOUT_WITH_VARIANCE, "getPositionByTimestamp should not block");
 
-    // check one month before the first message timestamp; this should return the first offset
+    // check one month before the first message timestamp; this should return the first position
     long oneMonthBeforeFirstMessageTimestamp = timestamps.get(0) - Duration.ofDays(30).toMillis();
     startTime = System.currentTimeMillis();
-    offset = pubSubConsumerAdapter
-        .offsetForTime(partitionWitMessages, oneMonthBeforeFirstMessageTimestamp, PUBSUB_OP_TIMEOUT);
+    position = pubSubConsumerAdapter
+        .getPositionByTimestamp(partitionWithMessages, oneMonthBeforeFirstMessageTimestamp, PUBSUB_OP_TIMEOUT);
     elapsedTime = System.currentTimeMillis() - startTime;
-    assertNotNull(offset, "Offset should not be null for an existing topic with messages");
-    assertEquals(offset, Long.valueOf(0), "Offset should match for an existing topic with messages");
-    assertTrue(elapsedTime <= PUBSUB_OP_TIMEOUT_WITH_VARIANCE, "offsetForTime should not block");
-
+    assertNotNull(position, "PubSubPosition should not be null for an existing topic with messages");
+    assertTrue(
+        pubSubConsumerAdapter.positionDifference(
+            partitionWithMessages,
+            position,
+            pubSubConsumerAdapter.beginningPosition(partitionWithMessages, PUBSUB_OP_TIMEOUT)) == 0,
+        "Position should be at the beginning");
+    assertTrue(elapsedTime <= PUBSUB_OP_TIMEOUT_WITH_VARIANCE, "getPositionByTimestamp should not block");
     // check for a timestamp that is after the last message; this should return null
     long currentTimestamp = System.currentTimeMillis();
     assertTrue(
         currentTimestamp > timestamps.get(numMessages - 1),
         "Current timestamp should be greater than the last message timestamp");
-    offset = pubSubConsumerAdapter.offsetForTime(partitionWitMessages, currentTimestamp, PUBSUB_OP_TIMEOUT);
-    assertNull(offset, "Offset should be null for an existing topic with out of range timestamp");
+    position = pubSubConsumerAdapter.getPositionByTimestamp(partitionWithMessages, currentTimestamp, PUBSUB_OP_TIMEOUT);
+    assertNull(position, "PubSubPosition should be null for an existing topic with out of range timestamp");
 
     // check one month from the last message timestamp; this should return null
     long oneMonthFromLastMessageTimestamp = timestamps.get(numMessages - 1) + Duration.ofDays(30).toMillis();
     startTime = System.currentTimeMillis();
-    offset =
-        pubSubConsumerAdapter.offsetForTime(partitionWitMessages, oneMonthFromLastMessageTimestamp, PUBSUB_OP_TIMEOUT);
+    position = pubSubConsumerAdapter
+        .getPositionByTimestamp(partitionWithMessages, oneMonthFromLastMessageTimestamp, PUBSUB_OP_TIMEOUT);
     elapsedTime = System.currentTimeMillis() - startTime;
-    assertNull(offset, "Offset should be null for an existing topic with out of range timestamp");
-    assertTrue(elapsedTime <= PUBSUB_OP_TIMEOUT_WITH_VARIANCE, "offsetForTime should not block");
+    assertNull(position, "PubSubPosition should be null for an existing topic with out of range timestamp");
+    assertTrue(elapsedTime <= PUBSUB_OP_TIMEOUT_WITH_VARIANCE, "getPositionByTimestamp should not block");
   }
 
-  // Test: When offsetForTime (without explicit timeout) is called on a non-existent topic,
+  // Test: When getPositionByTimestamp (without explicit timeout) is called on a non-existent topic,
   // it should throw PubSubOpTimeoutException
   @Test(timeOut = 3 * Time.MS_PER_MINUTE)
-  public void testOffsetForTimeWithoutExplicitTimeoutForNonExistentTopic() {
+  public void testGetPositionByTimestampWithoutExplicitTimeoutForNonExistentTopic() {
     PubSubTopic nonExistentPubSubTopic = pubSubTopicRepository.getTopic(Utils.getUniqueString("non-existent-topic-"));
     PubSubTopicPartition partition = new PubSubTopicPartitionImpl(nonExistentPubSubTopic, 0);
 
     assertFalse(pubSubAdminAdapterLazy.get().containsTopic(nonExistentPubSubTopic), "Topic should not exist");
     long startTime = System.currentTimeMillis();
-    assertThrows(PubSubOpTimeoutException.class, () -> pubSubConsumerAdapter.offsetForTime(partition, 0));
+    assertThrows(PubSubOpTimeoutException.class, () -> pubSubConsumerAdapter.getPositionByTimestamp(partition, 0));
     long elapsedTime = System.currentTimeMillis() - startTime;
     assertTrue(
         elapsedTime <= PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS_WITH_VARIANCE,
         "Timeout should be around the default timeout but not too much greater");
   }
 
-  // Test: When offsetForTime (without explicit timeout) is called on an existing topic with invalid partition,
+  // Test: When getPositionByTimestamp (without explicit timeout) is called on an existing topic with invalid partition,
   // it should throw PubSubOpTimeoutException
   @Test(timeOut = 3 * Time.MS_PER_MINUTE)
-  public void testOffsetForTimeWithoutExplicitTimeoutForExistingTopicWithInvalidPartition() {
+  public void testGetPositionByTimestampWithoutExplicitTimeoutForExistingTopicWithInvalidPartition() {
     PubSubTopic existingPubSubTopic = pubSubTopicRepository.getTopic(Utils.getUniqueString("existing-topic-"));
     int numPartitions = 1;
 
@@ -598,22 +617,25 @@ public class PubSubConsumerAdapterTest {
         "Topic should have only 1 partition");
 
     PubSubTopicPartition partition = new PubSubTopicPartitionImpl(existingPubSubTopic, 0);
-    Long offset = pubSubConsumerAdapter.offsetForTime(partition, System.currentTimeMillis());
-    assertNull(offset, "Offset should be null for an existing topic with no messages");
+    PubSubPosition position = pubSubConsumerAdapter.getPositionByTimestamp(partition, System.currentTimeMillis());
+    assertNull(position, "PubSubPosition should be null for an existing topic with no messages");
 
     PubSubTopicPartition invalidPartition = new PubSubTopicPartitionImpl(existingPubSubTopic, 1);
     long startTime = System.currentTimeMillis();
-    assertThrows(PubSubOpTimeoutException.class, () -> pubSubConsumerAdapter.offsetForTime(invalidPartition, 0));
+    assertThrows(
+        PubSubOpTimeoutException.class,
+        () -> pubSubConsumerAdapter.getPositionByTimestamp(invalidPartition, 0));
     long elapsedTime = System.currentTimeMillis() - startTime;
     assertTrue(
         elapsedTime <= PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS_WITH_VARIANCE,
         "Timeout should be around the default timeout but not too much greater");
   }
 
-  // Test: When offsetForTime (without explicit timeout) is called on an existing topic with a valid partition but no
+  // Test: When getPositionByTimestamp (without explicit timeout) is called on an existing topic with a valid partition
+  // but no
   // messages, it should return null
   @Test(timeOut = 3 * Time.MS_PER_MINUTE)
-  public void testOffsetForTimeWithoutExplicitTimeoutForExistingTopicWithValidPartitionsButNoMessages() {
+  public void testGetPositionByTimestampWithoutExplicitTimeoutForExistingTopicWithValidPartitionsButNoMessages() {
     PubSubTopic existingPubSubTopic = pubSubTopicRepository.getTopic(Utils.getUniqueString("existing-topic-"));
     int numPartitions = 2;
 
@@ -623,17 +645,21 @@ public class PubSubConsumerAdapterTest {
 
     long startTime = System.currentTimeMillis();
     PubSubTopicPartition partition = new PubSubTopicPartitionImpl(existingPubSubTopic, 0);
-    Long offset = pubSubConsumerAdapter.offsetForTime(partition, System.currentTimeMillis());
+    PubSubPosition position = pubSubConsumerAdapter.getPositionByTimestamp(partition, System.currentTimeMillis());
     long elapsedTime = System.currentTimeMillis() - startTime;
-    assertNull(offset, "Offset should be null for an existing topic with no messages");
-    assertTrue(elapsedTime <= PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS_WITH_VARIANCE, "offsetForTime should not block");
+    assertNull(position, "PubSubPosition should be null for an existing topic with no messages");
+    assertTrue(
+        elapsedTime <= PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS_WITH_VARIANCE,
+        "getPositionByTimestamp should not block");
 
     partition = new PubSubTopicPartitionImpl(existingPubSubTopic, 1);
     startTime = System.currentTimeMillis();
-    offset = pubSubConsumerAdapter.offsetForTime(partition, System.currentTimeMillis());
+    position = pubSubConsumerAdapter.getPositionByTimestamp(partition, System.currentTimeMillis());
     elapsedTime = System.currentTimeMillis() - startTime;
-    assertNull(offset, "Offset should be null for an existing topic with no messages");
-    assertTrue(elapsedTime <= PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS_WITH_VARIANCE, "OffsetForTime should not block");
+    assertNull(position, "PubSubPosition should be null for an existing topic with no messages");
+    assertTrue(
+        elapsedTime <= PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS_WITH_VARIANCE,
+        "getPositionByTimestamp should not block");
   }
 
   // Test: Subscribe to non-existent topic should throw PubSubTopicDoesNotExistException

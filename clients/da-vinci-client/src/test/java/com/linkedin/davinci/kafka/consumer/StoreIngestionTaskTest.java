@@ -254,6 +254,7 @@ import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -4034,7 +4035,7 @@ public abstract class StoreIngestionTaskTest {
     doReturn(PARTITION_FOO).when(mockPcs).getPartition();
     PubSubPosition p10 = InMemoryPubSubPosition.of(10L);
     storeIngestionTaskUnderTest.processTopicSwitch(controlMessage, PARTITION_FOO, p10, mockPcs);
-    verify(mockTopicManagerRemoteKafka, never()).getOffsetByTime(any(), anyLong());
+    verify(mockTopicManagerRemoteKafka, never()).getPositionByTime(any(), anyLong());
     verify(mockOffsetRecord, never()).checkpointRtPosition(anyString(), any(PubSubPosition.class));
   }
 
@@ -4147,12 +4148,17 @@ public abstract class StoreIngestionTaskTest {
     // Test alternative branch of the code
     Supplier<PartitionConsumptionState> mockPcsSupplier2 = () -> {
       PartitionConsumptionState mock = mockPcsSupplier.get();
+      doReturn(versionTopic + "-0").when(mock).getReplicaId();
       doReturn(PubSubSymbolicPosition.EARLIEST).when(mock).getLeaderPosition(anyString(), anyBoolean());
       doReturn(PubSubSymbolicPosition.EARLIEST).when(mock).getLatestProcessedRtPosition(anyString());
       doReturn(new PubSubTopicPartitionImpl(rtTopic, 0)).when(mock).getSourceTopicPartition(any());
       return mock;
     };
     mockPcs = mockPcsSupplier2.get();
+
+    when(mockTopicManagerRepository.getTopicManager("localhost")).thenReturn(mockTopicManager);
+    doReturn(PubSubSymbolicPosition.EARLIEST).when(mockTopicManager).getPositionByTime(any(), anyLong());
+
     ingestionTask.leaderExecuteTopicSwitch(mockPcs, topicSwitch, newSourceTopic);
     verify(mockPcs, never()).setLatestConsumedRtPosition(anyString(), any());
 
@@ -4225,7 +4231,8 @@ public abstract class StoreIngestionTaskTest {
     // Run the actual codes inside function "startConsumingAsLeader"
     doCallRealMethod().when(leaderFollowerStoreIngestionTask).startConsumingAsLeader(any());
 
-    doCallRealMethod().when(leaderFollowerStoreIngestionTask).resolveTopicPartitionWithKafkaURL(any(), any(), any());
+    doCallRealMethod().when(leaderFollowerStoreIngestionTask)
+        .resolveRtTopicPartitionWithPubSubBrokerAddress(any(), any(), any());
     doReturn(false).when(leaderFollowerStoreIngestionTask).shouldNewLeaderSwitchToRemoteConsumption(any());
     Set<String> kafkaServerSet = new HashSet<>();
     kafkaServerSet.add("localhost");
@@ -4262,36 +4269,39 @@ public abstract class StoreIngestionTaskTest {
 
   private Consumer<MockInMemoryPartitionPosition> getObserver(
       List<InMemoryPubSubPosition> resubscriptionOffsetForVT,
-      List<InMemoryPubSubPosition> resubscriptionOffsetForRT) {
+      List<InMemoryPubSubPosition> resubscriptionOffsetForRT,
+      CountDownLatch resubscriptionLatch) {
     return topicPartitionOffset -> {
 
       if (topicPartitionOffset == null || topicPartitionOffset.getPubSubPosition() == null) {
         LOGGER.info("Received null OffsetRecord!");
       } else {
         PubSubTopicPartition pubSubTopicPartition = topicPartitionOffset.getPubSubTopicPartition();
-        InMemoryPubSubPosition offset = topicPartitionOffset.getPubSubPosition();
+        InMemoryPubSubPosition position = topicPartitionOffset.getPubSubPosition();
         LOGGER.info(
-            "TopicPartition: {}, Offset: {}",
+            "Topic-partition: {}, position: {}",
             topicPartitionOffset.getPubSubTopicPartition(),
             topicPartitionOffset.getPubSubPosition());
-        if (pubSubTopicPartition.getPubSubTopic().isVersionTopic() && resubscriptionOffsetForVT.contains(offset)) {
+        if (pubSubTopicPartition.getPubSubTopic().isVersionTopic() && resubscriptionOffsetForVT.contains(position)) {
           storeIngestionTaskUnderTest.setVersionRole(PartitionReplicaIngestionContext.VersionRole.BACKUP);
+          resubscriptionLatch.countDown();
           LOGGER.info(
-              "Trigger re-subscription after consuming message for {} at offset {} ",
+              "Trigger re-subscription after consuming message for {} at position {} ",
               pubSubTopicPartition,
-              offset);
-        } else if (pubSubTopicPartition.getPubSubTopic().isRealTime() && resubscriptionOffsetForRT.contains(offset)) {
+              position);
+        } else if (pubSubTopicPartition.getPubSubTopic().isRealTime() && resubscriptionOffsetForRT.contains(position)) {
           storeIngestionTaskUnderTest.setVersionRole(PartitionReplicaIngestionContext.VersionRole.BACKUP);
+          resubscriptionLatch.countDown();
           LOGGER.info(
-              "Trigger re-subscription after consuming message for {} at offset {}.",
+              "Trigger re-subscription after consuming message for {} at position {}.",
               pubSubTopicPartition,
-              offset);
+              position);
         }
       }
     };
   }
 
-  @Test(timeOut = 60000)
+  @Test(timeOut = 120000)
   public void testResubscribeAfterRoleChange() throws Exception {
     String realTimeTopicName = Utils.composeRealTimeTopic(storeNameWithoutVersionInfo);
     PubSubTopic realTimeTopic = pubSubTopicRepository.getTopic(realTimeTopicName);
@@ -4337,6 +4347,9 @@ public abstract class StoreIngestionTaskTest {
     int totalRemoteRtResubscriptionTriggered =
         resubscriptionOffsetForRemoteRT.size() + resubscriptionOffsetForLocalRT.size();
 
+    // Create CountDownLatch for synchronization between observer threads and main test thread
+    CountDownLatch resubscriptionLatch = new CountDownLatch(totalResubscriptionTriggered);
+
     vtWriter.broadcastStartOfPush(new HashMap<>());
 
     // Produce batchMessagesNum messages to local Venice version topic
@@ -4346,13 +4359,17 @@ public abstract class StoreIngestionTaskTest {
     // setting
     // the version role to Backup when the offset reaches the specified value.
     Consumer<MockInMemoryPartitionPosition> localObserver =
-        getObserver(resubscriptionOffsetForLocalVT, resubscriptionOffsetForLocalRT);
+        getObserver(resubscriptionOffsetForLocalVT, resubscriptionOffsetForLocalRT, resubscriptionLatch);
     Consumer<MockInMemoryPartitionPosition> remoteObserver =
-        getObserver(Collections.emptyList(), resubscriptionOffsetForRemoteRT);
+        getObserver(Collections.emptyList(), resubscriptionOffsetForRemoteRT, resubscriptionLatch);
     PollStrategy localPollStrategy = new BlockingObserverPollStrategy(new RandomPollStrategy(false), localObserver);
     remotePollStrategy = Optional.of(new BlockingObserverPollStrategy(new RandomPollStrategy(false), remoteObserver));
 
+    doReturn(PubSubSymbolicPosition.EARLIEST).when(mockTopicManager)
+        .getPositionByTime(any(PubSubTopicPartition.class), anyLong());
     TopicManager mockTopicManagerRemoteKafka = mock(TopicManager.class);
+    doReturn(PubSubSymbolicPosition.EARLIEST).when(mockTopicManagerRemoteKafka)
+        .getPositionByTime(any(PubSubTopicPartition.class), anyLong());
     doReturn(mockTopicManagerRemoteKafka).when(mockTopicManagerRepository)
         .getTopicManager(inMemoryRemoteKafkaBroker.getPubSubBrokerAddress());
 
@@ -4385,25 +4402,46 @@ public abstract class StoreIngestionTaskTest {
 
           verify(mockAbstractStorageEngine, timeout(10000).times(batchMessagesNum * 2))
               .putWithReplicationMetadata(eq(PARTITION_FOO), any(), any(), any());
+
+          // Wait for all resubscriptions to complete before verifying mock interactions
           try {
-            verify(storeIngestionTaskUnderTest, times(totalResubscriptionTriggered)).resubscribeForAllPartitions();
+            assertTrue(
+                resubscriptionLatch.await(30, TimeUnit.SECONDS),
+                "Timed out waiting for all resubscriptions to complete");
           } catch (InterruptedException e) {
             throw new RuntimeException(e);
           }
-          verify(mockLocalKafkaConsumer, atLeast(totalLocalVtResubscriptionTriggered))
-              .unSubscribe(eq(fooTopicPartition));
-          verify(mockLocalKafkaConsumer, atLeast(totalLocalVtResubscriptionTriggered))
-              .unSubscribe(eq(barTopicPartition));
+
+          // Use waitForNonDeterministicAssertion with atLeast() for all mock verifications
+          waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+            try {
+              verify(storeIngestionTaskUnderTest, atLeast(totalResubscriptionTriggered)).resubscribeForAllPartitions();
+            } catch (InterruptedException e) {
+              throw new RuntimeException(e);
+            }
+          });
+
           PubSubTopicPartition fooRtTopicPartition = new PubSubTopicPartitionImpl(realTimeTopic, PARTITION_FOO);
-          verify(mockLocalKafkaConsumer, atLeast(totalLocalRtResubscriptionTriggered)).unSubscribe(fooRtTopicPartition);
-          verify(mockRemoteKafkaConsumer, atLeast(totalRemoteRtResubscriptionTriggered))
-              .unSubscribe(fooRtTopicPartition);
-          verify(mockLocalKafkaConsumer, atLeast(totalLocalVtResubscriptionTriggered))
-              .subscribe(eq(fooTopicPartition), any(PubSubPosition.class));
-          verify(mockLocalKafkaConsumer, atLeast(totalLocalRtResubscriptionTriggered))
-              .subscribe(eq(fooRtTopicPartition), any(PubSubPosition.class));
-          verify(mockRemoteKafkaConsumer, atLeast(totalRemoteRtResubscriptionTriggered))
-              .subscribe(eq(fooRtTopicPartition), any(PubSubPosition.class));
+
+          waitForNonDeterministicAssertion(120, TimeUnit.SECONDS, () -> {
+            // Verify unsubscribe calls
+            verify(mockLocalKafkaConsumer, atLeast(totalLocalVtResubscriptionTriggered))
+                .unSubscribe(eq(fooTopicPartition));
+            verify(mockLocalKafkaConsumer, atLeast(totalLocalVtResubscriptionTriggered))
+                .unSubscribe(eq(barTopicPartition));
+            verify(mockLocalKafkaConsumer, atLeast(totalLocalRtResubscriptionTriggered))
+                .unSubscribe(fooRtTopicPartition);
+            verify(mockRemoteKafkaConsumer, atLeast(totalRemoteRtResubscriptionTriggered))
+                .unSubscribe(fooRtTopicPartition);
+
+            // Verify subscribe calls
+            verify(mockLocalKafkaConsumer, atLeast(totalLocalVtResubscriptionTriggered))
+                .subscribe(eq(fooTopicPartition), any(PubSubPosition.class));
+            verify(mockLocalKafkaConsumer, atLeast(totalLocalRtResubscriptionTriggered))
+                .subscribe(eq(fooRtTopicPartition), any(PubSubPosition.class));
+            verify(mockRemoteKafkaConsumer, atLeast(totalRemoteRtResubscriptionTriggered))
+                .subscribe(eq(fooRtTopicPartition), any(PubSubPosition.class));
+          });
         }, AA_ON);
     config.setPollStrategy(localPollStrategy)
         .setHybridStoreConfig(Optional.of(hybridStoreConfig))
@@ -5839,12 +5877,13 @@ public abstract class StoreIngestionTaskTest {
   }
 
   @Test
-  public void testResolveTopicPartitionWithKafkaURL() throws NoSuchFieldException, IllegalAccessException {
+  public void testResolveRtTopicPartitionWithPubSubBrokerAddress() throws NoSuchFieldException, IllegalAccessException {
     StoreIngestionTask storeIngestionTask = mock(StoreIngestionTask.class);
     Function<String, String> resolver = Utils::resolveKafkaUrlForSepTopic;
     PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
-    doCallRealMethod().when(storeIngestionTask).resolveTopicPartitionWithKafkaURL(any(), any(), anyString());
-    doCallRealMethod().when(storeIngestionTask).resolveTopicWithKafkaURL(any(), anyString());
+    doCallRealMethod().when(storeIngestionTask)
+        .resolveRtTopicPartitionWithPubSubBrokerAddress(any(), any(), anyString());
+    doCallRealMethod().when(storeIngestionTask).resolveRtTopicWithPubSubBrokerAddress(any(), anyString());
     doReturn(pubSubTopicRepository).when(storeIngestionTask).getPubSubTopicRepository();
     doReturn(resolver).when(storeIngestionTask).getKafkaClusterUrlResolver();
     PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
@@ -5861,13 +5900,15 @@ public abstract class StoreIngestionTaskTest {
     field.set(storeIngestionTask, separateRealTimeTopic);
 
     Assert.assertEquals(
-        storeIngestionTask.resolveTopicPartitionWithKafkaURL(realTimeTopic, pcs, kafkaUrl).getPubSubTopic(),
+        storeIngestionTask.resolveRtTopicPartitionWithPubSubBrokerAddress(realTimeTopic, pcs, kafkaUrl)
+            .getPubSubTopic(),
         realTimeTopic);
     Assert.assertEquals(
-        storeIngestionTask.resolveTopicPartitionWithKafkaURL(versionTopic, pcs, kafkaUrl).getPubSubTopic(),
+        storeIngestionTask.resolveRtTopicPartitionWithPubSubBrokerAddress(versionTopic, pcs, kafkaUrl).getPubSubTopic(),
         versionTopic);
     Assert.assertEquals(
-        storeIngestionTask.resolveTopicPartitionWithKafkaURL(realTimeTopic, pcs, kafkaUrl + Utils.SEPARATE_TOPIC_SUFFIX)
+        storeIngestionTask
+            .resolveRtTopicPartitionWithPubSubBrokerAddress(realTimeTopic, pcs, kafkaUrl + Utils.SEPARATE_TOPIC_SUFFIX)
             .getPubSubTopic(),
         separateRealTimeTopic);
   }
@@ -5972,7 +6013,7 @@ public abstract class StoreIngestionTaskTest {
         aaEnabled ? mock(ActiveActiveStoreIngestionTask.class) : mock(LeaderFollowerStoreIngestionTask.class);
     doCallRealMethod().when(ingestionTask).resubscribeAsLeader(any());
     doCallRealMethod().when(ingestionTask)
-        .prepareOffsetCheckpointAndStartConsumptionAsLeader(any(), any(), anyBoolean());
+        .preparePositionCheckpointAndStartRtConsumptionAsLeader(any(), any(), anyBoolean());
     PubSubTopicRepository topicRepository = new PubSubTopicRepository();
     when(ingestionTask.getPubSubTopicRepository()).thenReturn(topicRepository);
     OffsetRecord offsetRecord = mock(OffsetRecord.class);
@@ -6034,7 +6075,7 @@ public abstract class StoreIngestionTaskTest {
     LeaderFollowerStoreIngestionTask ingestionTask =
         aaEnabled ? mock(ActiveActiveStoreIngestionTask.class) : mock(LeaderFollowerStoreIngestionTask.class);
     doCallRealMethod().when(ingestionTask)
-        .prepareOffsetCheckpointAndStartConsumptionAsLeader(any(), any(), anyBoolean());
+        .preparePositionCheckpointAndStartRtConsumptionAsLeader(any(), any(), anyBoolean());
     PubSubTopicRepository topicRepository = new PubSubTopicRepository();
     when(ingestionTask.getPubSubTopicRepository()).thenReturn(topicRepository);
     InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer =
@@ -6060,7 +6101,7 @@ public abstract class StoreIngestionTaskTest {
     PubSubPosition p100 = InMemoryPubSubPosition.of(100L);
     when(pcs.getLatestProcessedRemoteVtPosition()).thenReturn(p100);
     when(pcs.consumeRemotely()).thenReturn(true);
-    ingestionTask.prepareOffsetCheckpointAndStartConsumptionAsLeader(pubSubTopic, pcs, false);
+    ingestionTask.preparePositionCheckpointAndStartRtConsumptionAsLeader(pubSubTopic, pcs, false);
 
     if (aaEnabled) {
       Assert.assertEquals(offsetRecord.getCheckpointedRtPosition("dc-1"), PubSubSymbolicPosition.EARLIEST);

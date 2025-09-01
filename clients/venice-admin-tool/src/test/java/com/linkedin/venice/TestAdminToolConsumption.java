@@ -138,8 +138,8 @@ public class TestAdminToolConsumption {
     String topic = storeInfo.getHybridStoreConfig().getRealTimeTopicName();
 
     int assignedPartition = 0;
-    long startOffset = 0;
-    long endOffset = 1;
+    ApacheKafkaOffsetPosition startPosition = ApacheKafkaOffsetPosition.of(0L);
+    ApacheKafkaOffsetPosition endPosition = ApacheKafkaOffsetPosition.of(1L);
     long progressInterval = 1;
     String keyString = "test";
     byte[] serializedKey = TopicMessageFinder.serializeKey(keyString, SCHEMA_STRING);
@@ -211,14 +211,14 @@ public class TestAdminToolConsumption {
     when(apacheKafkaConsumer.poll(anyLong())).thenReturn(messagesMap, Collections.EMPTY_MAP);
     long startTimestamp = 10;
     long endTimestamp = 20;
-    when(apacheKafkaConsumer.offsetForTime(pubSubTopicPartition, startTimestamp)).thenReturn(startOffset);
-    when(apacheKafkaConsumer.offsetForTime(pubSubTopicPartition, endTimestamp)).thenReturn(endOffset);
+    when(apacheKafkaConsumer.getPositionByTimestamp(pubSubTopicPartition, startTimestamp)).thenReturn(startPosition);
+    when(apacheKafkaConsumer.getPositionByTimestamp(pubSubTopicPartition, endTimestamp)).thenReturn(endPosition);
     long messageCount = TopicMessageFinder
         .find(controllerClient, apacheKafkaConsumer, topic, keyString, startTimestamp, endTimestamp, progressInterval);
-    Assert.assertEquals(messageCount, endOffset - startOffset);
+    Assert.assertEquals(messageCount, endPosition.getInternalOffset() - startPosition.getInternalOffset());
 
     when(apacheKafkaConsumer.poll(anyLong())).thenReturn(messagesMap, Collections.EMPTY_MAP);
-    when(apacheKafkaConsumer.endOffset(pubSubTopicPartition)).thenReturn(endOffset);
+    when(apacheKafkaConsumer.endOffset(pubSubTopicPartition)).thenReturn(endPosition.getInternalOffset());
     long messageCountNoEndOffset = TopicMessageFinder.find(
         controllerClient,
         apacheKafkaConsumer,
@@ -227,7 +227,7 @@ public class TestAdminToolConsumption {
         startTimestamp,
         Long.MAX_VALUE,
         progressInterval);
-    Assert.assertEquals(messageCountNoEndOffset, endOffset - startOffset);
+    Assert.assertEquals(messageCountNoEndOffset, endPosition.getInternalOffset() - startPosition.getInternalOffset());
 
     when(apacheKafkaConsumer.poll(anyLong())).thenReturn(messagesMap, Collections.EMPTY_MAP);
     ControlMessageDumper controlMessageDumper =
