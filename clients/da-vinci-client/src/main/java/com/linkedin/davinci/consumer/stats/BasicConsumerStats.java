@@ -176,7 +176,10 @@ public class BasicConsumerStats extends AbstractVeniceStats {
         baseDimensionsMap,
         VeniceResponseStatusCategory.class);
 
-    // Record default value for version swap metrics so histograms include initial zero
+    /*
+     * Record default value for version swap metrics so the UP_DOWN_COUNTER in OTEL will emit a default 0.
+     * If you don't do this, the OTEL metric will return no data upon query time until a value is recorded.
+     */
     versionSwapSuccessCountMetric.record(0, SUCCESS);
     versionSwapFailCountMetric.record(0, FAIL);
   }
