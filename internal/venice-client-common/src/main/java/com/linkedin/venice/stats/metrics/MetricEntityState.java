@@ -6,6 +6,7 @@ import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.metrics.DoubleHistogram;
 import io.opentelemetry.api.metrics.LongCounter;
 import io.opentelemetry.api.metrics.LongGauge;
+import io.opentelemetry.api.metrics.LongUpDownCounter;
 import io.tehuti.metrics.MeasurableStat;
 import java.util.List;
 import java.util.Map;
@@ -52,6 +53,9 @@ public abstract class MetricEntityState extends AsyncMetricEntityState {
           break;
         case COUNTER:
           ((LongCounter) otelMetric).add((long) value, attributes);
+          break;
+        case UP_DOWN_COUNTER:
+          ((LongUpDownCounter) otelMetric).add((long) value, attributes);
           break;
         case GAUGE:
           ((LongGauge) otelMetric).set((long) value, attributes);

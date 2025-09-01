@@ -28,13 +28,13 @@ import io.tehuti.metrics.stats.Avg;
 import io.tehuti.metrics.stats.Gauge;
 import io.tehuti.metrics.stats.Max;
 import io.tehuti.metrics.stats.Rate;
+import io.tehuti.metrics.stats.Total;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.atomic.AtomicInteger;
 
 
 /**
@@ -56,9 +56,6 @@ public class BasicConsumerStats extends AbstractVeniceStats {
   private final MetricEntityStateOneEnum<VeniceResponseStatusCategory> versionSwapFailCountMetric;
   private final MetricEntityStateOneEnum<VeniceResponseStatusCategory> chunkedRecordSuccessCountMetric;
   private final MetricEntityStateOneEnum<VeniceResponseStatusCategory> chunkedRecordFailCountMetric;
-
-  private final AtomicInteger versionSwapSuccessCount = new AtomicInteger();
-  private final AtomicInteger versionSwapFailCount = new AtomicInteger();
 
   public BasicConsumerStats(MetricsRepository metricsRepository, String consumerName, String storeName) {
     super(metricsRepository, consumerName);
@@ -148,7 +145,7 @@ public class BasicConsumerStats extends AbstractVeniceStats {
         otelRepository,
         this::registerSensor,
         BasicConsumerTehutiMetricName.VERSION_SWAP_SUCCESS_COUNT,
-        Collections.singletonList(new Gauge()),
+        Collections.singletonList(new Total()),
         baseDimensionsMap,
         VeniceResponseStatusCategory.class);
 
@@ -157,7 +154,7 @@ public class BasicConsumerStats extends AbstractVeniceStats {
         otelRepository,
         this::registerSensor,
         BasicConsumerTehutiMetricName.VERSION_SWAP_FAIL_COUNT,
-        Collections.singletonList(new Gauge()),
+        Collections.singletonList(new Total()),
         baseDimensionsMap,
         VeniceResponseStatusCategory.class);
 
@@ -208,19 +205,11 @@ public class BasicConsumerStats extends AbstractVeniceStats {
     }
   }
 
-  public void emitVersionSwapCountMetrics(VeniceResponseStatusCategory responseStatusCategory, long count) {
-    if (responseStatusCategory == SUCCESS) {
-      versionSwapSuccessCountMetric.record(count, responseStatusCategory);
-    } else {
-      versionSwapFailCountMetric.record(count, responseStatusCategory);
-    }
-  }
-
   public void emitVersionSwapCountMetrics(VeniceResponseStatusCategory responseStatusCategory) {
     if (responseStatusCategory == SUCCESS) {
-      versionSwapSuccessCountMetric.record(versionSwapSuccessCount.incrementAndGet(), responseStatusCategory);
+      versionSwapSuccessCountMetric.record(1, responseStatusCategory);
     } else {
-      versionSwapFailCountMetric.record(versionSwapFailCount.incrementAndGet(), responseStatusCategory);
+      versionSwapFailCountMetric.record(1, responseStatusCategory);
     }
   }
 
@@ -238,14 +227,6 @@ public class BasicConsumerStats extends AbstractVeniceStats {
   @VisibleForTesting
   public Attributes getBaseAttributes() {
     return baseAttributes;
-  }
-
-  public int getVersionSwapSuccessCount() {
-    return versionSwapSuccessCount.get();
-  }
-
-  public int getVersionSwapFailCount() {
-    return versionSwapFailCount.get();
   }
 
   /**
@@ -273,8 +254,8 @@ public class BasicConsumerStats extends AbstractVeniceStats {
      * Measures the max heartbeat delay across all subscribed partitions
      */
     HEART_BEAT_DELAY(
-        MetricType.GAUGE, MetricUnit.MILLISECOND, "Measures the max heartbeat delay across all subscribed partitions",
-        setOf(VENICE_STORE_NAME)
+        MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS, MetricUnit.MILLISECOND,
+        "Measures the max heartbeat delay across all subscribed partitions", setOf(VENICE_STORE_NAME)
     ),
     /**
      * Measures the min/max consuming version across all subscribed partitions
@@ -300,7 +281,7 @@ public class BasicConsumerStats extends AbstractVeniceStats {
      * Measures the count of version swaps
      */
     VERSION_SWAP_COUNT(
-        MetricType.GAUGE, MetricUnit.NUMBER, "Measures the count of version swaps",
+        MetricType.UP_DOWN_COUNTER, MetricUnit.NUMBER, "Measures the count of version swaps",
         setOf(VENICE_STORE_NAME, VENICE_RESPONSE_STATUS_CODE_CATEGORY)
     ),
     /**

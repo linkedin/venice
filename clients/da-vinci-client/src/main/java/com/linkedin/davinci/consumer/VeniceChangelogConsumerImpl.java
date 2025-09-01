@@ -1406,14 +1406,6 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
 
       // Record max and min consumed versions
       changeCaptureStats.emitCurrentConsumingVersionMetrics(minVersion, maxVersion);
-
-      /*
-       * Record version swap metrics here with the same value, because OTEL synchronous gauge doesn't emit by itself.
-       * We can use an asynchronous gauge, but it doesn't support multiple dimensions well. So this is a hack
-       * to achieve the same thing.
-       */
-      changeCaptureStats.emitVersionSwapCountMetrics(SUCCESS, changeCaptureStats.getVersionSwapSuccessCount());
-      changeCaptureStats.emitVersionSwapCountMetrics(FAIL, changeCaptureStats.getVersionSwapFailCount());
     }
   }
 }

@@ -113,23 +113,27 @@ public class BasicConsumerStatsTest {
     int expectedNum = 1;
 
     // Default metrics
-    validateTehutiMetric(tehutiMetricPrefix + "--" + VERSION_SWAP_SUCCESS_COUNT.getMetricName() + ".Gauge", defaultNum);
-    validateTehutiMetric(tehutiMetricPrefix + "--" + VERSION_SWAP_FAIL_COUNT.getMetricName() + ".Gauge", defaultNum);
-    validateGaugeOtelMetric(storeName, VERSION_SWAP_COUNT.getMetricEntity().getMetricName(), defaultNum, SUCCESS);
-    validateGaugeOtelMetric(storeName, VERSION_SWAP_COUNT.getMetricEntity().getMetricName(), defaultNum, FAIL);
+    validateTehutiMetric(tehutiMetricPrefix + "--" + VERSION_SWAP_SUCCESS_COUNT.getMetricName() + ".Total", defaultNum);
+    validateTehutiMetric(tehutiMetricPrefix + "--" + VERSION_SWAP_FAIL_COUNT.getMetricName() + ".Total", defaultNum);
+    validateLongCounterOtelMetric(storeName, VERSION_SWAP_COUNT.getMetricEntity().getMetricName(), defaultNum, SUCCESS);
+    validateLongCounterOtelMetric(storeName, VERSION_SWAP_COUNT.getMetricEntity().getMetricName(), defaultNum, FAIL);
 
     consumerStats.emitVersionSwapCountMetrics(SUCCESS);
     consumerStats.emitVersionSwapCountMetrics(FAIL);
 
     // Success metrics
     validateTehutiMetric(
-        tehutiMetricPrefix + "--" + VERSION_SWAP_SUCCESS_COUNT.getMetricName() + ".Gauge",
+        tehutiMetricPrefix + "--" + VERSION_SWAP_SUCCESS_COUNT.getMetricName() + ".Total",
         expectedNum);
-    validateGaugeOtelMetric(storeName, VERSION_SWAP_COUNT.getMetricEntity().getMetricName(), expectedNum, SUCCESS);
+    validateLongCounterOtelMetric(
+        storeName,
+        VERSION_SWAP_COUNT.getMetricEntity().getMetricName(),
+        expectedNum,
+        SUCCESS);
 
     // Fail metrics
-    validateTehutiMetric(tehutiMetricPrefix + "--" + VERSION_SWAP_FAIL_COUNT.getMetricName() + ".Gauge", expectedNum);
-    validateGaugeOtelMetric(storeName, VERSION_SWAP_COUNT.getMetricEntity().getMetricName(), expectedNum, FAIL);
+    validateTehutiMetric(tehutiMetricPrefix + "--" + VERSION_SWAP_FAIL_COUNT.getMetricName() + ".Total", expectedNum);
+    validateLongCounterOtelMetric(storeName, VERSION_SWAP_COUNT.getMetricEntity().getMetricName(), expectedNum, FAIL);
   }
 
   @Test

@@ -211,6 +211,7 @@ public class MetricTypeTest {
         case HISTOGRAM:
         case MIN_MAX_COUNT_SUM_AGGREGATIONS:
         case COUNTER:
+        case UP_DOWN_COUNTER:
         case GAUGE:
           assertFalse(metricType.isAsyncMetric(), "MetricType " + metricType + " should not be async");
           break;
