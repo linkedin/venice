@@ -222,29 +222,41 @@ public class TestStoreBackupVersionCleanupService {
     VeniceControllerMultiClusterConfig config = mock(VeniceControllerMultiClusterConfig.class);
     long defaultRetentionMs = TimeUnit.DAYS.toMillis(7);
     doReturn(defaultRetentionMs).when(config).getBackupVersionDefaultRetentionMs();
+    long rolledbackTimestamp = System.currentTimeMillis() - defaultRetentionMs * 2;
     VeniceControllerClusterConfig controllerConfig = mock(VeniceControllerClusterConfig.class);
     doReturn(controllerConfig).when(config).getControllerConfig(anyString());
     doReturn(mockClusterResource).when(admin).getHelixVeniceClusterResources(anyString());
     doReturn(clusterManager).when(mockClusterResource).getRoutersClusterManager();
     StoreBackupVersionCleanupService service =
         new StoreBackupVersionCleanupService(admin, config, mock(MetricsRepository.class));
-    long waitTimeDeleteRepushSourceVersion = 100;
+    long waitTimeDeleteRepushSourceVersion = 100; // bypasses whetherStoreReadyToBeCleanup() for repush cases
     StoreBackupVersionCleanupService.setWaitTimeDeleteRepushSourceVersion(waitTimeDeleteRepushSourceVersion);
 
-    String clusterName = "test_cluster";
+    // Test case: One repush creating one backup version
     // Store is not qualified because of short life time of backup version
+    String clusterName = "test_cluster";
     Map<Integer, VersionStatus> versions = new HashMap<>();
     versions.put(1, VersionStatus.ONLINE);
     versions.put(2, VersionStatus.ONLINE);
     Store storeWithFreshBackupVersion = mockStore(-1, System.currentTimeMillis(), versions, 2);
-    storeWithFreshBackupVersion.getVersion(2).setRepushSourceVersion(1);
+    Version currentVersion = storeWithFreshBackupVersion.getVersion(2);
+    doReturn(1).when(currentVersion).getRepushSourceVersion();
     Assert.assertFalse(service.cleanupBackupVersion(storeWithFreshBackupVersion, clusterName));
+
+    // Even if the repush was on a version created 6 months ago, the backup version should not be immediately deleted
+    Version backupVersion = storeWithFreshBackupVersion.getVersion(1);
+    doReturn(System.currentTimeMillis() - TimeUnit.DAYS.toMillis(6 * 30)).when(backupVersion).getCreatedTime();
+    Assert.assertFalse(service.cleanupBackupVersion(storeWithFreshBackupVersion, clusterName));
+
+    // The deletion condition should hinge on latestVersionPromoteToCurrentTimestamp
+    doReturn(rolledbackTimestamp).when(storeWithFreshBackupVersion).getLatestVersionPromoteToCurrentTimestamp();
+    Assert.assertTrue(service.cleanupBackupVersion(storeWithFreshBackupVersion, clusterName));
 
     versions.clear();
     versions.put(1, VersionStatus.ONLINE);
     versions.put(2, VersionStatus.ONLINE);
     versions.put(3, VersionStatus.ONLINE);
-    Store storeWithRollback = mockStore(-1, System.currentTimeMillis() - defaultRetentionMs * 2, versions, 3);
+    Store storeWithRollback = mockStore(-1, rolledbackTimestamp, versions, 3);
     Version version = storeWithRollback.getVersion(3);
     doReturn(2).when(version).getRepushSourceVersion();
 
@@ -258,7 +270,7 @@ public class TestStoreBackupVersionCleanupService {
     versions.clear();
     versions.put(1, VersionStatus.ONLINE);
     versions.put(3, VersionStatus.ONLINE);
-    Store storeLingeringVersion = mockStore(-1, System.currentTimeMillis() - defaultRetentionMs * 2, versions, 3);
+    Store storeLingeringVersion = mockStore(-1, rolledbackTimestamp, versions, 3);
     version = storeLingeringVersion.getVersion(3);
     doReturn(2).when(version).getRepushSourceVersion();
     version = storeLingeringVersion.getVersion(1);
