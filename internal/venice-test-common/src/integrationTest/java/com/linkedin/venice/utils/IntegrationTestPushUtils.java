@@ -93,6 +93,8 @@ public class IntegrationTestPushUtils {
       new VeniceJsonSerializer<>(new TypeReference<Map<String, Map<String, TopicPartitionIngestionInfo>>>() {
       });
 
+  private static final String INVALID_PARENT_D2_ZK_HOST = "invalid_parent_zk_address";
+
   public static Properties defaultVPJProps(VeniceClusterWrapper veniceCluster, String inputDirPath, String storeName) {
     Map<String, String> childRegionNamesToZkAddress =
         Collections.singletonMap(veniceCluster.getRegionName(), veniceCluster.getZk().getAddress());
@@ -244,7 +246,7 @@ public class IntegrationTestPushUtils {
     samzaConfig.put(configPrefix + VENICE_STORE, storeName);
     samzaConfig.put(VENICE_CHILD_D2_ZK_HOSTS, venice.getZk().getAddress());
     samzaConfig.put(VENICE_CHILD_CONTROLLER_D2_SERVICE, D2_SERVICE_NAME);
-    samzaConfig.put(VENICE_PARENT_D2_ZK_HOSTS, "invalid_parent_zk_address");
+    samzaConfig.put(VENICE_PARENT_D2_ZK_HOSTS, INVALID_PARENT_D2_ZK_HOST);
     samzaConfig.put(VENICE_PARENT_CONTROLLER_D2_SERVICE, PARENT_D2_SERVICE_NAME);
     samzaConfig.put(DEPLOYMENT_ID, Utils.getUniqueString("venice-push-id"));
     samzaConfig.put(SSL_ENABLED, "false");
@@ -264,7 +266,7 @@ public class IntegrationTestPushUtils {
     samzaConfig
         .put(VENICE_CHILD_D2_ZK_HOSTS, clusterWrapper.getChildRegions().get(index).getZkServerWrapper().getAddress());
     samzaConfig.put(VENICE_CHILD_CONTROLLER_D2_SERVICE, D2_SERVICE_NAME);
-    samzaConfig.put(VENICE_PARENT_D2_ZK_HOSTS, "invalid_parent_d2_service");
+    samzaConfig.put(VENICE_PARENT_D2_ZK_HOSTS, INVALID_PARENT_D2_ZK_HOST);
     samzaConfig.put(VENICE_PARENT_CONTROLLER_D2_SERVICE, PARENT_D2_SERVICE_NAME);
     samzaConfig.put(DEPLOYMENT_ID, "DC_" + index + "_" + storeName);
     samzaConfig.put(SSL_ENABLED, "false");
@@ -289,6 +291,19 @@ public class IntegrationTestPushUtils {
     return samzaConfig;
   }
 
+  private static void setD2ClientsForSystemProducerFactory(
+      VeniceSystemFactory factory,
+      Map<String, String> samzaConfig) {
+    if (!samzaConfig.containsKey(VENICE_CHILD_D2_ZK_HOSTS) || !samzaConfig.containsKey(VENICE_PARENT_D2_ZK_HOSTS)) {
+      throw new VeniceException("Missing D2 ZK hosts in Samza config: " + samzaConfig);
+    }
+    D2Client childD2Client = getD2Client(samzaConfig.get(VENICE_CHILD_D2_ZK_HOSTS));
+    D2Client parentD2Client = samzaConfig.get(VENICE_PARENT_D2_ZK_HOSTS).equals(INVALID_PARENT_D2_ZK_HOST)
+        ? childD2Client
+        : getD2Client(samzaConfig.get(VENICE_PARENT_D2_ZK_HOSTS));
+    factory.setProvidedD2Clients(Optional.of(childD2Client), Optional.of(parentD2Client));
+  }
+
   /**
    * Create Samza Producer in Single-Region setup with optional configs.
    */
@@ -303,6 +318,7 @@ public class IntegrationTestPushUtils {
       samzaConfig.put(config.getFirst(), config.getSecond());
     }
     VeniceSystemFactory factory = new VeniceSystemFactory();
+    setD2ClientsForSystemProducerFactory(factory, samzaConfig);
     VeniceSystemProducer veniceProducer = factory.getClosableProducer("venice", new MapConfig(samzaConfig), null);
     veniceProducer.start();
     return veniceProducer;
@@ -316,6 +332,7 @@ public class IntegrationTestPushUtils {
       String storeName) {
     Map<String, String> samzaConfig = getSamzaProducerConfigForBatch(venice, storeName);
     VeniceSystemFactory factory = new VeniceSystemFactory();
+    setD2ClientsForSystemProducerFactory(factory, samzaConfig);
     VeniceSystemProducer veniceProducer = factory.getClosableProducer("venice", new MapConfig(samzaConfig), null);
     veniceProducer.start();
     return veniceProducer;
@@ -335,6 +352,7 @@ public class IntegrationTestPushUtils {
       samzaConfig.put(config.getFirst(), config.getSecond());
     }
     VeniceSystemFactory factory = new VeniceSystemFactory();
+    setD2ClientsForSystemProducerFactory(factory, samzaConfig);
     VeniceSystemProducer veniceProducer = factory.getClosableProducer("venice", new MapConfig(samzaConfig), null);
     veniceProducer.start();
     return veniceProducer;
