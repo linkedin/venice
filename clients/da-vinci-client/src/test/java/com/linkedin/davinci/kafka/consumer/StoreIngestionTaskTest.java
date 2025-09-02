@@ -4875,6 +4875,7 @@ public abstract class StoreIngestionTaskTest {
     when(storeIngestionTask.getIsRunning()).thenReturn(result);
     doCallRealMethod().when(storeIngestionTask).close();
     doCallRealMethod().when(storeIngestionTask).isRunning();
+    doCallRealMethod().when(storeIngestionTask).isIdleOverThreshold();
 
     // Case 1: idle time pass, close(), then startConsumption(), SIT should be closed
     when(storeIngestionTask.getMaxIdleCounter()).thenReturn(10);
