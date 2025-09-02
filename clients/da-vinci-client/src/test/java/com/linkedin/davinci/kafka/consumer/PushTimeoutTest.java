@@ -13,8 +13,9 @@ import com.linkedin.davinci.stats.AggHostLevelIngestionStats;
 import com.linkedin.davinci.stats.HostLevelIngestionStats;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
-import com.linkedin.davinci.store.StorageEngine;
+import com.linkedin.davinci.store.DelegatingStorageEngine;
 import com.linkedin.venice.exceptions.VeniceTimeoutException;
+import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
@@ -23,6 +24,7 @@ import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
+import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.utils.ExceptionCaptorNotifier;
 import com.linkedin.venice.utils.ReferenceCounted;
 import com.linkedin.venice.utils.TestUtils;
@@ -55,15 +57,18 @@ public class PushTimeoutTest {
     AggHostLevelIngestionStats mockAggStoreIngestionStats = mock(AggHostLevelIngestionStats.class);
     HostLevelIngestionStats mockStoreIngestionStats = mock(HostLevelIngestionStats.class);
     doReturn(mockStoreIngestionStats).when(mockAggStoreIngestionStats).getStoreStats(anyString());
+    ReadOnlySchemaRepository mockSchemaRepository = mock(ReadOnlySchemaRepository.class);
+    doReturn(new SchemaEntry(1, "\"string\"")).when(mockSchemaRepository).getKeySchema(anyString());
 
     StoreIngestionTaskFactory.Builder builder = TestUtils.getStoreIngestionTaskBuilder(storeName)
         .setLeaderFollowerNotifiersQueue(notifiers)
         .setServerConfig(mockVeniceServerConfig)
         .setHostLevelIngestionStats(mockAggStoreIngestionStats)
+        .setSchemaRepository(mockSchemaRepository)
         .setPubSubContext(new PubSubContext.Builder().setPubSubTopicRepository(pubSubTopicRepository).build());
 
     StorageService storageService = mock(StorageService.class);
-    doReturn(new ReferenceCounted<>(mock(StorageEngine.class), se -> {})).when(storageService)
+    doReturn(new ReferenceCounted<>(mock(DelegatingStorageEngine.class), se -> {})).when(storageService)
         .getRefCountedStorageEngine(anyString());
 
     Store mockStore = builder.getMetadataRepo().getStoreOrThrow(storeName);
@@ -121,16 +126,19 @@ public class PushTimeoutTest {
     AggHostLevelIngestionStats mockAggStoreIngestionStats = mock(AggHostLevelIngestionStats.class);
     HostLevelIngestionStats mockStoreIngestionStats = mock(HostLevelIngestionStats.class);
     doReturn(mockStoreIngestionStats).when(mockAggStoreIngestionStats).getStoreStats(anyString());
+    ReadOnlySchemaRepository mockSchemaRepository = mock(ReadOnlySchemaRepository.class);
+    doReturn(new SchemaEntry(1, "\"string\"")).when(mockSchemaRepository).getKeySchema(anyString());
 
     StoreIngestionTaskFactory.Builder builder = TestUtils.getStoreIngestionTaskBuilder(storeName)
         .setLeaderFollowerNotifiersQueue(notifiers)
         .setStorageMetadataService(mockStorageMetadataService)
         .setServerConfig(mockVeniceServerConfig)
+        .setSchemaRepository(mockSchemaRepository)
         .setHostLevelIngestionStats(mockAggStoreIngestionStats)
         .setPubSubContext(new PubSubContext.Builder().setPubSubTopicRepository(pubSubTopicRepository).build());
 
     StorageService storageService = mock(StorageService.class);
-    doReturn(new ReferenceCounted<>(mock(StorageEngine.class), se -> {})).when(storageService)
+    doReturn(new ReferenceCounted<>(mock(DelegatingStorageEngine.class), se -> {})).when(storageService)
         .getRefCountedStorageEngine(anyString());
     Store mockStore = builder.getMetadataRepo().getStoreOrThrow(storeName);
     Version version = mockStore.getVersion(versionNumber);
