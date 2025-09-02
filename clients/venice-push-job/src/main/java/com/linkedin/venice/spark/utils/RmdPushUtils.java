@@ -30,6 +30,10 @@ public class RmdPushUtils {
   }
 
   public static boolean containsLogicalTimestamp(PushJobSetting pushJobSetting) {
+    if (!rmdFieldPresent(pushJobSetting)) {
+      return false;
+    }
+
     Schema inputRmdSchema = getInputRmdSchema(pushJobSetting);
     return inputRmdSchema.getType() == Schema.Type.LONG;
   }

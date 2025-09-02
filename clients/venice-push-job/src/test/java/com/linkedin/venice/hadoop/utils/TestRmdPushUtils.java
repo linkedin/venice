@@ -53,6 +53,9 @@ public class TestRmdPushUtils {
     when(mockSchema.getField(eq(rmdField))).thenReturn(mockField);
     when(mockField.schema()).thenReturn(Schema.create(Schema.Type.BYTES));
     assertFalse(RmdPushUtils.containsLogicalTimestamp(pushJobSetting));
+
+    pushJobSetting.rmdField = null;
+    assertFalse(RmdPushUtils.containsLogicalTimestamp(pushJobSetting));
   }
 
   @Test
