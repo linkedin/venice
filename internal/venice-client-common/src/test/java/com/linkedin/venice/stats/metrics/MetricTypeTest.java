@@ -98,7 +98,7 @@ public class MetricTypeTest {
   }
 
   @Test
-  public void testOtelUpDownCounter() {
+  public void testOtelRecordUpDownCounter() {
     String metricName = "test_metric_up_down_counter";
     MetricEntity metricEntityCounter = new MetricEntity(
         metricName,
