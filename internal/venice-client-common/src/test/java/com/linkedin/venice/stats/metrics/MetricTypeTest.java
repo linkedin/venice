@@ -97,6 +97,35 @@ public class MetricTypeTest {
         METRIC_PREFIX);
   }
 
+  @Test
+  public void testOtelUpDownCounter() {
+    String metricName = "test_metric_up_down_counter";
+    MetricEntity metricEntityCounter = new MetricEntity(
+        metricName,
+        MetricType.UP_DOWN_COUNTER,
+        MetricUnit.NUMBER,
+        TEST_DESCRIPTION,
+        getTestDimensions());
+
+    InMemoryMetricReader inMemoryMetricReader = InMemoryMetricReader.create();
+    VeniceOpenTelemetryMetricsRepository otelMetricsRepository =
+        createOtelRepo(metricEntityCounter, inMemoryMetricReader);
+    MetricEntityStateBase metricEntityStateBaseCounter = MetricEntityStateBase
+        .create(metricEntityCounter, otelMetricsRepository, getBaseDimensionsMap(), getBaseAttributes());
+
+    int value = 50;
+    metricEntityStateBaseCounter.record(value);
+
+    Collection<MetricData> metrics = inMemoryMetricReader.collectAllMetrics();
+    assertFalse(metrics.isEmpty(), "Metrics should not be empty");
+    assertEquals(metrics.size(), 1, "There should be one metric recorded");
+    validateLongPointDataFromCounter(inMemoryMetricReader, value, getBaseAttributes(), metricName, METRIC_PREFIX);
+
+    // Decrement value
+    metricEntityStateBaseCounter.record(-value);
+    validateLongPointDataFromCounter(inMemoryMetricReader, 0, getBaseAttributes(), metricName, METRIC_PREFIX);
+  }
+
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testOTelRecordHistogram(boolean isExponentialHistogram) {
     MetricEntity metricEntityHistogram = new MetricEntity(
