@@ -236,6 +236,13 @@ public final class VenicePushJobConstants {
   public static final String REWIND_EPOCH_TIME_IN_SECONDS_OVERRIDE = "rewind.epoch.time.in.seconds.override";
 
   /**
+   * Relates to the {@link #REWIND_EPOCH_TIME_IN_SECONDS_OVERRIDE}. An overridable amount of buffer to be applied to the epoch
+   * (as the rewind isn't perfectly instantaneous). Defaults to 1 minute.
+   */
+  public static final String REWIND_EPOCH_TIME_BUFFER_IN_SECONDS_OVERRIDE =
+      "rewind.epoch.time.buffer.in.seconds.override";
+
+  /**
    * This config is a boolean which suppresses submitting the end of push message after data has been sent and does
    * not poll for the status of the job to complete. Using this flag means that a user must manually mark the job success
    * or failed.
@@ -257,13 +264,6 @@ public final class VenicePushJobConstants {
    * This config specifies the region identifier where parent controller is running
    */
   public static final String PARENT_CONTROLLER_REGION_NAME = "parent.controller.region.name";
-
-  /**
-   * Relates to the above argument. An overridable amount of buffer to be applied to the epoch (as the rewind isn't
-   * perfectly instantaneous). Defaults to 1 minute.
-   */
-  public static final String REWIND_EPOCH_TIME_BUFFER_IN_SECONDS_OVERRIDE =
-      "rewind.epoch.time.buffer.in.seconds.override";
 
   /**
    * In single-region mode, this must be a comma-separated list of child controller URLs or {@literal d2://<d2ServiceNameForChildController>}
