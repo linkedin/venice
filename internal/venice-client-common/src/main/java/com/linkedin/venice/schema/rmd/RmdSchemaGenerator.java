@@ -59,6 +59,7 @@ public class RmdSchemaGenerator {
   public static ByteBuffer generateRecordLevelTimestampMetadata(Schema schema, Long timestamp) {
     GenericRecord record = new GenericData.Record(schema);
     record.put(RmdConstants.TIMESTAMP_FIELD_NAME, timestamp);
+    record.put(RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD_NAME, Collections.emptyList());
     return ByteBuffer.wrap(FastSerializerDeserializerFactory.getFastAvroGenericSerializer(schema).serialize(record));
   }
 
