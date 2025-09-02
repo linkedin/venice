@@ -1,8 +1,6 @@
 package com.linkedin.venice.spark.datawriter.jobs;
 
-import static com.linkedin.venice.spark.SparkConstants.*;
-import static com.linkedin.venice.spark.utils.RmdPushUtils.containsLogicalTimestamp;
-import static com.linkedin.venice.spark.utils.RmdPushUtils.rmdFieldPresent;
+import static com.linkedin.venice.spark.SparkConstants.DEFAULT_SCHEMA;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.ETL_VALUE_SCHEMA_TRANSFORMATION;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.FILE_KEY_SCHEMA;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.FILE_VALUE_SCHEMA;
@@ -39,7 +37,6 @@ import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SparkSession;
 import org.apache.spark.sql.catalyst.encoders.RowEncoder;
 import org.apache.spark.sql.catalyst.expressions.GenericRowWithSchema;
-import org.apache.spark.sql.types.StructType;
 
 
 /**
@@ -98,16 +95,6 @@ public class DataWriterSparkJob extends AbstractDataWriterSparkJob {
   }
 
   private Dataset<Row> getAvroDataFrame(SparkSession sparkSession, PushJobSetting pushJobSetting) {
-    final StructType outputSchema;
-    final boolean containsRmd = rmdFieldPresent(pushJobSetting);
-    if (containsRmd && containsLogicalTimestamp(pushJobSetting)) {
-      // If RMD field is present, and it contains logical timestamp, we need to add the timestamp field to the output
-      // schema
-      outputSchema = DEFAULT_SCHEMA_WITH_TIMESTAMP;
-    } else {
-      outputSchema = DEFAULT_SCHEMA;
-    }
-
     Dataset<Row> df =
         sparkSession.read().format("avro").option("pathGlobFilter", GLOB_FILTER_PATTERN).load(pushJobSetting.inputURI);
     // Transforming the input data format
@@ -129,23 +116,10 @@ public class DataWriterSparkJob extends AbstractDataWriterSparkJob {
       AvroWrapper<IndexedRecord> recordAvroWrapper = new AvroWrapper<>(rowRecord);
       final byte[] inputKeyBytes = recordReader.getKeyBytes(recordAvroWrapper, null);
       final byte[] inputValueBytes = recordReader.getValueBytes(recordAvroWrapper, null);
+      final byte[] inputRmdBytes = recordReader.getRmdBytes(recordAvroWrapper, null);
 
-      Object rmd = null;
-      /*
-       * We check for presence of rmd field in the input. Regardless of whether the rmd field contains logical timestamp
-       * or actual RMD bytes, we pass through the value as is only with signaling the type using the output schema type.
-       * In the absence of RMD field, we default to DEFAULT_SCHEMA as the output schema type.
-       */
-      if (containsRmd) {
-        if (DEFAULT_SCHEMA_WITH_TIMESTAMP.equals(outputSchema)) {
-          rmd = recordReader.getRmdValue(recordAvroWrapper, null);
-        } else {
-          rmd = recordReader.getRmdBytes(recordAvroWrapper, null);
-        }
-      }
-
-      return new GenericRowWithSchema(new Object[] { inputKeyBytes, inputValueBytes, rmd }, outputSchema);
-    }, RowEncoder.apply(outputSchema));
+      return new GenericRowWithSchema(new Object[] { inputKeyBytes, inputValueBytes, inputRmdBytes }, DEFAULT_SCHEMA);
+    }, RowEncoder.apply(DEFAULT_SCHEMA));
 
     return df;
   }

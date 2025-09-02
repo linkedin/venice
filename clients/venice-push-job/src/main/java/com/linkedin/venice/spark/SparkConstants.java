@@ -24,11 +24,6 @@ public class SparkConstants {
           new StructField(VALUE_COLUMN_NAME, BinaryType, true, Metadata.empty()),
           new StructField(RMD_COLUMN_NAME, BinaryType, true, Metadata.empty()) });
 
-  public static final StructType DEFAULT_SCHEMA_WITH_TIMESTAMP = new StructType(
-      new StructField[] { new StructField(KEY_COLUMN_NAME, BinaryType, false, Metadata.empty()),
-          new StructField(VALUE_COLUMN_NAME, BinaryType, true, Metadata.empty()),
-          new StructField(RMD_COLUMN_NAME, LongType, true, Metadata.empty()) });
-
   public static final StructType DEFAULT_SCHEMA_WITH_PARTITION = new StructType(
       new StructField[] { new StructField(KEY_COLUMN_NAME, BinaryType, false, Metadata.empty()),
           new StructField(VALUE_COLUMN_NAME, BinaryType, true, Metadata.empty()),

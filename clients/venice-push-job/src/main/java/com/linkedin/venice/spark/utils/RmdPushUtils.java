@@ -1,6 +1,8 @@
 package com.linkedin.venice.spark.utils;
 
 import com.linkedin.venice.hadoop.PushJobSetting;
+import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
+import com.linkedin.venice.serializer.RecordDeserializer;
 import org.apache.avro.Schema;
 
 
@@ -8,6 +10,12 @@ import org.apache.avro.Schema;
  * Utility class for handling replication metadata (RMD) related operations in Venice push jobs.
  */
 public class RmdPushUtils {
+  public static final Schema LONG_SCHEMA = Schema.create(Schema.Type.LONG);
+
+  public static RecordDeserializer<Long> getDeserializerForLogicalTimestamp() {
+    return FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(LONG_SCHEMA, LONG_SCHEMA);
+  }
+
   public static Schema getInputRmdSchema(PushJobSetting pushJobSetting) {
     if (!rmdFieldPresent(pushJobSetting)) {
       throw new IllegalArgumentException(

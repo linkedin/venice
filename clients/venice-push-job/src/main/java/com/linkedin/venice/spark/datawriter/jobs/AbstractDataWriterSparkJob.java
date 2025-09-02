@@ -326,8 +326,8 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
           inputRmdSchema,
           AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation(pushJobSetting.replicationMetadataSchemaString)))) {
         throw new VeniceException(
-            "Input rmd schema is not subset of superset schema. Input rmd schema: " + inputRmdSchema
-                + " , superset schema: " + pushJobSetting.replicationMetadataSchemaString);
+            "Input rmd schema does not match the server side RMD schema. Input rmd schema: " + inputRmdSchema
+                + " , server side schema: " + pushJobSetting.replicationMetadataSchemaString);
       }
     }
   }

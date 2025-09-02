@@ -54,6 +54,7 @@ import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.spark.datawriter.jobs.DataWriterSparkJob;
 import com.linkedin.venice.systemstore.schemas.StoreProperties;
 import com.linkedin.venice.utils.AvroRecordUtils;
+import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.StoreUtils;
 import com.linkedin.venice.utils.TestUtils;
@@ -101,8 +102,9 @@ public class TestHybridMultiRegion {
     Utils.closeQuietlyWithErrorLogged(sharedVenice);
   }
 
-  @Test(timeOut = 180 * Time.MS_PER_SECOND)
-  public void testHybridBatchPushWithRmd() throws IOException {
+  @Test(timeOut = 180
+      * Time.MS_PER_SECOND, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testHybridBatchPushWithRmd(boolean useNativeInputFormat) throws IOException {
     String clusterName = sharedVenice.getClusterNames()[0];
     try (ControllerClient controllerClient =
         new ControllerClient(clusterName, sharedVenice.getControllerConnectString())) {
@@ -127,7 +129,7 @@ public class TestHybridMultiRegion {
       Properties vpjProperties = defaultVPJProps(sharedVenice, inputDirPath, storeName);
       vpjProperties.setProperty(RMD_FIELD_PROP, "rmd");
       vpjProperties.setProperty(DATA_WRITER_COMPUTE_JOB_CLASS, DataWriterSparkJob.class.getCanonicalName());
-      vpjProperties.setProperty(SPARK_NATIVE_INPUT_FORMAT_ENABLED, String.valueOf(true));
+      vpjProperties.setProperty(SPARK_NATIVE_INPUT_FORMAT_ENABLED, String.valueOf(useNativeInputFormat));
 
       // Do a VPJ push normally to make sure everything is working fine.
       IntegrationTestPushUtils.runVPJ(vpjProperties);
@@ -136,8 +138,9 @@ public class TestHybridMultiRegion {
     }
   }
 
-  @Test(timeOut = 180 * Time.MS_PER_SECOND)
-  public void testHybridBatchPushWithInvalidRmd() throws IOException {
+  @Test(timeOut = 180
+      * Time.MS_PER_SECOND, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testHybridBatchPushWithInvalidRmd(boolean useNativeInputFormat) throws IOException {
     String clusterName = sharedVenice.getClusterNames()[0];
     try (ControllerClient controllerClient =
         new ControllerClient(clusterName, sharedVenice.getControllerConnectString())) {
@@ -164,13 +167,15 @@ public class TestHybridMultiRegion {
       Properties vpjProperties = defaultVPJProps(sharedVenice, inputDirPath, storeName);
       vpjProperties.setProperty(RMD_FIELD_PROP, "rmd");
       vpjProperties.setProperty(DATA_WRITER_COMPUTE_JOB_CLASS, DataWriterSparkJob.class.getCanonicalName());
-      vpjProperties.setProperty(SPARK_NATIVE_INPUT_FORMAT_ENABLED, String.valueOf(true));
+      vpjProperties.setProperty(SPARK_NATIVE_INPUT_FORMAT_ENABLED, String.valueOf(useNativeInputFormat));
 
       Assert.assertFalse(response.isError());
       // push should fail validation
       VeniceException failureException =
           Assert.expectThrows(VeniceException.class, () -> IntegrationTestPushUtils.runVPJ(vpjProperties));
-      System.out.println(failureException.getMessage());
+      Assert.assertTrue(
+          failureException.getMessage().contains("Input rmd schema does not match the server side RMD schema"),
+          "The exception message does not match with the expected one RMD validation failure");
     }
   }
 
@@ -417,6 +422,11 @@ public class TestHybridMultiRegion {
     return new Object[][] { { false, false, REWIND_FROM_EOP }, { false, true, REWIND_FROM_EOP },
         { true, false, REWIND_FROM_EOP }, { true, true, REWIND_FROM_EOP }, { false, false, REWIND_FROM_SOP },
         { false, true, REWIND_FROM_SOP }, { true, false, REWIND_FROM_SOP }, { true, true, REWIND_FROM_SOP } };
+  }
+
+  @DataProvider(name = "testNativeAndNonNativeInputFormats", parallel = false)
+  public static Object[][] testNativeAndNonNativeInputFormats() {
+    return new Object[][] { { true }, { false } };
   }
 
   private static VeniceTwoLayerMultiRegionMultiClusterWrapper setUpCluster() {

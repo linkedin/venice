@@ -12,7 +12,6 @@ import org.apache.avro.Schema;
  * @param <INPUT_VALUE> The format of the value as controlled by the input format
  */
 public abstract class AbstractVeniceRecordReader<INPUT_KEY, INPUT_VALUE> {
-  public static final byte[] EMPTY_RMD_BYTES = new byte[0];
   private Schema keySchema;
   private Schema valueSchema;
 
