@@ -14,7 +14,11 @@ import com.linkedin.venice.ingestion.protocol.IngestionTaskReport;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionAction;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionReportType;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
+import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
+import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.utils.ExceptionUtils;
+import com.linkedin.venice.utils.Utils;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.codec.http.FullHttpRequest;
@@ -99,17 +103,19 @@ public class MainIngestionReportHandler extends SimpleChannelInboundHandler<Full
     String topicName = report.topicName.toString();
     int partitionId = report.partitionId;
     long offset = report.offset;
+    // TODO(sushantmane): Replace offset in IngestionTaskReport with PubSubPositionWireFormat.
+    PubSubPosition position = offset == -1 ? PubSubSymbolicPosition.EARLIEST : new ApacheKafkaOffsetPosition(offset);
     String message = report.message.toString();
     LOGGER.info(
-        "Received ingestion report {} for topic: {}, partition: {} from ingestion service. ",
+        "Received ingestion report {} for replica: {} position: {} from ingestion service. ",
         reportType.name(),
-        topicName,
-        partitionId);
+        Utils.getReplicaId(topicName, partitionId),
+        position);
     updateLocalStorageMetadata(report);
     // Relay the notification to parent service's listener.
     switch (reportType) {
       case COMPLETED:
-        notifierHelper(notifier -> notifier.completed(topicName, partitionId, report.offset, message));
+        notifierHelper(notifier -> notifier.completed(topicName, partitionId, position, message));
         break;
       case ERROR:
         mainIngestionMonitorService.setVersionPartitionToLocalIngestion(topicName, partitionId);
@@ -124,32 +130,32 @@ public class MainIngestionReportHandler extends SimpleChannelInboundHandler<Full
         notifierHelper(notifier -> notifier.started(topicName, partitionId));
         break;
       case RESTARTED:
-        notifierHelper(notifier -> notifier.restarted(topicName, partitionId, offset));
+        notifierHelper(notifier -> notifier.restarted(topicName, partitionId, position));
         break;
       case PROGRESS:
-        notifierHelper(notifier -> notifier.progress(topicName, partitionId, offset));
+        notifierHelper(notifier -> notifier.progress(topicName, partitionId, position));
         break;
       case END_OF_PUSH_RECEIVED:
-        notifierHelper(notifier -> notifier.endOfPushReceived(topicName, partitionId, offset));
+        notifierHelper(notifier -> notifier.endOfPushReceived(topicName, partitionId, position, ""));
         break;
       case START_OF_INCREMENTAL_PUSH_RECEIVED:
         notifierHelper(
             notifier -> notifier
-                .startOfIncrementalPushReceived(topicName, partitionId, offset, report.message.toString()));
+                .startOfIncrementalPushReceived(topicName, partitionId, position, report.message.toString()));
         break;
       case END_OF_INCREMENTAL_PUSH_RECEIVED:
         notifierHelper(
             notifier -> notifier
-                .endOfIncrementalPushReceived(topicName, partitionId, offset, report.message.toString()));
+                .endOfIncrementalPushReceived(topicName, partitionId, position, report.message.toString()));
         break;
       case TOPIC_SWITCH_RECEIVED:
-        notifierHelper(notifier -> notifier.topicSwitchReceived(topicName, partitionId, offset));
+        notifierHelper(notifier -> notifier.topicSwitchReceived(topicName, partitionId, position, ""));
         break;
       case DATA_RECOVERY_COMPLETED:
-        notifierHelper(notifier -> notifier.dataRecoveryCompleted(topicName, partitionId, offset, message));
+        notifierHelper(notifier -> notifier.dataRecoveryCompleted(topicName, partitionId, position, message));
         break;
       case STOPPED:
-        notifierHelper(notifier -> notifier.stopped(topicName, partitionId, offset));
+        notifierHelper(notifier -> notifier.stopped(topicName, partitionId, position));
         break;
       default:
         LOGGER.warn("Received unsupported ingestion report: {} it will be ignored for now.", report);

@@ -599,8 +599,8 @@ public class ApacheKafkaConsumerAdapterTest {
     TopicPartition topicPartition =
         new TopicPartition(pubSubTopicPartition.getTopicName(), pubSubTopicPartition.getPartitionNumber());
     long timestamp = 1000000L;
-    Long expectedOffset = 500L;
-    OffsetAndTimestamp offsetAndTimestamp = new OffsetAndTimestamp(expectedOffset, timestamp);
+    ApacheKafkaOffsetPosition expectedPosition = ApacheKafkaOffsetPosition.of(500L);
+    OffsetAndTimestamp offsetAndTimestamp = new OffsetAndTimestamp(expectedPosition.getInternalOffset(), timestamp);
     Map<TopicPartition, OffsetAndTimestamp> mockResponse = Collections.singletonMap(topicPartition, offsetAndTimestamp);
 
     when(
@@ -608,8 +608,9 @@ public class ApacheKafkaConsumerAdapterTest {
             .offsetsForTimes(Collections.singletonMap(topicPartition, timestamp), Duration.ofMillis(500)))
                 .thenReturn(mockResponse);
 
-    Long actualOffset = kafkaConsumerAdapter.offsetForTime(pubSubTopicPartition, timestamp, Duration.ofMillis(500));
-    assertEquals(actualOffset, expectedOffset);
+    PubSubPosition actualPosition =
+        kafkaConsumerAdapter.getPositionByTimestamp(pubSubTopicPartition, timestamp, Duration.ofMillis(500));
+    assertEquals(actualPosition, expectedPosition);
   }
 
   @Test
@@ -625,8 +626,9 @@ public class ApacheKafkaConsumerAdapterTest {
             .offsetsForTimes(Collections.singletonMap(topicPartition, timestamp), Duration.ofMillis(500)))
                 .thenReturn(mockResponse);
 
-    Long actualOffset = kafkaConsumerAdapter.offsetForTime(pubSubTopicPartition, timestamp, Duration.ofMillis(500));
-    assertNull(actualOffset);
+    assertNull(
+        kafkaConsumerAdapter.getPositionByTimestamp(pubSubTopicPartition, timestamp, Duration.ofMillis(500)),
+        "Should return null when no offset found for the given timestamp");
   }
 
   @Test(expectedExceptions = PubSubOpTimeoutException.class)
@@ -641,7 +643,7 @@ public class ApacheKafkaConsumerAdapterTest {
             .offsetsForTimes(Collections.singletonMap(topicPartition, timestamp), Duration.ofMillis(500)))
                 .thenThrow(new TimeoutException("Test timeout"));
 
-    kafkaConsumerAdapter.offsetForTime(pubSubTopicPartition, timestamp, Duration.ofMillis(500));
+    kafkaConsumerAdapter.getPositionByTimestamp(pubSubTopicPartition, timestamp, Duration.ofMillis(500));
   }
 
   @Test
@@ -650,15 +652,15 @@ public class ApacheKafkaConsumerAdapterTest {
     TopicPartition topicPartition =
         new TopicPartition(pubSubTopicPartition.getTopicName(), pubSubTopicPartition.getPartitionNumber());
     long timestamp = 1000000L;
-    Long expectedOffset = 500L;
-    OffsetAndTimestamp offsetAndTimestamp = new OffsetAndTimestamp(expectedOffset, timestamp);
+    ApacheKafkaOffsetPosition expectedPosition = ApacheKafkaOffsetPosition.of(500L);
+    OffsetAndTimestamp offsetAndTimestamp = new OffsetAndTimestamp(expectedPosition.getInternalOffset(), timestamp);
     Map<TopicPartition, OffsetAndTimestamp> mockResponse = Collections.singletonMap(topicPartition, offsetAndTimestamp);
 
     when(internalKafkaConsumer.offsetsForTimes(Collections.singletonMap(topicPartition, timestamp)))
         .thenReturn(mockResponse);
 
-    Long actualOffset = kafkaConsumerAdapter.offsetForTime(pubSubTopicPartition, timestamp);
-    assertEquals(actualOffset, expectedOffset);
+    PubSubPosition actualPosition = kafkaConsumerAdapter.getPositionByTimestamp(pubSubTopicPartition, timestamp);
+    assertEquals(actualPosition, expectedPosition);
   }
 
   @Test

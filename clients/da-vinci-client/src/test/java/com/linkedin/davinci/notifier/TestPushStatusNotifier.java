@@ -22,6 +22,8 @@ import com.linkedin.davinci.config.VeniceServerConfig.IncrementalPushStatusWrite
 import com.linkedin.venice.helix.HelixPartitionStatusAccessor;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.OfflinePushAccessor;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreWriter;
@@ -44,7 +46,7 @@ public class TestPushStatusNotifier {
   private static final int STORE_VERSION = 1;
   private static final String TOPIC = "test_store_v1";
   private static final int PARTITION_ID = 1;
-  private static final long OFFSET = 12345L;
+  private static final ApacheKafkaOffsetPosition POSITION_12345 = ApacheKafkaOffsetPosition.of(12345L);
   private static final String MESSAGE = "Test Message";
 
   @BeforeMethod
@@ -71,24 +73,27 @@ public class TestPushStatusNotifier {
         storeRepository,
         host,
         DUAL);
-    statusNotifier.completed(topic, 1, 1, "");
+
+    PubSubPosition p1 = ApacheKafkaOffsetPosition.of(1L);
+
+    statusNotifier.completed(topic, 1, p1, "");
     verify(offlinePushAccessor, times(1)).updateReplicaStatus(topic, 1, host, ExecutionStatus.COMPLETED, 1, "");
 
     doThrow(HelixException.class).when(helixPartitionStatusAccessor)
         .updateReplicaStatus(any(), anyInt(), eq(ExecutionStatus.COMPLETED));
-    statusNotifier.completed(topic, 1, 1, "");
+    statusNotifier.completed(topic, 1, p1, "");
     verify(offlinePushAccessor, never()).updateReplicaStatus(topic, 1, "host", ExecutionStatus.COMPLETED, 1, "");
 
     doReturn(mock(Store.class)).when(storeRepository).getStoreOrThrow(any());
-    statusNotifier.startOfIncrementalPushReceived(topic, 1, 1, "");
-    statusNotifier.endOfIncrementalPushReceived(topic, 1, 1, "");
-    statusNotifier.quotaNotViolated(topic, 1, 1, "");
-    statusNotifier.quotaViolated(topic, 1, 1, "");
-    statusNotifier.restarted(topic, 1, 1, "");
-    statusNotifier.topicSwitchReceived(topic, 1, 1, "");
+    statusNotifier.startOfIncrementalPushReceived(topic, 1, p1, "");
+    statusNotifier.endOfIncrementalPushReceived(topic, 1, p1, "");
+    statusNotifier.quotaNotViolated(topic, 1, p1, "");
+    statusNotifier.quotaViolated(topic, 1, p1, "");
+    statusNotifier.restarted(topic, 1, p1, "");
+    statusNotifier.topicSwitchReceived(topic, 1, p1, "");
     statusNotifier.started(topic, 1, "");
-    statusNotifier.endOfPushReceived(topic, 1, 1, "");
-    statusNotifier.progress(topic, 1, 1, "");
+    statusNotifier.endOfPushReceived(topic, 1, p1, "");
+    statusNotifier.progress(topic, 1, p1, "");
   }
 
   @DataProvider(name = "pushStatusWriteModes")
@@ -111,11 +116,16 @@ public class TestPushStatusNotifier {
         "instance1",
         mode);
 
-    notifier.startOfIncrementalPushReceived(TOPIC, PARTITION_ID, OFFSET, MESSAGE);
+    notifier.startOfIncrementalPushReceived(TOPIC, PARTITION_ID, POSITION_12345, MESSAGE);
 
     if (expectZookeeper) {
-      verify(offlinePushAccessor, times(1))
-          .updateReplicaStatus(TOPIC, PARTITION_ID, INSTANCE_ID, START_OF_INCREMENTAL_PUSH_RECEIVED, OFFSET, MESSAGE);
+      verify(offlinePushAccessor, times(1)).updateReplicaStatus(
+          TOPIC,
+          PARTITION_ID,
+          INSTANCE_ID,
+          START_OF_INCREMENTAL_PUSH_RECEIVED,
+          POSITION_12345.getInternalOffset(),
+          MESSAGE);
     } else {
       verify(offlinePushAccessor, never())
           .updateReplicaStatus(anyString(), anyInt(), anyString(), any(ExecutionStatus.class), anyLong(), anyString());
@@ -149,11 +159,16 @@ public class TestPushStatusNotifier {
         INSTANCE_ID,
         mode);
 
-    notifier.endOfIncrementalPushReceived(TOPIC, PARTITION_ID, OFFSET, MESSAGE);
+    notifier.endOfIncrementalPushReceived(TOPIC, PARTITION_ID, POSITION_12345, MESSAGE);
 
     if (expectZookeeper) {
-      verify(offlinePushAccessor, times(1))
-          .updateReplicaStatus(TOPIC, PARTITION_ID, INSTANCE_ID, END_OF_INCREMENTAL_PUSH_RECEIVED, OFFSET, MESSAGE);
+      verify(offlinePushAccessor, times(1)).updateReplicaStatus(
+          TOPIC,
+          PARTITION_ID,
+          INSTANCE_ID,
+          END_OF_INCREMENTAL_PUSH_RECEIVED,
+          POSITION_12345.getInternalOffset(),
+          MESSAGE);
     } else {
       verify(offlinePushAccessor, never())
           .updateReplicaStatus(anyString(), anyInt(), anyString(), any(ExecutionStatus.class), anyLong(), anyString());
@@ -193,11 +208,15 @@ public class TestPushStatusNotifier {
     incPushVersions.add("inc_push_version_3");
     incPushVersions.add("inc_push_version_4");
 
-    notifier.batchEndOfIncrementalPushReceived(TOPIC, PARTITION_ID, OFFSET, incPushVersions);
+    notifier.batchEndOfIncrementalPushReceived(TOPIC, PARTITION_ID, POSITION_12345, incPushVersions);
 
     if (expectZookeeper) {
-      verify(offlinePushAccessor, times(1))
-          .batchUpdateReplicaIncPushStatus(TOPIC, PARTITION_ID, INSTANCE_ID, OFFSET, incPushVersions);
+      verify(offlinePushAccessor, times(1)).batchUpdateReplicaIncPushStatus(
+          TOPIC,
+          PARTITION_ID,
+          INSTANCE_ID,
+          POSITION_12345.getInternalOffset(),
+          incPushVersions);
     } else {
       verify(offlinePushAccessor, never())
           .batchUpdateReplicaIncPushStatus(anyString(), anyInt(), anyString(), anyLong(), any());

@@ -82,7 +82,6 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -985,9 +984,8 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
         }
 
         LOGGER.error(
-            "Encountered an exception when processing a record in ChunkAssembler for topic: {} and partition: {}",
-            pubSubTopicPartition.getTopicName(),
-            pubSubTopicPartition.getPartitionNumber());
+            "Encountered an exception when processing a record in ChunkAssembler for replica: {}",
+            Utils.getReplicaId(pubSubTopicPartition));
         throw exception;
       }
 
@@ -1122,6 +1120,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       PubSubTopicPartition pubSubTopicPartition,
       String topicSuffix,
       Integer upstreamPartition) {
+    String replicaId = Utils.getReplicaId(pubSubTopicPartition);
     ControlMessageType controlMessageType = ControlMessageType.valueOf(controlMessage);
     if (controlMessageType.equals(ControlMessageType.VERSION_SWAP)) {
       for (int attempt = 1; attempt <= MAX_VERSION_SWAP_RETRIES; attempt++) {
@@ -1164,11 +1163,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
             changeCaptureStats.emitVersionSwapCountMetrics(SUCCESS);
           }
 
-          LOGGER.info(
-              "Version Swap succeeded when switching to topic: {} for partition: {} after {} attempts",
-              pubSubTopicPartition.getTopicName(),
-              pubSubTopicPartition.getPartitionNumber(),
-              attempt);
+          LOGGER.info("Version Swap succeeded when switching to replica: {} after {} attempts", replicaId, attempt);
 
           return true;
         } catch (Exception error) {
@@ -1177,17 +1172,12 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
               changeCaptureStats.emitVersionSwapCountMetrics(FAIL);
             }
 
-            LOGGER.error(
-                "Version Swap failed when switching to topic: {} for partition: {} after {} attempts",
-                pubSubTopicPartition.getTopicName(),
-                pubSubTopicPartition.getPartitionNumber(),
-                attempt);
+            LOGGER.error("Version Swap failed when switching to replica: {} after {} attempts", replicaId, attempt);
             throw error;
           } else {
             LOGGER.error(
-                "Version Swap failed when switching to topic: {} for partition: {} on attempt {}/{}. Retrying.",
-                pubSubTopicPartition.getTopicName(),
-                pubSubTopicPartition.getPartitionNumber(),
+                "Version Swap failed when switching to replica: {} on attempt {}/{}. Retrying.",
+                replicaId,
                 attempt,
                 MAX_VERSION_SWAP_RETRIES);
 
@@ -1387,11 +1377,14 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
         BasicConsumerStats changeCaptureStats,
         Set<PubSubTopicPartition> assignment) {
 
-      Iterator<Map.Entry<Integer, Long>> heartbeatIterator = currentVersionLastHeartbeat.entrySet().iterator();
+      // Snapshot the heartbeat map to avoid iterating while it is being updated concurrently
+      long now = System.currentTimeMillis();
       long maxLag = Long.MIN_VALUE;
-
-      while (heartbeatIterator.hasNext()) {
-        maxLag = Math.max(maxLag, System.currentTimeMillis() - heartbeatIterator.next().getValue());
+      Map<Integer, Long> heartbeatSnapshot = new HashMap<>(currentVersionLastHeartbeat);
+      for (Long heartBeatTimestamp: heartbeatSnapshot.values()) {
+        if (heartBeatTimestamp != null) {
+          maxLag = Math.max(maxLag, now - heartBeatTimestamp);
+        }
       }
 
       if (maxLag != Long.MIN_VALUE) {

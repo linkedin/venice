@@ -1377,6 +1377,14 @@ public class ControllerClient implements Closeable {
     return request(ControllerRoute.UPDATE_CLUSTER_CONFIG, params, ControllerResponse.class);
   }
 
+  public ControllerResponse updateDarkClusterConfig(UpdateDarkClusterConfigQueryParams queryParams) {
+    if (queryParams.getNameValuePairs().isEmpty()) {
+      throw new VeniceException("UpdateDarkClusterConfig command didn't change any specific dark cluster config");
+    }
+    QueryParams params = addCommonParams(queryParams);
+    return request(ControllerRoute.UPDATE_DARK_CLUSTER_CONFIG, params, ControllerResponse.class);
+  }
+
   public ControllerResponse prepareDataRecovery(
       String sourceFabric,
       String destinationFabric,

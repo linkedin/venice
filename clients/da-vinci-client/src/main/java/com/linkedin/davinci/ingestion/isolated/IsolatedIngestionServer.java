@@ -462,6 +462,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
    */
   CompletableFuture<Boolean> submitStopConsumptionAndCloseStorageTask(String topicName, int partitionId) {
     return CompletableFuture.supplyAsync(() -> {
+      String replicaId = Utils.getReplicaId(topicName, partitionId);
       /**
        * Wait for all pending ingestion action on this partition to be completed in async fashion, which is expected to
        * be fast. This check must be executed in async fashion as startConsumption may report COMPLETED directly and the
@@ -489,16 +490,12 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
             false);
         // Close all RocksDB sub-Partitions in Ingestion Service.
         getStorageService().closeStorePartition(storeConfig, partitionId);
-        LOGGER.info(
-            "Partition: {} of topic: {} closed in {} ms.",
-            partitionId,
-            topicName,
-            LatencyUtils.getElapsedTimeFromMsToMs(startTimeInMs));
+        LOGGER.info("Replica: {} closed in {} ms.", replicaId, LatencyUtils.getElapsedTimeFromMsToMs(startTimeInMs));
         return true;
       } else {
         // If pending ingestion action stops consumption (unsubscribe), we will not handover ingestion and we should
         // restore the subscribed state.
-        LOGGER.warn("Topic: {}, partition: {} is not consuming, will not handover ingestion.", topicName, partitionId);
+        LOGGER.warn("Replica: {} is not consuming, will not handover ingestion.", replicaId);
         setResourceToBeSubscribed(topicName, partitionId);
         return false;
       }

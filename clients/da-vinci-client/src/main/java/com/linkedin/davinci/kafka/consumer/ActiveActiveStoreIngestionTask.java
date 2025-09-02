@@ -951,109 +951,129 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     }
   }
 
+  /**
+   * Calculates real-time start positions for each PubSub broker during a topic switch in Active-Active replication.
+   *
+   * <p>For each broker, determines the appropriate starting position by either using the latest processed position
+   * or rewinding to a specific timestamp. Handles broker failures gracefully by adding unreachable brokers to a
+   * repair queue and requires a quorum of reachable brokers to proceed.</p>
+   *
+   * @param pcs the partition consumption state containing topic switch information
+   * @param newSourceTopic the new real-time topic to switch to
+   * @param unreachableBrokerList output list populated with brokers that couldn't be contacted
+   * @return map of PubSub broker addresses to their calculated start positions
+   * @throws VeniceException if no topic switch is configured or insufficient brokers are reachable
+   */
   @Override
-  protected Map<String, PubSubPosition> calculateLeaderUpstreamOffsetWithTopicSwitch(
-      PartitionConsumptionState partitionConsumptionState,
+  protected Map<String, PubSubPosition> calculateRtConsumptionStartPositions(
+      PartitionConsumptionState pcs,
       PubSubTopic newSourceTopic,
       List<CharSequence> unreachableBrokerList) {
-    TopicSwitch topicSwitch = partitionConsumptionState.getTopicSwitch().getTopicSwitch();
+    TopicSwitch topicSwitch = pcs.getTopicSwitch().getTopicSwitch();
     if (topicSwitch == null) {
       throw new VeniceException(
           "New leader does not have topic switch, unable to switch to realtime leader topic: " + newSourceTopic);
     }
-    final PubSubTopicPartition sourceTopicPartition = partitionConsumptionState.getSourceTopicPartition(newSourceTopic);
+    final PubSubTopicPartition sourceTopicPartition = pcs.getSourceTopicPartition(newSourceTopic);
     long rewindStartTimestamp;
     // calculate the rewind start time here if controller asked to do so by using this sentinel value.
     if (topicSwitch.rewindStartTimestamp == REWIND_TIME_DECIDED_BY_SERVER) {
-      rewindStartTimestamp = calculateRewindStartTime(partitionConsumptionState);
+      rewindStartTimestamp = calculateRewindStartTime(pcs);
       LOGGER.info(
-          "{} leader calculated rewindStartTimestamp: {} for topic-partition: {}",
-          partitionConsumptionState.getReplicaId(),
+          "Leader replica: {} calculated rewind timestamp: {} for tp: {}",
+          pcs.getReplicaId(),
           rewindStartTimestamp,
           sourceTopicPartition);
     } else {
       rewindStartTimestamp = topicSwitch.rewindStartTimestamp;
     }
-    Set<String> sourceKafkaServers = getKafkaUrlSetFromTopicSwitch(partitionConsumptionState.getTopicSwitch());
-    Map<String, PubSubPosition> rtPositionsByPubSubAddress = new HashMap<>(sourceKafkaServers.size());
-    sourceKafkaServers.forEach(sourceKafkaURL -> {
-      PubSubPosition rtStartPosition = partitionConsumptionState.getLatestProcessedRtPosition(sourceKafkaURL);
+    Set<String> rtPubSubAddresses = getPubSubBrokerAddressesFromTopicSwitch(pcs.getTopicSwitch());
+    Map<String, PubSubPosition> rtPositionsByPubSubAddress = new HashMap<>(rtPubSubAddresses.size());
+    rtPubSubAddresses.forEach(pubSubAddress -> {
+      // Get the latest processed position for this PubSub address.
+      PubSubPosition rtStartPosition = pcs.getLatestProcessedRtPosition(pubSubAddress);
+
+      // If the latest processed position is at the earliest point, it means we haven't consumed
+      // from the RT topic of this PubSub address before. In that case, we rewind to the timestamp specified
+      // in the TopicSwitch (if rewindStartTimestamp > 0); otherwise, we start from the beginning of the topic.
       if (PubSubSymbolicPosition.EARLIEST.equals(rtStartPosition)) {
         if (rewindStartTimestamp > 0) {
+          LOGGER.info(
+              "Leader replica: {} needs to rewind to timestamp: {} for pubSubAddress: {}, tp: {} since no prior position found",
+              pcs.getReplicaId(),
+              rewindStartTimestamp,
+              pubSubAddress,
+              sourceTopicPartition);
           PubSubTopicPartition newSourceTopicPartition =
-              resolveTopicPartitionWithKafkaURL(newSourceTopic, partitionConsumptionState, sourceKafkaURL);
+              resolveRtTopicPartitionWithPubSubBrokerAddress(newSourceTopic, pcs, pubSubAddress);
           try {
             rtStartPosition =
-                getTopicPartitionOffsetByKafkaURL(sourceKafkaURL, newSourceTopicPartition, rewindStartTimestamp);
+                getRewindStartPositionForRealTimeTopic(pubSubAddress, newSourceTopicPartition, rewindStartTimestamp);
             LOGGER.info(
-                "{} get rtStartPosition: {} for source URL: {}, topic-partition: {}, rewind timestamp: {}",
-                partitionConsumptionState.getReplicaId(),
+                "Leader replica: {} got rtPosition: {} for rewindTime: {} from pubSubAddress: {}/{}",
+                pcs.getReplicaId(),
                 rtStartPosition,
-                sourceKafkaURL,
-                newSourceTopicPartition,
-                rewindStartTimestamp);
-            rtPositionsByPubSubAddress.put(sourceKafkaURL, rtStartPosition);
+                rewindStartTimestamp,
+                pubSubAddress,
+                newSourceTopicPartition);
+            rtPositionsByPubSubAddress.put(pubSubAddress, rtStartPosition);
           } catch (Exception e) {
             /**
              * This is actually tricky. Potentially we could return a -1 value here, but this has the gotcha that if we
              * have a non-symmetrical failure (like, region1 can't talk to the region2 broker) this will result in a remote
-             * colo rewinding to a potentially non-deterministic offset when the remote becomes available again. So
+             * colo rewinding to a potentially non-deterministic position when the remote becomes available again. So
              * instead, we record the context of this call and commit it to a repair queue to rewind to a
              * consistent place on the RT
              *
              * NOTE: It is possible that the outage is so long and the rewind so large that we fall off retention. If
              * this happens we can detect and repair the inconsistency from the offline DCR validator.
              */
-            unreachableBrokerList.add(sourceKafkaURL);
+            unreachableBrokerList.add(pubSubAddress);
             rtStartPosition = PubSubSymbolicPosition.EARLIEST;
             LOGGER.error(
-                "Failed contacting {}/{} when processing topic switch for replica {}. Setting upstream start offset to {}",
-                sourceKafkaURL,
+                "Leader replica: {} failed contacting {}/{} when processing topic switch. Setting upstream start position to: {}",
+                pcs.getReplicaId(),
+                pubSubAddress,
                 sourceTopicPartition,
-                partitionConsumptionState.getReplicaId(),
                 rtStartPosition);
             hostLevelIngestionStats.recordIngestionFailure();
             /**
              *  Add to repair queue. We won't attempt to resubscribe for brokers we couldn't compute an upstream offset
-             *  accurately for. We will not persist the wrong offset into OffsetRecord, we'll reattempt subscription later.
+             *  accurately for. We will not persist the wrong position into OffsetRecord, we'll reattempt subscription later.
              */
             if (remoteIngestionRepairService != null) {
               this.remoteIngestionRepairService.registerRepairTask(
                   this,
-                  buildRepairTask(
-                      sourceKafkaURL,
-                      sourceTopicPartition,
-                      rewindStartTimestamp,
-                      partitionConsumptionState));
+                  buildRepairTask(pubSubAddress, sourceTopicPartition, rewindStartTimestamp, pcs));
             } else {
               // If there isn't an available repair service, then we need to abort in order to make sure the error is
               // propagated up
               throw new VeniceException(
                   String.format(
-                      "Failed contacting (%s/%s) and no repair service available!  Aborting topic switch processing for %s. Setting upstream start offset to %s",
-                      sourceKafkaURL,
+                      "Failed contacting (%s/%s) and no repair service available. Aborting topic switch processing for %s. Setting upstream start position to %s",
+                      pubSubAddress,
                       sourceTopicPartition,
-                      partitionConsumptionState.getReplicaId(),
+                      pcs.getReplicaId(),
                       rtStartPosition));
             }
           }
         } else {
           LOGGER.warn(
-              "Got unexpected rewind time: {} for: {}/{}, will start ingesting upstream from the beginning for replica: {}",
-              sourceKafkaURL,
-              sourceTopicPartition,
+              "Leader replica: {} got unexpected rewind time: {} for: {}/{}, will start ingesting upstream from the beginning",
+              pcs.getReplicaId(),
               rewindStartTimestamp,
-              partitionConsumptionState.getReplicaId());
+              pubSubAddress,
+              sourceTopicPartition);
           rtStartPosition = PubSubSymbolicPosition.EARLIEST;
-          rtPositionsByPubSubAddress.put(sourceKafkaURL, rtStartPosition);
+          rtPositionsByPubSubAddress.put(pubSubAddress, rtStartPosition);
         }
       } else {
-        rtPositionsByPubSubAddress.put(sourceKafkaURL, rtStartPosition);
+        rtPositionsByPubSubAddress.put(pubSubAddress, rtStartPosition);
       }
     });
-    if (unreachableBrokerList.size() >= ((sourceKafkaServers.size() + 1) / 2)) {
+    if (unreachableBrokerList.size() >= ((rtPubSubAddresses.size() + 1) / 2)) {
       // We couldn't reach a quorum of brokers and that's a red flag, so throw exception and abort!
-      throw new VeniceException("Couldn't reach any broker!!  Aborting topic switch triggered consumer subscription!");
+      throw new VeniceException("Couldn't reach any broker!! Aborting topic switch triggered consumer subscription!");
     }
     return rtPositionsByPubSubAddress;
   }
@@ -1075,7 +1095,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           .info("{} enabled remote consumption from topic {} partition {}", ingestionTaskName, leaderTopic, partition);
     }
     partitionConsumptionState.setLeaderFollowerState(LEADER);
-    prepareOffsetCheckpointAndStartConsumptionAsLeader(leaderTopic, partitionConsumptionState, true);
+    preparePositionCheckpointAndStartRtConsumptionAsLeader(leaderTopic, partitionConsumptionState, true);
   }
 
   /**
@@ -1142,7 +1162,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     // Update leader topic.
     partitionConsumptionState.getOffsetRecord().setLeaderTopic(newSourceTopic);
     // Calculate leader offset and start consumption
-    prepareOffsetCheckpointAndStartConsumptionAsLeader(newSourceTopic, partitionConsumptionState, false);
+    preparePositionCheckpointAndStartRtConsumptionAsLeader(newSourceTopic, partitionConsumptionState, false);
   }
 
   /**
@@ -1371,10 +1391,11 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       PartitionConsumptionState pcs) {
     return () -> {
       PubSubTopic pubSubTopic = sourceTopicPartition.getPubSubTopic();
-      PubSubTopicPartition resolvedTopicPartition = resolveTopicPartitionWithKafkaURL(pubSubTopic, pcs, sourceKafkaUrl);
+      PubSubTopicPartition resolvedTopicPartition =
+          resolveRtTopicPartitionWithPubSubBrokerAddress(pubSubTopic, pcs, sourceKafkaUrl);
       // Calculate upstream offset
       PubSubPosition upstreamOffset =
-          getTopicPartitionOffsetByKafkaURL(sourceKafkaUrl, resolvedTopicPartition, rewindStartTimestamp);
+          getRewindStartPositionForRealTimeTopic(sourceKafkaUrl, resolvedTopicPartition, rewindStartTimestamp);
       // Subscribe (unsubscribe should have processed correctly regardless of remote broker state)
       consumerSubscribe(pubSubTopic, pcs, upstreamOffset, sourceKafkaUrl);
       // syncConsumedUpstreamRTOffsetMapIfNeeded
@@ -1443,43 +1464,48 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         beforeProcessingRecordTimestampNs);
   }
 
+  /**
+   * Initializes leader consumption from real-time topics across multiple upstream brokers.
+   * Retrieves or calculates starting positions for each broker, handles topic switching
+   * for missing positions, and subscribes to all upstream sources.
+   *
+   * @param leaderTopic the leader topic to consume from
+   * @param pcs the partition consumption state
+   * @param isTransition true if this is a leader transition, false for initial setup
+   */
   @Override
-  void prepareOffsetCheckpointAndStartConsumptionAsLeader(
+  void preparePositionCheckpointAndStartRtConsumptionAsLeader(
       PubSubTopic leaderTopic,
-      PartitionConsumptionState partitionConsumptionState,
+      PartitionConsumptionState pcs,
       boolean isTransition) {
-    Set<String> leaderSourceKafkaURLs = getConsumptionSourceKafkaAddress(partitionConsumptionState);
-    Map<String, PubSubPosition> leaderOffsetByKafkaURL = new HashMap<>(leaderSourceKafkaURLs.size());
-    List<CharSequence> unreachableBrokerList = new ArrayList<>();
+    Set<String> leaderSourceBrokerAddresses = getConsumptionSourceKafkaAddress(pcs);
+    Map<String, PubSubPosition> rtPositionsByBroker = new HashMap<>(leaderSourceBrokerAddresses.size());
+    List<CharSequence> unreachableBrokers = new ArrayList<>();
     boolean shouldUseDivRtPosition = isTransition && isGlobalRtDivEnabled();
     // Read previously checkpointed offset and maybe fallback to TopicSwitch if any of upstream offset is missing.
-    for (String kafkaURL: leaderSourceKafkaURLs) {
-      leaderOffsetByKafkaURL
-          .put(kafkaURL, partitionConsumptionState.getLeaderPosition(kafkaURL, shouldUseDivRtPosition));
+    for (String broker: leaderSourceBrokerAddresses) {
+      rtPositionsByBroker.put(broker, pcs.getLeaderPosition(broker, shouldUseDivRtPosition));
     }
-    if (leaderTopic.isRealTime() && leaderOffsetByKafkaURL.containsValue(PubSubSymbolicPosition.EARLIEST)) {
-      leaderOffsetByKafkaURL =
-          calculateLeaderUpstreamOffsetWithTopicSwitch(partitionConsumptionState, leaderTopic, unreachableBrokerList);
+    if (leaderTopic.isRealTime() && rtPositionsByBroker.containsValue(PubSubSymbolicPosition.EARLIEST)) {
+      rtPositionsByBroker = calculateRtConsumptionStartPositions(pcs, leaderTopic, unreachableBrokers);
     }
-
-    if (!unreachableBrokerList.isEmpty()) {
+    if (!unreachableBrokers.isEmpty()) {
       LOGGER.warn(
-          "Failed to reach broker urls {}, will schedule retry to compute upstream offset and resubscribe!",
-          unreachableBrokerList.toString());
+          "Failed to reach broker urls: {}, will schedule retry to compute upstream position and resubscribe!",
+          unreachableBrokers);
     }
     // subscribe to the new upstream
-    leaderOffsetByKafkaURL.forEach((kafkaURL, leaderStartOffset) -> {
-      consumerSubscribe(leaderTopic, partitionConsumptionState, leaderStartOffset, kafkaURL);
+    rtPositionsByBroker.forEach((brokerAddress, rtStartPosition) -> {
+      consumerSubscribe(leaderTopic, pcs, rtStartPosition, brokerAddress);
     });
 
-    syncConsumedUpstreamRTOffsetMapIfNeeded(partitionConsumptionState, leaderOffsetByKafkaURL);
+    syncConsumedUpstreamRTOffsetMapIfNeeded(pcs, rtPositionsByBroker);
 
     LOGGER.info(
-        "{}, as a leader, started consuming from topic: {}, partition {}: with offset by Kafka URL mapping: {}",
-        partitionConsumptionState.getReplicaId(),
-        leaderTopic,
-        partitionConsumptionState.getPartition(),
-        leaderOffsetByKafkaURL);
+        "Leader replica: {} started consuming from topic-partition: {} with rtPositionsByBroker: {}",
+        pcs.getReplicaId(),
+        Utils.getReplicaId(leaderTopic, pcs.getPartition()),
+        rtPositionsByBroker);
   }
 
   private long calculateRewindStartTime(PartitionConsumptionState partitionConsumptionState) {

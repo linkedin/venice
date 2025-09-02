@@ -1915,7 +1915,7 @@ public class VenicePushJob implements AutoCloseable {
       if (!setting.validateRemoteReplayPolicy.equals(hybridStoreConfig.getBufferReplayPolicy())) {
         throw new VeniceException(
             String.format(
-                "Remote rewind policy is {} but push settings require a policy of {}. "
+                "Remote rewind policy is %s but push settings require a policy of %s. "
                     + "Please adjust hybrid settings or push job configuration!",
                 hybridStoreConfig.getBufferReplayPolicy(),
                 setting.validateRemoteReplayPolicy));

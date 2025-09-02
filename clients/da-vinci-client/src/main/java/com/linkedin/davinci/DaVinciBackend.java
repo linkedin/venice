@@ -56,6 +56,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.meta.SubscriptionBasedReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreWriter;
 import com.linkedin.venice.schema.SchemaEntry;
@@ -726,7 +727,7 @@ public class DaVinciBackend implements Closeable {
 
   private final VeniceNotifier ingestionListener = new VeniceNotifier() {
     @Override
-    public void completed(String kafkaTopic, int partitionId, long offset, String message) {
+    public void completed(String kafkaTopic, int partitionId, PubSubPosition position, String message) {
       ingestionReportExecutor.submit(() -> {
         VersionBackend versionBackend = versionByTopicMap.get(kafkaTopic);
         if (versionBackend != null) {
@@ -775,7 +776,7 @@ public class DaVinciBackend implements Closeable {
     }
 
     @Override
-    public void restarted(String kafkaTopic, int partitionId, long offset, String message) {
+    public void restarted(String kafkaTopic, int partitionId, PubSubPosition position, String message) {
       ingestionReportExecutor.submit(() -> {
         VersionBackend versionBackend = versionByTopicMap.get(kafkaTopic);
         if (versionBackend != null) {
@@ -785,7 +786,7 @@ public class DaVinciBackend implements Closeable {
     }
 
     @Override
-    public void endOfPushReceived(String kafkaTopic, int partitionId, long offset, String message) {
+    public void endOfPushReceived(String kafkaTopic, int partitionId, PubSubPosition position, String message) {
       ingestionReportExecutor.submit(() -> {
         reportPushStatus(kafkaTopic, partitionId, ExecutionStatus.END_OF_PUSH_RECEIVED);
       });
@@ -795,7 +796,7 @@ public class DaVinciBackend implements Closeable {
     public void startOfIncrementalPushReceived(
         String kafkaTopic,
         int partitionId,
-        long offset,
+        PubSubPosition position,
         String incrementalPushVersion) {
       ingestionReportExecutor.submit(() -> {
         VersionBackend versionBackend = versionByTopicMap.get(kafkaTopic);
@@ -818,7 +819,7 @@ public class DaVinciBackend implements Closeable {
     public void endOfIncrementalPushReceived(
         String kafkaTopic,
         int partitionId,
-        long offset,
+        PubSubPosition position,
         String incrementalPushVersion) {
       ingestionReportExecutor.submit(() -> {
         VersionBackend versionBackend = versionByTopicMap.get(kafkaTopic);

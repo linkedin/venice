@@ -316,6 +316,10 @@ public enum Arg {
   ), ENABLE_STORE_MIGRATION("enable-store-migration", "esm", true, "Toggle store migration store config"),
   ADMIN_OPERATION_PROTOCOL_VERSION(
       "admin-operation-protocol-version", "aopv", true, "Admin operation protocol version"
+  ),
+  STORES_TO_REPLICATE(
+      "stores-to-replicate", "str", true,
+      "Comma separated list of stores to be replicated to dark cluster, eg. store1,store2,..."
   ), GLOBAL_RT_DIV_ENABLED("global-rt-div-enabled", "grde", true, "Enable Global RT DIV for a store"),
   ENUM_SCHEMA_EVOLUTION_ALLOWED(
       "enum-schema-evolution-allowed", "esea", true, "Allow enum schema evolution for a store"

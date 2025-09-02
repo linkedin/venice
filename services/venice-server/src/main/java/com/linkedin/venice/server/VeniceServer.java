@@ -7,6 +7,7 @@ import com.linkedin.davinci.blobtransfer.BlobTransferManagerBuilder;
 import com.linkedin.davinci.blobtransfer.BlobTransferUtils;
 import com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferTableFormat;
 import com.linkedin.davinci.blobtransfer.P2PBlobTransferConfig;
+import com.linkedin.davinci.blobtransfer.VeniceAdaptiveBlobTransferTrafficThrottler;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceClusterConfig;
 import com.linkedin.davinci.config.VeniceConfigLoader;
@@ -502,7 +503,33 @@ public class VeniceServer {
           serverConfig.getBlobTransferClientReadLimitBytesPerSec(),
           serverConfig.getBlobTransferServiceWriteLimitBytesPerSec(),
           serverConfig.getSnapshotCleanupIntervalInMins());
-
+      VeniceAdaptiveBlobTransferTrafficThrottler writeThrottler = null;
+      VeniceAdaptiveBlobTransferTrafficThrottler readThrottler = null;
+      if (serverConfig.isAdaptiveThrottlerEnabled() && serverConfig.isBlobTransferAdaptiveThrottlerEnabled()) {
+        writeThrottler = new VeniceAdaptiveBlobTransferTrafficThrottler(
+            serverConfig.getAdaptiveThrottlerSignalIdleThreshold(),
+            serverConfig.getBlobTransferServiceWriteLimitBytesPerSec(),
+            serverConfig.getBlobTransferAdaptiveThrottlerUpdatePercentage(),
+            true);
+        readThrottler = new VeniceAdaptiveBlobTransferTrafficThrottler(
+            serverConfig.getAdaptiveThrottlerSignalIdleThreshold(),
+            serverConfig.getBlobTransferClientReadLimitBytesPerSec(),
+            serverConfig.getBlobTransferAdaptiveThrottlerUpdatePercentage(),
+            false);
+        // Setup Limiter Signal for Read
+        readThrottler.registerLimiterSignal(adaptiveThrottlerSignalService::isReadLatencySignalActive);
+        readThrottler
+            .registerLimiterSignal(adaptiveThrottlerSignalService::isCurrentFollowerMaxHeartbeatLagSignalActive);
+        readThrottler.registerLimiterSignal(adaptiveThrottlerSignalService::isCurrentLeaderMaxHeartbeatLagSignalActive);
+        // Setup Limiter Signal for Write
+        writeThrottler.registerLimiterSignal(adaptiveThrottlerSignalService::isReadLatencySignalActive);
+        writeThrottler
+            .registerLimiterSignal(adaptiveThrottlerSignalService::isCurrentFollowerMaxHeartbeatLagSignalActive);
+        writeThrottler
+            .registerLimiterSignal(adaptiveThrottlerSignalService::isCurrentLeaderMaxHeartbeatLagSignalActive);
+        adaptiveThrottlerSignalService.registerThrottler(writeThrottler);
+        adaptiveThrottlerSignalService.registerThrottler(readThrottler);
+      }
       blobTransferManager = new BlobTransferManagerBuilder().setBlobTransferConfig(p2PBlobTransferConfig)
           .setCustomizedViewFuture(customizedViewFuture)
           .setStorageMetadataService(storageMetadataService)
@@ -511,6 +538,8 @@ public class VeniceServer {
           .setAggVersionedBlobTransferStats(aggVersionedBlobTransferStats)
           .setBlobTransferSSLFactory(sslFactory)
           .setBlobTransferAclHandler(BlobTransferUtils.createAclHandler(veniceConfigLoader))
+          .setAdaptiveBlobTransferWriteTrafficThrottler(writeThrottler)
+          .setAdaptiveBlobTransferReadTrafficThrottler(readThrottler)
           .build();
     } else {
       aggVersionedBlobTransferStats = null;

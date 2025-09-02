@@ -132,18 +132,28 @@ def integrationTestConfigs = {
   testClassesDirs = sourceSets.integrationTest.output.classesDirs
   forkEvery = Integer.parseInt(project.properties.get('integrationTest.forkEvery', "$forkEvery"))
   maxParallelForks = Integer.parseInt(project.properties.get('integrationTest.maxParallelForks', "$maxParallelForks"))
+
+  // Set heap size to 8GB for integration tests
+  minHeapSize = '4g'
+  maxHeapSize = '8g'
+
+  // Disable JaCoCo for integration tests
+  jacoco {
+    enabled = false
+  }
 }
 
 def integrationTestBuckets = [
     "1": [
-        "com.linkedin.venice.endToEnd.PartialUpdateWithHeartbeatReadyToServeCheckTest"
+        "com.linkedin.venice.endToEnd.PartialUpdateWithHeartbeatReadyToServeCheckTest",
+        "com.linkedin.venice.endToEnd.TestIncrementalPush"
     ],
     "2": [
-        "com.linkedin.venice.endToEnd.PartialUpdateTest"
+        "com.linkedin.venice.endToEnd.PartialUpdateTest",
+        "com.linkedin.venice.endToEnd.TestRepush"
     ],
     "3": [
-        "com.linkedin.venice.endToEnd.PartialUpdateWithParallelProcessingTest",
-        "com.linkedin.venice.client.store.TestD2ServiceDiscovery"
+        "com.linkedin.venice.consumer.BootstrappingChangelogConsumerTest"
     ],
     "4": [
         "com.linkedin.venice.endToEnd.TestDeferredVersionSwap",
@@ -169,7 +179,6 @@ def integrationTestBuckets = [
         "com.linkedin.venice.kafka.KafkaConsumptionTest"
     ],
     "8": [
-        "com.linkedin.venice.endToEnd.PushStatusStoreTest",
         "com.linkedin.venice.consumer.TestChangelogConsumer",
         "com.linkedin.venice.endToEnd.TestPushJobWithNativeReplication",
         "com.linkedin.venice.zk.TestMigrateVeniceZKPaths"
@@ -255,7 +264,6 @@ def integrationTestBuckets = [
         "com.linkedin.venice.multicluster.TestMetadataOperationInMultiCluster",
         "com.linkedin.venice.endToEnd.TestMultiDatacenterVenicePushJob",
         "com.linkedin.venice.endToEnd.ParticipantStoreTest",
-        "com.linkedin.venice.endToEnd.DaVinciClientDiskFullTest",
         "com.linkedin.venice.endToEnd.TestVsonStoreBatch",
         "com.linkedin.venice.restart.TestRestartController",
         "com.linkedin.venice.endToEnd.TestPushJobWithSourceGridFabricSelection",
@@ -339,6 +347,7 @@ def integrationTestBuckets = [
         "com.linkedin.venice.helix.TestHelixReadWriteStoreRepositoryAdapter"
     ],
     "21": [
+        "com.linkedin.venice.client.store.TestD2ServiceDiscovery",
         "com.linkedin.venice.endToEnd.StoragePersonaTest",
         "com.linkedin.venice.endToEnd.DataRecoveryTest",
         "com.linkedin.venice.endToEnd.RocksDBPlainTableTest",
@@ -372,12 +381,10 @@ def integrationTestBuckets = [
         "com.linkedin.venice.consumer.ConsumerTest",
         "com.linkedin.venice.controller.TestZkExecutionIdAccessor",
         "com.linkedin.venice.controller.migration.TestMigrationPushStrategyZKAccessor",
-        "com.linkedin.venice.helix.StoragePersonaStoreDataListenerTest"
+        "com.linkedin.venice.helix.StoragePersonaStoreDataListenerTest",
+        "com.linkedin.venice.endToEnd.PushStatusStoreTest"
     ],
     "22": [
-        "com.linkedin.venice.consumer.BootstrappingChangelogConsumerTest"
-    ],
-    "23": [
         "com.linkedin.venice.endToEnd.TestEmptyPush",
         "com.linkedin.venice.endToEnd.SystemStoreMultiColoTest",
         "com.linkedin.venice.endToEnd.CheckSumTest",
@@ -390,6 +397,7 @@ def integrationTestBuckets = [
         "com.linkedin.venice.fastclient.FastClientIndividualFeatureConfigurationTest",
         "com.linkedin.venice.fastclient.FastClientDaVinciClientCompatTest",
         "com.linkedin.venice.fastclient.AvroStoreClientGzipEndToEndTest",
+        "com.linkedin.venice.endToEnd.DaVinciClientDiskFullTest"
     ],
 ]
 

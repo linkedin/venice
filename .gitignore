@@ -20,6 +20,8 @@ internal/venice-test-common/src/jmh/generated
 internal/venice-test-common/file:/
 clients/da-vinci-client/classHash*.txt
 integrations/venice-duckdb/classHash*.txt
+.vscode/
+.github/copilot-instructions.md
 
 # Stuff related to running the docs server locally
 .jekyll-cache/

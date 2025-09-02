@@ -531,4 +531,31 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
     }
     return topicPartitionIngestionContextJsonSerializer.serialize(topicPartitionIngestionContext, "");
   }
+
+  public String getIngestionInfoFor(
+      PubSubTopic versionTopic,
+      PubSubTopicPartition pubSubTopicPartition,
+      String regionName) {
+    String kafkaUrl = getKafkaUrlFromRegionName(regionName);
+    if (kafkaUrl == null) {
+      return "kafkaUrl is not found for region: " + regionName;
+    }
+    AbstractKafkaConsumerService consumerService = getKafkaConsumerService(kafkaUrl);
+    if (consumerService == null) {
+      return "Kafka consumer service is not found for kafkaUrl: " + kafkaUrl + ", region: " + regionName;
+    }
+    Map<PubSubTopicPartition, TopicPartitionIngestionInfo> topicPartitionIngestionInfoMap =
+        consumerService.getIngestionInfoFor(versionTopic, pubSubTopicPartition);
+    return KafkaConsumerService.convertTopicPartitionIngestionInfoMapToStr(topicPartitionIngestionInfoMap);
+  }
+
+  private String getKafkaUrlFromRegionName(String regionName) {
+    for (Map.Entry<String, String> entry: kafkaClusterUrlToAliasMap.entrySet()) {
+      if (entry.getValue().equals(regionName)) {
+        return entry.getKey();
+      }
+    }
+    return null;
+  }
+
 }

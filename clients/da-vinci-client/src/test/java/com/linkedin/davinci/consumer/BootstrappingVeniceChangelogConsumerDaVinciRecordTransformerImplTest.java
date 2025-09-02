@@ -7,6 +7,7 @@ import static com.linkedin.venice.stats.VeniceMetricsRepository.getVeniceMetrics
 import static com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory.FAIL;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.doCallRealMethod;
@@ -513,6 +514,7 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImplTes
     bootstrappingVeniceChangelogConsumer.setBackgroundReporterThreadSleepIntervalSeconds(1L);
 
     verify(changeCaptureStats, times(0)).emitCurrentConsumingVersionMetrics(anyInt(), anyInt());
+    verify(changeCaptureStats, times(0)).emitHeartBeatDelayMetrics(anyLong());
     bootstrappingVeniceChangelogConsumer.start();
 
     recordTransformer.onStartVersionIngestion(true);
@@ -520,16 +522,23 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImplTes
 
     int partitionId = 0;
     recordTransformer.processPut(keys.get(partitionId), lazyValue, partitionId);
+    recordTransformer.onHeartbeat(partitionId, 1L);
 
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
-      verify(changeCaptureStats).emitCurrentConsumingVersionMetrics(CURRENT_STORE_VERSION, CURRENT_STORE_VERSION);
+      verify(changeCaptureStats, atLeastOnce())
+          .emitCurrentConsumingVersionMetrics(CURRENT_STORE_VERSION, CURRENT_STORE_VERSION);
+      verify(changeCaptureStats, atLeastOnce()).emitHeartBeatDelayMetrics(anyLong());
     });
 
     // Perform version swap on one partition
     futureRecordTransformer.onVersionSwap(CURRENT_STORE_VERSION, FUTURE_STORE_VERSION, 0);
+    clearInvocations(changeCaptureStats);
+    futureRecordTransformer.onHeartbeat(partitionId, 2L);
 
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
-      verify(changeCaptureStats).emitCurrentConsumingVersionMetrics(CURRENT_STORE_VERSION, FUTURE_STORE_VERSION);
+      verify(changeCaptureStats, atLeastOnce())
+          .emitCurrentConsumingVersionMetrics(CURRENT_STORE_VERSION, FUTURE_STORE_VERSION);
+      verify(changeCaptureStats, atLeastOnce()).emitHeartBeatDelayMetrics(anyLong());
     });
   }
 

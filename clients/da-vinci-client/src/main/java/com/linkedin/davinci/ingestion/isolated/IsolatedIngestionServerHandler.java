@@ -27,6 +27,7 @@ import com.linkedin.venice.meta.SubscriptionBasedReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.utils.ExceptionUtils;
+import com.linkedin.venice.utils.Utils;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.codec.http.FullHttpRequest;
@@ -142,14 +143,14 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
     String topicName = ingestionTaskCommand.topicName.toString();
     int partitionId = ingestionTaskCommand.partitionId;
     String storeName = Version.parseStoreFromKafkaTopicName(topicName);
+    String replicaId = Utils.getReplicaId(topicName, partitionId);
 
     IngestionTaskReport report = createIngestionTaskReport(topicName, partitionId);
     IngestionCommandType ingestionCommandType = IngestionCommandType.valueOf(ingestionTaskCommand.commandType);
     LOGGER.info(
-        "Received ingestion command {} for topic: {}, partition: {} in timestamp: {}",
+        "Received ingestion command {} for replica: {} in timestamp: {}",
         ingestionCommandType,
-        topicName,
-        partitionId,
+        replicaId,
         startTimeInMs);
     try {
       if (!isolatedIngestionServer.isInitiated()) {
@@ -174,7 +175,7 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
                 LOGGER.warn("Subscription to store: {} is interrupted. ", storeName);
               }
             }
-            LOGGER.info("Start ingesting partition: {} of topic: {}", partitionId, topicName);
+            LOGGER.info("Start ingesting replica: {}", replicaId);
             isolatedIngestionServer.setResourceToBeSubscribed(topicName, partitionId);
             isolatedIngestionServer.getIngestionBackend().startConsumption(storeConfig, partitionId);
           });
@@ -247,10 +248,9 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
     }
     long executionTimeInMs = System.currentTimeMillis() - startTimeInMs;
     LOGGER.info(
-        "Completed ingestion command {} for topic: {}, partition: {} in {} ms.",
+        "Completed ingestion command {} for replica: {} in {} ms.",
         ingestionCommandType,
-        topicName,
-        partitionId,
+        replicaId,
         executionTimeInMs);
     return report;
   }
@@ -382,11 +382,8 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
        * it will be executed inside main process.
        */
       report.isPositive = false;
-      LOGGER.info(
-          "Topic: {}, partition {} is being unsubscribed, will reject command {}",
-          topic,
-          partition,
-          command.name());
+      String replicaId = Utils.getReplicaId(topic, partition);
+      LOGGER.info("Replica: {} is being unsubscribed, will reject command {}", replicaId, command.name());
     }
   }
 }
