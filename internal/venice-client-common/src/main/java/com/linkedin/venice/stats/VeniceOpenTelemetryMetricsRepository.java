@@ -22,6 +22,8 @@ import io.opentelemetry.api.metrics.LongCounter;
 import io.opentelemetry.api.metrics.LongCounterBuilder;
 import io.opentelemetry.api.metrics.LongGauge;
 import io.opentelemetry.api.metrics.LongGaugeBuilder;
+import io.opentelemetry.api.metrics.LongUpDownCounter;
+import io.opentelemetry.api.metrics.LongUpDownCounterBuilder;
 import io.opentelemetry.api.metrics.Meter;
 import io.opentelemetry.api.metrics.MeterProvider;
 import io.opentelemetry.api.metrics.ObservableLongGauge;
@@ -166,6 +168,7 @@ public class VeniceOpenTelemetryMetricsRepository {
    */
   private final VeniceConcurrentHashMap<String, DoubleHistogram> histogramMap = new VeniceConcurrentHashMap<>();
   private final VeniceConcurrentHashMap<String, LongCounter> counterMap = new VeniceConcurrentHashMap<>();
+  private final VeniceConcurrentHashMap<String, LongUpDownCounter> upDownCounterMap = new VeniceConcurrentHashMap<>();
   private final VeniceConcurrentHashMap<String, LongGauge> gaugeMap = new VeniceConcurrentHashMap<>();
   private final VeniceConcurrentHashMap<String, ObservableLongGauge> asyncGaugeMap = new VeniceConcurrentHashMap<>();
 
@@ -286,6 +289,19 @@ public class VeniceOpenTelemetryMetricsRepository {
     });
   }
 
+  public LongUpDownCounter createLongUpDownCounter(MetricEntity metricEntity) {
+    if (!emitOpenTelemetryMetrics()) {
+      return null;
+    }
+    return upDownCounterMap.computeIfAbsent(metricEntity.getMetricName(), key -> {
+      String fullMetricName = getFullMetricName(metricEntity);
+      LongUpDownCounterBuilder builder = meter.upDownCounterBuilder(fullMetricName)
+          .setUnit(metricEntity.getUnit().name())
+          .setDescription(getMetricDescription(metricEntity, metricsConfig));
+      return builder.build();
+    });
+  }
+
   public LongGauge createLongGuage(MetricEntity metricEntity) {
     if (!emitOpenTelemetryMetrics()) {
       return null;
@@ -342,6 +358,9 @@ public class VeniceOpenTelemetryMetricsRepository {
 
       case COUNTER:
         return createLongCounter(metricEntity);
+
+      case UP_DOWN_COUNTER:
+        return createLongUpDownCounter(metricEntity);
 
       case GAUGE:
         return createLongGuage(metricEntity);

@@ -29,6 +29,12 @@ public enum MetricType {
   COUNTER(false),
 
   /**
+   * For UpDownCounter: A counter that supports positive and negative increments.
+   * Useful when counts can increase or decrease over time.
+   */
+  UP_DOWN_COUNTER(false),
+
+  /**
    * {@link io.opentelemetry.api.metrics.LongGauge}: Emits the absolute value of the metric value.
    */
   GAUGE(false),

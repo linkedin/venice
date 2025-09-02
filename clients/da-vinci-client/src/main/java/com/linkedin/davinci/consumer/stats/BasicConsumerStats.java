@@ -28,13 +28,13 @@ import io.tehuti.metrics.stats.Avg;
 import io.tehuti.metrics.stats.Gauge;
 import io.tehuti.metrics.stats.Max;
 import io.tehuti.metrics.stats.Rate;
+import io.tehuti.metrics.stats.Total;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.atomic.AtomicInteger;
 
 
 /**
@@ -56,9 +56,6 @@ public class BasicConsumerStats extends AbstractVeniceStats {
   private final MetricEntityStateOneEnum<VeniceResponseStatusCategory> versionSwapFailCountMetric;
   private final MetricEntityStateOneEnum<VeniceResponseStatusCategory> chunkedRecordSuccessCountMetric;
   private final MetricEntityStateOneEnum<VeniceResponseStatusCategory> chunkedRecordFailCountMetric;
-
-  private final AtomicInteger versionSwapSuccessCount = new AtomicInteger();
-  private final AtomicInteger versionSwapFailCount = new AtomicInteger();
 
   public BasicConsumerStats(MetricsRepository metricsRepository, String consumerName, String storeName) {
     super(metricsRepository, consumerName);
@@ -148,7 +145,7 @@ public class BasicConsumerStats extends AbstractVeniceStats {
         otelRepository,
         this::registerSensor,
         BasicConsumerTehutiMetricName.VERSION_SWAP_SUCCESS_COUNT,
-        Collections.singletonList(new Gauge()),
+        Collections.singletonList(new Total()),
         baseDimensionsMap,
         VeniceResponseStatusCategory.class);
 
@@ -157,7 +154,7 @@ public class BasicConsumerStats extends AbstractVeniceStats {
         otelRepository,
         this::registerSensor,
         BasicConsumerTehutiMetricName.VERSION_SWAP_FAIL_COUNT,
-        Collections.singletonList(new Gauge()),
+        Collections.singletonList(new Total()),
         baseDimensionsMap,
         VeniceResponseStatusCategory.class);
 
@@ -179,7 +176,10 @@ public class BasicConsumerStats extends AbstractVeniceStats {
         baseDimensionsMap,
         VeniceResponseStatusCategory.class);
 
-    // Record default value for version swap metrics so histograms include initial zero
+    /*
+     * Record default value for version swap metrics so the UP_DOWN_COUNTER in OTEL will emit a default 0.
+     * If you don't do this, the OTEL metric will return no data upon query time until a value is recorded.
+     */
     versionSwapSuccessCountMetric.record(0, SUCCESS);
     versionSwapFailCountMetric.record(0, FAIL);
   }
@@ -210,9 +210,9 @@ public class BasicConsumerStats extends AbstractVeniceStats {
 
   public void emitVersionSwapCountMetrics(VeniceResponseStatusCategory responseStatusCategory) {
     if (responseStatusCategory == SUCCESS) {
-      versionSwapSuccessCountMetric.record(versionSwapSuccessCount.incrementAndGet(), responseStatusCategory);
+      versionSwapSuccessCountMetric.record(1, responseStatusCategory);
     } else {
-      versionSwapFailCountMetric.record(versionSwapFailCount.incrementAndGet(), responseStatusCategory);
+      versionSwapFailCountMetric.record(1, responseStatusCategory);
     }
   }
 
@@ -284,7 +284,7 @@ public class BasicConsumerStats extends AbstractVeniceStats {
      * Measures the count of version swaps
      */
     VERSION_SWAP_COUNT(
-        MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS, MetricUnit.NUMBER, "Measures the count of version swaps",
+        MetricType.UP_DOWN_COUNTER, MetricUnit.NUMBER, "Measures the count of version swaps",
         setOf(VENICE_STORE_NAME, VENICE_RESPONSE_STATUS_CODE_CATEGORY)
     ),
     /**

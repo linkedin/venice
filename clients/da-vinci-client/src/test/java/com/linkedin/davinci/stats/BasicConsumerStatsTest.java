@@ -118,36 +118,28 @@ public class BasicConsumerStatsTest {
     int defaultNum = 0;
     int expectedNum = 1;
 
-    // Default Tehuti metrics
-    validateTehutiMetric(tehutiMetricPrefix + "--" + VERSION_SWAP_SUCCESS_COUNT.getMetricName() + ".Gauge", defaultNum);
-    validateTehutiMetric(tehutiMetricPrefix + "--" + VERSION_SWAP_FAIL_COUNT.getMetricName() + ".Gauge", defaultNum);
+    // Default metrics
+    validateTehutiMetric(tehutiMetricPrefix + "--" + VERSION_SWAP_SUCCESS_COUNT.getMetricName() + ".Total", defaultNum);
+    validateTehutiMetric(tehutiMetricPrefix + "--" + VERSION_SWAP_FAIL_COUNT.getMetricName() + ".Total", defaultNum);
+    validateLongCounterOtelMetric(storeName, VERSION_SWAP_COUNT.getMetricEntity().getMetricName(), defaultNum, SUCCESS);
+    validateLongCounterOtelMetric(storeName, VERSION_SWAP_COUNT.getMetricEntity().getMetricName(), defaultNum, FAIL);
 
     consumerStats.emitVersionSwapCountMetrics(SUCCESS);
     consumerStats.emitVersionSwapCountMetrics(FAIL);
 
     // Success metrics
     validateTehutiMetric(
-        tehutiMetricPrefix + "--" + VERSION_SWAP_SUCCESS_COUNT.getMetricName() + ".Gauge",
+        tehutiMetricPrefix + "--" + VERSION_SWAP_SUCCESS_COUNT.getMetricName() + ".Total",
         expectedNum);
-    validateMinMaxSumAggregationsOtelMetric(
+    validateLongCounterOtelMetric(
         storeName,
         VERSION_SWAP_COUNT.getMetricEntity().getMetricName(),
-        defaultNum, // min includes default 0 recorded at construction
-        expectedNum, // max after first increment
-        2, // count includes default 0 and this increment
-        expectedNum, // sum is 1 (0 + 1)
+        expectedNum,
         SUCCESS);
 
     // Fail metrics
-    validateTehutiMetric(tehutiMetricPrefix + "--" + VERSION_SWAP_FAIL_COUNT.getMetricName() + ".Gauge", expectedNum);
-    validateMinMaxSumAggregationsOtelMetric(
-        storeName,
-        VERSION_SWAP_COUNT.getMetricEntity().getMetricName(),
-        defaultNum, // min includes default 0 recorded at construction
-        expectedNum, // max after first increment
-        2, // count includes default 0 and this increment
-        expectedNum, // sum is 1 (0 + 1)
-        FAIL);
+    validateTehutiMetric(tehutiMetricPrefix + "--" + VERSION_SWAP_FAIL_COUNT.getMetricName() + ".Total", expectedNum);
+    validateLongCounterOtelMetric(storeName, VERSION_SWAP_COUNT.getMetricEntity().getMetricName(), expectedNum, FAIL);
   }
 
   @Test

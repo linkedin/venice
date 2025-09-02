@@ -27,6 +27,7 @@ import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.metrics.DoubleHistogram;
 import io.opentelemetry.api.metrics.LongCounter;
 import io.opentelemetry.api.metrics.LongGauge;
+import io.opentelemetry.api.metrics.LongUpDownCounter;
 import io.opentelemetry.api.metrics.ObservableLongGauge;
 import io.opentelemetry.sdk.metrics.export.MetricExporter;
 import java.util.ArrayList;
@@ -192,6 +193,13 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
           assertTrue(
               instrument instanceof LongCounter,
               "Instrument should be a LongCounter for metric type: " + metricType);
+          metricEntityStateBase.recordOtelMetric(value, attributes);
+          break;
+        case UP_DOWN_COUNTER:
+          metricEntityStateBase = (MetricEntityStateBase) metricEntityState;
+          assertTrue(
+              instrument instanceof LongUpDownCounter,
+              "Instrument should be a LongUpDownCounter for metric type: " + metricType);
           metricEntityStateBase.recordOtelMetric(value, attributes);
           break;
         case GAUGE:
