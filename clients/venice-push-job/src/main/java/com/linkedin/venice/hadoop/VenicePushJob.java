@@ -2087,13 +2087,14 @@ public class VenicePushJob implements AutoCloseable {
     } else {
       if (replicationSchemasResponse.getSchemas() != null && replicationSchemasResponse.getSchemas().length > 0) {
         for (MultiSchemaResponse.Schema schema: replicationSchemasResponse.getSchemas()) {
-          if (schema.getRmdValueSchemaId() == pushJobSetting.valueSchemaId) {
+          if (schema.getRmdValueSchemaId() == pushJobSetting.valueSchemaId
+              && schema.getId() > pushJobSetting.rmdSchemaId) {
             pushJobSetting.rmdSchemaId = schema.getId();
             pushJobSetting.replicationMetadataSchemaString = schema.getSchemaStr();
           }
         }
 
-        if (pushJobSetting.rmdSchemaId == 1) {
+        if (pushJobSetting.rmdSchemaId > 0) {
           LOGGER.info(
               "Retrieved and using schema with id: {}, and string: {}",
               pushJobSetting.rmdSchemaId,
@@ -2116,7 +2117,7 @@ public class VenicePushJob implements AutoCloseable {
     } else if (pushJobSetting.rmdSchemaId > 1) {
       throw new VeniceException(
           "Cannot continue with push with RMD since the RMD schema for the value: " + pushJobSetting.valueSchemaId
-              + "has evolved to " + pushJobSetting.rmdSchemaId + ". RMD schema evolution is not supported yet.");
+              + " has evolved to " + pushJobSetting.rmdSchemaId + ". RMD schema evolution is not supported yet.");
 
     }
   }

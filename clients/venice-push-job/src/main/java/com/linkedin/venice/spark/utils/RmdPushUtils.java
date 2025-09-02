@@ -3,6 +3,7 @@ package com.linkedin.venice.spark.utils;
 import com.linkedin.venice.hadoop.PushJobSetting;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
+import com.linkedin.venice.serializer.RecordSerializer;
 import org.apache.avro.Schema;
 
 
@@ -14,6 +15,10 @@ public class RmdPushUtils {
 
   public static RecordDeserializer<Long> getDeserializerForLogicalTimestamp() {
     return FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(LONG_SCHEMA, LONG_SCHEMA);
+  }
+
+  public static RecordSerializer<Long> getSerializerForLogicalTimestamp() {
+    return FastSerializerDeserializerFactory.getFastAvroGenericSerializer(LONG_SCHEMA);
   }
 
   public static Schema getInputRmdSchema(PushJobSetting pushJobSetting) {

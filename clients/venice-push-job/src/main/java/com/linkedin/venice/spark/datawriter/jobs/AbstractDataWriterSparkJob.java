@@ -386,7 +386,7 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
       dataFrame = dataFrame
           .map(
               new SparkLogicalTimestampProcessor(
-                  RmdPushUtils.rmdFieldPresent(pushJobSetting),
+                  RmdPushUtils.containsLogicalTimestamp(pushJobSetting),
                   pushJobSetting.replicationMetadataSchemaString),
               rowEncoder)
           .flatMap(new SparkInputRecordProcessorFactory(broadcastProperties, accumulatorsForDataWriterJob), rowEncoder);

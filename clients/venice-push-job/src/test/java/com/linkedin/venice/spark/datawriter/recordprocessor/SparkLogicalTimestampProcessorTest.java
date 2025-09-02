@@ -9,6 +9,7 @@ import static org.mockito.Mockito.when;
 
 import com.linkedin.venice.schema.AvroSchemaParseUtils;
 import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
+import com.linkedin.venice.spark.utils.RmdPushUtils;
 import org.apache.avro.Schema;
 import org.apache.spark.sql.Row;
 import org.testng.Assert;
@@ -45,6 +46,7 @@ public class SparkLogicalTimestampProcessorTest {
 
   @Test
   public void testConvertLogicalTimestampToRmd() throws Exception {
+    long timestamp = 123L;
     SparkLogicalTimestampProcessor processor = new SparkLogicalTimestampProcessor(true, RMD_SCHEMA_STR);
     Schema rmdSchema = AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation(RMD_SCHEMA_STR);
     byte[] expectedRmd = RmdSchemaGenerator.generateRecordLevelTimestampMetadata(rmdSchema, 123L);
@@ -52,7 +54,8 @@ public class SparkLogicalTimestampProcessorTest {
     Row mockRow = mock(Row.class);
     when(mockRow.getAs(eq(VALUE_COLUMN_NAME))).thenReturn(VALUE_BYTES);
     when(mockRow.getAs(eq(KEY_COLUMN_NAME))).thenReturn(KEY_BYTES);
-    when(mockRow.getAs(eq(RMD_COLUMN_NAME))).thenReturn(123L);
+    when(mockRow.getAs(eq(RMD_COLUMN_NAME)))
+        .thenReturn(RmdPushUtils.getSerializerForLogicalTimestamp().serialize(timestamp));
 
     Row processedRow = processor.call(mockRow);
     Assert.assertEquals(processedRow.getAs(KEY_COLUMN_NAME), KEY_BYTES);

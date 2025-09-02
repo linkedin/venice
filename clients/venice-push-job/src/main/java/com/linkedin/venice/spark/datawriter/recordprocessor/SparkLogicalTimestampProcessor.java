@@ -33,11 +33,12 @@ public class SparkLogicalTimestampProcessor implements MapFunction<Row, Row> {
     }
 
     this.containsLogicalTimestamp = containsLogicalTimestamp;
-    this.rmdSchema =
-        containsLogicalTimestamp ? AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation(rmdSchemaString) : null;
-
     if (containsLogicalTimestamp) {
-      logicalTimestampDeserializer = getDeserializerForLogicalTimestamp();
+      this.logicalTimestampDeserializer = getDeserializerForLogicalTimestamp();
+      this.rmdSchema = AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation(rmdSchemaString);
+    } else {
+      logicalTimestampDeserializer = null;
+      this.rmdSchema = null;
     }
   }
 
