@@ -4695,8 +4695,15 @@ public class VeniceParentHelixAdmin implements Admin {
         ReadWriteStoreRepository repository = resources.getStoreMetadataRepository();
         Store parentStore = repository.getStore(storeName);
         int version = Version.parseVersionFromKafkaTopicName(kafkaTopic);
-        parentStore.updateVersionStatus(version, VersionStatus.KILLED);
-        repository.updateStore(parentStore);
+
+        // If parent version status is already in a terminal state (ONLINE, ERROR, PARTIALLY_ONLINE), do not mark it as
+        // killed to avoid triggering DeferredVersionSwapService again as version swap is already complete
+        VersionStatus parentVersionStatus = parentStore.getVersionStatus(version);
+        if (!(VersionStatus.ONLINE.equals(parentVersionStatus) || VersionStatus.ERROR.equals(parentVersionStatus)
+            || VersionStatus.PARTIALLY_ONLINE.equals(parentVersionStatus))) {
+          parentStore.updateVersionStatus(version, VersionStatus.KILLED);
+          repository.updateStore(parentStore);
+        }
       }
 
       KillOfflinePushJob killJob = (KillOfflinePushJob) AdminMessageType.KILL_OFFLINE_PUSH_JOB.getNewInstance();

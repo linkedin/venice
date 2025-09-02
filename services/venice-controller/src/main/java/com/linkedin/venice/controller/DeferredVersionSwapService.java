@@ -358,6 +358,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
                 + targetVersionNum);
         return false;
       case PUSHED:
+      case KILLED:
         return true;
       case ONLINE:
         // This should not happen, but if it does, we should still perform a version swap and log a metric for it
@@ -914,15 +915,19 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
               }
             }
 
+            // If version status is marked as KILLED (push timeout, user killed push job, etc), check if target
+            // regions failed
             Admin.OfflinePushStatusInfo pushStatusInfo =
                 veniceParentHelixAdmin.getOffLinePushStatus(cluster, kafkaTopicName);
-            if (!didPushCompleteInTargetRegions(
-                targetRegions,
-                pushStatusInfo,
-                parentStore,
-                targetVersionNum,
-                cluster)) {
-              continue;
+            if (targetVersion.getStatus() == VersionStatus.KILLED) {
+              if (!didPushCompleteInTargetRegions(
+                  targetRegions,
+                  pushStatusInfo,
+                  parentStore,
+                  targetVersionNum,
+                  cluster)) {
+                continue;
+              }
             }
 
             // TODO clean up the else statement once the non sequential rollout is complete
