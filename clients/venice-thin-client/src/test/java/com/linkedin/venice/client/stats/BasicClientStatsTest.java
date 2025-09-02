@@ -412,6 +412,34 @@ public class BasicClientStatsTest {
             MetricUnit.NUMBER,
             "Key count of retry requests for client",
             Utils.setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD, VENICE_MESSAGE_TYPE)));
+    expectedMetrics.put(
+        ClientMetricEntity.DUPLICATE_KEY_COUNT,
+        new MetricEntity(
+            "duplicate_key_count",
+            MetricType.COUNTER,
+            MetricUnit.NUMBER,
+            "Duplicate key count of requests for client",
+            Utils.setOf(
+                VENICE_STORE_NAME,
+                VENICE_REQUEST_METHOD,
+                VENICE_MESSAGE_TYPE,
+                VENICE_RESPONSE_STATUS_CODE_CATEGORY)));
+    expectedMetrics.put(
+        ClientMetricEntity.CLIENT_TIMEOUT,
+        new MetricEntity(
+            "client_timeout",
+            MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS,
+            MetricUnit.MILLISECOND,
+            "Client request timeout in milliseconds",
+            Utils.setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)));
+    expectedMetrics.put(
+        ClientMetricEntity.KEY_TIMEOUT_RATIO,
+        new MetricEntity(
+            "key_timeout_ratio",
+            MetricType.HISTOGRAM,
+            MetricUnit.NUMBER,
+            "Ratio of timed out keys to total keys in the request",
+            Utils.setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD, VENICE_MESSAGE_TYPE)));
 
     Set<String> uniqueMetricEntitiesNames = new HashSet<>();
 
