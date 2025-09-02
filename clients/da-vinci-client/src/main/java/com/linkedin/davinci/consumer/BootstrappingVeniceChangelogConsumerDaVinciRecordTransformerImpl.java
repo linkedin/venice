@@ -28,6 +28,7 @@ import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.PropertyBuilder;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.lazy.Lazy;
@@ -87,6 +88,7 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
   private long backgroundReporterThreadSleepIntervalSeconds = 60L;
   private final BasicConsumerStats changeCaptureStats;
   private final AtomicBoolean isCaughtUp = new AtomicBoolean(false);
+  private final ConcurrentHashMap<Integer, Long> currentVersionLastHeartbeat = new ConcurrentHashMap<>();
   private final VeniceConcurrentHashMap<Integer, AtomicLong> consumerSequenceIdGeneratorMap;
   private final long consumerSequenceIdStartingValue;
 
@@ -318,6 +320,19 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
     }
 
     private void recordStats() {
+      // Emit heartbeat delay metrics based on last heartbeat per partition
+      long now = System.currentTimeMillis();
+      long maxLag = Long.MIN_VALUE;
+      Map<Integer, Long> heartbeatSnapshot = new HashMap<>(currentVersionLastHeartbeat);
+      for (Long heartBeatTimestamp: heartbeatSnapshot.values()) {
+        if (heartBeatTimestamp != null) {
+          maxLag = Math.max(maxLag, now - heartBeatTimestamp);
+        }
+      }
+      if (maxLag != Long.MIN_VALUE) {
+        changeCaptureStats.emitHeartBeatDelayMetrics(maxLag);
+      }
+
       int minVersion = Integer.MAX_VALUE;
       int maxVersion = -1;
 
@@ -374,6 +389,9 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
         // Caching these objects, so we don't need to recreate them on every single message received
         pubSubTopicPartitionMap
             .put(partitionId, new PubSubTopicPartitionImpl(new PubSubTopicImpl(topicName), partitionId));
+
+        // Initialize heartbeat timestamp for the partition to avoid empty lag until first heartbeat arrives
+        currentVersionLastHeartbeat.putIfAbsent(partitionId, System.currentTimeMillis());
       }
     }
 
@@ -471,15 +489,11 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
        * This early swap causes the buffer to fill with records before the EOP, which is undesirable.
        * By only allowing the futureVersion to perform the version swap, we ensure that only nearline events are served.
        */
+      String replicaId = Utils.getReplicaId(storeName, futureVersion, partitionId);
       try {
         if (futureVersion == getStoreVersion()) {
           partitionToVersionToServe.put(partitionId, futureVersion);
-          LOGGER.info(
-              "Swapped from version: {} to version: {} for store: {} for partition: {}",
-              currentVersion,
-              futureVersion,
-              storeName,
-              partitionId);
+          LOGGER.info("Swapped versions from: {} to: {} for replica: {}", currentVersion, futureVersion, replicaId);
 
           if (changeCaptureStats != null) {
             changeCaptureStats.emitVersionSwapCountMetrics(SUCCESS);
@@ -491,12 +505,20 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
         }
 
         LOGGER.error(
-            "Encountered an exception when processing Version Swap from version: {} to version: {} for store: {} for partition: {}",
+            "Encountered an exception when processing Version Swap from version: {} to version: {} for replica: {}",
             currentVersion,
             futureVersion,
-            storeName,
-            partitionId);
+            replicaId);
         throw exception;
+      }
+    }
+
+    /**
+     * Receive heartbeat timestamp for a partition and update latest seen time.
+     */
+    public void onHeartbeat(int partitionId, long heartbeatTimestamp) {
+      if (partitionToVersionToServe.get(partitionId) == getStoreVersion()) {
+        currentVersionLastHeartbeat.put(partitionId, heartbeatTimestamp);
       }
     }
 

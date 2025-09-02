@@ -7,6 +7,8 @@ import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceTimeoutException;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
@@ -75,7 +77,7 @@ public class StateModelIngestionProgressNotifier implements VeniceNotifier {
   }
 
   @Override
-  public void completed(String resourceName, int partitionId, long offset, String message) {
+  public void completed(String resourceName, int partitionId, PubSubPosition position, String message) {
     CountDownLatch ingestionCompleteFlag = getIngestionCompleteFlag(resourceName, partitionId);
     if (ingestionCompleteFlag != null) {
       stateModelToSuccessMap.put(getStateModelID(resourceName, partitionId), true);
@@ -87,6 +89,7 @@ public class StateModelIngestionProgressNotifier implements VeniceNotifier {
 
   @Override
   public void error(String resourceName, int partitionId, String message, Exception ex) {
+    logger.error("Ingestion failed for replica: {} : {}", Utils.getReplicaId(resourceName, partitionId), message, ex);
     CountDownLatch ingestionCompleteFlag = getIngestionCompleteFlag(resourceName, partitionId);
     if (ingestionCompleteFlag != null) {
       ingestionCompleteFlag.countDown();
@@ -96,7 +99,7 @@ public class StateModelIngestionProgressNotifier implements VeniceNotifier {
   }
 
   @Override
-  public void stopped(String resourceName, int partitionId, long offset) {
+  public void stopped(String resourceName, int partitionId, PubSubPosition position) {
     /**
      * Must remove the state model from the model-to-success map first before releasing the latch;
      * otherwise, error will happen in {@link #waitConsumptionCompleted} if latch is released but

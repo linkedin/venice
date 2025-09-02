@@ -984,7 +984,22 @@ public class ConfigKeys {
       "server.db.read.only.for.batch.only.store.enabled";
   public static final String SERVER_RESET_ERROR_REPLICA_ENABLED = "server.reset.error.replica.enabled";
 
+  /**
+   * Config for enable/disable adaptive throttler service feature
+   */
   public static final String SERVER_ADAPTIVE_THROTTLER_ENABLED = "server.adaptive.throttler.enabled";
+
+  /**
+   * Config for enable/disable blob transfer adaptive throttler feature (when adaptive throttler service is enabled)
+   */
+  public static final String SERVER_BLOB_TRANSFER_ADAPTIVE_THROTTLER_ENABLED =
+      "server.blob.transfer.adaptive.throttler.enabled";
+
+  /**
+   * Config for update percentage for blob transfer adaptive throttler
+   */
+  public static final String SERVER_BLOB_TRANSFER_ADAPTIVE_THROTTLER_UPDATE_PERCENTAGE =
+      "server.blob.transfer.adaptive.throttler.update.percentage";
 
   public static final String SERVER_SKIP_CHECK_AFTER_UNSUB_ENABLED = "server.skip.check.after.unsub.enabled";
   public static final String SERVER_ADAPTIVE_THROTTLER_SIGNAL_IDLE_THRESHOLD =
@@ -1993,8 +2008,14 @@ public class ConfigKeys {
   // Config to control how much percentage of DVC replica instances are allowed to be offline before failing VPJ push.
   public static final String DAVINCI_PUSH_STATUS_SCAN_MAX_OFFLINE_INSTANCE_RATIO =
       "davinci.push.status.scan.max.offline.instance.ratio";
+
   // this is a host-level config to decide whether bootstrap a blob transfer manager for the host
   public static final String BLOB_TRANSFER_MANAGER_ENABLED = "blob.transfer.manager.enabled";
+
+  // this is a host-level config to decide if bootstrap from blob transfer for venice server
+  // the store level config is controlled by BLOB_TRANSFER_IN_SERVER_ENABLED.
+  public static final String BLOB_TRANSFER_RECEIVER_SERVER_POLICY = "blob.transfer.receiver.server.policy";
+
   // this is a config to decide whether the snapshot is expired and need to be recreated.
   public static final String BLOB_TRANSFER_SNAPSHOT_RETENTION_TIME_IN_MIN =
       "blob.transfer.snapshot.retention.time.in.min";
@@ -2824,6 +2845,21 @@ public class ConfigKeys {
    */
   public static final String SERVER_INGESTION_TASK_REUSABLE_OBJECTS_STRATEGY =
       "server.ingestion.task.reusable.objects.strategy";
+
   public static final String CONTROLLER_BACKUP_VERSION_REPLICA_REDUCTION_ENABLED =
       "controller.backup.version.replica.reduction.enabled";
+
+  public static final String DAVINCI_VALIDATE_SPECIFIC_SCHEMA_ENABLED = "davinci.validate.specific.schema.enabled";
+
+  /**
+   * List of stores to be treated as dark cluster target stores. If a store is in this list, all
+   * writes to this store will be replicated to dark clusters. If empty, no store will be treated as a dark cluster target store.
+   */
+  public static final String STORES_TO_REPLICATE = "stores.to.replicate";
+
+  /**
+   * Whether the cluster is a dark cluster.
+   * Default is false (i.e. not a dark cluster).
+   */
+  public static final String IS_DARK_CLUSTER = "is.dark.cluster";
 }

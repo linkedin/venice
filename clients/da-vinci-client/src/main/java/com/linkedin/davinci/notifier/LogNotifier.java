@@ -1,5 +1,6 @@
 package com.linkedin.davinci.notifier;
 
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.utils.Utils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -17,43 +18,51 @@ public class LogNotifier implements VeniceNotifier {
   }
 
   @Override
-  public void restarted(String pubSubTopic, int partitionId, long offset, String message) {
-    logMessage("Push restarted", pubSubTopic, partitionId, offset, message, null);
+  public void restarted(String pubSubTopic, int partitionId, PubSubPosition position, String message) {
+    logMessage("Push restarted", pubSubTopic, partitionId, position, message, null);
   }
 
   @Override
-  public void completed(String pubSubTopic, int partitionId, long offset, String message) {
-    logMessage("Push completed", pubSubTopic, partitionId, offset, message, null);
+  public void completed(String pubSubTopic, int partitionId, PubSubPosition position, String message) {
+    logMessage("Push completed", pubSubTopic, partitionId, position, message, null);
   }
 
   @Override
-  public void progress(String pubSubTopic, int partitionId, long offset, String message) {
-    logMessage("Push progress", pubSubTopic, partitionId, offset, message, null);
+  public void progress(String pubSubTopic, int partitionId, PubSubPosition position, String message) {
+    logMessage("Push progress", pubSubTopic, partitionId, position, message, null);
   }
 
   @Override
-  public void endOfPushReceived(String pubSubTopic, int partitionId, long offset, String message) {
-    logMessage("Received END_OF_PUSH", pubSubTopic, partitionId, offset, message, null);
+  public void endOfPushReceived(String pubSubTopic, int partitionId, PubSubPosition position, String message) {
+    logMessage("Received END_OF_PUSH", pubSubTopic, partitionId, position, message, null);
   }
 
   @Override
-  public void topicSwitchReceived(String pubSubTopic, int partitionId, long offset, String message) {
-    logMessage("Received TOPIC_SWITCH", pubSubTopic, partitionId, offset, message, null);
+  public void topicSwitchReceived(String pubSubTopic, int partitionId, PubSubPosition position, String message) {
+    logMessage("Received TOPIC_SWITCH", pubSubTopic, partitionId, position, message, null);
   }
 
   @Override
-  public void dataRecoveryCompleted(String pubSubTopic, int partitionId, long offset, String message) {
-    logMessage("Data recovery completed", pubSubTopic, partitionId, offset, message, null);
+  public void dataRecoveryCompleted(String pubSubTopic, int partitionId, PubSubPosition position, String message) {
+    logMessage("Data recovery completed", pubSubTopic, partitionId, position, message, null);
   }
 
   @Override
-  public void startOfIncrementalPushReceived(String pubSubTopic, int partitionId, long offset, String message) {
-    logMessage("Received START_OF_INCREMENTAL_PUSH", pubSubTopic, partitionId, offset, message, null);
+  public void startOfIncrementalPushReceived(
+      String pubSubTopic,
+      int partitionId,
+      PubSubPosition position,
+      String message) {
+    logMessage("Received START_OF_INCREMENTAL_PUSH", pubSubTopic, partitionId, position, message, null);
   }
 
   @Override
-  public void endOfIncrementalPushReceived(String pubSubTopic, int partitionId, long offset, String message) {
-    logMessage("Received END_OF_INCREMENTAL_PUSH", pubSubTopic, partitionId, offset, message, null);
+  public void endOfIncrementalPushReceived(
+      String pubSubTopic,
+      int partitionId,
+      PubSubPosition position,
+      String message) {
+    logMessage("Received END_OF_INCREMENTAL_PUSH", pubSubTopic, partitionId, position, message, null);
   }
 
   @Override
@@ -65,24 +74,19 @@ public class LogNotifier implements VeniceNotifier {
       String header,
       String pubSubTopic,
       int partitionId,
-      Long offset,
+      PubSubPosition position,
       String message,
       Exception ex) {
+    String logMessageString = String.format(
+        "%s for replica: %s%s%s",
+        header,
+        Utils.getReplicaId(pubSubTopic, partitionId),
+        position == null ? "" : " position " + position,
+        (message == null || message.isEmpty()) ? "" : " message " + message);
     if (ex == null) {
-      LOGGER.info(
-          "{} for replica: {}{}{}",
-          header,
-          Utils.getReplicaId(pubSubTopic, partitionId),
-          offset == null ? "" : " offset " + offset,
-          (message == null || message.isEmpty()) ? "" : " message " + message);
+      LOGGER.info(logMessageString);
     } else {
-      LOGGER.error(
-          "{} for replica: {}{}{}",
-          header,
-          Utils.getReplicaId(pubSubTopic, partitionId),
-          offset == null ? "" : " offset " + offset,
-          (message == null || message.isEmpty()) ? "" : " message " + message,
-          ex);
+      LOGGER.error(logMessageString, ex);
     }
   }
 
@@ -97,7 +101,7 @@ public class LogNotifier implements VeniceNotifier {
   }
 
   @Override
-  public void stopped(String pubSubTopic, int partitionId, long offset) {
-    logMessage("Consumption stopped", pubSubTopic, partitionId, offset, null, null);
+  public void stopped(String pubSubTopic, int partitionId, PubSubPosition position) {
+    logMessage("Consumption stopped", pubSubTopic, partitionId, position, null, null);
   }
 }

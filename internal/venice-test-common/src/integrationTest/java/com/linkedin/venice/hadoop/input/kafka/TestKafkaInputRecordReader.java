@@ -5,6 +5,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_BROKER_
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP;
 
+import com.linkedin.venice.annotation.PubSubAgnosticTest;
 import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperKey;
 import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperValue;
 import com.linkedin.venice.hadoop.input.kafka.avro.MapperValueType;
@@ -26,6 +27,7 @@ import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import com.linkedin.venice.writer.VeniceWriterOptions;
 import java.io.IOException;
+import java.util.Collections;
 import org.apache.hadoop.mapred.JobConf;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
@@ -33,6 +35,7 @@ import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 
+@PubSubAgnosticTest
 public class TestKafkaInputRecordReader {
   private static final String KAFKA_MESSAGE_KEY_PREFIX = "key_";
   private static final String KAFKA_MESSAGE_VALUE_PREFIX = "value_";
@@ -93,6 +96,7 @@ public class TestKafkaInputRecordReader {
     String topic = getTopic(100, new Pair<>(-1, -1), new Pair<>(-1, -1));
     PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), 0);
     conf.set(KAFKA_INPUT_TOPIC, topic);
+    PubSubBrokerWrapper.getBrokerDetailsForClients(Collections.singletonList(pubSubBrokerWrapper)).forEach(conf::set);
 
     PubSubPosition startPosition = topicManager.getStartPositionsForPartitionWithRetries(topicPartition);
     PubSubPosition endPosition = topicManager.getEndPositionsForPartitionWithRetries(topicPartition);
@@ -120,6 +124,7 @@ public class TestKafkaInputRecordReader {
   public void testNextWithDeleteMessage() throws IOException {
     JobConf conf = new JobConf();
     conf.set(KAFKA_INPUT_BROKER_URL, pubSubBrokerWrapper.getAddress());
+    PubSubBrokerWrapper.getBrokerDetailsForClients(Collections.singletonList(pubSubBrokerWrapper)).forEach(conf::set);
     String topic = getTopic(100, new Pair<>(-1, -1), new Pair<>(0, 10));
     PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), 0);
     conf.set(KAFKA_INPUT_TOPIC, topic);
@@ -159,6 +164,7 @@ public class TestKafkaInputRecordReader {
     PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), 0);
     conf.set(KAFKA_INPUT_TOPIC, topic);
     conf.set(KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP, ChunkedKeySuffix.SCHEMA$.toString());
+    PubSubBrokerWrapper.getBrokerDetailsForClients(Collections.singletonList(pubSubBrokerWrapper)).forEach(conf::set);
     PubSubPosition startPosition = topicManager.getStartPositionsForPartitionWithRetries(topicPartition);
     PubSubPosition endPosition = topicManager.getEndPositionsForPartitionWithRetries(topicPartition);
     long diff = topicManager.diffPosition(topicPartition, endPosition, startPosition);
@@ -175,7 +181,7 @@ public class TestKafkaInputRecordReader {
             reader.next(key, value);
             Assert.fail("An IOException should be thrown here");
           } catch (IOException e) {
-            Assert.assertTrue(e.getMessage().contains("Unexpected 'UPDATE' message"));
+            Assert.assertTrue(e.getMessage().contains("Unexpected message type: UPDATE"));
           }
           break;
         } else {

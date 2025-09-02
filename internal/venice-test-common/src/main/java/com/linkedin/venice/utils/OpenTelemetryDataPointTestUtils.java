@@ -6,7 +6,6 @@ import static org.testng.Assert.assertNotNull;
 import static org.testng.AssertJUnit.assertFalse;
 
 import io.opentelemetry.api.common.Attributes;
-import io.opentelemetry.sdk.metrics.data.DoublePointData;
 import io.opentelemetry.sdk.metrics.data.ExponentialHistogramPointData;
 import io.opentelemetry.sdk.metrics.data.HistogramPointData;
 import io.opentelemetry.sdk.metrics.data.LongPointData;
@@ -21,7 +20,8 @@ public abstract class OpenTelemetryDataPointTestUtils {
   public static LongPointData getLongPointDataFromSum(
       Collection<MetricData> metricsData,
       String metricName,
-      String prefix) {
+      String prefix,
+      Attributes expectedAttributes) {
     return metricsData.stream()
         .filter(metricData -> metricData.getName().equals(DEFAULT_METRIC_PREFIX + prefix + "." + metricName))
         .findFirst()
@@ -29,21 +29,24 @@ public abstract class OpenTelemetryDataPointTestUtils {
         .getLongSumData()
         .getPoints()
         .stream()
+        .filter(p -> p.getAttributes().equals(expectedAttributes))
         .findFirst()
         .orElse(null);
   }
 
-  public static DoublePointData getDoublePointDataFromGauge(
+  public static LongPointData getLongPointDataFromGauge(
       Collection<MetricData> metricsData,
       String metricName,
-      String prefix) {
+      String prefix,
+      Attributes expectedAttributes) {
     return metricsData.stream()
         .filter(metricData -> metricData.getName().equals(DEFAULT_METRIC_PREFIX + prefix + "." + metricName))
         .findFirst()
         .orElse(null)
-        .getDoubleGaugeData()
+        .getLongGaugeData()
         .getPoints()
         .stream()
+        .filter(p -> p.getAttributes().equals(expectedAttributes))
         .findFirst()
         .orElse(null);
   }
@@ -51,7 +54,8 @@ public abstract class OpenTelemetryDataPointTestUtils {
   public static ExponentialHistogramPointData getExponentialHistogramPointData(
       Collection<MetricData> metricsData,
       String metricName,
-      String prefix) {
+      String prefix,
+      Attributes expectedAttributes) {
     return metricsData.stream()
         .filter(metricData -> metricData.getName().equals(DEFAULT_METRIC_PREFIX + prefix + "." + metricName))
         .findFirst()
@@ -59,6 +63,7 @@ public abstract class OpenTelemetryDataPointTestUtils {
         .getExponentialHistogramData()
         .getPoints()
         .stream()
+        .filter(p -> p.getAttributes().equals(expectedAttributes))
         .findFirst()
         .orElse(null);
   }
@@ -66,7 +71,8 @@ public abstract class OpenTelemetryDataPointTestUtils {
   public static HistogramPointData getHistogramPointData(
       Collection<MetricData> metricsData,
       String metricName,
-      String prefix) {
+      String prefix,
+      Attributes expectedAttributes) {
     return metricsData.stream()
         .filter(metricData -> metricData.getName().equals(DEFAULT_METRIC_PREFIX + prefix + "." + metricName))
         .findFirst()
@@ -74,6 +80,7 @@ public abstract class OpenTelemetryDataPointTestUtils {
         .getHistogramData()
         .getPoints()
         .stream()
+        .filter(p -> p.getAttributes().equals(expectedAttributes))
         .findFirst()
         .orElse(null);
   }
@@ -87,25 +94,25 @@ public abstract class OpenTelemetryDataPointTestUtils {
     Collection<MetricData> metricsData = inMemoryMetricReader.collectAllMetrics();
     assertFalse(metricsData.isEmpty());
 
-    LongPointData longPointData = getLongPointDataFromSum(metricsData, metricName, metricPrefix);
+    LongPointData longPointData = getLongPointDataFromSum(metricsData, metricName, metricPrefix, expectedAttributes);
     assertNotNull(longPointData, "LongPointData should not be null");
     assertEquals(longPointData.getValue(), expectedValue, "LongPointData value should be " + expectedValue);
     assertEquals(longPointData.getAttributes(), expectedAttributes, "LongPointData attributes should match");
   }
 
-  public static void validateDoublePointDataFromGauge(
+  public static void validateLongPointDataFromGauge(
       InMemoryMetricReader inMemoryMetricReader,
-      double expectedValue,
+      long expectedValue,
       Attributes expectedAttributes,
       String metricName,
       String metricPrefix) {
     Collection<MetricData> metricsData = inMemoryMetricReader.collectAllMetrics();
     assertFalse(metricsData.isEmpty());
 
-    DoublePointData doublePointData = getDoublePointDataFromGauge(metricsData, metricName, metricPrefix);
-    assertNotNull(doublePointData, "DoublePointData should not be null");
-    assertEquals(doublePointData.getValue(), expectedValue, "DoublePointData value should be " + expectedValue);
-    assertEquals(doublePointData.getAttributes(), expectedAttributes, "DoublePointData attributes should match");
+    LongPointData longPointData = getLongPointDataFromGauge(metricsData, metricName, metricPrefix, expectedAttributes);
+    assertNotNull(longPointData, "LongPointData should not be null");
+    assertEquals(longPointData.getValue(), expectedValue, "LongPointData value should be " + expectedValue);
+    assertEquals(longPointData.getAttributes(), expectedAttributes, "LongPointData attributes should match");
   }
 
   public static void validateExponentialHistogramPointData(
@@ -120,7 +127,7 @@ public abstract class OpenTelemetryDataPointTestUtils {
     Collection<MetricData> metricsData = inMemoryMetricReader.collectAllMetrics();
     assertFalse(metricsData.isEmpty());
     ExponentialHistogramPointData histogramPointData =
-        getExponentialHistogramPointData(metricsData, metricName, metricPrefix);
+        getExponentialHistogramPointData(metricsData, metricName, metricPrefix, expectedAttributes);
 
     assertNotNull(histogramPointData, "ExponentialHistogramPointData should not be null");
     assertEquals(histogramPointData.getMin(), expectedMin, "Histogram min value should be " + expectedMin);
@@ -145,7 +152,8 @@ public abstract class OpenTelemetryDataPointTestUtils {
       String metricPrefix) {
     Collection<MetricData> metricsData = inMemoryMetricReader.collectAllMetrics();
     assertFalse(metricsData.isEmpty());
-    HistogramPointData histogramPointData = getHistogramPointData(metricsData, metricName, metricPrefix);
+    HistogramPointData histogramPointData =
+        getHistogramPointData(metricsData, metricName, metricPrefix, expectedAttributes);
 
     assertNotNull(histogramPointData, "HistogramPointData should not be null");
     assertEquals(histogramPointData.getMin(), expectedMin, "Histogram min value should be " + expectedMin);

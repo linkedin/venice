@@ -31,11 +31,11 @@ public class InMemoryAdminTopicMetadataAccessor extends AdminTopicMetadataAccess
     if (!metadataDelta.getAdminOperationProtocolVersion().equals(UNDEFINED_VALUE)) {
       inMemoryMetadata.setAdminOperationProtocolVersion(metadataDelta.getAdminOperationProtocolVersion());
     }
-    if (!newPosition.equals(PubSubSymbolicPosition.EARLIEST)) {
+    if (!PubSubSymbolicPosition.EARLIEST.equals(newPosition)) {
       inMemoryMetadata.setPubSubPosition(newPosition);
     }
-    if (!newUpstreamPosition.equals(PubSubSymbolicPosition.EARLIEST)) {
-      inMemoryMetadata.setPubSubPosition(newUpstreamPosition);
+    if (!PubSubSymbolicPosition.EARLIEST.equals(newUpstreamPosition)) {
+      inMemoryMetadata.setUpstreamPubSubPosition(newUpstreamPosition);
     }
 
     LOGGER.info("Persisted admin topic metadata for cluster: {}, metadata: {}", clusterName, metadataDelta);

@@ -1,9 +1,9 @@
 package com.linkedin.venice.spark.input.pubsub;
 
-import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_PUBSUB_INPUT_SECONDARY_COMPARATOR_USE_NUMERIC_RECORD_OFFSET;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_PUBSUB_INPUT_SECONDARY_COMPARATOR_USE_LOCAL_LOGICAL_INDEX;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_BROKER_URL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_FABRIC;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.PUBSUB_INPUT_SECONDARY_COMPARATOR_USE_NUMERIC_RECORD_OFFSET;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUBSUB_INPUT_SECONDARY_COMPARATOR_USE_LOCAL_LOGICAL_INDEX;
 
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterContext;
@@ -60,13 +60,12 @@ public class SparkPubSubPartitionReaderFactory implements PartitionReaderFactory
     final PubSubConsumerAdapter pubSubConsumer =
         PubSubClientsFactory.createConsumerFactory(jobConfig).create(consumerContext);
 
-    boolean shouldUseLocallyBuiltIndexAsOffset = !jobConfig.getBoolean(
-        PUBSUB_INPUT_SECONDARY_COMPARATOR_USE_NUMERIC_RECORD_OFFSET,
-        DEFAULT_PUBSUB_INPUT_SECONDARY_COMPARATOR_USE_NUMERIC_RECORD_OFFSET);
+    boolean shouldUseLocallyBuiltIndexAsOffset = jobConfig.getBoolean(
+        PUBSUB_INPUT_SECONDARY_COMPARATOR_USE_LOCAL_LOGICAL_INDEX,
+        DEFAULT_PUBSUB_INPUT_SECONDARY_COMPARATOR_USE_LOCAL_LOGICAL_INDEX);
     SparkPubSubInputPartitionReader reader = new SparkPubSubInputPartitionReader(
         inputPartition,
         pubSubConsumer,
-        topicPartition,
         regionName,
         shouldUseLocallyBuiltIndexAsOffset);
     LOGGER.info(

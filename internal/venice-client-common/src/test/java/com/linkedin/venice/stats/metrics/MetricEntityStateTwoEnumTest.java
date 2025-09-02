@@ -6,6 +6,7 @@ import static com.linkedin.venice.stats.dimensions.RequestRetryAbortReason.SLOW_
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_METHOD;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_RETRY_ABORT_REASON;
 import static com.linkedin.venice.stats.metrics.MetricEntityStateTest.DimensionEnum1.DIMENSION_ONE;
+import static com.linkedin.venice.stats.metrics.MetricType.COUNTER;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.when;
@@ -48,6 +49,7 @@ public class MetricEntityStateTwoEnumTest {
     when(mockMetricsConfig.getOtelCustomDimensionsMap()).thenReturn(new HashMap<>());
     when(mockOtelRepository.getMetricsConfig()).thenReturn(mockMetricsConfig);
     mockMetricEntity = Mockito.mock(MetricEntity.class);
+    when(mockMetricEntity.getMetricType()).thenReturn(COUNTER);
     Set<VeniceMetricsDimensions> dimensionsSet = new HashSet<>();
     dimensionsSet.add(VENICE_REQUEST_METHOD);
     dimensionsSet.add(MetricEntityStateTest.DimensionEnum1.DIMENSION_ONE.getDimensionName());
@@ -150,6 +152,7 @@ public class MetricEntityStateTwoEnumTest {
     dimensionsSet.add(MetricEntityStateTest.DimensionEnum1.DIMENSION_ONE.getDimensionName());
     dimensionsSet.add(MetricEntityStateTest.DimensionEnum1Duplicate.DIMENSION_ONE.getDimensionName());
     doReturn(dimensionsSet).when(mockMetricEntity).getDimensionsList();
+    doReturn(COUNTER).when(mockMetricEntity).getMetricType();
     MetricEntityStateTwoEnums.create(
         mockMetricEntity,
         mockOtelRepository,

@@ -1,11 +1,12 @@
 package com.linkedin.venice.controller.kafka.consumer;
 
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 
 
 public class AdminOperationWrapper {
   private final AdminOperation adminOperation;
-  private final long offset;
+  private final PubSubPosition position;
   private final long producerTimestamp;
   private final long localBrokerTimestamp;
   private final long delegateTimestamp;
@@ -16,19 +17,19 @@ public class AdminOperationWrapper {
    * Constructor for the wrapper of an {@link AdminOperation}, the wrapper includes additional information about the
    * operation that is used for processing and metrics emission.
    * @param adminOperation of this wrapper.
-   * @param offset for the corresponding {@link AdminOperation}.
+   * @param position for the corresponding {@link AdminOperation}.
    * @param producerTimestamp the time when this admin operation was first produced in the parent controller.
    * @param localBrokerTimestamp the time when this admin operation arrived at the local admin kafka topic or broker.
    * @param delegateTimestamp the time when this admin operation was read and placed in the in-memory topics.
    */
   AdminOperationWrapper(
       AdminOperation adminOperation,
-      long offset,
+      PubSubPosition position,
       long producerTimestamp,
       long localBrokerTimestamp,
       long delegateTimestamp) {
     this.adminOperation = adminOperation;
-    this.offset = offset;
+    this.position = position;
     this.producerTimestamp = producerTimestamp;
     this.localBrokerTimestamp = localBrokerTimestamp;
     this.delegateTimestamp = delegateTimestamp;
@@ -38,8 +39,8 @@ public class AdminOperationWrapper {
     return adminOperation;
   }
 
-  public long getOffset() {
-    return offset;
+  public PubSubPosition getPosition() {
+    return position;
   }
 
   public long getProducerTimestamp() {

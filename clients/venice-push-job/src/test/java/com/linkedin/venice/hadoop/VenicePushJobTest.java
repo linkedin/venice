@@ -82,6 +82,7 @@ import com.linkedin.venice.meta.MaterializedViewParameters;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
+import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.meta.ViewConfig;
 import com.linkedin.venice.meta.ViewConfigImpl;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
@@ -1426,5 +1427,59 @@ public class VenicePushJobTest {
     setting.topic = Version.composeKafkaTopic(setting.storeName, 7);
     setting.partitionCount = 1;
     setting.maxRecordSizeBytes = 100 * BYTES_PER_MB;
+  }
+
+  @DataProvider(name = "versionStatuses")
+  public Object[][] versionStatuses() {
+    Map<String, String> extraInfo = new HashMap<>();
+    extraInfo.put("dc-0", ExecutionStatus.COMPLETED.toString());
+    extraInfo.put("dc-1", ExecutionStatus.COMPLETED.toString());
+
+    Map<String, String> extraInfo2 = new HashMap<>();
+    extraInfo2.put("dc-0", ExecutionStatus.COMPLETED.toString());
+    extraInfo2.put("dc-1", ExecutionStatus.COMPLETED.toString());
+
+    return new Object[][] { { VersionStatus.ONLINE, extraInfo }, { VersionStatus.ERROR, extraInfo2 },
+        { VersionStatus.PARTIALLY_ONLINE, extraInfo }, { VersionStatus.KILLED, extraInfo } };
+  }
+
+  @Test(dataProvider = "versionStatuses")
+  public void testTargetRegionPushWithDeferredSwapVersionStatusChecks(
+      VersionStatus versionStatus,
+      Map<String, String> extraInfo) {
+    Properties properties = getVpjRequiredProperties();
+    properties.put(KEY_FIELD_PROP, "id");
+    properties.put(VALUE_FIELD_PROP, "name");
+    properties.put(TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP, true);
+    Version version = new VersionImpl(TEST_STORE, 1);
+    version.setNumber(1);
+    version.setStatus(versionStatus);
+    ControllerClient client = getClient(store -> {
+      store.setVersions(Collections.singletonList(version));
+      store.setLargestUsedVersionNumber(1);
+    });
+
+    try (VenicePushJob pushJob = getSpyVenicePushJob(properties, client)) {
+      skipVPJValidation(pushJob);
+
+      JobStatusQueryResponse response = mockJobStatusQuery();
+      response.setExtraInfo(extraInfo);
+      doReturn(response).when(client).queryOverallJobStatus(anyString(), any(), anyString(), anyBoolean());
+
+      pushJob.run();
+    } catch (Exception e) {
+      if (VersionStatus.PARTIALLY_ONLINE.equals(versionStatus)) {
+        Assert.assertEquals(
+            e.getMessage(),
+            "Version kafka-topic is only partially online in some regions. Check nuage to see which regions are not serving the latest version."
+                + " It is possible that there was a failure in rolling forward on the controller side or ingestion failed in some regions.");
+      } else if (VersionStatus.KILLED.equals(versionStatus)) {
+        Assert.assertEquals(e.getMessage(), "Version kafka-topic was killed and cannot be served.");
+      } else {
+        Assert.assertEquals(
+            e.getMessage(),
+            "Version kafka-topic was rolled back after ingestion completed due to validation failure");
+      }
+    }
   }
 }

@@ -16,14 +16,15 @@ import io.opentelemetry.api.GlobalOpenTelemetry;
 import io.opentelemetry.api.OpenTelemetry;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.common.AttributesBuilder;
-import io.opentelemetry.api.metrics.DoubleGauge;
-import io.opentelemetry.api.metrics.DoubleGaugeBuilder;
 import io.opentelemetry.api.metrics.DoubleHistogram;
 import io.opentelemetry.api.metrics.DoubleHistogramBuilder;
 import io.opentelemetry.api.metrics.LongCounter;
 import io.opentelemetry.api.metrics.LongCounterBuilder;
+import io.opentelemetry.api.metrics.LongGauge;
+import io.opentelemetry.api.metrics.LongGaugeBuilder;
 import io.opentelemetry.api.metrics.Meter;
 import io.opentelemetry.api.metrics.MeterProvider;
+import io.opentelemetry.api.metrics.ObservableLongGauge;
 import io.opentelemetry.exporter.otlp.http.metrics.OtlpHttpMetricExporter;
 import io.opentelemetry.exporter.otlp.http.metrics.OtlpHttpMetricExporterBuilder;
 import io.opentelemetry.sdk.OpenTelemetrySdk;
@@ -48,6 +49,8 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.function.LongSupplier;
+import javax.annotation.Nonnull;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -163,7 +166,8 @@ public class VeniceOpenTelemetryMetricsRepository {
    */
   private final VeniceConcurrentHashMap<String, DoubleHistogram> histogramMap = new VeniceConcurrentHashMap<>();
   private final VeniceConcurrentHashMap<String, LongCounter> counterMap = new VeniceConcurrentHashMap<>();
-  private final VeniceConcurrentHashMap<String, DoubleGauge> gaugeMap = new VeniceConcurrentHashMap<>();
+  private final VeniceConcurrentHashMap<String, LongGauge> gaugeMap = new VeniceConcurrentHashMap<>();
+  private final VeniceConcurrentHashMap<String, ObservableLongGauge> asyncGaugeMap = new VeniceConcurrentHashMap<>();
 
   MetricExporter getOtlpHttpMetricExporter(VeniceMetricsConfig metricsConfig) {
     OtlpHttpMetricExporterBuilder exporterBuilder =
@@ -252,7 +256,7 @@ public class VeniceOpenTelemetryMetricsRepository {
     }
   }
 
-  public DoubleHistogram createHistogram(MetricEntity metricEntity) {
+  public DoubleHistogram createDoubleHistogram(MetricEntity metricEntity) {
     if (!emitOpenTelemetryMetrics()) {
       return null;
     }
@@ -269,7 +273,7 @@ public class VeniceOpenTelemetryMetricsRepository {
     });
   }
 
-  public LongCounter createCounter(MetricEntity metricEntity) {
+  public LongCounter createLongCounter(MetricEntity metricEntity) {
     if (!emitOpenTelemetryMetrics()) {
       return null;
     }
@@ -282,34 +286,77 @@ public class VeniceOpenTelemetryMetricsRepository {
     });
   }
 
-  public DoubleGauge createGuage(MetricEntity metricEntity) {
+  public LongGauge createLongGuage(MetricEntity metricEntity) {
     if (!emitOpenTelemetryMetrics()) {
       return null;
     }
     return gaugeMap.computeIfAbsent(metricEntity.getMetricName(), key -> {
       String fullMetricName = getFullMetricName(metricEntity);
-      DoubleGaugeBuilder builder = meter.gaugeBuilder(fullMetricName)
+      LongGaugeBuilder builder = meter.gaugeBuilder(fullMetricName)
           .setUnit(metricEntity.getUnit().name())
-          .setDescription(getMetricDescription(metricEntity, metricsConfig));
+          .setDescription(getMetricDescription(metricEntity, metricsConfig))
+          .ofLongs();
       return builder.build();
     });
   }
 
-  public Object createInstrument(MetricEntity metricEntity) {
+  /**
+   * Asynchronous gauge that will call the callback during metrics collection.
+   * This is useful for metrics that are not updated frequently or require expensive computation.
+   * For now, the attributes are passed in as a parameter while creating the gauge, ie, only
+   * {@link MetricEntityStateBase} is supported for now.
+   */
+  public ObservableLongGauge createAsyncLongGauge(
+      MetricEntity metricEntity,
+      @Nonnull LongSupplier asyncCallback,
+      @Nonnull Attributes attributes) {
+    if (!emitOpenTelemetryMetrics()) {
+      return null;
+    }
+    return asyncGaugeMap.computeIfAbsent(metricEntity.getMetricName(), key -> {
+      String fullMetricName = getFullMetricName(metricEntity);
+      LongGaugeBuilder builder = meter.gaugeBuilder(fullMetricName)
+          .setUnit(metricEntity.getUnit().name())
+          .setDescription(getMetricDescription(metricEntity, metricsConfig))
+          .ofLongs();
+
+      return builder.buildWithCallback(measurement -> {
+        long v;
+        try {
+          v = asyncCallback.getAsLong();
+        } catch (Exception e) {
+          recordFailureMetric(metricEntity, e);
+          return;
+        }
+        measurement.record(v, attributes);
+      });
+    });
+  }
+
+  public Object createInstrument(MetricEntity metricEntity, LongSupplier asyncCallback, Attributes attributes) {
     MetricType metricType = metricEntity.getMetricType();
     switch (metricType) {
       case HISTOGRAM:
       case MIN_MAX_COUNT_SUM_AGGREGATIONS:
-        return createHistogram(metricEntity);
+        return createDoubleHistogram(metricEntity);
 
       case COUNTER:
-        return createCounter(metricEntity);
+        return createLongCounter(metricEntity);
+
       case GAUGE:
-        return createGuage(metricEntity);
+        return createLongGuage(metricEntity);
+
+      case ASYNC_GAUGE:
+        return createAsyncLongGauge(metricEntity, asyncCallback, attributes);
 
       default:
         throw new VeniceException("Unknown metric type: " + metricType);
     }
+  }
+
+  @VisibleForTesting
+  public Object createInstrument(MetricEntity metricEntity) {
+    return createInstrument(metricEntity, null, null);
   }
 
   public String getDimensionName(VeniceMetricsDimensions dimension) {
@@ -421,8 +468,18 @@ public class VeniceOpenTelemetryMetricsRepository {
     }
   }
 
-  public void recordFailureMetric() {
+  public void recordFailureMetric(MetricEntity metricEntity, Exception e) {
     getRecordFailureMetric().record(1);
+    if (!REDUNDANT_LOG_FILTER.isRedundantLog(e.getMessage())) {
+      LOGGER.error("Error recording metric {} with exception: ", metricEntity.getMetricName(), e);
+    }
+  }
+
+  public void recordFailureMetric(MetricEntity metricEntity, String error) {
+    getRecordFailureMetric().record(1);
+    if (!REDUNDANT_LOG_FILTER.isRedundantLog(error)) {
+      LOGGER.error("Error recording metric {} with error: {}", metricEntity.getMetricName(), error);
+    }
   }
 
   public boolean emitOpenTelemetryMetrics() {

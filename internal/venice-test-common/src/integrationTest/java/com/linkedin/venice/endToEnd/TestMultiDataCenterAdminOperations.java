@@ -27,6 +27,10 @@ import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.utils.ConfigCommonUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
@@ -184,12 +188,20 @@ public class TestMultiDataCenterAdminOperations {
     List<VeniceControllerWrapper> controllersToTest = new ArrayList<>();
     controllersToTest.add(parentController);
     childControllers.forEach(controllerList -> controllersToTest.add(controllerList.get(0)));
-
+    PubSubTopicPartition topicPartition = parentController.getVeniceAdmin()
+        .getTopicManager()
+        .getTopicPartitionInfo(new PubSubTopicRepository().getTopic(veniceWriter.getTopicName()))
+        .get(0)
+        .getTopicPartition();
+    TopicManager topicManager = parentController.getVeniceAdmin().getTopicManager();
     // Check if all regions received the bad admin message
     TestUtils.waitForNonDeterministicCompletion(60, TimeUnit.SECONDS, () -> {
       for (VeniceControllerWrapper controller: controllersToTest) {
         AdminConsumerService adminConsumerService = controller.getAdminConsumerServiceByCluster(clusterName);
-        if (adminConsumerService.getFailingOffset() < 0) {
+        if (topicManager.diffPosition(
+            topicPartition,
+            adminConsumerService.getFailingPosition(),
+            PubSubSymbolicPosition.EARLIEST) <= 0) {
           return false;
         }
       }
@@ -199,16 +211,17 @@ public class TestMultiDataCenterAdminOperations {
     // Cleanup the failing admin message
     for (VeniceControllerWrapper controller: controllersToTest) {
       AdminConsumerService adminConsumerService = controller.getAdminConsumerServiceByCluster(clusterName);
-      adminConsumerService.setOffsetToSkip(clusterName, adminConsumerService.getFailingOffset(), false);
+      adminConsumerService
+          .setOffsetToSkip(clusterName, adminConsumerService.getFailingPosition().getNumericOffset(), false);
     }
 
     AdminConsumerService parentAdminConsumerService = parentController.getAdminConsumerServiceByCluster(clusterName);
     TestUtils.waitForNonDeterministicCompletion(30, TimeUnit.SECONDS, () -> {
-      boolean allFailedMessagesSkipped = parentAdminConsumerService.getFailingOffset() == -1;
+      boolean allFailedMessagesSkipped = parentAdminConsumerService.getFailingPosition().getNumericOffset() == -1;
       for (List<VeniceControllerWrapper> controllerWrappers: childControllers) {
         AdminConsumerService childAdminConsumerService =
             controllerWrappers.get(0).getAdminConsumerServiceByCluster(clusterName);
-        allFailedMessagesSkipped &= childAdminConsumerService.getFailingOffset() == -1;
+        allFailedMessagesSkipped &= childAdminConsumerService.getFailingPosition().getNumericOffset() == -1;
       }
       return allFailedMessagesSkipped;
     });

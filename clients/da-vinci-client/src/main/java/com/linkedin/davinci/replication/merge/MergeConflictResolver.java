@@ -18,6 +18,7 @@ import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.venice.annotation.Threadsafe;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.rmd.RmdTimestampType;
 import com.linkedin.venice.schema.rmd.RmdUtils;
@@ -104,7 +105,7 @@ public class MergeConflictResolver {
    * @param newValueBytes The value in the incoming record.
    * @param putOperationTimestamp The logical timestamp of the incoming record.
    * @param newValueSchemaID The schema id of the value in the incoming record.
-   * @param newValueSourceOffset The offset from which the new value originates in the realtime stream.  Used to build
+   * @param newValueSourcePosition The position from which the new value originates in the realtime stream.  Used to build
    *                               the ReplicationMetadata for the newly inserted record.
    * @param newValueSourceBrokerID The ID of the broker from which the new value originates.  ID's should correspond
    *                               to the kafkaClusterUrlIdMap configured in the LeaderFollowerIngestionTask.  Used to build
@@ -119,7 +120,7 @@ public class MergeConflictResolver {
       ByteBuffer newValueBytes,
       final long putOperationTimestamp,
       final int newValueSchemaID,
-      final long newValueSourceOffset,
+      final PubSubPosition newValueSourcePosition,
       final int newValueSourceBrokerID,
       final int newValueColoID) {
     if (rmdWithValueSchemaID == null) {
@@ -128,7 +129,7 @@ public class MergeConflictResolver {
           newValueBytes,
           putOperationTimestamp,
           newValueSchemaID,
-          newValueSourceOffset,
+          newValueSourcePosition,
           newValueSourceBrokerID);
     }
     if (rmdWithValueSchemaID.getValueSchemaId() <= 0) {
@@ -154,7 +155,7 @@ public class MergeConflictResolver {
           putOperationTimestamp,
           newValueBytes,
           newValueColoID,
-          newValueSourceOffset,
+          newValueSourcePosition,
           newValueSourceBrokerID,
           newValueSchemaID);
     }
@@ -164,7 +165,7 @@ public class MergeConflictResolver {
         putOperationTimestamp,
         newValueBytes,
         newValueColoID,
-        newValueSourceOffset,
+        newValueSourcePosition,
         newValueSourceBrokerID,
         newValueSchemaID);
   }
@@ -174,7 +175,7 @@ public class MergeConflictResolver {
    *
    * @param rmdWithValueSchemaID The replication metadata of the currently persisted value and the value schema ID.
    * @param deleteOperationTimestamp The logical timestamp of the incoming record.
-   * @param deleteOperationSourceOffset The offset from which the delete operation originates in the realtime stream.
+   * @param deleteOperationSourcePosition The offset from which the delete operation originates in the realtime stream.
    *                                    Used to build the ReplicationMetadata for the newly inserted record.
    * @param deleteOperationSourceBrokerID The ID of the broker from which the new value originates.  ID's should correspond
    *                                 to the kafkaClusterUrlIdMap configured in the LeaderFollowerIngestionTask.  Used to build
@@ -186,12 +187,12 @@ public class MergeConflictResolver {
       Lazy<ByteBuffer> oldValueBytesProvider,
       RmdWithValueSchemaId rmdWithValueSchemaID,
       final long deleteOperationTimestamp,
-      final long deleteOperationSourceOffset,
+      final PubSubPosition deleteOperationSourcePosition,
       final int deleteOperationSourceBrokerID,
       final int deleteOperationColoID) {
     // TODO: Honor BatchConflictResolutionPolicy when replication metadata is null
     if (rmdWithValueSchemaID == null) {
-      return deleteWithoutRmd(deleteOperationTimestamp, deleteOperationSourceOffset, deleteOperationSourceBrokerID);
+      return deleteWithoutRmd(deleteOperationTimestamp, deleteOperationSourcePosition, deleteOperationSourceBrokerID);
     }
     final int oldValueSchemaID = rmdWithValueSchemaID.getValueSchemaId();
     if (oldValueSchemaID <= 0) {
@@ -216,7 +217,7 @@ public class MergeConflictResolver {
           oldRmdRecord,
           deleteOperationColoID,
           deleteOperationTimestamp,
-          deleteOperationSourceOffset,
+          deleteOperationSourcePosition,
           deleteOperationSourceBrokerID);
     }
     return mergeDeleteWithValueLevelTimestamp(
@@ -224,7 +225,7 @@ public class MergeConflictResolver {
         oldRmdRecord,
         deleteOperationColoID,
         deleteOperationTimestamp,
-        deleteOperationSourceOffset,
+        deleteOperationSourcePosition,
         deleteOperationSourceBrokerID);
   }
 
@@ -235,7 +236,7 @@ public class MergeConflictResolver {
       final int incomingValueSchemaId,
       final int incomingUpdateProtocolVersion,
       final long updateOperationTimestamp,
-      final long newValueSourceOffset,
+      final PubSubPosition newValueSourcePosition,
       final int newValueSourceBrokerID,
       final int newValueColoID,
       ChunkedValueManifestContainer oldValueManifest) {
@@ -269,7 +270,7 @@ public class MergeConflictResolver {
         oldValueSchema,
         updateOperationTimestamp,
         newValueColoID,
-        newValueSourceOffset,
+        newValueSourcePosition,
         newValueSourceBrokerID);
     if (updatedValueAndRmd.isUpdateIgnored()) {
       return MergeConflictResult.getIgnoredResult();
@@ -291,7 +292,7 @@ public class MergeConflictResolver {
       long putOperationTimestamp,
       ByteBuffer newValueBytes,
       int newValueColoID,
-      long newValueSourceOffset,
+      PubSubPosition newValueSourcePosition,
       int newValueSourceBrokerID,
       int newValueSchemaID) {
     ValueAndRmd<ByteBuffer> mergedByteValueAndRmd = mergeByteBuffer.put(
@@ -299,7 +300,7 @@ public class MergeConflictResolver {
         newValueBytes,
         putOperationTimestamp,
         newValueColoID,
-        newValueSourceOffset,
+        newValueSourcePosition,
         newValueSourceBrokerID);
     if (mergedByteValueAndRmd.isUpdateIgnored()) {
       return MergeConflictResult.getIgnoredResult();
@@ -320,7 +321,7 @@ public class MergeConflictResolver {
       long putOperationTimestamp,
       ByteBuffer newValueBytes,
       int newValueColoID,
-      long newValueSourceOffset,
+      PubSubPosition newValueSourcePubSubPosition,
       int newValueSourceBrokerID,
       int newValueSchemaID) {
 
@@ -354,7 +355,7 @@ public class MergeConflictResolver {
         newValueRecord,
         putOperationTimestamp,
         newValueColoID,
-        newValueSourceOffset,
+        newValueSourcePubSubPosition,
         newValueSourceBrokerID);
     if (mergedValueAndRmd.isUpdateIgnored()) {
       return MergeConflictResult.getIgnoredResult();
@@ -369,7 +370,7 @@ public class MergeConflictResolver {
       GenericRecord oldRmdRecord,
       int deleteOperationColoID,
       long deleteOperationTimestamp,
-      long newValueSourceOffset,
+      PubSubPosition newValueSourcePosition,
       int deleteOperationSourceBrokerID) {
     ValueAndRmd<ByteBuffer> valueAndRmd = new ValueAndRmd<>(
         Lazy.of(() -> null), // In this case, we do not need the current value to handle the Delete request.
@@ -378,7 +379,7 @@ public class MergeConflictResolver {
         valueAndRmd,
         deleteOperationTimestamp,
         deleteOperationColoID,
-        newValueSourceOffset,
+        newValueSourcePosition,
         deleteOperationSourceBrokerID);
 
     if (mergedValueAndRmd.isUpdateIgnored()) {
@@ -395,7 +396,7 @@ public class MergeConflictResolver {
       GenericRecord oldRmdRecord,
       int deleteOperationColoID,
       long deleteOperationTimestamp,
-      long deleteOperationSourceOffset,
+      PubSubPosition deleteOperationSourcePosition,
       int deleteOperationSourceBrokerID) {
 
     if (oldTimestampObject instanceof GenericRecord) {
@@ -412,7 +413,7 @@ public class MergeConflictResolver {
         oldValueAndRmd,
         deleteOperationTimestamp,
         deleteOperationColoID,
-        deleteOperationSourceOffset,
+        deleteOperationSourcePosition,
         deleteOperationSourceBrokerID);
     if (mergedValueAndRmd.isUpdateIgnored()) {
       return MergeConflictResult.getIgnoredResult();
@@ -562,7 +563,7 @@ public class MergeConflictResolver {
       ByteBuffer newValue,
       final long putOperationTimestamp,
       final int newValueSchemaID,
-      final long newValueSourceOffset,
+      final PubSubPosition newValueSourcePosition,
       final int newValueSourceBrokerID) {
     /**
      * Replication metadata could be null in two cases:
@@ -577,7 +578,7 @@ public class MergeConflictResolver {
     // A record which didn't come from an RT topic or has null metadata should have no offset vector.
     newRmd.put(
         REPLICATION_CHECKPOINT_VECTOR_FIELD_POS,
-        MergeUtils.mergeOffsetVectors(null, newValueSourceOffset, newValueSourceBrokerID));
+        MergeUtils.mergeOffsetVectors(null, newValueSourcePosition.getNumericOffset(), newValueSourceBrokerID));
 
     if (useFieldLevelTimestamp) {
       Schema valueSchema = getValueSchema(newValueSchemaID);
@@ -589,7 +590,7 @@ public class MergeConflictResolver {
 
   private MergeConflictResult deleteWithoutRmd(
       long deleteOperationTimestamp,
-      long newValueSourceOffset,
+      PubSubPosition newValueSourcePosition,
       int deleteOperationSourceBrokerID) {
     /**
      * oldReplicationMetadata can be null in two cases:
@@ -604,7 +605,7 @@ public class MergeConflictResolver {
     newRmd.put(TIMESTAMP_FIELD_POS, deleteOperationTimestamp);
     newRmd.put(
         REPLICATION_CHECKPOINT_VECTOR_FIELD_POS,
-        MergeUtils.mergeOffsetVectors(null, newValueSourceOffset, deleteOperationSourceBrokerID));
+        MergeUtils.mergeOffsetVectors(null, newValueSourcePosition.getNumericOffset(), deleteOperationSourceBrokerID));
     if (useFieldLevelTimestamp) {
       Schema valueSchema = getValueSchema(valueSchemaID);
       newRmd = createOldValueAndRmd(valueSchema, valueSchemaID, valueSchemaID, Lazy.of(() -> null), newRmd).getRmd();

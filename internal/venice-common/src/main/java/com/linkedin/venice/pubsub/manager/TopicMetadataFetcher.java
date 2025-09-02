@@ -462,52 +462,57 @@ class TopicMetadataFetcher implements Closeable {
   }
 
   /**
-   * Get the offset for a given timestamp. This is a blocking call.
-   * @param pubSubTopicPartition topic partition to get the offset for
-   * @param timestamp timestamp to get the offset for
-   * @return the offset for the given timestamp
+   * Get the position for a given timestamp. This is a blocking call.
+   * @param pubSubTopicPartition topic partition to get the position for
+   * @param timestamp timestamp to get the position for
+   * @return the position for the given timestamp
    */
-  long getOffsetForTime(PubSubTopicPartition pubSubTopicPartition, long timestamp) {
+  PubSubPosition getPositionForTime(PubSubTopicPartition pubSubTopicPartition, long timestamp) {
     validateTopicPartition(pubSubTopicPartition);
-    // We start by retrieving the latest offset. If the provided timestamp is out of range,
-    // we return the latest offset. This ensures that we don't miss any records produced
-    // after the 'offsetForTime' call when the latest offset is obtained after timestamp checking.
-    long latestOffset = getLatestOffset(pubSubTopicPartition);
+    // We start by retrieving the latest position. If the provided timestamp is out of range,
+    // we return the latest position. This ensures that we don't miss any records produced
+    // after the 'getPositionByTimestamp' call when the latest position is obtained after timestamp checking.
+    PubSubPosition latestPosition = getEndPositionsForPartition(pubSubTopicPartition);
 
     PubSubConsumerAdapter pubSubConsumerAdapter = acquireConsumer();
     try {
       long startTime = System.nanoTime();
-      Long result = pubSubConsumerAdapter
-          .offsetForTime(pubSubTopicPartition, timestamp, getPubsubOffsetApiTimeoutDurationDefaultValue());
+      PubSubPosition result = pubSubConsumerAdapter
+          .getPositionByTimestamp(pubSubTopicPartition, timestamp, getPubsubOffsetApiTimeoutDurationDefaultValue());
       stats.recordLatency(GET_OFFSET_FOR_TIME, startTime);
       if (result != null) {
         return result;
       }
-      // When the offset is null, it indicates that the provided timestamp is either out of range
+      // When the position is null, it indicates that the provided timestamp is either out of range
       // or the topic does not contain any messages. In such cases, we log a warning and return
-      // the offset of the last message available for the topic-partition.
+      // the position of the last message available for the topic-partition.
       LOGGER.warn(
-          "Received null offset for timestamp: {} on topic-partition: {}. This may occur if the timestamp is beyond "
-              + "the latest message timestamp or if the topic has no messages. Returning the latest offset: {}",
+          "Received null position for timestamp: {} on topic-partition: {}. This may occur if the timestamp "
+              + "is beyond the latest message timestamp or if the topic has no messages. Returning the latest position: {}",
           timestamp,
           pubSubTopicPartition,
-          latestOffset);
-      return latestOffset;
+          latestPosition);
+      return latestPosition;
     } finally {
       releaseConsumer(pubSubConsumerAdapter);
     }
   }
 
   /**
-   * Get the offset for a given timestamp with retries. This is a blocking call.
-   * @param pubSubTopicPartition topic partition to get the offset for
-   * @param timestamp timestamp to get the offset for
-   * @param retries number of retries
-   * @return the offset for the given timestamp
+   * Retrieves the position for a given timestamp in the specified topic partition, with retry logic.
+   * <p>
+   * This is a blocking call that attempts to find the position corresponding to the provided timestamp,
+   * retrying the operation up to the specified number of times in case of retriable failures.
+   * </p>
+   *
+   * @param pubSubTopicPartition the topic partition for which to retrieve the position
+   * @param timestamp the timestamp (in milliseconds) to find the corresponding position for
+   * @param retries the maximum number of retry attempts for retriable errors
+   * @return the offset corresponding to the given timestamp, or the latest position if the timestamp is out of range
    */
-  long getOffsetForTimeWithRetries(PubSubTopicPartition pubSubTopicPartition, long timestamp, int retries) {
+  PubSubPosition getPositionForTimeWithRetries(PubSubTopicPartition pubSubTopicPartition, long timestamp, int retries) {
     return RetryUtils.executeWithMaxAttemptAndExponentialBackoff(
-        () -> getOffsetForTime(pubSubTopicPartition, timestamp),
+        () -> getPositionForTime(pubSubTopicPartition, timestamp),
         retries,
         INITIAL_RETRY_DELAY,
         Duration.ofSeconds(5),
@@ -525,6 +530,10 @@ class TopicMetadataFetcher implements Closeable {
   }
 
   public long diffPosition(PubSubTopicPartition partition, PubSubPosition position1, PubSubPosition position2) {
+    PubSubTopic pubSubTopic = partition.getPubSubTopic();
+    if (!pubSubAdminAdapter.containsTopic(pubSubTopic)) {
+      throw new PubSubTopicDoesNotExistException(pubSubTopic);
+    }
     PubSubConsumerAdapter pubSubConsumerAdapter = acquireConsumer();
     try {
       return pubSubConsumerAdapter.positionDifference(partition, position1, position2);

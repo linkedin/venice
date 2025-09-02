@@ -90,6 +90,7 @@ import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StoreComparisonInfo;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateClusterConfigQueryParams;
+import com.linkedin.venice.controllerapi.UpdateDarkClusterConfigQueryParams;
 import com.linkedin.venice.controllerapi.UpdateStoragePersonaQueryParams;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionResponse;
@@ -112,6 +113,7 @@ import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
 import com.linkedin.venice.helix.HelixReadOnlyZKSharedSchemaRepository;
 import com.linkedin.venice.helix.HelixReadOnlyZKSharedSystemStoreRepository;
+import com.linkedin.venice.helix.HelixReadWriteDarkClusterConfigRepository;
 import com.linkedin.venice.helix.HelixReadWriteLiveClusterConfigRepository;
 import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.helix.HelixStoreGraveyard;
@@ -128,6 +130,7 @@ import com.linkedin.venice.ingestion.control.RealTimeTopicSwitcher;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.BufferReplayPolicy;
+import com.linkedin.venice.meta.DarkClusterConfig;
 import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.ETLStoreConfig;
 import com.linkedin.venice.meta.ETLStoreConfigImpl;
@@ -411,6 +414,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   private final D2Client d2Client;
   private final Map<String, D2Client> d2Clients;
   private final Map<String, HelixReadWriteLiveClusterConfigRepository> clusterToLiveClusterConfigRepo;
+  private final Map<String, HelixReadWriteDarkClusterConfigRepository> clusterToDarkClusterConfigRepo;
   private static final String ZK_INSTANCES_SUB_PATH = "INSTANCES";
   private static final String ZK_CUSTOMIZEDSTATES_SUB_PATH = "CUSTOMIZEDSTATES/" + HelixPartitionState.OFFLINE_PUSH;
 
@@ -637,6 +641,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     });
 
     clusterToLiveClusterConfigRepo = new VeniceConcurrentHashMap<>();
+    clusterToDarkClusterConfigRepo = new VeniceConcurrentHashMap<>();
     participantStoreClientsManager = new ParticipantStoreClientsManager(
         d2Client,
         commonConfig.getClusterDiscoveryD2ServiceName(),
@@ -786,25 +791,24 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         public void handleDeletedInstances(Set<Instance> deletedInstances) {
         }
       });
-    }
 
-    if (multiClusterConfigs.isLogCompactionEnabled()) {
-      Class<? extends RepushOrchestrator> repushOrchestratorClass =
-          ReflectUtils.loadClass(multiClusterConfigs.getRepushOrchestratorClassName());
-      try {
-        RepushOrchestrator repushOrchestrator = ReflectUtils.callConstructor(
-            repushOrchestratorClass,
-            new Class[] { VeniceProperties.class },
-            new Object[] { multiClusterConfigs.getRepushOrchestratorConfigs() });
-        this.compactionManager = new CompactionManager(
-            repushOrchestrator,
-            multiClusterConfigs.getLogCompactionThresholdMS(),
-            logCompactionStatsMap);
-      } catch (Exception e) {
-        LOGGER.error(
-            "[log-compaction] Failed to enable repush for log compaction " + CompactionManager.class.getSimpleName(),
-            e);
-        throw new VeniceException(e);
+      if (multiClusterConfigs.getControllerConfig(clusterName).isLogCompactionEnabled()
+          && this.compactionManager == null) {
+        Class<? extends RepushOrchestrator> repushOrchestratorClass =
+            ReflectUtils.loadClass(multiClusterConfigs.getRepushOrchestratorClassName());
+        try {
+          RepushOrchestrator repushOrchestrator = ReflectUtils.callConstructor(
+              repushOrchestratorClass,
+              new Class[] { VeniceProperties.class },
+              new Object[] { multiClusterConfigs.getRepushOrchestratorConfigs() });
+          this.compactionManager =
+              new CompactionManager(repushOrchestrator, multiClusterConfigs, logCompactionStatsMap);
+        } catch (Exception e) {
+          LOGGER.error(
+              "[log-compaction] Failed to enable repush for log compaction " + CompactionManager.class.getSimpleName(),
+              e);
+          throw new VeniceException(e);
+        }
       }
     }
 
@@ -1451,7 +1455,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   @Override
   public void sendPushJobDetails(PushJobStatusRecordKey key, PushJobDetails value) {
     String pushJobDetailsStoreClusterName = getPushJobStatusStoreClusterName();
-    if (pushJobDetailsStoreClusterName == null || pushJobDetailsStoreClusterName.isEmpty()) {
+    if (StringUtils.isBlank(pushJobDetailsStoreClusterName)) {
+      LOGGER.warn(
+          "Push job status store cluster name is not configured, skipping sending push job details for key: {}",
+          key);
       return;
     }
     if (isParent()) {
@@ -1493,7 +1500,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     // Emit push job status metrics
     emitPushJobStatusMetrics(pushJobStatusStatsMap, logCompactionStatsMap, key, value, pushJobUserErrorCheckpoints);
     // Send push job details to the push job status system store
-    if (getPushJobStatusStoreClusterName().isEmpty()) {
+    if (StringUtils.isBlank(getPushJobStatusStoreClusterName()) && multiClusterConfigs.isMultiRegion()) {
       throw new VeniceException(
           ("Unable to send the push job details because " + ConfigKeys.PUSH_JOB_STATUS_STORE_CLUSTER_NAME)
               + " is not configured");
@@ -5407,6 +5414,22 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
   }
 
+  public void updateDarkClusterConfig(String clusterName, UpdateDarkClusterConfigQueryParams params) {
+    checkControllerLeadershipFor(clusterName);
+    if (!getControllerConfig(clusterName).isDarkCluster())
+      throw new VeniceException("Not a dark cluster");
+    Optional<List<String>> storesToReplicate = params.getStoresToReplicate();
+
+    HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
+    try (AutoCloseableLock ignore = resources.getClusterLockManager().createClusterWriteLock()) {
+      HelixReadWriteDarkClusterConfigRepository clusterConfigRepository =
+          getReadWriteDarkClusterConfigRepository(clusterName);
+      DarkClusterConfig clonedDarkClusterConfig = new DarkClusterConfig(clusterConfigRepository.getConfigs());
+      storesToReplicate.ifPresent(clonedDarkClusterConfig::setStoresToReplicate);
+      clusterConfigRepository.updateConfigs(clonedDarkClusterConfig);
+    }
+  }
+
   private void internalUpdateStore(String clusterName, String storeName, UpdateStoreQueryParams params) {
     // There are certain configs that are only allowed to be updated in child regions. We might still want the ability
     // to update such configs in the parent region via the Admin tool for operational reasons. So, we allow such updates
@@ -8318,6 +8341,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     return clusterToLiveClusterConfigRepo.computeIfAbsent(cluster, clusterName -> {
       HelixReadWriteLiveClusterConfigRepository clusterConfigRepository =
           new HelixReadWriteLiveClusterConfigRepository(zkClient, adapterSerializer, clusterName);
+      clusterConfigRepository.refresh();
+      return clusterConfigRepository;
+    });
+  }
+
+  private HelixReadWriteDarkClusterConfigRepository getReadWriteDarkClusterConfigRepository(String cluster) {
+    return clusterToDarkClusterConfigRepo.computeIfAbsent(cluster, clusterName -> {
+      HelixReadWriteDarkClusterConfigRepository clusterConfigRepository =
+          new HelixReadWriteDarkClusterConfigRepository(zkClient, adapterSerializer, clusterName);
       clusterConfigRepository.refresh();
       return clusterConfigRepository;
     });

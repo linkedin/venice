@@ -16,3 +16,4 @@ This folder includes all the Venice Improvement Proposals. Read further details 
 | [VIP-3](./vip-3.md) | Rust Server Read Path                                                          | Under Discussion |
 | [VIP-4](./vip-4.md) | Store Lifecycle Hooks                                                          | Accepted         |
 | [VIP-5](./vip-5.md) | Facet Counting                                                                 | Under Discussion |
+| [VIP-6](./vip-6.md) | Venice on Kubernetes                                                           | Under Discussion |

@@ -34,6 +34,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubClientException;
 import com.linkedin.venice.schema.AvroSchemaParseUtils;
@@ -278,8 +279,8 @@ public class KafkaTopicDumper implements AutoCloseable {
       long startingTimestamp) {
     if (startingTimestamp != -1) {
       LOGGER.info("Searching for offset for timestamp: {} in topic-partition: {}", partition, startingTimestamp);
-      Long offsetForTime = consumer.offsetForTime(partition, startingTimestamp);
-      if (offsetForTime == null) {
+      PubSubPosition position = consumer.getPositionByTimestamp(partition, startingTimestamp);
+      if (position == null) {
         LOGGER.error(
             "No offset found for the requested timestamp: {} in topic-partition: {}. "
                 + "This indicates that there are no messages in the topic-partition with a timestamp "
@@ -291,12 +292,9 @@ public class KafkaTopicDumper implements AutoCloseable {
             "Failed to find an offset for the requested timestamp: " + startingTimestamp + " in topic-partition: "
                 + partition + ". Ensure that messages exist in the specified time range.");
       }
-      LOGGER.info(
-          "Found offset: {} for timestamp: {} in topic-partition: {}",
-          offsetForTime,
-          startingTimestamp,
-          partition);
-      startingOffset = offsetForTime;
+      LOGGER
+          .info("Found position: {} for timestamp: {} in topic-partition: {}", position, startingTimestamp, partition);
+      startingOffset = position.getNumericOffset();
     }
     return Math.max(
         startingOffset,
@@ -322,9 +320,9 @@ public class KafkaTopicDumper implements AutoCloseable {
     if (endTimestamp == -1) {
       return endOffset;
     }
-    Long offsetForTime = consumer.offsetForTime(partition, endTimestamp);
-    if (offsetForTime != null) {
-      return offsetForTime;
+    PubSubPosition positionForTime = consumer.getPositionByTimestamp(partition, endTimestamp);
+    if (positionForTime != null) {
+      return positionForTime.getNumericOffset();
     }
     // if offsetForTime returns null, it means there is no message with timestamp >= endTimestamp;
     // In this case we will use the endOffset

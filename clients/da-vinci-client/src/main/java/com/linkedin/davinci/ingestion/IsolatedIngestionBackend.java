@@ -21,6 +21,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionCommandType;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionComponentType;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
@@ -280,7 +281,7 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend implements
   VeniceNotifier getIsolatedIngestionNotifier(VeniceNotifier notifier) {
     return new RelayNotifier(notifier) {
       @Override
-      public void completed(String kafkaTopic, int partition, long offset, String message) {
+      public void completed(String kafkaTopic, int partition, PubSubPosition position, String message) {
         // Use thread pool to handle the completion reporting to make sure it is not blocking the report.
         if (isTopicPartitionHosted(kafkaTopic, partition)) {
           getCompletionHandlingExecutor().submit(() -> {
@@ -305,9 +306,8 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend implements
           });
         } else {
           LOGGER.error(
-              "Partition: {} of topic: {} is not assigned to this host, will not resume the ingestion on main process.",
-              partition,
-              kafkaTopic);
+              "Replica: {} is not assigned to this host, will not resume the ingestion on main process.",
+              Utils.getReplicaId(kafkaTopic, partition));
         }
       }
     };
@@ -319,6 +319,7 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend implements
       IngestionCommandType command,
       Supplier<Boolean> isolatedProcessCommandSupplier,
       Runnable mainProcessCommandRunnable) {
+    String replicaId = Utils.getReplicaId(topicName, partition);
     boolean isTopicPartitionHosted = isTopicPartitionHosted(topicName, partition);
 
     do {
@@ -332,11 +333,11 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend implements
        */
       if (isTopicPartitionHostedInMainProcess(topicName, partition)
           || (!isTopicPartitionHosted && command != START_CONSUMPTION && command != REMOVE_PARTITION)) {
-        LOGGER.info("Executing command {} of topic: {}, partition: {} in main process.", command, topicName, partition);
+        LOGGER.info("Executing command {} of replica: {} in main process.", command, replicaId);
         mainProcessCommandRunnable.run();
         return;
       }
-      LOGGER.info("Sending command {} of topic: {}, partition: {} to fork process.", command, topicName, partition);
+      LOGGER.info("Sending command {} of replica: {} to fork process.", command, replicaId);
       if (command.equals(START_CONSUMPTION)) {
         /**
          * StartConsumption operation may take long time to wait for non-existence store/version until it times out.
@@ -354,7 +355,7 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend implements
       } catch (Exception e) {
         if (command.equals(START_CONSUMPTION)) {
           // Failure in start consumption request should reset the resource ingestion status.
-          LOGGER.warn("Clean up ingestion status for topic: {}, partition: {}.", topicName, partition);
+          LOGGER.warn("Clean up ingestion status for replica: {}.", replicaId);
           getMainIngestionMonitorService().cleanupTopicPartitionState(topicName, partition);
         }
         throw e;
@@ -370,9 +371,8 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend implements
        */
       if (command.equals(STOP_CONSUMPTION) && getStoreIngestionService().isPartitionConsuming(topicName, partition)) {
         LOGGER.warn(
-            "Expect topic: {}, partition: {} in forked process but found in main process, will execute command {} locally.",
-            topicName,
-            partition,
+            "Expect replica: {} in forked process but found in main process, will execute command {} locally.",
+            replicaId,
             command);
         mainProcessCommandRunnable.run();
         return;

@@ -125,20 +125,22 @@ public final class VenicePushJobConstants {
   public static final long DEFAULT_PUBSUB_INPUT_MAX_RECORDS_PER_MAPPER = 5_000_000L;
 
   /**
-   * Use the numeric offset as the secondary comparator after comparing keys in repush mappers.
-   * Both strategies order records latest first:
-   * - Enabled: use offset, higher offsets first.
-   * - Disabled: use a locally generated logical index (assigned after poll call), higher indices first.
-   * We keep this configurable because the local index can misorder in a rare case:
-   * if log compaction occurs during repush consumption and a split fails or runs speculatively,
-   * a higher record may receive a lower logical index. Offsets avoid this risk.
-   * Once we stop relying on PubSub log compaction, the local index alone is sufficient.
+   * Use a locally generated logical index as the secondary comparator after comparing keys
+   * in repush mappers. Both strategies order records latest first:
+   * - Disabled: use PubSub position/offset, higher position first.
+   * - Enabled: use a local logical index (assigned after poll call), higher indices first.
    *
-   * Default: true
+   * This remains configurable because the local index may misorder records in rare cases:
+   * for example, if log compaction occurs during repush consumption and a split fails or
+   * runs speculatively, a newer record could get a lower logical index. Offsets avoid that risk.
+   *
+   * Once we no longer depend on PubSub log compaction, the logical index alone will be sufficient.
+   *
+   * Default: false
    */
-  public static final String PUBSUB_INPUT_SECONDARY_COMPARATOR_USE_NUMERIC_RECORD_OFFSET =
-      PUBSUB_CLIENT_CONFIG_PREFIX + "input.secondary.comparator.use.numeric.record.offset";
-  public static final boolean DEFAULT_PUBSUB_INPUT_SECONDARY_COMPARATOR_USE_NUMERIC_RECORD_OFFSET = true;
+  public static final String PUBSUB_INPUT_SECONDARY_COMPARATOR_USE_LOCAL_LOGICAL_INDEX =
+      PUBSUB_CLIENT_CONFIG_PREFIX + "input.secondary.comparator.use.local.logical.index";
+  public static final boolean DEFAULT_PUBSUB_INPUT_SECONDARY_COMPARATOR_USE_LOCAL_LOGICAL_INDEX = false;
 
   /**
    * Configuration key for specifying the PubSub input split strategy.
@@ -234,6 +236,13 @@ public final class VenicePushJobConstants {
   public static final String REWIND_EPOCH_TIME_IN_SECONDS_OVERRIDE = "rewind.epoch.time.in.seconds.override";
 
   /**
+   * Relates to the {@link #REWIND_EPOCH_TIME_IN_SECONDS_OVERRIDE}. An overridable amount of buffer to be applied to the epoch
+   * (as the rewind isn't perfectly instantaneous). Defaults to 1 minute.
+   */
+  public static final String REWIND_EPOCH_TIME_BUFFER_IN_SECONDS_OVERRIDE =
+      "rewind.epoch.time.buffer.in.seconds.override";
+
+  /**
    * This config is a boolean which suppresses submitting the end of push message after data has been sent and does
    * not poll for the status of the job to complete. Using this flag means that a user must manually mark the job success
    * or failed.
@@ -255,13 +264,6 @@ public final class VenicePushJobConstants {
    * This config specifies the region identifier where parent controller is running
    */
   public static final String PARENT_CONTROLLER_REGION_NAME = "parent.controller.region.name";
-
-  /**
-   * Relates to the above argument. An overridable amount of buffer to be applied to the epoch (as the rewind isn't
-   * perfectly instantaneous). Defaults to 1 minute.
-   */
-  public static final String REWIND_EPOCH_TIME_BUFFER_IN_SECONDS_OVERRIDE =
-      "rewind.epoch.time.buffer.in.seconds.override";
 
   /**
    * In single-region mode, this must be a comma-separated list of child controller URLs or {@literal d2://<d2ServiceNameForChildController>}

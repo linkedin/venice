@@ -167,9 +167,9 @@ public class DataIntegrityValidator {
         this.logCompactionDelayInMs);
   }
 
-  public void updateLatestConsumedVtOffset(int partition, PubSubPosition offset) {
+  public void updateLatestConsumedVtPosition(int partition, PubSubPosition vtPosition) {
     PartitionTracker partitionTracker = registerPartition(partition);
-    partitionTracker.updateLatestConsumedVtPosition(offset);
+    partitionTracker.updateLatestConsumedVtPosition(vtPosition);
   }
 
   /**

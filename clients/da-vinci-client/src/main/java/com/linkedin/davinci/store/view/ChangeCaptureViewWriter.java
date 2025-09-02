@@ -129,9 +129,6 @@ public class ChangeCaptureViewWriter extends VeniceViewWriter {
     Map<String, PubSubPosition> sortedWaterMarkOffsets = partitionConsumptionState.getLatestProcessedRtPositions();
 
     List<Long> highWaterMarkOffsets;
-    /**
-     * TODO(sushantmane): Once we update OffsetRecord to use PubSubPosition, we should pop up this field from the PCS
-     */
     List<ByteBuffer> highWaterMarkPubSubPositions;
     if (maxColoIdValue > -1) {
       highWaterMarkOffsets = new ArrayList<>(Collections.nCopies(maxColoIdValue + 1, 0L));

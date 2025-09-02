@@ -207,9 +207,8 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceAfte
           }
 
           LOGGER.info(
-              "Version Swap succeeded when switching to topic: {} for partition: {} after {} attempts",
-              pubSubTopicPartition.getTopicName(),
-              pubSubTopicPartition.getPartitionNumber(),
+              "Version Swap succeeded when switching to replica: {} after {} attempts",
+              Utils.getReplicaId(pubSubTopicPartition),
               attempt);
 
           return true;
@@ -220,16 +219,14 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceAfte
             }
 
             LOGGER.error(
-                "Version Swap failed when switching to topic: {} for partition: {} after {} attempts",
-                pubSubTopicPartition.getTopicName(),
-                pubSubTopicPartition.getPartitionNumber(),
+                "Version Swap failed when switching to replica: {} after {} attempts",
+                Utils.getReplicaId(pubSubTopicPartition),
                 MAX_VERSION_SWAP_RETRIES);
             throw error;
           } else {
             LOGGER.error(
-                "Version Swap failed when switching to topic: {} for partition: {} on attempt {}/{}. Retrying.",
-                pubSubTopicPartition.getTopicName(),
-                pubSubTopicPartition.getPartitionNumber(),
+                "Version Swap failed when switching to replica: {} on attempt {}/{}. Retrying.",
+                Utils.getReplicaId(pubSubTopicPartition),
                 attempt,
                 MAX_VERSION_SWAP_RETRIES);
 
@@ -299,10 +296,8 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceAfte
     StorageEngine storageEngineReloadedFromRepo =
         storageService.getStorageEngineRepository().getLocalStorageEngine(localStateTopicName);
     if (storageEngineReloadedFromRepo == null) {
-      LOGGER.warn(
-          "Storage engine has been removed. Could not execute sync offset for topic: {} and partition: {}",
-          localStateTopicName,
-          partitionId);
+      String replicaId = Utils.getReplicaId(localStateTopicName, partitionId);
+      LOGGER.warn("Storage engine has been removed. Could not execute sync offset for replica: {}", replicaId);
       return;
     }
 

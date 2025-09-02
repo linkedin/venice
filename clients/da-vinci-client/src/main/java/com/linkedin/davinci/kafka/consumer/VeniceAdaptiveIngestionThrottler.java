@@ -1,6 +1,7 @@
 package com.linkedin.davinci.kafka.consumer;
 
 import com.linkedin.venice.throttle.EventThrottler;
+import com.linkedin.venice.throttle.VeniceAdaptiveThrottler;
 import java.text.DecimalFormat;
 import java.util.ArrayList;
 import java.util.List;
@@ -10,16 +11,16 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 
-public class VeniceAdaptiveIngestionThrottler extends EventThrottler {
+public class VeniceAdaptiveIngestionThrottler extends EventThrottler implements VeniceAdaptiveThrottler {
   private static final Logger LOGGER = LogManager.getLogger(VeniceAdaptiveIngestionThrottler.class);
   private final List<BooleanSupplier> limiterSuppliers = new ArrayList<>();
   private final List<BooleanSupplier> boosterSuppliers = new ArrayList<>();
 
-  private int throttlerNum;
+  private final int throttlerNum;
   private final List<EventThrottler> eventThrottlers = new ArrayList<>();
   private final int signalIdleThreshold;
   private int signalIdleCount = 0;
-  private AtomicInteger currentThrottlerIndex = new AtomicInteger();
+  private final AtomicInteger currentThrottlerIndex = new AtomicInteger();
   private final String throttlerName;
 
   public VeniceAdaptiveIngestionThrottler(
@@ -62,14 +63,17 @@ public class VeniceAdaptiveIngestionThrottler extends EventThrottler {
     eventThrottlers.get(currentThrottlerIndex.get()).maybeThrottle(eventsSeen);
   }
 
+  @Override
   public void registerLimiterSignal(BooleanSupplier supplier) {
     limiterSuppliers.add(supplier);
   }
 
+  @Override
   public void registerBoosterSignal(BooleanSupplier supplier) {
     boosterSuppliers.add(supplier);
   }
 
+  @Override
   public void checkSignalAndAdjustThrottler() {
     boolean isSignalIdle = true;
     boolean hasLimitedRate = false;
@@ -132,6 +136,7 @@ public class VeniceAdaptiveIngestionThrottler extends EventThrottler {
     }
   }
 
+  @Override
   public long getCurrentThrottlerRate() {
     return eventThrottlers.get(currentThrottlerIndex.get()).getMaxRatePerSecond();
   }

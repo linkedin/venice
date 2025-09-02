@@ -77,7 +77,7 @@ public class PartitionTracker {
   private final int partition;
   // TODO: clear vtSegments
   /**
-   * There should only be one {@link ConsumptionTask} for VT, so there shouldn't need to be any locking.
+   * There should only be one {@code ConsumptionTask} for VT, so there shouldn't need to be any locking.
    */
   private final VeniceConcurrentHashMap<GUID, Segment> vtSegments = new VeniceConcurrentHashMap<>();
   /**
@@ -88,7 +88,7 @@ public class PartitionTracker {
 
   /**
    * rtSegments is a map of source broker URL to a map of GUID to Segment.
-   * There should only be one {@link ConsumptionTask} for each broker URL, so there shouldn't need to be any locking.
+   * There should only be one {@code ConsumptionTask} for each broker URL, so there shouldn't need to be any locking.
    *
    * TODO: Refactor this so the {@link #rtSegments} map is keyed by region ID (numeric), rather than URL. URLs could
    *       change over time but the ID should remain fixed. It is also more compact (and the outer collection could even
@@ -308,7 +308,7 @@ public class PartitionTracker {
     trackSequenceNumber(segment, consumerRecord, endOfPushReceived, tolerateMissingMsgs, hasPreviousSegment);
     // This is the last step, because we want failures in the previous steps to short-circuit execution.
     trackCheckSum(segment, consumerRecord, endOfPushReceived, tolerateMissingMsgs);
-    segment.setLastSuccessfulOffset(consumerRecord.getPosition().getNumericOffset());
+    segment.setLastSuccessfulPosition(consumerRecord.getPosition());
     segment.setNewSegment(false);
   }
 
@@ -334,12 +334,8 @@ public class PartitionTracker {
     int incomingSegmentNumber = consumerRecord.getValue().producerMetadata.segmentNumber;
     if (previousSegment == null) {
       if (incomingSegmentNumber != 0) {
-        handleUnregisteredProducer(
-            "track new segment with non-zero incomingSegment=" + incomingSegmentNumber,
-            consumerRecord,
-            null,
-            endOfPushReceived,
-            true);
+        final String scenario = "track new segment with non-zero incomingSegment=" + incomingSegmentNumber;
+        handleUnregisteredProducer(scenario, consumerRecord, endOfPushReceived, true);
       }
       return initializeNewSegment(type, consumerRecord, endOfPushReceived, true);
     }
@@ -410,12 +406,7 @@ public class PartitionTracker {
     getSegments(type).put(consumerRecord.getValue().getProducerMetadata().getProducerGUID(), newSegment);
 
     if (unregisteredProducer) {
-      handleUnregisteredProducer(
-          "initialize new segment with a non-" + ControlMessageType.START_OF_SEGMENT.name() + " message",
-          consumerRecord,
-          null,
-          endOfPushReceived,
-          tolerateAnyMessageType);
+      handleUnregisteredProducer(NON_SOS_SCENARIO, consumerRecord, endOfPushReceived, tolerateAnyMessageType);
     } else {
       newSegment.registeredSegment();
     }
@@ -425,26 +416,18 @@ public class PartitionTracker {
 
   /**
    * Found an unregistered producer when creating a segment.
-   * @param endOfPushReceived Whether end of push is received for this partition.
+   * @param endOfPushReceived      Whether end of push is received for this partition.
    * @param tolerateAnyMessageType If true, then a segment can be initialized without "START_OF_SEGMENT".
    */
   private void handleUnregisteredProducer(
       String scenario,
       DefaultPubSubMessage consumerRecord,
-      Segment segment,
       boolean endOfPushReceived,
       boolean tolerateAnyMessageType) {
-    if (endOfPushReceived && tolerateAnyMessageType) {
-      String errorMsgIdentifier = consumerRecord.getTopicPartition() + "-" + DataFaultType.UNREGISTERED_PRODUCER;
-      if (!REDUNDANT_LOGGING_FILTER.isRedundantException(errorMsgIdentifier)) {
-        logger.warn("Will {}, endOfPushReceived=true, tolerateAnyMessageType=true", scenario);
-      }
-    } else {
-      throw DataFaultType.UNREGISTERED_PRODUCER.getNewException(
-          segment,
-          consumerRecord,
-          "Cannot " + scenario + ", endOfPushReceived=" + endOfPushReceived + ", tolerateAnyMessageType="
-              + tolerateAnyMessageType);
+    if (!endOfPushReceived || !tolerateAnyMessageType) {
+      String extraInfo = "Cannot " + scenario + ", endOfPushReceived=" + endOfPushReceived + ", tolerateAnyMessageType="
+          + tolerateAnyMessageType;
+      throw DataFaultType.UNREGISTERED_PRODUCER.getNewException(null, consumerRecord, extraInfo);
     }
   }
 
@@ -773,6 +756,9 @@ public class PartitionTracker {
     throw new IllegalArgumentException("Unsupported TopicType: " + type);
   }
 
+  private static final String NON_SOS_SCENARIO =
+      "initialize new segment with a non-" + ControlMessageType.START_OF_SEGMENT.name() + " message";
+
   /**
    * Pre-allocated, as this is a hot path exception. In order to avoid confusion with where the exception comes from,
    * the fillInStacktrace behavior is explicitly disabled.
@@ -878,7 +864,7 @@ public class PartitionTracker {
 
       sb.append("; partition: ").append(consumerRecord.getTopicPartition().getPartitionNumber());
       if (segment != null) {
-        sb.append("; previous successful offset (in same segment): ").append(segment.getLastSuccessfulOffset());
+        sb.append("; previous successful position (in same segment): ").append(segment.getLastSuccessfulPosition());
       }
       sb.append("; incoming offset: ")
           .append(consumerRecord.getPosition())
@@ -900,7 +886,7 @@ public class PartitionTracker {
           .append(new Date(producerMetadata.messageTimestamp))
           .append(")");
       if (consumerRecord.getValue().leaderMetadataFooter != null) {
-        sb.append("; LeaderMetadata { upstream offset: ")
+        sb.append("; LeaderMetadata { upstream position: ")
             .append(consumerRecord.getValue().leaderMetadataFooter.upstreamOffset)
             .append("; upstream pub sub cluster ID: ")
             .append(consumerRecord.getValue().leaderMetadataFooter.upstreamKafkaClusterId)
@@ -909,6 +895,7 @@ public class PartitionTracker {
             .append(" }");
       }
       if (segment != null) {
+        sb.append("; unregisteredProducer: ").append(!segment.isRegistered());
         if (!CollectionUtils.isEmpty(segment.getAggregates())) {
           sb.append("; aggregates: ");
           printMap(segment.getAggregates(), sb);
