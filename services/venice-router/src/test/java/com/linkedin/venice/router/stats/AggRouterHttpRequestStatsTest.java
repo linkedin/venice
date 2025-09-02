@@ -69,6 +69,29 @@ public class AggRouterHttpRequestStatsTest {
   }
 
   @Test
+  public void testProfilingMetrics() {
+    AggRouterHttpRequestStats stats = new AggRouterHttpRequestStats(
+        "test-cluster",
+        metricsRepository,
+        RequestType.COMPUTE,
+        true,
+        storeMetadataRepository,
+        true,
+        mock(Sensor.class));
+
+    for (int i = 1; i <= 100; i += 1) {
+      stats.recordKeySize(i);
+      stats.recordResponseSize("store1", i);
+    }
+    Assert.assertEquals((int) reporter.query(".total--compute_key_size_in_byte.50thPercentile").value(), 50);
+    Assert.assertEquals((int) reporter.query(".total--compute_key_size_in_byte.95thPercentile").value(), 95);
+    Assert.assertEquals((int) reporter.query(".total--compute_key_size_in_byte.99thPercentile").value(), 99);
+    Assert.assertEquals((int) reporter.query(".total--compute_response_size.50thPercentile").value(), 50);
+    Assert.assertEquals((int) reporter.query(".total--compute_response_size.95thPercentile").value(), 95);
+    Assert.assertEquals((int) reporter.query(".total--compute_response_size.99thPercentile").value(), 99);
+  }
+
+  @Test
   public void testDisableMultiGetStoreMetrics() {
     String clusterName = "test-cluster";
     AggRouterHttpRequestStats multiGetStats = new AggRouterHttpRequestStats(

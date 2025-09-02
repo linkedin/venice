@@ -477,7 +477,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
           otelRepository,
           this::registerSensorFinal,
           RouterTehutiMetricNameEnum.KEY_SIZE_IN_BYTE,
-          isTotalStats()
+          !isTotalStats()
               ? null
               : Arrays.asList(
                   new Avg(),
