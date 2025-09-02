@@ -538,7 +538,7 @@ public class ApacheKafkaConsumerAdapterTest {
   }
 
   @Test
-  public void testEndOffsets() {
+  public void testEndPositions() {
     PubSubTopicPartition pubSubTopicPartition1 =
         new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic("test"), 0);
     PubSubTopicPartition pubSubTopicPartition2 =
@@ -546,32 +546,27 @@ public class ApacheKafkaConsumerAdapterTest {
     TopicPartition topicPartition1 = new TopicPartition("test", 0);
     TopicPartition topicPartition2 = new TopicPartition("test", 1);
     Map<TopicPartition, Long> mockResponse = new HashMap<>();
-    mockResponse.put(topicPartition1, 500L);
-    mockResponse.put(topicPartition2, 600L);
+    ApacheKafkaOffsetPosition p500 = ApacheKafkaOffsetPosition.of(500L);
+    ApacheKafkaOffsetPosition p600 = ApacheKafkaOffsetPosition.of(600L);
+    mockResponse.put(topicPartition1, p500.getInternalOffset());
+    mockResponse.put(topicPartition2, p600.getInternalOffset());
 
     when(
         internalKafkaConsumer
             .endOffsets(new HashSet<>(Arrays.asList(topicPartition1, topicPartition2)), Duration.ofMillis(500)))
                 .thenReturn(mockResponse);
 
-    Map<PubSubTopicPartition, Long> actualOffsets = kafkaConsumerAdapter
-        .endOffsets(Arrays.asList(pubSubTopicPartition1, pubSubTopicPartition2), Duration.ofMillis(500));
-    assertEquals(actualOffsets.get(pubSubTopicPartition1), Long.valueOf(500));
-    assertEquals(actualOffsets.get(pubSubTopicPartition2), Long.valueOf(600));
-
     Map<PubSubTopicPartition, PubSubPosition> actualPositions = kafkaConsumerAdapter
         .endPositions(Arrays.asList(pubSubTopicPartition1, pubSubTopicPartition2), Duration.ofMillis(500));
-    assertTrue(actualPositions.get(pubSubTopicPartition1) instanceof ApacheKafkaOffsetPosition);
-    assertTrue(actualPositions.get(pubSubTopicPartition2) instanceof ApacheKafkaOffsetPosition);
-    assertEquals(((ApacheKafkaOffsetPosition) actualPositions.get(pubSubTopicPartition1)).getInternalOffset(), 500L);
-    assertEquals(((ApacheKafkaOffsetPosition) actualPositions.get(pubSubTopicPartition2)).getInternalOffset(), 600L);
+    assertEquals(actualPositions.get(pubSubTopicPartition1), p500);
+    assertEquals(actualPositions.get(pubSubTopicPartition2), p600);
   }
 
   @Test(expectedExceptions = PubSubOpTimeoutException.class)
-  public void testEndOffsetsThrowsTimeoutException() {
+  public void testEndPositionsThrowsTimeoutException() {
     when(internalKafkaConsumer.endOffsets(Collections.singleton(topicPartition), Duration.ofMillis(500)))
         .thenThrow(new TimeoutException("Test timeout"));
-    kafkaConsumerAdapter.endOffsets(Collections.singleton(pubSubTopicPartition), Duration.ofMillis(500));
+    kafkaConsumerAdapter.endPositions(Collections.singleton(pubSubTopicPartition), Duration.ofMillis(500));
   }
 
   @Test

@@ -3,6 +3,7 @@ package com.linkedin.venice;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -33,6 +34,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.ImmutablePubSubMessage;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.PubSubUtil;
 import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapter;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
@@ -101,7 +103,7 @@ public class TestKafkaTopicDumper {
     long endTimestamp = 20;
     when(apacheKafkaConsumer.getPositionByTimestamp(pubSubTopicPartition, startTimestamp)).thenReturn(startPosition);
     when(apacheKafkaConsumer.getPositionByTimestamp(pubSubTopicPartition, endTimestamp)).thenReturn(endPosition);
-    when(apacheKafkaConsumer.endOffset(pubSubTopicPartition)).thenReturn(endPosition.getInternalOffset());
+    when(apacheKafkaConsumer.endPosition(pubSubTopicPartition)).thenReturn(endPosition);
 
     KafkaTopicDumper kafkaTopicDumper = new KafkaTopicDumper(
         controllerClient,
@@ -206,7 +208,7 @@ public class TestKafkaTopicDumper {
     long endTimestamp = 20;
     when(apacheKafkaConsumer.getPositionByTimestamp(pubSubTopicPartition, startTimestamp)).thenReturn(startPosition);
     when(apacheKafkaConsumer.getPositionByTimestamp(pubSubTopicPartition, endTimestamp)).thenReturn(endPosition);
-    when(apacheKafkaConsumer.endOffset(pubSubTopicPartition)).thenReturn(endPosition.getInternalOffset());
+    when(apacheKafkaConsumer.endPosition(pubSubTopicPartition)).thenReturn(endPosition);
 
     KafkaTopicDumper kafkaTopicDumper = new KafkaTopicDumper(
         controllerClient,
@@ -330,82 +332,90 @@ public class TestKafkaTopicDumper {
   }
 
   @Test
-  public void testCalculateStartingOffset() {
+  public void testCalculateStartingPosition() {
     PubSubConsumerAdapter consumerAdapter = mock(PubSubConsumerAdapter.class);
     PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(TOPIC_REPOSITORY.getTopic("test_topic_rt"), 0);
-    // Case 1: When start timestamp is non-negative and start offset is non-negative; positionForTime is
-    // non-null then it should be used as the start offset.
-    long startOffset = -1;
+    // Case 1: When start timestamp is non-negative and start position is non-negative; positionForTime is
+    // non-null then it should be used as the start position.
+    PubSubPosition userProvideStartPosition = PubSubSymbolicPosition.EARLIEST;
     long startTimestamp = 123456789L;
     ApacheKafkaOffsetPosition positionForTime = ApacheKafkaOffsetPosition.of(1234L);
     ApacheKafkaOffsetPosition startPosition = ApacheKafkaOffsetPosition.of(0L);
     when(consumerAdapter.getPositionByTimestamp(topicPartition, startTimestamp)).thenReturn(positionForTime);
-    when(consumerAdapter.beginningPosition(eq(topicPartition), any())).thenReturn(startPosition);
-    long actualStartOffset =
-        KafkaTopicDumper.calculateStartingOffset(consumerAdapter, topicPartition, startOffset, startTimestamp);
-    assertEquals(actualStartOffset, positionForTime.getInternalOffset());
+    when(consumerAdapter.beginningPosition(eq(topicPartition))).thenReturn(startPosition);
+    doAnswer(invocation -> {
+      PubSubPosition p1 = invocation.getArgument(1);
+      PubSubPosition p2 = invocation.getArgument(2);
+      return PubSubUtil.computeOffsetDelta(topicPartition, p1, p2, consumerAdapter);
+    }).when(consumerAdapter)
+        .positionDifference(any(PubSubTopicPartition.class), any(PubSubPosition.class), any(PubSubPosition.class));
 
-    // Case 2: When start timestamp is non-negative and start offset is non-negative; but positionForTime is null,
-    // beginning offset should be used as the start offset.
+    PubSubPosition actualStartPosition = KafkaTopicDumper
+        .calculateStartingPosition(consumerAdapter, topicPartition, userProvideStartPosition, startTimestamp);
+    assertEquals(actualStartPosition, positionForTime);
+
+    // Case 2: When start timestamp is non-negative and start position is non-negative; but positionForTime is null,
+    // beginning position should be used as the start position.
     when(consumerAdapter.getPositionByTimestamp(topicPartition, startTimestamp)).thenReturn(null);
-    long finalStartOffset = -1;
+    PubSubPosition finalStartOffset = PubSubSymbolicPosition.EARLIEST;
     long finalStartTimestamp = 123456789L;
     PubSubClientException e = expectThrows(
         PubSubClientException.class,
         () -> KafkaTopicDumper
-            .calculateStartingOffset(consumerAdapter, topicPartition, finalStartOffset, finalStartTimestamp));
-    assertTrue(e.getMessage().contains("Failed to find an offset"), "Actual error message: " + e.getMessage());
+            .calculateStartingPosition(consumerAdapter, topicPartition, finalStartOffset, finalStartTimestamp));
+    assertTrue(e.getMessage().contains("Failed to find an position"), "Actual error message: " + e.getMessage());
 
-    // Case 3: When start timestamp is non-negative and start offset is non-negative; but beginning offset is higher
-    // than positionForTime, beginning offset should be used as the start offset.
+    // Case 3: When start timestamp is non-negative and start position is non-negative; but beginning position is higher
+    // than positionForTime, beginning position should be used as the start position.
     startPosition = ApacheKafkaOffsetPosition.of(12356L);
     when(consumerAdapter.getPositionByTimestamp(topicPartition, startTimestamp))
         .thenReturn(PubSubSymbolicPosition.EARLIEST);
-    when(consumerAdapter.beginningPosition(eq(topicPartition), any())).thenReturn(startPosition);
-    actualStartOffset =
-        KafkaTopicDumper.calculateStartingOffset(consumerAdapter, topicPartition, startOffset, startTimestamp);
-    assertEquals(actualStartOffset, startPosition.getInternalOffset());
+    when(consumerAdapter.beginningPosition(eq(topicPartition))).thenReturn(startPosition);
+    actualStartPosition =
+        KafkaTopicDumper.calculateStartingPosition(consumerAdapter, topicPartition, startPosition, startTimestamp);
+    assertEquals(actualStartPosition, startPosition);
 
-    // Case 4: When start timestamp is negative and start offset > beginning offset, start offset should be used.
-    startOffset = 1234L;
+    // Case 4: When start timestamp is negative and start position > beginning position, start position should be used.
+    startPosition = ApacheKafkaOffsetPosition.of(1234L);
     startTimestamp = -1;
     when(consumerAdapter.getPositionByTimestamp(topicPartition, startTimestamp)).thenReturn(null);
-    when(consumerAdapter.beginningPosition(eq(topicPartition), any())).thenReturn(ApacheKafkaOffsetPosition.of(0L));
-    actualStartOffset =
-        KafkaTopicDumper.calculateStartingOffset(consumerAdapter, topicPartition, startOffset, startTimestamp);
-    assertEquals(actualStartOffset, startOffset);
+    when(consumerAdapter.beginningPosition(eq(topicPartition))).thenReturn(ApacheKafkaOffsetPosition.of(0L));
+    actualStartPosition =
+        KafkaTopicDumper.calculateStartingPosition(consumerAdapter, topicPartition, startPosition, startTimestamp);
+    assertEquals(actualStartPosition, startPosition);
   }
 
   @Test
-  public void testCalculateEndingOffset() {
+  public void testCalculateEndingPosition() {
     PubSubTopicPartition partition = new PubSubTopicPartitionImpl(TOPIC_REPOSITORY.getTopic("test-topic"), 0);
 
-    // Test Case 1: endTimestamp is -1, should return endOffset
+    // Test Case 1: endTimestamp is -1, should return endPosition
     PubSubConsumerAdapter mockConsumer = mock(PubSubConsumerAdapter.class);
-    when(mockConsumer.endOffset(partition)).thenReturn(100L);
-    long endOffset = KafkaTopicDumper.calculateEndingOffset(mockConsumer, partition, -1);
-    assertEquals(endOffset, 99L, "Should return the `endOffset - 1` when endTimestamp is -1");
-    verify(mockConsumer).endOffset(partition);
+    ApacheKafkaOffsetPosition endPos = ApacheKafkaOffsetPosition.of(100L);
+    when(mockConsumer.endPosition(partition)).thenReturn(endPos);
+    PubSubPosition endPosition = KafkaTopicDumper.calculateEndingPosition(mockConsumer, partition, -1);
+    assertEquals(endPosition, endPos, "Should return the endPosition when endTimestamp is -1");
+    verify(mockConsumer).endPosition(partition);
     verify(mockConsumer, never()).getPositionByTimestamp(partition, -1L);
 
-    // Test Case 2: Valid endTimestamp` with offsetForTime returning a value
+    // Test Case 2: Valid endTimestamp with positionForTime returning a value
     mockConsumer = mock(PubSubConsumerAdapter.class);
     ApacheKafkaOffsetPosition p80 = ApacheKafkaOffsetPosition.of(80L);
     when(mockConsumer.getPositionByTimestamp(partition, 200L)).thenReturn(p80);
-    endOffset = KafkaTopicDumper.calculateEndingOffset(mockConsumer, partition, 200L);
-    assertEquals(endOffset, p80.getInternalOffset(), "Should return the offset for the specified timestamp");
+    endPosition = KafkaTopicDumper.calculateEndingPosition(mockConsumer, partition, 200L);
+    assertEquals(endPosition, p80, "Should return the position for the specified timestamp");
     verify(mockConsumer).getPositionByTimestamp(partition, 200L);
-    verify(mockConsumer).endOffset(partition);
+    verify(mockConsumer).endPosition(partition);
 
-    // Test Case 3: Valid endTimestamp but offsetForTime returns null
+    // Test Case 3: Valid endTimestamp but positionForTime returns null
     mockConsumer = mock(PubSubConsumerAdapter.class);
-    when(mockConsumer.endOffset(partition)).thenReturn(100L);
+    ApacheKafkaOffsetPosition endPos3 = ApacheKafkaOffsetPosition.of(100L);
+    when(mockConsumer.endPosition(partition)).thenReturn(endPos3);
     when(mockConsumer.getPositionByTimestamp(partition, 300L)).thenReturn(null);
-    endOffset = KafkaTopicDumper.calculateEndingOffset(mockConsumer, partition, 300L);
-    assertEquals(endOffset, 99L, "Should return the `endOffset - 1` when no offset is found for the timestamp");
+    endPosition = KafkaTopicDumper.calculateEndingPosition(mockConsumer, partition, 300L);
+    assertEquals(endPosition, endPos3, "Should return the endPosition when no position is found for the timestamp");
     verify(mockConsumer).getPositionByTimestamp(partition, 300L);
-    verify(mockConsumer).getPositionByTimestamp(partition, 300L);
-    verify(mockConsumer).endOffset(partition);
+    verify(mockConsumer).endPosition(partition);
   }
 
   @Test
@@ -415,14 +425,27 @@ public class TestKafkaTopicDumper {
     KafkaTopicDumper dumper = new KafkaTopicDumper(mockConsumer, topicPartition, 3);
 
     KafkaTopicDumper spyDumper = spy(dumper);
+    ApacheKafkaOffsetPosition p0 = ApacheKafkaOffsetPosition.of(0L);
+    ApacheKafkaOffsetPosition p10 = ApacheKafkaOffsetPosition.of(10L);
+
+    // Mock positionDifference for the dumper's consumer
+    doAnswer(invocation -> {
+      PubSubPosition pos1 = invocation.getArgument(1);
+      PubSubPosition pos2 = invocation.getArgument(2);
+      return PubSubUtil.computeOffsetDelta(topicPartition, pos1, pos2, mockConsumer);
+    }).when(mockConsumer)
+        .positionDifference(any(PubSubTopicPartition.class), any(PubSubPosition.class), any(PubSubPosition.class));
 
     // Case 1: Invalid message count
-    Exception e = expectThrows(IllegalArgumentException.class, () -> spyDumper.fetchAndProcess(0, 10, -1));
+    Exception e = expectThrows(IllegalArgumentException.class, () -> spyDumper.fetchAndProcess(p0, p10, -1));
     assertTrue(e.getMessage().contains("Invalid message count"), "Actual error message: " + e.getMessage());
 
-    // Case 2: Invalid offset range
-    e = expectThrows(IllegalArgumentException.class, () -> spyDumper.fetchAndProcess(10, 0, 5));
-    assertTrue(e.getMessage().contains("Invalid offset range"), "Actual error message: " + e.getMessage());
+    // Case 2: Invalid position range
+    e = expectThrows(IllegalArgumentException.class, () -> spyDumper.fetchAndProcess(p10, p0, 5));
+    assertTrue(
+        e.getMessage().contains("Start position")
+            && e.getMessage().contains("is greater than or equal to end position"),
+        "Actual error message: " + e.getMessage());
 
     // Case 3: Valid range with 5 records to process
     List<DefaultPubSubMessage> mockMessages = createMockMessages(15, 0);
@@ -430,31 +453,31 @@ public class TestKafkaTopicDumper {
     mockPollResult.put(topicPartition, mockMessages);
     when(mockConsumer.poll(5000L)).thenReturn(mockPollResult);
     doNothing().when(spyDumper).processRecord(any());
-    int processedCount = spyDumper.fetchAndProcess(0, 10, 5);
+    int processedCount = spyDumper.fetchAndProcess(p0, p10, 5);
     assertEquals(processedCount, 5, "Should process all 5 messages in range");
 
     // Case 4: Poll returns no records
     when(mockConsumer.poll(5000L)).thenReturn(Collections.emptyMap());
-    processedCount = spyDumper.fetchAndProcess(0, 10, 5);
+    processedCount = spyDumper.fetchAndProcess(p0, p10, 5);
     assertEquals(processedCount, 0, "Should process no messages when poll returns empty");
 
-    // Case 5: endOffset is reached before messageCount is reached
+    // Case 5: endPosition is reached before messageCount is reached
     mockMessages = createMockMessages(4, 0);
     mockPollResult.put(topicPartition, mockMessages);
     when(mockConsumer.poll(5000L)).thenReturn(mockPollResult);
-    processedCount = spyDumper.fetchAndProcess(0, 2, 5);
-    assertEquals(processedCount, 3, "Should stop processing when endOffset is reached");
+    ApacheKafkaOffsetPosition p3 = ApacheKafkaOffsetPosition.of(3L);
+    processedCount = spyDumper.fetchAndProcess(p0, p3, 5);
+    assertEquals(processedCount, 3, "Should process all messages up to endPosition (positions 0,1,2,3)");
 
     // Verify unsubscription
     verify(mockConsumer, atLeastOnce()).unSubscribe(topicPartition);
   }
 
-  private List<DefaultPubSubMessage> createMockMessages(int count, long startOffset) {
+  private List<DefaultPubSubMessage> createMockMessages(int count, long startPosition) {
     List<DefaultPubSubMessage> messages = new ArrayList<>();
     for (int i = 0; i < count; i++) {
       DefaultPubSubMessage message = mock(DefaultPubSubMessage.class);
-      PubSubPosition pubSubPosition = mock(PubSubPosition.class);
-      when(pubSubPosition.getNumericOffset()).thenReturn(startOffset + i);
+      PubSubPosition pubSubPosition = ApacheKafkaOffsetPosition.of(startPosition + i);
       when(message.getPosition()).thenReturn(pubSubPosition);
       messages.add(message);
     }

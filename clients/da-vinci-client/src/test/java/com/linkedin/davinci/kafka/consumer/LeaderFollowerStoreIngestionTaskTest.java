@@ -64,6 +64,7 @@ import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
+import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.manager.TopicManager;
@@ -71,7 +72,6 @@ import com.linkedin.venice.pubsub.manager.TopicManagerRepository;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
-import com.linkedin.venice.stats.StatsErrorCode;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.ReferenceCounted;
 import com.linkedin.venice.utils.TestUtils;
@@ -693,15 +693,101 @@ public class LeaderFollowerStoreIngestionTaskTest {
     TopicManager mockTopicManager = mock(TopicManager.class);
     doReturn(mockTopicManager).when(mockTopicManagerRepository).getLocalTopicManager();
     doReturn(mockTopicManager).when(mockTopicManagerRepository).getTopicManager(anyString());
-    doReturn((long) StatsErrorCode.LAG_MEASUREMENT_FAILURE.code).when(mockTopicManager)
-        .getLatestOffsetCached(any(), anyInt());
-    doReturn(0L).when(mockTopicManager).getLatestOffsetCached(any(), anyInt());
-    doReturn(10L).when(mockTopicManager).getLatestOffsetCached(any(), anyInt());
+    doReturn(PubSubSymbolicPosition.LATEST).when(mockTopicManager).getLatestPositionCached(any(), anyInt());
+    ApacheKafkaOffsetPosition p10 = ApacheKafkaOffsetPosition.of(10L);
+    doReturn(p0).when(mockTopicManager).getLatestPositionCached(any(), anyInt());
+    doReturn(p10).when(mockTopicManager).getLatestPositionCached(any(), anyInt());
 
     // Run SIT to process the mock consumer action
     leaderFollowerStoreIngestionTask.processCommonConsumerAction(mockConsumerAction);
 
     // Verify that we enter the block to release the latch
     verify(leaderFollowerStoreIngestionTask, times(1)).measureLagWithCallToPubSub(any(), any(), anyInt(), anyLong());
+  }
+
+  @Test(timeOut = 60_000)
+  public void testIsLocalVersionTopicPartitionFullyConsumed() throws InterruptedException {
+    setUp();
+
+    // Test various scenarios with different vtPosition and endOffset combinations
+    assertFullyConsumedResult(99L, 100L, true, "Partition should be fully consumed when vtPosition + 1 >= endOffset");
+    assertFullyConsumedResult(
+        50L,
+        100L,
+        false,
+        "Partition should not be fully consumed when vtPosition + 1 < endOffset");
+    assertFullyConsumedResult(49L, 50L, true, "Should be fully consumed when vtPosition + 1 equals endOffset");
+    assertFullyConsumedResult(51L, 50L, true, "Should be fully consumed when vtPosition + 1 > endOffset");
+    assertFullyConsumedResult(999999L, 1000000L, true, "Should handle large offset values correctly");
+
+    // Test LATEST end offset (unknown end) - should return false
+    PartitionConsumptionState pcs = createMockPcs(50L);
+    doReturn(PubSubSymbolicPosition.LATEST.getNumericOffset()).when(leaderFollowerStoreIngestionTask)
+        .getTopicPartitionEndOffSet(anyString(), any(PubSubTopic.class), anyInt());
+    assertFalse(
+        leaderFollowerStoreIngestionTask.isLocalVersionTopicPartitionFullyConsumed(pcs),
+        "Should return false when end offset is LATEST (unknown)");
+  }
+
+  @Test(timeOut = 60_000)
+  public void testIsLocalVersionTopicPartitionFullyConsumedSpecialCases() throws InterruptedException {
+    setUp();
+
+    // Empty partition with EARLIEST position - should return true
+    long earliestOffset = PubSubSymbolicPosition.EARLIEST.getNumericOffset();
+    assertFullyConsumedResult(
+        earliestOffset,
+        0L,
+        true,
+        "Empty partition with EARLIEST position should be considered fully consumed");
+
+    // Non-empty partition with EARLIEST position - should return false
+    assertFullyConsumedResult(
+        earliestOffset,
+        10L,
+        false,
+        "Non-empty partition with EARLIEST position should not be considered fully consumed");
+
+    // Single message partition scenarios
+    assertFullyConsumedResult(
+        0L,
+        1L,
+        true,
+        "Single message partition should be fully consumed when vtPosition is 0 and endOffset is 1");
+    assertFullyConsumedResult(
+        earliestOffset,
+        1L,
+        false,
+        "Single message partition should not be fully consumed when at EARLIEST position");
+
+    // Multiple messages - partially consumed
+    assertFullyConsumedResult(
+        5L,
+        20L,
+        false,
+        "Partition with multiple messages should not be fully consumed when only partially processed");
+  }
+
+  private PartitionConsumptionState createMockPcs(long vtPositionOffset) {
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    PubSubPosition vtPosition = ApacheKafkaOffsetPosition.of(vtPositionOffset);
+    when(pcs.getLatestProcessedVtPosition()).thenReturn(vtPosition);
+    when(pcs.getPartition()).thenReturn(0);
+    return pcs;
+  }
+
+  private void assertFullyConsumedResult(
+      long vtPositionOffset,
+      long endOffset,
+      boolean expectedResult,
+      String message) {
+    PartitionConsumptionState pcs = createMockPcs(vtPositionOffset);
+    doReturn(endOffset).when(leaderFollowerStoreIngestionTask)
+        .getTopicPartitionEndOffSet(anyString(), any(PubSubTopic.class), anyInt());
+
+    assertEquals(
+        leaderFollowerStoreIngestionTask.isLocalVersionTopicPartitionFullyConsumed(pcs),
+        expectedResult,
+        message);
   }
 }

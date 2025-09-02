@@ -292,6 +292,7 @@ public interface PubSubConsumerAdapter extends AutoCloseable, Closeable {
    * @throws PubSubOpTimeoutException If the operation times out while fetching the end offsets.
    * @throws PubSubClientException If there is an error while attempting to fetch the end offsets.
    */
+  @Deprecated
   Map<PubSubTopicPartition, Long> endOffsets(Collection<PubSubTopicPartition> partitions, Duration timeout);
 
   Map<PubSubTopicPartition, PubSubPosition> endPositions(Collection<PubSubTopicPartition> partitions, Duration timeout);
@@ -306,6 +307,7 @@ public interface PubSubConsumerAdapter extends AutoCloseable, Closeable {
    * @throws PubSubOpTimeoutException If the operation times out while fetching the end offset.
    * @throws PubSubClientException If there is an error while attempting to fetch the end offset.
    */
+  @Deprecated
   Long endOffset(PubSubTopicPartition pubSubTopicPartition);
 
   PubSubPosition endPosition(PubSubTopicPartition pubSubTopicPartition);

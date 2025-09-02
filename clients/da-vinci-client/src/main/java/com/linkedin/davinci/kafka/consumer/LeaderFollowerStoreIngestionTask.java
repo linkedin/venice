@@ -19,7 +19,6 @@ import static com.linkedin.venice.writer.VeniceWriter.DEFAULT_TERM_ID;
 import static java.lang.Long.max;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 
-import com.google.common.annotations.VisibleForTesting;
 import com.linkedin.davinci.client.InternalDaVinciRecordTransformerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
@@ -42,6 +41,7 @@ import com.linkedin.davinci.store.view.VeniceViewWriter;
 import com.linkedin.davinci.validation.DataIntegrityValidator;
 import com.linkedin.davinci.validation.PartitionTracker;
 import com.linkedin.davinci.validation.PartitionTracker.TopicType;
+import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -869,16 +869,17 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    * @return <code>true</code>, if local kafka topic partition is fully consumed by comparing its offset against end offset;
    *         <code>false</code>, otherwise.
    */
-  private boolean isLocalVersionTopicPartitionFullyConsumed(PartitionConsumptionState pcs) {
+  @VisibleForTesting
+  boolean isLocalVersionTopicPartitionFullyConsumed(PartitionConsumptionState pcs) {
     PubSubPosition localVtPos = pcs.getLatestProcessedVtPosition();
     long localVTEndOffset = getTopicPartitionEndOffSet(localKafkaServer, versionTopic, pcs.getPartition());
 
-    if (localVTEndOffset == StatsErrorCode.LAG_MEASUREMENT_FAILURE.code) {
+    if (localVTEndOffset == PubSubSymbolicPosition.LATEST.getNumericOffset()) {
       return false;
     }
 
     // If end offset == 0, then no message has been written to the partition, consider it as fully consumed.
-    if (localVTEndOffset == 0 && localVtPos.getNumericOffset() == OffsetRecord.LOWEST_OFFSET) {
+    if (localVTEndOffset == 0 && localVtPos.getNumericOffset() == PubSubSymbolicPosition.EARLIEST.getNumericOffset()) {
       return true;
     }
 
@@ -3663,7 +3664,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         resolveRtTopicWithPubSubBrokerAddress(leaderTopic, sourceRealTimeTopicKafkaURL),
         partition);
 
-    if (lastOffsetInRealTimeTopic < 0) {
+    if (lastOffsetInRealTimeTopic < 0
+        || lastOffsetInRealTimeTopic == PubSubSymbolicPosition.EARLIEST.getNumericOffset()) {
       if (!REDUNDANT_LOGGING_FILTER.isRedundantException("Got a negative lastOffsetInRealTimeTopic")) {
         LOGGER.warn(
             "Unexpected! Got a negative lastOffsetInRealTimeTopic ({})! Will return Long.MAX_VALUE ({}) as the lag for replica: {}.",
