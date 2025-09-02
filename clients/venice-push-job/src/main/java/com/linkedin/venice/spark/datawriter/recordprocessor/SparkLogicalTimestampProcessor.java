@@ -25,21 +25,17 @@ public class SparkLogicalTimestampProcessor implements MapFunction<Row, Row> {
   private final boolean containsLogicalTimestamp;
   private final Schema rmdSchema;
 
-  private transient RecordDeserializer<Long> logicalTimestampDeserializer = null;
+  private transient RecordDeserializer<Long> logicalTimestampDeserializer;
 
   public SparkLogicalTimestampProcessor(boolean containsLogicalTimestamp, String rmdSchemaString) {
     if (containsLogicalTimestamp && (rmdSchemaString == null || rmdSchemaString.isEmpty())) {
       throw new IllegalArgumentException("RMD schema must be provided if the RMD field contains logical timestamps.");
     }
 
+    LOGGER.info("RMD field contains logical timestamp: " + containsLogicalTimestamp);
     this.containsLogicalTimestamp = containsLogicalTimestamp;
-    if (containsLogicalTimestamp) {
-      this.logicalTimestampDeserializer = getDeserializerForLogicalTimestamp();
-      this.rmdSchema = AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation(rmdSchemaString);
-    } else {
-      logicalTimestampDeserializer = null;
-      this.rmdSchema = null;
-    }
+    this.rmdSchema =
+        containsLogicalTimestamp ? AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation(rmdSchemaString) : null;
   }
 
   @Override
@@ -49,6 +45,13 @@ public class SparkLogicalTimestampProcessor implements MapFunction<Row, Row> {
     byte[] rmd = record.getAs(SparkConstants.RMD_COLUMN_NAME);
 
     if (containsLogicalTimestamp) {
+      /*
+       * Lazily initialize the deserializer since the field is transient as RecordSerializer is not serializable.
+       */
+      if (logicalTimestampDeserializer == null) {
+        logicalTimestampDeserializer = getDeserializerForLogicalTimestamp();
+      }
+
       try {
         /*
          * We perform an additional serialization of the logical timestamp in the prior contract to keep the
