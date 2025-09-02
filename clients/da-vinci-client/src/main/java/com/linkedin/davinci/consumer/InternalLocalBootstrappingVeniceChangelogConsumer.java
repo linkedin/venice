@@ -464,6 +464,7 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceAfte
 
     bootstrapState.incrementProcessedRecordSizeSinceLastSync(value.array().length);
     if (bootstrapState.getProcessedRecordSizeSinceLastSync() >= syncBytesInterval) {
+      System.out.println("Sync offset");
       syncOffset(partition.getPartitionNumber(), bootstrapState);
     }
 

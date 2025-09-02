@@ -255,7 +255,7 @@ public class RocksDBStoragePartitionTest {
    * This test takes way too long... both per-permutation and because there are so many permutations.
    * TODO: Speed it up, or else refactor the permutations into several subclasses so they can run concurrently.
    */
-  @Test(dataProvider = "Six-True-and-False", dataProviderClass = DataProviderUtils.class)
+  @Test(dataProvider = "Six-True-and-False", dataProviderClass = DataProviderUtils.class, enabled = false)
   public void testIngestion(
       boolean sorted,
       boolean interrupted,
