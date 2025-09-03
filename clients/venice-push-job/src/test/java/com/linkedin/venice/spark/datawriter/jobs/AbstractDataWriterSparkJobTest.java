@@ -123,6 +123,7 @@ public class AbstractDataWriterSparkJobTest {
             new StructField(RMD_COLUMN_NAME, BinaryType, true, Metadata.empty()) });
 
     Dataset<Row> mockDataset = mock(Dataset.class);
+    when(mockDataset.schema()).thenReturn(inputWithBinaryRmdType);
     dataWriterSparkJob.validateDataFrame(mockDataset);
     when(mockDataset.schema()).thenReturn(inputWithBinaryRmdType);
     dataWriterSparkJob.validateDataFrame(mockDataset);
