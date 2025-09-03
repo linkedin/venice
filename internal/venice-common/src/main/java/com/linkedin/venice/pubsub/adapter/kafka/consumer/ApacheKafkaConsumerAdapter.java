@@ -514,14 +514,20 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
   }
 
   @Override
-  public Map<PubSubTopicPartition, Long> endOffsets(Collection<PubSubTopicPartition> partitions, Duration timeout) {
+  public Map<PubSubTopicPartition, PubSubPosition> endPositions(
+      Collection<PubSubTopicPartition> partitions,
+      Duration timeout) {
     Map<TopicPartition, PubSubTopicPartition> pubSubTopicPartitionMapping = toKafkaTopicPartitionMap(partitions);
     try {
       Map<TopicPartition, Long> topicPartitionOffsetMap =
           this.kafkaConsumer.endOffsets(pubSubTopicPartitionMapping.keySet(), timeout);
-      Map<PubSubTopicPartition, Long> pubSubTopicPartitionOffsetMap = new HashMap<>(topicPartitionOffsetMap.size());
+      Map<PubSubTopicPartition, PubSubPosition> pubSubTopicPartitionOffsetMap =
+          new HashMap<>(topicPartitionOffsetMap.size());
       for (Map.Entry<TopicPartition, Long> entry: topicPartitionOffsetMap.entrySet()) {
-        pubSubTopicPartitionOffsetMap.put(pubSubTopicPartitionMapping.get(entry.getKey()), entry.getValue());
+        PubSubTopicPartition pubSubTopicPartition = pubSubTopicPartitionMapping.get(entry.getKey());
+        PubSubPosition endPosition =
+            entry.getValue() != null ? new ApacheKafkaOffsetPosition(entry.getValue()) : PubSubSymbolicPosition.LATEST;
+        pubSubTopicPartitionOffsetMap.put(pubSubTopicPartition, endPosition);
       }
       return pubSubTopicPartitionOffsetMap;
     } catch (TimeoutException e) {
@@ -532,21 +538,7 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
   }
 
   @Override
-  public Map<PubSubTopicPartition, PubSubPosition> endPositions(
-      Collection<PubSubTopicPartition> partitions,
-      Duration timeout) {
-    Map<PubSubTopicPartition, Long> endOffsets = endOffsets(partitions, timeout);
-    Map<PubSubTopicPartition, PubSubPosition> pubSubTopicPartitionOffsetMap = new HashMap<>(endOffsets.size());
-    for (Map.Entry<PubSubTopicPartition, Long> entry: endOffsets.entrySet()) {
-      PubSubPosition endPosition =
-          entry.getValue() != null ? new ApacheKafkaOffsetPosition(entry.getValue()) : PubSubSymbolicPosition.LATEST;
-      pubSubTopicPartitionOffsetMap.put(entry.getKey(), endPosition);
-    }
-    return pubSubTopicPartitionOffsetMap;
-  }
-
-  @Override
-  public Long endOffset(PubSubTopicPartition pubSubTopicPartition) {
+  public PubSubPosition endPosition(PubSubTopicPartition pubSubTopicPartition) {
     try {
       TopicPartition topicPartition = new TopicPartition(
           pubSubTopicPartition.getPubSubTopic().getName(),
@@ -557,18 +549,13 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
       // To be consistent with other apis, use api timeout here.
       Map<TopicPartition, Long> topicPartitionOffsetMap =
           this.kafkaConsumer.endOffsets(Collections.singleton(topicPartition), config.getDefaultApiTimeout());
-      return topicPartitionOffsetMap.get(topicPartition);
+      Long endOffset = topicPartitionOffsetMap.get(topicPartition);
+      return endOffset != null ? new ApacheKafkaOffsetPosition(endOffset) : PubSubSymbolicPosition.LATEST;
     } catch (TimeoutException e) {
-      throw new PubSubOpTimeoutException("Timed out while fetching end offset for " + pubSubTopicPartition, e);
+      throw new PubSubOpTimeoutException("Timed out while fetching end position for " + pubSubTopicPartition, e);
     } catch (Exception e) {
-      throw new PubSubClientException("Failed to fetch end offset for " + pubSubTopicPartition, e);
+      throw new PubSubClientException("Failed to fetch end position for " + pubSubTopicPartition, e);
     }
-  }
-
-  @Override
-  public PubSubPosition endPosition(PubSubTopicPartition pubSubTopicPartition) {
-    Long endOffset = endOffset(pubSubTopicPartition);
-    return endOffset != null ? new ApacheKafkaOffsetPosition(endOffset) : PubSubSymbolicPosition.LATEST;
   }
 
   /**
