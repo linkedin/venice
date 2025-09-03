@@ -21,7 +21,6 @@ import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.StoreInfo;
-import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Utils;
@@ -37,6 +36,7 @@ import java.util.stream.Collectors;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -343,7 +343,7 @@ public class AdminToolE2ETest {
     AdminTool.main(adminToolArgs);
   }
 
-  @Test(timeOut = TEST_TIMEOUT, dataProvider = "skipAdminOptions", dataProviderClass = DataProviderUtils.class)
+  @Test(timeOut = TEST_TIMEOUT, dataProvider = "skipAdminMessageOptions")
   public void testSkipAdminMessage(String[] extraArgs, boolean expectFailure) throws Exception {
     String storeName1 = Utils.getUniqueString("testSkipAdminMessage");
     List<VeniceControllerWrapper> parentControllers = multiRegionMultiClusterWrapper.getParentControllers();
@@ -423,5 +423,18 @@ public class AdminToolE2ETest {
         assertFalse(storeInfo.isMigrating(), "Store::isMigrating should be false in " + region);
       }
     });
+  }
+
+  @DataProvider(name = "skipAdminMessageOptions")
+  public Object[][] skipAdminOptions() {
+    return new Object[][] {
+        // 1) execution-id only -> should pass
+        { new String[] { "--execution-id", "10" }, false },
+        // 2) offset only -> should pass
+        { new String[] { "--offset", "10" }, false },
+        // 3) neither provided -> should fail
+        { new String[] {}, true },
+        // 4) both provided -> should fail
+        { new String[] { "--offset", "10", "--execution-id", "10" }, true } };
   }
 }
