@@ -55,7 +55,6 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.ZSTD_DICTIONARY_CRE
 import static com.linkedin.venice.vpj.VenicePushJobConstants.ZSTD_DICTIONARY_CREATION_SUCCESS;
 
 import com.github.luben.zstd.Zstd;
-import com.google.common.collect.ImmutableList;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.compression.CompressionStrategy;
@@ -83,8 +82,6 @@ import com.linkedin.venice.utils.AvroSchemaUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.io.IOException;
-import java.util.Collection;
-import java.util.Collections;
 import java.util.Properties;
 import java.util.UUID;
 import org.apache.avro.Schema;
@@ -322,7 +319,7 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
   protected void validateRmdSchema(PushJobSetting pushJobSetting) {
     if (RmdPushUtils.rmdFieldPresent(pushJobSetting)) {
       Schema inputRmdSchema = RmdPushUtils.getInputRmdSchema(pushJobSetting);
-      if ((!RmdPushUtils.containsLogicalTimestamp(pushJobSetting) && !AvroSchemaUtils.compareSchemaIgnoreFieldOrder(
+      if ((!RmdPushUtils.containsLogicalTimestamp(pushJobSetting) && !AvroSchemaUtils.compareSchema(
           inputRmdSchema,
           AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation(pushJobSetting.replicationMetadataSchemaString)))) {
         throw new VeniceException(
@@ -473,14 +470,10 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
       throw new VeniceInvalidInputException(errorMessage);
     }
 
-    validateDataFrameFieldAndTypes(fields, dataSchema, KEY_COLUMN_NAME, Collections.singleton(DataTypes.BinaryType));
-    validateDataFrameFieldAndTypes(fields, dataSchema, VALUE_COLUMN_NAME, Collections.singleton(DataTypes.BinaryType));
+    validateDataFrameFieldAndTypes(fields, dataSchema, KEY_COLUMN_NAME, DataTypes.BinaryType);
+    validateDataFrameFieldAndTypes(fields, dataSchema, VALUE_COLUMN_NAME, DataTypes.BinaryType);
 
-    validateDataFrameFieldAndTypes(
-        fields,
-        dataSchema,
-        RMD_COLUMN_NAME,
-        ImmutableList.of(DataTypes.BinaryType, DataTypes.LongType));
+    validateDataFrameFieldAndTypes(fields, dataSchema, RMD_COLUMN_NAME, DataTypes.BinaryType);
 
     for (StructField field: fields) {
       if (field.name().startsWith("_")) {
@@ -496,7 +489,7 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
       StructField[] fields,
       StructType dataSchema,
       String fieldName,
-      Collection<DataType> allowedTypes) {
+      DataType allowedType) {
     int fieldIndex = SparkScalaUtils.getFieldIndex(dataSchema, fieldName);
 
     if (fieldIndex == -1) {
@@ -510,9 +503,9 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
     StructField field = fields[fieldIndex];
     DataType fieldType = field.dataType();
 
-    if (allowedTypes.isEmpty() || !allowedTypes.contains(fieldType)) {
+    if (!allowedType.equals(fieldType)) {
       String errorMessage =
-          String.format("The provided input %s schema must be in %s. Got: %s.", fieldName, allowedTypes, fieldType);
+          String.format("The provided input %s schema must be %s. Got: %s.", fieldName, allowedType, fieldType);
       throw new VeniceInvalidInputException(errorMessage);
     }
   }

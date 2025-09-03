@@ -219,7 +219,7 @@ public class VenicePushJobTest {
     Assert.assertEquals(setting.rmdSchemaId, 1);
   }
 
-  @Test(expectedExceptions = VeniceException.class)
+  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = "Cannot continue with push with RMD since the RMD schema for the value.*")
   public void testValidateAndRetrieveRmdSchemaWithMultipleRmdSchemas() {
     PushJobSetting setting = new PushJobSetting();
     setting.rmdField = DEFAULT_RMD_FIELD_PROP;

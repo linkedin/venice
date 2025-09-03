@@ -424,11 +424,6 @@ public class TestHybridMultiRegion {
         { false, true, REWIND_FROM_SOP }, { true, false, REWIND_FROM_SOP }, { true, true, REWIND_FROM_SOP } };
   }
 
-  @DataProvider(name = "testNativeAndNonNativeInputFormats", parallel = false)
-  public static Object[][] testNativeAndNonNativeInputFormats() {
-    return new Object[][] { { true }, { false } };
-  }
-
   private static VeniceTwoLayerMultiRegionMultiClusterWrapper setUpCluster() {
     Properties parentControllerProps = new Properties();
     parentControllerProps.setProperty(DEFAULT_MAX_NUMBER_OF_PARTITIONS, "5");

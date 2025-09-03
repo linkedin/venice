@@ -34,15 +34,11 @@ public abstract class AbstractVeniceRecordReader<INPUT_KEY, INPUT_VALUE> {
     return rmdSchema;
   }
 
-  Schema getDefaultRmdSchema() {
-    return Schema.create(Schema.Type.LONG);
-  }
-
   /**
    * Configure the record serializers
    */
   protected void configure(Schema keySchema, Schema valueSchema) {
-    configure(keySchema, valueSchema, getDefaultRmdSchema());
+    configure(keySchema, valueSchema, null);
   }
 
   protected void configure(Schema keySchema, Schema valueSchema, Schema rmdSchema) {
@@ -51,7 +47,11 @@ public abstract class AbstractVeniceRecordReader<INPUT_KEY, INPUT_VALUE> {
     this.rmdSchema = rmdSchema;
     keySerializer = FastSerializerDeserializerFactory.getFastAvroGenericSerializer(keySchema);
     valueSerializer = FastSerializerDeserializerFactory.getFastAvroGenericSerializer(valueSchema);
-    rmdSerializer = FastSerializerDeserializerFactory.getFastAvroGenericSerializer(rmdSchema);
+    if (rmdSchema != null) {
+      rmdSerializer = FastSerializerDeserializerFactory.getFastAvroGenericSerializer(rmdSchema);
+    } else {
+      rmdSerializer = null;
+    }
   }
 
   /**

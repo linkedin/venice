@@ -11,7 +11,6 @@ import static com.linkedin.venice.spark.SparkConstants.VALUE_COLUMN_NAME;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
 import static org.apache.spark.sql.types.DataTypes.BinaryType;
-import static org.apache.spark.sql.types.DataTypes.LongType;
 import static org.apache.spark.sql.types.DataTypes.StringType;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -118,19 +117,13 @@ public class AbstractDataWriterSparkJobTest {
   @Test
   public void testValidateDataFrameWithValidRmdType() {
     AbstractDataWriterSparkJob dataWriterSparkJob = spy(AbstractDataWriterSparkJob.class);
-    StructType inputStructType = new StructType(
-        new StructField[] { new StructField(KEY_COLUMN_NAME, BinaryType, false, Metadata.empty()),
-            new StructField(VALUE_COLUMN_NAME, BinaryType, true, Metadata.empty()),
-            new StructField(RMD_COLUMN_NAME, LongType, true, Metadata.empty()) });
-
-    Dataset<Row> mockDataset = mock(Dataset.class);
-    when(mockDataset.schema()).thenReturn(inputStructType);
-    dataWriterSparkJob.validateDataFrame(mockDataset);
-
     StructType inputWithBinaryRmdType = new StructType(
         new StructField[] { new StructField(KEY_COLUMN_NAME, BinaryType, false, Metadata.empty()),
             new StructField(VALUE_COLUMN_NAME, BinaryType, true, Metadata.empty()),
             new StructField(RMD_COLUMN_NAME, BinaryType, true, Metadata.empty()) });
+
+    Dataset<Row> mockDataset = mock(Dataset.class);
+    dataWriterSparkJob.validateDataFrame(mockDataset);
     when(mockDataset.schema()).thenReturn(inputWithBinaryRmdType);
     dataWriterSparkJob.validateDataFrame(mockDataset);
   }

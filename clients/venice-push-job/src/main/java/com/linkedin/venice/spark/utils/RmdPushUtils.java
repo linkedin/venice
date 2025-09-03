@@ -10,8 +10,8 @@ import org.apache.avro.Schema;
 /**
  * Utility class for handling replication metadata (RMD) related operations in Venice push jobs.
  */
-public class RmdPushUtils {
-  public static final Schema LONG_SCHEMA = Schema.create(Schema.Type.LONG);
+public final class RmdPushUtils {
+  private static final Schema LONG_SCHEMA = Schema.create(Schema.Type.LONG);
 
   public static RecordDeserializer<Long> getDeserializerForLogicalTimestamp() {
     return FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(LONG_SCHEMA, LONG_SCHEMA);

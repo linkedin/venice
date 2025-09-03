@@ -21,7 +21,7 @@ public interface VeniceRecordIterator extends Closeable {
 
   /**
    * Return the timestamp associated with the current record. This method will either return the top level timestamp
-   * of the record or rmd of the record or -1L if a rmd was not specified with the given record
+   * of the record or rmd of the record or null if a rmd was not specified with the given record
    */
   byte[] getCurrentRmd();
 }

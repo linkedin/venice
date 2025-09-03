@@ -738,8 +738,7 @@ public class VenicePushJob implements AutoCloseable {
             pushJobSetting,
             pushJobSetting.isSchemaAutoRegisterFromPushJobEnabled);
         // Retrieve metadata and timestamp schemas, we should do this last as this is pending potentially newly
-        // registered
-        // schemas with the push job
+        // registered schemas with the push job
         validateAndSetRmdSchemas(controllerClient, pushJobSetting);
       }
 

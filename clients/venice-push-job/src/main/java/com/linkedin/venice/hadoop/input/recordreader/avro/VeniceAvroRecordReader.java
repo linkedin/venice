@@ -34,10 +34,10 @@ public class VeniceAvroRecordReader extends AbstractAvroRecordReader<AvroWrapper
       Schema dataSchema,
       String keyFieldStr,
       String valueFieldStr,
-      String timestampFieldStr,
+      String rmdFieldStr,
       ETLValueSchemaTransformation etlValueSchemaTransformation,
       Schema updateSchema) {
-    super(dataSchema, keyFieldStr, valueFieldStr, timestampFieldStr, etlValueSchemaTransformation, updateSchema);
+    super(dataSchema, keyFieldStr, valueFieldStr, rmdFieldStr, etlValueSchemaTransformation, updateSchema);
   }
 
   public static VeniceAvroRecordReader fromProps(VeniceProperties props) {
@@ -47,7 +47,7 @@ public class VeniceAvroRecordReader extends AbstractAvroRecordReader<AvroWrapper
 
     String keyFieldStr = props.getString(KEY_FIELD_PROP);
     String valueFieldStr = props.getString(VALUE_FIELD_PROP);
-    String timestampFieldStr = props.getOrDefault(RMD_FIELD_PROP, "");
+    String rmdFieldStr = props.getOrDefault(RMD_FIELD_PROP, "");
 
     ETLValueSchemaTransformation etlValueSchemaTransformation = ETLValueSchemaTransformation
         .valueOf(props.getString(ETL_VALUE_SCHEMA_TRANSFORMATION, ETLValueSchemaTransformation.NONE.name()));
@@ -63,7 +63,7 @@ public class VeniceAvroRecordReader extends AbstractAvroRecordReader<AvroWrapper
         dataSchema,
         keyFieldStr,
         valueFieldStr,
-        timestampFieldStr,
+        rmdFieldStr,
         etlValueSchemaTransformation,
         updateSchema);
   }
