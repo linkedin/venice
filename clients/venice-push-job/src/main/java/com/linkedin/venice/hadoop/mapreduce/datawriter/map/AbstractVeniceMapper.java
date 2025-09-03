@@ -37,7 +37,7 @@ public abstract class AbstractVeniceMapper<INPUT_KEY, INPUT_VALUE>
     if (updatePreviousReporter(reporter)) {
       dataWriterTaskTracker = new ReporterBackedMapReduceDataWriterTaskTracker(reporter);
     }
-    super.processRecord(inputKey, inputValue, -1L, getRecordEmitter(output), dataWriterTaskTracker);
+    super.processRecord(inputKey, inputValue, null, getRecordEmitter(output), dataWriterTaskTracker);
   }
 
   private boolean updatePreviousReporter(Reporter reporter) {
@@ -63,10 +63,10 @@ public abstract class AbstractVeniceMapper<INPUT_KEY, INPUT_VALUE>
     return bw;
   }
 
-  private TriConsumer<byte[], byte[], Long> getRecordEmitter(
+  private TriConsumer<byte[], byte[], byte[]> getRecordEmitter(
       OutputCollector<BytesWritable, BytesWritable> outputCollector) {
     // TODO: We don't support passing the timestamp in MR yet, so this ignored the timestamp input
-    return (key, value, Long) -> {
+    return (key, value, rmd) -> {
       BytesWritable keyBW = wrapBytes(key);
       BytesWritable valueBW = wrapBytes(value);
       try {

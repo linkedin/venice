@@ -64,6 +64,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_START_TI
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REWIND_EPOCH_TIME_BUFFER_IN_SECONDS_OVERRIDE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REWIND_EPOCH_TIME_IN_SECONDS_OVERRIDE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REWIND_TIME_IN_SECONDS_OVERRIDE;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.RMD_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SEND_CONTROL_MESSAGES_DIRECTLY;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_ETL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_GRID_FABRIC;
@@ -74,7 +75,6 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUS
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUSH_LIST;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TEMP_DIR_PREFIX;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.TIMESTAMP_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.UNCREATED_VERSION_NUMBER;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VALUE_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_DISCOVER_URL_PROP;
@@ -136,6 +136,7 @@ import com.linkedin.venice.schema.writecompute.WriteComputeOperation;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
+import com.linkedin.venice.spark.utils.RmdPushUtils;
 import com.linkedin.venice.status.PushJobDetailsStatus;
 import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.status.protocol.PushJobDetailsStatusTuple;
@@ -340,7 +341,7 @@ public class VenicePushJob implements AutoCloseable {
     pushJobSettingToReturn.jobServerName = props.getString(JOB_SERVER_NAME, "unknown_job_server");
     pushJobSettingToReturn.veniceControllerUrl = props.getString(VENICE_DISCOVER_URL_PROP);
     pushJobSettingToReturn.enableSSL = props.getBoolean(ENABLE_SSL, DEFAULT_SSL_ENABLED);
-    pushJobSettingToReturn.timestampField = props.getOrDefault(TIMESTAMP_FIELD_PROP, "");
+    pushJobSettingToReturn.rmdField = props.getOrDefault(RMD_FIELD_PROP, "");
     if (pushJobSettingToReturn.enableSSL) {
       VPJSSLUtils.validateSslProperties(props);
     }
@@ -736,6 +737,9 @@ public class VenicePushJob implements AutoCloseable {
             controllerClient,
             pushJobSetting,
             pushJobSetting.isSchemaAutoRegisterFromPushJobEnabled);
+        // Retrieve metadata and timestamp schemas, we should do this last as this is pending potentially newly
+        // registered schemas with the push job
+        validateAndSetRmdSchemas(controllerClient, pushJobSetting);
       }
 
       Optional<ByteBuffer> optionalCompressionDictionary = getCompressionDictionary();
@@ -2055,34 +2059,66 @@ public class VenicePushJob implements AutoCloseable {
       // Get value schema ID successfully
       setSchemaIdPropInPushJobSetting(pushJobSetting, getValueSchemaIdResponse, setting.enableWriteCompute);
     }
-
-    // Retrieve metadata and timestamp schemas, we should do this last as this is pending potentially newly registered
-    // schemas
-    // with the push job
-    MultiSchemaResponse replicationSchemasResponse = ControllerClient.retryableRequest(
-        controllerClient,
-        setting.controllerRetries,
-        c -> c.getAllReplicationMetadataSchemas(setting.storeName));
-    if (replicationSchemasResponse.isError()) {
-      LOGGER.error("Failed to fetch replication metadata schemas!" + replicationSchemasResponse.getError());
-    } else {
-      // We only need a single valid schema, so getting the first one is good enough.
-      if (replicationSchemasResponse.getSchemas() != null && replicationSchemasResponse.getSchemas().length > 0) {
-        pushJobSetting.replicationMetadataSchemaString = replicationSchemasResponse.getSchemas()[0].getSchemaStr();
-        LOGGER.info(
-            "Retrieved and using schema with id: {}, and string: {}",
-            replicationSchemasResponse.getSchemas()[0].getId(),
-            pushJobSetting.replicationMetadataSchemaString);
-      } else {
-        LOGGER.info("No replication schemas associated with the store!");
-      }
-    }
-
     LOGGER.info(
         "Got schema id: {} for value schema: {} of store: {}",
         pushJobSetting.valueSchemaId,
         pushJobSetting.valueSchemaString,
         setting.storeName);
+  }
+
+  /**
+   * Fetch RMD schemas if the push job contains RMD on top of key and value. Additionally, perform validations to ensure
+   * RMD schemas are fetched and disallow RMD pushes if the RMD schemas have evolved for the given value schema.
+   */
+  @VisibleForTesting
+  void validateAndSetRmdSchemas(ControllerClient controllerClient, PushJobSetting pushJobSetting) {
+    // No need to fetch RMD schema if the push does not include RMD or timestamp
+    if (!RmdPushUtils.rmdFieldPresent(pushJobSetting)) {
+      return;
+    }
+
+    MultiSchemaResponse replicationSchemasResponse = ControllerClient.retryableRequest(
+        controllerClient,
+        pushJobSetting.controllerRetries,
+        c -> c.getAllReplicationMetadataSchemas(pushJobSetting.storeName));
+    if (replicationSchemasResponse.isError()) {
+      LOGGER.error("Failed to fetch replication metadata schemas!" + replicationSchemasResponse.getError());
+    } else {
+      if (replicationSchemasResponse.getSchemas() != null && replicationSchemasResponse.getSchemas().length > 0) {
+        for (MultiSchemaResponse.Schema schema: replicationSchemasResponse.getSchemas()) {
+          if (schema.getRmdValueSchemaId() == pushJobSetting.valueSchemaId
+              && schema.getId() > pushJobSetting.rmdSchemaId) {
+            pushJobSetting.rmdSchemaId = schema.getId();
+            pushJobSetting.replicationMetadataSchemaString = schema.getSchemaStr();
+          }
+        }
+
+        if (pushJobSetting.rmdSchemaId > 0) {
+          LOGGER.info(
+              "Retrieved and using schema with id: {}, and string: {}",
+              pushJobSetting.rmdSchemaId,
+              pushJobSetting.replicationMetadataSchemaString);
+        } else {
+          LOGGER.info(
+              "No replication schema found for value schema id: {} in store: {}",
+              pushJobSetting.valueSchemaId,
+              pushJobSetting.storeName);
+        }
+      } else {
+        LOGGER.info("No replication schemas associated with the store!");
+      }
+    }
+
+    if (pushJobSetting.rmdSchemaId == -1) {
+      throw new VeniceException(
+          "Failed to find replication metadata schema for value schema id: " + pushJobSetting.valueSchemaId
+              + " in store: " + pushJobSetting.storeName + ". Cannot proceed with push to include RMD.");
+    } else if (pushJobSetting.rmdSchemaId > 1) {
+      throw new VeniceException(
+          "Cannot continue with push with RMD since the RMD schema for the value: " + pushJobSetting.valueSchemaId
+              + " has evolved to " + pushJobSetting.rmdSchemaId + ". RMD schema evolution is not supported yet.");
+
+    }
   }
 
   // Visible for unit testing
@@ -2096,7 +2132,7 @@ public class VenicePushJob implements AutoCloseable {
       return;
     }
     // Also allow batch push that will provide the row level timestamp field (compatible with TTL re-push)
-    if (setting.timestampField != null && !setting.timestampField.isEmpty()) {
+    if (setting.rmdField != null && !setting.rmdField.isEmpty()) {
       return;
     }
     StoreResponse storeResponse = ControllerClient

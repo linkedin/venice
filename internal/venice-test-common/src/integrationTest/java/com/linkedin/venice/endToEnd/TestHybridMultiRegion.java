@@ -13,7 +13,12 @@ import static com.linkedin.venice.ConfigKeys.SSL_TO_KAFKA_LEGACY;
 import static com.linkedin.venice.meta.BufferReplayPolicy.REWIND_FROM_EOP;
 import static com.linkedin.venice.meta.BufferReplayPolicy.REWIND_FROM_SOP;
 import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_OPERATION_TIMEOUT_MS_DEFAULT_VALUE;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJProps;
 import static com.linkedin.venice.utils.TestWriteUtils.STRING_SCHEMA;
+import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DATA_WRITER_COMPUTE_JOB_CLASS;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.RMD_FIELD_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SPARK_NATIVE_INPUT_FORMAT_ENABLED;
 import static com.linkedin.venice.writer.VeniceWriter.DEFAULT_TERM_ID;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
@@ -21,10 +26,13 @@ import static org.testng.Assert.assertNotEquals;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
+import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.controllerapi.VersionResponse;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
@@ -43,16 +51,20 @@ import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.serializer.AvroSerializer;
+import com.linkedin.venice.spark.datawriter.jobs.DataWriterSparkJob;
 import com.linkedin.venice.systemstore.schemas.StoreProperties;
 import com.linkedin.venice.utils.AvroRecordUtils;
+import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.StoreUtils;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.LeaderMetadataWrapper;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterOptions;
+import java.io.File;
 import java.io.IOException;
 import java.util.Collections;
 import java.util.Optional;
@@ -88,6 +100,83 @@ public class TestHybridMultiRegion {
   @AfterClass(alwaysRun = true)
   public void cleanUp() {
     Utils.closeQuietlyWithErrorLogged(sharedVenice);
+  }
+
+  @Test(timeOut = 180
+      * Time.MS_PER_SECOND, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testHybridBatchPushWithRmd(boolean useNativeInputFormat) throws IOException {
+    String clusterName = sharedVenice.getClusterNames()[0];
+    try (ControllerClient controllerClient =
+        new ControllerClient(clusterName, sharedVenice.getControllerConnectString())) {
+      long streamingRewindSeconds = 25L;
+      long streamingMessageLag = 2L;
+      final String storeName = Utils.getUniqueString("multi-colo-hybrid-store");
+
+      // Create store at parent, make it a hybrid store
+      TestUtils.assertCommand(
+          controllerClient.createNewStore(storeName, "owner", STRING_SCHEMA.toString(), STRING_SCHEMA.toString()));
+      TestUtils.assertCommand(
+          controllerClient.updateStore(
+              storeName,
+              new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true)
+                  .setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
+                  .setHybridRewindSeconds(streamingRewindSeconds)
+                  .setHybridOffsetLagThreshold(streamingMessageLag)));
+      controllerClient.emptyPush(storeName, Utils.getUniqueString("empty-hybrid-push"), 1L);
+      File inputDir = getTempDataDirectory();
+      String inputDirPath = "file://" + inputDir.getAbsolutePath();
+      TestWriteUtils.writeSimpleAvroFileWithStringToStringAndTimestampSchema(inputDir, 123456789L); // records 1-100
+      Properties vpjProperties = defaultVPJProps(sharedVenice, inputDirPath, storeName);
+      vpjProperties.setProperty(RMD_FIELD_PROP, "rmd");
+      vpjProperties.setProperty(DATA_WRITER_COMPUTE_JOB_CLASS, DataWriterSparkJob.class.getCanonicalName());
+      vpjProperties.setProperty(SPARK_NATIVE_INPUT_FORMAT_ENABLED, String.valueOf(useNativeInputFormat));
+
+      // Do a VPJ push normally to make sure everything is working fine.
+      IntegrationTestPushUtils.runVPJ(vpjProperties);
+      StoreResponse storeResponse = TestUtils.assertCommand(controllerClient.getStore(storeName));
+      Assert.assertEquals(storeResponse.getStore().getVersions().size(), 2);
+    }
+  }
+
+  @Test(timeOut = 180
+      * Time.MS_PER_SECOND, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testHybridBatchPushWithInvalidRmd(boolean useNativeInputFormat) throws IOException {
+    String clusterName = sharedVenice.getClusterNames()[0];
+    try (ControllerClient controllerClient =
+        new ControllerClient(clusterName, sharedVenice.getControllerConnectString())) {
+      long streamingRewindSeconds = 25L;
+      long streamingMessageLag = 2L;
+      final String storeName = Utils.getUniqueString("multi-colo-hybrid-store");
+
+      // Create store at parent, make it a hybrid store
+      TestUtils.assertCommand(
+          controllerClient.createNewStore(storeName, "owner", STRING_SCHEMA.toString(), STRING_SCHEMA.toString()));
+      ControllerResponse response = TestUtils.assertCommand(
+          controllerClient.updateStore(
+              storeName,
+              new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true)
+                  .setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
+                  .setHybridRewindSeconds(streamingRewindSeconds)
+                  .setHybridOffsetLagThreshold(streamingMessageLag)));
+      controllerClient.emptyPush(storeName, Utils.getUniqueString("empty-hybrid-push"), 1L);
+      File inputDir = getTempDataDirectory();
+      String inputDirPath = "file://" + inputDir.getAbsolutePath();
+      TestWriteUtils
+          .writeSimpleAvroFileWithStringToStringAndTimestampSchema(inputDir, String.valueOf(123456789L).getBytes()); // records
+                                                                                                                     // 1-100
+      Properties vpjProperties = defaultVPJProps(sharedVenice, inputDirPath, storeName);
+      vpjProperties.setProperty(RMD_FIELD_PROP, "rmd");
+      vpjProperties.setProperty(DATA_WRITER_COMPUTE_JOB_CLASS, DataWriterSparkJob.class.getCanonicalName());
+      vpjProperties.setProperty(SPARK_NATIVE_INPUT_FORMAT_ENABLED, String.valueOf(useNativeInputFormat));
+
+      Assert.assertFalse(response.isError());
+      // push should fail validation
+      VeniceException failureException =
+          Assert.expectThrows(VeniceException.class, () -> IntegrationTestPushUtils.runVPJ(vpjProperties));
+      Assert.assertTrue(
+          failureException.getMessage().contains("Input rmd schema does not match the server side RMD schema"),
+          "The exception message does not match with the expected one RMD validation failure");
+    }
   }
 
   @Test(timeOut = 180 * Time.MS_PER_SECOND)

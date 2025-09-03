@@ -209,8 +209,7 @@ def integrationTestBuckets = [
         "com.linkedin.venice.endToEnd.DaVinciClientTest",
         "com.linkedin.venice.endToEnd.TestBatchForRocksDB",
         "com.linkedin.venice.controller.TestHAASController",
-        "com.linkedin.venice.server.VeniceServerTest",
-        "com.linkedin.venice.endToEnd.TestTopicWiseSharedConsumerPoolResilience"
+        "com.linkedin.venice.server.VeniceServerTest"
     ],
     "13": [
         "com.linkedin.venice.endToEnd.DaVinciComputeTest",

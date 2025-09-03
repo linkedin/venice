@@ -174,6 +174,12 @@ public class AvroSchemaUtils {
     return Schema.parse(schemaOb.toString());
   }
 
+  public static boolean compareSchema(Schema s1, Schema s2) {
+    String canonicalSchema1 = AvroCompatibilityHelper.toParsingForm(s1);
+    String canonicalSchema2 = AvroCompatibilityHelper.toParsingForm(s2);
+    return canonicalSchema2.equals(canonicalSchema1);
+  }
+
   /**
    * Compares two schema with possible re-ordering of the fields. Otherwise, If compares every field at every level.
    * @param s1

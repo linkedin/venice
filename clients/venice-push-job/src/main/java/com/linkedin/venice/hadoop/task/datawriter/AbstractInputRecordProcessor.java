@@ -45,6 +45,7 @@ public abstract class AbstractInputRecordProcessor<INPUT_KEY, INPUT_VALUE> exten
     implements Closeable {
   private static final Logger LOGGER = LogManager.getLogger(AbstractInputRecordProcessor.class);
   private static final int TASK_ID_WHICH_SHOULD_SPRAY_ALL_PARTITIONS = 0;
+  public static final byte[] EMPTY_BYTES = new byte[0];
 
   // Compression related
   private CompressionStrategy compressionStrategy;
@@ -53,10 +54,9 @@ public abstract class AbstractInputRecordProcessor<INPUT_KEY, INPUT_VALUE> exten
   private VeniceCompressor[] compressors;
 
   protected AbstractVeniceRecordReader<INPUT_KEY, INPUT_VALUE> veniceRecordReader;
-  private static final byte[] EMPTY_BYTES = new byte[0];
   private final AtomicReference<byte[]> processedKey = new AtomicReference<>();
   private final AtomicReference<byte[]> processedValue = new AtomicReference<>();
-  private final AtomicReference<Long> processedTimestamp = new AtomicReference<>();
+  private final AtomicReference<byte[]> processedRmd = new AtomicReference<>();
   private boolean firstRecord = true;
   private boolean enableUncompressedMaxRecordSizeLimit = false;
   private int maxRecordSizeBytes = VeniceWriter.UNLIMITED_MAX_RECORD_SIZE;
@@ -64,28 +64,21 @@ public abstract class AbstractInputRecordProcessor<INPUT_KEY, INPUT_VALUE> exten
   protected final void processRecord(
       INPUT_KEY inputKey,
       INPUT_VALUE inputValue,
-      Long timestamp,
-      TriConsumer<byte[], byte[], Long> recordEmitter,
+      byte[] inputRmd,
+      TriConsumer<byte[], byte[], byte[]> recordEmitter,
       DataWriterTaskTracker dataWriterTaskTracker) {
     if (firstRecord) {
       maybeSprayAllPartitions(recordEmitter, dataWriterTaskTracker);
     }
     firstRecord = false;
-    if (process(
-        inputKey,
-        inputValue,
-        timestamp,
-        processedKey,
-        processedValue,
-        processedTimestamp,
-        dataWriterTaskTracker)) {
+    if (process(inputKey, inputValue, inputRmd, processedKey, processedValue, processedRmd, dataWriterTaskTracker)) {
       // key/value pair is valid.
-      recordEmitter.accept(processedKey.get(), processedValue.get(), processedTimestamp.get());
+      recordEmitter.accept(processedKey.get(), processedValue.get(), processedRmd.get());
     }
   }
 
   private void maybeSprayAllPartitions(
-      TriConsumer<byte[], byte[], Long> recordEmitter,
+      TriConsumer<byte[], byte[], byte[]> recordEmitter,
       DataWriterTaskTracker dataWriterTaskTracker) {
     /** First map invocation, since the {@link recordKey} will be set after this. */
     if (getTaskId() == TASK_ID_NOT_SET) {
@@ -97,7 +90,7 @@ public abstract class AbstractInputRecordProcessor<INPUT_KEY, INPUT_VALUE> exten
     for (int i = 0; i < getPartitionCount(); i++) {
       byte[] recordValue = new byte[Integer.BYTES];
       ByteUtils.writeInt(recordValue, i, 0);
-      recordEmitter.accept(EMPTY_BYTES, recordValue, -1L);
+      recordEmitter.accept(EMPTY_BYTES, recordValue, null);
     }
     dataWriterTaskTracker.trackSprayAllPartitions();
     LOGGER.info(
@@ -125,14 +118,14 @@ public abstract class AbstractInputRecordProcessor<INPUT_KEY, INPUT_VALUE> exten
   protected boolean process(
       INPUT_KEY inputKey,
       INPUT_VALUE inputValue,
-      Long timestamp,
+      byte[] rmd,
       AtomicReference<byte[]> keyRef,
       AtomicReference<byte[]> valueRef,
-      AtomicReference<Long> timestampRef,
+      AtomicReference<byte[]> rmdRef,
       DataWriterTaskTracker dataWriterTaskTracker) {
     byte[] recordKey = veniceRecordReader.getKeyBytes(inputKey, inputValue);
     byte[] recordValue = veniceRecordReader.getValueBytes(inputKey, inputValue);
-    Long recordTimestamp = timestamp;
+    byte[] recordRmd = rmd;
     if (recordKey == null) {
       throw new VeniceException("Mapper received a empty key record");
     }
@@ -170,7 +163,7 @@ public abstract class AbstractInputRecordProcessor<INPUT_KEY, INPUT_VALUE> exten
     dataWriterTaskTracker.trackCompressedValueSize(finalRecordValue.length);
     keyRef.set(recordKey);
     valueRef.set(finalRecordValue);
-    timestampRef.set(recordTimestamp);
+    rmdRef.set(recordRmd);
 
     if (compressionMetricCollectionEnabled) {
       // Compress based on all compression strategies to collect metrics
