@@ -25,6 +25,7 @@ import com.linkedin.venice.fastclient.meta.StoreMetadata;
 import com.linkedin.venice.fastclient.transport.GrpcTransportClient;
 import com.linkedin.venice.fastclient.transport.R2TransportClient;
 import com.linkedin.venice.fastclient.transport.TransportClientResponseForRoute;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.read.RequestHeadersProvider;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.read.protocol.request.router.MultiGetRouterRequestKeyV1;
@@ -159,7 +160,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
   }
 
   private String getResourceName(int currentVersion) {
-    return metadata.getStoreName() + "_v" + currentVersion;
+    return Version.composeKafkaTopic(metadata.getStoreName(), currentVersion);
   }
 
   @Override
@@ -775,5 +776,23 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
   @Override
   public SchemaReader getSchemaReader() {
     return metadata;
+  }
+
+  @Override
+  public ServerSideAggregationRequestBuilder<K> getServerSideAggregationRequestBuilder() throws VeniceClientException {
+    // Only support server-side aggregation for gRPC clients
+    if (!config.useGrpc()) {
+      throw new VeniceClientException("Server-side aggregation is only supported for gRPC clients");
+    }
+
+    if (!(transportClient instanceof GrpcTransportClient)) {
+      throw new VeniceClientException("Server-side aggregation requires a gRPC transport client");
+    }
+
+    verifyMetadataInitialized();
+    return new ServerSideAggregationRequestBuilderImpl<>(
+        metadata,
+        (GrpcTransportClient) transportClient,
+        keySerializer);
   }
 }
