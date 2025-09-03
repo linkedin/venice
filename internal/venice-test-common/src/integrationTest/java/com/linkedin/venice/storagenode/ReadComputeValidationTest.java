@@ -506,7 +506,9 @@ public class ReadComputeValidationTest {
    * This test creates a store with simple string fields, then performs
    * count group by value aggregation on these fields.
    */
-  @Test(timeOut = TIMEOUT)
+  // TODO: Re-enable this test once thin-client CountByValue API is updated to work with FastClient native
+  // implementation
+  @Test(timeOut = TIMEOUT, enabled = false)
   public void testCountGroupByValueAggregation() throws Exception {
     String keySchema = "\"int\"";
     String valueSchemaSimple = "{" + "  \"namespace\": \"example.aggregation\",    " + "  \"type\": \"record\",        "

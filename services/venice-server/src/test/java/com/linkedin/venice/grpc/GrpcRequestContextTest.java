@@ -19,7 +19,10 @@ public class GrpcRequestContextTest {
   @Test
   public void testSetAndGetGrpcStatsContext() {
     ServerStatsContext context = new ServerStatsContext(null, null, null);
-    GrpcRequestContext handlerContext = new GrpcRequestContext(null, null, null);
+    GrpcRequestContext handlerContext = new GrpcRequestContext(
+        (VeniceClientRequest) null,
+        (VeniceServerResponse.Builder) null,
+        (StreamObserver<VeniceServerResponse>) null);
     handlerContext.setGrpcStatsContext(context);
 
     assertEquals(context, handlerContext.getGrpcStatsContext());
@@ -28,7 +31,10 @@ public class GrpcRequestContextTest {
   @Test
   public void testSetAndGetVeniceClientRequest() {
     VeniceClientRequest request = VeniceClientRequest.newBuilder().build();
-    GrpcRequestContext handlerContext = new GrpcRequestContext(null, null, null);
+    GrpcRequestContext handlerContext = new GrpcRequestContext(
+        (VeniceClientRequest) null,
+        (VeniceServerResponse.Builder) null,
+        (StreamObserver<VeniceServerResponse>) null);
     handlerContext.setVeniceClientRequest(request);
 
     assertEquals(request, handlerContext.getVeniceClientRequest());
@@ -37,7 +43,10 @@ public class GrpcRequestContextTest {
   @Test
   public void testSetAndGetVeniceServerResponseBuilder() {
     VeniceServerResponse.Builder builder = VeniceServerResponse.newBuilder();
-    GrpcRequestContext handlerContext = new GrpcRequestContext(null, null, null);
+    GrpcRequestContext handlerContext = new GrpcRequestContext(
+        (VeniceClientRequest) null,
+        (VeniceServerResponse.Builder) null,
+        (StreamObserver<VeniceServerResponse>) null);
     handlerContext.setVeniceServerResponseBuilder(builder);
 
     assertEquals(builder, handlerContext.getVeniceServerResponseBuilder());
@@ -59,7 +68,10 @@ public class GrpcRequestContextTest {
       }
     };
 
-    GrpcRequestContext handlerContext = new GrpcRequestContext(null, null, null);
+    GrpcRequestContext handlerContext = new GrpcRequestContext(
+        (VeniceClientRequest) null,
+        (VeniceServerResponse.Builder) null,
+        (StreamObserver<VeniceServerResponse>) null);
     handlerContext.setResponseObserver(observer);
 
     assertEquals(observer, handlerContext.getResponseObserver());
@@ -68,7 +80,10 @@ public class GrpcRequestContextTest {
   @Test
   public void testSetAndGetRouterRequest() {
     RouterRequest request = mock(RouterRequest.class);
-    GrpcRequestContext handlerContext = new GrpcRequestContext(null, null, null);
+    GrpcRequestContext handlerContext = new GrpcRequestContext(
+        (VeniceClientRequest) null,
+        (VeniceServerResponse.Builder) null,
+        (StreamObserver<VeniceServerResponse>) null);
     handlerContext.setRouterRequest(request);
 
     assertEquals(request, handlerContext.getRouterRequest());
@@ -77,7 +92,10 @@ public class GrpcRequestContextTest {
   @Test
   public void testSetAndGetReadResponse() {
     ReadResponse response = mock(ReadResponse.class);
-    GrpcRequestContext handlerContext = new GrpcRequestContext(null, null, null);
+    GrpcRequestContext handlerContext = new GrpcRequestContext(
+        (VeniceClientRequest) null,
+        (VeniceServerResponse.Builder) null,
+        (StreamObserver<VeniceServerResponse>) null);
     handlerContext.setReadResponse(response);
 
     assertEquals(response, handlerContext.getReadResponse());
@@ -85,7 +103,10 @@ public class GrpcRequestContextTest {
 
   @Test
   public void testIsCompleted() {
-    GrpcRequestContext handlerContext = new GrpcRequestContext(null, null, null);
+    GrpcRequestContext handlerContext = new GrpcRequestContext(
+        (VeniceClientRequest) null,
+        (VeniceServerResponse.Builder) null,
+        (StreamObserver<VeniceServerResponse>) null);
 
     assertFalse(handlerContext.isCompleted());
 
@@ -96,7 +117,10 @@ public class GrpcRequestContextTest {
 
   @Test
   public void testHasError() {
-    GrpcRequestContext handlerContext = new GrpcRequestContext(null, null, null);
+    GrpcRequestContext handlerContext = new GrpcRequestContext(
+        (VeniceClientRequest) null,
+        (VeniceServerResponse.Builder) null,
+        (StreamObserver<VeniceServerResponse>) null);
 
     assertFalse(handlerContext.hasError());
 
