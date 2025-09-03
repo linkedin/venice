@@ -1555,9 +1555,8 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       boolean updateDIV,
       PubSubMessageHeaders pubSubMessageHeaders) {
     if (isClosed) {
-      CompletableFuture<PubSubProduceResult> future = new CompletableFuture<>();
-      future.completedFuture(null);
-      logger.warn("VeniceWriter already closed for topic {} partition {}" + topicName, partition);
+      CompletableFuture<PubSubProduceResult> future = CompletableFuture.completedFuture(null);
+      logger.warn("VeniceWriter already closed for replica {}" + Utils.getReplicaId(topicName, partition));
       return future;
     }
     synchronized (this.partitionLocks[partition]) {
