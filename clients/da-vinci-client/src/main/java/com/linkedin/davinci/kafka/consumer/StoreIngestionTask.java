@@ -2758,7 +2758,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     offsetRecord.setDatabaseInfo(dbCheckpointingInfoReference.get());
     // Update key urn compression dictionary
     offsetRecord.setKeyUrnCompressionDict(pcs.getKeyUrnCompressionDict());
-    // Update value urn compression dictionary
     storageMetadataService.put(this.kafkaVersionTopic, partition, offsetRecord);
     pcs.resetProcessedRecordSizeSinceLastSync();
     String msg = "Offset synced for replica: " + pcs.getReplicaId() + " - localVtOffset: {}";
@@ -3079,9 +3078,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      * Update the transactional/deferred mode of the partition.
      */
     partitionConsumptionState.setDeferredWrite(storagePartitionConfig.isDeferredWrite());
-    System.out.println(
-        "Calling end batch write for partition: " + partitionConsumptionState.getPartition() + ", replica: "
-            + partitionConsumptionState.getReplicaId() + ", offset: " + offset);
 
     /**
      * Indicate the batch push is done, and the internal storage engine needs to do some cleanup.
