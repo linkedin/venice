@@ -1063,7 +1063,7 @@ public class PartitionConsumptionState {
     return dict;
   }
 
-  public KeyUrnCompressor getKeyDictCompression() {
+  public KeyUrnCompressor getKeyDictCompressor() {
     return keyUrnCompressor;
   }
 }
