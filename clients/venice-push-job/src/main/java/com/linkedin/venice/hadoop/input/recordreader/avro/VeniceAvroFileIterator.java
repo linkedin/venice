@@ -21,7 +21,7 @@ public class VeniceAvroFileIterator implements VeniceRecordIterator {
 
   private byte[] currentKey = null;
   private byte[] currentValue = null;
-  private long timestamp = -1L;
+  private byte[] currentRmd = null;
 
   public VeniceAvroFileIterator(
       FileSystem fs,
@@ -54,8 +54,8 @@ public class VeniceAvroFileIterator implements VeniceRecordIterator {
   }
 
   @Override
-  public long getTimeStamp() {
-    return timestamp;
+  public byte[] getCurrentRmd() {
+    return currentRmd;
   }
 
   @Override
@@ -67,7 +67,7 @@ public class VeniceAvroFileIterator implements VeniceRecordIterator {
     AvroWrapper<IndexedRecord> avroObject = new AvroWrapper<>((IndexedRecord) avroDataFileStream.next());
     currentKey = recordReader.getKeyBytes(avroObject, null);
     currentValue = recordReader.getValueBytes(avroObject, null);
-    timestamp = recordReader.getRecordTimestamp(avroObject, null);
+    currentRmd = recordReader.getRmdBytes(avroObject, null);
     return true;
   }
 

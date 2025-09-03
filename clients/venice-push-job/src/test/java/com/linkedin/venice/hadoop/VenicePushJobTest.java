@@ -10,6 +10,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.CONTROLLER_REQUEST_
 import static com.linkedin.venice.vpj.VenicePushJobConstants.D2_ZK_HOSTS_PREFIX;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DATA_WRITER_COMPUTE_JOB_CLASS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_RMD_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFER_VERSION_SWAP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH;
@@ -50,6 +51,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
@@ -142,6 +144,16 @@ public class VenicePushJobTest {
   private static final String KEY_SCHEMA_STR = "\"string\"";
   private static final String VALUE_SCHEMA_STR = "\"string\"";
 
+  private static final String RMD_SCHEMA_STR = "{\"type\":\"record\",\"name\":\"__replication_metadata\","
+      + "\"namespace\":\"com.linkedin.venice\",\"fields\":[{\"name\":\"_venice_replication_checkpoint_vector\","
+      + "\"type\":{\"type\":\"array\",\"items\":\"long\"},\"default\":[]},{\"name\":\"_venice_timestamp\","
+      + "\"type\":\"long\",\"default\":0}]}";
+
+  private static final String RMD_SCHEMA_STR_V2 = "{\"type\":\"record\",\"name\":\"__replication_metadata\","
+      + "\"namespace\":\"com.linkedin.venice\",\"fields\":[{\"name\":\"_venice_replication_checkpoint_vector\","
+      + "\"type\":{\"type\":\"array\",\"items\":\"long\"},\"default\":[]},{\"name\":\"_venice_timestamp\","
+      + "\"type\":\"long\",\"default\":0},{\"name\":\"_venice_extra_field\",\"type\":\"string\",\"default\":\"\"}]}";
+
   private static final String SIMPLE_FILE_SCHEMA_STR = "{\n" + "    \"namespace\": \"example.avro\",\n"
       + "    \"type\": \"record\",\n" + "    \"name\": \"User\",\n" + "    \"fields\": [\n"
       + "      { \"name\": \"id\", \"type\": \"string\" },\n" + "      { \"name\": \"name\", \"type\": \"string\" },\n"
@@ -154,6 +166,107 @@ public class VenicePushJobTest {
     when(vpj.isUpdateSchema(anyString())).thenCallRealMethod();
     Assert.assertTrue(vpj.isUpdateSchema(NAME_RECORD_V1_UPDATE_SCHEMA.toString()));
     Assert.assertFalse(vpj.isUpdateSchema(NAME_RECORD_V1_SCHEMA.toString()));
+  }
+
+  @Test
+  public void testValidateAndRetrieveRmdSchemaWithNoRmdField() {
+    PushJobSetting setting = new PushJobSetting();
+    setting.storeName = TEST_STORE;
+    ControllerClient mockClient = mock(ControllerClient.class);
+    VenicePushJob vpj = mock(VenicePushJob.class);
+    doCallRealMethod().when(vpj).validateAndSetRmdSchemas(any(), any());
+    vpj.validateAndSetRmdSchemas(mockClient, setting);
+    verifyNoInteractions(mockClient);
+  }
+
+  @Test(expectedExceptions = VeniceException.class)
+  public void testValidateAndRetrieveRmdSchemaWithErrorResponseFromController() {
+    PushJobSetting setting = new PushJobSetting();
+    setting.rmdField = DEFAULT_RMD_FIELD_PROP;
+    setting.storeName = TEST_STORE;
+    setting.controllerRetries = 1;
+    ControllerClient mockClient = mock(ControllerClient.class);
+
+    MultiSchemaResponse mockResponse = mock(MultiSchemaResponse.class);
+    when(mockResponse.isError()).thenReturn(true);
+    when(mockClient.getAllReplicationMetadataSchemas(eq(TEST_STORE))).thenReturn(mockResponse);
+    VenicePushJob vpj = mock(VenicePushJob.class);
+    doCallRealMethod().when(vpj).validateAndSetRmdSchemas(any(), any());
+    vpj.validateAndSetRmdSchemas(mockClient, setting);
+  }
+
+  @Test
+  public void testValidateAndRetrieveRmdSchema() {
+    PushJobSetting setting = new PushJobSetting();
+    setting.rmdField = DEFAULT_RMD_FIELD_PROP;
+    setting.storeName = TEST_STORE;
+    setting.controllerRetries = 1;
+    setting.valueSchemaId = 1;
+    ControllerClient mockClient = mock(ControllerClient.class);
+
+    MultiSchemaResponse mockResponse = mock(MultiSchemaResponse.class);
+    MultiSchemaResponse.Schema rmdSchema = mock(MultiSchemaResponse.Schema.class);
+    when(rmdSchema.getRmdValueSchemaId()).thenReturn(1);
+    when(rmdSchema.getId()).thenReturn(1);
+    when(rmdSchema.getSchemaStr()).thenReturn(RMD_SCHEMA_STR);
+    when(mockResponse.getSchemas()).thenReturn(new MultiSchemaResponse.Schema[] { rmdSchema });
+    when(mockResponse.isError()).thenReturn(false);
+    when(mockClient.getAllReplicationMetadataSchemas(eq(TEST_STORE))).thenReturn(mockResponse);
+    VenicePushJob vpj = mock(VenicePushJob.class);
+    doCallRealMethod().when(vpj).validateAndSetRmdSchemas(any(), any());
+    vpj.validateAndSetRmdSchemas(mockClient, setting);
+    Assert.assertEquals(setting.replicationMetadataSchemaString, RMD_SCHEMA_STR);
+    Assert.assertEquals(setting.rmdSchemaId, 1);
+  }
+
+  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = "Cannot continue with push with RMD since the RMD schema for the value.*")
+  public void testValidateAndRetrieveRmdSchemaWithMultipleRmdSchemas() {
+    PushJobSetting setting = new PushJobSetting();
+    setting.rmdField = DEFAULT_RMD_FIELD_PROP;
+    setting.storeName = TEST_STORE;
+    setting.controllerRetries = 1;
+    setting.valueSchemaId = 1;
+    ControllerClient mockClient = mock(ControllerClient.class);
+
+    MultiSchemaResponse mockResponse = mock(MultiSchemaResponse.class);
+    MultiSchemaResponse.Schema rmdSchemaV1 = mock(MultiSchemaResponse.Schema.class);
+    when(rmdSchemaV1.getRmdValueSchemaId()).thenReturn(1);
+    when(rmdSchemaV1.getId()).thenReturn(1);
+    when(rmdSchemaV1.getSchemaStr()).thenReturn(RMD_SCHEMA_STR);
+
+    MultiSchemaResponse.Schema rmdSchemaV2 = mock(MultiSchemaResponse.Schema.class);
+    when(rmdSchemaV2.getRmdValueSchemaId()).thenReturn(1);
+    when(rmdSchemaV2.getId()).thenReturn(2);
+    when(rmdSchemaV2.getSchemaStr()).thenReturn(RMD_SCHEMA_STR_V2);
+
+    when(mockResponse.getSchemas()).thenReturn(new MultiSchemaResponse.Schema[] { rmdSchemaV1, rmdSchemaV2 });
+    when(mockResponse.isError()).thenReturn(false);
+    when(mockClient.getAllReplicationMetadataSchemas(eq(TEST_STORE))).thenReturn(mockResponse);
+    VenicePushJob vpj = mock(VenicePushJob.class);
+    doCallRealMethod().when(vpj).validateAndSetRmdSchemas(any(), any());
+    vpj.validateAndSetRmdSchemas(mockClient, setting);
+  }
+
+  @Test(expectedExceptions = VeniceException.class)
+  public void testValidateAndRetrieveRmdSchemaWithNoRmdSchemaForValueSchema() {
+    PushJobSetting setting = new PushJobSetting();
+    setting.rmdField = DEFAULT_RMD_FIELD_PROP;
+    setting.storeName = TEST_STORE;
+    setting.controllerRetries = 1;
+    setting.valueSchemaId = 1;
+    ControllerClient mockClient = mock(ControllerClient.class);
+
+    MultiSchemaResponse mockResponse = mock(MultiSchemaResponse.class);
+    MultiSchemaResponse.Schema rmdSchema = mock(MultiSchemaResponse.Schema.class);
+    when(rmdSchema.getRmdValueSchemaId()).thenReturn(2);
+    when(rmdSchema.getId()).thenReturn(1);
+    when(rmdSchema.getSchemaStr()).thenReturn(RMD_SCHEMA_STR);
+    when(mockResponse.getSchemas()).thenReturn(new MultiSchemaResponse.Schema[] { rmdSchema });
+    when(mockResponse.isError()).thenReturn(false);
+    when(mockClient.getAllReplicationMetadataSchemas(eq(TEST_STORE))).thenReturn(mockResponse);
+    VenicePushJob vpj = mock(VenicePushJob.class);
+    doCallRealMethod().when(vpj).validateAndSetRmdSchemas(any(), any());
+    vpj.validateAndSetRmdSchemas(mockClient, setting);
   }
 
   @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Repush with TTL is only supported while using Kafka Input Format.*")

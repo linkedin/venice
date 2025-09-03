@@ -15,6 +15,7 @@ import static com.linkedin.venice.spark.SparkConstants.DEFAULT_SCHEMA_WITH_PARTI
 import static com.linkedin.venice.spark.SparkConstants.DEFAULT_SPARK_CLUSTER;
 import static com.linkedin.venice.spark.SparkConstants.KEY_COLUMN_NAME;
 import static com.linkedin.venice.spark.SparkConstants.PARTITION_COLUMN_NAME;
+import static com.linkedin.venice.spark.SparkConstants.RMD_COLUMN_NAME;
 import static com.linkedin.venice.spark.SparkConstants.SPARK_CASE_SENSITIVE_CONFIG;
 import static com.linkedin.venice.spark.SparkConstants.SPARK_CLUSTER_CONFIG;
 import static com.linkedin.venice.spark.SparkConstants.SPARK_DATA_WRITER_CONF_PREFIX;
@@ -37,6 +38,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_ENABLE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_POLICY;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_START_TIMESTAMP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.RMD_SCHEMA_DIR;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.RMD_SCHEMA_ID_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.RMD_SCHEMA_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_CONFIGURATOR_CLASS_CONFIG;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_KEY_PASSWORD_PROPERTY_NAME;
@@ -54,7 +56,9 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.ZSTD_DICTIONARY_CRE
 
 import com.github.luben.zstd.Zstd;
 import com.linkedin.venice.ConfigKeys;
+import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.hadoop.PushJobSetting;
 import com.linkedin.venice.hadoop.exceptions.VeniceInvalidInputException;
@@ -63,19 +67,24 @@ import com.linkedin.venice.hadoop.ssl.TempFileSSLConfigurator;
 import com.linkedin.venice.hadoop.task.datawriter.DataWriterTaskTracker;
 import com.linkedin.venice.jobs.DataWriterComputeJob;
 import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
+import com.linkedin.venice.schema.AvroSchemaParseUtils;
 import com.linkedin.venice.spark.datawriter.partition.PartitionSorter;
 import com.linkedin.venice.spark.datawriter.partition.VeniceSparkPartitioner;
 import com.linkedin.venice.spark.datawriter.recordprocessor.SparkInputRecordProcessorFactory;
+import com.linkedin.venice.spark.datawriter.recordprocessor.SparkLogicalTimestampProcessor;
 import com.linkedin.venice.spark.datawriter.task.DataWriterAccumulators;
 import com.linkedin.venice.spark.datawriter.task.SparkDataWriterTaskTracker;
 import com.linkedin.venice.spark.datawriter.writer.SparkPartitionWriterFactory;
+import com.linkedin.venice.spark.utils.RmdPushUtils;
 import com.linkedin.venice.spark.utils.SparkPartitionUtils;
 import com.linkedin.venice.spark.utils.SparkScalaUtils;
+import com.linkedin.venice.utils.AvroSchemaUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.io.IOException;
 import java.util.Properties;
 import java.util.UUID;
+import org.apache.avro.Schema;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.spark.SparkConf;
@@ -221,6 +230,7 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
     } else {
       jobConf.set(VALUE_SCHEMA_ID_PROP, pushJobSetting.valueSchemaId);
       jobConf.set(DERIVED_SCHEMA_ID_PROP, pushJobSetting.derivedSchemaId);
+      jobConf.set(RMD_SCHEMA_ID_PROP, pushJobSetting.rmdSchemaId);
     }
     jobConf.set(ENABLE_WRITE_COMPUTE, pushJobSetting.enableWriteCompute);
     if (pushJobSetting.replicationMetadataSchemaString != null) {
@@ -301,6 +311,24 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
    */
   protected abstract Dataset<Row> getUserInputDataFrame();
 
+  /*
+   * Validates the presence of RMD field and then ensures the input schema is valid for the rest of the pipeline to run.
+   * In case of input RMD being logical timestamp, we adapt the timestamp to RMD in # getUserInputDataFrame().
+   * Otherwise, check for subset check with the RMD schema associated with the store for the given input value schema.
+   */
+  protected void validateRmdSchema(PushJobSetting pushJobSetting) {
+    if (RmdPushUtils.rmdFieldPresent(pushJobSetting)) {
+      Schema inputRmdSchema = RmdPushUtils.getInputRmdSchema(pushJobSetting);
+      if ((!RmdPushUtils.containsLogicalTimestamp(pushJobSetting) && !AvroSchemaUtils.compareSchema(
+          inputRmdSchema,
+          AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation(pushJobSetting.replicationMetadataSchemaString)))) {
+        throw new VeniceException(
+            "Input rmd schema does not match the server side RMD schema. Input rmd schema: " + inputRmdSchema
+                + " , server side schema: " + pushJobSetting.replicationMetadataSchemaString);
+      }
+    }
+  }
+
   private Dataset<Row> getInputDataFrame() {
     if (pushJobSetting.isSourceKafka) {
       throw new VeniceUnsupportedOperationException("Spark push job for repush workloads");
@@ -337,6 +365,7 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
     // Load data from input path
     Dataset<Row> dataFrame = getInputDataFrame();
     validateDataFrame(dataFrame);
+    validateRmdSchema(pushJobSetting);
 
     ExpressionEncoder<Row> rowEncoder = RowEncoder.apply(DEFAULT_SCHEMA);
     ExpressionEncoder<Row> rowEncoderWithPartition = RowEncoder.apply(DEFAULT_SCHEMA_WITH_PARTITION);
@@ -352,6 +381,11 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
       // Convert all rows to byte[], byte[] pairs (compressed if compression is enabled)
       // We could have worked with "map", but because of spraying all PartitionWriters, we need to use "flatMap"
       dataFrame = dataFrame
+          .map(
+              new SparkLogicalTimestampProcessor(
+                  RmdPushUtils.containsLogicalTimestamp(pushJobSetting),
+                  pushJobSetting.replicationMetadataSchemaString),
+              rowEncoder)
           .flatMap(new SparkInputRecordProcessorFactory(broadcastProperties, accumulatorsForDataWriterJob), rowEncoder);
 
       // TODO: Add map-side combiner to reduce the data size before shuffling
@@ -421,7 +455,8 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
     LOGGER.info("  {}: {}", accumulator.name().get(), accumulator.value());
   }
 
-  private void validateDataFrame(Dataset<Row> dataFrameForDataWriterJob) {
+  @VisibleForTesting
+  void validateDataFrame(Dataset<Row> dataFrameForDataWriterJob) {
     if (dataFrameForDataWriterJob == null) {
       throw new VeniceInvalidInputException("The input data frame cannot be null");
     }
@@ -429,47 +464,16 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
     StructType dataSchema = dataFrameForDataWriterJob.schema();
     StructField[] fields = dataSchema.fields();
 
-    if (fields.length < 2) {
+    if (fields.length < 3) {
       String errorMessage =
           String.format("The provided input data does not have enough fields. Provided schema: %s.", dataSchema);
       throw new VeniceInvalidInputException(errorMessage);
     }
 
-    int keyFieldIndex = SparkScalaUtils.getFieldIndex(dataSchema, KEY_COLUMN_NAME);
+    validateDataFrameFieldAndTypes(fields, dataSchema, KEY_COLUMN_NAME, DataTypes.BinaryType);
+    validateDataFrameFieldAndTypes(fields, dataSchema, VALUE_COLUMN_NAME, DataTypes.BinaryType);
 
-    if (keyFieldIndex == -1) {
-      String errorMessage = String.format(
-          "The provided input data frame does not have a %s field. Provided schema: %s.",
-          KEY_COLUMN_NAME,
-          dataSchema);
-      throw new VeniceInvalidInputException(errorMessage);
-    }
-
-    StructField keyField = fields[keyFieldIndex];
-    DataType keyType = keyField.dataType();
-    if (!keyType.equals(DataTypes.BinaryType)) {
-      String errorMessage =
-          String.format("The provided input key field's schema must be %s. Got: %s.", DataTypes.BinaryType, keyType);
-      throw new VeniceInvalidInputException(errorMessage);
-    }
-
-    int valueFieldIndex = SparkScalaUtils.getFieldIndex(dataSchema, VALUE_COLUMN_NAME);
-
-    if (valueFieldIndex == -1) {
-      String errorMessage = String.format(
-          "The provided input data frame does not have a %s field. Provided schema: %s.",
-          VALUE_COLUMN_NAME,
-          dataSchema);
-      throw new VeniceInvalidInputException(errorMessage);
-    }
-
-    StructField valueField = fields[valueFieldIndex];
-    DataType valueType = valueField.dataType();
-    if (!fields[valueFieldIndex].dataType().equals(DataTypes.BinaryType)) {
-      String errorMessage = String
-          .format("The provided input value field's schema must be %s. Got: %s.", DataTypes.BinaryType, valueType);
-      throw new VeniceInvalidInputException(errorMessage);
-    }
+    validateDataFrameFieldAndTypes(fields, dataSchema, RMD_COLUMN_NAME, DataTypes.BinaryType);
 
     for (StructField field: fields) {
       if (field.name().startsWith("_")) {
@@ -477,6 +481,32 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
             .format("The provided input must not have fields that start with an underscore. Got: %s", field.name());
         throw new VeniceInvalidInputException(errorMessage);
       }
+    }
+  }
+
+  @VisibleForTesting
+  void validateDataFrameFieldAndTypes(
+      StructField[] fields,
+      StructType dataSchema,
+      String fieldName,
+      DataType allowedType) {
+    int fieldIndex = SparkScalaUtils.getFieldIndex(dataSchema, fieldName);
+
+    if (fieldIndex == -1) {
+      String errorMessage = String.format(
+          "The provided input data frame does not have a %s field. Provided schema: %s.",
+          fieldName,
+          dataSchema);
+      throw new VeniceInvalidInputException(errorMessage);
+    }
+
+    StructField field = fields[fieldIndex];
+    DataType fieldType = field.dataType();
+
+    if (!allowedType.equals(fieldType)) {
+      String errorMessage =
+          String.format("The provided input %s schema must be %s. Got: %s.", fieldName, allowedType, fieldType);
+      throw new VeniceInvalidInputException(errorMessage);
     }
   }
 }
