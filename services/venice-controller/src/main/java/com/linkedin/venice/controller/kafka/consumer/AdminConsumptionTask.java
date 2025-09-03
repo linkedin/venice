@@ -534,6 +534,14 @@ public class AdminConsumptionTask implements Runnable, Closeable {
           storeQueue.remove();
           skipOffsetCommandHasBeenProcessed = true;
         }
+        // We are replacing `skipping admin messages by offset` with `skipping admin messages by execution id`.
+        // Temporarily, skipping will be supported by both offset and execution id (but not both in the same admin tool
+        // command)
+        // and hence some duplicate code, e.g. `checkOffsetToSkip()` and `checkExecutionIdToSkip()`,
+        // `skipMessageWithOffset()` and `skipMessageWithExecutionId()`.
+        // This is to allow users to transition from using offset to using execution id.
+        // Very soon in the future, we will remove the support for skipping by offset.
+
         if (checkExecutionIdToSkip(nextOp.getExecutionId(), false)) {
           storeQueue.remove();
           skipExecutionIdCommandHasBeenProcessed = true;
@@ -925,10 +933,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
         LOGGER.error("Execution id mismatch (header={}, payload={}). Using payload.", fromHeader, fromPayload);
         return fromPayload;
       } else {
-        LOGGER.error(
-            "Execution id mismatch (header={}, payload={}). Using header because payload could not be deserialized.",
-            fromHeader,
-            fromPayload);
+        LOGGER.error("Using execution id from the header {} because payload could not be deserialized.", fromHeader);
         return fromHeader;
       }
     }
