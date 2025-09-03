@@ -890,8 +890,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
          * N.B.: if we start seeing alerts from forced killed resource, consider whether we should keep those alerts
          *       if they are useful, or refactor them.
          */
-        closeVeniceWriters(false);
         close();
+        closeVeniceWriters(false);
       }
     }
   }
