@@ -101,7 +101,7 @@ public class AbstractDataWriterSparkJobTest {
     dataWriterSparkJob.validateRmdSchema(pushJobSetting);
   }
 
-  @Test(expectedExceptions = VeniceInvalidInputException.class, expectedExceptionsMessageRegExp = "The provided input rmd schema must be in \\[BinaryType, LongType\\].*")
+  @Test(expectedExceptions = VeniceInvalidInputException.class, expectedExceptionsMessageRegExp = "The provided input rmd schema must be BinaryType.*")
   public void testValidateDataFrameWithInvalidRmdTypes() {
     AbstractDataWriterSparkJob dataWriterSparkJob = spy(AbstractDataWriterSparkJob.class);
     StructType inputStructType = new StructType(
