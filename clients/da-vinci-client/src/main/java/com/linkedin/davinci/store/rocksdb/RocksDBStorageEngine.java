@@ -106,6 +106,16 @@ public class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePa
     return PersistenceType.ROCKS_DB;
   }
 
+  /**
+   * Retrieves the IDs of persisted partitions for the store.
+   * This method scans the existing store directory to identify the partition IDs that are retained and need to be persisted.
+   *
+   * Note:
+   * For stores with blob transfer enabled, temporary partition directories may exist if the instance previously fails during a transfer.
+   * In such cases, temporary directories should be excluded from the returned partition IDs.
+   *
+   * @return A set of IDs representing the persisted partitions.
+   */
   @Override
   public Set<Integer> getPersistedPartitionIds() {
     File storeDbDir = new File(storeDbPath);
@@ -120,6 +130,10 @@ public class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePa
     HashSet<Integer> partitionIdSet = new HashSet<>();
     if (partitionDbNames != null) {
       for (String partitionDbName: partitionDbNames) {
+        if (RocksDBUtils.isTempPartitionDir(partitionDbName)) {
+          continue;
+        }
+
         partitionIdSet.add(RocksDBUtils.parsePartitionIdFromPartitionDbName(partitionDbName));
       }
     }
