@@ -499,13 +499,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.storageEngine = Objects.requireNonNull(refCountedStorageEngine.get());
     if ((this.storageEngine instanceof DelegatingStorageEngine)) {
       DelegatingStorageEngine delegatingStorageEngine = (DelegatingStorageEngine) this.storageEngine;
-      System.out.println("Setting up key dict compression function for store version: " + storeVersionName);
       delegatingStorageEngine.setKeyDictCompressionFunction(p -> {
         PartitionConsumptionState pcs = partitionConsumptionStateMap.get(p);
         if (pcs == null) {
           throw new VeniceException("Partition " + p + " not found in partitionConsumptionStateMap");
         }
-        return pcs.getKeyDictCompression();
+        return pcs.getKeyDictCompressor();
       });
     } else {
       throw new VeniceException(
@@ -3089,6 +3088,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      * Update the transactional/deferred mode of the partition.
      */
     partitionConsumptionState.setDeferredWrite(storagePartitionConfig.isDeferredWrite());
+    System.out.println(
+        "Calling end batch write for partition: " + partitionConsumptionState.getPartition() + ", replica: "
+            + partitionConsumptionState.getReplicaId() + ", offset: " + offset);
 
     /**
      * Indicate the batch push is done, and the internal storage engine needs to do some cleanup.
