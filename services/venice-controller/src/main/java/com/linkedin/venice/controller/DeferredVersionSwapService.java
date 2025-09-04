@@ -947,13 +947,6 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
               // to roll forward
               if (nextEligibleRegionIndex != 0) {
                 int priorRolledForwardRegionIndex = rolloutOrder.indexOf(nextRegionToRollForward) - 1;
-                if (priorRolledForwardRegionIndex < 0) {
-                  LOGGER.warn(
-                      "Found invalid index {} when getting prior region that rolled forward for store {} ",
-                      priorRolledForwardRegionIndex,
-                      parentStore.getName());
-                  continue;
-                }
 
                 String priorRegionRolledForward = rolloutOrder.get(priorRolledForwardRegionIndex);
                 String message2 = "Found prior region that rolled forward: " + priorRegionRolledForward + " for store: "
