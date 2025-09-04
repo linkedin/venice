@@ -43,7 +43,7 @@ public class LeaderErrorNotifier extends PushStatusNotifier {
       accessor.updateReplicaStatus(topic, partitionId, instanceId, ERROR, "");
       doOne = false;
     } else {
-      accessor.updateReplicaStatus(topic, partitionId, instanceId, COMPLETED, position.getNumericOffset(), "");
+      accessor.updateReplicaStatus(topic, partitionId, instanceId, COMPLETED, "");
     }
   }
 
