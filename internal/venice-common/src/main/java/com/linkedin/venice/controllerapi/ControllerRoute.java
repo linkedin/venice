@@ -173,7 +173,7 @@ public enum ControllerRoute {
 
   REMOVE_NODE("/remove_node", HttpMethod.POST, Collections.singletonList(STORAGE_NODE_ID)),
 
-  SKIP_ADMIN("/skip_admin_message", HttpMethod.POST, Collections.singletonList(OFFSET)),
+  SKIP_ADMIN_MESSAGE("/skip_admin_message", HttpMethod.POST, Collections.EMPTY_LIST),
 
   GET_KEY_SCHEMA("/get_key_schema", HttpMethod.GET, Collections.singletonList(NAME)),
   ADD_VALUE_SCHEMA(

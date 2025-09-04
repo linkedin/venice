@@ -34,7 +34,6 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterOptions;
-import java.io.IOException;
 import java.util.Collections;
 import java.util.Map;
 import java.util.Optional;
@@ -63,7 +62,9 @@ public class AdminConsumptionTaskIntegrationTest {
   private static final int adminConsumptionMaxWorkerPoolSize = 3;
 
   private VeniceTwoLayerMultiRegionMultiClusterWrapper venice;
+  private AdminConsumerService adminConsumerService;
   private ControllerClient parentControllerClient;
+  private Admin admin;
   private VeniceWriter<byte[], byte[], byte[]> writer;
   private String clusterName;
   private int executionId = 0;
@@ -86,11 +87,11 @@ public class AdminConsumptionTaskIntegrationTest {
             .serverProperties(serverProperties)
             .build());
 
-    parentControllerClient =
-        new ControllerClient(venice.getClusterNames()[0], venice.getParentControllers().get(0).getControllerUrl());
-
+    VeniceControllerWrapper parentController = venice.getParentControllers().get(0);
+    parentControllerClient = new ControllerClient(venice.getClusterNames()[0], parentController.getControllerUrl());
     clusterName = venice.getClusterNames()[0];
-    Admin admin = venice.getParentControllers().get(0).getVeniceAdmin();
+    adminConsumerService = parentController.getAdminConsumerServiceByCluster(clusterName);
+    admin = parentController.getVeniceAdmin();
     PubSubTopicRepository pubSubTopicRepository = admin.getPubSubTopicRepository();
     TopicManager topicManager = admin.getTopicManager();
     PubSubTopic adminTopic = pubSubTopicRepository.getTopic(AdminTopicUtils.getTopicNameFromClusterName(clusterName));
@@ -108,13 +109,9 @@ public class AdminConsumptionTaskIntegrationTest {
     venice.close();
   }
 
-  /**
-   * This test is flaky on slower hardware, with a short timeout ):
-   */
   @Test(timeOut = TIMEOUT)
-  public void testSkipMessageEndToEnd() throws ExecutionException, InterruptedException, IOException {
+  public void testSkipMessageEndToEnd() throws ExecutionException, InterruptedException {
     String storeName = Utils.getUniqueString("test-store");
-
     byte[] message = getStoreCreationMessage(
         clusterName,
         storeName,
@@ -141,8 +138,55 @@ public class AdminConsumptionTaskIntegrationTest {
       Assert.assertTrue(parentControllerClient.getStore(storeName).isError());
     });
 
-    parentControllerClient.skipAdminMessage(Long.toString(badOffset), false);
-    TestUtils.waitForNonDeterministicAssertion(TIMEOUT * 3, TimeUnit.MILLISECONDS, () -> {
+    TestUtils.waitForNonDeterministicAssertion(
+        TIMEOUT,
+        TimeUnit.MILLISECONDS,
+        () -> Assert.assertEquals(adminConsumerService.getFailingPosition().getNumericOffset(), badOffset));
+
+    parentControllerClient.skipAdminMessage(Long.toString(badOffset), false, null);
+
+    TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
+      Assert.assertFalse(parentControllerClient.getStore(storeName).isError());
+    });
+  }
+
+  @Test(timeOut = TIMEOUT)
+  public void testSkipMessageWithExecutionIdEndToEnd() {
+    String storeName = Utils.getUniqueString("test-store");
+
+    long badMessageExecutionId = nextExecutionId();
+    byte[] message = getStoreCreationMessage(
+        clusterName,
+        storeName,
+        owner,
+        "invalid_key_schema",
+        valueSchema,
+        badMessageExecutionId,
+        AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+    writer.put(new byte[0], message, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+
+    byte[] goodMessage = getStoreCreationMessage(
+        clusterName,
+        storeName,
+        owner,
+        keySchema,
+        valueSchema,
+        nextExecutionId(),
+        AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+    writer.put(new byte[0], goodMessage, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+
+    TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
+      Assert.assertTrue(parentControllerClient.getStore(storeName).isError());
+    });
+
+    TestUtils.waitForNonDeterministicAssertion(
+        TIMEOUT,
+        TimeUnit.MILLISECONDS,
+        () -> Assert.assertEquals(adminConsumerService.getFailingExecutionId(), badMessageExecutionId));
+
+    parentControllerClient.skipAdminMessage(null, false, String.valueOf(badMessageExecutionId));
+
+    TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
       Assert.assertFalse(parentControllerClient.getStore(storeName).isError());
     });
   }
@@ -213,14 +257,6 @@ public class AdminConsumptionTaskIntegrationTest {
   public void testUpdateAdminOperationVersion() {
     Long currentVersion = -1L;
     Long newVersion = 18L;
-
-    String clusterName = venice.getClusterNames()[0];
-
-    // Get the parent controller
-    VeniceControllerWrapper controller = venice.getParentControllers().get(0);
-    Admin admin = controller.getVeniceAdmin();
-
-    AdminConsumerService adminConsumerService = controller.getAdminConsumerServiceByCluster(clusterName);
 
     // Setup the original metadata
     adminConsumerService.updateAdminOperationProtocolVersion(clusterName, currentVersion);
