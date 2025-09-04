@@ -54,6 +54,7 @@ public class MetaStoreReader implements Closeable {
           ClientConfig.defaultGenericClientConfig(VeniceSystemStoreUtils.getMetaStoreName(storeName))
               .setD2Client(d2Client)
               .setD2ServiceName(clusterDiscoveryD2ServiceName)
+              .setStatTrackingEnabled(false)
               .setSpecificValueClass(StoreMetaValue.class);
       return ClientFactory.getAndStartSpecificAvroClient(clientConfig);
     });

@@ -14,9 +14,12 @@ import com.linkedin.venice.service.ICProvider;
 import java.util.Optional;
 import java.util.function.Function;
 import org.apache.avro.specific.SpecificRecord;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 public class ClientFactory {
+  private static final Logger LOGGER = LogManager.getLogger(ClientFactory.class);
   // Flag to denote if the test is in unit test mode and hence, will allow creating custom clients
   private static boolean unitTestMode = false;
   private static Function<ClientConfig, TransportClient> configToTransportClientProviderForTests = null;
@@ -60,12 +63,21 @@ public class ClientFactory {
         internalClient = new AvroGenericStoreClientImpl<>(transportClient, clientConfig);
       }
     }
-
-    StatTrackingStoreClient<K, V> client = new StatTrackingStoreClient<>(internalClient, clientConfig);
-    if (clientConfig.isRetryOnRouterErrorEnabled() || clientConfig.isRetryOnAllErrorsEnabled()) {
-      return new RetriableStoreClient<>(client, clientConfig);
+    if (clientConfig.isStatTrackingEnabled()) {
+      internalClient = new StatTrackingStoreClient<>(internalClient, clientConfig);
     }
-    return client;
+    if (clientConfig.isRetryOnRouterErrorEnabled() || clientConfig.isRetryOnAllErrorsEnabled()) {
+      LOGGER.info(
+          "Created RetriableStoreClient for store: {} with stat tracking enabled: {}",
+          clientConfig.getStoreName(),
+          clientConfig.isStatTrackingEnabled());
+      return new RetriableStoreClient<>(internalClient, clientConfig);
+    }
+    LOGGER.info(
+        "Created client for store: {} with stat tracking enabled: {}",
+        clientConfig.getStoreName(),
+        clientConfig.isStatTrackingEnabled());
+    return internalClient;
   }
 
   public static <K, V extends SpecificRecord> AvroSpecificStoreClient<K, V> getAndStartSpecificAvroClient(
@@ -80,13 +92,22 @@ public class ClientFactory {
     TransportClient transportClient = getTransportClient(clientConfig);
     InternalAvroStoreClient<K, V> avroClient = new AvroSpecificStoreClientImpl<>(transportClient, clientConfig);
 
-    SpecificStatTrackingStoreClient<K, V> client = new SpecificStatTrackingStoreClient<>(avroClient, clientConfig);
-
-    if (clientConfig.isRetryOnRouterErrorEnabled() || clientConfig.isRetryOnAllErrorsEnabled()) {
-      return new SpecificRetriableStoreClient<>(client, clientConfig);
+    if (clientConfig.isStatTrackingEnabled()) {
+      avroClient = new SpecificStatTrackingStoreClient<>(avroClient, clientConfig);
     }
 
-    return client;
+    if (clientConfig.isRetryOnRouterErrorEnabled() || clientConfig.isRetryOnAllErrorsEnabled()) {
+      LOGGER.info(
+          "Created SpecificRetriableStoreClient for store: {} with stat tracking enabled: {}",
+          clientConfig.getStoreName(),
+          clientConfig.isStatTrackingEnabled());
+      return new SpecificRetriableStoreClient<>(avroClient, clientConfig);
+    }
+    LOGGER.info(
+        "Created specific client for store: {} with stat tracking enabled: {}",
+        clientConfig.getStoreName(),
+        clientConfig.isStatTrackingEnabled());
+    return (AvroSpecificStoreClient<K, V>) avroClient;
   }
 
   public static <K, V> AvroGenericStoreClient<K, V> getAndStartAvroClient(ClientConfig clientConfig) {
