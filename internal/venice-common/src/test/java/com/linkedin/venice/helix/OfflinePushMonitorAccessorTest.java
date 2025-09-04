@@ -58,7 +58,7 @@ public class OfflinePushMonitorAccessorTest {
         LogContext.EMPTY);
     when(mockPartitionStatusAccessor.exists(anyString(), anyInt())).thenReturn(true);
     when(mockPartitionStatusAccessor.update(anyString(), any(), anyInt())).thenReturn(true);
-    accessor.batchUpdateReplicaIncPushStatus("test_topic", 0, "test_instance_id", 100L, Arrays.asList("a", "b"));
+    accessor.batchUpdateReplicaIncPushStatus("test_topic", 0, "test_instance_id", Arrays.asList("a", "b"));
     Mockito.verify(mockPartitionStatusAccessor, Mockito.times(1)).update(anyString(), any(), anyInt());
   }
 }

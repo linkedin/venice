@@ -8,7 +8,6 @@ import static com.linkedin.venice.pushmonitor.ExecutionStatus.START_OF_INCREMENT
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.anyLong;
 import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
@@ -77,12 +76,12 @@ public class TestPushStatusNotifier {
     PubSubPosition p1 = ApacheKafkaOffsetPosition.of(1L);
 
     statusNotifier.completed(topic, 1, p1, "");
-    verify(offlinePushAccessor, times(1)).updateReplicaStatus(topic, 1, host, ExecutionStatus.COMPLETED, 1, "");
+    verify(offlinePushAccessor, times(1)).updateReplicaStatus(topic, 1, host, ExecutionStatus.COMPLETED, "");
 
     doThrow(HelixException.class).when(helixPartitionStatusAccessor)
         .updateReplicaStatus(any(), anyInt(), eq(ExecutionStatus.COMPLETED));
     statusNotifier.completed(topic, 1, p1, "");
-    verify(offlinePushAccessor, never()).updateReplicaStatus(topic, 1, "host", ExecutionStatus.COMPLETED, 1, "");
+    verify(offlinePushAccessor, never()).updateReplicaStatus(topic, 1, "host", ExecutionStatus.COMPLETED, "");
 
     doReturn(mock(Store.class)).when(storeRepository).getStoreOrThrow(any());
     statusNotifier.startOfIncrementalPushReceived(topic, 1, p1, "");
@@ -119,16 +118,11 @@ public class TestPushStatusNotifier {
     notifier.startOfIncrementalPushReceived(TOPIC, PARTITION_ID, POSITION_12345, MESSAGE);
 
     if (expectZookeeper) {
-      verify(offlinePushAccessor, times(1)).updateReplicaStatus(
-          TOPIC,
-          PARTITION_ID,
-          INSTANCE_ID,
-          START_OF_INCREMENTAL_PUSH_RECEIVED,
-          POSITION_12345.getInternalOffset(),
-          MESSAGE);
+      verify(offlinePushAccessor, times(1))
+          .updateReplicaStatus(TOPIC, PARTITION_ID, INSTANCE_ID, START_OF_INCREMENTAL_PUSH_RECEIVED, MESSAGE);
     } else {
       verify(offlinePushAccessor, never())
-          .updateReplicaStatus(anyString(), anyInt(), anyString(), any(ExecutionStatus.class), anyLong(), anyString());
+          .updateReplicaStatus(anyString(), anyInt(), anyString(), any(ExecutionStatus.class), anyString());
     }
 
     if (expectPushStatusStore) {
@@ -162,16 +156,11 @@ public class TestPushStatusNotifier {
     notifier.endOfIncrementalPushReceived(TOPIC, PARTITION_ID, POSITION_12345, MESSAGE);
 
     if (expectZookeeper) {
-      verify(offlinePushAccessor, times(1)).updateReplicaStatus(
-          TOPIC,
-          PARTITION_ID,
-          INSTANCE_ID,
-          END_OF_INCREMENTAL_PUSH_RECEIVED,
-          POSITION_12345.getInternalOffset(),
-          MESSAGE);
+      verify(offlinePushAccessor, times(1))
+          .updateReplicaStatus(TOPIC, PARTITION_ID, INSTANCE_ID, END_OF_INCREMENTAL_PUSH_RECEIVED, MESSAGE);
     } else {
       verify(offlinePushAccessor, never())
-          .updateReplicaStatus(anyString(), anyInt(), anyString(), any(ExecutionStatus.class), anyLong(), anyString());
+          .updateReplicaStatus(anyString(), anyInt(), anyString(), any(ExecutionStatus.class), anyString());
     }
 
     if (expectPushStatusStore) {
@@ -211,15 +200,10 @@ public class TestPushStatusNotifier {
     notifier.batchEndOfIncrementalPushReceived(TOPIC, PARTITION_ID, POSITION_12345, incPushVersions);
 
     if (expectZookeeper) {
-      verify(offlinePushAccessor, times(1)).batchUpdateReplicaIncPushStatus(
-          TOPIC,
-          PARTITION_ID,
-          INSTANCE_ID,
-          POSITION_12345.getInternalOffset(),
-          incPushVersions);
+      verify(offlinePushAccessor, times(1))
+          .batchUpdateReplicaIncPushStatus(TOPIC, PARTITION_ID, INSTANCE_ID, incPushVersions);
     } else {
-      verify(offlinePushAccessor, never())
-          .batchUpdateReplicaIncPushStatus(anyString(), anyInt(), anyString(), anyLong(), any());
+      verify(offlinePushAccessor, never()).batchUpdateReplicaIncPushStatus(anyString(), anyInt(), anyString(), any());
     }
 
     if (expectPushStatusStore) {

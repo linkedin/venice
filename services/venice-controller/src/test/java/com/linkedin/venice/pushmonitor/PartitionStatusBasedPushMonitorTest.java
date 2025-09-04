@@ -307,7 +307,7 @@ public class PartitionStatusBasedPushMonitorTest extends AbstractPushMonitorTest
     snapshot.setIncrementalPushVersion(KILLED_JOB_MESSAGE + store.getName());
     replicaStatuses1.get(2).setStatusHistory(Arrays.asList(snapshot));
     PartitionStatus partitionStatus1 = new PartitionStatus(0);
-    partitionStatus1.updateReplicaStatus(disabledHostName, ERROR, KILLED_JOB_MESSAGE + store.getName(), 1);
+    partitionStatus1.updateReplicaStatus(disabledHostName, ERROR, KILLED_JOB_MESSAGE + store.getName());
     offlinePushStatus.setPartitionStatus(partitionStatus1);
 
     offlinePushStatus.getStrategy()

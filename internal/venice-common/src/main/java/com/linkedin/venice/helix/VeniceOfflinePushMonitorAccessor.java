@@ -10,7 +10,6 @@ import com.linkedin.venice.pushmonitor.OfflinePushStatus;
 import com.linkedin.venice.pushmonitor.PartitionStatus;
 import com.linkedin.venice.pushmonitor.PartitionStatusListener;
 import com.linkedin.venice.pushmonitor.ReadOnlyPartitionStatus;
-import com.linkedin.venice.pushmonitor.ReplicaStatus;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.PathResourceRegistry;
@@ -227,25 +226,8 @@ public class VeniceOfflinePushMonitorAccessor implements OfflinePushAccessor {
       int partitionId,
       String instanceId,
       ExecutionStatus status,
-      long progress,
       String incrementalPushVersion) {
-    compareAndUpdateReplicaStatus(topic, partitionId, instanceId, status, progress, incrementalPushVersion);
-  }
-
-  @Override
-  public void updateReplicaStatus(
-      String topic,
-      int partitionId,
-      String instanceId,
-      ExecutionStatus status,
-      String incrementalPushVersion) {
-    compareAndUpdateReplicaStatus(
-        topic,
-        partitionId,
-        instanceId,
-        status,
-        ReplicaStatus.NO_PROGRESS,
-        incrementalPushVersion);
+    compareAndUpdateReplicaStatus(topic, partitionId, instanceId, status, incrementalPushVersion);
   }
 
   @Override
@@ -253,9 +235,8 @@ public class VeniceOfflinePushMonitorAccessor implements OfflinePushAccessor {
       String kafkaTopic,
       int partitionId,
       String instanceId,
-      long progress,
       List<String> pendingReportIncPushVersionList) {
-    compareAndBatchUpdateReplicaStatus(kafkaTopic, partitionId, instanceId, progress, pendingReportIncPushVersionList);
+    compareAndBatchUpdateReplicaStatus(kafkaTopic, partitionId, instanceId, pendingReportIncPushVersionList);
   }
 
   /**
@@ -274,7 +255,6 @@ public class VeniceOfflinePushMonitorAccessor implements OfflinePushAccessor {
       int partitionId,
       String instanceId,
       ExecutionStatus status,
-      long progress,
       String incrementalPushVersion) {
     // If a version was created prior to the deployment of this new push monitor, an exception would be thrown while
     // upgrading venice server.
@@ -296,7 +276,7 @@ public class VeniceOfflinePushMonitorAccessor implements OfflinePushAccessor {
         currentData = new PartitionStatus(partitionId);
       }
 
-      currentData.updateReplicaStatus(instanceId, status, incrementalPushVersion, progress);
+      currentData.updateReplicaStatus(instanceId, status, incrementalPushVersion);
       return currentData;
     });
     LOGGER.info("Updated replica status for replica: {} status: {} in cluster: {}.", replicaId, status, clusterName);
@@ -306,7 +286,6 @@ public class VeniceOfflinePushMonitorAccessor implements OfflinePushAccessor {
       String topic,
       int partitionId,
       String instanceId,
-      long progress,
       List<String> incPushBatchStatus) {
     if (!pushStatusExists(topic)) {
       return;
@@ -317,7 +296,7 @@ public class VeniceOfflinePushMonitorAccessor implements OfflinePushAccessor {
       if (currentData == null) {
         currentData = new PartitionStatus(partitionId);
       }
-      currentData.batchUpdateReplicaIncPushStatus(instanceId, incPushBatchStatus, progress);
+      currentData.batchUpdateReplicaIncPushStatus(instanceId, incPushBatchStatus);
       return currentData;
     });
     LOGGER.info(
