@@ -2314,46 +2314,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     return records;
   }
 
-  // /**
-  // * Log the metadata for each kafka message.
-  // */
-  // private void logRecordMetadata(DefaultPubSubMessage record, PubSubTopicPartition topicPartition) {
-  // try {
-  // KafkaKey kafkaKey = record.getKey();
-  // KafkaMessageEnvelope kafkaMessageEnvelope = record.getValue();
-  // ProducerMetadata producerMetadata = kafkaMessageEnvelope.producerMetadata;
-  //
-  // String msgType = kafkaKey.isControlMessage()
-  // ? ControlMessageType.valueOf((ControlMessage) kafkaMessageEnvelope.payloadUnion).toString()
-  // : MessageType.valueOf(kafkaMessageEnvelope).toString();
-  //
-  // LeaderMetadata leaderMetadata = kafkaMessageEnvelope.leaderMetadataFooter;
-  //
-  // // final String chunkMetadata = getChunkMetadataLog(record);
-  // final String REGULAR_REC = "REG";
-  // final String CONTROL_REC = "CTRL";
-  // LOGGER.info(
-  // "Offset:{}; {}; {}; ProducerMd=(guid:{},seg:{},seq:{},mts:{},lts:{}); LeaderMd=(host:{},uo:{},ukcId:{}){}",
-  // record.getPosition().getNumericOffset(),
-  // kafkaKey.isControlMessage() ? CONTROL_REC : REGULAR_REC,
-  // msgType,
-  // GuidUtils.getHexFromGuid(producerMetadata.producerGUID),
-  // producerMetadata.segmentNumber,
-  // producerMetadata.messageSequenceNumber,
-  // producerMetadata.messageTimestamp,
-  // producerMetadata.logicalTimestamp,
-  // leaderMetadata == null ? "-" : leaderMetadata.hostName,
-  // leaderMetadata == null ? "-" : leaderMetadata.upstreamOffset,
-  // leaderMetadata == null ? "-" : leaderMetadata.upstreamKafkaClusterId,
-  // topicPartition);
-  // } catch (Exception e) {
-  // LOGGER.error(
-  // "Encounter exception when processing record for offset {}",
-  // record.getPosition().getNumericOffset(),
-  // e);
-  // }
-  // }
-
   /**
    * The goal of this function is to possibly produce the incoming kafka message consumed from local VT, remote VT, RT or SR topic to
    * local VT if needed. It's decided based on the function output of {@link #shouldProduceToVersionTopic} and message type.
