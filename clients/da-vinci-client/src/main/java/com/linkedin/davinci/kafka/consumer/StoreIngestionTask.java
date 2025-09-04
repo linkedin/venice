@@ -1844,9 +1844,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         errorPartitionId,
         "Caught non-exception Throwable during ingestion.",
         new VeniceException(t));
-    if (isRunning.get()) {
-      hostLevelIngestionStats.recordIngestionFailure();
-    }
   }
 
   private void reportError(
