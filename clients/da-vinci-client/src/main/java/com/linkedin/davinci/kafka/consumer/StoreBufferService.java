@@ -343,7 +343,6 @@ public class StoreBufferService extends AbstractStoreBufferService {
     DefaultPubSubMessage fakeRecord = new FakePubSubMessage(topicPartition);
     SyncVtDivNode syncDivNode = new SyncVtDivNode(fakeRecord, vtDivSnapshot, ingestionTask);
     getDrainerForConsumerRecord(fakeRecord, topicPartition.getPartitionNumber()).put(syncDivNode);
-    // LOGGER.warn("ASDF execSyncOffsetFromSnapshotAsync()");
   }
 
   @Override
@@ -726,7 +725,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
    * to process each {@link PubSubMessage} buffered in {@link BlockingQueue}.
    */
   private static class StoreBufferDrainer implements Runnable {
-    public static final Logger LOGGER = LogManager.getLogger(StoreBufferDrainer.class);
+    private static final Logger LOGGER = LogManager.getLogger(StoreBufferDrainer.class);
     private final BlockingQueue<QueueNode> blockingQueue;
     private final AtomicBoolean isRunning = new AtomicBoolean(true);
     private final int drainerIndex;

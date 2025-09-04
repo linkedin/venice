@@ -91,7 +91,6 @@ public class TestGlobalRtDiv {
     extraProperties.setProperty(PERSISTENCE_TYPE, PersistenceType.ROCKS_DB.name());
     extraProperties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1L));
     extraProperties.setProperty(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_TRANSACTIONAL_MODE, "500");
-    // extraProperties.setProperty(VeniceWriter.MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES, "400");
 
     // N.B.: RF 2 with 3 servers is important, in order to test both the leader and follower code paths
     sharedVenice = ServiceFactory.getVeniceCluster(

@@ -63,7 +63,6 @@ import org.apache.logging.log4j.Logger;
  */
 @Threadsafe
 public class PartitionTracker {
-  private static final Logger LOGGER = LogManager.getLogger(PartitionTracker.class);
   /**
    * If an exception will be tolerated, there is no need to print a log for each single message;
    * we can log only once a minute. The error message identifier pattern for log throttling is:
