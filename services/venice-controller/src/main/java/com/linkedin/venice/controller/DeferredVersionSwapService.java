@@ -236,19 +236,18 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
     // if push was successful in some regions (version status is KILLED), the parent version is marked PARTIALLY_ONLINE
     long totalVersionSwapTimeInMinutes =
         TimeUnit.MILLISECONDS.toMinutes(LatencyUtils.getElapsedTimeFromMsToMs(targetVersion.getCreatedTime()));
-    if (targetVersion.getStatus() == VersionStatus.PUSHED) {
-      updateStore(cluster, storeName, ONLINE, targetVersionNum);
-
+    if (targetVersion.getStatus() == VersionStatus.KILLED) {
+      updateStore(cluster, storeName, PARTIALLY_ONLINE, targetVersionNum);
       LOGGER.info(
-          "Updated parent version status to ONLINE for version: {} in store: {} for version created in: {}."
+          "Updated parent version status to PARTIALLY_ONLINE for version: {} in store: {},"
               + "Version swap took {} minutes from push completion to version swap",
           targetVersionNum,
           storeName,
           totalVersionSwapTimeInMinutes);
     } else {
-      updateStore(cluster, storeName, PARTIALLY_ONLINE, targetVersionNum);
+      updateStore(cluster, storeName, ONLINE, targetVersionNum);
       LOGGER.info(
-          "Updated parent version status to PARTIALLY_ONLINE for version: {} in store: {},"
+          "Updated parent version status to ONLINE for version: {} in store: {} for version created in: {}."
               + "Version swap took {} minutes from push completion to version swap",
           targetVersionNum,
           storeName,
@@ -946,7 +945,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
               int nextEligibleRegionIndex = rolloutOrder.indexOf(nextRegionToRollForward);
               // Check that the wait time elapsed in the prior region that rolled forward if it is not the first region
               // to roll forward
-              if (!(nextEligibleRegionIndex == 0)) {
+              if (nextEligibleRegionIndex != 0) {
                 int priorRolledForwardRegionIndex = rolloutOrder.indexOf(nextRegionToRollForward) - 1;
                 if (priorRolledForwardRegionIndex < 0) {
                   LOGGER.warn(
@@ -998,7 +997,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
                   stalledVersionSwapSet.remove(parentStore.getName());
                 }
 
-                if (rolloutOrder.indexOf(nextRegionToRollForward) == rolloutOrder.size() - 1) {
+                if (rolloutOrder.get(rolloutOrder.size() - 1).equals(nextRegionToRollForward)) {
                   updateStore(cluster, storeName, VersionStatus.ONLINE, targetVersionNum);
 
                   LOGGER.info(
@@ -1081,6 +1080,12 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
     try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
       ReadWriteStoreRepository repository = resources.getStoreMetadataRepository();
       Store store = repository.getStore(storeName);
+      LOGGER.info(
+          "Updating store: {} version: {} from status {} to status {}",
+          storeName,
+          targetVersionNum,
+          store.getVersionStatus(targetVersionNum),
+          status);
       store.updateVersionStatus(targetVersionNum, status);
       repository.updateStore(store);
     } catch (Exception e) {

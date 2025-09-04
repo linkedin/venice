@@ -63,7 +63,7 @@ public class TestRegionUtils {
 
   @Test
   public void testParseRolloutOrderList() {
-    String rolloutOrder = "dc-0,dc-1,dc-2";
+    String rolloutOrder = String.join(",", TEST_DC_1, TEST_DC_2, TEST_DC_3);
     List<String> order = RegionUtils.parseRegionRolloutOrderList(rolloutOrder);
     Assert.assertEquals(order.get(0), TEST_DC_1);
     Assert.assertEquals(order.get(1), TEST_DC_2);
