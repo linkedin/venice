@@ -10,6 +10,7 @@ import static com.linkedin.venice.pushmonitor.ExecutionStatus.START_OF_INCREMENT
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.TOPIC_SWITCH_RECEIVED;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.isIncrementalPushStatus;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -23,6 +24,7 @@ public class ReplicaStatusTest {
     ReplicaStatus replicaStatus = new ReplicaStatus(INSTANCE_ID);
     Assert.assertEquals(replicaStatus.getInstanceId(), INSTANCE_ID);
     Assert.assertEquals(replicaStatus.getCurrentStatus(), STARTED);
+    // getCurrentProgress() is deprecated and always returns 0 for backward compatibility
     Assert.assertEquals(replicaStatus.getCurrentProgress(), 0);
   }
 
@@ -184,5 +186,30 @@ public class ReplicaStatusTest {
         replicaStatus.getStatusHistory().size(),
         2,
         "PROGRESS should be added into history if the previous status is also PROGRESS.");
+  }
+
+  @Test
+  public void testBackwardCompatibilityForCurrentProgressField() throws Exception {
+    ObjectMapper mapper = new ObjectMapper();
+
+    // Test deserialization of old JSON that contains currentProgress field
+    String oldJsonWithCurrentProgress =
+        "{\"instanceId\":\"testInstance\",\"currentStatus\":\"STARTED\",\"currentProgress\":100,\"incrementalPushVersion\":\"\",\"statusHistory\":[]}";
+    ReplicaStatus deserializedStatus = mapper.readValue(oldJsonWithCurrentProgress, ReplicaStatus.class);
+
+    // Verify that deserialization works and currentProgress is ignored
+    Assert.assertEquals(deserializedStatus.getInstanceId(), INSTANCE_ID);
+    Assert.assertEquals(deserializedStatus.getCurrentStatus(), STARTED);
+    Assert.assertEquals(deserializedStatus.getCurrentProgress(), 0); // Always returns 0 now
+
+    // Test serialization - currentProgress should not be included in new JSON
+    String newJson = mapper.writeValueAsString(deserializedStatus);
+    Assert.assertFalse(newJson.contains("currentProgress"), "currentProgress should not be serialized in new JSON");
+
+    // Test that new JSON can be deserialized correctly
+    ReplicaStatus reDeserializedStatus = mapper.readValue(newJson, ReplicaStatus.class);
+    Assert.assertEquals(reDeserializedStatus.getInstanceId(), INSTANCE_ID);
+    Assert.assertEquals(reDeserializedStatus.getCurrentStatus(), STARTED);
+    Assert.assertEquals(reDeserializedStatus.getCurrentProgress(), 0);
   }
 }
