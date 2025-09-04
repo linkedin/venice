@@ -12,7 +12,6 @@ import static com.linkedin.davinci.validation.DataIntegrityValidator.DISABLED;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.LogMessages.KILLED_JOB_MESSAGE;
 import static com.linkedin.venice.kafka.protocol.enums.ControlMessageType.START_OF_SEGMENT;
-import static com.linkedin.venice.pubsub.PubSubConstants.UNKNOWN_LATEST_OFFSET;
 import static com.linkedin.venice.utils.Utils.FATAL_DATA_VALIDATION_ERROR;
 import static com.linkedin.venice.utils.Utils.closeQuietlyWithErrorLogged;
 import static com.linkedin.venice.utils.Utils.getReplicaId;
@@ -112,7 +111,6 @@ import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.serializer.AvroGenericDeserializer;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
-import com.linkedin.venice.stats.StatsErrorCode;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.utils.ByteUtils;
@@ -2345,10 +2343,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   /**
-   * @return the end offset in kafka for the topic partition in SIT, or a negative value if it failed to get it.
+   * @return the end position for the topic partition in SIT, or a {@link PubSubSymbolicPosition#LATEST} value if
+   * it failed to get it.
    *
-   * N.B.: The returned end offset is the last successfully replicated message plus one. If the partition has never been
-   * written to, the end offset is 0.
+   * N.B.: The returned end position is the last successfully replicated message plus one. If the partition has never been
+   * written to, the end position is equal to the start position.
    */
   protected long getTopicPartitionEndOffSet(String kafkaUrl, PubSubTopic pubSubTopic, int partition) {
     PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(pubSubTopic, partition);
@@ -2359,11 +2358,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
     try {
       return RetryUtils.executeWithMaxAttemptAndExponentialBackoffNoLog(() -> {
-        long offset = getTopicManager(kafkaUrl).getLatestOffsetCachedNonBlocking(pubSubTopic, partition);
-        if (offset == UNKNOWN_LATEST_OFFSET) {
-          throw new VeniceException("Latest offset is unknown. Check if the topic: " + topicPartition + " exists.");
+        PubSubPosition position = getTopicManager(kafkaUrl).getLatestPositionCachedNonBlocking(pubSubTopic, partition);
+        if (PubSubSymbolicPosition.LATEST.equals(position)) {
+          throw new VeniceException("Latest position is unknown. Check if the tp: " + topicPartition + " exists.");
         }
-        return offset;
+        return position.getNumericOffset();
       },
           MAX_OFFSET_FETCH_ATTEMPTS,
           Duration.ofMillis(10),
@@ -2372,12 +2371,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           RETRY_FAILURE_TYPES);
     } catch (Exception e) {
       LOGGER.error(
-          "Failed to get end offset for topic-partition: {} with kafka url {} even after {} retries",
+          "Failed to get end position for topic-partition: {} with pubsub url {} even after {} retries",
           topicPartition,
           kafkaUrl,
           MAX_OFFSET_FETCH_ATTEMPTS,
           e);
-      return StatsErrorCode.LAG_MEASUREMENT_FAILURE.code;
+      return PubSubSymbolicPosition.LATEST.getNumericOffset();
     }
   }
 
@@ -2844,28 +2843,29 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       return Long.MAX_VALUE;
     }
     TopicManager tm = topicManagerProvider.apply(pubSubServerName);
-    long endOffset = tm.getLatestOffsetCached(topic, partition);
-    if (endOffset < 0) {
-      // A negative value means there was a problem in measuring the end offset, and therefore we return "infinite lag"
+    PubSubPosition endPosition = tm.getLatestPositionCached(topic, partition);
+    if (PubSubSymbolicPosition.LATEST.equals(endPosition)) {
+      // A negative value means there was a problem in measuring the end position, and therefore we return "infinite
+      // lag"
       return Long.MAX_VALUE;
-    } else if (endOffset == 0) {
+    } else if (endPosition.getNumericOffset() == 0) {
       /**
-       * Topics which were never produced to have an end offset of zero. Such topics are empty and therefore, by
+       * Topics which were never produced to have an end position of zero. Such topics are empty and therefore, by
        * definition, there cannot be any lag.
        *
-       * Note that the reverse is not true: a topic can be currently empty and have an end offset above zero, if it had
+       * Note that the reverse is not true: a topic can be currently empty and have an end position above zero, if it had
        * messages produced to it before, which have since then disappeared (e.g. due to time-based retention).
        */
       return 0;
     }
 
     /**
-     * A topic with an end offset of zero is empty. A topic with a single message in it will have an end offset of 1,
-     * while that single message will have offset 0. In such single message topic, a consumer which fully scans the
-     * topic would have a current offset of 0, while the topic has an end offset of 1, and therefore we need to subtract
-     * 1 from the end offset in order to arrive at the correct lag of 0.
+     * A topic with an end position of zero is empty. A topic with a single message in it will have an end position of
+     * 1, while that single message will have position 0. In such single message topic, a consumer which fully scans the
+     * topic would have a current position of 0, while the topic has an end position of 1, and therefore we need to subtract
+     * 1 from the end position in order to arrive at the correct lag of 0.
      */
-    return endOffset - 1 - currentOffset;
+    return endPosition.getNumericOffset() - 1 - currentOffset;
   }
 
   public abstract int getWriteComputeErrorCode();

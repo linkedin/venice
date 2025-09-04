@@ -100,8 +100,11 @@ import com.linkedin.venice.pubsub.PubSubConsumerAdapterContext;
 import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
+import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;
 import com.linkedin.venice.pubsub.manager.TopicManager;
@@ -1873,10 +1876,17 @@ public class AdminTool {
     int partitionNumber = (getOptionalArgument(cmd, Arg.KAFKA_TOPIC_PARTITION) == null)
         ? -1
         : Integer.parseInt(getOptionalArgument(cmd, Arg.KAFKA_TOPIC_PARTITION));
-    long startingOffset = (getOptionalArgument(cmd, Arg.STARTING_OFFSET) == null)
-        ? -1
-        : Long.parseLong(getOptionalArgument(cmd, Arg.STARTING_OFFSET));
-    int messageCount = (getOptionalArgument(cmd, Arg.MESSAGE_COUNT) == null)
+
+    String startingOffsetArg = getOptionalArgument(cmd, Arg.STARTING_OFFSET, "-1");
+
+    PubSubPosition startingPosition;
+    if ("-1".equals(startingOffsetArg)) {
+      startingPosition = PubSubSymbolicPosition.EARLIEST;
+    } else {
+      // TODO: Support base64-encoded position + type, and deserialize via PubSubPositionTypeRegistry.
+      startingPosition = ApacheKafkaOffsetPosition.of(Long.parseLong(startingOffsetArg));
+    }
+    long messageCount = (getOptionalArgument(cmd, Arg.MESSAGE_COUNT) == null)
         ? -1
         : Integer.parseInt(getOptionalArgument(cmd, Arg.MESSAGE_COUNT));
     String parentDir = "./";
@@ -1890,7 +1900,7 @@ public class AdminTool {
     String startDatetime = getOptionalArgument(cmd, Arg.START_DATE);
     long startTimestamp =
         startDatetime == null ? -1 : Utils.parseDateTimeToEpoch(startDatetime, DEFAULT_DATE_FORMAT, PST_TIME_ZONE);
-    if (startTimestamp != -1 && startingOffset != -1) {
+    if (startTimestamp != -1 && !PubSubSymbolicPosition.EARLIEST.equals(startingPosition)) {
       throw new VeniceException("Only one of start date and starting offset can be specified");
     }
 
@@ -1905,17 +1915,17 @@ public class AdminTool {
     try (PubSubConsumerAdapter consumer = getConsumer(consumerProps, pubSubClientsFactory)) {
       PubSubTopicPartition topicPartition =
           new PubSubTopicPartitionImpl(TOPIC_REPOSITORY.getTopic(kafkaTopic), partitionNumber);
-      long startOffset =
-          KafkaTopicDumper.calculateStartingOffset(consumer, topicPartition, startingOffset, startTimestamp);
-      long endOffset = KafkaTopicDumper.calculateEndingOffset(consumer, topicPartition, endTimestamp);
+      PubSubPosition startPosition =
+          KafkaTopicDumper.calculateStartingPosition(consumer, topicPartition, startingPosition, startTimestamp);
+      PubSubPosition endingPosition = KafkaTopicDumper.calculateEndingPosition(consumer, topicPartition, endTimestamp);
       if (messageCount <= 0) {
-        messageCount = (int) (endOffset - startOffset);
+        messageCount = consumer.positionDifference(topicPartition, endingPosition, startPosition);
       }
       LOGGER.info(
           "TopicPartition: {} Start offset: {}, End offset: {}, Message count: {}",
           topicPartition,
-          startOffset,
-          endOffset,
+          startPosition,
+          endingPosition,
           messageCount);
       try (KafkaTopicDumper ktd = new KafkaTopicDumper(
           controllerClient,
@@ -1927,7 +1937,7 @@ public class AdminTool {
           logDataRecord,
           logRmdRecord,
           logTsRecord)) {
-        ktd.fetchAndProcess(startOffset, endOffset, messageCount);
+        ktd.fetchAndProcess(startPosition, endingPosition, messageCount);
       } catch (Exception e) {
         System.err.println("Something went wrong during topic dump");
         e.printStackTrace();

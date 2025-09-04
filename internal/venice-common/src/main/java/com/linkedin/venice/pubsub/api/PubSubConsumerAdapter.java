@@ -292,7 +292,13 @@ public interface PubSubConsumerAdapter extends AutoCloseable, Closeable {
    * @throws PubSubOpTimeoutException If the operation times out while fetching the end offsets.
    * @throws PubSubClientException If there is an error while attempting to fetch the end offsets.
    */
-  Map<PubSubTopicPartition, Long> endOffsets(Collection<PubSubTopicPartition> partitions, Duration timeout);
+  @Deprecated
+  default Map<PubSubTopicPartition, Long> endOffsets(Collection<PubSubTopicPartition> partitions, Duration timeout) {
+    Map<PubSubTopicPartition, PubSubPosition> positionMap = endPositions(partitions, timeout);
+    return positionMap.entrySet()
+        .stream()
+        .collect(java.util.stream.Collectors.toMap(Map.Entry::getKey, e -> e.getValue().getNumericOffset()));
+  }
 
   Map<PubSubTopicPartition, PubSubPosition> endPositions(Collection<PubSubTopicPartition> partitions, Duration timeout);
 
@@ -306,7 +312,10 @@ public interface PubSubConsumerAdapter extends AutoCloseable, Closeable {
    * @throws PubSubOpTimeoutException If the operation times out while fetching the end offset.
    * @throws PubSubClientException If there is an error while attempting to fetch the end offset.
    */
-  Long endOffset(PubSubTopicPartition pubSubTopicPartition);
+  @Deprecated
+  default Long endOffset(PubSubTopicPartition pubSubTopicPartition) {
+    return endPosition(pubSubTopicPartition).getNumericOffset();
+  }
 
   PubSubPosition endPosition(PubSubTopicPartition pubSubTopicPartition);
 

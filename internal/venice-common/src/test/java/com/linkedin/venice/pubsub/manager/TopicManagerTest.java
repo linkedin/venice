@@ -478,7 +478,7 @@ public class TopicManagerTest {
     PubSubTopic nonExistingTopic = pubSubTopicRepository.getTopic(TestUtils.getUniqueTopicString("non-existing-topic"));
     Assert.assertThrows(
         PubSubTopicDoesNotExistException.class,
-        () -> topicManager.getLatestOffsetWithRetries(new PubSubTopicPartitionImpl(nonExistingTopic, 0), 10));
+        () -> topicManager.getLatestPositionWithRetries(new PubSubTopicPartitionImpl(nonExistingTopic, 0), 10));
   }
 
   @Test
@@ -584,7 +584,7 @@ public class TopicManagerTest {
         new TopicManagerRepository(topicManagerContext, localPubSubBrokerAddress).getLocalTopicManager()) {
       Assert.assertThrows(
           PubSubOpTimeoutException.class,
-          () -> topicManagerForThisTest.getLatestOffsetWithRetries(pubSubTopicPartition, 10));
+          () -> topicManagerForThisTest.getLatestPositionWithRetries(pubSubTopicPartition, 10));
     }
   }
 

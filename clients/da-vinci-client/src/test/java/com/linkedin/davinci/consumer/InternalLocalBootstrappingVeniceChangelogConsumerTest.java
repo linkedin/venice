@@ -3,7 +3,6 @@ package com.linkedin.davinci.consumer;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
-import static com.linkedin.venice.offsets.OffsetRecord.LOWEST_OFFSET;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -154,13 +153,12 @@ public class InternalLocalBootstrappingVeniceChangelogConsumerTest {
         pubSubTopicRepository.getTopic(versionTopic.getName() + ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX);
     PubSubTopicPartition topicPartition_0 = new PubSubTopicPartitionImpl(changeCaptureTopic, 0);
     PubSubTopicPartition topicPartition_1 = new PubSubTopicPartitionImpl(changeCaptureTopic, 1);
+    ApacheKafkaOffsetPosition position0 = ApacheKafkaOffsetPosition.of(0L);
     Set<PubSubTopicPartition> assignments = ImmutableSet.of(topicPartition_0, topicPartition_1);
     pubSubConsumer = mock(PubSubConsumerAdapter.class);
     doReturn(assignments).when(pubSubConsumer).getAssignment();
-    doReturn(LOWEST_OFFSET).when(pubSubConsumer).getLatestOffset(topicPartition_0);
-    doReturn(LOWEST_OFFSET).when(pubSubConsumer).getLatestOffset(topicPartition_1);
-    doReturn(0L).when(pubSubConsumer).endOffset(topicPartition_0);
-    doReturn(0L).when(pubSubConsumer).endOffset(topicPartition_1);
+    doReturn(position0).when(pubSubConsumer).endPosition(topicPartition_0);
+    doReturn(position0).when(pubSubConsumer).endPosition(topicPartition_1);
     when(pubSubConsumer.poll(anyLong())).thenReturn(new HashMap<>());
 
     Properties consumerProperties = new Properties();
@@ -406,10 +404,9 @@ public class InternalLocalBootstrappingVeniceChangelogConsumerTest {
     PubSubTopicPartition topicPartition_1 = new PubSubTopicPartitionImpl(changeCaptureTopic, TEST_PARTITION_ID_1);
     Set<PubSubTopicPartition> assignments = ImmutableSet.of(topicPartition_0, topicPartition_1);
     doReturn(assignments).when(pubSubConsumer).getAssignment();
-    doReturn(0L).when(pubSubConsumer).getLatestOffset(topicPartition_0);
-    doReturn(0L).when(pubSubConsumer).getLatestOffset(topicPartition_1);
-    doReturn(1L).when(pubSubConsumer).endOffset(topicPartition_0);
-    doReturn(1L).when(pubSubConsumer).endOffset(topicPartition_1);
+    ApacheKafkaOffsetPosition position1 = ApacheKafkaOffsetPosition.of(1L);
+    doReturn(position1).when(pubSubConsumer).endPosition(topicPartition_0);
+    doReturn(position1).when(pubSubConsumer).endPosition(topicPartition_1);
     when(pubSubConsumer.poll(anyLong())).thenReturn(new HashMap<>());
 
     StorageService mockStorageService = mock(StorageService.class);

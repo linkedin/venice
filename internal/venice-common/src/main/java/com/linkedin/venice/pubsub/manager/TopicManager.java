@@ -764,7 +764,7 @@ public class TopicManager implements Closeable {
 
   public PubSubPosition getEndPositionsForPartitionWithRetries(PubSubTopicPartition pubSubTopicPartition) {
     return RetryUtils.executeWithMaxAttempt(
-        () -> topicMetadataFetcher.getEndPositionsForPartition(pubSubTopicPartition),
+        () -> topicMetadataFetcher.getEndPositionForPartition(pubSubTopicPartition),
         10,
         Duration.ofMinutes(1),
         Collections.singletonList(Exception.class));
@@ -802,17 +802,17 @@ public class TopicManager implements Closeable {
     return topicMetadataFetcher.containsTopicWithRetries(pubSubTopic, retries);
   }
 
-  public long getLatestOffsetWithRetries(PubSubTopicPartition pubSubTopicPartition, int retries) {
-    return topicMetadataFetcher.getLatestOffsetWithRetries(pubSubTopicPartition, retries);
+  public PubSubPosition getLatestPositionWithRetries(PubSubTopicPartition pubSubTopicPartition, int retries) {
+    return topicMetadataFetcher.getLatestPositionWithRetries(pubSubTopicPartition, retries);
   }
 
-  public long getLatestOffsetCached(PubSubTopic pubSubTopic, int partitionId) {
-    return topicMetadataFetcher.getLatestOffsetCached(new PubSubTopicPartitionImpl(pubSubTopic, partitionId));
+  public PubSubPosition getLatestPositionCached(PubSubTopic pubSubTopic, int partitionId) {
+    return topicMetadataFetcher.getLatestPositionCached(new PubSubTopicPartitionImpl(pubSubTopic, partitionId));
   }
 
-  public long getLatestOffsetCachedNonBlocking(PubSubTopic pubSubTopic, int partitionId) {
+  public PubSubPosition getLatestPositionCachedNonBlocking(PubSubTopic pubSubTopic, int partitionId) {
     return topicMetadataFetcher
-        .getLatestOffsetCachedNonBlocking(new PubSubTopicPartitionImpl(pubSubTopic, partitionId));
+        .getLatestPositionCachedNonBlocking(new PubSubTopicPartitionImpl(pubSubTopic, partitionId));
   }
 
   /**

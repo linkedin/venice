@@ -1227,19 +1227,30 @@ public class AdminConsumptionTask implements Runnable, Closeable {
   void recordConsumptionLag() {
     try {
       /**
-       *  In the default read_uncommitted isolation level, the end offset is the high watermark (that is, the offset of
-       *  the last successfully replicated message plus one), so subtract 1 from the max offset result.
+       *  In the default read_uncommitted isolation level, the end position is the high watermark (that is, the position
+       *  of the last successfully replicated message plus one), so subtract 1 from the max position result.
        */
-      long sourceAdminTopicEndOffset =
-          sourceKafkaClusterTopicManager.getLatestOffsetWithRetries(adminTopicPartition, 10) - 1;
+
+      PubSubPosition latestPosition =
+          sourceKafkaClusterTopicManager.getLatestPositionWithRetries(adminTopicPartition, 10);
+      if (PubSubSymbolicPosition.LATEST.equals(latestPosition)) {
+        LOGGER.debug(
+            "Cannot get latest position for admin topic: {}, skip this round of lag metrics emission",
+            adminTopicPartition);
+        stats.setAdminConsumptionOffsetLag(Long.MAX_VALUE);
+        return;
+      }
+
       /**
        * If the first consumer poll returns nothing, "lastConsumedOffset" will remain as {@link #UNASSIGNED_VALUE}, so a
        * huge lag will be reported, but actually that's not case since consumer is subscribed to the last checkpoint offset.
        */
       if (!PubSubSymbolicPosition.EARLIEST.equals(lastConsumedPosition)) {
-        stats.setAdminConsumptionOffsetLag(sourceAdminTopicEndOffset - lastConsumedPosition.getNumericOffset());
+        stats.setAdminConsumptionOffsetLag(
+            sourceKafkaClusterTopicManager.diffPosition(adminTopicPartition, latestPosition, lastConsumedPosition) - 1);
       }
-      stats.setMaxAdminConsumptionOffsetLag(sourceAdminTopicEndOffset - lastPersistedPosition.getNumericOffset());
+      stats.setMaxAdminConsumptionOffsetLag(
+          sourceKafkaClusterTopicManager.diffPosition(adminTopicPartition, latestPosition, lastPersistedPosition) - 1);
     } catch (Exception e) {
       LOGGER.error(
           "Error when emitting admin consumption lag metrics; only log for warning; admin channel will continue to work.");
