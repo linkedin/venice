@@ -1227,8 +1227,8 @@ public class AdminConsumptionTask implements Runnable, Closeable {
   void recordConsumptionLag() {
     try {
       /**
-       *  In the default read_uncommitted isolation level, the end offset is the high watermark (that is, the offset of
-       *  the last successfully replicated message plus one), so subtract 1 from the max offset result.
+       *  In the default read_uncommitted isolation level, the end position is the high watermark (that is, the position
+       *  of the last successfully replicated message plus one), so subtract 1 from the max position result.
        */
 
       PubSubPosition latestPosition =

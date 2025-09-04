@@ -97,7 +97,7 @@ public class TopicMessageFinder {
     } else {
       endPosition = consumer.getPositionByTimestamp(assignedPubSubTopicPartition, endTimestampEpochMs);
     }
-    LOGGER.info("Got start offset: {} and end offset: {} for the specified time range", startPosition, endPosition);
+    LOGGER.info("Got start position: {} and end position: {} for the specified time range", startPosition, endPosition);
     return consume(consumer, assignedPubSubTopicPartition, startPosition, endPosition, progressInterval, serializedKey);
   }
 

@@ -337,7 +337,6 @@ public class TestKafkaTopicDumper {
     PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(TOPIC_REPOSITORY.getTopic("test_topic_rt"), 0);
     // Case 1: When start timestamp is non-negative and start position is non-negative; positionForTime is
     // non-null then it should be used as the start position.
-    PubSubPosition userProvideStartPosition = PubSubSymbolicPosition.EARLIEST;
     long startTimestamp = 123456789L;
     ApacheKafkaOffsetPosition positionForTime = ApacheKafkaOffsetPosition.of(1234L);
     ApacheKafkaOffsetPosition startPosition = ApacheKafkaOffsetPosition.of(0L);
@@ -351,18 +350,20 @@ public class TestKafkaTopicDumper {
         .positionDifference(any(PubSubTopicPartition.class), any(PubSubPosition.class), any(PubSubPosition.class));
 
     PubSubPosition actualStartPosition = KafkaTopicDumper
-        .calculateStartingPosition(consumerAdapter, topicPartition, userProvideStartPosition, startTimestamp);
+        .calculateStartingPosition(consumerAdapter, topicPartition, PubSubSymbolicPosition.EARLIEST, startTimestamp);
     assertEquals(actualStartPosition, positionForTime);
 
     // Case 2: When start timestamp is non-negative and start position is non-negative; but positionForTime is null,
     // beginning position should be used as the start position.
     when(consumerAdapter.getPositionByTimestamp(topicPartition, startTimestamp)).thenReturn(null);
-    PubSubPosition finalStartOffset = PubSubSymbolicPosition.EARLIEST;
     long finalStartTimestamp = 123456789L;
     PubSubClientException e = expectThrows(
         PubSubClientException.class,
-        () -> KafkaTopicDumper
-            .calculateStartingPosition(consumerAdapter, topicPartition, finalStartOffset, finalStartTimestamp));
+        () -> KafkaTopicDumper.calculateStartingPosition(
+            consumerAdapter,
+            topicPartition,
+            PubSubSymbolicPosition.EARLIEST,
+            finalStartTimestamp));
     assertTrue(e.getMessage().contains("Failed to find an position"), "Actual error message: " + e.getMessage());
 
     // Case 3: When start timestamp is non-negative and start position is non-negative; but beginning position is higher
