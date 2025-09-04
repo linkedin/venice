@@ -82,6 +82,7 @@ public class OffsetRecord {
     emptyPartitionState.lastProcessedVersionTopicPubSubPosition = PubSubSymbolicPosition.EARLIEST.toWireFormatBuffer();
     emptyPartitionState.lastConsumedVersionTopicPubSubPosition = PubSubSymbolicPosition.EARLIEST.toWireFormatBuffer();
     emptyPartitionState.upstreamVersionTopicPubSubPosition = PubSubSymbolicPosition.EARLIEST.toWireFormatBuffer();
+    emptyPartitionState.lastConsumedVersionTopicOffset = PubSubSymbolicPosition.EARLIEST.getNumericOffset();
     return emptyPartitionState;
   }
 

@@ -1,8 +1,10 @@
 package com.linkedin.davinci.validation;
 
+import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.exceptions.validation.DataValidationException;
 import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.state.ProducerPartitionState;
+import com.linkedin.venice.kafka.validation.Segment;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
@@ -74,6 +76,13 @@ public class DataIntegrityValidator {
    */
   public void clearPartition(int partition) {
     partitionTrackers.remove(partition);
+  }
+
+  public void clearPartitionSegments(int partition, PartitionTracker.TopicType type) {
+    PartitionTracker partitionTracker = this.partitionTrackers.get(partition);
+    if (partitionTracker != null) {
+      partitionTracker.clearSegments(type);
+    }
   }
 
   public void setPartitionState(PartitionTracker.TopicType type, int partition, OffsetRecord offsetRecord) {
@@ -188,5 +197,38 @@ public class DataIntegrityValidator {
   /** N.B. Intended for tests */
   int getNumberOfTrackedPartitions() {
     return this.partitionTrackers.values().size();
+  }
+
+  @VisibleForTesting
+  public boolean hasGlobalRtDivState(int partition) {
+    PartitionTracker partitionTracker = this.partitionTrackers.get(partition);
+    if (partitionTracker == null) {
+      LOGGER.info("Partition tracker is null for partition: {}", partition);
+      return false;
+    }
+    Map<String, Map<GUID, Segment>> rtSegments = partitionTracker.getAllRtSegmentsForTesting();
+    for (Map<GUID, Segment> segments: rtSegments.values()) {
+      if (!segments.isEmpty()) {
+        LOGGER.info("RT DIV state size: {}", segments.size());
+        return true;
+      }
+    }
+    LOGGER.info("No global RT DIV state found for partition: {}", partition);
+    return false;
+  }
+
+  public boolean hasVtDivState(int partition) {
+    PartitionTracker partitionTracker = this.partitionTrackers.get(partition);
+    if (partitionTracker == null) {
+      LOGGER.info("Partition tracker is null for partition: {}", partition);
+      return false;
+    }
+    Map<GUID, Segment> vtSegments = partitionTracker.getVtSegmentsForTesting();
+    if (!vtSegments.isEmpty()) {
+      LOGGER.info("VT DIV state size: {}", vtSegments.size());
+      return true;
+    }
+    LOGGER.info("No VT DIV state found for partition: {}", partition);
+    return false;
   }
 }

@@ -3460,8 +3460,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     KafkaKey key = consumerRecord.getKey();
     if (key.isControlMessage() && Arrays.equals(KafkaKey.HEART_BEAT.getKey(), key.getKey())) {
       return; // Skip validation for ingestion heartbeat records.
-    } else if (key.isGlobalRtDiv()) {
-      return; // Skip validation for Global RT DIV messages.
     }
 
     Lazy<Boolean> tolerateMissingMsgs = Lazy.of(() -> {
@@ -4759,7 +4757,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   /** When Global RT DIV is enabled the ConsumptionTask's DIV is exclusively used to validate data integrity. */
-  DataIntegrityValidator getDataIntegrityValidator() {
+  @VisibleForTesting
+  public DataIntegrityValidator getDataIntegrityValidator() {
     return (isGlobalRtDivEnabled()) ? consumerDiv : drainerDiv;
   }
 
