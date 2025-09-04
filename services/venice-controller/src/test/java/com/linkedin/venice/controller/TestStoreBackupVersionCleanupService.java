@@ -55,6 +55,7 @@ public class TestStoreBackupVersionCleanupService {
 
   private static final String CLUSTER_NAME = "test_cluster";
   private static final long DEFAULT_RETENTION_MS = TimeUnit.DAYS.toMillis(7);
+  private static final long REPUSH_WAIT_TIME = 100L; // bypasses whetherStoreReadyToBeCleanup() for repush cases
 
   private VeniceHelixAdmin admin;
   private ZkRoutersClusterManager clusterManager;
@@ -88,6 +89,7 @@ public class TestStoreBackupVersionCleanupService {
     clusters.add(CLUSTER_NAME);
     when(config.getClusters()).thenReturn(clusters);
     when(admin.isLeaderControllerFor(any())).thenReturn(true);
+    StoreBackupVersionCleanupService.setWaitTimeDeleteRepushSourceVersion(REPUSH_WAIT_TIME);
   }
 
   private Store mockStore(
@@ -200,42 +202,52 @@ public class TestStoreBackupVersionCleanupService {
   }
 
   @Test
-  public void testCleanupBackupVersion() {
+  public void testCleanupBackupVersion_StoreNotQualifiedDueToRecentBackupVersion() {
     StoreBackupVersionCleanupService service = createService();
-
-    // Test 1: Store not qualified due to recent backup version
     Map<Integer, VersionStatus> versions = new HashMap<>();
     versions.put(1, VersionStatus.ONLINE);
     versions.put(2, VersionStatus.ONLINE);
     Store storeWithFreshBackupVersion = mockStore(-1, System.currentTimeMillis(), versions, 2);
     Assert.assertFalse(service.cleanupBackupVersion(storeWithFreshBackupVersion, CLUSTER_NAME));
+  }
 
-    // Test 2: Store qualified but only has one version
-    versions.clear();
+  @Test
+  public void testCleanupBackupVersion_StoreQualifiedButOnlyHasOneVersion() {
+    StoreBackupVersionCleanupService service = createService();
+    Map<Integer, VersionStatus> versions = new HashMap<>();
     versions.put(2, VersionStatus.ONLINE);
     Store storeWithOneVersion = mockStore(-1, System.currentTimeMillis() - DEFAULT_RETENTION_MS * 2, versions, 2);
     Assert.assertFalse(service.cleanupBackupVersion(storeWithOneVersion, CLUSTER_NAME));
+  }
 
-    // Test 3: Store qualified with one removable version
-    versions.clear();
+  @Test
+  public void testCleanupBackupVersion_StoreQualifiedWithOneRemovableVersion() {
+    StoreBackupVersionCleanupService service = createService();
+    Map<Integer, VersionStatus> versions = new HashMap<>();
     versions.put(1, VersionStatus.ONLINE);
     versions.put(2, VersionStatus.ONLINE);
     Store storeWithTwoVersions = mockStore(-1, System.currentTimeMillis() - DEFAULT_RETENTION_MS * 2, versions, 2);
     Assert.assertTrue(service.cleanupBackupVersion(storeWithTwoVersions, CLUSTER_NAME));
     verify(admin).deleteOldVersionInStore(CLUSTER_NAME, storeWithTwoVersions.getName(), 1);
+  }
 
-    // Test 4: Store qualified but rollback was executed
-    versions.clear();
+  @Test
+  public void testCleanupBackupVersion_StoreQualifiedButRollbackWasExecuted() {
+    StoreBackupVersionCleanupService service = createService();
+    Map<Integer, VersionStatus> versions = new HashMap<>();
     versions.put(1, VersionStatus.ONLINE);
     versions.put(2, VersionStatus.ONLINE);
     versions.put(3, VersionStatus.STARTED);
     Store storeWithRollback = mockStore(-1, System.currentTimeMillis() - DEFAULT_RETENTION_MS * 2, versions, 1);
     Assert.assertFalse(service.cleanupBackupVersion(storeWithRollback, CLUSTER_NAME));
+  }
 
-    // Test 5: Store with push in progress
+  @Test
+  public void testCleanupBackupVersion_StoreWithPushInProgress() {
+    StoreBackupVersionCleanupService service = createService();
     StoreBackupVersionCleanupService.setMinBackupVersionCleanupDelay(100L);
     doReturn(true).when(controllerConfig).isBackupVersionReplicaReductionEnabled();
-    versions.clear();
+    Map<Integer, VersionStatus> versions = new HashMap<>();
     versions.put(1, VersionStatus.ONLINE);
     versions.put(2, VersionStatus.ONLINE);
     versions.put(3, VersionStatus.STARTED);
@@ -246,13 +258,9 @@ public class TestStoreBackupVersionCleanupService {
   }
 
   @Test
-  public void testCleanupBackupVersionRepush() {
+  public void testCleanupBackupVersionRepush_OneRepush() {
+    // One repush creating one backup version
     StoreBackupVersionCleanupService service = createService();
-    long rolledbackTimestamp = System.currentTimeMillis() - DEFAULT_RETENTION_MS * 2;
-    long waitTimeDeleteRepushSourceVersion = 100; // bypasses whetherStoreReadyToBeCleanup() for repush cases
-    StoreBackupVersionCleanupService.setWaitTimeDeleteRepushSourceVersion(waitTimeDeleteRepushSourceVersion);
-
-    // Test case: One repush creating one backup version
     Map<Integer, VersionStatus> versions = new HashMap<>();
     versions.put(1, VersionStatus.ONLINE);
     versions.put(2, VersionStatus.ONLINE);
@@ -267,14 +275,19 @@ public class TestStoreBackupVersionCleanupService {
     Assert.assertFalse(service.cleanupBackupVersion(storeWithFreshBackupVersion, CLUSTER_NAME));
 
     // The deletion condition should hinge on latestVersionPromoteToCurrentTimestamp
+    long rolledbackTimestamp = System.currentTimeMillis() - DEFAULT_RETENTION_MS * 2;
     doReturn(rolledbackTimestamp).when(storeWithFreshBackupVersion).getLatestVersionPromoteToCurrentTimestamp();
     Assert.assertTrue(service.cleanupBackupVersion(storeWithFreshBackupVersion, CLUSTER_NAME));
+  }
 
-    versions.clear();
+  @Test
+  public void testCleanupBackupVersionRepush_Rollback() {
+    StoreBackupVersionCleanupService service = createService();
+    Map<Integer, VersionStatus> versions = new HashMap<>();
     versions.put(1, VersionStatus.ONLINE);
     versions.put(2, VersionStatus.ONLINE);
     versions.put(3, VersionStatus.ONLINE);
-    Store storeWithRollback = mockStore(-1, rolledbackTimestamp, versions, 3);
+    Store storeWithRollback = mockStore(-1, System.currentTimeMillis() - DEFAULT_RETENTION_MS * 2, versions, 3);
     Version version = storeWithRollback.getVersion(3);
     doReturn(2).when(version).getRepushSourceVersion();
 
@@ -284,12 +297,16 @@ public class TestStoreBackupVersionCleanupService {
         1,
         TimeUnit.SECONDS,
         () -> verify(admin, atLeast(1)).deleteOldVersionInStore(CLUSTER_NAME, storeWithRollback.getName(), 2));
+  }
 
-    versions.clear();
+  @Test
+  public void testCleanupBackupVersionRepush_LingeringVersion() {
+    StoreBackupVersionCleanupService service = createService();
+    Map<Integer, VersionStatus> versions = new HashMap<>();
     versions.put(1, VersionStatus.ONLINE);
     versions.put(3, VersionStatus.ONLINE);
-    Store storeLingeringVersion = mockStore(-1, rolledbackTimestamp, versions, 3);
-    version = storeLingeringVersion.getVersion(3);
+    Store storeLingeringVersion = mockStore(-1, System.currentTimeMillis() - DEFAULT_RETENTION_MS * 2, versions, 3);
+    Version version = storeLingeringVersion.getVersion(3);
     doReturn(2).when(version).getRepushSourceVersion();
     version = storeLingeringVersion.getVersion(1);
     doReturn(1L).when(version).getCreatedTime();
@@ -300,56 +317,66 @@ public class TestStoreBackupVersionCleanupService {
         1,
         TimeUnit.SECONDS,
         () -> verify(admin, atLeast(1)).deleteOldVersionInStore(CLUSTER_NAME, storeLingeringVersion.getName(), 1));
+  }
 
-    // Test case: Store with multiple repushed versions
-    // Version 2 is repushed from Version 3 until Version 10
-    versions.clear();
-    int minRepushedVersion = 3;
-    int maxRepushedVersion = 10;
+  private Store createStoreWithRepushes(int minRepushedVersion, int maxRepushedVersion) {
+    Map<Integer, VersionStatus> versions = new HashMap<>();
     for (int v = 1; v <= maxRepushedVersion; v++) {
       versions.put(v, VersionStatus.ONLINE);
     }
     Store repushedStore = mockStore(-1, System.currentTimeMillis(), versions, maxRepushedVersion);
     for (int v = minRepushedVersion; v <= maxRepushedVersion; v++) {
-      version = repushedStore.getVersion(v);
+      Version version = repushedStore.getVersion(v);
       doReturn(v - 1).when(version).getRepushSourceVersion();
     }
+    return repushedStore;
+  }
+
+  @Test
+  public void testCleanupBackupVersionRepush_MultipleRepush() {
+    // Version 2 is repushed from Version 3 until Version 10
+    StoreBackupVersionCleanupService service = createService();
+    int minRepushedVersion = 3;
+    int maxRepushedVersion = 10;
+    Store repushedStore = createStoreWithRepushes(minRepushedVersion, maxRepushedVersion);
 
     // Cleanup service should not run, since it hasn't been long enough since the latest version was promoted to current
+    StoreBackupVersionCleanupService.setWaitTimeDeleteRepushSourceVersion(100000L);
     Assert.assertFalse(service.cleanupBackupVersion(repushedStore, CLUSTER_NAME), "No versions should be cleaned up");
     for (int v = minRepushedVersion; v < maxRepushedVersion; v++) {
       verify(admin, never()).deleteOldVersionInStore(CLUSTER_NAME, repushedStore.getName(), v);
     }
 
     // Versions 2..9 should be deleted, but not Version 1 or Version 10
-    doReturn(System.currentTimeMillis() - 2 * waitTimeDeleteRepushSourceVersion).when(repushedStore)
-        .getLatestVersionPromoteToCurrentTimestamp(); // cleanup service can run again
+    StoreBackupVersionCleanupService.setWaitTimeDeleteRepushSourceVersion(REPUSH_WAIT_TIME); // service can run again
     Assert.assertTrue(service.cleanupBackupVersion(repushedStore, CLUSTER_NAME));
     verify(admin, never()).deleteOldVersionInStore(CLUSTER_NAME, repushedStore.getName(), 1);
     for (int v = minRepushedVersion - 1; v < maxRepushedVersion; v++) { // version 2, 3, 4, ..., 9
-      int versionNumber = v; // for compiler warning
+      int version = v; // for compiler warning
       TestUtils.waitForNonDeterministicAssertion(
           1,
           TimeUnit.SECONDS,
-          () -> verify(admin, atLeast(1))
-              .deleteOldVersionInStore(CLUSTER_NAME, repushedStore.getName(), versionNumber));
+          () -> verify(admin, atLeast(1)).deleteOldVersionInStore(CLUSTER_NAME, repushedStore.getName(), version));
     }
     verify(admin, never()).deleteOldVersionInStore(CLUSTER_NAME, repushedStore.getName(), maxRepushedVersion);
+  }
 
-    // Test case: Version 1 is repushed from Version 2 until Version 10
-    // The latest backup version (9) should not be deleted unless retention time has passed
-    clearInvocations(admin);
-    version = repushedStore.getVersion(2);
-    doReturn(1).when(version).getRepushSourceVersion();
+  @Test
+  public void testCleanupBackupVersionRepush_AllRepush() {
+    // Version 1 is repushed from Version 2 until Version 10
+    StoreBackupVersionCleanupService service = createService();
+    int minRepushedVersion = 2;
+    int maxRepushedVersion = 10;
+    Store repushedStore = createStoreWithRepushes(minRepushedVersion, maxRepushedVersion);
     Assert.assertTrue(service.cleanupBackupVersion(repushedStore, CLUSTER_NAME));
     for (int v = 1; v < maxRepushedVersion - 1; v++) { // version 1, 2, 3, ..., 8
-      int versionNumber = v; // for compiler warning
+      int version = v; // for compiler warning
       TestUtils.waitForNonDeterministicAssertion(
           1,
           TimeUnit.SECONDS,
-          () -> verify(admin, atLeast(1))
-              .deleteOldVersionInStore(CLUSTER_NAME, repushedStore.getName(), versionNumber));
+          () -> verify(admin, atLeast(1)).deleteOldVersionInStore(CLUSTER_NAME, repushedStore.getName(), version));
     }
+    // The latest backup version (9) should not be deleted unless retention time has passed
     verify(admin, never()).deleteOldVersionInStore(CLUSTER_NAME, repushedStore.getName(), maxRepushedVersion - 1);
     verify(admin, never()).deleteOldVersionInStore(CLUSTER_NAME, repushedStore.getName(), maxRepushedVersion);
 
@@ -358,12 +385,11 @@ public class TestStoreBackupVersionCleanupService {
     doReturn(0L).when(repushedStore).getLatestVersionPromoteToCurrentTimestamp();
     Assert.assertTrue(service.cleanupBackupVersion(repushedStore, CLUSTER_NAME));
     for (int v = 1; v < maxRepushedVersion; v++) { // version 1, 2, 3, ..., 9
-      int versionNumber = v; // for compiler warning
+      int version = v; // for compiler warning
       TestUtils.waitForNonDeterministicAssertion(
           1,
           TimeUnit.SECONDS,
-          () -> verify(admin, atLeast(1))
-              .deleteOldVersionInStore(CLUSTER_NAME, repushedStore.getName(), versionNumber));
+          () -> verify(admin, atLeast(1)).deleteOldVersionInStore(CLUSTER_NAME, repushedStore.getName(), version));
     }
     verify(admin, never()).deleteOldVersionInStore(CLUSTER_NAME, repushedStore.getName(), maxRepushedVersion);
   }
