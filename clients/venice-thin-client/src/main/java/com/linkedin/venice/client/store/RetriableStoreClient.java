@@ -29,10 +29,11 @@ public class RetriableStoreClient<K, V> extends DelegatingStoreClient<K, V> {
    */
   private static Executor RETRY_EXECUTOR;
 
-  private final StatTrackingStoreClient statStoreclient;
+  private final InternalAvroStoreClient innerStoreClient;
   private final boolean retryOnAllErrors;
   private final long retryBackOffInMs;
   private final int retryCount;
+  private final boolean enableStatTracking;
   private final Executor retryExecutor;
 
   public static synchronized Executor getDefaultRetryExecutor() {
@@ -46,12 +47,13 @@ public class RetriableStoreClient<K, V> extends DelegatingStoreClient<K, V> {
     return RETRY_EXECUTOR;
   }
 
-  public RetriableStoreClient(StatTrackingStoreClient<K, V> innerStoreClient, ClientConfig clientConfig) {
+  public RetriableStoreClient(InternalAvroStoreClient<K, V> innerStoreClient, ClientConfig clientConfig) {
     super(innerStoreClient);
-    this.statStoreclient = innerStoreClient;
+    this.innerStoreClient = innerStoreClient;
     this.retryOnAllErrors = clientConfig.isRetryOnAllErrorsEnabled();
     this.retryBackOffInMs = clientConfig.getRetryBackOffInMs();
     this.retryCount = clientConfig.getRetryCount();
+    this.enableStatTracking = clientConfig.isStatTrackingEnabled();
     Executor configuredRetryExecutor = clientConfig.getRetryExecutor();
     if (clientConfig.getDeserializationExecutor() != null && configuredRetryExecutor != null
         && clientConfig.getDeserializationExecutor() == configuredRetryExecutor) {
@@ -99,7 +101,9 @@ public class RetriableStoreClient<K, V> extends DelegatingStoreClient<K, V> {
         Throwable retryThrowable = throwable;
         while (!retryFuture.isDone() && attempt < retryCount && isRetriableException(retryThrowable)) {
           attempt++;
-          statStoreclient.recordRetryCount(requestType);
+          if (enableStatTracking) {
+            ((StatTrackingStoreClient) innerStoreClient).recordRetryCount(requestType);
+          }
           if (retryBackOffInMs > 0) {
             try {
               Thread.sleep(retryBackOffInMs);

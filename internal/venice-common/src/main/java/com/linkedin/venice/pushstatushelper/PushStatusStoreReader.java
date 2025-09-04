@@ -349,6 +349,7 @@ public class PushStatusStoreReader implements Closeable {
           ClientConfig.defaultGenericClientConfig(VeniceSystemStoreUtils.getDaVinciPushStatusStoreName(storeName))
               .setD2Client(d2Client)
               .setD2ServiceName(clusterDiscoveryD2ServiceName)
+              .setStatTrackingEnabled(false)
               .setSpecificValueClass(PushStatusValue.class);
       return ClientFactory.getAndStartSpecificAvroClient(clientConfig);
     });
