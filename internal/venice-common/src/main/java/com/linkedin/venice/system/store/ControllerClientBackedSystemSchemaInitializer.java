@@ -97,13 +97,6 @@ public class ControllerClientBackedSystemSchemaInitializer implements Closeable 
               clusterName,
               d2Client.get(),
               enforceSslOnly ? sslFactory : Optional.empty());
-        } else if (!d2ZkHost.isEmpty()) {
-          // TODO: removing this once we verified passing D2Client without issue.
-          controllerClient = new D2ControllerClient(
-              controllerD2ServiceName,
-              clusterName,
-              d2ZkHost,
-              enforceSslOnly ? sslFactory : Optional.empty());
         } else {
           throw new VeniceException(
               "System schema initialization is enabled but neither controller url nor d2 config is provided.");
