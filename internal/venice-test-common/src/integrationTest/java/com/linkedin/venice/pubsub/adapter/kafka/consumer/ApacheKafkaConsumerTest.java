@@ -13,7 +13,9 @@ import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapter;
 import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminConfig;
+import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.Utils;
@@ -77,9 +79,10 @@ public class ApacheKafkaConsumerTest {
     assertTrue(admin.containsTopicWithPartitionCheck(existingTopicPartition2));
     assertTrue(admin.containsTopicWithPartitionCheck(existingTopicPartition3));
 
-    consumer.subscribe(existingTopicPartition1, 100L);
-    consumer.subscribe(existingTopicPartition2, 100L);
-    consumer.subscribe(existingTopicPartition3, 100L);
+    PubSubPosition p100 = ApacheKafkaOffsetPosition.of(100L);
+    consumer.subscribe(existingTopicPartition1, p100, false);
+    consumer.subscribe(existingTopicPartition2, p100, false);
+    consumer.subscribe(existingTopicPartition3, p100, false);
 
     Set<PubSubTopicPartition> topicPartitions = new HashSet<>();
     topicPartitions.add(existingTopicPartition1);
@@ -115,7 +118,7 @@ public class ApacheKafkaConsumerTest {
     assertTrue(admin.containsTopic(topic));
 
     PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(topic, 1);
-    consumer.subscribe(pubSubTopicPartition, 0);
+    consumer.subscribe(pubSubTopicPartition, ApacheKafkaOffsetPosition.of(0), false);
     assertConsumerHasSpecificNumberOfAssignedPartitions(consumer, 1);
     consumer.pause(pubSubTopicPartition);
     assertConsumerHasSpecificNumberOfAssignedPartitions(consumer, 1);

@@ -25,6 +25,7 @@ import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
+import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.ConfigCommonUtils;
@@ -94,7 +95,7 @@ public class RecoverStoreMetadata {
     PubSubTopicPartition adminTopicPartition = new PubSubTopicPartitionImpl(
         pubSubTopicRepository.getTopic(adminTopic),
         AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID);
-    consumer.subscribe(adminTopicPartition, -1);
+    consumer.subscribe(adminTopicPartition, PubSubSymbolicPosition.EARLIEST, false);
     AdminOperationSerializer deserializer = new AdminOperationSerializer();
     KafkaMessageEnvelope messageEnvelope = null;
 
