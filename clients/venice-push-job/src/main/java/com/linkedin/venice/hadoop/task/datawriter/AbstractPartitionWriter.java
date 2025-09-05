@@ -13,6 +13,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_BROKER_
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_SOURCE_COMPRESSION_STRATEGY;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.RMD_SCHEMA_DIR;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.RMD_SCHEMA_ID_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.RMD_SCHEMA_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.STORAGE_QUOTA_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TELEMETRY_MESSAGE_INTERVAL;
@@ -194,6 +195,8 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
   private VeniceWriter<byte[], byte[], byte[]> mainWriter = null;
   private ComplexVeniceWriter[] childWriters = null;
   private int valueSchemaId = -1;
+
+  private int rmdSchemaId = -1;
   private Schema rmdSchema = null;
   private int derivedValueSchemaId = -1;
   private boolean enableWriteCompute = false;
@@ -327,7 +330,7 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
         keyBytes,
         valueBytes,
         valueSchemaId,
-        -1,
+        rmdSchemaId,
         rmd,
         getCallback(),
         isEnableWriteCompute(),
@@ -646,6 +649,7 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
     if (rmdSchemaProp.isEmpty()) {
       this.rmdSchema = null;
     } else {
+      this.rmdSchemaId = props.getInt(RMD_SCHEMA_ID_PROP);
       this.rmdSchema = AvroCompatibilityHelper.parse(props.getString(RMD_SCHEMA_PROP));
     }
     initStorageQuotaFields(props);

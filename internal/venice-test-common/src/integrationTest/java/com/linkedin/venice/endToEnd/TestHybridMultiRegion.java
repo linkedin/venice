@@ -16,9 +16,7 @@ import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_OPERATION_TIMEOU
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJProps;
 import static com.linkedin.venice.utils.TestWriteUtils.STRING_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.DATA_WRITER_COMPUTE_JOB_CLASS;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.RMD_FIELD_PROP;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.SPARK_NATIVE_INPUT_FORMAT_ENABLED;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.*;
 import static com.linkedin.venice.writer.VeniceWriter.DEFAULT_TERM_ID;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
@@ -44,6 +42,7 @@ import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
@@ -123,18 +122,38 @@ public class TestHybridMultiRegion {
                   .setHybridRewindSeconds(streamingRewindSeconds)
                   .setHybridOffsetLagThreshold(streamingMessageLag)));
       controllerClient.emptyPush(storeName, Utils.getUniqueString("empty-hybrid-push"), 1L);
+
+      // Prepare input for a batch push with RMD data
+      long recordTimestamp = 123456789L;
+      long ttlStartTimestamp = 123456799L;
       File inputDir = getTempDataDirectory();
       String inputDirPath = "file://" + inputDir.getAbsolutePath();
-      TestWriteUtils.writeSimpleAvroFileWithStringToStringAndTimestampSchema(inputDir, 123456789L); // records 1-100
+      TestWriteUtils.writeSimpleAvroFileWithStringToStringAndTimestampSchema(inputDir, recordTimestamp); // records
+                                                                                                         // 1-100
       Properties vpjProperties = defaultVPJProps(sharedVenice, inputDirPath, storeName);
       vpjProperties.setProperty(RMD_FIELD_PROP, "rmd");
       vpjProperties.setProperty(DATA_WRITER_COMPUTE_JOB_CLASS, DataWriterSparkJob.class.getCanonicalName());
       vpjProperties.setProperty(SPARK_NATIVE_INPUT_FORMAT_ENABLED, String.valueOf(useNativeInputFormat));
 
-      // Do a VPJ push normally to make sure everything is working fine.
+      // VPJ push is expected to succeed, and we validate for new version post the push
       IntegrationTestPushUtils.runVPJ(vpjProperties);
-      StoreResponse storeResponse = TestUtils.assertCommand(controllerClient.getStore(storeName));
-      Assert.assertEquals(storeResponse.getStore().getVersions().size(), 2);
+      assertExpectedVersionCountAndVersionStatus(controllerClient, storeName, 2, 2);
+      StoreResponse storeResponse;
+
+      // Do a TTL repush to ensure valid RMD was written and can be read properly.
+      VeniceClusterWrapper sharedVeniceClusterWrapper =
+          sharedVenice.getChildRegions().get(0).getClusters().get(clusterName);
+      Properties props = IntegrationTestPushUtils.defaultVPJProps(sharedVenice, "dummyInputPath", storeName);
+      props.setProperty(SOURCE_KAFKA, "true");
+      props.setProperty(KAFKA_INPUT_BROKER_URL, sharedVeniceClusterWrapper.getPubSubBrokerWrapper().getAddress());
+      props.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
+      props.setProperty(REPUSH_TTL_ENABLE, "true");
+      // Override the TTL repush start TS to work with logical TS setup.
+      props.setProperty(REPUSH_TTL_START_TIMESTAMP, String.valueOf(ttlStartTimestamp));
+      // Override the rewind time to make sure not to consume 24hrs data from RT topic.
+      props.put(REWIND_TIME_IN_SECONDS_OVERRIDE, 0);
+      IntegrationTestPushUtils.runVPJ(props);
+      assertExpectedVersionCountAndVersionStatus(controllerClient, storeName, 3, 3);
     }
   }
 
@@ -422,6 +441,21 @@ public class TestHybridMultiRegion {
     return new Object[][] { { false, false, REWIND_FROM_EOP }, { false, true, REWIND_FROM_EOP },
         { true, false, REWIND_FROM_EOP }, { true, true, REWIND_FROM_EOP }, { false, false, REWIND_FROM_SOP },
         { false, true, REWIND_FROM_SOP }, { true, false, REWIND_FROM_SOP }, { true, true, REWIND_FROM_SOP } };
+  }
+
+  private static void assertExpectedVersionCountAndVersionStatus(
+      ControllerClient controllerClient,
+      String storeName,
+      int expectedVersionCount,
+      int versionToCheckStatus) {
+    StoreResponse storeResponse = TestUtils.assertCommand(controllerClient.getStore(storeName));
+    Assert.assertEquals(storeResponse.getStore().getVersions().size(), expectedVersionCount);
+    boolean foundVersionOnline = storeResponse.getStore()
+        .getVersion(versionToCheckStatus)
+        .map(Version::getStatus)
+        .filter(status -> status.equals(VersionStatus.ONLINE))
+        .isPresent();
+    Assert.assertTrue(foundVersionOnline, "Version " + versionToCheckStatus + " was not found to be ONLINE");
   }
 
   private static VeniceTwoLayerMultiRegionMultiClusterWrapper setUpCluster() {
