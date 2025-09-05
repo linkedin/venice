@@ -889,9 +889,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
          * chances to serve traffic; forced kill all resources in this push.
          * N.B.: if we start seeing alerts from forced killed resource, consider whether we should keep those alerts
          *       if they are useful, or refactor them.
+         * We close Venice writers and Venice view writers after close() to avoid reporting ingestion errors as close()
+         * will set the isRunning to false.
          */
         close();
         closeVeniceWriters(false);
+        closeVeniceViewWriters(false);
       }
     }
   }
