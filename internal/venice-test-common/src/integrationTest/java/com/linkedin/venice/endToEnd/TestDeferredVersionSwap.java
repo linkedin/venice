@@ -394,7 +394,7 @@ public class TestDeferredVersionSwap {
       VeniceClusterWrapper cluster2 = childDatacenters.get(1).getClusters().get(CLUSTER_NAMES[0]);
       VeniceProperties backendConfig2 = DaVinciTestContext.getDaVinciPropertyBuilder(cluster2.getZk().getAddress())
           .put(DATA_BASE_PATH, Utils.getTempDataDirectory().getAbsolutePath())
-          .put(LOCAL_REGION_NAME, "dc-1")
+          .put(LOCAL_REGION_NAME, REGION2)
           .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
           .build();
       DaVinciClient<Object, Object> client2 =

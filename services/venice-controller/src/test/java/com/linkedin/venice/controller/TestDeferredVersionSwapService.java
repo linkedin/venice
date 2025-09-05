@@ -25,6 +25,7 @@ import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.utils.locks.ClusterLockManager;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
@@ -52,6 +53,7 @@ public class TestDeferredVersionSwapService {
   private static final int versionOne = 1;
   private static final int versionTwo = 2;
   private static Map<String, String> childDatacenterToUrl = new HashMap<>();
+  private ReadWriteStoreRepository repository;
 
   @BeforeMethod
   public void setUp() {
@@ -67,6 +69,10 @@ public class TestDeferredVersionSwapService {
 
     List clustersList = Arrays.asList(clusterName);
     doReturn(clustersList).when(admin).getClustersLeaderOf();
+
+    VeniceControllerClusterConfig clusterConfig = mock(VeniceControllerClusterConfig.class);
+    doReturn("").when(clusterConfig).getDeferredVersionSwapRegionRollforwardOrder();
+    doReturn(clusterConfig).when(veniceControllerMultiClusterConfig).getControllerConfig(clusterName);
 
     childDatacenterToUrl.put(region1, "test");
     childDatacenterToUrl.put(region2, "test");
@@ -163,9 +169,13 @@ public class TestDeferredVersionSwapService {
     VeniceHelixAdmin veniceHelixAdmin = mock(VeniceHelixAdmin.class);
     doReturn(veniceHelixAdmin).when(admin).getVeniceHelixAdmin();
     HelixVeniceClusterResources resources = mock(HelixVeniceClusterResources.class);
-    ReadWriteStoreRepository repository = mock(ReadWriteStoreRepository.class);
+    repository = mock(ReadWriteStoreRepository.class);
     doReturn(repository).when(resources).getStoreMetadataRepository();
     doReturn(resources).when(veniceHelixAdmin).getHelixVeniceClusterResources(clusterName);
+
+    ClusterLockManager clusterLockManager = mock(ClusterLockManager.class);
+    doReturn(null).when(clusterLockManager).createStoreWriteLock(clusterName);
+    doReturn(clusterLockManager).when(resources).getClusterLockManager();
 
     doReturn(controllerClientMap).when(veniceHelixAdmin).getControllerClientMap(clusterName);
   }
@@ -210,6 +220,7 @@ public class TestDeferredVersionSwapService {
 
     String kafkaTopicName = Version.composeKafkaTopic(storeName, versionTwo);
     doReturn(offlinePushStatusInfoWithCompletedPush).when(admin).getOffLinePushStatus(clusterName, kafkaTopicName);
+    doReturn(store).when(repository).getStore(storeName);
 
     DeferredVersionSwapService deferredVersionSwapService =
         new DeferredVersionSwapService(admin, veniceControllerMultiClusterConfig, mock(DeferredVersionSwapStats.class));
@@ -264,6 +275,7 @@ public class TestDeferredVersionSwapService {
     }
 
     mockVeniceHelixAdmin(controllerClientMap);
+    doReturn(store).when(repository).getStore(storeName);
 
     Long time = LocalDateTime.now().toEpochSecond(ZoneOffset.UTC);
     Admin.OfflinePushStatusInfo offlinePushStatusInfoWithCompletedPush = getOfflinePushStatusInfo(
@@ -328,6 +340,7 @@ public class TestDeferredVersionSwapService {
     }
 
     mockVeniceHelixAdmin(controllerClientMap);
+    doReturn(store).when(repository).getStore(storeName);
 
     Long time = LocalDateTime.now().toEpochSecond(ZoneOffset.UTC);
     Admin.OfflinePushStatusInfo offlinePushStatusInfoWithCompletedPush = getOfflinePushStatusInfo(
@@ -402,6 +415,7 @@ public class TestDeferredVersionSwapService {
     }
 
     mockVeniceHelixAdmin(controllerClientMap);
+    doReturn(store).when(repository).getStore(storeName);
 
     Long time = LocalDateTime.now().toEpochSecond(ZoneOffset.UTC);
 
@@ -462,6 +476,7 @@ public class TestDeferredVersionSwapService {
     }
 
     mockVeniceHelixAdmin(controllerClientMap);
+    doReturn(store).when(repository).getStore(storeName);
 
     Long time = LocalDateTime.now().toEpochSecond(ZoneOffset.UTC);
     Admin.OfflinePushStatusInfo offlinePushStatusInfoWithCompletedPush = getOfflinePushStatusInfo(
@@ -516,6 +531,7 @@ public class TestDeferredVersionSwapService {
     }
 
     mockVeniceHelixAdmin(controllerClientMap);
+    doReturn(store).when(repository).getStore(storeName);
 
     Long time = LocalDateTime.now().toEpochSecond(ZoneOffset.UTC);
     Admin.OfflinePushStatusInfo offlinePushStatusInfoWithCompletedPush = getOfflinePushStatusInfo(
@@ -569,6 +585,7 @@ public class TestDeferredVersionSwapService {
     }
 
     mockVeniceHelixAdmin(controllerClientMap);
+    doReturn(store).when(repository).getStore(storeName);
 
     Long time = LocalDateTime.now().toEpochSecond(ZoneOffset.UTC);
     Admin.OfflinePushStatusInfo offlinePushStatusInfoWithCompletedPush = getOfflinePushStatusInfo(
@@ -624,6 +641,7 @@ public class TestDeferredVersionSwapService {
     }
 
     mockVeniceHelixAdmin(controllerClientMap);
+    doReturn(store).when(repository).getStore(storeName);
 
     Long time = LocalDateTime.now().toEpochSecond(ZoneOffset.UTC);
     Admin.OfflinePushStatusInfo offlinePushStatusInfoWithCompletedPush = getOfflinePushStatusInfo(
