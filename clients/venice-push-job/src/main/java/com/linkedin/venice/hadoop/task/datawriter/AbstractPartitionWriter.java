@@ -24,6 +24,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.VALUE_SCHEMA_ID_PRO
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.annotation.NotThreadsafe;
+import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.compression.VeniceCompressor;
@@ -152,7 +153,7 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
             throw new VeniceException("Found empty replication metadata");
           }
 
-          if (rmdVersionId < 0) {
+          if (rmdVersionId <= 0) {
             throw new VeniceException("Found replication metadata without a valid schema id");
           }
 
@@ -171,7 +172,8 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
       };
     }
 
-    private Consumer<AbstractVeniceWriter<byte[], byte[], byte[]>> getConsumer() {
+    @VisibleForTesting
+    Consumer<AbstractVeniceWriter<byte[], byte[], byte[]>> getConsumer() {
       return consumer;
     }
 
