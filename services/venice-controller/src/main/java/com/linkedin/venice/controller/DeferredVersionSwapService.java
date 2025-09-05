@@ -26,6 +26,7 @@ import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.ReflectUtils;
 import com.linkedin.venice.utils.RegionUtils;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
@@ -78,6 +79,8 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
   private static final Set<VersionStatus> TERMINAL_PUSH_VERSION_STATUSES = Utils.setOf(ONLINE, KILLED);
   private Cache<String, Long> storeWaitTimeCacheForSequentialRollout =
       Caffeine.newBuilder().expireAfterWrite(1, TimeUnit.HOURS).build();
+  private static final int CONTROLLER_CLIENT_REQUEST_TIMEOUT = 5 * Time.MS_PER_SECOND;
+  private static final int LOG_LATENCY_THRESHOLD = 1 * Time.MS_PER_SECOND;
 
   public DeferredVersionSwapService(
       VeniceParentHelixAdmin admin,
@@ -114,7 +117,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
     Map<String, ControllerClient> controllerClientMap =
         veniceParentHelixAdmin.getVeniceHelixAdmin().getControllerClientMap(clusterName);
     ControllerClient targetRegionControllerClient = controllerClientMap.get(targetRegion);
-    return targetRegionControllerClient.getStore(storeName);
+    return targetRegionControllerClient.getStore(storeName, CONTROLLER_CLIENT_REQUEST_TIMEOUT);
   }
 
   /**
@@ -494,6 +497,11 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       Store parentStore,
       int targetVersionNum,
       String clusterName) {
+    VersionStatus status = parentStore.getVersion(targetVersionNum).getStatus();
+    if (status.equals(ONLINE) || status.equals(ERROR) || status.equals(PARTIALLY_ONLINE)) {
+      return;
+    }
+
     // If we already emitted a metric for this store already, do not emit it again
     if (stalledVersionSwapSet.contains(parentStore.getName())) {
       return;
@@ -507,6 +515,11 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
     }
 
     StoreInfo storeInfo = storeResponse.getStore();
+
+    if (storeInfo.getCurrentVersion() == targetVersionNum) {
+      return;
+    }
+
     long latestVersionPromoteToCurrentTimestamp = storeInfo.getLatestVersionPromoteToCurrentTimestamp();
     long storeWaitTime = TimeUnit.MINUTES.toMillis(parentStore.getTargetSwapRegionWaitTime());
     long currentTime = System.currentTimeMillis();
@@ -879,12 +892,14 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
             Set<String> remainingRegions = getRegionsForVersionSwap(childDataCenterControllerUrlMap, targetRegions);
 
             // Check if the target version is in a terminal state (push job completed or failed)
+            long startTime = System.currentTimeMillis();
             if (!isPushInTerminalState(
                 targetVersion,
                 cluster,
                 parentStore.getName(),
                 targetVersionNum,
                 remainingRegions)) {
+              logLatency(startTime, storeName, targetVersionNum);
               continue;
             }
 
@@ -901,6 +916,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
                   String message = "Cached wait time has not elapsed for store: " + parentStore.getName()
                       + " on version: " + targetVersionNum;
                   logMessageIfNotRedundant(message);
+                  logLatency(startTime, storeName, targetVersionNum);
                   continue;
                 }
               }
@@ -910,6 +926,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
                   parentStore,
                   targetVersionNum,
                   kafkaTopicName)) {
+                logLatency(startTime, storeName, targetVersionNum);
                 continue;
               }
             }
@@ -925,6 +942,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
                   parentStore,
                   targetVersionNum,
                   cluster)) {
+                logLatency(startTime, storeName, targetVersionNum);
                 continue;
               }
             }
@@ -939,6 +957,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
                     "Found null region to roll forward for store {} for version: {}",
                     parentStore.getName(),
                     targetVersionNum);
+                logLatency(startTime, storeName, targetVersionNum);
                 continue;
               }
 
@@ -957,6 +976,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
                     parentStore,
                     cluster,
                     kafkaTopicName)) {
+                  logLatency(startTime, storeName, targetVersionNum);
                   continue;
                 }
 
@@ -972,6 +992,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
                     cluster,
                     parentStore.getTargetSwapRegion(),
                     kafkaTopicName)) {
+                  logLatency(startTime, storeName, targetVersionNum);
                   continue;
                 }
               }
@@ -1012,6 +1033,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
               Set<String> nonTargetRegionsCompleted =
                   getRegionsToRollForward(remainingRegions, parentStore, targetVersionNum, cluster, kafkaTopicName);
               if (nonTargetRegionsCompleted.isEmpty()) {
+                logLatency(startTime, storeName, targetVersionNum);
                 continue;
               }
 
@@ -1022,6 +1044,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
                   parentStore,
                   targetVersionNum)) {
                 storePushCompletionTimeCache.put(kafkaTopicName, pushStatusInfo.getExtraInfoUpdateTimestamp());
+                logLatency(startTime, storeName, targetVersionNum);
                 continue;
               }
 
@@ -1039,6 +1062,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
                   cluster,
                   parentStore.getTargetSwapRegion(),
                   kafkaTopicName)) {
+                logLatency(startTime, storeName, targetVersionNum);
                 continue;
               }
 
@@ -1055,6 +1079,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
                     cluster);
               }
             }
+            logLatency(startTime, storeName, targetVersionNum);
           }
         }
       } catch (Exception e) {
@@ -1089,5 +1114,16 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
   // Only used for testing
   Cache<String, Map<String, Long>> getStorePushCompletionTimes() {
     return storePushCompletionTimeCache;
+  }
+
+  private static void logLatency(long startTime, String storeName, int targetVersionNum) {
+    long elapsedTime = LatencyUtils.getElapsedTimeFromMsToMs(startTime);
+    if (elapsedTime > LOG_LATENCY_THRESHOLD) {
+      LOGGER.info(
+          "Store {} version {} spent {}ms in the DeferredVersionSwapLoop",
+          storeName,
+          targetVersionNum,
+          elapsedTime);
+    }
   }
 }
