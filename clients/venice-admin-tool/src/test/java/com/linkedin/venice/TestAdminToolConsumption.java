@@ -37,6 +37,7 @@ import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition
 import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapter;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
+import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.Utils;
 import java.nio.ByteBuffer;
@@ -68,8 +69,8 @@ public class TestAdminToolConsumption {
     messagesMap.put(pubSubTopicPartition, pubSubMessageList);
     ApacheKafkaConsumerAdapter apacheKafkaConsumer = mock(ApacheKafkaConsumerAdapter.class);
     when(apacheKafkaConsumer.poll(anyLong())).thenReturn(messagesMap, Collections.EMPTY_MAP);
-    List<DumpAdminMessages.AdminOperationInfo> adminOperationInfos =
-        DumpAdminMessages.dumpAdminMessages(apacheKafkaConsumer, "cluster1", 0, dumpedMessageNum);
+    List<DumpAdminMessages.AdminOperationInfo> adminOperationInfos = DumpAdminMessages
+        .dumpAdminMessages(apacheKafkaConsumer, "cluster1", ApacheKafkaOffsetPosition.of(0L), dumpedMessageNum);
     Assert.assertEquals(adminOperationInfos.size(), dumpedMessageNum);
   }
 
@@ -240,8 +241,12 @@ public class TestAdminToolConsumption {
     Assert.assertEquals(messageCountNoEndOffset, endPosition.getInternalOffset() - startPosition.getInternalOffset());
 
     when(apacheKafkaConsumer.poll(anyLong())).thenReturn(messagesMap, Collections.EMPTY_MAP);
-    ControlMessageDumper controlMessageDumper =
-        new ControlMessageDumper(apacheKafkaConsumer, topic, 0, 0, pubSubMessageList.size());
+    ControlMessageDumper controlMessageDumper = new ControlMessageDumper(
+        apacheKafkaConsumer,
+        topic,
+        0,
+        PubSubSymbolicPosition.EARLIEST,
+        pubSubMessageList.size());
     Assert.assertEquals(controlMessageDumper.fetch().display(), 1);
 
     when(apacheKafkaConsumer.poll(anyLong())).thenReturn(messagesMap, Collections.EMPTY_MAP);

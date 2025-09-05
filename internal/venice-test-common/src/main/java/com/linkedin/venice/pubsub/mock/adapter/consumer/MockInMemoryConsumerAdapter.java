@@ -66,11 +66,6 @@ public class MockInMemoryConsumerAdapter implements PubSubConsumerAdapter {
   }
 
   @Override
-  public synchronized void subscribe(PubSubTopicPartition pubSubTopicPartition, long lastReadOffset) {
-    subscribe(pubSubTopicPartition, InMemoryPubSubPosition.of(lastReadOffset));
-  }
-
-  @Override
   public synchronized void subscribe(PubSubTopicPartition pubSubTopicPartition, PubSubPosition lastReadPubSubPosition) {
     subscribe(pubSubTopicPartition, lastReadPubSubPosition, false);
   }
@@ -245,17 +240,6 @@ public class MockInMemoryConsumerAdapter implements PubSubConsumerAdapter {
   }
 
   @Override
-  public synchronized Map<PubSubTopicPartition, Long> endOffsets(
-      Collection<PubSubTopicPartition> partitions,
-      Duration timeout) {
-    Map<PubSubTopicPartition, Long> retOffsets = new HashMap<>();
-    for (PubSubTopicPartition pubSubTopicPartition: partitions) {
-      retOffsets.put(pubSubTopicPartition, endOffset(pubSubTopicPartition));
-    }
-    return retOffsets;
-  }
-
-  @Override
   public synchronized Map<PubSubTopicPartition, PubSubPosition> endPositions(
       Collection<PubSubTopicPartition> partitions,
       Duration timeout) {
@@ -264,12 +248,6 @@ public class MockInMemoryConsumerAdapter implements PubSubConsumerAdapter {
       retPositions.put(pubSubTopicPartition, endPosition(pubSubTopicPartition));
     }
     return retPositions;
-  }
-
-  @Override
-  public synchronized Long endOffset(PubSubTopicPartition pubSubTopicPartition) {
-    return broker
-        .endOffsets(pubSubTopicPartition.getPubSubTopic().getName(), pubSubTopicPartition.getPartitionNumber());
   }
 
   @Override

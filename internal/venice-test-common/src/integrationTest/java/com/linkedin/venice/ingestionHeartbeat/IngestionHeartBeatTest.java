@@ -45,6 +45,7 @@ import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeader;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeaders;
+import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
@@ -246,7 +247,8 @@ public class IngestionHeartBeatTest {
         : Version.composeKafkaTopic(storeName, isIncrementalPushEnabled ? 1 : 2);
     pubSubConsumer.subscribe(
         new PubSubTopicPartitionImpl(new PubSubTopicRepository().getTopic(topicToSubscribeTo), partition),
-        0);
+        PubSubSymbolicPosition.EARLIEST,
+        false);
     AtomicBoolean isHBFound = new AtomicBoolean(false);
     AtomicBoolean isLeaderCompletionHeaderFound = new AtomicBoolean(false);
     AtomicBoolean isLeaderCompleted = new AtomicBoolean(false);
