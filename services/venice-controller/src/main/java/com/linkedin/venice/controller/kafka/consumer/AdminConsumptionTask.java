@@ -436,7 +436,10 @@ public class AdminConsumptionTask implements Runnable, Closeable {
 
   private void subscribe() {
     AdminMetadata metaData = adminTopicMetadataAccessor.getMetadata(clusterName);
-    if (!PubSubSymbolicPosition.EARLIEST.equals(metaData.getPosition())) {
+    boolean hasCheckpoint = remoteConsumptionEnabled
+        ? !PubSubSymbolicPosition.EARLIEST.equals(metaData.getUpstreamPosition())
+        : !PubSubSymbolicPosition.EARLIEST.equals(metaData.getPosition());
+    if (hasCheckpoint) {
       localPositionCheckpointAtStartTime = metaData.getPosition();
       upstreamPositionCheckpointAtStartTime = metaData.getUpstreamPosition();
       lastPersistedPosition =
