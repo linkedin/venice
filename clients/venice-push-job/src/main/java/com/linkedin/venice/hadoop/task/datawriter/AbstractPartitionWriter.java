@@ -151,6 +151,11 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
           if (rmdPayload.remaining() == 0) {
             throw new VeniceException("Found empty replication metadata");
           }
+
+          if (rmdVersionId < 0) {
+            throw new VeniceException("Found replication metadata without a valid schema id");
+          }
+
           if (valueBytes == null) {
             DeleteMetadata deleteMetadata = new DeleteMetadata(valueSchemaId, rmdVersionId, rmdPayload);
             writer.delete(keyBytes, callback, deleteMetadata);
