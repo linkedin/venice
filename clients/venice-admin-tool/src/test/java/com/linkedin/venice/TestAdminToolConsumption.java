@@ -40,6 +40,7 @@ import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdap
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubPositionWireFormat;
+import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.Utils;
@@ -75,36 +76,8 @@ public class TestAdminToolConsumption {
     List<DumpAdminMessages.AdminOperationInfo> adminOperationInfos = DumpAdminMessages.dumpAdminMessages(
         apacheKafkaConsumer,
         "cluster1",
-        "0",
-        null,
-        dumpedMessageNum,
-        PubSubPositionDeserializer.DEFAULT_DESERIALIZER);
-    Assert.assertEquals(adminOperationInfos.size(), dumpedMessageNum);
-  }
-
-  @Test
-  void testAdminToolAdminMessageConsumptionByPosition() {
-    int assignedPartition = 0;
-    String topic = Utils.composeRealTimeTopic(STORE_NAME);
-    PubSubTopicPartition pubSubTopicPartition =
-        new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), assignedPartition);
-    int adminMessageNum = 10;
-    int dumpedMessageNum = 2;
-    List<DefaultPubSubMessage> pubSubMessageList =
-        prepareAdminPubSubMessageList(STORE_NAME, pubSubTopicPartition, adminMessageNum);
-    Map<PubSubTopicPartition, List<DefaultPubSubMessage>> messagesMap = new HashMap<>();
-    messagesMap.put(pubSubTopicPartition, pubSubMessageList);
-    ApacheKafkaConsumerAdapter apacheKafkaConsumer = mock(ApacheKafkaConsumerAdapter.class);
-    when(apacheKafkaConsumer.poll(anyLong())).thenReturn(messagesMap, Collections.EMPTY_MAP);
-    PubSubPositionWireFormat startingPositionWireFormat = ApacheKafkaOffsetPosition.of(0L).getPositionWireFormat();
-    List<DumpAdminMessages.AdminOperationInfo> adminOperationInfos = DumpAdminMessages.dumpAdminMessages(
-        apacheKafkaConsumer,
-        "cluster1",
-        null,
-        PubSubPositionTypeRegistry.APACHE_KAFKA_OFFSET_POSITION_TYPE_ID + ":"
-            + PubSubUtil.getBase64EncodedString(ByteUtils.extractByteArray(startingPositionWireFormat.getRawBytes())),
-        dumpedMessageNum,
-        PubSubPositionDeserializer.DEFAULT_DESERIALIZER);
+        ApacheKafkaOffsetPosition.of(0L),
+        dumpedMessageNum);
     Assert.assertEquals(adminOperationInfos.size(), dumpedMessageNum);
   }
 
@@ -275,8 +248,12 @@ public class TestAdminToolConsumption {
     Assert.assertEquals(messageCountNoEndOffset, endPosition.getInternalOffset() - startPosition.getInternalOffset());
 
     when(apacheKafkaConsumer.poll(anyLong())).thenReturn(messagesMap, Collections.EMPTY_MAP);
-    ControlMessageDumper controlMessageDumper =
-        new ControlMessageDumper(apacheKafkaConsumer, topic, 0, 0, pubSubMessageList.size());
+    ControlMessageDumper controlMessageDumper = new ControlMessageDumper(
+        apacheKafkaConsumer,
+        topic,
+        0,
+        PubSubSymbolicPosition.EARLIEST,
+        pubSubMessageList.size());
     Assert.assertEquals(controlMessageDumper.fetch().display(), 1);
 
     when(apacheKafkaConsumer.poll(anyLong())).thenReturn(messagesMap, Collections.EMPTY_MAP);

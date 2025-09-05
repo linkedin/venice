@@ -355,7 +355,8 @@ public class AdminConsumptionTaskTest {
     AdminConsumptionTask task = getAdminConsumptionTask(new RandomPollStrategy(), false);
     executor.submit(task);
     verify(admin, timeout(TIMEOUT).atLeastOnce()).isLeaderControllerFor(clusterName);
-    verify(mockKafkaConsumer, never()).subscribe(any(), anyLong());
+    verify(mockKafkaConsumer, never()).subscribe(any(), any());
+    verify(mockKafkaConsumer, never()).subscribe(any(), any(), anyBoolean()); // cover both variations
     task.close();
     executor.shutdown();
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);

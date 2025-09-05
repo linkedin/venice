@@ -101,10 +101,11 @@ import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
 import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
-import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
+import com.linkedin.venice.pubsub.PubSubUtil;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
+import com.linkedin.venice.pubsub.api.PubSubPositionWireFormat;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;
@@ -135,6 +136,7 @@ import java.io.Console;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -1812,25 +1814,32 @@ public class AdminTool {
     PubSubPositionDeserializer pubSubPositionDeserializer = new PubSubPositionDeserializer(pubSubPositionTypeRegistry);
     PubSubConsumerAdapter consumer = getConsumer(consumerProperties, pubSubClientsFactory);
     String startingOffset = getOptionalArgument(cmd, Arg.STARTING_OFFSET);
-    String startingPosition = getOptionalArgument(cmd, Arg.STARTING_POSITION);
-    if (startingOffset == null && startingPosition == null) {
+    String startingPositionArg = getOptionalArgument(cmd, Arg.STARTING_POSITION);
+    if (startingOffset == null && startingPositionArg == null) {
       printErrAndExit(
           "At least one of " + Arg.STARTING_OFFSET.getArgName() + " or " + Arg.STARTING_POSITION.getArgName()
               + " is required.");
     }
-    if (startingOffset != null && startingPosition != null) {
+    if (startingOffset != null && startingPositionArg != null) {
       printErrAndExit(
           "Only one of " + Arg.STARTING_OFFSET.getArgName() + " or " + Arg.STARTING_POSITION.getArgName()
               + " is allowed.");
     }
-
+    PubSubPosition startingPosition;
+    if (startingOffset != null) {
+      startingPosition = PubSubUtil.fromKafkaOffset(Long.parseLong(getRequiredArgument(cmd, Arg.STARTING_OFFSET)));
+    } else {
+      String[] typeIdAndBase64PositionBytes = startingPositionArg.split(":");
+      PubSubPositionWireFormat positionWireFormat = new PubSubPositionWireFormat();
+      positionWireFormat.setType(Integer.parseInt(typeIdAndBase64PositionBytes[0]));
+      positionWireFormat.setRawBytes(ByteBuffer.wrap(PubSubUtil.getBase64DecodedBytes(typeIdAndBase64PositionBytes[1])));
+      startingPosition = pubSubPositionDeserializer.toPosition(positionWireFormat);
+    }
     List<DumpAdminMessages.AdminOperationInfo> adminMessages = DumpAdminMessages.dumpAdminMessages(
         consumer,
         getRequiredArgument(cmd, Arg.CLUSTER),
-        startingOffset,
         startingPosition,
-        Integer.parseInt(getRequiredArgument(cmd, Arg.MESSAGE_COUNT)),
-        pubSubPositionDeserializer);
+        Integer.parseInt(getRequiredArgument(cmd, Arg.MESSAGE_COUNT)));
     printObject(adminMessages);
   }
 
@@ -1849,10 +1858,12 @@ public class AdminTool {
 
     String kafkaTopic = getRequiredArgument(cmd, Arg.KAFKA_TOPIC_NAME);
     int partitionNumber = Integer.parseInt(getRequiredArgument(cmd, Arg.KAFKA_TOPIC_PARTITION));
-    int startingOffset = Integer.parseInt(getRequiredArgument(cmd, Arg.STARTING_OFFSET));
+    // TODO: Support base64-encoded position + type, and deserialize via PubSubPositionTypeRegistry.
+    PubSubPosition startingPosition =
+        PubSubUtil.fromKafkaOffset(Long.parseLong(getRequiredArgument(cmd, Arg.STARTING_OFFSET)));
     int messageCount = Integer.parseInt(getRequiredArgument(cmd, Arg.MESSAGE_COUNT));
     try (PubSubConsumerAdapter consumer = getConsumer(consumerProps, pubSubClientsFactory)) {
-      new ControlMessageDumper(consumer, kafkaTopic, partitionNumber, startingOffset, messageCount).fetch().display();
+      new ControlMessageDumper(consumer, kafkaTopic, partitionNumber, startingPosition, messageCount).fetch().display();
     }
   }
 
@@ -1896,16 +1907,9 @@ public class AdminTool {
     int partitionNumber = (getOptionalArgument(cmd, Arg.KAFKA_TOPIC_PARTITION) == null)
         ? -1
         : Integer.parseInt(getOptionalArgument(cmd, Arg.KAFKA_TOPIC_PARTITION));
-
-    String startingOffsetArg = getOptionalArgument(cmd, Arg.STARTING_OFFSET, "-1");
-
-    PubSubPosition startingPosition;
-    if ("-1".equals(startingOffsetArg)) {
-      startingPosition = PubSubSymbolicPosition.EARLIEST;
-    } else {
-      // TODO: Support base64-encoded position + type, and deserialize via PubSubPositionTypeRegistry.
-      startingPosition = ApacheKafkaOffsetPosition.of(Long.parseLong(startingOffsetArg));
-    }
+    // TODO: Support base64-encoded position + type, and deserialize via PubSubPositionTypeRegistry.
+    PubSubPosition startingPosition =
+        PubSubUtil.fromKafkaOffset(Long.parseLong(getOptionalArgument(cmd, Arg.STARTING_OFFSET, "-1")));
     long messageCount = (getOptionalArgument(cmd, Arg.MESSAGE_COUNT) == null)
         ? -1
         : Integer.parseInt(getOptionalArgument(cmd, Arg.MESSAGE_COUNT));

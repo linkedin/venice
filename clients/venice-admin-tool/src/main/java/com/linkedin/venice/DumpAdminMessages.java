@@ -17,7 +17,6 @@ import com.linkedin.venice.pubsub.PubSubUtil;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
-import com.linkedin.venice.pubsub.api.PubSubPositionWireFormat;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.Utils;
 import java.nio.ByteBuffer;
@@ -53,33 +52,14 @@ public class DumpAdminMessages {
   public static List<AdminOperationInfo> dumpAdminMessages(
       PubSubConsumerAdapter consumer,
       String clusterName,
-      String startingOffset,
-      String startingPosition,
-      int messageCnt,
-      PubSubPositionDeserializer pubSubPositionDeserializer) {
+      PubSubPosition startingPosition,
+      int messageCnt) {
     String adminTopic = AdminTopicUtils.getTopicNameFromClusterName(clusterName);
     PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
-    // include the message with startingOffset
     PubSubTopicPartition adminTopicPartition = new PubSubTopicPartitionImpl(
         pubSubTopicRepository.getTopic(adminTopic),
         AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID);
-    if (startingOffset == null && startingPosition == null) {
-      throw new VeniceException("At least one of startingOffset or startingPosition is required.");
-    }
-    if (startingOffset != null && startingPosition != null) {
-      throw new VeniceException("Only one of startingOffset or startingPosition is allowed.");
-    }
-    if (startingOffset != null) {
-      consumer.subscribe(adminTopicPartition, Long.parseLong(startingOffset) - 1);
-    } else {
-      PubSubPositionWireFormat positionWireFormat = new PubSubPositionWireFormat();
-      String[] typeIdAndBase64PositionBytes = startingPosition.split(":");
-      positionWireFormat.setType(Integer.parseInt(typeIdAndBase64PositionBytes[0]));
-      positionWireFormat
-          .setRawBytes(ByteBuffer.wrap(PubSubUtil.getBase64DecodedBytes(typeIdAndBase64PositionBytes[1])));
-      PubSubPosition startingPubSubPosition = pubSubPositionDeserializer.toPosition(positionWireFormat);
-      consumer.subscribe(adminTopicPartition, startingPubSubPosition, true);
-    }
+    consumer.subscribe(adminTopicPartition, startingPosition, true);
     AdminOperationSerializer deserializer = new AdminOperationSerializer();
     List<AdminOperationInfo> adminOperations = new ArrayList<>();
     int curMsgCnt = 0;
