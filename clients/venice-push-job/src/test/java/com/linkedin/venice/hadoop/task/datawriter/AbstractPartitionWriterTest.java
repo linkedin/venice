@@ -10,17 +10,17 @@ import org.testng.annotations.Test;
 
 
 public class AbstractPartitionWriterTest {
+  private static final byte[] DUMMY_DATA = new byte[] { 0, 1, 2 };
+  private static final byte[] EMPTY_BYTES = new byte[0];
+
   @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = "Found replication metadata without a valid schema id")
   public void testInvalidRmdSchemaWithValidRmdPayload() {
-    final byte[] keys = new byte[] { 0, 1, 2 };
-    final byte[] value = new byte[] { 0, 1, 2 };
-    final byte[] rmd = new byte[] { 0, 1, 2 };
     AbstractPartitionWriter.VeniceWriterMessage message = new AbstractPartitionWriter.VeniceWriterMessage(
-        keys,
-        value,
+        DUMMY_DATA,
+        DUMMY_DATA,
         1,
         -1,
-        ByteBuffer.wrap(rmd),
+        ByteBuffer.wrap(DUMMY_DATA),
         mock(PubSubProducerCallback.class),
         false,
         1);
@@ -29,15 +29,12 @@ public class AbstractPartitionWriterTest {
 
   @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = "Found empty replication metadata")
   public void testInvalidRmdSchemaWithInvalidRmdPayload() {
-    final byte[] keys = new byte[] { 0, 1, 2 };
-    final byte[] value = new byte[] { 0, 1, 2 };
-    final byte[] rmd = new byte[0];
     AbstractPartitionWriter.VeniceWriterMessage message = new AbstractPartitionWriter.VeniceWriterMessage(
-        keys,
-        value,
+        DUMMY_DATA,
+        DUMMY_DATA,
         1,
         -1,
-        ByteBuffer.wrap(rmd),
+        ByteBuffer.wrap(EMPTY_BYTES),
         mock(PubSubProducerCallback.class),
         false,
         1);
