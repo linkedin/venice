@@ -32,6 +32,7 @@ import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.store.AbstractStorageEngineTest;
+import com.linkedin.davinci.store.DelegatingStorageEngine;
 import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.davinci.transformer.TestStringRecordTransformer;
 import com.linkedin.venice.client.store.ClientConfig;
@@ -113,7 +114,7 @@ public abstract class KafkaStoreIngestionServiceTest {
   @BeforeMethod(alwaysRun = true)
   public void setUp() {
     mockStorageService = mock(StorageService.class);
-    doReturn(new ReferenceCounted<>(mock(StorageEngine.class), se -> {})).when(mockStorageService)
+    doReturn(new ReferenceCounted<>(mock(DelegatingStorageEngine.class), se -> {})).when(mockStorageService)
         .getRefCountedStorageEngine(anyString());
     storageMetadataService = mock(StorageMetadataService.class);
     mockClusterInfoProvider = mock(ClusterInfoProvider.class);
@@ -354,7 +355,7 @@ public abstract class KafkaStoreIngestionServiceTest {
     Mockito.when(mockSchemaEntry.getSchema()).thenReturn(Schema.create(Schema.Type.STRING));
     Mockito.when(mockSchemaRepo.getKeySchema(topicName)).thenReturn(Mockito.mock(SchemaEntry.class));
 
-    StorageEngine storageEngine1 = mock(StorageEngine.class);
+    StorageEngine storageEngine1 = mock(DelegatingStorageEngine.class);
     doReturn(new ReferenceCounted<>(storageEngine1, se -> {})).when(mockStorageService)
         .getRefCountedStorageEngine(topicName);
 
@@ -370,7 +371,7 @@ public abstract class KafkaStoreIngestionServiceTest {
     StoreIngestionTask closedStoreIngestionTask = kafkaStoreIngestionService.getStoreIngestionTask(topicName);
     assertNull(closedStoreIngestionTask);
 
-    StorageEngine storageEngine2 = mock(StorageEngine.class);
+    StorageEngine storageEngine2 = mock(DelegatingStorageEngine.class);
     doReturn(new ReferenceCounted<>(storageEngine2, se -> {})).when(mockStorageService)
         .getRefCountedStorageEngine(topicName);
     kafkaStoreIngestionService.startConsumption(new VeniceStoreVersionConfig(topicName, veniceProperties), 0);

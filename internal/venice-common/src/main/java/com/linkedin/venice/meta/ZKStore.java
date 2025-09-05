@@ -244,6 +244,8 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
     setTTLRepushEnabled(store.isTTLRepushEnabled());
     setEnumSchemaEvolutionAllowed(store.isEnumSchemaEvolutionAllowed());
     setStoreLifecycleHooks(store.getStoreLifecycleHooks());
+    setKeyUrnCompressionEnabled(store.isKeyUrnCompressionEnabled());
+    setKeyUrnFields(store.getKeyUrnFields());
 
     for (Version storeVersion: store.getVersions()) {
       forceAddVersion(storeVersion.cloneVersion(), true);
@@ -1066,6 +1068,29 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
                   .convertStringMapToCharSequenceMap(storeLifecycleHooksRecord.getStoreLifecycleHooksParams())));
     }
     this.storeProperties.storeLifecycleHooks = convertedStoreLifecycleHooks;
+  }
+
+  @Override
+  public void setKeyUrnCompressionEnabled(boolean keyUrnCompressionEnabled) {
+    this.storeProperties.keyUrnCompressionEnabled = keyUrnCompressionEnabled;
+  }
+
+  @Override
+  public boolean isKeyUrnCompressionEnabled() {
+    return this.storeProperties.keyUrnCompressionEnabled;
+  }
+
+  @Override
+  public void setKeyUrnFields(List<String> keyUrnFields) {
+    this.storeProperties.keyUrnFields = keyUrnFields.stream().map(Objects::toString).collect(Collectors.toList());
+  }
+
+  @Override
+  public List<String> getKeyUrnFields() {
+    if (this.storeProperties.keyUrnFields == null) {
+      return Collections.emptyList();
+    }
+    return this.storeProperties.keyUrnFields.stream().map(Objects::toString).collect(Collectors.toList());
   }
 
   @Override

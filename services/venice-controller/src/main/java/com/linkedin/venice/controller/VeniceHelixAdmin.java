@@ -5536,6 +5536,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     Optional<Boolean> ttlRepushEnabled = params.isTTLRepushEnabled();
     Optional<Boolean> enumSchemaEvolutionAllowed = params.isEnumSchemaEvolutionAllowed();
     Optional<List<LifecycleHooksRecord>> storeLifecycleHooks = params.getStoreLifecycleHooks();
+    Optional<Boolean> keyUrnCompressionEnabled = params.getKeyUrnCompressionEnabled();
+    Optional<List<String>> keyUrnFields = params.getKeyUrnFields();
 
     final Optional<HybridStoreConfig> newHybridStoreConfig;
     if (hybridRewindSeconds.isPresent() || hybridOffsetLagThreshold.isPresent() || hybridTimeLagThreshold.isPresent()
@@ -5883,6 +5885,16 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
       enumSchemaEvolutionAllowed.ifPresent(aBool -> storeMetadataUpdate(clusterName, storeName, store -> {
         store.setEnumSchemaEvolutionAllowed(aBool);
+        return store;
+      }));
+
+      keyUrnCompressionEnabled.ifPresent(aBool -> storeMetadataUpdate(clusterName, storeName, store -> {
+        store.setKeyUrnCompressionEnabled(aBool);
+        return store;
+      }));
+
+      keyUrnFields.ifPresent(fields -> storeMetadataUpdate(clusterName, storeName, store -> {
+        store.setKeyUrnFields(fields);
         return store;
       }));
 

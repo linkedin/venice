@@ -17,6 +17,7 @@ import com.linkedin.venice.pubsub.PubSubContext;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import org.apache.avro.Schema;
 import org.mockito.ArgumentMatcher;
 import org.testng.Assert;
 import org.testng.annotations.BeforeClass;
@@ -59,16 +60,26 @@ public class StorageUtilizationManagerTest {
     hybridPartitionConsumptionStateMap = new VeniceConcurrentHashMap<>();
 
     for (int i = 1; i <= storePartitionCount; i++) {
-      PartitionConsumptionState pcs =
-          new PartitionConsumptionState(Utils.getReplicaId(topic, i), i, mock(OffsetRecord.class), pubSubContext, true);
+      PartitionConsumptionState pcs = new PartitionConsumptionState(
+          Utils.getReplicaId(topic, i),
+          i,
+          mock(OffsetRecord.class),
+          pubSubContext,
+          true,
+          Schema.create(Schema.Type.STRING));
       partitionConsumptionStateMap.put(i, pcs);
     }
 
     OffsetRecord mockOffsetRecord = mock(OffsetRecord.class);
     when(mockOffsetRecord.getLeaderTopic()).thenReturn(realTimeTopic);
     for (int i = 1; i <= storePartitionCount; i++) {
-      PartitionConsumptionState pcs =
-          new PartitionConsumptionState(Utils.getReplicaId(realTimeTopic, i), i, mockOffsetRecord, pubSubContext, true);
+      PartitionConsumptionState pcs = new PartitionConsumptionState(
+          Utils.getReplicaId(realTimeTopic, i),
+          i,
+          mockOffsetRecord,
+          pubSubContext,
+          true,
+          Schema.create(Schema.Type.STRING));
       pcs.setLeaderFollowerState(LEADER);
       hybridPartitionConsumptionStateMap.put(i, pcs);
     }
