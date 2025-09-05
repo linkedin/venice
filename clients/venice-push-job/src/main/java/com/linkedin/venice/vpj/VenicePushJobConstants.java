@@ -434,4 +434,7 @@ public final class VenicePushJobConstants {
    * timestamp to perform compatible batch push or use this setting to override the batch push and TTL re-push check.
    */
   public static final String ALLOW_REGULAR_PUSH_WITH_TTL_REPUSH = "allow.regular.push.with.ttl.repush";
+
+  public static final String LATEST_KAFKA_MESSAGE_ENVELOPE_SCHEMA_STRING =
+      "latest.kafka.message.envelope.schema.string";
 }

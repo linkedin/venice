@@ -149,6 +149,7 @@ public class PushJobSetting implements Serializable {
 
   public boolean generatePartialUpdateRecordFromInput;
   public ETLValueSchemaTransformation etlValueSchemaTransformation;
+  public String kafkaMessageEnvelopeSchema;
 
   // Additional inferred properties
   public boolean inputHasRecords;
