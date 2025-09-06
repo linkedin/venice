@@ -30,6 +30,7 @@ import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.pubsub.ImmutablePubSubMessage;
+import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.PubSubUtil;
@@ -68,8 +69,13 @@ public class TestAdminToolConsumption {
     messagesMap.put(pubSubTopicPartition, pubSubMessageList);
     ApacheKafkaConsumerAdapter apacheKafkaConsumer = mock(ApacheKafkaConsumerAdapter.class);
     when(apacheKafkaConsumer.poll(anyLong())).thenReturn(messagesMap, Collections.EMPTY_MAP);
-    List<DumpAdminMessages.AdminOperationInfo> adminOperationInfos =
-        DumpAdminMessages.dumpAdminMessages(apacheKafkaConsumer, "cluster1", 0, dumpedMessageNum);
+    List<DumpAdminMessages.AdminOperationInfo> adminOperationInfos = DumpAdminMessages.dumpAdminMessages(
+        apacheKafkaConsumer,
+        "cluster1",
+        "0",
+        null,
+        dumpedMessageNum,
+        PubSubPositionDeserializer.DEFAULT_DESERIALIZER);
     Assert.assertEquals(adminOperationInfos.size(), dumpedMessageNum);
   }
 

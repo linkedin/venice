@@ -97,6 +97,7 @@ import com.linkedin.venice.metadata.payload.StorePropertiesPayloadRecord;
 import com.linkedin.venice.metadata.response.MetadataResponseRecord;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterContext;
+import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
 import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
@@ -1803,14 +1804,33 @@ public class AdminTool {
 
   private static void dumpAdminMessages(CommandLine cmd, PubSubClientsFactory pubSubClientsFactory) {
     Properties consumerProperties = loadProperties(cmd, Arg.KAFKA_CONSUMER_CONFIG_FILE);
+    VeniceProperties veniceProperties = new VeniceProperties(consumerProperties);
     String pubSubBrokerUrl = getRequiredArgument(cmd, Arg.KAFKA_BOOTSTRAP_SERVERS);
     consumerProperties = DumpAdminMessages.getPubSubConsumerProperties(pubSubBrokerUrl, consumerProperties);
+    PubSubPositionTypeRegistry pubSubPositionTypeRegistry =
+        PubSubPositionTypeRegistry.fromPropertiesOrDefault(veniceProperties);
+    PubSubPositionDeserializer pubSubPositionDeserializer = new PubSubPositionDeserializer(pubSubPositionTypeRegistry);
     PubSubConsumerAdapter consumer = getConsumer(consumerProperties, pubSubClientsFactory);
+    String startingOffset = getOptionalArgument(cmd, Arg.STARTING_OFFSET);
+    String startingPosition = getOptionalArgument(cmd, Arg.STARTING_POSITION);
+    if (startingOffset == null && startingPosition == null) {
+      printErrAndExit(
+          "At least one of " + Arg.STARTING_OFFSET.getArgName() + " or " + Arg.STARTING_POSITION.getArgName()
+              + " is required.");
+    }
+    if (startingOffset != null && startingPosition != null) {
+      printErrAndExit(
+          "Only one of " + Arg.STARTING_OFFSET.getArgName() + " or " + Arg.STARTING_POSITION.getArgName()
+              + " is allowed.");
+    }
+
     List<DumpAdminMessages.AdminOperationInfo> adminMessages = DumpAdminMessages.dumpAdminMessages(
         consumer,
         getRequiredArgument(cmd, Arg.CLUSTER),
-        Long.parseLong(getRequiredArgument(cmd, Arg.STARTING_OFFSET)),
-        Integer.parseInt(getRequiredArgument(cmd, Arg.MESSAGE_COUNT)));
+        startingOffset,
+        startingPosition,
+        Integer.parseInt(getRequiredArgument(cmd, Arg.MESSAGE_COUNT)),
+        pubSubPositionDeserializer);
     printObject(adminMessages);
   }
 
