@@ -344,18 +344,12 @@ public class TestStreaming {
         Assert
             .assertTrue(metrics.get(metricPrefix + "--multiget_streaming_response_tt90pr.50thPercentile").value() > 0);
         Assert
-            .assertTrue(metrics.get(metricPrefix + "--multiget_streaming_response_tt95pr.50thPercentile").value() > 0);
-        Assert
-            .assertTrue(metrics.get(metricPrefix + "--multiget_streaming_response_tt99pr.50thPercentile").value() > 0);
-        Assert
             .assertTrue(metrics.get(metricPrefix + "--multiget_streaming_healthy_request.OccurrenceRate").value() > 0);
         Assert.assertTrue(metrics.get(metricPrefix + "--compute_streaming_request.OccurrenceRate").value() > 0);
         Assert.assertTrue(metrics.get(metricPrefix + "--compute_streaming_healthy_request_latency.Avg").value() > 0);
         Assert.assertTrue(metrics.get(metricPrefix + "--compute_streaming_response_ttfr.50thPercentile").value() > 0);
         Assert.assertTrue(metrics.get(metricPrefix + "--compute_streaming_response_tt50pr.50thPercentile").value() > 0);
         Assert.assertTrue(metrics.get(metricPrefix + "--compute_streaming_response_tt90pr.50thPercentile").value() > 0);
-        Assert.assertTrue(metrics.get(metricPrefix + "--compute_streaming_response_tt95pr.50thPercentile").value() > 0);
-        Assert.assertTrue(metrics.get(metricPrefix + "--compute_streaming_response_tt99pr.50thPercentile").value() > 0);
 
         if (readComputeEnabled) {
           Assert.assertEquals(

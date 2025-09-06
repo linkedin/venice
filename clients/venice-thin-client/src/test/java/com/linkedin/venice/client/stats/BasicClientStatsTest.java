@@ -412,6 +412,49 @@ public class BasicClientStatsTest {
             MetricUnit.NUMBER,
             "Key count of retry requests for client",
             Utils.setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD, VENICE_MESSAGE_TYPE)));
+    expectedMetrics.put(
+        ClientMetricEntity.REQUEST_SERIALIZATION_TIME,
+        new MetricEntity(
+            "request_serialization_time",
+            MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS,
+            MetricUnit.MILLISECOND,
+            "Time to serialize the request payload in milliseconds",
+            Utils.setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)));
+    expectedMetrics.put(
+        ClientMetricEntity.RESPONSE_DECOMPRESSION_TIME,
+        new MetricEntity(
+            "response_decompression_time",
+            MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS,
+            MetricUnit.MILLISECOND,
+            "Time to decompress the response payload in milliseconds",
+            Utils.setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)));
+    expectedMetrics.put(
+        ClientMetricEntity.RESPONSE_DESERIALIZATION_TIME,
+        new MetricEntity(
+            "response_deserialization_time",
+            MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS,
+            MetricUnit.MILLISECOND,
+            "Time to deserialize the response payload in milliseconds",
+            Utils.setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)));
+    expectedMetrics.put(
+        ClientMetricEntity.CALL_SUBMISSION_TO_HANDLING_TIME,
+        new MetricEntity(
+            "call_submission_to_handling_time",
+            MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS,
+            MetricUnit.MILLISECOND,
+            "Time between submitting the request and starting to handle the response, in milliseconds",
+            Utils.setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)));
+    expectedMetrics.put(
+        ClientMetricEntity.RESPONSE_BATCH_STREAM_PROGRESS_TIME,
+        new MetricEntity(
+            "response_batch_stream_progress_time",
+            MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS,
+            MetricUnit.MILLISECOND,
+            "Batch streaming progress time in milliseconds",
+            Utils.setOf(
+                VENICE_STORE_NAME,
+                VENICE_REQUEST_METHOD,
+                com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_DELIVERY_PROGRESS)));
 
     Set<String> uniqueMetricEntitiesNames = new HashSet<>();
 
