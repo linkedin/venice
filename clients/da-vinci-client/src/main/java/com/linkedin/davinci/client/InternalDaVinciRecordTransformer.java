@@ -36,6 +36,7 @@ public class InternalDaVinciRecordTransformer<K, V, O> extends DaVinciRecordTran
       Schema outputValueSchema,
       InternalDaVinciRecordTransformerConfig internalRecordTransformerConfig) {
     super(
+        recordTransformer.getStoreName(),
         recordTransformer.getStoreVersion(),
         keySchema,
         inputValueSchema,

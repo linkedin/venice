@@ -11,12 +11,13 @@ import org.apache.avro.util.Utf8;
 
 public class TestStringRecordTransformer extends DaVinciRecordTransformer<Integer, String, String> {
   public TestStringRecordTransformer(
+      String storeName,
       int storeVersion,
       Schema keySchema,
       Schema inputValueSchema,
       Schema outputValueSchema,
       DaVinciRecordTransformerConfig recordTransformerConfig) {
-    super(storeVersion, keySchema, inputValueSchema, outputValueSchema, recordTransformerConfig);
+    super(storeName, storeVersion, keySchema, inputValueSchema, outputValueSchema, recordTransformerConfig);
   }
 
   @Override

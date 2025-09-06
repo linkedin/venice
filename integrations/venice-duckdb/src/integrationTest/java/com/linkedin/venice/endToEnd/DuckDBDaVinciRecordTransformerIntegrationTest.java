@@ -140,15 +140,20 @@ public class DuckDBDaVinciRecordTransformerIntegrationTest {
         cluster)) {
       Set<String> columnsToProject = Collections.emptySet();
 
-      DaVinciRecordTransformerFunctionalInterface recordTransformerFunction =
-          (storeVersion, keySchema, inputValueSchema, outputValueSchema, config) -> new DuckDBDaVinciRecordTransformer(
+      DaVinciRecordTransformerFunctionalInterface recordTransformerFunction = (
+          _storeName,
+          storeVersion,
+          keySchema,
+          inputValueSchema,
+          outputValueSchema,
+          config) -> new DuckDBDaVinciRecordTransformer(
+              _storeName,
               storeVersion,
               keySchema,
               inputValueSchema,
               outputValueSchema,
               config,
               tmpDir.getAbsolutePath(),
-              storeName,
               columnsToProject);
 
       DaVinciRecordTransformerConfig recordTransformerConfig =

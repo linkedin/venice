@@ -11,12 +11,13 @@ import org.apache.avro.Schema;
 public class TestSpecificRecordTransformer
     extends DaVinciRecordTransformer<TestSpecificKey, TestSpecificValue, TestSpecificValue> {
   public TestSpecificRecordTransformer(
+      String storeName,
       int storeVersion,
       Schema keySchema,
       Schema inputValueSchema,
       Schema outputValueSchema,
       DaVinciRecordTransformerConfig recordTransformerConfig) {
-    super(storeVersion, keySchema, inputValueSchema, outputValueSchema, recordTransformerConfig);
+    super(storeName, storeVersion, keySchema, inputValueSchema, outputValueSchema, recordTransformerConfig);
   }
 
   @Override

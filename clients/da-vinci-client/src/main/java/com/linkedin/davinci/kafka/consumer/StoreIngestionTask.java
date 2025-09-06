@@ -551,6 +551,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
       DaVinciRecordTransformer clientRecordTransformer = recordTransformerConfig.getRecordTransformerFunction()
           .apply(
+              storeName,
               versionNumber,
               keySchema,
               this.recordTransformerInputValueSchema,

@@ -42,6 +42,7 @@ import org.testng.annotations.Test;
 
 
 public class RecordTransformerTest {
+  static final String storeName = "test-store";
   static final int storeVersion = 1;
   static final int partitionId = 0;
   static final InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer =
@@ -65,11 +66,13 @@ public class RecordTransformerTest {
     assertFalse(dummyRecordTransformerConfig.useSpecificRecordValueDeserializer());
 
     DaVinciRecordTransformer<Integer, String, String> recordTransformer = new TestStringRecordTransformer(
+        storeName,
         storeVersion,
         keySchema,
         valueSchema,
         valueSchema,
         dummyRecordTransformerConfig);
+    assertEquals(recordTransformer.getStoreName(), storeName);
     assertEquals(recordTransformer.getStoreVersion(), storeVersion);
 
     assertEquals(recordTransformer.getKeySchema().getType(), Schema.Type.INT);
@@ -116,6 +119,7 @@ public class RecordTransformerTest {
     assertTrue(dummyRecordTransformerConfig.shouldSkipCompatibilityChecks());
 
     DaVinciRecordTransformer<Integer, String, String> recordTransformer = new TestStringRecordTransformer(
+        storeName,
         storeVersion,
         keySchema,
         valueSchema,
@@ -138,6 +142,7 @@ public class RecordTransformerTest {
             .build();
 
     DaVinciRecordTransformer<Integer, String, String> recordTransformer = new TestStringRecordTransformer(
+        storeName,
         storeVersion,
         keySchema,
         valueSchema,
@@ -194,6 +199,7 @@ public class RecordTransformerTest {
             .build();
 
     DaVinciRecordTransformer<Integer, String, String> recordTransformer = new TestStringRecordTransformer(
+        storeName,
         storeVersion,
         keySchema,
         valueSchema,
@@ -239,6 +245,7 @@ public class RecordTransformerTest {
 
     DaVinciRecordTransformer<Integer, String, String> clientRecordTransformer = spy(
         new TestStringRecordTransformer(
+            storeName,
             storeVersion,
             keySchema,
             valueSchema,
@@ -253,6 +260,7 @@ public class RecordTransformerTest {
             valueSchema,
             valueSchema,
             internalRecordTransformerConfig);
+    assertEquals(internalRecordTransformer.getStoreName(), storeName);
     internalRecordTransformer.onStartVersionIngestion(true);
     verify(clientRecordTransformer).onStartVersionIngestion(true);
 
@@ -330,6 +338,7 @@ public class RecordTransformerTest {
 
     DaVinciRecordTransformer<TestSpecificKey, TestSpecificValue, TestSpecificValue> recordTransformer =
         new TestSpecificRecordTransformer(
+            storeName,
             storeVersion,
             keySchema,
             valueSchema,
@@ -381,6 +390,7 @@ public class RecordTransformerTest {
 
     DaVinciRecordTransformer<GenericRecord, GenericRecord, GenericRecord> recordTransformer =
         new TestRecordTransformerUsingUniformInputValueSchema(
+            storeName,
             storeVersion,
             keySchema,
             valueSchema,

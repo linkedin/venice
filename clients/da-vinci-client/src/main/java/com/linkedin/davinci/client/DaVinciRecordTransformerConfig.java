@@ -8,7 +8,11 @@ import org.apache.avro.specific.SpecificRecord;
 
 
 /**
- * Configuration class for {@link DaVinciRecordTransformer}, which is passed into {@link DaVinciConfig}.
+ * Configuration for {@link DaVinciRecordTransformer}, supplied via {@link DaVinciConfig#setRecordTransformerConfig}.
+ *
+ * Required: set {@link Builder#setRecordTransformerFunction(DaVinciRecordTransformerFunctionalInterface)} to register your callbacks.
+ *
+ * See optional configs in the {@link Builder} section below.
  */
 public class DaVinciRecordTransformerConfig {
   private final DaVinciRecordTransformerFunctionalInterface recordTransformerFunction;
@@ -115,7 +119,9 @@ public class DaVinciRecordTransformerConfig {
     private Boolean skipCompatibilityChecks = false;
 
     /**
-     * @param recordTransformerFunction the functional interface for creating a {@link DaVinciRecordTransformer}
+     * Required for creating a {@link DaVinciRecordTransformer}. The function is invoked with the store version at startup.
+     *
+     * @param recordTransformerFunction functional interface that constructs the transformer
      */
     public Builder setRecordTransformerFunction(DaVinciRecordTransformerFunctionalInterface recordTransformerFunction) {
       this.recordTransformerFunction = recordTransformerFunction;
@@ -123,7 +129,8 @@ public class DaVinciRecordTransformerConfig {
     }
 
     /**
-     * Set this if you want to deserialize keys into {@link org.apache.avro.specific.SpecificRecord}.
+     * Optional. Set this if you want to deserialize keys into {@link org.apache.avro.specific.SpecificRecord}.
+     *
      * @param keyClass the class of the key
      */
     public Builder setKeyClass(Class keyClass) {
@@ -132,9 +139,9 @@ public class DaVinciRecordTransformerConfig {
     }
 
     /**
-     * Set this if you modify the schema during transformation, or you want to deserialize values
-     * into {@link org.apache.avro.specific.SpecificRecord}.
-     * Must be used in conjunction with {@link #setOutputValueSchema(Schema)}
+     * Optional. Set when you change the value type/schema or when values should be deserialized into
+     * {@link org.apache.avro.specific.SpecificRecord}. Must be used with {@link #setOutputValueSchema(Schema)}.
+     *
      * @param outputValueClass the class of the output value
      */
     public Builder setOutputValueClass(Class outputValueClass) {
@@ -143,9 +150,9 @@ public class DaVinciRecordTransformerConfig {
     }
 
     /**
-     * Set this if you modify the schema during transformation, or you want to deserialize values
-     * into {@link org.apache.avro.specific.SpecificRecord}.
-     * Must be used in conjunction with {@link #setOutputValueClass(Class)}
+     * Optional. Set when you change the value type/schema or when values should be deserialized into
+     * {@link org.apache.avro.specific.SpecificRecord}. Must be used with {@link #setOutputValueClass(Class)}.
+     *
      * @param outputValueSchema the schema of the output value
      */
     public Builder setOutputValueSchema(Schema outputValueSchema) {
@@ -154,9 +161,14 @@ public class DaVinciRecordTransformerConfig {
     }
 
     /**
-     * @param storeRecordsInDaVinci set this to false if you intend to store records in a custom storage,
-     *                              and not in the Da Vinci Client.
-     *                              Default is true.
+     * Control whether records are persisted into Da Vinci's local disk. Set to false to route writes only
+     * to your own storage via transformer callback.
+     * 
+     * It's not recommended to set this to false, as you will not be able to leverage blob transfer, impacting bootstrapping time.
+     * 
+     * Default is true.
+     *
+     * @param storeRecordsInDaVinci whether to store records in Da Vinci
      */
     public Builder setStoreRecordsInDaVinci(boolean storeRecordsInDaVinci) {
       this.storeRecordsInDaVinci = storeRecordsInDaVinci;
@@ -164,9 +176,11 @@ public class DaVinciRecordTransformerConfig {
     }
 
     /**
-     * @param alwaysBootstrapFromVersionTopic set this to true if {@link #storeRecordsInDaVinci} is false, and you're
-     *                                        storing records in memory without being backed by disk.
-     *                                        Default is false.
+     * Set this to true if {@link #storeRecordsInDaVinci} is false, and you're storing records in memory without being backed by disk.
+     * 
+     * Default is false.
+     *
+     * @param alwaysBootstrapFromVersionTopic whether to always bootstrap from the Version Topic
      */
     public Builder setAlwaysBootstrapFromVersionTopic(boolean alwaysBootstrapFromVersionTopic) {
       this.alwaysBootstrapFromVersionTopic = alwaysBootstrapFromVersionTopic;
@@ -174,14 +188,13 @@ public class DaVinciRecordTransformerConfig {
     }
 
     /**
-     * @param skipCompatibilityChecks set this to true if {@link DaVinciRecordTransformer#transform(Lazy, Lazy, int)}
-     *                                returns {@link DaVinciRecordTransformerResult.Result#UNCHANGED}.
-     *                                Additionally, if you are making frequent changes to your
-     *                                {@link DaVinciRecordTransformer} implementation without modifying the transform
-     *                                logic, setting this to true will prevent your local data from being wiped
-     *                                everytime a change is deployed. Remember to set this to false once your
-     *                                changes have stabilized.
-     *                                Default is false.
+     * Skip transform compatibility checks. Consider true if {@link DaVinciRecordTransformer#transform(Lazy, Lazy, int)}
+     * always returns UNCHANGED, or during rapid non-functional iterations when you want to avoid wiping local data on
+     * redeploy. Remember to set this back to false when stable.
+     * 
+     * Default is false.
+     *
+     * @param skipCompatibilityChecks whether to skip compatibility checks
      */
     public Builder setSkipCompatibilityChecks(boolean skipCompatibilityChecks) {
       this.skipCompatibilityChecks = skipCompatibilityChecks;

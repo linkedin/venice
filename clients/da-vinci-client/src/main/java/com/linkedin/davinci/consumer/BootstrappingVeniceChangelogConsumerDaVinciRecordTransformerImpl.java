@@ -360,12 +360,13 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
     private final Map<Integer, PubSubTopicPartition> pubSubTopicPartitionMap = new HashMap<>();
 
     public DaVinciRecordTransformerBootstrappingChangelogConsumer(
+        String storeName,
         int storeVersion,
         Schema keySchema,
         Schema inputValueSchema,
         Schema outputValueSchema,
         DaVinciRecordTransformerConfig recordTransformerConfig) {
-      super(storeVersion, keySchema, inputValueSchema, outputValueSchema, recordTransformerConfig);
+      super(storeName, storeVersion, keySchema, inputValueSchema, outputValueSchema, recordTransformerConfig);
       this.topicName = Version.composeKafkaTopic(changelogClientConfig.getStoreName(), getStoreVersion());
     }
 
