@@ -30,7 +30,6 @@ public class DuckDBDaVinciRecordTransformer
   private static final String duckDBFilePath = "my_database.duckdb";
   private static final String createViewStatementTemplate = "CREATE OR REPLACE VIEW \"%s\" AS SELECT * FROM \"%s\";";
   private static final String dropTableStatementTemplate = "DROP TABLE \"%s\";";
-  private final String storeNameWithoutVersionInfo;
   private final String versionTableName;
   private final String duckDBUrl;
   private final Set<String> columnsToProject;
@@ -41,16 +40,15 @@ public class DuckDBDaVinciRecordTransformer
   private final PreparedStatementProcessor deleteProcessor;
 
   public DuckDBDaVinciRecordTransformer(
+      String storeName,
       int storeVersion,
       Schema keySchema,
       Schema inputValueSchema,
       Schema outputValueSchema,
       DaVinciRecordTransformerConfig recordTransformerConfig,
       String baseDir,
-      String storeNameWithoutVersionInfo,
       Set<String> columnsToProject) {
-    super(storeVersion, keySchema, inputValueSchema, outputValueSchema, recordTransformerConfig);
-    this.storeNameWithoutVersionInfo = storeNameWithoutVersionInfo;
+    super(storeName, storeVersion, keySchema, inputValueSchema, outputValueSchema, recordTransformerConfig);
     this.versionTableName = buildStoreNameWithVersion(storeVersion);
     this.duckDBUrl = "jdbc:duckdb:" + baseDir + "/" + duckDBFilePath;
     this.columnsToProject = columnsToProject;
@@ -127,8 +125,7 @@ public class DuckDBDaVinciRecordTransformer
 
       if (isCurrentVersion) {
         // Unable to convert to prepared statement as table and column names can't be parameterized
-        String createViewStatement =
-            String.format(createViewStatementTemplate, storeNameWithoutVersionInfo, versionTableName);
+        String createViewStatement = String.format(createViewStatementTemplate, getStoreName(), versionTableName);
         stmt.execute(createViewStatement);
       }
     } catch (SQLException e) {
@@ -142,8 +139,7 @@ public class DuckDBDaVinciRecordTransformer
         Statement stmt = connection.createStatement()) {
       // Swap to current version
       String currentVersionTableName = buildStoreNameWithVersion(currentVersion);
-      String createViewStatement =
-          String.format(createViewStatementTemplate, storeNameWithoutVersionInfo, currentVersionTableName);
+      String createViewStatement = String.format(createViewStatementTemplate, getStoreName(), currentVersionTableName);
       stmt.execute(createViewStatement);
 
       if (currentVersion != getStoreVersion()) {
@@ -168,7 +164,7 @@ public class DuckDBDaVinciRecordTransformer
   }
 
   public String buildStoreNameWithVersion(int version) {
-    return storeNameWithoutVersionInfo + "_v" + version;
+    return getStoreName() + "_v" + version;
   }
 
   @Override

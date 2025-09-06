@@ -10,134 +10,67 @@ permalink: /docs/user_guide/read_api/da_vinci_client
 This allows you to eagerly load some or all partitions of the dataset and perform queries against the resulting local 
 cache. Future updates to the data continue to be streamed in and applied to the local cache.
 
-## Record Transformer
-This feature enables applications to transform records before they're stored in the Da Vinci Client
-or redirected to a custom storage of your choice.
-It's capable of handling records that are compressed and/or chunked.
+## Record Transformer (DVRT)
+A Da Vinci plugin that allows you to register callbacks on per-record puts/deletes and optional record transformation
+during ingestion.
 
-### Example Usage
-Steps to use the record transformer:
-1. Implement the 
-[DaVinciRecordTransformer](http://venicedb.org/javadoc/com/linkedin/davinci/client/DaVinciRecordTransformer.html) 
-abstract class.
-2. Create an instance of [DaVinciRecordTransformerConfig](http://venicedb.org/javadoc/com/linkedin/davinci/client/DaVinciRecordTransformerConfig.html).
-3. Pass the instance of the config into [setRecordTransformerConfig()](https://venicedb.org/javadoc/com/linkedin/davinci/client/DaVinciConfig.html#setRecordTransformerConfig(com.linkedin.davinci.client.DaVinciRecordTransformerConfig)).
+### Why Use It
+- Easily forward Venice data to an external system through callbacks without having to do a table scan yourself.
+- Optimized for performance by being compatible with blob transfer and is multithreaded under the hood.
+- Transform Venice data in-place without the need for a secondary storage, such as field projection or computing new fields.
+- Built-in support for Avro SpecificRecord for keys and values.
+- Allows you to become version aware of your Venice data.
 
-Here's an example `DaVinciRecordTransformer` implementation:
+### Quick Start Guide
+1. Implement [DaVinciRecordTransformer.java](https://github.com/linkedin/venice/blob/main/clients/da-vinci-client/src/main/java/com/linkedin/davinci/client/DaVinciRecordTransformer.java) to register callbacks.
+
+2. Build a [DaVinciRecordTransformerConfig.java](https://github.com/linkedin/venice/blob/main/clients/da-vinci-client/src/main/java/com/linkedin/davinci/client/DaVinciRecordTransformerConfig.java).
+
+3. Register via [DaVinciConfig#setRecordTransformerConfig](https://venicedb.org/javadoc/com/linkedin/davinci/client/DaVinciConfig.html#setRecordTransformerConfig(com.linkedin.davinci.client.DaVinciRecordTransformerConfig)).
+
+Example:
 ```
-import com.linkedin.davinci.client.DaVinciRecordTransformer;
-import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
-import com.linkedin.davinci.client.DaVinciRecordTransformerResult;
-import com.linkedin.venice.utils.lazy.Lazy;
-import java.io.IOException;
-import org.apache.avro.Schema;
-import org.apache.avro.util.Utf8;
+DaVinciRecordTransformerConfig recordTransformerConfig = new DaVinciRecordTransformerConfig.Builder()
+    .setRecordTransformerFunction(MyTransformer::new)
+    .build();
 
-
-public class StringRecordTransformer extends DaVinciRecordTransformer<Integer, String, String> {
-  public StringRecordTransformer(
-      int storeVersion,
-      Schema keySchema,
-      Schema inputValueSchema,
-      Schema outputValueSchema,
-      DaVinciRecordTransformerConfig recordTransformerConfig) {
-    super(storeVersion, keySchema, inputValueSchema, outputValueSchema, recordTransformerConfig);
-  }
-
-  @Override
-  public DaVinciRecordTransformerResult<String> transform(Lazy<Integer> key, Lazy<String> value, int partitionId) {
-    Object valueObj = value.get();
-    String valueStr;
-
-    if (valueObj instanceof Utf8) {
-      valueStr = valueObj.toString();
-    } else {
-      valueStr = (String) valueObj;
-    }
-
-    String transformedValue = valueStr + "Transformed";
-
-    /**
-     * If you want to skip a specific record or don't want to modify the value,
-     * use the single argument constructor for DaVinciRecordTransformerResult and pass in
-     * DaVinciRecordTransformerResult.Result.SKIP or DaVinciRecordTransformerResult.Result.UNCHANGED
-     */
-    return new DaVinciRecordTransformerResult<>(DaVinciRecordTransformerResult.Result.TRANSFORMED, transformedValue);
-  }
-
-  @Override
-  public void processPut(Lazy<Integer> key, Lazy<String> value, int partitionId) {
-    return;
-  }
-  
-  @Override
-  public void close() throws IOException {
-
-  }
-}
-
-```
-
-Here's an example `DaVinciRecordTransformerConfig` implementation:
-```
 DaVinciConfig config = new DaVinciConfig();
-DaVinciRecordTransformerConfig recordTransformerConfig =
-        new DaVinciRecordTransformerConfig.Builder()
-            .setRecordTransformerFunction(StringRecordTransformer::new)
-            .build();
 config.setRecordTransformerConfig(recordTransformerConfig);
 ```
 
-### Schema Modification
-If you want to modify the Value Schema of the record, here's an example `DaVinciRecordTransformer` implementation:
-```
-import com.linkedin.davinci.client.DaVinciRecordTransformer;
-import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
-import com.linkedin.davinci.client.DaVinciRecordTransformerResult;
-import com.linkedin.venice.utils.lazy.Lazy;
-import java.io.IOException;
-import org.apache.avro.Schema;
+### Example Implementation(s)
+- [DuckDBDaVinciRecordTransformer.java](https://github.com/linkedin/venice/blob/main/integrations/venice-duckdb/src/main/java/com/linkedin/venice/duckdb/DuckDBDaVinciRecordTransformer.java)
+  is an implementation that redirects Venice data and stores it in DuckDB. This allows you to query your Venice data via SQL.
 
+### Details
+#### Core concepts:
+- Startup playback: on startup, the record transformer replays on-disk records by invoking `processPut` to rehydrate
+  external systems.
+- Lazy deserialization: key and value inputs are wrapped in `Lazy` to avoid unnecessary deserialization.
+- Per-version instances: one transformer instance is created per store version.
+- Compatibility checks: when a change is detected in your transformer implementation, local state will be wiped
+  automatically and will then bootstrap from the Version Topic. This ensures data consistency by preventing stale
+  transformations. If you're not transforming your data, take a look at `setSkipCompatibilityChecks` in the config
+  section below.
 
-/**
- * Transforms int values to strings
- */
-public class IntToStringRecordTransformer extends DaVinciRecordTransformer<Integer, Integer, String> {
-  public IntToStringRecordTransformer(
-      int storeVersion,
-      Schema keySchema,
-      Schema inputValueSchema,
-      Schema outputValueSchema,
-      DaVinciRecordTransformerConfig recordTransformerConfig) {
-    super(storeVersion, keySchema, inputValueSchema, outputValueSchema, recordTransformerConfig);
-  }
+#### Callbacks:
+- `transform(key, value, partitionId)`: decide what to do with each record. Return `SKIP` to drop, `UNCHANGED` to keep
+  the original value, or `TRANSFORMED` with a new value.
+- `processPut(key, value, partitionId)`: side effects for puts/updates (for example, write to an external DB or index).
+- `processDelete(key, partitionId)`: side-effects for deletes.
+- `onStartVersionIngestion(isCurrentVersion)`: initialize resources for `getStoreVersion()` (connections, tables, views).
+- `onEndVersionIngestion(currentVersion)`: close/release resources. Invoked when a version stops serving (e.g., after a
+  version swap) or when the application is shutting down.
 
-  @Override
-  public DaVinciRecordTransformerResult<String> transform(Lazy<Integer> key, Lazy<Integer> value, int partitionId) {
-    String valueStr = value.get().toString();
-    String transformedValue = valueStr + "Transformed";
-    return new DaVinciRecordTransformerResult<>(DaVinciRecordTransformerResult.Result.TRANSFORMED, transformedValue);
-  }
-
-  @Override
-  public void processPut(Lazy<Integer> key, Lazy<String> value, int partitionId) {
-    return;
-  }
-
-  @Override
-  public void close() throws IOException {
-
-  }
-}
-```
-
-Here's an example `DaVinciRecordTransformerConfig` implementation:
-```
-DaVinciRecordTransformerConfig recordTransformerConfig =
-        new DaVinciRecordTransformerConfig.Builder()
-            .setRecordTransformerFunction(IntToStringRecordTransformer::new)
-            .setOutputValueClass(String.class)
-            .setOutputValueSchema(Schema.create(Schema.Type.STRING))
-            .build();
-config.setRecordTransformerConfig(recordTransformerConfig);
-```
+#### Configs:
+- Required:
+  - `setRecordTransformerFunction`: functional interface that constructs your transformer.
+- Optional:
+  - `setKeyClass`: set this if you want to deserialize keys into Avro SpecificRecords.
+  - `setOutputValueClass` + `setOutputValueSchema`: required together when changing value type/schema or using Avro
+    SpecificRecords for values.
+  - `setStoreRecordsInDaVinci` (default: true): persist into Da Vinci’s local disk.
+  - `setAlwaysBootstrapFromVersionTopic` (default: false): set this to true if `storeRecordsInDaVinci` is false, and
+    you're storing records in memory without being backed by disk.
+  - `setSkipCompatibilityChecks` (default: false): consider true when returning `UNCHANGED` during `transform` or
+    during rapid, non-functional edits.

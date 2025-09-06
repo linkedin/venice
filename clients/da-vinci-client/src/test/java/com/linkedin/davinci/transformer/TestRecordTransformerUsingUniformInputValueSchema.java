@@ -12,12 +12,13 @@ import org.apache.avro.generic.GenericRecord;
 public class TestRecordTransformerUsingUniformInputValueSchema
     extends DaVinciRecordTransformer<GenericRecord, GenericRecord, GenericRecord> {
   public TestRecordTransformerUsingUniformInputValueSchema(
+      String storeName,
       int storeVersion,
       Schema keySchema,
       Schema inputValueSchema,
       Schema outputValueSchema,
       DaVinciRecordTransformerConfig recordTransformerConfig) {
-    super(storeVersion, keySchema, inputValueSchema, outputValueSchema, recordTransformerConfig);
+    super(storeName, storeVersion, keySchema, inputValueSchema, outputValueSchema, recordTransformerConfig);
   }
 
   @Override
