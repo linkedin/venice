@@ -159,7 +159,8 @@ public class CreateVersionTest {
      * Create version should fail if user doesn't have "Write" method access to the topic
      */
     doReturn(false).when(accessClient).hasAccessToTopic(certificate, STORE_NAME, "Write");
-    createVersionRoute.handle(request, response);
+    String responseBody = createVersionRoute.handle(request, response).toString();
+    assertTrue(responseBody.contains("Missing [write] ACLs"));
 
     /**
      * Response should be 403 if user doesn't have "Write" method access
@@ -173,7 +174,8 @@ public class CreateVersionTest {
        */
       doReturn(true).when(accessClient).hasAccessToTopic(certificate, STORE_NAME, "Write");
       doReturn(false).when(accessClient).hasAccessToTopic(certificate, STORE_NAME, "Read");
-      createVersionRoute.handle(request, response);
+      responseBody = createVersionRoute.handle(request, response).toString();
+      assertTrue(responseBody.contains("Missing [read] ACLs"));
       verify(response).status(org.apache.http.HttpStatus.SC_FORBIDDEN);
     }
   }
