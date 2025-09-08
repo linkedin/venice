@@ -48,16 +48,17 @@ public class MetaStoreReader implements Closeable {
     }
   }
 
+  ClientConfig getClientConfig(String storeName) {
+    return ClientConfig.defaultGenericClientConfig(VeniceSystemStoreUtils.getMetaStoreName(storeName))
+        .setD2Client(d2Client)
+        .setD2ServiceName(clusterDiscoveryD2ServiceName)
+        .setStatTrackingEnabled(false)
+        .setSpecificValueClass(StoreMetaValue.class);
+  }
+
   AvroSpecificStoreClient<StoreMetaKey, StoreMetaValue> getVeniceClient(String storeName) {
-    return veniceClients.computeIfAbsent(storeName, (s) -> {
-      ClientConfig clientConfig =
-          ClientConfig.defaultGenericClientConfig(VeniceSystemStoreUtils.getMetaStoreName(storeName))
-              .setD2Client(d2Client)
-              .setD2ServiceName(clusterDiscoveryD2ServiceName)
-              .setStatTrackingEnabled(false)
-              .setSpecificValueClass(StoreMetaValue.class);
-      return ClientFactory.getAndStartSpecificAvroClient(clientConfig);
-    });
+    return veniceClients
+        .computeIfAbsent(storeName, (s) -> ClientFactory.getAndStartSpecificAvroClient(getClientConfig(storeName)));
   }
 
   @Override

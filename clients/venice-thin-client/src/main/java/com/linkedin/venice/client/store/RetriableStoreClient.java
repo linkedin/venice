@@ -73,17 +73,6 @@ public class RetriableStoreClient<K, V> extends DelegatingStoreClient<K, V> {
   }
 
   /**
-   * Skip retrying getRaw for now as it ues R2 thread pool, doing retry might cause deadlock.
-  
-  *@Override
-  *public CompletableFuture<byte[]> getRaw(String requestPath, Optional<ClientStats> stats, long preRequestTimeInNS) {
-   * return super.getRaw(requestPath, stats, preRequestTimeInNS);
-   * Supplier<CompletableFuture<byte[]>> supplier = () -> super.getRaw(requestPath, stats, preRequestTimeInNS);
-   * return innerFuture.handle((BiFunction<? super byte[], Throwable, ? extends byte[]>)retryOnRouterError(supplier));
-  }
-   */
-
-  /**
    *  Adding retry logic on router error as this method returning the completion stage value.
    */
   @Override
