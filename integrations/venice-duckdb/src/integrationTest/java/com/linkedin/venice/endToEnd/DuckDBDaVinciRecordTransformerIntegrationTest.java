@@ -141,13 +141,13 @@ public class DuckDBDaVinciRecordTransformerIntegrationTest {
       Set<String> columnsToProject = Collections.emptySet();
 
       DaVinciRecordTransformerFunctionalInterface recordTransformerFunction = (
-          _storeName,
+          storeNameParam,
           storeVersion,
           keySchema,
           inputValueSchema,
           outputValueSchema,
           config) -> new DuckDBDaVinciRecordTransformer(
-              _storeName,
+              storeNameParam,
               storeVersion,
               keySchema,
               inputValueSchema,

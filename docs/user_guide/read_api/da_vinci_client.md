@@ -16,7 +16,7 @@ during ingestion.
 
 ### Why Use It
 - Easily forward Venice data to an external system through callbacks without having to do a table scan yourself.
-- Optimized for performance by being compatible with blob transfer and is multithreaded under the hood.
+- Optimized for performance by being compatible with blob transfer, leading to faster bootstrapping times.
 - Transform Venice data in-place without the need for a secondary storage, such as field projection or computing new fields.
 - Built-in support for Avro SpecificRecord for keys and values.
 - Allows you to become version aware of your Venice data.
@@ -29,7 +29,7 @@ during ingestion.
 3. Register via [DaVinciConfig#setRecordTransformerConfig](https://venicedb.org/javadoc/com/linkedin/davinci/client/DaVinciConfig.html#setRecordTransformerConfig(com.linkedin.davinci.client.DaVinciRecordTransformerConfig)).
 
 Example:
-```
+```java
 DaVinciRecordTransformerConfig recordTransformerConfig = new DaVinciRecordTransformerConfig.Builder()
     .setRecordTransformerFunction(MyTransformer::new)
     .build();
@@ -38,9 +38,37 @@ DaVinciConfig config = new DaVinciConfig();
 config.setRecordTransformerConfig(recordTransformerConfig);
 ```
 
-### Example Implementation(s)
-- [DuckDBDaVinciRecordTransformer.java](https://github.com/linkedin/venice/blob/main/integrations/venice-duckdb/src/main/java/com/linkedin/venice/duckdb/DuckDBDaVinciRecordTransformer.java)
-  is an implementation that redirects Venice data and stores it in DuckDB. This allows you to query your Venice data via SQL.
+If you need to pass additional parameters to your record transformer's constructor beyond the default ones provided,
+you can use a functional interface to register it like so:
+```java
+DaVinciRecordTransformerFunctionalInterface recordTransformerFunction = (
+    storeNameParam, 
+    storeVersion,
+    keySchema,
+    inputValueSchema,
+    outputValueSchema,
+    config) -> new ExampleDaVinciRecordTransformer(
+        storeNameParam,
+        storeVersion,
+        keySchema,
+        inputValueSchema,
+        outputValueSchema,
+        config, 
+        ...additional parameters);
+
+DaVinciRecordTransformerConfig recordTransformerConfig = new DaVinciRecordTransformerConfig.Builder()
+    .setRecordTransformerFunction(recordTransformerFunction)
+    .build();
+
+DaVinciConfig config = new DaVinciConfig();
+config.setRecordTransformerConfig(recordTransformerConfig);
+```
+
+### Example Implementations
+- [BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl.java](https://github.com/linkedin/venice/blob/main/clients/da-vinci-client/src/main/java/com/linkedin/davinci/consumer/BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl.java): 
+  - The new Venice Change Data Capture (CDC) client was built using the record transformer.
+- [DuckDBDaVinciRecordTransformer.java](https://github.com/linkedin/venice/blob/main/integrations/venice-duckdb/src/main/java/com/linkedin/venice/duckdb/DuckDBDaVinciRecordTransformer.java):
+  - Forwards Venice data to DuckDB, allowing you to query your Venice data via SQL.
 
 ### Details
 #### Core concepts:
