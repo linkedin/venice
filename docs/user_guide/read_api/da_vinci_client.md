@@ -65,9 +65,9 @@ config.setRecordTransformerConfig(recordTransformerConfig);
 ```
 
 ### Example Implementations
-- [BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl.java](https://github.com/linkedin/venice/blob/main/clients/da-vinci-client/src/main/java/com/linkedin/davinci/consumer/BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl.java): 
+- [BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl](https://github.com/linkedin/venice/blob/main/clients/da-vinci-client/src/main/java/com/linkedin/davinci/consumer/BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl.java): 
   - The new Venice Change Data Capture (CDC) client was built using the record transformer.
-- [DuckDBDaVinciRecordTransformer.java](https://github.com/linkedin/venice/blob/main/integrations/venice-duckdb/src/main/java/com/linkedin/venice/duckdb/DuckDBDaVinciRecordTransformer.java):
+- [DuckDBDaVinciRecordTransformer](https://github.com/linkedin/venice/blob/main/integrations/venice-duckdb/src/main/java/com/linkedin/venice/duckdb/DuckDBDaVinciRecordTransformer.java):
   - Forwards Venice data to DuckDB, allowing you to query your Venice data via SQL.
 
 ### Details
