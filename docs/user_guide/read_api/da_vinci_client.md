@@ -60,7 +60,8 @@ config.setRecordTransformerConfig(recordTransformerConfig);
 - `processDelete(key, partitionId)`: side-effects for deletes.
 - `onStartVersionIngestion(isCurrentVersion)`: initialize resources for `getStoreVersion()` (connections, tables, views).
 - `onEndVersionIngestion(currentVersion)`: close/release resources. Invoked when a version stops serving (e.g., after a
-  version swap) or when the application is shutting down.
+  version swap) or when the application is shutting down. For batch stores, this may also be invoked during normal
+  operation once batch ingestion completes, since batch stores don't continuously receive updates like hybrid stores.
 
 #### Configs:
 - Required:

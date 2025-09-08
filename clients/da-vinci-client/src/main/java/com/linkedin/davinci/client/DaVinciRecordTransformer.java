@@ -162,6 +162,11 @@ public abstract class DaVinciRecordTransformer<K, V, O> implements Closeable {
    * This can be triggered when this {@link #storeVersion} is no longer the current serving version (for example, after
    * a version swap), or when the application is shutting down.
    *
+   * For batch stores, this callback may be invoked even when the application is not shutting down, with
+   * {@link #storeVersion} equaling the {@code currentVersion} parameter. This occurs because batch stores do not
+   * continuously receive updates after batch ingestion completes unlike hybrid stores, so the consumer resources
+   * are closed to free up resources once all data has been consumed.
+   *
    * By default, it's a no-op.
    *
    * @param currentVersion the current serving version at the time this callback is invoked
