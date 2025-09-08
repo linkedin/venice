@@ -61,22 +61,26 @@ public class AggPartitionHealthStats extends AbstractVeniceAggStats<PartitionHea
     int underReplicatedPartitions = 0;
     String storeName = Version.parseStoreFromKafkaTopicName(partitionAssignment.getTopic());
     int versionNumber = Version.parseVersionFromKafkaTopicName(partitionAssignment.getTopic());
-    Store store = storeRepository.getStore(storeName);
-    if (store == null) {
-      throw new VeniceNoStoreException(storeName);
-    }
-    // We focus on versions which already completed bootstrap. On-going push has under replicated partition for sure,
-    // but it would not affect our operations.
-    if (!VersionStatus.isBootstrapCompleted(store.getVersionStatus(versionNumber))) {
-      return;
-    }
-    for (Partition partition: partitionAssignment.getAllPartitions()) {
-      if (pushMonitor.getReadyToServeInstances(partitionAssignment, partition.getId()).size() < store
-          .getReplicationFactor()) {
-        underReplicatedPartitions++;
+    try {
+      Store store = storeRepository.getStore(storeName);
+      if (store == null) {
+        throw new VeniceNoStoreException(storeName);
       }
+      // We focus on versions which already completed bootstrap. On-going push has under replicated partition for sure,
+      // but it would not affect our operations.
+      if (!VersionStatus.isBootstrapCompleted(store.getVersionStatus(versionNumber))) {
+        return;
+      }
+      for (Partition partition: partitionAssignment.getAllPartitions()) {
+        if (pushMonitor.getReadyToServeInstances(partitionAssignment, partition.getId()).size() < store
+            .getReplicationFactor()) {
+          underReplicatedPartitions++;
+        }
+      }
+      reportUnderReplicatedPartition(partitionAssignment.getTopic(), underReplicatedPartitions);
+    } catch (Exception e) {
+      LOGGER.error("Failed to process external view change for topic: {}", partitionAssignment.getTopic(), e);
     }
-    reportUnderReplicatedPartition(partitionAssignment.getTopic(), underReplicatedPartitions);
   }
 
   @Override
