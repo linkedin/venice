@@ -10,12 +10,17 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
+import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.PubSubUtil;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
+import com.linkedin.venice.pubsub.api.PubSubPositionWireFormat;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.Utils;
+import java.nio.ByteBuffer;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -48,15 +53,33 @@ public class DumpAdminMessages {
   public static List<AdminOperationInfo> dumpAdminMessages(
       PubSubConsumerAdapter consumer,
       String clusterName,
-      long startingOffset,
-      int messageCnt) {
+      String startingOffset,
+      String startingPosition,
+      int messageCnt,
+      PubSubPositionDeserializer pubSubPositionDeserializer) {
     String adminTopic = AdminTopicUtils.getTopicNameFromClusterName(clusterName);
     PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
     // include the message with startingOffset
     PubSubTopicPartition adminTopicPartition = new PubSubTopicPartitionImpl(
         pubSubTopicRepository.getTopic(adminTopic),
         AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID);
-    consumer.subscribe(adminTopicPartition, startingOffset - 1);
+    if (startingOffset == null && startingPosition == null) {
+      throw new VeniceException("At least one of startingOffset or startingPosition is required.");
+    }
+    if (startingOffset != null && startingPosition != null) {
+      throw new VeniceException("Only one of startingOffset or startingPosition is allowed.");
+    }
+    if (startingOffset != null) {
+      consumer.subscribe(adminTopicPartition, Long.parseLong(startingOffset) - 1);
+    } else {
+      PubSubPositionWireFormat positionWireFormat = new PubSubPositionWireFormat();
+      String[] typeIdAndBase64PositionBytes = startingPosition.split(":");
+      positionWireFormat.setType(Integer.parseInt(typeIdAndBase64PositionBytes[0]));
+      positionWireFormat
+          .setRawBytes(ByteBuffer.wrap(PubSubUtil.getBase64DecodedBytes(typeIdAndBase64PositionBytes[1])));
+      PubSubPosition startingPubSubPosition = pubSubPositionDeserializer.toPosition(positionWireFormat);
+      consumer.subscribe(adminTopicPartition, startingPubSubPosition, true);
+    }
     AdminOperationSerializer deserializer = new AdminOperationSerializer();
     List<AdminOperationInfo> adminOperations = new ArrayList<>();
     int curMsgCnt = 0;

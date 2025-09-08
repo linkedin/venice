@@ -378,6 +378,40 @@ public class AdminToolE2ETest {
     }
   }
 
+  @Test(timeOut = TEST_TIMEOUT, dataProvider = "dumpAdminMessageOptions")
+  public void testDumpAdminMessage(String[] extraArgs, boolean expectFailure) throws Exception {
+    String clusterName = clusterNames[0];
+    List<VeniceControllerWrapper> parentControllers = multiRegionMultiClusterWrapper.getParentControllers();
+    String parentControllerURLs =
+        parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(Collectors.joining(","));
+
+    try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerURLs)) {
+      List<String> args = new ArrayList<>();
+      args.add("--url");
+      args.add(parentControllerClient.getLeaderControllerUrl());
+      args.add("--cluster");
+      args.add(clusterName);
+      args.add("--kafka-bootstrap-servers");
+      args.add(multiRegionMultiClusterWrapper.getControllerConnectString());
+      args.add("--message_count");
+      args.add("10");
+      args.add("--dump-admin-messages");
+      args.addAll(Arrays.asList(extraArgs));
+      String[] adminToolArgs = args.toArray(new String[0]);
+
+      if (expectFailure) {
+        try {
+          AdminTool.main(adminToolArgs);
+          Assert.fail("Expected failure for args: " + java.util.Arrays.toString(adminToolArgs));
+        } catch (RuntimeException e) {
+          // expected
+        }
+      } else {
+        AdminTool.main(adminToolArgs);
+      }
+    }
+  }
+
   private void createStore(
       ControllerClient parentControllerClient,
       ControllerClient childControllerClient,
@@ -436,5 +470,12 @@ public class AdminToolE2ETest {
         { new String[] {}, true },
         // 4) both provided -> should fail
         { new String[] { "--offset", "10", "--execution-id", "10" }, true } };
+  }
+
+  @DataProvider(name = "dumpAdminMessageOptions")
+  public Object[][] dumpAdminOptions() {
+    return new Object[][] { { new String[] { "--starting_offset", "3" }, false },
+        { new String[] { "--starting_position", "0:0twI" }, false }, { new String[] {}, true },
+        { new String[] { "--starting_offset", "10", "--starting_position", "0:0o1e" }, true } };
   }
 }
