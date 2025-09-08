@@ -1029,7 +1029,8 @@ public class VenicePushJobTest {
         pushJob.run();
         fail("Test should fail, but doesn't.");
       } catch (VeniceException e) {
-        assertTrue(e.getMessage().contains("KME protocol is upgraded in the push job but not in the Venice backend"));
+        assertTrue(
+            e.getMessage().contains("KME protocol is upgraded in the push job but not in the Venice controller"));
       }
     }
   }

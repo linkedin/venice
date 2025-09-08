@@ -3,10 +3,7 @@ package com.linkedin.venice.hadoop.input.kafka;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_CONFIG_PREFIX;
 import static com.linkedin.venice.ConfigKeys.PUBSUB_BROKER_ADDRESS;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_BROKER_URL;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.LATEST_KAFKA_MESSAGE_ENVELOPE_SCHEMA_STRING;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_CONFIGURATOR_CLASS_CONFIG;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.SYSTEM_SCHEMA_READER_ENABLED;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.*;
 
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.CompressorFactory;
@@ -15,7 +12,6 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.ssl.SSLConfigurator;
 import com.linkedin.venice.hadoop.ssl.UserCredentialsFactory;
 import com.linkedin.venice.hadoop.utils.HadoopUtils;
-import com.linkedin.venice.schema.AvroSchemaParseUtils;
 import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
@@ -25,8 +21,9 @@ import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.vpj.VenicePushJobConstants;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Properties;
-import org.apache.avro.Schema;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.kafka.clients.CommonClientConfigs;
 
@@ -95,13 +92,15 @@ public class KafkaInputUtils {
     KafkaValueSerializer kafkaValueSerializer = new OptimizedKafkaValueSerializer();
     boolean isSchemaReaderEnabled = Boolean.parseBoolean(config.get(SYSTEM_SCHEMA_READER_ENABLED, "false"));
     if (isSchemaReaderEnabled) {
-      String latestKMESchemaStr = config.get(LATEST_KAFKA_MESSAGE_ENVELOPE_SCHEMA_STRING);
-      if (latestKMESchemaStr == null) {
-        throw new VeniceException("Latest KME schema is not set in job config");
-      }
-      Schema latestKMESchema = AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation(latestKMESchemaStr);
-      SchemaReader lastestKMESchemaReader = new LastestKMESchemaReader(latestKMESchema);
-      kafkaValueSerializer.setSchemaReader(lastestKMESchemaReader);
+
+      Map<String, String> newerKMESchemaStrings =
+          config.getPropsWithPrefix(NEWER_KAFKA_MESSAGE_ENVELOPE_SCHEMAS_PREFIX);
+      Map<Integer, String> newerIdToSchemas = newerKMESchemaStrings.entrySet()
+          .stream()
+          .collect(HashMap::new, (m, e) -> m.put(Integer.parseInt(e.getKey()), e.getValue()), HashMap::putAll);
+
+      SchemaReader schemaReader = new KMESchemaReaderForKafkaInputFormat(newerIdToSchemas);
+      kafkaValueSerializer.setSchemaReader(schemaReader);
     }
     return kafkaValueSerializer;
   }
@@ -120,6 +119,25 @@ public class KafkaInputUtils {
           .createVersionSpecificCompressorIfNotExist(strategy, topic, ByteUtils.extractByteArray(dict));
     }
     return compressorFactory.getCompressor(strategy);
+  }
+
+  /**
+   * Puts a Map of schema ID to schema string into Properties using the specified prefix.
+   * Each entry is stored as: prefix + schemaId = schemaString
+   *
+   * @param schemaMap the Map containing schema ID to schema string mappings
+   */
+  public static Map<String, String> putSchemaMapIntoProperties(Map<Integer, String> schemaMap) {
+
+    Map<String, String> schemaMapWithPrefix = new HashMap<>();
+    if (schemaMap == null || schemaMap.isEmpty()) {
+      return schemaMapWithPrefix;
+    }
+    for (Map.Entry<Integer, String> entry: schemaMap.entrySet()) {
+      String schemaWithPrefix = NEWER_KAFKA_MESSAGE_ENVELOPE_SCHEMAS_PREFIX + entry.getKey();
+      schemaMapWithPrefix.put(schemaWithPrefix, entry.getValue());
+    }
+    return schemaMapWithPrefix;
   }
 
 }

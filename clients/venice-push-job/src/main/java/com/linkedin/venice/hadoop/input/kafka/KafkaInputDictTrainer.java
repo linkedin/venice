@@ -6,7 +6,6 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_BROKER_
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_SOURCE_TOPIC_CHUNKING_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.LATEST_KAFKA_MESSAGE_ENVELOPE_SCHEMA_STRING;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUBSUB_INPUT_SPLIT_STRATEGY;
 
 import com.github.luben.zstd.ZstdDictTrainer;
@@ -30,6 +29,7 @@ import com.linkedin.venice.vpj.pubsub.input.PartitionSplitStrategy;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.Comparator;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import org.apache.hadoop.mapred.InputSplit;
@@ -55,7 +55,7 @@ public class KafkaInputDictTrainer {
     private final CompressionStrategy sourceVersionCompressionStrategy;
 
     private final boolean sourceVersionChunkingEnabled;
-    private String latestKMESchema;
+    private Map<Integer, String> newKMESchemasFromController;
 
     Param(ParamBuilder builder) {
       this.kafkaInputBroker = builder.kafkaInputBroker;
@@ -66,7 +66,7 @@ public class KafkaInputDictTrainer {
       this.dictSampleSize = builder.dictSampleSize;
       this.sourceVersionCompressionStrategy = builder.sourceVersionCompressionStrategy;
       this.sourceVersionChunkingEnabled = builder.sourceVersionChunkingEnabled;
-      this.latestKMESchema = builder.latestKMESchema;
+      this.newKMESchemasFromController = builder.newKMESchemasFromController;
     }
   }
 
@@ -79,7 +79,7 @@ public class KafkaInputDictTrainer {
     private int dictSampleSize;
     private CompressionStrategy sourceVersionCompressionStrategy;
     private boolean sourceVersionChunkingEnabled;
-    private String latestKMESchema;
+    private Map<Integer, String> newKMESchemasFromController;
 
     public ParamBuilder setKafkaInputBroker(String kafkaInputBroker) {
       this.kafkaInputBroker = kafkaInputBroker;
@@ -121,8 +121,8 @@ public class KafkaInputDictTrainer {
       return this;
     }
 
-    public ParamBuilder setLatestKMESchema(String latestKMESchema) {
-      this.latestKMESchema = latestKMESchema;
+    public ParamBuilder setNewKMESchemasFromController(Map<Integer, String> newKMESchemasFromController) {
+      this.newKMESchemasFromController = newKMESchemasFromController;
       return this;
     }
 
@@ -173,7 +173,7 @@ public class KafkaInputDictTrainer {
     properties.setProperty(COMPRESSION_DICTIONARY_SAMPLE_SIZE, Integer.toString(param.dictSampleSize));
     properties
         .setProperty(KAFKA_INPUT_SOURCE_TOPIC_CHUNKING_ENABLED, Boolean.toString(param.sourceVersionChunkingEnabled));
-    properties.setProperty(LATEST_KAFKA_MESSAGE_ENVELOPE_SCHEMA_STRING, param.latestKMESchema);
+    properties.putAll(KafkaInputUtils.putSchemaMapIntoProperties(param.newKMESchemasFromController));
 
     props = new VeniceProperties(properties);
     jobConf = new JobConf();
