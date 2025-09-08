@@ -494,6 +494,8 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
           samzaJobId,
           runningFabric,
           verifyLatestProtocolPresent,
+          config, // Although we don't use this config in our default implementation, overridden implementations might
+                  // need this
           sslFactory,
           partitioners);
     }
