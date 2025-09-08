@@ -12,4 +12,11 @@ public class ClientConfigTest {
 
     Assert.assertEquals(config, clonedConfig);
   }
+
+  @Test
+  public void testStatTrackingEnabled() {
+    ClientConfig config = new ClientConfig("Test-store").setStatTrackingEnabled(true);
+    Assert.assertTrue(config.isStatTrackingEnabled());
+    Assert.assertTrue(ClientConfig.cloneConfig(config).isStatTrackingEnabled());
+  }
 }
