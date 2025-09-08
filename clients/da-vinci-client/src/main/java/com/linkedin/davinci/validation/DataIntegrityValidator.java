@@ -1,5 +1,7 @@
 package com.linkedin.davinci.validation;
 
+import static com.linkedin.davinci.validation.PartitionTracker.TopicType.REALTIME_TOPIC_TYPE;
+
 import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.exceptions.validation.DataValidationException;
 import com.linkedin.venice.kafka.protocol.GUID;
@@ -78,10 +80,10 @@ public class DataIntegrityValidator {
     partitionTrackers.remove(partition);
   }
 
-  public void clearPartitionSegments(int partition, PartitionTracker.TopicType type) {
+  public void clearRtSegments(int partition) {
     PartitionTracker partitionTracker = this.partitionTrackers.get(partition);
     if (partitionTracker != null) {
-      partitionTracker.clearSegments(type);
+      partitionTracker.clearSegments(PartitionTracker.TopicType.of(REALTIME_TOPIC_TYPE));
     }
   }
 
@@ -93,7 +95,6 @@ public class DataIntegrityValidator {
       PartitionTracker.TopicType type,
       int partition,
       Map<CharSequence, ProducerPartitionState> producerPartitionStateMap) {
-    // TODO: can maxAgeInMs be used without offsetRecord.getMaxMessageTimeInMs()?
     registerPartition(partition).setPartitionState(type, producerPartitionStateMap, DISABLED);
   }
 

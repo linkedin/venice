@@ -2,12 +2,12 @@ package com.linkedin.venice.endToEnd;
 
 import static com.linkedin.venice.ConfigKeys.DEFAULT_MAX_NUMBER_OF_PARTITIONS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
+import static com.linkedin.venice.ConfigKeys.KAFKA_OVER_SSL;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
 import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POOL_SIZE_PER_KAFKA_CLUSTER;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_TRANSACTIONAL_MODE;
 import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_SHARED_CONSUMER_ASSIGNMENT_STRATEGY;
-import static com.linkedin.venice.ConfigKeys.SSL_TO_KAFKA_LEGACY;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.DEFAULT_KEY_SCHEMA;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.DEFAULT_VALUE_SCHEMA;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
@@ -16,7 +16,10 @@ import static com.linkedin.venice.utils.IntegrationTestPushUtils.runVPJ;
 import static com.linkedin.venice.utils.TestWriteUtils.STRING_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertNotEquals;
 import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertTrue;
 
 import com.github.luben.zstd.Zstd;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
@@ -60,20 +63,21 @@ import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
+import com.linkedin.venice.writer.VeniceWriterFactory;
 import com.linkedin.venice.writer.VeniceWriterOptions;
 import java.io.File;
 import java.nio.ByteBuffer;
 import java.util.AbstractMap;
 import java.util.Collections;
-import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.IntStream;
+import java.util.stream.Stream;
 import org.apache.avro.Schema;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
@@ -82,22 +86,17 @@ import org.testng.annotations.Test;
 public class TestGlobalRtDiv {
   private static final Logger LOGGER = LogManager.getLogger(TestGlobalRtDiv.class);
 
-  private VeniceClusterWrapper sharedVenice;
+  private VeniceClusterWrapper venice;
 
   @BeforeClass
   public void setUp() {
-    int numberOfServers = 3;
-    Properties extraProperties = new Properties();
-    extraProperties.setProperty(PERSISTENCE_TYPE, PersistenceType.ROCKS_DB.name());
-    extraProperties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1L));
-    extraProperties.setProperty(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_TRANSACTIONAL_MODE, "500");
-
-    // N.B.: RF 2 with 3 servers is important, in order to test both the leader and follower code paths
-    sharedVenice = ServiceFactory.getVeniceCluster(
+    int serverCount = 3;
+    final Properties extraProperties = createExtraProperties();
+    venice = ServiceFactory.getVeniceCluster(
         new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
-            .numberOfServers(0)
-            .numberOfRouters(0)
-            .replicationFactor(numberOfServers) // set RF to number of servers so that all servers have all partitions
+            .numberOfServers(0) // created below
+            .numberOfRouters(0) // created below
+            .replicationFactor(serverCount) // set RF to number of servers so that all servers have all partitions
             .partitionSize(1000000)
             .sslToStorageNodes(false)
             .sslToKafka(false)
@@ -105,29 +104,34 @@ public class TestGlobalRtDiv {
             .build());
 
     Properties routerProperties = new Properties();
+    venice.addVeniceRouter(routerProperties);
 
-    sharedVenice.addVeniceRouter(routerProperties);
-    // Added a server with shared consumer enabled.
-    Properties serverPropertiesWithSharedConsumer = new Properties();
-    serverPropertiesWithSharedConsumer.setProperty(SSL_TO_KAFKA_LEGACY, "false");
-    // extraProperties.setProperty(VeniceWriter.MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES, "400");
-    extraProperties.setProperty(SERVER_CONSUMER_POOL_SIZE_PER_KAFKA_CLUSTER, "3");
-    extraProperties.setProperty(DEFAULT_MAX_NUMBER_OF_PARTITIONS, "4");
-    extraProperties.setProperty(
-        SERVER_SHARED_CONSUMER_ASSIGNMENT_STRATEGY,
-        KafkaConsumerService.ConsumerAssignmentStrategy.PARTITION_WISE_SHARED_CONSUMER_ASSIGNMENT_STRATEGY.name());
-    // Enable global div feature in the integration test.
-    // extraProperties.setProperty(SERVER_GLOBAL_RT_DIV_ENABLED, "true");
-
-    for (int i = 0; i < numberOfServers; i++) {
-      sharedVenice.addVeniceServer(serverPropertiesWithSharedConsumer, extraProperties);
+    Properties serverProperties = new Properties();
+    serverProperties.setProperty(KAFKA_OVER_SSL, "false");
+    for (int i = 0; i < serverCount; i++) {
+      venice.addVeniceServer(serverProperties, extraProperties);
     }
-    LOGGER.info("Finished creating VeniceClusterWrapper");
+
+    LOGGER.info("Finished creating VeniceClusterWrapper in setUp()");
   }
 
   @AfterClass
   public void cleanUp() {
-    Utils.closeQuietlyWithErrorLogged(sharedVenice);
+    Utils.closeQuietlyWithErrorLogged(venice);
+  }
+
+  private static Properties createExtraProperties() {
+    Properties extraProperties = new Properties();
+    extraProperties.setProperty(DEFAULT_MAX_NUMBER_OF_PARTITIONS, "4");
+    extraProperties.setProperty(SERVER_CONSUMER_POOL_SIZE_PER_KAFKA_CLUSTER, "3");
+    extraProperties.setProperty(PERSISTENCE_TYPE, PersistenceType.ROCKS_DB.name());
+    extraProperties.setProperty(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_TRANSACTIONAL_MODE, "500");
+    // extraProperties.setProperty(VeniceWriter.MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES, "400"); // TODO: chunk
+    extraProperties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1L));
+    extraProperties.setProperty(
+        SERVER_SHARED_CONSUMER_ASSIGNMENT_STRATEGY,
+        KafkaConsumerService.ConsumerAssignmentStrategy.PARTITION_WISE_SHARED_CONSUMER_ASSIGNMENT_STRATEGY.name());
+    return extraProperties;
   }
 
   /**
@@ -151,272 +155,249 @@ public class TestGlobalRtDiv {
         .setHybridOffsetLagThreshold(10)
         .setPartitionCount(partitionCount);
 
-    sharedVenice.useControllerClient(client -> {
+    venice.useControllerClient(client -> {
       client.createNewStore(storeName, "owner", DEFAULT_KEY_SCHEMA, DEFAULT_VALUE_SCHEMA);
       client.updateStore(storeName, params);
     });
 
     // Create store version 1 by writing keyCount records.
-    sharedVenice.createVersion(
-        storeName,
-        DEFAULT_KEY_SCHEMA,
-        DEFAULT_VALUE_SCHEMA,
-        IntStream.range(0, keyCount).mapToObj(i -> new AbstractMap.SimpleEntry<>(i, i)));
+    Stream<Map.Entry> batchData = IntStream.range(0, keyCount).mapToObj(i -> new AbstractMap.SimpleEntry<>(i, i));
+    venice.createVersion(storeName, DEFAULT_KEY_SCHEMA, DEFAULT_VALUE_SCHEMA, batchData);
 
     Properties writerProperties = new Properties();
-    writerProperties.put(KAFKA_BOOTSTRAP_SERVERS, sharedVenice.getPubSubBrokerWrapper().getAddress());
+    writerProperties.put(KAFKA_BOOTSTRAP_SERVERS, venice.getPubSubBrokerWrapper().getAddress());
 
     // Set max segment elapsed time to 0 to enforce creating small segments aggressively
     writerProperties.put(VeniceWriter.MAX_ELAPSED_TIME_FOR_SEGMENT_IN_MS, "0");
     writerProperties.putAll(
-        PubSubBrokerWrapper
-            .getBrokerDetailsForClients(Collections.singletonList(sharedVenice.getPubSubBrokerWrapper())));
+        PubSubBrokerWrapper.getBrokerDetailsForClients(Collections.singletonList(venice.getPubSubBrokerWrapper())));
 
     // TODO: integration test
   }
 
   @Test(timeOut = 180 * Time.MS_PER_SECOND)
   public void testGlobalRtDiv() throws Exception {
-    VeniceClusterWrapper venice = sharedVenice;
-    LOGGER.info("Finished creating VeniceClusterWrapper");
-    long streamingRewindSeconds = 10L;
-    long streamingMessageLag = 2L;
-    int numWriters = 2;
-    int messageCount = 100;
-    int partitionCount = 1;
-    int partition = partitionCount - 1;
-    int perWriterMessageCount = messageCount / numWriters;
-    boolean isChunkingEnabled = false;
-    String storeName = Utils.getUniqueString("hybrid-store");
+    int PARTITION = 0;
+    int NUM_WRITERS = 2;
+    int MESSAGE_COUNT = 100;
+    int perWriterMessageCount = MESSAGE_COUNT / NUM_WRITERS;
+    boolean isChunkingEnabled = false; // TODO: test with chunking
+    String VALUE_PREFIX = "testGlobalRtDiv_";
     File inputDir = getTempDataDirectory();
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
+    String storeName = Utils.getUniqueString("testGlobalRtDiv");
+    String topicName = Version.composeKafkaTopic(storeName, 1);
     Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir); // records 1-100
+    PubSubBrokerWrapper brokerWrapper = venice.getPubSubBrokerWrapper();
+    String globalRtDivKey = "GLOBAL_RT_DIV_KEY." + brokerWrapper.getAddress();
     Properties vpjProperties = defaultVPJProps(venice, inputDirPath, storeName);
+    Properties writerProperties = new Properties();
+    writerProperties.put(KAFKA_BOOTSTRAP_SERVERS, brokerWrapper.getAddress());
+    writerProperties.put(VeniceWriter.MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES, "100"); // force chunking
+    AvroSerializer<String> stringSerializer = new AvroSerializer<>(STRING_SCHEMA);
+    PubSubProducerAdapterFactory producerFactory = brokerWrapper.getPubSubClientsFactory().getProducerAdapterFactory();
+    VeniceWriterFactory writerFactory = TestUtils
+        .getVeniceWriterFactory(writerProperties, producerFactory, brokerWrapper.getPubSubPositionTypeRegistry());
+
     try (ControllerClient controllerClient = createStoreForJob(venice.getClusterName(), recordSchema, vpjProperties);
-        AvroGenericStoreClient client = ClientFactory.getAndStartGenericAvroClient(
+        AvroGenericStoreClient<Object, Object> client = ClientFactory.getAndStartGenericAvroClient(
             ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(venice.getRandomRouterURL()))) {
-      // Have 1 partition only, so that all keys are produced to the same partition
-      ControllerResponse response = controllerClient.updateStore(
-          storeName,
-          new UpdateStoreQueryParams().setHybridRewindSeconds(streamingRewindSeconds)
-              .setHybridOffsetLagThreshold(streamingMessageLag)
-              .setGlobalRtDivEnabled(true)
-              .setChunkingEnabled(isChunkingEnabled)
-              .setCompressionStrategy(CompressionStrategy.NO_OP)
-              .setPartitionCount(partitionCount));
-      Assert.assertFalse(response.isError());
-      // Do a VPJ push
-      runVPJ(vpjProperties, 1, controllerClient);
-      Properties writerProperties = new Properties();
-      writerProperties.put(KAFKA_BOOTSTRAP_SERVERS, venice.getPubSubBrokerWrapper().getAddress());
-      writerProperties.put(VeniceWriter.MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES, "100"); // force chunking
-      AvroSerializer<String> stringSerializer = new AvroSerializer(STRING_SCHEMA);
-      String prefix = "testGlobalRtDiv_";
-      PubSubProducerAdapterFactory pubSubProducerAdapterFactory =
-          venice.getPubSubBrokerWrapper().getPubSubClientsFactory().getProducerAdapterFactory();
+      // All keys are produced to the same partition, since there is only 1 partition
+      UpdateStoreQueryParams updateParams = createUpdateParams(isChunkingEnabled, PARTITION + 1);
+      ControllerResponse response = controllerClient.updateStore(storeName, updateParams);
+      assertFalse(response.isError(), "Updating store should succeed");
       StoreInfo storeInfo = TestUtils.assertCommand(controllerClient.getStore(storeName)).getStore();
 
-      String kafkaTopicName = Version.composeKafkaTopic(storeName, 1);
-      PubSubBrokerWrapper pubSubBrokerWrapper = venice.getPubSubBrokerWrapper();
-      // chunk the data into 2 parts and send each part by different producers. Also, close the producers
-      // as soon as it finishes writing. This makes sure that closing or switching producers won't impact the ingestion
-      for (int i = 0; i < numWriters; i++) {
-        try (VeniceWriter<byte[], byte[], byte[]> realTimeTopicWriter = TestUtils
-            .getVeniceWriterFactory(
-                writerProperties,
-                pubSubProducerAdapterFactory,
-                pubSubBrokerWrapper.getPubSubPositionTypeRegistry())
-            .createVeniceWriter(new VeniceWriterOptions.Builder(Utils.getRealTimeTopicName(storeInfo)).build())) {
+      runVPJ(vpjProperties, 1, controllerClient); // do a batch push
+
+      for (int i = 0; i < NUM_WRITERS; i++) { // chunk the nearline data into multiple parts sent by different producers
+        VeniceWriterOptions options = new VeniceWriterOptions.Builder(Utils.getRealTimeTopicName(storeInfo)).build();
+        try (VeniceWriter<byte[], byte[], byte[]> realTimeTopicWriter = writerFactory.createVeniceWriter(options)) {
           for (int j = i * perWriterMessageCount + 1; j <= i * perWriterMessageCount + perWriterMessageCount; j++) {
             realTimeTopicWriter
-                .put(stringSerializer.serialize(String.valueOf(j)), stringSerializer.serialize(prefix + j), 1);
+                .put(stringSerializer.serialize(String.valueOf(j)), stringSerializer.serialize(VALUE_PREFIX + j), 1);
           }
         }
       }
 
-      // Check both leader and follower hosts
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
-        for (VeniceServerWrapper server: venice.getVeniceServers()) {
-          try {
-            for (int i = 1; i <= messageCount; i++) {
-              String key = Integer.toString(i);
-              Object value = client.get(key).get();
-              assertNotNull(value, "Key " + i + " should not be missing!");
-              assertEquals(value.toString(), prefix + key);
-            }
-          } catch (Exception e) {
-            throw new VeniceException(e);
-          }
+        for (int i = 1; i <= MESSAGE_COUNT; i++) {
+          String key = Integer.toString(i);
+          Object value = client.get(key).get();
+          assertNotNull(value, "Key " + i + " should not be missing!");
+          assertEquals(value.toString(), VALUE_PREFIX + key);
         }
       });
-
-      /**
-      * Restart leader SN (server1) to trigger leadership handover during batch consumption.
-      * When server1 stops, server2 will be promoted to leader. When server1 starts, due to full-auto rebalance,
-      server2:
-      * 1) Will be demoted to follower. Leader->standby transition during remote consumption will be tested.
-      * 2) Or remain as leader. In this case, Leader->standby transition during remote consumption won't be tested.
-      * TODO: Use semi-auto rebalance and assign a server as the leader to make sure leader->standby always happen.
-      */
-      HelixExternalViewRepository routingDataRepo = sharedVenice.getLeaderVeniceController()
-          .getVeniceHelixAdmin()
-          .getHelixVeniceClusterResources(sharedVenice.getClusterName())
-          .getRoutingDataRepository();
-      Assert
-          .assertTrue(routingDataRepo.containsKafkaTopic(kafkaTopicName), "Topic " + kafkaTopicName + " should exist");
-      Instance leaderNode = routingDataRepo.getLeaderInstance(kafkaTopicName, 0);
-      Assert.assertNotNull(leaderNode);
-
-      List<VeniceServerWrapper> servers = sharedVenice.getVeniceServers();
-
-      servers.forEach(server -> {
-        TestVeniceServer testVeniceServer = server.getVeniceServer();
-        StoreIngestionTask sit = testVeniceServer.getKafkaStoreIngestionService().getStoreIngestionTask(kafkaTopicName);
-        DataIntegrityValidator div = sit.getDataIntegrityValidator();
-        boolean isLeader = server.getPort() == leaderNode.getPort();
-        // server.getVeniceServer().getStorageService().get;
-        StorageEngine storageEngine = testVeniceServer.getStorageService().getStorageEngine(kafkaTopicName);
-        String key = "GLOBAL_RT_DIV_KEY." + venice.getPubSubBrokerWrapper().getAddress();
-        byte[] keyBytes = key.getBytes();
-        if (isChunkingEnabled) {
-          keyBytes = ChunkingUtils.KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(key.getBytes());
-        }
-        if (storageEngine == null) {
-          return;
-        }
-
-        ChunkedValueManifestContainer manifestContainer = new ChunkedValueManifestContainer();
-        StorageEngineBackedCompressorFactory compressorFactory =
-            new StorageEngineBackedCompressorFactory(testVeniceServer.getStorageMetadataService());
-        VeniceCompressor compressor = compressorFactory.getCompressor(
-            CompressionStrategy.NO_OP,
-            storageEngine.getStoreVersionName(),
-            Zstd.defaultCompressionLevel());
-
-        ByteBuffer value = (ByteBuffer) GenericChunkingAdapter.INSTANCE.get(
-            storageEngine,
-            partition,
-            ByteBuffer.wrap(keyBytes),
-            isChunkingEnabled,
-            null,
-            null,
-            NoOpReadResponseStats.SINGLETON,
-            AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion(),
-            RawBytesStoreDeserializerCache.getInstance(),
-            compressor,
-            manifestContainer);
-
-        InternalAvroSpecificSerializer<GlobalRtDivState> globalRtDivStateSerializer =
-            AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getSerializer();
-
-        GlobalRtDivState globalRtDiv = globalRtDivStateSerializer.deserialize(
-            ByteUtils.extractByteArray(value),
-            AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion());
-        LOGGER.info("Global RT div state: {}", globalRtDiv);
-        validateGlobalDivState(globalRtDiv);
-      });
-
-      // Before shutting down the leader, verify that the leader has the global RT div state, but not the followers.
-      Instance oldLeaderNode = verifyGlobalDivStateOnAllServers(kafkaTopicName, partition);
-
-      // Shutdown leader to trigger a FOLLOWER -> LEADER transition.
-      LOGGER.info("Stopping leader server: {}", leaderNode.getNodeId());
-      sharedVenice.stopVeniceServer(leaderNode.getPort());
-
-      // Verify that the other server is promoted to leader and load the global RT div state correctly.
-      Instance newLeader = verifyGlobalDivStateOnAllServers(kafkaTopicName, partition);
-      LOGGER.info("New leader server: {}", newLeader.getNodeId());
-      // Confirm that leader has changed.
-      Assert.assertNotEquals(newLeader.getNodeId(), oldLeaderNode.getNodeId());
-
-      // Restart the old leader server to test if it can load the global RT div state correctly as a follower.
-      LOGGER.info("Restarting old leader server: {}", oldLeaderNode.getNodeId());
-      sharedVenice.restartVeniceServer(oldLeaderNode.getPort());
-
-      // Wait oldLeaderNode to be the leader again after restart.
-      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
-        Instance leader = routingDataRepo.getLeaderInstance(kafkaTopicName, 0);
-        if (leader == null) {
-          throw new VeniceException("Leader not found yet");
-        }
-        Assert.assertEquals(leader.getNodeId(), oldLeaderNode.getNodeId());
-      });
-
-      LOGGER.info("Old leader server: {} is now the current leader", oldLeaderNode.getNodeId());
-      // Verify the state transition LEADER -> FOLLOWER happened on the old leader node.
-      Instance curLeader = verifyGlobalDivStateOnAllServers(kafkaTopicName, partition);
-      Assert.assertEquals(curLeader.getNodeId(), oldLeaderNode.getNodeId());
     }
+
+    // Sanity check that Global RT DIV State can be successfully loaded from StorageEngine on all servers
+    venice.getVeniceServers().forEach(server -> {
+      TestVeniceServer testVeniceServer = server.getVeniceServer();
+      StorageEngine storageEngine = testVeniceServer.getStorageService().getStorageEngine(topicName);
+      if (storageEngine == null) {
+        return;
+      }
+      GlobalRtDivState globalRtDiv =
+          getGlobalRtDivState(testVeniceServer, storageEngine, PARTITION, globalRtDivKey, isChunkingEnabled);
+      LOGGER.info("Global RT DIV State: {}", globalRtDiv);
+      validateGlobalDivState(globalRtDiv);
+    });
+
+    /*
+    * Restart leader server (server1) to trigger leadership handover during batch consumption.
+    * When server1 stops, server2 will be promoted to leader. When server1 starts, due to full-auto rebalance,
+    server2:
+    * 1) Will be demoted to follower. Leader->standby transition during remote consumption will be tested.
+    * 2) Or remain as leader. In this case, Leader->standby transition during remote consumption won't be tested.
+    * TODO: Use semi-auto rebalance and assign a server as the leader to make sure leader->standby always happen.
+    */
+    HelixExternalViewRepository routingDataRepo = getRoutingDataRepository();
+    assertTrue(routingDataRepo.containsKafkaTopic(topicName), topicName + " should exist");
+    Instance leaderNode = routingDataRepo.getLeaderInstance(topicName, PARTITION);
+    assertNotNull(leaderNode);
+
+    // Before shutting down the leader, verify that the leader has the Global RT DIV State, but not the followers.
+    Instance oldLeaderNode = verifyGlobalDivStateOnAllServers(topicName, PARTITION);
+
+    // Shutdown leader to trigger a FOLLOWER -> LEADER transition.
+    LOGGER.info("Stopping leader server: {}", leaderNode.getNodeId());
+    venice.stopVeniceServer(leaderNode.getPort());
+
+    // Verify that the other server is promoted to leader and load the Global RT DIV State correctly.
+    Instance newLeader = verifyGlobalDivStateOnAllServers(topicName, PARTITION);
+    LOGGER.info("New leader server: {}", newLeader.getNodeId());
+    // Confirm that leader has changed.
+    assertNotEquals(newLeader.getNodeId(), oldLeaderNode.getNodeId());
+
+    // Restart the old leader server to test if it can load the Global RT DIV State correctly as a follower.
+    LOGGER.info("Restarting old leader server: {}", oldLeaderNode.getNodeId());
+    venice.restartVeniceServer(oldLeaderNode.getPort());
+
+    // Wait oldLeaderNode to be the leader again after restart.
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
+      Instance leader = routingDataRepo.getLeaderInstance(topicName, 0);
+      if (leader == null) {
+        throw new VeniceException("Leader not found yet");
+      }
+      assertEquals(leader.getNodeId(), oldLeaderNode.getNodeId());
+    });
+
+    // Verify the state transition LEADER -> FOLLOWER happened on the old leader node.
+    LOGGER.info("Old leader server: {} is now the current leader", oldLeaderNode.getNodeId());
+    Instance curLeader = verifyGlobalDivStateOnAllServers(topicName, PARTITION);
+    assertEquals(curLeader.getNodeId(), oldLeaderNode.getNodeId());
   }
 
-  Instance verifyGlobalDivStateOnAllServers(String resourceName, int partition) {
-    HelixExternalViewRepository routingDataRepo = sharedVenice.getLeaderVeniceController()
-        .getVeniceHelixAdmin()
-        .getHelixVeniceClusterResources(sharedVenice.getClusterName())
-        .getRoutingDataRepository();
-    Assert.assertTrue(routingDataRepo.containsKafkaTopic(resourceName), "Topic " + resourceName + " should exist");
-    // Verify that the other server is promoted to leader and load the global RT div state correctly.
+  Instance verifyGlobalDivStateOnAllServers(String topicName, int partition) {
+    // Verify that the other server is promoted to leader and load the Global RT DIV State correctly.
+    HelixExternalViewRepository routingDataRepo = getRoutingDataRepository();
     AtomicReference<Instance> LeaderNode = new AtomicReference<>();
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
-      // Find the leader node
-      LeaderNode.set(routingDataRepo.getLeaderInstance(resourceName, 0));
-      List<VeniceServerWrapper> servers = sharedVenice.getVeniceServers();
-      servers.forEach(server -> {
+      LeaderNode.set(routingDataRepo.getLeaderInstance(topicName, partition)); // Find the leader node
+      LOGGER.info("Leader server: {}", LeaderNode.get().getNodeId());
+      venice.getVeniceServers().forEach(server -> {
         if (LeaderNode.get() == null) {
           throw new VeniceException("Leader not found yet");
         }
-        LOGGER.info("Leader server: {}", LeaderNode.get().getNodeId());
         if (!server.isRunning()) {
           LOGGER.info("Server: {} is not running", server.getVeniceServer());
           return;
         }
         boolean isLeader = server.getPort() == LeaderNode.get().getPort();
-        verifyGlobalDivState(server, resourceName, partition, isLeader);
+        verifyGlobalDivState(server, topicName, partition, isLeader);
       });
     });
     return LeaderNode.get();
   }
 
-  void verifyGlobalDivState(VeniceServerWrapper server, String resourceName, int partition, boolean isLeader) {
-    TestVeniceServer testVeniceServer = server.getVeniceServer();
-    StoreIngestionTask sit = testVeniceServer.getKafkaStoreIngestionService().getStoreIngestionTask(resourceName);
-    DataIntegrityValidator consumerDiv = sit.getDataIntegrityValidator(); // This is the consumer DIV.
+  private void verifyGlobalDivState(VeniceServerWrapper server, String topicName, int partition, boolean isLeader) {
+    StoreIngestionTask sit = server.getVeniceServer().getKafkaStoreIngestionService().getStoreIngestionTask(topicName);
+    DataIntegrityValidator consumerDiv = sit.getDataIntegrityValidator();
     if (consumerDiv == null) {
       throw new VeniceException("consumerDiv on server: " + server.getAddress() + " is not initialized yet");
     }
     if (isLeader) {
-      LOGGER.info("Verifying global RT DIV state on leader: {}", server.getAddress());
-      Assert.assertTrue(consumerDiv.hasGlobalRtDivState(partition));
-      Assert.assertTrue(consumerDiv.hasVtDivState(partition));
+      LOGGER.info("Verifying Global RT DIV State on leader: {}", server.getAddress());
+      assertTrue(consumerDiv.hasGlobalRtDivState(partition));
+      assertTrue(consumerDiv.hasVtDivState(partition));
     } else {
-      LOGGER.info("Verifying global RT DIV state on follower: {}", server.getAddress());
-      Assert.assertFalse(consumerDiv.hasGlobalRtDivState(partition));
-      Assert.assertTrue(consumerDiv.hasVtDivState(partition));
+      LOGGER.info("Verifying Global RT DIV State on follower: {}", server.getAddress());
+      assertFalse(consumerDiv.hasGlobalRtDivState(partition));
+      assertTrue(consumerDiv.hasVtDivState(partition));
     }
   }
 
-  void validateGlobalDivState(GlobalRtDivState state) {
-    Assert.assertNotNull(state);
-    Assert.assertNotNull(state.getSrcUrl());
-    Assert.assertNotNull(state.getProducerStates());
-    Assert.assertFalse(state.getProducerStates().isEmpty());
+  private void validateGlobalDivState(GlobalRtDivState state) {
+    assertNotNull(state);
+    assertNotNull(state.getSrcUrl());
+    assertNotNull(state.getProducerStates());
+    assertFalse(state.getProducerStates().isEmpty());
     state.getProducerStates().forEach((producerId, producerState) -> {
-      Assert.assertNotNull(producerId);
-      Assert.assertNotNull(producerState);
-      // Segment number should be non-negative
-      Assert.assertTrue(producerState.getSegmentNumber() >= 0);
-      // Message sequence number should be non-negative
-      Assert.assertTrue(producerState.getMessageSequenceNumber() >= 0);
-      // Message timestamp should be non-negative
-      Assert.assertTrue(producerState.getMessageTimestamp() >= 0);
-      // Checksum type should be valid
-      Assert.assertTrue(producerState.getChecksumType() >= 0 && producerState.getChecksumType() <= 3);
-      // Checksum state should not be null
-      Assert.assertNotNull(producerState.getChecksumState());
-      // Aggregates should not be null
-      Assert.assertNotNull(producerState.getAggregates());
-      // Debug info should not be null
-      Assert.assertNotNull(producerState.getDebugInfo());
+      assertNotNull(producerId);
+      assertNotNull(producerState);
+      assertTrue(producerState.getSegmentNumber() >= 0, "Segment number should be non-negative");
+      assertTrue(producerState.getMessageSequenceNumber() >= 0, "Message sequence number should be non-negative");
+      assertTrue(producerState.getMessageTimestamp() >= 0, "Message timestamp should be non-negative");
+      assertTrue(producerState.getChecksumType() >= 0 && producerState.getChecksumType() <= 3, "Checksum validity");
+      assertNotNull(producerState.getChecksumState(), "Checksum state should not be null");
+      assertNotNull(producerState.getAggregates(), "Aggregates should not be null");
+      assertNotNull(producerState.getDebugInfo(), "Debug info should not be null");
     });
+  }
+
+  private static GlobalRtDivState getGlobalRtDivState(
+      TestVeniceServer testVeniceServer,
+      StorageEngine storageEngine,
+      int PARTITION,
+      String globalRtDivKey,
+      boolean isChunkingEnabled) {
+    byte[] keyBytes = globalRtDivKey.getBytes();
+    if (isChunkingEnabled) {
+      keyBytes = ChunkingUtils.KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(keyBytes);
+    }
+
+    StorageEngineBackedCompressorFactory compressorFactory =
+        new StorageEngineBackedCompressorFactory(testVeniceServer.getStorageMetadataService());
+    VeniceCompressor compressor = compressorFactory
+        .getCompressor(CompressionStrategy.NO_OP, storageEngine.getStoreVersionName(), Zstd.defaultCompressionLevel());
+
+    // TODO: unify the production code with this
+    ChunkedValueManifestContainer manifestContainer = new ChunkedValueManifestContainer();
+    ByteBuffer value = (ByteBuffer) GenericChunkingAdapter.INSTANCE.get(
+        storageEngine,
+        PARTITION,
+        ByteBuffer.wrap(keyBytes),
+        isChunkingEnabled,
+        null,
+        null,
+        NoOpReadResponseStats.SINGLETON,
+        AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion(),
+        RawBytesStoreDeserializerCache.getInstance(),
+        compressor,
+        manifestContainer);
+
+    InternalAvroSpecificSerializer<GlobalRtDivState> globalRtDivStateSerializer =
+        AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getSerializer();
+
+    GlobalRtDivState globalRtDiv = globalRtDivStateSerializer.deserialize(
+        ByteUtils.extractByteArray(value),
+        AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion());
+    return globalRtDiv;
+  }
+
+  private static UpdateStoreQueryParams createUpdateParams(boolean isChunkingEnabled, int partitionCount) {
+    return new UpdateStoreQueryParams().setGlobalRtDivEnabled(true)
+        .setHybridRewindSeconds(10L)
+        .setHybridOffsetLagThreshold(2L)
+        .setChunkingEnabled(isChunkingEnabled)
+        .setCompressionStrategy(CompressionStrategy.NO_OP)
+        .setPartitionCount(partitionCount);
+  }
+
+  private HelixExternalViewRepository getRoutingDataRepository() {
+    return venice.getLeaderVeniceController()
+        .getVeniceHelixAdmin()
+        .getHelixVeniceClusterResources(venice.getClusterName())
+        .getRoutingDataRepository();
   }
 }

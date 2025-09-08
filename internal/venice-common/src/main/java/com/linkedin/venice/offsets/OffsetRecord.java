@@ -83,6 +83,7 @@ public class OffsetRecord {
     emptyPartitionState.lastConsumedVersionTopicPubSubPosition = PubSubSymbolicPosition.EARLIEST.toWireFormatBuffer();
     emptyPartitionState.upstreamVersionTopicPubSubPosition = PubSubSymbolicPosition.EARLIEST.toWireFormatBuffer();
     emptyPartitionState.lastConsumedVersionTopicOffset = PubSubSymbolicPosition.EARLIEST.getNumericOffset();
+    // TODO: use the PubSubPosition ByteBuffer param instead
     return emptyPartitionState;
   }
 
@@ -347,6 +348,7 @@ public class OffsetRecord {
   }
 
   public PubSubPosition getLatestConsumedVtPosition() {
+    // TODO: use the PubSubPosition ByteBuffer param instead
     return fromKafkaOffset(this.partitionState.getLastConsumedVersionTopicOffset());
   }
 

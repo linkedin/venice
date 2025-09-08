@@ -550,10 +550,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           PubSubPosition subscribePosition = getLocalVtSubscribePosition(partitionConsumptionState);
           if (isGlobalRtDivEnabled()) {
             // latest consumed vt position (LCVP)
-            consumerDiv.updateLatestConsumedVtPosition(partition, subscribePosition);
+            getConsumerDiv().updateLatestConsumedVtPosition(partition, subscribePosition);
             // Clear current RT segment information as we are switching back to VT consumption.
-            // TODO: we may trigger a sendGlobalRTDIV message for optimization.
-            consumerDiv.clearPartitionSegments(partition, TopicType.of(REALTIME_TOPIC_TYPE));
+            getConsumerDiv().clearRtSegments(partition);
           }
           consumerSubscribe(topic, partitionConsumptionState, subscribePosition, localKafkaServer);
           /**
@@ -3600,7 +3599,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     // we can't clear the consumer DIV here, because for VT, the consumer DIV may already contain some producer states
     // from previous consumption and those states should be retained. For RT, the consumer DIV should be empty at this
     // point.
-    getConsumerDiv().clearPartitionSegments(partition, TopicType.of(REALTIME_TOPIC_TYPE));
+    getConsumerDiv().clearRtSegments(partition);
     if (isGlobalRtDivEnabled()) {
       loadGlobalRtDiv(partition);
     } else {
