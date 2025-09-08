@@ -38,6 +38,7 @@ DaVinciConfig config = new DaVinciConfig();
 config.setRecordTransformerConfig(recordTransformerConfig);
 ```
 
+---
 If you need to pass additional parameters to your record transformer's constructor beyond the default ones provided,
 you can use a functional interface to register it like so:
 ```java
@@ -47,7 +48,7 @@ DaVinciRecordTransformerFunctionalInterface recordTransformerFunction = (
     keySchema,
     inputValueSchema,
     outputValueSchema,
-    config) -> new ExampleDaVinciRecordTransformer(
+    config) -> new MyTransformer(
         storeNameParam,
         storeVersion,
         keySchema,
