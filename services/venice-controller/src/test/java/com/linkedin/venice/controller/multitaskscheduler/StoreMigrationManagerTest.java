@@ -14,6 +14,7 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
+import static org.testng.Assert.expectThrows;
 
 import com.linkedin.venice.controller.multitaskscheduler.MigrationRecord.Step;
 import com.linkedin.venice.controllerapi.ControllerClient;
@@ -69,6 +70,24 @@ public class StoreMigrationManagerTest {
     assertEquals(retrievedRecord.getDestinationCluster(), destinationCluster);
     assertEquals(retrievedRecord.getCurrentStep(), currStep);
     assertEquals(retrievedRecord.getCurrentStepEnum(), Step.fromStepNumber(currStep));
+  }
+
+  @Test
+  public void testMigrationRecordExistsExp() {
+    String storeName = "testStore";
+    String sourceCluster = "sourceCluster";
+    String destinationCluster = "destinationCluster";
+    int currStep = 0;
+    storeMigrationManager.scheduleMigration(storeName, sourceCluster, destinationCluster, currStep);
+    MigrationRecord retrievedRecord = storeMigrationManager.getMigrationRecord(storeName);
+    assertEquals(
+        retrievedRecord.getStoreName(),
+        storeName,
+        "Migration record should be present, and store name should match");
+    IllegalArgumentException exp = expectThrows(
+        IllegalArgumentException.class,
+        () -> storeMigrationManager.scheduleMigration(storeName, sourceCluster, destinationCluster, currStep));
+    assertEquals(exp.getMessage(), "A migration record already exists for store: testStore");
   }
 
   @Test

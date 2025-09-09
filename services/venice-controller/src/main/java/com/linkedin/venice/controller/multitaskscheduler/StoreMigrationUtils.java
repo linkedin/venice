@@ -2,7 +2,6 @@ package com.linkedin.venice.controller.multitaskscheduler;
 
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controllerapi.ControllerClient;
-import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
@@ -29,8 +28,7 @@ public class StoreMigrationUtils {
       ControllerClient destControllerClient,
       MigrationRecord record) {
     String storeName = record.getStoreName();
-    StoreResponse storeResponse = srcControllerClient.getStore(storeName);
-    StoreInfo srcStoreInfo = storeResponse.getStore();
+    StoreInfo srcStoreInfo = srcControllerClient.getStore(storeName).getStore();
     if (srcStoreInfo == null) {
       throw new VeniceException("Store " + storeName + " does not exist in the original cluster!");
     }

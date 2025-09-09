@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -21,7 +22,7 @@ public class StoreMigrationManager extends ScheduledTaskManager {
   private Map<String, MigrationRecord> migrationRecords;
   protected Map<String, StoreMigrationTask> migrationTasks;
   private final int maxRetryAttempts;
-  protected final int delayInSeconds; // Default delay in seconds for scheduling the next step
+  private final int delayInSeconds; // Default delay in seconds for scheduling the next step
   private final List<String> childFabricList;
   private static final Logger LOGGER = LogManager.getLogger(StoreMigrationManager.class);
 
@@ -88,8 +89,8 @@ public class StoreMigrationManager extends ScheduledTaskManager {
         true,
         null,
         null,
-        null,
-        null);
+        Collections.emptyMap(),
+        Collections.emptyMap());
   }
 
   public ScheduledFuture<?> scheduleMigration(
@@ -103,12 +104,24 @@ public class StoreMigrationManager extends ScheduledTaskManager {
       ControllerClient destControllerClient,
       Map<String, ControllerClient> srcChildControllerClientMap,
       Map<String, ControllerClient> destChildControllerClientMap) {
+    Objects.requireNonNull(srcChildControllerClientMap, "The source child controller client map cannot be null");
+    Objects.requireNonNull(destChildControllerClientMap, "The destination child controller client map cannot be null");
+    if (srcChildControllerClientMap.size() != childFabricList.size()) {
+      throw new IllegalArgumentException(
+          "Source child controller client map size does not match the number of child fabrics: "
+              + srcChildControllerClientMap.size() + " != " + childFabricList.size());
+    }
     MigrationRecord migrationRecord =
         new MigrationRecord.Builder(storeName, sourceCluster, destinationCluster).currentStep(currentStep)
             .abortOnFailure(abortOnFailure)
             .pauseAfter(pauseAfterStep)
             .build();
-    migrationRecords.put(storeName, migrationRecord);
+    // Atomic insert only if absent
+    MigrationRecord existingRecord = migrationRecords.putIfAbsent(storeName, migrationRecord);
+    if (existingRecord != null) {
+      LOGGER.error("A migration record already exists for store: {}, existing record: {}", storeName, existingRecord);
+      throw new IllegalArgumentException("A migration record already exists for store: " + storeName);
+    }
     return scheduleNextStep(
         migrationRecord,
         this.delayInSeconds,
@@ -212,5 +225,9 @@ public class StoreMigrationManager extends ScheduledTaskManager {
 
   public int getMaxRetryAttempts() {
     return maxRetryAttempts;
+  }
+
+  public int getDelayInSeconds() {
+    return delayInSeconds;
   }
 }

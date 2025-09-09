@@ -9654,7 +9654,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       StoreMigrationManager storeMigrationManager = multiTaskSchedulerService.get().getStoreMigrationManager();
       Map<String, ControllerClient> srcChildControllerClientMap = getControllerClientMap(srcClusterName);
       Map<String, ControllerClient> destChildControllerClientMap = getControllerClientMap(destClusterName);
-
+      if (srcChildControllerClientMap.size() != destChildControllerClientMap.size()) {
+        throw new VeniceException(
+            "Source and destination child controller client maps must have the same size, but got: "
+                + srcChildControllerClientMap.size() + " on source, " + destChildControllerClientMap.size()
+                + " on destination.",
+            ErrorType.INCORRECT_CONTROLLER);
+      }
       storeMigrationManager.scheduleMigration(
           storeName,
           srcClusterName,
