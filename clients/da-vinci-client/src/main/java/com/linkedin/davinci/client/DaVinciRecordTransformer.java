@@ -20,16 +20,14 @@ import org.objectweb.asm.ClassReader;
 /**
  * Plugin interface for Da Vinci that lets applications register callbacks (puts, deletes, lifecycle) and optionally
  * transform values during ingestion. Use it to mirror updates into external systems while still benefiting from
- * Da Vinci's local cache, or to change what gets stored.
+ * Da Vinci's local cache, or to change what gets stored locally.
  *
  * One transformer instance is created per store version, and lifecycle hooks are invoked per version. During
  * startup, Da Vinci replays records persisted on disk by invoking {@link #processPut(Lazy, Lazy, int)} so
  * external systems can be rehydrated.
  *
  * Typical setup for most users: keep persisting in Da Vinci (default) and implement callbacks that forward updates to
- * your own storage. For callback-only flows, return UNCHANGED from {@link #transform(Lazy, Lazy, int)} so Da Vinci
- * stores the original value while your {@link #processPut(Lazy, Lazy, int)} and {@link #processDelete(Lazy, int)}
- * handle side effects.
+ * your own storage.
  *
  * Notes:
  * - Implementations must be thread-safe.
