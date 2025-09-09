@@ -311,7 +311,7 @@ class StoreMigrationTask implements Runnable {
     if (updateSuccessful) {
       record.setCurrentStep(Step.VERIFY_READ_REDIRECTION);
       record.resetAttempts();
-      manager.scheduleNextStep(this, 0);
+      manager.scheduleNextStep(this, 1);
     } else {
       record.incrementAttempts();
       if (record.getAttempts() > manager.getMaxRetryAttempts()) {
