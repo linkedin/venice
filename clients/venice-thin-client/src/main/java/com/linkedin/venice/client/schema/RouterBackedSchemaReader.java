@@ -67,6 +67,9 @@ public class RouterBackedSchemaReader implements SchemaReader {
   private final Map<Integer, SchemaEntry> valueSchemaEntryMap = new VeniceConcurrentHashMap<>();
   private final Cache<Schema, Integer> valueSchemaToCanonicalSchemaId = Caffeine.newBuilder().maximumSize(1000).build();
   private final Cache<Schema, Integer> canonicalValueSchemaMapR = Caffeine.newBuilder().maximumSize(1000).build();
+
+  private final Cache<Schema, Integer> valueSchemaIdToSchemaId = Caffeine.newBuilder().maximumSize(1000).build();
+
   private final Map<Integer, DerivedSchemaEntry> valueSchemaIdToUpdateSchemaEntryMap = new VeniceConcurrentHashMap<>();
   private final AtomicReference<SchemaEntry> latestValueSchemaEntry = new AtomicReference<>();
   private final AtomicInteger supersetSchemaIdAtomic = new AtomicInteger(SchemaData.INVALID_VALUE_SCHEMA_ID);
@@ -742,10 +745,13 @@ public class RouterBackedSchemaReader implements SchemaReader {
   }
 
   private void cacheValueAndCanonicalSchemas(Schema valueSchema, int valueSchemaId) {
-    String canonicalSchemaStr = AvroCompatibilityHelper.toParsingForm(valueSchema);
-    Schema canonicalSchema = AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation(canonicalSchemaStr);
-
-    cacheValueAndCanonicalSchemas(valueSchema, canonicalSchema, valueSchemaId);
+    Integer previousValueSchemaId = valueSchemaIdToSchemaId.getIfPresent(valueSchema);
+    if (previousValueSchemaId == null || previousValueSchemaId < valueSchemaId) {
+      String canonicalSchemaStr = AvroCompatibilityHelper.toParsingForm(valueSchema);
+      Schema canonicalSchema = AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation(canonicalSchemaStr);
+      cacheValueAndCanonicalSchemas(valueSchema, canonicalSchema, valueSchemaId);
+      valueSchemaIdToSchemaId.put(valueSchema, valueSchemaId);
+    }
   }
 
   private void cacheValueAndCanonicalSchemas(Schema valueSchema, Schema canonicalSchema, int valueSchemaId) {
