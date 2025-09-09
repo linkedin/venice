@@ -3,6 +3,7 @@ package com.linkedin.davinci.ingestion.main;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -14,6 +15,8 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.ingestion.protocol.IngestionMetricsReport;
 import com.linkedin.venice.ingestion.protocol.IngestionTaskReport;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionReportType;
+import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
+import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import io.netty.buffer.Unpooled;
@@ -25,6 +28,7 @@ import io.netty.handler.codec.http.HttpResponse;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpVersion;
 import io.tehuti.metrics.MetricsRepository;
+import java.nio.ByteBuffer;
 import java.util.Collections;
 import java.util.HashMap;
 import org.apache.logging.log4j.LogManager;
@@ -69,8 +73,13 @@ public class MainIngestionReportHandlerTest {
 
     VeniceNotifier ingestionNotifier = mock(VeniceNotifier.class);
     VeniceNotifier pushStatusNotifier = mock(VeniceNotifier.class);
+    PubSubPositionDeserializer pubSubPositionDeserializer = mock(PubSubPositionDeserializer.class);
     when(ingestionMonitorService.getIngestionNotifier()).thenReturn(Collections.singletonList(ingestionNotifier));
     when(ingestionMonitorService.getPushStatusNotifierList()).thenReturn(Collections.singletonList(pushStatusNotifier));
+    when(ingestionMonitorService.getPubSubPositionDeserializer()).thenReturn(pubSubPositionDeserializer);
+    doAnswer(invocation -> PubSubPositionDeserializer.getPositionFromWireFormat((ByteBuffer) invocation.getArgument(0)))
+        .when(pubSubPositionDeserializer)
+        .toPosition((ByteBuffer) any());
 
     IngestionTaskReport ingestionTaskReport = new IngestionTaskReport();
     ingestionTaskReport.reportType = IngestionReportType.COMPLETED.getValue();
@@ -78,6 +87,7 @@ public class MainIngestionReportHandlerTest {
     ingestionTaskReport.topicName = "topic";
     ingestionTaskReport.partitionId = 0;
     ingestionTaskReport.message = "";
+    ingestionTaskReport.pubSubPosition = ApacheKafkaOffsetPosition.of(0L).toWireFormatBuffer();
 
     FullHttpRequest msg = new DefaultFullHttpRequest(
         HttpVersion.HTTP_1_1,

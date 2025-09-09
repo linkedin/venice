@@ -44,7 +44,7 @@ public class IsolatedIngestionRequestClient implements Closeable {
         report.isPositive,
         report.message,
         replicaId,
-        report.offset);
+        report.pubSubPosition);
     try {
       httpClientTransport.sendRequest(IngestionAction.REPORT, report);
       return true;
