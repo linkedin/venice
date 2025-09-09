@@ -549,10 +549,14 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           // subscribe back to local VT/partition
           PubSubPosition subscribePosition = getLocalVtSubscribePosition(partitionConsumptionState);
           if (isGlobalRtDivEnabled()) {
-            // latest consumed vt position (LCVP)
-            getConsumerDiv().updateLatestConsumedVtPosition(partition, subscribePosition);
-            // Clear current RT segment information as we are switching back to VT consumption.
-            getConsumerDiv().clearRtSegments(partition);
+            getConsumerDiv().updateLatestConsumedVtPosition(partition, subscribePosition); // LCVP
+            getConsumerDiv().clearRtSegments(partition); // clear RT, because we are switching back to VT consumption
+            // TODO: remove. this is a temporary log for debugging while the feature is in its infancy
+            LOGGER.info(
+                "event=globalRtDiv L->F Subscribed to: {} position: {} for broker: {}",
+                Utils.getReplicaId(topic, partition),
+                subscribePosition.getNumericOffset(),
+                localKafkaServer);
           }
           consumerSubscribe(topic, partitionConsumptionState, subscribePosition, localKafkaServer);
           /**
@@ -1039,6 +1043,14 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     if (PubSubSymbolicPosition.EARLIEST.equals(startPos) && leaderTopic.isRealTime()) {
       startPos = calculateRtConsumptionStartPositions(pcs, leaderTopic, Collections.emptyList())
           .getOrDefault(NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY, PubSubSymbolicPosition.EARLIEST);
+    }
+    if (shouldUseDivRtPosition) {
+      // TODO: remove. this is a temporary log for debugging while the feature is in its infancy
+      LOGGER.info(
+          "event=globalRtDiv F->L Subscribing to {} at position: {} for broker: {}",
+          Utils.getReplicaId(leaderTopic, pcs.getPartition()),
+          startPos.getNumericOffset(),
+          pubSubAddress);
     }
     consumerSubscribe(leaderTopic, pcs, startPos, pubSubAddress);
     // TODO: clear the LCRO map in the PCS after subscribing and set the value for this brokerUrl as null?
@@ -2398,14 +2410,21 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           partitionConsumptionState.setVeniceWriterLazyRef(veniceWriterForRealTime);
         }
 
-        // Update the latest consumed VT offset since we're consuming from the version topic
+        // Update the latest consumed VT position (LCVP) since we're consuming from the version topic
         if (isGlobalRtDivEnabled()) {
           getConsumerDiv().updateLatestConsumedVtPosition(partition, consumerRecord.getPosition());
 
           if (shouldSyncOffsetFromSnapshot(consumerRecord, partitionConsumptionState)) {
             PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(getVersionTopic(), partition);
-            PartitionTracker vtDiv = consumerDiv.cloneVtProducerStates(partition); // includes latest consumed vt offset
+            PartitionTracker vtDiv = consumerDiv.cloneVtProducerStates(partition); // has latest consumed VT position
             storeBufferService.execSyncOffsetFromSnapshotAsync(topicPartition, vtDiv, this);
+            // TODO: remove. this is a temporary log for debugging while the feature is in its infancy
+            int partitionStateMapSize = vtDiv.getPartitionStates(PartitionTracker.VERSION_TOPIC).size();
+            LOGGER.info(
+                "event=globalRtDiv Syncing LCVP for OffsetRecord topic-partition: {} position: {} size: {}",
+                topicPartition,
+                consumerRecord.getPosition().getNumericOffset(),
+                partitionStateMapSize);
           }
         }
 
@@ -3375,10 +3394,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     PartitionTracker rtDiv = consumerDiv.cloneRtProducerStates(partition, brokerUrl);
     Map<CharSequence, ProducerPartitionState> rtDivPartitionStates = rtDiv.getPartitionStates(realTimeTopicType);
 
-    // Create GlobalRtDivState (RT DIV + latest RT Offset) which will be serialized into a byte array. Try compression.
+    // Create GlobalRtDivState (RT DIV + latest RT position) and serialize into a byte array. Try compression.
     final byte[] valueBytes = createGlobalRtDivValueBytes(previousMessage, brokerUrl, rtDivPartitionStates);
 
-    // The callback onCompletionFunction sends the VT DIV + LCVO to the drainer after producing to VT successfully
+    // The callback onCompletionFunction sends the VT DIV + LCVP to the drainer after producing to VT successfully
     final LeaderProducerCallback divCallback = createGlobalRtDivCallback(
         previousMessage,
         pcs,
@@ -3396,7 +3415,14 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     ChunkedValueManifestContainer valueManifestContainer = new ChunkedValueManifestContainer();
     readGlobalRtDivState(keyBytes, schemaId, topicPartition, valueManifestContainer);
 
-    // Produce to local VT for the Global RT DIV + latest RT offset (GlobalRtDivState)
+    // TODO: remove. this is a temporary log for debugging while the feature is in its infancy
+    LOGGER.info(
+        "event=globalRtDiv Sending Global RT DIV message for topic-partition: {} broker: {} valueSize: {}",
+        topicPartition,
+        brokerUrl,
+        valueBytes.length);
+
+    // Produce to local VT for the Global RT DIV + latest RT position (GlobalRtDivState)
     // Internally, VeniceWriter.put() will schedule DELETEs for the old chunks in the old manifest after the new PUTs
     getVeniceWriter(pcs).get()
         .put(
@@ -3649,6 +3675,17 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     final PubSubPosition divRtCheckpointPosition =
         getPubSubContext().getPubSubPositionDeserializer().toPosition(checkpointBytes);
     pcs.setDivRtCheckpointPosition(brokerUrl, divRtCheckpointPosition);
+
+    producerStates.forEach((producer, pps) -> {
+      // TODO: remove. this is a temporary log for debugging while the feature is in its infancy
+      LOGGER.info(
+          "event=globalRtDiv Loaded Global RT DIV State from disk topic-partition: {} brokerUrl: {} producer: {} position: {} pps: {}",
+          topicPartition,
+          brokerUrl,
+          producer,
+          divRtCheckpointPosition.getNumericOffset(),
+          pps);
+    });
   }
 
   /**

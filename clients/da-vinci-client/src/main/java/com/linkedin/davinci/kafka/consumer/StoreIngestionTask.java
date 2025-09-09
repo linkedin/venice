@@ -2203,6 +2203,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             localVtSubscribePosition,
             localKafkaServer);
         LOGGER.info("Subscribed to: {} position: {}", topicPartition, localVtSubscribePosition);
+        if (isGlobalRtDivEnabled()) {
+          // TODO: remove. this is a temporary log for debugging while the feature is in its infancy
+          LOGGER.info(
+              "event=globalRtDiv Subscribed to: {} position: {}",
+              topicPartition,
+              localVtSubscribePosition.getNumericOffset());
+        }
         storageUtilizationManager.initPartition(partition);
         break;
       case UNSUBSCRIBE:
@@ -2439,7 +2446,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     // Just a sanity check for something that shouldn't ever happen. Skip it and log a warning.
     if (record.getKey().isGlobalRtDiv() && record.getTopic().isRealTime()) {
-      LOGGER.warn("Skipping Global RT DIV message from realtime topic partition: {}", record.getTopicPartition());
+      LOGGER.warn("Skipping Global RT DIV message from realtime topic-partition: {}", record.getTopicPartition());
       return false;
     }
 
@@ -4753,7 +4760,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   boolean isGlobalRtDivEnabled() {
-    return isGlobalRtDivEnabled; // mainly for unit test mocks
+    return isGlobalRtDivEnabled;
   }
 
   /** When Global RT DIV is enabled the ConsumptionTask's DIV is exclusively used to validate data integrity. */
