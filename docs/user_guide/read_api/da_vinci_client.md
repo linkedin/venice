@@ -77,7 +77,7 @@ Venice stores have versions. When new data is pushed, Venice creates a **future 
 - Use `onEndVersionIngestion(currentVersion)` to clean up when a version stops serving
 
 ```java
-String tableName = "store_v" + getStoreVersion();
+String tableName = getStoreName() + "_v" + getStoreVersion();
 
 @Override
 public void onStartVersionIngestion(boolean isCurrentVersion) {
