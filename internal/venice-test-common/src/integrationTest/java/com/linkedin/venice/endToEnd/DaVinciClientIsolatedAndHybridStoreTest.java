@@ -11,6 +11,7 @@ import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POOL_SIZE_PER_KAFKA_CLUSTER;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_CONNECTION_TIMEOUT_SECONDS;
+import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_D2_CLIENT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_SERVICE_PORT;
 import static com.linkedin.venice.ConfigKeys.VENICE_PARTITIONERS;
 import static com.linkedin.venice.integration.utils.DaVinciTestContext.getCachingDaVinciClientFactory;
@@ -398,8 +399,8 @@ public class DaVinciClientIsolatedAndHybridStoreTest {
     }
   }
 
-  @Test(timeOut = TEST_TIMEOUT)
-  public void testHybridStore() throws Exception {
+  @Test(timeOut = TEST_TIMEOUT, dataProviderClass = DataProviderUtils.class, dataProvider = "True-and-False")
+  public void testHybridStore(Boolean isD2ClientEnabled) throws Exception {
     final int partition = 1;
     final int partitionCount = 2;
     String storeName = Utils.getUniqueString("store");
@@ -415,6 +416,7 @@ public class DaVinciClientIsolatedAndHybridStoreTest {
         .put(DATA_BASE_PATH, Utils.getTempDataDirectory().getAbsolutePath())
         .put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 2 * 1024 * 1024L)
         .put(PERSISTENCE_TYPE, ROCKS_DB)
+        .put(SERVER_INGESTION_ISOLATION_D2_CLIENT_ENABLED, isD2ClientEnabled)
         .build();
 
     MetricsRepository metricsRepository = new MetricsRepository();
@@ -553,8 +555,9 @@ public class DaVinciClientIsolatedAndHybridStoreTest {
     }
   }
 
-  @Test(timeOut = TEST_TIMEOUT, dataProviderClass = DataProviderUtils.class, dataProvider = "True-and-False")
-  public void testIncrementalPushStatusBatching(boolean isIngestionIsolated) throws Exception {
+  @Test(timeOut = TEST_TIMEOUT, dataProviderClass = DataProviderUtils.class, dataProvider = "Two-True-and-False")
+  public void testIncrementalPushStatusBatching(boolean isIngestionIsolated, Boolean isD2ClientEnabled)
+      throws Exception {
     final int partition = 0;
     final int partitionCount = 1;
     String storeName = Utils.getUniqueString("store");
@@ -577,6 +580,7 @@ public class DaVinciClientIsolatedAndHybridStoreTest {
         .put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 2 * 1024 * 1024L)
         .put(PUSH_STATUS_STORE_ENABLED, true)
         .put(DAVINCI_PUSH_STATUS_CHECK_INTERVAL_IN_MS, 1000)
+        .put(SERVER_INGESTION_ISOLATION_D2_CLIENT_ENABLED, isD2ClientEnabled)
         .build();
 
     MetricsRepository metricsRepository = new MetricsRepository();
