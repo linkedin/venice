@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller;
 
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.anyDouble;
 import static org.mockito.Mockito.atLeastOnce;
@@ -24,6 +25,7 @@ import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.locks.ClusterLockManager;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
@@ -55,6 +57,7 @@ public class TestDeferredVersionSwapServiceWithSequentialRollout {
   private VeniceControllerClusterConfig clusterConfig;
   private VeniceHelixAdmin veniceHelixAdmin;
   private Map<String, ControllerClient> controllerClientMap;
+  private static final int controllerTimeout = 5 * Time.MS_PER_SECOND;
 
   @BeforeMethod
   public void setUp() {
@@ -243,9 +246,9 @@ public class TestDeferredVersionSwapServiceWithSequentialRollout {
     region3StoreInfo.setVersions(Arrays.asList(region3Version2));
     region3Response.setStore(region3StoreInfo);
 
-    doReturn(region1Response).when(region1Client).getStore("testStore");
-    doReturn(region2Response).when(region2Client).getStore("testStore");
-    doReturn(region3Response).when(region3Client).getStore("testStore");
+    doReturn(region1Response).when(region1Client).getStore("testStore", controllerTimeout);
+    doReturn(region2Response).when(region2Client).getStore("testStore", controllerTimeout);
+    doReturn(region3Response).when(region3Client).getStore("testStore", controllerTimeout);
 
     // Mock offline push status - return completed status for the target version
     Admin.OfflinePushStatusInfo pushStatusInfo = new Admin.OfflinePushStatusInfo(
@@ -315,7 +318,7 @@ public class TestDeferredVersionSwapServiceWithSequentialRollout {
     Map<String, ControllerClient> controllerClientMap = mockControllerClients(versionList);
     for (Map.Entry<String, ControllerClient> entry: controllerClientMap.entrySet()) {
       ControllerClient controllerClient = entry.getValue();
-      doReturn(storeResponse).when(controllerClient).getStore(anyString());
+      doReturn(storeResponse).when(controllerClient).getStore(anyString(), anyInt());
     }
 
     // Setup store repo
@@ -375,7 +378,7 @@ public class TestDeferredVersionSwapServiceWithSequentialRollout {
     Map<String, ControllerClient> controllerClientMap = mockControllerClients(versionList);
     for (Map.Entry<String, ControllerClient> entry: controllerClientMap.entrySet()) {
       ControllerClient controllerClient = entry.getValue();
-      doReturn(storeResponse).when(controllerClient).getStore(anyString());
+      doReturn(storeResponse).when(controllerClient).getStore(anyString(), anyInt());
     }
 
     // Setup store repo
@@ -446,7 +449,7 @@ public class TestDeferredVersionSwapServiceWithSequentialRollout {
     Map<String, ControllerClient> controllerClientMap = mockControllerClients(versionList);
     for (Map.Entry<String, ControllerClient> entry: controllerClientMap.entrySet()) {
       ControllerClient controllerClient = entry.getValue();
-      doReturn(storeResponse).when(controllerClient).getStore(anyString());
+      doReturn(storeResponse).when(controllerClient).getStore(anyString(), anyInt());
     }
 
     // Setup store repo
@@ -509,7 +512,7 @@ public class TestDeferredVersionSwapServiceWithSequentialRollout {
     Map<String, ControllerClient> controllerClientMap = mockControllerClients(versionList);
     for (Map.Entry<String, ControllerClient> entry: controllerClientMap.entrySet()) {
       ControllerClient controllerClient = entry.getValue();
-      doReturn(storeResponse).when(controllerClient).getStore(anyString());
+      doReturn(storeResponse).when(controllerClient).getStore(anyString(), anyInt());
     }
 
     // Setup store repo
@@ -547,7 +550,7 @@ public class TestDeferredVersionSwapServiceWithSequentialRollout {
     Map<String, ControllerClient> controllerClientMapWithTimestamp = mockControllerClients(versionList);
     for (Map.Entry<String, ControllerClient> entry: controllerClientMapWithTimestamp.entrySet()) {
       ControllerClient controllerClient = entry.getValue();
-      doReturn(storeResponseWithTimestamp).when(controllerClient).getStore(anyString());
+      doReturn(storeResponseWithTimestamp).when(controllerClient).getStore(anyString(), anyInt());
     }
 
     // Wire the controller client map to the VeniceHelixAdmin

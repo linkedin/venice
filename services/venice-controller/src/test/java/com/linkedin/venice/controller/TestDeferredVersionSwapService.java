@@ -1,7 +1,8 @@
 package com.linkedin.venice.controller;
 
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
@@ -24,6 +25,7 @@ import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.locks.ClusterLockManager;
 import java.time.LocalDateTime;
@@ -54,6 +56,7 @@ public class TestDeferredVersionSwapService {
   private static final int versionTwo = 2;
   private static Map<String, String> childDatacenterToUrl = new HashMap<>();
   private ReadWriteStoreRepository repository;
+  private static final int controllerTimeout = 5 * Time.MS_PER_SECOND;
 
   @BeforeMethod
   public void setUp() {
@@ -205,7 +208,7 @@ public class TestDeferredVersionSwapService {
     Map<String, ControllerClient> controllerClientMap = mockControllerClients(versionList);
     for (Map.Entry<String, ControllerClient> entry: controllerClientMap.entrySet()) {
       ControllerClient controllerClient = entry.getValue();
-      doReturn(storeResponse).when(controllerClient).getStore(any());
+      doReturn(storeResponse).when(controllerClient).getStore(any(), anyInt());
     }
 
     mockVeniceHelixAdmin(controllerClientMap);
@@ -271,7 +274,7 @@ public class TestDeferredVersionSwapService {
     Map<String, ControllerClient> controllerClientMap = mockControllerClients(versionList);
     for (Map.Entry<String, ControllerClient> entry: controllerClientMap.entrySet()) {
       ControllerClient controllerClient = entry.getValue();
-      doReturn(storeResponse).when(controllerClient).getStore(any());
+      doReturn(storeResponse).when(controllerClient).getStore(any(), anyInt());
     }
 
     mockVeniceHelixAdmin(controllerClientMap);
@@ -333,9 +336,9 @@ public class TestDeferredVersionSwapService {
     for (Map.Entry<String, ControllerClient> entry: controllerClientMap.entrySet()) {
       ControllerClient controllerClient = entry.getValue();
       if (entry.getKey().equals(region3)) {
-        doReturn(failedStoreResponse).when(controllerClient).getStore(any());
+        doReturn(failedStoreResponse).when(controllerClient).getStore(any(), anyInt());
       } else {
-        doReturn(storeResponse).when(controllerClient).getStore(any());
+        doReturn(storeResponse).when(controllerClient).getStore(any(), anyInt());
       }
     }
 
@@ -411,7 +414,7 @@ public class TestDeferredVersionSwapService {
     Map<String, ControllerClient> controllerClientMap = mockControllerClients(versionList);
     for (Map.Entry<String, ControllerClient> entry: controllerClientMap.entrySet()) {
       ControllerClient controllerClient = entry.getValue();
-      doReturn(storeResponse).when(controllerClient).getStore(any());
+      doReturn(storeResponse).when(controllerClient).getStore(any(), anyInt());
     }
 
     mockVeniceHelixAdmin(controllerClientMap);
@@ -472,7 +475,7 @@ public class TestDeferredVersionSwapService {
     Map<String, ControllerClient> controllerClientMap = mockControllerClients(versionList);
     for (Map.Entry<String, ControllerClient> entry: controllerClientMap.entrySet()) {
       ControllerClient controllerClient = entry.getValue();
-      doReturn(storeResponse).when(controllerClient).getStore(any());
+      doReturn(storeResponse).when(controllerClient).getStore(any(), anyInt());
     }
 
     mockVeniceHelixAdmin(controllerClientMap);
@@ -527,7 +530,7 @@ public class TestDeferredVersionSwapService {
     Map<String, ControllerClient> controllerClientMap = mockControllerClients(versionList);
     for (Map.Entry<String, ControllerClient> entry: controllerClientMap.entrySet()) {
       ControllerClient controllerClient = entry.getValue();
-      doReturn(storeResponse).when(controllerClient).getStore(storeName);
+      doReturn(storeResponse).when(controllerClient).getStore(storeName, controllerTimeout);
     }
 
     mockVeniceHelixAdmin(controllerClientMap);
@@ -581,7 +584,7 @@ public class TestDeferredVersionSwapService {
     Map<String, ControllerClient> controllerClientMap = mockControllerClients(versionList);
     for (Map.Entry<String, ControllerClient> entry: controllerClientMap.entrySet()) {
       ControllerClient controllerClient = entry.getValue();
-      doReturn(storeResponse).when(controllerClient).getStore(any());
+      doReturn(storeResponse).when(controllerClient).getStore(any(), anyInt());
     }
 
     mockVeniceHelixAdmin(controllerClientMap);
@@ -637,7 +640,7 @@ public class TestDeferredVersionSwapService {
     Map<String, ControllerClient> controllerClientMap = mockControllerClients(versionList);
     for (Map.Entry<String, ControllerClient> entry: controllerClientMap.entrySet()) {
       ControllerClient controllerClient = entry.getValue();
-      doReturn(storeResponse).when(controllerClient).getStore(storeName);
+      doReturn(storeResponse).when(controllerClient).getStore(storeName, controllerTimeout);
     }
 
     mockVeniceHelixAdmin(controllerClientMap);

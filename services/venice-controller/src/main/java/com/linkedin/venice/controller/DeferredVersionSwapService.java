@@ -80,7 +80,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
   private Cache<String, Long> storeWaitTimeCacheForSequentialRollout =
       Caffeine.newBuilder().expireAfterWrite(1, TimeUnit.HOURS).build();
   private static final int CONTROLLER_CLIENT_REQUEST_TIMEOUT = 5 * Time.MS_PER_SECOND;
-  private static final int LOG_LATENCY_THRESHOLD = 1 * Time.MS_PER_SECOND;
+  private static final int LOG_LATENCY_THRESHOLD = 5 * Time.MS_PER_SECOND;
 
   public DeferredVersionSwapService(
       VeniceParentHelixAdmin admin,
@@ -870,7 +870,9 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
             break;
           }
 
-          boolean sequentialRollForward = rolloutOrder != null && !rolloutOrder.isEmpty();
+          boolean sequentialRollForward = !StringUtils.isEmpty(
+              veniceControllerMultiClusterConfig.getControllerConfig(cluster)
+                  .getDeferredVersionSwapRegionRollforwardOrder());
           for (Store parentStore: parentStores) {
             int targetVersionNum = parentStore.getLargestUsedVersionNumber();
             if (targetVersionNum < 1) {
@@ -954,7 +956,8 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
                   getNextRegionToRollForward(parentStore, targetVersionNum, cluster, kafkaTopicName, rolloutOrder);
               if (nextRegionToRollForward == null) {
                 LOGGER.warn(
-                    "Found null region to roll forward for store {} for version: {}",
+                    "Found null next region to roll forward to for store {}. All regions should be on"
+                        + "the target version {} so skipping version swap",
                     parentStore.getName(),
                     targetVersionNum);
                 logLatency(startTime, storeName, targetVersionNum);
