@@ -544,8 +544,8 @@ public class PubSubUtilTest {
 
   @Test
   public void testParsePositionWireFormatValidCases() {
-    // Test with various offset values including edge cases
-    long[] testOffsets = { 0L, 1L, 100L, 12345L, 54321L, Long.MAX_VALUE - 1000L, Long.MAX_VALUE };
+    // Test with comprehensive set of offset values including edge cases from both original tests
+    long[] testOffsets = { 0L, 1L, 100L, 12345L, 54321L, 9876543210L, Long.MAX_VALUE - 1000L, Long.MAX_VALUE };
 
     for (long offset: testOffsets) {
       // Step 1: Create ApacheKafkaOffsetPosition
@@ -558,7 +558,7 @@ public class PubSubUtilTest {
       PubSubPositionDeserializer deserializer = PubSubPositionDeserializer.DEFAULT_DESERIALIZER;
       PubSubPosition parsedPosition = PubSubUtil.parsePositionWireFormat(positionWireFormatString, deserializer);
 
-      // Step 4: Compare with original
+      // Step 4: Basic validation - type and equality
       assertTrue(
           parsedPosition instanceof ApacheKafkaOffsetPosition,
           "Parsed position should be ApacheKafkaOffsetPosition");
@@ -567,6 +567,19 @@ public class PubSubUtilTest {
           ((ApacheKafkaOffsetPosition) parsedPosition).getInternalOffset(),
           offset,
           "Parsed offset should match original offset: " + offset);
+
+      // Step 5: Wire format component verification - ensure round-trip preserves internal structure
+      PubSubPositionWireFormat originalWireFormat = originalPosition.getPositionWireFormat();
+      PubSubPositionWireFormat parsedWireFormat = ((ApacheKafkaOffsetPosition) parsedPosition).getPositionWireFormat();
+
+      assertEquals(
+          parsedWireFormat.getType(),
+          originalWireFormat.getType(),
+          "Wire format type should be preserved for offset: " + offset);
+      assertEquals(
+          ByteUtils.extractByteArray(parsedWireFormat.getRawBytes()),
+          ByteUtils.extractByteArray(originalWireFormat.getRawBytes()),
+          "Wire format raw bytes should be preserved for offset: " + offset);
     }
   }
 
@@ -594,28 +607,5 @@ public class PubSubUtilTest {
         IllegalArgumentException.class,
         () -> PubSubUtil.parsePositionWireFormat("1:invalid_base64!", deserializer));
     expectThrows(IllegalArgumentException.class, () -> PubSubUtil.parsePositionWireFormat("1:", deserializer));
-  }
-
-  @Test
-  public void testParsePositionWireFormatRoundTripWithWireFormatVerification() {
-    // Test round-trip with additional wire format component verification
-    long[] testOffsets = { 0L, 12345L, 9876543210L, Long.MAX_VALUE };
-
-    for (long offset: testOffsets) {
-      ApacheKafkaOffsetPosition originalPosition = new ApacheKafkaOffsetPosition(offset);
-      String positionWireFormatString = createWireFormatString(originalPosition);
-
-      PubSubPositionDeserializer deserializer = PubSubPositionDeserializer.DEFAULT_DESERIALIZER;
-      PubSubPosition parsedPosition = PubSubUtil.parsePositionWireFormat(positionWireFormatString, deserializer);
-
-      // Verify wire format components are preserved
-      PubSubPositionWireFormat originalWireFormat = originalPosition.getPositionWireFormat();
-      PubSubPositionWireFormat parsedWireFormat = ((ApacheKafkaOffsetPosition) parsedPosition).getPositionWireFormat();
-
-      assertEquals(parsedWireFormat.getType(), originalWireFormat.getType());
-      assertEquals(
-          ByteUtils.extractByteArray(parsedWireFormat.getRawBytes()),
-          ByteUtils.extractByteArray(originalWireFormat.getRawBytes()));
-    }
   }
 }
