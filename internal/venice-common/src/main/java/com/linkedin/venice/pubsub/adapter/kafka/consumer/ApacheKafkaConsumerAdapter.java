@@ -4,7 +4,6 @@ import static com.linkedin.venice.pubsub.PubSubUtil.calculateSeekOffset;
 
 import com.linkedin.venice.annotation.NotThreadsafe;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
 import com.linkedin.venice.pubsub.PubSubUtil;
@@ -86,24 +85,6 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
         "Created ApacheKafkaConsumerAdapter with config: {} - isMetricsBasedOffsetCachingEnabled: {}",
         apacheKafkaConsumerConfig,
         topicPartitionsOffsetsTracker != null);
-  }
-
-  /**
-   * Subscribes to a topic-partition if not already subscribed. If the topic-partition is already subscribed,
-   * this method is a no-op.
-   *
-   * @param pubSubTopicPartition the topic-partition to subscribe to
-   * @param lastReadOffset the last read offset for the topic-partition
-   * @throws IllegalArgumentException if the topic-partition is null or the partition number is negative
-   * @throws PubSubTopicDoesNotExistException if the topic does not exist
-   */
-  @Override
-  public void subscribe(PubSubTopicPartition pubSubTopicPartition, long lastReadOffset) {
-    subscribe(
-        pubSubTopicPartition,
-        (lastReadOffset <= OffsetRecord.LOWEST_OFFSET)
-            ? PubSubSymbolicPosition.EARLIEST
-            : new ApacheKafkaOffsetPosition(lastReadOffset));
   }
 
   /**
