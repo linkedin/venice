@@ -121,7 +121,7 @@ public class PubSubPositionTypeRegistry {
     Int2ObjectMap<String> mergedMap = mergeAndValidateTypes(userProvidedMap);
     this.typeIdToFactoryClassNameMap = Int2ObjectMaps.unmodifiable(mergedMap);
     this.factoryClassNameToTypeIdMap = Object2IntMaps.unmodifiable(buildClassNameToTypeIdMap(mergedMap));
-    LOGGER.info(
+    LOGGER.debug(
         "PubSub position type registry initialized with {} entries: {}",
         factoryClassNameToTypeIdMap.size(),
         factoryClassNameToTypeIdMap);

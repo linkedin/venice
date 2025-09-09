@@ -1812,6 +1812,7 @@ public class AdminTool {
     ConsumerContext context = createConsumerContext(cmd);
     PubSubPosition startingPosition =
         parsePositionFromArgs(cmd, Arg.STARTING_OFFSET, Arg.STARTING_POSITION, context.getPositionDeserializer(), true);
+    LOGGER.info("Dump admin messages with starting position: {}", startingPosition);
     List<DumpAdminMessages.AdminOperationInfo> adminMessages = DumpAdminMessages.dumpAdminMessages(
         getConsumer(pubSubClientsFactory, context),
         getRequiredArgument(cmd, Arg.CLUSTER),
@@ -1827,6 +1828,11 @@ public class AdminTool {
     PubSubPosition startingPosition =
         parsePositionFromArgs(cmd, Arg.STARTING_OFFSET, Arg.STARTING_POSITION, context.getPositionDeserializer(), true);
     int messageCount = Integer.parseInt(getRequiredArgument(cmd, Arg.MESSAGE_COUNT));
+    LOGGER.info(
+        "Dump control messages from topic-partition: {}, starting position: {}, message count: {}",
+        Utils.getReplicaId(topic, partitionNumber),
+        startingPosition,
+        messageCount);
     try (PubSubConsumerAdapter consumer = getConsumer(pubSubClientsFactory, context)) {
       new ControlMessageDumper(consumer, topic, partitionNumber, startingPosition, messageCount).fetch().display();
     }
@@ -1898,6 +1904,20 @@ public class AdminTool {
     if (startTimestamp != -1 && !PubSubSymbolicPosition.EARLIEST.equals(startingPosition)) {
       throw new VeniceException("Only one of start date and starting offset can be specified");
     }
+    LOGGER.info(
+        "Dump topic-partition: {} with parameters messageCount: {}, "
+            + "maxConsumeAttempts: {}, startDatetime: {}, endDatetime: {}, logMetadata: {}, logDataRecord: {}, "
+            + "logRmdRecord: {}, logTsRecord: {}, startingPosition: {}",
+        Utils.getReplicaId(topic, partitionNumber),
+        messageCount,
+        maxConsumeAttempts,
+        startDatetime,
+        endDatetime,
+        logMetadata,
+        logDataRecord,
+        logRmdRecord,
+        logTsRecord,
+        startingPosition);
     try (PubSubConsumerAdapter consumer = getConsumer(pubSubClientsFactory, context)) {
       PubSubTopicPartition topicPartition =
           new PubSubTopicPartitionImpl(TOPIC_REPOSITORY.getTopic(topic), partitionNumber);
