@@ -23,7 +23,6 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.pubsub.PubSubAdminAdapterContext;
 import com.linkedin.venice.pubsub.PubSubConstants;
 import com.linkedin.venice.pubsub.PubSubTopicConfiguration;
-import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
@@ -806,13 +805,12 @@ public class TopicManager implements Closeable {
     return topicMetadataFetcher.getLatestPositionWithRetries(pubSubTopicPartition, retries);
   }
 
-  public PubSubPosition getLatestPositionCached(PubSubTopic pubSubTopic, int partitionId) {
-    return topicMetadataFetcher.getLatestPositionCached(new PubSubTopicPartitionImpl(pubSubTopic, partitionId));
+  public PubSubPosition getLatestPositionCached(PubSubTopicPartition topicPartition) {
+    return topicMetadataFetcher.getLatestPositionCached(topicPartition);
   }
 
-  public PubSubPosition getLatestPositionCachedNonBlocking(PubSubTopic pubSubTopic, int partitionId) {
-    return topicMetadataFetcher
-        .getLatestPositionCachedNonBlocking(new PubSubTopicPartitionImpl(pubSubTopic, partitionId));
+  public PubSubPosition getLatestPositionCachedNonBlocking(PubSubTopicPartition topicPartition) {
+    return topicMetadataFetcher.getLatestPositionCachedNonBlocking(topicPartition);
   }
 
   /**

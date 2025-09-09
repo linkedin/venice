@@ -871,20 +871,21 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    */
   @VisibleForTesting
   boolean isLocalVersionTopicPartitionFullyConsumed(PartitionConsumptionState pcs) {
-    PubSubPosition localVtPos = pcs.getLatestProcessedVtPosition();
-    long localVTEndOffset = getTopicPartitionEndOffSet(localKafkaServer, versionTopic, pcs.getPartition());
+    PubSubPosition latestProcessedVtPosition = pcs.getLatestProcessedVtPosition();
+    PubSubPosition localVtEndPosition = getTopicPartitionEndPosition(localKafkaServer, pcs.getTopicPartition());
 
-    if (localVTEndOffset == PubSubSymbolicPosition.LATEST.getNumericOffset()) {
+    if (PubSubSymbolicPosition.LATEST.equals(localVtEndPosition)) {
       return false;
     }
 
-    // If end offset == 0, then no message has been written to the partition, consider it as fully consumed.
-    if (localVTEndOffset == 0 && localVtPos.getNumericOffset() == PubSubSymbolicPosition.EARLIEST.getNumericOffset()) {
-      return true;
+    if (PubSubSymbolicPosition.EARLIEST.equals(latestProcessedVtPosition)) {
+      long numRecords = getTopicManager(localKafkaServer).getNumRecordsInPartition(pcs.getTopicPartition());
+      return numRecords == 0;
     }
 
-    // End offset is the last successful message offset + 1.
-    return localVtPos.getNumericOffset() + 1 >= localVTEndOffset;
+    // We're fully consumed if we're at most 1 message behind (accounting for end position being last + 1)
+    return getTopicManager(localKafkaServer)
+        .diffPosition(pcs.getTopicPartition(), localVtEndPosition, latestProcessedVtPosition) <= 1;
   }
 
   protected Map<String, PubSubPosition> calculateRtConsumptionStartPositions(
@@ -1766,9 +1767,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       throw new VeniceException("Expect a real-time source Kafka URL for " + partitionConsumptionState);
     } else if (sourceRealTimeTopicKafkaURLs.size() == 1) {
       sourceRealTimeTopicKafkaURL = sourceRealTimeTopicKafkaURLs.iterator().next();
-      return measureRTOffsetLagForSingleRegion(sourceRealTimeTopicKafkaURL, partitionConsumptionState, shouldLogLag);
+      return measureRtLagForSingleRegion(sourceRealTimeTopicKafkaURL, partitionConsumptionState, shouldLogLag);
     } else {
-      return measureRTOffsetLagForMultiRegions(sourceRealTimeTopicKafkaURLs, partitionConsumptionState, shouldLogLag);
+      return measureRtLagForMultiRegions(sourceRealTimeTopicKafkaURLs, partitionConsumptionState, shouldLogLag);
     }
   }
 
@@ -1804,7 +1805,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
   }
 
-  protected long measureRTOffsetLagForMultiRegions(
+  protected long measureRtLagForMultiRegions(
       Set<String> sourceRealTimeTopicKafkaURLs,
       PartitionConsumptionState partitionConsumptionState,
       boolean shouldLogLag) {
@@ -3645,50 +3646,55 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   }
 
   /**
-   * This method fetches/calculates latest leader persisted offset and last offset in RT topic. The method relies on
+   * This method fetches/calculates latest leader persisted position and last position in RT topic. The method relies on
    * {@link #getLatestPersistedUpstreamOffsetForHybridOffsetLagMeasurement(PartitionConsumptionState, String)} to fetch
-   * latest leader persisted offset for different data replication policy.
-   * @return the lag (lastOffsetInRealTimeTopic - latestPersistedLeaderOffset)
+   * latest leader persisted position for different data replication policy.
+   * @return the lag (endPositionInRealTimeTopic - latestPersistedLeaderPosition - 1)
    */
-  protected long measureRTOffsetLagForSingleRegion(
-      String sourceRealTimeTopicKafkaURL,
+  protected long measureRtLagForSingleRegion(
+      String rtPubSubBrokerAddress,
       PartitionConsumptionState pcs,
       boolean shouldLog) {
     int partition = pcs.getPartition();
-    long latestLeaderOffset;
-    latestLeaderOffset = getLatestPersistedUpstreamOffsetForHybridOffsetLagMeasurement(pcs, sourceRealTimeTopicKafkaURL)
-        .getNumericOffset();
     PubSubTopic leaderTopic = pcs.getOffsetRecord().getLeaderTopic(pubSubTopicRepository);
-    long lastOffsetInRealTimeTopic = getTopicPartitionEndOffSet(
-        sourceRealTimeTopicKafkaURL,
-        resolveRtTopicWithPubSubBrokerAddress(leaderTopic, sourceRealTimeTopicKafkaURL),
+    PubSubTopicPartition realTimeTopicPartition = new PubSubTopicPartitionImpl(
+        resolveRtTopicWithPubSubBrokerAddress(leaderTopic, rtPubSubBrokerAddress),
         partition);
+    PubSubPosition realTimeEndPosition = getTopicPartitionEndPosition(rtPubSubBrokerAddress, realTimeTopicPartition);
 
-    if (lastOffsetInRealTimeTopic < 0
-        || lastOffsetInRealTimeTopic == PubSubSymbolicPosition.EARLIEST.getNumericOffset()) {
-      if (!REDUNDANT_LOGGING_FILTER.isRedundantException("Got a negative lastOffsetInRealTimeTopic")) {
-        LOGGER.warn(
-            "Unexpected! Got a negative lastOffsetInRealTimeTopic ({})! Will return Long.MAX_VALUE ({}) as the lag for replica: {}.",
-            lastOffsetInRealTimeTopic,
-            Long.MAX_VALUE,
-            pcs.getReplicaId(),
-            new VeniceException("Exception not thrown, just for logging purposes."));
+    if (PubSubSymbolicPosition.LATEST.equals(realTimeEndPosition)) {
+      String logMessage = String.format(
+          "End position not available for: %s from source pub-sub cluster %s "
+              + "(replica: %s). Returning Long.MAX_VALUE as lag.",
+          realTimeTopicPartition,
+          rtPubSubBrokerAddress,
+          pcs.getReplicaId());
+      if (!REDUNDANT_LOGGING_FILTER.isRedundantException(logMessage)) {
+        LOGGER.warn(logMessage);
       }
       return Long.MAX_VALUE;
     }
 
-    if (latestLeaderOffset == -1) {
-      // If leader hasn't consumed anything yet we should use the value of 0 to calculate the exact offset lag.
-      latestLeaderOffset = 0;
+    PubSubPosition latestPersistedRtPosition =
+        getLatestPersistedUpstreamOffsetForHybridOffsetLagMeasurement(pcs, rtPubSubBrokerAddress);
+    TopicManager topicManager = getTopicManager(rtPubSubBrokerAddress);
+
+    long lag;
+
+    // If leader has not consumed any messages yet
+    if (PubSubSymbolicPosition.EARLIEST.equals(latestPersistedRtPosition)) {
+      lag = topicManager.getNumRecordsInPartition(realTimeTopicPartition);
+    } else {
+      lag = topicManager.diffPosition(realTimeTopicPartition, realTimeEndPosition, latestPersistedRtPosition) - 1;
     }
-    long lag = lastOffsetInRealTimeTopic - latestLeaderOffset;
+
     if (shouldLog) {
       LOGGER.info(
-          "Replica: {} RT lag offset for {} is: Latest RT offset [{}] - persisted offset [{}] = Lag [{}]",
+          "Replica: {} RT lag for {} is: Latest RT position [{}] - persisted position [{}] = Lag [{}]",
           pcs.getReplicaId(),
-          sourceRealTimeTopicKafkaURL,
-          lastOffsetInRealTimeTopic,
-          latestLeaderOffset,
+          rtPubSubBrokerAddress,
+          realTimeEndPosition,
+          latestPersistedRtPosition,
           lag);
     }
     return lag;

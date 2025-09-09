@@ -7,6 +7,7 @@ public interface PubSubProduceResult {
   /**
    * The offset of the record in the topic/partition.
    */
+  @Deprecated
   long getOffset();
 
   /**
