@@ -12,10 +12,12 @@ import com.linkedin.venice.kafka.validation.checksum.CheckSum;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.PubSubContext;
+import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
-import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.LeaderCompleteState;
 import com.linkedin.venice.writer.WriterChunkingHelper;
 import java.nio.ByteBuffer;
@@ -30,7 +32,9 @@ import org.testng.annotations.Test;
 
 
 public class PartitionConsumptionStateTest {
-  private static final String replicaId = Utils.getReplicaId("topic1", 0);
+  private static final PubSubTopicRepository TOPIC_REPOSITORY = new PubSubTopicRepository();
+  private static final PubSubTopicPartition TOPIC_PARTITION =
+      new PubSubTopicPartitionImpl(TOPIC_REPOSITORY.getTopic("topic1_v1"), 0);
   private PubSubContext pubSubContext;
 
   @BeforeMethod
@@ -41,8 +45,7 @@ public class PartitionConsumptionStateTest {
   @Test
   public void testUpdateChecksum() {
     PartitionConsumptionState pcs = new PartitionConsumptionState(
-        replicaId,
-        0,
+        TOPIC_PARTITION,
         mock(OffsetRecord.class),
         pubSubContext,
         false,
@@ -102,8 +105,7 @@ public class PartitionConsumptionStateTest {
   @Test
   public void testTransientRecordMap() {
     PartitionConsumptionState pcs = new PartitionConsumptionState(
-        replicaId,
-        0,
+        TOPIC_PARTITION,
         mock(OffsetRecord.class),
         pubSubContext,
         false,
@@ -158,8 +160,7 @@ public class PartitionConsumptionStateTest {
   @Test
   public void testIsLeaderCompleted() {
     PartitionConsumptionState pcs = new PartitionConsumptionState(
-        replicaId,
-        0,
+        TOPIC_PARTITION,
         mock(OffsetRecord.class),
         pubSubContext,
         false,
@@ -179,8 +180,7 @@ public class PartitionConsumptionStateTest {
     OffsetRecord offsetRecord = mock(OffsetRecord.class);
     doReturn(pendingReportIncrementalPush).when(offsetRecord).getPendingReportIncPushVersionList();
     PartitionConsumptionState pcs = new PartitionConsumptionState(
-        replicaId,
-        0,
+        TOPIC_PARTITION,
         offsetRecord,
         pubSubContext,
         false,

@@ -31,6 +31,7 @@ import java.nio.ByteBuffer;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Future;
@@ -66,8 +67,7 @@ public class PartitionConsumptionState {
   private static final String PREVIOUSLY_READY_TO_SERVE = "previouslyReadyToServe";
   private static final String TRUE = "true";
 
-  private final String replicaId;
-  private final int partition;
+  private final PubSubTopicPartition partitionReplica;
   private final boolean hybrid;
   private final OffsetRecord offsetRecord;
   private final PubSubContext pubSubContext;
@@ -270,14 +270,19 @@ public class PartitionConsumptionState {
   private KeyUrnCompressor keyUrnCompressor;
 
   public PartitionConsumptionState(
-      String replicaId,
-      int partition,
+      PubSubTopicPartition partitionReplica,
       OffsetRecord offsetRecord,
       PubSubContext pubSubContext,
       boolean hybrid,
       Schema keySchema) {
-    this.replicaId = replicaId;
-    this.partition = partition;
+    LOGGER.debug("Creating PCS for replica: {}", partitionReplica);
+
+    this.partitionReplica = Objects.requireNonNull(partitionReplica, "TopicPartition cannot be null when creating PCS");
+    if (!Version.isATopicThatIsVersioned(partitionReplica.getTopicName())) {
+      throw new IllegalArgumentException(
+          "PartitionConsumptionState should be created only for versioned topics, but got: "
+              + partitionReplica.getTopicName());
+    }
     this.hybrid = hybrid;
     this.keySchema = keySchema;
     this.offsetRecord = offsetRecord;
@@ -335,7 +340,7 @@ public class PartitionConsumptionState {
   }
 
   public int getPartition() {
-    return this.partition;
+    return getReplicaTopicPartition().getPartitionNumber();
   }
 
   public CompletableFuture<Void> getLastVTProduceCallFuture() {
@@ -457,8 +462,8 @@ public class PartitionConsumptionState {
   @Override
   public String toString() {
     return new StringBuilder().append("PCS{")
-        .append("replicaId=")
-        .append(replicaId)
+        .append("replica=")
+        .append(getReplicaId())
         .append(", hybrid=")
         .append(hybrid)
         .append(", latestProcessedVtPosition=")
@@ -662,6 +667,9 @@ public class PartitionConsumptionState {
   }
 
   public PubSubTopicPartition getSourceTopicPartition(PubSubTopic topic) {
+    if (getReplicaTopicPartition().getPubSubTopic().equals(topic)) {
+      return getReplicaTopicPartition();
+    }
     /**
      * TODO: Consider whether the {@link PubSubTopicPartition} instance might be cacheable.
      * It might not be easily cacheable if we pass different topics as input param (which it seems we do).
@@ -1005,7 +1013,11 @@ public class PartitionConsumptionState {
   }
 
   public String getReplicaId() {
-    return replicaId;
+    return getReplicaTopicPartition().toString();
+  }
+
+  public PubSubTopicPartition getReplicaTopicPartition() {
+    return partitionReplica;
   }
 
   public void addIncPushVersionToPendingReportList(String incPushVersion) {
@@ -1045,9 +1057,12 @@ public class PartitionConsumptionState {
 
   public void enableKeyUrnCompressionUponStartOfPush(List<String> keyUrnFields) {
     if (keyUrnCompressor == null) {
-      LOGGER.info("Enabling key urn compression for replicaId: {} with fields: {}", replicaId, keyUrnFields);
+      LOGGER.info(
+          "Enabling key urn compression for replicaId: {} with fields: {}",
+          getReplicaTopicPartition(),
+          keyUrnFields);
     } else {
-      LOGGER.info("Previous key urn compression dict will be overridden for replicaId: {}", replicaId);
+      LOGGER.info("Previous key urn compression dict will be overridden for replicaId: {}", getReplicaTopicPartition());
     }
     this.keyUrnCompressor = new KeyUrnCompressor(keySchema, keyUrnFields, UrnDictV1.loadDict(Collections.emptyMap()));
   }
