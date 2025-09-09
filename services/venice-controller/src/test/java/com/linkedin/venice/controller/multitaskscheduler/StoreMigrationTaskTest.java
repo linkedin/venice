@@ -211,7 +211,7 @@ public class StoreMigrationTaskTest {
     verify(mockManager, never()).cleanupMigrationRecord(mockRecord.getStoreName());
     verify(mockRecord).setCurrentStep(Step.UPDATE_CLUSTER_DISCOVERY);
     verify(mockRecord).resetAttempts();
-    verify(mockManager).scheduleNextStep(same(task), eq(0));
+    verify(mockManager).scheduleNextStep(same(task), eq(1));
 
     when(mockRecord.getCurrentStep()).thenReturn(3);
     when(mockRecord.getCurrentStepEnum()).thenReturn(Step.UPDATE_CLUSTER_DISCOVERY);
@@ -253,7 +253,7 @@ public class StoreMigrationTaskTest {
     verify(mockManager, never()).cleanupMigrationRecord(mockRecord.getStoreName());
     verify(mockRecord).setCurrentStep(Step.UPDATE_CLUSTER_DISCOVERY);
     verify(mockRecord).resetAttempts();
-    verify(mockManager).scheduleNextStep(same(task), eq(0));
+    verify(mockManager).scheduleNextStep(same(task), eq(1));
 
     when(mockRecord.getCurrentStep()).thenReturn(3);
     when(mockRecord.getCurrentStepEnum()).thenReturn(Step.UPDATE_CLUSTER_DISCOVERY);
@@ -274,7 +274,7 @@ public class StoreMigrationTaskTest {
 
     verify(mockRecord).setCurrentStep(Step.VERIFY_READ_REDIRECTION);
     verify(mockRecord, times(2)).resetAttempts();
-    verify(mockManager, times(2)).scheduleNextStep(same(task), eq(0));
+    verify(mockManager, times(2)).scheduleNextStep(same(task), eq(1));
   }
 
   @Test
