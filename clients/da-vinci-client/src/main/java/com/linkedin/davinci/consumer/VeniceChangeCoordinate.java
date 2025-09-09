@@ -216,9 +216,7 @@ public class VeniceChangeCoordinate implements Externalizable {
    * @param pubSubConsumer
    * @param topicPartition
    * @param other          the other position to compare to
-   * @return returns 0 if the positions are equal,
-   * -1 if this position is less than the other position,
-   * and 1 if this position is greater than the other position.
+   * @return returns the signed difference between the position of this coordinate and that of the other coordinate.
    * You should only compare positions from the same partition and consumer instance.
    */
   public long comparePosition(

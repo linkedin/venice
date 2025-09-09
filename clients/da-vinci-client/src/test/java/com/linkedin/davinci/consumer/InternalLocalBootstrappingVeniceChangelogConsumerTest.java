@@ -266,7 +266,7 @@ public class InternalLocalBootstrappingVeniceChangelogConsumerTest {
     // Verify onCompletionForStorage for partition 0
     resultSet = new ArrayList<>();
     InternalLocalBootstrappingVeniceChangelogConsumer.BootstrapState state =
-        new InternalLocalBootstrappingVeniceChangelogConsumer.BootstrapState(pubSubConsumer, topicPartition_0);
+        new InternalLocalBootstrappingVeniceChangelogConsumer.BootstrapState(topicPartition_0);
     AtomicBoolean completed = new AtomicBoolean(false);
 
     bootstrappingVeniceChangelogConsumer.onCompletionForStorage(0, state, resultSet, completed);
@@ -296,7 +296,7 @@ public class InternalLocalBootstrappingVeniceChangelogConsumerTest {
 
     // Verify onCompletionForStorage for partition 1
     resultSet = new ArrayList<>();
-    state = new InternalLocalBootstrappingVeniceChangelogConsumer.BootstrapState(pubSubConsumer, topicPartition_1);
+    state = new InternalLocalBootstrappingVeniceChangelogConsumer.BootstrapState(topicPartition_1);
     completed = new AtomicBoolean(false);
 
     bootstrappingVeniceChangelogConsumer.onCompletionForStorage(1, state, resultSet, completed);
@@ -332,7 +332,7 @@ public class InternalLocalBootstrappingVeniceChangelogConsumerTest {
     VeniceConcurrentHashMap<Integer, InternalLocalBootstrappingVeniceChangelogConsumer.BootstrapState> bootstrapStateMap =
         bootstrappingVeniceChangelogConsumer.getBootstrapStateMap();
     InternalLocalBootstrappingVeniceChangelogConsumer.BootstrapState bootstrapState =
-        new InternalLocalBootstrappingVeniceChangelogConsumer.BootstrapState(pubSubConsumer, partition);
+        new InternalLocalBootstrappingVeniceChangelogConsumer.BootstrapState(partition);
     bootstrapState.currentChangeCoordinate =
         new VeniceChangeCoordinate(TEST_TOPIC, TEST_OFFSET_OLD, TEST_PARTITION_ID_0);
     bootstrapStateMap.put(TEST_PARTITION_ID_0, bootstrapState);
@@ -384,7 +384,7 @@ public class InternalLocalBootstrappingVeniceChangelogConsumerTest {
     VeniceConcurrentHashMap<Integer, InternalLocalBootstrappingVeniceChangelogConsumer.BootstrapState> bootstrapStateMap =
         bootstrappingVeniceChangelogConsumer.getBootstrapStateMap();
     InternalLocalBootstrappingVeniceChangelogConsumer.BootstrapState bootstrapState =
-        new InternalLocalBootstrappingVeniceChangelogConsumer.BootstrapState(pubSubConsumer, partition);
+        new InternalLocalBootstrappingVeniceChangelogConsumer.BootstrapState(partition);
     bootstrapState.currentChangeCoordinate =
         new VeniceChangeCoordinate(TEST_TOPIC, TEST_OFFSET_OLD, TEST_PARTITION_ID_0);
     bootstrapStateMap.put(TEST_PARTITION_ID_0, bootstrapState);

@@ -357,7 +357,8 @@ public class AdminConsumptionTask implements Runnable, Closeable {
                 logMessageFormat,
                 pubSubAdminTopic,
                 "Since this is the parent controller, it will be created now.");
-            topicManager.createTopic(pubSubAdminTopic, 1, adminTopicReplicationFactor, true, false, minInSyncReplicas);
+            admin.getTopicManager()
+                .createTopic(pubSubAdminTopic, 1, adminTopicReplicationFactor, true, false, minInSyncReplicas);
             LOGGER.info("Admin topic {} is created.", pubSubAdminTopic);
           }
           subscribe();

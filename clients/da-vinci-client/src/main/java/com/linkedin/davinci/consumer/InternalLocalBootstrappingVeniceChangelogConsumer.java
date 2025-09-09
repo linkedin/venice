@@ -404,7 +404,7 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceAfte
       BootstrapState currentPartitionState = bootstrapStateMap.get(record.getPartition());
       currentPartitionState.currentChangeCoordinate = record.getOffset();
       if (currentPartitionState.bootstrapState.equals(PollState.CATCHING_UP)) {
-        if (currentPartitionState.isCaughtUp()) {
+        if (currentPartitionState.isCaughtUp(pubSubConsumer)) {
           LOGGER.info(
               "pollAndCatchup completed for partition: {} with offset: {}, put message: {}, delete message: {}",
               record.getPartition(),
@@ -515,10 +515,11 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceAfte
         LOGGER.info("Got latest offset: {} for partition: {}", targetCheckpoint, partition);
 
         synchronized (bootstrapStateMap) {
-          BootstrapState newState = new BootstrapState(pubSubConsumer, topicPartition);
+          BootstrapState newState = new BootstrapState(topicPartition);
           newState.currentChangeCoordinate = localCheckpoint;
           newState.targetChangeCoordinate = targetCheckpoint;
-          newState.bootstrapState = newState.isCaughtUp() ? PollState.BOOTSTRAPPING : PollState.CATCHING_UP;
+          newState.bootstrapState =
+              newState.isCaughtUp(pubSubConsumer) ? PollState.BOOTSTRAPPING : PollState.CATCHING_UP;
           bootstrapStateMap.put(partition, newState);
         }
       }
@@ -599,19 +600,17 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceAfte
   }
 
   static class BootstrapState {
-    private final PubSubConsumerAdapter pubSubConsumer;
     private final PubSubTopicPartition topicPartition;
     PollState bootstrapState;
     VeniceChangeCoordinate currentChangeCoordinate;
     VeniceChangeCoordinate targetChangeCoordinate;
     long processedRecordSizeSinceLastSync;
 
-    public BootstrapState(PubSubConsumerAdapter pubSubConsumer, PubSubTopicPartition topicPartition) {
-      this.pubSubConsumer = pubSubConsumer;
+    public BootstrapState(PubSubTopicPartition topicPartition) {
       this.topicPartition = topicPartition;
     }
 
-    boolean isCaughtUp() {
+    boolean isCaughtUp(PubSubConsumerAdapter pubSubConsumer) {
       return currentChangeCoordinate.comparePosition(pubSubConsumer, topicPartition, targetChangeCoordinate) > -1;
     }
 
