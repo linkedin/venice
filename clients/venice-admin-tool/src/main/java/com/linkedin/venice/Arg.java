@@ -328,8 +328,7 @@ public enum Arg {
   ), GLOBAL_RT_DIV_ENABLED("global-rt-div-enabled", "grde", true, "Enable Global RT DIV for a store"),
   ENUM_SCHEMA_EVOLUTION_ALLOWED(
       "enum-schema-evolution-allowed", "esea", true, "Allow enum schema evolution for a store"
-  ),
-  INITIAL_STEP("initial-step", "is", true, "Initial step of the auto store migration"),
+  ), INITIAL_STEP("initial-step", "is", true, "Initial step of the auto store migration"),
   ABORT_ON_FAILURE("abort-on-failure", "aof", true, "Abort the auto store migration if any step fails"),
   PAUSE_AFTER_STEP("pause-after-step", "pas", true, "Pause the auto store migration after this step"),
   STORE_LIFECYCLE_HOOKS_LIST("store-lifecycle-hooks-list", "slhl", true, "List of store lifecycle hooks"),
