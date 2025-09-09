@@ -30,8 +30,6 @@ import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.pubsub.ImmutablePubSubMessage;
-import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
-import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.PubSubUtil;
@@ -39,10 +37,8 @@ import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition
 import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapter;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
-import com.linkedin.venice.pubsub.api.PubSubPositionWireFormat;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.Utils;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -73,11 +69,8 @@ public class TestAdminToolConsumption {
     messagesMap.put(pubSubTopicPartition, pubSubMessageList);
     ApacheKafkaConsumerAdapter apacheKafkaConsumer = mock(ApacheKafkaConsumerAdapter.class);
     when(apacheKafkaConsumer.poll(anyLong())).thenReturn(messagesMap, Collections.EMPTY_MAP);
-    List<DumpAdminMessages.AdminOperationInfo> adminOperationInfos = DumpAdminMessages.dumpAdminMessages(
-        apacheKafkaConsumer,
-        "cluster1",
-        ApacheKafkaOffsetPosition.of(0L),
-        dumpedMessageNum);
+    List<DumpAdminMessages.AdminOperationInfo> adminOperationInfos = DumpAdminMessages
+        .dumpAdminMessages(apacheKafkaConsumer, "cluster1", ApacheKafkaOffsetPosition.of(0L), dumpedMessageNum);
     Assert.assertEquals(adminOperationInfos.size(), dumpedMessageNum);
   }
 

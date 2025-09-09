@@ -367,7 +367,8 @@ public class TestProducerBatching {
 
       pubSubConsumer.subscribe(
           new PubSubTopicPartitionImpl(PUB_SUB_TOPIC_REPOSITORY.getTopic(Utils.composeRealTimeTopic(storeName, 1)), 0),
-          PubSubSymbolicPosition.EARLIEST);
+          PubSubSymbolicPosition.EARLIEST,
+          false);
       Map<PubSubTopicPartition, List<DefaultPubSubMessage>> messages = pubSubConsumer.poll(1000 * Time.MS_PER_SECOND);
       int messageCount = 0;
       for (Map.Entry<PubSubTopicPartition, List<DefaultPubSubMessage>> entry: messages.entrySet()) {

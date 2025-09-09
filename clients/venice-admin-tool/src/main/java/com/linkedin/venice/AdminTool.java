@@ -105,7 +105,6 @@ import com.linkedin.venice.pubsub.PubSubUtil;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
-import com.linkedin.venice.pubsub.api.PubSubPositionWireFormat;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;
@@ -136,7 +135,6 @@ import java.io.Console;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
-import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -1812,7 +1810,6 @@ public class AdminTool {
     PubSubPositionTypeRegistry pubSubPositionTypeRegistry =
         PubSubPositionTypeRegistry.fromPropertiesOrDefault(veniceProperties);
     PubSubPositionDeserializer pubSubPositionDeserializer = new PubSubPositionDeserializer(pubSubPositionTypeRegistry);
-    PubSubConsumerAdapter consumer = getConsumer(consumerProperties, pubSubClientsFactory);
     String startingOffset = getOptionalArgument(cmd, Arg.STARTING_OFFSET);
     String startingPositionArg = getOptionalArgument(cmd, Arg.STARTING_POSITION);
     if (startingOffset == null && startingPositionArg == null) {
@@ -1829,14 +1826,10 @@ public class AdminTool {
     if (startingOffset != null) {
       startingPosition = PubSubUtil.fromKafkaOffset(Long.parseLong(getRequiredArgument(cmd, Arg.STARTING_OFFSET)));
     } else {
-      String[] typeIdAndBase64PositionBytes = startingPositionArg.split(":");
-      PubSubPositionWireFormat positionWireFormat = new PubSubPositionWireFormat();
-      positionWireFormat.setType(Integer.parseInt(typeIdAndBase64PositionBytes[0]));
-      positionWireFormat.setRawBytes(ByteBuffer.wrap(PubSubUtil.getBase64DecodedBytes(typeIdAndBase64PositionBytes[1])));
-      startingPosition = pubSubPositionDeserializer.toPosition(positionWireFormat);
+      startingPosition = PubSubUtil.parsePositionWireFormat(startingPositionArg, pubSubPositionDeserializer);
     }
     List<DumpAdminMessages.AdminOperationInfo> adminMessages = DumpAdminMessages.dumpAdminMessages(
-        consumer,
+        getConsumer(consumerProperties, pubSubClientsFactory),
         getRequiredArgument(cmd, Arg.CLUSTER),
         startingPosition,
         Integer.parseInt(getRequiredArgument(cmd, Arg.MESSAGE_COUNT)));
