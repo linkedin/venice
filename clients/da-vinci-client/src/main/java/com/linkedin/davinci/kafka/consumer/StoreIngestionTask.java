@@ -96,6 +96,7 @@ import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.PubSubContext;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.PubSubUtil;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
@@ -2180,13 +2181,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
         // Let's try to restore the state retrieved from the OffsetManager
         PartitionConsumptionState newPartitionConsumptionState = new PartitionConsumptionState(
-            getReplicaId(versionTopic, partition),
-            partition,
+            topicPartition,
             offsetRecord,
             pubSubContext,
             hybridStoreConfig.isPresent(),
             schemaRepository.getKeySchema(storeName).getSchema());
-
         newPartitionConsumptionState.setCurrentVersionSupplier(isCurrentVersion);
 
         boolean isFutureVersionReady = isFutureVersionReady(kafkaVersionTopic, storeRepository);
@@ -2349,8 +2348,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             partitionConsumptionState.getReplicaId());
       }
       PartitionConsumptionState consumptionState = new PartitionConsumptionState(
-          getReplicaId(versionTopic, partition),
-          partition,
+          new PubSubTopicPartitionImpl(versionTopic, partition),
           new OffsetRecord(partitionStateSerializer),
           pubSubContext,
           hybridStoreConfig.isPresent(),
@@ -2378,20 +2376,26 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * N.B.: The returned end position is the last successfully replicated message plus one. If the partition has never been
    * written to, the end position is equal to the start position.
    */
-  protected long getTopicPartitionEndOffSet(String kafkaUrl, PubSubTopic pubSubTopic, int partition) {
-    PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(pubSubTopic, partition);
-    long offsetFromConsumer =
-        aggKafkaConsumerService.getLatestOffsetBasedOnMetrics(kafkaUrl, versionTopic, topicPartition);
-    if (offsetFromConsumer >= 0) {
-      return offsetFromConsumer;
+  protected PubSubPosition getTopicPartitionEndPosition(
+      String pubSubBrokerAddress,
+      PubSubTopicPartition topicPartition) {
+    // Use metrics-based position only if enabled by config
+    if (serverConfig.isUseMetricsBasedPositionInLagComputationEnabled()) {
+      long offsetFromConsumer =
+          aggKafkaConsumerService.getLatestOffsetBasedOnMetrics(pubSubBrokerAddress, versionTopic, topicPartition);
+      if (offsetFromConsumer >= 0) {
+        // Wrap numeric offset as PubSubPosition (via ApacheKafkaOffsetPosition) for API compatibility
+        return PubSubUtil.fromKafkaOffset(offsetFromConsumer);
+      }
     }
     try {
       return RetryUtils.executeWithMaxAttemptAndExponentialBackoffNoLog(() -> {
-        PubSubPosition position = getTopicManager(kafkaUrl).getLatestPositionCachedNonBlocking(pubSubTopic, partition);
+        PubSubPosition position =
+            getTopicManager(pubSubBrokerAddress).getLatestPositionCachedNonBlocking(topicPartition);
         if (PubSubSymbolicPosition.LATEST.equals(position)) {
           throw new VeniceException("Latest position is unknown. Check if the tp: " + topicPartition + " exists.");
         }
-        return position.getNumericOffset();
+        return position;
       },
           MAX_OFFSET_FETCH_ATTEMPTS,
           Duration.ofMillis(10),
@@ -2402,10 +2406,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       LOGGER.error(
           "Failed to get end position for topic-partition: {} with pubsub url {} even after {} retries",
           topicPartition,
-          kafkaUrl,
+          pubSubBrokerAddress,
           MAX_OFFSET_FETCH_ATTEMPTS,
           e);
-      return PubSubSymbolicPosition.LATEST.getNumericOffset();
+      return PubSubSymbolicPosition.LATEST;
     }
   }
 
@@ -2591,7 +2595,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       String replicaId = getReplicaId(versionTopic, faultyPartition);
       String errorMessage;
       errorMessage = FATAL_DATA_VALIDATION_ERROR + " for replica: " + replicaId + ". Incoming record topic-partition: "
-          + record.getTopicPartition() + " offset: " + record.getPosition();
+          + record.getTopicPartition() + " position: " + record.getPosition();
       // TODO need a way to safeguard DIV errors from backup version that have once been current (but not anymore)
       // during re-balancing
       boolean needToUnsub = !(isCurrentVersion.getAsBoolean() || partitionConsumptionState.isEndOfPushReceived());
@@ -2874,7 +2878,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       return Long.MAX_VALUE;
     }
     TopicManager tm = topicManagerProvider.apply(pubSubServerName);
-    PubSubPosition endPosition = tm.getLatestPositionCached(topic, partition);
+    PubSubPosition endPosition = tm.getLatestPositionCached(new PubSubTopicPartitionImpl(topic, partition));
     if (PubSubSymbolicPosition.LATEST.equals(endPosition)) {
       // A negative value means there was a problem in measuring the end position, and therefore we return "infinite
       // lag"
