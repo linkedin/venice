@@ -357,8 +357,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
                 logMessageFormat,
                 pubSubAdminTopic,
                 "Since this is the parent controller, it will be created now.");
-            admin.getTopicManager()
-                .createTopic(pubSubAdminTopic, 1, adminTopicReplicationFactor, true, false, minInSyncReplicas);
+            topicManager.createTopic(pubSubAdminTopic, 1, adminTopicReplicationFactor, true, false, minInSyncReplicas);
             LOGGER.info("Admin topic {} is created.", pubSubAdminTopic);
           }
           subscribe();
@@ -780,11 +779,11 @@ public class AdminConsumptionTask implements Runnable, Closeable {
       return true;
     }
     // Check it again if it is false
-    return admin.getTopicManager().containsTopicAndAllPartitionsAreOnline(topicName);
+    return topicManager.containsTopicAndAllPartitionsAreOnline(topicName);
   }
 
   private void makeSureAdminTopicUsingInfiniteRetentionPolicy(PubSubTopic topicName) {
-    admin.getTopicManager().updateTopicRetention(topicName, Long.MAX_VALUE);
+    topicManager.updateTopicRetention(topicName, Long.MAX_VALUE);
     LOGGER.info("Admin topic: {} has been updated to use infinite retention policy", adminTopicPartition);
   }
 
