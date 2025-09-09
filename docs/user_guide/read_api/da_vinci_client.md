@@ -12,7 +12,7 @@ cache. Future updates to the data continue to be streamed in and applied to the 
 
 ## Record Transformer (DVRT)
 
-The Da Vinci Record Transformer lets you hook into Venice's data ingestion process to react to every record change in real-time.
+The Record Transformer lets you hook into Da Vinci's data ingestion process to react to every record change in real-time.
 
 ### What Does It Do?
 
