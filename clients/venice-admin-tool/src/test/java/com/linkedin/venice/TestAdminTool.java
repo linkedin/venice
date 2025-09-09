@@ -8,8 +8,13 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.when;
+import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.expectThrows;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.linkedin.venice.AdminTool.ConsumerContext;
 import com.linkedin.venice.admin.protocol.response.AdminResponseRecord;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.transport.TransportClient;
@@ -35,9 +40,13 @@ import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.metadata.response.MetadataResponseRecord;
 import com.linkedin.venice.metadata.response.VersionProperties;
+import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
+import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordSerializer;
+import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.views.ChangeCaptureView;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -211,21 +220,21 @@ public class TestAdminTool {
 
       StoreMigrationResponse storeMigrationPreconditionCheckResponse = new StoreMigrationResponse();
       storeMigrationPreconditionCheckResponse.setStoreMigrationAllowed(true);
-      Mockito.when(srcControllerClient.isStoreMigrationAllowed()).thenReturn(storeMigrationPreconditionCheckResponse);
-      Mockito.when(destControllerClient.isStoreMigrationAllowed()).thenReturn(storeMigrationPreconditionCheckResponse);
+      when(srcControllerClient.isStoreMigrationAllowed()).thenReturn(storeMigrationPreconditionCheckResponse);
+      when(destControllerClient.isStoreMigrationAllowed()).thenReturn(storeMigrationPreconditionCheckResponse);
 
       StoreMigrationResponse storeAutoMigrationResponse = new StoreMigrationResponse();
       storeAutoMigrationResponse.setSrcClusterName(srcCluster);
       storeAutoMigrationResponse.setCluster(dstCluster);
       storeAutoMigrationResponse.setName(storeName);
-      Mockito.when(srcControllerClient.autoMigrateStore(eq(storeName), eq(dstCluster), any(), any()))
+      when(srcControllerClient.autoMigrateStore(eq(storeName), eq(dstCluster), any(), any()))
           .thenReturn(storeAutoMigrationResponse);
 
       StoreResponse storeResponse = new StoreResponse();
       StoreInfo srcStoreInfo = createStore(storeName, true);
       srcStoreInfo.setMigrating(false);
       storeResponse.setStore(srcStoreInfo);
-      Mockito.when(srcControllerClient.getStore(storeName)).thenReturn(storeResponse);
+      when(srcControllerClient.getStore(storeName)).thenReturn(storeResponse);
 
       // Create two different controller clients for the source and destination clusters.
       controllerClientFactoryMockedStatic
@@ -243,7 +252,7 @@ public class TestAdminTool {
       srcStoreInfo.setMigrating(true);
       storeResponse.setStore(srcStoreInfo);
 
-      VeniceException ex = Assert.expectThrows(VeniceException.class, () -> AdminTool.autoMigrateStore(BasicCmd));
+      VeniceException ex = expectThrows(VeniceException.class, () -> AdminTool.autoMigrateStore(BasicCmd));
       String expectedMsg =
           String.format("Store %s is migrating. Finish the current migration before starting a new one.", storeName);
       Assert.assertEquals(ex.getMessage(), expectedMsg);
@@ -266,25 +275,25 @@ public class TestAdminTool {
           Mockito.mockStatic(AdminTool.class, Mockito.CALLS_REAL_METHODS)) {
         ControllerClient srcControllerClient = mock(ControllerClient.class);
         ControllerClient destControllerClient = mock(ControllerClient.class);
-        Mockito.when(srcControllerClient.getStore(storeName)).thenReturn(storeResponse);
+        when(srcControllerClient.getStore(storeName)).thenReturn(storeResponse);
 
         StoreMigrationResponse storeMigrationResponse = new StoreMigrationResponse();
         storeMigrationResponse.isStoreMigrationAllowed();
-        Mockito.when(srcControllerClient.isStoreMigrationAllowed()).thenReturn(storeMigrationResponse);
-        Mockito.when(destControllerClient.isStoreMigrationAllowed()).thenReturn(storeMigrationResponse);
+        when(srcControllerClient.isStoreMigrationAllowed()).thenReturn(storeMigrationResponse);
+        when(destControllerClient.isStoreMigrationAllowed()).thenReturn(storeMigrationResponse);
 
         D2ServiceDiscoveryResponse discoveryResponse = new D2ServiceDiscoveryResponse();
         discoveryResponse.setCluster(srcCluster);
-        Mockito.when(srcControllerClient.discoverCluster(storeName)).thenReturn(discoveryResponse);
+        when(srcControllerClient.discoverCluster(storeName)).thenReturn(discoveryResponse);
 
         StoreMigrationResponse abortMigrationResponse = new StoreMigrationResponse();
         abortMigrationResponse.setSrcClusterName(srcCluster);
         abortMigrationResponse.setCluster(srcCluster);
         abortMigrationResponse.setName(storeName);
 
-        Mockito.when(srcControllerClient.abortMigration(storeName, dstCluster)).thenReturn(abortMigrationResponse);
-        Mockito.when(destControllerClient.getStore(storeName)).thenReturn(storeResponse);
-        Mockito.when(destControllerClient.deleteStore(storeName, true)).thenReturn(new TrackableControllerResponse());
+        when(srcControllerClient.abortMigration(storeName, dstCluster)).thenReturn(abortMigrationResponse);
+        when(destControllerClient.getStore(storeName)).thenReturn(storeResponse);
+        when(destControllerClient.deleteStore(storeName, true)).thenReturn(new TrackableControllerResponse());
 
         // Create two different controller clients for the source and destination clusters.
         controllerClientMockedStatic
@@ -304,8 +313,8 @@ public class TestAdminTool {
         Mockito.verify(destControllerClient, times(0)).deleteStore(storeName, true);
         srcStoreInfo.setMigrating(true);
         storeResponse.setStore(srcStoreInfo);
-        Mockito.when(srcControllerClient.getStore(storeName)).thenReturn(storeResponse);
-        Mockito.when(destControllerClient.getStore(storeName)).thenReturn(storeResponse);
+        when(srcControllerClient.getStore(storeName)).thenReturn(storeResponse);
+        when(destControllerClient.getStore(storeName)).thenReturn(storeResponse);
 
         String promptAbortMigration = "Next step is to reset store migration flag, storeConfig and cluster "
             + "discovery mapping. Do you want to proceed?";
@@ -397,12 +406,11 @@ public class TestAdminTool {
     String storeName = "test-store1";
     String[] getMetadataArgs = { "--request-based-metadata", "--url", "http://localhost:7036", "--server-url",
         "http://localhost:7036", "--store", storeName };
-    VeniceException requestException =
-        Assert.expectThrows(VeniceException.class, () -> AdminTool.main(getMetadataArgs));
+    VeniceException requestException = expectThrows(VeniceException.class, () -> AdminTool.main(getMetadataArgs));
     Assert.assertTrue(requestException.getMessage().contains("Encountered exception while trying to send metadata"));
     String[] getMetadataArgsSSL = { "--request-based-metadata", "--url", "https://localhost:7036", "--server-url",
         "https://localhost:7036", "--store", storeName };
-    VeniceException sslException = Assert.expectThrows(VeniceException.class, () -> AdminTool.main(getMetadataArgsSSL));
+    VeniceException sslException = expectThrows(VeniceException.class, () -> AdminTool.main(getMetadataArgsSSL));
     Assert.assertTrue(sslException.getMessage().contains("requires admin tool to be executed with cert"));
 
     TransportClient transportClient = mock(TransportClient.class);
@@ -511,5 +519,56 @@ public class TestAdminTool {
     String[] args = { "--update-admin-operation-protocol-version", "--url", "http://localhost:7036", "--cluster",
         "test-cluster", "--admin-operation-protocol-version", "thisShouldBeLongValue" };
     Assert.assertThrows(VeniceException.class, () -> AdminTool.main(args));
+  }
+
+  @Test
+  public void testConsumerContextAndHelperMethods() {
+    // Test 1: Verify ConsumerContext encapsulates dependencies correctly
+    VeniceProperties veniceProperties = new VeniceProperties(new java.util.Properties());
+    PubSubPositionTypeRegistry registry = PubSubPositionTypeRegistry.fromPropertiesOrDefault(veniceProperties);
+    PubSubPositionDeserializer deserializer = new PubSubPositionDeserializer(registry);
+
+    ConsumerContext context = new ConsumerContext(veniceProperties, registry, deserializer);
+
+    // Verify encapsulation works correctly
+    assertTrue(
+        context.getVeniceProperties() == veniceProperties,
+        "ConsumerContext should encapsulate VeniceProperties");
+    assertTrue(
+        context.getPositionTypeRegistry() == registry,
+        "ConsumerContext should encapsulate PubSubPositionTypeRegistry");
+    assertTrue(
+        context.getPositionDeserializer() == deserializer,
+        "ConsumerContext should encapsulate PubSubPositionDeserializer");
+
+    // Test 2: Verify position parsing functionality with offset argument
+    CommandLine offsetCmd = mock(CommandLine.class);
+    when(offsetCmd.hasOption(Arg.STARTING_OFFSET.first())).thenReturn(true);
+    when(offsetCmd.hasOption(Arg.STARTING_POSITION.first())).thenReturn(false);
+    when(offsetCmd.getOptionValue(Arg.STARTING_OFFSET.first())).thenReturn("100");
+
+    // Test parsePositionFromArgs directly (now package-private with @VisibleForTesting)
+    PubSubPosition position =
+        AdminTool.parsePositionFromArgs(offsetCmd, Arg.STARTING_OFFSET, Arg.STARTING_POSITION, deserializer, true);
+    assertNotNull(position, "parsePositionFromArgs should return a valid position for offset argument");
+
+    // Test 3: Verify position parsing with position argument (base64 encoded)
+    CommandLine positionCmd = mock(CommandLine.class);
+    when(positionCmd.hasOption(Arg.STARTING_OFFSET.first())).thenReturn(false);
+    when(positionCmd.hasOption(Arg.STARTING_POSITION.first())).thenReturn(true);
+    when(positionCmd.getOptionValue(Arg.STARTING_POSITION.first())).thenReturn("0:AQIDBA==");
+
+    PubSubPosition positionFromWireFormat =
+        AdminTool.parsePositionFromArgs(positionCmd, Arg.STARTING_OFFSET, Arg.STARTING_POSITION, deserializer, true);
+    assertNotNull(positionFromWireFormat, "parsePositionFromArgs should return a valid position for position argument");
+
+    // Test 4: Verify error handling when neither argument is provided but required
+    CommandLine emptyCmd = mock(CommandLine.class);
+    when(emptyCmd.hasOption(Arg.STARTING_OFFSET.first())).thenReturn(false);
+    when(emptyCmd.hasOption(Arg.STARTING_POSITION.first())).thenReturn(false);
+    expectThrows(
+        Exception.class,
+        () -> AdminTool
+            .parsePositionFromArgs(emptyCmd, Arg.STARTING_OFFSET, Arg.STARTING_POSITION, deserializer, true));
   }
 }
