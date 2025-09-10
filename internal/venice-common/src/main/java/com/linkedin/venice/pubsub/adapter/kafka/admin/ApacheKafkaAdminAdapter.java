@@ -1,5 +1,6 @@
 package com.linkedin.venice.pubsub.adapter.kafka.admin;
 
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.pubsub.PubSubConstants;
 import com.linkedin.venice.pubsub.PubSubTopicConfiguration;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
@@ -308,6 +309,7 @@ public class ApacheKafkaAdminAdapter implements PubSubAdminAdapter {
    */
   @Override
   public boolean containsTopic(PubSubTopic pubSubTopic) {
+    long startTime = System.currentTimeMillis();
     try {
       Collection<String> topicNames = Collections.singleton(pubSubTopic.getName());
       TopicDescription topicDescription =
@@ -332,6 +334,15 @@ public class ApacheKafkaAdminAdapter implements PubSubAdminAdapter {
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
       throw new PubSubClientException("Failed to check if '" + pubSubTopic + " exists!", e);
+    } finally {
+      long duration = System.currentTimeMillis() - startTime;
+      if (duration >= 60_000) {
+        LOGGER.info(
+            "Time taken to check if topic: {} exists is: {} ms",
+            pubSubTopic.getName(),
+            duration,
+            new VeniceException("###MARK###"));
+      }
     }
   }
 

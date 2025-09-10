@@ -527,10 +527,7 @@ class TopicMetadataFetcher implements Closeable {
   }
 
   public long diffPosition(PubSubTopicPartition partition, PubSubPosition position1, PubSubPosition position2) {
-    PubSubTopic pubSubTopic = partition.getPubSubTopic();
-    if (!pubSubAdminAdapter.containsTopic(pubSubTopic)) {
-      throw new PubSubTopicDoesNotExistException(pubSubTopic);
-    }
+    validateTopicPartition(partition);
     PubSubConsumerAdapter pubSubConsumerAdapter = acquireConsumer();
     try {
       return pubSubConsumerAdapter.positionDifference(partition, position1, position2);
