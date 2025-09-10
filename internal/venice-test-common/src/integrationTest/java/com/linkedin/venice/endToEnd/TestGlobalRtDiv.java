@@ -126,7 +126,6 @@ public class TestGlobalRtDiv {
     extraProperties.setProperty(SERVER_CONSUMER_POOL_SIZE_PER_KAFKA_CLUSTER, "3");
     extraProperties.setProperty(PERSISTENCE_TYPE, PersistenceType.ROCKS_DB.name());
     extraProperties.setProperty(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_TRANSACTIONAL_MODE, "500");
-    // extraProperties.setProperty(VeniceWriter.MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES, "400"); // TODO: chunk
     extraProperties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1L));
     extraProperties.setProperty(
         SERVER_SHARED_CONSUMER_ASSIGNMENT_STRATEGY,
@@ -171,8 +170,6 @@ public class TestGlobalRtDiv {
     writerProperties.put(VeniceWriter.MAX_ELAPSED_TIME_FOR_SEGMENT_IN_MS, "0");
     writerProperties.putAll(
         PubSubBrokerWrapper.getBrokerDetailsForClients(Collections.singletonList(venice.getPubSubBrokerWrapper())));
-
-    // TODO: integration test
   }
 
   @Test(timeOut = 180 * Time.MS_PER_SECOND)

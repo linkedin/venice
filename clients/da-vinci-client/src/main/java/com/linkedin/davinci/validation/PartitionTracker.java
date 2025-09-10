@@ -204,7 +204,7 @@ public class PartitionTracker {
   }
 
   /**
-   * Clone the vtSegments and LCVO to the destination PartitionTracker. May be called concurrently.
+   * Clone the vtSegments and LCVP to the destination PartitionTracker. May be called concurrently.
    */
   public void cloneVtProducerStates(PartitionTracker destProducerTracker) {
     for (Map.Entry<GUID, Segment> entry: vtSegments.entrySet()) {

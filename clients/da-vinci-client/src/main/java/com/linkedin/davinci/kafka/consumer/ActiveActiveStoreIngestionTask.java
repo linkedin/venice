@@ -1501,7 +1501,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         LOGGER.info(
             "event=globalRtDiv F->L Subscribing to {} at position: {} for broker: {}",
             Utils.getReplicaId(leaderTopic, pcs.getPartition()),
-            rtStartPosition.getNumericOffset(),
+            rtStartPosition,
             brokerAddress);
       }
       consumerSubscribe(leaderTopic, pcs, rtStartPosition, brokerAddress);

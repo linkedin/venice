@@ -204,7 +204,7 @@ public class DataIntegrityValidator {
   public boolean hasGlobalRtDivState(int partition) {
     PartitionTracker partitionTracker = this.partitionTrackers.get(partition);
     if (partitionTracker == null) {
-      LOGGER.info("Partition tracker is null for partition: {}", partition);
+      LOGGER.info("PartitionTracker is null for partition: {}", partition);
       return false;
     }
     Map<String, Map<GUID, Segment>> rtSegments = partitionTracker.getAllRtSegmentsForTesting();
@@ -214,10 +214,11 @@ public class DataIntegrityValidator {
         return true;
       }
     }
-    LOGGER.info("No global RT DIV state found for partition: {}", partition);
+    LOGGER.info("No Global RT DIV state found for partition: {}", partition);
     return false;
   }
 
+  @VisibleForTesting
   public boolean hasVtDivState(int partition) {
     PartitionTracker partitionTracker = this.partitionTrackers.get(partition);
     if (partitionTracker == null) {

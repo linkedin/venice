@@ -555,7 +555,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             LOGGER.info(
                 "event=globalRtDiv L->F Subscribed to: {} position: {} for broker: {}",
                 Utils.getReplicaId(topic, partition),
-                subscribePosition.getNumericOffset(),
+                subscribePosition,
                 localKafkaServer);
           }
           consumerSubscribe(topic, partitionConsumptionState, subscribePosition, localKafkaServer);
@@ -1049,11 +1049,11 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       LOGGER.info(
           "event=globalRtDiv F->L Subscribing to {} at position: {} for broker: {}",
           Utils.getReplicaId(leaderTopic, pcs.getPartition()),
-          startPos.getNumericOffset(),
+          startPos,
           pubSubAddress);
     }
     consumerSubscribe(leaderTopic, pcs, startPos, pubSubAddress);
-    // TODO: clear the LCRO map in the PCS after subscribing and set the value for this brokerUrl as null?
+    // TODO: clear the LCRP map in the PCS after subscribing and set the value for this brokerUrl as null?
     syncConsumedUpstreamRTOffsetMapIfNeeded(pcs, Collections.singletonMap(pubSubAddress, startPos));
     LOGGER.info(
         "Leader replica: {} started consuming: {} from: {}",
@@ -2282,7 +2282,12 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       LOGGER.warn("No partition consumption state for replica: {}, will filter out all the messages", replicaId);
       return Collections.emptyList();
     }
-    boolean isEndOfPushReceived = pcs.isEndOfPushReceived();
+
+    /*
+     * Global RT DIV messages should be validated.
+     * These messages will be contributed towards the segments in VeniceWriter when the Global RT DIV is produced to RT
+     * Either skip validation + skip adding to segments in both locations or keep in both, and we're keeping for now
+     */
     if (!isGlobalRtDivEnabled() && !shouldProduceToVersionTopic(pcs)) {
       return records;
     }
@@ -2301,10 +2306,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         final TopicType topicType = (isGlobalRtDivEnabled())
             ? TopicType.of(isRealTimeTopic ? REALTIME_TOPIC_TYPE : VERSION_TOPIC_TYPE, kafkaUrl)
             : PartitionTracker.VERSION_TOPIC;
-        validateMessage(topicType, consumerDiv, record, isEndOfPushReceived, pcs, false);
+        validateMessage(topicType, consumerDiv, record, pcs, false);
         versionedDIVStats.recordSuccessMsg(storeName, versionNumber);
       } catch (FatalDataValidationException e) {
-        if (!isEndOfPushReceived) {
+        if (!pcs.isEndOfPushReceived()) {
           throw e;
         }
       } catch (DuplicateDataException e) {
@@ -2423,7 +2428,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             LOGGER.info(
                 "event=globalRtDiv Syncing LCVP for OffsetRecord topic-partition: {} position: {} size: {}",
                 topicPartition,
-                consumerRecord.getPosition().getNumericOffset(),
+                consumerRecord.getPosition(),
                 partitionStateMapSize);
           }
         }
@@ -3390,7 +3395,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     TopicType realTimeTopicType = TopicType.of(REALTIME_TOPIC_TYPE, brokerUrl);
 
     // Snapshot the RT DIV (single broker URL) in preparation to be produced
-    PartitionTracker vtDiv = consumerDiv.cloneVtProducerStates(partition); // includes latest consumed vt offset (LCVO)
+    PartitionTracker vtDiv = consumerDiv.cloneVtProducerStates(partition); // has latest consumed vt position (LCVP)
     PartitionTracker rtDiv = consumerDiv.cloneRtProducerStates(partition, brokerUrl);
     Map<CharSequence, ProducerPartitionState> rtDivPartitionStates = rtDiv.getPartitionStates(realTimeTopicType);
 
@@ -3479,7 +3484,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             MessageType.PUT,
             false,
             partition,
-            false,
+            false, // IMPORTANT: seqNum is incremented in the later call getKME() / VeniceWriter.put() message to RT
             DEFAULT_LEADER_METADATA_WRAPPER,
             APP_DEFAULT_LOGICAL_TS);
     Put put = new Put();
@@ -3515,14 +3520,23 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     return divCallback;
   }
 
-  Optional<GlobalRtDivState> readGlobalRtDivState(
+  /**
+   * Reads a GlobalRtDivState value from the storage engine. Returns null if the value does not exist.
+   *
+   * @param keyBytes the serialized key for the value
+   * @param readerValueSchemaID the schemaId to use for deserialization
+   * @param topicPartition the topic/partition for the value
+   * @param manifestContainer a container to store any manifest information retrieved from the storage engine
+   * @return the deserialized GlobalRtDivState object, or null if the value does not exist
+   */
+  GlobalRtDivState readGlobalRtDivState(
       byte[] keyBytes,
       int readerValueSchemaID,
       PubSubTopicPartition topicPartition,
       ChunkedValueManifestContainer manifestContainer) {
-    ByteBuffer value = null;
+    ByteBuffer valueBytes;
     try {
-      value = (ByteBuffer) GenericChunkingAdapter.INSTANCE.get(
+      valueBytes = (ByteBuffer) GenericChunkingAdapter.INSTANCE.get(
           storageEngine,
           topicPartition.getPartitionNumber(),
           ByteBuffer.wrap(keyBytes),
@@ -3535,21 +3549,18 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           compressor.get(),
           manifestContainer);
     } catch (Exception e) {
-      LOGGER.error("Unable to retrieve stored value bytes", e);
+      LOGGER.error("Unable to retrieve the stored value bytes for topic-partition: {}", topicPartition, e);
+      return null;
     }
-    return (value != null) ? deserializeGlobalRtDivState(value) : Optional.empty();
-  }
 
-  Optional<GlobalRtDivState> deserializeGlobalRtDivState(ByteBuffer valueBytes) {
     try {
-      return Optional.of(
-          globalRtDivStateSerializer.deserialize(
-              ByteUtils.extractByteArray(valueBytes),
-              AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion()));
+      return globalRtDivStateSerializer.deserialize(
+          ByteUtils.extractByteArray(valueBytes),
+          AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion());
     } catch (Exception e) {
-      LOGGER.error("Unable to deserialize stored value bytes", e);
+      LOGGER.error("Unable to deserialize stored value bytes for topic-partition: {}", topicPartition, e);
+      return null;
     }
-    return Optional.empty();
   }
 
   /**
@@ -3622,13 +3633,13 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    * MISSING message DIV error immediately.
    */
   void restoreProducerStatesForLeaderConsumption(int partition) {
-    // we can't clear the consumer DIV here, because for VT, the consumer DIV may already contain some producer states
-    // from previous consumption and those states should be retained. For RT, the consumer DIV should be empty at this
-    // point.
-    getConsumerDiv().clearRtSegments(partition);
     if (isGlobalRtDivEnabled()) {
+      // VT Segments can't be cleared here. It may already contain some producer states from previous consumption that
+      // need to be retained. For RT Segments, the consumer DIV should be empty at this point.
+      getConsumerDiv().clearRtSegments(partition);
       loadGlobalRtDiv(partition);
     } else {
+      getConsumerDiv().clearPartition(partition);
       cloneDrainerDivProducerStates(partition, getConsumerDiv());
     }
   }
@@ -3651,16 +3662,18 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     String globalRtDivKey = getGlobalRtDivKeyName(brokerUrl);
     byte[] keyBytes = globalRtDivKey.getBytes();
     final ChunkedValueManifestContainer valueManifestContainer = new ChunkedValueManifestContainer();
-    Optional<GlobalRtDivState> globalRtDivState = readGlobalRtDivState(
+    GlobalRtDivState globalRtDivState = readGlobalRtDivState(
         keyBytes,
         AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion(),
         topicPartition,
         valueManifestContainer);
-    if (!globalRtDivState.isPresent()) {
+    if (globalRtDivState == null) {
+      // If the GlobalRtDivState is not present, it could be acceptable if this could be the first leader to be elected
+      // Object not existing could be problematic if this isn't the first leader (detected via nonzero leaderPosition)
       PubSubPosition leaderPosition = pcs.getLeaderPosition(brokerUrl, false);
       if (leaderPosition.getNumericOffset() > 0) {
         LOGGER.warn(
-            "Unable to retrieve Global RT DIV from storage engine for replica: {} brokerUrl: {} leaderPosition: {}",
+            "Unable to retrieve Global RT DIV from storage engine for topic-partition: {} brokerUrl: {} leaderPosition: {}",
             topicPartition,
             brokerUrl,
             leaderPosition);
@@ -3668,11 +3681,11 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       return; // it may not exist (e.g. this is the first leader to be elected)
     }
 
-    final Map<CharSequence, ProducerPartitionState> producerStates = globalRtDivState.get().getProducerStates();
+    final Map<CharSequence, ProducerPartitionState> producerStates = globalRtDivState.getProducerStates();
     PartitionTracker.TopicType realTimeTopicType = PartitionTracker.TopicType.of(REALTIME_TOPIC_TYPE, brokerUrl);
     getConsumerDiv().setPartitionState(realTimeTopicType, pcs.getPartition(), producerStates);
-    ByteBuffer checkpointBytes = globalRtDivState.get().getLatestPubSubPosition(); // LCRP
-    final PubSubPosition divRtCheckpointPosition =
+    ByteBuffer checkpointBytes = globalRtDivState.getLatestPubSubPosition(); // LCRP
+    PubSubPosition divRtCheckpointPosition =
         getPubSubContext().getPubSubPositionDeserializer().toPosition(checkpointBytes);
     pcs.setDivRtCheckpointPosition(brokerUrl, divRtCheckpointPosition);
 
@@ -3683,7 +3696,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           topicPartition,
           brokerUrl,
           producer,
-          divRtCheckpointPosition.getNumericOffset(),
+          divRtCheckpointPosition,
           pps);
     });
   }
