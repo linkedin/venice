@@ -2862,4 +2862,7 @@ public class ConfigKeys {
    * Default is false (i.e. not a dark cluster).
    */
   public static final String IS_DARK_CLUSTER = "is.dark.cluster";
+
+  public static final String SERVER_INGESTION_ISOLATION_D2_CLIENT_ENABLED =
+      "server.ingestion.isolation.d2.client.enabled";
 }

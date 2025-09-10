@@ -30,6 +30,7 @@ import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE;
+import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_D2_CLIENT_ENABLED;
 import static com.linkedin.venice.integration.utils.DaVinciTestContext.getCachingDaVinciClientFactory;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.DEFAULT_KEY_SCHEMA;
 import static com.linkedin.venice.meta.PersistenceType.ROCKS_DB;
@@ -126,8 +127,8 @@ public class DaVinciClientP2PBlobTransferTest {
    * Case 1: Start a fresh client, and see if it can bootstrap from the first one
    * Case 2: Restart the second Da Vinci client to see if it can re-bootstrap from the first one with retained old
    */
-  @Test(timeOut = 2 * TEST_TIMEOUT, dataProviderClass = DataProviderUtils.class, dataProvider = "True-and-False")
-  public void testBlobP2PTransferAmongDVC(boolean batchPushReportEnable) throws Exception {
+  @Test(timeOut = 2 * TEST_TIMEOUT, dataProviderClass = DataProviderUtils.class, dataProvider = "Two-True-and-False")
+  public void testBlobP2PTransferAmongDVC(boolean batchPushReportEnable, Boolean isD2ClientEnabled) throws Exception {
     String dvcPath1 = Utils.getTempDataDirectory().getAbsolutePath();
     String zkHosts = cluster.getZk().getAddress();
     int port1 = TestUtils.getFreePort();
@@ -194,7 +195,8 @@ public class DaVinciClientP2PBlobTransferTest {
         .put(SSL_KEY_PASSWORD, LOCAL_PASSWORD)
         .put(SSL_KEYMANAGER_ALGORITHM, "SunX509")
         .put(SSL_TRUSTMANAGER_ALGORITHM, "SunX509")
-        .put(SSL_SECURE_RANDOM_IMPLEMENTATION, "SHA1PRNG");
+        .put(SSL_SECURE_RANDOM_IMPLEMENTATION, "SHA1PRNG")
+        .put(SERVER_INGESTION_ISOLATION_D2_CLIENT_ENABLED, isD2ClientEnabled);
 
     if (batchPushReportEnable) {
       // if batch push report is enabled, the peer finding expects to query at version level, but it should not affect

@@ -8,6 +8,7 @@ import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_SCAN_INTERVAL_I
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_BATCH_REPORT_END_OF_INCREMENTAL_PUSH_STATUS_ENABLED;
+import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_D2_CLIENT_ENABLED;
 import static com.linkedin.venice.integration.utils.DaVinciTestContext.getCachingDaVinciClientFactory;
 import static com.linkedin.venice.utils.TestUtils.assertCommand;
 import static com.linkedin.venice.utils.TestWriteUtils.STRING_SCHEMA;
@@ -45,6 +46,7 @@ import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClust
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.TestUtils;
@@ -106,8 +108,8 @@ public class TestBatchReportIncrementalPush {
     Utils.closeQuietlyWithErrorLogged(multiRegionMultiClusterWrapper);
   }
 
-  @Test(timeOut = TEST_TIMEOUT_MS)
-  public void testBatchReportIncrementalPush() throws IOException {
+  @Test(timeOut = TEST_TIMEOUT_MS, dataProviderClass = DataProviderUtils.class, dataProvider = "True-and-False")
+  public void testBatchReportIncrementalPush(Boolean isD2ClientEnabled) throws IOException {
     final String storeName = Utils.getUniqueString("inc_push_update_classic_format");
     String parentControllerUrl = parentController.getControllerUrl();
     try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAME, parentControllerUrl)) {
@@ -167,6 +169,7 @@ public class TestBatchReportIncrementalPush {
               .put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 2 * 1024 * 1024L)
               .put(SERVER_BATCH_REPORT_END_OF_INCREMENTAL_PUSH_STATUS_ENABLED, true)
               .put(DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS, 1)
+              .put(SERVER_INGESTION_ISOLATION_D2_CLIENT_ENABLED, isD2ClientEnabled)
               .build();
 
       D2Client d2Client = D2TestUtils.getAndStartD2Client(
