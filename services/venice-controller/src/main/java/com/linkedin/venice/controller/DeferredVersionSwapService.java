@@ -261,7 +261,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
               + "Version swap took {} minutes from push completion to version swap",
           targetVersionNum,
           storeName,
-          totalVersionSwapTimeInMinutes);
+          totalVersionSwapTimeInSeconds);
     }
   }
 
