@@ -117,7 +117,16 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
     Map<String, ControllerClient> controllerClientMap =
         veniceParentHelixAdmin.getVeniceHelixAdmin().getControllerClientMap(clusterName);
     ControllerClient targetRegionControllerClient = controllerClientMap.get(targetRegion);
-    return targetRegionControllerClient.getStore(storeName, CONTROLLER_CLIENT_REQUEST_TIMEOUT);
+    StoreResponse storeResponse = targetRegionControllerClient.getStore(storeName, CONTROLLER_CLIENT_REQUEST_TIMEOUT);
+
+    if (storeResponse.isError()) {
+      String message =
+          "Got error " + storeResponse.getError() + " when fetching targetRegionStore: " + storeResponse.getStore();
+      logMessageIfNotRedundant(message);
+      return null;
+    }
+
+    return storeResponse;
   }
 
   /**
@@ -192,9 +201,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       String storeName,
       int targetVersionNum,
       StoreResponse storeResponse) {
-    if (storeResponse.isError()) {
-      String message = "Got error when fetching targetRegionStore: " + storeResponse.getStore();
-      logMessageIfNotRedundant(message);
+    if (storeResponse == null) {
       return null;
     }
 
@@ -237,8 +244,8 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
     // Update parent version status after roll forward, so we don't check this store version again
     // If push was successful (version status is PUSHED), the parent version is marked as ONLINE
     // if push was successful in some regions (version status is KILLED), the parent version is marked PARTIALLY_ONLINE
-    long totalVersionSwapTimeInMinutes =
-        TimeUnit.MILLISECONDS.toMinutes(LatencyUtils.getElapsedTimeFromMsToMs(targetVersion.getCreatedTime()));
+    long totalVersionSwapTimeInSeconds =
+        TimeUnit.MILLISECONDS.toSeconds(LatencyUtils.getElapsedTimeFromMsToMs(targetVersion.getCreatedTime()));
     if (targetVersion.getStatus() == VersionStatus.KILLED) {
       updateStore(cluster, storeName, PARTIALLY_ONLINE, targetVersionNum);
       LOGGER.info(
@@ -246,7 +253,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
               + "Version swap took {} minutes from push completion to version swap",
           targetVersionNum,
           storeName,
-          totalVersionSwapTimeInMinutes);
+          totalVersionSwapTimeInSeconds);
     } else {
       updateStore(cluster, storeName, ONLINE, targetVersionNum);
       LOGGER.info(
@@ -508,9 +515,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
     }
 
     StoreResponse storeResponse = getStoreForRegion(clusterName, region, parentStore.getName());
-    if (storeResponse.isError()) {
-      String message = "Got error " + storeResponse.getError() + " when fetching store: " + storeResponse.getStore();
-      logMessageIfNotRedundant(message);
+    if (storeResponse == null) {
       return;
     }
 
@@ -616,7 +621,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       VersionStatus finalVersionStatus = rolloutOrder.indexOf(nextEligibleRegion) == 0 ? ERROR : PARTIALLY_ONLINE;
       updateStore(clusterName, parentStore.getName(), finalVersionStatus, targetVersionNum);
       LOGGER.info(
-          "Marking parent version {} as {} as version failed in region: {}",
+          "Updating parent version status to {} as {} as version failed in region: {}",
           kafkaTopicName,
           finalVersionStatus,
           nextEligibleRegion);
@@ -644,9 +649,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       String clusterName,
       String kafkaTopicName) {
     StoreResponse storeResponse = getStoreForRegion(clusterName, previousEligibleRegion, parentStore.getName());
-    if (storeResponse.isError()) {
-      String message = "Got error " + storeResponse.getError() + " when fetching store: " + storeResponse.getStore();
-      logMessageIfNotRedundant(message);
+    if (storeResponse == null) {
       return false;
     }
 
