@@ -13,6 +13,10 @@
       "type": "int"
     },
     {
+      "name": "offset",
+      "type": "long"
+    },
+    {
       "name": "pubSubPosition",
       "type": "bytes"
     },
