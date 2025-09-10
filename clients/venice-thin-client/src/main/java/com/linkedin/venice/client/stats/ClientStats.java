@@ -144,7 +144,7 @@ public class ClientStats extends BasicClientStats {
     appTimedOutRequestSensor = registerSensor("app_timed_out_request", new OccurrenceRate());
 
     appTimedOutRequestResultRatio = MetricEntityStateOneEnum.create(
-        ClientMetricEntity.KEY_TIMEOUT_RATIO.getMetricEntity(),
+        ClientMetricEntity.REQUEST_TIMEOUT_RESULT_RATIO.getMetricEntity(),
         otelRepository,
         this::registerSensorWithDetailedPercentiles,
         APP_TIMED_OUT_REQUEST_RESULT_RATIO,
@@ -153,7 +153,7 @@ public class ClientStats extends BasicClientStats {
         MessageType.class);
 
     clientFutureTimeout = MetricEntityStateBase.create(
-        ClientMetricEntity.CLIENT_TIMEOUT.getMetricEntity(),
+        ClientMetricEntity.CLIENT_FUTURE_TIMEOUT.getMetricEntity(),
         otelRepository,
         this::registerSensor,
         CLIENT_FUTURE_TIMEOUT,

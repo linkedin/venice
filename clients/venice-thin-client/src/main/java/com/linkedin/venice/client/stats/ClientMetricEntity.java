@@ -43,7 +43,7 @@ public enum ClientMetricEntity implements ModuleMetricEntityInterface {
   /**
    * Client request count.
    */
-  CLIENT_TIMEOUT(
+  CLIENT_FUTURE_TIMEOUT(
       MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS, MetricUnit.MILLISECOND, "Client request timeout in milliseconds",
       setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)
   ),
@@ -51,8 +51,9 @@ public enum ClientMetricEntity implements ModuleMetricEntityInterface {
   /**
    * Ratio of timed out keys to total keys in the request.
    */
-  KEY_TIMEOUT_RATIO(
-      MetricType.HISTOGRAM, MetricUnit.NUMBER, "Ratio of timed out keys to total keys in the request",
+  REQUEST_TIMEOUT_RESULT_RATIO(
+      "request.timeout_result_ratio", MetricType.HISTOGRAM, MetricUnit.NUMBER,
+      "Ratio of timed out keys to total keys in the request",
       setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD, VENICE_MESSAGE_TYPE)
   );
 
@@ -64,6 +65,15 @@ public enum ClientMetricEntity implements ModuleMetricEntityInterface {
       String description,
       Set<VeniceMetricsDimensions> dimensions) {
     this.entity = new MetricEntity(this.name().toLowerCase(), metricType, unit, description, dimensions);
+  }
+
+  ClientMetricEntity(
+      String name,
+      MetricType metricType,
+      MetricUnit unit,
+      String description,
+      Set<VeniceMetricsDimensions> dimensions) {
+    this.entity = new MetricEntity(name, metricType, unit, description, dimensions);
   }
 
   @Override

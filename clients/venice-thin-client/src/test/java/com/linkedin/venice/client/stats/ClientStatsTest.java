@@ -55,7 +55,7 @@ public class ClientStatsTest {
         1,
         ratio,
         expectedAttr,
-        ClientMetricEntity.KEY_TIMEOUT_RATIO.getMetricEntity().getMetricName(),
+        ClientMetricEntity.REQUEST_TIMEOUT_RESULT_RATIO.getMetricEntity().getMetricName(),
         THIN_CLIENT.getMetricsPrefix());
   }
 
@@ -87,7 +87,7 @@ public class ClientStatsTest {
         1,
         timeout,
         expectedAttr,
-        ClientMetricEntity.CLIENT_TIMEOUT.getMetricEntity().getMetricName(),
+        ClientMetricEntity.CLIENT_FUTURE_TIMEOUT.getMetricEntity().getMetricName(),
         THIN_CLIENT.getMetricsPrefix());
   }
 

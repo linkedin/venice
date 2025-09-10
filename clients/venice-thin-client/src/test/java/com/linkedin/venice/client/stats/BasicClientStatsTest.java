@@ -425,17 +425,17 @@ public class BasicClientStatsTest {
                 VENICE_MESSAGE_TYPE,
                 VENICE_RESPONSE_STATUS_CODE_CATEGORY)));
     expectedMetrics.put(
-        ClientMetricEntity.CLIENT_TIMEOUT,
+        ClientMetricEntity.CLIENT_FUTURE_TIMEOUT,
         new MetricEntity(
-            "client_timeout",
+            "client_future_timeout",
             MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS,
             MetricUnit.MILLISECOND,
             "Client request timeout in milliseconds",
             Utils.setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)));
     expectedMetrics.put(
-        ClientMetricEntity.KEY_TIMEOUT_RATIO,
+        ClientMetricEntity.REQUEST_TIMEOUT_RESULT_RATIO,
         new MetricEntity(
-            "key_timeout_ratio",
+            "request.timeout_result_ratio",
             MetricType.HISTOGRAM,
             MetricUnit.NUMBER,
             "Ratio of timed out keys to total keys in the request",
