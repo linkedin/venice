@@ -10,7 +10,6 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.memory.ClassSizeEstimator;
 import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
 import com.linkedin.venice.pubsub.PubSubPositionFactory;
-import com.linkedin.venice.pubsub.PubSubUtil;
 import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubPositionWireFormat;
@@ -104,7 +103,7 @@ public class VeniceChangeCoordinateSerializationTest {
     // Verify core fields are preserved
     assertEquals(deserializedCoordinate.getTopic(), TEST_TOPIC);
     assertEquals(deserializedCoordinate.getPartition(), TEST_PARTITION);
-    assertEquals(PubSubUtil.comparePubSubPositions(deserializedCoordinate.getPosition(), testPosition), 0);
+    assertEquals(deserializedCoordinate.getPosition(), testPosition);
   }
 
   @Test
@@ -139,7 +138,7 @@ public class VeniceChangeCoordinateSerializationTest {
     assertEquals(deserializedCoordinate.getTopic(), TEST_TOPIC);
     assertEquals(deserializedCoordinate.getPartition(), TEST_PARTITION);
     assertTrue(deserializedCoordinate.getPosition() instanceof CustomTestPosition);
-    assertEquals(PubSubUtil.comparePubSubPositions(deserializedCoordinate.getPosition(), customPosition), 0);
+    assertEquals(deserializedCoordinate.getPosition(), customPosition);
   }
 
   @Test
@@ -339,8 +338,7 @@ public class VeniceChangeCoordinateSerializationTest {
   private void assertCoordinatesEqual(VeniceChangeCoordinate expected, VeniceChangeCoordinate actual) {
     assertEquals(actual.getTopic(), expected.getTopic());
     assertEquals(actual.getPartition(), expected.getPartition());
-    assertEquals(PubSubUtil.comparePubSubPositions(actual.getPosition(), expected.getPosition()), 0);
-    assertEquals(actual.getPosition().getClass(), expected.getPosition().getClass());
+    assertEquals(actual.getPosition(), expected.getPosition());
   }
 
   /**
