@@ -119,6 +119,10 @@ public enum Arg {
   ),
   VENICE_CLIENT_SSL_CONFIG_FILE(
       "venice-client-ssl-config-file", "vcsc", true, "Configuration file for querying key in Venice client through SSL."
+  ),
+  STARTING_POSITION(
+      "starting_position", "sp", true,
+      "Starting <typeId:base64EncodedPositionBytes> when dumping admin messages, inclusive"
   ), STARTING_OFFSET("starting_offset", "so", true, "Starting offset when dumping admin messages, inclusive"),
   MESSAGE_COUNT("message_count", "mc", true, "Max message count when dumping admin messages"),
   PARENT_DIRECTORY(

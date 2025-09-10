@@ -77,11 +77,13 @@ import com.linkedin.venice.offsets.OffsetManager;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeader;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeaders;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
+import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;
@@ -289,6 +291,63 @@ public class AdminConsumptionTaskTest {
   }
 
   @Test(timeOut = TIMEOUT)
+  public void testSubscribeUsesLocalPositionWhenRemoteDisabled() throws Exception {
+    // Arrange: write admin metadata with only local position set
+    AdminMetadata adminMetadata = new AdminMetadata();
+    adminMetadata.setPubSubPosition(ApacheKafkaOffsetPosition.of(10L));
+    adminMetadata.setUpstreamPubSubPosition(PubSubSymbolicPosition.EARLIEST);
+    adminMetadata.setExecutionId(1L);
+    adminTopicMetadataAccessor.updateMetadata(clusterName, adminMetadata);
+
+    AdminConsumptionStats stats = mock(AdminConsumptionStats.class);
+    AdminConsumptionTask task = getAdminConsumptionTask(new RandomPollStrategy(), true, stats, 0, false, null, 3);
+
+    // Act
+    executor.submit(task);
+
+    // Assert: subscribe called with local position (offset 10)
+    ArgumentCaptor<PubSubPosition> posCaptor = ArgumentCaptor.forClass(PubSubPosition.class);
+    verify(mockKafkaConsumer, timeout(TIMEOUT)).subscribe(any(), posCaptor.capture());
+    Assert.assertEquals(posCaptor.getValue().getNumericOffset(), 10L, "Should subscribe from local checkpoint");
+
+    task.close();
+    executor.shutdown();
+    executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
+  }
+
+  @Test(timeOut = TIMEOUT)
+  public void testSubscribeUsesUpstreamPositionWhenRemoteEnabled() throws Exception {
+    // Arrange: write admin metadata with upstream position set
+    AdminMetadata adminMetadata = new AdminMetadata();
+    adminMetadata.setPubSubPosition(PubSubSymbolicPosition.EARLIEST);
+    adminMetadata.setUpstreamPubSubPosition(ApacheKafkaOffsetPosition.of(20L));
+    adminMetadata.setExecutionId(2L);
+    adminTopicMetadataAccessor.updateMetadata(clusterName, adminMetadata);
+
+    AdminConsumptionStats stats = mock(AdminConsumptionStats.class);
+    // Provide a remote topic manager for remote mode
+    TopicManager remoteTopicManager = mock(TopicManager.class);
+    doReturn(remoteTopicManager).when(admin).getTopicManager("remote.pubsub");
+    doReturn(true).when(remoteTopicManager)
+        .containsTopicAndAllPartitionsAreOnline(pubSubTopicRepository.getTopic(topicName));
+
+    AdminConsumptionTask task =
+        getAdminConsumptionTask(new RandomPollStrategy(), true, stats, 0, true, "remote.pubsub", 3);
+
+    // Act
+    executor.submit(task);
+
+    // Assert: subscribe called with upstream position (offset 20)
+    ArgumentCaptor<PubSubPosition> posCaptor = ArgumentCaptor.forClass(PubSubPosition.class);
+    verify(mockKafkaConsumer, timeout(TIMEOUT)).subscribe(any(), posCaptor.capture());
+    Assert.assertEquals(posCaptor.getValue().getNumericOffset(), 20L, "Should subscribe from upstream checkpoint");
+
+    task.close();
+    executor.shutdown();
+    executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
+  }
+
+  @Test(timeOut = TIMEOUT)
   public void testRunWhenNotLeaderController() throws IOException, InterruptedException {
     // Update admin to be a follower controller
     doReturn(false).when(admin).isLeaderControllerFor(clusterName);
@@ -296,7 +355,8 @@ public class AdminConsumptionTaskTest {
     AdminConsumptionTask task = getAdminConsumptionTask(new RandomPollStrategy(), false);
     executor.submit(task);
     verify(admin, timeout(TIMEOUT).atLeastOnce()).isLeaderControllerFor(clusterName);
-    verify(mockKafkaConsumer, never()).subscribe(any(), anyLong());
+    verify(mockKafkaConsumer, never()).subscribe(any(), any());
+    verify(mockKafkaConsumer, never()).subscribe(any(), any(), anyBoolean()); // cover both variations
     task.close();
     executor.shutdown();
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);

@@ -11,6 +11,7 @@ import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.QueryAction;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.LogContext;
@@ -21,6 +22,7 @@ import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -292,22 +294,45 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
       return false;
     }
 
-    // This will delete backup versions which satisfy any of the following conditions
-    // 1. If the current version is from repush, delete the repush source backup version
-    // 2. Current version is from a repush, but still a lingering version older than retention period.
-    // 3. Current version is not repush and is older than retention, delete any versions < current version.
-    int repushSourceVersion = store.getVersionOrThrow(currentVersion).getRepushSourceVersion();
+    // First, consider any versions that can be deleted (invalid status: error or killed) and are not in use
     List<Version> readyToBeRemovedVersions = versions.stream()
-        .filter(
-            v -> repushSourceVersion > NON_EXISTING_VERSION
-                ? (v.getNumber() == repushSourceVersion || v.getNumber() < currentVersion
-                    && v.getCreatedTime() + defaultBackupVersionRetentionMs < time.getMilliseconds())
-                : v.getNumber() < currentVersion)
+        .filter(v -> v.getNumber() < currentVersion && VersionStatus.canDelete(v.getStatus()))
         .collect(Collectors.toList());
 
+    // This will delete backup versions which satisfy any of the following conditions
+    // 1. Current version is from a repush, the version is from the chain of repushes into current version.
+    // 2. Current version is from a repush, but still a lingering version older than retention period.
+    // 3. Current version is not repush and is older than retention, delete any versions < current version.
     if (readyToBeRemovedVersions.isEmpty()) {
-      return false;
+      long retentionThreshold = store.getLatestVersionPromoteToCurrentTimestamp() + defaultBackupVersionRetentionMs;
+      int repushSourceVersion = store.getVersionOrThrow(currentVersion).getRepushSourceVersion();
+      boolean isCurrentVersionRepushed = repushSourceVersion > NON_EXISTING_VERSION;
+      boolean pastRetention = time.getMilliseconds() > retentionThreshold;
+      HashSet<Integer> repushChainVersions = new HashSet<>(); // all versions repushed into the current version
+      readyToBeRemovedVersions = versions.stream()
+          .sorted((v1, v2) -> Integer.compare(v2.getNumber(), v1.getNumber())) // sort in descending order
+          .filter(v -> {
+            if (!isCurrentVersionRepushed) {
+              return v.getNumber() < currentVersion;
+            }
+            repushChainVersions.add(v.getRepushSourceVersion()); // descending order, so source can only appear later
+            return v.getNumber() < currentVersion && (repushChainVersions.contains(v.getNumber()) || pastRetention);
+          })
+          .collect(Collectors.toList());
+
+      if (readyToBeRemovedVersions.isEmpty()) {
+        return false;
+      }
+
+      // Keep at least 1 backup version until we are past the retention period.
+      if (isCurrentVersionRepushed && readyToBeRemovedVersions.size() >= versions.size() - 1 && !pastRetention) {
+        readyToBeRemovedVersions.remove(0); // choose the newest version
+        if (readyToBeRemovedVersions.isEmpty()) {
+          return false;
+        }
+      }
     }
+
     String storeName = store.getName();
     LOGGER.info(
         "Started removing backup versions according to retention policy for store: {} in cluster: {}",

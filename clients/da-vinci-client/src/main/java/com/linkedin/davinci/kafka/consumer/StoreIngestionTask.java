@@ -887,9 +887,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
          * chances to serve traffic; forced kill all resources in this push.
          * N.B.: if we start seeing alerts from forced killed resource, consider whether we should keep those alerts
          *       if they are useful, or refactor them.
+         * We close Venice writers and Venice view writers after close() to avoid reporting ingestion errors as close()
+         * will set the isRunning to false.
          */
-        closeVeniceWriters(false);
         close();
+        closeVeniceWriters(false);
+        closeVeniceViewWriters(false);
       }
     }
   }
@@ -1829,7 +1832,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     String errorType = e.getClass().getSimpleName();
     LOGGER.error("Ingestion failed for {} due to {}. Will propagate to reporters.", ingestionTaskName, errorType, e);
     reportError(partitionConsumptionStateMap.values(), errorPartitionId, "Caught Exception during ingestion.", e);
-    hostLevelIngestionStats.recordIngestionFailure();
+    if (isRunning.get()) {
+      hostLevelIngestionStats.recordIngestionFailure();
+    }
   }
 
   private void handleIngestionThrowable(Throwable t) {
@@ -1840,7 +1845,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         errorPartitionId,
         "Caught non-exception Throwable during ingestion.",
         new VeniceException(t));
-    hostLevelIngestionStats.recordIngestionFailure();
   }
 
   private void reportError(

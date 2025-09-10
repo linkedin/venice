@@ -26,6 +26,7 @@ import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
+import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.manager.TopicManager;
@@ -137,7 +138,7 @@ public class VeniceWriterTest {
             .setIsOffsetCollectionEnabled(false)
             .build())) {
       PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(pubSubTopic, 0);
-      consumer.subscribe(pubSubTopicPartition, -1);
+      consumer.subscribe(pubSubTopicPartition, PubSubSymbolicPosition.EARLIEST, false);
       int lastSeenSequenceNumber = -1;
       int lastSeenSegmentNumber = -1;
       Map<PubSubTopicPartition, List<DefaultPubSubMessage>> messages;

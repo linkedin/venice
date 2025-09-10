@@ -4,6 +4,7 @@ import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_CONSUMER_API_DEF
 
 import com.linkedin.venice.pubsub.PubSubConstants;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
+import com.linkedin.venice.pubsub.PubSubUtil;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubClientException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubClientRetriableException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;
@@ -38,7 +39,10 @@ public interface PubSubConsumerAdapter extends AutoCloseable, Closeable {
    * @throws IllegalArgumentException If the topic-partition is null or if the partition number is negative.
    * @throws PubSubTopicDoesNotExistException If the topic does not exist.
    */
-  void subscribe(PubSubTopicPartition pubSubTopicPartition, long lastReadOffset);
+  @Deprecated
+  default void subscribe(PubSubTopicPartition pubSubTopicPartition, long lastReadOffset) {
+    subscribe(pubSubTopicPartition, PubSubUtil.fromKafkaOffset(lastReadOffset));
+  }
 
   /**
    * Subscribes to a specified topic-partition if it is not already subscribed. If the topic-partition is
