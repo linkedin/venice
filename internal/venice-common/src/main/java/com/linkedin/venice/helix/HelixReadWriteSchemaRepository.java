@@ -159,35 +159,7 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
     Collection<SchemaEntry> valueSchemas = getValueSchemas(storeName);
     SchemaEntry valueSchemaEntry = new SchemaEntry(SchemaData.INVALID_VALUE_SCHEMA_ID, valueSchemaStr);
 
-    return getValueSchemaIdCanonicalMatch(valueSchemas, valueSchemaEntry);
-  }
-
-  private int getValueSchemaIdCanonicalMatch(Collection<SchemaEntry> valueSchemas, SchemaEntry valueSchemaEntry) {
-    List<SchemaEntry> canonicalizedMatches = AvroSchemaUtils.filterCanonicalizedSchemas(valueSchemaEntry, valueSchemas);
-    int schemaId = SchemaData.INVALID_VALUE_SCHEMA_ID;
-    if (!canonicalizedMatches.isEmpty()) {
-      if (canonicalizedMatches.size() == 1) {
-        schemaId = canonicalizedMatches.iterator().next().getId();
-      } else {
-        List<SchemaEntry> exactMatches = AvroSchemaUtils.filterSchemas(valueSchemaEntry, canonicalizedMatches);
-        if (exactMatches.isEmpty()) {
-          schemaId = getSchemaEntryWithLargestId(canonicalizedMatches).getId();
-        } else {
-          schemaId = getSchemaEntryWithLargestId(exactMatches).getId();
-        }
-      }
-    }
-    return schemaId;
-  }
-
-  private SchemaEntry getSchemaEntryWithLargestId(Collection<SchemaEntry> schemas) {
-    SchemaEntry largestIdSchema = schemas.iterator().next();
-    for (SchemaEntry schema: schemas) {
-      if (schema.getId() > largestIdSchema.getId()) {
-        largestIdSchema = schema;
-      }
-    }
-    return largestIdSchema;
+    return AvroSchemaUtils.getSchemaIdCanonicalMatch(valueSchemas, valueSchemaEntry);
   }
 
   /**
