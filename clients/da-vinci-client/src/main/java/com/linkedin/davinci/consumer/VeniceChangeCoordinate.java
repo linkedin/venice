@@ -3,9 +3,10 @@ package com.linkedin.davinci.consumer;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
-import com.linkedin.venice.pubsub.PubSubUtil;
+import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubPositionWireFormat;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.Utils;
 import java.io.ByteArrayInputStream;
@@ -212,13 +213,16 @@ public class VeniceChangeCoordinate implements Externalizable {
   }
 
   /**
-   * @param other the other position to compare to
-   * @return returns 0 if the positions are equal,
-   *         -1 if this position is less than the other position,
-   *          and 1 if this position is greater than the other position.
-   *          You should only compare positions from the same partition and consumer instance.
+   * @param pubSubConsumer
+   * @param topicPartition
+   * @param other          the other position to compare to
+   * @return returns the signed difference between the position of this coordinate and that of the other coordinate.
+   * You should only compare positions from the same partition and consumer instance.
    */
-  public int comparePosition(VeniceChangeCoordinate other) {
+  public long comparePosition(
+      PubSubConsumerAdapter pubSubConsumer,
+      PubSubTopicPartition topicPartition,
+      VeniceChangeCoordinate other) {
     if (!Objects.equals(other.partition, partition)) {
       throw new VeniceException("Coordinates from different partitions are not comparable!");
     }
@@ -231,7 +235,7 @@ public class VeniceChangeCoordinate implements Externalizable {
       // but it DOESNT account for version rollbacks. This should be removed once consumer sequence id is everywhere.
       return topic.compareTo(other.topic);
     }
-    return PubSubUtil.comparePubSubPositions(pubSubPosition, other.pubSubPosition);
+    return pubSubConsumer.positionDifference(topicPartition, pubSubPosition, other.pubSubPosition);
   }
 
   // These methods contain 'need to know' information and expose underlying details.
