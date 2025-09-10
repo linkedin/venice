@@ -2284,7 +2284,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
 
     /*
-     * Global RT DIV messages should be validated.
+     * Global RT DIV messages should only be from VT, but these VT messages need to be validated in the section below
      * These messages will be contributed towards the segments in VeniceWriter when the Global RT DIV is produced to RT
      * Either skip validation + skip adding to segments in both locations or keep in both, and we're keeping for now
      */
@@ -3421,11 +3421,15 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     readGlobalRtDivState(keyBytes, schemaId, topicPartition, valueManifestContainer);
 
     // TODO: remove. this is a temporary log for debugging while the feature is in its infancy
-    LOGGER.info(
-        "event=globalRtDiv Sending Global RT DIV message for topic-partition: {} broker: {} valueSize: {}",
-        topicPartition,
-        brokerUrl,
-        valueBytes.length);
+    rtDivPartitionStates.forEach((producer, pps) -> {
+      LOGGER.info(
+          "event=globalRtDiv Sending Global RT DIV message for topic-partition: {} broker: {} producer: {}, valueSize: {} pps: {}",
+          topicPartition,
+          brokerUrl,
+          producer,
+          valueBytes.length,
+          pps);
+    });
 
     // Produce to local VT for the Global RT DIV + latest RT position (GlobalRtDivState)
     // Internally, VeniceWriter.put() will schedule DELETEs for the old chunks in the old manifest after the new PUTs
