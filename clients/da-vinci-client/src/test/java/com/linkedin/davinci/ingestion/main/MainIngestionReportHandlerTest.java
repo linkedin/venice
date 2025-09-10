@@ -25,6 +25,7 @@ import io.netty.handler.codec.http.HttpResponse;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpVersion;
 import io.tehuti.metrics.MetricsRepository;
+import java.nio.ByteBuffer;
 import java.util.Collections;
 import java.util.HashMap;
 import org.apache.logging.log4j.LogManager;
@@ -78,6 +79,7 @@ public class MainIngestionReportHandlerTest {
     ingestionTaskReport.topicName = "topic";
     ingestionTaskReport.partitionId = 0;
     ingestionTaskReport.message = "";
+    ingestionTaskReport.pubSubPosition = ByteBuffer.allocate(0);
 
     FullHttpRequest msg = new DefaultFullHttpRequest(
         HttpVersion.HTTP_1_1,
