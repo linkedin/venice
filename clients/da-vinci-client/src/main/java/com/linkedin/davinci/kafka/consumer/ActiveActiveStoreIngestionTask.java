@@ -773,8 +773,10 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       // offsets went backwards, raise an alert!
       hostLevelIngestionStats.recordOffsetRegressionDCRError();
       aggVersionedIngestionStats.recordOffsetRegressionDCRError(storeName, versionNumber);
-      LOGGER
-          .error("Offset vector found to have gone backwards!! New invalid replication metadata result: {}", rmdRecord);
+      LOGGER.error(
+          "Offset vector found to have gone backwards for {}!! New invalid replication metadata result: {}",
+          storeVersionName,
+          rmdRecord);
     }
 
     // TODO: This comparison doesn't work well for write compute+schema evolution (can spike up). VENG-8129
@@ -788,7 +790,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         hostLevelIngestionStats.recordTimestampRegressionDCRError();
         aggVersionedIngestionStats.recordTimestampRegressionDCRError(storeName, versionNumber);
         LOGGER.error(
-            "Timestamp found to have gone backwards!! Invalid replication metadata result: {}",
+            "Timestamp found to have gone backwards for {}!! Invalid replication metadata result: {}",
+            storeVersionName,
             mergeConflictResult.getRmdRecord());
       }
     }

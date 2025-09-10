@@ -77,11 +77,13 @@ import com.linkedin.venice.offsets.OffsetManager;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeader;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeaders;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
+import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;
@@ -289,6 +291,63 @@ public class AdminConsumptionTaskTest {
   }
 
   @Test(timeOut = TIMEOUT)
+  public void testSubscribeUsesLocalPositionWhenRemoteDisabled() throws Exception {
+    // Arrange: write admin metadata with only local position set
+    AdminMetadata adminMetadata = new AdminMetadata();
+    adminMetadata.setPubSubPosition(ApacheKafkaOffsetPosition.of(10L));
+    adminMetadata.setUpstreamPubSubPosition(PubSubSymbolicPosition.EARLIEST);
+    adminMetadata.setExecutionId(1L);
+    adminTopicMetadataAccessor.updateMetadata(clusterName, adminMetadata);
+
+    AdminConsumptionStats stats = mock(AdminConsumptionStats.class);
+    AdminConsumptionTask task = getAdminConsumptionTask(new RandomPollStrategy(), true, stats, 0, false, null, 3);
+
+    // Act
+    executor.submit(task);
+
+    // Assert: subscribe called with local position (offset 10)
+    ArgumentCaptor<PubSubPosition> posCaptor = ArgumentCaptor.forClass(PubSubPosition.class);
+    verify(mockKafkaConsumer, timeout(TIMEOUT)).subscribe(any(), posCaptor.capture());
+    Assert.assertEquals(posCaptor.getValue().getNumericOffset(), 10L, "Should subscribe from local checkpoint");
+
+    task.close();
+    executor.shutdown();
+    executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
+  }
+
+  @Test(timeOut = TIMEOUT)
+  public void testSubscribeUsesUpstreamPositionWhenRemoteEnabled() throws Exception {
+    // Arrange: write admin metadata with upstream position set
+    AdminMetadata adminMetadata = new AdminMetadata();
+    adminMetadata.setPubSubPosition(PubSubSymbolicPosition.EARLIEST);
+    adminMetadata.setUpstreamPubSubPosition(ApacheKafkaOffsetPosition.of(20L));
+    adminMetadata.setExecutionId(2L);
+    adminTopicMetadataAccessor.updateMetadata(clusterName, adminMetadata);
+
+    AdminConsumptionStats stats = mock(AdminConsumptionStats.class);
+    // Provide a remote topic manager for remote mode
+    TopicManager remoteTopicManager = mock(TopicManager.class);
+    doReturn(remoteTopicManager).when(admin).getTopicManager("remote.pubsub");
+    doReturn(true).when(remoteTopicManager)
+        .containsTopicAndAllPartitionsAreOnline(pubSubTopicRepository.getTopic(topicName));
+
+    AdminConsumptionTask task =
+        getAdminConsumptionTask(new RandomPollStrategy(), true, stats, 0, true, "remote.pubsub", 3);
+
+    // Act
+    executor.submit(task);
+
+    // Assert: subscribe called with upstream position (offset 20)
+    ArgumentCaptor<PubSubPosition> posCaptor = ArgumentCaptor.forClass(PubSubPosition.class);
+    verify(mockKafkaConsumer, timeout(TIMEOUT)).subscribe(any(), posCaptor.capture());
+    Assert.assertEquals(posCaptor.getValue().getNumericOffset(), 20L, "Should subscribe from upstream checkpoint");
+
+    task.close();
+    executor.shutdown();
+    executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
+  }
+
+  @Test(timeOut = TIMEOUT)
   public void testRunWhenNotLeaderController() throws IOException, InterruptedException {
     // Update admin to be a follower controller
     doReturn(false).when(admin).isLeaderControllerFor(clusterName);
@@ -296,7 +355,8 @@ public class AdminConsumptionTaskTest {
     AdminConsumptionTask task = getAdminConsumptionTask(new RandomPollStrategy(), false);
     executor.submit(task);
     verify(admin, timeout(TIMEOUT).atLeastOnce()).isLeaderControllerFor(clusterName);
-    verify(mockKafkaConsumer, never()).subscribe(any(), anyLong());
+    verify(mockKafkaConsumer, never()).subscribe(any(), any());
+    verify(mockKafkaConsumer, never()).subscribe(any(), any(), anyBoolean()); // cover both variations
     task.close();
     executor.shutdown();
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
@@ -519,6 +579,38 @@ public class AdminConsumptionTaskTest {
   }
 
   @Test(timeOut = TIMEOUT)
+  public void testSkipMessageCommandWithExecutionId() throws IOException, InterruptedException {
+    veniceWriter.put(
+        emptyKeyBytes,
+        getStoreCreationMessage(clusterName, storeName, owner, keySchema, valueSchema, 1),
+        AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+    // The store doesn't exist
+    doReturn(false).when(admin).hasStore(clusterName, storeName);
+    doThrow(new VeniceException("Mock store creation exception")).when(admin)
+        .createStore(clusterName, storeName, owner, keySchema, valueSchema, false);
+
+    AdminConsumptionTask task = getAdminConsumptionTask(new RandomPollStrategy(), false);
+    executor.submit(task);
+    TestUtils.waitForNonDeterministicCompletion(5, TimeUnit.SECONDS, () -> {
+      try {
+        task.skipMessageWithExecutionId(1L); // won't accept skip command until task has failed on this execution id.
+      } catch (VeniceException e) {
+        return false;
+      }
+      return true;
+    });
+
+    // admin throws errors, so record offset means we skipped the message
+    TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
+      Assert.assertEquals(getLastExecutionId(clusterName), 1L);
+    });
+
+    task.close();
+    executor.shutdown();
+    executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
+  }
+
+  @Test(timeOut = TIMEOUT)
   public void testRunWithDuplicateMessagesWithSameOffset() throws Exception {
     PubSubProduceResult killJobMetadata =
         (PubSubProduceResult) veniceWriter
@@ -627,6 +719,77 @@ public class AdminConsumptionTaskTest {
     verify(admin, never()).createStore(clusterName, storeName2, owner, keySchema, valueSchema, false);
     verify(admin, never()).createStore(clusterName, storeName3, owner, keySchema, valueSchema, false);
     Assert.assertEquals(getLastExecutionId(clusterName), 1L);
+  }
+
+  @Test(timeOut = TIMEOUT)
+  public void testRunWithMissingMessagesThenSkipByExecutionId() throws Exception {
+    String storeName1 = "test_store1";
+    String storeName2 = "test_store2";
+    String storeName3 = "test_store3";
+    InMemoryPubSubPosition offset1 = getPosition(
+        veniceWriter.put(
+            emptyKeyBytes,
+            getStoreCreationMessage(clusterName, storeName1, owner, keySchema, valueSchema, 1),
+            AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION));
+    System.out.println("Offset for store creation message 1: " + offset1);
+    long executionIdToSkip = 2;
+    InMemoryPubSubPosition offsetToSkip = getPosition(
+        veniceWriter.put(
+            emptyKeyBytes,
+            getStoreCreationMessage(clusterName, storeName2, owner, keySchema, valueSchema, executionIdToSkip),
+            AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION));
+    InMemoryPubSubPosition offset3 = getPosition(
+        veniceWriter.put(
+            emptyKeyBytes,
+            getStoreCreationMessage(clusterName, storeName3, owner, keySchema, valueSchema, 3),
+            AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION));
+    System.out.println("Offset for store creation message 3: " + offset3);
+
+    Set<MockInMemoryPartitionPosition> topicPartitionOffsetsToFilterOut = new HashSet<>();
+    topicPartitionOffsetsToFilterOut.add(
+        new MockInMemoryPartitionPosition(
+            new PubSubTopicPartitionImpl(
+                pubSubTopicRepository.getTopic(topicName),
+                AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID),
+            offsetToSkip.getPreviousPosition()));
+    PollStrategy pollStrategy =
+        new FilteringPollStrategy(new RandomPollStrategy(false), topicPartitionOffsetsToFilterOut);
+
+    // The stores don't exist
+    doReturn(false).when(admin).hasStore(clusterName, storeName1);
+    doReturn(false).when(admin).hasStore(clusterName, storeName2);
+    doReturn(false).when(admin).hasStore(clusterName, storeName3);
+
+    AdminConsumptionStats stats = mock(AdminConsumptionStats.class);
+
+    AdminConsumptionTask task = getAdminConsumptionTask(pollStrategy, false, stats, 10000);
+    executor.submit(task);
+    TestUtils.waitForNonDeterministicAssertion(
+        TIMEOUT,
+        TimeUnit.MILLISECONDS,
+        () -> Assert.assertEquals(getLastExecutionId(clusterName), 1L));
+    TestUtils.waitForNonDeterministicAssertion(
+        TIMEOUT,
+        TimeUnit.MILLISECONDS,
+        () -> Assert.assertEquals(task.getFailingExecutionId(), 3L));
+
+    task.skipMessageWithExecutionId(3L);
+
+    TestUtils.waitForNonDeterministicAssertion(
+        TIMEOUT,
+        TimeUnit.MILLISECONDS,
+        () -> Assert.assertEquals(getLastExecutionId(clusterName), 3L));
+    task.close();
+    executor.shutdownNow();
+    executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
+    verify(stats, atLeastOnce()).recordAdminTopicDIVErrorReportCount();
+    verify(admin, atLeastOnce()).isLeaderControllerFor(clusterName);
+    verify(mockKafkaConsumer, times(1)).subscribe(any(), any(PubSubPosition.class));
+    verify(mockKafkaConsumer, times(1)).unSubscribe(any());
+    verify(admin, times(1)).createStore(clusterName, storeName1, owner, keySchema, valueSchema, false);
+    verify(admin, never()).createStore(clusterName, storeName2, owner, keySchema, valueSchema, false);
+    verify(admin, never()).createStore(clusterName, storeName3, owner, keySchema, valueSchema, false);
+    Assert.assertEquals(getLastExecutionId(clusterName), 3L);
   }
 
   @Test(timeOut = TIMEOUT)
@@ -1330,6 +1493,66 @@ public class AdminConsumptionTaskTest {
         () -> Assert.assertEquals(task.getFailingPosition().getNumericOffset(), offset));
     // Skip the DIV check, make sure the sequence number is updated and new admin messages can also be processed
     task.skipMessageDIVWithOffset(offset);
+    TestUtils.waitForNonDeterministicAssertion(
+        TIMEOUT,
+        TimeUnit.MILLISECONDS,
+        () -> Assert.assertEquals(getLastExecutionId(clusterName), 5L));
+    task.close();
+    executor.shutdown();
+    executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
+  }
+
+  @Test(timeOut = TIMEOUT)
+  public void testSkipDIVWithExecutionId()
+      throws InterruptedException, ExecutionException, TimeoutException, IOException {
+    // Let the admin consumption task process some admin messages
+    veniceWriter.put(
+        emptyKeyBytes,
+        getStoreCreationMessage(clusterName, storeName, owner, keySchema, valueSchema, 1L),
+        AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+    veniceWriter.put(
+        emptyKeyBytes,
+        getKillOfflinePushJobMessage(clusterName, storeTopicName, 2L),
+        AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+    veniceWriter.put(
+        emptyKeyBytes,
+        getKillOfflinePushJobMessage(clusterName, storeTopicName, 3L),
+        AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+    // New admin messages should fail with DIV error
+    Future<PubSubProduceResult> future = veniceWriter.put(
+        emptyKeyBytes,
+        getKillOfflinePushJobMessage(clusterName, storeTopicName, 4L),
+        AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+    long offset = future.get(TIMEOUT, TimeUnit.MILLISECONDS).getOffset();
+    veniceWriter.put(
+        emptyKeyBytes,
+        getKillOfflinePushJobMessage(clusterName, storeTopicName, 5L),
+        AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+    // We need to actually create a gap in producer metadata too in order to craft a valid DIV exception.
+    Set<MockInMemoryPartitionPosition> set = new HashSet<>();
+    set.add(
+        new MockInMemoryPartitionPosition(
+            new PubSubTopicPartitionImpl(
+                pubSubTopicRepository.getTopic(topicName),
+                AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID),
+            InMemoryPubSubPosition.of(2)));
+    PollStrategy pollStrategy = new FilteringPollStrategy(new RandomPollStrategy(false), set);
+    AdminConsumptionTask task = getAdminConsumptionTask(pollStrategy, false);
+
+    executor.submit(task);
+
+    TestUtils.waitForNonDeterministicAssertion(
+        TIMEOUT,
+        TimeUnit.MILLISECONDS,
+        () -> Assert.assertEquals(getLastExecutionId(clusterName), 2L));
+    TestUtils.waitForNonDeterministicAssertion(
+        TIMEOUT,
+        TimeUnit.MILLISECONDS,
+        () -> Assert.assertEquals(task.getFailingPosition().getNumericOffset(), offset));
+
+    // Skip the DIV check, make sure the sequence number is updated and new admin messages can also be processed
+    task.skipMessageDIVWithExecutionId(4L);
+
     TestUtils.waitForNonDeterministicAssertion(
         TIMEOUT,
         TimeUnit.MILLISECONDS,

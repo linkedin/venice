@@ -13,6 +13,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_BROKER_
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_SOURCE_COMPRESSION_STRATEGY;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.RMD_SCHEMA_DIR;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.RMD_SCHEMA_ID_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.RMD_SCHEMA_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.STORAGE_QUOTA_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TELEMETRY_MESSAGE_INTERVAL;
@@ -23,6 +24,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.VALUE_SCHEMA_ID_PRO
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.annotation.NotThreadsafe;
+import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.compression.VeniceCompressor;
@@ -150,6 +152,11 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
           if (rmdPayload.remaining() == 0) {
             throw new VeniceException("Found empty replication metadata");
           }
+
+          if (rmdVersionId <= 0) {
+            throw new VeniceException("Found replication metadata without a valid schema id");
+          }
+
           if (valueBytes == null) {
             DeleteMetadata deleteMetadata = new DeleteMetadata(valueSchemaId, rmdVersionId, rmdPayload);
             writer.delete(keyBytes, callback, deleteMetadata);
@@ -165,7 +172,8 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
       };
     }
 
-    private Consumer<AbstractVeniceWriter<byte[], byte[], byte[]>> getConsumer() {
+    @VisibleForTesting
+    Consumer<AbstractVeniceWriter<byte[], byte[], byte[]>> getConsumer() {
       return consumer;
     }
 
@@ -194,6 +202,8 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
   private VeniceWriter<byte[], byte[], byte[]> mainWriter = null;
   private ComplexVeniceWriter[] childWriters = null;
   private int valueSchemaId = -1;
+
+  private int rmdSchemaId = -1;
   private Schema rmdSchema = null;
   private int derivedValueSchemaId = -1;
   private boolean enableWriteCompute = false;
@@ -327,7 +337,7 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
         keyBytes,
         valueBytes,
         valueSchemaId,
-        -1,
+        rmdSchemaId,
         rmd,
         getCallback(),
         isEnableWriteCompute(),
@@ -646,6 +656,7 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
     if (rmdSchemaProp.isEmpty()) {
       this.rmdSchema = null;
     } else {
+      this.rmdSchemaId = props.getInt(RMD_SCHEMA_ID_PROP);
       this.rmdSchema = AvroCompatibilityHelper.parse(props.getString(RMD_SCHEMA_PROP));
     }
     initStorageQuotaFields(props);

@@ -97,11 +97,15 @@ import com.linkedin.venice.metadata.payload.StorePropertiesPayloadRecord;
 import com.linkedin.venice.metadata.response.MetadataResponseRecord;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterContext;
+import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
 import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.PubSubUtil;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
+import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;
 import com.linkedin.venice.pubsub.manager.TopicManager;
@@ -305,10 +309,20 @@ public class AdminTool {
           response = controllerClient.killOfflinePushJob(topicName);
           printObject(response);
           break;
-        case SKIP_ADMIN:
-          String offset = getRequiredArgument(cmd, Arg.OFFSET, Command.SKIP_ADMIN);
+        case SKIP_ADMIN_MESSAGE:
+          if (!cmd.hasOption(Arg.OFFSET.first()) && !cmd.hasOption(Arg.EXECUTION_ID.first())) {
+            printErrAndExit(
+                "At least one of " + Arg.OFFSET.getArgName() + " or " + Arg.EXECUTION_ID.getArgName()
+                    + " is required.");
+          }
+          if (cmd.hasOption(Arg.OFFSET.first()) && cmd.hasOption(Arg.EXECUTION_ID.first())) {
+            printErrAndExit(
+                "Only one of " + Arg.OFFSET.getArgName() + " or " + Arg.EXECUTION_ID.getArgName() + " is allowed.");
+          }
+          String offset = getOptionalArgument(cmd, Arg.OFFSET);
+          String executionId = getOptionalArgument(cmd, Arg.EXECUTION_ID);
           boolean skipDIV = Boolean.parseBoolean(getOptionalArgument(cmd, Arg.SKIP_DIV, "false"));
-          response = controllerClient.skipAdminMessage(offset, skipDIV);
+          response = controllerClient.skipAdminMessage(offset, skipDIV, executionId);
           printObject(response);
           break;
         case NEW_STORE:
@@ -1790,13 +1804,34 @@ public class AdminTool {
 
   private static void dumpAdminMessages(CommandLine cmd, PubSubClientsFactory pubSubClientsFactory) {
     Properties consumerProperties = loadProperties(cmd, Arg.KAFKA_CONSUMER_CONFIG_FILE);
+    VeniceProperties veniceProperties = new VeniceProperties(consumerProperties);
     String pubSubBrokerUrl = getRequiredArgument(cmd, Arg.KAFKA_BOOTSTRAP_SERVERS);
     consumerProperties = DumpAdminMessages.getPubSubConsumerProperties(pubSubBrokerUrl, consumerProperties);
-    PubSubConsumerAdapter consumer = getConsumer(consumerProperties, pubSubClientsFactory);
+    PubSubPositionTypeRegistry pubSubPositionTypeRegistry =
+        PubSubPositionTypeRegistry.fromPropertiesOrDefault(veniceProperties);
+    PubSubPositionDeserializer pubSubPositionDeserializer = new PubSubPositionDeserializer(pubSubPositionTypeRegistry);
+    String startingOffset = getOptionalArgument(cmd, Arg.STARTING_OFFSET);
+    String startingPositionArg = getOptionalArgument(cmd, Arg.STARTING_POSITION);
+    if (startingOffset == null && startingPositionArg == null) {
+      printErrAndExit(
+          "At least one of " + Arg.STARTING_OFFSET.getArgName() + " or " + Arg.STARTING_POSITION.getArgName()
+              + " is required.");
+    }
+    if (startingOffset != null && startingPositionArg != null) {
+      printErrAndExit(
+          "Only one of " + Arg.STARTING_OFFSET.getArgName() + " or " + Arg.STARTING_POSITION.getArgName()
+              + " is allowed.");
+    }
+    PubSubPosition startingPosition;
+    if (startingOffset != null) {
+      startingPosition = PubSubUtil.fromKafkaOffset(Long.parseLong(getRequiredArgument(cmd, Arg.STARTING_OFFSET)));
+    } else {
+      startingPosition = PubSubUtil.parsePositionWireFormat(startingPositionArg, pubSubPositionDeserializer);
+    }
     List<DumpAdminMessages.AdminOperationInfo> adminMessages = DumpAdminMessages.dumpAdminMessages(
-        consumer,
+        getConsumer(consumerProperties, pubSubClientsFactory),
         getRequiredArgument(cmd, Arg.CLUSTER),
-        Long.parseLong(getRequiredArgument(cmd, Arg.STARTING_OFFSET)),
+        startingPosition,
         Integer.parseInt(getRequiredArgument(cmd, Arg.MESSAGE_COUNT)));
     printObject(adminMessages);
   }
@@ -1816,10 +1851,12 @@ public class AdminTool {
 
     String kafkaTopic = getRequiredArgument(cmd, Arg.KAFKA_TOPIC_NAME);
     int partitionNumber = Integer.parseInt(getRequiredArgument(cmd, Arg.KAFKA_TOPIC_PARTITION));
-    int startingOffset = Integer.parseInt(getRequiredArgument(cmd, Arg.STARTING_OFFSET));
+    // TODO: Support base64-encoded position + type, and deserialize via PubSubPositionTypeRegistry.
+    PubSubPosition startingPosition =
+        PubSubUtil.fromKafkaOffset(Long.parseLong(getRequiredArgument(cmd, Arg.STARTING_OFFSET)));
     int messageCount = Integer.parseInt(getRequiredArgument(cmd, Arg.MESSAGE_COUNT));
     try (PubSubConsumerAdapter consumer = getConsumer(consumerProps, pubSubClientsFactory)) {
-      new ControlMessageDumper(consumer, kafkaTopic, partitionNumber, startingOffset, messageCount).fetch().display();
+      new ControlMessageDumper(consumer, kafkaTopic, partitionNumber, startingPosition, messageCount).fetch().display();
     }
   }
 
@@ -1863,10 +1900,10 @@ public class AdminTool {
     int partitionNumber = (getOptionalArgument(cmd, Arg.KAFKA_TOPIC_PARTITION) == null)
         ? -1
         : Integer.parseInt(getOptionalArgument(cmd, Arg.KAFKA_TOPIC_PARTITION));
-    long startingOffset = (getOptionalArgument(cmd, Arg.STARTING_OFFSET) == null)
-        ? -1
-        : Long.parseLong(getOptionalArgument(cmd, Arg.STARTING_OFFSET));
-    int messageCount = (getOptionalArgument(cmd, Arg.MESSAGE_COUNT) == null)
+    // TODO: Support base64-encoded position + type, and deserialize via PubSubPositionTypeRegistry.
+    PubSubPosition startingPosition =
+        PubSubUtil.fromKafkaOffset(Long.parseLong(getOptionalArgument(cmd, Arg.STARTING_OFFSET, "-1")));
+    long messageCount = (getOptionalArgument(cmd, Arg.MESSAGE_COUNT) == null)
         ? -1
         : Integer.parseInt(getOptionalArgument(cmd, Arg.MESSAGE_COUNT));
     String parentDir = "./";
@@ -1880,7 +1917,7 @@ public class AdminTool {
     String startDatetime = getOptionalArgument(cmd, Arg.START_DATE);
     long startTimestamp =
         startDatetime == null ? -1 : Utils.parseDateTimeToEpoch(startDatetime, DEFAULT_DATE_FORMAT, PST_TIME_ZONE);
-    if (startTimestamp != -1 && startingOffset != -1) {
+    if (startTimestamp != -1 && !PubSubSymbolicPosition.EARLIEST.equals(startingPosition)) {
       throw new VeniceException("Only one of start date and starting offset can be specified");
     }
 
@@ -1895,17 +1932,17 @@ public class AdminTool {
     try (PubSubConsumerAdapter consumer = getConsumer(consumerProps, pubSubClientsFactory)) {
       PubSubTopicPartition topicPartition =
           new PubSubTopicPartitionImpl(TOPIC_REPOSITORY.getTopic(kafkaTopic), partitionNumber);
-      long startOffset =
-          KafkaTopicDumper.calculateStartingOffset(consumer, topicPartition, startingOffset, startTimestamp);
-      long endOffset = KafkaTopicDumper.calculateEndingOffset(consumer, topicPartition, endTimestamp);
+      PubSubPosition startPosition =
+          KafkaTopicDumper.calculateStartingPosition(consumer, topicPartition, startingPosition, startTimestamp);
+      PubSubPosition endingPosition = KafkaTopicDumper.calculateEndingPosition(consumer, topicPartition, endTimestamp);
       if (messageCount <= 0) {
-        messageCount = (int) (endOffset - startOffset);
+        messageCount = consumer.positionDifference(topicPartition, endingPosition, startPosition);
       }
       LOGGER.info(
           "TopicPartition: {} Start offset: {}, End offset: {}, Message count: {}",
           topicPartition,
-          startOffset,
-          endOffset,
+          startPosition,
+          endingPosition,
           messageCount);
       try (KafkaTopicDumper ktd = new KafkaTopicDumper(
           controllerClient,
@@ -1917,7 +1954,7 @@ public class AdminTool {
           logDataRecord,
           logRmdRecord,
           logTsRecord)) {
-        ktd.fetchAndProcess(startOffset, endOffset, messageCount);
+        ktd.fetchAndProcess(startPosition, endingPosition, messageCount);
       } catch (Exception e) {
         System.err.println("Something went wrong during topic dump");
         e.printStackTrace();

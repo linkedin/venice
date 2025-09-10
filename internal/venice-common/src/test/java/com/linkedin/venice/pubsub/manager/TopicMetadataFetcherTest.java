@@ -20,7 +20,6 @@ import static org.testng.Assert.expectThrows;
 import static org.testng.Assert.fail;
 
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.pubsub.PubSubConstants;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
@@ -28,6 +27,7 @@ import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition
 import com.linkedin.venice.pubsub.api.PubSubAdminAdapter;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
+import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubClientException;
@@ -252,8 +252,8 @@ public class TopicMetadataFetcherTest {
     assertEquals(res.get(tp0Info.getTopicPartition()), ApacheKafkaOffsetPosition.of(111L));
     assertEquals(res.get(tp1Info.getTopicPartition()), ApacheKafkaOffsetPosition.of(222L));
     assertEquals(
-        topicMetadataFetcher.getLatestOffsetCachedNonBlocking(new PubSubTopicPartitionImpl(pubSubTopic, 0)),
-        PubSubConstants.UNKNOWN_LATEST_OFFSET);
+        topicMetadataFetcher.getLatestPositionCachedNonBlocking(new PubSubTopicPartitionImpl(pubSubTopic, 0)),
+        PubSubSymbolicPosition.LATEST);
 
     verify(consumerMock, times(3)).partitionsFor(pubSubTopic);
     verify(consumerMock, times(1)).endPositions(eq(offsetsMap.keySet()), any(Duration.class));
@@ -333,49 +333,54 @@ public class TopicMetadataFetcherTest {
   }
 
   @Test
-  public void testGetLatestOffset() {
+  public void testGetLatestPosition() {
     PubSubTopicPartition tp0 = new PubSubTopicPartitionImpl(pubSubTopic, 0);
+    ApacheKafkaOffsetPosition p1001 = ApacheKafkaOffsetPosition.of(1001L);
     Map<PubSubTopicPartition, PubSubPosition> offsetMap = new HashMap<>();
-    offsetMap.put(tp0, ApacheKafkaOffsetPosition.of(1001L));
+    offsetMap.put(tp0, p1001);
     when(consumerMock.endPositions(eq(offsetMap.keySet()), any(Duration.class))).thenReturn(offsetMap);
-    long latestOffset = topicMetadataFetcher.getLatestOffset(tp0);
-    assertEquals(latestOffset, 1001L);
+    assertEquals(topicMetadataFetcher.getEndPositionForPartition(tp0), p1001);
 
     // test when endOffsets returns null
     when(consumerMock.endPositions(eq(offsetMap.keySet()), any(Duration.class))).thenReturn(Collections.emptyMap());
-    Throwable t = expectThrows(VeniceException.class, () -> topicMetadataFetcher.getLatestOffset(tp0));
+    Throwable t = expectThrows(VeniceException.class, () -> topicMetadataFetcher.getEndPositionForPartition(tp0));
     assertTrue(t.getMessage().contains("Got null position for:"), "Got: " + t.getMessage());
     assertEquals(pubSubConsumerPool.size(), 1);
   }
 
   @Test(timeOut = 60 * Time.MS_PER_SECOND)
-  public void testGetLatestOffsetWithRetries() throws ExecutionException, InterruptedException {
+  public void testGetLatestPositionWithRetries() throws ExecutionException, InterruptedException {
     PubSubTopicPartition tp0 = new PubSubTopicPartitionImpl(pubSubTopic, 0);
     when(adminMock.containsTopic(pubSubTopic)).thenReturn(true);
 
+    ApacheKafkaOffsetPosition p99 = ApacheKafkaOffsetPosition.of(99L);
     TopicMetadataFetcher topicMetadataFetcherSpy = spy(topicMetadataFetcher);
-    doThrow(new PubSubTopicDoesNotExistException("Test1")).doThrow(new PubSubOpTimeoutException("Test2"))
-        .doThrow(new PubSubOpTimeoutException("Test3"))
-        .doReturn(99L)
-        .when(topicMetadataFetcherSpy)
-        .getLatestOffset(tp0);
-    assertEquals((long) topicMetadataFetcherSpy.getLatestOffsetWithRetriesAsync(tp0, 5).get(), 99L);
-    verify(topicMetadataFetcherSpy, times(4)).getLatestOffset(tp0);
+    TopicMetadataFetcher topicMetadataFetcher3 =
+        doThrow(new PubSubTopicDoesNotExistException("Test1")).doThrow(new PubSubOpTimeoutException("Test2"))
+            .doThrow(new PubSubOpTimeoutException("Test3"))
+            .doReturn(p99)
+            .when(topicMetadataFetcherSpy);
+    topicMetadataFetcher3.getEndPositionForPartition(tp0);
+    assertEquals(topicMetadataFetcherSpy.getLatestOffsetWithRetriesAsync(tp0, 5).get(), p99);
+    TopicMetadataFetcher topicMetadataFetcher2 = verify(topicMetadataFetcherSpy, times(4));
+    topicMetadataFetcher2.getEndPositionForPartition(tp0);
 
-    doThrow(new PubSubTopicDoesNotExistException("Test1")).when(topicMetadataFetcherSpy).getLatestOffset(tp0);
+    TopicMetadataFetcher topicMetadataFetcher1 =
+        doThrow(new PubSubTopicDoesNotExistException("Test1")).when(topicMetadataFetcherSpy);
+    topicMetadataFetcher1.getEndPositionForPartition(tp0);
     expectThrows(
         PubSubTopicDoesNotExistException.class,
-        () -> topicMetadataFetcherSpy.getLatestOffsetWithRetries(tp0, 1));
+        () -> topicMetadataFetcherSpy.getLatestPositionWithRetries(tp0, 1));
 
+    ApacheKafkaOffsetPosition p1001 = ApacheKafkaOffsetPosition.of(1001L);
     Map<PubSubTopicPartition, PubSubPosition> offsetMap = new HashMap<>();
-    offsetMap.put(tp0, ApacheKafkaOffsetPosition.of(1001L));
+    offsetMap.put(tp0, p1001);
     when(consumerMock.endPositions(eq(offsetMap.keySet()), any(Duration.class))).thenReturn(offsetMap);
-    long latestOffset = topicMetadataFetcher.getLatestOffsetWithRetries(tp0, 1);
-    assertEquals(latestOffset, 1001L);
+    assertEquals(topicMetadataFetcher.getLatestPositionWithRetries(tp0, 1), p1001);
 
     // test when endOffsets returns null
     when(consumerMock.endPositions(eq(offsetMap.keySet()), any(Duration.class))).thenReturn(Collections.emptyMap());
-    Throwable t = expectThrows(VeniceException.class, () -> topicMetadataFetcher.getLatestOffsetWithRetries(tp0, 1));
+    Throwable t = expectThrows(VeniceException.class, () -> topicMetadataFetcher.getLatestPositionWithRetries(tp0, 1));
     assertTrue(t.getMessage().contains("Got null position for:"));
     assertEquals(pubSubConsumerPool.size(), 1);
   }
@@ -386,7 +391,7 @@ public class TopicMetadataFetcherTest {
     when(adminMock.containsTopic(pubSubTopic)).thenReturn(true);
     TopicMetadataFetcher topicMetadataFetcherSpy = spy(topicMetadataFetcher);
     ApacheKafkaOffsetPosition endPosition = ApacheKafkaOffsetPosition.of(1234L);
-    doReturn(endPosition).when(topicMetadataFetcherSpy).getEndPositionsForPartition(tp0);
+    doReturn(endPosition).when(topicMetadataFetcherSpy).getEndPositionForPartition(tp0);
 
     long ts = System.currentTimeMillis();
     ApacheKafkaOffsetPosition p9988 = ApacheKafkaOffsetPosition.of(9988L);
@@ -428,6 +433,188 @@ public class TopicMetadataFetcherTest {
     future.cancel(true);
     waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
       assertEquals(pubSubConsumerPool.size(), 1);
+    });
+  }
+
+  @Test
+  public void testInvalidateKeyForPubSubTopic() {
+    PubSubTopicPartition tp0 = new PubSubTopicPartitionImpl(pubSubTopic, 0);
+    PubSubTopicPartition tp1 = new PubSubTopicPartitionImpl(pubSubTopic, 1);
+    PubSubTopic otherTopic = pubSubTopicRepository.getTopic("otherTopic");
+    PubSubTopicPartition otherTp = new PubSubTopicPartitionImpl(otherTopic, 0);
+
+    // Populate caches with test data
+    TopicMetadataFetcher spyFetcher = spy(topicMetadataFetcher);
+
+    // Add entries to topic existence cache
+    spyFetcher.getTopicExistenceCache().put(pubSubTopic, spyFetcher.new ValueAndExpiryTime<>(true));
+    spyFetcher.getTopicExistenceCache().put(otherTopic, spyFetcher.new ValueAndExpiryTime<>(true));
+
+    // Add entries to latest position cache
+    spyFetcher.getLatestPositionCache()
+        .put(tp0, spyFetcher.new ValueAndExpiryTime<>(ApacheKafkaOffsetPosition.of(100L)));
+    spyFetcher.getLatestPositionCache()
+        .put(tp1, spyFetcher.new ValueAndExpiryTime<>(ApacheKafkaOffsetPosition.of(200L)));
+    spyFetcher.getLatestPositionCache()
+        .put(otherTp, spyFetcher.new ValueAndExpiryTime<>(ApacheKafkaOffsetPosition.of(300L)));
+
+    // Verify initial state
+    assertEquals(spyFetcher.getTopicExistenceCache().size(), 2);
+    assertEquals(spyFetcher.getLatestPositionCache().size(), 3);
+    assertTrue(spyFetcher.getTopicExistenceCache().containsKey(pubSubTopic));
+    assertTrue(spyFetcher.getLatestPositionCache().containsKey(tp0));
+    assertTrue(spyFetcher.getLatestPositionCache().containsKey(tp1));
+
+    // Test invalidateKey for PubSubTopic
+    spyFetcher.invalidateKey(pubSubTopic);
+
+    // Verify topic existence cache entry is removed
+    assertFalse(spyFetcher.getTopicExistenceCache().containsKey(pubSubTopic));
+    assertTrue(spyFetcher.getTopicExistenceCache().containsKey(otherTopic));
+
+    // Verify all partition entries for the topic are removed
+    assertFalse(spyFetcher.getLatestPositionCache().containsKey(tp0));
+    assertFalse(spyFetcher.getLatestPositionCache().containsKey(tp1));
+    assertTrue(spyFetcher.getLatestPositionCache().containsKey(otherTp));
+
+    // Verify final cache sizes
+    assertEquals(spyFetcher.getTopicExistenceCache().size(), 1);
+    assertEquals(spyFetcher.getLatestPositionCache().size(), 1);
+  }
+
+  @Test
+  public void testInvalidateKeyForPubSubTopicPartition() {
+    PubSubTopicPartition tp0 = new PubSubTopicPartitionImpl(pubSubTopic, 0);
+    PubSubTopicPartition tp1 = new PubSubTopicPartitionImpl(pubSubTopic, 1);
+
+    TopicMetadataFetcher spyFetcher = spy(topicMetadataFetcher);
+
+    // Add entries to latest position cache
+    spyFetcher.getLatestPositionCache()
+        .put(tp0, spyFetcher.new ValueAndExpiryTime<>(ApacheKafkaOffsetPosition.of(100L)));
+    spyFetcher.getLatestPositionCache()
+        .put(tp1, spyFetcher.new ValueAndExpiryTime<>(ApacheKafkaOffsetPosition.of(200L)));
+
+    // Verify initial state
+    assertEquals(spyFetcher.getLatestPositionCache().size(), 2);
+    assertTrue(spyFetcher.getLatestPositionCache().containsKey(tp0));
+    assertTrue(spyFetcher.getLatestPositionCache().containsKey(tp1));
+
+    // Test invalidateKey for specific partition
+    spyFetcher.invalidateKey(tp0);
+
+    // Verify only the specified partition is removed
+    assertFalse(spyFetcher.getLatestPositionCache().containsKey(tp0));
+    assertTrue(spyFetcher.getLatestPositionCache().containsKey(tp1));
+    assertEquals(spyFetcher.getLatestPositionCache().size(), 1);
+  }
+
+  @Test
+  public void testGetLatestPositionCached() {
+    PubSubTopicPartition tp0 = new PubSubTopicPartitionImpl(pubSubTopic, 0);
+    when(adminMock.containsTopic(pubSubTopic)).thenReturn(true);
+
+    TopicMetadataFetcher spyFetcher = spy(topicMetadataFetcher);
+    ApacheKafkaOffsetPosition expectedPosition = ApacheKafkaOffsetPosition.of(500L);
+
+    // Mock getLatestPositionWithRetries to return expected position
+    doReturn(expectedPosition).when(spyFetcher).getLatestPositionWithRetries(eq(tp0), any(Integer.class));
+
+    // Test cache miss - should fetch and cache the position
+    PubSubPosition result = spyFetcher.getLatestPositionCached(tp0);
+    assertEquals(result, expectedPosition);
+
+    // Verify the value was cached
+    assertTrue(spyFetcher.getLatestPositionCache().containsKey(tp0));
+    assertEquals(spyFetcher.getLatestPositionCache().get(tp0).getValue(), expectedPosition);
+
+    // Verify getLatestPositionWithRetries was called once
+    verify(spyFetcher, times(1)).getLatestPositionWithRetries(eq(tp0), any(Integer.class));
+
+    // Test cache hit - should return cached value without calling getLatestPositionWithRetries again
+    PubSubPosition cachedResult = spyFetcher.getLatestPositionCached(tp0);
+    assertEquals(cachedResult, expectedPosition);
+
+    // Verify getLatestPositionWithRetries was not called again
+    verify(spyFetcher, times(1)).getLatestPositionWithRetries(eq(tp0), any(Integer.class));
+  }
+
+  @Test
+  public void testGetLatestPositionCachedWithException() {
+    PubSubTopicPartition tp0 = new PubSubTopicPartitionImpl(pubSubTopic, 0);
+    when(adminMock.containsTopic(pubSubTopic)).thenReturn(true);
+
+    TopicMetadataFetcher spyFetcher = spy(topicMetadataFetcher);
+
+    // Test PubSubTopicDoesNotExistException - should return LATEST
+    doThrow(new PubSubTopicDoesNotExistException("Topic does not exist")).when(spyFetcher)
+        .getLatestPositionWithRetries(eq(tp0), any(Integer.class));
+
+    PubSubPosition result = spyFetcher.getLatestPositionCached(tp0);
+    assertEquals(result, PubSubSymbolicPosition.LATEST);
+
+    // Test PubSubOpTimeoutException - should return LATEST
+    doThrow(new PubSubOpTimeoutException("Timeout")).when(spyFetcher)
+        .getLatestPositionWithRetries(eq(tp0), any(Integer.class));
+
+    result = spyFetcher.getLatestPositionCached(tp0);
+    assertEquals(result, PubSubSymbolicPosition.LATEST);
+  }
+
+  @Test
+  public void testPopulateCacheWithLatestOffset() {
+    PubSubTopicPartition tp0 = new PubSubTopicPartitionImpl(pubSubTopic, 0);
+    when(adminMock.containsTopic(pubSubTopic)).thenReturn(true);
+
+    TopicMetadataFetcher spyFetcher = spy(topicMetadataFetcher);
+    ApacheKafkaOffsetPosition expectedPosition = ApacheKafkaOffsetPosition.of(750L);
+
+    // Mock getLatestPositionWithRetries to return expected position
+    doReturn(expectedPosition).when(spyFetcher).getLatestPositionWithRetries(eq(tp0), any(Integer.class));
+
+    // Test populateCacheWithLatestOffset - should populate cache asynchronously
+    spyFetcher.populateCacheWithLatestOffset(tp0);
+
+    // Wait for async operation to complete
+    waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+      assertTrue(spyFetcher.getLatestPositionCache().containsKey(tp0));
+      assertEquals(spyFetcher.getLatestPositionCache().get(tp0).getValue(), expectedPosition);
+    });
+  }
+
+  @Test
+  public void testGetLatestPositionCachedWithExpiredEntry() {
+    PubSubTopicPartition tp0 = new PubSubTopicPartitionImpl(pubSubTopic, 0);
+    when(adminMock.containsTopic(pubSubTopic)).thenReturn(true);
+
+    TopicMetadataFetcher spyFetcher = spy(topicMetadataFetcher);
+    ApacheKafkaOffsetPosition initialPosition = ApacheKafkaOffsetPosition.of(100L);
+    ApacheKafkaOffsetPosition updatedPosition = ApacheKafkaOffsetPosition.of(200L);
+
+    // Pre-populate cache with expired entry
+    ValueAndExpiryTime<PubSubPosition> expiredEntry = spyFetcher.new ValueAndExpiryTime<>(initialPosition);
+    expiredEntry.setExpiryTimeNs(System.nanoTime() - TimeUnit.SECONDS.toNanos(1)); // Set to expired (1 second ago)
+    spyFetcher.getLatestPositionCache().put(tp0, expiredEntry);
+
+    // Mock async update to return updated position - use a delayed future to prevent immediate completion
+    CompletableFuture<PubSubPosition> delayedFuture = new CompletableFuture<>();
+    doReturn(delayedFuture).when(spyFetcher).getLatestOffsetWithRetriesAsync(eq(tp0), any(Integer.class));
+
+    // Call getLatestPositionCached - with expired entry, it should return cached value but trigger async update
+    PubSubPosition result = spyFetcher.getLatestPositionCached(tp0);
+
+    // The result should be the cached value since computeIfAbsent doesn't replace existing entries
+    assertEquals(result, initialPosition);
+
+    // Verify that async update was triggered
+    verify(spyFetcher, times(1)).getLatestOffsetWithRetriesAsync(eq(tp0), any(Integer.class));
+
+    // Complete the future to simulate async update completion
+    delayedFuture.complete(updatedPosition);
+
+    // Wait for async update to complete and verify cache was updated
+    waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+      assertEquals(spyFetcher.getLatestPositionCache().get(tp0).getValue(), updatedPosition);
     });
   }
 }

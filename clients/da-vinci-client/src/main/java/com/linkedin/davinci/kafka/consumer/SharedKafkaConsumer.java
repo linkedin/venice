@@ -35,7 +35,7 @@ import org.apache.logging.log4j.Logger;
  * This class is a synchronized version of {@link PubSubConsumerAdapter}.
  *
  * In addition to the existing API of {@link PubSubConsumerAdapter}, this class also adds specific functions used by
- * {@link KafkaConsumerService}, notably: {@link #subscribe(PubSubTopic, PubSubTopicPartition, long)} which keeps track of the
+ * {@link KafkaConsumerService}, notably: {@link #subscribe(PubSubTopic, PubSubTopicPartition, PubSubPosition)} which keeps track of the
  * mapping of which TopicPartition is used by which version-topic.
  *
  * It also provides some callbacks used by the {@link KafkaConsumerService} to react to certain changes, in a way that
@@ -127,12 +127,6 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
     currentAssignment = Collections.unmodifiableSet(newAssignment);
     assignmentChangeListener.run();
     stats.recordTotalUpdateCurrentAssignmentLatency(getElapsedTimeFromMsToMs(updateCurrentAssignmentStartTime));
-  }
-
-  @Override
-  public synchronized void subscribe(PubSubTopicPartition pubSubTopicPartition, long lastReadOffset) {
-    throw new VeniceException(
-        this.getClass().getSimpleName() + " does not support subscribe without specifying a version-topic.");
   }
 
   @UnderDevelopment(value = "This API may not be implemented in all PubSubConsumerAdapter implementations.")
@@ -386,20 +380,10 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
   }
 
   @Override
-  public Map<PubSubTopicPartition, Long> endOffsets(Collection<PubSubTopicPartition> partitions, Duration timeout) {
-    throw new UnsupportedOperationException("endOffsets is not supported in SharedKafkaConsumer");
-  }
-
-  @Override
   public Map<PubSubTopicPartition, PubSubPosition> endPositions(
       Collection<PubSubTopicPartition> partitions,
       Duration timeout) {
     throw new UnsupportedOperationException("endPositions is not supported in SharedKafkaConsumer");
-  }
-
-  @Override
-  public Long endOffset(PubSubTopicPartition pubSubTopicPartition) {
-    throw new UnsupportedOperationException("endOffset is not supported in SharedKafkaConsumer");
   }
 
   @Override

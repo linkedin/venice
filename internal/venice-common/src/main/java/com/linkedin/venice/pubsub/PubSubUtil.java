@@ -10,6 +10,7 @@ import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_CLIENT_CONFIG_PR
 import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
+import com.linkedin.venice.pubsub.api.PubSubPositionWireFormat;
 import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
@@ -320,5 +321,41 @@ public final class PubSubUtil {
 
   public static byte[] getBase64DecodedBytes(String bytesString) {
     return Base64.getDecoder().decode(bytesString);
+  }
+
+  /**
+   * Parses a position wire format string and converts it to a PubSubPosition.
+   * The input string should be in the format "typeId:base64EncodedWfBytes".
+   *
+   * @param positionWireFormatString the position wire format string to parse
+   * @param pubSubPositionDeserializer the deserializer to convert wire format to position
+   * @return the parsed PubSubPosition
+   * @throws IllegalArgumentException if the input string format is invalid
+   */
+  public static PubSubPosition parsePositionWireFormat(
+      String positionWireFormatString,
+      PubSubPositionDeserializer pubSubPositionDeserializer) {
+    if (positionWireFormatString == null || positionWireFormatString.isEmpty()) {
+      throw new IllegalArgumentException("Position wire format string cannot be null or empty");
+    }
+
+    String[] typeIdAndBase64WfBytes = positionWireFormatString.split(":");
+    if (typeIdAndBase64WfBytes.length != 2) {
+      throw new IllegalArgumentException(
+          "Invalid position wire format string. Expected format: 'typeId:base64EncodedWfBytes'");
+    }
+
+    try {
+      PubSubPositionWireFormat positionWireFormat = new PubSubPositionWireFormat();
+      positionWireFormat.setType(Integer.parseInt(typeIdAndBase64WfBytes[0]));
+      positionWireFormat.setRawBytes(ByteBuffer.wrap(getBase64DecodedBytes(typeIdAndBase64WfBytes[1])));
+      return pubSubPositionDeserializer.toPosition(positionWireFormat);
+    } catch (NumberFormatException e) {
+      throw new IllegalArgumentException(
+          "Invalid type ID in position wire format string: " + typeIdAndBase64WfBytes[0],
+          e);
+    } catch (IllegalArgumentException e) {
+      throw new IllegalArgumentException("Invalid base64 encoded bytes in position wire format string", e);
+    }
   }
 }

@@ -4,6 +4,7 @@ import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_CONSUMER_API_DEF
 
 import com.linkedin.venice.pubsub.PubSubConstants;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
+import com.linkedin.venice.pubsub.PubSubUtil;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubClientException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubClientRetriableException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;
@@ -38,7 +39,10 @@ public interface PubSubConsumerAdapter extends AutoCloseable, Closeable {
    * @throws IllegalArgumentException If the topic-partition is null or if the partition number is negative.
    * @throws PubSubTopicDoesNotExistException If the topic does not exist.
    */
-  void subscribe(PubSubTopicPartition pubSubTopicPartition, long lastReadOffset);
+  @Deprecated
+  default void subscribe(PubSubTopicPartition pubSubTopicPartition, long lastReadOffset) {
+    subscribe(pubSubTopicPartition, PubSubUtil.fromKafkaOffset(lastReadOffset));
+  }
 
   /**
    * Subscribes to a specified topic-partition if it is not already subscribed. If the topic-partition is
@@ -292,7 +296,13 @@ public interface PubSubConsumerAdapter extends AutoCloseable, Closeable {
    * @throws PubSubOpTimeoutException If the operation times out while fetching the end offsets.
    * @throws PubSubClientException If there is an error while attempting to fetch the end offsets.
    */
-  Map<PubSubTopicPartition, Long> endOffsets(Collection<PubSubTopicPartition> partitions, Duration timeout);
+  @Deprecated
+  default Map<PubSubTopicPartition, Long> endOffsets(Collection<PubSubTopicPartition> partitions, Duration timeout) {
+    Map<PubSubTopicPartition, PubSubPosition> positionMap = endPositions(partitions, timeout);
+    return positionMap.entrySet()
+        .stream()
+        .collect(java.util.stream.Collectors.toMap(Map.Entry::getKey, e -> e.getValue().getNumericOffset()));
+  }
 
   Map<PubSubTopicPartition, PubSubPosition> endPositions(Collection<PubSubTopicPartition> partitions, Duration timeout);
 
@@ -306,7 +316,10 @@ public interface PubSubConsumerAdapter extends AutoCloseable, Closeable {
    * @throws PubSubOpTimeoutException If the operation times out while fetching the end offset.
    * @throws PubSubClientException If there is an error while attempting to fetch the end offset.
    */
-  Long endOffset(PubSubTopicPartition pubSubTopicPartition);
+  @Deprecated
+  default Long endOffset(PubSubTopicPartition pubSubTopicPartition) {
+    return endPosition(pubSubTopicPartition).getNumericOffset();
+  }
 
   PubSubPosition endPosition(PubSubTopicPartition pubSubTopicPartition);
 

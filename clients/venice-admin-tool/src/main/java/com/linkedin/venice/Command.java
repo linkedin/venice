@@ -42,6 +42,7 @@ import static com.linkedin.venice.Arg.END_DATE;
 import static com.linkedin.venice.Arg.ENUM_SCHEMA_EVOLUTION_ALLOWED;
 import static com.linkedin.venice.Arg.ETLED_PROXY_USER_ACCOUNT;
 import static com.linkedin.venice.Arg.EXECUTION;
+import static com.linkedin.venice.Arg.EXECUTION_ID;
 import static com.linkedin.venice.Arg.EXPECTED_ROUTER_COUNT;
 import static com.linkedin.venice.Arg.EXTRA_COMMAND_ARGS;
 import static com.linkedin.venice.Arg.FABRIC;
@@ -125,6 +126,7 @@ import static com.linkedin.venice.Arg.SOURCE_FABRIC;
 import static com.linkedin.venice.Arg.SRC_ZK_SSL_CONFIG_FILE;
 import static com.linkedin.venice.Arg.SRC_ZOOKEEPER_URL;
 import static com.linkedin.venice.Arg.STARTING_OFFSET;
+import static com.linkedin.venice.Arg.STARTING_POSITION;
 import static com.linkedin.venice.Arg.START_DATE;
 import static com.linkedin.venice.Arg.STORAGE_NODE;
 import static com.linkedin.venice.Arg.STORAGE_NODE_READ_QUOTA_ENABLED;
@@ -213,7 +215,10 @@ public enum Command {
       "Query the ingest status of a running push job. If a version is not specified, the job status of the last job will be printed.",
       new Arg[] { URL, STORE }, new Arg[] { CLUSTER, VERSION }
   ), KILL_JOB("kill-job", "Kill a running push job", new Arg[] { URL, STORE, VERSION }, new Arg[] { CLUSTER }),
-  SKIP_ADMIN("skip-admin", "Skip an admin message", new Arg[] { URL, CLUSTER, OFFSET }, new Arg[] { SKIP_DIV }),
+  SKIP_ADMIN_MESSAGE(
+      "skip-admin-message", "Skip an admin message", new Arg[] { URL, CLUSTER },
+      new Arg[] { SKIP_DIV, OFFSET, EXECUTION_ID }
+  ),
   NEW_STORE(
       "new-store", "", new Arg[] { URL, CLUSTER, STORE, KEY_SCHEMA, VALUE_SCHEMA }, new Arg[] { OWNER, VSON_STORE }
   ),
@@ -384,7 +389,8 @@ public enum Command {
   ),
   DUMP_ADMIN_MESSAGES(
       "dump-admin-messages", "Dump admin messages",
-      new Arg[] { CLUSTER, KAFKA_BOOTSTRAP_SERVERS, STARTING_OFFSET, MESSAGE_COUNT, KAFKA_CONSUMER_CONFIG_FILE }
+      new Arg[] { CLUSTER, KAFKA_BOOTSTRAP_SERVERS, MESSAGE_COUNT, KAFKA_CONSUMER_CONFIG_FILE },
+      new Arg[] { STARTING_OFFSET, STARTING_POSITION }
   ),
   DUMP_CONTROL_MESSAGES(
       "dump-control-messages", "Dump control messages in a partition",

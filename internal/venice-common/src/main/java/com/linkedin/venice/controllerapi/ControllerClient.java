@@ -693,9 +693,19 @@ public class ControllerClient implements Closeable {
     return request(ControllerRoute.KILL_OFFLINE_PUSH_JOB, params, ControllerResponse.class);
   }
 
-  public ControllerResponse skipAdminMessage(String offset, boolean skipDIV) {
-    QueryParams params = newParams().add(OFFSET, offset).add(SKIP_DIV, skipDIV);
-    return request(ControllerRoute.SKIP_ADMIN, params, ControllerResponse.class);
+  public ControllerResponse skipAdminMessage(String offset, boolean skipDIV, String executionId) {
+    if (offset != null && executionId != null) {
+      throw new IllegalArgumentException(
+          "Only one of offset or executionId can be specified, offset " + offset + ", execution id " + executionId);
+    }
+    QueryParams params = newParams().add(SKIP_DIV, skipDIV);
+    if (offset != null) {
+      params.add(OFFSET, offset);
+    }
+    if (executionId != null) {
+      params.add(EXECUTION_ID, executionId);
+    }
+    return request(ControllerRoute.SKIP_ADMIN_MESSAGE, params, ControllerResponse.class);
   }
 
   public PubSubTopicConfigResponse getKafkaTopicConfigs(String kafkaTopicName) {
