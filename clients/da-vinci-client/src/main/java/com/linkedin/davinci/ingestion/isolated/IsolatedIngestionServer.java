@@ -367,7 +367,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
         LOGGER.info(
             "Ingestion completed for replica: {}, offset: {}",
             Utils.getReplicaId(topicName, partitionId),
-            report.offset);
+            report.pubSubPosition);
       } else {
         LOGGER.error(
             "Ingestion error for replica: {}, error message: {}",
