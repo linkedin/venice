@@ -143,20 +143,18 @@ public class ProtocolVersionAutoDetectionService extends AbstractVeniceService {
         }
         long elapsedTimeInMs = LatencyUtils.getElapsedTimeFromMsToMs(startTime);
         stats.recordProtocolVersionAutoDetectionLatencySensor(elapsedTimeInMs);
-        stats.recordProtocolVersionAutoDetectionErrorSensor(decreaseFailureCount());
+        stats.recordProtocolVersionAutoDetectionErrorSensor(resetFailureCount());
       } catch (Exception e) {
-        LOGGER.error("Received an exception while running " + taskName, e);
+        LOGGER.error("Received an exception while running {}", taskName, e);
         stats.recordProtocolVersionAutoDetectionErrorSensor(increaseFailureCount());
       }
       LOGGER.info("Finished running task {}", taskName);
     };
   }
 
-  private int decreaseFailureCount() {
-    if (failureCount > 0) {
-      return --failureCount;
-    }
-    return failureCount; // Ensure failureCount does not go below zero
+  private int resetFailureCount() {
+    failureCount = 0;
+    return failureCount;
   }
 
   private int increaseFailureCount() {
