@@ -1122,14 +1122,12 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
     return storePushCompletionTimeCache;
   }
 
-  private static void logLatency(long startTime, String storeName, int targetVersionNum) {
+  private void logLatency(long startTime, String storeName, int targetVersionNum) {
     long elapsedTime = LatencyUtils.getElapsedTimeFromMsToMs(startTime);
     if (elapsedTime > LOG_LATENCY_THRESHOLD) {
-      LOGGER.info(
-          "Store {} version {} spent {}ms in the DeferredVersionSwapLoop",
-          storeName,
-          targetVersionNum,
-          elapsedTime);
+      String message = "Store " + storeName + " version " + targetVersionNum + " spent " + elapsedTime
+          + "ms in the DeferredVersionSwapLoop";
+      logMessageIfNotRedundant(message);
     }
   }
 }
