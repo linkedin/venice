@@ -415,7 +415,7 @@ public class BasicClientStatsTest {
     expectedMetrics.put(
         ClientMetricEntity.REQUEST_SERIALIZATION_TIME,
         new MetricEntity(
-            "request_serialization_time",
+            "request.serialization_time",
             MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS,
             MetricUnit.MILLISECOND,
             "Time to serialize the request payload in milliseconds",
@@ -423,7 +423,7 @@ public class BasicClientStatsTest {
     expectedMetrics.put(
         ClientMetricEntity.RESPONSE_DECOMPRESSION_TIME,
         new MetricEntity(
-            "response_decompression_time",
+            "response.decompression_time",
             MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS,
             MetricUnit.MILLISECOND,
             "Time to decompress the response payload in milliseconds",
@@ -431,7 +431,7 @@ public class BasicClientStatsTest {
     expectedMetrics.put(
         ClientMetricEntity.RESPONSE_DESERIALIZATION_TIME,
         new MetricEntity(
-            "response_deserialization_time",
+            "response.deserialization_time",
             MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS,
             MetricUnit.MILLISECOND,
             "Time to deserialize the response payload in milliseconds",
@@ -447,7 +447,7 @@ public class BasicClientStatsTest {
     expectedMetrics.put(
         ClientMetricEntity.RESPONSE_BATCH_STREAM_PROGRESS_TIME,
         new MetricEntity(
-            "response_batch_stream_progress_time",
+            "response.batch_stream_progress_time",
             MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS,
             MetricUnit.MILLISECOND,
             "Batch streaming progress time in milliseconds",
