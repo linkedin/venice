@@ -142,7 +142,7 @@ public class StoreBackend {
     return backend.getVeniceLatestNonFaultyVersion(storeName, faultyVersionSet);
   }
 
-  synchronized CompletableFuture<Void> subscribe(
+  public synchronized CompletableFuture<Void> subscribe(
       ComplementSet<Integer> partitions,
       Optional<Version> bootstrapVersion) {
     if (daVinciCurrentVersion == null) {

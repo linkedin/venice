@@ -9,6 +9,7 @@ import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.davinci.client.DaVinciConfig;
 import com.linkedin.davinci.client.StatsAvroGenericDaVinciClient;
 import com.linkedin.davinci.client.StatsAvroSpecificDaVinciClient;
+import com.linkedin.davinci.client.VersionSpecificAvroGenericDaVinciClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.service.ICProvider;
@@ -28,7 +29,8 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 
-public class CachingDaVinciClientFactory implements DaVinciClientFactory, Closeable {
+public class CachingDaVinciClientFactory
+    implements DaVinciClientFactory, VersionSpecificDaVinciClientFactory, Closeable {
   private static final Logger LOGGER = LogManager.getLogger(CachingDaVinciClientFactory.class);
 
   protected boolean closed;
@@ -308,6 +310,30 @@ public class CachingDaVinciClientFactory implements DaVinciClientFactory, Closea
     }
   }
 
+  class VersionSpecificGenericDaVinciClientConstructor<K, V> implements DaVinciClientConstructor {
+    private final int storeVersion;
+
+    public VersionSpecificGenericDaVinciClientConstructor(int storeVersion) {
+      this.storeVersion = storeVersion;
+    }
+
+    @Override
+    public DaVinciClient<K, V> apply(
+        DaVinciConfig config,
+        ClientConfig clientConfig,
+        VeniceProperties backendConfig,
+        Optional<Set<String>> managedClients,
+        ICProvider icProvider) {
+
+      return new VersionSpecificAvroGenericDaVinciClient<>(
+          config,
+          clientConfig,
+          backendConfig,
+          managedClients,
+          storeVersion);
+    }
+  }
+
   protected synchronized DaVinciClient getClient(
       String storeName,
       String viewName,
@@ -362,5 +388,69 @@ public class CachingDaVinciClientFactory implements DaVinciClientFactory, Closea
       client.start();
     }
     return client;
+  }
+
+  // Version-specific client creation methods below
+
+  public <K, V> DaVinciClient<K, V> getVersionSpecificGenericAvroClient(
+      String storeName,
+      int storeVersion,
+      DaVinciConfig config) {
+    return getClient(
+        getStoreVersionName(storeName, storeVersion),
+        null,
+        config,
+        null,
+        new VersionSpecificGenericDaVinciClientConstructor<>(storeVersion),
+        VersionSpecificAvroGenericDaVinciClient.class,
+        false);
+  }
+
+  public <K, V> DaVinciClient<K, V> getAndStartVersionSpecificGenericAvroClient(
+      String storeName,
+      int storeVersion,
+      DaVinciConfig config) {
+    return getClient(
+        getStoreVersionName(storeName, storeVersion),
+        null,
+        config,
+        null,
+        new VersionSpecificGenericDaVinciClientConstructor<>(storeVersion),
+        VersionSpecificAvroGenericDaVinciClient.class,
+        true);
+  }
+
+  public <K, V> DaVinciClient<K, V> getVersionSpecificGenericAvroClient(
+      String storeName,
+      int storeVersion,
+      String viewName,
+      DaVinciConfig config) {
+    return getClient(
+        getStoreVersionName(storeName, storeVersion),
+        viewName,
+        config,
+        null,
+        new VersionSpecificGenericDaVinciClientConstructor<>(storeVersion),
+        VersionSpecificAvroGenericDaVinciClient.class,
+        false);
+  }
+
+  public <K, V> DaVinciClient<K, V> getAndStartVersionSpecificGenericAvroClient(
+      String storeName,
+      int storeVersion,
+      String viewName,
+      DaVinciConfig config) {
+    return getClient(
+        getStoreVersionName(storeName, storeVersion),
+        viewName,
+        config,
+        null,
+        new VersionSpecificGenericDaVinciClientConstructor<>(storeVersion),
+        VersionSpecificAvroGenericDaVinciClient.class,
+        true);
+  }
+
+  private String getStoreVersionName(String storeName, int storeVersion) {
+    return storeName + "_v" + storeVersion;
   }
 }

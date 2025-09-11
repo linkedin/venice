@@ -95,6 +95,15 @@ import org.apache.logging.log4j.Logger;
 
 public class DaVinciBackend implements Closeable {
   private static final Logger LOGGER = LogManager.getLogger(DaVinciBackend.class);
+
+  // Client type tracking for version-specific vs regular clients
+  public enum ClientType {
+    REGULAR, VERSION_SPECIFIC
+  }
+
+  // Per-store client tracking
+  private final Map<String, ClientType> storeClientTypes = new VeniceConcurrentHashMap<>();
+  private final Map<String, Integer> versionSpecificStoreVersions = new VeniceConcurrentHashMap<>();
   private final VeniceConfigLoader configLoader;
   private final SubscriptionBasedReadOnlyStoreRepository storeRepository;
   private final ReadOnlySchemaRepository schemaRepository;
@@ -713,6 +722,12 @@ public class DaVinciBackend implements Closeable {
   private final StoreDataChangedListener storeChangeListener = new StoreDataChangedListener() {
     @Override
     public void handleStoreChanged(Store store) {
+      // Skip version swaps for version-specific stores
+      if (isVersionSpecificStore(store.getName())) {
+        LOGGER.info("Ignoring store change event for version-specific store: {}", store.getName());
+        return;
+      }
+
       StoreBackend storeBackend = storeByNameMap.get(store.getName());
       if (storeBackend != null) {
         DaVinciBackend.this.handleStoreChanged(storeBackend);
@@ -724,6 +739,51 @@ public class DaVinciBackend implements Closeable {
       deleteStore(store.getName());
     }
   };
+
+  public synchronized void registerStoreClient(String storeName, Integer storeVersion) {
+    boolean isVersionSpecific = storeVersion != null;
+    ClientType newClientType = isVersionSpecific ? ClientType.VERSION_SPECIFIC : ClientType.REGULAR;
+    ClientType existingClientType = storeClientTypes.get(storeName);
+
+    // Check for client type conflict
+    if (existingClientType != null && existingClientType != newClientType) {
+      throw new VeniceClientException(
+          "Client type conflict for store '" + storeName + "'. "
+              + "Cannot mix regular and version-specific clients for the same store.");
+    }
+
+    // Check for existing version-specific client (only one allowed per store)
+    if (isVersionSpecific && existingClientType == ClientType.VERSION_SPECIFIC) {
+      Integer existingVersion = versionSpecificStoreVersions.get(storeName);
+      throw new VeniceClientException(
+          "Version-specific client already exists for store '" + storeName + "' " + "(existing version: "
+              + existingVersion + ", requested version: " + storeVersion + "). "
+              + "Only one version-specific client allowed per store.");
+    }
+
+    if (isVersionSpecific) {
+      versionSpecificStoreVersions.put(storeName, storeVersion);
+    }
+
+    storeClientTypes.put(storeName, newClientType);
+  }
+
+  public synchronized void unregisterStoreClient(String storeName, Integer storeVersion) {
+    storeClientTypes.remove(storeName);
+    if (storeVersion != null) {
+      versionSpecificStoreVersions.remove(storeName);
+    }
+  }
+
+  /**
+   * Check if a store is being used by a version-specific client.
+   *
+   * @param storeName The name of the store
+   * @return true if the store has a version-specific client, false otherwise
+   */
+  public synchronized boolean isVersionSpecificStore(String storeName) {
+    return ClientType.VERSION_SPECIFIC.equals(storeClientTypes.get(storeName));
+  }
 
   private final VeniceNotifier ingestionListener = new VeniceNotifier() {
     @Override

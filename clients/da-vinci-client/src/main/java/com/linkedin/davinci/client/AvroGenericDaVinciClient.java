@@ -123,13 +123,13 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
   private final ICProvider icProvider;
   private final AtomicBoolean ready = new AtomicBoolean(false);
   // TODO: Implement copy-on-write ComplementSet to support concurrent modification and reading.
-  private final ComplementSet<Integer> subscription = ComplementSet.emptySet();
+  protected final ComplementSet<Integer> subscription = ComplementSet.emptySet();
 
   private RecordSerializer<K> keySerializer;
   private RecordDeserializer<K> keyDeserializer;
   private AvroStoreDeserializerCache<GenericRecord> genericRecordStoreDeserializerCache;
   private StoreDeserializerCache<V> storeDeserializerCache;
-  private StoreBackend storeBackend;
+  protected StoreBackend storeBackend;
   private static ReferenceCounted<DaVinciBackend> daVinciBackend;
   private ObjectCacheBackend cacheBackend;
   private static final Map<CharSequence, Schema> computeResultSchemaCache = new VeniceConcurrentHashMap<>();
@@ -140,6 +140,8 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
   private final DaVinciRecordTransformerConfig recordTransformerConfig;
   private int readerSchemaId;
   private boolean isValidateSpecificSchemaEnabled;
+  // null for regular clients, non-null for version-specific clients
+  private final Integer storeVersion;
 
   public AvroGenericDaVinciClient(
       DaVinciConfig daVinciConfig,
@@ -164,7 +166,8 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
         icProvider,
         GenericChunkingAdapter.INSTANCE,
         () -> {},
-        readChunkExecutorForLargeRequest);
+        readChunkExecutorForLargeRequest,
+        null); // null = regular client
   }
 
   protected AvroGenericDaVinciClient(
@@ -175,7 +178,8 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
       ICProvider icProvider,
       AbstractAvroChunkingAdapter<V> chunkingAdapter,
       Runnable preValidation,
-      Executor readChunkExecutorForLargeRequest) {
+      Executor readChunkExecutorForLargeRequest,
+      Integer storeVersion) {
     logger.info("Creating client, storeName={}, daVinciConfig={}", clientConfig.getStoreName(), daVinciConfig);
     this.daVinciConfig = daVinciConfig;
     this.clientConfig = clientConfig;
@@ -186,6 +190,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
     this.recordTransformerConfig = daVinciConfig.getRecordTransformerConfig();
     this.readChunkExecutorForLargeRequest =
         readChunkExecutorForLargeRequest != null ? readChunkExecutorForLargeRequest : READ_CHUNK_EXECUTOR;
+    this.storeVersion = storeVersion;
 
     if (daVinciConfig.isIsolated() && recordTransformerConfig != null) {
       // When both are enabled, this causes the storage engine to be deleted everytime the client starts,
@@ -786,6 +791,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
     initBackend(clientConfig, configLoader, managedClients, icProvider, cacheConfig);
 
     try {
+      getBackend().registerStoreClient(getStoreName(), storeVersion);
       getBackend().verifyCacheConfigEquality(daVinciConfig.getCacheConfig(), getStoreName());
 
       if (daVinciConfig.isCacheEnabled()) {
@@ -878,6 +884,9 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
     try {
       logger.info("Closing client, storeName=" + getStoreName());
       ready.set(false);
+
+      getBackend().unregisterStoreClient(getStoreName(), storeVersion);
+
       if (cacheBackend != null) {
         cacheBackend.close();
       }
@@ -894,4 +903,11 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
     return logger;
   }
 
+  /**
+   *
+   * @return the version this client is specifically subscribed to. If it's null, it's a regular client.
+   */
+  protected Integer getStoreVersion() {
+    return storeVersion;
+  }
 }
