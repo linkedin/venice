@@ -1067,12 +1067,14 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       Map<String, PubSubPosition> upstreamStartOffsetByKafkaURL) {
     // Update in-memory consumedUpstreamRTOffsetMap in case no RT record is consumed after the subscription
     final PubSubTopic leaderTopic = pcs.getOffsetRecord().getLeaderTopic(pubSubTopicRepository);
+    final PubSubTopicPartition leaderTopicPartition = pcs.getSourceTopicPartition(leaderTopic);
     if (leaderTopic != null && leaderTopic.isRealTime()) {
-      upstreamStartOffsetByKafkaURL.forEach((kafkaURL, upstreamStartOffset) -> {
-        if (upstreamStartOffset
-            .getNumericOffset() > getLatestConsumedUpstreamOffsetForHybridOffsetLagMeasurement(pcs, kafkaURL)
-                .getNumericOffset()) {
-          updateLatestConsumedRtPositions(pcs, kafkaURL, upstreamStartOffset);
+      upstreamStartOffsetByKafkaURL.forEach((kafkaURL, upstreamStartPosition) -> {
+        if (topicManager.diffPosition(
+            leaderTopicPartition,
+            upstreamStartPosition,
+            getLatestConsumedUpstreamPositionForHybridOffsetLagMeasurement(pcs, kafkaURL)) > 0) {
+          updateLatestConsumedRtPositions(pcs, kafkaURL, upstreamStartPosition);
         }
       });
     }
@@ -1428,7 +1430,13 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           if (dryRun) {
             final PubSubPosition previousUpstreamOffset =
                 lastKnownUpstreamTopicOffsetSupplier.apply(sourceKafkaUrl, upstreamTopic);
+            TopicManager topicManager = getTopicManager(sourceKafkaUrl);
+            PubSubTopicPartition pubSubTopicPartition =
+                partitionConsumptionState.getSourceTopicPartition(upstreamTopic);
+
             checkAndHandleUpstreamOffsetRewind(
+                topicManager,
+                pubSubTopicPartition,
                 partitionConsumptionState,
                 consumerRecord,
                 newUpstreamOffset,
@@ -1538,12 +1546,14 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   }
 
   protected static void checkAndHandleUpstreamOffsetRewind(
+      TopicManager topicManager,
+      PubSubTopicPartition pubSubTopicPartition,
       PartitionConsumptionState partitionConsumptionState,
       DefaultPubSubMessage consumerRecord,
-      final PubSubPosition newUpstreamOffset,
-      final PubSubPosition previousUpstreamOffset,
+      final PubSubPosition newUpstreamPosition,
+      final PubSubPosition previousUpstreamPosition,
       LeaderFollowerStoreIngestionTask ingestionTask) {
-    if (newUpstreamOffset.getNumericOffset() >= previousUpstreamOffset.getNumericOffset()) {
+    if (topicManager.diffPosition(pubSubTopicPartition, newUpstreamPosition, previousUpstreamPosition) >= 0) {
       return; // Rewind did not happen
     }
     if (!ingestionTask.isHybridMode()) {
@@ -1587,8 +1597,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
               + " Multiple leaders are producing. ",
           partitionConsumptionState.getReplicaId(),
           consumerRecord.getPosition(),
-          newUpstreamOffset,
-          previousUpstreamOffset,
+          newUpstreamPosition,
+          previousUpstreamPosition,
           kafkaValue.producerMetadata.producerGUID == null
               ? "unknown"
               : GuidUtils.getHexFromGuid(kafkaValue.producerMetadata.producerGUID),
@@ -1951,7 +1961,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
         PubSubPosition lastProcessedVtPos = partitionConsumptionState.getLatestProcessedVtPosition();
         // TODO(sushantmane): Use TM::compare for PubSubPosition comparison
-        if (lastProcessedVtPos.getNumericOffset() >= record.getPosition().getNumericOffset()) {
+        if (topicManager.diffPosition(record.getTopicPartition(), lastProcessedVtPos, record.getPosition()) >= 0) {
           String message = partitionConsumptionState.getLeaderFollowerState() + " replica: "
               + partitionConsumptionState.getReplicaId() + " had already processed the record";
           if (!REDUNDANT_LOGGING_FILTER.isRedundantException(message)) {
@@ -2867,7 +2877,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   /**
    * For regular L/F stores without A/A enabled, there is always only one real-time source.
    */
-  protected PubSubPosition getLatestConsumedUpstreamOffsetForHybridOffsetLagMeasurement(
+  protected PubSubPosition getLatestConsumedUpstreamPositionForHybridOffsetLagMeasurement(
       PartitionConsumptionState pcs,
       String ignoredKafkaUrl) {
     return pcs.getLatestConsumedRtPosition(NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY);

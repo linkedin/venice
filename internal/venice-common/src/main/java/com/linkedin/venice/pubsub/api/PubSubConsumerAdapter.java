@@ -211,24 +211,6 @@ public interface PubSubConsumerAdapter extends AutoCloseable, Closeable {
    * @throws PubSubOpTimeoutException If the operation times out while fetching the offset.
    * @throws PubSubClientException If there is an error while attempting to fetch the offset.
    */
-  @Deprecated
-  default Long offsetForTime(PubSubTopicPartition pubSubTopicPartition, long timestamp, Duration timeout) {
-    return getPositionByTimestamp(pubSubTopicPartition, timestamp, timeout).getNumericOffset();
-  }
-
-  /**
-   * Retrieves the offset of the first message with a timestamp greater than or equal to the target
-   * timestamp for the specified PubSub topic-partition. If no such message is found, {@code null}
-   * will be returned for the partition.
-   *
-   * @param pubSubTopicPartition The PubSub topic-partition for which to fetch the offset.
-   * @param timestamp The target timestamp to search for in milliseconds since the Unix epoch.
-   * @param timeout The maximum duration to wait for the operation to complete.
-   * @return The offset of the first message with a timestamp greater than or equal to the target timestamp,
-   *         or {@code null} if no such message is found for the partition.
-   * @throws PubSubOpTimeoutException If the operation times out while fetching the offset.
-   * @throws PubSubClientException If there is an error while attempting to fetch the offset.
-   */
   PubSubPosition getPositionByTimestamp(PubSubTopicPartition pubSubTopicPartition, long timestamp, Duration timeout);
 
   /**
