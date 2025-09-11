@@ -3,8 +3,13 @@ package com.linkedin.venice.client.store;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.stats.ClientStats;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
+import com.linkedin.venice.client.store.streaming.VeniceResponseMap;
+import com.linkedin.venice.client.store.streaming.VeniceResponseMapImpl;
 import com.linkedin.venice.compute.ComputeRequestWrapper;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Queue;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import org.apache.avro.generic.GenericRecord;
@@ -58,4 +63,31 @@ public abstract class InternalAvroStoreClient<K, V> implements AvroGenericReadCo
    * by throwing an exception.
    */
   public abstract void startWithExceptionThrownWhenFail();
+
+  public StreamingCallback<K, V> getStreamingCallback(
+      Set<K> keys,
+      Map<K, V> resultMap,
+      Queue<K> nonExistingKeys,
+      CompletableFuture<VeniceResponseMap<K, V>> resultFuture) {
+    return new StreamingCallback<K, V>() {
+      @Override
+      public void onRecordReceived(K key, V value) {
+        if (value == null) {
+          nonExistingKeys.add(key);
+        } else {
+          resultMap.put(key, value);
+        }
+      }
+
+      @Override
+      public void onCompletion(Optional<Exception> exception) {
+        if (exception.isPresent()) {
+          resultFuture.completeExceptionally(exception.get());
+        } else {
+          boolean isFullResponse = ((resultMap.size() + nonExistingKeys.size()) == keys.size());
+          resultFuture.complete(new VeniceResponseMapImpl<>(resultMap, nonExistingKeys, isFullResponse));
+        }
+      }
+    };
+  }
 }
