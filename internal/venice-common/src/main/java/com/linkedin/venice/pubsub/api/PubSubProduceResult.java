@@ -6,8 +6,12 @@ package com.linkedin.venice.pubsub.api;
 public interface PubSubProduceResult {
   /**
    * The offset of the record in the topic/partition.
+   * @deprecated Use {@link #getPubSubPosition()} instead.
    */
-  long getOffset();
+  @Deprecated
+  default long getOffset() {
+    return getPubSubPosition().getNumericOffset();
+  }
 
   /**
    * The position of the record in the topic/partition.

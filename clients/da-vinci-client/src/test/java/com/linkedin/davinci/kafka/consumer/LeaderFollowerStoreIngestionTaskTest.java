@@ -577,7 +577,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
     assertEquals(put.getSchemaId(), AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion());
     assertNotNull(put.getPutValue());
     PubSubProduceResult produceResult = mock(PubSubProduceResult.class);
-    when(produceResult.getOffset()).thenReturn(0L);
+    when(produceResult.getPubSubPosition()).thenReturn(mock(PubSubPosition.class));
     when(produceResult.getSerializedSize()).thenReturn(keyBytes.length + put.putValue.remaining());
     callback.onCompletion(produceResult, null);
     verify(mockStoreBufferService, times(1)).execSyncOffsetFromSnapshotAsync(any(), any(), any());
