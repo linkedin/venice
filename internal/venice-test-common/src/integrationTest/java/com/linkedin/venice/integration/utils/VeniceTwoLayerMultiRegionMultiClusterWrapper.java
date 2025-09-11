@@ -37,6 +37,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import org.apache.commons.io.IOUtils;
@@ -361,10 +362,67 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
 
   @Override
   protected void internalStop() throws Exception {
-    parentControllers.forEach(IOUtils::closeQuietly);
-    childRegions.forEach(IOUtils::closeQuietly);
-    IOUtils.closeQuietly(parentPubSubBrokerWrapper);
+    LOGGER.info("Starting parallel shutdown of VeniceTwoLayerMultiRegionMultiClusterWrapper");
+    long overallStartTime = System.currentTimeMillis();
+
+    // Create parallel shutdown tasks for different resource groups with individual timing
+    CompletableFuture<Long> parentControllersShutdown = CompletableFuture.supplyAsync(() -> {
+      long startTime = System.currentTimeMillis();
+      LOGGER.debug("Shutting down {} parent controllers", parentControllers.size());
+      parentControllers.forEach(IOUtils::closeQuietly);
+      long duration = System.currentTimeMillis() - startTime;
+      LOGGER.info("Completed shutdown of {} parent controllers in {} ms", parentControllers.size(), duration);
+      return duration;
+    });
+
+    CompletableFuture<Long> childRegionsShutdown = CompletableFuture.supplyAsync(() -> {
+      long startTime = System.currentTimeMillis();
+      LOGGER.debug("Shutting down {} child regions", childRegions.size());
+      childRegions.forEach(IOUtils::closeQuietly);
+      long duration = System.currentTimeMillis() - startTime;
+      LOGGER.info("Completed shutdown of {} child regions in {} ms", childRegions.size(), duration);
+      return duration;
+    });
+
+    CompletableFuture<Long> pubSubBrokerShutdown = CompletableFuture.supplyAsync(() -> {
+      long startTime = System.currentTimeMillis();
+      LOGGER.debug("Shutting down parent PubSub broker");
+      IOUtils.closeQuietly(parentPubSubBrokerWrapper);
+      long duration = System.currentTimeMillis() - startTime;
+      LOGGER.info("Completed shutdown of parent PubSub broker in {} ms", duration);
+      return duration;
+    });
+
+    // Wait for all parallel shutdowns to complete and collect timing data
+    CompletableFuture<Void> allParallelShutdowns =
+        CompletableFuture.allOf(parentControllersShutdown, childRegionsShutdown, pubSubBrokerShutdown);
+    allParallelShutdowns.join();
+
+    // Get individual timing results
+    long parentControllersTime = parentControllersShutdown.join();
+    long childRegionsTime = childRegionsShutdown.join();
+    long pubSubBrokerTime = pubSubBrokerShutdown.join();
+    long parallelPhaseTime = System.currentTimeMillis() - overallStartTime;
+
+    // ZooKeeper should be shut down last as other components may depend on it
+    long zkStartTime = System.currentTimeMillis();
+    LOGGER.debug("Shutting down ZooKeeper server");
     IOUtils.closeQuietly(zkServerWrapper);
+    long zkShutdownTime = System.currentTimeMillis() - zkStartTime;
+    LOGGER.info("Completed shutdown of ZooKeeper server in {} ms", zkShutdownTime);
+
+    long totalShutdownTime = System.currentTimeMillis() - overallStartTime;
+
+    // Log comprehensive timing summary
+    LOGGER.info(
+        "Shutdown timing summary - Total: {} ms, Parallel phase: {} ms, "
+            + "Parent controllers: {} ms, Child regions: {} ms, PubSub broker: {} ms, ZooKeeper: {} ms",
+        totalShutdownTime,
+        parallelPhaseTime,
+        parentControllersTime,
+        childRegionsTime,
+        pubSubBrokerTime,
+        zkShutdownTime);
   }
 
   @Override
