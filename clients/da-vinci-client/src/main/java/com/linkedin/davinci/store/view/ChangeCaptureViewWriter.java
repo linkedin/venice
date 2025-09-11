@@ -128,22 +128,16 @@ public class ChangeCaptureViewWriter extends VeniceViewWriter {
 
     Map<String, PubSubPosition> sortedWaterMarkOffsets = partitionConsumptionState.getLatestProcessedRtPositions();
 
-    List<Long> highWaterMarkOffsets;
     List<ByteBuffer> highWaterMarkPubSubPositions;
     if (maxColoIdValue > -1) {
-      highWaterMarkOffsets = new ArrayList<>(Collections.nCopies(maxColoIdValue + 1, 0L));
       highWaterMarkPubSubPositions = new ArrayList<>(
           Collections.nCopies(maxColoIdValue + 1, PubSubSymbolicPosition.EARLIEST.toWireFormatBuffer()));
       for (String url: sortedWaterMarkOffsets.keySet()) {
-        highWaterMarkOffsets.set(
-            kafkaClusterUrlToIdMap.getInt(url),
-            partitionConsumptionState.getLatestProcessedRtPositions().get(url).getNumericOffset());
         highWaterMarkPubSubPositions.set(
             kafkaClusterUrlToIdMap.getInt(url),
             partitionConsumptionState.getLatestProcessedRtPositions().get(url).toWireFormatBuffer());
       }
     } else {
-      highWaterMarkOffsets = Collections.emptyList();
       highWaterMarkPubSubPositions = Collections.emptyList();
     }
 
@@ -153,7 +147,7 @@ public class ChangeCaptureViewWriter extends VeniceViewWriter {
     }
 
     veniceWriter.sendControlMessage(
-        constructVersionSwapControlMessage(versionSwapMessage, highWaterMarkOffsets, highWaterMarkPubSubPositions),
+        constructVersionSwapControlMessage(versionSwapMessage, highWaterMarkPubSubPositions),
         partitionConsumptionState.getPartition(),
         Collections.emptyMap(),
         null,
@@ -211,7 +205,6 @@ public class ChangeCaptureViewWriter extends VeniceViewWriter {
 
   private ControlMessage constructVersionSwapControlMessage(
       VersionSwap versionSwapMessage,
-      List<Long> localHighWatermarks,
       List<ByteBuffer> localHighWatermarkPubSubPositions) {
     ControlMessage controlMessageToBroadcast = new ControlMessage();
     controlMessageToBroadcast.controlMessageType = ControlMessageType.VERSION_SWAP.getValue();
@@ -219,7 +212,6 @@ public class ChangeCaptureViewWriter extends VeniceViewWriter {
     VersionSwap versionSwapToBroadcast = new VersionSwap();
     versionSwapToBroadcast.oldServingVersionTopic = versionSwapMessage.oldServingVersionTopic;
     versionSwapToBroadcast.newServingVersionTopic = versionSwapMessage.newServingVersionTopic;
-    versionSwapToBroadcast.localHighWatermarks = localHighWatermarks;
     versionSwapToBroadcast.localHighWatermarkPubSubPositions = localHighWatermarkPubSubPositions;
     controlMessageToBroadcast.controlMessageUnion = versionSwapToBroadcast;
     return controlMessageToBroadcast;

@@ -908,7 +908,7 @@ public class PartitionTracker {
           .append(")");
       if (consumerRecord.getValue().leaderMetadataFooter != null) {
         sb.append("; LeaderMetadata { upstream position: ")
-            .append(consumerRecord.getValue().leaderMetadataFooter.upstreamOffset)
+            .append(consumerRecord.getValue().leaderMetadataFooter.upstreamPubSubPosition)
             .append("; upstream pub sub cluster ID: ")
             .append(consumerRecord.getValue().leaderMetadataFooter.upstreamKafkaClusterId)
             .append("; producer host name: ")
