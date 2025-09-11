@@ -1476,9 +1476,8 @@ public abstract class StoreIngestionTaskTest {
       verifyPut(aaConfig, true);
       verifyDelete(aaConfig, true, false);
       // Verify it commits the offset to Offset Manager
-      long currentOffset = deleteProduceResult.getOffset();
       OffsetRecord expectedOffsetRecordForDeleteMessage =
-          getOffsetRecord(InMemoryPubSubPosition.of(currentOffset), Optional.empty());
+          getOffsetRecord(deleteProduceResult.getPubSubPosition(), Optional.empty());
       verify(mockStorageMetadataService, timeout(TEST_TIMEOUT_MS))
           .put(topic, PARTITION_FOO, expectedOffsetRecordForDeleteMessage);
 
@@ -1585,9 +1584,8 @@ public abstract class StoreIngestionTaskTest {
           .put(PARTITION_FOO, putKeyFoo2, ByteBuffer.wrap(ValueRecord.create(SCHEMA_ID, putValue).serialize()));
 
       // Verify it commits the offset to Offset Manager
-      long currentOffset = putMetadata4.getOffset();
       OffsetRecord expectedOffsetRecordForLastMessage =
-          getOffsetRecord(InMemoryPubSubPosition.of(currentOffset), Optional.empty());
+          getOffsetRecord(putMetadata4.getPubSubPosition(), Optional.empty());
       verify(mockStorageMetadataService, timeout(TEST_TIMEOUT_MS))
           .put(topic, PARTITION_FOO, expectedOffsetRecordForLastMessage);
     }, aaConfig);
@@ -2627,15 +2625,17 @@ public abstract class StoreIngestionTaskTest {
       verifyDelete(aaConfig, false, true);
 
       // Verify it commits the offset to Offset Manager after receiving EOP control message
-      OffsetRecord expectedOffsetRecordForDeleteMessage = getOffsetRecord(deleteMetadata.getOffset() + 1, true);
+      OffsetRecord expectedOffsetRecordForDeleteMessage =
+          getOffsetRecord(deleteMetadata.getPubSubPosition().getNumericOffset() + 1, true);
       verify(mockStorageMetadataService, timeout(TEST_TIMEOUT_MS))
           .put(topic, PARTITION_FOO, expectedOffsetRecordForDeleteMessage);
       // Deferred write is not going to commit offset for every message, but will commit offset for every control
       // message
       // The following verification is for START_OF_PUSH control message
-      long currentOffset = putMetadata.getOffset() - 1;
+      InMemoryPubSubPosition currentPosition =
+          ((InMemoryPubSubPosition) putMetadata.getPubSubPosition()).getPreviousPosition();
       verify(mockStorageMetadataService, times(1))
-          .put(topic, PARTITION_FOO, getOffsetRecord(InMemoryPubSubPosition.of(currentOffset), Optional.empty()));
+          .put(topic, PARTITION_FOO, getOffsetRecord(currentPosition, Optional.empty()));
       // Check database mode switches from deferred-write to transactional after EOP control message
       StoragePartitionConfig deferredWritePartitionConfig = new StoragePartitionConfig(topic, PARTITION_FOO);
       deferredWritePartitionConfig.setDeferredWrite(true);
@@ -2675,15 +2675,19 @@ public abstract class StoreIngestionTaskTest {
       verify(mockStorageMetadataService, timeout(TEST_TIMEOUT_MS)).getLastOffset(topic, PARTITION_FOO);
 
       // Verify it commits the offset to Offset Manager after receiving EOP control message
-      OffsetRecord expectedOffsetRecordForDeleteMessage = getOffsetRecord(deleteMetadata.getOffset() + 1, true);
+      InMemoryPubSubPosition nextToDeletePosition =
+          ((InMemoryPubSubPosition) deleteMetadata.getPubSubPosition()).getNextPosition();
+      OffsetRecord expectedOffsetRecordForDeleteMessage =
+          getOffsetRecord(nextToDeletePosition, Optional.of(InMemoryPubSubPosition.of(1000L)));
       verify(mockStorageMetadataService, timeout(TEST_TIMEOUT_MS))
           .put(topic, PARTITION_FOO, expectedOffsetRecordForDeleteMessage);
       // Deferred write is not going to commit offset for every message, but will commit offset for every control
       // message
       // The following verification is for START_OF_PUSH control message
-      long currentOffset = putMetadata.getOffset() - 1;
+      InMemoryPubSubPosition currentPosition =
+          ((InMemoryPubSubPosition) putMetadata.getPubSubPosition()).getPreviousPosition();
       verify(mockStorageMetadataService, times(1))
-          .put(topic, PARTITION_FOO, getOffsetRecord(InMemoryPubSubPosition.of(currentOffset), Optional.empty()));
+          .put(topic, PARTITION_FOO, getOffsetRecord(currentPosition, Optional.empty()));
       // Check database mode switches from deferred-write to transactional after EOP control message
       StoragePartitionConfig deferredWritePartitionConfig = new StoragePartitionConfig(topic, PARTITION_FOO);
       boolean deferredWrite;

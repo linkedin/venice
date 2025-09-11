@@ -721,7 +721,11 @@ public class VeniceParentHelixAdmin implements Admin {
           veniceWriter.flush();
           PubSubProduceResult produceResult = future.get();
 
-          LOGGER.info("Sent message: {} to kafka, offset: {}", message, produceResult.getOffset());
+          LOGGER.info(
+              "Sent message: {} to: {}, position: {}",
+              message,
+              Utils.getReplicaId(produceResult.getTopic(), produceResult.getPartition()),
+              produceResult.getPubSubPosition());
         } catch (Exception e) {
           throw new VeniceException("Got exception during sending message to Kafka -- " + e.getMessage(), e);
         }
