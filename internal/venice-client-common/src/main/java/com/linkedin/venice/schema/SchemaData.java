@@ -1,9 +1,9 @@
 package com.linkedin.venice.schema;
 
-import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
 import com.linkedin.venice.schema.rmd.RmdVersionId;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
+import com.linkedin.venice.utils.AvroSchemaUtils;
 import com.linkedin.venice.utils.SparseConcurrentList;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Collection;
@@ -22,7 +22,6 @@ public final class SchemaData {
   private final String storeName;
   private SchemaEntry keySchema;
   private final SparseConcurrentList<SchemaEntry> valueSchemaMap;
-  private final Map<SchemaEntry, Integer> canonicalValueSchemaRMap;
   private final Map<GeneratedSchemaID, DerivedSchemaEntry> updateSchemaMap;
   private final Map<String, GeneratedSchemaID> canonicalUpdateSchemaRMap;
   private final Map<RmdVersionId, RmdSchemaEntry> rmdSchemaMap;
@@ -40,7 +39,6 @@ public final class SchemaData {
     this.keySchema = keySchema;
     this.maxValueSchemaId = INVALID_VALUE_SCHEMA_ID;
     this.valueSchemaMap = new SparseConcurrentList<>();
-    this.canonicalValueSchemaRMap = new VeniceConcurrentHashMap<>();
 
     this.updateSchemaMap = new VeniceConcurrentHashMap<>();
     this.canonicalUpdateSchemaRMap = new VeniceConcurrentHashMap<>();
@@ -71,15 +69,12 @@ public final class SchemaData {
   }
 
   public void addValueSchema(SchemaEntry valueSchema) {
+    int valueSchemaId = valueSchema.getId();
     // value schema should be unique in store level, same as schema id
     synchronized (this) {
-      this.maxValueSchemaId = Math.max(valueSchema.getId(), this.maxValueSchemaId);
+      this.maxValueSchemaId = Math.max(valueSchemaId, this.maxValueSchemaId);
     }
-    this.valueSchemaMap.set(valueSchema.getId(), valueSchema);
-
-    String canonicalSchema = AvroCompatibilityHelper.toParsingForm(valueSchema.getSchema());
-    SchemaEntry canonicalValueSchemaEntry = new SchemaEntry(valueSchema.getId(), canonicalSchema);
-    this.canonicalValueSchemaRMap.putIfAbsent(canonicalValueSchemaEntry, valueSchema.getId());
+    this.valueSchemaMap.set(valueSchemaId, valueSchema);
   }
 
   public DerivedSchemaEntry getDerivedSchema(int valueSchemaId, int derivedSchemaId) {
@@ -112,9 +107,7 @@ public final class SchemaData {
    * @return The ID of the schema that has the same parsing canonical form as the schema provided
    */
   public int getSchemaID(SchemaEntry entry) {
-    String canonicalSchema = AvroCompatibilityHelper.toParsingForm(entry.getSchema());
-    SchemaEntry canonicalValueSchemaEntry = new SchemaEntry(entry.getId(), canonicalSchema);
-    return canonicalValueSchemaRMap.getOrDefault(canonicalValueSchemaEntry, INVALID_VALUE_SCHEMA_ID);
+    return AvroSchemaUtils.getSchemaIdCanonicalMatch(getValueSchemas(), entry);
   }
 
   public Collection<SchemaEntry> getValueSchemas() {
@@ -147,6 +140,5 @@ public final class SchemaData {
     // value schema should be unique in store level, same as schema id
     int id = valueSchema.getId();
     valueSchemaMap.remove(id);
-    canonicalValueSchemaRMap.remove(valueSchema);
   }
 }
