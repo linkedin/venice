@@ -1943,7 +1943,7 @@ public class VenicePushJob implements AutoCloseable {
         highestKmeSchemaIdFromController = schema.getId();
       }
 
-      if (schema.getId() >= localHighestKmeSchemaId) {
+      if (schema.getId() > localHighestKmeSchemaId) {
         newKmeSchemas.put(schema.getId(), schema.getSchemaStr());
       }
     }

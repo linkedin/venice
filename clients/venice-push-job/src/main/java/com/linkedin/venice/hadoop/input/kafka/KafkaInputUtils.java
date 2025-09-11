@@ -3,7 +3,10 @@ package com.linkedin.venice.hadoop.input.kafka;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_CONFIG_PREFIX;
 import static com.linkedin.venice.ConfigKeys.PUBSUB_BROKER_ADDRESS;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.*;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_BROKER_URL;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.NEWER_KME_SCHEMAS_PREFIX;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_CONFIGURATOR_CLASS_CONFIG;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SYSTEM_SCHEMA_READER_ENABLED;
 
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.CompressorFactory;
@@ -24,6 +27,7 @@ import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
+import java.util.stream.Collectors;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.kafka.clients.CommonClientConfigs;
 
@@ -93,11 +97,10 @@ public class KafkaInputUtils {
     boolean isSchemaReaderEnabled = Boolean.parseBoolean(config.get(SYSTEM_SCHEMA_READER_ENABLED, "false"));
     if (isSchemaReaderEnabled) {
 
-      Map<String, String> newerKMESchemaStrings =
-          config.getPropsWithPrefix(NEWER_KAFKA_MESSAGE_ENVELOPE_SCHEMAS_PREFIX);
+      Map<String, String> newerKMESchemaStrings = config.getPropsWithPrefix(NEWER_KME_SCHEMAS_PREFIX);
       Map<Integer, String> newerIdToSchemas = newerKMESchemaStrings.entrySet()
           .stream()
-          .collect(HashMap::new, (m, e) -> m.put(Integer.parseInt(e.getKey()), e.getValue()), HashMap::putAll);
+          .collect(Collectors.toMap(e -> Integer.parseInt(e.getKey()), Map.Entry::getValue));
 
       SchemaReader schemaReader = new KMESchemaReaderForKafkaInputFormat(newerIdToSchemas);
       kafkaValueSerializer.setSchemaReader(schemaReader);
@@ -134,7 +137,7 @@ public class KafkaInputUtils {
       return schemaMapWithPrefix;
     }
     for (Map.Entry<Integer, String> entry: schemaMap.entrySet()) {
-      String schemaWithPrefix = NEWER_KAFKA_MESSAGE_ENVELOPE_SCHEMAS_PREFIX + entry.getKey();
+      String schemaWithPrefix = NEWER_KME_SCHEMAS_PREFIX + entry.getKey();
       schemaMapWithPrefix.put(schemaWithPrefix, entry.getValue());
     }
     return schemaMapWithPrefix;

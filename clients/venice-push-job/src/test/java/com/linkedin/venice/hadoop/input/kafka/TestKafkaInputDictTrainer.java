@@ -33,6 +33,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 import org.apache.hadoop.mapred.InputSplit;
 import org.apache.hadoop.mapred.RecordReader;
@@ -52,9 +53,8 @@ public class TestKafkaInputDictTrainer {
 
   private KafkaInputDictTrainer.Param getParam(int sampleSize, CompressionStrategy sourceVersionCompressionStrategy) {
     Map<Integer, Schema> allSchemas = Utils.getAllSchemasFromResources(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE);
-    Map<Integer, String> allSchemaStr = allSchemas.entrySet()
-        .stream()
-        .collect(java.util.stream.Collectors.toMap(Map.Entry::getKey, e -> e.getValue().toString()));
+    Map<Integer, String> allSchemaStr =
+        allSchemas.entrySet().stream().collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().toString()));
     return new KafkaInputDictTrainer.ParamBuilder().setKafkaInputBroker("test_url")
         .setTopicName("test_topic")
         .setKeySchema("\"string\"")
