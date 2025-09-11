@@ -2632,7 +2632,8 @@ public abstract class StoreIngestionTaskTest {
       verifyDelete(aaConfig, false, true);
 
       // Verify it commits the offset to Offset Manager after receiving EOP control message
-      InMemoryPubSubPosition positionAfterDelete = ((InMemoryPubSubPosition) deleteMetadata.getPubSubPosition()).getNextPosition();
+      InMemoryPubSubPosition positionAfterDelete =
+          ((InMemoryPubSubPosition) deleteMetadata.getPubSubPosition()).getNextPosition();
       OffsetRecord expectedOffsetRecordForDeleteMessage =
           getOffsetRecord(positionAfterDelete.getInternalOffset(), true, pubSubContext);
       verify(mockStorageMetadataService, timeout(TEST_TIMEOUT_MS))
