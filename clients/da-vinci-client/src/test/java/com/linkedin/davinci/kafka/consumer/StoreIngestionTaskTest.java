@@ -5579,7 +5579,16 @@ public abstract class StoreIngestionTaskTest {
     // No rewind, then nothing would happen
     PubSubPosition p10 = InMemoryPubSubPosition.of(10);
     PubSubPosition p11 = InMemoryPubSubPosition.of(11);
+    TopicManager topicManager = mock(TopicManager.class);
+    doAnswer(invocation -> {
+      InMemoryPubSubPosition position1 = invocation.getArgument(1);
+      InMemoryPubSubPosition position2 = invocation.getArgument(2);
+      return position1.getInternalOffset() - position2.getInternalOffset();
+    }).when(topicManager).diffPosition(any(), any(), any());
+
     LeaderFollowerStoreIngestionTask.checkAndHandleUpstreamOffsetRewind(
+        topicManager,
+        mock(PubSubTopicPartition.class),
         mock(PartitionConsumptionState.class),
         mock(DefaultPubSubMessage.class),
         p11,
@@ -5595,6 +5604,8 @@ public abstract class StoreIngestionTaskTest {
     when(mockTask1.getVersionNumber()).thenReturn(version);
 
     LeaderFollowerStoreIngestionTask.checkAndHandleUpstreamOffsetRewind(
+        topicManager,
+        mock(PubSubTopicPartition.class),
         mock(PartitionConsumptionState.class),
         mock(DefaultPubSubMessage.class),
         p10,
@@ -5649,8 +5660,14 @@ public abstract class StoreIngestionTaskTest {
     when(mockTask2.getVersionedDIVStats()).thenReturn(mockStats2);
     IngestionNotificationDispatcher ingestionNotificationDispatcher = mock(IngestionNotificationDispatcher.class);
     when(mockTask2.getIngestionNotificationDispatcher()).thenReturn(ingestionNotificationDispatcher);
-    LeaderFollowerStoreIngestionTask
-        .checkAndHandleUpstreamOffsetRewind(mockState2, consumedRecord, p10, p11, mockTask2);
+    LeaderFollowerStoreIngestionTask.checkAndHandleUpstreamOffsetRewind(
+        topicManager,
+        mock(PubSubTopicPartition.class),
+        mockState2,
+        consumedRecord,
+        p10,
+        p11,
+        mockTask2);
     verify(mockStats2).recordBenignLeaderOffsetRewind("test_store", 1);
     verify(mockStats2, never()).recordPotentiallyLossyLeaderOffsetRewind(storeName, version);
 
@@ -5663,8 +5680,14 @@ public abstract class StoreIngestionTaskTest {
         .thenReturn(ByteUtils.extractByteArray(actualValueBuffer));
     VeniceException exception = Assert.expectThrows(
         VeniceException.class,
-        () -> LeaderFollowerStoreIngestionTask
-            .checkAndHandleUpstreamOffsetRewind(mockState2, consumedRecord, p10, p11, mockTask2));
+        () -> LeaderFollowerStoreIngestionTask.checkAndHandleUpstreamOffsetRewind(
+            topicManager,
+            mock(PubSubTopicPartition.class),
+            mockState2,
+            consumedRecord,
+            p10,
+            p11,
+            mockTask2));
     assertTrue(
         exception.getMessage().contains("Failing the job because lossy rewind happens before receiving EndOfPush."));
     // Verify that the VT offset is also in the error message
