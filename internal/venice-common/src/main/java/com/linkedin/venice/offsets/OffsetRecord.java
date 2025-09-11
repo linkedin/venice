@@ -7,6 +7,7 @@ import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.ProducerPartitionState;
+import com.linkedin.venice.pubsub.PubSubContext;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
@@ -44,24 +45,33 @@ public class OffsetRecord {
   private static final String NULL_STRING = "null";
   private final PartitionState partitionState;
   private final InternalAvroSpecificSerializer<PartitionState> serializer;
+  private final PubSubContext pubSubContext;
 
   private PubSubTopic leaderPubSubTopic;
 
-  public OffsetRecord(PartitionState partitionState, InternalAvroSpecificSerializer<PartitionState> serializer) {
+  public OffsetRecord(
+      PartitionState partitionState,
+      InternalAvroSpecificSerializer<PartitionState> serializer,
+      PubSubContext pubSubContext) {
     this.partitionState = partitionState;
     this.serializer = serializer;
+    this.pubSubContext = pubSubContext;
   }
 
-  public OffsetRecord(InternalAvroSpecificSerializer<PartitionState> serializer) {
-    this(getEmptyPartitionState(), serializer);
+  public OffsetRecord(InternalAvroSpecificSerializer<PartitionState> serializer, PubSubContext pubSubContext) {
+    this(getEmptyPartitionState(), serializer, pubSubContext);
   }
 
   /**
    * @param bytes to deserialize from
    */
-  public OffsetRecord(byte[] bytes, InternalAvroSpecificSerializer<PartitionState> serializer) {
+  public OffsetRecord(
+      byte[] bytes,
+      InternalAvroSpecificSerializer<PartitionState> serializer,
+      PubSubContext pubSubContext) {
     this.serializer = serializer;
     this.partitionState = deserializePartitionState(bytes);
+    this.pubSubContext = pubSubContext;
   }
 
   private static PartitionState getEmptyPartitionState() {
@@ -432,6 +442,15 @@ public class OffsetRecord {
     hash = hash * 31 + Long.hashCode(this.partitionState.offset);
     hash = hash * 31 + Boolean.hashCode(this.partitionState.endOfPush);
     return hash;
+  }
+
+  /**
+   * Get the PubSubContext associated with this OffsetRecord.
+   *
+   * @return PubSubContext
+   */
+  public PubSubContext getPubSubContext() {
+    return pubSubContext;
   }
 
   /**

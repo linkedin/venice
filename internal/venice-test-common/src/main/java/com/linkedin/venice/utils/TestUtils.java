@@ -86,6 +86,7 @@ import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicType;
 import com.linkedin.venice.pubsub.manager.TopicManagerRepository;
+import com.linkedin.venice.pubsub.mock.InMemoryPubSubPosition;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.router.VeniceRouterConfig;
 import com.linkedin.venice.router.api.VenicePartitionFinder;
@@ -695,14 +696,18 @@ public class TestUtils {
     return participant;
   }
 
-  public static OffsetRecord getOffsetRecord(long currentOffset, boolean complete) {
+  public static OffsetRecord getOffsetRecord(long currentOffset, boolean complete, PubSubContext pubSubContext) {
     return getOffsetRecord(
         ApacheKafkaOffsetPosition.of(currentOffset),
-        complete ? Optional.of(ApacheKafkaOffsetPosition.of(1000L)) : Optional.of(ApacheKafkaOffsetPosition.of(0L)));
+        complete ? Optional.of(InMemoryPubSubPosition.of(1000L)) : Optional.of(InMemoryPubSubPosition.of(0L)),
+        pubSubContext);
   }
 
-  public static OffsetRecord getOffsetRecord(PubSubPosition currentPosition, Optional<PubSubPosition> endOfPushOffset) {
-    OffsetRecord offsetRecord = new OffsetRecord(partitionStateSerializer);
+  public static OffsetRecord getOffsetRecord(
+      PubSubPosition currentPosition,
+      Optional<PubSubPosition> endOfPushOffset,
+      PubSubContext pubSubContext) {
+    OffsetRecord offsetRecord = new OffsetRecord(partitionStateSerializer, pubSubContext);
     offsetRecord.checkpointLocalVtPosition(currentPosition);
     if (endOfPushOffset.isPresent()) {
       offsetRecord.endOfPushReceived();
@@ -850,7 +855,7 @@ public class TestUtils {
     OffsetRecord mockOffsetRecord = mock(OffsetRecord.class);
     doReturn(Collections.emptyMap()).when(mockOffsetRecord).getProducerPartitionStateMap();
     String versionTopic = Version.composeKafkaTopic(storeName, 1);
-    doReturn(mockOffsetRecord).when(mockStorageMetadataService).getLastOffset(eq(versionTopic), eq(0));
+    doReturn(mockOffsetRecord).when(mockStorageMetadataService).getLastOffset(eq(versionTopic), eq(0), any());
 
     int partitionCount = 1;
     VenicePartitioner partitioner = new DefaultVenicePartitioner();

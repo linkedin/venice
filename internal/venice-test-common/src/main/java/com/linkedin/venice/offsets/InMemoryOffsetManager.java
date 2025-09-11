@@ -2,6 +2,7 @@ package com.linkedin.venice.offsets;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
+import com.linkedin.venice.pubsub.PubSubContext;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import java.util.concurrent.ConcurrentHashMap;
@@ -47,7 +48,8 @@ public class InMemoryOffsetManager implements OffsetManager {
   }
 
   @Override
-  public OffsetRecord getLastOffset(String topicName, int partitionId) throws VeniceException {
+  public OffsetRecord getLastOffset(String topicName, int partitionId, PubSubContext pubSubContext)
+      throws VeniceException {
     OffsetRecord returnOffset = null;
     ConcurrentMap<Integer, OffsetRecord> map = topicToPartitionToOffsetMap.get(topicName);
     if (map != null) {
@@ -56,7 +58,7 @@ public class InMemoryOffsetManager implements OffsetManager {
     if (returnOffset != null) {
       return returnOffset;
     } else {
-      return new OffsetRecord(serializer);
+      return new OffsetRecord(serializer, pubSubContext);
     }
   }
 }

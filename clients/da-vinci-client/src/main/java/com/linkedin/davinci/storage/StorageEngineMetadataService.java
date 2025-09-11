@@ -6,6 +6,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.pubsub.PubSubContext;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.service.AbstractVeniceService;
 import java.util.Optional;
@@ -48,9 +49,10 @@ public class StorageEngineMetadataService extends AbstractVeniceService implemen
   }
 
   @Override
-  public OffsetRecord getLastOffset(String topicName, int partitionId) throws VeniceException {
-    Optional<OffsetRecord> record = getStorageEngineOrThrow(topicName).getPartitionOffset(partitionId);
-    return record.orElseGet(() -> new OffsetRecord(partitionStateSerializer));
+  public OffsetRecord getLastOffset(String topicName, int partitionId, PubSubContext pubSubContext)
+      throws VeniceException {
+    Optional<OffsetRecord> record = getStorageEngineOrThrow(topicName).getPartitionOffset(partitionId, pubSubContext);
+    return record.orElseGet(() -> new OffsetRecord(partitionStateSerializer, pubSubContext));
   }
 
   @Override

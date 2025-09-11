@@ -6,6 +6,7 @@ import com.linkedin.venice.annotation.Experimental;
 import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
+import com.linkedin.venice.pubsub.PubSubContext;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.io.Closeable;
@@ -312,8 +313,10 @@ public abstract class DaVinciRecordTransformer<K, V, O> implements Closeable {
       StorageEngine storageEngine,
       int partitionId,
       InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer,
-      Lazy<VeniceCompressor> compressor) {
-    recordTransformerUtility.onRecovery(storageEngine, partitionId, partitionStateSerializer, compressor);
+      Lazy<VeniceCompressor> compressor,
+      PubSubContext pubSubContext) {
+    recordTransformerUtility
+        .onRecovery(storageEngine, partitionId, partitionStateSerializer, compressor, pubSubContext);
   }
 
   /**

@@ -219,8 +219,8 @@ public class VeniceChangelogConsumerClientFactory {
     PubSubConsumerAdapterContext context = new PubSubConsumerAdapterContext.Builder().setConsumerName(consumerName)
         .setVeniceProperties(new VeniceProperties(changelogClientConfig.getConsumerProperties()))
         .setPubSubMessageDeserializer(changelogClientConfig.getPubSubMessageDeserializer())
-        .setPubSubTopicRepository(changelogClientConfig.getPubSubTopicRepository())
-        .setPubSubPositionTypeRegistry(changelogClientConfig.getPubSubPositionTypeRegistry())
+        .setPubSubTopicRepository(changelogClientConfig.getPubSubContext().getPubSubTopicRepository())
+        .setPubSubPositionTypeRegistry(changelogClientConfig.getPubSubContext().getPubSubPositionTypeRegistry())
         .build();
     return changelogClientConfig.getPubSubConsumerAdapterFactory().create(context);
   }

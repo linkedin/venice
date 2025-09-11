@@ -4,7 +4,9 @@ import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_
 import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_STATUS;
 import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_TYPE;
 import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferType;
+import static com.linkedin.venice.pubsub.PubSubContext.DEFAULT_PUBSUB_CONTEXT;
 import static com.linkedin.venice.response.VeniceReadResponseStatus.TOO_MANY_REQUESTS;
+import static org.mockito.ArgumentMatchers.any;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.davinci.blobtransfer.server.P2PFileTransferServerHandler;
@@ -114,9 +116,9 @@ public class TestP2PFileTransferServerHandler {
 
     InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer =
         AvroProtocolDefinition.PARTITION_STATE.getSerializer();
-    OffsetRecord offsetRecord = new OffsetRecord(partitionStateSerializer);
+    OffsetRecord offsetRecord = new OffsetRecord(partitionStateSerializer, DEFAULT_PUBSUB_CONTEXT);
     offsetRecord.setOffsetLag(1000L);
-    Mockito.doReturn(offsetRecord).when(storageMetadataService).getLastOffset(Mockito.any(), Mockito.anyInt());
+    Mockito.doReturn(offsetRecord).when(storageMetadataService).getLastOffset(Mockito.any(), Mockito.anyInt(), any());
 
     // prepare the file request
     Path snapshotDir = Paths.get(RocksDBUtils.composeSnapshotDir(baseDir.toString(), "myStore_v1", 10));
@@ -159,9 +161,9 @@ public class TestP2PFileTransferServerHandler {
     Mockito.doReturn(storeVersionState).when(storageMetadataService).getStoreVersionState(Mockito.any());
     InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer =
         AvroProtocolDefinition.PARTITION_STATE.getSerializer();
-    OffsetRecord offsetRecord = new OffsetRecord(partitionStateSerializer);
+    OffsetRecord offsetRecord = new OffsetRecord(partitionStateSerializer, DEFAULT_PUBSUB_CONTEXT);
     offsetRecord.setOffsetLag(1000L);
-    Mockito.doReturn(offsetRecord).when(storageMetadataService).getLastOffset(Mockito.any(), Mockito.anyInt());
+    Mockito.doReturn(offsetRecord).when(storageMetadataService).getLastOffset(Mockito.any(), Mockito.anyInt(), any());
 
     FullHttpRequest request =
         new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "/myStore/1/10/BLOCK_BASED_TABLE");
@@ -187,9 +189,9 @@ public class TestP2PFileTransferServerHandler {
     Mockito.doReturn(storeVersionState).when(storageMetadataService).getStoreVersionState(Mockito.any());
     InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer =
         AvroProtocolDefinition.PARTITION_STATE.getSerializer();
-    OffsetRecord offsetRecord = new OffsetRecord(partitionStateSerializer);
+    OffsetRecord offsetRecord = new OffsetRecord(partitionStateSerializer, DEFAULT_PUBSUB_CONTEXT);
     offsetRecord.setOffsetLag(1000L);
-    Mockito.doReturn(offsetRecord).when(storageMetadataService).getLastOffset(Mockito.any(), Mockito.anyInt());
+    Mockito.doReturn(offsetRecord).when(storageMetadataService).getLastOffset(Mockito.any(), Mockito.anyInt(), any());
 
     FullHttpRequest request =
         new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "/myStore/1/10/PLAIN_TABLE");
@@ -209,9 +211,9 @@ public class TestP2PFileTransferServerHandler {
     Mockito.doReturn(storeVersionState).when(storageMetadataService).getStoreVersionState(Mockito.any());
     InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer =
         AvroProtocolDefinition.PARTITION_STATE.getSerializer();
-    OffsetRecord offsetRecord = new OffsetRecord(partitionStateSerializer);
+    OffsetRecord offsetRecord = new OffsetRecord(partitionStateSerializer, DEFAULT_PUBSUB_CONTEXT);
     offsetRecord.setOffsetLag(1000L);
-    Mockito.doReturn(offsetRecord).when(storageMetadataService).getLastOffset(Mockito.any(), Mockito.anyInt());
+    Mockito.doReturn(offsetRecord).when(storageMetadataService).getLastOffset(Mockito.any(), Mockito.anyInt(), any());
 
     // create an empty snapshot dir
     Path snapshotDir = Paths.get(RocksDBUtils.composeSnapshotDir(baseDir.toString(), "myStore_v1", 10));
@@ -248,9 +250,9 @@ public class TestP2PFileTransferServerHandler {
 
     InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer =
         AvroProtocolDefinition.PARTITION_STATE.getSerializer();
-    OffsetRecord offsetRecord = new OffsetRecord(partitionStateSerializer);
+    OffsetRecord offsetRecord = new OffsetRecord(partitionStateSerializer, DEFAULT_PUBSUB_CONTEXT);
     offsetRecord.setOffsetLag(1000L);
-    Mockito.doReturn(offsetRecord).when(storageMetadataService).getLastOffset(Mockito.any(), Mockito.anyInt());
+    Mockito.doReturn(offsetRecord).when(storageMetadataService).getLastOffset(Mockito.any(), Mockito.anyInt(), any());
 
     // prepare the file request
     Path snapshotDir = Paths.get(RocksDBUtils.composeSnapshotDir(baseDir.toString(), "myStore_v1", 10));
@@ -310,9 +312,9 @@ public class TestP2PFileTransferServerHandler {
 
     InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer =
         AvroProtocolDefinition.PARTITION_STATE.getSerializer();
-    OffsetRecord offsetRecord = new OffsetRecord(partitionStateSerializer);
+    OffsetRecord offsetRecord = new OffsetRecord(partitionStateSerializer, DEFAULT_PUBSUB_CONTEXT);
     offsetRecord.setOffsetLag(1000L);
-    Mockito.doReturn(offsetRecord).when(storageMetadataService).getLastOffset(Mockito.any(), Mockito.anyInt());
+    Mockito.doReturn(offsetRecord).when(storageMetadataService).getLastOffset(Mockito.any(), Mockito.anyInt(), any());
 
     Path snapshotDir = Paths.get(RocksDBUtils.composeSnapshotDir(baseDir.toString(), "myStore_v1", 10));
     Files.createDirectories(snapshotDir);

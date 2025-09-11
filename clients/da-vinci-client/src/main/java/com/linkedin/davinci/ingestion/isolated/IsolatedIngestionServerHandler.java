@@ -314,7 +314,8 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
                   partitionId,
                   new OffsetRecord(
                       ingestionStorageMetadata.payload.array(),
-                      isolatedIngestionServer.getPartitionStateSerializer()));
+                      isolatedIngestionServer.getPartitionStateSerializer(),
+                      isolatedIngestionServer.getStoreIngestionService().getPubSubContext()));
           break;
         case CLEAR_OFFSET_RECORD:
           isolatedIngestionServer.getStorageMetadataService().clearOffset(topicName, partitionId);

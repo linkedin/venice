@@ -149,7 +149,7 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceAfte
       // subscribe to that position. If it's not able to, that means that the local state is off Venice retention,
       // and therefore should be completely re-bootstrapped.
       for (Integer partition: bootstrapStateMap.keySet()) {
-        OffsetRecord offsetRecord = storageMetadataService.getLastOffset(localStateTopicName, partition);
+        OffsetRecord offsetRecord = storageMetadataService.getLastOffset(localStateTopicName, partition, pubSubContext);
         if (offsetRecord == null) {
           // No offset info in local, need to bootstrap from beginning.
           return false;
@@ -293,7 +293,7 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceAfte
    * This method flushes data partition on disk and syncs the underlying database with {@link OffsetRecord}.
    */
   private void syncOffset(int partitionId, BootstrapState bootstrapState) {
-    OffsetRecord lastOffset = storageMetadataService.getLastOffset(localStateTopicName, partitionId);
+    OffsetRecord lastOffset = storageMetadataService.getLastOffset(localStateTopicName, partitionId, pubSubContext);
     StorageEngine storageEngineReloadedFromRepo =
         storageService.getStorageEngineRepository().getLocalStorageEngine(localStateTopicName);
     if (storageEngineReloadedFromRepo == null) {
@@ -478,7 +478,7 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceAfte
             partition,
             () -> null);
         // Get the last persisted Offset record from metadata service
-        OffsetRecord offsetRecord = storageMetadataService.getLastOffset(localStateTopicName, partition);
+        OffsetRecord offsetRecord = storageMetadataService.getLastOffset(localStateTopicName, partition, pubSubContext);
         // Where we're at now
         String offsetString = offsetRecord.getDatabaseInfo().get(CHANGE_CAPTURE_COORDINATE);
         VeniceChangeCoordinate localCheckpoint;

@@ -671,7 +671,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
     PubSubPosition p0 = ApacheKafkaOffsetPosition.of(0L);
     doReturn(p0).when(mockOffsetRecord).getCheckpointedLocalVtPosition();
 
-    when(mockStorageMetadataService.getLastOffset(any(), anyInt())).thenReturn(mockOffsetRecord);
+    when(mockStorageMetadataService.getLastOffset(any(), anyInt(), any())).thenReturn(mockOffsetRecord);
     when(mockConsumerAction.getTopicPartition()).thenReturn(mockTopicPartition);
     when(mockPartitionConsumptionState.getOffsetRecord()).thenReturn(mockOffsetRecord);
 

@@ -1,5 +1,6 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import static com.linkedin.venice.pubsub.PubSubContext.DEFAULT_PUBSUB_CONTEXT;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.testng.Assert.assertEquals;
@@ -34,7 +35,7 @@ public class PartitionConsumptionStateTest {
 
   @BeforeMethod
   public void setUp() {
-    pubSubContext = new PubSubContext.Builder().build();
+    pubSubContext = DEFAULT_PUBSUB_CONTEXT;
   }
 
   @Test

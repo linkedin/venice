@@ -1,6 +1,7 @@
 package com.linkedin.venice.offsets;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.pubsub.PubSubContext;
 
 
 /**
@@ -33,8 +34,9 @@ public interface OffsetManager {
    *
    * @param topicName  kafka topic to which the consumer thread is registered to.
    * @param partitionId  kafka partition id for which the consumer thread is registered to.
+   * @param pubSubContext  PubSubContext for passing PubSub related dependencies
    * @return  OffsetRecord  - contains offset and time when it was recorded before the consumer thread went down.
    * consumer
    */
-  OffsetRecord getLastOffset(String topicName, int partitionId) throws VeniceException;
+  OffsetRecord getLastOffset(String topicName, int partitionId, PubSubContext pubSubContext) throws VeniceException;
 }
