@@ -33,7 +33,7 @@ public class LoggingTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V
   private static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER =
       RedundantExceptionFilter.getRedundantExceptionFilter();
 
-  public LoggingTrackingStoreClient(InternalAvroStoreClient<K, V> innerStoreClient, ClientConfig clientConfig) {
+  public LoggingTrackingStoreClient(InternalAvroStoreClient<K, V> innerStoreClient) {
     super(innerStoreClient);
   }
 
@@ -41,7 +41,8 @@ public class LoggingTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V
   public CompletableFuture<V> get(K key) {
     long startTimeInNS = System.nanoTime();
     CompletableFuture<V> innerFuture = super.get(key, Optional.empty(), startTimeInNS);
-    return innerFuture.handle(getLoggingCallback(super.getStoreName(), startTimeInNS));
+    return innerFuture.handle(
+        (BiFunction<? super V, Throwable, ? extends V>) getLoggingCallback(super.getStoreName(), startTimeInNS));
   }
 
   @Override

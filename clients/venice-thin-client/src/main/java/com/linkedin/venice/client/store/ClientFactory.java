@@ -70,7 +70,7 @@ public class ClientFactory {
           clientConfig.getStoreName(),
           clientConfig.isStatTrackingEnabled());
     } else {
-      internalClient = new LoggingTrackingStoreClient<>(internalClient, clientConfig);
+      internalClient = new LoggingTrackingStoreClient<>(internalClient);
       LOGGER.info(
           "Created client for store: {} with stat tracking enabled: {} will log errors and high latency requests with throttling",
           clientConfig.getStoreName(),
