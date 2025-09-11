@@ -1,7 +1,6 @@
 package com.linkedin.venice.controller;
 
 import static com.linkedin.venice.meta.VersionStatus.ERROR;
-import static com.linkedin.venice.meta.VersionStatus.KILLED;
 import static com.linkedin.venice.meta.VersionStatus.ONLINE;
 import static com.linkedin.venice.meta.VersionStatus.PARTIALLY_ONLINE;
 
@@ -77,7 +76,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
   private static final int MAX_ROLL_FORWARD_RETRY_LIMIT = 5;
   private static final Set<VersionStatus> VERSION_SWAP_COMPLETION_STATUSES =
       Utils.setOf(ONLINE, PARTIALLY_ONLINE, ERROR);
-  private static final Set<VersionStatus> TERMINAL_PUSH_VERSION_STATUSES = Utils.setOf(ONLINE, KILLED);
+  private static final Set<VersionStatus> TERMINAL_PUSH_VERSION_STATUSES = Utils.setOf(ONLINE);
   private Cache<String, Long> storeWaitTimeCacheForSequentialRollout =
       Caffeine.newBuilder().expireAfterWrite(1, TimeUnit.HOURS).build();
   private static final int CONTROLLER_CLIENT_REQUEST_TIMEOUT = 5 * Time.MS_PER_SECOND;
@@ -368,7 +367,6 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
                 + targetVersionNum);
         return false;
       case PUSHED:
-      case KILLED:
         return true;
       case ONLINE:
         // This should not happen, but if it does, we should still perform a version swap and log a metric for it
@@ -932,20 +930,16 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
               }
             }
 
-            // If version status is marked as KILLED (push timeout, user killed push job, etc), check if target
-            // regions failed
             Admin.OfflinePushStatusInfo pushStatusInfo =
                 veniceParentHelixAdmin.getOffLinePushStatus(cluster, kafkaTopicName);
-            if (targetVersion.getStatus() == VersionStatus.KILLED) {
-              if (!didPushCompleteInTargetRegions(
-                  targetRegions,
-                  pushStatusInfo,
-                  parentStore,
-                  targetVersionNum,
-                  cluster)) {
-                logLatency(startTime, storeName, targetVersionNum);
-                continue;
-              }
+            if (!didPushCompleteInTargetRegions(
+                targetRegions,
+                pushStatusInfo,
+                parentStore,
+                targetVersionNum,
+                cluster)) {
+              logLatency(startTime, storeName, targetVersionNum);
+              continue;
             }
 
             if (sequentialRollForward) {
