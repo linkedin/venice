@@ -9,8 +9,8 @@ import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.when;
+import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
-import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -54,6 +54,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.function.Consumer;
@@ -109,22 +110,22 @@ public class TestAdminTool {
     Assert.assertTrue(params.getBlobTransferEnabled().isPresent());
     Assert.assertTrue(params.getBlobTransferEnabled().get());
     Assert.assertTrue(params.getBlobTransferInServerEnabled().isPresent());
-    Assert.assertEquals(params.getBlobTransferInServerEnabled().get(), "ENABLED");
+    assertEquals(params.getBlobTransferInServerEnabled().get(), "ENABLED");
     Assert.assertTrue(params.getTargetSwapRegion().isPresent());
-    Assert.assertEquals(params.getTargetSwapRegion().get(), "prod");
+    assertEquals(params.getTargetSwapRegion().get(), "prod");
     Assert.assertTrue(params.getTargetRegionSwapWaitTime().isPresent());
-    Assert.assertEquals(params.getTargetRegionSwapWaitTime(), Optional.of(100));
+    assertEquals(params.getTargetRegionSwapWaitTime(), Optional.of(100));
     Assert.assertTrue(params.isGlobalRtDivEnabled().isPresent());
     Assert.assertTrue(params.isGlobalRtDivEnabled().get());
     Optional<Map<String, String>> partitionerParams = params.getPartitionerParams();
     Assert.assertTrue(partitionerParams.isPresent());
     Map<String, String> partitionerParamsMap = partitionerParams.get();
-    Assert.assertEquals(partitionerParamsMap.get(K1), V1);
-    Assert.assertEquals(partitionerParamsMap.get(K2), V2);
-    Assert.assertEquals(partitionerParamsMap.get(K3), V3);
+    assertEquals(partitionerParamsMap.get(K1), V1);
+    assertEquals(partitionerParamsMap.get(K2), V2);
+    assertEquals(partitionerParamsMap.get(K3), V3);
     Assert.assertTrue(params.getStoreLifecycleHooks().isPresent());
     List<LifecycleHooksRecord> lifecycleHooksRecords = params.getStoreLifecycleHooks().get();
-    Assert.assertEquals(lifecycleHooksRecords.size(), 2);
+    assertEquals(lifecycleHooksRecords.size(), 2);
   }
 
   @Test
@@ -145,7 +146,7 @@ public class TestAdminTool {
     Assert.assertTrue(
         serverKafkaFetchQuotaRecordsPerSecond.get().containsKey(regionName),
         "Kafka fetch quota does not have info for region");
-    Assert.assertEquals(
+    assertEquals(
         (int) serverKafkaFetchQuotaRecordsPerSecond.get().get(regionName),
         kafkaFetchQuota,
         "Kafka fetch quota has incorrect info for region");
@@ -164,7 +165,7 @@ public class TestAdminTool {
     UpdateDarkClusterConfigQueryParams params = AdminTool.getUpdateDarkClusterConfigQueryParams(commandLine);
     Optional<List<String>> storesToReplicate = params.getStoresToReplicate();
     Assert.assertTrue(storesToReplicate.isPresent(), "Stores to replicate not parsed from args");
-    Assert.assertEquals(storesToReplicate.get().size(), 3);
+    assertEquals(storesToReplicate.get().size(), 3);
   }
 
   @Test
@@ -255,7 +256,7 @@ public class TestAdminTool {
       VeniceException ex = expectThrows(VeniceException.class, () -> AdminTool.autoMigrateStore(BasicCmd));
       String expectedMsg =
           String.format("Store %s is migrating. Finish the current migration before starting a new one.", storeName);
-      Assert.assertEquals(ex.getMessage(), expectedMsg);
+      assertEquals(ex.getMessage(), expectedMsg);
     }
   }
 
@@ -486,15 +487,15 @@ public class TestAdminTool {
     CommandLine commandLine = AdminTool.getCommandLine(args);
     UpdateStoreQueryParams params = AdminTool.getConfigureStoreViewQueryParams(commandLine);
     Assert.assertTrue(params.getViewName().isPresent());
-    Assert.assertEquals(params.getViewName().get(), "testView");
+    assertEquals(params.getViewName().get(), "testView");
     Assert.assertTrue(params.getViewClassName().isPresent());
-    Assert.assertEquals(params.getViewClassName().get(), ChangeCaptureView.class.getCanonicalName());
+    assertEquals(params.getViewClassName().get(), ChangeCaptureView.class.getCanonicalName());
 
     Optional<Map<String, String>> viewParams = params.getViewClassParams();
     Assert.assertTrue(viewParams.isPresent());
     Map<String, String> viewParamsMap = viewParams.get();
-    Assert.assertEquals(viewParamsMap.get(K1), V1);
-    Assert.assertEquals(viewParamsMap.get(K2), V2);
+    assertEquals(viewParamsMap.get(K1), V1);
+    assertEquals(viewParamsMap.get(K2), V2);
 
     // Case 2: Happy path to disable a view.
     String[] args1 = { "--configure-store-view", "--url", "http://localhost:7036", "--cluster", "test-cluster",
@@ -503,7 +504,7 @@ public class TestAdminTool {
     params = AdminTool.getConfigureStoreViewQueryParams(commandLine);
     Assert.assertTrue(params.getViewName().isPresent());
     Assert.assertTrue(params.getDisableStoreView().isPresent());
-    Assert.assertEquals(params.getViewName().get(), "testView");
+    assertEquals(params.getViewName().get(), "testView");
     Assert.assertFalse(params.getViewClassName().isPresent());
 
     // Case 3: Configure view with missing viewName;
@@ -524,21 +525,24 @@ public class TestAdminTool {
   @Test
   public void testConsumerContextAndHelperMethods() {
     // Test 1: Verify ConsumerContext encapsulates dependencies correctly
-    VeniceProperties veniceProperties = new VeniceProperties(new java.util.Properties());
+    VeniceProperties veniceProperties = new VeniceProperties(new Properties());
     PubSubPositionTypeRegistry registry = PubSubPositionTypeRegistry.fromPropertiesOrDefault(veniceProperties);
     PubSubPositionDeserializer deserializer = new PubSubPositionDeserializer(registry);
 
     ConsumerContext context = new ConsumerContext(veniceProperties, registry, deserializer);
 
     // Verify encapsulation works correctly
-    assertTrue(
-        context.getVeniceProperties() == veniceProperties,
+    assertEquals(
+        context.getVeniceProperties(),
+        veniceProperties,
         "ConsumerContext should encapsulate VeniceProperties");
-    assertTrue(
-        context.getPositionTypeRegistry() == registry,
+    assertEquals(
+        context.getPositionTypeRegistry(),
+        registry,
         "ConsumerContext should encapsulate PubSubPositionTypeRegistry");
-    assertTrue(
-        context.getPositionDeserializer() == deserializer,
+    assertEquals(
+        context.getPositionDeserializer(),
+        deserializer,
         "ConsumerContext should encapsulate PubSubPositionDeserializer");
 
     // Test 2: Verify position parsing functionality with offset argument
@@ -548,8 +552,7 @@ public class TestAdminTool {
     when(offsetCmd.getOptionValue(Arg.STARTING_OFFSET.first())).thenReturn("100");
 
     // Test parsePositionFromArgs directly (now package-private with @VisibleForTesting)
-    PubSubPosition position =
-        AdminTool.parsePositionFromArgs(offsetCmd, Arg.STARTING_OFFSET, Arg.STARTING_POSITION, deserializer, true);
+    PubSubPosition position = AdminTool.parsePositionFromArgs(offsetCmd, deserializer, true);
     assertNotNull(position, "parsePositionFromArgs should return a valid position for offset argument");
 
     // Test 3: Verify position parsing with position argument (base64 encoded)
@@ -558,17 +561,13 @@ public class TestAdminTool {
     when(positionCmd.hasOption(Arg.STARTING_POSITION.first())).thenReturn(true);
     when(positionCmd.getOptionValue(Arg.STARTING_POSITION.first())).thenReturn("0:AQIDBA==");
 
-    PubSubPosition positionFromWireFormat =
-        AdminTool.parsePositionFromArgs(positionCmd, Arg.STARTING_OFFSET, Arg.STARTING_POSITION, deserializer, true);
+    PubSubPosition positionFromWireFormat = AdminTool.parsePositionFromArgs(positionCmd, deserializer, true);
     assertNotNull(positionFromWireFormat, "parsePositionFromArgs should return a valid position for position argument");
 
     // Test 4: Verify error handling when neither argument is provided but required
     CommandLine emptyCmd = mock(CommandLine.class);
     when(emptyCmd.hasOption(Arg.STARTING_OFFSET.first())).thenReturn(false);
     when(emptyCmd.hasOption(Arg.STARTING_POSITION.first())).thenReturn(false);
-    expectThrows(
-        Exception.class,
-        () -> AdminTool
-            .parsePositionFromArgs(emptyCmd, Arg.STARTING_OFFSET, Arg.STARTING_POSITION, deserializer, true));
+    expectThrows(Exception.class, () -> AdminTool.parsePositionFromArgs(emptyCmd, deserializer, true));
   }
 }

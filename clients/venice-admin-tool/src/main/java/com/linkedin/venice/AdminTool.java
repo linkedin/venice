@@ -1810,8 +1810,7 @@ public class AdminTool {
 
   private static void dumpAdminMessages(CommandLine cmd, PubSubClientsFactory pubSubClientsFactory) {
     ConsumerContext context = createConsumerContext(cmd);
-    PubSubPosition startingPosition =
-        parsePositionFromArgs(cmd, Arg.STARTING_OFFSET, Arg.STARTING_POSITION, context.getPositionDeserializer(), true);
+    PubSubPosition startingPosition = parsePositionFromArgs(cmd, context.getPositionDeserializer(), true);
     LOGGER.info("Dump admin messages with starting position: {}", startingPosition);
     List<DumpAdminMessages.AdminOperationInfo> adminMessages = DumpAdminMessages.dumpAdminMessages(
         getConsumer(pubSubClientsFactory, context),
@@ -1825,8 +1824,7 @@ public class AdminTool {
     String topic = getRequiredArgument(cmd, Arg.KAFKA_TOPIC_NAME);
     int partitionNumber = Integer.parseInt(getRequiredArgument(cmd, Arg.KAFKA_TOPIC_PARTITION));
     ConsumerContext context = createConsumerContext(cmd);
-    PubSubPosition startingPosition =
-        parsePositionFromArgs(cmd, Arg.STARTING_OFFSET, Arg.STARTING_POSITION, context.getPositionDeserializer(), true);
+    PubSubPosition startingPosition = parsePositionFromArgs(cmd, context.getPositionDeserializer(), true);
     int messageCount = Integer.parseInt(getRequiredArgument(cmd, Arg.MESSAGE_COUNT));
     LOGGER.info(
         "Dump control messages from topic-partition: {}, starting position: {}, message count: {}",
@@ -1891,12 +1889,7 @@ public class AdminTool {
     boolean logTsRecord = cmd.hasOption(Arg.LOG_TS_RECORD.toString());
 
     ConsumerContext context = createConsumerContext(cmd);
-    PubSubPosition startingPosition = parsePositionFromArgs(
-        cmd,
-        Arg.STARTING_OFFSET,
-        Arg.STARTING_POSITION,
-        context.getPositionDeserializer(),
-        false);
+    PubSubPosition startingPosition = parsePositionFromArgs(cmd, context.getPositionDeserializer(), false);
     // If no starting position provided, default to offset -1 (earliest)
     if (startingPosition == null) {
       startingPosition = PubSubSymbolicPosition.EARLIEST;
@@ -3723,10 +3716,9 @@ public class AdminTool {
   /**
    * Helper method to parse position from mutually exclusive offset/position arguments.
    * Handles both STARTING_OFFSET/STARTING_POSITION pairs.
+   * Uses STARTING_OFFSET and STARTING_POSITION arguments internally.
    *
    * @param cmd CommandLine object containing parsed arguments
-   * @param offsetArg The offset argument (e.g., STARTING_OFFSET)
-   * @param positionArg The position argument (e.g., STARTING_POSITION)
    * @param pubSubPositionDeserializer Deserializer for position wire format
    * @param required Whether at least one of the arguments is required
    * @return PubSubPosition parsed from the provided arguments, or null if neither provided and not required
@@ -3734,17 +3726,15 @@ public class AdminTool {
   @VisibleForTesting
   static PubSubPosition parsePositionFromArgs(
       CommandLine cmd,
-      Arg offsetArg,
-      Arg positionArg,
       PubSubPositionDeserializer pubSubPositionDeserializer,
       boolean required) {
-
-    boolean hasOffset = cmd.hasOption(offsetArg.first());
-    boolean hasPosition = cmd.hasOption(positionArg.first());
+    boolean hasOffset = cmd.hasOption(Arg.STARTING_OFFSET.first());
+    boolean hasPosition = cmd.hasOption(Arg.STARTING_POSITION.first());
 
     if (required && !hasOffset && !hasPosition) {
       printErrAndExit(
-          "At least one of " + offsetArg.getArgName() + " or " + positionArg.getArgName() + " is required.");
+          "At least one of " + Arg.STARTING_OFFSET.getArgName() + " or " + Arg.STARTING_POSITION.getArgName()
+              + " is required.");
     }
 
     if (!hasOffset && !hasPosition) {
@@ -3752,9 +3742,10 @@ public class AdminTool {
     }
 
     if (hasOffset) {
-      return PubSubUtil.fromKafkaOffset(Long.parseLong(cmd.getOptionValue(offsetArg.first())));
+      return PubSubUtil.fromKafkaOffset(Long.parseLong(cmd.getOptionValue(Arg.STARTING_OFFSET.first())));
     } else {
-      return PubSubUtil.parsePositionWireFormat(cmd.getOptionValue(positionArg.first()), pubSubPositionDeserializer);
+      return PubSubUtil
+          .parsePositionWireFormat(cmd.getOptionValue(Arg.STARTING_POSITION.first()), pubSubPositionDeserializer);
     }
   }
 
