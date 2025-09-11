@@ -197,7 +197,7 @@ public class TestDeferredVersionSwapWithSequentialRollout {
       if (targetVersion == 1) {
         TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
           StoreInfo parentStore = parentControllerClient.getStore(storeName).getStore();
-          Assert.assertEquals(parentStore.getVersion(2).get().getStatus(), VersionStatus.ERROR);
+          Assert.assertEquals(parentStore.getVersion(2).get().getStatus(), VersionStatus.KILLED);
         });
       }
     }
