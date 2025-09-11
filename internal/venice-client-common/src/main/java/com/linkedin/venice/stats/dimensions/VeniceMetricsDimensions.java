@@ -30,6 +30,11 @@ public enum VeniceMetricsDimensions {
   /** {@link com.linkedin.venice.stats.dimensions.MessageType} */
   VENICE_MESSAGE_TYPE("venice.message.type"),
 
+  /** Fanout type for requests (e.g., original vs retry) */
+  VENICE_REQUEST_FANOUT_TYPE("venice.request.fanout_type"),
+
+  VENICE_REJECTION_REASON("venice.request.rejection_reason"),
+
   /** {@link RequestRetryAbortReason} */
   VENICE_REQUEST_RETRY_ABORT_REASON("venice.request.retry_abort_reason"),
 
