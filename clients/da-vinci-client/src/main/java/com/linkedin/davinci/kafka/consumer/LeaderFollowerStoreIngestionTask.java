@@ -1051,12 +1051,14 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       Map<String, PubSubPosition> upstreamStartOffsetByKafkaURL) {
     // Update in-memory consumedUpstreamRTOffsetMap in case no RT record is consumed after the subscription
     final PubSubTopic leaderTopic = pcs.getOffsetRecord().getLeaderTopic(pubSubTopicRepository);
+    final PubSubTopicPartition leaderTopicPartition = pcs.getSourceTopicPartition(leaderTopic);
     if (leaderTopic != null && leaderTopic.isRealTime()) {
-      upstreamStartOffsetByKafkaURL.forEach((kafkaURL, upstreamStartOffset) -> {
-        if (upstreamStartOffset
-            .getNumericOffset() > getLatestConsumedUpstreamOffsetForHybridOffsetLagMeasurement(pcs, kafkaURL)
-                .getNumericOffset()) {
-          updateLatestConsumedRtPositions(pcs, kafkaURL, upstreamStartOffset);
+      upstreamStartOffsetByKafkaURL.forEach((kafkaURL, upstreamStartPosition) -> {
+        if (topicManager.diffPosition(
+            leaderTopicPartition,
+            upstreamStartPosition,
+            getLatestConsumedUpstreamPositionForHybridOffsetLagMeasurement(pcs, kafkaURL)) > 0) {
+          updateLatestConsumedRtPositions(pcs, kafkaURL, upstreamStartPosition);
         }
       });
     }
@@ -1935,7 +1937,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
         PubSubPosition lastProcessedVtPos = partitionConsumptionState.getLatestProcessedVtPosition();
         // TODO(sushantmane): Use TM::compare for PubSubPosition comparison
-        if (lastProcessedVtPos.getNumericOffset() >= record.getPosition().getNumericOffset()) {
+        if (topicManager.diffPosition(record.getTopicPartition(), lastProcessedVtPos, record.getPosition()) >= 0) {
           String message = partitionConsumptionState.getLeaderFollowerState() + " replica: "
               + partitionConsumptionState.getReplicaId() + " had already processed the record";
           if (!REDUNDANT_LOGGING_FILTER.isRedundantException(message)) {
@@ -2839,7 +2841,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   /**
    * For regular L/F stores without A/A enabled, there is always only one real-time source.
    */
-  protected PubSubPosition getLatestConsumedUpstreamOffsetForHybridOffsetLagMeasurement(
+  protected PubSubPosition getLatestConsumedUpstreamPositionForHybridOffsetLagMeasurement(
       PartitionConsumptionState pcs,
       String ignoredKafkaUrl) {
     return pcs.getLatestConsumedRtPosition(NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY);

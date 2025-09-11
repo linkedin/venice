@@ -1285,7 +1285,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
    * for each individual Kafka url.
    */
   @Override
-  protected PubSubPosition getLatestConsumedUpstreamOffsetForHybridOffsetLagMeasurement(
+  protected PubSubPosition getLatestConsumedUpstreamPositionForHybridOffsetLagMeasurement(
       PartitionConsumptionState pcs,
       String upstreamKafkaUrl) {
     return pcs.getLatestConsumedRtPosition(upstreamKafkaUrl);

@@ -365,6 +365,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private ConcurrentLinkedQueue<PubSubTopicPartition> recordTransformerPausedConsumptionQueue;
 
   protected final String localKafkaServer;
+  protected final TopicManager topicManager;
   protected final int localKafkaClusterId;
   protected final Set<String> localKafkaServerSingletonSet;
   private int valueSchemaId = -1;
@@ -641,6 +642,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.parallelProcessingThreadPool = builder.getAAWCWorkLoadProcessingThreadPool();
     this.hostName = Utils.getHostName() + "_" + storeVersionConfig.getListenerPort();
     this.zkHelixAdmin = zkHelixAdmin;
+    this.topicManager = getTopicManager(localKafkaServer);
   }
 
   /** Package-private on purpose, only intended for tests. Do not use for production use cases. */
@@ -4099,7 +4101,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         if (metaStoreWriter != null && !VeniceSystemStoreType.META_STORE.isSystemStore(storeName)) {
           String metaStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName);
           PubSubTopic metaStoreRT = pubSubTopicRepository.getTopic(Utils.composeRealTimeTopic(metaStoreName));
-          if (getTopicManager(localKafkaServer).containsTopicWithRetries(metaStoreRT, 5)) {
+          if (topicManager.containsTopicWithRetries(metaStoreRT, 5)) {
             metaStoreWriter.writeInUseValueSchema(storeName, versionNumber, schemaId);
           }
         }
