@@ -42,9 +42,9 @@ public class PushStatusStoreWriter implements AutoCloseable {
         LOGGER.error("Failed to update push status. Error: ", exception);
       } else {
         LOGGER.info(
-            "Updated push status into topic {} at offset {}.",
+            "Updated push status into topic {} at position {}.",
             produceResult.getTopic(),
-            produceResult.getOffset());
+            produceResult.getPubSubPosition());
       }
     }
   };
