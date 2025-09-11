@@ -10,6 +10,7 @@ import com.github.benmanes.caffeine.cache.Caffeine;
 import com.linkedin.venice.controller.stats.DeferredVersionSwapStats;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.StoreResponse;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoClusterException;
 import com.linkedin.venice.hooks.StoreLifecycleHooks;
 import com.linkedin.venice.hooks.StoreVersionLifecycleEventOutcome;
@@ -542,12 +543,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
   }
 
   private boolean didMaxRetriesExceedForStoreFetchInRegion(String regionKafkaTopicName) {
-    int attemptedRetries = fetchNonTargetRegionStoreRetryCountMap.compute(regionKafkaTopicName, (k, v) -> {
-      if (v == null) {
-        return 1;
-      }
-      return v + 1;
-    });
+    int attemptedRetries = fetchNonTargetRegionStoreRetryCountMap.merge(regionKafkaTopicName, 1, Integer::sum);
 
     if (attemptedRetries == MAX_FETCH_STORE_FETCH_RETRY_LIMIT) {
       fetchNonTargetRegionStoreRetryCountMap.remove(regionKafkaTopicName);
@@ -863,9 +859,13 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
           }
 
           List<Store> parentStores;
+          Map<String, String> childDataCenterControllerUrlMap =
+              veniceParentHelixAdmin.getChildDataCenterControllerUrlMap(cluster);
           List<String> rolloutOrder = RegionUtils.parseRegionRolloutOrderList(
               veniceControllerMultiClusterConfig.getControllerConfig(cluster)
                   .getDeferredVersionSwapRegionRollforwardOrder());
+          validateRolloutRegions(cluster, rolloutOrder, childDataCenterControllerUrlMap.keySet());
+
           try {
             parentStores = veniceParentHelixAdmin.getAllStores(cluster);
           } catch (VeniceNoClusterException e) {
@@ -891,8 +891,6 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
             }
 
             String storeName = parentStore.getName();
-            Map<String, String> childDataCenterControllerUrlMap =
-                veniceParentHelixAdmin.getChildDataCenterControllerUrlMap(cluster);
             Set<String> targetRegions = RegionUtils.parseRegionsFilterList(targetVersion.getTargetSwapRegion());
             Set<String> remainingRegions = getRegionsForVersionSwap(childDataCenterControllerUrlMap, targetRegions);
 
@@ -1128,6 +1126,15 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       String message = "Store " + storeName + " version " + targetVersionNum + " spent " + elapsedTime
           + "ms in the DeferredVersionSwapLoop";
       logMessageIfNotRedundant(message);
+    }
+  }
+
+  private void validateRolloutRegions(String cluster, List<String> rolloutRegions, List<String> validRegions) {
+    for (String region: validRegions) {
+      if (!validRegions.contains(region)) {
+        throw new VeniceException(
+            "Invalid region " + region + " in cluster " + cluster + " found in rollout order list");
+      }
     }
   }
 }
