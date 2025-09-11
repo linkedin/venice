@@ -5852,12 +5852,10 @@ public abstract class StoreIngestionTaskTest {
     doCallRealMethod().when(ingestionTask).loadGlobalRtDiv(anyInt(), anyString());
     doReturn(true).when(ingestionTask).isGlobalRtDivEnabled();
 
-    GenericRecord valueRecord = mock(GenericRecord.class);
     InMemoryPubSubPosition p1 = InMemoryPubSubPosition.of(11);
     GlobalRtDivState globalRtDivState =
         new GlobalRtDivState("localhost:1234", Collections.emptyMap(), p1.toWireFormatBuffer());
-    doReturn(globalRtDivState).when(valueRecord).get(any());
-    doReturn(valueRecord).when(ingestionTask).readStoredValueRecord(any(), any(), anyInt(), any(), any());
+    doReturn(globalRtDivState).when(ingestionTask).readGlobalRtDivState(any(), anyInt(), any(), any());
     DataIntegrityValidator consumerDiv = mock(DataIntegrityValidator.class);
     doReturn(consumerDiv).when(ingestionTask).getConsumerDiv();
     Int2ObjectMap<String> brokerIdToUrlMap = new Int2ObjectOpenHashMap<>();
@@ -5873,6 +5871,7 @@ public abstract class StoreIngestionTaskTest {
     doReturn(pubSubContext).when(ingestionTask).getPubSubContext();
 
     ingestionTask.restoreProducerStatesForLeaderConsumption(PARTITION_FOO);
+    verify(consumerDiv, times(1)).clearRtSegments(eq(PARTITION_FOO));
     verify(ingestionTask, times(1)).loadGlobalRtDiv(eq(PARTITION_FOO));
     brokerIdToUrlMap.forEach((brokerId, url) -> {
       verify(ingestionTask, times(1)).loadGlobalRtDiv(eq(PARTITION_FOO), eq(url));
