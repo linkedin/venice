@@ -57,6 +57,7 @@ import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
@@ -634,6 +635,7 @@ public class VeniceParentHelixAdminTest {
         testSupersetSchemaGenerationWithUpdateDefaultValue(parentControllerClient);
         testUpdateConfigs(parentControllerClient, childControllerClient);
         testEnumSchemaEvolution(parentControllerClient, childControllerClient);
+        testKeyUrnCompression(parentControllerClient, childControllerClient);
       }
     }
   }
@@ -1337,6 +1339,86 @@ public class VeniceParentHelixAdminTest {
     assertTrue(store.isEnumSchemaEvolutionAllowed());
     allValueSchemaResponse = childControllerClient.getAllValueSchema(storeName);
     assertEquals(allValueSchemaResponse.getSchemas().length, 2);
+  }
+
+  private void testKeyUrnCompression(ControllerClient parentControllerClient, ControllerClient childControllerClient) {
+    String storeName = Utils.getUniqueString("test_store");
+    String owner = "test_owner";
+    String stringKeySchemaStr = "\"string\"";
+    String longKeySchemaStr = "\"long\"";
+    String valueSchemaStr = "\"string\"";
+    String keySchemaWithMultipleUrnFields = "{\n" + "  \"name\": \"ComplexKey\",\n" + "  \"type\": \"record\",\n"
+        + "  \"fields\": [\n" + "    {\"name\": \"string_field1\", \"type\": \"string\"},\n"
+        + "    {\"name\": \"string_field2\", \"type\": \"string\"},\n"
+        + "    {\"name\": \"int_field\", \"type\": \"int\"}\n" + "  ]\n" + "}";
+
+    // Create a store with simple string key schema
+    parentControllerClient.createNewStore(storeName, owner, stringKeySchemaStr, valueSchemaStr);
+    // Enable key urn compression
+    parentControllerClient.updateStore(storeName, new UpdateStoreQueryParams().setKeyUrnCompressionEnabled(true));
+
+    // Validate key urn compression is enabled in Parent
+    StoreInfo store = parentControllerClient.getStore(storeName).getStore();
+    assertTrue(store.isKeyUrnCompressionEnabled());
+    // Validate key urn compression is enabled in Child
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+      StoreInfo childStore = childControllerClient.getStore(storeName).getStore();
+      assertTrue(childStore.isKeyUrnCompressionEnabled());
+    });
+
+    // Create a store with simple long key schema
+    String storeName2 = storeName + "2";
+    parentControllerClient.createNewStore(storeName2, owner, longKeySchemaStr, valueSchemaStr);
+    // Enable key urn compression
+    ControllerResponse response =
+        parentControllerClient.updateStore(storeName2, new UpdateStoreQueryParams().setKeyUrnCompressionEnabled(true));
+    assertTrue(response.isError(), "Key urn compression should not be allowed for long key schema");
+
+    // Create a store with complex key schema with multiple string fields
+    String storeName3 = storeName + "3";
+    parentControllerClient.createNewStore(storeName3, owner, keySchemaWithMultipleUrnFields, valueSchemaStr);
+    // Enable key urn compression
+    response =
+        parentControllerClient.updateStore(storeName3, new UpdateStoreQueryParams().setKeyUrnCompressionEnabled(true));
+    assertTrue(
+        response.isError(),
+        "Key urn compression should not be allowed for complex key schema with multiple string fields without specifying all the top-level urn fields");
+    response = parentControllerClient.updateStore(
+        storeName3,
+        new UpdateStoreQueryParams().setKeyUrnCompressionEnabled(true)
+            .setKeyUrnFields(Arrays.asList("string_field1", "int_field")));
+    assertTrue(response.isError(), "Key urn compression should not be allowed for non-string top-level fields");
+    response = parentControllerClient.updateStore(
+        storeName3,
+        new UpdateStoreQueryParams().setKeyUrnCompressionEnabled(true)
+            .setKeyUrnFields(Arrays.asList("string_field1", "string_field2", "string_field3")));
+    assertTrue(response.isError(), "Key urn compression should not be allowed for non-existing top-level urn fields");
+    parentControllerClient.updateStore(
+        storeName3,
+        new UpdateStoreQueryParams().setKeyUrnCompressionEnabled(true)
+            .setKeyUrnFields(Arrays.asList("string_field1", "string_field2")));
+    // Validate key urn compression is enabled in Parent
+    store = parentControllerClient.getStore(storeName3).getStore();
+    assertTrue(store.isKeyUrnCompressionEnabled());
+
+    // Create a new version to make sure the new version will have key urn compression enabled
+    parentControllerClient.requestTopicForWrites(
+        storeName3,
+        1000L,
+        Version.PushType.BATCH,
+        Utils.getUniqueString("job_"),
+        true,
+        false,
+        false,
+        Optional.empty(),
+        Optional.empty(),
+        Optional.empty(),
+        false,
+        0);
+    store = parentControllerClient.getStore(storeName3).getStore();
+    Optional<Version> version = store.getVersion(1);
+    assertNotNull(version);
+    assertTrue(version.get().isKeyUrnCompressionEnabled());
   }
 
   private List<MultiSchemaResponse.Schema> getWriteComputeSchemaStrs(MultiSchemaResponse.Schema[] registeredSchemas) {

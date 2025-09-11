@@ -5,6 +5,7 @@ import com.linkedin.alpini.base.concurrency.Executors;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.store.AbstractStoragePartition;
+import com.linkedin.davinci.store.DelegatingStorageEngine;
 import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.davinci.store.rocksdb.RocksDBStoragePartition;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -285,6 +286,20 @@ public class BlobSnapshotManager {
   public void createSnapshot(String kafkaVersionTopic, int partitionId) {
     StorageEngine storageEngine =
         Objects.requireNonNull(storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic));
+    if (storageEngine instanceof DelegatingStorageEngine) {
+      DelegatingStorageEngine delegatingStorageEngine = (DelegatingStorageEngine) storageEngine;
+      if (delegatingStorageEngine.isKeyUrnCompressionEnabled(partitionId)) {
+        /**
+         * TODO: add blob transfer support for key urn compression.
+         */
+        throw new VeniceException(
+            "Cannot create snapshot for replica " + Utils.getReplicaId(kafkaVersionTopic, partitionId)
+                + " because key urn compression is enabled.");
+      }
+    } else {
+      throw new VeniceException("Storage engine is not an instance of DelegatingStorageEngine");
+    }
+
     AbstractStoragePartition partition = storageEngine.getPartitionOrThrow(partitionId);
     partition.createSnapshot();
   }

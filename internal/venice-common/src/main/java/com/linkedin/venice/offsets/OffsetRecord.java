@@ -12,6 +12,7 @@ import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
+import com.linkedin.venice.server.state.KeyUrnCompressionDict;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -349,6 +350,14 @@ public class OffsetRecord {
 
   public ByteBuffer getLatestConsumedVtPosition() {
     return this.partitionState.getLastConsumedVersionTopicPubSubPosition();
+  }
+
+  public KeyUrnCompressionDict getKeyUrnCompressionDict() {
+    return this.partitionState.keyUrnCompressionDict;
+  }
+
+  public void setKeyUrnCompressionDict(KeyUrnCompressionDict keyUrnCompressionDict) {
+    this.partitionState.keyUrnCompressionDict = keyUrnCompressionDict;
   }
 
   /**

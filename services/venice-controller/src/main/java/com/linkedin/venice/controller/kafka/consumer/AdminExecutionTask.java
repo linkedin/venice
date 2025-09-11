@@ -514,7 +514,9 @@ public class AdminExecutionTask implements Callable<Void> {
         .setTargetRegionSwapWaitTime(message.targetSwapRegionWaitTime)
         .setIsDavinciHeartbeatReported(message.isDaVinciHeartBeatReported)
         .setGlobalRtDivEnabled(message.globalRtDivEnabled)
-        .setEnumSchemaEvolutionAllowed(message.enumSchemaEvolutionAllowed);
+        .setEnumSchemaEvolutionAllowed(message.enumSchemaEvolutionAllowed)
+        .setKeyUrnCompressionEnabled(message.keyUrnCompressionEnabled)
+        .setKeyUrnFields(message.keyUrnFields.stream().map(Object::toString).collect(Collectors.toList()));
 
     if (message.storeLifecycleHooks.isEmpty()) {
       params.setStoreLifecycleHooks(Collections.emptyList());
