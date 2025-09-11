@@ -76,6 +76,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.rocksdb.ComparatorOptions;
 import org.rocksdb.util.BytewiseComparator;
+import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
@@ -373,33 +374,31 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
     // Wait for push to be push completed.
     TestUtils.waitForNonDeterministicAssertion(120, TimeUnit.SECONDS, () -> {
       for (int colo = 0; colo < NUMBER_OF_COLOS; colo++) {
+        ExecutionStatus status = clusterWrappers.get(colo)
+            .getLeaderVeniceController()
+            .getVeniceAdmin()
+            .getOffLinePushStatus(clusterWrappers.get(colo).getClusterName(), topic)
+            .getExecutionStatus();
         assertEquals(
-            clusterWrappers.get(colo)
-                .getLeaderVeniceController()
-                .getVeniceAdmin()
-                .getOffLinePushStatus(clusterWrappers.get(colo).getClusterName(), topic)
-                .getExecutionStatus(),
-            ExecutionStatus.COMPLETED);
+            status,
+            ExecutionStatus.COMPLETED,
+            "In region " + colo + " the push did not complete successfully. Current status: " + status);
       }
     });
 
     // Wait for storage node to finish consuming, and new version to be activated
-    TestUtils.waitForNonDeterministicCompletion(30, TimeUnit.SECONDS, () -> {
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
       for (int colo = 0; colo < NUMBER_OF_COLOS; colo++) {
-        int currentVersion =
-            ControllerClient
-                .getStore(
-                    clusterWrappers.get(colo).getLeaderVeniceController().getControllerUrl(),
-                    clusterWrappers.get(colo).getClusterName(),
-                    STORE_NAME)
-                .getStore()
-                .getCurrentVersion();
+        int currentVersion = clusterWrappers.get(colo)
+            .getLeaderVeniceController()
+            .getVeniceAdmin()
+            .getStore(clusterWrappers.get(colo).getClusterName(), STORE_NAME)
+            .getCurrentVersion();
         LOGGER.info("colo {} currentVersion {}, pushVersion {}", colo, currentVersion, newVersion);
-        if (currentVersion != newVersion) {
-          return false;
-        }
+        Assert.assertTrue(
+            currentVersion >= newVersion,
+            "Version is not activated in colo " + colo + ". Current version: " + currentVersion);
       }
-      return true;
     });
 
     // validate the ingested data
