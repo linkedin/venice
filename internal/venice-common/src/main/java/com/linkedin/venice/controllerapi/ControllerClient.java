@@ -5,6 +5,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.ADMIN_OPE
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.AMPLIFICATION_FACTOR;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.AUTO_STORE_MIGRATION_ABORT_ON_FAILURE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.AUTO_STORE_MIGRATION_CURRENT_STEP;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.AUTO_STORE_MIGRATION_PAUSE_AFTER_STEP;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BATCH_JOB_HEARTBEAT_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER_DEST;
@@ -626,9 +627,11 @@ public class ControllerClient implements Closeable {
       String storeName,
       String destClusterName,
       Optional<Integer> currStep,
+      Optional<Integer> pauseAfterStep,
       Optional<Boolean> abortOnFailure) {
     QueryParams params = newParams().add(NAME, storeName).add(CLUSTER_DEST, destClusterName);
     currStep.ifPresent(cs -> params.add(AUTO_STORE_MIGRATION_CURRENT_STEP, cs));
+    pauseAfterStep.ifPresent(pas -> params.add(AUTO_STORE_MIGRATION_PAUSE_AFTER_STEP, pas));
     abortOnFailure.ifPresent(aof -> params.add(AUTO_STORE_MIGRATION_ABORT_ON_FAILURE, aof));
     params.add(AUTO_STORE_MIGRATION_ABORT_ON_FAILURE, abortOnFailure);
     return request(ControllerRoute.AUTO_MIGRATE_STORE, params, StoreMigrationResponse.class);

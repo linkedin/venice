@@ -218,7 +218,7 @@ public class TestAdminTool {
       storeAutoMigrationResponse.setSrcClusterName(srcCluster);
       storeAutoMigrationResponse.setCluster(dstCluster);
       storeAutoMigrationResponse.setName(storeName);
-      Mockito.when(srcControllerClient.autoMigrateStore(eq(storeName), eq(dstCluster), any(), any()))
+      Mockito.when(srcControllerClient.autoMigrateStore(eq(storeName), eq(dstCluster), any(), any(), any()))
           .thenReturn(storeAutoMigrationResponse);
 
       StoreResponse storeResponse = new StoreResponse();
@@ -236,9 +236,11 @@ public class TestAdminTool {
           .thenReturn(destControllerClient);
 
       AdminTool.autoMigrateStore(fullCmd);
-      Mockito.verify(srcControllerClient).autoMigrateStore(storeName, dstCluster, Optional.of(0), Optional.of(true));
+      Mockito.verify(srcControllerClient)
+          .autoMigrateStore(storeName, dstCluster, Optional.of(0), Optional.empty(), Optional.of(true));
       AdminTool.autoMigrateStore(BasicCmd);
-      Mockito.verify(srcControllerClient).autoMigrateStore(storeName, dstCluster, Optional.empty(), Optional.empty());
+      Mockito.verify(srcControllerClient)
+          .autoMigrateStore(storeName, dstCluster, Optional.empty(), Optional.empty(), Optional.empty());
 
       srcStoreInfo.setMigrating(true);
       storeResponse.setStore(srcStoreInfo);
