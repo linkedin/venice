@@ -65,6 +65,16 @@ public class ClientFactory {
     }
     if (clientConfig.isStatTrackingEnabled()) {
       internalClient = new StatTrackingStoreClient<>(internalClient, clientConfig);
+      LOGGER.info(
+          "Created client for store: {} with stat tracking enabled: {}",
+          clientConfig.getStoreName(),
+          clientConfig.isStatTrackingEnabled());
+    } else {
+      internalClient = new LoggingTrackingStoreClient<>(internalClient, clientConfig);
+      LOGGER.info(
+          "Created client for store: {} with stat tracking enabled: {} will log errors and high latency requests with throttling",
+          clientConfig.getStoreName(),
+          clientConfig.isStatTrackingEnabled());
     }
     if (clientConfig.isRetryOnRouterErrorEnabled() || clientConfig.isRetryOnAllErrorsEnabled()) {
       LOGGER.info(
@@ -73,10 +83,7 @@ public class ClientFactory {
           clientConfig.isStatTrackingEnabled());
       return new RetriableStoreClient<>(internalClient, clientConfig);
     }
-    LOGGER.info(
-        "Created client for store: {} with stat tracking enabled: {}",
-        clientConfig.getStoreName(),
-        clientConfig.isStatTrackingEnabled());
+
     return internalClient;
   }
 
