@@ -860,7 +860,6 @@ public class AdminConsumptionTaskTest {
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
     AdminMetadata adminMetadata = new AdminMetadata();
     PubSubProduceResult pubSubProduceResult = metadataForStoreName0Future.get();
-    adminMetadata.setOffset(((InMemoryPubSubPosition) pubSubProduceResult.getPubSubPosition()).getInternalOffset());
     adminMetadata.setPubSubPosition(pubSubProduceResult.getPubSubPosition());
     adminMetadata.setExecutionId(1L);
     adminTopicMetadataAccessor.updateMetadata(clusterName, adminMetadata);
@@ -1341,7 +1340,7 @@ public class AdminConsumptionTaskTest {
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
     PubSubPosition position = future.get(TIMEOUT, TimeUnit.MILLISECONDS).getPubSubPosition();
     AdminMetadata newMetadata = new AdminMetadata();
-    newMetadata.setOffset(((InMemoryPubSubPosition) position).getInternalOffset());
+    newMetadata.setPubSubPosition(position);
     newMetadata.setExecutionId(4L);
     adminTopicMetadataAccessor.updateMetadata(clusterName, newMetadata);
     executionIdAccessor.updateLastSucceededExecutionIdMap(clusterName, storeName, 4L);
@@ -1418,7 +1417,6 @@ public class AdminConsumptionTaskTest {
         () -> Assert.assertEquals(task.getFailingPosition(), failingPosition));
     task.close();
     executor.shutdown();
-    ;
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
   }
 
