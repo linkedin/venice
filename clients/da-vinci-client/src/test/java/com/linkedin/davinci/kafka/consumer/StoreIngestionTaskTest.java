@@ -5856,7 +5856,7 @@ public abstract class StoreIngestionTaskTest {
     InMemoryPubSubPosition p1 = InMemoryPubSubPosition.of(11);
     GlobalRtDivState globalRtDivState =
         new GlobalRtDivState("localhost:1234", Collections.emptyMap(), p1.toWireFormatBuffer());
-    doReturn(Optional.of(globalRtDivState)).when(ingestionTask).readGlobalRtDivState(any(), anyInt(), any(), any());
+    doReturn(globalRtDivState).when(ingestionTask).readGlobalRtDivState(any(), anyInt(), any(), any());
     DataIntegrityValidator consumerDiv = mock(DataIntegrityValidator.class);
     doReturn(consumerDiv).when(ingestionTask).getConsumerDiv();
     Int2ObjectMap<String> brokerIdToUrlMap = new Int2ObjectOpenHashMap<>();
