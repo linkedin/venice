@@ -861,9 +861,9 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
           List<Store> parentStores;
           Map<String, String> childDataCenterControllerUrlMap =
               veniceParentHelixAdmin.getChildDataCenterControllerUrlMap(cluster);
-          List<String> rolloutOrder = RegionUtils.parseRegionRolloutOrderList(
-              veniceControllerMultiClusterConfig.getControllerConfig(cluster)
-                  .getDeferredVersionSwapRegionRollforwardOrder());
+          String rolloutOrderStr = veniceControllerMultiClusterConfig.getControllerConfig(cluster)
+              .getDeferredVersionSwapRegionRollforwardOrder();
+          List<String> rolloutOrder = RegionUtils.parseRegionRolloutOrderList(rolloutOrderStr);
           validateRolloutRegions(cluster, rolloutOrder, childDataCenterControllerUrlMap.keySet());
 
           try {
@@ -873,9 +873,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
             break;
           }
 
-          boolean sequentialRollForward = !StringUtils.isEmpty(
-              veniceControllerMultiClusterConfig.getControllerConfig(cluster)
-                  .getDeferredVersionSwapRegionRollforwardOrder());
+          boolean sequentialRollForward = !StringUtils.isEmpty(rolloutOrderStr);
           for (Store parentStore: parentStores) {
             int targetVersionNum = parentStore.getLargestUsedVersionNumber();
             if (targetVersionNum < 1) {
@@ -1129,7 +1127,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
     }
   }
 
-  private void validateRolloutRegions(String cluster, List<String> rolloutRegions, List<String> validRegions) {
+  private void validateRolloutRegions(String cluster, List<String> rolloutRegions, Set<String> validRegions) {
     for (String region: validRegions) {
       if (!validRegions.contains(region)) {
         throw new VeniceException(
