@@ -26,6 +26,7 @@ import com.linkedin.venice.writer.VeniceWriter;
 import java.nio.ByteBuffer;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Future;
@@ -56,8 +57,7 @@ public class PartitionConsumptionState {
   private static final String PREVIOUSLY_READY_TO_SERVE = "previouslyReadyToServe";
   private static final String TRUE = "true";
 
-  private final String replicaId;
-  private final int partition;
+  private final PubSubTopicPartition topicPartition;
   private final boolean hybrid;
   private final OffsetRecord offsetRecord;
   private final PubSubContext pubSubContext;
@@ -257,13 +257,15 @@ public class PartitionConsumptionState {
   private long readyToServeTimeLagThresholdInMs = DEFAULT_HEARTBEAT_LAG_THRESHOLD_MS;
 
   public PartitionConsumptionState(
-      String replicaId,
-      int partition,
+      PubSubTopicPartition topicPartition,
       OffsetRecord offsetRecord,
       PubSubContext pubSubContext,
       boolean hybrid) {
-    this.replicaId = replicaId;
-    this.partition = partition;
+    this.topicPartition = Objects.requireNonNull(topicPartition, "TopicPartition cannot be null when creating PCS");
+    if (!Version.isATopicThatIsVersioned(topicPartition.getTopicName())) {
+      throw new IllegalArgumentException(
+          "PCS should be created only for versioned topic, but got: " + topicPartition.getTopicName());
+    }
     this.hybrid = hybrid;
     this.offsetRecord = offsetRecord;
     this.pubSubContext = pubSubContext;
@@ -306,7 +308,7 @@ public class PartitionConsumptionState {
   }
 
   public int getPartition() {
-    return this.partition;
+    return this.topicPartition.getPartitionNumber();
   }
 
   public CompletableFuture<Void> getLastVTProduceCallFuture() {
@@ -428,8 +430,8 @@ public class PartitionConsumptionState {
   @Override
   public String toString() {
     return new StringBuilder().append("PCS{")
-        .append("replicaId=")
-        .append(replicaId)
+        .append("replica=")
+        .append(topicPartition)
         .append(", hybrid=")
         .append(hybrid)
         .append(", latestProcessedVtPosition=")
@@ -976,7 +978,11 @@ public class PartitionConsumptionState {
   }
 
   public String getReplicaId() {
-    return replicaId;
+    return topicPartition.toString();
+  }
+
+  public PubSubTopicPartition getTopicPartition() {
+    return topicPartition;
   }
 
   public void addIncPushVersionToPendingReportList(String incPushVersion) {

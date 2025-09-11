@@ -693,9 +693,10 @@ public class LeaderFollowerStoreIngestionTaskTest {
     TopicManager mockTopicManager = mock(TopicManager.class);
     doReturn(mockTopicManager).when(mockTopicManagerRepository).getLocalTopicManager();
     doReturn(mockTopicManager).when(mockTopicManagerRepository).getTopicManager(anyString());
-    doReturn(PubSubSymbolicPosition.LATEST).when(mockTopicManager).getLatestPositionCached(any(), anyInt());
+    doReturn(PubSubSymbolicPosition.LATEST).when(mockTopicManager)
+        .getLatestPositionCached(any(PubSubTopicPartition.class));
     ApacheKafkaOffsetPosition p10 = ApacheKafkaOffsetPosition.of(10L);
-    doReturn(p10).when(mockTopicManager).getLatestPositionCached(any(), anyInt());
+    doReturn(p10).when(mockTopicManager).getLatestPositionCached(any(PubSubTopicPartition.class));
 
     // Run SIT to process the mock consumer action
     leaderFollowerStoreIngestionTask.processCommonConsumerAction(mockConsumerAction);
@@ -719,13 +720,13 @@ public class LeaderFollowerStoreIngestionTaskTest {
     assertFullyConsumedResult(51L, 50L, true, "Should be fully consumed when vtPosition + 1 > endOffset");
     assertFullyConsumedResult(999999L, 1000000L, true, "Should handle large offset values correctly");
 
-    // Test LATEST end offset (unknown end) - should return false
+    // Test LATEST end position (unknown end) - should return false
     PartitionConsumptionState pcs = createMockPcs(50L);
     doReturn(PubSubSymbolicPosition.LATEST.getNumericOffset()).when(leaderFollowerStoreIngestionTask)
-        .getTopicPartitionEndOffSet(anyString(), any(PubSubTopic.class), anyInt());
+        .getTopicPartitionEndPosition(anyString(), any(PubSubTopicPartition.class));
     assertFalse(
         leaderFollowerStoreIngestionTask.isLocalVersionTopicPartitionFullyConsumed(pcs),
-        "Should return false when end offset is LATEST (unknown)");
+        "Should return false when end position is LATEST (unknown)");
   }
 
   @Test(timeOut = 60_000)
@@ -782,7 +783,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
       String message) {
     PartitionConsumptionState pcs = createMockPcs(vtPositionOffset);
     doReturn(endOffset).when(leaderFollowerStoreIngestionTask)
-        .getTopicPartitionEndOffSet(anyString(), any(PubSubTopic.class), anyInt());
+        .getTopicPartitionEndPosition(anyString(), any(PubSubTopicPartition.class));
 
     assertEquals(
         leaderFollowerStoreIngestionTask.isLocalVersionTopicPartitionFullyConsumed(pcs),
