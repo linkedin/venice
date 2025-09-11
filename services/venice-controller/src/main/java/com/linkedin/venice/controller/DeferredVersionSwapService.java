@@ -948,7 +948,6 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
               }
             }
 
-            // TODO clean up the else statement once the non sequential rollout is complete
             if (sequentialRollForward) {
               // Find next region to roll forward
               String nextRegionToRollForward =
@@ -1030,7 +1029,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
                     nextRegionToRollForward,
                     cluster);
               }
-            } else {
+            } else { // TODO clean up the piece below once the sequential rollout is complete
               // Get eligible non target regions to roll forward in
               Set<String> nonTargetRegionsCompleted =
                   getRegionsToRollForward(remainingRegions, parentStore, targetVersionNum, cluster, kafkaTopicName);
