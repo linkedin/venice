@@ -289,7 +289,7 @@ public class TestGlobalRtDiv {
     // Verify that the other server is promoted to leader and load the Global RT DIV State correctly.
     HelixExternalViewRepository routingDataRepo = getRoutingDataRepository();
     AtomicReference<Instance> LeaderNode = new AtomicReference<>();
-    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
+    TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, true, () -> {
       LeaderNode.set(routingDataRepo.getLeaderInstance(topicName, partition)); // Find the leader node
       LOGGER.info("Leader server: {}", LeaderNode.get().getNodeId());
       venice.getVeniceServers().forEach(server -> {

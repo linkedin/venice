@@ -15,6 +15,7 @@ import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -82,8 +83,7 @@ public class OffsetRecord {
     emptyPartitionState.lastProcessedVersionTopicPubSubPosition = PubSubSymbolicPosition.EARLIEST.toWireFormatBuffer();
     emptyPartitionState.lastConsumedVersionTopicPubSubPosition = PubSubSymbolicPosition.EARLIEST.toWireFormatBuffer();
     emptyPartitionState.upstreamVersionTopicPubSubPosition = PubSubSymbolicPosition.EARLIEST.toWireFormatBuffer();
-    emptyPartitionState.lastConsumedVersionTopicOffset = PubSubSymbolicPosition.EARLIEST.getNumericOffset();
-    // TODO: use the PubSubPosition ByteBuffer param instead
+    emptyPartitionState.lastConsumedVersionTopicPubSubPosition = PubSubSymbolicPosition.EARLIEST.toWireFormatBuffer();
     return emptyPartitionState;
   }
 
@@ -344,12 +344,11 @@ public class OffsetRecord {
   // Updated from {@link PartitionTracker#updateOffsetRecord}
   public void setLatestConsumedVtPosition(PubSubPosition latestConsumedVtPosition) {
     this.partitionState.setLastConsumedVersionTopicPubSubPosition(latestConsumedVtPosition.toWireFormatBuffer());
-    this.partitionState.setLastConsumedVersionTopicOffset(latestConsumedVtPosition.getNumericOffset());
+    // TODO: deprecate lastConsumedVersionTopicOffset in PartitionState
   }
 
-  public PubSubPosition getLatestConsumedVtPosition() {
-    // TODO: use the PubSubPosition ByteBuffer param instead
-    return fromKafkaOffset(this.partitionState.getLastConsumedVersionTopicOffset());
+  public ByteBuffer getLatestConsumedVtPosition() {
+    return this.partitionState.getLastConsumedVersionTopicPubSubPosition();
   }
 
   /**

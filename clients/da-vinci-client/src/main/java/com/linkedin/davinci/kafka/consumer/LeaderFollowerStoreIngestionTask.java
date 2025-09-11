@@ -2288,7 +2288,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
      * These messages will be contributed towards the segments in VeniceWriter when the Global RT DIV is produced to RT
      * Either skip validation + skip adding to segments in both locations or keep in both, and we're keeping for now
      */
-    if (!isGlobalRtDivEnabled() && !shouldProduceToVersionTopic(pcs)) {
+    if (!shouldProduceToVersionTopic(pcs) && !isGlobalRtDivEnabled()) {
       return records;
     }
     /**
