@@ -14,16 +14,22 @@ import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import java.io.File;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import org.apache.commons.io.IOUtils;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 public class VeniceMultiClusterWrapper extends ProcessWrapper {
+  private static final Logger LOGGER = LogManager.getLogger(VeniceMultiClusterWrapper.class);
   public static final String SERVICE_NAME = "VeniceMultiCluster";
   private final Map<String, VeniceClusterWrapper> clusters;
   private final Map<Integer, VeniceControllerWrapper> controllers;
@@ -234,13 +240,90 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
 
   @Override
   protected void internalStop() throws Exception {
-    controllers.values().forEach(IOUtils::closeQuietly);
-    clusters.values().forEach(IOUtils::closeQuietly);
+    LOGGER.info("Starting sequential shutdown of VeniceMultiClusterWrapper");
+    long overallStartTime = System.currentTimeMillis();
+
+    // Step 1: Stop controllers in parallel
+    long controllersStartTime = System.currentTimeMillis();
+    LOGGER.info("Step 1: Shutting down {} controllers in parallel", controllers.size());
+
+    List<CompletableFuture<Void>> controllerShutdownTasks = new ArrayList<>();
+    int controllerIndex = 0;
+    for (VeniceControllerWrapper controller: controllers.values()) {
+      final int currentIndex = controllerIndex++;
+      CompletableFuture<Void> controllerShutdownTask = CompletableFuture.runAsync(() -> {
+        long controllerStartTime = System.currentTimeMillis();
+        LOGGER.debug("Shutting down controller {}", currentIndex);
+        IOUtils.closeQuietly(controller);
+        long controllerDuration = System.currentTimeMillis() - controllerStartTime;
+        LOGGER.debug("Completed shutdown of controller {} in {} ms", currentIndex, controllerDuration);
+      });
+      controllerShutdownTasks.add(controllerShutdownTask);
+    }
+
+    CompletableFuture.allOf(controllerShutdownTasks.toArray(new CompletableFuture[0])).join();
+    long controllersTime = System.currentTimeMillis() - controllersStartTime;
+    LOGGER.info("Completed parallel shutdown of {} controllers in {} ms", controllers.size(), controllersTime);
+
+    // Step 2: Stop clusters in parallel
+    long clustersStartTime = System.currentTimeMillis();
+    LOGGER.info("Step 2: Shutting down {} clusters in parallel", clusters.size());
+
+    List<CompletableFuture<Void>> clusterShutdownTasks = new ArrayList<>();
+    int clusterIndex = 0;
+    for (Map.Entry<String, VeniceClusterWrapper> clusterEntry: clusters.entrySet()) {
+      final int currentIndex = clusterIndex++;
+      final String clusterName = clusterEntry.getKey();
+      final VeniceClusterWrapper cluster = clusterEntry.getValue();
+      CompletableFuture<Void> clusterShutdownTask = CompletableFuture.runAsync(() -> {
+        long clusterStartTime = System.currentTimeMillis();
+        LOGGER.debug("Shutting down cluster {} ({})", currentIndex, clusterName);
+        IOUtils.closeQuietly(cluster);
+        long clusterDuration = System.currentTimeMillis() - clusterStartTime;
+        LOGGER.debug("Completed shutdown of cluster {} ({}) in {} ms", currentIndex, clusterName, clusterDuration);
+      });
+      clusterShutdownTasks.add(clusterShutdownTask);
+    }
+
+    CompletableFuture.allOf(clusterShutdownTasks.toArray(new CompletableFuture[0])).join();
+    long clustersTime = System.currentTimeMillis() - clustersStartTime;
+    LOGGER.info("Completed parallel shutdown of {} clusters in {} ms", clusters.size(), clustersTime);
+
+    // Step 3: Stop D2 client
+    long d2StartTime = System.currentTimeMillis();
+    LOGGER.info("Step 3: Shutting down D2 client");
     if (clientConfigD2Client != null) {
       D2ClientUtils.shutdownClient(clientConfigD2Client);
     }
+    long d2Time = System.currentTimeMillis() - d2StartTime;
+    LOGGER.info("Completed shutdown of D2 client in {} ms", d2Time);
+
+    // Step 4: Stop PubSub broker
+    long pubSubStartTime = System.currentTimeMillis();
+    LOGGER.info("Step 4: Shutting down PubSub broker");
     IOUtils.closeQuietly(pubSubBrokerWrapper);
+    long pubSubTime = System.currentTimeMillis() - pubSubStartTime;
+    LOGGER.info("Completed shutdown of PubSub broker in {} ms", pubSubTime);
+
+    // Step 5: Stop ZooKeeper last
+    long zkStartTime = System.currentTimeMillis();
+    LOGGER.info("Step 5: Shutting down ZooKeeper server");
     IOUtils.closeQuietly(zkServerWrapper);
+    long zkTime = System.currentTimeMillis() - zkStartTime;
+    LOGGER.info("Completed shutdown of ZooKeeper server in {} ms", zkTime);
+
+    long totalShutdownTime = System.currentTimeMillis() - overallStartTime;
+
+    // Log comprehensive timing summary
+    LOGGER.info(
+        "Sequential shutdown timing summary - Total: {} ms, "
+            + "Controllers: {} ms, Clusters: {} ms, D2 client: {} ms, PubSub broker: {} ms, ZooKeeper: {} ms",
+        totalShutdownTime,
+        controllersTime,
+        clustersTime,
+        d2Time,
+        pubSubTime,
+        zkTime);
   }
 
   @Override
