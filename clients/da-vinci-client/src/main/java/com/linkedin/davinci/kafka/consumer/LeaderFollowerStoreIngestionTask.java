@@ -1414,7 +1414,13 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           if (dryRun) {
             final PubSubPosition previousUpstreamOffset =
                 lastKnownUpstreamTopicOffsetSupplier.apply(sourceKafkaUrl, upstreamTopic);
+            TopicManager topicManager = getTopicManager(sourceKafkaUrl);
+            PubSubTopicPartition pubSubTopicPartition =
+                partitionConsumptionState.getSourceTopicPartition(upstreamTopic);
+
             checkAndHandleUpstreamOffsetRewind(
+                topicManager,
+                pubSubTopicPartition,
                 partitionConsumptionState,
                 consumerRecord,
                 newUpstreamOffset,
@@ -1524,12 +1530,14 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   }
 
   protected static void checkAndHandleUpstreamOffsetRewind(
+      TopicManager topicManager,
+      PubSubTopicPartition pubSubTopicPartition,
       PartitionConsumptionState partitionConsumptionState,
       DefaultPubSubMessage consumerRecord,
-      final PubSubPosition newUpstreamOffset,
-      final PubSubPosition previousUpstreamOffset,
+      final PubSubPosition newUpstreamPosition,
+      final PubSubPosition previousUpstreamPosition,
       LeaderFollowerStoreIngestionTask ingestionTask) {
-    if (newUpstreamOffset.getNumericOffset() >= previousUpstreamOffset.getNumericOffset()) {
+    if (topicManager.diffPosition(pubSubTopicPartition, newUpstreamPosition, previousUpstreamPosition) >= 0) {
       return; // Rewind did not happen
     }
     if (!ingestionTask.isHybridMode()) {
@@ -1573,8 +1581,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
               + " Multiple leaders are producing. ",
           partitionConsumptionState.getReplicaId(),
           consumerRecord.getPosition(),
-          newUpstreamOffset,
-          previousUpstreamOffset,
+          newUpstreamPosition,
+          previousUpstreamPosition,
           kafkaValue.producerMetadata.producerGUID == null
               ? "unknown"
               : GuidUtils.getHexFromGuid(kafkaValue.producerMetadata.producerGUID),
