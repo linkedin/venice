@@ -182,7 +182,7 @@ public class LoggingTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V
         Optional<Exception> exception,
         int successKeyCount,
         int duplicateEntryCount) {
-      handleMetricTrackingForStreamingCallback(
+      handleLoggingTrackingForStreamingCallback(
           storeName,
           preRequestTimeInNS,
           exception,
@@ -191,7 +191,7 @@ public class LoggingTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V
     }
   }
 
-  private static void handleMetricTrackingForStreamingCallback(
+  private static void handleLoggingTrackingForStreamingCallback(
       String storeName,
       long startTimeInNS,
       Optional<Exception> exception,

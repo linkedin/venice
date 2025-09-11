@@ -18,6 +18,7 @@ dependencies {
   implementation libraries.jacksonCore
   implementation libraries.jacksonDatabind
   implementation libraries.log4j2api
+  implementation libraries.log4j2core
   implementation libraries.zookeeper
 
   // Schema related dependencies
@@ -28,6 +29,7 @@ dependencies {
   testImplementation libraries.kafkaClientsTest
   testImplementation libraries.kafkaClients
   testImplementation libraries.netty
+  testImplementation libraries.log4j2core
   testImplementation libraries.openTelemetryTestSdk
 }
 
