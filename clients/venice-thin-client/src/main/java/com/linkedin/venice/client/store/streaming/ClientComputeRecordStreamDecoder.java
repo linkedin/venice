@@ -38,7 +38,8 @@ public class ClientComputeRecordStreamDecoder<K, V> implements RecordStreamDecod
       RecordDeserializer<StreamingFooterRecordV1> streamingFooterRecordDeserializer,
       Supplier<RecordDeserializer<V>> computeDeserializerProvider,
       Function<Integer, RecordDeserializer<V>> valueDeserializerProvider,
-      BiFunction<CompressionStrategy, ByteBuffer, ByteBuffer> decompressor) {
+      BiFunction<CompressionStrategy, ByteBuffer, ByteBuffer> decompressor,
+      Map<Integer, RecordDeserializer<V>> deserializerCache) {
     this.decoderProvider = responseHeaders -> {
       if (responseHeaders.containsKey(HttpConstants.VENICE_CLIENT_COMPUTE)) {
         /*
@@ -59,7 +60,8 @@ public class ClientComputeRecordStreamDecoder<K, V> implements RecordStreamDecod
             deserializationExecutor,
             streamingFooterRecordDeserializer,
             valueDeserializerProvider,
-            decompressor);
+            decompressor,
+            deserializerCache);
       } else {
         return new ComputeRecordStreamDecoder<>(
             keyList,

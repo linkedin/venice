@@ -6,7 +6,6 @@ import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
 import com.linkedin.venice.read.protocol.response.streaming.StreamingFooterRecordV1;
 import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
 import com.linkedin.venice.serializer.RecordDeserializer;
-import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.nio.ByteBuffer;
 import java.util.List;
 import java.util.Map;
@@ -16,10 +15,10 @@ import java.util.function.Function;
 
 
 public class MultiGetRecordStreamDecoder<K, V> extends AbstractRecordStreamDecoder<MultiGetResponseRecordV1, K, V> {
-  private final Map<Integer, RecordDeserializer<V>> deserializerCache = new VeniceConcurrentHashMap<>();
   private final RecordDeserializer<StreamingFooterRecordV1> streamingFooterDeserializer;
   private final Function<Integer, RecordDeserializer<V>> valueDeserializerProvider;
   private final BiFunction<CompressionStrategy, ByteBuffer, ByteBuffer> decompressor;
+  Map<Integer, RecordDeserializer<V>> deserializerCache;
 
   public MultiGetRecordStreamDecoder(
       List<K> keyList,
@@ -27,11 +26,13 @@ public class MultiGetRecordStreamDecoder<K, V> extends AbstractRecordStreamDecod
       Executor deserializationExecutor,
       RecordDeserializer<StreamingFooterRecordV1> streamingFooterDeserializer,
       Function<Integer, RecordDeserializer<V>> valueDeserializerProvider,
-      BiFunction<CompressionStrategy, ByteBuffer, ByteBuffer> decompressor) {
+      BiFunction<CompressionStrategy, ByteBuffer, ByteBuffer> decompressor,
+      Map<Integer, RecordDeserializer<V>> deserializerCache) {
     super(keyList, callback, deserializationExecutor);
     this.streamingFooterDeserializer = streamingFooterDeserializer;
     this.valueDeserializerProvider = valueDeserializerProvider;
     this.decompressor = decompressor;
+    this.deserializerCache = deserializerCache;
   }
 
   @Override

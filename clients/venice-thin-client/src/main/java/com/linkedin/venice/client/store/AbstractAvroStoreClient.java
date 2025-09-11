@@ -33,6 +33,7 @@ import com.linkedin.venice.serializer.VeniceSerializationException;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.EncodingUtils;
 import com.linkedin.venice.utils.LatencyUtils;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -61,6 +62,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
   public static final String TYPE_STORAGE = "storage";
   public static final String TYPE_COMPUTE = "compute";
   public static final String B64_FORMAT = "?f=b64";
+  private final Map<Integer, RecordDeserializer<V>> deserializerCache = new VeniceConcurrentHashMap<>();
 
   private final ClientConfig clientConfig;
   protected final boolean needSchemaReader;
@@ -491,7 +493,8 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
         streamingFooterRecordDeserializer,
         () -> getComputeResultRecordDeserializer(resultSchema),
         schemaId -> (RecordDeserializer) getDataRecordDeserializer(schemaId),
-        this::decompressRecord);
+        this::decompressRecord,
+        (Map<Integer, RecordDeserializer<GenericRecord>>) (Map) deserializerCache);
 
     if (clientConfig.isRemoteComputationOnly() || remoteComputationAllowed.get()) {
       compute(computeRequest, keyList, decoder, decoderCallback.getStats());
@@ -701,7 +704,8 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
         getDeserializationExecutor(),
         streamingFooterRecordDeserializer,
         this::getDataRecordDeserializer,
-        this::decompressRecord);
+        this::decompressRecord,
+        deserializerCache);
     streamingBatchGet(keyList, decoder, decoderCallback.getStats());
   }
 
