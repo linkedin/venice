@@ -1128,7 +1128,11 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
   }
 
   private void validateRolloutRegions(String cluster, List<String> rolloutRegions, Set<String> validRegions) {
-    for (String region: validRegions) {
+    if (rolloutRegions.isEmpty()) {
+      return;
+    }
+
+    for (String region: rolloutRegions) {
       if (!validRegions.contains(region)) {
         throw new VeniceException(
             "Invalid region " + region + " in cluster " + cluster + " found in rollout order list");
