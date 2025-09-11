@@ -2357,8 +2357,11 @@ public class VeniceParentHelixAdmin implements Admin {
         ReadWriteStoreRepository repository = resources.getStoreMetadataRepository();
         Store parentStore = repository.getStore(storeName);
 
-        // Mark the parent store as ONLINE if it's a deferred version swap. Otherwise, it will be handled by
-        // DeferredVersionSwapService
+        // Mark the parent store as ONLINE if it's a manual deferred version swap. Manual deferred swaps happen when
+        // only
+        // the deferred version swap version config is set and no target regions are defined
+        // Otherwise, it will be handled by DeferredVersionSwapService since it will handle marking the parent ONLINE
+        // and tracking when version swap is complete
         Version parentVersion = parentStore.getVersion(futureVersionBeforeRollForward);
         if (parentStore.getTargetSwapRegion() == null && parentVersion.isVersionSwapDeferred()) {
           int version = Version.parseVersionFromKafkaTopicName(kafkaTopic);
