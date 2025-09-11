@@ -957,7 +957,7 @@ public class PartitionConsumptionState {
   }
 
   public PubSubPosition getLatestConsumedVtPosition() {
-    return getPubSubContext().getPubSubPositionDeserializer().toPosition(offsetRecord.getLatestConsumedVtPosition());
+    return offsetRecord.getLatestConsumedVtPosition();
   }
 
   public void setDataRecoveryCompleted(boolean dataRecoveryCompleted) {

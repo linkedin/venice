@@ -1,7 +1,10 @@
 package com.linkedin.venice.pubsub;
 
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.pubsub.manager.TopicManagerRepository;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -10,6 +13,18 @@ import com.linkedin.venice.pubsub.manager.TopicManagerRepository;
  * position deserializer, and topic repository.
  */
 public class PubSubContext {
+  private static final Logger LOGGER = LogManager.getLogger(PubSubContext.class);
+  /**
+   * Static empty PubSubContext instance for cases where a default context is needed.
+   * This instance has all fields initialized with default values.
+   * This is mainly used for test code.
+   */
+  public static final PubSubContext DEFAULT_PUBSUB_CONTEXT =
+      new Builder().setPubSubTopicRepository(new PubSubTopicRepository())
+          .setPubSubPositionDeserializer(PubSubPositionDeserializer.DEFAULT_DESERIALIZER)
+          .setPubSubPositionTypeRegistry(PubSubPositionTypeRegistry.RESERVED_POSITION_TYPE_REGISTRY)
+          .build();
+
   private final TopicManagerRepository topicManagerRepository;
   private final PubSubPositionTypeRegistry pubSubPositionTypeRegistry;
   private final PubSubPositionDeserializer pubSubPositionDeserializer;
@@ -70,6 +85,7 @@ public class PubSubContext {
     }
 
     public PubSubContext build() {
+      LOGGER.info("### Stacktrace: ", new VeniceException("PubSubContext build() called"));
       return new PubSubContext(this);
     }
   }

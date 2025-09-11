@@ -1,5 +1,6 @@
 package com.linkedin.venice.listener;
 
+import static com.linkedin.venice.pubsub.PubSubContext.DEFAULT_PUBSUB_CONTEXT;
 import static com.linkedin.venice.read.RequestType.SINGLE_GET;
 import static com.linkedin.venice.router.api.VenicePathParser.TYPE_STORAGE;
 import static io.netty.handler.codec.http.HttpResponseStatus.BAD_REQUEST;
@@ -210,7 +211,7 @@ public class StorageReadRequestHandlerTest {
 
     RocksDBServerConfig rocksDBServerConfig = mock(RocksDBServerConfig.class);
     doReturn(rocksDBServerConfig).when(serverConfig).getRocksDBServerConfig();
-    pubSubContext = new PubSubContext.Builder().build();
+    pubSubContext = DEFAULT_PUBSUB_CONTEXT;
   }
 
   @AfterMethod
@@ -553,7 +554,7 @@ public class StorageReadRequestHandlerTest {
     PartitionConsumptionState state = new PartitionConsumptionState(
         Utils.getReplicaId(topic, expectedPartitionId),
         expectedPartitionId,
-        new OffsetRecord(AvroProtocolDefinition.PARTITION_STATE.getSerializer()),
+        new OffsetRecord(AvroProtocolDefinition.PARTITION_STATE.getSerializer(), DEFAULT_PUBSUB_CONTEXT),
         pubSubContext,
         false,
         Schema.create(Schema.Type.STRING));

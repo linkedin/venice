@@ -4,6 +4,7 @@ import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_
 import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_STATUS;
 import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_TYPE;
 import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferType;
+import static com.linkedin.venice.pubsub.PubSubContext.DEFAULT_PUBSUB_CONTEXT;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -296,7 +297,7 @@ public class TestP2PFileTransferClientHandler {
     expectedMetadata.setPartitionId(TEST_PARTITION);
     InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer =
         AvroProtocolDefinition.PARTITION_STATE.getSerializer();
-    OffsetRecord offsetRecord = new OffsetRecord(partitionStateSerializer);
+    OffsetRecord offsetRecord = new OffsetRecord(partitionStateSerializer, DEFAULT_PUBSUB_CONTEXT);
     offsetRecord.setOffsetLag(1000L);
     expectedMetadata.setOffsetRecord(ByteBuffer.wrap(offsetRecord.toBytes()));
 
@@ -368,7 +369,7 @@ public class TestP2PFileTransferClientHandler {
     expectMetadata.setPartitionId(TEST_PARTITION);
     InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer =
         AvroProtocolDefinition.PARTITION_STATE.getSerializer();
-    OffsetRecord offsetRecord = new OffsetRecord(partitionStateSerializer);
+    OffsetRecord offsetRecord = new OffsetRecord(partitionStateSerializer, DEFAULT_PUBSUB_CONTEXT);
     offsetRecord.setOffsetLag(1000L);
     expectMetadata.setOffsetRecord(ByteBuffer.wrap(offsetRecord.toBytes()));
 

@@ -1,5 +1,7 @@
 package com.linkedin.davinci.blobtransfer.client;
 
+import static com.linkedin.venice.pubsub.PubSubContext.DEFAULT_PUBSUB_CONTEXT;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.annotations.VisibleForTesting;
 import com.linkedin.davinci.blobtransfer.BlobTransferPartitionMetadata;
@@ -10,6 +12,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.pubsub.PubSubContext;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.utils.ObjectMapperFactory;
@@ -38,6 +41,7 @@ public class P2PMetadataTransferHandler extends SimpleChannelInboundHandler<Full
   private final BlobTransferPayload payload;
   private BlobTransferPartitionMetadata metadata;
   private StorageMetadataService storageMetadataService;
+  private PubSubContext pubSubContext;
 
   public P2PMetadataTransferHandler(
       StorageMetadataService storageMetadataService,
@@ -48,6 +52,7 @@ public class P2PMetadataTransferHandler extends SimpleChannelInboundHandler<Full
       BlobTransferTableFormat tableFormat) {
     this.storageMetadataService = storageMetadataService;
     this.payload = new BlobTransferPayload(baseDir, storeName, version, partition, tableFormat);
+    this.pubSubContext = DEFAULT_PUBSUB_CONTEXT;
   }
 
   @Override
@@ -107,7 +112,7 @@ public class P2PMetadataTransferHandler extends SimpleChannelInboundHandler<Full
     storageMetadataService.put(
         transferredPartitionMetadata.topicName,
         transferredPartitionMetadata.partitionId,
-        new OffsetRecord(transferredPartitionMetadata.offsetRecord.array(), partitionStateSerializer));
+        new OffsetRecord(transferredPartitionMetadata.offsetRecord.array(), partitionStateSerializer, pubSubContext));
     // update the metadata SVS
     updateStorageVersionState(storageMetadataService, transferredPartitionMetadata);
   }

@@ -1,5 +1,6 @@
 package com.linkedin.venice.offsets;
 
+import static com.linkedin.venice.pubsub.PubSubContext.DEFAULT_PUBSUB_CONTEXT;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNull;
 
@@ -27,7 +28,7 @@ public class TestOffsetRecord {
   private String kafkaUrl;
 
   TestOffsetRecord() {
-    offsetRecord = new OffsetRecord(AvroProtocolDefinition.PARTITION_STATE.getSerializer());
+    offsetRecord = new OffsetRecord(AvroProtocolDefinition.PARTITION_STATE.getSerializer(), DEFAULT_PUBSUB_CONTEXT);
     guid = new GUID();
     state = new ProducerPartitionState();
     kafkaUrl = "test_kafka_url";
@@ -35,21 +36,29 @@ public class TestOffsetRecord {
 
   @Test
   public void testToBytes() {
-    OffsetRecord offsetRecord1 = TestUtils.getOffsetRecord(ApacheKafkaOffsetPosition.of(100), Optional.empty());
-    OffsetRecord offsetRecord2 =
-        new OffsetRecord(offsetRecord1.toBytes(), AvroProtocolDefinition.PARTITION_STATE.getSerializer());
+    OffsetRecord offsetRecord1 =
+        TestUtils.getOffsetRecord(ApacheKafkaOffsetPosition.of(100), Optional.empty(), DEFAULT_PUBSUB_CONTEXT);
+    OffsetRecord offsetRecord2 = new OffsetRecord(
+        offsetRecord1.toBytes(),
+        AvroProtocolDefinition.PARTITION_STATE.getSerializer(),
+        DEFAULT_PUBSUB_CONTEXT);
     Assert.assertTrue(offsetRecord2.getProducerPartitionStateMap() instanceof VeniceConcurrentHashMap);
     Assert.assertEquals(offsetRecord2, offsetRecord1);
 
-    offsetRecord1 = TestUtils.getOffsetRecord(ApacheKafkaOffsetPosition.of(100), Optional.empty());
+    offsetRecord1 =
+        TestUtils.getOffsetRecord(ApacheKafkaOffsetPosition.of(100), Optional.empty(), DEFAULT_PUBSUB_CONTEXT);
     offsetRecord1.endOfPushReceived();
-    offsetRecord2 = new OffsetRecord(offsetRecord1.toBytes(), AvroProtocolDefinition.PARTITION_STATE.getSerializer());
+    offsetRecord2 = new OffsetRecord(
+        offsetRecord1.toBytes(),
+        AvroProtocolDefinition.PARTITION_STATE.getSerializer(),
+        DEFAULT_PUBSUB_CONTEXT);
     Assert.assertEquals(offsetRecord2, offsetRecord1);
   }
 
   @Test
   public void testResetUpstreamOffsetMap() {
-    OffsetRecord offsetRecord = TestUtils.getOffsetRecord(ApacheKafkaOffsetPosition.of(100), Optional.empty());
+    OffsetRecord offsetRecord =
+        TestUtils.getOffsetRecord(ApacheKafkaOffsetPosition.of(100), Optional.empty(), DEFAULT_PUBSUB_CONTEXT);
     PubSubPosition p1 = ApacheKafkaOffsetPosition.of(1L);
     PubSubPosition p2 = ApacheKafkaOffsetPosition.of(2L);
     offsetRecord.checkpointRtPosition(TEST_KAFKA_URL1, p1);
@@ -66,7 +75,8 @@ public class TestOffsetRecord {
 
   @Test
   public void testBatchUpdateEOIP() {
-    OffsetRecord offsetRecord = TestUtils.getOffsetRecord(ApacheKafkaOffsetPosition.of(100), Optional.empty());
+    OffsetRecord offsetRecord =
+        TestUtils.getOffsetRecord(ApacheKafkaOffsetPosition.of(100), Optional.empty(), DEFAULT_PUBSUB_CONTEXT);
     offsetRecord.setPendingReportIncPushVersionList(Arrays.asList("a", "b", "c"));
     Assert.assertEquals(offsetRecord.getPendingReportIncPushVersionList(), Arrays.asList("a", "b", "c"));
   }

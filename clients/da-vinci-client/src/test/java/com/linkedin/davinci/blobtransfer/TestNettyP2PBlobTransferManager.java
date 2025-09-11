@@ -3,6 +3,8 @@ package com.linkedin.davinci.blobtransfer;
 import static com.linkedin.davinci.blobtransfer.BlobTransferGlobalTrafficShapingHandlerHolder.getGlobalChannelTrafficShapingHandlerInstance;
 import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferTableFormat;
 import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.createAclHandler;
+import static com.linkedin.venice.pubsub.PubSubContext.DEFAULT_PUBSUB_CONTEXT;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doReturn;
@@ -201,9 +203,11 @@ public class TestNettyP2PBlobTransferManager {
 
     InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer =
         AvroProtocolDefinition.PARTITION_STATE.getSerializer();
-    OffsetRecord expectOffsetRecord = new OffsetRecord(partitionStateSerializer);
+    OffsetRecord expectOffsetRecord = new OffsetRecord(partitionStateSerializer, DEFAULT_PUBSUB_CONTEXT);
     expectOffsetRecord.setOffsetLag(1000L);
-    Mockito.doReturn(expectOffsetRecord).when(storageMetadataService).getLastOffset(Mockito.any(), Mockito.anyInt());
+    Mockito.doReturn(expectOffsetRecord)
+        .when(storageMetadataService)
+        .getLastOffset(Mockito.any(), Mockito.anyInt(), any());
 
     // Execution:
     CompletionStage<InputStream> future =
@@ -233,9 +237,11 @@ public class TestNettyP2PBlobTransferManager {
 
     InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer =
         AvroProtocolDefinition.PARTITION_STATE.getSerializer();
-    OffsetRecord expectOffsetRecord = new OffsetRecord(partitionStateSerializer);
+    OffsetRecord expectOffsetRecord = new OffsetRecord(partitionStateSerializer, DEFAULT_PUBSUB_CONTEXT);
     expectOffsetRecord.setOffsetLag(1000L);
-    Mockito.doReturn(expectOffsetRecord).when(storageMetadataService).getLastOffset(Mockito.any(), Mockito.anyInt());
+    Mockito.doReturn(expectOffsetRecord)
+        .when(storageMetadataService)
+        .getLastOffset(Mockito.any(), Mockito.anyInt(), any());
 
     snapshotPreparation();
     Mockito.doNothing().when(blobSnapshotManager).createSnapshot(anyString(), anyInt());
@@ -265,9 +271,11 @@ public class TestNettyP2PBlobTransferManager {
 
     InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer =
         AvroProtocolDefinition.PARTITION_STATE.getSerializer();
-    OffsetRecord expectOffsetRecord = new OffsetRecord(partitionStateSerializer);
+    OffsetRecord expectOffsetRecord = new OffsetRecord(partitionStateSerializer, DEFAULT_PUBSUB_CONTEXT);
     expectOffsetRecord.setOffsetLag(1000L);
-    Mockito.doReturn(expectOffsetRecord).when(storageMetadataService).getLastOffset(Mockito.any(), Mockito.anyInt());
+    Mockito.doReturn(expectOffsetRecord)
+        .when(storageMetadataService)
+        .getLastOffset(Mockito.any(), Mockito.anyInt(), any());
 
     snapshotPreparation();
     Mockito.doNothing().when(blobSnapshotManager).createSnapshot(anyString(), anyInt());
@@ -302,9 +310,11 @@ public class TestNettyP2PBlobTransferManager {
 
     InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer =
         AvroProtocolDefinition.PARTITION_STATE.getSerializer();
-    OffsetRecord expectOffsetRecord = new OffsetRecord(partitionStateSerializer);
+    OffsetRecord expectOffsetRecord = new OffsetRecord(partitionStateSerializer, DEFAULT_PUBSUB_CONTEXT);
     expectOffsetRecord.setOffsetLag(1000L);
-    Mockito.doReturn(expectOffsetRecord).when(storageMetadataService).getLastOffset(Mockito.any(), Mockito.anyInt());
+    Mockito.doReturn(expectOffsetRecord)
+        .when(storageMetadataService)
+        .getLastOffset(Mockito.any(), Mockito.anyInt(), any());
 
     snapshotPreparation();
     Mockito.doNothing().when(blobSnapshotManager).createSnapshot(anyString(), anyInt());
@@ -364,9 +374,11 @@ public class TestNettyP2PBlobTransferManager {
 
     InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer =
         AvroProtocolDefinition.PARTITION_STATE.getSerializer();
-    OffsetRecord expectOffsetRecord = new OffsetRecord(partitionStateSerializer);
+    OffsetRecord expectOffsetRecord = new OffsetRecord(partitionStateSerializer, DEFAULT_PUBSUB_CONTEXT);
     expectOffsetRecord.setOffsetLag(1000L);
-    Mockito.doReturn(expectOffsetRecord).when(storageMetadataService).getLastOffset(Mockito.any(), Mockito.anyInt());
+    Mockito.doReturn(expectOffsetRecord)
+        .when(storageMetadataService)
+        .getLastOffset(Mockito.any(), Mockito.anyInt(), any());
 
     snapshotPreparation();
     Mockito.doNothing().when(blobSnapshotManager).createSnapshot(anyString(), anyInt());
@@ -408,9 +420,11 @@ public class TestNettyP2PBlobTransferManager {
 
     InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer =
         AvroProtocolDefinition.PARTITION_STATE.getSerializer();
-    OffsetRecord expectOffsetRecord = new OffsetRecord(partitionStateSerializer);
+    OffsetRecord expectOffsetRecord = new OffsetRecord(partitionStateSerializer, DEFAULT_PUBSUB_CONTEXT);
     expectOffsetRecord.setOffsetLag(1000L);
-    Mockito.doReturn(expectOffsetRecord).when(storageMetadataService).getLastOffset(Mockito.any(), Mockito.anyInt());
+    Mockito.doReturn(expectOffsetRecord)
+        .when(storageMetadataService)
+        .getLastOffset(Mockito.any(), Mockito.anyInt(), any());
 
     snapshotPreparation();
 
@@ -446,9 +460,11 @@ public class TestNettyP2PBlobTransferManager {
 
     InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer =
         AvroProtocolDefinition.PARTITION_STATE.getSerializer();
-    OffsetRecord expectOffsetRecord = new OffsetRecord(partitionStateSerializer);
+    OffsetRecord expectOffsetRecord = new OffsetRecord(partitionStateSerializer, DEFAULT_PUBSUB_CONTEXT);
     expectOffsetRecord.setOffsetLag(1000L);
-    Mockito.doReturn(expectOffsetRecord).when(storageMetadataService).getLastOffset(Mockito.any(), Mockito.anyInt());
+    Mockito.doReturn(expectOffsetRecord)
+        .when(storageMetadataService)
+        .getLastOffset(Mockito.any(), Mockito.anyInt(), any());
 
     snapshotPreparation();
     Mockito.doNothing().when(blobSnapshotManager).createSnapshot(anyString(), anyInt());
@@ -546,7 +562,7 @@ public class TestNettyP2PBlobTransferManager {
 
     // Verify the metadata is retrieved
     Mockito.verify(storageMetadataService, Mockito.times(2))
-        .getLastOffset(TEST_STORE + "_v" + TEST_VERSION, TEST_PARTITION);
+        .getLastOffset(TEST_STORE + "_v" + TEST_VERSION, TEST_PARTITION, DEFAULT_PUBSUB_CONTEXT);
     Mockito.verify(storageMetadataService, Mockito.times(2)).getStoreVersionState(TEST_STORE + "_v" + TEST_VERSION);
 
     // Verify the record is updated
@@ -573,7 +589,7 @@ public class TestNettyP2PBlobTransferManager {
 
     // Verify the metadata/record/svs is never retrieved/updated
     Mockito.verify(storageMetadataService, Mockito.never())
-        .getLastOffset(TEST_STORE + "_v" + TEST_VERSION, TEST_PARTITION);
+        .getLastOffset(TEST_STORE + "_v" + TEST_VERSION, TEST_PARTITION, DEFAULT_PUBSUB_CONTEXT);
     Mockito.verify(storageMetadataService, Mockito.never()).getStoreVersionState(TEST_STORE + "_v" + TEST_VERSION);
     Mockito.verify(storageMetadataService, Mockito.never())
         .put(TEST_STORE + "_v" + TEST_VERSION, TEST_PARTITION, expectOffsetRecord);

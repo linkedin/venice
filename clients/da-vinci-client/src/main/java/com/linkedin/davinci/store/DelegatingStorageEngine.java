@@ -7,6 +7,7 @@ import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.utils.ByteUtils;
+import com.linkedin.venice.pubsub.PubSubContext;
 import java.nio.ByteBuffer;
 import java.util.Map;
 import java.util.Objects;
@@ -243,8 +244,8 @@ public class DelegatingStorageEngine<P extends AbstractStoragePartition> impleme
   }
 
   @Override
-  public Optional<OffsetRecord> getPartitionOffset(int partitionId) {
-    return this.delegate.getPartitionOffset(partitionId);
+  public Optional<OffsetRecord> getPartitionOffset(int partitionId, PubSubContext pubSubContext) {
+    return this.delegate.getPartitionOffset(partitionId, pubSubContext);
   }
 
   @Override
