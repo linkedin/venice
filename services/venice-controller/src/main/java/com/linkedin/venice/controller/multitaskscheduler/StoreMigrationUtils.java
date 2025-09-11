@@ -175,4 +175,18 @@ public class StoreMigrationUtils {
     }
     return rec.isPaused(); // unchanged state
   }
+
+  public static void checkRetryLimit(MigrationRecord record, int maxRetries) {
+    if (record.getAttempts() >= maxRetries) {
+      String msg = String.format("MigrationRecord %s has reached retry limit of %d; aborting.", record, maxRetries);
+      LOGGER.error(msg);
+      throw new RetryLimitExceededException(msg);
+    }
+  }
+
+  static class RetryLimitExceededException extends RuntimeException {
+    public RetryLimitExceededException(String message) {
+      super(message);
+    }
+  }
 }

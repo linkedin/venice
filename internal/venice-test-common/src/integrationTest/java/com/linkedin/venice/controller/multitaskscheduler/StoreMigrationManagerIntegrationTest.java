@@ -25,6 +25,7 @@ import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
+import com.linkedin.venice.exceptions.ErrorType;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.integration.utils.D2TestUtils;
@@ -48,6 +49,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import org.apache.avro.Schema;
+import org.apache.avro.util.Utf8;
 import org.apache.samza.system.SystemProducer;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
@@ -194,6 +196,13 @@ public class StoreMigrationManagerIntegrationTest {
     assertNull(
         storeMigrationManager.getMigrationRecord(storeName),
         "Migration record should be cleaned up from migrationRecords after end migration.");
+    StoreResponse srcStoreResponse = srcParentControllerClient.getStore(storeName);
+    Assert.assertTrue(srcStoreResponse.isError());
+    Assert.assertEquals(srcStoreResponse.getErrorType(), ErrorType.STORE_NOT_FOUND);
+    try (AvroGenericStoreClient<String, Object> client = ClientFactory.getAndStartGenericAvroClient(clientConfig)) {
+      int key = ThreadLocalRandom.current().nextInt(RECORD_COUNT / 2) + 1;
+      Assert.assertEquals(((Utf8) client.get(Integer.toString(key)).get()).toString(), "stream_" + key);
+    }
   }
 
   private Properties createAndPushStore(String clusterName, String storeName) throws Exception {

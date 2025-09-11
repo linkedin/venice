@@ -7,11 +7,11 @@ public class MigrationRecord {
   private final String storeName;
   private final String sourceCluster;
   private final String destinationCluster;
-  private Step currentStep;
+  private volatile Step currentStep;
   private Instant storeMigrationStartTime;
   private int attempts;
   private boolean abortOnFailure = true;
-  private boolean isAborted = false;
+  private volatile boolean isAborted = false;
   private volatile boolean paused = false;
   private volatile Step pauseAfter = Step.NONE; // Stop after this step
 

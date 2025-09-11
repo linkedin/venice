@@ -2,6 +2,7 @@ package com.linkedin.venice.controller.multitaskscheduler;
 
 import static com.linkedin.venice.controller.multitaskscheduler.MigrationRecord.Step;
 import static com.linkedin.venice.controller.multitaskscheduler.StoreMigrationUtils.applyPauseIfNeeded;
+import static com.linkedin.venice.controller.multitaskscheduler.StoreMigrationUtils.checkRetryLimit;
 import static com.linkedin.venice.controller.multitaskscheduler.StoreMigrationUtils.isClonedStoreOnline;
 
 import com.linkedin.venice.controllerapi.ChildAwareResponse;
@@ -90,11 +91,23 @@ class StoreMigrationTask implements Runnable {
           manager.cleanupMigrationRecord(record.getStoreName());
       }
     } catch (Exception e) {
-      LOGGER.error("Error occurred during migration for store: {}", record.getStoreName(), e);
+      LOGGER.error(
+          "Error occurred during migration for store: {} on step: {}.",
+          record.getStoreName(),
+          record.getCurrentStepEnum(),
+          e);
       if (record.getAttempts() < manager.getMaxRetryAttempts()) {
         record.incrementAttempts();
+        LOGGER.info(
+            "The retry attempts for store migration record: {} is below maxRetryAttempts {} - rescheduling it.",
+            record,
+            manager.getMaxRetryAttempts());
         manager.scheduleNextStep(this, this.manager.getDelayInSeconds());
       } else {
+        LOGGER.warn(
+            "The retry attempts for store migration record: {} are greater than or equal to maxRetryAttempts {} - aborting it.",
+            record,
+            manager.getMaxRetryAttempts());
         handleMigrationFailure();
       }
     }
@@ -113,6 +126,9 @@ class StoreMigrationTask implements Runnable {
       manager.migrationTasks.put(record.getStoreName(), this);
       return;
     }
+    // Add this check to prevent rescheduling the migration if handleMigrationFailure() has already been invoked during
+    // the parent controller’s failover scenario
+    checkRetryLimit(record, manager.getMaxRetryAttempts());
     LOGGER.info("Submit migration request of store {}...", record.getStoreName());
     // Implement pre-check
     StoreInfo srcStoreInfo = srcControllerClient.getStore(record.getStoreName()).getStore();
