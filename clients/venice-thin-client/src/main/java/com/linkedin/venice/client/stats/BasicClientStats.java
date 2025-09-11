@@ -239,7 +239,7 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
 
     // request key count
     requestKeyCount = MetricEntityStateOneEnum.create(
-        BasicClientMetricEntity.KEY_COUNT.getMetricEntity(),
+        BasicClientMetricEntity.REQUEST_KEY_COUNT.getMetricEntity(),
         getOtelRepository(),
         this::registerSensor,
         BasicClientTehutiMetricName.REQUEST_KEY_COUNT,
@@ -248,7 +248,7 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
         MessageType.class);
 
     successResponseKeyCount = MetricEntityStateOneEnum.create(
-        BasicClientMetricEntity.KEY_COUNT.getMetricEntity(),
+        BasicClientMetricEntity.RESPONSE_KEY_COUNT.getMetricEntity(),
         otelRepository,
         this::registerSensor,
         BasicClientTehutiMetricName.SUCCESS_REQUEST_KEY_COUNT,
@@ -423,8 +423,13 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
     /**
      * Count of keys for venice client request and response.
      */
-    KEY_COUNT(
-        MetricType.HISTOGRAM, MetricUnit.NUMBER, "Count of keys for venice client request and response",
+    REQUEST_KEY_COUNT(
+        "request.key_count", MetricType.HISTOGRAM, MetricUnit.NUMBER, "Count of keys for venice client request",
+        setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD, VENICE_MESSAGE_TYPE)
+    ),
+
+    RESPONSE_KEY_COUNT(
+        "response.key_count", MetricType.HISTOGRAM, MetricUnit.NUMBER, "Count of keys for venice client response",
         setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD, VENICE_MESSAGE_TYPE)
     ),
     /**

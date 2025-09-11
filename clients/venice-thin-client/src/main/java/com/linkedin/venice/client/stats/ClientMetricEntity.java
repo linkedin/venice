@@ -18,17 +18,25 @@ public enum ClientMetricEntity implements ModuleMetricEntityInterface {
   /**
    * Client retry count.
    */
-  RETRY_COUNT(
-      MetricType.COUNTER, MetricUnit.NUMBER, "Count of all retry requests for client",
+  RETRY_CALL_COUNT(
+      "retry.call_count", MetricType.COUNTER, MetricUnit.NUMBER, "Count of all retry requests for client",
       setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD, VENICE_REQUEST_RETRY_TYPE)
   ),
 
   /**
    * Client retry key count.
    */
-  RETRY_KEY_COUNT(
-      MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS, MetricUnit.NUMBER, "Key count of retry requests for client",
-      setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD, VENICE_MESSAGE_TYPE)
+  RETRY_REQUEST_KEY_COUNT(
+      "retry.request_key_count", MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS, MetricUnit.NUMBER,
+      "Key count of retry requests for client", setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD, VENICE_MESSAGE_TYPE)
+  ),
+
+  /**
+   * Client retry response key count.
+   */
+  RETRY_RESPONSE_KEY_COUNT(
+      "retry.response_key_count", MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS, MetricUnit.NUMBER,
+      "Key count of retry responses for client", setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD, VENICE_MESSAGE_TYPE)
   );
 
   private final MetricEntity entity;
@@ -39,6 +47,15 @@ public enum ClientMetricEntity implements ModuleMetricEntityInterface {
       String description,
       Set<VeniceMetricsDimensions> dimensions) {
     this.entity = new MetricEntity(this.name().toLowerCase(), metricType, unit, description, dimensions);
+  }
+
+  ClientMetricEntity(
+      String name,
+      MetricType metricType,
+      MetricUnit unit,
+      String description,
+      Set<VeniceMetricsDimensions> dimensions) {
+    this.entity = new MetricEntity(name, metricType, unit, description, dimensions);
   }
 
   @Override

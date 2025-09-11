@@ -1,6 +1,6 @@
 package com.linkedin.venice.client.stats;
 
-import static com.linkedin.venice.client.stats.ClientMetricEntity.RETRY_COUNT;
+import static com.linkedin.venice.client.stats.ClientMetricEntity.RETRY_CALL_COUNT;
 import static com.linkedin.venice.stats.dimensions.MessageType.REQUEST;
 import static com.linkedin.venice.stats.dimensions.MessageType.RESPONSE;
 import static com.linkedin.venice.stats.dimensions.RequestRetryType.ERROR_RETRY;
@@ -76,7 +76,7 @@ public class ClientStats extends BasicClientStats {
     Rate requestRetryCountRate = new OccurrenceRate();
 
     errorRetryRequest = MetricEntityStateOneEnum.create(
-        RETRY_COUNT.getMetricEntity(),
+        RETRY_CALL_COUNT.getMetricEntity(),
         otelRepository,
         this::registerSensor,
         ClientTehutiMetricName.REQUEST_RETRY_COUNT,
@@ -133,7 +133,7 @@ public class ClientStats extends BasicClientStats {
     Rate retryRequestSuccessKeyCount = new Rate();
 
     retryKeyCount = MetricEntityStateOneEnum.create(
-        ClientMetricEntity.RETRY_KEY_COUNT.getMetricEntity(),
+        ClientMetricEntity.RETRY_REQUEST_KEY_COUNT.getMetricEntity(),
         otelRepository,
         this::registerSensor,
         ClientTehutiMetricName.RETRY_REQUEST_KEY_COUNT,
@@ -142,7 +142,7 @@ public class ClientStats extends BasicClientStats {
         MessageType.class);
 
     retrySuccessKeyCount = MetricEntityStateOneEnum.create(
-        ClientMetricEntity.RETRY_KEY_COUNT.getMetricEntity(),
+        ClientMetricEntity.RETRY_RESPONSE_KEY_COUNT.getMetricEntity(),
         otelRepository,
         this::registerSensor,
         ClientTehutiMetricName.RETRY_REQUEST_SUCCESS_KEY_COUNT,
