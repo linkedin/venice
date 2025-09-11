@@ -80,6 +80,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
   protected final WriteOptions writeOptions;
   protected final ReadOptions iteratorReadOptions;
   private final String fullPathForTempSSTFileDir;
+  private final String fullPathForTempTransferredDir;
   private final String fullPathForPartitionDBSnapshot;
 
   private final EnvOptions envOptions;
@@ -227,6 +228,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     this.rocksDBThrottler = rocksDbThrottler;
     this.fullPathForTempSSTFileDir = RocksDBUtils.composeTempSSTFileDir(dbDir, storeNameAndVersion, partitionId);
     this.fullPathForPartitionDBSnapshot = RocksDBUtils.composeSnapshotDir(dbDir, storeNameAndVersion, partitionId);
+    this.fullPathForTempTransferredDir = RocksDBUtils.composeTempPartitionDir(dbDir, storeNameAndVersion, partitionId);
 
     if (deferredWrite) {
       this.rocksDBSstFileWriter = new RocksDBSstFileWriter(
@@ -814,6 +816,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     // remove snapshots files
     deleteFilesInDirectory(fullPathForPartitionDBSnapshot);
     // Remove partition directory
+    deleteDirectory(fullPathForTempTransferredDir);
     deleteDirectory(fullPathForPartitionDB);
     LOGGER.info("RocksDB for replica:{} was dropped.", replicaId);
   }

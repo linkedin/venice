@@ -176,7 +176,9 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
 
     // Set up the time limitation for the transfer
     long startTime = System.currentTimeMillis();
-
+    String replicaInfo = Utils.getReplicaId(blobTransferRequest.getTopicName(), blobTransferRequest.getPartition());
+    String remoteHost = ctx.channel().remoteAddress().toString();
+    LOGGER.info("Start transferring {} with {} files to host {}. ", replicaInfo, files.length, remoteHost);
     // transfer files
     for (File file: files) {
       // check if the transfer for all files is timed out for this partition
@@ -188,7 +190,7 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
         return;
       }
       // send file
-      sendFile(file, ctx);
+      sendFile(file, replicaInfo, remoteHost, ctx);
     }
 
     sendMetadata(ctx, transferPartitionMetadata);
@@ -196,10 +198,10 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
     // end of transfer
     HttpResponse endOfTransfer = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
     endOfTransfer.headers().set(BLOB_TRANSFER_STATUS, BLOB_TRANSFER_COMPLETED);
-    String replicaInfo = Utils.getReplicaId(blobTransferRequest.getTopicName(), blobTransferRequest.getPartition());
+
     ctx.writeAndFlush(endOfTransfer).addListener(future -> {
       if (future.isSuccess()) {
-        LOGGER.info("All files sent successfully for {}", replicaInfo);
+        LOGGER.info("All files sent successfully for {} to host {} ", replicaInfo, remoteHost);
       } else {
         LOGGER.error("Failed to send all files for {}", replicaInfo, future.cause());
       }
@@ -253,11 +255,11 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
     ctx.close();
   }
 
-  private void sendFile(File file, ChannelHandlerContext ctx) throws IOException {
-    LOGGER.info("Sending file: {} at path {}. ", file.getName(), file.getAbsolutePath());
+  private void sendFile(File file, String replicaInfo, String remoteHost, ChannelHandlerContext ctx)
+      throws IOException {
+    LOGGER.info("Sending file: {} at for replica {} to host {}", file.getName(), replicaInfo, remoteHost);
     RandomAccessFile raf = new RandomAccessFile(file, "r");
     ChannelFuture sendFileFuture;
-    ChannelFuture lastContentFuture;
     long length = raf.length();
     String fileChecksum = BlobTransferUtils.generateFileChecksum(file.toPath());
 
@@ -271,21 +273,17 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
     ctx.write(response);
 
     sendFileFuture = ctx.writeAndFlush(new HttpChunkedInput(new ChunkedFile(raf)));
-    lastContentFuture = sendFileFuture;
 
     sendFileFuture.addListener(future -> {
       if (future.isSuccess()) {
-        LOGGER.info("File {} sent successfully", file.getName());
+        LOGGER.info("File {} sent successfully for replica {} at host {}", file.getName(), replicaInfo, remoteHost);
       } else {
-        LOGGER.error("Failed to send file {}", file.getName());
-      }
-    });
-
-    lastContentFuture.addListener(future -> {
-      if (future.isSuccess()) {
-        LOGGER.info("Last content sent successfully for {}", file.getName());
-      } else {
-        LOGGER.error("Failed to send last content for {}", file.getName());
+        LOGGER.error(
+            "Failed to send file {} for replica {} at host {}",
+            file.getName(),
+            replicaInfo,
+            remoteHost,
+            future.cause());
       }
     });
   }

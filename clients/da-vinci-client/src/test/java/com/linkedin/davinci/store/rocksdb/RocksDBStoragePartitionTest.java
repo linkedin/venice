@@ -1101,6 +1101,76 @@ public class RocksDBStoragePartitionTest {
   }
 
   @Test
+  public void testPartitionDrop() throws IOException {
+    String storeName = Version.composeKafkaTopic(Utils.getUniqueString("test_store"), 1);
+    String storeDir = getTempDatabaseDir(storeName);
+    int partitionId = 0;
+    StoragePartitionConfig partitionConfig = new StoragePartitionConfig(storeName, partitionId);
+
+    VeniceProperties veniceServerProperties = AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB);
+    RocksDBServerConfig rocksDBServerConfig = new RocksDBServerConfig(veniceServerProperties);
+    VeniceServerConfig serverConfig = new VeniceServerConfig(veniceServerProperties);
+    RocksDBStorageEngineFactory factory = new RocksDBStorageEngineFactory(serverConfig);
+
+    RocksDBStoragePartition storagePartition = new RocksDBStoragePartition(
+        partitionConfig,
+        factory,
+        DATA_BASE_DIR,
+        null,
+        ROCKSDB_THROTTLER,
+        rocksDBServerConfig);
+
+    // Add some data to the partition to ensure database exists
+    Map<String, String> testData = generateInput(100, false, 10);
+    for (Map.Entry<String, String> entry: testData.entrySet()) {
+      storagePartition.put(entry.getKey().getBytes(), entry.getValue().getBytes());
+    }
+    storagePartition.sync();
+
+    // Get the directory paths before drop
+    String partitionDbPath = RocksDBUtils.composePartitionDbDir(DATA_BASE_DIR, storeName, partitionId);
+    String tempSSTPath = storagePartition.getFullPathForTempSSTFileDir();
+    String snapshotPath = RocksDBUtils.composeSnapshotDir(DATA_BASE_DIR, storeName, partitionId);
+    String tempTransferredPath = RocksDBUtils.composeTempPartitionDir(DATA_BASE_DIR, storeName, partitionId);
+
+    // Create some files in temp directories to test cleanup
+    File tempSSTDir = new File(tempSSTPath);
+    File snapshotDir = new File(snapshotPath);
+    File tempTransferredDir = new File(tempTransferredPath);
+
+    // Ensure directories exist and create test files
+    tempSSTDir.mkdirs();
+    tempTransferredDir.mkdirs();
+    snapshotDir.mkdirs();
+
+    File testSSTFile = new File(tempSSTDir, "test.sst");
+    File testSnapshotFile = new File(snapshotDir, "test.snapshot");
+    File testTransferredFile = new File(tempTransferredDir, "test.transfer");
+
+    testSSTFile.createNewFile();
+    testSnapshotFile.createNewFile();
+    testTransferredFile.createNewFile();
+
+    // Verify files exist before drop
+    Assert.assertTrue(testSSTFile.exists(), "Test SST file should exist before drop");
+    Assert.assertTrue(testSnapshotFile.exists(), "Test snapshot file should exist before drop");
+    Assert.assertTrue(testTransferredFile.exists(), "Test transferred file should exist before drop");
+    Assert.assertTrue(new File(partitionDbPath).exists(), "Partition DB directory should exist before drop");
+
+    // Call drop method
+    storagePartition.drop();
+
+    // Verify all directories and files are cleaned up
+    Assert.assertFalse(new File(partitionDbPath).exists(), "Partition DB directory should be removed after drop");
+    Assert.assertFalse(tempSSTDir.exists(), "Temp SST directory should be removed after drop");
+    Assert.assertFalse(snapshotDir.exists(), "Snapshot directory should be removed after drop");
+    Assert.assertFalse(tempTransferredDir.exists(), "Temp transferred directory should be removed after drop");
+
+    // Clean up test directory
+    removeDir(storeDir);
+  }
+
+  @Test
   public void testCheckAndThrowSpecificException() {
     String storeName = Version.composeKafkaTopic(Utils.getUniqueString("test_store"), 1);
     String storeDir = getTempDatabaseDir(storeName);
