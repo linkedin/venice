@@ -41,8 +41,11 @@ public class AvroGenericStoreClientImpl<K, V> extends AbstractAvroStoreClient<K,
 
   @Override
   public RecordDeserializer<V> getDataRecordDeserializer(int writerSchemaId) throws VeniceClientException {
-    SchemaReader schemaReader = getSchemaReader();
+    return getDeserializerCache().computeIfAbsent(writerSchemaId, this::createDataRecordDeserializer);
+  }
 
+  private RecordDeserializer<V> createDataRecordDeserializer(int writerSchemaId) {
+    SchemaReader schemaReader = getSchemaReader();
     Schema writerSchema = schemaReader.getValueSchema(writerSchemaId);
     if (writerSchema == null) {
       throw new VeniceClientException(

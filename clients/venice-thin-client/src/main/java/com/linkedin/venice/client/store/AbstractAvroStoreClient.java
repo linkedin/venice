@@ -493,8 +493,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
         streamingFooterRecordDeserializer,
         () -> getComputeResultRecordDeserializer(resultSchema),
         schemaId -> (RecordDeserializer) getDataRecordDeserializer(schemaId),
-        this::decompressRecord,
-        (Map<Integer, RecordDeserializer<GenericRecord>>) (Map) deserializerCache);
+        this::decompressRecord);
 
     if (clientConfig.isRemoteComputationOnly() || remoteComputationAllowed.get()) {
       compute(computeRequest, keyList, decoder, decoderCallback.getStats());
@@ -704,8 +703,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
         getDeserializationExecutor(),
         streamingFooterRecordDeserializer,
         this::getDataRecordDeserializer,
-        this::decompressRecord,
-        deserializerCache);
+        this::decompressRecord);
     streamingBatchGet(keyList, decoder, decoderCallback.getStats());
   }
 
@@ -731,6 +729,10 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
     byte[] result = multiGetRequestSerializer.serializeObjects(serializedKeyList);
     stats.ifPresent(s -> s.recordRequestSerializationTime(LatencyUtils.getElapsedTimeFromNSToMS(startTime)));
     return result;
+  }
+
+  protected Map<Integer, RecordDeserializer<V>> getDeserializerCache() {
+    return deserializerCache;
   }
 
   protected static boolean handleCallbackForEmptyKeySet(Collection<?> keys, StreamingCallback callback) {

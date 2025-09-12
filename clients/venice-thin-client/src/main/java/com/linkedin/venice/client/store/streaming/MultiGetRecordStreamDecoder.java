@@ -8,7 +8,6 @@ import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import java.nio.ByteBuffer;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.Executor;
 import java.util.function.BiFunction;
 import java.util.function.Function;
@@ -18,7 +17,6 @@ public class MultiGetRecordStreamDecoder<K, V> extends AbstractRecordStreamDecod
   private final RecordDeserializer<StreamingFooterRecordV1> streamingFooterDeserializer;
   private final Function<Integer, RecordDeserializer<V>> valueDeserializerProvider;
   private final BiFunction<CompressionStrategy, ByteBuffer, ByteBuffer> decompressor;
-  Map<Integer, RecordDeserializer<V>> deserializerCache;
 
   public MultiGetRecordStreamDecoder(
       List<K> keyList,
@@ -26,13 +24,11 @@ public class MultiGetRecordStreamDecoder<K, V> extends AbstractRecordStreamDecod
       Executor deserializationExecutor,
       RecordDeserializer<StreamingFooterRecordV1> streamingFooterDeserializer,
       Function<Integer, RecordDeserializer<V>> valueDeserializerProvider,
-      BiFunction<CompressionStrategy, ByteBuffer, ByteBuffer> decompressor,
-      Map<Integer, RecordDeserializer<V>> deserializerCache) {
+      BiFunction<CompressionStrategy, ByteBuffer, ByteBuffer> decompressor) {
     super(keyList, callback, deserializationExecutor);
     this.streamingFooterDeserializer = streamingFooterDeserializer;
     this.valueDeserializerProvider = valueDeserializerProvider;
     this.decompressor = decompressor;
-    this.deserializerCache = deserializerCache;
   }
 
   @Override
@@ -55,8 +51,7 @@ public class MultiGetRecordStreamDecoder<K, V> extends AbstractRecordStreamDecod
       // Safeguard to handle empty value, which indicates non-existing key.
       return null;
     }
-    RecordDeserializer<V> deserializer =
-        deserializerCache.computeIfAbsent(envelope.schemaId, valueDeserializerProvider);
+    RecordDeserializer<V> deserializer = valueDeserializerProvider.apply(envelope.schemaId);
     ByteBuffer decompressedValue = decompressor.apply(compression, envelope.value);
     return deserializer.deserialize(decompressedValue);
   }
