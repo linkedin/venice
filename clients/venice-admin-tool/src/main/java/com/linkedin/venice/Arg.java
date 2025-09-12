@@ -122,7 +122,7 @@ public enum Arg {
   ),
   STARTING_POSITION(
       "starting_position", "sp", true,
-      "Starting <typeId:base64EncodedPositionBytes> when dumping admin messages, inclusive"
+      "Starting <typeId:base64EncodedPositionWfBytes> when dumping admin messages, inclusive"
   ), STARTING_OFFSET("starting_offset", "so", true, "Starting offset when dumping admin messages, inclusive"),
   MESSAGE_COUNT("message_count", "mc", true, "Max message count when dumping admin messages"),
   PARENT_DIRECTORY(

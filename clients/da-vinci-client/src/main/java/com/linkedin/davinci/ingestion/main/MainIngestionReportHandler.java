@@ -14,9 +14,7 @@ import com.linkedin.venice.ingestion.protocol.IngestionTaskReport;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionAction;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionReportType;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
-import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
-import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.Utils;
 import io.netty.channel.ChannelHandlerContext;
@@ -102,9 +100,8 @@ public class MainIngestionReportHandler extends SimpleChannelInboundHandler<Full
     IngestionReportType reportType = IngestionReportType.valueOf(report.reportType);
     String topicName = report.topicName.toString();
     int partitionId = report.partitionId;
-    long offset = report.offset;
-    // TODO(sushantmane): Replace offset in IngestionTaskReport with PubSubPositionWireFormat.
-    PubSubPosition position = offset == -1 ? PubSubSymbolicPosition.EARLIEST : new ApacheKafkaOffsetPosition(offset);
+    PubSubPosition position =
+        mainIngestionMonitorService.getPubSubPositionDeserializer().toPosition(report.pubSubPosition);
     String message = report.message.toString();
     LOGGER.info(
         "Received ingestion report {} for replica: {} position: {} from ingestion service. ",

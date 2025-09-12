@@ -15,12 +15,13 @@ public class TestSkipResultRecordTransformer extends DaVinciRecordTransformer<In
   private final Map<Integer, String> inMemoryDB = new HashMap<>();
 
   public TestSkipResultRecordTransformer(
+      String storeName,
       int storeVersion,
       Schema keySchema,
       Schema inputValueSchema,
       Schema outputValueSchema,
       DaVinciRecordTransformerConfig recordTransformerConfig) {
-    super(storeVersion, keySchema, inputValueSchema, outputValueSchema, recordTransformerConfig);
+    super(storeName, storeVersion, keySchema, inputValueSchema, outputValueSchema, recordTransformerConfig);
   }
 
   @Override

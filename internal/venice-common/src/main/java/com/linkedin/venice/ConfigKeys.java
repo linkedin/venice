@@ -2730,6 +2730,12 @@ public class ConfigKeys {
   public static final String DEFERRED_VERSION_SWAP_BUFFER_TIME = "deferred.version.swap.buffer.time";
 
   /**
+   * Specifies the order in which the regions should roll forward in
+   */
+  public static final String DEFERRED_VERSION_SWAP_REGION_ROLL_FORWARD_ORDER =
+      "deferred.version.swap.region.roll.forward.order";
+
+  /**
    * Enables / disables allowing dvc clients to perform a target region push with deferred swap. When enabled, dvc clients
    * will be skipped and target regions will not be set and the deferred version swap service will skip checking stores with
    * isDavinciHeartbeatReported set to true. This is a temporary config until delayed ingestion for dvc is complete. Default value is enabled
@@ -2862,4 +2868,7 @@ public class ConfigKeys {
    * Default is false (i.e. not a dark cluster).
    */
   public static final String IS_DARK_CLUSTER = "is.dark.cluster";
+
+  public static final String SERVER_INGESTION_ISOLATION_D2_CLIENT_ENABLED =
+      "server.ingestion.isolation.d2.client.enabled";
 }

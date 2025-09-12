@@ -11,6 +11,7 @@ import static org.mockito.Mockito.when;
 
 import com.linkedin.venice.common.PushStatusStoreUtils;
 import com.linkedin.venice.logger.TestLogAppender;
+import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.pushstatus.PushStatusKey;
@@ -181,14 +182,17 @@ public class PushStatusStoreWriterTest {
     // Mock the produce result
     PubSubProduceResult produceResult = Mockito.mock(PubSubProduceResult.class);
     Mockito.when(produceResult.getTopic()).thenReturn("test-topic");
-    Mockito.when(produceResult.getOffset()).thenReturn(12345L);
+    Mockito.when(produceResult.getPubSubPosition()).thenReturn(ApacheKafkaOffsetPosition.of(12345L));
 
     // Test successful completion path
     callback.onCompletion(produceResult, null);
 
     // Verify logging
     String capturedLog = testLogAppender.getLog();
-    Assert.assertTrue(capturedLog.contains("Updated push status into topic test-topic at offset 12345"));
+    Assert.assertTrue(
+        capturedLog.contains("Updated push status into topic: test-topic-0 at position:"),
+        "Got: " + capturedLog);
+    Assert.assertTrue(capturedLog.contains("12345"));
 
     // Test failure path
     Exception exception = new Exception("Test error");

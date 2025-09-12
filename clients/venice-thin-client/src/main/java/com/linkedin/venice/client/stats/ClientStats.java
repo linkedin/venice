@@ -1,11 +1,10 @@
 package com.linkedin.venice.client.stats;
 
-import static com.linkedin.venice.client.stats.ClientMetricEntity.RETRY_COUNT;
+import static com.linkedin.venice.client.stats.ClientMetricEntity.RETRY_CALL_COUNT;
 import static com.linkedin.venice.client.stats.ClientStats.ClientTehutiMetricName.APP_TIMED_OUT_REQUEST_RESULT_RATIO;
 import static com.linkedin.venice.client.stats.ClientStats.ClientTehutiMetricName.CLIENT_FUTURE_TIMEOUT;
 import static com.linkedin.venice.client.stats.ClientStats.ClientTehutiMetricName.SUCCESS_REQUEST_DUPLICATE_KEY_COUNT;
 import static com.linkedin.venice.stats.dimensions.MessageType.REQUEST;
-import static com.linkedin.venice.stats.dimensions.MessageType.RESPONSE;
 import static com.linkedin.venice.stats.dimensions.RequestRetryType.ERROR_RETRY;
 import static com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory.SUCCESS;
 
@@ -54,11 +53,11 @@ public class ClientStats extends BasicClientStats {
   private final Sensor multiGetFallbackSensor;
 
   private final MetricEntityStateOneEnum<RequestRetryType> errorRetryRequest;
-  private final MetricEntityStateOneEnum<MessageType> retryKeyCount;
-  private final MetricEntityStateOneEnum<MessageType> retrySuccessKeyCount;
+  private final MetricEntityStateBase retryKeyCount;
+  private final MetricEntityStateBase retrySuccessKeyCount;
   private final MetricEntityStateTwoEnums<MessageType, VeniceResponseStatusCategory> successRequestDuplicateKeyCount;
   private final MetricEntityStateBase clientFutureTimeout;
-  private final MetricEntityStateOneEnum<MessageType> appTimedOutRequestResultRatio;
+  private final MetricEntityStateBase appTimedOutRequestResultRatio;
 
   public static ClientStats getClientStats(
       MetricsRepository metricsRepository,
@@ -85,7 +84,7 @@ public class ClientStats extends BasicClientStats {
     Rate requestRetryCountRate = new OccurrenceRate();
 
     errorRetryRequest = MetricEntityStateOneEnum.create(
-        RETRY_COUNT.getMetricEntity(),
+        RETRY_CALL_COUNT.getMetricEntity(),
         otelRepository,
         this::registerSensor,
         ClientTehutiMetricName.REQUEST_RETRY_COUNT,
@@ -143,14 +142,14 @@ public class ClientStats extends BasicClientStats {
      */
     appTimedOutRequestSensor = registerSensor("app_timed_out_request", new OccurrenceRate());
 
-    appTimedOutRequestResultRatio = MetricEntityStateOneEnum.create(
+    appTimedOutRequestResultRatio = MetricEntityStateBase.create(
         ClientMetricEntity.REQUEST_TIMEOUT_RESULT_RATIO.getMetricEntity(),
         otelRepository,
         this::registerSensorWithDetailedPercentiles,
         APP_TIMED_OUT_REQUEST_RESULT_RATIO,
         Arrays.asList(new Avg(), new Min(), new Max()),
         baseDimensionsMap,
-        MessageType.class);
+        baseAttributes);
 
     clientFutureTimeout = MetricEntityStateBase.create(
         ClientMetricEntity.CLIENT_FUTURE_TIMEOUT.getMetricEntity(),
@@ -165,23 +164,23 @@ public class ClientStats extends BasicClientStats {
     Rate retryRequestKeyCount = new Rate();
     Rate retryRequestSuccessKeyCount = new Rate();
 
-    retryKeyCount = MetricEntityStateOneEnum.create(
-        ClientMetricEntity.RETRY_KEY_COUNT.getMetricEntity(),
+    retryKeyCount = MetricEntityStateBase.create(
+        ClientMetricEntity.RETRY_REQUEST_KEY_COUNT.getMetricEntity(),
         otelRepository,
         this::registerSensor,
         ClientTehutiMetricName.RETRY_REQUEST_KEY_COUNT,
         Arrays.asList(retryRequestKeyCount, new Avg(), new Max()),
         baseDimensionsMap,
-        MessageType.class);
+        baseAttributes);
 
-    retrySuccessKeyCount = MetricEntityStateOneEnum.create(
-        ClientMetricEntity.RETRY_KEY_COUNT.getMetricEntity(),
+    retrySuccessKeyCount = MetricEntityStateBase.create(
+        ClientMetricEntity.RETRY_RESPONSE_KEY_COUNT.getMetricEntity(),
         otelRepository,
         this::registerSensor,
         ClientTehutiMetricName.RETRY_REQUEST_SUCCESS_KEY_COUNT,
         Arrays.asList(retryRequestSuccessKeyCount, new Avg(), new Max()),
         baseDimensionsMap,
-        MessageType.class);
+        baseAttributes);
 
     retryKeySuccessRatioSensor = registerSensor(
         new TehutiUtils.SimpleRatioStat(
@@ -246,7 +245,7 @@ public class ClientStats extends BasicClientStats {
   }
 
   public void recordAppTimedOutRequestResultRatio(double ratio) {
-    appTimedOutRequestResultRatio.record(ratio, REQUEST);
+    appTimedOutRequestResultRatio.record(ratio);
   }
 
   public void recordClientFutureTimeout(long timeout) {
@@ -254,11 +253,11 @@ public class ClientStats extends BasicClientStats {
   }
 
   public void recordRetryRequestKeyCount(int numberOfKeysSentInRetryRequest) {
-    retryKeyCount.record(numberOfKeysSentInRetryRequest, REQUEST);
+    retryKeyCount.record(numberOfKeysSentInRetryRequest);
   }
 
   public void recordRetryRequestSuccessKeyCount(int numberOfKeysCompletedInRetryRequest) {
-    retrySuccessKeyCount.record(numberOfKeysCompletedInRetryRequest, RESPONSE);
+    retrySuccessKeyCount.record(numberOfKeysCompletedInRetryRequest);
   }
 
   public void recordMultiGetFallback(int keyCount) {

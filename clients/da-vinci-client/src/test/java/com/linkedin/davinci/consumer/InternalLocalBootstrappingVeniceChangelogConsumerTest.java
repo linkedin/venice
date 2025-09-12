@@ -8,6 +8,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
@@ -43,6 +44,7 @@ import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.ImmutablePubSubMessage;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.PubSubUtil;
 import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
@@ -209,6 +211,13 @@ public class InternalLocalBootstrappingVeniceChangelogConsumerTest {
     doReturn(p1).when(pubSubConsumer).endPosition(topicPartition_0);
     doReturn(p1).when(pubSubConsumer).endPosition(topicPartition_1);
     when(pubSubConsumer.poll(anyLong())).thenReturn(new HashMap<>());
+    when(pubSubConsumer.beginningPosition(any())).thenReturn(ApacheKafkaOffsetPosition.of(0L));
+    doAnswer(invocation -> {
+      PubSubTopicPartition partition = invocation.getArgument(0);
+      PubSubPosition position1 = invocation.getArgument(1);
+      PubSubPosition position2 = invocation.getArgument(2);
+      return PubSubUtil.computeOffsetDelta(partition, position1, position2, pubSubConsumer);
+    }).when(pubSubConsumer).positionDifference(any(), any(), any());
 
     StorageService mockStorageService = mock(StorageService.class);
     StorageEngine mockStorageEngine = mock(StorageEngine.class);
@@ -257,7 +266,7 @@ public class InternalLocalBootstrappingVeniceChangelogConsumerTest {
     // Verify onCompletionForStorage for partition 0
     resultSet = new ArrayList<>();
     InternalLocalBootstrappingVeniceChangelogConsumer.BootstrapState state =
-        new InternalLocalBootstrappingVeniceChangelogConsumer.BootstrapState();
+        new InternalLocalBootstrappingVeniceChangelogConsumer.BootstrapState(topicPartition_0);
     AtomicBoolean completed = new AtomicBoolean(false);
 
     bootstrappingVeniceChangelogConsumer.onCompletionForStorage(0, state, resultSet, completed);
@@ -287,7 +296,7 @@ public class InternalLocalBootstrappingVeniceChangelogConsumerTest {
 
     // Verify onCompletionForStorage for partition 1
     resultSet = new ArrayList<>();
-    state = new InternalLocalBootstrappingVeniceChangelogConsumer.BootstrapState();
+    state = new InternalLocalBootstrappingVeniceChangelogConsumer.BootstrapState(topicPartition_1);
     completed = new AtomicBoolean(false);
 
     bootstrappingVeniceChangelogConsumer.onCompletionForStorage(1, state, resultSet, completed);
@@ -323,8 +332,9 @@ public class InternalLocalBootstrappingVeniceChangelogConsumerTest {
     VeniceConcurrentHashMap<Integer, InternalLocalBootstrappingVeniceChangelogConsumer.BootstrapState> bootstrapStateMap =
         bootstrappingVeniceChangelogConsumer.getBootstrapStateMap();
     InternalLocalBootstrappingVeniceChangelogConsumer.BootstrapState bootstrapState =
-        new InternalLocalBootstrappingVeniceChangelogConsumer.BootstrapState();
-    bootstrapState.currentPubSubPosition = new VeniceChangeCoordinate(TEST_TOPIC, TEST_OFFSET_OLD, TEST_PARTITION_ID_0);
+        new InternalLocalBootstrappingVeniceChangelogConsumer.BootstrapState(partition);
+    bootstrapState.currentChangeCoordinate =
+        new VeniceChangeCoordinate(TEST_TOPIC, TEST_OFFSET_OLD, TEST_PARTITION_ID_0);
     bootstrapStateMap.put(TEST_PARTITION_ID_0, bootstrapState);
 
     ByteBuffer decompressedBytes = compressor.decompress(value);
@@ -337,8 +347,9 @@ public class InternalLocalBootstrappingVeniceChangelogConsumerTest {
         TEST_SCHEMA_ID,
         TEST_OFFSET_NEW);
 
-    Assert
-        .assertEquals(bootstrapStateMap.get(TEST_PARTITION_ID_0).currentPubSubPosition.getPosition(), TEST_OFFSET_NEW);
+    Assert.assertEquals(
+        bootstrapStateMap.get(TEST_PARTITION_ID_0).currentChangeCoordinate.getPosition(),
+        TEST_OFFSET_NEW);
     verify(mockStorageEngine, times(1)).put(eq(TEST_PARTITION_ID_0), eq(key), any(byte[].class));
   }
 
@@ -373,8 +384,9 @@ public class InternalLocalBootstrappingVeniceChangelogConsumerTest {
     VeniceConcurrentHashMap<Integer, InternalLocalBootstrappingVeniceChangelogConsumer.BootstrapState> bootstrapStateMap =
         bootstrappingVeniceChangelogConsumer.getBootstrapStateMap();
     InternalLocalBootstrappingVeniceChangelogConsumer.BootstrapState bootstrapState =
-        new InternalLocalBootstrappingVeniceChangelogConsumer.BootstrapState();
-    bootstrapState.currentPubSubPosition = new VeniceChangeCoordinate(TEST_TOPIC, TEST_OFFSET_OLD, TEST_PARTITION_ID_0);
+        new InternalLocalBootstrappingVeniceChangelogConsumer.BootstrapState(partition);
+    bootstrapState.currentChangeCoordinate =
+        new VeniceChangeCoordinate(TEST_TOPIC, TEST_OFFSET_OLD, TEST_PARTITION_ID_0);
     bootstrapStateMap.put(TEST_PARTITION_ID_0, bootstrapState);
 
     ByteBuffer decompressedBytes = compressor.decompress(value);
@@ -387,8 +399,9 @@ public class InternalLocalBootstrappingVeniceChangelogConsumerTest {
         TEST_SCHEMA_ID,
         TEST_OFFSET_NEW);
 
-    Assert
-        .assertEquals(bootstrapStateMap.get(TEST_PARTITION_ID_0).currentPubSubPosition.getPosition(), TEST_OFFSET_NEW);
+    Assert.assertEquals(
+        bootstrapStateMap.get(TEST_PARTITION_ID_0).currentChangeCoordinate.getPosition(),
+        TEST_OFFSET_NEW);
     verify(storageEngine, times(1)).put(eq(TEST_PARTITION_ID_0), eq(key), any(byte[].class));
     verify(storageEngineReloadedFromRepo, times(1)).sync(TEST_PARTITION_ID_0);
     verify(storageMetadataService, times(1))

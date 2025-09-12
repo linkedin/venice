@@ -65,7 +65,7 @@ public class VeniceMetadataRepositoryBuilder {
     this.metricsRepository = metricsRepository;
     this.isIngestionIsolation = isIngestionIsolation;
     this.icProvider = icProvider;
-    if (isDaVinciClient()) {
+    if (isDaVinciClient() && !isIngestionIsolation) {
       initDaVinciStoreAndSchemaRepository();
     } else {
       initServerStoreAndSchemaRepository();

@@ -1,6 +1,6 @@
 package com.linkedin.venice.fastclient.stats;
 
-import static com.linkedin.venice.client.stats.ClientMetricEntity.RETRY_COUNT;
+import static com.linkedin.venice.client.stats.ClientMetricEntity.RETRY_CALL_COUNT;
 import static com.linkedin.venice.stats.ClientType.FAST_CLIENT;
 import static com.linkedin.venice.stats.dimensions.RequestRetryType.ERROR_RETRY;
 import static com.linkedin.venice.stats.dimensions.RequestRetryType.LONG_TAIL_RETRY;
@@ -102,7 +102,7 @@ public class FastClientStats extends com.linkedin.venice.client.stats.ClientStat
     this.rejectionRatioSensor = registerSensor("rejection_ratio", new Avg(), new Max());
 
     this.longTailRetry = MetricEntityStateOneEnum.create(
-        RETRY_COUNT.getMetricEntity(),
+        RETRY_CALL_COUNT.getMetricEntity(),
         otelRepository,
         this::registerSensor,
         FastClientTehutiMetricName.LONG_TAIL_RETRY_REQUEST,
@@ -110,7 +110,7 @@ public class FastClientStats extends com.linkedin.venice.client.stats.ClientStat
         baseDimensionsMap,
         RequestRetryType.class);
     this.errorRetry = MetricEntityStateOneEnum.create(
-        RETRY_COUNT.getMetricEntity(),
+        RETRY_CALL_COUNT.getMetricEntity(),
         otelRepository,
         this::registerSensor,
         FastClientTehutiMetricName.ERROR_RETRY_REQUEST,

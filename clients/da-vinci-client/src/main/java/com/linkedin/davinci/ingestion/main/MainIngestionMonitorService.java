@@ -10,6 +10,8 @@ import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.stats.IsolatedIngestionProcessHeartbeatStats;
 import com.linkedin.davinci.stats.IsolatedIngestionProcessStats;
+import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
+import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -70,6 +72,7 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
    */
   private long connectionTimeoutMs;
   private volatile long latestHeartbeatTimestamp = -1;
+  private final PubSubPositionDeserializer pubSubPositionDeserializer;
 
   public MainIngestionMonitorService(IsolatedIngestionBackend ingestionBackend, VeniceConfigLoader configLoader) {
     this.configLoader = configLoader;
@@ -90,6 +93,9 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
         .childOption(ChannelOption.TCP_NODELAY, true);
 
     heartbeatClient = new MainIngestionRequestClient(configLoader);
+    PubSubPositionTypeRegistry pubSubPositionTypeRegistry =
+        PubSubPositionTypeRegistry.fromPropertiesOrDefault(configLoader.getCombinedProperties());
+    pubSubPositionDeserializer = new PubSubPositionDeserializer(pubSubPositionTypeRegistry);
   }
 
   @Override
@@ -126,6 +132,10 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
 
   public List<VeniceNotifier> getIngestionNotifier() {
     return ingestionNotifierList;
+  }
+
+  public PubSubPositionDeserializer getPubSubPositionDeserializer() {
+    return pubSubPositionDeserializer;
   }
 
   public void addPushStatusNotifier(VeniceNotifier pushStatusNotifier) {

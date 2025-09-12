@@ -18,10 +18,12 @@ import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.utils.DataProviderUtils;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.sdk.metrics.data.MetricData;
+import io.opentelemetry.sdk.metrics.export.AggregationTemporalitySelector;
+import io.opentelemetry.sdk.metrics.export.DefaultAggregationSelector;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import io.tehuti.metrics.MetricConfig;
-import java.util.Arrays;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -63,7 +65,7 @@ public class MetricTypeTest {
     VeniceMetricsConfig metricsConfig = new VeniceMetricsConfig.Builder().setEmitOtelMetrics(true)
         .setMetricPrefix(METRIC_PREFIX)
         .setOtelAdditionalMetricsReader(inMemoryMetricReader)
-        .setMetricEntities(Arrays.asList(metricEntity))
+        .setMetricEntities(Collections.singletonList(metricEntity))
         .setTehutiMetricConfig(new MetricConfig())
         .build();
     return new VeniceOpenTelemetryMetricsRepository(metricsConfig);
@@ -169,29 +171,51 @@ public class MetricTypeTest {
     }
   }
 
-  @Test
-  public void testOTelRecordGauge() {
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testOTelRecordGauge(boolean exportLastRecordedValueForSynchronousGauge) {
     MetricEntity metricEntityGauge = new MetricEntity(
         "test_metric_gauge",
         MetricType.GAUGE,
         MetricUnit.NUMBER,
         TEST_DESCRIPTION,
         getTestDimensions());
-    InMemoryMetricReader inMemoryMetricReader = InMemoryMetricReader.create();
+    InMemoryMetricReader inMemoryMetricReader = InMemoryMetricReader.create(
+        VeniceMetricsConfig.getTemporalitySelector(
+            exportLastRecordedValueForSynchronousGauge,
+            AggregationTemporalitySelector.deltaPreferred()),
+        DefaultAggregationSelector.getDefault());
     VeniceOpenTelemetryMetricsRepository otelMetricsRepository =
         createOtelRepo(metricEntityGauge, inMemoryMetricReader);
     MetricEntityStateBase metricEntityStateBaseGauge = MetricEntityStateBase
         .create(metricEntityGauge, otelMetricsRepository, getBaseDimensionsMap(), getBaseAttributes());
     metricEntityStateBaseGauge.record(10L);
     metricEntityStateBaseGauge.record(20L);
-    Collection<MetricData> metrics = inMemoryMetricReader.collectAllMetrics();
-    assertFalse(metrics.isEmpty(), "Metrics should not be empty");
-    assertEquals(metrics.size(), 1, "There should be one metric recorded");
+    // validate the last recorded value is 20L: Note that the validate method calls collectAllMetrics() which is
+    // equivalent to an export
     validateLongPointDataFromGauge(inMemoryMetricReader, 20L, getBaseAttributes(), "test_metric_gauge", METRIC_PREFIX);
 
-    // record another value and validate again
-    metricEntityStateBaseGauge.record(30L);
-    validateLongPointDataFromGauge(inMemoryMetricReader, 30L, getBaseAttributes(), "test_metric_gauge", METRIC_PREFIX);
+    if (exportLastRecordedValueForSynchronousGauge) {
+      // should be able to read the same value again after export
+      validateLongPointDataFromGauge(
+          inMemoryMetricReader,
+          20L,
+          getBaseAttributes(),
+          "test_metric_gauge",
+          METRIC_PREFIX);
+    } else {
+      // should not be able to read the same value again after export
+      try {
+        validateLongPointDataFromGauge(
+            inMemoryMetricReader,
+            20L,
+            getBaseAttributes(),
+            "test_metric_gauge",
+            METRIC_PREFIX);
+        fail("Should not be able to read the same value again after export");
+      } catch (AssertionError e) {
+        // expected
+      }
+    }
   }
 
   @Test

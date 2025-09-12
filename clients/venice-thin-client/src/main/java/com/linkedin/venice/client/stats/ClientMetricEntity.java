@@ -19,17 +19,25 @@ public enum ClientMetricEntity implements ModuleMetricEntityInterface {
   /**
    * Client retry count.
    */
-  RETRY_COUNT(
-      MetricType.COUNTER, MetricUnit.NUMBER, "Count of all retry requests for client",
+  RETRY_CALL_COUNT(
+      "retry.call_count", MetricType.COUNTER, MetricUnit.NUMBER, "Count of all retry requests for client",
       setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD, VENICE_REQUEST_RETRY_TYPE)
   ),
 
   /**
    * Client retry key count.
    */
-  RETRY_KEY_COUNT(
-      MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS, MetricUnit.NUMBER, "Key count of retry requests for client",
-      setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD, VENICE_MESSAGE_TYPE)
+  RETRY_REQUEST_KEY_COUNT(
+      "retry.request.key_count", MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS, MetricUnit.NUMBER,
+      "Key count of retry requests for client", setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)
+  ),
+
+  /**
+   * Client retry response key count.
+   */
+  RETRY_RESPONSE_KEY_COUNT(
+      "retry.response.key_count", MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS, MetricUnit.NUMBER,
+      "Key count of retry responses for client", setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)
   ),
 
   /**
@@ -53,8 +61,7 @@ public enum ClientMetricEntity implements ModuleMetricEntityInterface {
    */
   REQUEST_TIMEOUT_RESULT_RATIO(
       "request.timeout_result_ratio", MetricType.HISTOGRAM, MetricUnit.NUMBER,
-      "Ratio of timed out keys to total keys in the request",
-      setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD, VENICE_MESSAGE_TYPE)
+      "Ratio of timed out keys to total keys in the request", setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)
   );
 
   private final MetricEntity entity;

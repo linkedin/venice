@@ -1499,6 +1499,14 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     }
     // subscribe to the new upstream
     rtPositionsByBroker.forEach((brokerAddress, rtStartPosition) -> {
+      if (shouldUseDivRtPosition) {
+        // TODO: remove. this is a temporary log for debugging while the feature is in its infancy
+        LOGGER.info(
+            "event=globalRtDiv F->L Subscribing to {} at position: {} for broker: {}",
+            Utils.getReplicaId(leaderTopic, pcs.getPartition()),
+            rtStartPosition,
+            brokerAddress);
+      }
       consumerSubscribe(leaderTopic, pcs, rtStartPosition, brokerAddress);
     });
 

@@ -334,6 +334,7 @@ public class VeniceParentHelixAdmin implements Admin {
 
   private static final long TOPIC_DELETION_DELAY_MS = 5 * Time.MS_PER_MINUTE;
   public static final List<Class<? extends Throwable>> RETRY_FAILURE_TYPES = Collections.singletonList(Exception.class);
+  private static final int ROLL_FORWARD_REQUEST_TIMEOUT = 5 * Time.MS_PER_SECOND;
 
   final Map<String, Boolean> asyncSetupEnabledMap;
   private final VeniceHelixAdmin veniceHelixAdmin;
@@ -721,7 +722,11 @@ public class VeniceParentHelixAdmin implements Admin {
           veniceWriter.flush();
           PubSubProduceResult produceResult = future.get();
 
-          LOGGER.info("Sent message: {} to kafka, offset: {}", message, produceResult.getOffset());
+          LOGGER.info(
+              "Sent message: {} to: {}, position: {}",
+              message,
+              Utils.getReplicaId(produceResult.getTopic(), produceResult.getPartition()),
+              produceResult.getPubSubPosition());
         } catch (Exception e) {
           throw new VeniceException("Got exception during sending message to Kafka -- " + e.getMessage(), e);
         }
@@ -2334,7 +2339,8 @@ public class VeniceParentHelixAdmin implements Admin {
         ControllerClient controllerClient = entry.getValue();
         RetryUtils.executeWithMaxAttemptAndExponentialBackoff(() -> {
           failedRegions.remove(entry.getKey());
-          ControllerResponse response = controllerClient.rollForwardToFutureVersion(storeName, regionFilter);
+          ControllerResponse response =
+              controllerClient.rollForwardToFutureVersion(storeName, regionFilter, ROLL_FORWARD_REQUEST_TIMEOUT);
           if (response.isError()) {
             LOGGER.info("Roll forward in region {} failed with error: {}", entry.getKey(), response.getError());
             failedRegions.add(entry.getKey());
@@ -2354,14 +2360,23 @@ public class VeniceParentHelixAdmin implements Admin {
       try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
         ReadWriteStoreRepository repository = resources.getStoreMetadataRepository();
         Store parentStore = repository.getStore(storeName);
-        int version = Version.parseVersionFromKafkaTopicName(kafkaTopic);
-        parentStore.updateVersionStatus(version, ONLINE);
-        repository.updateStore(parentStore);
-        LOGGER.info(
-            "Updating parent store {} version {} status to {} after roll-forward",
-            parentStore.getName(),
-            version,
-            ONLINE);
+
+        // Mark the parent store as ONLINE if it's a manual deferred version swap. Manual deferred swaps happen when
+        // only
+        // the deferred version swap version config is set and no target regions are defined
+        // Otherwise, it will be handled by DeferredVersionSwapService since it will handle marking the parent ONLINE
+        // and tracking when version swap is complete
+        Version parentVersion = parentStore.getVersion(futureVersionBeforeRollForward);
+        if (parentStore.getTargetSwapRegion() == null && parentVersion.isVersionSwapDeferred()) {
+          int version = Version.parseVersionFromKafkaTopicName(kafkaTopic);
+          parentStore.updateVersionStatus(version, ONLINE);
+          repository.updateStore(parentStore);
+          LOGGER.info(
+              "Updating parent store {} version {} status to {} after roll-forward",
+              parentStore.getName(),
+              version,
+              ONLINE);
+        }
       }
       LOGGER.info(
           "Roll forward to future version {} is successful in all regions for store {}",

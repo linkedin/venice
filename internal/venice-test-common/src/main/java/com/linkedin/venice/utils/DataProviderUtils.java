@@ -100,7 +100,8 @@ public class DataProviderUtils {
 
   @DataProvider(name = "Isolated-Ingestion")
   public static Object[][] isolatedIngestion() {
-    return new Object[][] { { IngestionMode.BUILT_IN }, { IngestionMode.ISOLATED } };
+    return new Object[][] { { IngestionMode.BUILT_IN, true }, { IngestionMode.ISOLATED, false },
+        { IngestionMode.ISOLATED, true } };
   }
 
   @DataProvider(name = "Chunking-And-Partition-Counts")
