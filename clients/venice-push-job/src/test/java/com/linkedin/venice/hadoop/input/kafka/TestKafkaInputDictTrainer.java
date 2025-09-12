@@ -21,6 +21,8 @@ import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.vpj.pubsub.input.PubSubPartitionSplit;
 import java.io.IOException;
@@ -28,8 +30,11 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.stream.Collectors;
+import org.apache.avro.Schema;
 import org.apache.hadoop.mapred.InputSplit;
 import org.apache.hadoop.mapred.RecordReader;
 import org.testng.annotations.Test;
@@ -47,6 +52,9 @@ public class TestKafkaInputDictTrainer {
   }
 
   private KafkaInputDictTrainer.Param getParam(int sampleSize, CompressionStrategy sourceVersionCompressionStrategy) {
+    Map<Integer, Schema> allSchemas = Utils.getAllSchemasFromResources(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE);
+    Map<Integer, String> allSchemaStr =
+        allSchemas.entrySet().stream().collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().toString()));
     return new KafkaInputDictTrainer.ParamBuilder().setKafkaInputBroker("test_url")
         .setTopicName("test_topic")
         .setKeySchema("\"string\"")
@@ -54,6 +62,7 @@ public class TestKafkaInputDictTrainer {
         .setDictSampleSize(sampleSize)
         .setSslProperties(new Properties())
         .setSourceVersionCompressionStrategy(sourceVersionCompressionStrategy)
+        .setNewKMESchemasFromController(allSchemaStr)
         .build();
   }
 

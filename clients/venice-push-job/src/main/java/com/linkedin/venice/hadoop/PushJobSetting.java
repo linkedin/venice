@@ -149,6 +149,7 @@ public class PushJobSetting implements Serializable {
 
   public boolean generatePartialUpdateRecordFromInput;
   public ETLValueSchemaTransformation etlValueSchemaTransformation;
+  public Map<Integer, String> newKmeSchemasFromController;
 
   // Additional inferred properties
   public boolean inputHasRecords;
