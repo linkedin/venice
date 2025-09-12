@@ -45,7 +45,6 @@ public class ClientStatsTest {
     Attributes expectedAttr = Attributes.builder()
         .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), storeName)
         .put(VENICE_REQUEST_METHOD.getDimensionNameInDefaultFormat(), SINGLE_GET.getDimensionValue())
-        .put(VENICE_MESSAGE_TYPE.getDimensionNameInDefaultFormat(), MessageType.REQUEST.getDimensionValue())
         .build();
 
     validateExponentialHistogramPointData(
