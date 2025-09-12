@@ -78,6 +78,7 @@ import org.apache.logging.log4j.Logger;
 import org.rocksdb.ComparatorOptions;
 import org.rocksdb.util.BytewiseComparator;
 import org.testng.annotations.AfterClass;
+import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
@@ -106,7 +107,7 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
   private final String VALUE_PREFIX = "value";
   private final String VALUE_PREFIX_INC_PUSH = "value-inc";
   private final String STORE_NAME = Utils.getUniqueString("store");
-  private final int numServers = 5;
+  private final int numServers = 3;
   List<Integer> allIncPushKeys = new ArrayList<>(); // all keys ingested via incremental push
   List<Integer> allNonIncPushKeysUntilLastVersion = new ArrayList<>(); // all keys ingested only via batch push
 
@@ -167,6 +168,12 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
         .setPartitionCount(NUMBER_OF_PARTITIONS)
         .setReplicationFactor(NUMBER_OF_REPLICAS);
     createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms).close();
+  }
+
+  @AfterMethod(alwaysRun = true)
+  public void cleanUpAfterMethod() {
+    // Force garbage collection to help release resources
+    System.gc();
   }
 
   @AfterClass(alwaysRun = true)
@@ -403,9 +410,10 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
 
     // validate the ingested data
     AvroGenericStoreClient<String, Object> storeClient = null;
+    D2Client d2Client = null;
 
     try {
-      D2Client d2Client = D2TestUtils.getD2Client(clusterWrappers.get(NON_SOURCE_COLO).getZk().getAddress(), false);
+      d2Client = D2TestUtils.getD2Client(clusterWrappers.get(NON_SOURCE_COLO).getZk().getAddress(), false);
       D2ClientUtils.startClient(d2Client);
       storeClient = ClientFactory.getAndStartGenericAvroClient(
           ClientConfig.defaultGenericClientConfig(STORE_NAME)
@@ -438,6 +446,9 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
     } finally {
       if (storeClient != null) {
         storeClient.close();
+      }
+      if (d2Client != null) {
+        D2ClientUtils.shutdownClient(d2Client);
       }
     }
 
@@ -484,8 +495,9 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
     }
 
     storeClient = null;
+    d2Client = null;
     try {
-      D2Client d2Client = D2TestUtils.getD2Client(clusterWrappers.get(NON_SOURCE_COLO).getZk().getAddress(), false);
+      d2Client = D2TestUtils.getD2Client(clusterWrappers.get(NON_SOURCE_COLO).getZk().getAddress(), false);
       D2ClientUtils.startClient(d2Client);
       storeClient = ClientFactory.getAndStartGenericAvroClient(
           ClientConfig.defaultGenericClientConfig(STORE_NAME)
@@ -527,6 +539,9 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
     } finally {
       if (storeClient != null) {
         storeClient.close();
+      }
+      if (d2Client != null) {
+        D2ClientUtils.shutdownClient(d2Client);
       }
     }
 
