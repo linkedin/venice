@@ -6,17 +6,14 @@ import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
 import com.linkedin.venice.read.protocol.response.streaming.StreamingFooterRecordV1;
 import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
 import com.linkedin.venice.serializer.RecordDeserializer;
-import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.nio.ByteBuffer;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.Executor;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 
 
 public class MultiGetRecordStreamDecoder<K, V> extends AbstractRecordStreamDecoder<MultiGetResponseRecordV1, K, V> {
-  private final Map<Integer, RecordDeserializer<V>> deserializerCache = new VeniceConcurrentHashMap<>();
   private final RecordDeserializer<StreamingFooterRecordV1> streamingFooterDeserializer;
   private final Function<Integer, RecordDeserializer<V>> valueDeserializerProvider;
   private final BiFunction<CompressionStrategy, ByteBuffer, ByteBuffer> decompressor;
@@ -54,8 +51,7 @@ public class MultiGetRecordStreamDecoder<K, V> extends AbstractRecordStreamDecod
       // Safeguard to handle empty value, which indicates non-existing key.
       return null;
     }
-    RecordDeserializer<V> deserializer =
-        deserializerCache.computeIfAbsent(envelope.schemaId, valueDeserializerProvider);
+    RecordDeserializer<V> deserializer = valueDeserializerProvider.apply(envelope.schemaId);
     ByteBuffer decompressedValue = decompressor.apply(compression, envelope.value);
     return deserializer.deserialize(decompressedValue);
   }

@@ -742,10 +742,12 @@ public class RouterBackedSchemaReader implements SchemaReader {
   }
 
   private void cacheValueAndCanonicalSchemas(Schema valueSchema, int valueSchemaId) {
-    String canonicalSchemaStr = AvroCompatibilityHelper.toParsingForm(valueSchema);
-    Schema canonicalSchema = AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation(canonicalSchemaStr);
-
-    cacheValueAndCanonicalSchemas(valueSchema, canonicalSchema, valueSchemaId);
+    Integer previousValueSchemaId = valueSchemaToCanonicalSchemaId.getIfPresent(valueSchema);
+    if (previousValueSchemaId == null || previousValueSchemaId < valueSchemaId) {
+      String canonicalSchemaStr = AvroCompatibilityHelper.toParsingForm(valueSchema);
+      Schema canonicalSchema = AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation(canonicalSchemaStr);
+      cacheValueAndCanonicalSchemas(valueSchema, canonicalSchema, valueSchemaId);
+    }
   }
 
   private void cacheValueAndCanonicalSchemas(Schema valueSchema, Schema canonicalSchema, int valueSchemaId) {
