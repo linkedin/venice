@@ -1,6 +1,5 @@
 package com.linkedin.davinci;
 
-import static org.apache.kafka.test.TestUtils.RANDOM;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -43,12 +42,15 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
 import java.util.function.Consumer;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
 public class VersionBackendTest {
+  private static final Random RANDOM = new Random();
+
   @Test
   public void testMaybeReportIncrementalPushStatus() {
     VersionBackend versionBackend = mock(VersionBackend.class);
