@@ -265,7 +265,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
               stats.ifPresent(
                   (clientStats) -> clientStats
                       .recordResponseDecompressionTime(LatencyUtils.getElapsedTimeFromNSToMS(decompressionStartTime)));
-              RecordDeserializer<V> deserializer = getDataRecordDeserializer(response.getSchemaId());
+              RecordDeserializer<V> deserializer = getDataRecordDeserializerFromCache(response.getSchemaId());
               valueFuture.complete(tryToDeserialize(deserializer, data, response.getSchemaId(), key));
               responseCompleteReporter.report();
             }
@@ -492,7 +492,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
         getDeserializationExecutor(),
         streamingFooterRecordDeserializer,
         () -> getComputeResultRecordDeserializer(resultSchema),
-        schemaId -> (RecordDeserializer) getDataRecordDeserializer(schemaId),
+        schemaId -> (RecordDeserializer) getDataRecordDeserializerFromCache(schemaId),
         this::decompressRecord);
 
     if (clientConfig.isRemoteComputationOnly() || remoteComputationAllowed.get()) {
@@ -702,7 +702,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
         decoderCallback,
         getDeserializationExecutor(),
         streamingFooterRecordDeserializer,
-        this::getDataRecordDeserializer,
+        this::getDataRecordDeserializerFromCache,
         this::decompressRecord);
     streamingBatchGet(keyList, decoder, decoderCallback.getStats());
   }
@@ -731,8 +731,8 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
     return result;
   }
 
-  protected Map<Integer, RecordDeserializer<V>> getDeserializerCache() {
-    return deserializerCache;
+  protected RecordDeserializer<V> getDataRecordDeserializerFromCache(int schemaId) {
+    return deserializerCache.computeIfAbsent(schemaId, this::getDataRecordDeserializer);
   }
 
   protected static boolean handleCallbackForEmptyKeySet(Collection<?> keys, StreamingCallback callback) {
