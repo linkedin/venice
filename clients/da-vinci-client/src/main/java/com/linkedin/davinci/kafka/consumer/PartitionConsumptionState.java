@@ -205,12 +205,12 @@ public class PartitionConsumptionState {
 
   /**
    * Tracks the last real-time topic position consumed from each upstream broker
-   * till which Global Data Integrity Validation (DIV) has been successfully generated.
+   * till which Global RT Data Integrity Validation (DIV) has been successfully generated.
    *
    * This in-memory map reflects the highest position per broker up to which both
    * record consumption and DIV checkpointing were completed. It is restored from
    * disk during startup and used when the client subscribes to real-time topics,
-   * if global DIV is enabled.
+   * if Global RT DIV is enabled.
    *
    * Key: source PubSub broker address
    * Value: last consumed real-time topic position with valid DIV
@@ -885,7 +885,7 @@ public class PartitionConsumptionState {
    * <p>If the leader topic is an RT topic:
    * <ul>
    *   <li>If {@code useCheckpointedDivRtPosition} is true, returns the last checkpointed
-   *       RT position from global DIV (LCRO).</li>
+   *       RT position from global DIV (LCRP).</li>
    *   <li>Otherwise, returns the latest processed RT position from in-memory state (or OffsetRecord if required)</li>
    * </ul>
    *
@@ -896,7 +896,7 @@ public class PartitionConsumptionState {
    * </ul>
    *
    * @param pubSubBrokerAddress the upstream PubSub broker address
-   * @param useCheckpointedDivRtPosition whether to use the global DIV checkpoint (LCRO) as the RT start position
+   * @param useCheckpointedDivRtPosition whether to use the global DIV checkpoint (LCRP) as the RT start position
    * @return the position the leader should consume from
    */
   public PubSubPosition getLeaderPosition(String pubSubBrokerAddress, boolean useCheckpointedDivRtPosition) {
@@ -928,7 +928,7 @@ public class PartitionConsumptionState {
   }
 
   public PubSubPosition getLatestConsumedVtPosition() {
-    return offsetRecord.getLatestConsumedVtPosition();
+    return getPubSubContext().getPubSubPositionDeserializer().toPosition(offsetRecord.getLatestConsumedVtPosition());
   }
 
   public void setDataRecoveryCompleted(boolean dataRecoveryCompleted) {

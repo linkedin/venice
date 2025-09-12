@@ -1,6 +1,6 @@
 package com.linkedin.venice.fastclient.stats;
 
-import static com.linkedin.venice.client.stats.ClientMetricEntity.RETRY_COUNT;
+import static com.linkedin.venice.client.stats.ClientMetricEntity.RETRY_CALL_COUNT;
 import static com.linkedin.venice.fastclient.stats.FastClientMetricEntity.CALL_FANOUT_COUNT;
 import static com.linkedin.venice.fastclient.stats.FastClientMetricEntity.METADATA_STALENESS_DURATION;
 import static com.linkedin.venice.fastclient.stats.FastClientMetricEntity.RETRY_WIN_COUNT;
@@ -10,7 +10,6 @@ import static com.linkedin.venice.stats.dimensions.RequestRetryType.LONG_TAIL_RE
 
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.TehutiUtils;
-import com.linkedin.venice.stats.dimensions.MessageType;
 import com.linkedin.venice.stats.dimensions.RejectionReason;
 import com.linkedin.venice.stats.dimensions.RequestFanoutType;
 import com.linkedin.venice.stats.dimensions.RequestRetryType;
@@ -18,7 +17,6 @@ import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.stats.metrics.AsyncMetricEntityStateBase;
 import com.linkedin.venice.stats.metrics.MetricEntityStateBase;
 import com.linkedin.venice.stats.metrics.MetricEntityStateOneEnum;
-import com.linkedin.venice.stats.metrics.MetricEntityStateTwoEnums;
 import com.linkedin.venice.stats.metrics.TehutiMetricNameEnum;
 import io.opentelemetry.api.common.Attributes;
 import io.tehuti.Metric;
@@ -41,8 +39,8 @@ import java.util.stream.IntStream;
 public class FastClientStats extends com.linkedin.venice.client.stats.ClientStats {
   private final String storeName;
 
-  private final MetricEntityStateTwoEnums<MessageType, RejectionReason> noAvailableReplicaRequestCount;
-  private final MetricEntityStateTwoEnums<MessageType, RejectionReason> rejectedRequestCountByLoadController;
+  private final MetricEntityStateOneEnum<RejectionReason> noAvailableReplicaRequestCount;
+  private final MetricEntityStateOneEnum<RejectionReason> rejectedRequestCountByLoadController;
   private final Sensor dualReadFastClientSlowerRequestCountSensor;
   private final Sensor dualReadFastClientSlowerRequestRatioSensor;
   private final Sensor dualReadFastClientErrorThinClientSucceedRequestCountSensor;
@@ -50,7 +48,7 @@ public class FastClientStats extends com.linkedin.venice.client.stats.ClientStat
   private final Sensor dualReadThinClientFastClientLatencyDeltaSensor;
 
   private final Sensor leakedRequestCountSensor;
-  private final MetricEntityStateTwoEnums<MessageType, RejectionReason> rejectionRatio;
+  private final MetricEntityStateOneEnum<RejectionReason> rejectionRatio;
 
   // OTel metrics
   private final MetricEntityStateOneEnum<RequestRetryType> longTailRetry;
@@ -74,24 +72,22 @@ public class FastClientStats extends com.linkedin.venice.client.stats.ClientStat
     super(metricsRepository, storeName, requestType, FAST_CLIENT);
 
     this.storeName = storeName;
-    this.noAvailableReplicaRequestCount = MetricEntityStateTwoEnums.create(
+    this.noAvailableReplicaRequestCount = MetricEntityStateOneEnum.create(
         FastClientMetricEntity.REQUEST_REJECTION_COUNT.getMetricEntity(),
         otelRepository,
         this::registerSensor,
         FastClientTehutiMetricName.NO_AVAILABLE_REPLICA_REQUEST_COUNT,
         Collections.singletonList(new OccurrenceRate()),
         baseDimensionsMap,
-        MessageType.class,
         RejectionReason.class);
 
-    this.rejectedRequestCountByLoadController = MetricEntityStateTwoEnums.create(
+    this.rejectedRequestCountByLoadController = MetricEntityStateOneEnum.create(
         FastClientMetricEntity.REQUEST_REJECTION_COUNT.getMetricEntity(),
         otelRepository,
         this::registerSensor,
         FastClientTehutiMetricName.REJECTED_REQUEST_COUNT_BY_LOAD_CONTROLLER,
         Collections.singletonList(new OccurrenceRate()),
         baseDimensionsMap,
-        MessageType.class,
         RejectionReason.class);
 
     Rate requestRate = getRequestRate();
@@ -116,18 +112,17 @@ public class FastClientStats extends com.linkedin.venice.client.stats.ClientStat
         registerSensorWithDetailedPercentiles("dual_read_thinclient_fastclient_latency_delta", new Max(), new Avg());
     this.leakedRequestCountSensor = registerSensor("leaked_request_count", new OccurrenceRate());
 
-    this.rejectionRatio = MetricEntityStateTwoEnums.create(
+    this.rejectionRatio = MetricEntityStateOneEnum.create(
         FastClientMetricEntity.REQUEST_REJECTION_RATIO.getMetricEntity(),
         otelRepository,
         this::registerSensor,
         FastClientTehutiMetricName.REJECTION_RATIO,
         Arrays.asList(new Avg(), new Max()),
         baseDimensionsMap,
-        MessageType.class,
         RejectionReason.class);
 
     this.longTailRetry = MetricEntityStateOneEnum.create(
-        RETRY_COUNT.getMetricEntity(),
+        RETRY_CALL_COUNT.getMetricEntity(),
         otelRepository,
         this::registerSensor,
         FastClientTehutiMetricName.LONG_TAIL_RETRY_REQUEST,
@@ -135,7 +130,7 @@ public class FastClientStats extends com.linkedin.venice.client.stats.ClientStat
         baseDimensionsMap,
         RequestRetryType.class);
     this.errorRetry = MetricEntityStateOneEnum.create(
-        RETRY_COUNT.getMetricEntity(),
+        RETRY_CALL_COUNT.getMetricEntity(),
         otelRepository,
         this::registerSensor,
         FastClientTehutiMetricName.ERROR_RETRY_REQUEST,
@@ -197,7 +192,7 @@ public class FastClientStats extends com.linkedin.venice.client.stats.ClientStat
   }
 
   public void recordNoAvailableReplicaRequest() {
-    noAvailableReplicaRequestCount.record(1, MessageType.REQUEST, RejectionReason.NO_REPLICAS_AVAILABLE);
+    noAvailableReplicaRequestCount.record(1, RejectionReason.NO_REPLICAS_AVAILABLE);
   }
 
   public void recordFastClientSlowerRequest() {
@@ -238,11 +233,11 @@ public class FastClientStats extends com.linkedin.venice.client.stats.ClientStat
   }
 
   public void recordRejectedRequestByLoadController() {
-    rejectedRequestCountByLoadController.record(1, MessageType.REQUEST, RejectionReason.LOAD_CONTROLLER);
+    rejectedRequestCountByLoadController.record(1, RejectionReason.LOAD_CONTROLLER);
   }
 
   public void recordRejectionRatio(double rejectionRatio) {
-    this.rejectionRatio.record(rejectionRatio, MessageType.REQUEST, RejectionReason.LOAD_CONTROLLER);
+    this.rejectionRatio.record(rejectionRatio, RejectionReason.LOAD_CONTROLLER);
   }
 
   /**

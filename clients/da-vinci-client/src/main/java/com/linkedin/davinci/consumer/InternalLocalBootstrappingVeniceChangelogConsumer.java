@@ -402,13 +402,13 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceAfte
         super.internalPoll(timeoutInMs, topicSuffix, true);
     for (PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate> record: polledResults) {
       BootstrapState currentPartitionState = bootstrapStateMap.get(record.getPartition());
-      currentPartitionState.currentChangeCoordinate = record.getOffset();
+      currentPartitionState.currentChangeCoordinate = record.getPosition();
       if (currentPartitionState.bootstrapState.equals(PollState.CATCHING_UP)) {
         if (currentPartitionState.isCaughtUp(pubSubConsumer)) {
           LOGGER.info(
-              "pollAndCatchup completed for partition: {} with offset: {}, put message: {}, delete message: {}",
+              "pollAndCatchup completed for partition: {} with vcc: {}, put message: {}, delete message: {}",
               record.getPartition(),
-              record.getOffset(),
+              record.getPosition(),
               partitionToPutMessageCount.getOrDefault(record.getPartition(), new AtomicLong(0)).get(),
               partitionToDeleteMessageCount.getOrDefault(record.getPartition(), new AtomicLong(0)).get());
           currentPartitionState.bootstrapState = PollState.BOOTSTRAPPING;

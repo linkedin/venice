@@ -3,6 +3,7 @@ package com.linkedin.davinci.validation;
 import static com.linkedin.davinci.validation.DataIntegrityValidator.DISABLED;
 
 import com.linkedin.venice.annotation.Threadsafe;
+import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.exceptions.validation.CorruptDataException;
 import com.linkedin.venice.exceptions.validation.DataValidationException;
 import com.linkedin.venice.exceptions.validation.DuplicateDataException;
@@ -131,6 +132,14 @@ public class PartitionTracker {
     return rtSegments.computeIfAbsent(type.getKafkaUrl(), k -> new VeniceConcurrentHashMap<>());
   }
 
+  public void clearSegments(TopicType type) {
+    if (TopicType.isVersionTopic(type)) {
+      vtSegments.clear();
+    } else {
+      rtSegments.clear();
+    }
+  }
+
   /**
    * @param guid for which to retrieve the lock and segment
    * @return a {@link Segment} or null if it's absent
@@ -177,7 +186,7 @@ public class PartitionTracker {
         .stream()
         .collect(
             Collectors.toMap(
-                entry -> GuidUtils.getCharSequenceFromGuid(entry.getKey()),
+                entry -> GuidUtils.getHexFromGuid(entry.getKey()),
                 entry -> entry.getValue().toProducerPartitionState()));
   }
 
@@ -195,7 +204,7 @@ public class PartitionTracker {
   }
 
   /**
-   * Clone the vtSegments and LCVO to the destination PartitionTracker. May be called concurrently.
+   * Clone the vtSegments and LCVP to the destination PartitionTracker. May be called concurrently.
    */
   public void cloneVtProducerStates(PartitionTracker destProducerTracker) {
     for (Map.Entry<GUID, Segment> entry: vtSegments.entrySet()) {
@@ -754,6 +763,18 @@ public class PartitionTracker {
     }
 
     throw new IllegalArgumentException("Unsupported TopicType: " + type);
+  }
+
+  @VisibleForTesting
+  Map<String, Map<GUID, Segment>> getAllRtSegmentsForTesting() {
+    return rtSegments.entrySet()
+        .stream()
+        .collect(Collectors.toMap(Map.Entry::getKey, entry -> Collections.unmodifiableMap(entry.getValue())));
+  }
+
+  @VisibleForTesting
+  Map<GUID, Segment> getVtSegmentsForTesting() {
+    return vtSegments;
   }
 
   private static final String NON_SOS_SCENARIO =

@@ -11,6 +11,7 @@ import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
@@ -65,19 +66,22 @@ public class MockInMemoryPubSubClientTest {
 
     // 2. Produce 500 dummy messages and track their offsets and values
     List<KafkaMessageEnvelope> expectedValues = new ArrayList<>();
-    List<Long> producedOffsets = new ArrayList<>();
+    List<PubSubPosition> producedPositions = new ArrayList<>();
     for (int i = 0; i < recordCount; i++) {
       KafkaKey key = PubSubHelper.getDummyKey();
       KafkaMessageEnvelope value = PubSubHelper.getDummyValue();
       PubSubProduceResult result =
           producerAdapter.sendMessage(topic.getName(), partitionId, key, value, null, null).get();
-      producedOffsets.add(result.getOffset());
+      producedPositions.add(result.getPubSubPosition());
       expectedValues.add(value);
     }
 
+    PubSubPosition beginningPosition = producedPositions.get(0);
     // 3. Validate offsets are contiguous starting from 0
     for (int i = 0; i < recordCount; i++) {
-      assertEquals((long) producedOffsets.get(i), i, "Offset mismatch at index " + i);
+      long diff = consumerAdapter.positionDifference(topicPartition, producedPositions.get(i), beginningPosition);
+
+      assertEquals(diff, i, "Offset mismatch at index " + i);
     }
 
     // Confirm topic's offset range matches number of produced records

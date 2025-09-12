@@ -693,7 +693,7 @@ public class TestChangelogConsumer {
 
     // Save a checkpoint and clear the map
     Set<VeniceChangeCoordinate> checkpointSet = new HashSet<>();
-    checkpointSet.add(polledChangeEvents.get(Integer.toString(20)).getOffset());
+    checkpointSet.add(polledChangeEvents.get(Integer.toString(20)).getPosition());
     allChangeEvents.putAll(polledChangeEvents);
     polledChangeEvents.clear();
 
@@ -1147,12 +1147,12 @@ public class TestChangelogConsumer {
     });
     // The consumer sequence id should be consecutive and monotonically increasing within the same partition. All
     // partitions should start with the same sequence id (seeded by consumer initialization timestamp).
-    long startingSequenceId = pubSubMessages.iterator().next().getOffset().getConsumerSequenceId();
+    long startingSequenceId = pubSubMessages.iterator().next().getPosition().getConsumerSequenceId();
     HashMap<Integer, Long> partitionSequenceIdMap = new HashMap<>();
     for (PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate> message: pubSubMessages) {
       int partition = message.getPartition();
       long expectedSequenceId = partitionSequenceIdMap.computeIfAbsent(partition, k -> startingSequenceId);
-      Assert.assertEquals(message.getOffset().getConsumerSequenceId(), expectedSequenceId);
+      Assert.assertEquals(message.getPosition().getConsumerSequenceId(), expectedSequenceId);
       partitionSequenceIdMap.put(partition, expectedSequenceId + 1);
     }
     Assert.assertEquals(partitionSequenceIdMap.size(), 3);

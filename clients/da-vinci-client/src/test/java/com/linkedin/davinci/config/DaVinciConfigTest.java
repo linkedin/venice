@@ -19,12 +19,13 @@ import org.testng.annotations.Test;
 public class DaVinciConfigTest {
   public class TestRecordTransformer extends DaVinciRecordTransformer<Integer, Integer, Integer> {
     public TestRecordTransformer(
+        String storeName,
         int storeVersion,
         Schema keySchema,
         Schema inputValueSchema,
         Schema outputValueSchema,
         DaVinciRecordTransformerConfig recordTransformerConfig) {
-      super(storeVersion, keySchema, inputValueSchema, outputValueSchema, recordTransformerConfig);
+      super(storeName, storeVersion, keySchema, inputValueSchema, outputValueSchema, recordTransformerConfig);
     }
 
     @Override
@@ -52,7 +53,8 @@ public class DaVinciConfigTest {
         new DaVinciRecordTransformerConfig.Builder().setRecordTransformerFunction(TestRecordTransformer::new).build();
 
     DaVinciRecordTransformerFunctionalInterface recordTransformerFunction =
-        (storeVersion, keySchema, inputValueSchema, outputValueSchema, config1) -> new TestRecordTransformer(
+        (storeName, storeVersion, keySchema, inputValueSchema, outputValueSchema, config1) -> new TestRecordTransformer(
+            storeName,
             storeVersion,
             keySchema,
             inputValueSchema,
@@ -75,7 +77,8 @@ public class DaVinciConfigTest {
         new DaVinciRecordTransformerConfig.Builder().setRecordTransformerFunction(TestRecordTransformer::new).build();
 
     DaVinciRecordTransformerFunctionalInterface recordTransformerFunction =
-        (storeVersion, keySchema, inputValueSchema, outputValueSchema, config1) -> new TestRecordTransformer(
+        (storeName, storeVersion, keySchema, inputValueSchema, outputValueSchema, config1) -> new TestRecordTransformer(
+            storeName,
             storeVersion,
             keySchema,
             inputValueSchema,

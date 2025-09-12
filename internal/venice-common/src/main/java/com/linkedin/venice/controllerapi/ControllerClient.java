@@ -674,6 +674,18 @@ public class ControllerClient implements Closeable {
     return rollbackToBackupVersion(storeName, "");
   }
 
+  public ControllerResponse rollForwardToFutureVersion(String storeName, String regionFilter, int timeoutMs) {
+    QueryParams params = newParams().add(NAME, storeName).add(REGIONS_FILTER, regionFilter);
+    return request(
+        ControllerRoute.ROLL_FORWARD_TO_FUTURE_VERSION,
+        params,
+        ControllerResponse.class,
+        timeoutMs,
+        1,
+        null,
+        null);
+  }
+
   public ControllerResponse rollForwardToFutureVersion(String storeName, String regionFilter) {
     QueryParams params = newParams().add(NAME, storeName).add(REGIONS_FILTER, regionFilter);
     return request(ControllerRoute.ROLL_FORWARD_TO_FUTURE_VERSION, params, ControllerResponse.class);

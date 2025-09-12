@@ -551,6 +551,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
       DaVinciRecordTransformer clientRecordTransformer = recordTransformerConfig.getRecordTransformerFunction()
           .apply(
+              storeName,
               versionNumber,
               keySchema,
               this.recordTransformerInputValueSchema,
@@ -1818,7 +1819,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   /**
-   * This version of the method syncs using a PartitionTracker object which contains the vtSegments and LCVO
+   * This version of the method syncs using a PartitionTracker object which contains the vtSegments and LCVP
    */
   protected void updateAndSyncOffsetFromSnapshot(PartitionTracker vtDivSnapshot, PubSubTopicPartition topicPartition) {
     PartitionConsumptionState pcs = getPartitionConsumptionState(topicPartition.getPartitionNumber());
@@ -2207,6 +2208,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             localVtSubscribePosition,
             localKafkaServer);
         LOGGER.info("Subscribed to: {} position: {}", topicPartition, localVtSubscribePosition);
+        if (isGlobalRtDivEnabled()) {
+          // TODO: remove. this is a temporary log for debugging while the feature is in its infancy
+          LOGGER.info("event=globalRtDiv Subscribed to: {} position: {}", topicPartition, localVtSubscribePosition);
+        }
         storageUtilizationManager.initPartition(partition);
         break;
       case UNSUBSCRIBE:
@@ -2443,7 +2448,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     // Just a sanity check for something that shouldn't ever happen. Skip it and log a warning.
     if (record.getKey().isGlobalRtDiv() && record.getTopic().isRealTime()) {
-      LOGGER.warn("Skipping Global RT DIV message from realtime topic partition: {}", record.getTopicPartition());
+      LOGGER.warn("Skipping Global RT DIV message from realtime topic-partition: {}", record.getTopicPartition());
       return false;
     }
 
@@ -3393,7 +3398,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       DefaultPubSubMessage consumerRecord,
       PartitionConsumptionState partitionConsumptionState,
       LeaderProducedRecordContext leaderProducedRecordContext) {
-    boolean endOfPushReceived = partitionConsumptionState.isEndOfPushReceived();
     try {
       if (leaderProducedRecordContext == null || leaderProducedRecordContext.hasCorrespondingUpstreamMessage()) {
         /**
@@ -3411,7 +3415,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             PartitionTracker.VERSION_TOPIC,
             this.drainerDiv,
             consumerRecord,
-            endOfPushReceived,
             partitionConsumptionState,
             /**
              * N.B.: For A/A enabled stores, the drainer DIV is useless, since upstream of here we may have filtered
@@ -3425,7 +3428,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         versionedDIVStats.recordSuccessMsg(storeName, versionNumber);
       }
     } catch (FatalDataValidationException fatalException) {
-      if (!endOfPushReceived) {
+      if (!partitionConsumptionState.isEndOfPushReceived()) {
         throw fatalException;
       } else {
         LOGGER.warn(
@@ -3458,15 +3461,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       PartitionTracker.TopicType type,
       DataIntegrityValidator validator,
       DefaultPubSubMessage consumerRecord,
-      boolean endOfPushReceived,
       PartitionConsumptionState partitionConsumptionState,
       boolean tolerateMissingMessagesForRealTimeTopic) {
     KafkaKey key = consumerRecord.getKey();
     if (key.isControlMessage() && Arrays.equals(KafkaKey.HEART_BEAT.getKey(), key.getKey())) {
       return; // Skip validation for ingestion heartbeat records.
-    } else if (key.isGlobalRtDiv()) {
-      return; // Skip validation for Global RT DIV messages.
     }
+    // Global RT DIV messages are not skipped. See validateAndFilterOutDuplicateMessagesFromLeaderTopic()
 
     Lazy<Boolean> tolerateMissingMsgs = Lazy.of(() -> {
       PubSubTopic pubSubTopic = consumerRecord.getTopic();
@@ -3503,13 +3504,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     });
 
     try {
-      validator.validateMessage(type, consumerRecord, endOfPushReceived, tolerateMissingMsgs);
+      validator
+          .validateMessage(type, consumerRecord, partitionConsumptionState.isEndOfPushReceived(), tolerateMissingMsgs);
     } catch (FatalDataValidationException fatalException) {
       divErrorMetricCallback.accept(fatalException);
       /**
        * If DIV errors happens after EOP is received, we will not error out the replica.
        */
-      if (!endOfPushReceived) {
+      if (!partitionConsumptionState.isEndOfPushReceived()) {
         throw fatalException;
       }
 
@@ -4759,16 +4761,17 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   boolean isGlobalRtDivEnabled() {
-    return isGlobalRtDivEnabled; // mainly for unit test mocks
+    return isGlobalRtDivEnabled;
   }
 
   /** When Global RT DIV is enabled the ConsumptionTask's DIV is exclusively used to validate data integrity. */
-  DataIntegrityValidator getDataIntegrityValidator() {
+  @VisibleForTesting
+  public DataIntegrityValidator getDataIntegrityValidator() {
     return (isGlobalRtDivEnabled()) ? consumerDiv : drainerDiv;
   }
 
   /**
-   * When Global RT DIV is enabled, the latest consumed VT offset (LCVO) should be used during subscription.
+   * When Global RT DIV is enabled, the latest consumed VT position (LCVP) should be used during subscription.
    * Otherwise, the drainer's latest processed VT offset is traditionally used.
    */
   PubSubPosition getLocalVtSubscribePosition(PartitionConsumptionState pcs) {

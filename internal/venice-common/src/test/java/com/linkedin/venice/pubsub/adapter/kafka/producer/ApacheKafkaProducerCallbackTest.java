@@ -6,6 +6,7 @@ import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 
+import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.mock.adapter.PubSubProducerCallbackSimpleImpl;
 import com.linkedin.venice.utils.ExceptionUtils;
@@ -33,7 +34,7 @@ public class ApacheKafkaProducerCallbackTest {
     PubSubProduceResult produceResult = internalCallback.getProduceResult();
     assertEquals(produceResult.getTopic(), recordMetadata.topic());
     assertEquals(produceResult.getPartition(), recordMetadata.partition());
-    assertEquals(produceResult.getOffset(), recordMetadata.offset());
+    assertEquals(produceResult.getPubSubPosition(), ApacheKafkaOffsetPosition.of(recordMetadata.offset()));
   }
 
   @Test
