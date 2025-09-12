@@ -4,7 +4,6 @@ import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_CONSUMER_API_DEF
 
 import com.linkedin.venice.pubsub.PubSubConstants;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
-import com.linkedin.venice.pubsub.PubSubUtil;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubClientException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubClientRetriableException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;
@@ -29,21 +28,6 @@ import javax.annotation.Nonnull;
  *  timeout after the default timeout period: {@link PubSubConstants#PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS}.
  */
 public interface PubSubConsumerAdapter extends AutoCloseable, Closeable {
-  /**
-   * Subscribes to a topic-partition if it is not already subscribed. If the topic-partition is already subscribed,
-   * this method is a no-op. The method assumes that the topic-partition exists.
-   *
-   * @param pubSubTopicPartition The topic-partition to subscribe to.
-   * @param lastReadOffset The last read offset for the topic-partition. A poll call following a subscribe call
-   *                      will return messages from the offset (lastReadOffset + 1).
-   * @throws IllegalArgumentException If the topic-partition is null or if the partition number is negative.
-   * @throws PubSubTopicDoesNotExistException If the topic does not exist.
-   */
-  @Deprecated
-  default void subscribe(PubSubTopicPartition pubSubTopicPartition, long lastReadOffset) {
-    subscribe(pubSubTopicPartition, PubSubUtil.fromKafkaOffset(lastReadOffset));
-  }
-
   /**
    * Subscribes to a specified topic-partition if it is not already subscribed. If the topic-partition is
    * already subscribed, this method performs no action.
@@ -211,42 +195,7 @@ public interface PubSubConsumerAdapter extends AutoCloseable, Closeable {
    * @throws PubSubOpTimeoutException If the operation times out while fetching the offset.
    * @throws PubSubClientException If there is an error while attempting to fetch the offset.
    */
-  @Deprecated
-  default Long offsetForTime(PubSubTopicPartition pubSubTopicPartition, long timestamp, Duration timeout) {
-    return getPositionByTimestamp(pubSubTopicPartition, timestamp, timeout).getNumericOffset();
-  }
-
-  /**
-   * Retrieves the offset of the first message with a timestamp greater than or equal to the target
-   * timestamp for the specified PubSub topic-partition. If no such message is found, {@code null}
-   * will be returned for the partition.
-   *
-   * @param pubSubTopicPartition The PubSub topic-partition for which to fetch the offset.
-   * @param timestamp The target timestamp to search for in milliseconds since the Unix epoch.
-   * @param timeout The maximum duration to wait for the operation to complete.
-   * @return The offset of the first message with a timestamp greater than or equal to the target timestamp,
-   *         or {@code null} if no such message is found for the partition.
-   * @throws PubSubOpTimeoutException If the operation times out while fetching the offset.
-   * @throws PubSubClientException If there is an error while attempting to fetch the offset.
-   */
   PubSubPosition getPositionByTimestamp(PubSubTopicPartition pubSubTopicPartition, long timestamp, Duration timeout);
-
-  /**
-   * Retrieves the offset of the first message with a timestamp greater than or equal to the target
-   * timestamp for the specified PubSub topic-partition. If no such message is found, {@code null}
-   * will be returned for the partition.
-   *
-   * @param pubSubTopicPartition The PubSub topic-partition for which to fetch the offset.
-   * @param timestamp The target timestamp to search for in milliseconds since the Unix epoch.
-   * @return The offset of the first message with a timestamp greater than or equal to the target timestamp,
-   *         or {@code null} if no such message is found for the partition.
-   * @throws PubSubOpTimeoutException If the operation times out while fetching the offset.
-   * @throws PubSubClientException If there is an error while attempting to fetch the offset.
-   */
-  @Deprecated
-  default Long offsetForTime(PubSubTopicPartition pubSubTopicPartition, long timestamp) {
-    return getPositionByTimestamp(pubSubTopicPartition, timestamp).getNumericOffset();
-  }
 
   /**
    * Retrieves the offset of the first message with a timestamp greater than or equal to the target
@@ -285,42 +234,29 @@ public interface PubSubConsumerAdapter extends AutoCloseable, Closeable {
       Duration timeout);
 
   /**
-   * Retrieves the end offsets for a collection of PubSub topic-partitions. The end offset represents
-   * the highest offset available in each specified partition, i.e., offset of the last message + 1.
-   * If there are no messages in a partition, the end offset will be 0.
+   * Retrieves the end positions for a collection of PubSub topic-partitions. The end position represents
+   * the highest position available in each specified partition, i.e., position of the last message + 1.
+   * If there are no messages in a partition, the end position will be equal to the beginning position.
    *
-   * @param partitions A collection of PubSub topic-partitions for which to fetch the end offsets.
+   * @param partitions A collection of PubSub topic-partitions for which to fetch the end positions.
    * @param timeout The maximum duration to wait for the operation to complete.
-   * @return A mapping of PubSub topic partitions to their respective end offsets, or an empty map if
-   *          the offsets cannot be determined.
-   * @throws PubSubOpTimeoutException If the operation times out while fetching the end offsets.
-   * @throws PubSubClientException If there is an error while attempting to fetch the end offsets.
+   * @return A mapping of PubSub topic partitions to their respective end positions, or an empty map if
+   *          the positions cannot be determined.
+   * @throws PubSubOpTimeoutException If the operation times out while fetching the end positions.
+   * @throws PubSubClientException If there is an error while attempting to fetch the end positions.
    */
-  @Deprecated
-  default Map<PubSubTopicPartition, Long> endOffsets(Collection<PubSubTopicPartition> partitions, Duration timeout) {
-    Map<PubSubTopicPartition, PubSubPosition> positionMap = endPositions(partitions, timeout);
-    return positionMap.entrySet()
-        .stream()
-        .collect(java.util.stream.Collectors.toMap(Map.Entry::getKey, e -> e.getValue().getNumericOffset()));
-  }
-
   Map<PubSubTopicPartition, PubSubPosition> endPositions(Collection<PubSubTopicPartition> partitions, Duration timeout);
 
   /**
-   * Retrieves the end offset for the specified PubSub topic-partition. The end offset represents
-   * the highest offset available in each specified partition, i.e., offset of the last message + 1.
-   * If there are no messages in a partition, the end offset will be 0.
+   * Retrieves the end position for the specified PubSub topic-partition. The end position represents
+   * the highest position available in each specified partition, i.e., position of the last message + 1.
+   * If there are no messages in a partition, the end position will be equal to the beginning position.
    *
-   * @param pubSubTopicPartition The PubSub topic partition for which to fetch the end offset.
+   * @param pubSubTopicPartition The PubSub topic partition for which to fetch the end position.
    * @return The end offset of the specified topic partition.
-   * @throws PubSubOpTimeoutException If the operation times out while fetching the end offset.
-   * @throws PubSubClientException If there is an error while attempting to fetch the end offset.
+   * @throws PubSubOpTimeoutException If the operation times out while fetching the end position.
+   * @throws PubSubClientException If there is an error while attempting to fetch the end position.
    */
-  @Deprecated
-  default Long endOffset(PubSubTopicPartition pubSubTopicPartition) {
-    return endPosition(pubSubTopicPartition).getNumericOffset();
-  }
-
   PubSubPosition endPosition(PubSubTopicPartition pubSubTopicPartition);
 
   /**

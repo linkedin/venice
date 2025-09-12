@@ -1,7 +1,6 @@
 package com.linkedin.venice.controller;
 
 import static com.linkedin.venice.meta.VersionStatus.ERROR;
-import static com.linkedin.venice.meta.VersionStatus.KILLED;
 import static com.linkedin.venice.meta.VersionStatus.ONLINE;
 import static com.linkedin.venice.meta.VersionStatus.PARTIALLY_ONLINE;
 
@@ -10,6 +9,7 @@ import com.github.benmanes.caffeine.cache.Caffeine;
 import com.linkedin.venice.controller.stats.DeferredVersionSwapStats;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.StoreResponse;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoClusterException;
 import com.linkedin.venice.hooks.StoreLifecycleHooks;
 import com.linkedin.venice.hooks.StoreVersionLifecycleEventOutcome;
@@ -26,8 +26,10 @@ import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.ReflectUtils;
 import com.linkedin.venice.utils.RegionUtils;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.Collections;
@@ -74,7 +76,11 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
   private static final int MAX_ROLL_FORWARD_RETRY_LIMIT = 5;
   private static final Set<VersionStatus> VERSION_SWAP_COMPLETION_STATUSES =
       Utils.setOf(ONLINE, PARTIALLY_ONLINE, ERROR);
-  private static final Set<VersionStatus> TERMINAL_PUSH_VERSION_STATUSES = Utils.setOf(ONLINE, KILLED);
+  private static final Set<VersionStatus> TERMINAL_PUSH_VERSION_STATUSES = Utils.setOf(ONLINE);
+  private Cache<String, Long> storeWaitTimeCacheForSequentialRollout =
+      Caffeine.newBuilder().expireAfterWrite(1, TimeUnit.HOURS).build();
+  private static final int CONTROLLER_CLIENT_REQUEST_TIMEOUT = 5 * Time.MS_PER_SECOND;
+  private static final int LOG_LATENCY_THRESHOLD = 5 * Time.MS_PER_SECOND;
 
   public DeferredVersionSwapService(
       VeniceParentHelixAdmin admin,
@@ -111,7 +117,16 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
     Map<String, ControllerClient> controllerClientMap =
         veniceParentHelixAdmin.getVeniceHelixAdmin().getControllerClientMap(clusterName);
     ControllerClient targetRegionControllerClient = controllerClientMap.get(targetRegion);
-    return targetRegionControllerClient.getStore(storeName);
+    StoreResponse storeResponse = targetRegionControllerClient.getStore(storeName, CONTROLLER_CLIENT_REQUEST_TIMEOUT);
+
+    if (storeResponse.isError()) {
+      String message =
+          "Got error " + storeResponse.getError() + " when fetching targetRegionStore: " + storeResponse.getStore();
+      logMessageIfNotRedundant(message);
+      return null;
+    }
+
+    return storeResponse;
   }
 
   /**
@@ -186,9 +201,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       String storeName,
       int targetVersionNum,
       StoreResponse storeResponse) {
-    if (storeResponse.isError()) {
-      String message = "Got error when fetching targetRegionStore: " + storeResponse.getStore();
-      logMessageIfNotRedundant(message);
+    if (storeResponse == null) {
       return null;
     }
 
@@ -212,12 +225,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
    * @param targetVersion the version to start serving traffic in
    * @param cluster the cluster the store is in
    */
-  private void rollForwardToTargetVersion(
-      Set<String> regions,
-      Store store,
-      Version targetVersion,
-      String cluster,
-      ReadWriteStoreRepository repository) {
+  private void rollForwardToTargetVersion(Set<String> regions, Store store, Version targetVersion, String cluster) {
     String regionsToRollForward = RegionUtils.composeRegionList(regions);
     String storeName = store.getName();
     int targetVersionNum = targetVersion.getNumber();
@@ -236,27 +244,24 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
     // Update parent version status after roll forward, so we don't check this store version again
     // If push was successful (version status is PUSHED), the parent version is marked as ONLINE
     // if push was successful in some regions (version status is KILLED), the parent version is marked PARTIALLY_ONLINE
-    long totalVersionSwapTimeInMinutes =
-        TimeUnit.MILLISECONDS.toMinutes(LatencyUtils.getElapsedTimeFromMsToMs(targetVersion.getCreatedTime()));
-    if (targetVersion.getStatus() == VersionStatus.PUSHED) {
-      store.updateVersionStatus(targetVersionNum, ONLINE);
-      repository.updateStore(store);
-
-      LOGGER.info(
-          "Updated parent version status to ONLINE for version: {} in store: {} for version created in: {}."
-              + "Version swap took {} minutes from push completion to version swap",
-          targetVersionNum,
-          storeName,
-          totalVersionSwapTimeInMinutes);
-    } else {
-      store.updateVersionStatus(targetVersionNum, VersionStatus.PARTIALLY_ONLINE);
-      repository.updateStore(store);
+    long totalVersionSwapTimeInSeconds =
+        TimeUnit.MILLISECONDS.toSeconds(LatencyUtils.getElapsedTimeFromMsToMs(targetVersion.getCreatedTime()));
+    if (targetVersion.getStatus() == VersionStatus.KILLED) {
+      updateStore(cluster, storeName, PARTIALLY_ONLINE, targetVersionNum);
       LOGGER.info(
           "Updated parent version status to PARTIALLY_ONLINE for version: {} in store: {},"
               + "Version swap took {} minutes from push completion to version swap",
           targetVersionNum,
           storeName,
-          totalVersionSwapTimeInMinutes);
+          totalVersionSwapTimeInSeconds);
+    } else {
+      updateStore(cluster, storeName, ONLINE, targetVersionNum);
+      LOGGER.info(
+          "Updated parent version status to ONLINE for version: {} in store: {} for version created in: {}."
+              + "Version swap took {} minutes from push completion to version swap",
+          targetVersionNum,
+          storeName,
+          totalVersionSwapTimeInSeconds);
     }
   }
 
@@ -362,7 +367,6 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
                 + targetVersionNum);
         return false;
       case PUSHED:
-      case KILLED:
         return true;
       case ONLINE:
         // This should not happen, but if it does, we should still perform a version swap and log a metric for it
@@ -418,9 +422,9 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
   private boolean didPushCompleteInTargetRegions(
       Set<String> targetRegions,
       Admin.OfflinePushStatusInfo pushStatusInfo,
-      ReadWriteStoreRepository repository,
       Store store,
-      int targetVersionNum) {
+      int targetVersionNum,
+      String clusterName) {
     int numCompletedTargetRegions =
         getRegionsWithPushStatusCount(targetRegions, pushStatusInfo, ExecutionStatus.COMPLETED);
     int numFailedTargetRegions = getRegionsWithPushStatusCount(targetRegions, pushStatusInfo, ExecutionStatus.ERROR);
@@ -429,8 +433,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
           + " as push failed in 1+ target regions. Completed target regions: " + numCompletedTargetRegions
           + " , failed target regions: " + numFailedTargetRegions + ", target regions: " + targetRegions;
       logMessageIfNotRedundant(message);
-      store.updateVersionStatus(targetVersionNum, ERROR);
-      repository.updateStore(store);
+      updateStore(clusterName, store.getName(), ERROR, targetVersionNum);
 
       // TODO cleanup the code below after parent VT is deprecated
       String kafkaTopic = Version.composeKafkaTopic(store.getName(), targetVersionNum);
@@ -495,12 +498,174 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
     }
   }
 
+  private void emitMetricIfVersionSwapIfStalledForSequentialRollout(
+      String region,
+      Store parentStore,
+      int targetVersionNum,
+      String clusterName) {
+    VersionStatus status = parentStore.getVersion(targetVersionNum).getStatus();
+    if (status.equals(ONLINE) || status.equals(ERROR) || status.equals(PARTIALLY_ONLINE)) {
+      return;
+    }
+
+    // If we already emitted a metric for this store already, do not emit it again
+    if (stalledVersionSwapSet.contains(parentStore.getName())) {
+      return;
+    }
+
+    StoreResponse storeResponse = getStoreForRegion(clusterName, region, parentStore.getName());
+    if (storeResponse == null) {
+      return;
+    }
+
+    StoreInfo storeInfo = storeResponse.getStore();
+
+    if (storeInfo.getCurrentVersion() == targetVersionNum) {
+      return;
+    }
+
+    long latestVersionPromoteToCurrentTimestamp = storeInfo.getLatestVersionPromoteToCurrentTimestamp();
+    long storeWaitTime = TimeUnit.MINUTES.toMillis(parentStore.getTargetSwapRegionWaitTime());
+    long currentTime = System.currentTimeMillis();
+    long bufferedWaitTime = TimeUnit.MINUTES.toMillis(
+        Math.round(
+            parentStore.getTargetSwapRegionWaitTime()
+                * veniceControllerMultiClusterConfig.getDeferredVersionSwapBufferTime()));
+    if ((latestVersionPromoteToCurrentTimestamp + storeWaitTime + bufferedWaitTime) < currentTime) {
+      String message = "Store: " + parentStore.getName() + " has not swapped to the target version: " + targetVersionNum
+          + " and the wait time: " + parentStore.getTargetSwapRegionWaitTime() + " has passed in region " + region;
+      logMessageIfNotRedundant(message);
+      stalledVersionSwapSet.add(parentStore.getName());
+      deferredVersionSwapStats.recordDeferredVersionSwapStalledVersionSwapSensor(stalledVersionSwapSet.size());
+    }
+  }
+
+  private boolean didMaxRetriesExceedForStoreFetchInRegion(String regionKafkaTopicName) {
+    int attemptedRetries = fetchNonTargetRegionStoreRetryCountMap.merge(regionKafkaTopicName, 1, Integer::sum);
+
+    if (attemptedRetries == MAX_FETCH_STORE_FETCH_RETRY_LIMIT) {
+      fetchNonTargetRegionStoreRetryCountMap.remove(regionKafkaTopicName);
+      return true;
+    }
+
+    return false;
+  }
+
+  private String getNextRegionToRollForward(
+      Store parentStore,
+      int targetVersionNum,
+      String clusterName,
+      String kafkaTopicName,
+      List<String> rolloutOrder) {
+    Map<String, Integer> regionToCurrentVersion =
+        veniceParentHelixAdmin.getCurrentVersionsForMultiColos(clusterName, parentStore.getName());
+    String nextEligibleRegion = null;
+    for (String region: rolloutOrder) {
+      if (!regionToCurrentVersion.containsKey(region)) {
+        continue;
+      }
+
+      if (regionToCurrentVersion.get(region) < targetVersionNum) {
+        nextEligibleRegion = region;
+        break;
+      }
+    }
+
+    if (nextEligibleRegion == null) {
+      return null;
+    }
+
+    StoreResponse storeResponse = getStoreForRegion(clusterName, nextEligibleRegion, parentStore.getName());
+    Version version =
+        getVersionFromStoreInRegion(nextEligibleRegion, parentStore.getName(), targetVersionNum, storeResponse);
+    String regionKafkaTopicName = nextEligibleRegion + "_" + kafkaTopicName;
+    if (version == null) {
+      boolean maxRetriesExceeded = didMaxRetriesExceedForStoreFetchInRegion(regionKafkaTopicName);
+      if (maxRetriesExceeded) {
+        String message = "Skipping version swap for store: " + parentStore.getName() + " on version: "
+            + targetVersionNum + "as the version is not available in region " + nextEligibleRegion
+            + " after 5 tries. Marking parent version as PARTIALLY_ONLINE";
+        logMessageIfNotRedundant(message);
+        updateStore(clusterName, parentStore.getName(), PARTIALLY_ONLINE, targetVersionNum);
+
+        // TODO cleanup the code below after parent VT is deprecated
+        LOGGER.info("Truncating kafka topic: {} after unable to fetch version after 5 tries", kafkaTopicName);
+        veniceParentHelixAdmin.truncateKafkaTopic(kafkaTopicName);
+        fetchNonTargetRegionStoreRetryCountMap.remove(regionKafkaTopicName);
+      }
+
+      LOGGER.warn(
+          "Unable to fetch version {} for store {} in region {}",
+          targetVersionNum,
+          parentStore.getName(),
+          nextEligibleRegion);
+      return null;
+    }
+
+    if (fetchNonTargetRegionStoreRetryCountMap.containsKey(regionKafkaTopicName)) {
+      fetchNonTargetRegionStoreRetryCountMap.remove(regionKafkaTopicName);
+    }
+
+    if (VersionStatus.PUSHED.equals(version.getStatus())) {
+      String message =
+          "Found next eligible region to roll forward in: " + nextEligibleRegion + " for topic: " + kafkaTopicName;
+      logMessageIfNotRedundant(message);
+      return nextEligibleRegion;
+    } else if (VersionStatus.ERROR.equals(version.getStatus()) || VersionStatus.KILLED.equals(version.getStatus())) {
+      VersionStatus finalVersionStatus = rolloutOrder.indexOf(nextEligibleRegion) == 0 ? ERROR : PARTIALLY_ONLINE;
+      updateStore(clusterName, parentStore.getName(), finalVersionStatus, targetVersionNum);
+      LOGGER.info(
+          "Updating parent version status to {} as {} as version failed in region: {}",
+          kafkaTopicName,
+          finalVersionStatus,
+          nextEligibleRegion);
+      return null;
+    }
+
+    return null;
+  }
+
+  private boolean didWaitTimePassInRegionForSequentialRollout(
+      Store parentStore,
+      long latestVersionPromoteToCurrentTimestamp) {
+    long storeWaitTime = TimeUnit.MINUTES.toMillis(parentStore.getTargetSwapRegionWaitTime());
+    long currentTime = System.currentTimeMillis();
+    if (storeWaitTime + latestVersionPromoteToCurrentTimestamp > currentTime) {
+      return false;
+    }
+
+    return true;
+  }
+
+  private boolean didWaitTimePassInRegionForSequentialRollout(
+      String previousEligibleRegion,
+      Store parentStore,
+      String clusterName,
+      String kafkaTopicName) {
+    StoreResponse storeResponse = getStoreForRegion(clusterName, previousEligibleRegion, parentStore.getName());
+    if (storeResponse == null) {
+      return false;
+    }
+
+    StoreInfo storeInfo = storeResponse.getStore();
+    long latestVersionPromoteToCurrentTimestamp = storeInfo.getLatestVersionPromoteToCurrentTimestamp();
+    if (!didWaitTimePassInRegionForSequentialRollout(parentStore, latestVersionPromoteToCurrentTimestamp)) {
+      String message =
+          "Wait time has not passed for store: " + parentStore.getName() + " in region: " + previousEligibleRegion
+              + " latestVersionPromoteToCurrentTimestamp " + latestVersionPromoteToCurrentTimestamp;
+      logMessageIfNotRedundant(message);
+      storeWaitTimeCacheForSequentialRollout.put(kafkaTopicName, latestVersionPromoteToCurrentTimestamp);
+      return false;
+    }
+
+    return true;
+  }
+
   /**
    * Gets a list of eligible regions to roll forward in. A region is eligible to be rolled forward if it's push status is
    * COMPLETED. If there are no eligible regions to roll forward in or if not all regions have reached a terminal status, null is
    * returned and the version status is marked as PARTIALLY_ONLINE as only the target regions are serving traffic from the new version
    * @param nonTargetRegions list of regions to check eligibility for
-   * @param repository repository to update store
    * @param parentStore store to update
    * @param targetVersionNum target version to roll forward in
    * @param clusterName cluster the store is in
@@ -508,7 +673,6 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
    */
   private Set<String> getRegionsToRollForward(
       Set<String> nonTargetRegions,
-      ReadWriteStoreRepository repository,
       Store parentStore,
       int targetVersionNum,
       String clusterName,
@@ -524,17 +688,9 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
 
       // When a push is killed or errored out, the topic may have been cleaned up or controller is temporarily
       // unreachable so we will allow upto 5 retries before marking it as failed
-      String regionKafkaTopicName = "";
+      String regionKafkaTopicName = nonTargetRegion + "_" + kafkaTopicName;
       if (version == null) {
-        regionKafkaTopicName = nonTargetRegion + "_" + kafkaTopicName;
-        int attemptedRetries = fetchNonTargetRegionStoreRetryCountMap.compute(regionKafkaTopicName, (k, v) -> {
-          if (v == null) {
-            return 1;
-          }
-          return v + 1;
-        });
-
-        if (attemptedRetries == MAX_FETCH_STORE_FETCH_RETRY_LIMIT) {
+        if (didMaxRetriesExceedForStoreFetchInRegion(regionKafkaTopicName)) {
           failedNonTargetRegions.add(nonTargetRegion);
           fetchNonTargetRegionStoreRetryCountMap.remove(regionKafkaTopicName);
         }
@@ -542,7 +698,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
         continue;
       }
 
-      if (!StringUtils.isEmpty(regionKafkaTopicName)) {
+      if (fetchNonTargetRegionStoreRetryCountMap.containsKey(regionKafkaTopicName)) {
         fetchNonTargetRegionStoreRetryCountMap.remove(regionKafkaTopicName);
       }
 
@@ -578,8 +734,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
           + "as push failed in all non target regions. Failed non target regions: " + failedNonTargetRegions
           + " non target regions: " + nonTargetRegionToStatus;
       logMessageIfNotRedundant(message);
-      parentStore.updateVersionStatus(targetVersionNum, PARTIALLY_ONLINE);
-      repository.updateStore(parentStore);
+      updateStore(clusterName, parentStore.getName(), PARTIALLY_ONLINE, targetVersionNum);
 
       // TODO cleanup the code below after parent VT is deprecated
       LOGGER.info("Truncating kafka topic: {} after push failed in all non target regions", kafkaTopicName);
@@ -602,7 +757,6 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       int targetVersionNum,
       String clusterName,
       String targetRegion,
-      ReadWriteStoreRepository repository,
       String kafkaTopicName) {
     Boolean proceed = true;
     List<LifecycleHooksRecord> storeLifecycleHooks = parentStore.getStoreLifecycleHooks();
@@ -624,6 +778,10 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
             targetRegion,
             null,
             veniceProperties);
+        String message = "Validation outcome for store " + parentStore.getName() + " on version " + targetVersionNum
+            + " in region" + targetRegion + "with hook " + lifecycleHooksRecord.getStoreLifecycleHooksClassName()
+            + " is proceed: " + proceed;
+        logMessageIfNotRedundant(message);
       } catch (Exception e) {
         String message = "Encountered exception while executing lifecycle hook: "
             + lifecycleHooksRecord.getStoreLifecycleHooksClassName() + " for store: " + parentStore.getName()
@@ -643,8 +801,9 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
         logMessageIfNotRedundant(message);
 
         veniceParentHelixAdmin.rollbackToBackupVersion(clusterName, parentStore.getName(), targetRegion);
-        parentStore.updateVersionStatus(targetVersionNum, ERROR);
-        repository.updateStore(parentStore);
+        updateStore(clusterName, parentStore.getName(), ERROR, targetVersionNum);
+        LOGGER.info(
+            "Updating store status to ERROR for store: " + parentStore.getName() + " on version: " + targetVersionNum);
 
         // TODO cleanup the code below after parent VT is deprecated
         LOGGER.info("Truncating kafka topic: {} after validations emitted a roll back", kafkaTopicName);
@@ -656,7 +815,39 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       }
     }
 
+    String message = "Validation outcome for store " + parentStore.getName() + " on version " + targetVersionNum
+        + " in region" + targetRegion + " is proceed: " + proceed;
+    logMessageIfNotRedundant(message);
     return proceed;
+  }
+
+  private void handleFailedRollForward(
+      int targetVersionNum,
+      Store parentStore,
+      String kafkaTopicName,
+      String region,
+      String clusterName) {
+    int attemptedRetries = failedRollforwardRetryCountMap.compute(kafkaTopicName, (k, v) -> {
+      if (v == null) {
+        return 1;
+      }
+      return v + 1;
+    });
+
+    if (attemptedRetries == MAX_ROLL_FORWARD_RETRY_LIMIT) {
+      deferredVersionSwapStats.recordDeferredVersionSwapFailedRollForwardSensor();
+      updateStore(clusterName, parentStore.getName(), PARTIALLY_ONLINE, targetVersionNum);
+      failedRollforwardRetryCountMap.remove(kafkaTopicName);
+      LOGGER.info(
+          "Updated parent version status to PARTIALLY_ONLINE for version: {} in store: {} after failing to roll forward in non target regions: {}",
+          targetVersionNum,
+          parentStore.getName(),
+          region);
+
+      // TODO cleanup the code below after parent VT is deprecated
+      LOGGER.info("Truncating kafka topic: {} after roll forward failed in 1+ regions", kafkaTopicName);
+      veniceParentHelixAdmin.truncateKafkaTopic(kafkaTopicName);
+    }
   }
 
   private Runnable getRunnableForDeferredVersionSwap() {
@@ -673,6 +864,13 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
           }
 
           List<Store> parentStores;
+          Map<String, String> childDataCenterControllerUrlMap =
+              veniceParentHelixAdmin.getChildDataCenterControllerUrlMap(cluster);
+          String rolloutOrderStr = veniceControllerMultiClusterConfig.getControllerConfig(cluster)
+              .getDeferredVersionSwapRegionRollforwardOrder();
+          List<String> rolloutOrder = RegionUtils.parseRegionRolloutOrderList(rolloutOrderStr);
+          validateRolloutRegions(cluster, rolloutOrder, childDataCenterControllerUrlMap.keySet());
+
           try {
             parentStores = veniceParentHelixAdmin.getAllStores(cluster);
           } catch (VeniceNoClusterException e) {
@@ -680,6 +878,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
             break;
           }
 
+          boolean sequentialRollForward = !StringUtils.isEmpty(rolloutOrderStr);
           for (Store parentStore: parentStores) {
             int targetVersionNum = parentStore.getLargestUsedVersionNumber();
             if (targetVersionNum < 1) {
@@ -695,116 +894,194 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
             }
 
             String storeName = parentStore.getName();
-            Map<String, String> childDataCenterControllerUrlMap =
-                veniceParentHelixAdmin.getChildDataCenterControllerUrlMap(cluster);
             Set<String> targetRegions = RegionUtils.parseRegionsFilterList(targetVersion.getTargetSwapRegion());
             Set<String> remainingRegions = getRegionsForVersionSwap(childDataCenterControllerUrlMap, targetRegions);
 
             // Check if the target version is in a terminal state (push job completed or failed)
+            long startTime = System.currentTimeMillis();
             if (!isPushInTerminalState(
                 targetVersion,
                 cluster,
                 parentStore.getName(),
                 targetVersionNum,
                 remainingRegions)) {
+              logLatency(startTime, storeName, targetVersionNum);
               continue;
             }
 
             // Check if the cached waitTime for the target version has elapsed
             String kafkaTopicName = Version.composeKafkaTopic(storeName, targetVersionNum);
-            if (!didCachedWaitTimeElapseInTargetRegions(targetRegions, parentStore, targetVersionNum, kafkaTopicName)) {
-              continue;
-            }
-
-            Admin.OfflinePushStatusInfo pushStatusInfo =
-                veniceParentHelixAdmin.getOffLinePushStatus(cluster, kafkaTopicName);
-            HelixVeniceClusterResources resources =
-                veniceParentHelixAdmin.getVeniceHelixAdmin().getHelixVeniceClusterResources(cluster);
-            ReadWriteStoreRepository repository = resources.getStoreMetadataRepository();
-
-            // Check if version swap is stalled for the store
-            emitMetricIfVersionSwapIsStalled(
-                pushStatusInfo.getExtraInfoUpdateTimestamp(),
-                targetRegions,
-                parentStore,
-                targetVersionNum,
-                targetVersion);
-
-            // If version status is marked as KILLED (push timeout, user killed push job, etc), check if target
-            // regions failed
-            if (targetVersion.getStatus() == VersionStatus.KILLED) {
-              if (!didPushCompleteInTargetRegions(
+            if (sequentialRollForward) {
+              Long cachedWaitTime = storeWaitTimeCacheForSequentialRollout.getIfPresent(kafkaTopicName);
+              if (cachedWaitTime != null) {
+                if (!didCachedWaitTimeElapseInTargetRegions(
+                    targetRegions,
+                    parentStore,
+                    targetVersionNum,
+                    kafkaTopicName)) {
+                  String message = "Cached wait time has not elapsed for store: " + parentStore.getName()
+                      + " on version: " + targetVersionNum;
+                  logMessageIfNotRedundant(message);
+                  logLatency(startTime, storeName, targetVersionNum);
+                  continue;
+                }
+              }
+            } else {
+              if (!didCachedWaitTimeElapseInTargetRegions(
                   targetRegions,
-                  pushStatusInfo,
-                  repository,
                   parentStore,
-                  targetVersionNum)) {
+                  targetVersionNum,
+                  kafkaTopicName)) {
+                logLatency(startTime, storeName, targetVersionNum);
                 continue;
               }
             }
 
-            // Get eligible non target regions to roll forward in
-            Set<String> nonTargetRegionsCompleted = getRegionsToRollForward(
-                remainingRegions,
-                repository,
-                parentStore,
-                targetVersionNum,
-                cluster,
-                kafkaTopicName);
-            if (nonTargetRegionsCompleted.isEmpty()) {
-              continue;
-            }
-
-            // Check that waitTime has elapsed in target regions
-            if (!didWaitTimeElapseInTargetRegions(
-                pushStatusInfo.getExtraInfoUpdateTimestamp(),
+            Admin.OfflinePushStatusInfo pushStatusInfo =
+                veniceParentHelixAdmin.getOffLinePushStatus(cluster, kafkaTopicName);
+            if (!didPushCompleteInTargetRegions(
                 targetRegions,
-                parentStore,
-                targetVersionNum)) {
-              storePushCompletionTimeCache.put(kafkaTopicName, pushStatusInfo.getExtraInfoUpdateTimestamp());
-              continue;
-            }
-
-            if (!didPostVersionSwapValidationsPass(
+                pushStatusInfo,
                 parentStore,
                 targetVersionNum,
-                cluster,
-                parentStore.getTargetSwapRegion(),
-                repository,
-                kafkaTopicName)) {
+                cluster)) {
+              logLatency(startTime, storeName, targetVersionNum);
               continue;
             }
 
-            // Switch to the target version in the completed non target regions
-            try {
-              rollForwardToTargetVersion(nonTargetRegionsCompleted, parentStore, targetVersion, cluster, repository);
-            } catch (Exception e) {
-              LOGGER.warn("Failed to roll forward for store: {} in version: {}", storeName, targetVersionNum, e);
+            if (sequentialRollForward) {
+              // Find next region to roll forward
+              String nextRegionToRollForward =
+                  getNextRegionToRollForward(parentStore, targetVersionNum, cluster, kafkaTopicName, rolloutOrder);
+              if (nextRegionToRollForward == null) {
+                LOGGER.warn(
+                    "Found null next region to roll forward to for store {}. All regions should be on"
+                        + "the target version {} so skipping version swap",
+                    parentStore.getName(),
+                    targetVersionNum);
+                logLatency(startTime, storeName, targetVersionNum);
+                continue;
+              }
 
-              int attemptedRetries = failedRollforwardRetryCountMap.compute(kafkaTopicName, (k, v) -> {
-                if (v == null) {
-                  return 1;
+              int nextEligibleRegionIndex = rolloutOrder.indexOf(nextRegionToRollForward);
+              // Check that the wait time elapsed in the prior region that rolled forward if it is not the first region
+              // to roll forward
+              if (nextEligibleRegionIndex != 0) {
+                int priorRolledForwardRegionIndex = rolloutOrder.indexOf(nextRegionToRollForward) - 1;
+
+                String priorRegionRolledForward = rolloutOrder.get(priorRolledForwardRegionIndex);
+                String message2 = "Found prior region that rolled forward: " + priorRegionRolledForward + " for store: "
+                    + parentStore.getName() + " for version: " + targetVersionNum;
+                logMessageIfNotRedundant(message2);
+                if (!didWaitTimePassInRegionForSequentialRollout(
+                    priorRegionRolledForward,
+                    parentStore,
+                    cluster,
+                    kafkaTopicName)) {
+                  logLatency(startTime, storeName, targetVersionNum);
+                  continue;
                 }
-                return v + 1;
-              });
 
-              if (attemptedRetries == MAX_ROLL_FORWARD_RETRY_LIMIT) {
-                deferredVersionSwapStats.recordDeferredVersionSwapFailedRollForwardSensor();
-
-                parentStore.updateVersionStatus(targetVersionNum, VersionStatus.PARTIALLY_ONLINE);
-                repository.updateStore(parentStore);
-                failedRollforwardRetryCountMap.remove(kafkaTopicName);
-                LOGGER.info(
-                    "Updated parent version status to PARTIALLY_ONLINE for version: {} in store: {} after failing to roll forward in non target regions: {}",
+                emitMetricIfVersionSwapIfStalledForSequentialRollout(
+                    nextRegionToRollForward,
+                    parentStore,
                     targetVersionNum,
-                    storeName,
-                    nonTargetRegionsCompleted);
+                    cluster);
 
-                // TODO cleanup the code below after parent VT is deprecated
-                LOGGER.info("Truncating kafka topic: {} after roll forward failed in 1+ regions", kafkaTopicName);
-                veniceParentHelixAdmin.truncateKafkaTopic(kafkaTopicName);
+                if (!didPostVersionSwapValidationsPass(
+                    parentStore,
+                    targetVersionNum,
+                    cluster,
+                    parentStore.getTargetSwapRegion(),
+                    kafkaTopicName)) {
+                  logLatency(startTime, storeName, targetVersionNum);
+                  continue;
+                }
+              }
+
+              try {
+                LOGGER.info(
+                    "Issuing roll forward for store: {} in region: {} for version: {}",
+                    storeName,
+                    nextRegionToRollForward,
+                    targetVersionNum);
+                veniceParentHelixAdmin
+                    .rollForwardToFutureVersion(cluster, parentStore.getName(), nextRegionToRollForward);
+                storeWaitTimeCacheForSequentialRollout.invalidate(kafkaTopicName);
+
+                if (stalledVersionSwapSet.contains(parentStore.getName())) {
+                  stalledVersionSwapSet.remove(parentStore.getName());
+                }
+
+                if (rolloutOrder.get(rolloutOrder.size() - 1).equals(nextRegionToRollForward)) {
+                  updateStore(cluster, storeName, VersionStatus.ONLINE, targetVersionNum);
+
+                  LOGGER.info(
+                      "Updated parent version status to ONLINE for version: {} in store: {} as all regions have been rolled forward",
+                      targetVersionNum,
+                      storeName);
+                }
+              } catch (Exception e) {
+                LOGGER.warn("Failed to roll forward for store: {} in version: {}", storeName, targetVersionNum, e);
+                handleFailedRollForward(
+                    targetVersionNum,
+                    parentStore,
+                    kafkaTopicName,
+                    nextRegionToRollForward,
+                    cluster);
+              }
+            } else { // TODO clean up the piece below once the sequential rollout is complete
+              // Get eligible non target regions to roll forward in
+              Set<String> nonTargetRegionsCompleted =
+                  getRegionsToRollForward(remainingRegions, parentStore, targetVersionNum, cluster, kafkaTopicName);
+              if (nonTargetRegionsCompleted.isEmpty()) {
+                logLatency(startTime, storeName, targetVersionNum);
+                continue;
+              }
+
+              // Check that waitTime has elapsed in target regions
+              if (!didWaitTimeElapseInTargetRegions(
+                  pushStatusInfo.getExtraInfoUpdateTimestamp(),
+                  targetRegions,
+                  parentStore,
+                  targetVersionNum)) {
+                storePushCompletionTimeCache.put(kafkaTopicName, pushStatusInfo.getExtraInfoUpdateTimestamp());
+                logLatency(startTime, storeName, targetVersionNum);
+                continue;
+              }
+
+              // Check if version swap is stalled for the store
+              emitMetricIfVersionSwapIsStalled(
+                  pushStatusInfo.getExtraInfoUpdateTimestamp(),
+                  targetRegions,
+                  parentStore,
+                  targetVersionNum,
+                  targetVersion);
+
+              if (!didPostVersionSwapValidationsPass(
+                  parentStore,
+                  targetVersionNum,
+                  cluster,
+                  parentStore.getTargetSwapRegion(),
+                  kafkaTopicName)) {
+                logLatency(startTime, storeName, targetVersionNum);
+                continue;
+              }
+
+              // Switch to the target version in the completed non target regions
+              try {
+                rollForwardToTargetVersion(nonTargetRegionsCompleted, parentStore, targetVersion, cluster);
+              } catch (Exception e) {
+                LOGGER.warn("Failed to roll forward for store: {} in version: {}", storeName, targetVersionNum, e);
+                handleFailedRollForward(
+                    targetVersionNum,
+                    parentStore,
+                    kafkaTopicName,
+                    nonTargetRegionsCompleted.toString(),
+                    cluster);
               }
             }
+            logLatency(startTime, storeName, targetVersionNum);
           }
         }
       } catch (Exception e) {
@@ -817,8 +1094,49 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
     };
   }
 
+  public void updateStore(String clusterName, String storeName, VersionStatus status, int targetVersionNum) {
+    HelixVeniceClusterResources resources =
+        veniceParentHelixAdmin.getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName);
+    try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
+      ReadWriteStoreRepository repository = resources.getStoreMetadataRepository();
+      Store store = repository.getStore(storeName);
+      LOGGER.info(
+          "Updating store: {} version: {} from status {} to status {}",
+          storeName,
+          targetVersionNum,
+          store.getVersionStatus(targetVersionNum),
+          status);
+      store.updateVersionStatus(targetVersionNum, status);
+      repository.updateStore(store);
+    } catch (Exception e) {
+      LOGGER.warn("Failed to execute updateStore for store: {} in cluster: {}", storeName, clusterName, e);
+    }
+  }
+
   // Only used for testing
   Cache<String, Map<String, Long>> getStorePushCompletionTimes() {
     return storePushCompletionTimeCache;
+  }
+
+  private void logLatency(long startTime, String storeName, int targetVersionNum) {
+    long elapsedTime = LatencyUtils.getElapsedTimeFromMsToMs(startTime);
+    if (elapsedTime > LOG_LATENCY_THRESHOLD) {
+      String message = "Store " + storeName + " version " + targetVersionNum + " spent " + elapsedTime
+          + "ms in the DeferredVersionSwapLoop";
+      logMessageIfNotRedundant(message);
+    }
+  }
+
+  private void validateRolloutRegions(String cluster, List<String> rolloutRegions, Set<String> validRegions) {
+    if (rolloutRegions.isEmpty()) {
+      return;
+    }
+
+    for (String region: rolloutRegions) {
+      if (!validRegions.contains(region)) {
+        throw new VeniceException(
+            "Invalid region " + region + " in cluster " + cluster + " found in rollout order list");
+      }
+    }
   }
 }

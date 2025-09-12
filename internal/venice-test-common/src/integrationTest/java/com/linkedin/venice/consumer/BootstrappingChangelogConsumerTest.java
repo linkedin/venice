@@ -316,7 +316,7 @@ public class BootstrappingChangelogConsumerTest {
       verifyDelete(polledChangeEventsMap, 110, 120, 1);
     });
 
-    long startingSequenceId = polledChangeEventsList.iterator().next().getOffset().getConsumerSequenceId();
+    long startingSequenceId = polledChangeEventsList.iterator().next().getPosition().getConsumerSequenceId();
     Map<Integer, Long> partitionSequenceIdMap = new HashMap<>();
     verifyVCCSequenceId(polledChangeEventsList, partitionSequenceIdMap, startingSequenceId);
 
@@ -430,7 +430,7 @@ public class BootstrappingChangelogConsumerTest {
       return;
     }
     long startingSequenceId = knownStartingSequenceId < 0
-        ? polledChangeEventsList.iterator().next().getOffset().getConsumerSequenceId()
+        ? polledChangeEventsList.iterator().next().getPosition().getConsumerSequenceId()
         : knownStartingSequenceId;
     Map<Integer, Long> partitionSequenceIdMap =
         previousPartitionSequenceIdMap == null ? new HashMap<>() : previousPartitionSequenceIdMap;
@@ -438,7 +438,7 @@ public class BootstrappingChangelogConsumerTest {
       int partition = message.getPartition();
       long expectedSequenceId = partitionSequenceIdMap.computeIfAbsent(partition, k -> startingSequenceId);
       Assert.assertEquals(
-          message.getOffset().getConsumerSequenceId(),
+          message.getPosition().getConsumerSequenceId(),
           expectedSequenceId,
           "Unexpected sequence id for partition: " + partition + ", starting sequence id: " + startingSequenceId);
       partitionSequenceIdMap.put(partition, expectedSequenceId + 1);
