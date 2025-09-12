@@ -778,6 +778,10 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
             targetRegion,
             null,
             veniceProperties);
+        String message = "Validation outcome for store " + parentStore.getName() + " on version " + targetVersionNum
+            + " in region" + targetRegion + "with hook " + lifecycleHooksRecord.getStoreLifecycleHooksClassName()
+            + " is proceed: " + proceed;
+        logMessageIfNotRedundant(message);
       } catch (Exception e) {
         String message = "Encountered exception while executing lifecycle hook: "
             + lifecycleHooksRecord.getStoreLifecycleHooksClassName() + " for store: " + parentStore.getName()
@@ -811,6 +815,9 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       }
     }
 
+    String message = "Validation outcome for store " + parentStore.getName() + " on version " + targetVersionNum
+        + " in region" + targetRegion + " is proceed: " + proceed;
+    logMessageIfNotRedundant(message);
     return proceed;
   }
 

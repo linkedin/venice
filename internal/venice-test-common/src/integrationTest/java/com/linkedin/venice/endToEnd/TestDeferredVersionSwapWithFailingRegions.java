@@ -117,7 +117,7 @@ public class TestDeferredVersionSwapWithFailingRegions {
 
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
         StoreInfo parentStore = parentControllerClient.getStore(storeName).getStore();
-        Assert.assertEquals(parentStore.getVersion(1).get().getStatus(), VersionStatus.ERROR);
+        Assert.assertEquals(parentStore.getVersion(1).get().getStatus(), VersionStatus.KILLED);
       });
 
       // Verify that we can create a new version
@@ -229,7 +229,7 @@ public class TestDeferredVersionSwapWithFailingRegions {
       // Version status should be ERROR
       TestUtils.waitForNonDeterministicAssertion(90, TimeUnit.SECONDS, () -> {
         StoreInfo parentStore = parentControllerClient.getStore(storeName).getStore();
-        Assert.assertEquals(parentStore.getVersion(2).get().getStatus(), VersionStatus.ERROR);
+        Assert.assertEquals(parentStore.getVersion(2).get().getStatus(), VersionStatus.KILLED);
       });
 
       // verify that dvc client did not ingest the version
