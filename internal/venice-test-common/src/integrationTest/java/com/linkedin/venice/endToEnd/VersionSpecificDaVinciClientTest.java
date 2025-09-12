@@ -15,7 +15,6 @@ import static com.linkedin.venice.meta.PersistenceType.ROCKS_DB;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJProps;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
-import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithIntToIntSchema;
 import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithIntToStringSchema;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_STORE_NAME_PROP;
 import static org.testng.Assert.assertEquals;
@@ -91,7 +90,7 @@ public class VersionSpecificDaVinciClientTest {
   public void testVersionSpecificDaVinciClient() throws Exception {
     DaVinciConfig clientConfig = new DaVinciConfig();
     String storeName = Utils.getUniqueString(BASE_STORE_NAME);
-    boolean pushStatusStoreEnabled = false;
+    boolean pushStatusStoreEnabled = true;
     boolean chunkingEnabled = false;
     CompressionStrategy compressionStrategy = CompressionStrategy.NO_OP;
     String customValue = "1";
@@ -130,11 +129,21 @@ public class VersionSpecificDaVinciClientTest {
 
         assertEquals(value, expectedValue);
       }
+
+      nextVersion++;
+      runVenicePushJob(storeName, nextVersion, Integer.toString(nextVersion), numKeys);
+
+      // DaVinci should still see data for version 1
+      for (int k = 1; k <= numKeys; ++k) {
+        String value = client.get(k).get().toString();
+        String expectedValue = customValue + k;
+
+        assertEquals(value, expectedValue);
+      }
     }
   }
 
   private void runVenicePushJob(String storeName, int expectedVersion, String customValue, int numKeys) {
-
     File inputDir = getTempDataDirectory();
     try {
       writeSimpleAvroFileWithIntToStringSchema(inputDir, customValue, numKeys);
@@ -168,41 +177,6 @@ public class VersionSpecificDaVinciClientTest {
     Runnable writeAvroFileRunnable = () -> {
       try {
         writeSimpleAvroFileWithIntToStringSchema(inputDir, customValue, numKeys);
-      } catch (IOException e) {
-        throw new RuntimeException(e);
-      }
-    };
-    String valueSchema = "\"string\"";
-    setUpStore(
-        storeName,
-        paramsConsumer,
-        propertiesConsumer,
-        useDVCPushStatusStore,
-        chunkingEnabled,
-        compressionStrategy,
-        writeAvroFileRunnable,
-        valueSchema,
-        inputDir);
-  }
-
-  /*
-   * Batch data schema:
-   * Key: Integer
-   * Value: String
-   */
-  private void setUpStore(
-      String storeName,
-      Consumer<UpdateStoreQueryParams> paramsConsumer,
-      Consumer<Properties> propertiesConsumer,
-      boolean useDVCPushStatusStore) {
-    boolean chunkingEnabled = false;
-    CompressionStrategy compressionStrategy = CompressionStrategy.NO_OP;
-
-    File inputDir = getTempDataDirectory();
-
-    Runnable writeAvroFileRunnable = () -> {
-      try {
-        writeSimpleAvroFileWithIntToStringSchema(inputDir);
       } catch (IOException e) {
         throw new RuntimeException(e);
       }
@@ -256,41 +230,6 @@ public class VersionSpecificDaVinciClientTest {
       TestUtils.assertCommand(controllerClient.updateStore(storeName, params));
       runVPJ(vpjProperties, 1, cluster);
     }
-  }
-
-  /*
-   * Batch data schema:
-   * Key: Integer
-   * Value: Integer
-   */
-  protected void setUpStore(
-      String storeName,
-      boolean useDVCPushStatusStore,
-      boolean chunkingEnabled,
-      CompressionStrategy compressionStrategy,
-      int numKeys) {
-    Consumer<UpdateStoreQueryParams> paramsConsumer = params -> {};
-    Consumer<Properties> propertiesConsumer = properties -> {};
-
-    File inputDir = getTempDataDirectory();
-    Runnable writeAvroFileRunnable = () -> {
-      try {
-        writeSimpleAvroFileWithIntToIntSchema(inputDir, numKeys);
-      } catch (IOException e) {
-        throw new RuntimeException(e);
-      }
-    };
-    String valueSchema = "\"int\"";
-    setUpStore(
-        storeName,
-        paramsConsumer,
-        propertiesConsumer,
-        useDVCPushStatusStore,
-        chunkingEnabled,
-        compressionStrategy,
-        writeAvroFileRunnable,
-        valueSchema,
-        inputDir);
   }
 
   private static void runVPJ(Properties vpjProperties, int expectedVersionNumber, VeniceClusterWrapper cluster) {
