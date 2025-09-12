@@ -19,6 +19,7 @@ import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithIn
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_STORE_NAME_PROP;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNull;
+import static org.testng.Assert.assertThrows;
 
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.d2.balancer.D2ClientBuilder;
@@ -26,6 +27,7 @@ import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.davinci.client.DaVinciConfig;
 import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
 import com.linkedin.venice.D2.D2ClientUtils;
+import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.ControllerClient;
@@ -165,6 +167,11 @@ public class VersionSpecificDaVinciClientTest {
         Thread.sleep(10000);
         assertNull(client.get(streamingKey3).get());
       }
+
+      // Restarting client should cause an exception, because verison is deleted
+      client.close();
+      client.start();
+      assertThrows(VeniceClientException.class, () -> client.subscribeAll().get());
     }
   }
 
