@@ -3,14 +3,15 @@ package com.linkedin.venice.client.stats;
 import static com.linkedin.venice.client.stats.BasicClientStats.BasicClientMetricEntity.REQUEST_KEY_COUNT;
 import static com.linkedin.venice.client.stats.BasicClientStats.BasicClientMetricEntity.RESPONSE_KEY_COUNT;
 import static com.linkedin.venice.client.stats.BasicClientStats.CLIENT_METRIC_ENTITIES;
-import static com.linkedin.venice.client.stats.ClientMetricEntity.*;
+import static com.linkedin.venice.client.stats.ClientMetricEntity.RETRY_CALL_COUNT;
+import static com.linkedin.venice.client.stats.ClientMetricEntity.RETRY_REQUEST_KEY_COUNT;
+import static com.linkedin.venice.client.stats.ClientMetricEntity.RETRY_RESPONSE_KEY_COUNT;
 import static com.linkedin.venice.read.RequestType.SINGLE_GET;
 import static com.linkedin.venice.stats.ClientType.DAVINCI_CLIENT;
 import static com.linkedin.venice.stats.ClientType.THIN_CLIENT;
 import static com.linkedin.venice.stats.VeniceMetricsRepository.getVeniceMetricsRepository;
 import static com.linkedin.venice.stats.dimensions.HttpResponseStatusCodeCategory.getVeniceHttpResponseStatusCodeCategory;
 import static com.linkedin.venice.stats.dimensions.HttpResponseStatusEnum.transformIntToHttpResponseStatusEnum;
-import static com.linkedin.venice.stats.dimensions.MessageType.*;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE_CATEGORY;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_METHOD;
@@ -29,7 +30,6 @@ import static org.testng.Assert.assertTrue;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.stats.ClientType;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
-import com.linkedin.venice.stats.dimensions.MessageType;
 import com.linkedin.venice.stats.dimensions.RequestRetryType;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
 import com.linkedin.venice.stats.metrics.MetricEntity;
@@ -180,7 +180,7 @@ public class BasicClientStatsTest {
       }
 
       // Check OpenTelemetry metrics
-      Attributes expectedAttr = getAttributes(storeName, isRequest ? REQUEST : RESPONSE);
+      Attributes expectedAttr = getAttributes(storeName);
       validateExponentialHistogramPointData(
           inMemoryMetricReader,
           keyCount,
@@ -247,7 +247,7 @@ public class BasicClientStatsTest {
       }
 
       // Check OpenTelemetry metrics
-      Attributes expectedAttr = getAttributes(storeName, isRequest ? REQUEST : RESPONSE);
+      Attributes expectedAttr = getAttributes(storeName);
       validateHistogramPointData(
           inMemoryMetricReader,
           keyCount,
@@ -532,7 +532,7 @@ public class BasicClientStatsTest {
     return builder.build();
   }
 
-  private Attributes getAttributes(String storeName, MessageType type) {
+  private Attributes getAttributes(String storeName) {
     AttributesBuilder builder = Attributes.builder()
         .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), storeName)
         .put(VENICE_REQUEST_METHOD.getDimensionNameInDefaultFormat(), SINGLE_GET.getDimensionValue());
