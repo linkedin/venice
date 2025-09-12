@@ -12,8 +12,6 @@ public class StreamingResponseTracker {
   private final ClientStats stats;
   private final int keyCntForP50;
   private final int keyCntForP90;
-  private final int keyCntForP95;
-  private final int keyCntForP99;
   private final long startTimeInNS;
   private final AtomicInteger receivedKeyCnt = new AtomicInteger(0);
 
@@ -21,8 +19,6 @@ public class StreamingResponseTracker {
     this.stats = stats;
     this.keyCntForP50 = keyCnt / 2;
     this.keyCntForP90 = keyCnt * 9 / 10;
-    this.keyCntForP95 = keyCnt * 95 / 100;
-    this.keyCntForP99 = keyCnt * 99 / 100;
     this.startTimeInNS = startTimeInNS;
   }
 
@@ -39,12 +35,6 @@ public class StreamingResponseTracker {
     }
     if (currentKeyCnt == keyCntForP90) {
       stats.recordStreamingResponseTimeToReceive90PctRecord(LatencyUtils.getElapsedTimeFromNSToMS(startTimeInNS));
-    }
-    if (currentKeyCnt == keyCntForP95) {
-      stats.recordStreamingResponseTimeToReceive95PctRecord(LatencyUtils.getElapsedTimeFromNSToMS(startTimeInNS));
-    }
-    if (currentKeyCnt == keyCntForP99) {
-      stats.recordStreamingResponseTimeToReceive99PctRecord(LatencyUtils.getElapsedTimeFromNSToMS(startTimeInNS));
     }
   }
 }

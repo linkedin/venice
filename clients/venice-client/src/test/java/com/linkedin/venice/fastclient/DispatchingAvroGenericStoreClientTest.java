@@ -476,8 +476,6 @@ public class DispatchingAvroGenericStoreClientTest {
         assertTrue(metrics.get(metricPrefix + "response_ttfr.Avg").value() > 0);
         assertTrue(metrics.get(metricPrefix + "response_tt50pr.Avg").value() > 0);
         assertTrue(metrics.get(metricPrefix + "response_tt90pr.Avg").value() > 0);
-        assertTrue(metrics.get(metricPrefix + "response_tt95pr.Avg").value() > 0);
-        assertTrue(metrics.get(metricPrefix + "response_tt99pr.Avg").value() > 0);
         assertEquals(batchGetRequestContext.successRequestKeyCount.get(), (int) successKeyCount);
 
         // Check route metrics for batch-get
