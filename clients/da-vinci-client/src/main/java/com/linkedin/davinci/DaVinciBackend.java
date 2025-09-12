@@ -670,6 +670,12 @@ public class DaVinciBackend implements Closeable {
 
   // Move the logic to this protected method to make it visible for unit test.
   protected void handleStoreChanged(StoreBackend storeBackend) {
+    // Skip version swaps for version-specific stores
+    if (isVersionSpecificStore(storeBackend.getStoreName())) {
+      LOGGER.info("Ignoring version swap for version-specific store: {}", storeBackend.getStoreName());
+      return;
+    }
+
     storeBackend.validateDaVinciAndVeniceCurrentVersion();
     storeBackend.tryDeleteInvalidDaVinciFutureVersion();
     /**
@@ -722,12 +728,6 @@ public class DaVinciBackend implements Closeable {
   private final StoreDataChangedListener storeChangeListener = new StoreDataChangedListener() {
     @Override
     public void handleStoreChanged(Store store) {
-      // Skip version swaps for version-specific stores
-      if (isVersionSpecificStore(store.getName())) {
-        LOGGER.info("Ignoring store change event for version-specific store: {}", store.getName());
-        return;
-      }
-
       StoreBackend storeBackend = storeByNameMap.get(store.getName());
       if (storeBackend != null) {
         DaVinciBackend.this.handleStoreChanged(storeBackend);

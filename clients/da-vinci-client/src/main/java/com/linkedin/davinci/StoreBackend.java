@@ -401,4 +401,8 @@ public class StoreBackend {
   public StoreDeserializerCache getStoreDeserializerCache() {
     return storeDeserializerCache;
   }
+
+  public String getStoreName() {
+    return storeName;
+  }
 }
