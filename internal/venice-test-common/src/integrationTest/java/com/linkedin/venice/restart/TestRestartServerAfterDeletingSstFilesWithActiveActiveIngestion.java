@@ -14,6 +14,7 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
+import static org.testng.Assert.assertTrue;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.d2.balancer.D2Client;
@@ -76,7 +77,6 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.rocksdb.ComparatorOptions;
 import org.rocksdb.util.BytewiseComparator;
-import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
@@ -395,7 +395,7 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
             .getStore(clusterWrappers.get(colo).getClusterName(), STORE_NAME)
             .getCurrentVersion();
         LOGGER.info("colo {} currentVersion {}, pushVersion {}", colo, currentVersion, newVersion);
-        Assert.assertTrue(
+        assertTrue(
             currentVersion >= newVersion,
             "Version is not activated in colo " + colo + ". Current version: " + currentVersion);
       }
