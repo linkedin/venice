@@ -2,11 +2,8 @@ package com.linkedin.venice.client.stats;
 
 import static com.linkedin.venice.stats.dimensions.HttpResponseStatusCodeCategory.getVeniceHttpResponseStatusCodeCategory;
 import static com.linkedin.venice.stats.dimensions.HttpResponseStatusEnum.transformIntToHttpResponseStatusEnum;
-import static com.linkedin.venice.stats.dimensions.MessageType.REQUEST;
-import static com.linkedin.venice.stats.dimensions.MessageType.RESPONSE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE_CATEGORY;
-import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_MESSAGE_TYPE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_METHOD;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
@@ -28,10 +25,10 @@ import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository;
 import com.linkedin.venice.stats.dimensions.HttpResponseStatusCodeCategory;
 import com.linkedin.venice.stats.dimensions.HttpResponseStatusEnum;
-import com.linkedin.venice.stats.dimensions.MessageType;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
 import com.linkedin.venice.stats.metrics.MetricEntity;
+import com.linkedin.venice.stats.metrics.MetricEntityStateBase;
 import com.linkedin.venice.stats.metrics.MetricEntityStateOneEnum;
 import com.linkedin.venice.stats.metrics.MetricEntityStateThreeEnums;
 import com.linkedin.venice.stats.metrics.MetricType;
@@ -79,8 +76,8 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
   private final MetricEntityStateOneEnum<VeniceResponseStatusCategory> unhealthyRequestMetricForDavinciClient;
   private final MetricEntityStateOneEnum<VeniceResponseStatusCategory> healthyLatencyMetricForDavinciClient;
   private final MetricEntityStateOneEnum<VeniceResponseStatusCategory> unhealthyLatencyMetricForDavinciClient;
-  private final MetricEntityStateOneEnum<MessageType> requestKeyCount;
-  private final MetricEntityStateOneEnum<MessageType> successResponseKeyCount;
+  private final MetricEntityStateBase requestKeyCount;
+  private final MetricEntityStateBase successResponseKeyCount;
   private final Sensor successRequestRatioSensor;
   private final Sensor successRequestKeyRatioSensor;
   private final Rate requestRate = new OccurrenceRate();
@@ -248,23 +245,23 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
     }
 
     // request key count
-    requestKeyCount = MetricEntityStateOneEnum.create(
-        BasicClientMetricEntity.KEY_COUNT.getMetricEntity(),
+    requestKeyCount = MetricEntityStateBase.create(
+        BasicClientMetricEntity.REQUEST_KEY_COUNT.getMetricEntity(),
         getOtelRepository(),
         this::registerSensor,
         BasicClientTehutiMetricName.REQUEST_KEY_COUNT,
         Arrays.asList(requestKeyCountRate, new Avg(), new Max()),
         baseDimensionsMap,
-        MessageType.class);
+        baseAttributes);
 
-    successResponseKeyCount = MetricEntityStateOneEnum.create(
-        BasicClientMetricEntity.KEY_COUNT.getMetricEntity(),
+    successResponseKeyCount = MetricEntityStateBase.create(
+        BasicClientMetricEntity.RESPONSE_KEY_COUNT.getMetricEntity(),
         otelRepository,
         this::registerSensor,
         BasicClientTehutiMetricName.SUCCESS_REQUEST_KEY_COUNT,
         Arrays.asList(successRequestKeyCountRate, new Avg(), new Max()),
         baseDimensionsMap,
-        MessageType.class);
+        baseAttributes);
 
     // successRequestRatioSensor will be a derived metric in OTel
     successRequestRatioSensor =
@@ -324,11 +321,11 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
   }
 
   public void recordRequestKeyCount(int keyCount) {
-    requestKeyCount.record(keyCount, REQUEST);
+    requestKeyCount.record(keyCount);
   }
 
   public void recordResponseKeyCount(int keyCount) {
-    successResponseKeyCount.record(keyCount, RESPONSE);
+    successResponseKeyCount.record(keyCount);
   }
 
   protected final Rate getRequestRate() {
@@ -433,9 +430,14 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
     /**
      * Count of keys for venice client request and response.
      */
-    KEY_COUNT(
-        MetricType.HISTOGRAM, MetricUnit.NUMBER, "Count of keys for venice client request and response",
-        setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD, VENICE_MESSAGE_TYPE)
+    REQUEST_KEY_COUNT(
+        "request.key_count", MetricType.HISTOGRAM, MetricUnit.NUMBER, "Count of keys for venice client request",
+        setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)
+    ),
+
+    RESPONSE_KEY_COUNT(
+        "response.key_count", MetricType.HISTOGRAM, MetricUnit.NUMBER, "Count of keys for venice client response",
+        setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)
     ),
     /**
      * Count of all DaVinci requests: as DaVinci is local reads, we do not track HTTP response codes

@@ -175,7 +175,8 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceAfte
             : new VeniceChangeCoordinate(topicPartition.getPubSubTopic().getName(), earliestOffset, partition);
 
         // If earliest offset is larger than the local, we should just bootstrap from beginning.
-        if (earliestCheckpoint != null && earliestCheckpoint.comparePosition(localCheckpoint) > -1) {
+        if (earliestCheckpoint != null
+            && earliestCheckpoint.comparePosition(pubSubConsumer, topicPartition, localCheckpoint) > -1L) {
           return false;
         }
       }
@@ -308,13 +309,14 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceAfte
     try {
       dbInfo.put(
           CHANGE_CAPTURE_COORDINATE,
-          VeniceChangeCoordinate.convertVeniceChangeCoordinateToStringAndEncode(bootstrapState.currentPubSubPosition));
+          VeniceChangeCoordinate
+              .convertVeniceChangeCoordinateToStringAndEncode(bootstrapState.currentChangeCoordinate));
       LOGGER.info(
           "Update checkpoint for partition: {}, new offset: {}",
           partitionId,
-          bootstrapState.currentPubSubPosition);
+          bootstrapState.currentChangeCoordinate);
     } catch (IOException e) {
-      LOGGER.error("Failed to update change capture coordinate position: {}", bootstrapState.currentPubSubPosition);
+      LOGGER.error("Failed to update change capture coordinate position: {}", bootstrapState.currentChangeCoordinate);
     }
 
     lastOffset.setDatabaseInfo(dbInfo);
@@ -400,13 +402,13 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceAfte
         super.internalPoll(timeoutInMs, topicSuffix, true);
     for (PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate> record: polledResults) {
       BootstrapState currentPartitionState = bootstrapStateMap.get(record.getPartition());
-      currentPartitionState.currentPubSubPosition = record.getOffset();
+      currentPartitionState.currentChangeCoordinate = record.getPosition();
       if (currentPartitionState.bootstrapState.equals(PollState.CATCHING_UP)) {
-        if (currentPartitionState.isCaughtUp()) {
+        if (currentPartitionState.isCaughtUp(pubSubConsumer)) {
           LOGGER.info(
-              "pollAndCatchup completed for partition: {} with offset: {}, put message: {}, delete message: {}",
+              "pollAndCatchup completed for partition: {} with vcc: {}, put message: {}, delete message: {}",
               record.getPartition(),
-              record.getOffset(),
+              record.getPosition(),
               partitionToPutMessageCount.getOrDefault(record.getPartition(), new AtomicLong(0)).get(),
               partitionToDeleteMessageCount.getOrDefault(record.getPartition(), new AtomicLong(0)).get());
           currentPartitionState.bootstrapState = PollState.BOOTSTRAPPING;
@@ -445,8 +447,8 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceAfte
 
     // Update currentPubSubPosition for a partition
     BootstrapState bootstrapState = bootstrapStateMap.get(partition.getPartitionNumber());
-    VeniceChangeCoordinate currentPubSubPosition = bootstrapState.currentPubSubPosition;
-    bootstrapState.currentPubSubPosition = new VeniceChangeCoordinate(
+    VeniceChangeCoordinate currentPubSubPosition = bootstrapState.currentChangeCoordinate;
+    bootstrapState.currentChangeCoordinate = new VeniceChangeCoordinate(
         currentPubSubPosition.getTopic(),
         recordOffset,
         currentPubSubPosition.getPartition(),
@@ -480,6 +482,7 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceAfte
         // Where we're at now
         String offsetString = offsetRecord.getDatabaseInfo().get(CHANGE_CAPTURE_COORDINATE);
         VeniceChangeCoordinate localCheckpoint;
+        PubSubTopicPartition topicPartition = getTopicPartition(partition);
         try {
           if (StringUtils.isEmpty(offsetString)) {
             LOGGER.info(
@@ -487,7 +490,7 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceAfte
                 partition,
                 offsetRecord.getCheckpointedLocalVtPosition());
             localCheckpoint = new VeniceChangeCoordinate(
-                getTopicPartition(partition).getPubSubTopic().getName(),
+                topicPartition.getPubSubTopic().getName(),
                 offsetRecord.getCheckpointedLocalVtPosition(),
                 partition);
           } else {
@@ -512,10 +515,11 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceAfte
         LOGGER.info("Got latest offset: {} for partition: {}", targetCheckpoint, partition);
 
         synchronized (bootstrapStateMap) {
-          BootstrapState newState = new BootstrapState();
-          newState.currentPubSubPosition = localCheckpoint;
-          newState.targetPubSubPosition = targetCheckpoint;
-          newState.bootstrapState = newState.isCaughtUp() ? PollState.BOOTSTRAPPING : PollState.CATCHING_UP;
+          BootstrapState newState = new BootstrapState(topicPartition);
+          newState.currentChangeCoordinate = localCheckpoint;
+          newState.targetChangeCoordinate = targetCheckpoint;
+          newState.bootstrapState =
+              newState.isCaughtUp(pubSubConsumer) ? PollState.BOOTSTRAPPING : PollState.CATCHING_UP;
           bootstrapStateMap.put(partition, newState);
         }
       }
@@ -523,7 +527,7 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceAfte
       // Seek to the current position, so we can catch up from there to target
       try {
         seekToCheckpoint(
-            bootstrapStateMap.values().stream().map(state -> state.currentPubSubPosition).collect(Collectors.toSet()))
+            bootstrapStateMap.values().stream().map(state -> state.currentChangeCoordinate).collect(Collectors.toSet()))
                 .get();
       } catch (Exception e) {
         throw new VeniceException("Caught exception when seeking to bootstrap", e);
@@ -596,13 +600,18 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceAfte
   }
 
   static class BootstrapState {
+    private final PubSubTopicPartition topicPartition;
     PollState bootstrapState;
-    VeniceChangeCoordinate currentPubSubPosition;
-    VeniceChangeCoordinate targetPubSubPosition;
+    VeniceChangeCoordinate currentChangeCoordinate;
+    VeniceChangeCoordinate targetChangeCoordinate;
     long processedRecordSizeSinceLastSync;
 
-    boolean isCaughtUp() {
-      return currentPubSubPosition.comparePosition(targetPubSubPosition) > -1;
+    public BootstrapState(PubSubTopicPartition topicPartition) {
+      this.topicPartition = topicPartition;
+    }
+
+    boolean isCaughtUp(PubSubConsumerAdapter pubSubConsumer) {
+      return currentChangeCoordinate.comparePosition(pubSubConsumer, topicPartition, targetChangeCoordinate) > -1;
     }
 
     /**

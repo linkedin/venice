@@ -10,7 +10,7 @@ public class ImmutableChangeCapturePubSubMessage<K, V> implements PubSubMessage<
   private final K key;
   private final V value;
   private final PubSubTopicPartition topicPartition;
-  private final VeniceChangeCoordinate offset;
+  private final VeniceChangeCoordinate changeCoordinate;
   private final long timestamp;
   private final int payloadSize;
   private final boolean isEndOfBootstrap;
@@ -29,7 +29,7 @@ public class ImmutableChangeCapturePubSubMessage<K, V> implements PubSubMessage<
     this.topicPartition = Objects.requireNonNull(topicPartition);
     this.timestamp = timestamp;
     this.payloadSize = payloadSize;
-    this.offset = new VeniceChangeCoordinate(
+    this.changeCoordinate = new VeniceChangeCoordinate(
         this.topicPartition.getPubSubTopic().getName(),
         pubSubPosition,
         this.topicPartition.getPartitionNumber(),
@@ -53,8 +53,8 @@ public class ImmutableChangeCapturePubSubMessage<K, V> implements PubSubMessage<
   }
 
   @Override
-  public VeniceChangeCoordinate getOffset() {
-    return offset;
+  public VeniceChangeCoordinate getPosition() {
+    return changeCoordinate;
   }
 
   @Override
@@ -74,8 +74,8 @@ public class ImmutableChangeCapturePubSubMessage<K, V> implements PubSubMessage<
 
   @Override
   public String toString() {
-    return "PubSubMessage{" + topicPartition + ", offset=" + offset + ", timestamp=" + timestamp + ", isEndOfBootstrap="
-        + isEndOfBootstrap + '}';
+    return "PubSubMessage{" + topicPartition + ", changeCoordinate=" + changeCoordinate + ", timestamp=" + timestamp
+        + ", isEndOfBootstrap=" + isEndOfBootstrap + '}';
   }
 
   @Override

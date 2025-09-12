@@ -159,7 +159,6 @@ import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
 import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
-import com.linkedin.venice.pubsub.PubSubUtil;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
@@ -1477,9 +1476,8 @@ public abstract class StoreIngestionTaskTest {
       verifyPut(aaConfig, true);
       verifyDelete(aaConfig, true, false);
       // Verify it commits the offset to Offset Manager
-      long currentOffset = deleteProduceResult.getOffset();
       OffsetRecord expectedOffsetRecordForDeleteMessage =
-          getOffsetRecord(InMemoryPubSubPosition.of(currentOffset), Optional.empty());
+          getOffsetRecord(deleteProduceResult.getPubSubPosition(), Optional.empty());
       verify(mockStorageMetadataService, timeout(TEST_TIMEOUT_MS))
           .put(topic, PARTITION_FOO, expectedOffsetRecordForDeleteMessage);
 
@@ -1586,9 +1584,8 @@ public abstract class StoreIngestionTaskTest {
           .put(PARTITION_FOO, putKeyFoo2, ByteBuffer.wrap(ValueRecord.create(SCHEMA_ID, putValue).serialize()));
 
       // Verify it commits the offset to Offset Manager
-      long currentOffset = putMetadata4.getOffset();
       OffsetRecord expectedOffsetRecordForLastMessage =
-          getOffsetRecord(InMemoryPubSubPosition.of(currentOffset), Optional.empty());
+          getOffsetRecord(putMetadata4.getPubSubPosition(), Optional.empty());
       verify(mockStorageMetadataService, timeout(TEST_TIMEOUT_MS))
           .put(topic, PARTITION_FOO, expectedOffsetRecordForLastMessage);
     }, aaConfig);
@@ -2628,15 +2625,17 @@ public abstract class StoreIngestionTaskTest {
       verifyDelete(aaConfig, false, true);
 
       // Verify it commits the offset to Offset Manager after receiving EOP control message
-      OffsetRecord expectedOffsetRecordForDeleteMessage = getOffsetRecord(deleteMetadata.getOffset() + 1, true);
+      OffsetRecord expectedOffsetRecordForDeleteMessage =
+          getOffsetRecord(deleteMetadata.getPubSubPosition().getNumericOffset() + 1, true);
       verify(mockStorageMetadataService, timeout(TEST_TIMEOUT_MS))
           .put(topic, PARTITION_FOO, expectedOffsetRecordForDeleteMessage);
       // Deferred write is not going to commit offset for every message, but will commit offset for every control
       // message
       // The following verification is for START_OF_PUSH control message
-      long currentOffset = putMetadata.getOffset() - 1;
+      InMemoryPubSubPosition currentPosition =
+          ((InMemoryPubSubPosition) putMetadata.getPubSubPosition()).getPreviousPosition();
       verify(mockStorageMetadataService, times(1))
-          .put(topic, PARTITION_FOO, getOffsetRecord(InMemoryPubSubPosition.of(currentOffset), Optional.empty()));
+          .put(topic, PARTITION_FOO, getOffsetRecord(currentPosition, Optional.empty()));
       // Check database mode switches from deferred-write to transactional after EOP control message
       StoragePartitionConfig deferredWritePartitionConfig = new StoragePartitionConfig(topic, PARTITION_FOO);
       deferredWritePartitionConfig.setDeferredWrite(true);
@@ -2676,15 +2675,19 @@ public abstract class StoreIngestionTaskTest {
       verify(mockStorageMetadataService, timeout(TEST_TIMEOUT_MS)).getLastOffset(topic, PARTITION_FOO);
 
       // Verify it commits the offset to Offset Manager after receiving EOP control message
-      OffsetRecord expectedOffsetRecordForDeleteMessage = getOffsetRecord(deleteMetadata.getOffset() + 1, true);
+      InMemoryPubSubPosition nextToDeletePosition =
+          ((InMemoryPubSubPosition) deleteMetadata.getPubSubPosition()).getNextPosition();
+      OffsetRecord expectedOffsetRecordForDeleteMessage =
+          getOffsetRecord(nextToDeletePosition, Optional.of(InMemoryPubSubPosition.of(1000L)));
       verify(mockStorageMetadataService, timeout(TEST_TIMEOUT_MS))
           .put(topic, PARTITION_FOO, expectedOffsetRecordForDeleteMessage);
       // Deferred write is not going to commit offset for every message, but will commit offset for every control
       // message
       // The following verification is for START_OF_PUSH control message
-      long currentOffset = putMetadata.getOffset() - 1;
+      InMemoryPubSubPosition currentPosition =
+          ((InMemoryPubSubPosition) putMetadata.getPubSubPosition()).getPreviousPosition();
       verify(mockStorageMetadataService, times(1))
-          .put(topic, PARTITION_FOO, getOffsetRecord(InMemoryPubSubPosition.of(currentOffset), Optional.empty()));
+          .put(topic, PARTITION_FOO, getOffsetRecord(currentPosition, Optional.empty()));
       // Check database mode switches from deferred-write to transactional after EOP control message
       StoragePartitionConfig deferredWritePartitionConfig = new StoragePartitionConfig(topic, PARTITION_FOO);
       boolean deferredWrite;
@@ -4594,8 +4597,8 @@ public abstract class StoreIngestionTaskTest {
         OffsetRecord offsetRecord = pcs.getOffsetRecord();
         assertNotNull(offsetRecord);
         Assert.assertEquals(
-            PubSubUtil.comparePubSubPositions(offsetRecord.getCheckpointedLocalVtPosition(), p0),
-            0,
+            offsetRecord.getCheckpointedLocalVtPosition().getNumericOffset(),
+            p0.getNumericOffset(),
             "offsetRecord.getCheckpointedLocalVtPosition() for PARTITION_FOO is expected to be zero!");
       }
 
@@ -4607,14 +4610,14 @@ public abstract class StoreIngestionTaskTest {
       assertNotNull(offsetRecord);
       Assert.assertEquals(pcs.getLatestProcessedVtPosition(), p2); // PCS updated
       // offsetRecord hasn't been updated yet
-      Assert.assertEquals(PubSubUtil.comparePubSubPositions(offsetRecord.getCheckpointedLocalVtPosition(), p0), 0);
+      Assert.assertEquals(offsetRecord.getCheckpointedLocalVtPosition().getNumericOffset(), p0.getNumericOffset());
       storeIngestionTaskUnderTest.close();
 
       // Verify the OffsetRecord is synced up with pcs and get persisted only once during shutdown
       verify(mockStorageMetadataService, timeout(TEST_TIMEOUT_MS).times(1)).put(eq(topic), eq(PARTITION_FOO), any());
       Assert.assertEquals(
-          PubSubUtil.comparePubSubPositions(offsetRecord.getCheckpointedLocalVtPosition(), p2),
-          0,
+          offsetRecord.getCheckpointedLocalVtPosition().getNumericOffset(),
+          p2.getNumericOffset(),
           "offsetRecord.getCheckpointedLocalVtPosition() for PARTITION_FOO is expected to be 2!");
 
       // Verify that the underlying storage engine sync function is invoked.
@@ -5853,12 +5856,10 @@ public abstract class StoreIngestionTaskTest {
     doCallRealMethod().when(ingestionTask).loadGlobalRtDiv(anyInt(), anyString());
     doReturn(true).when(ingestionTask).isGlobalRtDivEnabled();
 
-    GenericRecord valueRecord = mock(GenericRecord.class);
     InMemoryPubSubPosition p1 = InMemoryPubSubPosition.of(11);
     GlobalRtDivState globalRtDivState =
         new GlobalRtDivState("localhost:1234", Collections.emptyMap(), p1.toWireFormatBuffer());
-    doReturn(globalRtDivState).when(valueRecord).get(any());
-    doReturn(valueRecord).when(ingestionTask).readStoredValueRecord(any(), any(), anyInt(), any(), any());
+    doReturn(globalRtDivState).when(ingestionTask).readGlobalRtDivState(any(), anyInt(), any(), any());
     DataIntegrityValidator consumerDiv = mock(DataIntegrityValidator.class);
     doReturn(consumerDiv).when(ingestionTask).getConsumerDiv();
     Int2ObjectMap<String> brokerIdToUrlMap = new Int2ObjectOpenHashMap<>();
@@ -5874,6 +5875,7 @@ public abstract class StoreIngestionTaskTest {
     doReturn(pubSubContext).when(ingestionTask).getPubSubContext();
 
     ingestionTask.restoreProducerStatesForLeaderConsumption(PARTITION_FOO);
+    verify(consumerDiv, times(1)).clearRtSegments(eq(PARTITION_FOO));
     verify(ingestionTask, times(1)).loadGlobalRtDiv(eq(PARTITION_FOO));
     brokerIdToUrlMap.forEach((brokerId, url) -> {
       verify(ingestionTask, times(1)).loadGlobalRtDiv(eq(PARTITION_FOO), eq(url));

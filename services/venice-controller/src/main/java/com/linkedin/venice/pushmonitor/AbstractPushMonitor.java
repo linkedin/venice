@@ -866,21 +866,25 @@ public abstract class AbstractPushMonitor
           LOGGER.warn("Skip updating push status: {} since it is already in: {}", kafkaTopic, previousStatus);
           return;
         }
-
-        ExecutionStatusWithDetails statusWithDetails =
-            checkPushStatus(pushStatus, partitionAssignment, getDisableReplicaCallback(kafkaTopic));
-        if (!statusWithDetails.getStatus().equals(pushStatus.getCurrentStatus())) {
-          if (statusWithDetails.getStatus().isTerminal()) {
-            LOGGER.info(
-                "Offline push status will be changed to {} for topic: {} from status: {}",
-                statusWithDetails.getStatus(),
-                kafkaTopic,
-                pushStatus.getCurrentStatus());
-            handleTerminalOfflinePushUpdate(pushStatus, statusWithDetails);
-          } else if (statusWithDetails.getStatus().equals(ExecutionStatus.END_OF_PUSH_RECEIVED)) {
-            // For all partitions, at least one replica has received the EOP. Check if it's time to start buffer replay.
-            checkWhetherToStartEOPProcedures(pushStatus);
+        try {
+          ExecutionStatusWithDetails statusWithDetails =
+              checkPushStatus(pushStatus, partitionAssignment, getDisableReplicaCallback(kafkaTopic));
+          if (!statusWithDetails.getStatus().equals(pushStatus.getCurrentStatus())) {
+            if (statusWithDetails.getStatus().isTerminal()) {
+              LOGGER.info(
+                  "Offline push status will be changed to {} for topic: {} from status: {}",
+                  statusWithDetails.getStatus(),
+                  kafkaTopic,
+                  pushStatus.getCurrentStatus());
+              handleTerminalOfflinePushUpdate(pushStatus, statusWithDetails);
+            } else if (statusWithDetails.getStatus().equals(ExecutionStatus.END_OF_PUSH_RECEIVED)) {
+              // For all partitions, at least one replica has received the EOP. Check if it's time to start buffer
+              // replay.
+              checkWhetherToStartEOPProcedures(pushStatus);
+            }
           }
+        } catch (Exception e) {
+          LOGGER.error("Failed to process external view change for topic: {}", partitionAssignment.getTopic(), e);
         }
       } else {
         LOGGER.info(

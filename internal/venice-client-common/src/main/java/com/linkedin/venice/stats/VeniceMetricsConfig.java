@@ -1,9 +1,11 @@
 package com.linkedin.venice.stats;
 
 import static com.linkedin.venice.stats.VeniceOpenTelemetryMetricNamingFormat.SNAKE_CASE;
+import static io.opentelemetry.sdk.metrics.InstrumentType.GAUGE;
 
 import com.linkedin.venice.stats.metrics.MetricEntity;
 import io.opentelemetry.exporter.otlp.internal.OtlpConfigUtil;
+import io.opentelemetry.sdk.metrics.data.AggregationTemporality;
 import io.opentelemetry.sdk.metrics.export.AggregationTemporalitySelector;
 import io.opentelemetry.sdk.metrics.export.MetricExporter;
 import io.opentelemetry.sdk.metrics.export.MetricReader;
@@ -127,6 +129,16 @@ public class VeniceMetricsConfig {
       "otel.exporter.otlp.metrics.temporality.preference";
 
   /**
+   * Make Synchronous Gauge instruments export the last recorded value even if the instrument is not
+   * recorded in the current collection interval.
+   * - If true, it will export the last recorded value even if the instrument is not recorded in the current collection interval.
+   * - If false, it will use the default behavior of the selected {@link #otelAggregationTemporalitySelector}, which is
+   *   {@link AggregationTemporalitySelector#deltaPreferred()} by default.
+   */
+  public static final String OTEL_VENICE_EXPORT_LAST_RECORDED_VALUE_FOR_SYNCHRONOUS_GAUGE =
+      "otel.venice.export.last.recorded.value.for.synchronous.gauge";
+
+  /**
    * Default histogram aggregation to be used for all histograms: Select one of the below <br>
    * 1. base2_exponential_bucket_histogram <br>
    * 2. explicit_bucket_histogram
@@ -208,6 +220,11 @@ public class VeniceMetricsConfig {
   /** Metric naming conventions for OpenTelemetry metrics */
   private final VeniceOpenTelemetryMetricNamingFormat metricNamingFormat;
 
+  /**
+   * Whether to export the last recorded value for synchronous Gauge instruments.
+   */
+  private final boolean exportLastRecordedValueForSynchronousGauge;
+
   /** Aggregation Temporality selector to export only the delta or cumulate or different */
   private final AggregationTemporalitySelector otelAggregationTemporalitySelector;
 
@@ -234,6 +251,7 @@ public class VeniceMetricsConfig {
     this.otelHeaders = builder.otelHeaders;
     this.exportOtelMetricsToLog = builder.exportOtelMetricsToLog;
     this.metricNamingFormat = builder.metricNamingFormat;
+    this.exportLastRecordedValueForSynchronousGauge = builder.exportLastRecordedValueForSynchronousGauge;
     this.otelAggregationTemporalitySelector = builder.otelAggregationTemporalitySelector;
     this.useOtelExponentialHistogram = builder.useOtelExponentialHistogram;
     this.otelExponentialHistogramMaxScale = builder.otelExponentialHistogramMaxScale;
@@ -257,6 +275,7 @@ public class VeniceMetricsConfig {
     Map<String, String> otelHeaders = new HashMap<>();
     private boolean exportOtelMetricsToLog = false;
     private VeniceOpenTelemetryMetricNamingFormat metricNamingFormat = SNAKE_CASE;
+    private boolean exportLastRecordedValueForSynchronousGauge = true;
     private AggregationTemporalitySelector otelAggregationTemporalitySelector =
         AggregationTemporalitySelector.deltaPreferred();
     private boolean useOtelExponentialHistogram = true;
@@ -328,6 +347,11 @@ public class VeniceMetricsConfig {
     public Builder setMetricNamingFormat(String metricNamingFormat) {
       this.metricNamingFormat =
           VeniceOpenTelemetryMetricNamingFormat.valueOf(metricNamingFormat.toUpperCase(Locale.ROOT));
+      return this;
+    }
+
+    public Builder setExportLastRecordedValueForSynchronousGauge(boolean exportLastRecordedValueForSynchronousGauge) {
+      this.exportLastRecordedValueForSynchronousGauge = exportLastRecordedValueForSynchronousGauge;
       return this;
     }
 
@@ -439,6 +463,10 @@ public class VeniceMetricsConfig {
         otelHeaders.put(headers[0], headers[1]);
       }
 
+      if ((configValue = configs.get(OTEL_VENICE_EXPORT_LAST_RECORDED_VALUE_FOR_SYNCHRONOUS_GAUGE)) != null) {
+        setExportLastRecordedValueForSynchronousGauge(Boolean.parseBoolean(configValue));
+      }
+
       if ((configValue = configs.get(OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE)) != null) {
         switch (configValue.toLowerCase(Locale.ROOT)) {
           case "cumulative":
@@ -507,6 +535,12 @@ public class VeniceMetricsConfig {
       } else {
         LOGGER.warn("OpenTelemetry metrics are disabled");
       }
+
+      if (exportLastRecordedValueForSynchronousGauge) {
+        // Override the configured temporality selector to ensure synchronous gauges export last recorded value
+        otelAggregationTemporalitySelector =
+            getTemporalitySelector(exportLastRecordedValueForSynchronousGauge, otelAggregationTemporalitySelector);
+      }
     }
 
     public VeniceMetricsConfig build() {
@@ -572,6 +606,10 @@ public class VeniceMetricsConfig {
     return metricNamingFormat;
   }
 
+  public boolean exportLastRecordedValueForSynchronousGauge() {
+    return exportLastRecordedValueForSynchronousGauge;
+  }
+
   public AggregationTemporalitySelector getOtelAggregationTemporalitySelector() {
     return otelAggregationTemporalitySelector;
   }
@@ -608,5 +646,24 @@ public class VeniceMetricsConfig {
         + ", useOtelExponentialHistogram=" + useOtelExponentialHistogram + ", otelExponentialHistogramMaxScale="
         + otelExponentialHistogramMaxScale + ", otelExponentialHistogramMaxBuckets="
         + otelExponentialHistogramMaxBuckets + ", tehutiMetricConfig=" + tehutiMetricConfig + '}';
+  }
+
+  /**
+   * Custom AggregationTemporalitySelector which enforces that if the instrument type is
+   * GAUGE and {@link #exportLastRecordedValueForSynchronousGauge} is true,
+   * it returns CUMULATIVE for GAUGE type instruments.
+   * This is to support Synchronous GAUGE exporting the last set value even when
+   * it is not set during the last export interval
+   * Check https://github.com/open-telemetry/opentelemetry-java/pull/7634 for more details
+   */
+  public static AggregationTemporalitySelector getTemporalitySelector(
+      boolean exportLastRecordedValueForSynchronousGauge,
+      AggregationTemporalitySelector configuredTemporalitySelector) {
+    return instrumentType -> {
+      if (exportLastRecordedValueForSynchronousGauge && instrumentType == GAUGE) {
+        return AggregationTemporality.CUMULATIVE;
+      }
+      return configuredTemporalitySelector.getAggregationTemporality(instrumentType);
+    };
   }
 }

@@ -16,12 +16,13 @@ public class TestStringRecordTransformer extends DaVinciRecordTransformer<Intege
   private int transformInvocationCount = 0;
 
   public TestStringRecordTransformer(
+      String storeName,
       int storeVersion,
       Schema keySchema,
       Schema inputValueSchema,
       Schema outputValueSchema,
       DaVinciRecordTransformerConfig recordTransformerConfig) {
-    super(storeVersion, keySchema, inputValueSchema, outputValueSchema, recordTransformerConfig);
+    super(storeName, storeVersion, keySchema, inputValueSchema, outputValueSchema, recordTransformerConfig);
   }
 
   @Override

@@ -1,6 +1,7 @@
 package com.linkedin.venice.endToEnd;
 
 import static com.linkedin.venice.ConfigKeys.FREEZE_INGESTION_IF_READY_TO_SERVE_OR_LOCAL_DATA_EXISTS;
+import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_D2_CLIENT_ENABLED;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.DEFAULT_KEY_SCHEMA;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.DEFAULT_VALUE_SCHEMA;
 import static org.testng.Assert.assertEquals;
@@ -97,7 +98,7 @@ public class DaVinciLiveUpdateSuppressionTest {
   }
 
   @Test(dataProvider = "Isolated-Ingestion", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT * 2)
-  public void testLiveUpdateSuppression(IngestionMode ingestionMode) throws Exception {
+  public void testLiveUpdateSuppression(IngestionMode ingestionMode, Boolean isD2ClientEnabled) throws Exception {
     final String storeName = Utils.getUniqueString("store");
     AtomicReference<StoreInfo> storeInfo = new AtomicReference<>();
     cluster.useControllerClient(client -> {
@@ -123,6 +124,7 @@ public class DaVinciLiveUpdateSuppressionTest {
     Map<String, Object> extraBackendConfigMap =
         (ingestionMode.equals(IngestionMode.ISOLATED)) ? TestUtils.getIngestionIsolationPropertyMap() : new HashMap<>();
     extraBackendConfigMap.put(FREEZE_INGESTION_IF_READY_TO_SERVE_OR_LOCAL_DATA_EXISTS, true);
+    extraBackendConfigMap.put(SERVER_INGESTION_ISOLATION_D2_CLIENT_ENABLED, isD2ClientEnabled);
 
     Future[] writerFutures = new Future[KEY_COUNT];
     int valueSchemaId = HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID;

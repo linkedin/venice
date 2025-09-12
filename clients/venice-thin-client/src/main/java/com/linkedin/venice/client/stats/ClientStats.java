@@ -1,11 +1,9 @@
 package com.linkedin.venice.client.stats;
 
-import static com.linkedin.venice.client.stats.ClientMetricEntity.RETRY_COUNT;
+import static com.linkedin.venice.client.stats.ClientMetricEntity.RETRY_CALL_COUNT;
 import static com.linkedin.venice.stats.dimensions.DeliveryProgress.FIRST;
 import static com.linkedin.venice.stats.dimensions.DeliveryProgress.PCT_50;
 import static com.linkedin.venice.stats.dimensions.DeliveryProgress.PCT_90;
-import static com.linkedin.venice.stats.dimensions.MessageType.REQUEST;
-import static com.linkedin.venice.stats.dimensions.MessageType.RESPONSE;
 import static com.linkedin.venice.stats.dimensions.RequestRetryType.ERROR_RETRY;
 
 import com.linkedin.venice.client.store.ClientConfig;
@@ -13,7 +11,6 @@ import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.ClientType;
 import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.stats.dimensions.DeliveryProgress;
-import com.linkedin.venice.stats.dimensions.MessageType;
 import com.linkedin.venice.stats.dimensions.RequestRetryType;
 import com.linkedin.venice.stats.metrics.MetricEntityStateBase;
 import com.linkedin.venice.stats.metrics.MetricEntityStateOneEnum;
@@ -47,8 +44,9 @@ public class ClientStats extends BasicClientStats {
   private final Sensor multiGetFallbackSensor;
 
   private MetricEntityStateOneEnum<RequestRetryType> errorRetryRequest;
-  private MetricEntityStateOneEnum<MessageType> retryKeyCount;
-  private MetricEntityStateOneEnum<MessageType> retrySuccessKeyCount;
+
+  private MetricEntityStateBase retryKeyCount;
+  private MetricEntityStateBase retrySuccessKeyCount;
   private final MetricEntityStateBase requestSerializationTime;
   private final MetricEntityStateBase requestSubmissionToResponseHandlingTime;
   private final MetricEntityStateBase responseDeserializationTime;
@@ -82,7 +80,7 @@ public class ClientStats extends BasicClientStats {
     Rate requestRetryCountRate = new OccurrenceRate();
 
     errorRetryRequest = MetricEntityStateOneEnum.create(
-        RETRY_COUNT.getMetricEntity(),
+        RETRY_CALL_COUNT.getMetricEntity(),
         otelRepository,
         this::registerSensor,
         ClientTehutiMetricName.REQUEST_RETRY_COUNT,
@@ -184,23 +182,23 @@ public class ClientStats extends BasicClientStats {
     Rate retryRequestKeyCount = new Rate();
     Rate retryRequestSuccessKeyCount = new Rate();
 
-    retryKeyCount = MetricEntityStateOneEnum.create(
-        ClientMetricEntity.RETRY_KEY_COUNT.getMetricEntity(),
+    retryKeyCount = MetricEntityStateBase.create(
+        ClientMetricEntity.RETRY_REQUEST_KEY_COUNT.getMetricEntity(),
         otelRepository,
         this::registerSensor,
         ClientTehutiMetricName.RETRY_REQUEST_KEY_COUNT,
         Arrays.asList(retryRequestKeyCount, new Avg(), new Max()),
         baseDimensionsMap,
-        MessageType.class);
+        baseAttributes);
 
-    retrySuccessKeyCount = MetricEntityStateOneEnum.create(
-        ClientMetricEntity.RETRY_KEY_COUNT.getMetricEntity(),
+    retrySuccessKeyCount = MetricEntityStateBase.create(
+        ClientMetricEntity.RETRY_RESPONSE_KEY_COUNT.getMetricEntity(),
         otelRepository,
         this::registerSensor,
         ClientTehutiMetricName.RETRY_REQUEST_SUCCESS_KEY_COUNT,
         Arrays.asList(retryRequestSuccessKeyCount, new Avg(), new Max()),
         baseDimensionsMap,
-        MessageType.class);
+        baseAttributes);
 
     retryKeySuccessRatioSensor = registerSensor(
         new TehutiUtils.SimpleRatioStat(
@@ -265,11 +263,11 @@ public class ClientStats extends BasicClientStats {
   }
 
   public void recordRetryRequestKeyCount(int numberOfKeysSentInRetryRequest) {
-    retryKeyCount.record(numberOfKeysSentInRetryRequest, REQUEST);
+    retryKeyCount.record(numberOfKeysSentInRetryRequest);
   }
 
   public void recordRetryRequestSuccessKeyCount(int numberOfKeysCompletedInRetryRequest) {
-    retrySuccessKeyCount.record(numberOfKeysCompletedInRetryRequest, RESPONSE);
+    retrySuccessKeyCount.record(numberOfKeysCompletedInRetryRequest);
   }
 
   public void recordMultiGetFallback(int keyCount) {

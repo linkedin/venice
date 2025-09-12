@@ -480,7 +480,7 @@ public final class VeniceChangelogConsumerIO {
         return;
       }
 
-      VeniceChangeCoordinate veniceChangeCoordinate = pubSubMessage.getOffset();
+      VeniceChangeCoordinate veniceChangeCoordinate = pubSubMessage.getPosition();
       LOG.debug("Revised checkpoint for partition {}", veniceChangeCoordinate.getPartition());
       _partitionToVeniceChangeCoordinates.put(veniceChangeCoordinate.getPartition(), veniceChangeCoordinate);
 

@@ -201,51 +201,6 @@ public class PubSubUtilTest {
   }
 
   @Test
-  public void testCompareWithNullPositionsThrowsException() {
-    expectThrows(
-        IllegalArgumentException.class,
-        () -> PubSubUtil.comparePubSubPositions(null, PubSubSymbolicPosition.LATEST));
-    expectThrows(
-        IllegalArgumentException.class,
-        () -> PubSubUtil.comparePubSubPositions(PubSubSymbolicPosition.EARLIEST, null));
-  }
-
-  @Test
-  public void testCompareWithSymbolicPositions() {
-    assertEquals(
-        PubSubUtil.comparePubSubPositions(PubSubSymbolicPosition.EARLIEST, PubSubSymbolicPosition.EARLIEST),
-        0);
-    assertEquals(PubSubUtil.comparePubSubPositions(PubSubSymbolicPosition.LATEST, PubSubSymbolicPosition.LATEST), 0);
-    assertTrue(PubSubUtil.comparePubSubPositions(PubSubSymbolicPosition.EARLIEST, PubSubSymbolicPosition.LATEST) < 0);
-    assertTrue(PubSubUtil.comparePubSubPositions(PubSubSymbolicPosition.LATEST, PubSubSymbolicPosition.EARLIEST) > 0);
-  }
-
-  @Test
-  public void testCompareWithSymbolicAndNumericPositions() {
-    PubSubPosition numeric = mock(PubSubPosition.class);
-    when(numeric.getNumericOffset()).thenReturn(100L);
-
-    assertTrue(PubSubUtil.comparePubSubPositions(PubSubSymbolicPosition.EARLIEST, numeric) < 0);
-    assertTrue(PubSubUtil.comparePubSubPositions(numeric, PubSubSymbolicPosition.EARLIEST) > 0);
-
-    assertTrue(PubSubUtil.comparePubSubPositions(PubSubSymbolicPosition.LATEST, numeric) > 0);
-    assertTrue(PubSubUtil.comparePubSubPositions(numeric, PubSubSymbolicPosition.LATEST) < 0);
-  }
-
-  @Test
-  public void testCompareWithNumericPositions() {
-    PubSubPosition pos1 = mock(PubSubPosition.class);
-    PubSubPosition pos2 = mock(PubSubPosition.class);
-
-    when(pos1.getNumericOffset()).thenReturn(50L);
-    when(pos2.getNumericOffset()).thenReturn(100L);
-
-    assertTrue(PubSubUtil.comparePubSubPositions(pos1, pos2) < 0);
-    assertTrue(PubSubUtil.comparePubSubPositions(pos2, pos1) > 0);
-    assertEquals(PubSubUtil.comparePubSubPositions(pos1, pos1), 0);
-  }
-
-  @Test
   public void testCalculateSeekOffset() {
     // Case 1: Inclusive = true, should return the same offset
     assertEquals(PubSubUtil.calculateSeekOffset(100L, true), 100L, "Inclusive seek should return the base offset");

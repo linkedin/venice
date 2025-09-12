@@ -187,46 +187,6 @@ public final class PubSubUtil {
     }
   }
 
-  /**
-   * Compares two {@link PubSubPosition} instances by their symbolic or numeric ordering.
-   *
-   * <p>This method defines the following ordering:
-   * EARLIEST &lt; numeric offsets &lt; LATEST</p>
-   *
-   * @param position1 The first position.
-   * @param position2 The second position.
-   * @return A negative integer, zero, or a positive integer if position1 is less than,
-   *         equal to, or greater than position2, respectively.
-   * @throws IllegalArgumentException if either position is {@code null}.
-   * @Deprecated Use {@link com.linkedin.venice.pubsub.manager.TopicManager#diffPosition(PubSubTopicPartition, PubSubPosition, PubSubPosition)} instead.
-   */
-  @Deprecated
-  public static int comparePubSubPositions(PubSubPosition position1, PubSubPosition position2) {
-    if (position1 == null || position2 == null) {
-      throw new IllegalArgumentException("Positions cannot be null");
-    }
-
-    if ((PubSubSymbolicPosition.EARLIEST.equals(position1) && PubSubSymbolicPosition.EARLIEST.equals(position2))
-        || (PubSubSymbolicPosition.LATEST.equals(position1) && PubSubSymbolicPosition.LATEST.equals(position2))) {
-      return 0;
-    }
-
-    if (PubSubSymbolicPosition.EARLIEST.equals(position1)) {
-      return -1;
-    }
-    if (PubSubSymbolicPosition.LATEST.equals(position1)) {
-      return 1;
-    }
-    if (PubSubSymbolicPosition.EARLIEST.equals(position2)) {
-      return 1;
-    }
-    if (PubSubSymbolicPosition.LATEST.equals(position2)) {
-      return -1;
-    }
-
-    return Long.compare(position1.getNumericOffset(), position2.getNumericOffset());
-  }
-
   public static <T extends PubSubPosition> long computeOffsetDelta(
       PubSubTopicPartition partition,
       PubSubPosition position1,

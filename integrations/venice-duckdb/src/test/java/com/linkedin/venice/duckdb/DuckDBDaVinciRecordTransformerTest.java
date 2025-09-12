@@ -43,18 +43,19 @@ public class DuckDBDaVinciRecordTransformerTest {
     String tempDir = Utils.getTempDataDirectory().getAbsolutePath();
 
     DaVinciRecordTransformerConfig dummyRecordTransformerConfig = new DaVinciRecordTransformerConfig.Builder()
-        .setRecordTransformerFunction((storeVersion, keySchema, inputValueSchema, outputValueSchema, config) -> null)
+        .setRecordTransformerFunction(
+            (storeName, storeVersion, keySchema, inputValueSchema, outputValueSchema, config) -> null)
         .setStoreRecordsInDaVinci(false)
         .build();
 
     try (DuckDBDaVinciRecordTransformer recordTransformer = new DuckDBDaVinciRecordTransformer(
+        storeName,
         storeVersion,
         SINGLE_FIELD_RECORD_SCHEMA,
         NAME_RECORD_V1_SCHEMA,
         NAME_RECORD_V1_SCHEMA,
         dummyRecordTransformerConfig,
         tempDir,
-        storeName,
         columnsToProject)) {
       assertTrue(recordTransformer.useUniformInputValueSchema());
 
@@ -106,27 +107,28 @@ public class DuckDBDaVinciRecordTransformerTest {
     String tempDir = Utils.getTempDataDirectory().getAbsolutePath();
 
     DaVinciRecordTransformerConfig dummyRecordTransformerConfig = new DaVinciRecordTransformerConfig.Builder()
-        .setRecordTransformerFunction((storeVersion, keySchema, inputValueSchema, outputValueSchema, config) -> null)
+        .setRecordTransformerFunction(
+            (storeName, storeVersion, keySchema, inputValueSchema, outputValueSchema, config) -> null)
         .setStoreRecordsInDaVinci(false)
         .build();
 
     DuckDBDaVinciRecordTransformer recordTransformer_v1 = new DuckDBDaVinciRecordTransformer(
+        storeName,
         1,
         SINGLE_FIELD_RECORD_SCHEMA,
         NAME_RECORD_V1_SCHEMA,
         NAME_RECORD_V1_SCHEMA,
         dummyRecordTransformerConfig,
         tempDir,
-        storeName,
         columnsToProject);
     DuckDBDaVinciRecordTransformer recordTransformer_v2 = new DuckDBDaVinciRecordTransformer(
+        storeName,
         2,
         SINGLE_FIELD_RECORD_SCHEMA,
         NAME_RECORD_V1_SCHEMA,
         NAME_RECORD_V1_SCHEMA,
         dummyRecordTransformerConfig,
         tempDir,
-        storeName,
         columnsToProject);
 
     String duckDBUrl = recordTransformer_v1.getDuckDBUrl();
@@ -174,27 +176,28 @@ public class DuckDBDaVinciRecordTransformerTest {
     String store2 = "store2";
 
     DaVinciRecordTransformerConfig dummyRecordTransformerConfig = new DaVinciRecordTransformerConfig.Builder()
-        .setRecordTransformerFunction((storeVersion, keySchema, inputValueSchema, outputValueSchema, config) -> null)
+        .setRecordTransformerFunction(
+            (storeName, storeVersion, keySchema, inputValueSchema, outputValueSchema, config) -> null)
         .setStoreRecordsInDaVinci(false)
         .build();
 
     DuckDBDaVinciRecordTransformer recordTransformerForStore1 = new DuckDBDaVinciRecordTransformer(
+        store1,
         1,
         SINGLE_FIELD_RECORD_SCHEMA,
         NAME_RECORD_V1_SCHEMA,
         NAME_RECORD_V1_SCHEMA,
         dummyRecordTransformerConfig,
         tempDir,
-        store1,
         columnsToProject);
     DuckDBDaVinciRecordTransformer recordTransformerForStore2 = new DuckDBDaVinciRecordTransformer(
+        store2,
         1,
         TWO_FIELDS_RECORD_SCHEMA,
         NAME_RECORD_V1_SCHEMA,
         NAME_RECORD_V1_SCHEMA,
         dummyRecordTransformerConfig,
         tempDir,
-        store2,
         columnsToProject);
 
     String duckDBUrl = recordTransformerForStore1.getDuckDBUrl();

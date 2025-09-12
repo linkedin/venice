@@ -3,7 +3,7 @@ package com.linkedin.venice.pubsub.api;
 import com.linkedin.venice.memory.Measurable;
 
 
-public interface PubSubMessage<K, V, OFFSET> extends Measurable {
+public interface PubSubMessage<K, V, POSITION> extends Measurable {
   /**
    * @return the key part of this message
    */
@@ -21,8 +21,13 @@ public interface PubSubMessage<K, V, OFFSET> extends Measurable {
 
   /**
    * @return the offset of this message in the underlying topic-partition
+   * @Deprecated use {@link #getPosition()} instead.
    */
-  OFFSET getOffset();
+  default POSITION getOffset() {
+    return getPosition();
+  }
+
+  POSITION getPosition();
 
   /**
    * @return the timestamp at which the message was persisted in the pub sub system

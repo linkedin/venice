@@ -366,7 +366,7 @@ public class IsolatedIngestionUtils {
     report.message = message;
     report.topicName = kafkaTopic;
     report.partitionId = partitionId;
-    report.offset = position.getNumericOffset();
+    report.pubSubPosition = position.toWireFormatBuffer();
     return report;
   }
 
@@ -376,7 +376,7 @@ public class IsolatedIngestionUtils {
     report.message = "";
     report.topicName = kafkaTopic;
     report.partitionId = partitionId;
-    report.offset = 0;
+    report.pubSubPosition = PubSubSymbolicPosition.EARLIEST.toWireFormatBuffer();
     return report;
   }
 
