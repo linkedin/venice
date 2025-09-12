@@ -18,6 +18,7 @@ import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithIntToStringSchema;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_STORE_NAME_PROP;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertNull;
 
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.d2.balancer.D2ClientBuilder;
@@ -25,6 +26,7 @@ import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.davinci.client.DaVinciConfig;
 import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
 import com.linkedin.venice.D2.D2ClientUtils;
+import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
@@ -33,6 +35,8 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
+import com.linkedin.venice.producer.online.OnlineProducerFactory;
+import com.linkedin.venice.producer.online.OnlineVeniceProducer;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.TestUtils;
@@ -42,6 +46,7 @@ import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
 import java.io.IOException;
 import java.util.Properties;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import org.apache.logging.log4j.LogManager;
@@ -112,34 +117,64 @@ public class VersionSpecificDaVinciClientTest {
       client.subscribeAll().get();
 
       // Test single-get access for version 1
-      for (int k = 1; k <= numKeys; ++k) {
-        String value = client.get(k).get().toString();
-        String expectedValue = customValue + k;
+      validateKeys(client, customValue, numKeys);
 
-        assertEquals(value, expectedValue);
+      int streamingKey1 = numKeys + 1;
+      try (OnlineVeniceProducer producer = OnlineProducerFactory.createProducer(
+          ClientConfig.defaultGenericClientConfig(storeName)
+              .setD2Client(d2Client)
+              .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME),
+          VeniceProperties.empty(),
+          null)) {
+        producer.asyncPut(streamingKey1, customValue).get();
+
+        // Validate streaming key exists
+        TestUtils.waitForNonDeterministicAssertion(
+            10,
+            TimeUnit.SECONDS,
+            true,
+            () -> assertEquals(client.get(streamingKey1).get(), Integer.getInteger(customValue)));
+
+        int nextVersion = 2;
+        runVenicePushJob(storeName, nextVersion, Integer.toString(nextVersion), numKeys);
+
+        // DaVinci should still see data for version 1
+        validateKeys(client, customValue, numKeys);
+
+        int streamingKey2 = streamingKey1 + 1;
+        producer.asyncPut(streamingKey2, customValue).get();
+
+        // Validate streaming key exists
+        TestUtils.waitForNonDeterministicAssertion(
+            10,
+            TimeUnit.SECONDS,
+            true,
+            () -> assertEquals(client.get(streamingKey2).get(), Integer.getInteger(customValue)));
+
+        nextVersion++;
+        runVenicePushJob(storeName, nextVersion, Integer.toString(nextVersion), numKeys);
+
+        // DaVinci should still see data for version 1
+        validateKeys(client, customValue, numKeys);
+
+        int streamingKey3 = streamingKey2 + 1;
+        producer.asyncPut(streamingKey3, customValue).get();
+
+        // Streaming key should not exist because the topic is deleted
+        // Wait 10 seconds to ensure the key doesn't appear
+        Thread.sleep(10000);
+        assertNull(client.get(streamingKey3).get());
       }
+    }
+  }
 
-      int nextVersion = 2;
-      runVenicePushJob(storeName, nextVersion, Integer.toString(nextVersion), numKeys);
+  private void validateKeys(DaVinciClient<Integer, Object> client, String customValue, int numKeys)
+      throws ExecutionException, InterruptedException {
+    for (int k = 1; k <= numKeys; ++k) {
+      String value = client.get(k).get().toString();
+      String expectedValue = customValue + k;
 
-      // DaVinci should still see data for version 1
-      for (int k = 1; k <= numKeys; ++k) {
-        String value = client.get(k).get().toString();
-        String expectedValue = customValue + k;
-
-        assertEquals(value, expectedValue);
-      }
-
-      nextVersion++;
-      runVenicePushJob(storeName, nextVersion, Integer.toString(nextVersion), numKeys);
-
-      // DaVinci should still see data for version 1
-      for (int k = 1; k <= numKeys; ++k) {
-        String value = client.get(k).get().toString();
-        String expectedValue = customValue + k;
-
-        assertEquals(value, expectedValue);
-      }
+      assertEquals(value, expectedValue);
     }
   }
 
