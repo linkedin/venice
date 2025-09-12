@@ -476,109 +476,100 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     long overallStartTime = System.currentTimeMillis();
 
     // Step 1: Stop controller client
-    long controllerClientStartTime = System.currentTimeMillis();
-    LOGGER.info("Step 1: Shutting down controller client");
-    controllerClient.ifPresent(Utils::closeQuietlyWithErrorLogged);
-    long controllerClientTime = System.currentTimeMillis() - controllerClientStartTime;
-    LOGGER.info("Completed shutdown of controller client in {} ms", controllerClientTime);
+    long controllerClientTime = TimingUtils.timeOperationAndReturnDuration(
+        LOGGER,
+        "Step 1: Shutting down controller client",
+        () -> controllerClient.ifPresent(Utils::closeQuietlyWithErrorLogged));
 
     // Step 2: Stop routers in parallel
-    long routersStartTime = System.currentTimeMillis();
-    LOGGER.info("Step 2: Shutting down {} routers in parallel", veniceRouterWrappers.size());
-
-    List<CompletableFuture<Void>> routerShutdownTasks = new ArrayList<>();
-    int routerIndex = 0;
-    for (VeniceRouterWrapper router: veniceRouterWrappers.values()) {
-      final int currentIndex = routerIndex++;
-      CompletableFuture<Void> routerShutdownTask = CompletableFuture.runAsync(() -> {
-        long routerStartTime = System.currentTimeMillis();
-        LOGGER.debug("Shutting down router {}", currentIndex);
-        Utils.closeQuietlyWithErrorLogged(router);
-        long routerDuration = System.currentTimeMillis() - routerStartTime;
-        LOGGER.debug("Completed shutdown of router {} in {} ms", currentIndex, routerDuration);
-      });
-      routerShutdownTasks.add(routerShutdownTask);
-    }
-
-    CompletableFuture.allOf(routerShutdownTasks.toArray(new CompletableFuture[0])).join();
-    long routersTime = System.currentTimeMillis() - routersStartTime;
-    LOGGER.info("Completed parallel shutdown of {} routers in {} ms", veniceRouterWrappers.size(), routersTime);
+    long routersTime = TimingUtils.timeOperationAndReturnDuration(
+        LOGGER,
+        "Step 2: Shutting down " + veniceRouterWrappers.size() + " routers in parallel",
+        () -> {
+          List<CompletableFuture<Void>> routerShutdownTasks = new ArrayList<>();
+          int routerIndex = 0;
+          for (VeniceRouterWrapper router: veniceRouterWrappers.values()) {
+            final int currentIndex = routerIndex++;
+            CompletableFuture<Void> routerShutdownTask = CompletableFuture.runAsync(() -> {
+              long routerStartTime = System.currentTimeMillis();
+              LOGGER.debug("Shutting down router {}", currentIndex);
+              Utils.closeQuietlyWithErrorLogged(router);
+              long routerDuration = System.currentTimeMillis() - routerStartTime;
+              LOGGER.debug("Completed shutdown of router {} in {} ms", currentIndex, routerDuration);
+            });
+            routerShutdownTasks.add(routerShutdownTask);
+          }
+          CompletableFuture.allOf(routerShutdownTasks.toArray(new CompletableFuture[0])).join();
+        });
 
     // Step 3: Stop servers in parallel
-    long serversStartTime = System.currentTimeMillis();
-    LOGGER.info("Step 3: Shutting down {} servers in parallel", veniceServerWrappers.size());
-
-    List<CompletableFuture<Void>> serverShutdownTasks = new ArrayList<>();
-    int serverIndex = 0;
-    for (VeniceServerWrapper server: veniceServerWrappers.values()) {
-      final int currentIndex = serverIndex++;
-      CompletableFuture<Void> serverShutdownTask = CompletableFuture.runAsync(() -> {
-        long serverStartTime = System.currentTimeMillis();
-        LOGGER.debug("Shutting down server {}", currentIndex);
-        Utils.closeQuietlyWithErrorLogged(server);
-        long serverDuration = System.currentTimeMillis() - serverStartTime;
-        LOGGER.debug("Completed shutdown of server {} in {} ms", currentIndex, serverDuration);
-      });
-      serverShutdownTasks.add(serverShutdownTask);
-    }
-
-    CompletableFuture.allOf(serverShutdownTasks.toArray(new CompletableFuture[0])).join();
-    long serversTime = System.currentTimeMillis() - serversStartTime;
-    LOGGER.info("Completed parallel shutdown of {} servers in {} ms", veniceServerWrappers.size(), serversTime);
+    long serversTime = TimingUtils.timeOperationAndReturnDuration(
+        LOGGER,
+        "Step 3: Shutting down " + veniceServerWrappers.size() + " servers in parallel",
+        () -> {
+          List<CompletableFuture<Void>> serverShutdownTasks = new ArrayList<>();
+          int serverIndex = 0;
+          for (VeniceServerWrapper server: veniceServerWrappers.values()) {
+            final int currentIndex = serverIndex++;
+            CompletableFuture<Void> serverShutdownTask = CompletableFuture.runAsync(() -> {
+              long serverStartTime = System.currentTimeMillis();
+              LOGGER.debug("Shutting down server {}", currentIndex);
+              Utils.closeQuietlyWithErrorLogged(server);
+              long serverDuration = System.currentTimeMillis() - serverStartTime;
+              LOGGER.debug("Completed shutdown of server {} in {} ms", currentIndex, serverDuration);
+            });
+            serverShutdownTasks.add(serverShutdownTask);
+          }
+          CompletableFuture.allOf(serverShutdownTasks.toArray(new CompletableFuture[0])).join();
+        });
 
     // Step 4: Stop controllers in parallel
-    long controllersStartTime = System.currentTimeMillis();
-    LOGGER.info("Step 4: Shutting down {} controllers in parallel", veniceControllerWrappers.size());
-
-    List<CompletableFuture<Void>> controllerShutdownTasks = new ArrayList<>();
-    int controllerIndex = 0;
-    for (VeniceControllerWrapper controller: veniceControllerWrappers.values()) {
-      final int currentIndex = controllerIndex++;
-      CompletableFuture<Void> controllerShutdownTask = CompletableFuture.runAsync(() -> {
-        long controllerStartTime = System.currentTimeMillis();
-        LOGGER.debug("Shutting down controller {}", currentIndex);
-        Utils.closeQuietlyWithErrorLogged(controller);
-        long controllerDuration = System.currentTimeMillis() - controllerStartTime;
-        LOGGER.debug("Completed shutdown of controller {} in {} ms", currentIndex, controllerDuration);
-      });
-      controllerShutdownTasks.add(controllerShutdownTask);
-    }
-
-    CompletableFuture.allOf(controllerShutdownTasks.toArray(new CompletableFuture[0])).join();
-    long controllersTime = System.currentTimeMillis() - controllersStartTime;
-    LOGGER.info(
-        "Completed parallel shutdown of {} controllers in {} ms",
-        veniceControllerWrappers.size(),
-        controllersTime);
+    long controllersTime = TimingUtils.timeOperationAndReturnDuration(
+        LOGGER,
+        "Step 4: Shutting down " + veniceControllerWrappers.size() + " controllers in parallel",
+        () -> {
+          List<CompletableFuture<Void>> controllerShutdownTasks = new ArrayList<>();
+          int controllerIndex = 0;
+          for (VeniceControllerWrapper controller: veniceControllerWrappers.values()) {
+            final int currentIndex = controllerIndex++;
+            CompletableFuture<Void> controllerShutdownTask = CompletableFuture.runAsync(() -> {
+              long controllerStartTime = System.currentTimeMillis();
+              LOGGER.debug("Shutting down controller {}", currentIndex);
+              Utils.closeQuietlyWithErrorLogged(controller);
+              long controllerDuration = System.currentTimeMillis() - controllerStartTime;
+              LOGGER.debug("Completed shutdown of controller {} in {} ms", currentIndex, controllerDuration);
+            });
+            controllerShutdownTasks.add(controllerShutdownTask);
+          }
+          CompletableFuture.allOf(controllerShutdownTasks.toArray(new CompletableFuture[0])).join();
+        });
 
     // Step 5: Stop infrastructure components if standalone
     long infrastructureTime = 0;
     if (options.isStandalone()) {
-      long infrastructureStartTime = System.currentTimeMillis();
-      LOGGER.info("Step 5: Shutting down infrastructure components (standalone mode)");
+      infrastructureTime = TimingUtils.timeOperationAndReturnDuration(
+          LOGGER,
+          "Step 5: Shutting down infrastructure components (standalone mode)",
+          () -> {
+            TimingUtils.timeOperation(
+                LOGGER,
+                "Shutting down PubSub broker",
+                () -> Utils.closeQuietlyWithErrorLogged(pubSubBrokerWrapper));
 
-      long pubSubStartTime = System.currentTimeMillis();
-      Utils.closeQuietlyWithErrorLogged(pubSubBrokerWrapper);
-      long pubSubTime = System.currentTimeMillis() - pubSubStartTime;
-      LOGGER.info("Completed shutdown of PubSub broker in {} ms", pubSubTime);
-
-      long zkStartTime = System.currentTimeMillis();
-      Utils.closeQuietlyWithErrorLogged(zkServerWrapper);
-      long zkTime = System.currentTimeMillis() - zkStartTime;
-      LOGGER.info("Completed shutdown of ZooKeeper server in {} ms", zkTime);
-
-      infrastructureTime = System.currentTimeMillis() - infrastructureStartTime;
-      LOGGER.info("Completed shutdown of infrastructure components in {} ms", infrastructureTime);
+            TimingUtils.timeOperation(
+                LOGGER,
+                "Shutting down ZooKeeper server",
+                () -> Utils.closeQuietlyWithErrorLogged(zkServerWrapper));
+          });
     }
 
     // Step 6: Stop forked process if exists
     long processTime = 0;
     if (veniceClusterProcess != null) {
-      long processStartTime = System.currentTimeMillis();
-      LOGGER.info("Step 6: Destroying forked Venice cluster process");
-      veniceClusterProcess.destroy();
-      processTime = System.currentTimeMillis() - processStartTime;
-      LOGGER.info("Completed destruction of forked process in {} ms", processTime);
+      processTime = TimingUtils.timeOperationAndReturnDuration(
+          LOGGER,
+          "Step 6: Destroying forked Venice cluster process",
+          () -> veniceClusterProcess.destroy());
     }
 
     long totalShutdownTime = System.currentTimeMillis() - overallStartTime;
