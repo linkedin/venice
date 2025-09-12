@@ -397,7 +397,7 @@ public class CachingDaVinciClientFactory
       int storeVersion,
       DaVinciConfig config) {
     return getClient(
-        getStoreVersionName(storeName, storeVersion),
+        storeName,
         null,
         config,
         null,
@@ -411,7 +411,7 @@ public class CachingDaVinciClientFactory
       int storeVersion,
       DaVinciConfig config) {
     return getClient(
-        getStoreVersionName(storeName, storeVersion),
+        storeName,
         null,
         config,
         null,
@@ -426,7 +426,7 @@ public class CachingDaVinciClientFactory
       String viewName,
       DaVinciConfig config) {
     return getClient(
-        getStoreVersionName(storeName, storeVersion),
+        storeName,
         viewName,
         config,
         null,
@@ -441,16 +441,12 @@ public class CachingDaVinciClientFactory
       String viewName,
       DaVinciConfig config) {
     return getClient(
-        getStoreVersionName(storeName, storeVersion),
+        storeName,
         viewName,
         config,
         null,
         new VersionSpecificGenericDaVinciClientConstructor<>(storeVersion),
         VersionSpecificAvroGenericDaVinciClient.class,
         true);
-  }
-
-  private String getStoreVersionName(String storeName, int storeVersion) {
-    return storeName + "_v" + storeVersion;
   }
 }
