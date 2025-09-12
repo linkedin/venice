@@ -17,6 +17,7 @@ public interface PubSubPosition extends Measurable {
 
   @RestrictedApi("This API facilitates the transition from numeric offsets to PubSubPosition. "
       + "It should be removed once the codebase fully adopts PubSubPosition.")
+  @Deprecated
   long getNumericOffset();
 
   boolean equals(Object obj);
