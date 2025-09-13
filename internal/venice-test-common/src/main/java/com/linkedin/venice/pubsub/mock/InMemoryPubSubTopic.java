@@ -49,7 +49,7 @@ class InMemoryPubSubTopic {
     checkPartitionCount(partition);
     ArrayList<InMemoryPubSubMessage> partitionQueue = partitions[partition];
 
-    long internalOffset = position.getNumericOffset();
+    long internalOffset = position.getInternalOffset();
     if (internalOffset > Integer.MAX_VALUE) {
       throw new IllegalArgumentException(
           "Offsets larger than " + Integer.MAX_VALUE + " are not supported by "
