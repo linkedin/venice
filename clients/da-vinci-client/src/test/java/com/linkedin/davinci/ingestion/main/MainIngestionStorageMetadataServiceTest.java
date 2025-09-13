@@ -1,5 +1,6 @@
 package com.linkedin.davinci.ingestion.main;
 
+import static com.linkedin.venice.pubsub.PubSubContext.DEFAULT_PUBSUB_CONTEXT;
 import static com.linkedin.venice.serialization.avro.AvroProtocolDefinition.PARTITION_STATE;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -34,15 +35,18 @@ public class MainIngestionStorageMetadataServiceTest {
 
     String topicName = "blah";
     int partition = 0;
-    OffsetRecord offsetRecord1 = mainIngestionStorageMetadataService.getLastOffset(topicName, partition);
+
+    OffsetRecord offsetRecord1 =
+        mainIngestionStorageMetadataService.getLastOffset(topicName, partition, DEFAULT_PUBSUB_CONTEXT);
 
     assertNotNull(offsetRecord1);
 
-    OffsetRecord offsetRecord2 = new OffsetRecord(PARTITION_STATE.getSerializer());
+    OffsetRecord offsetRecord2 = new OffsetRecord(PARTITION_STATE.getSerializer(), DEFAULT_PUBSUB_CONTEXT);
     offsetRecord2.checkpointLocalVtPosition(PubSubUtil.fromKafkaOffset(10));
 
     mainIngestionStorageMetadataService.putOffsetRecord(topicName, partition, offsetRecord2);
-    OffsetRecord offsetRecord3 = mainIngestionStorageMetadataService.getLastOffset(topicName, partition);
+    OffsetRecord offsetRecord3 =
+        mainIngestionStorageMetadataService.getLastOffset(topicName, partition, DEFAULT_PUBSUB_CONTEXT);
     assertNotNull(offsetRecord3);
     assertEquals(offsetRecord3, offsetRecord2);
     assertNotEquals(

@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller;
 
+import static com.linkedin.venice.pubsub.PubSubContext.DEFAULT_PUBSUB_CONTEXT;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.eq;
@@ -179,7 +180,8 @@ public class TestVeniceParentHelixAdminWithAcl extends AbstractTestVeniceParentH
     doThrow(new VeniceNoStoreException(storeName)).when(internalAdmin)
         .checkPreConditionForAclOp(clusterName, storeName);
 
-    when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(new OffsetRecord(partitionStateSerializer))
+    when(zkClient.readData(zkMetadataNodePath, null))
+        .thenReturn(new OffsetRecord(partitionStateSerializer, DEFAULT_PUBSUB_CONTEXT))
         .thenReturn(
             AdminTopicMetadataAccessor.generateMetadataMap(
                 Optional.of(1L),
@@ -202,7 +204,8 @@ public class TestVeniceParentHelixAdminWithAcl extends AbstractTestVeniceParentH
     doThrow(new VeniceNoStoreException(storeName)).when(internalAdmin)
         .checkPreConditionForAclOp(clusterName, storeName);
 
-    when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(new OffsetRecord(partitionStateSerializer))
+    when(zkClient.readData(zkMetadataNodePath, null))
+        .thenReturn(new OffsetRecord(partitionStateSerializer, DEFAULT_PUBSUB_CONTEXT))
         .thenReturn(
             AdminTopicMetadataAccessor.generateMetadataMap(
                 Optional.of(1L),
@@ -222,7 +225,8 @@ public class TestVeniceParentHelixAdminWithAcl extends AbstractTestVeniceParentH
     doThrow(new VeniceNoStoreException(storeName)).when(internalAdmin)
         .checkPreConditionForAclOp(clusterName, storeName);
 
-    when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(new OffsetRecord(partitionStateSerializer))
+    when(zkClient.readData(zkMetadataNodePath, null))
+        .thenReturn(new OffsetRecord(partitionStateSerializer, DEFAULT_PUBSUB_CONTEXT))
         .thenReturn(
             AdminTopicMetadataAccessor.generateMetadataMap(
                 Optional.of(1L),

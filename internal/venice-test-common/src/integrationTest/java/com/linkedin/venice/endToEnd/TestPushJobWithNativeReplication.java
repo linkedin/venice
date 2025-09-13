@@ -285,7 +285,10 @@ public class TestPushJobWithNativeReplication {
                 tmInChildRegion.getLatestPositionWithRetries(versionTopicPartition, 5);
             // Get the offset metadata of the selected partition from storage node
             StorageMetadataService metadataService = serverInRemoteFabric.getStorageMetadataService();
-            OffsetRecord offsetRecord = metadataService.getLastOffset(versionTopic, partitionId);
+            OffsetRecord offsetRecord = metadataService.getLastOffset(
+                versionTopic,
+                partitionId,
+                serverInRemoteFabric.getKafkaStoreIngestionService().getPubSubContext());
 
             assertTrue(
                 tmInChildRegion.diffPosition(

@@ -7,6 +7,7 @@ import com.linkedin.davinci.store.StoragePartitionConfig;
 import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.pubsub.PubSubContext;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
@@ -128,10 +129,12 @@ public class DaVinciRecordTransformerUtility<K, O> {
       StorageEngine storageEngine,
       int partitionId,
       InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer,
-      Lazy<VeniceCompressor> compressor) {
+      Lazy<VeniceCompressor> compressor,
+      PubSubContext pubSubContext) {
     int classHash = recordTransformer.getClassHash();
-    Optional<OffsetRecord> optionalOffsetRecord = storageEngine.getPartitionOffset(partitionId);
-    OffsetRecord offsetRecord = optionalOffsetRecord.orElseGet(() -> new OffsetRecord(partitionStateSerializer));
+    Optional<OffsetRecord> optionalOffsetRecord = storageEngine.getPartitionOffset(partitionId, pubSubContext);
+    OffsetRecord offsetRecord =
+        optionalOffsetRecord.orElseGet(() -> new OffsetRecord(partitionStateSerializer, pubSubContext));
 
     boolean transformerLogicChanged = hasTransformerLogicChanged(classHash, offsetRecord);
 
@@ -142,7 +145,7 @@ public class DaVinciRecordTransformerUtility<K, O> {
       storageEngine.clearPartitionOffset(partitionId);
 
       // Offset record is deleted, so create a new one and persist it
-      offsetRecord = new OffsetRecord(partitionStateSerializer);
+      offsetRecord = new OffsetRecord(partitionStateSerializer, pubSubContext);
       offsetRecord.setRecordTransformerClassHash(classHash);
       storageEngine.putPartitionOffset(partitionId, offsetRecord);
     } else {
