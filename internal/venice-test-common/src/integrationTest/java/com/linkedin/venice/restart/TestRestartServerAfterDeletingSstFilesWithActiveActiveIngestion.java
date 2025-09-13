@@ -78,7 +78,6 @@ import org.apache.logging.log4j.Logger;
 import org.rocksdb.ComparatorOptions;
 import org.rocksdb.util.BytewiseComparator;
 import org.testng.annotations.AfterClass;
-import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
@@ -168,12 +167,6 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
         .setPartitionCount(NUMBER_OF_PARTITIONS)
         .setReplicationFactor(NUMBER_OF_REPLICAS);
     createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms).close();
-  }
-
-  @AfterMethod(alwaysRun = true)
-  public void cleanUpAfterMethod() {
-    // Force garbage collection to help release resources
-    System.gc();
   }
 
   @AfterClass(alwaysRun = true)
