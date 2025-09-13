@@ -3553,7 +3553,19 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           compressor.get(),
           manifestContainer);
     } catch (Exception e) {
-      LOGGER.error("Unable to retrieve the stored value bytes for topic-partition: {}", topicPartition, e);
+      LOGGER.error(
+          "Unable to retrieve the stored value bytes for key: {}, topic-partition: {}",
+          new String(keyBytes),
+          topicPartition,
+          e);
+      return null;
+    }
+
+    if (valueBytes == null) {
+      LOGGER.warn(
+          "No value found in the storage engine for key: {}, topic-partition: {}",
+          new String(keyBytes),
+          topicPartition);
       return null;
     }
 
@@ -3562,7 +3574,11 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           ByteUtils.extractByteArray(valueBytes),
           AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion());
     } catch (Exception e) {
-      LOGGER.error("Unable to deserialize stored value bytes for topic-partition: {}", topicPartition, e);
+      LOGGER.error(
+          "Unable to deserialize stored value bytes for key: {}, topic-partition: {}",
+          new String(keyBytes),
+          topicPartition,
+          e);
       return null;
     }
   }
