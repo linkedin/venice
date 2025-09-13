@@ -6,6 +6,7 @@ import com.linkedin.venice.listener.ReadQuotaEnforcementHandler;
 import com.linkedin.venice.listener.StorageReadRequestHandler;
 import com.linkedin.venice.listener.VeniceRequestEarlyTerminationException;
 import com.linkedin.venice.listener.grpc.GrpcRequestContext;
+import com.linkedin.venice.listener.request.ComputeRouterRequestWrapper;
 import com.linkedin.venice.listener.request.GetRouterRequest;
 import com.linkedin.venice.listener.request.MultiGetRouterRequestWrapper;
 import com.linkedin.venice.listener.request.RouterRequest;
@@ -48,6 +49,14 @@ public class GrpcStorageReadRequestHandler extends VeniceServerGrpcHandler {
         case MULTI_GET:
           // TODO: get rid of blocking here
           response = storage.handleMultiGetRequest((MultiGetRouterRequestWrapper) request).get();
+          break;
+        case COMPUTE:
+          // Handle compute requests via standard compute infrastructure
+          response = storage.handleComputeRequest((ComputeRouterRequestWrapper) request).get();
+          break;
+        case COUNT_BY_VALUE:
+          // Handle CountByValue requests with server-side aggregation
+          response = storage.handleCountByValueRequest((ComputeRouterRequestWrapper) request).get();
           break;
         default:
           ctx.setError();

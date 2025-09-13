@@ -17,11 +17,17 @@ import io.netty.handler.codec.http.HttpResponseStatus;
 public class GrpcOutboundResponseHandler extends VeniceServerGrpcHandler {
   @Override
   public void processRequest(GrpcRequestContext ctx) {
+    ServerStatsContext statsContext = ctx.getGrpcStatsContext();
+
+    // All requests now use the standard VeniceServerResponse format
+    handleResponse(ctx, statsContext);
+  }
+
+  private void handleResponse(GrpcRequestContext ctx, ServerStatsContext statsContext) {
     ByteBuf body;
     CompressionStrategy compressionStrategy = CompressionStrategy.NO_OP;
 
     ReadResponse obj = ctx.getReadResponse();
-    ServerStatsContext statsContext = ctx.getGrpcStatsContext();
     VeniceServerResponse.Builder veniceServerResponseBuilder = ctx.getVeniceServerResponseBuilder();
     if (ctx.hasError()) {
       statsContext.setResponseStatus(HttpResponseStatus.BAD_REQUEST);
