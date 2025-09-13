@@ -37,6 +37,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import org.apache.commons.io.IOUtils;
@@ -361,10 +362,78 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
 
   @Override
   protected void internalStop() throws Exception {
-    parentControllers.forEach(IOUtils::closeQuietly);
-    childRegions.forEach(IOUtils::closeQuietly);
-    IOUtils.closeQuietly(parentPubSubBrokerWrapper);
-    IOUtils.closeQuietly(zkServerWrapper);
+    LOGGER.info("Starting sequential shutdown of VeniceTwoLayerMultiRegionMultiClusterWrapper");
+    long overallStartTime = System.currentTimeMillis();
+
+    // Step 1: Stop parent controllers first (in parallel)
+    long parentControllersTime = TimingUtils.timeOperationAndReturnDuration(
+        LOGGER,
+        "Step 1: Shutting down " + parentControllers.size() + " parent controllers in parallel",
+        () -> {
+          // Create individual shutdown tasks for each parent controller
+          List<CompletableFuture<Void>> parentControllerShutdownTasks = new ArrayList<>();
+          for (int i = 0; i < parentControllers.size(); i++) {
+            final int controllerIndex = i;
+            final VeniceControllerWrapper parentController = parentControllers.get(i);
+            CompletableFuture<Void> controllerShutdownTask = CompletableFuture.runAsync(() -> {
+              long controllerStartTime = System.currentTimeMillis();
+              LOGGER.debug("Shutting down parent controller {}", controllerIndex);
+              IOUtils.closeQuietly(parentController);
+              long controllerDuration = System.currentTimeMillis() - controllerStartTime;
+              LOGGER.debug("Completed shutdown of parent controller {} in {} ms", controllerIndex, controllerDuration);
+            });
+            parentControllerShutdownTasks.add(controllerShutdownTask);
+          }
+          // Wait for all parent controllers to complete shutdown
+          CompletableFuture.allOf(parentControllerShutdownTasks.toArray(new CompletableFuture[0])).join();
+        });
+
+    // Step 2: Stop child regions in parallel
+    long childRegionsTime = TimingUtils.timeOperationAndReturnDuration(
+        LOGGER,
+        "Step 2: Shutting down " + childRegions.size() + " child regions in parallel",
+        () -> {
+          // Create individual shutdown tasks for each child region
+          List<CompletableFuture<Void>> childRegionShutdownTasks = new ArrayList<>();
+          for (int i = 0; i < childRegions.size(); i++) {
+            final int regionIndex = i;
+            final VeniceMultiClusterWrapper childRegion = childRegions.get(i);
+            CompletableFuture<Void> regionShutdownTask = CompletableFuture.runAsync(() -> {
+              long regionStartTime = System.currentTimeMillis();
+              LOGGER.debug("Shutting down child region {}", regionIndex);
+              IOUtils.closeQuietly(childRegion);
+              long regionDuration = System.currentTimeMillis() - regionStartTime;
+              LOGGER.debug("Completed shutdown of child region {} in {} ms", regionIndex, regionDuration);
+            });
+            childRegionShutdownTasks.add(regionShutdownTask);
+          }
+          // Wait for all child regions to complete shutdown
+          CompletableFuture.allOf(childRegionShutdownTasks.toArray(new CompletableFuture[0])).join();
+        });
+
+    // Step 3: Stop parent PubSub broker
+    long pubSubBrokerTime = TimingUtils.timeOperationAndReturnDuration(
+        LOGGER,
+        "Step 3: Shutting down parent PubSub broker",
+        () -> IOUtils.closeQuietly(parentPubSubBrokerWrapper));
+
+    // Step 4: Stop parent ZooKeeper last
+    long zkShutdownTime = TimingUtils.timeOperationAndReturnDuration(
+        LOGGER,
+        "Step 4: Shutting down ZooKeeper server",
+        () -> IOUtils.closeQuietly(zkServerWrapper));
+
+    long totalShutdownTime = System.currentTimeMillis() - overallStartTime;
+
+    // Log comprehensive timing summary
+    LOGGER.info(
+        "Sequential shutdown timing summary - Total: {} ms, "
+            + "Parent controllers: {} ms, Child regions: {} ms, PubSub broker: {} ms, ZooKeeper: {} ms",
+        totalShutdownTime,
+        parentControllersTime,
+        childRegionsTime,
+        pubSubBrokerTime,
+        zkShutdownTime);
   }
 
   @Override

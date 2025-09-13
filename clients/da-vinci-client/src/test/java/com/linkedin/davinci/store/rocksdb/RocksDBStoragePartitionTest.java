@@ -274,13 +274,13 @@ public class RocksDBStoragePartitionTest {
 
     int padding = 100;
     // TODO: decide if we really need this many records? this might be the cause of the slowness...
-    int numberOfRecords = 101000;
+    int numberOfRecords = 10000;
     Map<String, String> inputRecords = generateInput(numberOfRecords, sorted, padding);
     Properties extraProps = new Properties();
     if (enableBlobFile) {
       extraProps.put(ROCKSDB_BLOB_FILES_ENABLED, "true");
       extraProps.put(ROCKSDB_MIN_BLOB_SIZE_IN_BYTES, "10");
-      extraProps.put(ROCKSDB_BLOB_FILE_SIZE_IN_BYTES, "2097152");
+      extraProps.put(ROCKSDB_BLOB_FILE_SIZE_IN_BYTES, "102400");
       extraProps.put(ROCKSDB_BLOB_FILE_STARTING_LEVEL, "0");
     }
     if (enablePlainTable) {
