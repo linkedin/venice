@@ -1,7 +1,9 @@
 package com.linkedin.venice.client.stats;
 
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_MESSAGE_TYPE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_METHOD;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_RETRY_TYPE;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
 import static com.linkedin.venice.utils.CollectionUtils.setOf;
 
@@ -36,6 +38,30 @@ public enum ClientMetricEntity implements ModuleMetricEntityInterface {
   RETRY_RESPONSE_KEY_COUNT(
       "retry.response.key_count", MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS, MetricUnit.NUMBER,
       "Key count of retry responses for client", setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)
+  ),
+
+  /**
+   * Client duplicate key count.
+   */
+  DUPLICATE_KEY_COUNT(
+      MetricType.COUNTER, MetricUnit.NUMBER, "Duplicate key count of requests for client",
+      setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD, VENICE_MESSAGE_TYPE, VENICE_RESPONSE_STATUS_CODE_CATEGORY)
+  ),
+
+  /**
+   * Client request count.
+   */
+  CLIENT_FUTURE_TIMEOUT(
+      MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS, MetricUnit.MILLISECOND, "Client request timeout in milliseconds",
+      setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)
+  ),
+
+  /**
+   * Ratio of timed out keys to total keys in the request.
+   */
+  REQUEST_TIMEOUT_RESULT_RATIO(
+      "request.timeout_result_ratio", MetricType.HISTOGRAM, MetricUnit.NUMBER,
+      "Ratio of timed out keys to total keys in the request", setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)
   );
 
   private final MetricEntity entity;
