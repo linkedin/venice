@@ -344,14 +344,16 @@ public class PushStatusStoreReader implements Closeable {
 
   // visible for testing
   AvroSpecificStoreClient<PushStatusKey, PushStatusValue> getVeniceClient(String storeName) {
-    return veniceClients.computeIfAbsent(storeName, (s) -> {
-      ClientConfig clientConfig =
-          ClientConfig.defaultGenericClientConfig(VeniceSystemStoreUtils.getDaVinciPushStatusStoreName(storeName))
-              .setD2Client(d2Client)
-              .setD2ServiceName(clusterDiscoveryD2ServiceName)
-              .setSpecificValueClass(PushStatusValue.class);
-      return ClientFactory.getAndStartSpecificAvroClient(clientConfig);
-    });
+    return veniceClients
+        .computeIfAbsent(storeName, (s) -> ClientFactory.getAndStartSpecificAvroClient(getClientConfig(storeName)));
+  }
+
+  ClientConfig getClientConfig(String storeName) {
+    return ClientConfig.defaultGenericClientConfig(VeniceSystemStoreUtils.getDaVinciPushStatusStoreName(storeName))
+        .setD2Client(d2Client)
+        .setD2ServiceName(clusterDiscoveryD2ServiceName)
+        .setStatTrackingEnabled(false)
+        .setSpecificValueClass(PushStatusValue.class);
   }
 
   @Override
