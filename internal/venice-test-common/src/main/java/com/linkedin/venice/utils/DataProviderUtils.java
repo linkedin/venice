@@ -72,7 +72,7 @@ public class DataProviderUtils {
     return allPermutationGenerator(BOOLEAN, BOOLEAN, BOOLEAN, BOOLEAN, BOOLEAN);
   }
 
-  @DataProvider(name = "Six-True-and-False")
+  @DataProvider(name = "Six-True-and-False", parallel = true)
   public static Object[][] sixBoolean() {
     return allPermutationGenerator(BOOLEAN, BOOLEAN, BOOLEAN, BOOLEAN, BOOLEAN, BOOLEAN);
   }
