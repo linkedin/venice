@@ -144,4 +144,9 @@ public class DelegatingAvroStoreClient<K, V> extends InternalAvroStoreClient<K, 
       long preRequestTimeInNS) throws VeniceClientException {
     return delegate.compute(stats, streamingStats, computeStoreClient, preRequestTimeInNS);
   }
+
+  @Override
+  public ServerSideAggregationRequestBuilder<K> getServerSideAggregationRequestBuilder() throws VeniceClientException {
+    return delegate.getServerSideAggregationRequestBuilder();
+  }
 }
