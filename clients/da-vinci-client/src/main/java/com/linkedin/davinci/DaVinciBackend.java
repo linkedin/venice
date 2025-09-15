@@ -415,7 +415,7 @@ public class DaVinciBackend implements Closeable {
   }
 
   @VisibleForTesting
-  synchronized void bootstrap() {
+  final synchronized void bootstrap() {
     List<StorageEngine> storageEngines = getStorageService().getStorageEngineRepository().getAllLocalStorageEngines();
     LOGGER.info("Starting bootstrap, storageEngines: {}", storageEngines);
     Map<String, Version> storeNameToBootstrapVersionMap = new HashMap<>();
@@ -603,15 +603,15 @@ public class DaVinciBackend implements Closeable {
     return schemaRepository;
   }
 
-  StorageService getStorageService() {
+  final StorageService getStorageService() {
     return storageService;
   }
 
-  StoreIngestionService getIngestionService() {
+  final StoreIngestionService getIngestionService() {
     return ingestionService;
   }
 
-  public IngestionBackend getIngestionBackend() {
+  final public IngestionBackend getIngestionBackend() {
     return ingestionBackend;
   }
 
@@ -706,7 +706,7 @@ public class DaVinciBackend implements Closeable {
     }
   }
 
-  int getVeniceCurrentVersionNumber(String storeName) {
+  final int getVeniceCurrentVersionNumber(String storeName) {
     Version currentVersion = getVeniceCurrentVersion(storeName);
     return currentVersion == null ? -1 : currentVersion.getNumber();
   }
