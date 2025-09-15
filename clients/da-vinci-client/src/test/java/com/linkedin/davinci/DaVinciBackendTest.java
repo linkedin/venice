@@ -1,6 +1,11 @@
 package com.linkedin.davinci;
 
+import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES;
+import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
+import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
 import static com.linkedin.venice.ConfigKeys.DA_VINCI_SUBSCRIBE_ON_DISK_PARTITIONS_AUTOMATICALLY;
+import static com.linkedin.venice.ConfigKeys.INGESTION_USE_DA_VINCI_CLIENT;
+import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.DVC_INGESTION_ERROR_MEMORY_LIMIT_REACHED;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.DVC_INGESTION_ERROR_OTHER;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.ERROR;
@@ -69,9 +74,9 @@ public class DaVinciBackendTest {
   private static final Integer STORE_VERSION = 1;
 
   private DaVinciBackend backend;
-  private MockedStatic<ClientFactory> mockedClientFactory;
-  private MockedConstruction<VeniceMetadataRepositoryBuilder> mockedMetadataBuilder;
-  private MockedConstruction<SchemaPresenceChecker> mockedSchemaPresenceChecker;
+  private MockedStatic<ClientFactory> mockClientFactory;
+  private MockedConstruction<VeniceMetadataRepositoryBuilder> mockMetadataBuilder;
+  private MockedConstruction<SchemaPresenceChecker> mockSchemaPresenceChecker;
 
   @BeforeMethod
   public void setUp() throws Exception {
@@ -79,22 +84,22 @@ public class DaVinciBackendTest {
         .setMetricsRepository(new MetricsRepository());
 
     Properties serverProps = new Properties();
-    serverProps.setProperty("cluster.name", "test-cluster");
-    serverProps.setProperty("zookeeper.address", "localhost:2181");
+    serverProps.setProperty(CLUSTER_NAME, "test-cluster");
+    serverProps.setProperty(ZOOKEEPER_ADDRESS, "localhost:2181");
     serverProps.setProperty("kafka.bootstrap.servers", "localhost:9092");
-    serverProps.setProperty("ingestion.use.da.vinci.client", "true");
-    serverProps.setProperty("data.base.path", "/tmp/test");
-    serverProps.setProperty("davinci.push.status.check.interval.in.ms", "1000");
+    serverProps.setProperty(INGESTION_USE_DA_VINCI_CLIENT, "true");
+    serverProps.setProperty(DATA_BASE_PATH, "/tmp/test");
+    serverProps.setProperty(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, "0");
     VeniceProperties veniceProperties = new VeniceProperties(serverProps);
     VeniceConfigLoader configLoader = new VeniceConfigLoader(veniceProperties);
 
-    mockedClientFactory = mockStatic(ClientFactory.class);
+    mockClientFactory = mockStatic(ClientFactory.class);
     SchemaReader mockSchemaReader = mock(SchemaReader.class);
     StoreSchemaFetcher mockSchemaFetcher = mock(StoreSchemaFetcher.class);
 
-    mockedClientFactory.when(() -> ClientFactory.getSchemaReader(any(ClientConfig.class), any()))
+    mockClientFactory.when(() -> ClientFactory.getSchemaReader(any(ClientConfig.class), any()))
         .thenReturn(mockSchemaReader);
-    mockedClientFactory.when(() -> ClientFactory.createStoreSchemaFetcher(any(ClientConfig.class)))
+    mockClientFactory.when(() -> ClientFactory.createStoreSchemaFetcher(any(ClientConfig.class)))
         .thenReturn(mockSchemaFetcher);
 
     // Configure mock schema fetcher to return mock schema entries (prevent network calls)
@@ -109,14 +114,14 @@ public class DaVinciBackendTest {
     SubscriptionBasedReadOnlyStoreRepository mockStoreRepository = mock(SubscriptionBasedReadOnlyStoreRepository.class);
     ReadOnlySchemaRepository mockSchemaRepository = mock(ReadOnlySchemaRepository.class);
 
-    mockedMetadataBuilder = mockConstruction(VeniceMetadataRepositoryBuilder.class, (mock, context) -> {
+    mockMetadataBuilder = mockConstruction(VeniceMetadataRepositoryBuilder.class, (mock, context) -> {
       when(mock.getClusterInfoProvider()).thenReturn(mockClusterInfoProvider);
       when(mock.getStoreRepo()).thenReturn(mockStoreRepository);
       when(mock.getSchemaRepo()).thenReturn(mockSchemaRepository);
     });
 
     // Mock SchemaPresenceChecker constructor to prevent schema validation network calls
-    mockedSchemaPresenceChecker = mockConstruction(SchemaPresenceChecker.class, (mock, context) -> {
+    mockSchemaPresenceChecker = mockConstruction(SchemaPresenceChecker.class, (mock, context) -> {
       doNothing().when(mock).verifySchemaVersionPresentOrExit();
     });
 
@@ -129,15 +134,9 @@ public class DaVinciBackendTest {
 
   @AfterMethod
   public void cleanUp() {
-    if (mockedClientFactory != null) {
-      mockedClientFactory.close();
-    }
-    if (mockedMetadataBuilder != null) {
-      mockedMetadataBuilder.close();
-    }
-    if (mockedSchemaPresenceChecker != null) {
-      mockedSchemaPresenceChecker.close();
-    }
+    mockClientFactory.close();
+    mockMetadataBuilder.close();
+    mockSchemaPresenceChecker.close();
   }
 
   @DataProvider(name = "DvcErrorExecutionStatusAndBoolean")
