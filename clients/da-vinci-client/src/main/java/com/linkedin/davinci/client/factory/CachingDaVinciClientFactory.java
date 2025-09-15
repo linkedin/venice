@@ -451,8 +451,9 @@ public class CachingDaVinciClientFactory
       isolatedClients.add(client);
     } else {
       if (storeVersion != null) {
+        String versionSpecificStoreName = internalStoreName + "v" + storeVersion;
         client = versionSpecificClients.computeIfAbsent(
-            internalStoreName,
+            versionSpecificStoreName,
             k -> clientConstructor.apply(config, clientConfig, backendConfig, managedClients, icProvider));
 
       } else {

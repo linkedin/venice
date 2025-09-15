@@ -38,6 +38,7 @@ import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheConfig;
+import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.schema.StoreSchemaFetcher;
 import com.linkedin.venice.client.store.ClientConfig;
@@ -104,12 +105,12 @@ public class DaVinciBackend implements Closeable {
   // Per-store client tracking
   private final Map<String, ClientType> storeClientTypes = new VeniceConcurrentHashMap<>();
   private final Map<String, Integer> versionSpecificStoreVersions = new VeniceConcurrentHashMap<>();
-  private final VeniceConfigLoader configLoader;
-  private final SubscriptionBasedReadOnlyStoreRepository storeRepository;
+  private VeniceConfigLoader configLoader;
+  private SubscriptionBasedReadOnlyStoreRepository storeRepository;
   private final ReadOnlySchemaRepository schemaRepository;
   private final MetricsRepository metricsRepository;
   private final RocksDBMemoryStats rocksDBMemoryStats;
-  private final StorageService storageService;
+  private StorageService storageService;
   private final KafkaStoreIngestionService ingestionService;
   private final ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor();
   private final Map<String, StoreBackend> storeByNameMap = new VeniceConcurrentHashMap<>();
@@ -142,6 +143,7 @@ public class DaVinciBackend implements Closeable {
           .orElse(TehutiUtils.getMetricsRepository(DAVINCI_CLIENT.getName()));
       VeniceMetadataRepositoryBuilder veniceMetadataRepositoryBuilder =
           new VeniceMetadataRepositoryBuilder(configLoader, clientConfig, metricsRepository, icProvider, false);
+
       ClusterInfoProvider clusterInfoProvider = veniceMetadataRepositoryBuilder.getClusterInfoProvider();
       ReadOnlyStoreRepository readOnlyStoreRepository = veniceMetadataRepositoryBuilder.getStoreRepo();
       if (!(readOnlyStoreRepository instanceof SubscriptionBasedReadOnlyStoreRepository)) {
@@ -412,7 +414,8 @@ public class DaVinciBackend implements Closeable {
     };
   }
 
-  private synchronized void bootstrap() {
+  @VisibleForTesting
+  synchronized void bootstrap() {
     List<StorageEngine> storageEngines = getStorageService().getStorageEngineRepository().getAllLocalStorageEngines();
     LOGGER.info("Starting bootstrap, storageEngines: {}", storageEngines);
     Map<String, Version> storeNameToBootstrapVersionMap = new HashMap<>();
@@ -752,13 +755,16 @@ public class DaVinciBackend implements Closeable {
               + "Cannot mix regular and version-specific clients for the same store.");
     }
 
-    // Check for existing version-specific client (only one allowed per store)
+    // Prevent multiple version-specific clients targeting different versions of the same store
     if (isVersionSpecific && existingClientType == ClientType.VERSION_SPECIFIC) {
       Integer existingVersion = versionSpecificStoreVersions.get(storeName);
-      throw new VeniceClientException(
-          "Version-specific client already exists for store '" + storeName + "' " + "(existing version: "
-              + existingVersion + ", requested version: " + storeVersion + "). "
-              + "Only one version-specific client allowed per store.");
+
+      if (!existingVersion.equals(storeVersion)) {
+        throw new VeniceClientException(
+            "Store " + storeName + " already has a version-specific client targeting version " + existingVersion
+                + ". Cannot create another version-specific client targeting version " + storeVersion
+                + ". Multiple version-specific clients per store are not allowed.");
+      }
     }
 
     if (isVersionSpecific) {
@@ -783,6 +789,63 @@ public class DaVinciBackend implements Closeable {
    */
   public synchronized boolean isVersionSpecificStore(String storeName) {
     return ClientType.VERSION_SPECIFIC.equals(storeClientTypes.get(storeName));
+  }
+
+  /**
+   * Gets the client type for a given store (for testing purposes).
+   * @param storeName The name of the store
+   * @return The ClientType for the store, or null if not registered
+   */
+  @VisibleForTesting
+  public ClientType getStoreClientType(String storeName) {
+    return storeClientTypes.get(storeName);
+  }
+
+  /**
+   * Gets the version for a version-specific store (for testing purposes).
+   * @param storeName The name of the store
+   * @return The version number for the store, or null if not version-specific
+   */
+  @VisibleForTesting
+  public Integer getVersionSpecificStoreVersion(String storeName) {
+    return versionSpecificStoreVersions.get(storeName);
+  }
+
+  /**
+   * Sets the store repository (for testing purposes).
+   * @param storeRepository The store repository to set
+   */
+  @VisibleForTesting
+  public void setStoreRepository(SubscriptionBasedReadOnlyStoreRepository storeRepository) {
+    this.storeRepository = storeRepository;
+  }
+
+  /**
+   * Sets the storage service (for testing purposes).
+   * @param storageService The storage service to set
+   */
+  @VisibleForTesting
+  public void setStorageService(StorageService storageService) {
+    this.storageService = storageService;
+  }
+
+  /**
+   * Sets the config loader (for testing purposes).
+   * @param configLoader The config loader to set
+   */
+  @VisibleForTesting
+  public void setConfigLoader(VeniceConfigLoader configLoader) {
+    this.configLoader = configLoader;
+  }
+
+  /**
+   * Adds a store backend to the store backend map (for testing purposes).
+   * @param storeName The store name
+   * @param storeBackend The store backend to add
+   */
+  @VisibleForTesting
+  public void addStoreBackend(String storeName, StoreBackend storeBackend) {
+    storeByNameMap.put(storeName, storeBackend);
   }
 
   private final VeniceNotifier ingestionListener = new VeniceNotifier() {
