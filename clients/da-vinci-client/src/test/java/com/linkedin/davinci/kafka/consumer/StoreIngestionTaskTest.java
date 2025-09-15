@@ -1584,6 +1584,9 @@ public abstract class StoreIngestionTaskTest {
 
     isCurrentVersion = () -> true;
 
+    // Make sure the internal lag measurement won't fail.
+    doReturn(InMemoryPubSubPosition.of(0)).when(mockTopicManager).getLatestPositionCached(pubSubTopic, partition);
+
     StoreIngestionTaskTestConfig config = new StoreIngestionTaskTestConfig(Utils.setOf(partition), () -> {
       if (!enableKeyUrnCompression) {
         verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT_MS).times(2))
