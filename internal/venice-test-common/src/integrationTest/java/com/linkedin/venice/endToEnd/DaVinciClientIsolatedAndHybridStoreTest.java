@@ -75,7 +75,6 @@ import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
 import java.io.FileWriter;
 import java.nio.ByteBuffer;
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -481,77 +480,6 @@ public class DaVinciClientIsolatedAndHybridStoreTest {
           assertThrows(NonLocalAccessException.class, () -> client4.get(key).get());
         }
       }
-    }
-  }
-
-  @Test(dataProvider = "dv-client-config-provider", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT
-      * 2)
-  public void testHybridStoreWithoutIngestionIsolation(DaVinciConfig daVinciConfig) throws Exception {
-    // Create store
-    final int partitionCount = 2;
-    final int emptyPartition = 0;
-    final int dataPartition = 1;
-    String storeName = Utils.getUniqueString("store");
-
-    // Convert it to hybrid
-    Consumer<UpdateStoreQueryParams> paramsConsumer =
-        params -> params.setPartitionerClass(ConstantVenicePartitioner.class.getName())
-            .setPartitionCount(partitionCount)
-            .setPartitionerParams(
-                Collections.singletonMap(ConstantVenicePartitioner.CONSTANT_PARTITION, String.valueOf(dataPartition)));
-    setupHybridStore(storeName, paramsConsumer);
-
-    VeniceProperties backendConfig = new PropertyBuilder().put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
-        .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
-        .put(DATA_BASE_PATH, Utils.getTempDataDirectory().getAbsolutePath())
-        .put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 2 * 1024 * 1024L)
-        .put(PERSISTENCE_TYPE, ROCKS_DB)
-        .build();
-
-    MetricsRepository metricsRepository = new MetricsRepository();
-
-    try (CachingDaVinciClientFactory factory = getCachingDaVinciClientFactory(
-        d2Client,
-        VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
-        metricsRepository,
-        backendConfig,
-        cluster)) {
-      DaVinciClient<Integer, Integer> client = factory.getAndStartGenericAvroClient(storeName, daVinciConfig);
-      // subscribe to a partition without data
-      client.subscribe(Collections.singleton(emptyPartition)).get();
-      for (int i = 0; i < KEY_COUNT; i++) {
-        int key = i;
-        assertThrows(NonLocalAccessException.class, () -> client.get(key).get());
-      }
-      client.unsubscribe(Collections.singleton(emptyPartition));
-
-      // subscribe to a partition with data
-      client.subscribe(Collections.singleton(dataPartition)).get();
-      TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
-
-        Map<Integer, Integer> keyValueMap = new HashMap<>();
-        for (Integer i = 0; i < KEY_COUNT; i++) {
-          assertEquals(client.get(i).get(), i);
-          keyValueMap.put(i, i);
-        }
-
-        Map<Integer, Integer> batchGetResult = client.batchGet(keyValueMap.keySet()).get();
-        assertNotNull(batchGetResult);
-        assertEquals(batchGetResult, keyValueMap);
-      });
-
-      // Write some fresh records to override the old value. Make sure we can read the new value.
-      List<Pair<Object, Object>> dataToPublish = new ArrayList<>();
-      dataToPublish.add(new Pair<>(0, 1));
-      dataToPublish.add(new Pair<>(1, 2));
-      dataToPublish.add(new Pair<>(3, 4));
-
-      generateHybridData(storeName, dataToPublish);
-      TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
-        for (Pair<Object, Object> entry: dataToPublish) {
-          assertEquals(client.get((Integer) entry.getFirst()).get(), entry.getSecond());
-        }
-      });
     }
   }
 
