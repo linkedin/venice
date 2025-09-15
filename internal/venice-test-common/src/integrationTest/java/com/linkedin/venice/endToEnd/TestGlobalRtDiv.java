@@ -230,12 +230,13 @@ public class TestGlobalRtDiv {
     // Sanity check that Global RT DIV State can be successfully loaded from StorageEngine on all servers
     venice.getVeniceServers().forEach(server -> {
       TestVeniceServer testVeniceServer = server.getVeniceServer();
-      StorageEngine storageEngine = testVeniceServer.getStorageService().getStorageEngine(topicName);
-      if (storageEngine == null) {
+      StoreIngestionTask sit = testVeniceServer.getKafkaStoreIngestionService().getStoreIngestionTask(topicName);
+      StorageEngine metadataStorageEngine = sit.getMetadataStorageEngine();
+      if (metadataStorageEngine == null) {
         return;
       }
       GlobalRtDivState globalRtDiv =
-          getGlobalRtDivState(testVeniceServer, storageEngine, PARTITION, globalRtDivKey, isChunkingEnabled);
+          getGlobalRtDivState(testVeniceServer, metadataStorageEngine, PARTITION, globalRtDivKey, isChunkingEnabled);
       LOGGER.info("Global RT DIV State: {}", globalRtDiv);
       validateGlobalDivState(globalRtDiv);
     });
@@ -359,6 +360,7 @@ public class TestGlobalRtDiv {
         .getCompressor(CompressionStrategy.NO_OP, storageEngine.getStoreVersionName(), Zstd.defaultCompressionLevel());
 
     // TODO: unify the production code with this
+
     ChunkedValueManifestContainer manifestContainer = new ChunkedValueManifestContainer();
     ByteBuffer value = (ByteBuffer) GenericChunkingAdapter.INSTANCE.get(
         storageEngine,

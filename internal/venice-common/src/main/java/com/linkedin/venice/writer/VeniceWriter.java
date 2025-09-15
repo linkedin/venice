@@ -1484,7 +1484,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
 
   private CompletableFuture<PubSubProduceResult> sendMessage(
       KeyProvider keyProvider,
-      MessageType messageType,
+      MessageType valueMessageType,
       Object payload,
       boolean isEndOfSegment,
       int partition,
@@ -1496,7 +1496,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     synchronized (this.partitionLocks[partition]) {
       KafkaMessageEnvelopeProvider kafkaMessageEnvelopeProvider = () -> {
         KafkaMessageEnvelope kafkaValue = getKafkaMessageEnvelope(
-            messageType,
+            valueMessageType,
             isEndOfSegment,
             partition,
             updateDIV,

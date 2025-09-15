@@ -89,7 +89,7 @@ public class StorageEngineMetadataService extends AbstractVeniceService implemen
     }
   }
 
-  private StorageEngine<? extends AbstractStoragePartition> getStorageEngineOrThrow(String topicName) {
+  public StorageEngine<? extends AbstractStoragePartition> getStorageEngineOrThrow(String topicName) {
     StorageEngine<? extends AbstractStoragePartition> storageEngine =
         this.storageEngineRepository.getLocalStorageEngine(topicName);
     if (storageEngine == null) {

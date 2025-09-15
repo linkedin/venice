@@ -127,6 +127,7 @@ import com.linkedin.venice.utils.RetryUtils;
 import com.linkedin.venice.utils.SparseConcurrentList;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Timer;
+import com.linkedin.venice.utils.TriConsumer;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.ValueHolder;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -3553,12 +3554,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * in order to insert the {@param schemaId} there. This avoids a byte array copy, which can be beneficial in terms
    * of GC.
    */
-  private void prependHeaderAndWriteToStorageEngine(int partition, byte[] keyBytes, Put put) {
+  private void prependHeaderAndWriteToStorageEngine(int partition, byte[] keyBytes, Put put, boolean isGlobalRtDiv) {
     ByteBuffer putValue = put.putValue;
 
+    TriConsumer<Integer, byte[], Put> writeFunction =
+        isGlobalRtDiv ? this::putInMetadataStorageEngine : this::writeToStorageEngine;
     if ((putValue.remaining() == 0) && (put.replicationMetadataPayload.remaining() > 0)) {
       // For RMD chunk, it is already prepended with the schema ID, so we will just put to storage engine.
-      writeToStorageEngine(partition, keyBytes, put);
+      writeFunction.accept(partition, keyBytes, put);
     } else if (putValue.position() < ValueRecord.SCHEMA_HEADER_LENGTH) {
       throw new VeniceException(
           "Start position of 'putValue' ByteBuffer shouldn't be less than " + ValueRecord.SCHEMA_HEADER_LENGTH);
@@ -3575,7 +3578,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       putValue.position(putValue.position() - ValueRecord.SCHEMA_HEADER_LENGTH);
       ByteUtils.writeInt(putValue.array(), put.schemaId, putValue.position());
       try {
-        writeToStorageEngine(partition, keyBytes, put);
+        writeFunction.accept(partition, keyBytes, put);
       } finally {
         /* We still want to recover the original position to make this function idempotent. */
         putValue.putInt(backupBytes);
@@ -3619,6 +3622,17 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected void removeFromStorageEngine(int partition, byte[] keyBytes, Delete delete) {
     executeStorageEngineRunnable(partition, () -> storageEngine.delete(partition, keyBytes));
   }
+
+  protected void putInMetadataStorageEngine(int partition, byte[] keyBytes, Put put) {
+    executeStorageEngineRunnable(partition, () -> getMetadataStorageEngine().put(partition, keyBytes, put.putValue));
+  }
+
+  protected void removeFromMetadataStorageEngine(int partition, byte[] keyBytes, Delete delete) {
+    executeStorageEngineRunnable(partition, () -> getMetadataStorageEngine().delete(partition, keyBytes));
+  }
+
+  @VisibleForTesting
+  public abstract StorageEngine getMetadataStorageEngine();
 
   protected void throwOrLogStorageFailureDependingIfStillSubscribed(int partition, VeniceException e) {
     if (partitionConsumptionStateMap.containsKey(partition)) {
@@ -3803,7 +3817,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           long recordTransformerStartTime = System.nanoTime();
           ByteBufferValueRecord<ByteBuffer> assembledRecord = chunkAssembler.bufferAndAssembleRecord(
               consumerRecord.getTopicPartition(),
-              put.getSchemaId(),
+              writerSchemaId,
               keyBytes,
               put.getPutValue(),
               consumerRecord.getPosition(),
@@ -3886,7 +3900,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
               // Followers are not affected since they are always consuming from VTs.
               producedPartition,
               keyBytes,
-              put);
+              put,
+              kafkaKey.isGlobalRtDiv());
         }
         // grab the positive schema id (actual value schema id) to be used in schema warm-up value schema id.
         // for hybrid use case in read compute store in future we need revisit this as we can have multiple schemas.
@@ -3936,7 +3951,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         }
 
         keyLen = keyBytes.length;
-        deleteFromStorageEngine(producedPartition, keyBytes, delete);
+        TriConsumer<Integer, byte[], Delete> deleteFromStorageEngineFunction =
+            kafkaKey.isGlobalRtDiv() ? this::removeFromMetadataStorageEngine : this::deleteFromStorageEngine;
+        deleteFromStorageEngineFunction.accept(producedPartition, keyBytes, delete);
         if (metricsEnabled && recordLevelMetricEnabled.get()) {
           hostLevelIngestionStats
               .recordStorageEngineDeleteLatency(LatencyUtils.getElapsedTimeFromNSToMS(startTimeNs), currentTimeMs);
