@@ -90,6 +90,7 @@ import com.linkedin.venice.meta.ViewConfigImpl;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.schema.AvroSchemaParseUtils;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.spark.datawriter.jobs.DataWriterSparkJob;
 import com.linkedin.venice.status.PushJobDetailsStatus;
 import com.linkedin.venice.status.protocol.PushJobDetails;
@@ -586,6 +587,16 @@ public class VenicePushJobTest {
     schemaResponse.setSchemaStr(VALUE_SCHEMA_STR);
     doReturn(schemaResponse).when(client).getValueSchema(anyString(), anyInt());
 
+    // mock fetching KME schema
+    MultiSchemaResponse multiSchemaResponse = mock(MultiSchemaResponse.class);
+    MultiSchemaResponse.Schema valueSchema = mock(MultiSchemaResponse.Schema.class);
+    when(valueSchema.getId()).thenReturn(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getCurrentProtocolVersion());
+    when(valueSchema.getSchemaStr())
+        .thenReturn(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getCurrentProtocolVersionSchema().toString());
+    when(multiSchemaResponse.getSchemas())
+        .thenReturn(Collections.singletonList(valueSchema).toArray(new MultiSchemaResponse.Schema[0]));
+    doReturn(multiSchemaResponse).when(client).getAllValueSchema(anyString());
+
     // mock storeinfo response
     StoreResponse storeResponse1 = new StoreResponse();
     storeResponse1.setStore(getStoreInfo(storeInfo, applyFirst));
@@ -994,6 +1005,33 @@ public class VenicePushJobTest {
       doReturn(dataRecoveryResponse).when(client)
           .dataRecovery(anyString(), anyString(), anyString(), anyInt(), anyBoolean(), anyBoolean(), any());
       pushJob.run();
+    }
+  }
+
+  @Test
+  public void testKMEValidationFailure() throws Exception {
+    Properties props = getVpjRequiredProperties();
+    props.put(KEY_FIELD_PROP, "id");
+    props.put(VALUE_FIELD_PROP, "name");
+    ControllerClient client = getClient();
+    // mock fetching KME schema and intentionally return an older version
+    MultiSchemaResponse multiSchemaResponse = mock(MultiSchemaResponse.class);
+    MultiSchemaResponse.Schema valueSchema = mock(MultiSchemaResponse.Schema.class);
+    when(valueSchema.getId()).thenReturn(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getCurrentProtocolVersion() - 1);
+    when(valueSchema.getSchemaStr())
+        .thenReturn(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getCurrentProtocolVersionSchema().toString());
+    when(multiSchemaResponse.getSchemas())
+        .thenReturn(Collections.singletonList(valueSchema).toArray(new MultiSchemaResponse.Schema[0]));
+    doReturn(multiSchemaResponse).when(client).getAllValueSchema(anyString());
+    try (VenicePushJob pushJob = getSpyVenicePushJob(props, client)) {
+      skipVPJValidation(pushJob);
+      try {
+        pushJob.run();
+        fail("Test should fail, but doesn't.");
+      } catch (VeniceException e) {
+        assertTrue(
+            e.getMessage().contains("KME protocol is upgraded in the push job but not in the Venice controller"));
+      }
     }
   }
 

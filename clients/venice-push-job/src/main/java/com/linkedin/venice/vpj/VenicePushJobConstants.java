@@ -434,4 +434,13 @@ public final class VenicePushJobConstants {
    * timestamp to perform compatible batch push or use this setting to override the batch push and TTL re-push check.
    */
   public static final String ALLOW_REGULAR_PUSH_WITH_TTL_REPUSH = "allow.regular.push.with.ttl.repush";
+
+  /**
+   * Configuration prefix used to pass newer Kafka Message Envelope (KME) schemas into Hadoop job configurations.
+   * This prefix is used to store a map of schema ID to schema string pairs in job properties, where each
+   * property key follows the format: NEWER_KME_SCHEMAS_PREFIX + schemaId.
+   * These schemas represent newer KME schemas that have been added to the controller but may not yet be
+   * propagated to all {@link VenicePushJob} components.
+   */
+  public static final String NEWER_KME_SCHEMAS_PREFIX = "newer.kme.schemas.prefix.";
 }
