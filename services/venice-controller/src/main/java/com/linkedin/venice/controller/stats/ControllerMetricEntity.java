@@ -33,7 +33,7 @@ public enum ControllerMetricEntity implements ModuleMetricEntityInterface {
       setOf(VENICE_CLUSTER_NAME, HTTP_REQUEST_URL)
   ),
   SPARK_SERVER_CURRENT_INFLIGHT_REQUESTS_COUNT(
-      MetricType.COUNTER, MetricUnit.NUMBER, "Count of all current inflight calls to controller spark server",
+      MetricType.UP_DOWN_COUNTER, MetricUnit.NUMBER, "Count of all current inflight calls to controller spark server",
       setOf(VENICE_CLUSTER_NAME, HTTP_REQUEST_URL)
   ),
   SPARK_SERVER_SUCCESSFUL_REQUESTS_LATENCY(
