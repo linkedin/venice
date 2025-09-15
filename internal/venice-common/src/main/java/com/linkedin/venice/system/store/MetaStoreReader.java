@@ -10,20 +10,15 @@ import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
 import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
-import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
-import java.io.Closeable;
 import java.util.Collections;
-import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 
-public class MetaStoreReader implements Closeable {
+public class MetaStoreReader {
   private static final Logger LOGGER = LogManager.getLogger(MetaStoreReader.class);
   private static final int DEFAULT_HEARTBEAT_READ_TIMEOUT_SECONDS = 3;
-  private final Map<String, AvroSpecificStoreClient<StoreMetaKey, StoreMetaValue>> veniceClients =
-      new VeniceConcurrentHashMap<>();
   private final D2Client d2Client;
   private final String clusterDiscoveryD2ServiceName;
 
@@ -33,10 +28,9 @@ public class MetaStoreReader implements Closeable {
   }
 
   public long getHeartbeat(String storeName) {
-    AvroSpecificStoreClient<StoreMetaKey, StoreMetaValue> client = getVeniceClient(storeName);
     StoreMetaKey key =
         MetaStoreDataType.HEARTBEAT.getStoreMetaKey(Collections.singletonMap(KEY_STRING_STORE_NAME, storeName));
-    try {
+    try (AvroSpecificStoreClient<StoreMetaKey, StoreMetaValue> client = getVeniceClient(storeName)) {
       StoreMetaValue value = client.get(key).get(DEFAULT_HEARTBEAT_READ_TIMEOUT_SECONDS, TimeUnit.SECONDS);
       if (value == null) {
         return 0;
@@ -57,19 +51,6 @@ public class MetaStoreReader implements Closeable {
   }
 
   AvroSpecificStoreClient<StoreMetaKey, StoreMetaValue> getVeniceClient(String storeName) {
-    return veniceClients
-        .computeIfAbsent(storeName, (s) -> ClientFactory.getAndStartSpecificAvroClient(getClientConfig(storeName)));
+    return ClientFactory.getAndStartSpecificAvroClient(getClientConfig(storeName));
   }
-
-  @Override
-  public void close() {
-    veniceClients.forEach((storeName, veniceClient) -> {
-      try {
-        veniceClient.close();
-      } catch (Exception e) {
-        LOGGER.error("Can not close VeniceClient.", e);
-      }
-    });
-  }
-
 }

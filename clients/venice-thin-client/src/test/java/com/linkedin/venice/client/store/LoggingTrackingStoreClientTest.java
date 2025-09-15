@@ -66,6 +66,7 @@ public class LoggingTrackingStoreClientTest {
     Assert.assertTrue(
         appender.events.stream()
             .anyMatch(logEvent -> logEvent.getMessage().getFormattedMessage().contains("with latency")));
+    Assert.assertTrue(future.isCompletedExceptionally());
   }
 
   @Test
@@ -84,6 +85,7 @@ public class LoggingTrackingStoreClientTest {
                 logEvent -> logEvent.getMessage()
                     .getFormattedMessage()
                     .contains("Receive high latency single get request for store")));
+    Assert.assertTrue(future.isDone());
   }
 
   // Simple in-memory appender to capture events
