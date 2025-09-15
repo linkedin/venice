@@ -764,6 +764,11 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       Map<String, ControllerClient> controllerClientMap) {
     boolean proceed = true;
     Set<String> targetRegionList = RegionUtils.parseRegionsFilterList(targetRegion);
+    List<LifecycleHooksRecord> storeLifecycleHooks = parentStore.getStoreLifecycleHooks();
+    if (storeLifecycleHooks.isEmpty()) {
+      return proceed;
+    }
+
     for (String region: targetRegionList) {
       ControllerClient targetRegionControllerClient = controllerClientMap.get(region);
       JobStatusQueryResponse jobStatusQueryResponse = targetRegionControllerClient
@@ -792,7 +797,6 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
         return false;
       }
 
-      List<LifecycleHooksRecord> storeLifecycleHooks = parentStore.getStoreLifecycleHooks();
       for (LifecycleHooksRecord lifecycleHooksRecord: storeLifecycleHooks) {
         StoreVersionLifecycleEventOutcome outcome;
         try {
