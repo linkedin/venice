@@ -1,6 +1,7 @@
 package com.linkedin.venice.controller;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.atLeast;
@@ -12,6 +13,7 @@ import static org.mockito.Mockito.verify;
 
 import com.linkedin.venice.controller.stats.DeferredVersionSwapStats;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hooks.StoreVersionLifecycleEventOutcome;
@@ -209,6 +211,10 @@ public class TestDeferredVersionSwapService {
     for (Map.Entry<String, ControllerClient> entry: controllerClientMap.entrySet()) {
       ControllerClient controllerClient = entry.getValue();
       doReturn(storeResponse).when(controllerClient).getStore(any(), anyInt());
+      JobStatusQueryResponse response = mock(JobStatusQueryResponse.class);
+      doReturn(false).when(response).isError();
+      doReturn(ExecutionStatus.COMPLETED.toString()).when(response).getStatus();
+      doReturn(response).when(controllerClient).queryJobStatus(any(), any(), anyInt(), any(), anyBoolean());
     }
 
     mockVeniceHelixAdmin(controllerClientMap);
@@ -466,6 +472,10 @@ public class TestDeferredVersionSwapService {
     for (Map.Entry<String, ControllerClient> entry: controllerClientMap.entrySet()) {
       ControllerClient controllerClient = entry.getValue();
       doReturn(storeResponse).when(controllerClient).getStore(any(), anyInt());
+      JobStatusQueryResponse response = mock(JobStatusQueryResponse.class);
+      doReturn(false).when(response).isError();
+      doReturn(ExecutionStatus.COMPLETED.toString()).when(response).getStatus();
+      doReturn(response).when(controllerClient).queryJobStatus(any(), any(), anyInt(), any(), anyBoolean());
     }
 
     mockVeniceHelixAdmin(controllerClientMap);
