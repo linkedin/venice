@@ -1,10 +1,10 @@
 package com.linkedin.venice.client.stats;
 
 import static com.linkedin.venice.client.stats.ClientMetricEntity.RETRY_CALL_COUNT;
+import static com.linkedin.venice.client.stats.ClientStats.ClientTehutiMetricName.APP_TIMED_OUT_REQUEST;
 import static com.linkedin.venice.client.stats.ClientStats.ClientTehutiMetricName.APP_TIMED_OUT_REQUEST_RESULT_RATIO;
 import static com.linkedin.venice.client.stats.ClientStats.ClientTehutiMetricName.CLIENT_FUTURE_TIMEOUT;
 import static com.linkedin.venice.client.stats.ClientStats.ClientTehutiMetricName.SUCCESS_REQUEST_DUPLICATE_KEY_COUNT;
-import static com.linkedin.venice.stats.dimensions.MessageType.REQUEST;
 import static com.linkedin.venice.stats.dimensions.RequestRetryType.ERROR_RETRY;
 import static com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory.SUCCESS;
 
@@ -12,12 +12,10 @@ import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.ClientType;
 import com.linkedin.venice.stats.TehutiUtils;
-import com.linkedin.venice.stats.dimensions.MessageType;
 import com.linkedin.venice.stats.dimensions.RequestRetryType;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
 import com.linkedin.venice.stats.metrics.MetricEntityStateBase;
 import com.linkedin.venice.stats.metrics.MetricEntityStateOneEnum;
-import com.linkedin.venice.stats.metrics.MetricEntityStateTwoEnums;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
@@ -45,7 +43,7 @@ public class ClientStats extends BasicClientStats {
   private final Sensor streamingResponseTimeToReceive90PctRecord;
   private final Sensor streamingResponseTimeToReceive95PctRecord;
   private final Sensor streamingResponseTimeToReceive99PctRecord;
-  private final Sensor appTimedOutRequestSensor;
+  private final MetricEntityStateBase appTimedOutRequestCount;
   private final Sensor retryKeySuccessRatioSensor;
   /**
    * Tracks the number of keys handled via MultiGet fallback mechanism for Client-Compute.
@@ -55,7 +53,7 @@ public class ClientStats extends BasicClientStats {
   private final MetricEntityStateOneEnum<RequestRetryType> errorRetryRequest;
   private final MetricEntityStateBase retryKeyCount;
   private final MetricEntityStateBase retrySuccessKeyCount;
-  private final MetricEntityStateTwoEnums<MessageType, VeniceResponseStatusCategory> successRequestDuplicateKeyCount;
+  private final MetricEntityStateOneEnum<VeniceResponseStatusCategory> successRequestDuplicateKeyCount;
   private final MetricEntityStateBase clientFutureTimeout;
   private final MetricEntityStateBase appTimedOutRequestResultRatio;
 
@@ -92,14 +90,13 @@ public class ClientStats extends BasicClientStats {
         baseDimensionsMap,
         RequestRetryType.class);
 
-    successRequestDuplicateKeyCount = MetricEntityStateTwoEnums.create(
-        ClientMetricEntity.DUPLICATE_KEY_COUNT.getMetricEntity(),
+    successRequestDuplicateKeyCount = MetricEntityStateOneEnum.create(
+        ClientMetricEntity.REQUEST_DUPLICATE_KEY_COUNT.getMetricEntity(),
         otelRepository,
         this::registerSensor,
         SUCCESS_REQUEST_DUPLICATE_KEY_COUNT,
         Collections.singletonList(new Rate()),
         baseDimensionsMap,
-        MessageType.class,
         VeniceResponseStatusCategory.class);
     /**
      * The time it took to serialize the request, to be sent to the router. This is done in a blocking fashion
@@ -140,10 +137,17 @@ public class ClientStats extends BasicClientStats {
      *
      * This timeout behavior could actually happen before the D2 timeout, which is specified/configured in a different way.
      */
-    appTimedOutRequestSensor = registerSensor("app_timed_out_request", new OccurrenceRate());
+    appTimedOutRequestCount = MetricEntityStateBase.create(
+        ClientMetricEntity.REQUEST_TIMEOUT_COUNT.getMetricEntity(),
+        otelRepository,
+        this::registerSensor,
+        APP_TIMED_OUT_REQUEST,
+        Collections.singletonList(new OccurrenceRate()),
+        baseDimensionsMap,
+        baseAttributes);
 
     appTimedOutRequestResultRatio = MetricEntityStateBase.create(
-        ClientMetricEntity.REQUEST_TIMEOUT_RESULT_RATIO.getMetricEntity(),
+        ClientMetricEntity.REQUEST_TIMEOUT_PARTIAL_RESPONSE_RATIO.getMetricEntity(),
         otelRepository,
         this::registerSensorWithDetailedPercentiles,
         APP_TIMED_OUT_REQUEST_RESULT_RATIO,
@@ -152,7 +156,7 @@ public class ClientStats extends BasicClientStats {
         baseAttributes);
 
     clientFutureTimeout = MetricEntityStateBase.create(
-        ClientMetricEntity.CLIENT_FUTURE_TIMEOUT.getMetricEntity(),
+        ClientMetricEntity.REQUEST_TIMEOUT_REQUESTED_DURATION.getMetricEntity(),
         otelRepository,
         this::registerSensor,
         CLIENT_FUTURE_TIMEOUT,
@@ -201,7 +205,7 @@ public class ClientStats extends BasicClientStats {
   }
 
   public void recordSuccessDuplicateRequestKeyCount(int duplicateKeyCount) {
-    successRequestDuplicateKeyCount.record(duplicateKeyCount, REQUEST, SUCCESS);
+    successRequestDuplicateKeyCount.record(duplicateKeyCount, SUCCESS);
   }
 
   public void recordRequestSerializationTime(double latency) {
@@ -241,7 +245,7 @@ public class ClientStats extends BasicClientStats {
   }
 
   public void recordAppTimedOutRequest() {
-    appTimedOutRequestSensor.record();
+    appTimedOutRequestCount.record(1);
   }
 
   public void recordAppTimedOutRequestResultRatio(double ratio) {
@@ -269,7 +273,7 @@ public class ClientStats extends BasicClientStats {
    */
   public enum ClientTehutiMetricName implements com.linkedin.venice.stats.metrics.TehutiMetricNameEnum {
     REQUEST_RETRY_COUNT, RETRY_REQUEST_KEY_COUNT, RETRY_REQUEST_SUCCESS_KEY_COUNT, SUCCESS_REQUEST_DUPLICATE_KEY_COUNT,
-    CLIENT_FUTURE_TIMEOUT, APP_TIMED_OUT_REQUEST_RESULT_RATIO;
+    CLIENT_FUTURE_TIMEOUT, APP_TIMED_OUT_REQUEST_RESULT_RATIO, APP_TIMED_OUT_REQUEST;
 
     private final String metricName;
 

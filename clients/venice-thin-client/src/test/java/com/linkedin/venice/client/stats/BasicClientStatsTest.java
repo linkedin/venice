@@ -14,7 +14,6 @@ import static com.linkedin.venice.stats.dimensions.HttpResponseStatusCodeCategor
 import static com.linkedin.venice.stats.dimensions.HttpResponseStatusEnum.transformIntToHttpResponseStatusEnum;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE_CATEGORY;
-import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_MESSAGE_TYPE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_METHOD;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_RETRY_TYPE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY;
@@ -436,32 +435,36 @@ public class BasicClientStatsTest {
             Utils.setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)));
 
     expectedMetrics.put(
-        ClientMetricEntity.DUPLICATE_KEY_COUNT,
+        ClientMetricEntity.REQUEST_DUPLICATE_KEY_COUNT,
         new MetricEntity(
-            "duplicate_key_count",
+            "request.duplicate_key_count",
             MetricType.COUNTER,
             MetricUnit.NUMBER,
             "Duplicate key count of requests for client",
-            Utils.setOf(
-                VENICE_STORE_NAME,
-                VENICE_REQUEST_METHOD,
-                VENICE_MESSAGE_TYPE,
-                VENICE_RESPONSE_STATUS_CODE_CATEGORY)));
+            Utils.setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD, VENICE_RESPONSE_STATUS_CODE_CATEGORY)));
     expectedMetrics.put(
-        ClientMetricEntity.CLIENT_FUTURE_TIMEOUT,
+        ClientMetricEntity.REQUEST_TIMEOUT_REQUESTED_DURATION,
         new MetricEntity(
-            "client_future_timeout",
+            "request.timeout.requested_duration",
             MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS,
             MetricUnit.MILLISECOND,
-            "Client request timeout in milliseconds",
+            "The timeout duration (in milliseconds) that was configured for client Future",
             Utils.setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)));
     expectedMetrics.put(
-        ClientMetricEntity.REQUEST_TIMEOUT_RESULT_RATIO,
+        ClientMetricEntity.REQUEST_TIMEOUT_PARTIAL_RESPONSE_RATIO,
         new MetricEntity(
-            "request.timeout_result_ratio",
+            "request.timeout.partial_response_ratio",
             MetricType.HISTOGRAM,
             MetricUnit.NUMBER,
             "Ratio of timed out keys to total keys in the request",
+            Utils.setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)));
+    expectedMetrics.put(
+        ClientMetricEntity.REQUEST_TIMEOUT_COUNT,
+        new MetricEntity(
+            "request.timeout.count",
+            MetricType.COUNTER,
+            MetricUnit.NUMBER,
+            "Count of requests that timed out on the client side",
             Utils.setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)));
 
     Set<String> uniqueMetricEntitiesNames = new HashSet<>();

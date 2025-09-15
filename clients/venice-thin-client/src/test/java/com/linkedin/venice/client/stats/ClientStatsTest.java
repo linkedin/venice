@@ -4,7 +4,6 @@ import static com.linkedin.venice.client.stats.BasicClientStats.CLIENT_METRIC_EN
 import static com.linkedin.venice.read.RequestType.SINGLE_GET;
 import static com.linkedin.venice.stats.ClientType.THIN_CLIENT;
 import static com.linkedin.venice.stats.VeniceMetricsRepository.getVeniceMetricsRepository;
-import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_MESSAGE_TYPE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_METHOD;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
@@ -15,7 +14,6 @@ import static org.testng.Assert.assertEquals;
 
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
-import com.linkedin.venice.stats.dimensions.MessageType;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
@@ -54,7 +52,7 @@ public class ClientStatsTest {
         1,
         ratio,
         expectedAttr,
-        ClientMetricEntity.REQUEST_TIMEOUT_RESULT_RATIO.getMetricEntity().getMetricName(),
+        ClientMetricEntity.REQUEST_TIMEOUT_PARTIAL_RESPONSE_RATIO.getMetricEntity().getMetricName(),
         THIN_CLIENT.getMetricsPrefix());
   }
 
@@ -86,7 +84,33 @@ public class ClientStatsTest {
         1,
         timeout,
         expectedAttr,
-        ClientMetricEntity.CLIENT_FUTURE_TIMEOUT.getMetricEntity().getMetricName(),
+        ClientMetricEntity.REQUEST_TIMEOUT_REQUESTED_DURATION.getMetricEntity().getMetricName(),
+        THIN_CLIENT.getMetricsPrefix());
+  }
+
+  @Test
+  public void testAppTimedOutRequestCount() {
+    InMemoryMetricReader inMemoryMetricReader = InMemoryMetricReader.create();
+    ClientStats stats = createClientStats(inMemoryMetricReader);
+
+    stats.recordAppTimedOutRequest();
+
+    // Validate Tehuti (Rate should be > 0 when recorded)
+    Map<String, ? extends Metric> metrics = stats.getMetricsRepository().metrics();
+    String storeName = "test_store";
+    Assert.assertTrue(metrics.get(String.format(".%s--app_timed_out_request.OccurrenceRate", storeName)).value() > 0.0);
+
+    // Validate OpenTelemetry counter value and attributes
+    Attributes expectedAttr = Attributes.builder()
+        .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), storeName)
+        .put(VENICE_REQUEST_METHOD.getDimensionNameInDefaultFormat(), SINGLE_GET.getDimensionValue())
+        .build();
+
+    validateLongPointDataFromCounter(
+        inMemoryMetricReader,
+        1,
+        expectedAttr,
+        ClientMetricEntity.REQUEST_TIMEOUT_COUNT.getMetricEntity().getMetricName(),
         THIN_CLIENT.getMetricsPrefix());
   }
 
@@ -108,7 +132,6 @@ public class ClientStatsTest {
     Attributes expectedAttr = Attributes.builder()
         .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), storeName)
         .put(VENICE_REQUEST_METHOD.getDimensionNameInDefaultFormat(), SINGLE_GET.getDimensionValue())
-        .put(VENICE_MESSAGE_TYPE.getDimensionNameInDefaultFormat(), MessageType.REQUEST.getDimensionValue())
         .put(
             VENICE_RESPONSE_STATUS_CODE_CATEGORY.getDimensionNameInDefaultFormat(),
             VeniceResponseStatusCategory.SUCCESS.getDimensionValue())
@@ -118,7 +141,7 @@ public class ClientStatsTest {
         inMemoryMetricReader,
         duplicateKeyCount,
         expectedAttr,
-        ClientMetricEntity.DUPLICATE_KEY_COUNT.getMetricEntity().getMetricName(),
+        ClientMetricEntity.REQUEST_DUPLICATE_KEY_COUNT.getMetricEntity().getMetricName(),
         THIN_CLIENT.getMetricsPrefix());
   }
 
