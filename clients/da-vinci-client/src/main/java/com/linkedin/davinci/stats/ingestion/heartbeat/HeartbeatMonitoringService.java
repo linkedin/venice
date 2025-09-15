@@ -519,16 +519,6 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
       }
       return Long.MAX_VALUE;
     }
-    LOGGER.info(
-        "DEBUGGING WE ARE HERE storeName: {}, version: {}, partition: {}, currentTimestamp: {}, entry timestamp: {}, entry consumedFromUpstream: {}, local region: {}",
-        storeName,
-        version,
-        partitionConsumptionState.getPartition(),
-        currentTimestamp,
-        followerReplicaTimestamp.timestamp,
-        followerReplicaTimestamp.consumedFromUpstream,
-        getLocalRegionName());
-
     if (!followerReplicaTimestamp.consumedFromUpstream) {
       if (shouldLogLag) {
         LOGGER.info(
@@ -564,15 +554,6 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
       Map<String, Map<Integer, Map<Integer, Map<String, HeartbeatTimeStampEntry>>>> heartbeatTimestamps,
       boolean isReadyToServe,
       boolean retainHighestTimeStamp) {
-    LOGGER.info(
-        "DEBUGGING: PUT FOLLOWER HB: store: {}, version: {}, partition: {}, region: {}, timestamp: {}, isReadyToServe: {}, retainHighestTimeStamp: {}",
-        store,
-        version,
-        partition,
-        region,
-        timestamp,
-        isReadyToServe,
-        retainHighestTimeStamp);
     if (region != null) {
       heartbeatTimestamps.computeIfPresent(store, (storeKey, perVersionMap) -> {
         perVersionMap.computeIfPresent(version, (versionKey, perPartitionMap) -> {
