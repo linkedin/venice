@@ -79,6 +79,7 @@ import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.pubsub.PubSubContext;
+import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
 import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
@@ -152,6 +153,22 @@ import org.testng.Assert;
  * General-purpose utility functions for tests.
  */
 public class TestUtils {
+  /**
+   * **FOR UNIT TESTING PURPOSES ONLY** - Do not use in production code.
+   *
+   * A pre-configured PubSubContext instance with default test values for use in unit tests.
+   * This instance is initialized with basic default components suitable for testing scenarios
+   * where a fully configured PubSubContext is not required.
+   *
+   * Production code should propagate properly configured PubSubContext instances
+   * with appropriate TopicManagerRepository and other production-ready components.
+   *
+   */
+  public static final PubSubContext DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING =
+      new PubSubContext.Builder().setPubSubTopicRepository(new PubSubTopicRepository())
+          .setPubSubPositionDeserializer(PubSubPositionDeserializer.DEFAULT_DESERIALIZER)
+          .setPubSubPositionTypeRegistry(PubSubPositionTypeRegistry.RESERVED_POSITION_TYPE_REGISTRY)
+          .build();
   private static final Logger LOGGER = LogManager.getLogger(TestUtils.class);
 
   /** In milliseconds */

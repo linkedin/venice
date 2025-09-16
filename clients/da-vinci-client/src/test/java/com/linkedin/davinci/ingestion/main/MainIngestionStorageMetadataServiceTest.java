@@ -1,7 +1,7 @@
 package com.linkedin.davinci.ingestion.main;
 
-import static com.linkedin.venice.pubsub.PubSubContext.DEFAULT_PUBSUB_CONTEXT;
 import static com.linkedin.venice.serialization.avro.AvroProtocolDefinition.PARTITION_STATE;
+import static com.linkedin.venice.utils.TestUtils.DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
@@ -36,17 +36,18 @@ public class MainIngestionStorageMetadataServiceTest {
     String topicName = "blah";
     int partition = 0;
 
-    OffsetRecord offsetRecord1 =
-        mainIngestionStorageMetadataService.getLastOffset(topicName, partition, DEFAULT_PUBSUB_CONTEXT);
+    OffsetRecord offsetRecord1 = mainIngestionStorageMetadataService
+        .getLastOffset(topicName, partition, DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING);
 
     assertNotNull(offsetRecord1);
 
-    OffsetRecord offsetRecord2 = new OffsetRecord(PARTITION_STATE.getSerializer(), DEFAULT_PUBSUB_CONTEXT);
+    OffsetRecord offsetRecord2 =
+        new OffsetRecord(PARTITION_STATE.getSerializer(), DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING);
     offsetRecord2.checkpointLocalVtPosition(PubSubUtil.fromKafkaOffset(10));
 
     mainIngestionStorageMetadataService.putOffsetRecord(topicName, partition, offsetRecord2);
-    OffsetRecord offsetRecord3 =
-        mainIngestionStorageMetadataService.getLastOffset(topicName, partition, DEFAULT_PUBSUB_CONTEXT);
+    OffsetRecord offsetRecord3 = mainIngestionStorageMetadataService
+        .getLastOffset(topicName, partition, DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING);
     assertNotNull(offsetRecord3);
     assertEquals(offsetRecord3, offsetRecord2);
     assertNotEquals(

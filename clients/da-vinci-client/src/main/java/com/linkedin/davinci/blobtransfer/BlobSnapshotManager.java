@@ -1,7 +1,5 @@
 package com.linkedin.davinci.blobtransfer;
 
-import static com.linkedin.venice.pubsub.PubSubContext.DEFAULT_PUBSUB_CONTEXT;
-
 import com.google.common.annotations.VisibleForTesting;
 import com.linkedin.alpini.base.concurrency.Executors;
 import com.linkedin.davinci.storage.StorageEngineRepository;
@@ -13,7 +11,6 @@ import com.linkedin.davinci.store.rocksdb.RocksDBStoragePartition;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.offsets.OffsetRecord;
-import com.linkedin.venice.pubsub.PubSubContext;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.utils.DaemonThreadFactory;
@@ -69,7 +66,6 @@ public class BlobSnapshotManager {
   private final int snapshotCleanupIntervalInMins;
   private final BlobTransferUtils.BlobTransferTableFormat blobTransferTableFormat;
   private final ScheduledExecutorService snapshotCleanupScheduler;
-  private final PubSubContext emptyPubSubContext = DEFAULT_PUBSUB_CONTEXT;
 
   /**
    * Constructor for the BlobSnapshotManager
@@ -345,10 +341,8 @@ public class BlobSnapshotManager {
     }
 
     if (storageMetadataService.getStoreVersionState(blobTransferRequest.getTopicName()) == null
-        || storageMetadataService.getLastOffset(
-            blobTransferRequest.getTopicName(),
-            blobTransferRequest.getPartition(),
-            emptyPubSubContext) == null) {
+        || storageMetadataService
+            .getLastOffset(blobTransferRequest.getTopicName(), blobTransferRequest.getPartition(), null) == null) {
       throw new VeniceException("Cannot get store version state or offset record from storage metadata service.");
     }
 
@@ -359,7 +353,7 @@ public class BlobSnapshotManager {
         ByteBuffer.wrap(storeVersionStateSerializer.serialize(blobTransferRequest.getTopicName(), storeVersionState));
 
     OffsetRecord offsetRecord = storageMetadataService
-        .getLastOffset(blobTransferRequest.getTopicName(), blobTransferRequest.getPartition(), emptyPubSubContext);
+        .getLastOffset(blobTransferRequest.getTopicName(), blobTransferRequest.getPartition(), null);
     java.nio.ByteBuffer offsetRecordByte = ByteBuffer.wrap(offsetRecord.toBytes());
 
     return new BlobTransferPartitionMetadata(

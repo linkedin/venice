@@ -1,6 +1,6 @@
 package com.linkedin.venice.duckdb;
 
-import static com.linkedin.venice.pubsub.PubSubContext.DEFAULT_PUBSUB_CONTEXT;
+import static com.linkedin.venice.utils.TestUtils.DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING;
 import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V1_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.SINGLE_FIELD_RECORD_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.TWO_FIELDS_RECORD_SCHEMA;
@@ -93,7 +93,7 @@ public class DuckDBDaVinciRecordTransformerTest {
 
       DaVinciRecordTransformerUtility<GenericRecord, GenericRecord> recordTransformerUtility =
           recordTransformer.getRecordTransformerUtility();
-      OffsetRecord offsetRecord = new OffsetRecord(partitionStateSerializer, DEFAULT_PUBSUB_CONTEXT);
+      OffsetRecord offsetRecord = new OffsetRecord(partitionStateSerializer, DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING);
 
       assertTrue(recordTransformerUtility.hasTransformerLogicChanged(classHash, offsetRecord));
 

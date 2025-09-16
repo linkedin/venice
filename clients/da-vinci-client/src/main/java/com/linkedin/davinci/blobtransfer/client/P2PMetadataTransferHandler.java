@@ -1,7 +1,5 @@
 package com.linkedin.davinci.blobtransfer.client;
 
-import static com.linkedin.venice.pubsub.PubSubContext.DEFAULT_PUBSUB_CONTEXT;
-
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.annotations.VisibleForTesting;
 import com.linkedin.davinci.blobtransfer.BlobTransferPartitionMetadata;
@@ -52,7 +50,6 @@ public class P2PMetadataTransferHandler extends SimpleChannelInboundHandler<Full
       BlobTransferTableFormat tableFormat) {
     this.storageMetadataService = storageMetadataService;
     this.payload = new BlobTransferPayload(baseDir, storeName, version, partition, tableFormat);
-    this.pubSubContext = DEFAULT_PUBSUB_CONTEXT;
   }
 
   @Override

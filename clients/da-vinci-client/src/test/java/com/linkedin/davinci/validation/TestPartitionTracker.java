@@ -5,7 +5,7 @@ import static com.linkedin.davinci.validation.PartitionTracker.TopicType.VERSION
 import static com.linkedin.venice.kafka.validation.checksum.CheckSumType.ADHASH;
 import static com.linkedin.venice.kafka.validation.checksum.CheckSumType.MD5;
 import static com.linkedin.venice.kafka.validation.checksum.CheckSumType.NONE;
-import static com.linkedin.venice.pubsub.PubSubContext.DEFAULT_PUBSUB_CONTEXT;
+import static com.linkedin.venice.utils.TestUtils.DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertThrows;
@@ -453,8 +453,10 @@ public class TestPartitionTracker {
     Segment firstSegment = new Segment(partitionId, 0, checkSumType);
     Segment secondSegment = new Segment(partitionId, 1, checkSumType);
     long offset = 10;
-    OffsetRecord record =
-        TestUtils.getOffsetRecord(ApacheKafkaOffsetPosition.of(offset), Optional.empty(), DEFAULT_PUBSUB_CONTEXT);
+    OffsetRecord record = TestUtils.getOffsetRecord(
+        ApacheKafkaOffsetPosition.of(offset),
+        Optional.empty(),
+        DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING);
 
     // Send SOS with check sum type set to checkpoint-able checkSumType.
     ControlMessage startOfSegment = getStartOfSegment(checkSumType);
