@@ -623,6 +623,14 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
           finalVersionStatus,
           nextEligibleRegion);
       return null;
+    } else if (VersionStatus.ONLINE.equals(version.getStatus())
+        && rolloutOrder.get(rolloutOrder.size() - 1).equals(nextEligibleRegion)) {
+      String message = "Marking parent version " + kafkaTopicName + " as ONLINE because all non target "
+          + "regions are serving the target version.";
+      logMessageIfNotRedundant(message);
+
+      updateStore(clusterName, parentStore.getName(), ONLINE, targetVersionNum);
+      return null;
     }
 
     return null;
@@ -684,6 +692,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
     Set<String> completedNonTargetRegions = new HashSet<>();
     Set<String> failedNonTargetRegions = new HashSet<>();
     Map<String, String> nonTargetRegionToStatus = new HashMap<>();
+    Set<String> onlineNonTargetRegions = new HashSet<>();
     for (String nonTargetRegion: nonTargetRegions) {
       StoreResponse storeResponse = getStoreForRegion(clusterName, nonTargetRegion, parentStore.getName());
       Version version =
@@ -726,6 +735,8 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
               + nonTargetRegion;
           logMessageIfNotRedundant(message);
           deferredVersionSwapStats.recordDeferredVersionSwapChildStatusMismatchSensor();
+        } else {
+          onlineNonTargetRegions.add(nonTargetRegion);
         }
       }
 
@@ -749,6 +760,13 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
           + completedNonTargetRegions + ", failed non target regions: " + failedNonTargetRegions
           + ", non target regions: " + nonTargetRegionToStatus;
       logMessageIfNotRedundant(message);
+      return Collections.emptySet();
+    } else if ((onlineNonTargetRegions.equals(nonTargetRegions))) {
+      String message = "Marking parent version " + kafkaTopicName + " as ONLINE because all non target "
+          + "regions are serving the target version: " + nonTargetRegionToStatus;
+      logMessageIfNotRedundant(message);
+
+      updateStore(clusterName, parentStore.getName(), ONLINE, targetVersionNum);
       return Collections.emptySet();
     }
 
