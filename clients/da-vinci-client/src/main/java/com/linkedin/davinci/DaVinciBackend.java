@@ -674,7 +674,7 @@ public class DaVinciBackend implements Closeable {
   // Move the logic to this protected method to make it visible for unit test.
   protected void handleStoreChanged(StoreBackend storeBackend) {
     // Skip version swaps for version-specific stores
-    if (isVersionSpecificStore(storeBackend.getStoreName())) {
+    if (ClientType.VERSION_SPECIFIC.equals(storeClientTypes.get(storeBackend.getStoreName()))) {
       LOGGER.info("Ignoring version swap for version-specific store: {}", storeBackend.getStoreName());
       return;
     }
@@ -743,6 +743,15 @@ public class DaVinciBackend implements Closeable {
     }
   };
 
+  /**
+   * Registers a store client and enforces client type exclusivity per store.
+   * Prevents mixing regular and version-specific clients for the same store.
+   *
+   * @param storeName the name of the store to register a client for
+   * @param storeVersion the target version for version-specific clients, or null for regular clients
+   * @throws VeniceClientException if there is a client type conflict or multiple version-specific
+   *                               clients target different versions of the same store
+   */
   public synchronized void registerStoreClient(String storeName, Integer storeVersion) {
     boolean isVersionSpecific = storeVersion != null;
     ClientType newClientType = isVersionSpecific ? ClientType.VERSION_SPECIFIC : ClientType.REGULAR;
@@ -781,68 +790,31 @@ public class DaVinciBackend implements Closeable {
     }
   }
 
-  /**
-   * Check if a store is being used by a version-specific client.
-   *
-   * @param storeName The name of the store
-   * @return true if the store has a version-specific client, false otherwise
-   */
-  public synchronized boolean isVersionSpecificStore(String storeName) {
-    return ClientType.VERSION_SPECIFIC.equals(storeClientTypes.get(storeName));
-  }
-
-  /**
-   * Gets the client type for a given store (for testing purposes).
-   * @param storeName The name of the store
-   * @return The ClientType for the store, or null if not registered
-   */
   @VisibleForTesting
   public ClientType getStoreClientType(String storeName) {
     return storeClientTypes.get(storeName);
   }
 
-  /**
-   * Gets the version for a version-specific store (for testing purposes).
-   * @param storeName The name of the store
-   * @return The version number for the store, or null if not version-specific
-   */
   @VisibleForTesting
   public Integer getVersionSpecificStoreVersion(String storeName) {
     return versionSpecificStoreVersions.get(storeName);
   }
 
-  /**
-   * Sets the store repository (for testing purposes).
-   * @param storeRepository The store repository to set
-   */
   @VisibleForTesting
   public void setStoreRepository(SubscriptionBasedReadOnlyStoreRepository storeRepository) {
     this.storeRepository = storeRepository;
   }
 
-  /**
-   * Sets the storage service (for testing purposes).
-   * @param storageService The storage service to set
-   */
   @VisibleForTesting
   public void setStorageService(StorageService storageService) {
     this.storageService = storageService;
   }
 
-  /**
-   * Sets the config loader (for testing purposes).
-   * @param configLoader The config loader to set
-   */
   @VisibleForTesting
   public void setConfigLoader(VeniceConfigLoader configLoader) {
     this.configLoader = configLoader;
   }
 
-  /**
-   * Adds a store backend to the store backend map (for testing purposes).
-   * @param storeName The store name
-   * @param storeBackend The store backend to add
-   */
   @VisibleForTesting
   public void addStoreBackend(String storeName, StoreBackend storeBackend) {
     storeByNameMap.put(storeName, storeBackend);

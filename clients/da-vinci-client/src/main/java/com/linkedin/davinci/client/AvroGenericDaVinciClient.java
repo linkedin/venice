@@ -26,6 +26,7 @@ import com.linkedin.davinci.storage.chunking.GenericChunkingAdapter;
 import com.linkedin.davinci.storage.chunking.GenericRecordChunkingAdapter;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheConfig;
+import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.client.exceptions.ServiceDiscoveryException;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.stats.ClientStats;
@@ -907,10 +908,12 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
    *
    * @return the version this client is specifically subscribed to. If it's null, it's a regular client.
    */
+  @VisibleForTesting
   protected Integer getStoreVersion() {
     return storeVersion;
   }
 
+  @VisibleForTesting
   protected void addPartitionsToSubscription(ComplementSet<Integer> partitions) {
     subscription.addAll(partitions);
   }

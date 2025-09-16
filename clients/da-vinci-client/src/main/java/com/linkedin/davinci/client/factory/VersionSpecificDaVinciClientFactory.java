@@ -5,7 +5,7 @@ import com.linkedin.davinci.client.DaVinciConfig;
 
 
 /**
- * Factory interface for version-specific DaVinci Clients. This is only intended for internal use.
+ * Factory interface for version-specific DaVinci Clients. This is only intended for internal Venice use.
  */
 public interface VersionSpecificDaVinciClientFactory {
   <K, V> DaVinciClient<K, V> getVersionSpecificGenericAvroClient(

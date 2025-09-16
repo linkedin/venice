@@ -15,6 +15,10 @@ import java.util.concurrent.CompletableFuture;
 /**
  * Version-specific DaVinci client implementation that subscribes to a specific store version.
  *
+ * This is only intended for internal Venice use.
+ * Must be used with {@link com.linkedin.venice.ConfigKeys#DA_VINCI_SUBSCRIBE_ON_DISK_PARTITIONS_AUTOMATICALLY
+ * set to false. Otherwise, the client may subscribe to an unintended version based on what's on disk.
+ *
  * Key features:
  * - Subscribes to a specific version (does not follow version swaps)
  * - Validates version existence when subscribing
@@ -45,13 +49,13 @@ public class VersionSpecificAvroGenericDaVinciClient<K, V> extends AvroGenericDa
     throwIfNotReady();
 
     Store store = getBackend().getStoreRepository().getStoreOrThrow(getStoreName());
-    Version targetVersionObj = store.getVersion(getStoreVersion());
+    Version version = store.getVersion(getStoreVersion());
 
-    if (targetVersionObj == null) {
+    if (version == null) {
       throw new VeniceClientException("Version: " + getStoreVersion() + " does not exist for store: " + getStoreName());
     }
 
     addPartitionsToSubscription(partitions);
-    return getStoreBackend().subscribe(partitions, Optional.of(targetVersionObj));
+    return getStoreBackend().subscribe(partitions, Optional.of(version));
   }
 }

@@ -34,12 +34,12 @@ public class VersionSpecificAvroGenericDaVinciClientTest {
   private final Store store = mock(Store.class);
   private final Version version = mock(Version.class);
   private final ComplementSet<Integer> partitionsSet = ComplementSet.newSet(Arrays.asList(1));
-  private MockedStatic<AvroGenericDaVinciClient> mockedAvroGenericDaVinciClient;
+  private MockedStatic<AvroGenericDaVinciClient> avroGenericDaVinciClient;
 
   @BeforeMethod
   public void setUp() {
-    mockedAvroGenericDaVinciClient = mockStatic(AvroGenericDaVinciClient.class);
-    mockedAvroGenericDaVinciClient.when(AvroGenericDaVinciClient::getBackend).thenReturn(daVinciBackend);
+    avroGenericDaVinciClient = mockStatic(AvroGenericDaVinciClient.class);
+    avroGenericDaVinciClient.when(AvroGenericDaVinciClient::getBackend).thenReturn(daVinciBackend);
     doCallRealMethod().when(versionSpecificAvroGenericDaVinciClient).subscribe(any(ComplementSet.class));
 
     when(versionSpecificAvroGenericDaVinciClient.getStoreBackend()).thenReturn(storeBackend);
@@ -53,7 +53,7 @@ public class VersionSpecificAvroGenericDaVinciClientTest {
 
   @AfterMethod
   public void cleanUp() {
-    mockedAvroGenericDaVinciClient.close();
+    avroGenericDaVinciClient.close();
   }
 
   @Test

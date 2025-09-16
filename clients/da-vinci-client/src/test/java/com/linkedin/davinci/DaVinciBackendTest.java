@@ -80,7 +80,7 @@ public class DaVinciBackendTest {
 
   @BeforeMethod
   public void setUp() throws Exception {
-    ClientConfig realClientConfig = new ClientConfig(STORE_NAME).setVeniceURL("http://localhost:7777")
+    ClientConfig clientConfig = new ClientConfig(STORE_NAME).setVeniceURL("http://localhost:7777")
         .setMetricsRepository(new MetricsRepository());
 
     Properties serverProps = new Properties();
@@ -129,7 +129,7 @@ public class DaVinciBackendTest {
     ICProvider mockICProvider = mock(ICProvider.class);
     Optional<ObjectCacheConfig> cacheConfig = Optional.empty();
 
-    backend = new DaVinciBackend(realClientConfig, configLoader, managedClients, mockICProvider, cacheConfig);
+    backend = new DaVinciBackend(clientConfig, configLoader, managedClients, mockICProvider, cacheConfig);
   }
 
   @AfterMethod
@@ -298,11 +298,11 @@ public class DaVinciBackendTest {
     backend.addStoreBackend(Version.parseStoreFromKafkaTopicName(resourceName), mockStoreBackend);
 
     // DA_VINCI_SUBSCRIBE_ON_DISK_PARTITIONS_AUTOMATICALLY == false
-    Properties testProps = backend.getConfigLoader().getCombinedProperties().toProperties();
-    testProps.setProperty(DA_VINCI_SUBSCRIBE_ON_DISK_PARTITIONS_AUTOMATICALLY, "false");
-    VeniceProperties updatedProperties = new VeniceProperties(testProps);
-    VeniceConfigLoader updatedConfigLoader = new VeniceConfigLoader(updatedProperties);
-    backend.setConfigLoader(updatedConfigLoader);
+    Properties properties = backend.getConfigLoader().getCombinedProperties().toProperties();
+    properties.setProperty(DA_VINCI_SUBSCRIBE_ON_DISK_PARTITIONS_AUTOMATICALLY, "false");
+    VeniceProperties veniceProperties = new VeniceProperties(properties);
+    VeniceConfigLoader configLoader = new VeniceConfigLoader(veniceProperties);
+    backend.setConfigLoader(configLoader);
     backend.bootstrap();
 
     ComplementSet<Integer> subscription = mockStoreBackend.getSubscription();
@@ -311,11 +311,11 @@ public class DaVinciBackendTest {
     assertFalse(subscription.contains(2));
 
     // DA_VINCI_SUBSCRIBE_ON_DISK_PARTITIONS_AUTOMATICALLY == true
-    testProps = backend.getConfigLoader().getCombinedProperties().toProperties();
-    testProps.setProperty(DA_VINCI_SUBSCRIBE_ON_DISK_PARTITIONS_AUTOMATICALLY, "true");
-    VeniceProperties updatedProperties2 = new VeniceProperties(testProps);
-    VeniceConfigLoader updatedConfigLoader2 = new VeniceConfigLoader(updatedProperties2);
-    backend.setConfigLoader(updatedConfigLoader2);
+    properties = backend.getConfigLoader().getCombinedProperties().toProperties();
+    properties.setProperty(DA_VINCI_SUBSCRIBE_ON_DISK_PARTITIONS_AUTOMATICALLY, "true");
+    veniceProperties = new VeniceProperties(properties);
+    configLoader = new VeniceConfigLoader(veniceProperties);
+    backend.setConfigLoader(configLoader);
     backend.bootstrap();
 
     subscription = mockStoreBackend.getSubscription();
