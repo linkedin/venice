@@ -102,6 +102,7 @@ public class StoreBackendTest {
     when(backend.getIngestionBackend()).thenReturn(ingestionBackend);
     when(backend.getCompressorFactory()).thenReturn(compressorFactory);
     when(backend.hasCurrentVersionBootstrapping()).thenReturn(false);
+    when(backend.getStoreClientType(anyString())).thenReturn(DaVinciBackend.ClientType.REGULAR);
     doCallRealMethod().when(backend).handleStoreChanged(any());
 
     store = new ZKStore(

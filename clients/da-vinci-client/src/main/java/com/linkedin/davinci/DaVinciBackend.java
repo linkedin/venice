@@ -674,7 +674,7 @@ public class DaVinciBackend implements Closeable {
   // Move the logic to this protected method to make it visible for unit test.
   protected void handleStoreChanged(StoreBackend storeBackend) {
     // Skip version swaps for version-specific stores
-    if (ClientType.VERSION_SPECIFIC.equals(storeClientTypes.get(storeBackend.getStoreName()))) {
+    if (ClientType.VERSION_SPECIFIC.equals(getStoreClientType(storeBackend.getStoreName()))) {
       LOGGER.info("Ignoring version swap for version-specific store: {}", storeBackend.getStoreName());
       return;
     }
