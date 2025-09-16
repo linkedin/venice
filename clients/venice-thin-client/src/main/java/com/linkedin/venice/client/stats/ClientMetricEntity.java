@@ -49,7 +49,7 @@ public enum ClientMetricEntity implements ModuleMetricEntityInterface {
   ),
 
   /**
-   * Client request count.
+   * The timeout duration (in milliseconds) that was configured for client Future.
    */
   REQUEST_TIMEOUT_REQUESTED_DURATION(
       "request.timeout.requested_duration", MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS, MetricUnit.MILLISECOND,
@@ -58,15 +58,16 @@ public enum ClientMetricEntity implements ModuleMetricEntityInterface {
   ),
 
   /**
-   * Ratio of timed out keys to total keys in the request.
+   * Ratio of keys that were successfully retrieved to the total number of keys requested before timeout.
    */
   REQUEST_TIMEOUT_PARTIAL_RESPONSE_RATIO(
       "request.timeout.partial_response_ratio", MetricType.HISTOGRAM, MetricUnit.NUMBER,
-      "Ratio of timed out keys to total keys in the request", setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)
+      "Ratio of keys that were successfully retrieved to the total number of keys requested before timeout",
+      setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)
   ),
 
   /**
-   * Count of requests that timed out on the client side.
+   * Count of requests that timed out on the client side based on the future.get(timeout).
    */
   REQUEST_TIMEOUT_COUNT(
       "request.timeout.count", MetricType.COUNTER, MetricUnit.NUMBER,

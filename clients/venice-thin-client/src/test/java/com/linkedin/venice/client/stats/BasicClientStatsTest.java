@@ -456,7 +456,7 @@ public class BasicClientStatsTest {
             "request.timeout.partial_response_ratio",
             MetricType.HISTOGRAM,
             MetricUnit.NUMBER,
-            "Ratio of timed out keys to total keys in the request",
+            "Ratio of keys that were successfully retrieved to the total number of keys requested before timeout",
             Utils.setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)));
     expectedMetrics.put(
         ClientMetricEntity.REQUEST_TIMEOUT_COUNT,
