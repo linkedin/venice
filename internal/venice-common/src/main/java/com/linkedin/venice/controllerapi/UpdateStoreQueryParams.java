@@ -31,6 +31,8 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.HYBRID_ST
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.HYBRID_STORE_OVERHEAD_BYPASS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.INCREMENTAL_PUSH_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.IS_DAVINCI_HEARTBEAT_REPORTED;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.KEY_URN_COMPRESSION_ENABLED;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.KEY_URN_FIELDS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.LARGEST_USED_RT_VERSION_NUMBER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.LARGEST_USED_VERSION_NUMBER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.LATEST_SUPERSET_SCHEMA_ID;
@@ -175,7 +177,9 @@ public class UpdateStoreQueryParams extends QueryParams {
                 srcStore.getViewConfigs()
                     .entrySet()
                     .stream()
-                    .collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().toString())));
+                    .collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().toString())))
+            .setKeyUrnCompressionEnabled(srcStore.isKeyUrnCompressionEnabled())
+            .setKeyUrnFields(srcStore.getKeyUrnFields());
 
     if (srcStore.getReplicationMetadataVersionId() != -1) {
       updateStoreQueryParams.setReplicationMetadataVersionID(srcStore.getReplicationMetadataVersionId());
@@ -874,6 +878,22 @@ public class UpdateStoreQueryParams extends QueryParams {
     } catch (IOException e) {
       throw new VeniceException(e.getMessage());
     }
+  }
+
+  public UpdateStoreQueryParams setKeyUrnCompressionEnabled(boolean keyUrnCompressionEnabled) {
+    return putBoolean(KEY_URN_COMPRESSION_ENABLED, keyUrnCompressionEnabled);
+  }
+
+  public Optional<Boolean> getKeyUrnCompressionEnabled() {
+    return getBoolean(KEY_URN_COMPRESSION_ENABLED);
+  }
+
+  public UpdateStoreQueryParams setKeyUrnFields(List<String> keyUrnFields) {
+    return putStringList(KEY_URN_FIELDS, keyUrnFields);
+  }
+
+  public Optional<List<String>> getKeyUrnFields() {
+    return getStringList(KEY_URN_FIELDS);
   }
 
   // ***************** above this line are getters and setters *****************
