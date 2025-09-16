@@ -12,11 +12,13 @@ import static com.linkedin.venice.pushmonitor.ExecutionStatus.ERROR;
 import static com.linkedin.venice.utils.DataProviderUtils.BOOLEAN;
 import static com.linkedin.venice.utils.DataProviderUtils.allPermutationGenerator;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockConstruction;
 import static org.mockito.Mockito.mockStatic;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -370,5 +372,30 @@ public class DaVinciBackendTest {
     // Different versions for same store should throw
     backend.registerStoreClient(STORE_NAME, STORE_VERSION);
     assertThrows(VeniceClientException.class, () -> backend.registerStoreClient(STORE_NAME, 2));
+  }
+
+  @Test
+  public void testHandleStoreChanged() {
+    StoreBackend storeBackend = mock(StoreBackend.class);
+    when(storeBackend.getStoreName()).thenReturn(STORE_NAME);
+
+    // Regular client should respect version swap
+    backend.registerStoreClient(STORE_NAME, null);
+    backend.handleStoreChanged(storeBackend);
+    verify(storeBackend).validateDaVinciAndVeniceCurrentVersion();
+    verify(storeBackend).tryDeleteInvalidDaVinciFutureVersion();
+    verify(storeBackend).trySwapDaVinciCurrentVersion(null);
+    verify(storeBackend).trySubscribeDaVinciFutureVersion();
+
+    clearInvocations(storeBackend);
+    backend.unregisterStoreClient(STORE_NAME, null);
+
+    // Version specific client should ignore version swap
+    backend.registerStoreClient(STORE_NAME, STORE_VERSION);
+    backend.handleStoreChanged(storeBackend);
+    verify(storeBackend, never()).validateDaVinciAndVeniceCurrentVersion();
+    verify(storeBackend, never()).tryDeleteInvalidDaVinciFutureVersion();
+    verify(storeBackend, never()).trySwapDaVinciCurrentVersion(null);
+    verify(storeBackend, never()).trySubscribeDaVinciFutureVersion();
   }
 }
