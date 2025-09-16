@@ -679,9 +679,11 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       int partition,
       PubSubProducerCallback callback,
       LeaderMetadataWrapper leaderMetadataWrapper,
-      DeleteMetadata deleteMetadata) {
+      DeleteMetadata deleteMetadata,
+      boolean isGlobalRtDiv) {
 
-    KafkaKey kafkaKey = new KafkaKey(MessageType.DELETE, serializedKey);
+    MessageType keyMessageType = (isGlobalRtDiv) ? MessageType.GLOBAL_RT_DIV : MessageType.DELETE;
+    KafkaKey kafkaKey = new KafkaKey(keyMessageType, serializedKey);
     Delete delete = new Delete();
     delete.schemaId = AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion();
     if (deleteMetadata == null) {
@@ -803,13 +805,15 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         partition,
         chunkCallback,
         leaderMetadataWrapper,
-        deleteMetadataForOldChunk);
+        deleteMetadataForOldChunk,
+        false);
     deleteDeprecatedChunksFromManifest(
         oldRmdManifest,
         partition,
         chunkCallback,
         leaderMetadataWrapper,
-        deleteMetadataForOldChunk);
+        deleteMetadataForOldChunk,
+        false);
 
     return produceResultFuture;
   }
@@ -957,7 +961,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         putMetadata,
         oldValueManifest,
         oldRmdManifest,
-        true);
+        false);
   }
 
   /**
@@ -1024,7 +1028,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         putMetadata,
         oldValueManifest,
         oldRmdManifest,
-        true,
+        false,
         pubSubMessageHeaders);
   }
 
@@ -1039,7 +1043,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       PutMetadata putMetadata,
       ChunkedValueManifest oldValueManifest,
       ChunkedValueManifest oldRmdManifest,
-      boolean isPutMessage) {
+      boolean isGlobalRtDiv) {
     return put(
         serializedKey,
         serializedValue,
@@ -1051,7 +1055,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         putMetadata,
         oldValueManifest,
         oldRmdManifest,
-        isPutMessage,
+        isGlobalRtDiv,
         EmptyPubSubMessageHeaders.SINGLETON);
   }
 
@@ -1069,7 +1073,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       PutMetadata putMetadata,
       ChunkedValueManifest oldValueManifest,
       ChunkedValueManifest oldRmdManifest,
-      boolean isPutMessage,
+      boolean isGlobalRtDiv,
       PubSubMessageHeaders pubSubMessageHeaders) {
     int replicationMetadataPayloadSize = putMetadata == null ? 0 : putMetadata.getSerializedSize();
     isChunkingFlagInvoked = true;
@@ -1081,7 +1085,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     int veniceRecordSize = serializedKey.length + serializedValue.length + replicationMetadataPayloadSize;
     if (isChunkingNeededForRecord(veniceRecordSize)) { // ~1MB default
       // RMD size is not checked because it's an internal component, and a user's write should not be failed due to it
-      if ((isChunkingEnabled && !isRecordTooLarge(serializedKey.length + serializedValue.length)) || !isPutMessage) {
+      if ((isChunkingEnabled && !isRecordTooLarge(serializedKey.length + serializedValue.length)) || isGlobalRtDiv) {
         return putLargeValue(
             serializedKey,
             serializedValue,
@@ -1093,7 +1097,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
             putMetadata,
             oldValueManifest,
             oldRmdManifest,
-            isPutMessage);
+            isGlobalRtDiv);
       } else {
         throw new RecordTooLargeException(
             "This record exceeds the maximum size. "
@@ -1110,10 +1114,10 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
           .setChunkingInfo(serializedKey, null, null, null, null, oldValueManifest, oldRmdManifest);
     }
 
-    MessageType keyType = (isPutMessage) ? MessageType.PUT : MessageType.GLOBAL_RT_DIV;
+    MessageType keyType = (isGlobalRtDiv) ? MessageType.GLOBAL_RT_DIV : MessageType.PUT;
     KafkaKey kafkaKey = new KafkaKey(keyType, serializedKey);
     int schemaId =
-        (isPutMessage) ? valueSchemaId : AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion();
+        (isGlobalRtDiv) ? AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion() : valueSchemaId;
 
     // Initialize the SpecificRecord instances used by the Avro-based Kafka protocol
     Put putPayload = buildPutPayload(serializedValue, schemaId, putMetadata);
@@ -1137,8 +1141,15 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         partition,
         chunkCallback,
         leaderMetadataWrapper,
-        deleteMetadata);
-    deleteDeprecatedChunksFromManifest(oldRmdManifest, partition, chunkCallback, leaderMetadataWrapper, deleteMetadata);
+        deleteMetadata,
+        isGlobalRtDiv);
+    deleteDeprecatedChunksFromManifest(
+        oldRmdManifest,
+        partition,
+        chunkCallback,
+        leaderMetadataWrapper,
+        deleteMetadata,
+        false);
 
     return produceResultFuture;
   }
@@ -1680,7 +1691,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       PutMetadata putMetadata,
       ChunkedValueManifest oldValueManifest,
       ChunkedValueManifest oldRmdManifest,
-      boolean isPutMessage) {
+      boolean isGlobalRtDiv) {
     int replicationMetadataPayloadSize = putMetadata == null ? 0 : putMetadata.getSerializedSize();
     final Supplier<String> reportSizeGenerator =
         () -> getSizeReport(serializedKey.length, serializedValue.length, replicationMetadataPayloadSize);
@@ -1694,9 +1705,9 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
                 DEFAULT_UPSTREAM_KAFKA_CLUSTER_ID,
                 DEFAULT_TERM_ID,
                 leaderMetadataWrapper.getViewPartitionMap());
-    MessageType keyMessageType = (isPutMessage) ? MessageType.PUT : MessageType.GLOBAL_RT_DIV;
+    MessageType keyMessageType = (isGlobalRtDiv) ? MessageType.GLOBAL_RT_DIV : MessageType.PUT;
     int schemaId =
-        (isPutMessage) ? valueSchemaId : AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion();
+        (isGlobalRtDiv) ? AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion() : valueSchemaId;
     BiConsumer<KeyProvider, Put> sendMessageFunction = (keyProvider, putPayload) -> sendMessage(
         keyProvider,
         MessageType.PUT,
@@ -1762,8 +1773,15 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         partition,
         chunkCallback,
         leaderMetadataWrapper,
-        deleteMetadata);
-    deleteDeprecatedChunksFromManifest(oldRmdManifest, partition, chunkCallback, leaderMetadataWrapper, deleteMetadata);
+        deleteMetadata,
+        isGlobalRtDiv);
+    deleteDeprecatedChunksFromManifest(
+        oldRmdManifest,
+        partition,
+        chunkCallback,
+        leaderMetadataWrapper,
+        deleteMetadata,
+        false);
 
     return manifestProduceFuture;
   }
@@ -1846,13 +1864,20 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       int partition,
       PubSubProducerCallback chunkCallback,
       LeaderMetadataWrapper leaderMetadataWrapper,
-      DeleteMetadata deleteMetadata) {
+      DeleteMetadata deleteMetadata,
+      boolean isGlobalRtDiv) {
     if (manifest == null) {
       return;
     }
     for (int i = 0; i < manifest.keysWithChunkIdSuffix.size(); i++) {
       byte[] chunkKeyBytes = manifest.keysWithChunkIdSuffix.get(i).array();
-      deleteDeprecatedChunk(chunkKeyBytes, partition, chunkCallback, leaderMetadataWrapper, deleteMetadata);
+      deleteDeprecatedChunk(
+          chunkKeyBytes,
+          partition,
+          chunkCallback,
+          leaderMetadataWrapper,
+          deleteMetadata,
+          isGlobalRtDiv);
     }
   }
 

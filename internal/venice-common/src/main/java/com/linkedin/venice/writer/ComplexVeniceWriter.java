@@ -239,7 +239,7 @@ public class ComplexVeniceWriter<K, V, U> extends VeniceWriter<K, V, U> {
         putMetadata,
         null,
         null,
-        true);
+        false);
   }
 
   public String getViewName() {
