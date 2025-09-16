@@ -113,23 +113,7 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
 
   @Override
   public CompletableFuture<Map<K, V>> batchGet(Set<K> keys) throws VeniceClientException {
-    CompletableFuture<Map<K, V>> resultFuture = new CompletableFuture<>();
-    CompletableFuture<VeniceResponseMap<K, V>> streamingResultFuture = streamingBatchGet(keys);
-
-    streamingResultFuture.whenComplete((response, throwable) -> {
-      if (throwable != null) {
-        resultFuture.completeExceptionally(throwable);
-      } else if (!response.isFullResponse()) {
-        resultFuture.completeExceptionally(
-            new VeniceClientException(
-                "Received partial response, returned entry count: " + response.getTotalEntryCount()
-                    + ", and key count: " + keys.size()));
-      } else {
-        resultFuture.complete(response);
-      }
-    });
-    // We intentionally use stats for batch-get streaming since blocking impl of batch-get is deprecated.
-    return AppTimeOutTrackingCompletableFuture.track(resultFuture, multiGetStreamingStats);
+    return AppTimeOutTrackingCompletableFuture.track(internalBatchGet(keys), multiGetStreamingStats);
   }
 
   @Override

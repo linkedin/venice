@@ -26,6 +26,23 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 
+/**
+ * This class is a client wrapper that adds logging and tracking capabilities to store client operations.
+ * The class is intended to be used when {@link ClientConfig#isStatTrackingEnabled()} is set to false. It will try to
+ * log exceptions and high latency requests with rate limiting. It is not intended to be used in production environments
+ * where performance and metric monitoring is critical.
+ * <p>
+ * This class extends {@link DelegatingStoreClient} to encapsulate an internal store client and
+ * override its key operations such as {@code get}, {@code getRaw}, {@code batchGet}, and
+ * {@code streamingBatchGet} with additional logging and tracking functionality. It captures
+ * the latency of operations and logs warnings when the latency exceeds predefined thresholds.
+ * <p>
+ * It also handles exceptions by logging unhealthy requests and rethrowing the exceptions for
+ * further handling.
+ *
+ * @param <K> the type of keys used by the store client
+ * @param <V> the type of values returned by the store client
+ */
 public class LoggingTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
   private static final Logger LOGGER = LogManager.getLogger(LoggingTrackingStoreClient.class);
   private static final int DEFAULT_SINGLE_GET_LOGGING_THRESHOLD_MS = 50;
@@ -57,23 +74,7 @@ public class LoggingTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V
 
   @Override
   public CompletableFuture<Map<K, V>> batchGet(Set<K> keys) throws VeniceClientException {
-    CompletableFuture<Map<K, V>> resultFuture = new CompletableFuture<>();
-    CompletableFuture<VeniceResponseMap<K, V>> streamingResultFuture = streamingBatchGet(keys);
-
-    streamingResultFuture.whenComplete((response, throwable) -> {
-      if (throwable != null) {
-        resultFuture.completeExceptionally(throwable);
-      } else if (!response.isFullResponse()) {
-        resultFuture.completeExceptionally(
-            new VeniceClientException(
-                "Received partial response, returned entry count: " + response.getTotalEntryCount()
-                    + ", and key count: " + keys.size()));
-      } else {
-        resultFuture.complete(response);
-      }
-    });
-    // We intentionally use stats for batch-get streaming since blocking impl of batch-get is deprecated.
-    return resultFuture;
+    return internalBatchGet(keys);
   }
 
   @Override
