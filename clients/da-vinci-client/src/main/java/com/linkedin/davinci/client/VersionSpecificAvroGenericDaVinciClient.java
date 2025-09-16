@@ -51,7 +51,7 @@ public class VersionSpecificAvroGenericDaVinciClient<K, V> extends AvroGenericDa
       throw new VeniceClientException("Version: " + getStoreVersion() + " does not exist for store: " + getStoreName());
     }
 
-    subscription.addAll(partitions);
-    return storeBackend.subscribe(partitions, Optional.of(targetVersionObj));
+    addPartitionsToSubscription(partitions);
+    return getStoreBackend().subscribe(partitions, Optional.of(targetVersionObj));
   }
 }

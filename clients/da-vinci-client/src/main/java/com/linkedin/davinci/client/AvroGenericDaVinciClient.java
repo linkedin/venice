@@ -252,7 +252,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
 
   protected CompletableFuture<Void> subscribe(ComplementSet<Integer> partitions) {
     throwIfNotReady();
-    subscription.addAll(partitions);
+    addPartitionsToSubscription(partitions);
     return storeBackend.subscribe(partitions);
   }
 
@@ -909,5 +909,9 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
    */
   protected Integer getStoreVersion() {
     return storeVersion;
+  }
+
+  protected void addPartitionsToSubscription(ComplementSet<Integer> partitions) {
+    subscription.addAll(partitions);
   }
 }
