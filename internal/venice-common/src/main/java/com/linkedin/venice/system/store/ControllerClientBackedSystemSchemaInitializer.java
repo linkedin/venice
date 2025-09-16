@@ -38,8 +38,8 @@ import org.apache.logging.log4j.Logger;
 
 
 public class ControllerClientBackedSystemSchemaInitializer implements Closeable {
+  public static final String DEFAULT_KEY_SCHEMA_STR = "\"int\"";
   private static final Logger LOGGER = LogManager.getLogger(ControllerClientBackedSystemSchemaInitializer.class);
-  private static final String DEFAULT_KEY_SCHEMA_STR = "\"int\"";
   /**
    * Current leader controller might transit from leader to standby, clear cached store repository, and fail to handle
    * schema requests. Leverage 20 retries (38 seconds) to cover the leader->standby period so that a later retry will be

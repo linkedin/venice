@@ -692,7 +692,7 @@ public class VenicePushJob implements AutoCloseable {
       sendPushJobDetailsToController();
       HadoopUtils.createDirectoryWithPermission(sharedTmpDir, PERMISSION_777);
       HadoopUtils.createDirectoryWithPermission(jobTmpDir, PERMISSION_700);
-      validateKafkaMessageEnvelopeSchema(pushJobSetting);
+      pushJobSetting.newKmeSchemasFromController = validateAndFetchNewKafkaMessageEnvelopeSchemas(pushJobSetting);
       validateRemoteHybridSettings(pushJobSetting);
       validateStoreSettingAndPopulate(controllerClient, pushJobSetting);
       inputStorageQuotaTracker = new InputStorageQuotaTracker(pushJobSetting.storeStorageQuota);
@@ -1384,6 +1384,7 @@ public class VenicePushJob implements AutoCloseable {
     // Prepare the param builder, which can be used by different scenarios.
     KafkaInputDictTrainer.ParamBuilder paramBuilder = new KafkaInputDictTrainer.ParamBuilder()
         .setKeySchema(AvroCompatibilityHelper.toParsingForm(pushJobSetting.storeKeySchema))
+        .setNewKMESchemasFromController(pushJobSetting.newKmeSchemasFromController)
         .setSslProperties(pushJobSetting.enableSSL ? sslProperties.get() : new Properties())
         .setCompressionDictSize(
             props.getInt(
@@ -1927,19 +1928,33 @@ public class VenicePushJob implements AutoCloseable {
     }
   }
 
-  private void validateKafkaMessageEnvelopeSchema(PushJobSetting setting) {
-    SchemaResponse response = ControllerClient.retryableRequest(
+  private Map<Integer, String> validateAndFetchNewKafkaMessageEnvelopeSchemas(PushJobSetting setting) {
+    // Obtain the highest schema for KME from controller
+    int localHighestKmeSchemaId = AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getCurrentProtocolVersion();
+
+    Map<Integer, String> newKmeSchemas = new HashMap<>();
+    MultiSchemaResponse multiSchemaResponse = ControllerClient.retryableRequest(
         kmeSchemaSystemStoreControllerClient,
         setting.controllerRetries,
-        c -> c.getValueSchema(
-            AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getSystemStoreName(),
-            AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getCurrentProtocolVersion()));
+        c -> c.getAllValueSchema(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getSystemStoreName()));
+    int highestKmeSchemaIdFromController = -1;
+    for (MultiSchemaResponse.Schema schema: multiSchemaResponse.getSchemas()) {
+      if (schema.getId() > highestKmeSchemaIdFromController) {
+        highestKmeSchemaIdFromController = schema.getId();
+      }
 
-    if (response.isError()) {
-      throw new VeniceException(
-          "KME protocol is upgraded in the push job but not in the Venice backend; Please contact Venice team. Error : "
-              + response.getError());
+      if (schema.getId() > localHighestKmeSchemaId) {
+        newKmeSchemas.put(schema.getId(), schema.getSchemaStr());
+      }
     }
+
+    if (highestKmeSchemaIdFromController < localHighestKmeSchemaId) {
+      throw new VeniceException(
+          "KME protocol is upgraded in the push job but not in the Venice controller; Please contact Venice team."
+              + "Local KME protocol version: " + localHighestKmeSchemaId
+              + ", highest schema version in Venice controller: " + highestKmeSchemaIdFromController);
+    }
+    return newKmeSchemas;
   }
 
   private Schema getKeySchemaFromController(ControllerClient controllerClient, int retries, String storeName) {

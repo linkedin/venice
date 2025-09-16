@@ -91,6 +91,8 @@ public class StoreInfo {
     storeInfo.setEnumSchemaEvolutionAllowed(store.isEnumSchemaEvolutionAllowed());
     storeInfo.setStoreLifecycleHooks(store.getStoreLifecycleHooks());
     storeInfo.setLatestVersionPromoteToCurrentTimestamp(store.getLatestVersionPromoteToCurrentTimestamp());
+    storeInfo.setKeyUrnCompressionEnabled(store.isKeyUrnCompressionEnabled());
+    storeInfo.setKeyUrnFields(store.getKeyUrnFields());
     return storeInfo;
   }
 
@@ -372,6 +374,8 @@ public class StoreInfo {
   private boolean enumSchemaEvolutionAllowed = false;
   private List<LifecycleHooksRecord> storeLifecycleHooks = new ArrayList<>();
   private long getLatestVersionPromoteToCurrentTimestamp;
+  private boolean keyUrnCompressionEnabled = false;
+  private List<String> keyUrnFields = new ArrayList<>();
 
   public StoreInfo() {
   }
@@ -988,5 +992,21 @@ public class StoreInfo {
 
   public void setLatestVersionPromoteToCurrentTimestamp(long latestVersionPromoteToCurrentTimestamp) {
     this.getLatestVersionPromoteToCurrentTimestamp = latestVersionPromoteToCurrentTimestamp;
+  }
+
+  public boolean isKeyUrnCompressionEnabled() {
+    return keyUrnCompressionEnabled;
+  }
+
+  public void setKeyUrnCompressionEnabled(boolean keyUrnCompressionEnabled) {
+    this.keyUrnCompressionEnabled = keyUrnCompressionEnabled;
+  }
+
+  public List<String> getKeyUrnFields() {
+    return keyUrnFields;
+  }
+
+  public void setKeyUrnFields(List<String> keyUrnFields) {
+    this.keyUrnFields = keyUrnFields;
   }
 }

@@ -3,6 +3,7 @@ package com.linkedin.venice.client.stats;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_DELIVERY_PROGRESS;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_METHOD;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_RETRY_TYPE;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
 import static com.linkedin.venice.utils.CollectionUtils.setOf;
 
@@ -57,6 +58,24 @@ public enum ClientMetricEntity implements ModuleMetricEntityInterface {
   ),
 
   /**
+   * Client duplicate key count.
+   */
+  REQUEST_DUPLICATE_KEY_COUNT(
+      "request.duplicate_key_count", MetricType.COUNTER, MetricUnit.NUMBER,
+      "Duplicate key count of requests for client",
+      setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD, VENICE_RESPONSE_STATUS_CODE_CATEGORY)
+  ),
+
+  /**
+   * The timeout duration (in milliseconds) that was configured for client Future.
+   */
+  REQUEST_TIMEOUT_REQUESTED_DURATION(
+      "request.timeout.requested_duration", MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS, MetricUnit.MILLISECOND,
+      "The timeout duration (in milliseconds) that was configured for client Future",
+      setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)
+  ),
+
+  /**
    * Response decompression time in milliseconds.
    */
   RESPONSE_DECOMPRESSION_TIME(
@@ -79,6 +98,23 @@ public enum ClientMetricEntity implements ModuleMetricEntityInterface {
       "response.batch_stream_progress_time", MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS, MetricUnit.MILLISECOND,
       "Batch streaming progress time in milliseconds",
       setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD, VENICE_DELIVERY_PROGRESS)
+  ),
+
+  /**
+   * Ratio of keys that were successfully retrieved to the total number of keys requested before timeout.
+   */
+  REQUEST_TIMEOUT_PARTIAL_RESPONSE_RATIO(
+      "request.timeout.partial_response_ratio", MetricType.HISTOGRAM, MetricUnit.NUMBER,
+      "Ratio of keys that were successfully retrieved to the total number of keys requested before timeout",
+      setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)
+  ),
+
+  /**
+   * Count of requests that timed out on the client side based on the future.get(timeout).
+   */
+  REQUEST_TIMEOUT_COUNT(
+      "request.timeout.count", MetricType.COUNTER, MetricUnit.NUMBER,
+      "Count of requests that timed out on the client side", setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)
   );
 
   private final MetricEntity entity;
