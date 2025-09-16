@@ -75,6 +75,8 @@ import static com.linkedin.venice.Arg.KAFKA_TOPIC_PARTITION;
 import static com.linkedin.venice.Arg.KAFKA_TOPIC_RETENTION_IN_MS;
 import static com.linkedin.venice.Arg.KEY;
 import static com.linkedin.venice.Arg.KEY_SCHEMA;
+import static com.linkedin.venice.Arg.KEY_URN_COMPRESSION_EANBLED;
+import static com.linkedin.venice.Arg.KEY_URN_FIELDS;
 import static com.linkedin.venice.Arg.LAG_FILTER_ENABLED;
 import static com.linkedin.venice.Arg.LARGEST_USED_RT_VERSION_NUMBER;
 import static com.linkedin.venice.Arg.LARGEST_USED_VERSION_NUMBER;
@@ -323,7 +325,7 @@ public enum Command {
           SEPARATE_REALTIME_TOPIC_ENABLED, NEARLINE_PRODUCER_COMPRESSION_ENABLED, NEARLINE_PRODUCER_COUNT_PER_WRITER,
           TARGET_SWAP_REGION, TARGET_SWAP_REGION_WAIT_TIME, DAVINCI_HEARTBEAT_REPORTED, ENABLE_STORE_MIGRATION,
           GLOBAL_RT_DIV_ENABLED, ENUM_SCHEMA_EVOLUTION_ALLOWED, STORE_LIFECYCLE_HOOKS_LIST,
-          BLOB_TRANSFER_IN_SERVER_ENABLED }
+          BLOB_TRANSFER_IN_SERVER_ENABLED, KEY_URN_COMPRESSION_EANBLED, KEY_URN_FIELDS }
   ),
   UPDATE_CLUSTER_CONFIG(
       "update-cluster-config", "Update live cluster configs", new Arg[] { URL, CLUSTER },

@@ -32,6 +32,8 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.GLOBAL_RT
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.HYBRID_STORE_DISK_QUOTA_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.INCREMENTAL_PUSH_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.IS_DAVINCI_HEARTBEAT_REPORTED;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.KEY_URN_COMPRESSION_ENABLED;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.KEY_URN_FIELDS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.LARGEST_USED_RT_VERSION_NUMBER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.LARGEST_USED_VERSION_NUMBER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.LATEST_SUPERSET_SCHEMA_ID;
@@ -98,6 +100,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.linkedin.davinci.compression.KeyUrnCompressor;
 import com.linkedin.venice.ConfigConstants;
 import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.acl.AclException;
@@ -2647,6 +2650,8 @@ public class VeniceParentHelixAdmin implements Admin {
       Optional<Long> maxCompactionLagSeconds = params.getMaxCompactionLagSeconds();
       Optional<Integer> maxRecordSizeBytes = params.getMaxRecordSizeBytes();
       Optional<Integer> maxNearlineRecordSizeBytes = params.getMaxNearlineRecordSizeBytes();
+      Optional<Boolean> keyUrnCompressionEnabled = params.getKeyUrnCompressionEnabled();
+      Optional<List<String>> keyUrnFields = params.getKeyUrnFields();
 
       boolean replicateAllConfigs = replicateAll.isPresent() && replicateAll.get();
       List<CharSequence> updatedConfigsList = new LinkedList<>();
@@ -3081,6 +3086,25 @@ public class VeniceParentHelixAdmin implements Admin {
       setStore.maxNearlineRecordSizeBytes =
           maxNearlineRecordSizeBytes.map(addToUpdatedConfigList(updatedConfigsList, MAX_NEARLINE_RECORD_SIZE_BYTES))
               .orElseGet(currStore::getMaxNearlineRecordSizeBytes);
+
+      setStore.keyUrnCompressionEnabled =
+          keyUrnCompressionEnabled.map(addToUpdatedConfigList(updatedConfigsList, KEY_URN_COMPRESSION_ENABLED))
+              .orElseGet(currStore::isKeyUrnCompressionEnabled);
+      if (keyUrnCompressionEnabled.isPresent() && keyUrnCompressionEnabled.get()) {
+        // Validate key urn fields
+        List<String> finalKeyUrnFields = keyUrnFields.isPresent() ? keyUrnFields.get() : currStore.getKeyUrnFields();
+        // TODO: move this validation to {@link VeniceHelixAdmin}
+        KeyUrnCompressor
+            .validateKeySchemaBasedOnUrnFieldNames(getKeySchema(clusterName, storeName).getSchema(), finalKeyUrnFields);
+      }
+
+      if (keyUrnFields.isPresent()) {
+        addToUpdatedConfigList(updatedConfigsList, KEY_URN_FIELDS);
+        setStore.keyUrnFields = keyUrnFields.get().stream().map(Objects::toString).collect(Collectors.toList());
+      } else {
+        setStore.keyUrnFields =
+            currStore.getKeyUrnFields().stream().map(Objects::toString).collect(Collectors.toList());
+      }
 
       StoragePersonaRepository repository =
           getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName).getStoragePersonaRepository();

@@ -650,6 +650,26 @@ public class ReadOnlyStore implements Store {
     }
 
     @Override
+    public void setKeyUrnCompressionEnabled(boolean keyUrnCompressionEnabled) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public boolean isKeyUrnCompressionEnabled() {
+      return this.delegate.isKeyUrnCompressionEnabled();
+    }
+
+    @Override
+    public void setKeyUrnFields(List<String> keyUrnFields) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public List<String> getKeyUrnFields() {
+      return delegate.getKeyUrnFields();
+    }
+
+    @Override
     public void setRepushSourceVersion(int version) {
       throw new UnsupportedOperationException();
     }
@@ -1003,6 +1023,8 @@ public class ReadOnlyStore implements Store {
     storeProperties.setTargetSwapRegionWaitTime(getTargetSwapRegionWaitTime());
     storeProperties.setIsDaVinciHeartBeatReported(getIsDavinciHeartbeatReported());
     storeProperties.setStoreLifecycleHooks(convertStoreLifecycleHooks(getStoreLifecycleHooks()));
+    storeProperties.setKeyUrnCompressionEnabled(isKeyUrnCompressionEnabled());
+    storeProperties.setKeyUrnFields(getKeyUrnFields().stream().map(String::toString).collect(Collectors.toList()));
 
     return storeProperties;
   }
@@ -1694,6 +1716,26 @@ public class ReadOnlyStore implements Store {
   }
 
   @Override
+  public void setKeyUrnCompressionEnabled(boolean keyUrnCompressionEnabled) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public boolean isKeyUrnCompressionEnabled() {
+    return delegate.isKeyUrnCompressionEnabled();
+  }
+
+  @Override
+  public void setKeyUrnFields(List<String> keyUrnFieldList) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public List<String> getKeyUrnFields() {
+    return delegate.getKeyUrnFields();
+  }
+
+  @Override
   public String toString() {
     return this.delegate.toString();
   }
@@ -1844,6 +1886,8 @@ public class ReadOnlyStore implements Store {
     storeVersion.setIsDaVinciHeartBeatReported(version.getIsDavinciHeartbeatReported());
     storeVersion.setGlobalRtDivEnabled(version.isGlobalRtDivEnabled());
     storeVersion.setViews(convertViewConfigsStringMap(version.getViewConfigs()));
+    storeVersion.setKeyUrnCompressionEnabled(version.isKeyUrnCompressionEnabled());
+    storeVersion.setKeyUrnFields(version.getKeyUrnFields().stream().map(String::toString).collect(Collectors.toList()));
 
     return storeVersion;
   }
