@@ -28,6 +28,7 @@ import com.linkedin.venice.fastclient.stats.ClusterStats;
 import com.linkedin.venice.fastclient.stats.FastClientStats;
 import com.linkedin.venice.fastclient.transport.R2TransportClient;
 import com.linkedin.venice.meta.QueryAction;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.metadata.response.MetadataResponseRecord;
 import com.linkedin.venice.metadata.response.VersionProperties;
 import com.linkedin.venice.read.RequestType;
@@ -209,7 +210,7 @@ public class RequestBasedMetadataTestUtils {
   }
 
   public static VeniceCompressor getZstdVeniceCompressor(String storeName) {
-    String resourceName = storeName + "_v" + CURRENT_VERSION;
+    String resourceName = Version.composeKafkaTopic(storeName, CURRENT_VERSION);
 
     return new CompressorFactory()
         .createVersionSpecificCompressorIfNotExist(CompressionStrategy.ZSTD_WITH_DICT, resourceName, DICTIONARY);
