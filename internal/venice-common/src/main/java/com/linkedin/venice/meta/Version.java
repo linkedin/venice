@@ -295,6 +295,14 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
 
   void setGlobalRtDivEnabled(boolean globalRtDivEnabled);
 
+  void setKeyUrnCompressionEnabled(boolean keyUrnCompressionEnabled);
+
+  boolean isKeyUrnCompressionEnabled();
+
+  void setKeyUrnFields(List<String> keyUrnFields);
+
+  List<String> getKeyUrnFields();
+
   /**
    * Kafka topic name is composed by store name and version.
    * <p>
