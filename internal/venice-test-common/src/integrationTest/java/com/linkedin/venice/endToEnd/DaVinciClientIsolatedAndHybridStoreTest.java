@@ -77,7 +77,6 @@ import java.io.FileWriter;
 import java.nio.ByteBuffer;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
@@ -618,21 +617,6 @@ public class DaVinciClientIsolatedAndHybridStoreTest {
         writerFutures[i].get();
       }
       batchProducer.broadcastEndOfIncrementalPush(incrementalPushVersion, Collections.emptyMap());
-    }
-  }
-
-  private void generateHybridData(String storeName, List<Pair<Object, Object>> dataToWrite) {
-    SystemProducer producer = IntegrationTestPushUtils.getSamzaProducer(
-        cluster,
-        storeName,
-        Version.PushType.STREAM,
-        Pair.create(VENICE_PARTITIONERS, ConstantVenicePartitioner.class.getName()));
-    try {
-      for (Pair<Object, Object> record: dataToWrite) {
-        IntegrationTestPushUtils.sendStreamingRecord(producer, storeName, record.getFirst(), record.getSecond());
-      }
-    } finally {
-      producer.stop();
     }
   }
 }
