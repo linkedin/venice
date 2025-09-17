@@ -150,7 +150,7 @@ public class ClientStatsTest {
             REQUEST_TYPE.getDimensionValue())
         .put(
             metricsRepository.getOpenTelemetryMetricsRepository()
-                .getDimensionName(VeniceMetricsDimensions.VENICE_DELIVERY_PROGRESS),
+                .getDimensionName(VeniceMetricsDimensions.VENICE_STREAM_PROGRESS),
             "first")
         .build();
 
@@ -165,7 +165,7 @@ public class ClientStatsTest {
             REQUEST_TYPE.getDimensionValue())
         .put(
             metricsRepository.getOpenTelemetryMetricsRepository()
-                .getDimensionName(VeniceMetricsDimensions.VENICE_DELIVERY_PROGRESS),
+                .getDimensionName(VeniceMetricsDimensions.VENICE_STREAM_PROGRESS),
             "50pct")
         .build();
 
@@ -180,7 +180,7 @@ public class ClientStatsTest {
             REQUEST_TYPE.getDimensionValue())
         .put(
             metricsRepository.getOpenTelemetryMetricsRepository()
-                .getDimensionName(VeniceMetricsDimensions.VENICE_DELIVERY_PROGRESS),
+                .getDimensionName(VeniceMetricsDimensions.VENICE_STREAM_PROGRESS),
             "90pct")
         .build();
 

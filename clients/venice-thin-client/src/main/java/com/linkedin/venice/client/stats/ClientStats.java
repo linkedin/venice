@@ -5,18 +5,18 @@ import static com.linkedin.venice.client.stats.ClientStats.ClientTehutiMetricNam
 import static com.linkedin.venice.client.stats.ClientStats.ClientTehutiMetricName.APP_TIMED_OUT_REQUEST_RESULT_RATIO;
 import static com.linkedin.venice.client.stats.ClientStats.ClientTehutiMetricName.CLIENT_FUTURE_TIMEOUT;
 import static com.linkedin.venice.client.stats.ClientStats.ClientTehutiMetricName.SUCCESS_REQUEST_DUPLICATE_KEY_COUNT;
-import static com.linkedin.venice.stats.dimensions.DeliveryProgress.FIRST;
-import static com.linkedin.venice.stats.dimensions.DeliveryProgress.PCT_50;
-import static com.linkedin.venice.stats.dimensions.DeliveryProgress.PCT_90;
 import static com.linkedin.venice.stats.dimensions.RequestRetryType.ERROR_RETRY;
+import static com.linkedin.venice.stats.dimensions.StreamProgress.FIRST;
+import static com.linkedin.venice.stats.dimensions.StreamProgress.PCT_50;
+import static com.linkedin.venice.stats.dimensions.StreamProgress.PCT_90;
 import static com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory.SUCCESS;
 
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.ClientType;
 import com.linkedin.venice.stats.TehutiUtils;
-import com.linkedin.venice.stats.dimensions.DeliveryProgress;
 import com.linkedin.venice.stats.dimensions.RequestRetryType;
+import com.linkedin.venice.stats.dimensions.StreamProgress;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
 import com.linkedin.venice.stats.metrics.MetricEntityStateBase;
 import com.linkedin.venice.stats.metrics.MetricEntityStateOneEnum;
@@ -34,7 +34,7 @@ import java.util.Map;
 
 
 /**
- * This class provides the stats for Venice client..
+ * This class provides the stats for Venice client.
  */
 
 public class ClientStats extends BasicClientStats {
@@ -53,9 +53,9 @@ public class ClientStats extends BasicClientStats {
   private final MetricEntityStateBase requestSubmissionToResponseHandlingTime;
   private final MetricEntityStateBase responseDeserializationTime;
   private final MetricEntityStateBase responseDecompressionTime;
-  private final MetricEntityStateOneEnum<DeliveryProgress> responseBatchStreamProgressTime; // TTFR
-  private final MetricEntityStateOneEnum<DeliveryProgress> responseBatchStreamProgressTime50; // TT50PR
-  private final MetricEntityStateOneEnum<DeliveryProgress> responseBatchStreamProgressTime90; // TT90PR
+  private final MetricEntityStateOneEnum<StreamProgress> batchStreamProgressTimeToReceiveFirstRecord;
+  private final MetricEntityStateOneEnum<StreamProgress> batchStreamProgressTimeToReceiveP50thRecord;
+  private final MetricEntityStateOneEnum<StreamProgress> batchStreamProgressTimeToReceiveP90thRecord;
   private final MetricEntityStateOneEnum<VeniceResponseStatusCategory> successRequestDuplicateKeyCount;
   private final MetricEntityStateBase clientFutureTimeout;
   private final MetricEntityStateBase appTimedOutRequestResultRatio;
@@ -151,32 +151,32 @@ public class ClientStats extends BasicClientStats {
     /**
      * Metrics to track the latency of each proportion of results received.
      */
-    responseBatchStreamProgressTime = MetricEntityStateOneEnum.create(
+    batchStreamProgressTimeToReceiveFirstRecord = MetricEntityStateOneEnum.create(
         ClientMetricEntity.RESPONSE_BATCH_STREAM_PROGRESS_TIME.getMetricEntity(),
         otelRepository,
         this::registerSensorWithDetailedPercentiles,
         ClientTehutiMetricName.RESPONSE_TTFR,
         Collections.singletonList(new Avg()),
         baseDimensionsMap,
-        DeliveryProgress.class);
+        StreamProgress.class);
     // TT50PR
-    responseBatchStreamProgressTime50 = MetricEntityStateOneEnum.create(
+    batchStreamProgressTimeToReceiveP50thRecord = MetricEntityStateOneEnum.create(
         ClientMetricEntity.RESPONSE_BATCH_STREAM_PROGRESS_TIME.getMetricEntity(),
         otelRepository,
         this::registerSensorWithDetailedPercentiles,
         ClientTehutiMetricName.RESPONSE_TT50PR,
         Collections.singletonList(new Avg()),
         baseDimensionsMap,
-        DeliveryProgress.class);
+        StreamProgress.class);
     // TT90PR
-    responseBatchStreamProgressTime90 = MetricEntityStateOneEnum.create(
+    batchStreamProgressTimeToReceiveP90thRecord = MetricEntityStateOneEnum.create(
         ClientMetricEntity.RESPONSE_BATCH_STREAM_PROGRESS_TIME.getMetricEntity(),
         otelRepository,
         this::registerSensorWithDetailedPercentiles,
         ClientTehutiMetricName.RESPONSE_TT90PR,
         Collections.singletonList(new Avg()),
         baseDimensionsMap,
-        DeliveryProgress.class);
+        StreamProgress.class);
 
     /**
      * Metrics to track the timed-out requests.
@@ -274,15 +274,15 @@ public class ClientStats extends BasicClientStats {
   }
 
   public void recordStreamingResponseTimeToReceiveFirstRecord(double latency) {
-    responseBatchStreamProgressTime.record(latency, FIRST);
+    batchStreamProgressTimeToReceiveFirstRecord.record(latency, FIRST);
   }
 
   public void recordStreamingResponseTimeToReceive50PctRecord(double latency) {
-    responseBatchStreamProgressTime50.record(latency, PCT_50);
+    batchStreamProgressTimeToReceiveP50thRecord.record(latency, PCT_50);
   }
 
   public void recordStreamingResponseTimeToReceive90PctRecord(double latency) {
-    responseBatchStreamProgressTime90.record(latency, PCT_90);
+    batchStreamProgressTimeToReceiveP90thRecord.record(latency, PCT_90);
   }
 
   public void recordAppTimedOutRequest() {

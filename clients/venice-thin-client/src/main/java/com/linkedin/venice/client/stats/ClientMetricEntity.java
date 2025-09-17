@@ -1,10 +1,10 @@
 package com.linkedin.venice.client.stats;
 
-import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_DELIVERY_PROGRESS;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_METHOD;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_RETRY_TYPE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STREAM_PROGRESS;
 import static com.linkedin.venice.utils.CollectionUtils.setOf;
 
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
@@ -52,7 +52,7 @@ public enum ClientMetricEntity implements ModuleMetricEntityInterface {
    * Time between client submitting a request and beginning to handle the response.
    */
   CALL_SUBMISSION_TO_HANDLING_TIME(
-      "call_submission_to_handling_time", MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS, MetricUnit.MILLISECOND,
+      MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS, MetricUnit.MILLISECOND,
       "Time between submitting the request and starting to handle the response, in milliseconds",
       setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)
   ),
@@ -92,12 +92,13 @@ public enum ClientMetricEntity implements ModuleMetricEntityInterface {
   ),
 
   /**
-   * Batch streaming progress time in milliseconds, dimensioned by delivery progress.
+   * Batch streaming progress time in milliseconds: Elapsed time from when the client starts receiving the response
+   * to when the first/P50th/P90th record arrives and is processed.
    */
   RESPONSE_BATCH_STREAM_PROGRESS_TIME(
       "response.batch_stream_progress_time", MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS, MetricUnit.MILLISECOND,
       "Batch streaming progress time in milliseconds",
-      setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD, VENICE_DELIVERY_PROGRESS)
+      setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD, VENICE_STREAM_PROGRESS)
   ),
 
   /**

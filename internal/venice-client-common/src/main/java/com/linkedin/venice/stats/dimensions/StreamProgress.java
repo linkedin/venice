@@ -1,23 +1,23 @@
 package com.linkedin.venice.stats.dimensions;
 
-import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_DELIVERY_PROGRESS;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STREAM_PROGRESS;
 
 
 /**
  * Streaming delivery progress dimension for batch response timing metrics.
  */
-public enum DeliveryProgress implements VeniceDimensionInterface {
-  FIRST("first"), PCT_50("50pct"), PCT_90("90pct");
+public enum StreamProgress implements VeniceDimensionInterface {
+  FIRST("FirstRecord"), PCT_50("50thPercentileRecord"), PCT_90("90thPercentileRecord");
 
   private final String value;
 
-  DeliveryProgress(String value) {
+  StreamProgress(String value) {
     this.value = value;
   }
 
   @Override
   public VeniceMetricsDimensions getDimensionName() {
-    return VENICE_DELIVERY_PROGRESS;
+    return VENICE_STREAM_PROGRESS;
   }
 
   @Override

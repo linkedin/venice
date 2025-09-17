@@ -475,7 +475,7 @@ public class BasicClientStatsTest {
             Utils.setOf(
                 VENICE_STORE_NAME,
                 VENICE_REQUEST_METHOD,
-                com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_DELIVERY_PROGRESS)));
+                com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STREAM_PROGRESS)));
 
     expectedMetrics.put(
         ClientMetricEntity.REQUEST_DUPLICATE_KEY_COUNT,

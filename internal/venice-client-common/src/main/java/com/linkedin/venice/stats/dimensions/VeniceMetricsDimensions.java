@@ -31,7 +31,7 @@ public enum VeniceMetricsDimensions {
   VENICE_MESSAGE_TYPE("venice.message.type"),
 
   /** Streaming delivery progress for batch responses (e.g., first, 50pct, 90pct, etc.) */
-  VENICE_DELIVERY_PROGRESS("venice.delivery.progress"),
+  VENICE_STREAM_PROGRESS("venice.stream.progress"),
 
   /** {@link RequestRetryAbortReason} */
   VENICE_REQUEST_RETRY_ABORT_REASON("venice.request.retry_abort_reason"),
