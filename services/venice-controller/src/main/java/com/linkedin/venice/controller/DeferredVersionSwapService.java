@@ -8,7 +8,6 @@ import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.linkedin.venice.controller.stats.DeferredVersionSwapStats;
 import com.linkedin.venice.controllerapi.ControllerClient;
-import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoClusterException;
@@ -772,97 +771,61 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       int targetVersionNum,
       String clusterName,
       String targetRegion,
-      String kafkaTopicName,
-      Map<String, ControllerClient> controllerClientMap) {
+      String kafkaTopicName) {
     boolean proceed = true;
-    Set<String> targetRegionList = RegionUtils.parseRegionsFilterList(targetRegion);
     List<LifecycleHooksRecord> storeLifecycleHooks = parentStore.getStoreLifecycleHooks();
-    if (storeLifecycleHooks.isEmpty()) {
-      return proceed;
-    }
+    for (LifecycleHooksRecord lifecycleHooksRecord: storeLifecycleHooks) {
+      StoreVersionLifecycleEventOutcome outcome;
+      try {
+        StoreLifecycleHooks storeLifecycleHook = ReflectUtils.callConstructor(
+            ReflectUtils.loadClass(lifecycleHooksRecord.getStoreLifecycleHooksClassName()),
+            new Class<?>[] { VeniceProperties.class },
+            new Object[] { veniceControllerMultiClusterConfig.getCommonConfig().getProps() });
 
-    for (String region: targetRegionList) {
-      ControllerClient targetRegionControllerClient = controllerClientMap.get(region);
-      JobStatusQueryResponse jobStatusQueryResponse = targetRegionControllerClient
-          .queryJobStatus(kafkaTopicName, Optional.empty(), CONTROLLER_CLIENT_REQUEST_TIMEOUT, null, false);
-      if (jobStatusQueryResponse.isError()) {
-        LOGGER.warn(
-            "Couldn't query job status for {} in region {} as there is an error: {}",
-            kafkaTopicName,
-            region,
-            jobStatusQueryResponse.isError());
-        return false;
+        Properties properties = new Properties();
+        properties.putAll(lifecycleHooksRecord.getStoreLifecycleHooksParams());
+        VeniceProperties veniceProperties = new VeniceProperties(properties);
+        outcome = storeLifecycleHook.postStoreVersionSwap(
+            clusterName,
+            parentStore.getName(),
+            targetVersionNum,
+            targetRegion,
+            null,
+            veniceProperties);
+        String message = "Validation outcome for store " + parentStore.getName() + " on version " + targetVersionNum
+            + " in region" + targetRegion + "with hook " + lifecycleHooksRecord.getStoreLifecycleHooksClassName()
+            + " is proceed: " + proceed;
+        logMessageIfNotRedundant(message);
+      } catch (Exception e) {
+        String message = "Encountered exception while executing lifecycle hook: "
+            + lifecycleHooksRecord.getStoreLifecycleHooksClassName() + " for store: " + parentStore.getName()
+            + " on version: " + targetVersionNum + ". Exception: " + e;
+        logMessageIfNotRedundant(message);
+        continue;
       }
 
-      ExecutionStatus status = ExecutionStatus.valueOf(jobStatusQueryResponse.getStatus());
-      if (ExecutionStatus.ERROR.equals(status)) {
-        String message = "Skipping version swap for store " + parentStore.getName() + " on version " + targetVersionNum
-            + " as execution status is " + status + " in target region " + region
-            + " . Updating store to PARTIALLY_ONLINE";
-        updateStore(clusterName, parentStore.getName(), PARTIALLY_ONLINE, targetVersionNum);
+      if (StoreVersionLifecycleEventOutcome.WAIT.equals(outcome)) {
+        String message = "Skipping version swap for store: " + parentStore.getName() + " on version: "
+            + targetVersionNum + " as post version swap validations emitted WAIT";
         logMessageIfNotRedundant(message);
-        return false;
-      } else if (!ExecutionStatus.COMPLETED.equals(status)) {
-        String message = "Skipped version swap for store " + parentStore.getName() + " on version " + targetVersionNum
-            + " as execution status is " + status + " in target region " + region;
+      } else if (StoreVersionLifecycleEventOutcome.ROLLBACK.equals(outcome)
+          || StoreVersionLifecycleEventOutcome.ABORT.equals(outcome)) {
+        String message = "Skipping version swap for store: " + parentStore.getName() + " on version: "
+            + targetVersionNum + "as post version swap validations emitted " + outcome;
         logMessageIfNotRedundant(message);
-        return false;
+
+        veniceParentHelixAdmin.rollbackToBackupVersion(clusterName, parentStore.getName(), targetRegion);
+        updateStore(clusterName, parentStore.getName(), ERROR, targetVersionNum);
+        LOGGER.info(
+            "Updating store status to ERROR for store: " + parentStore.getName() + " on version: " + targetVersionNum);
+
+        // TODO cleanup the code below after parent VT is deprecated
+        LOGGER.info("Truncating kafka topic: {} after validations emitted a roll back", kafkaTopicName);
+        veniceParentHelixAdmin.truncateKafkaTopic(kafkaTopicName);
       }
 
-      for (LifecycleHooksRecord lifecycleHooksRecord: storeLifecycleHooks) {
-        StoreVersionLifecycleEventOutcome outcome;
-        try {
-          StoreLifecycleHooks storeLifecycleHook = ReflectUtils.callConstructor(
-              ReflectUtils.loadClass(lifecycleHooksRecord.getStoreLifecycleHooksClassName()),
-              new Class<?>[] { VeniceProperties.class },
-              new Object[] { veniceControllerMultiClusterConfig.getCommonConfig().getProps() });
-
-          Properties properties = new Properties();
-          properties.putAll(lifecycleHooksRecord.getStoreLifecycleHooksParams());
-          VeniceProperties veniceProperties = new VeniceProperties(properties);
-          outcome = storeLifecycleHook.postStoreVersionSwap(
-              clusterName,
-              parentStore.getName(),
-              targetVersionNum,
-              region,
-              null,
-              veniceProperties);
-          String message = "Validation outcome for store " + parentStore.getName() + " on version " + targetVersionNum
-              + " in region" + region + "with hook " + lifecycleHooksRecord.getStoreLifecycleHooksClassName()
-              + " is proceed: " + proceed;
-          logMessageIfNotRedundant(message);
-        } catch (Exception e) {
-          String message = "Encountered exception while executing lifecycle hook: "
-              + lifecycleHooksRecord.getStoreLifecycleHooksClassName() + " for store: " + parentStore.getName()
-              + " on version: " + targetVersionNum + ". Exception: " + e;
-          logMessageIfNotRedundant(message);
-          continue;
-        }
-
-        if (StoreVersionLifecycleEventOutcome.WAIT.equals(outcome)) {
-          String message = "Skipping version swap for store: " + parentStore.getName() + " on version: "
-              + targetVersionNum + " as post version swap validations emitted WAIT";
-          logMessageIfNotRedundant(message);
-        } else if (StoreVersionLifecycleEventOutcome.ROLLBACK.equals(outcome)
-            || StoreVersionLifecycleEventOutcome.ABORT.equals(outcome)) {
-          String message = "Skipping version swap for store: " + parentStore.getName() + " on version: "
-              + targetVersionNum + "as post version swap validations emitted " + outcome;
-          logMessageIfNotRedundant(message);
-
-          veniceParentHelixAdmin.rollbackToBackupVersion(clusterName, parentStore.getName(), region);
-          updateStore(clusterName, parentStore.getName(), ERROR, targetVersionNum);
-          LOGGER.info(
-              "Updating store status to ERROR for store: " + parentStore.getName() + " on version: "
-                  + targetVersionNum);
-
-          // TODO cleanup the code below after parent VT is deprecated
-          LOGGER.info("Truncating kafka topic: {} after validations emitted a roll back", kafkaTopicName);
-          veniceParentHelixAdmin.truncateKafkaTopic(kafkaTopicName);
-        }
-
-        if (!StoreVersionLifecycleEventOutcome.PROCEED.equals(outcome)) {
-          proceed = false;
-        }
+      if (!StoreVersionLifecycleEventOutcome.PROCEED.equals(outcome)) {
+        proceed = false;
       }
     }
 
@@ -1044,8 +1007,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
                     targetVersionNum,
                     cluster,
                     priorRegionRolledForward,
-                    kafkaTopicName,
-                    childControllerClientMap)) {
+                    kafkaTopicName)) {
                   logLatency(startTime, storeName, targetVersionNum);
                   continue;
                 }
@@ -1115,8 +1077,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
                   targetVersionNum,
                   cluster,
                   targetVersion.getTargetSwapRegion(),
-                  kafkaTopicName,
-                  childControllerClientMap)) {
+                  kafkaTopicName)) {
                 logLatency(startTime, storeName, targetVersionNum);
                 continue;
               }
