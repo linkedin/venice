@@ -100,8 +100,7 @@ import org.apache.logging.log4j.Logger;
  *
  * This backend is designed as a shared resource managed through a {@link com.linkedin.venice.utils.ReferenceCounted}
  * pattern in {@link com.linkedin.davinci.client.AvroGenericDaVinciClient}. Multiple DaVinci clients share the
- * same ingestion services and metadata repositories for resource efficiency. Storage engines are managed per store
- * version, so clients accessing the same store version share storage engines.
+ * same ingestion services and metadata repositories for resource efficiency.
  *
  * {@link DaVinciBackend} tracks different client types (regular vs version-specific) to prevent collisions due to
  * the shared behavior of this class. Regular clients participate in version swaps while version-specific
