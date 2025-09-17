@@ -30,8 +30,10 @@ import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.repository.VeniceMetadataRepositoryBuilder;
 import com.linkedin.davinci.stats.AggVersionedBlobTransferStats;
 import com.linkedin.davinci.stats.AggVersionedStorageEngineStats;
+import com.linkedin.davinci.stats.HeartbeatMonitoringServiceStats;
 import com.linkedin.davinci.stats.MetadataUpdateStats;
 import com.linkedin.davinci.stats.RocksDBMemoryStats;
+import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import com.linkedin.davinci.storage.StorageEngineMetadataService;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
@@ -113,9 +115,10 @@ public class DaVinciBackend implements Closeable {
   private IngestionBackend ingestionBackend;
   private final AggVersionedStorageEngineStats aggVersionedStorageEngineStats;
   private final boolean useDaVinciSpecificExecutionStatusForError;
-  private BlobTransferManager<Void> blobTransferManager;
-  private AggVersionedBlobTransferStats aggVersionedBlobTransferStats;
+  private final BlobTransferManager<Void> blobTransferManager;
   private final boolean writeBatchingPushStatus;
+  private final HeartbeatMonitoringService heartbeatMonitoringService;
+  private AggVersionedBlobTransferStats aggVersionedBlobTransferStats;
 
   public DaVinciBackend(
       ClientConfig clientConfig,
@@ -235,6 +238,14 @@ public class DaVinciBackend implements Closeable {
       cacheBackend = cacheConfig
           .map(objectCacheConfig -> new ObjectCacheBackend(clientConfig, objectCacheConfig, schemaRepository));
 
+      HeartbeatMonitoringServiceStats heartbeatMonitoringServiceStats =
+          new HeartbeatMonitoringServiceStats(metricsRepository, "da-vinci");
+      heartbeatMonitoringService = new HeartbeatMonitoringService(
+          metricsRepository,
+          readOnlyStoreRepository,
+          configLoader.getVeniceServerConfig(),
+          heartbeatMonitoringServiceStats,
+          null);
       ingestionService = new KafkaStoreIngestionService(
           storageService,
           configLoader,
@@ -257,8 +268,7 @@ public class DaVinciBackend implements Closeable {
           null,
           configLoader.getVeniceServerConfig().getPubSubClientsFactory(),
           Optional.empty(),
-          // TODO: It would be good to monitor heartbeats like this from davinci, but needs some work
-          null,
+          heartbeatMonitoringService,
           null,
           null,
           Optional.ofNullable(clientConfig.getD2Client())); // Use the D2 client from the client config.
@@ -889,5 +899,9 @@ public class DaVinciBackend implements Closeable {
 
   public InternalDaVinciRecordTransformerConfig getInternalRecordTransformerConfig(String storeName) {
     return ingestionService.getInternalRecordTransformerConfig(storeName);
+  }
+
+  HeartbeatMonitoringService getHeartbeatMonitoringService() {
+    return heartbeatMonitoringService;
   }
 }

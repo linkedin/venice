@@ -19,6 +19,7 @@ import com.linkedin.davinci.client.InternalDaVinciRecordTransformerConfig;
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.ingestion.IngestionBackend;
 import com.linkedin.davinci.stats.AggVersionedDaVinciRecordTransformerStats;
+import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.transformer.TestStringRecordTransformer;
 import com.linkedin.venice.ConfigKeys;
@@ -176,6 +177,9 @@ public class VersionBackendTest {
 
     StoreBackend mockStoreBackend = mock(StoreBackend.class);
     when(mockDaVinciBackend.getStoreOrThrow(anyString())).thenReturn(mockStoreBackend);
+
+    HeartbeatMonitoringService mockHeartbeatMonitoringService = mock(HeartbeatMonitoringService.class);
+    when(mockDaVinciBackend.getHeartbeatMonitoringService()).thenReturn(mockHeartbeatMonitoringService);
 
     ZKStore store = TestUtils.populateZKStore(
         (ZKStore) TestUtils.createTestStore(
