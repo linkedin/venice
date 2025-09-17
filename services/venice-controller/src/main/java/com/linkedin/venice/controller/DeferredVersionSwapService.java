@@ -719,12 +719,6 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       } else if (version.getStatus().equals(ERROR) || version.getStatus().equals(VersionStatus.KILLED)) {
         failedNonTargetRegions.add(nonTargetRegion);
       } else if (version.getStatus().equals(ONLINE)) {
-        if (storeResponse.isError()) {
-          String message = "Got error when fetching targetRegionStore: " + storeResponse.getStore();
-          logMessageIfNotRedundant(message);
-          continue;
-        }
-
         // The in memory store map is out of sync, and we should still allow roll forward to happen
         // to make the future version current
         StoreInfo childStore = storeResponse.getStore();
