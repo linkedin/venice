@@ -94,6 +94,19 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 
+/**
+ * Core backend service that powers all {@link com.linkedin.davinci.client.DaVinciClient} client instances with
+ * shared infrastructure for storage, ingestion, and metadata management.
+ *
+ * This backend is designed as a shared resource managed through a {@link com.linkedin.venice.utils.ReferenceCounted}
+ * pattern in {@link com.linkedin.davinci.client.AvroGenericDaVinciClient}. Multiple DaVinci clients share the
+ * same ingestion services and metadata repositories for resource efficiency. Storage engines are managed per store
+ * version, so clients accessing the same store version share storage engines.
+ *
+ * {@link DaVinciBackend} tracks different client types (regular vs version-specific) to prevent collisions due to
+ * the shared behavior of this class. Regular clients participate in version swaps while version-specific
+ * clients subscribe to a fixed version and ignore version swap events.
+ */
 public class DaVinciBackend implements Closeable {
   private static final Logger LOGGER = LogManager.getLogger(DaVinciBackend.class);
 
