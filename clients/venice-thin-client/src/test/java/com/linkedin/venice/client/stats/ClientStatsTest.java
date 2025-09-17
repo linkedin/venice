@@ -15,6 +15,7 @@ import static org.testng.Assert.assertEquals;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
+import com.linkedin.venice.stats.dimensions.StreamProgress;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
 import io.opentelemetry.api.common.Attributes;
@@ -151,7 +152,7 @@ public class ClientStatsTest {
         .put(
             metricsRepository.getOpenTelemetryMetricsRepository()
                 .getDimensionName(VeniceMetricsDimensions.VENICE_STREAM_PROGRESS),
-            "first")
+            StreamProgress.FIRST.getDimensionValue())
         .build();
 
     Attributes tt50Attrs = Attributes.builder()
@@ -166,7 +167,7 @@ public class ClientStatsTest {
         .put(
             metricsRepository.getOpenTelemetryMetricsRepository()
                 .getDimensionName(VeniceMetricsDimensions.VENICE_STREAM_PROGRESS),
-            "50pct")
+            StreamProgress.PCT_50.getDimensionValue())
         .build();
 
     Attributes tt90Attrs = Attributes.builder()
@@ -181,7 +182,7 @@ public class ClientStatsTest {
         .put(
             metricsRepository.getOpenTelemetryMetricsRepository()
                 .getDimensionName(VeniceMetricsDimensions.VENICE_STREAM_PROGRESS),
-            "90pct")
+            StreamProgress.PCT_90.getDimensionValue())
         .build();
 
     String metricName = ClientMetricEntity.RESPONSE_BATCH_STREAM_PROGRESS_TIME.getMetricEntity().getMetricName();
