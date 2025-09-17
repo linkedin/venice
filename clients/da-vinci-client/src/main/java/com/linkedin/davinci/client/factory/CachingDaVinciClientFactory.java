@@ -122,7 +122,6 @@ public class CachingDaVinciClientFactory
     return getClient(
         storeName,
         null,
-        null,
         config,
         null,
         new GenericDaVinciClientConstructor<>(),
@@ -133,7 +132,6 @@ public class CachingDaVinciClientFactory
   public <K, V> DaVinciClient<K, V> getGenericAvroClient(String storeName, DaVinciConfig config, Class<V> valueClass) {
     return getClient(
         storeName,
-        null,
         null,
         config,
         valueClass,
@@ -146,7 +144,6 @@ public class CachingDaVinciClientFactory
   public <K, V> DaVinciClient<K, V> getAndStartGenericAvroClient(String storeName, DaVinciConfig config) {
     return getClient(
         storeName,
-        null,
         null,
         config,
         null,
@@ -162,7 +159,6 @@ public class CachingDaVinciClientFactory
     return getClient(
         storeName,
         null,
-        null,
         config,
         valueClass,
         new GenericDaVinciClientConstructor<>(),
@@ -174,7 +170,6 @@ public class CachingDaVinciClientFactory
   public <K, V> DaVinciClient<K, V> getGenericAvroClient(String storeName, String viewName, DaVinciConfig config) {
     return getClient(
         storeName,
-        null,
         viewName,
         config,
         null,
@@ -190,7 +185,6 @@ public class CachingDaVinciClientFactory
       DaVinciConfig config) {
     return getClient(
         storeName,
-        null,
         viewName,
         config,
         null,
@@ -208,7 +202,6 @@ public class CachingDaVinciClientFactory
     return getClient(
         storeName,
         null,
-        null,
         config,
         valueClass,
         new SpecificDaVinciClientConstructor<>(),
@@ -223,7 +216,6 @@ public class CachingDaVinciClientFactory
       Class<V> valueClass) {
     return getClient(
         storeName,
-        null,
         null,
         config,
         valueClass,
@@ -240,7 +232,6 @@ public class CachingDaVinciClientFactory
       Class<V> valueClass) {
     return getClient(
         storeName,
-        null,
         viewName,
         config,
         valueClass,
@@ -257,7 +248,6 @@ public class CachingDaVinciClientFactory
       Class<V> valueClass) {
     return getClient(
         storeName,
-        null,
         viewName,
         config,
         valueClass,
@@ -410,6 +400,20 @@ public class CachingDaVinciClientFactory
     }
   }
 
+  protected DaVinciClient getClient(
+      String storeName,
+      String viewName,
+      DaVinciConfig config,
+      Class valueClass,
+      DaVinciClientConstructor clientConstructor,
+      Class clientClass,
+      boolean startClient) {
+    return getClient(storeName, null, viewName, config, valueClass, clientConstructor, clientClass, startClient);
+  }
+
+  /**
+   * @param storeVersion Pass in a non-null value if you want a version specific {@link DaVinciClient}
+   */
   protected synchronized DaVinciClient getClient(
       String storeName,
       Integer storeVersion,
