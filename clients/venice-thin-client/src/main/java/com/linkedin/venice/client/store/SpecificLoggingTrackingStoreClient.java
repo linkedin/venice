@@ -7,9 +7,9 @@ import org.apache.avro.specific.SpecificRecord;
  * This class is necessary because Venice needs to maintain a separate interface: {@link AvroSpecificStoreClient}.
  * @param <V>
  */
-public class SpecificRetriableStoreClient<K, V extends SpecificRecord> extends RetriableStoreClient<K, V>
+public class SpecificLoggingTrackingStoreClient<K, V extends SpecificRecord> extends LoggingTrackingStoreClient<K, V>
     implements AvroSpecificStoreClient<K, V> {
-  public SpecificRetriableStoreClient(InternalAvroStoreClient<K, V> innerStoreClient, ClientConfig clientConfig) {
-    super(innerStoreClient, clientConfig);
+  public SpecificLoggingTrackingStoreClient(InternalAvroStoreClient<K, V> innerStoreClient) {
+    super(innerStoreClient);
   }
 }
