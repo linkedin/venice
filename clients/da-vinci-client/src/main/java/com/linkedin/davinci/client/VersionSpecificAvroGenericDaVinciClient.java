@@ -22,7 +22,8 @@ import java.util.concurrent.CompletableFuture;
  * Key features:
  * - Subscribes to a specific version (does not follow version swaps)
  * - Validates version existence when subscribing
- * - Cannot be mixed with regular DaVinci clients on the same store
+ * - Cannot be mixed with regular DaVinci clients on the same store with the same
+ *   {@link com.linkedin.davinci.DaVinciBackend} or JVM.
  */
 public class VersionSpecificAvroGenericDaVinciClient<K, V> extends AvroGenericDaVinciClient<K, V> {
   public VersionSpecificAvroGenericDaVinciClient(
