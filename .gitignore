@@ -3,6 +3,10 @@
 *.ipr
 *.iws
 *.log
+
+# Binary directories and files
+**/bin/
+
 *.project
 *.swp
 *.class

@@ -30,12 +30,4 @@ public interface DefaultPubSubMessage extends PubSubMessage<KafkaKey, KafkaMessa
    * @return the {@link PubSubPosition} representing the message offset.
    */
   PubSubPosition getPosition();
-
-  /**
-   * @Deprecated use {@link #getPosition()} instead.
-   * @return position of this message within the underlying topic-partition.
-   */
-  default PubSubPosition getOffset() {
-    return getPosition();
-  }
 }

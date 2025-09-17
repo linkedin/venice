@@ -69,91 +69,6 @@ public class TestDeferredVersionSwapWithFailingRegions {
   }
 
   @Test(timeOut = TEST_TIMEOUT * 2)
-  public void testDeferredVersionSwapWithFailedPushInNonTargetRegions() throws IOException {
-    setUpCluster();
-
-    multiRegionMultiClusterWrapper.failPushInRegion(FAILED_REGION);
-
-    // Setup job properties
-    File inputDir = getTempDataDirectory();
-    TestWriteUtils.writeSimpleAvroFileWithStringToV3Schema(inputDir, 100, 100);
-    String inputDirPath = "file://" + inputDir.getAbsolutePath();
-    String storeName = Utils.getUniqueString("testDeferredVersionSwapWithFailedPushInNonTargetRegions");
-    Properties props =
-        IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, storeName);
-    String keySchemaStr = "\"string\"";
-    UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setUnusedSchemaDeletionEnabled(true);
-    storeParms.setTargetRegionSwapWaitTime(1);
-    String parentControllerURLs = multiRegionMultiClusterWrapper.getControllerConnectString();
-
-    try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAMES[0], parentControllerURLs)) {
-      createStoreForJob(CLUSTER_NAMES[0], keySchemaStr, NAME_RECORD_V3_SCHEMA.toString(), props, storeParms).close();
-
-      // Start push job with target region push enabled and check that it fails
-      props.put(TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP, true);
-      try {
-        IntegrationTestPushUtils.runVPJ(props);
-      } catch (Exception e) {
-        assertEquals(e.getClass(), VeniceException.class);
-      }
-
-      // Wait for job to fail
-      TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.MINUTES, true, () -> {
-        JobStatusQueryResponse jobStatusQueryResponse = assertCommand(
-            parentControllerClient.queryOverallJobStatus(Version.composeKafkaTopic(storeName, 1), Optional.empty()));
-        ExecutionStatus executionStatus = ExecutionStatus.valueOf(jobStatusQueryResponse.getStatus());
-        assertEquals(executionStatus, ExecutionStatus.ERROR);
-      });
-
-      TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.MINUTES, () -> {
-        Map<String, Integer> coloVersions =
-            parentControllerClient.getStore(storeName).getStore().getColoToCurrentVersions();
-
-        coloVersions.forEach((colo, version) -> {
-          if (!colo.equals(FAILED_REGION)) {
-            Assert.assertEquals((int) version, 1);
-          } else {
-            Assert.assertEquals((int) version, 0);
-          }
-        });
-      });
-
-      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-        StoreInfo parentStore = parentControllerClient.getStore(storeName).getStore();
-        Assert.assertEquals(parentStore.getVersion(1).get().getStatus(), VersionStatus.PARTIALLY_ONLINE);
-      });
-
-      // Check that child version status is marked as ONLINE if it didn't fail
-      for (VeniceMultiClusterWrapper childDatacenter: childDatacenters) {
-        ControllerClient childControllerClient =
-            new ControllerClient(CLUSTER_NAMES[0], childDatacenter.getControllerConnectString());
-        if (!childDatacenter.getRegionName().equals(FAILED_REGION)) {
-          StoreResponse store = childControllerClient.getStore(storeName);
-          Optional<Version> version = store.getStore().getVersion(1);
-          assertNotNull(version);
-          assertEquals(version.get().getStatus(), VersionStatus.ONLINE);
-        }
-      }
-
-      // Verify that we can create a new version
-      VersionCreationResponse versionCreationResponse = parentControllerClient.requestTopicForWrites(
-          storeName,
-          1000,
-          Version.PushType.BATCH,
-          Version.guidBasedDummyPushId(),
-          true,
-          true,
-          false,
-          Optional.empty(),
-          Optional.empty(),
-          Optional.empty(),
-          false,
-          -1);
-      assertFalse(versionCreationResponse.isError());
-    }
-  }
-
-  @Test(timeOut = TEST_TIMEOUT * 2)
   public void testDeferredVersionSwapWithFailedPushInTargetRegions() throws IOException {
     setUpCluster();
 
@@ -202,7 +117,7 @@ public class TestDeferredVersionSwapWithFailingRegions {
 
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
         StoreInfo parentStore = parentControllerClient.getStore(storeName).getStore();
-        Assert.assertEquals(parentStore.getVersion(1).get().getStatus(), VersionStatus.ERROR);
+        Assert.assertEquals(parentStore.getVersion(1).get().getStatus(), VersionStatus.KILLED);
       });
 
       // Verify that we can create a new version
@@ -314,7 +229,7 @@ public class TestDeferredVersionSwapWithFailingRegions {
       // Version status should be ERROR
       TestUtils.waitForNonDeterministicAssertion(90, TimeUnit.SECONDS, () -> {
         StoreInfo parentStore = parentControllerClient.getStore(storeName).getStore();
-        Assert.assertEquals(parentStore.getVersion(2).get().getStatus(), VersionStatus.ERROR);
+        Assert.assertEquals(parentStore.getVersion(2).get().getStatus(), VersionStatus.KILLED);
       });
 
       // verify that dvc client did not ingest the version

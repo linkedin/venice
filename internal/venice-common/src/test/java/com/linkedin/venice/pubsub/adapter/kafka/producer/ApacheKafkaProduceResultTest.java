@@ -3,6 +3,7 @@ package com.linkedin.venice.pubsub.adapter.kafka.producer;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
 
+import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.TopicPartition;
@@ -22,7 +23,7 @@ public class ApacheKafkaProduceResultTest {
     assertNotNull(produceResult);
     assertEquals(produceResult.getTopic(), recordMetadata.topic());
     assertEquals(produceResult.getPartition(), recordMetadata.partition());
-    assertEquals(produceResult.getOffset(), recordMetadata.offset());
+    assertEquals(produceResult.getPubSubPosition(), ApacheKafkaOffsetPosition.of(recordMetadata.offset()));
     assertEquals(
         produceResult.getSerializedSize(),
         recordMetadata.serializedKeySize() + recordMetadata.serializedValueSize());

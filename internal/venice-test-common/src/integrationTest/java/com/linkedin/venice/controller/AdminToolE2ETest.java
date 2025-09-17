@@ -5,6 +5,8 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_AUTO_MATERIALIZE_META_SY
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.expectThrows;
+import static org.testng.Assert.fail;
 
 import com.linkedin.venice.AdminTool;
 import com.linkedin.venice.common.VeniceSystemStoreType;
@@ -33,6 +35,7 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
+import org.apache.commons.cli.AlreadySelectedException;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -337,7 +340,7 @@ public class AdminToolE2ETest {
 
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
       StoreResponse getStoreResponse = childControllerClient.getStore(storeName1);
-      Assert.assertEquals(getStoreResponse.getErrorType(), ErrorType.STORE_NOT_FOUND);
+      assertEquals(getStoreResponse.getErrorType(), ErrorType.STORE_NOT_FOUND);
     });
 
     AdminTool.main(adminToolArgs);
@@ -369,7 +372,7 @@ public class AdminToolE2ETest {
     if (expectFailure) {
       try {
         AdminTool.main(adminToolArgs);
-        Assert.fail("Expected failure for args: " + java.util.Arrays.toString(adminToolArgs));
+        fail("Expected failure for args: " + java.util.Arrays.toString(adminToolArgs));
       } catch (RuntimeException e) {
         // expected
       }
@@ -379,7 +382,7 @@ public class AdminToolE2ETest {
   }
 
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "dumpAdminMessageOptions")
-  public void testDumpAdminMessage(String[] extraArgs, boolean expectFailure) throws Exception {
+  public void testDumpAdminMessage(String[] extraArgs, Class<? extends Exception> expectedException) throws Exception {
     String clusterName = clusterNames[0];
     List<VeniceControllerWrapper> parentControllers = multiRegionMultiClusterWrapper.getParentControllers();
     String parentControllerURLs =
@@ -399,15 +402,19 @@ public class AdminToolE2ETest {
       args.addAll(Arrays.asList(extraArgs));
       String[] adminToolArgs = args.toArray(new String[0]);
 
-      if (expectFailure) {
+      if (expectedException != null) {
+        Exception thrownException = expectThrows(expectedException, () -> AdminTool.main(adminToolArgs));
+        assertEquals(
+            thrownException.getClass(),
+            expectedException,
+            "Expected " + expectedException.getSimpleName() + " but got " + thrownException.getClass().getSimpleName()
+                + " for args: " + Arrays.toString(adminToolArgs) + ". Exception: " + thrownException.getMessage());
+      } else {
         try {
           AdminTool.main(adminToolArgs);
-          Assert.fail("Expected failure for args: " + java.util.Arrays.toString(adminToolArgs));
-        } catch (RuntimeException e) {
-          // expected
+        } catch (Exception e) {
+          fail("Unexpected failure for args: " + Arrays.toString(adminToolArgs) + ". Exception: " + e.getMessage(), e);
         }
-      } else {
-        AdminTool.main(adminToolArgs);
       }
     }
   }
@@ -474,8 +481,9 @@ public class AdminToolE2ETest {
 
   @DataProvider(name = "dumpAdminMessageOptions")
   public Object[][] dumpAdminOptions() {
-    return new Object[][] { { new String[] { "--starting_offset", "3" }, false },
-        { new String[] { "--starting_position", "0:0twI" }, false }, { new String[] {}, true },
-        { new String[] { "--starting_offset", "10", "--starting_position", "0:0o1e" }, true } };
+    return new Object[][] { { new String[] { "--starting_offset", "3" }, null },
+        { new String[] { "--starting_position", "0:0twI" }, null }, { new String[] {}, RuntimeException.class },
+        { new String[] { "--starting_offset", "10", "--starting_position", "0:0o1e" },
+            AlreadySelectedException.class } };
   }
 }

@@ -41,6 +41,7 @@ import com.linkedin.davinci.stats.HostLevelIngestionStats;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
+import com.linkedin.davinci.store.DelegatingStorageEngine;
 import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.davinci.store.StoragePartitionAdjustmentTrigger;
 import com.linkedin.davinci.store.StoragePartitionConfig;
@@ -404,6 +405,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final String hostName;
   private boolean skipAfterBatchPushUnsubEnabled = false;
   private final List<AutoCloseable> thingsToClose = new ArrayList<>();
+  private final Version version;
 
   public StoreIngestionTask(
       StorageService storageService,
@@ -419,6 +421,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       InternalDaVinciRecordTransformerConfig internalRecordTransformerConfig,
       Queue<VeniceNotifier> notifiers,
       Lazy<ZKHelixAdmin> zkHelixAdmin) {
+    this.version = version;
     this.storeVersionConfig = storeVersionConfig;
     this.readCycleDelayMs = storeVersionConfig.getKafkaReadCycleDelayMs();
     this.emptyPollSleepMs = storeVersionConfig.getKafkaEmptyPollSleepMs();
@@ -494,6 +497,20 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         storageService.getRefCountedStorageEngine(storeVersionName);
     this.thingsToClose.add(refCountedStorageEngine);
     this.storageEngine = Objects.requireNonNull(refCountedStorageEngine.get());
+    if ((this.storageEngine instanceof DelegatingStorageEngine)) {
+      DelegatingStorageEngine delegatingStorageEngine = (DelegatingStorageEngine) this.storageEngine;
+      delegatingStorageEngine.setKeyDictCompressionFunction(p -> {
+        PartitionConsumptionState pcs = partitionConsumptionStateMap.get(p);
+        if (pcs == null) {
+          throw new VeniceException("Partition " + p + " not found in partitionConsumptionStateMap");
+        }
+        return pcs.getKeyDictCompressor();
+      });
+    } else {
+      throw new VeniceException(
+          "Unexpected storage engine type: " + this.storageEngine.getClass() + " for store version: " + storeVersionName
+              + ", expected: DelegatingStorageEngine");
+    }
 
     this.serverConfig = builder.getServerConfig();
     this.defaultReadyToServeChecker = getDefaultReadyToServeChecker();
@@ -1063,6 +1080,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
       // Log only once a minute per partition.
       boolean shouldLogLag = !REDUNDANT_LOGGING_FILTER.isRedundantException(msg);
+
       if (serverConfig.isUseHeartbeatLagForReadyToServeCheckEnabled()) {
         // Measure heartbeat lag for ready-to-serve check.
         isLagAcceptable = checkAndLogIfLagIsAcceptableForHybridStore(
@@ -2167,7 +2185,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             partition,
             offsetRecord,
             pubSubContext,
-            hybridStoreConfig.isPresent());
+            hybridStoreConfig.isPresent(),
+            schemaRepository.getKeySchema(storeName).getSchema());
+
         newPartitionConsumptionState.setCurrentVersionSupplier(isCurrentVersion);
 
         boolean isFutureVersionReady = isFutureVersionReady(kafkaVersionTopic, storeRepository);
@@ -2334,7 +2354,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           partition,
           new OffsetRecord(partitionStateSerializer),
           pubSubContext,
-          hybridStoreConfig.isPresent());
+          hybridStoreConfig.isPresent(),
+          schemaRepository.getKeySchema(storeName).getSchema());
       consumptionState.setCurrentVersionSupplier(isCurrentVersion);
       partitionConsumptionStateMap.put(partition, consumptionState);
       storageUtilizationManager.initPartition(partition);
@@ -2744,6 +2765,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     OffsetRecord offsetRecord = pcs.getOffsetRecord();
     // Check-pointing info required by the underlying storage engine
     offsetRecord.setDatabaseInfo(dbCheckpointingInfoReference.get());
+    // Update key urn compression dictionary
+    offsetRecord.setKeyUrnCompressionDict(pcs.getKeyUrnCompressionDict());
     storageMetadataService.put(this.kafkaVersionTopic, partition, offsetRecord);
     pcs.resetProcessedRecordSizeSinceLastSync();
     String msg = "Offset synced for replica: " + pcs.getReplicaId() + " - localVtOffset: {}";
@@ -3027,6 +3050,16 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     ingestionNotificationDispatcher.reportStarted(partitionConsumptionState);
     beginBatchWrite(persistedStoreVersionState.sorted, partitionConsumptionState);
     partitionConsumptionState.setStartOfPushTimestamp(startOfPushKME.producerMetadata.messageTimestamp);
+
+    /**
+     * Check whether we should enable key urn compression or not.
+     * This should only be called when handling StartOfPush Control Message, otherwise the dictionary
+     * to be built won't cover all the keys.
+     */
+    if (isDaVinciClient() && version.isKeyUrnCompressionEnabled() && serverConfig.isKeyUrnCompressionEnabled()) {
+      List<String> urnFields = version.getKeyUrnFields();
+      partitionConsumptionState.enableKeyUrnCompressionUponStartOfPush(urnFields);
+    }
   }
 
   protected void processEndOfPush(

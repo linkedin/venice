@@ -64,6 +64,7 @@ import com.linkedin.venice.hadoop.input.kafka.KafkaInputFormat;
 import com.linkedin.venice.hadoop.input.kafka.KafkaInputFormatCombiner;
 import com.linkedin.venice.hadoop.input.kafka.KafkaInputKeyComparator;
 import com.linkedin.venice.hadoop.input.kafka.KafkaInputMRPartitioner;
+import com.linkedin.venice.hadoop.input.kafka.KafkaInputUtils;
 import com.linkedin.venice.hadoop.input.kafka.KafkaInputValueGroupingComparator;
 import com.linkedin.venice.hadoop.input.kafka.VeniceKafkaInputMapper;
 import com.linkedin.venice.hadoop.input.kafka.VeniceKafkaInputReducer;
@@ -238,6 +239,7 @@ public class DataWriterMRJob extends DataWriterComputeJob {
       Schema keySchemaFromController = pushJobSetting.storeKeySchema;
       String keySchemaString = AvroCompatibilityHelper.toParsingForm(keySchemaFromController);
       jobConf.set(KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP, keySchemaString);
+      KafkaInputUtils.putSchemaMapIntoProperties(pushJobSetting.newKmeSchemasFromController).forEach(jobConf::set);
       jobConf.setInputFormat(KafkaInputFormat.class);
       jobConf.setMapperClass(VeniceKafkaInputMapper.class);
       if (pushJobSetting.kafkaInputCombinerEnabled) {

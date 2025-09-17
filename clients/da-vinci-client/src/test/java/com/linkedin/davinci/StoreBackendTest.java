@@ -22,6 +22,8 @@ import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.ingestion.IngestionBackend;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionService;
+import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatLagMonitorAction;
+import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -70,6 +72,7 @@ public class StoreBackendTest {
   StorageService storageService;
   IngestionBackend ingestionBackend;
   StorageEngineBackedCompressorFactory compressorFactory;
+  HeartbeatMonitoringService heartbeatMonitoringService;
 
   @BeforeMethod
   void setUp() {
@@ -90,6 +93,7 @@ public class StoreBackendTest {
     ingestionBackend = mock(IngestionBackend.class);
     compressorFactory = mock(StorageEngineBackedCompressorFactory.class);
     backend = mock(DaVinciBackend.class);
+    heartbeatMonitoringService = mock(HeartbeatMonitoringService.class);
     when(backend.getExecutor()).thenReturn(executor);
     when(backend.getConfigLoader()).thenReturn(new VeniceConfigLoader(backendConfig));
     when(backend.getMetricsRepository()).thenReturn(metricsRepository);
@@ -102,7 +106,7 @@ public class StoreBackendTest {
     when(backend.getIngestionBackend()).thenReturn(ingestionBackend);
     when(backend.getCompressorFactory()).thenReturn(compressorFactory);
     when(backend.hasCurrentVersionBootstrapping()).thenReturn(false);
-    when(backend.getStoreClientType(anyString())).thenReturn(DaVinciBackend.ClientType.REGULAR);
+    when(backend.getHeartbeatMonitoringService()).thenReturn(heartbeatMonitoringService);
     doCallRealMethod().when(backend).handleStoreChanged(any());
 
     store = new ZKStore(
@@ -149,6 +153,8 @@ public class StoreBackendTest {
 
     // Expecting to subscribe to version1 and that version2 is a future version.
     CompletableFuture subscribeResult = storeBackend.subscribe(ComplementSet.of(partition));
+    verify(heartbeatMonitoringService, times(1))
+        .updateLagMonitor(version1.kafkaTopicName(), partition, HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR);
     TimeUnit.MILLISECONDS.sleep(v1SubscribeDurationMs);
     versionMap.get(version1.kafkaTopicName()).completePartition(partition);
     subscribeResult.get(3, TimeUnit.SECONDS);
@@ -329,9 +335,17 @@ public class StoreBackendTest {
   void testSubscribeUnsubscribe() throws Exception {
     // Simulate concurrent unsubscribe while subscribe is pending.
     CompletableFuture subscribeResult = storeBackend.subscribe(ComplementSet.of(0, 1));
+    verify(heartbeatMonitoringService, times(1))
+        .updateLagMonitor(version1.kafkaTopicName(), 0, HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR);
+    verify(heartbeatMonitoringService, times(1))
+        .updateLagMonitor(version1.kafkaTopicName(), 1, HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR);
     versionMap.get(version1.kafkaTopicName()).completePartition(0);
     assertFalse(subscribeResult.isDone());
     storeBackend.unsubscribe(ComplementSet.of(1));
+    verify(heartbeatMonitoringService, times(1))
+        .updateLagMonitor(version1.kafkaTopicName(), 1, HeartbeatLagMonitorAction.REMOVE_MONITOR);
+    verify(heartbeatMonitoringService, times(0))
+        .updateLagMonitor(version1.kafkaTopicName(), 0, HeartbeatLagMonitorAction.REMOVE_MONITOR);
     // Verify that unsubscribe completed pending subscribe without failing it.
     subscribeResult.get(3, TimeUnit.SECONDS);
     TestUtils.waitForNonDeterministicAssertion(3, TimeUnit.SECONDS, () -> {

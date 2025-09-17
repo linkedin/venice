@@ -24,6 +24,7 @@ import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClust
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.utils.ConfigCommonUtils;
@@ -120,9 +121,10 @@ public class AdminConsumptionTaskIntegrationTest {
         valueSchema,
         nextExecutionId(),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
-    long badOffset = writer.put(new byte[0], message, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION)
-        .get()
-        .getOffset();
+    PubSubPosition failingPosition =
+        writer.put(new byte[0], message, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION)
+            .get()
+            .getPubSubPosition();
 
     byte[] goodMessage = getStoreCreationMessage(
         clusterName,
@@ -141,9 +143,9 @@ public class AdminConsumptionTaskIntegrationTest {
     TestUtils.waitForNonDeterministicAssertion(
         TIMEOUT,
         TimeUnit.MILLISECONDS,
-        () -> Assert.assertEquals(adminConsumerService.getFailingPosition().getNumericOffset(), badOffset));
+        () -> Assert.assertEquals(adminConsumerService.getFailingPosition(), failingPosition));
 
-    parentControllerClient.skipAdminMessage(Long.toString(badOffset), false, null);
+    parentControllerClient.skipAdminMessage(Long.toString(failingPosition.getNumericOffset()), false, null);
 
     TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
       Assert.assertFalse(parentControllerClient.getStore(storeName).isError());
@@ -420,6 +422,7 @@ public class AdminConsumptionTaskIntegrationTest {
     adminMessage.executionId = executionId;
     updateStore.storeLifecycleHooks = Collections.emptyList();
     updateStore.blobTransferInServerEnabled = ConfigCommonUtils.ActivationState.NOT_SPECIFIED.name();
+    updateStore.keyUrnFields = Collections.emptyList();
     return adminOperationSerializer.serialize(adminMessage, writerSchemaId);
   }
 

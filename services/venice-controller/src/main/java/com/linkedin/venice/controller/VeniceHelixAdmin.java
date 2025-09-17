@@ -1648,12 +1648,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    * @return {@code true} is the store is a participant system store or if Venice is running in single-region mode
    */
   @Override
-  public boolean whetherEnableBatchPushFromAdmin(String storeName) {
+  public boolean whetherEnableBatchPushFromAdmin(String clusterName, String storeName) {
     /*
      * Allow (empty) push to participant system store from child controller directly since participant stores are
      * independent in different fabrics (different data).
      */
-    return VeniceSystemStoreUtils.isParticipantStore(storeName) || !multiClusterConfigs.isMultiRegion();
+    return VeniceSystemStoreUtils.isParticipantStore(storeName)
+        || !multiClusterConfigs.getControllerConfig(clusterName).isMultiRegion();
   }
 
   /**
@@ -5536,6 +5537,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     Optional<Boolean> ttlRepushEnabled = params.isTTLRepushEnabled();
     Optional<Boolean> enumSchemaEvolutionAllowed = params.isEnumSchemaEvolutionAllowed();
     Optional<List<LifecycleHooksRecord>> storeLifecycleHooks = params.getStoreLifecycleHooks();
+    Optional<Boolean> keyUrnCompressionEnabled = params.getKeyUrnCompressionEnabled();
+    Optional<List<String>> keyUrnFields = params.getKeyUrnFields();
 
     final Optional<HybridStoreConfig> newHybridStoreConfig;
     if (hybridRewindSeconds.isPresent() || hybridOffsetLagThreshold.isPresent() || hybridTimeLagThreshold.isPresent()
@@ -5883,6 +5886,16 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
       enumSchemaEvolutionAllowed.ifPresent(aBool -> storeMetadataUpdate(clusterName, storeName, store -> {
         store.setEnumSchemaEvolutionAllowed(aBool);
+        return store;
+      }));
+
+      keyUrnCompressionEnabled.ifPresent(aBool -> storeMetadataUpdate(clusterName, storeName, store -> {
+        store.setKeyUrnCompressionEnabled(aBool);
+        return store;
+      }));
+
+      keyUrnFields.ifPresent(fields -> storeMetadataUpdate(clusterName, storeName, store -> {
+        store.setKeyUrnFields(fields);
         return store;
       }));
 

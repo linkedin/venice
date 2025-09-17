@@ -8,6 +8,7 @@ import com.linkedin.davinci.client.InternalDaVinciRecordTransformerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.listener.response.NoOpReadResponseStats;
 import com.linkedin.davinci.notifier.DaVinciPushStatusUpdateTask;
+import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatLagMonitorAction;
 import com.linkedin.davinci.storage.chunking.AbstractAvroChunkingAdapter;
 import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
@@ -391,6 +392,9 @@ public class VersionBackend {
     }
 
     for (int partition: partitionsToStartConsumption) {
+      // Start monitoring the heartbeat lag of the partition
+      backend.getHeartbeatMonitoringService()
+          .updateLagMonitor(version.kafkaTopicName(), partition, HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR);
       // AtomicReference of storage engine will be updated internally.
       backend.getIngestionBackend().startConsumption(config, partition);
       tryStartHeartbeat();
@@ -447,6 +451,8 @@ public class VersionBackend {
         return;
       }
       completePartition(partition);
+      backend.getHeartbeatMonitoringService()
+          .updateLagMonitor(version.kafkaTopicName(), partition, HeartbeatLagMonitorAction.REMOVE_MONITOR);
       backend.getIngestionBackend().dropStoragePartitionGracefully(config, partition, stopConsumptionTimeoutInSeconds);
       partitionFutures.remove(partition);
       partitionToPendingReportIncrementalPushList.remove(partition);

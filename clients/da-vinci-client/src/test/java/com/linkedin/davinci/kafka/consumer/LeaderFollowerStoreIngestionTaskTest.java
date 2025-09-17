@@ -34,7 +34,7 @@ import com.linkedin.davinci.stats.HostLevelIngestionStats;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
-import com.linkedin.davinci.store.StorageEngine;
+import com.linkedin.davinci.store.DelegatingStorageEngine;
 import com.linkedin.davinci.store.view.MaterializedViewWriter;
 import com.linkedin.davinci.store.view.VeniceViewWriter;
 import com.linkedin.davinci.store.view.VeniceViewWriterFactory;
@@ -226,7 +226,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
     String storeName = Utils.getUniqueString("store");
     int versionNumber = 1;
     mockStorageService = mock(StorageService.class);
-    doReturn(new ReferenceCounted<>(mock(StorageEngine.class), se -> {})).when(mockStorageService)
+    doReturn(new ReferenceCounted<>(mock(DelegatingStorageEngine.class), se -> {})).when(mockStorageService)
         .getRefCountedStorageEngine(anyString());
     mockVeniceServerConfig = mock(VeniceServerConfig.class);
     doReturn(Object2IntMaps.emptyMap()).when(mockVeniceServerConfig).getKafkaClusterUrlToIdMap();
@@ -577,7 +577,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
     assertEquals(put.getSchemaId(), AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion());
     assertNotNull(put.getPutValue());
     PubSubProduceResult produceResult = mock(PubSubProduceResult.class);
-    when(produceResult.getOffset()).thenReturn(0L);
+    when(produceResult.getPubSubPosition()).thenReturn(mock(PubSubPosition.class));
     when(produceResult.getSerializedSize()).thenReturn(keyBytes.length + put.putValue.remaining());
     callback.onCompletion(produceResult, null);
     verify(mockStoreBufferService, times(1)).execSyncOffsetFromSnapshotAsync(any(), any(), any());

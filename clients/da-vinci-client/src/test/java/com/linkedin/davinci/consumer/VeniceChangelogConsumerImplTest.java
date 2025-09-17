@@ -1058,7 +1058,7 @@ public class VeniceChangelogConsumerImplTest {
       ChangeEvent<Utf8> changeEvent = pubSubMessage.getValue();
       Assert.assertEquals(changeEvent.getCurrentValue().toString(), "newValue" + i);
       Assert.assertEquals(changeEvent.getPreviousValue().toString(), "oldValue" + i);
-      Assert.assertEquals(pubSubMessage.getOffset().getConsumerSequenceId(), expectedSequenceId++);
+      Assert.assertEquals(pubSubMessage.getPosition().getConsumerSequenceId(), expectedSequenceId++);
     }
   }
 

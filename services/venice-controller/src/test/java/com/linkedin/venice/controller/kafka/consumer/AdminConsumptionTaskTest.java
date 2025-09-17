@@ -78,7 +78,6 @@ import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.PubSubUtil;
-import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeader;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeaders;
@@ -129,6 +128,7 @@ import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CancellationException;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -209,7 +209,7 @@ public class AdminConsumptionTaskTest {
     doReturn(lockManager).when(resources).getClusterLockManager();
     doCallRealMethod().when(resources).getStoreMetadataRepository();
 
-    when(mockKafkaConsumer.beginningPosition(any())).thenReturn(ApacheKafkaOffsetPosition.of(-1L));
+    when(mockKafkaConsumer.beginningPosition(any())).thenReturn(InMemoryPubSubPosition.of(0));
     doAnswer(invocation -> {
       PubSubTopicPartition partition = invocation.getArgument(0);
       PubSubPosition position1 = invocation.getArgument(1);
@@ -291,8 +291,8 @@ public class AdminConsumptionTaskTest {
     return new MockInMemoryPartitionPosition(pubSubTopicPartition, produceResult.getPubSubPosition());
   }
 
-  private long getLastOffset(String clusterName) {
-    return adminTopicMetadataAccessor.getMetadata(clusterName).getOffset();
+  private PubSubPosition getLastPosition(String clusterName) {
+    return adminTopicMetadataAccessor.getMetadata(clusterName).getPosition();
   }
 
   private long getLastExecutionId(String clusterName) {
@@ -303,7 +303,8 @@ public class AdminConsumptionTaskTest {
   public void testSubscribeUsesLocalPositionWhenRemoteDisabled() throws Exception {
     // Arrange: write admin metadata with only local position set
     AdminMetadata adminMetadata = new AdminMetadata();
-    adminMetadata.setPubSubPosition(ApacheKafkaOffsetPosition.of(10L));
+    PubSubPosition p10 = InMemoryPubSubPosition.of(10L);
+    adminMetadata.setPubSubPosition(p10);
     adminMetadata.setUpstreamPubSubPosition(PubSubSymbolicPosition.EARLIEST);
     adminMetadata.setExecutionId(1L);
     adminTopicMetadataAccessor.updateMetadata(clusterName, adminMetadata);
@@ -317,7 +318,7 @@ public class AdminConsumptionTaskTest {
     // Assert: subscribe called with local position (offset 10)
     ArgumentCaptor<PubSubPosition> posCaptor = ArgumentCaptor.forClass(PubSubPosition.class);
     verify(mockKafkaConsumer, timeout(TIMEOUT)).subscribe(any(), posCaptor.capture());
-    Assert.assertEquals(posCaptor.getValue().getNumericOffset(), 10L, "Should subscribe from local checkpoint");
+    Assert.assertEquals(posCaptor.getValue(), p10, "Should subscribe from local checkpoint");
 
     task.close();
     executor.shutdown();
@@ -327,9 +328,10 @@ public class AdminConsumptionTaskTest {
   @Test(timeOut = TIMEOUT)
   public void testSubscribeUsesUpstreamPositionWhenRemoteEnabled() throws Exception {
     // Arrange: write admin metadata with upstream position set
+    InMemoryPubSubPosition p20 = InMemoryPubSubPosition.of(20L);
     AdminMetadata adminMetadata = new AdminMetadata();
     adminMetadata.setPubSubPosition(PubSubSymbolicPosition.EARLIEST);
-    adminMetadata.setUpstreamPubSubPosition(ApacheKafkaOffsetPosition.of(20L));
+    adminMetadata.setUpstreamPubSubPosition(p20);
     adminMetadata.setExecutionId(2L);
     adminTopicMetadataAccessor.updateMetadata(clusterName, adminMetadata);
 
@@ -349,7 +351,7 @@ public class AdminConsumptionTaskTest {
     // Assert: subscribe called with upstream position (offset 20)
     ArgumentCaptor<PubSubPosition> posCaptor = ArgumentCaptor.forClass(PubSubPosition.class);
     verify(mockKafkaConsumer, timeout(TIMEOUT)).subscribe(any(), posCaptor.capture());
-    Assert.assertEquals(posCaptor.getValue().getNumericOffset(), 20L, "Should subscribe from upstream checkpoint");
+    Assert.assertEquals(posCaptor.getValue(), p20, "Should subscribe from upstream checkpoint");
 
     task.close();
     executor.shutdown();
@@ -414,7 +416,7 @@ public class AdminConsumptionTaskTest {
   }
 
   @Test(timeOut = TIMEOUT)
-  public void testRun() throws InterruptedException, IOException {
+  public void testRun() throws InterruptedException, IOException, ExecutionException {
     // The store doesn't exist
     doReturn(false).when(admin).hasStore(clusterName, storeName);
 
@@ -422,17 +424,19 @@ public class AdminConsumptionTaskTest {
         emptyKeyBytes,
         getStoreCreationMessage(clusterName, storeName, owner, keySchema, valueSchema, 1),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
-    veniceWriter.put(
-        emptyKeyBytes,
-        getKillOfflinePushJobMessage(clusterName, storeTopicName, 2),
-        AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+    InMemoryPubSubPosition position2 = getPosition(
+        veniceWriter.put(
+            emptyKeyBytes,
+            getKillOfflinePushJobMessage(clusterName, storeTopicName, 2),
+            AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION));
 
     AdminConsumptionTask task = getAdminConsumptionTask(new RandomPollStrategy(), false);
     executor.submit(task);
 
-    TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
-      Assert.assertEquals(getLastOffset(clusterName), 2L);
-    });
+    TestUtils.waitForNonDeterministicAssertion(
+        TIMEOUT,
+        TimeUnit.MILLISECONDS,
+        () -> Assert.assertEquals(getLastPosition(clusterName), position2));
 
     task.close();
     executor.shutdown();
@@ -470,11 +474,13 @@ public class AdminConsumptionTaskTest {
   }
 
   @Test(timeOut = TIMEOUT)
-  public void testRunWhenStoreCreationGotExceptionForTheFirstTime() throws InterruptedException, IOException {
-    veniceWriter.put(
-        emptyKeyBytes,
-        getStoreCreationMessage(clusterName, storeName, owner, keySchema, valueSchema, 1),
-        AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+  public void testRunWhenStoreCreationGotExceptionForTheFirstTime()
+      throws InterruptedException, IOException, ExecutionException {
+    InMemoryPubSubPosition position1 = getPosition(
+        veniceWriter.put(
+            emptyKeyBytes,
+            getStoreCreationMessage(clusterName, storeName, owner, keySchema, valueSchema, 1),
+            AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION));
     // The store doesn't exist
     doReturn(false).when(admin).hasStore(clusterName, storeName);
     doThrow(new VeniceException("Mock store creation exception")).doNothing()
@@ -487,7 +493,7 @@ public class AdminConsumptionTaskTest {
     TestUtils.waitForNonDeterministicAssertion(
         TIMEOUT,
         TimeUnit.MILLISECONDS,
-        () -> Assert.assertEquals(getLastOffset(clusterName), 1L));
+        () -> Assert.assertEquals(getLastPosition(clusterName), position1));
 
     task.close();
     executor.shutdown();
@@ -501,20 +507,20 @@ public class AdminConsumptionTaskTest {
 
   @Test(timeOut = TIMEOUT)
   public void testDelegateExceptionSetsFailingOffset() throws ExecutionException, InterruptedException, IOException {
-    long failingOffset =
+    PubSubPosition failingPosition =
         ((PubSubProduceResult) veniceWriter
             .put(
                 emptyKeyBytes,
                 getStoreCreationMessage(clusterName, storeName, owner, keySchema, valueSchema, 1),
                 AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION)
-            .get()).getOffset();
+            .get()).getPubSubPosition();
     AdminConsumptionStats mockStats = mock(AdminConsumptionStats.class);
     doThrow(StringIndexOutOfBoundsException.class).when(mockStats).recordAdminMessageDelegateLatency(anyDouble());
     AdminConsumptionTask task = getAdminConsumptionTask(new RandomPollStrategy(), false, mockStats, 10000);
     executor.submit(task);
 
     TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
-      Assert.assertEquals(task.getFailingPosition().getNumericOffset(), failingOffset);
+      Assert.assertEquals(task.getFailingPosition(), failingPosition);
     });
 
     task.close();
@@ -541,7 +547,7 @@ public class AdminConsumptionTaskTest {
     executor.submit(task);
 
     TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
-      Assert.assertEquals(task.getFailingPosition().getNumericOffset(), 1L);
+      Assert.assertEquals(task.getFailingPosition(), InMemoryPubSubPosition.of(1L));
     });
 
     verify(mockStats, timeout(100).atLeastOnce()).setAdminConsumptionFailedPosition(any());
@@ -552,15 +558,16 @@ public class AdminConsumptionTaskTest {
     task.close();
     executor.shutdown();
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
-    Assert.assertEquals(getLastOffset(clusterName), -1L);
+    Assert.assertEquals(getLastPosition(clusterName), PubSubSymbolicPosition.EARLIEST);
   }
 
   @Test(timeOut = TIMEOUT)
-  public void testSkipMessageCommand() throws IOException, InterruptedException {
-    veniceWriter.put(
-        emptyKeyBytes,
-        getStoreCreationMessage(clusterName, storeName, owner, keySchema, valueSchema, 1),
-        AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+  public void testSkipMessageCommand() throws IOException, InterruptedException, ExecutionException {
+    InMemoryPubSubPosition position1 = getPosition(
+        veniceWriter.put(
+            emptyKeyBytes,
+            getStoreCreationMessage(clusterName, storeName, owner, keySchema, valueSchema, 1),
+            AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION));
     // The store doesn't exist
     doReturn(false).when(admin).hasStore(clusterName, storeName);
     doThrow(new VeniceException("Mock store creation exception")).when(admin)
@@ -579,7 +586,7 @@ public class AdminConsumptionTaskTest {
 
     // admin throws errors, so record offset means we skipped the message
     TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
-      Assert.assertEquals(getLastOffset(clusterName), 1L);
+      Assert.assertEquals(getLastPosition(clusterName), position1);
     });
 
     task.close();
@@ -628,12 +635,11 @@ public class AdminConsumptionTaskTest {
                 getKillOfflinePushJobMessage(clusterName, storeTopicName, 1),
                 AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION)
             .get();
-    veniceWriter
-        .put(
+    InMemoryPubSubPosition position2 = getPosition(
+        veniceWriter.put(
             emptyKeyBytes,
             getStoreCreationMessage(clusterName, storeName, owner, keySchema, valueSchema, 2),
-            AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION)
-        .get();
+            AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION));
 
     Queue<AbstractPollStrategy> pollStrategies = new LinkedList<>();
     pollStrategies.add(new RandomPollStrategy());
@@ -647,9 +653,10 @@ public class AdminConsumptionTaskTest {
     AdminConsumptionTask task = getAdminConsumptionTask(pollStrategy, false);
     executor.submit(task);
 
-    TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
-      Assert.assertEquals(getLastOffset(clusterName), 2L);
-    });
+    TestUtils.waitForNonDeterministicAssertion(
+        TIMEOUT,
+        TimeUnit.MILLISECONDS,
+        () -> Assert.assertEquals(getLastPosition(clusterName), position2));
 
     Utils.sleep(1000); // TODO: find a better to wait for AdminConsumptionTask consume the last message.
     task.close();
@@ -667,23 +674,21 @@ public class AdminConsumptionTaskTest {
     String storeName1 = "test_store1";
     String storeName2 = "test_store2";
     String storeName3 = "test_store3";
-    InMemoryPubSubPosition offset1 = getPosition(
+    InMemoryPubSubPosition position1 = getPosition(
         veniceWriter.put(
             emptyKeyBytes,
             getStoreCreationMessage(clusterName, storeName1, owner, keySchema, valueSchema, 1),
             AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION));
-    System.out.println("Offset for store creation message 1: " + offset1);
-    InMemoryPubSubPosition offsetToSkip = getPosition(
+    InMemoryPubSubPosition position2ToSkip = getPosition(
         veniceWriter.put(
             emptyKeyBytes,
             getStoreCreationMessage(clusterName, storeName2, owner, keySchema, valueSchema, 2),
             AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION));
-    InMemoryPubSubPosition offset3 = getPosition(
+    InMemoryPubSubPosition position3 = getPosition(
         veniceWriter.put(
             emptyKeyBytes,
             getStoreCreationMessage(clusterName, storeName3, owner, keySchema, valueSchema, 3),
             AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION));
-    System.out.println("Offset for store creation message 3: " + offset3);
 
     Set<MockInMemoryPartitionPosition> topicPartitionOffsetsToFilterOut = new HashSet<>();
     topicPartitionOffsetsToFilterOut.add(
@@ -691,7 +696,7 @@ public class AdminConsumptionTaskTest {
             new PubSubTopicPartitionImpl(
                 pubSubTopicRepository.getTopic(topicName),
                 AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID),
-            offsetToSkip.getPreviousPosition()));
+            position2ToSkip.getPreviousPosition()));
     PollStrategy pollStrategy =
         new FilteringPollStrategy(new RandomPollStrategy(false), topicPartitionOffsetsToFilterOut);
 
@@ -707,16 +712,16 @@ public class AdminConsumptionTaskTest {
     TestUtils.waitForNonDeterministicAssertion(
         TIMEOUT,
         TimeUnit.MILLISECONDS,
-        () -> Assert.assertEquals(getLastOffset(clusterName), 1L));
+        () -> Assert.assertEquals(getLastPosition(clusterName), position1));
     TestUtils.waitForNonDeterministicAssertion(
         TIMEOUT,
         TimeUnit.MILLISECONDS,
-        () -> Assert.assertEquals(task.getFailingPosition().getNumericOffset(), 3L));
+        () -> Assert.assertEquals(task.getFailingPosition(), position3));
     task.skipMessageWithOffset(3L);
     TestUtils.waitForNonDeterministicAssertion(
         TIMEOUT,
         TimeUnit.MILLISECONDS,
-        () -> Assert.assertEquals(getLastOffset(clusterName), 3L));
+        () -> Assert.assertEquals(getLastPosition(clusterName), position3));
     task.close();
     executor.shutdownNow();
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
@@ -815,10 +820,11 @@ public class AdminConsumptionTaskTest {
         emptyKeyBytes,
         getStoreCreationMessage(clusterName, storeName2, owner, keySchema, valueSchema, 3),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
-    veniceWriter.put(
-        emptyKeyBytes,
-        getStoreCreationMessage(clusterName, storeName3, owner, keySchema, valueSchema, 4),
-        AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+    InMemoryPubSubPosition position3 = getPosition(
+        veniceWriter.put(
+            emptyKeyBytes,
+            getStoreCreationMessage(clusterName, storeName3, owner, keySchema, valueSchema, 4),
+            AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION));
     // The stores don't exist yet.
     doReturn(false).when(admin).hasStore(clusterName, storeName1);
     doReturn(false).when(admin).hasStore(clusterName, storeName2);
@@ -830,8 +836,8 @@ public class AdminConsumptionTaskTest {
     TestUtils.waitForNonDeterministicAssertion(
         TIMEOUT,
         TimeUnit.MILLISECONDS,
-        () -> Assert.assertEquals(getLastOffset(clusterName), 3L));
-    Assert.assertEquals(task.getFailingPosition().getNumericOffset(), -1);
+        () -> Assert.assertEquals(getLastPosition(clusterName), position3));
+    Assert.assertEquals(task.getFailingPosition(), PubSubSymbolicPosition.EARLIEST);
     task.close();
     verify(stats, never()).recordAdminTopicDIVErrorReportCount();
     verify(admin, atLeastOnce()).createStore(clusterName, storeName1, owner, keySchema, valueSchema, false);
@@ -854,7 +860,7 @@ public class AdminConsumptionTaskTest {
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
     AdminMetadata adminMetadata = new AdminMetadata();
     PubSubProduceResult pubSubProduceResult = metadataForStoreName0Future.get();
-    adminMetadata.setOffset(pubSubProduceResult.getOffset());
+    adminMetadata.setOffset(((InMemoryPubSubPosition) pubSubProduceResult.getPubSubPosition()).getInternalOffset());
     adminMetadata.setPubSubPosition(pubSubProduceResult.getPubSubPosition());
     adminMetadata.setExecutionId(1L);
     adminTopicMetadataAccessor.updateMetadata(clusterName, adminMetadata);
@@ -869,10 +875,11 @@ public class AdminConsumptionTaskTest {
         emptyKeyBytes,
         getStoreCreationMessage(clusterName, storeName2, owner, keySchema, valueSchema, 4),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
-    veniceWriter.put(
-        emptyKeyBytes,
-        getStoreCreationMessage(clusterName, storeName3, owner, keySchema, valueSchema, 5),
-        AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+    InMemoryPubSubPosition position5 = getPosition(
+        veniceWriter.put(
+            emptyKeyBytes,
+            getStoreCreationMessage(clusterName, storeName3, owner, keySchema, valueSchema, 5),
+            AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION));
     // The stores don't exist yet.
     doReturn(false).when(admin).hasStore(clusterName, storeName0);
     doReturn(false).when(admin).hasStore(clusterName, storeName1);
@@ -885,8 +892,8 @@ public class AdminConsumptionTaskTest {
     TestUtils.waitForNonDeterministicAssertion(
         TIMEOUT,
         TimeUnit.MILLISECONDS,
-        () -> Assert.assertEquals(getLastOffset(clusterName), 5L));
-    Assert.assertEquals(task.getFailingPosition().getNumericOffset(), -1);
+        () -> Assert.assertEquals(getLastPosition(clusterName), position5));
+    Assert.assertEquals(task.getFailingPosition(), PubSubSymbolicPosition.EARLIEST);
     task.close();
     verify(stats, never()).recordAdminTopicDIVErrorReportCount();
     verify(admin, atLeastOnce()).createStore(clusterName, storeName1, owner, keySchema, valueSchema, false);
@@ -897,24 +904,27 @@ public class AdminConsumptionTaskTest {
   }
 
   @Test(timeOut = TIMEOUT)
-  public void testRunWithDuplicateMessagesWithDifferentOffset() throws InterruptedException, IOException {
+  public void testRunWithDuplicateMessagesWithDifferentOffset()
+      throws InterruptedException, IOException, ExecutionException {
     veniceWriter.put(
         emptyKeyBytes,
         getStoreCreationMessage(clusterName, storeName, owner, keySchema, valueSchema, 1),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
-    veniceWriter.put(
-        emptyKeyBytes,
-        getStoreCreationMessage(clusterName, storeName, owner, keySchema, valueSchema, 1),
-        AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+    InMemoryPubSubPosition position2 = getPosition(
+        veniceWriter.put(
+            emptyKeyBytes,
+            getStoreCreationMessage(clusterName, storeName, owner, keySchema, valueSchema, 1),
+            AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION));
     // The store doesn't exist for the first time, and exist for the second time
     when(admin.hasStore(clusterName, storeName)).thenReturn(false).thenReturn(true);
 
     AdminConsumptionTask task = getAdminConsumptionTask(new RandomPollStrategy(), false);
     executor.submit(task);
 
-    TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
-      Assert.assertEquals(getLastOffset(clusterName), 2L);
-    });
+    TestUtils.waitForNonDeterministicAssertion(
+        TIMEOUT,
+        TimeUnit.MILLISECONDS,
+        () -> Assert.assertEquals(getLastPosition(clusterName), position2));
 
     task.close();
     executor.shutdown();
@@ -927,7 +937,7 @@ public class AdminConsumptionTaskTest {
   }
 
   @Test(timeOut = 2 * TIMEOUT)
-  public void testRunWithBiggerStartingOffset() throws InterruptedException, IOException {
+  public void testRunWithBiggerStartingOffset() throws InterruptedException, IOException, ExecutionException {
     String storeName1 = "test_store1";
     String storeName2 = "test_store2";
     veniceWriter.put(
@@ -936,10 +946,11 @@ public class AdminConsumptionTaskTest {
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
     // This scenario mostly happens when leader controller fails over
     veniceWriter = getVeniceWriter(inMemoryPubSubBroker);
-    veniceWriter.put(
-        emptyKeyBytes,
-        getStoreCreationMessage(clusterName, storeName2, owner, keySchema, valueSchema, 2),
-        AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+    InMemoryPubSubPosition position3 = getPosition(
+        veniceWriter.put(
+            emptyKeyBytes,
+            getStoreCreationMessage(clusterName, storeName2, owner, keySchema, valueSchema, 2),
+            AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION));
     // The store doesn't exist
     doReturn(false).when(admin).hasStore(clusterName, storeName1);
     doReturn(false).when(admin).hasStore(clusterName, storeName2);
@@ -950,9 +961,10 @@ public class AdminConsumptionTaskTest {
 
     AdminConsumptionTask task = getAdminConsumptionTask(new RandomPollStrategy(), false);
     executor.submit(task);
-    TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
-      Assert.assertEquals(getLastOffset(clusterName), 3L);
-    });
+    TestUtils.waitForNonDeterministicAssertion(
+        TIMEOUT,
+        TimeUnit.MILLISECONDS,
+        () -> Assert.assertEquals(getLastPosition(clusterName), position3));
     task.close();
     executor.shutdown();
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
@@ -966,18 +978,21 @@ public class AdminConsumptionTaskTest {
   }
 
   @Test(timeOut = TIMEOUT)
-  public void testParentControllerSkipKillOfflinePushJobMessage() throws InterruptedException, IOException {
-    veniceWriter.put(
-        emptyKeyBytes,
-        getKillOfflinePushJobMessage(clusterName, storeTopicName, 1),
-        AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+  public void testParentControllerSkipKillOfflinePushJobMessage()
+      throws InterruptedException, IOException, ExecutionException {
+    InMemoryPubSubPosition position1 = getPosition(
+        veniceWriter.put(
+            emptyKeyBytes,
+            getKillOfflinePushJobMessage(clusterName, storeTopicName, 1),
+            AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION));
 
     AdminConsumptionTask task = getAdminConsumptionTask(new RandomPollStrategy(), true);
     executor.submit(task);
 
-    TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
-      Assert.assertEquals(getLastOffset(clusterName), 1L);
-    });
+    TestUtils.waitForNonDeterministicAssertion(
+        TIMEOUT,
+        TimeUnit.MILLISECONDS,
+        () -> Assert.assertEquals(getLastPosition(clusterName), position1));
 
     task.close();
     executor.shutdown();
@@ -1091,6 +1106,7 @@ public class AdminConsumptionTaskTest {
     setStore.bootstrapToOnlineTimeoutInHours = bootstrapToOnlineTimeoutInHours;
     setStore.storeLifecycleHooks = Collections.emptyList();
     setStore.blobTransferInServerEnabled = ConfigCommonUtils.ActivationState.ENABLED.name();
+    setStore.keyUrnFields = Collections.emptyList();
 
     HybridStoreConfigRecord hybridConfig = new HybridStoreConfigRecord();
     hybridConfig.rewindTimeInSeconds = 123L;
@@ -1146,11 +1162,12 @@ public class AdminConsumptionTaskTest {
     byte[] message =
         adminOperationSerializer.serialize(adminMessage, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
 
-    veniceWriter.put(emptyKeyBytes, message, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
-
-    TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
-      Assert.assertEquals(getLastOffset(clusterName), 2L);
-    });
+    InMemoryPubSubPosition position2 = getPosition(
+        veniceWriter.put(emptyKeyBytes, message, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION));
+    TestUtils.waitForNonDeterministicAssertion(
+        TIMEOUT,
+        TimeUnit.MILLISECONDS,
+        () -> Assert.assertEquals(getLastPosition(clusterName), position2));
 
     task.close();
     executor.shutdown();
@@ -1174,15 +1191,16 @@ public class AdminConsumptionTaskTest {
   }
 
   @Test(timeOut = TIMEOUT * 2)
-  public void testRetryLimitForNoStoreException() throws InterruptedException, IOException {
+  public void testRetryLimitForNoStoreException() throws InterruptedException, IOException, ExecutionException {
     // Use a store name that doesn't exist to trigger VeniceNoStoreException
     String nonExistentStoreName = Utils.getUniqueString("non_existent_store");
 
     // Create a delete-store operation for a store that doesn't exist
-    veniceWriter.put(
-        emptyKeyBytes,
-        getDeleteStoreMessage(clusterName, nonExistentStoreName, 1),
-        AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+    InMemoryPubSubPosition position1 = getPosition(
+        veniceWriter.put(
+            emptyKeyBytes,
+            getDeleteStoreMessage(clusterName, nonExistentStoreName, 1),
+            AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION));
 
     // Simulate the store not existing by throwing VeniceNoStoreException
     doThrow(new VeniceNoStoreException(nonExistentStoreName, clusterName)).when(admin)
@@ -1203,7 +1221,7 @@ public class AdminConsumptionTaskTest {
 
     // Wait for the message to be processed and moved past (skipped after max retries)
     TestUtils.waitForNonDeterministicAssertion(TIMEOUT * 2, TimeUnit.MILLISECONDS, () -> {
-      Assert.assertEquals(getLastOffset(clusterName), 1L);
+      Assert.assertEquals(getLastPosition(clusterName), position1);
       // After max retries, the exception should be cleared from problematic stores
       Assert.assertNull(task.getLastExceptionForStore(nonExistentStoreName));
     });
@@ -1219,10 +1237,11 @@ public class AdminConsumptionTaskTest {
     String storeName2 = "test_store2";
     String storeTopicName1 = storeName1 + "_v1";
     String storeTopicName2 = storeName2 + "_v1";
-    veniceWriter.put(
-        emptyKeyBytes,
-        getStoreCreationMessage(clusterName, storeName1, owner, keySchema, valueSchema, 1),
-        AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+    InMemoryPubSubPosition position1 = getPosition(
+        veniceWriter.put(
+            emptyKeyBytes,
+            getStoreCreationMessage(clusterName, storeName1, owner, keySchema, valueSchema, 1),
+            AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION));
     veniceWriter.put(
         emptyKeyBytes,
         getStoreCreationMessage(clusterName, storeName2, owner, keySchema, valueSchema, 2),
@@ -1231,10 +1250,11 @@ public class AdminConsumptionTaskTest {
         emptyKeyBytes,
         getKillOfflinePushJobMessage(clusterName, storeTopicName1, 3),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
-    veniceWriter.put(
-        emptyKeyBytes,
-        getKillOfflinePushJobMessage(clusterName, storeTopicName2, 4),
-        AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+    InMemoryPubSubPosition position4 = getPosition(
+        veniceWriter.put(
+            emptyKeyBytes,
+            getKillOfflinePushJobMessage(clusterName, storeTopicName2, 4),
+            AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION));
 
     // The store doesn't exist
     when(admin.hasStore(clusterName, storeName1)).thenReturn(false);
@@ -1248,7 +1268,7 @@ public class AdminConsumptionTaskTest {
     TestUtils.waitForNonDeterministicAssertion(
         TIMEOUT,
         TimeUnit.MILLISECONDS,
-        () -> Assert.assertEquals(task.getFailingPosition().getNumericOffset(), 1L));
+        () -> Assert.assertEquals(task.getFailingPosition(), position1));
     TestUtils.waitForNonDeterministicAssertion(
         TIMEOUT,
         TimeUnit.MILLISECONDS,
@@ -1261,7 +1281,7 @@ public class AdminConsumptionTaskTest {
     Assert.assertEquals(
         executionIdAccessor.getLastSucceededExecutionIdMap(clusterName).getOrDefault(storeName1, -1L).longValue(),
         -1L);
-    Assert.assertEquals(getLastOffset(clusterName), -1L);
+    Assert.assertEquals(getLastPosition(clusterName), PubSubSymbolicPosition.EARLIEST);
     Assert.assertEquals(getLastExecutionId(clusterName), -1L);
 
     // skip the blocking message
@@ -1269,13 +1289,13 @@ public class AdminConsumptionTaskTest {
     TestUtils.waitForNonDeterministicAssertion(
         TIMEOUT,
         TimeUnit.MILLISECONDS,
-        () -> Assert.assertEquals(getLastOffset(clusterName), 4L));
+        () -> Assert.assertEquals(getLastPosition(clusterName), position4));
 
     Assert.assertEquals(getLastExecutionId(clusterName), 4L);
     Assert.assertEquals(
         executionIdAccessor.getLastSucceededExecutionIdMap(clusterName).getOrDefault(storeName1, -1L).longValue(),
         3L);
-    Assert.assertEquals(task.getFailingPosition().getNumericOffset(), -1L);
+    Assert.assertEquals(task.getFailingPosition(), PubSubSymbolicPosition.EARLIEST);
     task.close();
     executor.shutdown();
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
@@ -1320,9 +1340,9 @@ public class AdminConsumptionTaskTest {
         emptyKeyBytes,
         getKillOfflinePushJobMessage(clusterName, storeTopicName, 4L),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
-    long offset = future.get(TIMEOUT, TimeUnit.MILLISECONDS).getOffset();
+    PubSubPosition position = future.get(TIMEOUT, TimeUnit.MILLISECONDS).getPubSubPosition();
     AdminMetadata newMetadata = new AdminMetadata();
-    newMetadata.setOffset(offset);
+    newMetadata.setOffset(((InMemoryPubSubPosition) position).getInternalOffset());
     newMetadata.setExecutionId(4L);
     adminTopicMetadataAccessor.updateMetadata(clusterName, newMetadata);
     executionIdAccessor.updateLastSucceededExecutionIdMap(clusterName, storeName, 4L);
@@ -1351,13 +1371,13 @@ public class AdminConsumptionTaskTest {
         emptyKeyBytes,
         getStoreCreationMessage(clusterName, storeName, owner, keySchema, valueSchema, 1L),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
-    long failingOffset =
+    PubSubPosition failingPosition =
         ((PubSubProduceResult) veniceWriter
             .put(
                 emptyKeyBytes,
                 getAddVersionMessage(clusterName, storeName, mockPushJobId, 1, 1, 2L),
                 AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION)
-            .get()).getOffset();
+            .get()).getPubSubPosition();
     veniceWriter.put(
         emptyKeyBytes,
         getKillOfflinePushJobMessage(clusterName, storeTopicName, 3L),
@@ -1383,19 +1403,20 @@ public class AdminConsumptionTaskTest {
     // while stuck on a failing message.
     when(admin.isLeaderControllerFor(clusterName)).thenReturn(true, true, true, true, true, false, false, false, true);
     executor.submit(task);
-    TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
-      Assert.assertEquals(task.getFailingPosition().getNumericOffset(), failingOffset);
-    });
+    TestUtils.waitForNonDeterministicAssertion(
+        TIMEOUT,
+        TimeUnit.MILLISECONDS,
+        () -> Assert.assertEquals(task.getFailingPosition(), failingPosition));
     // Failing offset should be set to -1 once the consumption task unsubscribed.
     TestUtils.waitForNonDeterministicAssertion(
         TIMEOUT,
         TimeUnit.MILLISECONDS,
-        () -> Assert.assertEquals(task.getFailingPosition().getNumericOffset(), -1));
+        () -> Assert.assertEquals(task.getFailingPosition(), PubSubSymbolicPosition.EARLIEST));
     // The consumption task will eventually resubscribe and should be stuck on the same admin message.
     TestUtils.waitForNonDeterministicAssertion(
         TIMEOUT,
         TimeUnit.MILLISECONDS,
-        () -> Assert.assertEquals(task.getFailingPosition().getNumericOffset(), failingOffset));
+        () -> Assert.assertEquals(task.getFailingPosition(), failingPosition));
     task.close();
     executor.shutdown();
     ;
@@ -1431,7 +1452,7 @@ public class AdminConsumptionTaskTest {
     TestUtils.waitForNonDeterministicAssertion(
         TIMEOUT,
         TimeUnit.MILLISECONDS,
-        () -> Assert.assertEquals(InMemoryPubSubPosition.of(getLastOffset(clusterName)), position));
+        () -> Assert.assertEquals(getLastPosition(clusterName), position));
     TestUtils.waitForNonDeterministicAssertion(
         TIMEOUT,
         TimeUnit.MILLISECONDS,
@@ -1440,17 +1461,17 @@ public class AdminConsumptionTaskTest {
         emptyKeyBytes,
         getKillOfflinePushJobMessage(clusterName, storeTopicName, 4L),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
-    future = veniceWriter.put(
-        emptyKeyBytes,
-        getKillOfflinePushJobMessage(clusterName, storeTopicName, 5L),
-        AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
-    final long latestOffset = future.get(TIMEOUT, TimeUnit.MILLISECONDS).getOffset();
+    InMemoryPubSubPosition position5 = getPosition(
+        veniceWriter.put(
+            emptyKeyBytes,
+            getKillOfflinePushJobMessage(clusterName, storeTopicName, 5L),
+            AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION));
     TestUtils.waitForNonDeterministicAssertion(
         TIMEOUT,
         TimeUnit.MILLISECONDS,
         () -> Assert.assertEquals(getLastExecutionId(clusterName), 5L));
     Assert.assertEquals(executionIdAccessor.getLastSucceededExecutionIdMap(clusterName).get(storeName).longValue(), 5L);
-    Assert.assertEquals(getLastOffset(clusterName), latestOffset);
+    Assert.assertEquals(getLastPosition(clusterName), position5);
     task.close();
     executor.shutdown();
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
@@ -1476,7 +1497,7 @@ public class AdminConsumptionTaskTest {
         emptyKeyBytes,
         getKillOfflinePushJobMessage(clusterName, storeTopicName, 4L),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
-    long offset = future.get(TIMEOUT, TimeUnit.MILLISECONDS).getOffset();
+    PubSubPosition position = future.get(TIMEOUT, TimeUnit.MILLISECONDS).getPubSubPosition();
     veniceWriter.put(
         emptyKeyBytes,
         getKillOfflinePushJobMessage(clusterName, storeTopicName, 5L),
@@ -1499,9 +1520,9 @@ public class AdminConsumptionTaskTest {
     TestUtils.waitForNonDeterministicAssertion(
         TIMEOUT,
         TimeUnit.MILLISECONDS,
-        () -> Assert.assertEquals(task.getFailingPosition().getNumericOffset(), offset));
+        () -> Assert.assertEquals(task.getFailingPosition(), position));
     // Skip the DIV check, make sure the sequence number is updated and new admin messages can also be processed
-    task.skipMessageDIVWithOffset(offset);
+    task.skipMessageDIVWithOffset(((InMemoryPubSubPosition) position).getInternalOffset());
     TestUtils.waitForNonDeterministicAssertion(
         TIMEOUT,
         TimeUnit.MILLISECONDS,
@@ -1532,7 +1553,7 @@ public class AdminConsumptionTaskTest {
         emptyKeyBytes,
         getKillOfflinePushJobMessage(clusterName, storeTopicName, 4L),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
-    long offset = future.get(TIMEOUT, TimeUnit.MILLISECONDS).getOffset();
+    PubSubPosition position = future.get(TIMEOUT, TimeUnit.MILLISECONDS).getPubSubPosition();
     veniceWriter.put(
         emptyKeyBytes,
         getKillOfflinePushJobMessage(clusterName, storeTopicName, 5L),
@@ -1557,7 +1578,7 @@ public class AdminConsumptionTaskTest {
     TestUtils.waitForNonDeterministicAssertion(
         TIMEOUT,
         TimeUnit.MILLISECONDS,
-        () -> Assert.assertEquals(task.getFailingPosition().getNumericOffset(), offset));
+        () -> Assert.assertEquals(task.getFailingPosition(), position));
 
     // Skip the DIV check, make sure the sequence number is updated and new admin messages can also be processed
     task.skipMessageDIVWithExecutionId(4L);
@@ -1599,11 +1620,11 @@ public class AdminConsumptionTaskTest {
         emptyKeyBytes,
         getAddVersionMessage(clusterName, storeName, mockPushJobId, versionNumber, numberOfPartitions, 1L),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
-    long offset = future.get(TIMEOUT, TimeUnit.MILLISECONDS).getOffset();
+    PubSubPosition position = future.get(TIMEOUT, TimeUnit.MILLISECONDS).getPubSubPosition();
     TestUtils.waitForNonDeterministicAssertion(
         TIMEOUT,
         TimeUnit.MILLISECONDS,
-        () -> Assert.assertEquals(task.getFailingPosition().getNumericOffset(), offset));
+        () -> Assert.assertEquals(task.getFailingPosition(), position));
     // The add version message is expected to fail with retriable VeniceOperationAgainstKafkaTimeOut exception and the
     // corresponding code path for handling retriable exceptions should have been executed.
     verify(stats, atLeastOnce()).recordFailedRetriableAdminConsumption();
@@ -1670,10 +1691,12 @@ public class AdminConsumptionTaskTest {
     byte[] message =
         adminOperationSerializer.serialize(adminMessage, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
 
-    veniceWriter.put(emptyKeyBytes, message, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+    CompletableFuture<PubSubProduceResult> future =
+        veniceWriter.put(emptyKeyBytes, message, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+    PubSubPosition position2 = future.get().getPubSubPosition();
 
     TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
-      Assert.assertEquals(getLastOffset(clusterName), 2L);
+      Assert.assertEquals(getLastPosition(clusterName), position2);
     });
 
     task.close();
@@ -1929,10 +1952,11 @@ public class AdminConsumptionTaskTest {
     String storeName2 = "test_store2";
     String storeTopicName1 = storeName1 + "_v1";
     String storeTopicName2 = storeName2 + "_v1";
-    veniceWriter.put(
-        emptyKeyBytes,
-        getStoreCreationMessage(clusterName, storeName1, owner, keySchema, valueSchema, 1),
-        AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+    InMemoryPubSubPosition position1 = getPosition(
+        veniceWriter.put(
+            emptyKeyBytes,
+            getStoreCreationMessage(clusterName, storeName1, owner, keySchema, valueSchema, 1),
+            AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION));
     veniceWriter.put(
         emptyKeyBytes,
         getStoreCreationMessage(clusterName, storeName2, owner, keySchema, valueSchema, 2),
@@ -1941,10 +1965,12 @@ public class AdminConsumptionTaskTest {
         emptyKeyBytes,
         getKillOfflinePushJobMessage(clusterName, storeTopicName1, 3),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
-    veniceWriter.put(
-        emptyKeyBytes,
-        getKillOfflinePushJobMessage(clusterName, storeTopicName2, 4),
-        AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+
+    InMemoryPubSubPosition position4 = getPosition(
+        veniceWriter.put(
+            emptyKeyBytes,
+            getKillOfflinePushJobMessage(clusterName, storeTopicName2, 4),
+            AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION));
 
     // The store doesn't exist
     when(admin.hasStore(clusterName, storeName1)).thenReturn(false);
@@ -1952,9 +1978,8 @@ public class AdminConsumptionTaskTest {
 
     // Delay by more than the cycle time. This will cause this thread to be interrupted.
     // The task will be retried but will not succeed
-    doAnswer(AdditionalAnswers.answersWithDelay(2000, invocation -> {
-      return null;
-    })).when(admin).createStore(clusterName, storeName1, owner, keySchema, valueSchema, false);
+    doAnswer(AdditionalAnswers.answersWithDelay(2000, invocation -> null)).when(admin)
+        .createStore(clusterName, storeName1, owner, keySchema, valueSchema, false);
 
     AdminConsumptionTask task = getAdminConsumptionTask(
         new RandomPollStrategy(),
@@ -1975,9 +2000,9 @@ public class AdminConsumptionTaskTest {
             executionIdAccessor.getLastSucceededExecutionIdMap(clusterName).getOrDefault(storeName2, -1L).longValue(),
             4L));
 
-    Assert.assertEquals(getLastOffset(clusterName), -1L);
+    Assert.assertEquals(getLastPosition(clusterName), PubSubSymbolicPosition.EARLIEST);
     Assert.assertEquals(getLastExecutionId(clusterName), -1L);
-    Assert.assertEquals(task.getFailingPosition().getNumericOffset(), 1L);
+    Assert.assertEquals(task.getFailingPosition(), position1);
     Assert.assertEquals(task.getLastSucceededExecutionId().longValue(), -1L);
     Assert.assertNull(task.getLastSucceededExecutionId(storeName1));
     Assert.assertEquals(task.getLastSucceededExecutionId(storeName2).longValue(), 4L);
@@ -1988,13 +2013,13 @@ public class AdminConsumptionTaskTest {
     TestUtils.waitForNonDeterministicAssertion(
         TIMEOUT,
         TimeUnit.MILLISECONDS,
-        () -> Assert.assertEquals(getLastOffset(clusterName), 4L));
+        () -> Assert.assertEquals(getLastPosition(clusterName), position4));
 
     Assert.assertEquals(getLastExecutionId(clusterName), 4L);
     Assert.assertEquals(
         executionIdAccessor.getLastSucceededExecutionIdMap(clusterName).getOrDefault(storeName1, -1L).longValue(),
         3L);
-    Assert.assertEquals(task.getFailingPosition().getNumericOffset(), -1L);
+    Assert.assertEquals(task.getFailingPosition(), PubSubSymbolicPosition.EARLIEST);
 
     task.close();
     executor.shutdown();

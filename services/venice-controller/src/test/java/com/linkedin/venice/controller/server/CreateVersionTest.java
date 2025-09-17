@@ -184,7 +184,7 @@ public class CreateVersionTest {
   public void testRequestTopicForHybridIncPushEnabled(
       boolean isSeparateTopicEnabled,
       boolean pushToSeparateTopicEnabled) throws Exception {
-    doReturn(true).when(admin).whetherEnableBatchPushFromAdmin(STORE_NAME);
+    doReturn(true).when(admin).whetherEnableBatchPushFromAdmin(CLUSTER_NAME, STORE_NAME);
     doCallRealMethod().when(request).queryParamOrDefault(any(), any());
     doReturn(true).when(accessClient).isAllowlistUsers(certificate, STORE_NAME, HTTP_GET);
 
@@ -236,7 +236,7 @@ public class CreateVersionTest {
   // if it happens an ERROR should be returned on requestTopicForPushing with inc-push job type.
   @Test(description = "requestTopicForPushing should an ERROR when store is not in hybrid but inc-push is enabled")
   public void testRequestTopicForIncPushReturnsErrorWhenStoreIsNotHybridAndIncPushIsEnabled() throws Exception {
-    doReturn(true).when(admin).whetherEnableBatchPushFromAdmin(STORE_NAME);
+    doReturn(true).when(admin).whetherEnableBatchPushFromAdmin(CLUSTER_NAME, STORE_NAME);
     doCallRealMethod().when(request).queryParamOrDefault(any(), any());
     doReturn(true).when(accessClient).isAllowlistUsers(certificate, STORE_NAME, HTTP_GET);
 
@@ -298,7 +298,7 @@ public class CreateVersionTest {
     Optional<String> emergencySrcRegion = Optional.of("dc-1");
 
     doReturn("dc-0").when(admin).getRegionName();
-    doReturn(true).when(admin).whetherEnableBatchPushFromAdmin(STORE_NAME);
+    doReturn(true).when(admin).whetherEnableBatchPushFromAdmin(CLUSTER_NAME, STORE_NAME);
     doReturn(true).when(admin).isParent();
     doReturn(true).when(admin).isActiveActiveReplicationEnabledInAllRegion(any(), any(), anyBoolean());
     doReturn(store).when(admin).getStore(CLUSTER_NAME, STORE_NAME);
@@ -936,7 +936,7 @@ public class CreateVersionTest {
     Lazy<Boolean> isActiveActiveReplicationEnabledInAllRegions = Lazy.of(() -> true);
 
     // Mock admin methods
-    when(admin.whetherEnableBatchPushFromAdmin(storeName)).thenReturn(true);
+    when(admin.whetherEnableBatchPushFromAdmin(clusterName, storeName)).thenReturn(true);
     when(admin.calculateNumberOfPartitions(clusterName, storeName)).thenReturn(computedPartitionCount);
 
     Version version = mock(Version.class);
@@ -977,7 +977,7 @@ public class CreateVersionTest {
         "Expected compression strategy to be NO_OP.");
 
     // Case 2: Batch push is not enabled
-    when(admin.whetherEnableBatchPushFromAdmin(storeName)).thenReturn(false);
+    when(admin.whetherEnableBatchPushFromAdmin(clusterName, storeName)).thenReturn(false);
     VeniceUnsupportedOperationException ex1 = expectThrows(
         VeniceUnsupportedOperationException.class,
         () -> createVersion
@@ -1004,7 +1004,7 @@ public class CreateVersionTest {
             request.getTargetedRegions(),
             request.getRepushSourceVersion());
 
-    when(admin.whetherEnableBatchPushFromAdmin(storeName)).thenReturn(true);
+    when(admin.whetherEnableBatchPushFromAdmin(clusterName, storeName)).thenReturn(true);
     VeniceException ex2 = expectThrows(
         VeniceException.class,
         () -> createVersion
@@ -1020,7 +1020,7 @@ public class CreateVersionTest {
     when(request.queryParams(NAME)).thenReturn(STORE_NAME);
     when(request.queryParams(CLUSTER)).thenReturn(CLUSTER_NAME);
     when(request.queryParams(PUSH_JOB_ID)).thenReturn("pushJobId");
-    when(admin.whetherEnableBatchPushFromAdmin(STORE_NAME)).thenReturn(true);
+    when(admin.whetherEnableBatchPushFromAdmin(CLUSTER_NAME, STORE_NAME)).thenReturn(true);
     when(admin.getStore(CLUSTER_NAME, STORE_NAME)).thenReturn(null); // simulate missing store
 
     Object result = emptyPushRoute.handle(request, response);
@@ -1044,7 +1044,7 @@ public class CreateVersionTest {
     when(request.queryParams(PUSH_JOB_ID)).thenReturn("pushJobId");
 
     // Admin behavior
-    when(admin.whetherEnableBatchPushFromAdmin(STORE_NAME)).thenReturn(true);
+    when(admin.whetherEnableBatchPushFromAdmin(CLUSTER_NAME, STORE_NAME)).thenReturn(true);
     when(admin.calculateNumberOfPartitions(CLUSTER_NAME, STORE_NAME)).thenReturn(2);
     when(admin.getReplicationFactor(CLUSTER_NAME, STORE_NAME)).thenReturn(3);
 
@@ -1083,7 +1083,7 @@ public class CreateVersionTest {
     when(request.queryParams(PUSH_JOB_ID)).thenReturn("pushJobId");
 
     // Admin config
-    when(admin.whetherEnableBatchPushFromAdmin(STORE_NAME)).thenReturn(true);
+    when(admin.whetherEnableBatchPushFromAdmin(CLUSTER_NAME, STORE_NAME)).thenReturn(true);
     when(admin.calculateNumberOfPartitions(CLUSTER_NAME, STORE_NAME)).thenReturn(2);
     when(admin.getReplicationFactor(CLUSTER_NAME, STORE_NAME)).thenReturn(3);
 

@@ -57,6 +57,7 @@ import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.pubsub.mock.InMemoryPubSubPosition;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.serialization.KeyWithChunkingSuffixSerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -99,10 +100,6 @@ import org.testng.annotations.Test;
 public class ActiveActiveStoreIngestionTaskTest {
   private static final Logger LOGGER = LogManager.getLogger(ActiveActiveStoreIngestionTaskTest.class);
   private static final PubSubTopicRepository TOPIC_REPOSITORY = new PubSubTopicRepository();
-  String STORE_NAME = "Thvorusleikir_store";
-  String PUSH_JOB_ID = "yule";
-  String BOOTSTRAP_SERVER = "Stekkjastaur";
-  String TEST_CLUSTER_NAME = "venice-GRYLA";
 
   @DataProvider(name = "CompressionStrategy")
   public static Object[] compressionStrategyProvider() {
@@ -245,7 +242,7 @@ public class ActiveActiveStoreIngestionTaskTest {
               PubSubProducerCallback callback = invocation.getArgument(5);
               PubSubProduceResult produceResult = mock(PubSubProduceResult.class);
               offset.addAndGet(1);
-              when(produceResult.getOffset()).thenReturn(offset.get());
+              when(produceResult.getPubSubPosition()).thenReturn(InMemoryPubSubPosition.of(offset.get()));
               MessageType messageType = MessageType.valueOf(kafkaMessageEnvelope.messageType);
               when(produceResult.getSerializedSize()).thenReturn(
                   kafkaKey.getKeyLength() + (messageType.equals(MessageType.PUT)
