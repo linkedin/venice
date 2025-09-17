@@ -499,21 +499,21 @@ public class OffsetRecord {
    * fails for any reason, it falls back to creating a position based solely on the provided
    * numeric offset.
    *
-   * @param wfBufferBytes the ByteBuffer containing serialized position data, may be null
+   * @param wireFormatBytes the ByteBuffer containing serialized position data, may be null
    * @param offset the numeric offset to use as fallback if deserialization fails
    * @return a PubSubPosition either deserialized from the buffer or created from the offset
    */
-  private PubSubPosition deserializePositionWithOffsetFallback(ByteBuffer wfBufferBytes, long offset) {
-    if (wfBufferBytes == null || !wfBufferBytes.hasRemaining()) {
+  private PubSubPosition deserializePositionWithOffsetFallback(ByteBuffer wireFormatBytes, long offset) {
+    if (wireFormatBytes == null || !wireFormatBytes.hasRemaining()) {
       return fromKafkaOffset(offset);
     }
     try {
-      return pubSubPositionDeserializer.toPosition(wfBufferBytes);
+      return pubSubPositionDeserializer.toPosition(wireFormatBytes);
     } catch (Exception e) {
       LOGGER.warn(
           "Failed to deserialize PubSubPosition from buffer. Falling back to offset ({}) only position. Buffer: {}",
           offset,
-          wfBufferBytes,
+          wireFormatBytes,
           e);
       // Fallback to offset only position
       return fromKafkaOffset(offset);

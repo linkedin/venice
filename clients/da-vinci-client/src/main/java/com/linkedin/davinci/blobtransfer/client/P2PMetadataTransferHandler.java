@@ -10,7 +10,6 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.offsets.OffsetRecord;
-import com.linkedin.venice.pubsub.PubSubContext;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.utils.ObjectMapperFactory;
@@ -39,7 +38,6 @@ public class P2PMetadataTransferHandler extends SimpleChannelInboundHandler<Full
   private final BlobTransferPayload payload;
   private BlobTransferPartitionMetadata metadata;
   private StorageMetadataService storageMetadataService;
-  private PubSubContext pubSubContext;
 
   public P2PMetadataTransferHandler(
       StorageMetadataService storageMetadataService,
@@ -109,7 +107,7 @@ public class P2PMetadataTransferHandler extends SimpleChannelInboundHandler<Full
     storageMetadataService.put(
         transferredPartitionMetadata.topicName,
         transferredPartitionMetadata.partitionId,
-        new OffsetRecord(transferredPartitionMetadata.offsetRecord.array(), partitionStateSerializer, pubSubContext));
+        new OffsetRecord(transferredPartitionMetadata.offsetRecord.array(), partitionStateSerializer, null));
     // update the metadata SVS
     updateStorageVersionState(storageMetadataService, transferredPartitionMetadata);
   }

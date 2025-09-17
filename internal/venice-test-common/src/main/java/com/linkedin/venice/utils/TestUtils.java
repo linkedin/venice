@@ -83,11 +83,9 @@ import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
 import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
-import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicType;
 import com.linkedin.venice.pubsub.manager.TopicManagerRepository;
-import com.linkedin.venice.pubsub.mock.InMemoryPubSubPosition;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.router.VeniceRouterConfig;
 import com.linkedin.venice.router.api.VenicePartitionFinder;
@@ -711,13 +709,6 @@ public class TestUtils {
     participant.setLiveInstanceInfoProvider(
         () -> HelixInstanceConverter.convertInstanceToZNRecord(new Instance(nodeId, Utils.getHostName(), httpPort)));
     return participant;
-  }
-
-  public static OffsetRecord getOffsetRecord(long currentOffset, boolean complete, PubSubContext pubSubContext) {
-    return getOffsetRecord(
-        ApacheKafkaOffsetPosition.of(currentOffset),
-        complete ? Optional.of(InMemoryPubSubPosition.of(1000L)) : Optional.of(InMemoryPubSubPosition.of(0L)),
-        pubSubContext);
   }
 
   public static OffsetRecord getOffsetRecord(

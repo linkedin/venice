@@ -5,6 +5,7 @@ import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.pubsub.PubSubContext;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
+import com.linkedin.venice.utils.Utils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -50,11 +51,9 @@ public class DeepCopyOffsetManager implements OffsetManager {
       throws VeniceException {
     OffsetRecord recordToReturn = delegate.getLastOffset(topicName, partitionId, pubSubContext);
     LOGGER.info(
-        "OffsetManager.getLastOffset called with topicName: {}, partitionId: {}, recordToReturn: {}, pubSubContext: {}",
-        topicName,
-        partitionId,
-        recordToReturn,
-        pubSubContext);
+        "OffsetManager.getLastOffset called with topic-partition: {}, recordToReturn: {}",
+        Utils.getReplicaId(topicName, partitionId),
+        recordToReturn);
     return recordToReturn;
   }
 }

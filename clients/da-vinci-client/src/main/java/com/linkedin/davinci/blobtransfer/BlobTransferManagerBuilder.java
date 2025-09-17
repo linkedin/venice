@@ -13,7 +13,6 @@ import com.linkedin.venice.blobtransfer.ServerBlobFinder;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
-import com.linkedin.venice.pubsub.PubSubContext;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.SslUtils;
 import io.netty.handler.traffic.GlobalChannelTrafficShapingHandler;
@@ -40,7 +39,6 @@ public class BlobTransferManagerBuilder {
   private Optional<BlobTransferAclHandler> aclHandler;
   private VeniceAdaptiveBlobTransferTrafficThrottler adaptiveBlobTransferWriteTrafficThrottler;
   private VeniceAdaptiveBlobTransferTrafficThrottler adaptiveBlobTransferReadTrafficThrottler;
-  private PubSubContext pubSubContext;
 
   public BlobTransferManagerBuilder() {
   }
@@ -103,11 +101,6 @@ public class BlobTransferManagerBuilder {
   public BlobTransferManagerBuilder setAdaptiveBlobTransferReadTrafficThrottler(
       VeniceAdaptiveBlobTransferTrafficThrottler adaptiveBlobTransferReadTrafficThrottler) {
     this.adaptiveBlobTransferReadTrafficThrottler = adaptiveBlobTransferReadTrafficThrottler;
-    return this;
-  }
-
-  public BlobTransferManagerBuilder setPubSubContext(PubSubContext pubSubContext) {
-    this.pubSubContext = pubSubContext;
     return this;
   }
 
