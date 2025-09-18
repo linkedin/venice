@@ -4760,7 +4760,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       // the future version replica is ready
       int previousVersion = store.getCurrentVersion();
       Version futureVersionObj = store.getVersion(futureVersion);
-      if (futureVersionObj.isVersionSwapDeferred() && futureVersionObj.getTargetSwapRegion() == null) {
+      if (futureVersionObj.isVersionSwapDeferred() && StringUtils.isEmpty(futureVersionObj.getTargetSwapRegion())) {
         int partitionCount = futureVersionObj.getPartitionCount();
         int minActiveReplicas = futureVersionObj.getMinActiveReplicas();
         String currentVersionKafka = Version.composeKafkaTopic(storeName, futureVersion);

@@ -493,6 +493,116 @@ public class TestDeferredVersionSwapServiceWithSequentialRollout {
   }
 
   /**
+   * When the last region in rollout order is ONLINE,
+   * parent version is marked as ONLINE and kafka topic is truncated
+   */
+  @Test
+  public void testSequentialRolloutFinalRegionCompletion() throws Exception {
+    String storeName = "testStore";
+    Store store = mockStore(versionOne, versionTwo, storeName);
+
+    List<Store> storeList = new ArrayList<>();
+    storeList.add(store);
+    doReturn(storeList).when(admin).getAllStores(clusterName);
+    doReturn(true).when(admin).isLeaderControllerFor(clusterName);
+
+    Version versionOneImpl = new VersionImpl(storeName, versionOne);
+    Version versionTwoImpl = new VersionImpl(storeName, versionTwo);
+    versionTwoImpl.setStatus(VersionStatus.PUSHED);
+    List<Version> versionList = new ArrayList<>();
+    versionList.add(versionOneImpl);
+    versionList.add(versionTwoImpl);
+
+    // Setup store repo
+    doReturn(store).when(repository).getStore(storeName);
+
+    // Mock controller clients - setup region3 (last region) to have ONLINE status
+    controllerClientMap = new HashMap<>();
+    for (String region: Arrays.asList(region1, region2, region3)) {
+      ControllerClient controllerClient = mock(ControllerClient.class);
+      controllerClientMap.put(region, controllerClient);
+
+      StoreResponse storeResponse = new StoreResponse();
+      StoreInfo storeInfo = mock(StoreInfo.class);
+      doReturn(versionList).when(storeInfo).getVersions();
+
+      // Create version with ONLINE status for region3 (last region in rollout order)
+      Version regionVersion = mock(Version.class);
+      doReturn(versionTwo).when(regionVersion).getNumber();
+      if (region.equals(region3)) {
+        // Last region has ONLINE status to trigger the condition at L625-635
+        doReturn(VersionStatus.ONLINE).when(regionVersion).getStatus();
+      } else {
+        // Other regions have PUSHED status
+        doReturn(VersionStatus.PUSHED).when(regionVersion).getStatus();
+      }
+
+      // For region3, we need both version 1 (current) and version 2 (target with ONLINE status)
+      if (region.equals(region3)) {
+        Version currentVersion = mock(Version.class);
+        doReturn(versionOne).when(currentVersion).getNumber();
+        doReturn(VersionStatus.ONLINE).when(currentVersion).getStatus();
+
+        List<Version> regionVersions = Arrays.asList(currentVersion, regionVersion);
+        doReturn(regionVersions).when(storeInfo).getVersions();
+        doReturn(Optional.of(currentVersion)).when(storeInfo).getVersion(versionOne);
+        doReturn(Optional.of(regionVersion)).when(storeInfo).getVersion(versionTwo);
+      } else {
+        List<Version> regionVersions = Arrays.asList(regionVersion);
+        doReturn(regionVersions).when(storeInfo).getVersions();
+        doReturn(Optional.of(regionVersion)).when(storeInfo).getVersion(versionTwo);
+      }
+
+      storeResponse.setStore(storeInfo);
+      doReturn(storeResponse).when(controllerClient).getStore(storeName, controllerTimeout);
+
+      JobStatusQueryResponse response = mock(JobStatusQueryResponse.class);
+      doReturn(false).when(response).isError();
+      doReturn(ExecutionStatus.COMPLETED.toString()).when(response).getStatus();
+      doReturn(response).when(controllerClient).queryJobStatus(any(), any(), anyInt(), any(), anyBoolean());
+    }
+    doReturn(controllerClientMap).when(veniceHelixAdmin).getControllerClientMap(clusterName);
+
+    // Setup current versions - region3 (last region) should be behind to trigger the condition
+    // All other regions should be at target version, region3 should be behind but status ONLINE
+    Map<String, Integer> currentVersionsMap = new HashMap<>();
+    currentVersionsMap.put(region1, versionTwo);
+    currentVersionsMap.put(region2, versionTwo);
+    currentVersionsMap.put(region3, versionOne); // Final region is behind - this makes it nextEligibleRegion
+    doReturn(currentVersionsMap).when(admin).getCurrentVersionsForMultiColos(clusterName, storeName);
+
+    // Simulate push completed in all regions
+    Long time = LocalDateTime.now().toEpochSecond(ZoneOffset.UTC);
+    Admin.OfflinePushStatusInfo offlinePushStatusInfoWithCompletedPush = getOfflinePushStatusInfo(
+        ExecutionStatus.COMPLETED.toString(),
+        ExecutionStatus.COMPLETED.toString(),
+        ExecutionStatus.COMPLETED.toString(),
+        time - TimeUnit.MINUTES.toSeconds(90),
+        time - TimeUnit.MINUTES.toSeconds(30),
+        time - TimeUnit.MINUTES.toSeconds(30));
+
+    String kafkaTopicName = Version.composeKafkaTopic(storeName, versionTwo);
+    doReturn(offlinePushStatusInfoWithCompletedPush).when(admin).getOffLinePushStatus(clusterName, kafkaTopicName);
+
+    // Create service
+    DeferredVersionSwapService deferredVersionSwapService =
+        new DeferredVersionSwapService(admin, veniceControllerMultiClusterConfig, stats);
+
+    // Start the service
+    deferredVersionSwapService.startInner();
+
+    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+      // Verify that updateStore was called to mark parent version as ONLINE
+      verify(store, atLeastOnce()).updateVersionStatus(versionTwo, VersionStatus.ONLINE);
+      // Verify that truncateKafkaTopic was called
+      verify(admin, atLeastOnce()).truncateKafkaTopic(kafkaTopicName);
+    });
+
+    // Verify error recording was not called
+    verify(stats, never()).recordDeferredVersionSwapErrorSensor();
+  }
+
+  /**
    * Stalled version swap - Metric is emitted for long-running swaps
    */
   @Test
