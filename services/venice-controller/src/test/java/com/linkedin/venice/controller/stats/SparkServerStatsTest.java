@@ -1,11 +1,19 @@
 package com.linkedin.venice.controller.stats;
 
-import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.HTTP_REQUEST_URL;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.HTTP_REQUEST_METHOD;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.HTTP_REQUEST_URI;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE_CATEGORY;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import com.linkedin.venice.controller.AbstractTestVeniceParentHelixAdmin;
 import com.linkedin.venice.stats.VeniceMetricsConfig;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
+import com.linkedin.venice.stats.dimensions.HttpResponseStatusCodeCategory;
+import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
 import com.linkedin.venice.stats.metrics.MetricEntity;
 import com.linkedin.venice.utils.OpenTelemetryDataPointTestUtils;
 import io.opentelemetry.api.common.Attributes;
@@ -14,6 +22,8 @@ import java.util.Arrays;
 import java.util.Collection;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
+import spark.Request;
+import spark.Response;
 
 
 public class SparkServerStatsTest extends AbstractTestVeniceParentHelixAdmin {
@@ -27,13 +37,9 @@ public class SparkServerStatsTest extends AbstractTestVeniceParentHelixAdmin {
   public void setUp() throws Exception {
     // add all the metrics that are used in the test
     Collection<MetricEntity> metricEntities = Arrays.asList(
-        ControllerMetricEntity.SPARK_SERVER_REQUESTS_COUNT.getMetricEntity(),
-        ControllerMetricEntity.SPARK_SERVER_FINISHED_REQUESTS_COUNT.getMetricEntity(),
-        ControllerMetricEntity.SPARK_SERVER_SUCCESSFUL_REQUESTS_COUNT.getMetricEntity(),
-        ControllerMetricEntity.SPARK_SERVER_FAILED_REQUESTS_COUNT.getMetricEntity(),
-        ControllerMetricEntity.SPARK_SERVER_CURRENT_INFLIGHT_REQUESTS_COUNT.getMetricEntity(),
-        ControllerMetricEntity.SPARK_SERVER_SUCCESSFUL_REQUESTS_LATENCY.getMetricEntity(),
-        ControllerMetricEntity.SPARK_SERVER_FAILED_REQUESTS_LATENCY.getMetricEntity());
+        ControllerMetricEntity.IN_FLIGHT_CALL_COUNT.getMetricEntity(),
+        ControllerMetricEntity.CALL_COUNT.getMetricEntity(),
+        ControllerMetricEntity.REQUEST_TIME.getMetricEntity());
 
     // setup metric reader to validate metric emission
     this.inMemoryMetricReader = InMemoryMetricReader.create();
@@ -51,96 +57,139 @@ public class SparkServerStatsTest extends AbstractTestVeniceParentHelixAdmin {
 
   @Test
   public void testRecordRequest() {
-    String testPath = "/test_path";
-    Attributes expectedAttributes = Attributes.builder()
-        .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), TEST_CLUSTER_NAME)
-        .put(HTTP_REQUEST_URL.getDimensionNameInDefaultFormat(), testPath)
-        .build();
+
+    // Request
+    String testPath = "/store";
+    String testMethod = "GET";
+    Request request = mock(Request.class);
+    when(request.uri()).thenReturn(testPath);
+    when(request.requestMethod()).thenReturn(testMethod);
 
     // Record metric
-    this.sparkServerStats.recordRequest(testPath);
+    this.sparkServerStats.recordRequest(request);
 
     // test validation
     validateLongPointFromDataFromCounter(
-        ControllerMetricEntity.SPARK_SERVER_REQUESTS_COUNT.getMetricName(),
+        ControllerMetricEntity.IN_FLIGHT_CALL_COUNT.getMetricName(),
         1,
-        expectedAttributes);
-    validateLongPointFromDataFromCounter(
-        ControllerMetricEntity.SPARK_SERVER_CURRENT_INFLIGHT_REQUESTS_COUNT.getMetricName(),
-        1,
-        expectedAttributes);
+        Attributes.builder()
+            .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), TEST_CLUSTER_NAME)
+            .put(HTTP_REQUEST_URI.getDimensionNameInDefaultFormat(), testPath)
+            .put(HTTP_REQUEST_METHOD.getDimensionNameInDefaultFormat(), testMethod)
+            .build());
   }
 
   @Test
   public void testRecordSuccessfulRequest() {
-    String testPath = "/test_path";
-    double testLatency = 10000;
-    Attributes expectedAttributes = Attributes.builder()
-        .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), TEST_CLUSTER_NAME)
-        .put(HTTP_REQUEST_URL.getDimensionNameInDefaultFormat(), testPath)
-        .build();
+
+    // Request
+    String testPath = "/store";
+    String testMethod = "GET";
+    Request request = mock(Request.class);
+    when(request.uri()).thenReturn(testPath);
+    when(request.requestMethod()).thenReturn(testMethod);
+
+    // Response
+    int testResponseCode = 200;
+    Response response = mock(Response.class);
+    when(response.status()).thenReturn(testResponseCode);
 
     // Record request
-    this.sparkServerStats.recordRequest(testPath);
+    this.sparkServerStats.recordRequest(request);
 
     // Test validation
     validateLongPointFromDataFromCounter(
-        ControllerMetricEntity.SPARK_SERVER_REQUESTS_COUNT.getMetricName(),
+        ControllerMetricEntity.IN_FLIGHT_CALL_COUNT.getMetricName(),
         1,
-        expectedAttributes);
-    validateLongPointFromDataFromCounter(
-        ControllerMetricEntity.SPARK_SERVER_CURRENT_INFLIGHT_REQUESTS_COUNT.getMetricName(),
-        1,
-        expectedAttributes);
+        Attributes.builder()
+            .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), TEST_CLUSTER_NAME)
+            .put(HTTP_REQUEST_URI.getDimensionNameInDefaultFormat(), testPath)
+            .put(HTTP_REQUEST_METHOD.getDimensionNameInDefaultFormat(), testMethod)
+            .build());
 
     // Record success
-    this.sparkServerStats.recordSuccessfulRequest(testPath, testLatency);
+    this.sparkServerStats.recordSuccessfulRequest(request, response, 0);
 
     // Test validation
     validateLongPointFromDataFromCounter(
-        ControllerMetricEntity.SPARK_SERVER_SUCCESSFUL_REQUESTS_COUNT.getMetricName(),
+        ControllerMetricEntity.CALL_COUNT.getMetricName(),
         1,
-        expectedAttributes);
+        Attributes.builder()
+            .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), TEST_CLUSTER_NAME)
+            .put(HTTP_REQUEST_URI.getDimensionNameInDefaultFormat(), testPath)
+            .put(HTTP_REQUEST_METHOD.getDimensionNameInDefaultFormat(), testMethod)
+            .put(HTTP_RESPONSE_STATUS_CODE.getDimensionNameInDefaultFormat(), String.valueOf(testResponseCode))
+            .put(
+                HTTP_RESPONSE_STATUS_CODE_CATEGORY.getDimensionNameInDefaultFormat(),
+                HttpResponseStatusCodeCategory.SUCCESS.getDimensionValue())
+            .put(
+                VENICE_RESPONSE_STATUS_CODE_CATEGORY.getDimensionNameInDefaultFormat(),
+                VeniceResponseStatusCategory.SUCCESS.getDimensionValue())
+            .build());
     validateLongPointFromDataFromCounter(
-        ControllerMetricEntity.SPARK_SERVER_CURRENT_INFLIGHT_REQUESTS_COUNT.getMetricName(),
+        ControllerMetricEntity.IN_FLIGHT_CALL_COUNT.getMetricName(),
         0,
-        expectedAttributes);
+        Attributes.builder()
+            .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), TEST_CLUSTER_NAME)
+            .put(HTTP_REQUEST_URI.getDimensionNameInDefaultFormat(), testPath)
+            .put(HTTP_REQUEST_METHOD.getDimensionNameInDefaultFormat(), testMethod)
+            .build());
   }
 
   @Test
   public void testRecordFailRequest() {
-    String testPath = "/test_path";
-    double testLatency = 10000;
-    Attributes expectedAttributes = Attributes.builder()
-        .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), TEST_CLUSTER_NAME)
-        .put(HTTP_REQUEST_URL.getDimensionNameInDefaultFormat(), testPath)
-        .build();
+    // Request
+    String testPath = "/store";
+    String testMethod = "GET";
+    Request request = mock(Request.class);
+    when(request.uri()).thenReturn(testPath);
+    when(request.requestMethod()).thenReturn(testMethod);
+
+    // Response
+    int testResponseCode = 500;
+    Response response = mock(Response.class);
+    when(response.status()).thenReturn(testResponseCode);
 
     // Record request
-    this.sparkServerStats.recordRequest(testPath);
+    this.sparkServerStats.recordRequest(request);
 
     // Test validation
     validateLongPointFromDataFromCounter(
-        ControllerMetricEntity.SPARK_SERVER_REQUESTS_COUNT.getMetricName(),
+        ControllerMetricEntity.IN_FLIGHT_CALL_COUNT.getMetricName(),
         1,
-        expectedAttributes);
-    validateLongPointFromDataFromCounter(
-        ControllerMetricEntity.SPARK_SERVER_CURRENT_INFLIGHT_REQUESTS_COUNT.getMetricName(),
-        1,
-        expectedAttributes);
+        Attributes.builder()
+            .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), TEST_CLUSTER_NAME)
+            .put(HTTP_REQUEST_URI.getDimensionNameInDefaultFormat(), testPath)
+            .put(HTTP_REQUEST_METHOD.getDimensionNameInDefaultFormat(), testMethod)
+            .build());
 
     // Record success
-    this.sparkServerStats.recordFailedRequest(testPath, testLatency);
+    this.sparkServerStats.recordFailedRequest(request, response, 0);
 
     // Test validation
     validateLongPointFromDataFromCounter(
-        ControllerMetricEntity.SPARK_SERVER_FAILED_REQUESTS_COUNT.getMetricName(),
+        ControllerMetricEntity.CALL_COUNT.getMetricName(),
         1,
-        expectedAttributes);
+        Attributes.builder()
+            .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), TEST_CLUSTER_NAME)
+            .put(HTTP_REQUEST_URI.getDimensionNameInDefaultFormat(), testPath)
+            .put(HTTP_REQUEST_METHOD.getDimensionNameInDefaultFormat(), testMethod)
+            .put(HTTP_RESPONSE_STATUS_CODE.getDimensionNameInDefaultFormat(), String.valueOf(testResponseCode))
+            .put(
+                HTTP_RESPONSE_STATUS_CODE_CATEGORY.getDimensionNameInDefaultFormat(),
+                HttpResponseStatusCodeCategory.SERVER_ERROR.getDimensionValue())
+            .put(
+                VENICE_RESPONSE_STATUS_CODE_CATEGORY.getDimensionNameInDefaultFormat(),
+                VeniceResponseStatusCategory.FAIL.getDimensionValue())
+            .build());
     validateLongPointFromDataFromCounter(
-        ControllerMetricEntity.SPARK_SERVER_CURRENT_INFLIGHT_REQUESTS_COUNT.getMetricName(),
+        ControllerMetricEntity.IN_FLIGHT_CALL_COUNT.getMetricName(),
         0,
-        expectedAttributes);
+        Attributes.builder()
+            .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), TEST_CLUSTER_NAME)
+            .put(HTTP_REQUEST_URI.getDimensionNameInDefaultFormat(), testPath)
+            .put(HTTP_REQUEST_METHOD.getDimensionNameInDefaultFormat(), testMethod)
+            .build());
   }
 
   private void validateLongPointFromDataFromCounter(

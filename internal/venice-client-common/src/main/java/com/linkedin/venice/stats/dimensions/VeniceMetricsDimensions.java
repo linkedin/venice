@@ -22,7 +22,10 @@ public enum VeniceMetricsDimensions {
   HTTP_RESPONSE_STATUS_CODE_CATEGORY("http.response.status_code_category"),
 
   /** {@link String} ie. /home, /api/v1/... etc */
-  HTTP_REQUEST_URL("http.request.url"),
+  HTTP_REQUEST_URI("http.request.uri"),
+
+  /** {@link String} ie. GET, POST, PUT etc */
+  HTTP_REQUEST_METHOD("http.request.method"),
 
   /** {@link VeniceResponseStatusCategory} */
   VENICE_RESPONSE_STATUS_CODE_CATEGORY("venice.response.status_code_category"),
