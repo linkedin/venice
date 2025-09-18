@@ -46,6 +46,9 @@ public class VeniceMetricsDimensionsTest {
         case REPUSH_TRIGGER_SOURCE:
           assertEquals(dimension.getDimensionName(format), "repush.trigger.source");
           break;
+        case VENICE_ROUTE_NAME:
+          assertEquals(dimension.getDimensionName(format), "venice.route.name");
+          break;
         default:
           throw new IllegalArgumentException("Unknown dimension: " + dimension);
       }
@@ -90,6 +93,9 @@ public class VeniceMetricsDimensionsTest {
         case REPUSH_TRIGGER_SOURCE:
           assertEquals(dimension.getDimensionName(format), "repush.trigger.source");
           break;
+        case VENICE_ROUTE_NAME:
+          assertEquals(dimension.getDimensionName(format), "venice.route.name");
+          break;
         default:
           throw new IllegalArgumentException("Unknown dimension: " + dimension);
       }
@@ -133,6 +139,9 @@ public class VeniceMetricsDimensionsTest {
           break;
         case REPUSH_TRIGGER_SOURCE:
           assertEquals(dimension.getDimensionName(format), "Repush.Trigger.Source");
+          break;
+        case VENICE_ROUTE_NAME:
+          assertEquals(dimension.getDimensionName(format), "Venice.Route.Name");
           break;
         default:
           throw new IllegalArgumentException("Unknown dimension: " + dimension);
