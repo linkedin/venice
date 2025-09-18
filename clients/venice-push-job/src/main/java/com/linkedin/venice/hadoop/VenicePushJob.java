@@ -74,6 +74,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.SYSTEM_SCHEMA_READE
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUSH_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUSH_LIST;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP_WAIT_TIME;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TEMP_DIR_PREFIX;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.UNCREATED_VERSION_NUMBER;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VALUE_FIELD_PROP;
@@ -96,6 +97,7 @@ import com.linkedin.venice.controllerapi.RepushInfo;
 import com.linkedin.venice.controllerapi.RepushInfoResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
+import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.d2.D2ClientFactory;
 import com.linkedin.venice.etl.ETLValueSchemaTransformation;
@@ -431,6 +433,9 @@ public class VenicePushJob implements AutoCloseable {
               + " at the same time");
     }
 
+    pushJobSettingToReturn.targetRegionPushWithDeferredSwapWaitTime =
+        props.getInt(TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP_WAIT_TIME, -1);
+
     if (props.containsKey(TARGETED_REGION_PUSH_LIST)) {
       if (pushJobSettingToReturn.isTargetedRegionPushEnabled
           || pushJobSettingToReturn.isTargetRegionPushWithDeferredSwapEnabled) {
@@ -684,6 +689,13 @@ public class VenicePushJob implements AutoCloseable {
 
       if (pushJobSetting.isSourceKafka) {
         initKIFRepushDetails();
+      }
+
+      if (pushJobSetting.targetRegionPushWithDeferredSwapWaitTime > -1) {
+        controllerClient.updateStore(
+            pushJobSetting.storeName,
+            new UpdateStoreQueryParams()
+                .setTargetRegionSwapWaitTime(pushJobSetting.targetRegionPushWithDeferredSwapWaitTime));
       }
 
       setupJobTimeoutMonitor();

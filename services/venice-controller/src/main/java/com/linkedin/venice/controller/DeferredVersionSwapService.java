@@ -627,8 +627,11 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       String message = "Marking parent version " + kafkaTopicName + " as ONLINE because all non target "
           + "regions are serving the target version.";
       logMessageIfNotRedundant(message);
-
       updateStore(clusterName, parentStore.getName(), ONLINE, targetVersionNum);
+
+      // TODO cleanup the code below after parent VT is deprecated
+      LOGGER.info("Truncating kafka topic: {} after marking parent as ONLINE", kafkaTopicName);
+      veniceParentHelixAdmin.truncateKafkaTopic(kafkaTopicName);
       return null;
     }
 
@@ -747,7 +750,8 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       LOGGER.info("Truncating kafka topic: {} after push failed in all non target regions", kafkaTopicName);
       veniceParentHelixAdmin.truncateKafkaTopic(kafkaTopicName);
       return Collections.emptySet();
-    } else if ((failedNonTargetRegions.size() + completedNonTargetRegions.size()) != nonTargetRegions.size()) {
+    } else if ((failedNonTargetRegions.size() + completedNonTargetRegions.size()
+        + onlineNonTargetRegions.size()) != nonTargetRegions.size()) {
       String message = "Skipping version swap for store: " + parentStore.getName() + " on version: " + targetVersionNum
           + "as push is not in terminal status in all non target regions. Completed non target regions: "
           + completedNonTargetRegions + ", failed non target regions: " + failedNonTargetRegions
@@ -758,8 +762,11 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       String message = "Marking parent version " + kafkaTopicName + " as ONLINE because all non target "
           + "regions are serving the target version: " + nonTargetRegionToStatus;
       logMessageIfNotRedundant(message);
-
       updateStore(clusterName, parentStore.getName(), ONLINE, targetVersionNum);
+
+      // TODO cleanup the code below after parent VT is deprecated
+      LOGGER.info("Truncating kafka topic: {} after marking parent as ONLINE", kafkaTopicName);
+      veniceParentHelixAdmin.truncateKafkaTopic(kafkaTopicName);
       return Collections.emptySet();
     }
 
