@@ -43,6 +43,7 @@ public class SystemStoreRepairTask implements Runnable {
   private static final int DEFAULT_REPAIR_JOB_CHECK_INTERVAL_IN_SECONDS = 30;
   private static final int DEFAULT_HEARTBEAT_CHECK_INTERVAL_IN_SECONDS = 30;
   private static final int DEFAULT_PER_SYSTEM_STORE_HEARTBEAT_CHECK_INTERVAL_IN_MS = 100;
+  private static final int DEFAULT_CHECK_LOGGING_COUNT = 100;
 
   private final int heartbeatWaitTimeInSeconds;
   private final int versionRefreshThresholdInDays;
@@ -70,6 +71,7 @@ public class SystemStoreRepairTask implements Runnable {
       if (!getClusterToSystemStoreHealthCheckStatsMap().containsKey(clusterName)) {
         continue;
       }
+      LOGGER.info("Starting system store repair task for cluster: {}", clusterName);
       Set<String> unhealthySystemStoreSet = new HashSet<>();
       Set<String> unreachableSystemStoreSet = new HashSet<>();
       Map<String, Long> systemStoreToHeartbeatTimestampMap = new VeniceConcurrentHashMap<>();
@@ -81,6 +83,7 @@ public class SystemStoreRepairTask implements Runnable {
           systemStoreToHeartbeatTimestampMap);
       // Try repair all bad system stores.
       repairBadSystemStore(clusterName, unhealthySystemStoreSet);
+      LOGGER.info("Completed system store repair task for cluster: {}", clusterName);
     }
   }
 
@@ -182,6 +185,8 @@ public class SystemStoreRepairTask implements Runnable {
       }
     }
     // Second pass only check system store and potentially send heartbeat message to validate health.
+    int count = 0;
+    long startTimestamp = System.currentTimeMillis();
     for (Store store: storeList) {
       if (!shouldContinue(clusterName)) {
         return;
@@ -240,6 +245,13 @@ public class SystemStoreRepairTask implements Runnable {
       long currentTimestamp = System.currentTimeMillis();
       sendHeartbeatToSystemStore(clusterName, store.getName(), currentTimestamp);
       systemStoreToHeartbeatTimestampMap.put(store.getName(), currentTimestamp);
+      count += 1;
+      if ((count % DEFAULT_CHECK_LOGGING_COUNT) == 0) {
+        LOGGER.info(
+            "Sent heartbeat to {} system stores, took: {} ms",
+            count,
+            LatencyUtils.getElapsedTimeFromMsToMs(startTimestamp));
+      }
 
       // Sleep to throttle heartbeat send rate.
       LatencyUtils.sleep(DEFAULT_PER_SYSTEM_STORE_HEARTBEAT_CHECK_INTERVAL_IN_MS);
@@ -257,6 +269,8 @@ public class SystemStoreRepairTask implements Runnable {
       int heartbeatCheckWaitTimeoutInSeconds) {
     periodicCheckTask(clusterName, heartbeatCheckWaitTimeoutInSeconds, getHeartbeatCheckIntervalInSeconds(), () -> {
       List<String> listToRemove = new ArrayList<>();
+      int count = 0;
+      long startTimestamp = System.currentTimeMillis();
       for (Map.Entry<String, Long> entry: systemStoreToHeartbeatTimestampMap.entrySet()) {
         if (!shouldContinue(clusterName)) {
           return true;
@@ -282,6 +296,13 @@ public class SystemStoreRepairTask implements Runnable {
         } else {
           // Retrieved fresh heartbeat message, will not check anymore.
           listToRemove.add(entry.getKey());
+        }
+        count += 1;
+        if ((count % DEFAULT_CHECK_LOGGING_COUNT) == 0) {
+          LOGGER.info(
+              "Checked heartbeat for {} system stores, took: {} ms",
+              count,
+              LatencyUtils.getElapsedTimeFromMsToMs(startTimestamp));
         }
       }
       for (String key: listToRemove) {
@@ -401,7 +422,7 @@ public class SystemStoreRepairTask implements Runnable {
       return systemStoreToRepairJobVersionMap.isEmpty();
     });
     if (systemStoreToRepairJobVersionMap.isEmpty()) {
-      LOGGER.warn("Finish all repair job.");
+      LOGGER.info("Finish all repair job.");
     } else {
       LOGGER.warn("Time out waiting repair job for: {}", systemStoreToRepairJobVersionMap.keySet());
     }

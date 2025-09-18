@@ -31,6 +31,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreVersionInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.pubsub.PubSubContext;
 import com.linkedin.venice.pubsub.PubSubUtil;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.utils.ConfigCommonUtils;
@@ -99,8 +100,11 @@ public class DefaultIngestionBackendTest {
 
     when(offsetRecord.getOffsetLag()).thenReturn(0L);
     when(offsetRecord.getCheckpointedLocalVtPosition()).thenReturn(PubSubSymbolicPosition.EARLIEST);
-    when(storageMetadataService.getLastOffset(Version.composeKafkaTopic(STORE_NAME, VERSION_NUMBER), PARTITION))
-        .thenReturn(offsetRecord);
+    when(
+        storageMetadataService.getLastOffset(
+            eq(Version.composeKafkaTopic(STORE_NAME, VERSION_NUMBER)),
+            eq(PARTITION),
+            any(PubSubContext.class))).thenReturn(offsetRecord);
 
     when(blobTransferManager.getAggVersionedBlobTransferStats()).thenReturn(aggVersionedBlobTransferStats);
 
@@ -289,8 +293,10 @@ public class DefaultIngestionBackendTest {
     long laggingThreshold = 1000L;
     when(offsetRecord.getOffsetLag()).thenReturn(10L);
     when(offsetRecord.getCheckpointedLocalVtPosition()).thenReturn(PubSubUtil.fromKafkaOffset(10L));
-    when(storageMetadataService.getLastOffset(Version.composeKafkaTopic(STORE_NAME, VERSION_NUMBER), PARTITION))
-        .thenReturn(offsetRecord);
+    when(
+        storageMetadataService
+            .getLastOffset(eq(Version.composeKafkaTopic(STORE_NAME, VERSION_NUMBER)), eq(PARTITION), any()))
+                .thenReturn(offsetRecord);
 
     when(store.isBlobTransferEnabled()).thenReturn(true);
     when(storeIngestionService.isDaVinciClient()).thenReturn(true);
@@ -314,8 +320,10 @@ public class DefaultIngestionBackendTest {
   public void testNotStartBootstrapFromBlobTransferWhenNotLaggingForBatchStore() {
     long laggingThreshold = 1000L;
     when(offsetRecord.isEndOfPushReceived()).thenReturn(true); // for batch store, end of push is received.
-    when(storageMetadataService.getLastOffset(Version.composeKafkaTopic(STORE_NAME, VERSION_NUMBER), PARTITION))
-        .thenReturn(offsetRecord);
+    when(
+        storageMetadataService
+            .getLastOffset(eq(Version.composeKafkaTopic(STORE_NAME, VERSION_NUMBER)), eq(PARTITION), any()))
+                .thenReturn(offsetRecord);
 
     when(store.isBlobTransferEnabled()).thenReturn(true);
     when(storeIngestionService.isDaVinciClient()).thenReturn(true);

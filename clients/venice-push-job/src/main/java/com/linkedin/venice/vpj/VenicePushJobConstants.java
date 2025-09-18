@@ -61,8 +61,6 @@ public final class VenicePushJobConstants {
   public static final String SOURCE_ETL = "source.etl";
   public static final String ETL_VALUE_SCHEMA_TRANSFORMATION = "etl.value.schema.transformation";
   public static final String SYSTEM_SCHEMA_READER_ENABLED = "system.schema.reader.enabled";
-  public static final String SYSTEM_SCHEMA_CLUSTER_D2_SERVICE_NAME = "system.schema.cluster.d2.service.name";
-  public static final String SYSTEM_SCHEMA_CLUSTER_D2_ZK_HOST = "system.schema.cluster.d2.zk.host";
 
   /**
    *  Config to enable/disable the feature to collect extra metrics wrt compression.

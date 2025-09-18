@@ -1790,8 +1790,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
   @Override
   protected long measureHybridHeartbeatLag(PartitionConsumptionState partitionConsumptionState, boolean shouldLogLag) {
-    // Da Vinci does not have heartbeat monitoring service.
-    if (isDaVinciClient()) {
+    if (getHeartbeatMonitoringService() == null) {
       return Long.MAX_VALUE;
     }
     if (partitionConsumptionState.getLeaderFollowerState().equals(LEADER)) {
@@ -1807,8 +1806,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   protected long measureHybridHeartbeatTimestamp(
       PartitionConsumptionState partitionConsumptionState,
       boolean shouldLogLag) {
-    // Da Vinci does not have heartbeat monitoring service.
-    if (isDaVinciClient()) {
+    if (getHeartbeatMonitoringService() == null) {
       return 0;
     }
     if (partitionConsumptionState.getLeaderFollowerState().equals(LEADER)) {
@@ -1834,7 +1832,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   protected void reportIfCatchUpVersionTopicOffset(PartitionConsumptionState pcs) {
     int partition = pcs.getPartition();
 
-    if (pcs.isHybrid() && pcs.isEndOfPushReceived() && pcs.isLatchCreated() && !pcs.isLatchReleased()) {
+    if (pcs.isHybrid() && pcs.isEndOfPushReceived() && !isDaVinciClient() && pcs.isLatchCreated()
+        && !pcs.isLatchReleased()) {
       long lag = measureLagWithCallToPubSub(
           localKafkaServer,
           versionTopic,
@@ -2125,7 +2124,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           && ((System.currentTimeMillis() - pcs.getLastLeaderCompleteStateUpdateInMs()) <= getServerConfig()
               .getLeaderCompleteStateCheckInFollowerValidIntervalMs());
     }
-
     if (shouldLogLag) {
       StringBuilder leaderCompleteHeaderDetails = new StringBuilder();
       if (isHybridFollower) {
@@ -2250,7 +2248,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       // Not enabled!
       return;
     }
-
     if (partitionConsumptionState.getLeaderFollowerState().equals(LEADER)) {
       getHeartbeatMonitoringService().recordLeaderHeartbeat(
           storeName,
@@ -2264,7 +2261,11 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           storeName,
           versionNumber,
           partitionConsumptionState.getPartition(),
-          serverConfig.getKafkaClusterUrlToAliasMap().get(kafkaUrl),
+          isDaVinciClient() ? "" : serverConfig.getKafkaClusterUrlToAliasMap().get(kafkaUrl), // For Da Vinci there is
+                                                                                              // no kafkaUrl mapping
+                                                                                              // configured and the
+                                                                                              // local region is default
+                                                                                              // to empty.
           consumerRecord.getValue().producerMetadata.messageTimestamp,
           partitionConsumptionState.isComplete());
     }

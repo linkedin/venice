@@ -107,7 +107,7 @@ public class P2PMetadataTransferHandler extends SimpleChannelInboundHandler<Full
     storageMetadataService.put(
         transferredPartitionMetadata.topicName,
         transferredPartitionMetadata.partitionId,
-        new OffsetRecord(transferredPartitionMetadata.offsetRecord.array(), partitionStateSerializer));
+        new OffsetRecord(transferredPartitionMetadata.offsetRecord.array(), partitionStateSerializer, null));
     // update the metadata SVS
     updateStorageVersionState(storageMetadataService, transferredPartitionMetadata);
   }

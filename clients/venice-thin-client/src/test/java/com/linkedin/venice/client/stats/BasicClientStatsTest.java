@@ -433,6 +433,49 @@ public class BasicClientStatsTest {
             MetricUnit.NUMBER,
             "Key count of retry responses for client",
             Utils.setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)));
+    expectedMetrics.put(
+        ClientMetricEntity.REQUEST_SERIALIZATION_TIME,
+        new MetricEntity(
+            "request.serialization_time",
+            MetricType.HISTOGRAM,
+            MetricUnit.MILLISECOND,
+            "Time to serialize the request payload in milliseconds",
+            Utils.setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)));
+    expectedMetrics.put(
+        ClientMetricEntity.RESPONSE_DECOMPRESSION_TIME,
+        new MetricEntity(
+            "response.decompression_time",
+            MetricType.HISTOGRAM,
+            MetricUnit.MILLISECOND,
+            "Time to decompress the response payload in milliseconds",
+            Utils.setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)));
+    expectedMetrics.put(
+        ClientMetricEntity.RESPONSE_DESERIALIZATION_TIME,
+        new MetricEntity(
+            "response.deserialization_time",
+            MetricType.HISTOGRAM,
+            MetricUnit.MILLISECOND,
+            "Time to deserialize the response payload in milliseconds",
+            Utils.setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)));
+    expectedMetrics.put(
+        ClientMetricEntity.CALL_SUBMISSION_TO_HANDLING_TIME,
+        new MetricEntity(
+            "call_submission_to_handling_time",
+            MetricType.HISTOGRAM,
+            MetricUnit.MILLISECOND,
+            "Time between submitting the request and starting to handle the response, in milliseconds",
+            Utils.setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)));
+    expectedMetrics.put(
+        ClientMetricEntity.RESPONSE_BATCH_STREAM_PROGRESS_TIME,
+        new MetricEntity(
+            "response.batch_stream_progress_time",
+            MetricType.HISTOGRAM,
+            MetricUnit.MILLISECOND,
+            "Batch streaming progress time in milliseconds",
+            Utils.setOf(
+                VENICE_STORE_NAME,
+                VENICE_REQUEST_METHOD,
+                com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STREAM_PROGRESS)));
 
     expectedMetrics.put(
         ClientMetricEntity.REQUEST_DUPLICATE_KEY_COUNT,

@@ -125,6 +125,7 @@ public class ControllerClient implements Closeable {
 
   private static final int DEFAULT_MAX_ATTEMPTS = 10;
   private static final int QUERY_JOB_STATUS_TIMEOUT = 60 * Time.MS_PER_SECOND;
+  private static final int QUERY_HEARTBEAT_TIMEOUT = 10 * Time.MS_PER_SECOND;
   private static final int DEFAULT_REQUEST_TIMEOUT_MS = 600 * Time.MS_PER_SECOND;
   private final Optional<SSLFactory> sslFactory;
   private final String clusterName;
@@ -1199,7 +1200,11 @@ public class ControllerClient implements Closeable {
     return request(
         ControllerRoute.GET_HEARTBEAT_TIMESTAMP_FROM_SYSTEM_STORE,
         params,
-        SystemStoreHeartbeatResponse.class);
+        SystemStoreHeartbeatResponse.class,
+        QUERY_HEARTBEAT_TIMEOUT,
+        DEFAULT_MAX_ATTEMPTS,
+        null,
+        null);
   }
 
   public ControllerResponse configureActiveActiveReplicationForCluster(

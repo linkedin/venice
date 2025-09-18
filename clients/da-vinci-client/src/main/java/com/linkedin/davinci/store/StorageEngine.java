@@ -5,6 +5,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.pubsub.PubSubContext;
 import java.io.Closeable;
 import java.nio.ByteBuffer;
 import java.util.Map;
@@ -126,7 +127,7 @@ public interface StorageEngine<Partition extends AbstractStoragePartition> exten
   /**
    * Retrieve the offset associated with the partitionId from the metadata partition.
    */
-  Optional<OffsetRecord> getPartitionOffset(int partitionId);
+  Optional<OffsetRecord> getPartitionOffset(int partitionId, PubSubContext pubSubContext);
 
   /**
    * Clear the offset associated with the partitionId in the metadata partition.

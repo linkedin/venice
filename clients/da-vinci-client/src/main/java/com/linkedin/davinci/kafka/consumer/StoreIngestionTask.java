@@ -747,7 +747,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       recordTransformerOnRecoveryThreadPool.submit(() -> {
         try {
           long startTime = System.nanoTime();
-          recordTransformer.internalOnRecovery(storageEngine, partitionNumber, partitionStateSerializer, compressor);
+          recordTransformer
+              .internalOnRecovery(storageEngine, partitionNumber, partitionStateSerializer, compressor, pubSubContext);
           LOGGER.info(
               "DaVinciRecordTransformer onRecovery took {} ms for replica: {}",
               LatencyUtils.getElapsedTimeFromNSToMS(startTime),
@@ -1080,6 +1081,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
       // Log only once a minute per partition.
       boolean shouldLogLag = !REDUNDANT_LOGGING_FILTER.isRedundantException(msg);
+
       if (serverConfig.isUseHeartbeatLagForReadyToServeCheckEnabled()) {
         // Measure heartbeat lag for ready-to-serve check.
         isLagAcceptable = checkAndLogIfLagIsAcceptableForHybridStore(
@@ -2176,7 +2178,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         subscribedCount++;
 
         // Get the last persisted Offset record from metadata service
-        OffsetRecord offsetRecord = storageMetadataService.getLastOffset(topic, partition);
+        OffsetRecord offsetRecord = storageMetadataService.getLastOffset(topic, partition, pubSubContext);
 
         // Let's try to restore the state retrieved from the OffsetManager
         PartitionConsumptionState newPartitionConsumptionState = new PartitionConsumptionState(
@@ -2351,7 +2353,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       PartitionConsumptionState consumptionState = new PartitionConsumptionState(
           getReplicaId(versionTopic, partition),
           partition,
-          new OffsetRecord(partitionStateSerializer),
+          new OffsetRecord(partitionStateSerializer, pubSubContext),
           pubSubContext,
           hybridStoreConfig.isPresent(),
           schemaRepository.getKeySchema(storeName).getSchema());
