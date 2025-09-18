@@ -69,7 +69,7 @@ public class ClientStatsTest {
     clientStats.recordRequestSerializationTime(20);
     clientStats.recordRequestSerializationTime(30);
 
-    validateHistogramPointData(
+    validateExponentialHistogramPointData(
         inMemoryMetricReader,
         10,
         30,
@@ -86,7 +86,7 @@ public class ClientStatsTest {
     clientStats.recordResponseDecompressionTime(7);
     clientStats.recordResponseDecompressionTime(13);
 
-    validateHistogramPointData(
+    validateExponentialHistogramPointData(
         inMemoryMetricReader,
         7,
         13,
@@ -103,7 +103,7 @@ public class ClientStatsTest {
     clientStats.recordResponseDeserializationTime(15);
     clientStats.recordResponseDeserializationTime(25);
 
-    validateHistogramPointData(
+    validateExponentialHistogramPointData(
         inMemoryMetricReader,
         5,
         25,
@@ -119,7 +119,7 @@ public class ClientStatsTest {
     clientStats.recordRequestSubmissionToResponseHandlingTime(3);
     clientStats.recordRequestSubmissionToResponseHandlingTime(9);
 
-    validateHistogramPointData(
+    validateExponentialHistogramPointData(
         inMemoryMetricReader,
         3,
         9,

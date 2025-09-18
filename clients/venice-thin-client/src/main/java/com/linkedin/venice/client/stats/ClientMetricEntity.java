@@ -44,7 +44,7 @@ public enum ClientMetricEntity implements ModuleMetricEntityInterface {
    * Request serialization time in milliseconds.
    */
   REQUEST_SERIALIZATION_TIME(
-      "request.serialization_time", MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS, MetricUnit.MILLISECOND,
+      "request.serialization_time", MetricType.HISTOGRAM, MetricUnit.MILLISECOND,
       "Time to serialize the request payload in milliseconds", setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)
   ),
 
@@ -52,7 +52,7 @@ public enum ClientMetricEntity implements ModuleMetricEntityInterface {
    * Time between client submitting a request and beginning to handle the response.
    */
   CALL_SUBMISSION_TO_HANDLING_TIME(
-      MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS, MetricUnit.MILLISECOND,
+      MetricType.HISTOGRAM, MetricUnit.MILLISECOND,
       "Time between submitting the request and starting to handle the response, in milliseconds",
       setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)
   ),
@@ -79,7 +79,7 @@ public enum ClientMetricEntity implements ModuleMetricEntityInterface {
    * Response decompression time in milliseconds.
    */
   RESPONSE_DECOMPRESSION_TIME(
-      "response.decompression_time", MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS, MetricUnit.MILLISECOND,
+      "response.decompression_time", MetricType.HISTOGRAM, MetricUnit.MILLISECOND,
       "Time to decompress the response payload in milliseconds", setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)
   ),
 
@@ -87,7 +87,7 @@ public enum ClientMetricEntity implements ModuleMetricEntityInterface {
    * Response deserialization time in milliseconds.
    */
   RESPONSE_DESERIALIZATION_TIME(
-      "response.deserialization_time", MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS, MetricUnit.MILLISECOND,
+      "response.deserialization_time", MetricType.HISTOGRAM, MetricUnit.MILLISECOND,
       "Time to deserialize the response payload in milliseconds", setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)
   ),
 

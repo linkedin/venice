@@ -437,7 +437,7 @@ public class BasicClientStatsTest {
         ClientMetricEntity.REQUEST_SERIALIZATION_TIME,
         new MetricEntity(
             "request.serialization_time",
-            MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS,
+            MetricType.HISTOGRAM,
             MetricUnit.MILLISECOND,
             "Time to serialize the request payload in milliseconds",
             Utils.setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)));
@@ -445,7 +445,7 @@ public class BasicClientStatsTest {
         ClientMetricEntity.RESPONSE_DECOMPRESSION_TIME,
         new MetricEntity(
             "response.decompression_time",
-            MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS,
+            MetricType.HISTOGRAM,
             MetricUnit.MILLISECOND,
             "Time to decompress the response payload in milliseconds",
             Utils.setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)));
@@ -453,7 +453,7 @@ public class BasicClientStatsTest {
         ClientMetricEntity.RESPONSE_DESERIALIZATION_TIME,
         new MetricEntity(
             "response.deserialization_time",
-            MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS,
+            MetricType.HISTOGRAM,
             MetricUnit.MILLISECOND,
             "Time to deserialize the response payload in milliseconds",
             Utils.setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)));
@@ -461,7 +461,7 @@ public class BasicClientStatsTest {
         ClientMetricEntity.CALL_SUBMISSION_TO_HANDLING_TIME,
         new MetricEntity(
             "call_submission_to_handling_time",
-            MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS,
+            MetricType.HISTOGRAM,
             MetricUnit.MILLISECOND,
             "Time between submitting the request and starting to handle the response, in milliseconds",
             Utils.setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)));
