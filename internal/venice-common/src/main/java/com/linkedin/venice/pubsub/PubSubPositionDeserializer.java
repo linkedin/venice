@@ -28,7 +28,11 @@ public class PubSubPositionDeserializer {
   /**
    * Note: The following default instance is only for convenience purposes until we've updated all the code to use
    * pass the registry and resolver explicitly.
+   *
+   * @deprecated Use explicit instances of {@link PubSubPositionDeserializer} with a custom
+   *             {@link PubSubPositionTypeRegistry} instead of relying on this static default.
    */
+  @Deprecated
   public static final PubSubPositionDeserializer DEFAULT_DESERIALIZER =
       new PubSubPositionDeserializer(PubSubPositionTypeRegistry.RESERVED_POSITION_TYPE_REGISTRY);
 
@@ -73,39 +77,6 @@ public class PubSubPositionDeserializer {
       throw new IllegalArgumentException("Cannot deserialize null wire format position");
     }
     return toPosition(deserializeWireFormat(positionWireFormatBytes));
-  }
-
-  /**
-   * Convenience method for converting a serialized byte array representing a
-   * {@link PubSubPositionWireFormat} into a concrete {@link PubSubPosition} instance.
-   *
-   * <p>This uses the {@link #DEFAULT_DESERIALIZER} with the reserved position type registry.
-   * Recommended only for use in non-critical paths or tests where custom registries are not required.</p>
-   *
-   * @param positionWireFormatBytes the serialized bytes of {@link PubSubPositionWireFormat}
-   * @return deserialized {@link PubSubPosition} object
-   * @throws VeniceException if deserialization fails or type ID is unrecognized
-   */
-  public static PubSubPosition getPositionFromWireFormat(byte[] positionWireFormatBytes) {
-    return DEFAULT_DESERIALIZER.toPosition(positionWireFormatBytes);
-  }
-
-  public static PubSubPosition getPositionFromWireFormat(ByteBuffer positionWireFormatBuffer) {
-    return DEFAULT_DESERIALIZER.toPosition(positionWireFormatBuffer);
-  }
-
-  /**
-   * Convenience method for converting a {@link PubSubPositionWireFormat} record into a concrete {@link PubSubPosition}.
-   *
-   * <p>This uses the {@link #DEFAULT_DESERIALIZER} with the reserved position type registry.
-   * Prefer constructing your own {@link PubSubPositionDeserializer} with a custom registry if needed.</p>
-   *
-   * @param positionWireFormat the wire format record to convert
-   * @return deserialized {@link PubSubPosition} object
-   * @throws VeniceException if the type ID in the wire format is unrecognized
-   */
-  public static PubSubPosition getPositionFromWireFormat(PubSubPositionWireFormat positionWireFormat) {
-    return DEFAULT_DESERIALIZER.toPosition(positionWireFormat);
   }
 
   /**

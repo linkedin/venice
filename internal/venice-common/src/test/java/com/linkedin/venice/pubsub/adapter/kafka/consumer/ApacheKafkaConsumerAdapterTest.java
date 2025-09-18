@@ -28,7 +28,6 @@ import com.linkedin.venice.kafka.protocol.ProducerMetadata;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
-import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
 import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
@@ -844,10 +843,6 @@ public class ApacheKafkaConsumerAdapterTest {
   public void testDecodePositionFromBuffer() {
     long expectedOffset = 12345L;
     ApacheKafkaOffsetPosition original = new ApacheKafkaOffsetPosition(expectedOffset);
-    byte[] wireBytes = original.toWireFormatBytes();
-    PubSubPosition resolvedPos = PubSubPositionDeserializer.getPositionFromWireFormat(wireBytes);
-    assertTrue(resolvedPos instanceof ApacheKafkaOffsetPosition);
-    assertEquals(((ApacheKafkaOffsetPosition) resolvedPos).getInternalOffset(), expectedOffset);
 
     PubSubPositionWireFormat wireFormat = original.getPositionWireFormat();
     PubSubPosition decoded =
