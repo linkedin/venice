@@ -4756,12 +4756,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             "Unable to update store:" + storeName + " current version since store does not enable writes");
       }
       // check whether the future version has enough ready-to-serve instances for all partitions in CV for manual
-      // deferred
-      // version swap. it is safe to skip this for automatic deferred version swap as ST is stalled until the future
-      // version replica is ready
+      // deferred version swap. it is safe to skip this for automatic deferred version swap as ST is stalled until
+      // the future version replica is ready
       int previousVersion = store.getCurrentVersion();
       Version futureVersionObj = store.getVersion(futureVersion);
-      if (futureVersionObj.isVersionSwapDeferred() && futureVersionObj.getTargetSwapRegion() != null) {
+      if (futureVersionObj.isVersionSwapDeferred() && futureVersionObj.getTargetSwapRegion() == null) {
         int partitionCount = futureVersionObj.getPartitionCount();
         int minActiveReplicas = futureVersionObj.getMinActiveReplicas();
         String currentVersionKafka = Version.composeKafkaTopic(storeName, futureVersion);
