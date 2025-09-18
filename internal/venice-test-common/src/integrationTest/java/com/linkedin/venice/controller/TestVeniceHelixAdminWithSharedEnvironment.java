@@ -24,6 +24,7 @@ import com.linkedin.venice.controller.exception.HelixClusterMaintenanceModeExcep
 import com.linkedin.venice.controllerapi.UpdateClusterConfigQueryParams;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.helix.HelixReadOnlyLiveClusterConfigRepository;
@@ -475,6 +476,10 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getPartitionCount(), newPartitionCount);
     Assert.assertThrows(() -> veniceAdmin.setStorePartitionCount(clusterName, storeName, MAX_NUMBER_OF_PARTITION + 1));
     Assert.assertThrows(() -> veniceAdmin.setStorePartitionCount(clusterName, storeName, -1));
+    // Even above two set partition count are failed, the partition count should remain the same.
+    Assert.assertEquals(
+        veniceAdmin.getStore(clusterName, storeName).getVersion(version.getNumber()).getPartitionCount(),
+        partitionCount);
 
     // test setting amplification factor
     Assert.assertEquals(
@@ -2136,5 +2141,84 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     assertThrows(
         VeniceException.class,
         () -> new VeniceControllerClusterConfig(new VeniceProperties(clusterProperties)));
+  }
+
+  @Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST_MS)
+  public void testCannotUpdateStorePartitionNumWhenVTExists() throws Exception {
+    String storeName = Utils.getUniqueString("test");
+    String owner = Utils.getUniqueString("owner");
+    int oldPartitionCount = 5;
+    String additionalNode = "localhost_6868";
+    startParticipant(true, additionalNode);
+    veniceAdmin.createStore(clusterName, storeName, owner, KEY_SCHEMA, VALUE_SCHEMA);
+
+    Version version = veniceAdmin
+        .incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), oldPartitionCount, 2);
+    Assert.assertEquals(veniceAdmin.getCurrentVersion(clusterName, storeName), 0);
+
+    veniceAdmin.setStoreCurrentVersion(clusterName, storeName, version.getNumber());
+    Assert.assertEquals(veniceAdmin.getCurrentVersion(clusterName, storeName), version.getNumber());
+
+    // 1. validate current partition num is same as oldPartitionCount before any update
+    Assert.assertEquals(
+        veniceAdmin.getStore(clusterName, storeName).getVersion(version.getNumber()).getPartitionCount(),
+        oldPartitionCount);
+
+    // 2. update store as hybrid store
+    veniceAdmin.updateStore(
+        clusterName,
+        storeName,
+        new UpdateStoreQueryParams().setHybridOffsetLagThreshold(100)
+            .setHybridRewindSeconds(100)
+            .setSeparateRealTimeTopicEnabled(true));
+
+    // 3. create the real-time topic
+    Store store = veniceAdmin.getStore(clusterName, storeName);
+    PubSubTopic topic = pubSubTopicRepository.getTopic(Utils.getRealTimeTopicName(store));
+    veniceAdmin.createOrUpdateRealTimeTopic(clusterName, store, store.getVersion(version.getNumber()), topic);
+
+    Assert.assertEquals(
+        veniceAdmin.getStore(clusterName, storeName).getVersion(version.getNumber()).getPartitionCount(),
+        oldPartitionCount);
+
+    // 4. remove the hybrid config, to mock client might toggle hybrid store to batch-only store
+    veniceAdmin.updateStore(
+        clusterName,
+        storeName,
+        new UpdateStoreQueryParams().setHybridOffsetLagThreshold(-1)
+            .setHybridRewindSeconds(-1)
+            .setSeparateRealTimeTopicEnabled(false));
+
+    // 5. validate partition num is not changed after hybrid config is removed
+    Assert.assertEquals(
+        veniceAdmin.getStore(clusterName, storeName).getVersion(version.getNumber()).getPartitionCount(),
+        oldPartitionCount);
+
+    // 6. Action
+    // change the partition count, which is not allowed anymore due to partition num if used in vt now.
+    int newPartitionCount = 100;
+
+    try {
+      veniceAdmin.setStorePartitionCount(clusterName, storeName, newPartitionCount);
+      Assert.fail("Should not be able to change partition count of a store.");
+    } catch (VeniceHttpException e) {
+      // 7. Assertion
+      Assert.assertTrue(
+          e.getMessage()
+              .contains(
+                  "Cannot update partition count for batch store with an existing RT topic having a different partition count"));
+    }
+
+    // 8. validate partition num is not changed, still oldPartitionCount
+    Assert.assertEquals(
+        veniceAdmin.getStore(clusterName, storeName).getVersion(version.getNumber()).getPartitionCount(),
+        oldPartitionCount);
+
+    // 9. validate invalid partition num input also not change the partition num
+    Assert.assertThrows(() -> veniceAdmin.setStorePartitionCount(clusterName, storeName, MAX_NUMBER_OF_PARTITION + 1));
+    Assert.assertThrows(() -> veniceAdmin.setStorePartitionCount(clusterName, storeName, -1));
+    Assert.assertEquals(
+        veniceAdmin.getStore(clusterName, storeName).getVersion(version.getNumber()).getPartitionCount(),
+        oldPartitionCount);
   }
 }

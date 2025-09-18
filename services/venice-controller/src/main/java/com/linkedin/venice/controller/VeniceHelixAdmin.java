@@ -4937,14 +4937,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       }
       // Allow the update if partition count is not configured and the new partition count matches RT partition count
       if (store.getPartitionCount() == 0) {
-        TopicManager topicManager;
-        if (isParent()) {
-          // RT might not exist in parent colo. Get RT partition count from a child colo.
-          String childDatacenter = clusterConfig.getChildDatacenters().iterator().next();
-          topicManager = getTopicManager(multiClusterConfigs.getChildDataCenterKafkaUrlMap().get(childDatacenter));
-        } else {
-          topicManager = getTopicManager();
-        }
+        TopicManager topicManager = getTopicManagerForCluster(clusterConfig);
         PubSubTopic realTimeTopic = pubSubTopicRepository.getTopic(Utils.getRealTimeTopicName(store));
         if (topicManager.containsTopic(realTimeTopic)
             && topicManager.getPartitionCount(realTimeTopic) == newPartitionCount) {
@@ -4957,6 +4950,27 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, errorMessage, ErrorType.INVALID_CONFIG);
     }
 
+    // Generally, a batch store should not have an RT topic, and an RT topic for a hybrid store should not exist.
+    // However, safeguards are necessary to prevent clients from toggling the hybrid setting with a partition update
+    // in edge cases.
+    if (!store.isHybrid()) {
+      PubSubTopic realTimeTopicForBatchStore = pubSubTopicRepository.getTopic(Utils.getRealTimeTopicName(store));
+      if (realTimeTopicForBatchStore != null) {
+        TopicManager topicManager = getTopicManagerForCluster(clusterConfig);
+        if (topicManager.containsTopic(realTimeTopicForBatchStore)) {
+          int rtPartitionCount = topicManager.getPartitionCount(realTimeTopicForBatchStore);
+          if (rtPartitionCount != newPartitionCount) {
+            String errorMessage = String.format(
+                "%s Cannot update partition count for batch store with an existing RT topic having a different partition count: %d",
+                errorMessagePrefix,
+                rtPartitionCount);
+            LOGGER.error(errorMessage);
+            throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, errorMessage, ErrorType.INVALID_CONFIG);
+          }
+        }
+      }
+    }
+
     if (newPartitionCount > maxPartitionNum) {
       String errorMessage =
           errorMessagePrefix + "Partition count: " + newPartitionCount + " should be less than max: " + maxPartitionNum;
@@ -4967,6 +4981,16 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       String errorMessage = errorMessagePrefix + "Partition count: " + newPartitionCount + " should NOT be negative";
       LOGGER.error(errorMessage);
       throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, errorMessage, ErrorType.INVALID_CONFIG);
+    }
+  }
+
+  private TopicManager getTopicManagerForCluster(VeniceControllerClusterConfig clusterConfig) {
+    if (isParent()) {
+      // RT might not exist in parent colo. Get RT partition count from a child colo.
+      String childDatacenter = clusterConfig.getChildDatacenters().iterator().next();
+      return getTopicManager(multiClusterConfigs.getChildDataCenterKafkaUrlMap().get(childDatacenter));
+    } else {
+      return getTopicManager();
     }
   }
 
