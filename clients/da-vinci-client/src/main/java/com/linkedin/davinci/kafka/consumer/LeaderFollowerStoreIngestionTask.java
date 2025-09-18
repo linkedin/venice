@@ -28,6 +28,7 @@ import com.linkedin.davinci.schema.merge.CollectionTimestampMergeRecordHelper;
 import com.linkedin.davinci.schema.merge.MergeRecordHelper;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatLagMonitorAction;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
+import com.linkedin.davinci.storage.StorageEngineMetadataService;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.storage.chunking.ChunkedValueManifestContainer;
 import com.linkedin.davinci.storage.chunking.GenericChunkingAdapter;
@@ -2289,7 +2290,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
      * These messages will be contributed towards the segments in VeniceWriter when the Global RT DIV is produced to RT
      * Either skip validation + skip adding to segments in both locations or keep in both, and we're keeping for now
      */
-    if (!shouldProduceToVersionTopic(pcs) && !isGlobalRtDivEnabled()) {
+    if (!isGlobalRtDivEnabled() && !shouldProduceToVersionTopic(pcs)) {
       return records;
     }
     /**
@@ -3446,7 +3447,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             null,
             valueManifestContainer.getManifest(),
             null,
-            false);
+            true);
 
     consumedBytesSinceLastSync.put(brokerUrl, 0L); // reset the timer for the next sync, since RT DIV was just synced
   }
@@ -3541,8 +3542,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       ChunkedValueManifestContainer manifestContainer) {
     ByteBuffer valueBytes;
     try {
+      String topicName = topicPartition.getTopicName();
       valueBytes = (ByteBuffer) GenericChunkingAdapter.INSTANCE.get(
-          storageEngine,
+          getMetadataStorageEngine(),
           topicPartition.getPartitionNumber(),
           ByteBuffer.wrap(keyBytes),
           isChunked,
@@ -3554,7 +3556,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           compressor.get(),
           manifestContainer);
     } catch (Exception e) {
-      LOGGER.error(
+      LOGGER.debug(
           "Unable to retrieve the stored value bytes for key: {}, topic-partition: {}",
           new String(keyBytes),
           topicPartition,
@@ -3563,7 +3565,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
 
     if (valueBytes == null) {
-      LOGGER.warn(
+      LOGGER.debug(
           "No value found in the storage engine for key: {}, topic-partition: {}",
           new String(keyBytes),
           topicPartition);
@@ -3575,7 +3577,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           ByteUtils.extractByteArray(valueBytes),
           AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion());
     } catch (Exception e) {
-      LOGGER.error(
+      LOGGER.debug(
           "Unable to deserialize stored value bytes for key: {}, topic-partition: {}",
           new String(keyBytes),
           topicPartition,
@@ -4330,6 +4332,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     this.nativeReplicationSourceVersionTopicKafkaURL = nativeReplicationSourceVersionTopicKafkaURL;
     this.nativeReplicationSourceVersionTopicKafkaURLSingletonSet =
         Collections.singleton(this.nativeReplicationSourceVersionTopicKafkaURL);
+  }
+
+  public StorageEngine getMetadataStorageEngine() {
+    return ((StorageEngineMetadataService) storageMetadataService).getStorageEngineOrThrow(kafkaVersionTopic);
   }
 
   private String logChange(boolean hasChanged) {
