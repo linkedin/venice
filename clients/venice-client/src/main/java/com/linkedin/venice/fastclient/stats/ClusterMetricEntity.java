@@ -16,8 +16,8 @@ public enum ClusterMetricEntity implements ModuleMetricEntityInterface {
   /**
    * Count of version update failures.
    */
-  VERSION_UPDATE_FAILURE_COUNT(
-      "version.update_failure_count", MetricType.COUNTER, MetricUnit.NUMBER,
+  STORE_VERSION_UPDATE_FAILURE_COUNT(
+      "store.version.update_failure_count", MetricType.COUNTER, MetricUnit.NUMBER,
       "Count of version update failures for the store", setOf(VENICE_STORE_NAME)
   ),
 
@@ -30,11 +30,11 @@ public enum ClusterMetricEntity implements ModuleMetricEntityInterface {
   ),
 
   /**
-   * Current version number that the client is at.
+   * Current store version served by the client.
    */
-  VERSION_CURRENT_NUMBER(
-      "version.current_number", MetricType.ASYNC_GAUGE, MetricUnit.NUMBER,
-      "Current version number that the client is at", setOf(VENICE_STORE_NAME)
+  STORE_VERSION_CURRENT(
+      "store.version.current", MetricType.ASYNC_GAUGE, MetricUnit.NUMBER, "Current store version served by the client",
+      setOf(VENICE_STORE_NAME)
   );
 
   private final MetricEntity entity;

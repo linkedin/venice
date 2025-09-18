@@ -1,8 +1,8 @@
 package com.linkedin.venice.fastclient.stats;
 
 import static com.linkedin.venice.fastclient.stats.ClusterMetricEntity.INSTANCE_ERROR_COUNT;
-import static com.linkedin.venice.fastclient.stats.ClusterMetricEntity.VERSION_CURRENT_NUMBER;
-import static com.linkedin.venice.fastclient.stats.ClusterMetricEntity.VERSION_UPDATE_FAILURE_COUNT;
+import static com.linkedin.venice.fastclient.stats.ClusterMetricEntity.STORE_VERSION_CURRENT;
+import static com.linkedin.venice.fastclient.stats.ClusterMetricEntity.STORE_VERSION_UPDATE_FAILURE_COUNT;
 import static com.linkedin.venice.stats.ClientType.FAST_CLIENT;
 import static com.linkedin.venice.stats.VeniceMetricsRepository.getVeniceMetricsRepository;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_INSTANCE_ERROR_TYPE;
@@ -29,7 +29,7 @@ public class ClusterStatsTest {
     InMemoryMetricReader inMemoryMetricReader = InMemoryMetricReader.create();
     VeniceMetricsRepository veniceMetricsRepository = getVeniceMetricsRepository(
         FAST_CLIENT,
-        Arrays.asList(VERSION_UPDATE_FAILURE_COUNT.getMetricEntity()),
+        Arrays.asList(STORE_VERSION_UPDATE_FAILURE_COUNT.getMetricEntity()),
         true,
         inMemoryMetricReader);
 
@@ -55,7 +55,7 @@ public class ClusterStatsTest {
         inMemoryMetricReader,
         (long) failureCount,
         expectedAttributes,
-        VERSION_UPDATE_FAILURE_COUNT.getMetricEntity().getMetricName(),
+        STORE_VERSION_UPDATE_FAILURE_COUNT.getMetricEntity().getMetricName(),
         FAST_CLIENT.getMetricsPrefix());
   }
 
@@ -148,14 +148,14 @@ public class ClusterStatsTest {
     InMemoryMetricReader inMemoryMetricReader = InMemoryMetricReader.create();
     VeniceMetricsRepository veniceMetricsRepository = getVeniceMetricsRepository(
         FAST_CLIENT,
-        Arrays.asList(VERSION_CURRENT_NUMBER.getMetricEntity()),
+        Arrays.asList(STORE_VERSION_CURRENT.getMetricEntity()),
         true,
         inMemoryMetricReader);
 
     ClusterStats stats = new ClusterStats(veniceMetricsRepository, storeName);
 
     // Test initial version (should be -1)
-    long initialVersion = -1;
+    int initialVersion = -1;
 
     // Validate Tehuti metrics for initial version
     Map<String, ? extends Metric> tehutiMetrics = veniceMetricsRepository.metrics();
@@ -173,11 +173,11 @@ public class ClusterStatsTest {
         inMemoryMetricReader,
         initialVersion,
         expectedAttributes,
-        VERSION_CURRENT_NUMBER.getMetricEntity().getMetricName(),
+        STORE_VERSION_CURRENT.getMetricEntity().getMetricName(),
         FAST_CLIENT.getMetricsPrefix());
 
     // Test updating to a new version
-    long newVersion = 5;
+    int newVersion = 5;
     stats.updateCurrentVersion(newVersion);
 
     // Validate Tehuti metrics after version update
@@ -191,7 +191,7 @@ public class ClusterStatsTest {
         inMemoryMetricReader,
         newVersion,
         expectedAttributes,
-        VERSION_CURRENT_NUMBER.getMetricEntity().getMetricName(),
+        STORE_VERSION_CURRENT.getMetricEntity().getMetricName(),
         FAST_CLIENT.getMetricsPrefix());
   }
 }

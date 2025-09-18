@@ -1,8 +1,8 @@
 package com.linkedin.venice.fastclient.stats;
 
 import static com.linkedin.venice.fastclient.stats.ClusterMetricEntity.INSTANCE_ERROR_COUNT;
-import static com.linkedin.venice.fastclient.stats.ClusterMetricEntity.VERSION_CURRENT_NUMBER;
-import static com.linkedin.venice.fastclient.stats.ClusterMetricEntity.VERSION_UPDATE_FAILURE_COUNT;
+import static com.linkedin.venice.fastclient.stats.ClusterMetricEntity.STORE_VERSION_CURRENT;
+import static com.linkedin.venice.fastclient.stats.ClusterMetricEntity.STORE_VERSION_UPDATE_FAILURE_COUNT;
 import static com.linkedin.venice.stats.dimensions.InstanceErrorType.BLOCKED;
 import static com.linkedin.venice.stats.dimensions.InstanceErrorType.OVERLOADED;
 import static com.linkedin.venice.stats.dimensions.InstanceErrorType.UNHEALTHY;
@@ -87,7 +87,7 @@ public class ClusterStats extends AbstractVeniceStats {
 
     // Initialize OTel metrics
     this.versionUpdateFailureCount = MetricEntityStateBase.create(
-        VERSION_UPDATE_FAILURE_COUNT.getMetricEntity(),
+        STORE_VERSION_UPDATE_FAILURE_COUNT.getMetricEntity(),
         otelRepository,
         this::registerSensor,
         ClusterTehutiMetricName.VERSION_UPDATE_FAILURE,
@@ -95,14 +95,8 @@ public class ClusterStats extends AbstractVeniceStats {
         baseDimensionsMap,
         baseAttributes);
 
-    Map<VeniceMetricsDimensions, String> currentVerNumBaseDimensionsMap = new HashMap<>();
-    currentVerNumBaseDimensionsMap.put(VeniceMetricsDimensions.VENICE_STORE_NAME, storeName);
-    Attributes currentVerNumBaseAttributes = Attributes.builder()
-        .put(VeniceMetricsDimensions.VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), storeName)
-        .build();
-
     this.currentVersionNumber = AsyncMetricEntityStateBase.create(
-        VERSION_CURRENT_NUMBER.getMetricEntity(),
+        STORE_VERSION_CURRENT.getMetricEntity(),
         otelRepository,
         this::registerSensor,
         ClusterTehutiMetricName.CURRENT_VERSION,
@@ -110,8 +104,8 @@ public class ClusterStats extends AbstractVeniceStats {
             new AsyncGauge(
                 (ignored, ignored2) -> this.currentVersion.get(),
                 ClusterTehutiMetricName.CURRENT_VERSION.getMetricName())),
-        currentVerNumBaseDimensionsMap,
-        currentVerNumBaseAttributes,
+        baseDimensionsMap,
+        baseAttributes,
         this.currentVersion::get);
 
     // Initialize OTel metrics for instance error counts
@@ -155,7 +149,7 @@ public class ClusterStats extends AbstractVeniceStats {
     overloadedInstanceErrorCount.record(count, OVERLOADED);
   }
 
-  public void updateCurrentVersion(long currentVersion) {
+  public void updateCurrentVersion(int currentVersion) {
     this.currentVersion.set(currentVersion);
   }
 
