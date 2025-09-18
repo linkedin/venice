@@ -96,7 +96,7 @@ public enum ClientMetricEntity implements ModuleMetricEntityInterface {
    * to when the first/P50th/P90th record arrives and is processed.
    */
   RESPONSE_BATCH_STREAM_PROGRESS_TIME(
-      "response.batch_stream_progress_time", MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS, MetricUnit.MILLISECOND,
+      "response.batch_stream_progress_time", MetricType.HISTOGRAM, MetricUnit.MILLISECOND,
       "Batch streaming progress time in milliseconds",
       setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD, VENICE_STREAM_PROGRESS)
   ),

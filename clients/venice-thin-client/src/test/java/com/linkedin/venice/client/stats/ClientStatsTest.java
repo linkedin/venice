@@ -187,7 +187,7 @@ public class ClientStatsTest {
 
     String metricName = ClientMetricEntity.RESPONSE_BATCH_STREAM_PROGRESS_TIME.getMetricEntity().getMetricName();
 
-    validateHistogramPointData(
+    validateExponentialHistogramPointData(
         inMemoryMetricReader,
         11,
         11,
@@ -196,7 +196,7 @@ public class ClientStatsTest {
         ttfrAttrs,
         metricName,
         THIN_CLIENT.getMetricsPrefix());
-    validateHistogramPointData(
+    validateExponentialHistogramPointData(
         inMemoryMetricReader,
         22,
         22,
@@ -205,7 +205,7 @@ public class ClientStatsTest {
         tt50Attrs,
         metricName,
         THIN_CLIENT.getMetricsPrefix());
-    validateHistogramPointData(
+    validateExponentialHistogramPointData(
         inMemoryMetricReader,
         33,
         33,
