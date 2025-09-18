@@ -34,7 +34,7 @@ public enum VeniceMetricsDimensions {
   VENICE_REQUEST_FANOUT_TYPE("venice.request.fanout_type"),
 
   /** {@link com.linkedin.venice.stats.dimensions.RejectionReason} */
-  VENICE_REJECTION_REASON("venice.request.rejection_reason"),
+  VENICE_REJECTION_REASON("venice.rejection_reason"),
 
   /** Streaming delivery progress for batch responses (e.g., first, 50pct, 90pct, etc.) */
   VENICE_STREAM_PROGRESS("venice.stream.progress"),
