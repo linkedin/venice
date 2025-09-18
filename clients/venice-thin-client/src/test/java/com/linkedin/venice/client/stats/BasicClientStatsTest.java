@@ -469,7 +469,7 @@ public class BasicClientStatsTest {
         ClientMetricEntity.RESPONSE_BATCH_STREAM_PROGRESS_TIME,
         new MetricEntity(
             "response.batch_stream_progress_time",
-            MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS,
+            MetricType.HISTOGRAM,
             MetricUnit.MILLISECOND,
             "Batch streaming progress time in milliseconds",
             Utils.setOf(
