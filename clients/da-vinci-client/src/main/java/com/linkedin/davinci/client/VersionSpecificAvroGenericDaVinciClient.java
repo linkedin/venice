@@ -24,6 +24,12 @@ import java.util.concurrent.CompletableFuture;
  * - Validates version existence when subscribing
  * - Cannot be mixed with regular DaVinci clients on the same store with the same
  *   {@link com.linkedin.davinci.DaVinciBackend} or JVM.
+ *
+ * Please note that when the client is subscribed to the backup version, on restart
+ * {@link com.linkedin.davinci.DaVinciBackend#functionToCheckWhetherStorageEngineShouldBeKeptOrNot(Optional)}
+ * will automatically delete the backup version data on disk and it will have to reingest. We are ok with this
+ * behavior because the plan is to use {@link DaVinciRecordTransformer} in diskless mode where the user will need to
+ * prevent the PubSub position to seek to instead of relying on the {@link com.linkedin.venice.offsets.OffsetRecord}.
  */
 public class VersionSpecificAvroGenericDaVinciClient<K, V> extends AvroGenericDaVinciClient<K, V> {
   public VersionSpecificAvroGenericDaVinciClient(
