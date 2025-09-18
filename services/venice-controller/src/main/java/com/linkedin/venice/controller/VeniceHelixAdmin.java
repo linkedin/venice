@@ -1648,12 +1648,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    * @return {@code true} is the store is a participant system store or if Venice is running in single-region mode
    */
   @Override
-  public boolean whetherEnableBatchPushFromAdmin(String storeName) {
+  public boolean whetherEnableBatchPushFromAdmin(String clusterName, String storeName) {
     /*
      * Allow (empty) push to participant system store from child controller directly since participant stores are
      * independent in different fabrics (different data).
      */
-    return VeniceSystemStoreUtils.isParticipantStore(storeName) || !multiClusterConfigs.isMultiRegion();
+    return VeniceSystemStoreUtils.isParticipantStore(storeName)
+        || !multiClusterConfigs.getControllerConfig(clusterName).isMultiRegion();
   }
 
   /**

@@ -1,5 +1,6 @@
 package com.linkedin.venice.pubsub;
 
+import static com.linkedin.venice.pubsub.PubSubPositionDeserializer.DEFAULT_DESERIALIZER;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertSame;
@@ -21,14 +22,6 @@ import org.testng.annotations.Test;
 
 /**
  * Comprehensive unit tests for PubSubPositionDeserializer
- *
- * Tests cover:
- * - Constructor and instance methods
- * - Static convenience methods
- * - Custom factory class name deserialization
- * - Wire format deserialization utilities
- * - Error handling and null input validation
- * - Different position type support
  */
 public class PubSubPositionDeserializerTest {
   private PubSubPositionDeserializer customDeserializer;
@@ -46,17 +39,16 @@ public class PubSubPositionDeserializerTest {
     ApacheKafkaOffsetPosition position = ApacheKafkaOffsetPosition.of(123);
     PubSubPositionWireFormat wireFormat = position.getPositionWireFormat();
 
-    PubSubPosition position1 = PubSubPositionDeserializer.getPositionFromWireFormat(wireFormat);
+    PubSubPosition position1 = DEFAULT_DESERIALIZER.toPosition(wireFormat);
     assertTrue(position1 instanceof ApacheKafkaOffsetPosition);
     assertEquals(position1, position);
 
     byte[] wireFormatBytes = position1.toWireFormatBytes();
-    PubSubPosition positionFromBytes = PubSubPositionDeserializer.getPositionFromWireFormat(wireFormatBytes);
+    PubSubPosition positionFromBytes = DEFAULT_DESERIALIZER.toPosition(wireFormatBytes);
     assertTrue(positionFromBytes instanceof ApacheKafkaOffsetPosition);
     assertEquals(positionFromBytes, position);
 
-    PubSubPosition positionFromBuffer =
-        PubSubPositionDeserializer.getPositionFromWireFormat(position1.toWireFormatBuffer());
+    PubSubPosition positionFromBuffer = DEFAULT_DESERIALIZER.toPosition(position1.toWireFormatBuffer());
     assertTrue(positionFromBuffer instanceof ApacheKafkaOffsetPosition);
     assertEquals(positionFromBuffer, position);
   }
@@ -65,16 +57,14 @@ public class PubSubPositionDeserializerTest {
   public void testToPositionForUnsupportedPosition() {
     PubSubPositionWireFormat wireFormat = new PubSubPositionWireFormat();
     wireFormat.type = Integer.MAX_VALUE;
-    Exception e =
-        expectThrows(VeniceException.class, () -> PubSubPositionDeserializer.getPositionFromWireFormat(wireFormat));
+    Exception e = expectThrows(VeniceException.class, () -> DEFAULT_DESERIALIZER.toPosition(wireFormat));
     assertTrue(e.getMessage().contains("PubSub position type ID not found: 2147483647"), "Got: " + e.getMessage());
   }
 
   @Test
   public void testSerDerForSymbolicPositions() {
     byte[] startPositionWireFormatBytes = PubSubSymbolicPosition.EARLIEST.toWireFormatBytes();
-    PubSubPosition positionFromBytes =
-        PubSubPositionDeserializer.getPositionFromWireFormat(startPositionWireFormatBytes);
+    PubSubPosition positionFromBytes = DEFAULT_DESERIALIZER.toPosition(startPositionWireFormatBytes);
     assertTrue(positionFromBytes.isSymbolic());
     assertEquals(
         positionFromBytes,
@@ -86,8 +76,7 @@ public class PubSubPositionDeserializerTest {
         "Expected position to be EARLIEST, but got: " + positionFromBytes);
 
     byte[] endPositionWireFormatBytes = PubSubSymbolicPosition.LATEST.toWireFormatBytes();
-    PubSubPosition positionFromEndBytes =
-        PubSubPositionDeserializer.getPositionFromWireFormat(endPositionWireFormatBytes);
+    PubSubPosition positionFromEndBytes = DEFAULT_DESERIALIZER.toPosition(endPositionWireFormatBytes);
     assertTrue(positionFromEndBytes.isSymbolic());
     assertEquals(
         positionFromEndBytes,
@@ -101,12 +90,12 @@ public class PubSubPositionDeserializerTest {
 
   @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = "Cannot deserialize null wire format position")
   public void testGetPositionFromWireFormatBytesThrowsExceptionWhenWireFormatBytesIsNull() {
-    PubSubPositionDeserializer.getPositionFromWireFormat((byte[]) null);
+    DEFAULT_DESERIALIZER.toPosition((byte[]) null);
   }
 
   @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = "Cannot deserialize null wire format position")
   public void testGetPositionFromWireFormatBytesThrowsExceptionWhenWireFormatBytesIsNull1() {
-    PubSubPositionDeserializer.getPositionFromWireFormat((PubSubPositionWireFormat) null);
+    DEFAULT_DESERIALIZER.toPosition((PubSubPositionWireFormat) null);
   }
 
   @Test
@@ -304,8 +293,7 @@ public class PubSubPositionDeserializerTest {
         PubSubPositionDeserializer.deserializeWireFormat(wireFormatBytes);
 
     // Convert back to position
-    PubSubPosition reconstructedPosition =
-        PubSubPositionDeserializer.getPositionFromWireFormat(reconstructedWireFormat);
+    PubSubPosition reconstructedPosition = DEFAULT_DESERIALIZER.toPosition(reconstructedWireFormat);
 
     assertEquals(reconstructedPosition, originalPosition);
   }
@@ -325,21 +313,19 @@ public class PubSubPositionDeserializerTest {
   @Test
   public void testStaticMethodsWithNullByteBuffer() {
     // Test static methods with null ByteBuffer
-    assertThrows(
-        IllegalArgumentException.class,
-        () -> PubSubPositionDeserializer.getPositionFromWireFormat((ByteBuffer) null));
+    assertThrows(IllegalArgumentException.class, () -> DEFAULT_DESERIALIZER.toPosition((ByteBuffer) null));
   }
 
   @Test
   public void testDefaultDeserializerIsNotNull() {
     // Test that DEFAULT_DESERIALIZER is properly initialized
-    assertNotNull(PubSubPositionDeserializer.DEFAULT_DESERIALIZER);
+    assertNotNull(DEFAULT_DESERIALIZER);
 
     // Test that it can deserialize a position
     ApacheKafkaOffsetPosition position = ApacheKafkaOffsetPosition.of(444L);
     PubSubPositionWireFormat wireFormat = position.getPositionWireFormat();
 
-    PubSubPosition result = PubSubPositionDeserializer.DEFAULT_DESERIALIZER.toPosition(wireFormat);
+    PubSubPosition result = DEFAULT_DESERIALIZER.toPosition(wireFormat);
     assertEquals(result, position);
   }
 
@@ -349,7 +335,7 @@ public class PubSubPositionDeserializerTest {
     ApacheKafkaOffsetPosition maxPosition = ApacheKafkaOffsetPosition.of(Long.MAX_VALUE - 1);
     byte[] wireFormatBytes = maxPosition.toWireFormatBytes();
 
-    PubSubPosition result = PubSubPositionDeserializer.getPositionFromWireFormat(wireFormatBytes);
+    PubSubPosition result = DEFAULT_DESERIALIZER.toPosition(wireFormatBytes);
     assertEquals(result, maxPosition);
   }
 
@@ -359,8 +345,8 @@ public class PubSubPositionDeserializerTest {
     ApacheKafkaOffsetPosition position = ApacheKafkaOffsetPosition.of(555L);
     byte[] wireFormatBytes = position.toWireFormatBytes();
 
-    PubSubPosition result1 = PubSubPositionDeserializer.getPositionFromWireFormat(wireFormatBytes);
-    PubSubPosition result2 = PubSubPositionDeserializer.getPositionFromWireFormat(wireFormatBytes);
+    PubSubPosition result1 = DEFAULT_DESERIALIZER.toPosition(wireFormatBytes);
+    PubSubPosition result2 = DEFAULT_DESERIALIZER.toPosition(wireFormatBytes);
     PubSubPosition result3 = customDeserializer.toPosition(wireFormatBytes);
 
     assertEquals(result1, result2);

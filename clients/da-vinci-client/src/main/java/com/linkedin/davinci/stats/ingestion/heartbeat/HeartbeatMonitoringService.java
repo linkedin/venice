@@ -135,6 +135,11 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
           }
           return regionTimestamps;
         });
+    LOGGER.info(
+        "Completed initializing heartbeat timestamps for version: {}, partition: {}, follower: {}",
+        version,
+        partition,
+        isFollower);
   }
 
   private synchronized void removeEntry(
@@ -660,7 +665,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
    * This should prevent other race conditions caused by out of sync customized view too.
    */
   void checkAndMaybeCleanupLagMonitor() {
-    if (customizedViewRepository == null) {
+    if (customizedViewRepository == null && customizedViewRepositoryFuture != null) {
       if (customizedViewRepositoryFuture.isDone()) {
         try {
           customizedViewRepository = customizedViewRepositoryFuture.get();

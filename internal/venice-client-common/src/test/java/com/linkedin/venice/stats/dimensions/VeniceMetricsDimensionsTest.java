@@ -40,6 +40,9 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_MESSAGE_TYPE:
           assertEquals(dimension.getDimensionName(format), "venice.message.type");
           break;
+        case VENICE_STREAM_PROGRESS:
+          assertEquals(dimension.getDimensionName(format), "venice.stream.progress");
+          break;
         case REPUSH_TRIGGER_SOURCE:
           assertEquals(dimension.getDimensionName(format), "repush.trigger.source");
           break;
@@ -84,6 +87,9 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_MESSAGE_TYPE:
           assertEquals(dimension.getDimensionName(format), "venice.message.type");
           break;
+        case VENICE_STREAM_PROGRESS:
+          assertEquals(dimension.getDimensionName(format), "venice.stream.progress");
+          break;
         case REPUSH_TRIGGER_SOURCE:
           assertEquals(dimension.getDimensionName(format), "repush.trigger.source");
           break;
@@ -127,6 +133,9 @@ public class VeniceMetricsDimensionsTest {
           break;
         case VENICE_MESSAGE_TYPE:
           assertEquals(dimension.getDimensionName(format), "Venice.Message.Type");
+          break;
+        case VENICE_STREAM_PROGRESS:
+          assertEquals(dimension.getDimensionName(format), "Venice.Stream.Progress");
           break;
         case REPUSH_TRIGGER_SOURCE:
           assertEquals(dimension.getDimensionName(format), "Repush.Trigger.Source");

@@ -8,13 +8,13 @@ import io.tehuti.metrics.stats.OccurrenceRate;
 
 
 public class HeartbeatMonitoringServiceStats extends AbstractVeniceStats {
-  private static final String HB_SUFFIX = "-heartbeat-monitor-service";
+  private static final String HEARTBEAT_SUFFIX = "-heartbeat-monitor-service";
   private final Sensor heartbeatExceptionCountSensor;
   private final Sensor heartbeatReporterSensor;
   private final Sensor heartbeatLoggingSensor;
 
-  public HeartbeatMonitoringServiceStats(MetricsRepository metricsRepository, String clusterName) {
-    super(metricsRepository, clusterName + HB_SUFFIX);
+  public HeartbeatMonitoringServiceStats(MetricsRepository metricsRepository, String heartbeatStatPrefix) {
+    super(metricsRepository, heartbeatStatPrefix + HEARTBEAT_SUFFIX);
     heartbeatExceptionCountSensor = registerSensorIfAbsent("heartbeat-monitor-service-exception-count", new Count());
     heartbeatReporterSensor = registerSensorIfAbsent("heartbeat-reporter", new OccurrenceRate());
     heartbeatLoggingSensor = registerSensorIfAbsent("heartbeat-logger", new OccurrenceRate());

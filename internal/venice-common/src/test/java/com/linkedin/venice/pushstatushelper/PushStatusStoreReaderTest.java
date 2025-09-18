@@ -462,4 +462,13 @@ public class PushStatusStoreReaderTest {
       verify(storeClientMock).get(any(PushStatusKey.class));
     }
   }
+
+  @Test
+  public void testClientConfig() {
+    PushStatusStoreReader storeReaderSpy =
+        spy(new PushStatusStoreReader(d2ClientMock, CLUSTER_DISCOVERY_D2_SERVICE_NAME, 10));
+
+    ClientConfig clientConfig = storeReaderSpy.getClientConfig(storeName);
+    Assert.assertFalse(clientConfig.isStatTrackingEnabled());
+  }
 }

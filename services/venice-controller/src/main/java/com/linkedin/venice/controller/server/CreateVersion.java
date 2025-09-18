@@ -276,7 +276,7 @@ public class CreateVersion extends AbstractRoute {
     String storeName = request.getStoreName();
     PushType pushType = request.getPushType();
     // Check if requestTopicForPush can be handled by child controllers for the given store
-    if (!admin.whetherEnableBatchPushFromAdmin(storeName)) {
+    if (!admin.whetherEnableBatchPushFromAdmin(clusterName, storeName)) {
       throw new VeniceUnsupportedOperationException(
           request.getPushType().name(),
           "Please push data to Venice Parent Colo instead");
@@ -725,13 +725,13 @@ public class CreateVersion extends AbstractRoute {
         AdminSparkServer.validateParams(request, EMPTY_PUSH.getParams(), admin);
 
         String storeName = request.queryParams(NAME);
-        if (!admin.whetherEnableBatchPushFromAdmin(storeName)) {
+        clusterName = request.queryParams(CLUSTER);
+        if (!admin.whetherEnableBatchPushFromAdmin(clusterName, storeName)) {
           throw new VeniceUnsupportedOperationException(
               "EMPTY PUSH",
               "Please push data to Venice Parent Colo instead or use Aggregate mode if you are running Samza GF Job.");
         }
 
-        clusterName = request.queryParams(CLUSTER);
         String pushJobId = request.queryParams(PUSH_JOB_ID);
         int partitionNum = admin.calculateNumberOfPartitions(clusterName, storeName);
         int replicationFactor = admin.getReplicationFactor(clusterName, storeName);

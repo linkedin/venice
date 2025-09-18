@@ -257,17 +257,6 @@ public final class PubSubUtil {
     return isInclusive ? baseOffset : baseOffset + 1;
   }
 
-  /**
-   * Get the Kafka offset position buffer for the given offset.
-   * This is temporarily used to convert the offset to a buffer during the transition to using
-   * {@link com.linkedin.venice.pubsub.api.PubSubPosition} in the OffsetRecord.
-   * @param offset the offset to convert
-   * @return a ByteBuffer representing the Kafka offset position
-   */
-  public static ByteBuffer toKafkaPositionWf(long offset) {
-    return ApacheKafkaOffsetPosition.of(offset).toWireFormatBuffer();
-  }
-
   public static PubSubPosition fromKafkaOffset(long offset) {
     if (offset == -1) {
       return PubSubSymbolicPosition.EARLIEST; // -1 is start offset

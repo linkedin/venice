@@ -46,6 +46,7 @@ import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.PubSubContext;
 import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
@@ -150,6 +151,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   protected final PubSubConsumerAdapter pubSubConsumer;
   protected final PubSubTopicRepository pubSubTopicRepository;
   protected final PubSubPositionDeserializer pubSubPositionDeserializer;
+  protected final PubSubContext pubSubContext;
   protected final ExecutorService seekExecutorService;
 
   // This member is a map of maps in order to accommodate view topics. If the message we consume has the appropriate
@@ -181,8 +183,9 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       long consumerSequenceIdStartingValue) {
     Objects.requireNonNull(changelogClientConfig, "ChangelogClientConfig cannot be null");
     this.pubSubConsumer = pubSubConsumer;
-    this.pubSubTopicRepository = changelogClientConfig.getPubSubTopicRepository();
-    this.pubSubPositionDeserializer = changelogClientConfig.getPubSubPositionDeserializer();
+    this.pubSubContext = changelogClientConfig.getPubSubContext();
+    this.pubSubTopicRepository = pubSubContext.getPubSubTopicRepository();
+    this.pubSubPositionDeserializer = pubSubContext.getPubSubPositionDeserializer();
 
     seekExecutorService = Executors.newFixedThreadPool(10);
 

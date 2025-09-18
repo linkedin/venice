@@ -2,7 +2,6 @@ package com.linkedin.venice.controller.server;
 
 import static com.linkedin.venice.meta.Store.NON_EXISTING_VERSION;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyBoolean;
 import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.doReturn;
@@ -233,7 +232,7 @@ public class TestAdminSparkWithMocks {
     doReturn(1).when(admin).getReplicationFactor(anyString(), anyString());
     doReturn(1).when(admin).calculateNumberOfPartitions(anyString(), anyString());
     doReturn(corpRegionKafka).when(admin).getKafkaBootstrapServers(anyBoolean());
-    doReturn(true).when(admin).whetherEnableBatchPushFromAdmin(anyString());
+    doReturn(true).when(admin).whetherEnableBatchPushFromAdmin(anyString(), anyString());
     doReturn(true).when(admin).isActiveActiveReplicationEnabledInAllRegion(clusterName, storeName, false);
     doReturn(corpRegionKafka).when(admin).getNativeReplicationKafkaBootstrapServerAddress(corpRegion);
     doReturn(emergencySourceRegionKafka).when(admin)

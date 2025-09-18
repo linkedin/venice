@@ -36,7 +36,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
-import org.apache.logging.log4j.LogManager;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -278,7 +277,6 @@ public class SystemStoreRepairTaskTest {
     /**
      * All other stores should have new timestamp sent.
      */
-    LogManager.getLogger().info("DEBUGGING: {}", systemStoreToHeartbeatTimestampMap);
     Assert.assertEquals(systemStoreToHeartbeatTimestampMap.size(), 2);
     Assert.assertNotNull(
         systemStoreToHeartbeatTimestampMap

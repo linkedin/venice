@@ -205,8 +205,6 @@ public class AdminTool {
   static final PubSubTopicRepository TOPIC_REPOSITORY = new PubSubTopicRepository();
 
   public static void main(String[] args) throws Exception {
-    // Generate PubSubClientsFactory from java system properties, apache kafka adapter is the default one.
-    PubSubClientsFactory pubSubClientsFactory = new PubSubClientsFactory(new VeniceProperties(System.getProperties()));
     CommandLine cmd = getCommandLine(args);
     try {
       Command foundCommand = ensureOnlyOneCommand(cmd);
@@ -230,6 +228,10 @@ public class AdminTool {
        * Initialize SSL config if provided.
        */
       buildSslFactory(cmd);
+
+      // Generate PubSubClientsFactory from java system properties, apache kafka adapter is the default one.
+      PubSubClientsFactory pubSubClientsFactory =
+          new PubSubClientsFactory(new VeniceProperties(System.getProperties()));
 
       boolean hasUrlArg = Arrays.asList(foundCommand.getRequiredArgs()).contains(Arg.URL);
       if (hasUrlArg) {

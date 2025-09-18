@@ -4,6 +4,7 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_RETRY_TYPE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STREAM_PROGRESS;
 import static com.linkedin.venice.utils.CollectionUtils.setOf;
 
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
@@ -40,6 +41,23 @@ public enum ClientMetricEntity implements ModuleMetricEntityInterface {
   ),
 
   /**
+   * Request serialization time in milliseconds.
+   */
+  REQUEST_SERIALIZATION_TIME(
+      "request.serialization_time", MetricType.HISTOGRAM, MetricUnit.MILLISECOND,
+      "Time to serialize the request payload in milliseconds", setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)
+  ),
+
+  /**
+   * Time between client submitting a request and beginning to handle the response.
+   */
+  CALL_SUBMISSION_TO_HANDLING_TIME(
+      MetricType.HISTOGRAM, MetricUnit.MILLISECOND,
+      "Time between submitting the request and starting to handle the response, in milliseconds",
+      setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)
+  ),
+
+  /**
    * Client duplicate key count.
    */
   REQUEST_DUPLICATE_KEY_COUNT(
@@ -55,6 +73,32 @@ public enum ClientMetricEntity implements ModuleMetricEntityInterface {
       "request.timeout.requested_duration", MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS, MetricUnit.MILLISECOND,
       "The timeout duration (in milliseconds) that was configured for client Future",
       setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)
+  ),
+
+  /**
+   * Response decompression time in milliseconds.
+   */
+  RESPONSE_DECOMPRESSION_TIME(
+      "response.decompression_time", MetricType.HISTOGRAM, MetricUnit.MILLISECOND,
+      "Time to decompress the response payload in milliseconds", setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)
+  ),
+
+  /**
+   * Response deserialization time in milliseconds.
+   */
+  RESPONSE_DESERIALIZATION_TIME(
+      "response.deserialization_time", MetricType.HISTOGRAM, MetricUnit.MILLISECOND,
+      "Time to deserialize the response payload in milliseconds", setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)
+  ),
+
+  /**
+   * Batch streaming progress time in milliseconds: Elapsed time from when the client starts receiving the response
+   * to when the first/P50th/P90th record arrives and is processed.
+   */
+  RESPONSE_BATCH_STREAM_PROGRESS_TIME(
+      "response.batch_stream_progress_time", MetricType.HISTOGRAM, MetricUnit.MILLISECOND,
+      "Batch streaming progress time in milliseconds",
+      setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD, VENICE_STREAM_PROGRESS)
   ),
 
   /**
