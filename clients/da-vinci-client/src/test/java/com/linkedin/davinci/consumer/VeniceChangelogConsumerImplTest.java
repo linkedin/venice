@@ -98,13 +98,14 @@ import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
@@ -998,25 +999,42 @@ public class VeniceChangelogConsumerImplTest {
      * the second poll times out before it can acquire the lock. Thus, ensuring poll on the PubSubConsumer only gets
      * invoked once.
      */
-    AtomicInteger pollMultiplier = new AtomicInteger(2);
+    CountDownLatch firstPollStarted = new CountDownLatch(1);
+    AtomicBoolean firstPollCompleted = new AtomicBoolean(false);
 
     when(mockPubSubConsumer.poll(anyLong())).thenAnswer(invocation -> {
-      Thread.sleep(pollTimeoutMs * pollMultiplier.getAndDecrement());
+      firstPollStarted.countDown();
+      // Hold the lock for longer than the second poll's timeout
+      Thread.sleep(pollTimeoutMs * 3);
+      firstPollCompleted.set(true);
       return Collections.emptyMap();
     });
 
     ExecutorService executorService = Executors.newFixedThreadPool(2);
-    Callable<Void> pollTask = () -> {
-      veniceChangelogConsumer.poll(pollTimeoutMs * pollMultiplier.get());
+
+    // First poll task - will acquire the lock and hold it
+    Callable<Void> firstPollTask = () -> {
+      veniceChangelogConsumer.poll(pollTimeoutMs * 4); // Long timeout to ensure it gets the lock
       return null;
     };
 
-    Future<Void> pollFuture1 = executorService.submit(pollTask);
-    Future<Void> pollFuture2 = executorService.submit(pollTask);
+    // Second poll task - will timeout waiting for the lock
+    Callable<Void> secondPollTask = () -> {
+      // Wait for first poll to start, then try to poll with short timeout
+      firstPollStarted.await();
+      veniceChangelogConsumer.poll(pollTimeoutMs / 2); // Short timeout to ensure it times out
+      return null;
+    };
+
+    Future<Void> pollFuture1 = executorService.submit(firstPollTask);
+    Future<Void> pollFuture2 = executorService.submit(secondPollTask);
+
     pollFuture1.get();
     pollFuture2.get();
 
-    verify(mockPubSubConsumer).poll(anyLong());
+    // Verify that only one call was made to the underlying consumer
+    verify(mockPubSubConsumer, times(1)).poll(anyLong());
+    assertTrue(firstPollCompleted.get(), "First poll should have completed successfully");
   }
 
   @Test
@@ -1261,6 +1279,7 @@ public class VeniceChangelogConsumerImplTest {
         new ChangelogClientConfig<>().setD2ControllerClient(mockD2ControllerClient)
             .setSchemaReader(schemaReader)
             .setStoreName(storeName)
+            .setConsumerProperties(new Properties())
             .setViewName("");
     changelogClientConfig.getInnerClientConfig()
         .setMetricsRepository(getVeniceMetricsRepository(CHANGE_DATA_CAPTURE_CLIENT, CONSUMER_METRIC_ENTITIES, true));

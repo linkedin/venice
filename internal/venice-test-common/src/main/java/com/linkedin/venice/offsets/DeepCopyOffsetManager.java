@@ -2,8 +2,10 @@ package com.linkedin.venice.offsets;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
+import com.linkedin.venice.pubsub.PubSubContext;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
+import com.linkedin.venice.utils.Utils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -34,7 +36,7 @@ public class DeepCopyOffsetManager implements OffsetManager {
 
     // Doing a deep copy, otherwise Mockito keeps a handle on the reference only, which can mutate and lead to confusing
     // verify() semantics
-    OffsetRecord deepCopy = new OffsetRecord(record.toBytes(), partitionStateSerializer);
+    OffsetRecord deepCopy = new OffsetRecord(record.toBytes(), partitionStateSerializer, record.getPubSubContext());
     delegate.put(topicName, partitionId, deepCopy);
   }
 
@@ -45,12 +47,12 @@ public class DeepCopyOffsetManager implements OffsetManager {
   }
 
   @Override
-  public OffsetRecord getLastOffset(String topicName, int partitionId) throws VeniceException {
-    OffsetRecord recordToReturn = delegate.getLastOffset(topicName, partitionId);
+  public OffsetRecord getLastOffset(String topicName, int partitionId, PubSubContext pubSubContext)
+      throws VeniceException {
+    OffsetRecord recordToReturn = delegate.getLastOffset(topicName, partitionId, pubSubContext);
     LOGGER.info(
-        "OffsetManager.getLastOffset called with topicName: {}, partitionId: {}, recordToReturn: {}",
-        topicName,
-        partitionId,
+        "OffsetManager.getLastOffset called with topic-partition: {}, recordToReturn: {}",
+        Utils.getReplicaId(topicName, partitionId),
         recordToReturn);
     return recordToReturn;
   }

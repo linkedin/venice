@@ -11,6 +11,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.pubsub.PubSubContext;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.SparseConcurrentList;
@@ -575,7 +576,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
    * Retrieve the offset associated with the partitionId from the metadata partition.
    */
   @Override
-  public synchronized Optional<OffsetRecord> getPartitionOffset(int partitionId) {
+  public synchronized Optional<OffsetRecord> getPartitionOffset(int partitionId, PubSubContext pubSubContext) {
     if (!metadataPartitionCreated()) {
       throw new StorageInitializationException("Metadata partition not created!");
     }
@@ -589,7 +590,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     if (value == null) {
       return Optional.empty();
     }
-    return Optional.of(new OffsetRecord(value, partitionStateSerializer));
+    return Optional.of(new OffsetRecord(value, partitionStateSerializer, pubSubContext));
   }
 
   /**

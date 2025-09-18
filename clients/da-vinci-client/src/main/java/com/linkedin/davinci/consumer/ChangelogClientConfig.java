@@ -5,6 +5,7 @@ import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
+import com.linkedin.venice.pubsub.PubSubContext;
 import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
 import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
@@ -67,11 +68,8 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
    * These are refreshed each time a new set of consumer properties is applied.
    */
   private PubSubConsumerAdapterFactory<? extends PubSubConsumerAdapter> pubSubConsumerAdapterFactory;
-  private PubSubPositionDeserializer pubSubPositionDeserializer;
   private PubSubMessageDeserializer pubSubMessageDeserializer;
-  private PubSubPositionTypeRegistry pubSubPositionTypeRegistry;
-
-  private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+  private PubSubContext pubSubContext;
 
   public ChangelogClientConfig(String storeName) {
     this.innerClientConfig = new ClientConfig<>(storeName);
@@ -358,10 +356,10 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
    *
    * <p>This method sets up:
    * <ul>
-   *   <li>{@link #pubSubPositionTypeRegistry} – derived from consumer properties</li>
-   *   <li>{@link #pubSubPositionDeserializer} – uses the initialized position type registry</li>
-   *   <li>{@link #pubSubConsumerAdapterFactory} – created based on resolved consumer configuration</li>
-   *   <li>{@link #pubSubMessageDeserializer} – stateless shared instance</li>
+   *   <li>{@link PubSubPositionTypeRegistry} – derived from consumer properties</li>
+   *   <li>{@link PubSubPositionDeserializer} – uses the initialized position type registry</li>
+   *   <li>{@link PubSubConsumerAdapterFactory} – created based on resolved consumer configuration</li>
+   *   <li>{@link PubSubMessageDeserializer} – stateless shared instance</li>
    * </ul>
    *
    * <p><strong>Note:</strong> These fields are derived from the {@link #consumerProperties} and should
@@ -371,8 +369,14 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
    */
   private void initializePubSubInternals() {
     VeniceProperties pubSubProperties = new VeniceProperties(this.consumerProperties);
-    this.pubSubPositionTypeRegistry = PubSubPositionTypeRegistry.fromPropertiesOrDefault(pubSubProperties);
-    this.pubSubPositionDeserializer = new PubSubPositionDeserializer(pubSubPositionTypeRegistry);
+    PubSubPositionTypeRegistry typeRegistry = PubSubPositionTypeRegistry.fromPropertiesOrDefault(pubSubProperties);
+    PubSubPositionDeserializer pubSubPositionDeserializer = new PubSubPositionDeserializer(typeRegistry);
+    PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+    // todo(sushantmane): Consider passing TopicManagerRepository from outside if required.
+    this.pubSubContext = new PubSubContext.Builder().setPubSubPositionDeserializer(pubSubPositionDeserializer)
+        .setPubSubPositionTypeRegistry(typeRegistry)
+        .setPubSubTopicRepository(pubSubTopicRepository)
+        .build();
     this.pubSubConsumerAdapterFactory = PubSubClientsFactory.createConsumerFactory(pubSubProperties);
     this.pubSubMessageDeserializer = PubSubMessageDeserializer.createOptimizedDeserializer();
   }
@@ -381,20 +385,12 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
     return pubSubConsumerAdapterFactory;
   }
 
-  protected PubSubPositionDeserializer getPubSubPositionDeserializer() {
-    return pubSubPositionDeserializer;
-  }
-
   protected PubSubMessageDeserializer getPubSubMessageDeserializer() {
     return pubSubMessageDeserializer;
   }
 
-  protected PubSubPositionTypeRegistry getPubSubPositionTypeRegistry() {
-    return pubSubPositionTypeRegistry;
-  }
-
-  protected PubSubTopicRepository getPubSubTopicRepository() {
-    return pubSubTopicRepository;
+  protected PubSubContext getPubSubContext() {
+    return pubSubContext;
   }
 
   private ChangelogClientConfig setInnerClientConfig(ClientConfig<T> innerClientConfig) {

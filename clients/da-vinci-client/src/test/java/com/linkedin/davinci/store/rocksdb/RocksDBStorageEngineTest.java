@@ -1,6 +1,7 @@
 package com.linkedin.davinci.store.rocksdb;
 
 import static com.linkedin.davinci.store.AbstractStorageEngine.METADATA_PARTITION_ID;
+import static com.linkedin.venice.utils.TestUtils.DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -126,7 +127,9 @@ public class RocksDBStorageEngineTest extends AbstractStorageEngineTest<RocksDBS
     StorageEngine testStorageEngine = getTestStoreEngine();
     Assert.assertEquals(testStorageEngine.getType(), PersistenceType.ROCKS_DB);
     RocksDBStorageEngine rocksDBStorageEngine = (RocksDBStorageEngine) testStorageEngine;
-    OffsetRecord offsetRecord = new OffsetRecord(AvroProtocolDefinition.PARTITION_STATE.getSerializer());
+    OffsetRecord offsetRecord = new OffsetRecord(
+        AvroProtocolDefinition.PARTITION_STATE.getSerializer(),
+        DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING);
 
     int segment = 0;
     int sequence = 10;
@@ -138,14 +141,20 @@ public class RocksDBStorageEngineTest extends AbstractStorageEngineTest<RocksDBS
     offsetRecord.checkpointLocalVtPosition(p666);
     rocksDBStorageEngine.putPartitionOffset(PARTITION_ID, offsetRecord);
     Assert.assertEquals(
-        rocksDBStorageEngine.getPartitionOffset(PARTITION_ID).get().getCheckpointedLocalVtPosition(),
+        rocksDBStorageEngine.getPartitionOffset(PARTITION_ID, DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING)
+            .get()
+            .getCheckpointedLocalVtPosition(),
         p666);
     ProducerPartitionState ppStateFromRocksDB =
-        rocksDBStorageEngine.getPartitionOffset(PARTITION_ID).get().getRealTimeProducerState(kafkaUrl, guid);
+        rocksDBStorageEngine.getPartitionOffset(PARTITION_ID, DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING)
+            .get()
+            .getRealTimeProducerState(kafkaUrl, guid);
     Assert.assertEquals(ppStateFromRocksDB.getSegmentNumber(), segment);
     Assert.assertEquals(ppStateFromRocksDB.getMessageSequenceNumber(), sequence);
     rocksDBStorageEngine.clearPartitionOffset(PARTITION_ID);
-    Assert.assertEquals(rocksDBStorageEngine.getPartitionOffset(PARTITION_ID).isPresent(), false);
+    Assert.assertEquals(
+        rocksDBStorageEngine.getPartitionOffset(PARTITION_ID, DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING).isPresent(),
+        false);
   }
 
   private ProducerPartitionState createProducerPartitionState(int segment, int sequence) {
@@ -187,10 +196,15 @@ public class RocksDBStorageEngineTest extends AbstractStorageEngineTest<RocksDBS
 
     Assert.assertThrows(
         IllegalArgumentException.class,
-        () -> rocksDBStorageEngine
-            .putPartitionOffset(-1, new OffsetRecord(AvroProtocolDefinition.PARTITION_STATE.getSerializer())));
+        () -> rocksDBStorageEngine.putPartitionOffset(
+            -1,
+            new OffsetRecord(
+                AvroProtocolDefinition.PARTITION_STATE.getSerializer(),
+                DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING)));
 
-    Assert.assertThrows(IllegalArgumentException.class, () -> rocksDBStorageEngine.getPartitionOffset(-1));
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> rocksDBStorageEngine.getPartitionOffset(-1, DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING));
   }
 
   @Test

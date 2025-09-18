@@ -124,10 +124,18 @@ public class BlobP2PTransferAmongServersTest {
 
     TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.MINUTES, () -> {
       for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
-        OffsetRecord offsetServer1 =
-            server1.getVeniceServer().getStorageMetadataService().getLastOffset("test-store_v1", partitionId);
-        OffsetRecord offsetServer2 =
-            server2.getVeniceServer().getStorageMetadataService().getLastOffset("test-store_v1", partitionId);
+        OffsetRecord offsetServer1 = server1.getVeniceServer()
+            .getStorageMetadataService()
+            .getLastOffset(
+                "test-store_v1",
+                partitionId,
+                server1.getVeniceServer().getKafkaStoreIngestionService().getPubSubContext());
+        OffsetRecord offsetServer2 = server2.getVeniceServer()
+            .getStorageMetadataService()
+            .getLastOffset(
+                "test-store_v1",
+                partitionId,
+                server2.getVeniceServer().getKafkaStoreIngestionService().getPubSubContext());
         Assert.assertEquals(
             offsetServer1.getCheckpointedLocalVtPosition(),
             offsetServer2.getCheckpointedLocalVtPosition());
@@ -268,10 +276,18 @@ public class BlobP2PTransferAmongServersTest {
 
     TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.MINUTES, () -> {
       for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
-        OffsetRecord offsetServer1 =
-            server1.getVeniceServer().getStorageMetadataService().getLastOffset("test-store_v1", partitionId);
-        OffsetRecord offsetServer2 =
-            server2.getVeniceServer().getStorageMetadataService().getLastOffset("test-store_v1", partitionId);
+        OffsetRecord offsetServer1 = server1.getVeniceServer()
+            .getStorageMetadataService()
+            .getLastOffset(
+                "test-store_v1",
+                partitionId,
+                server1.getVeniceServer().getKafkaStoreIngestionService().getPubSubContext());
+        OffsetRecord offsetServer2 = server2.getVeniceServer()
+            .getStorageMetadataService()
+            .getLastOffset(
+                "test-store_v1",
+                partitionId,
+                server2.getVeniceServer().getKafkaStoreIngestionService().getPubSubContext());
         Assert.assertEquals(
             offsetServer1.getCheckpointedLocalVtPosition(),
             offsetServer2.getCheckpointedLocalVtPosition());
@@ -410,10 +426,18 @@ public class BlobP2PTransferAmongServersTest {
     // offset record should be same after the empty push
     TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.MINUTES, () -> {
       for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
-        OffsetRecord offsetRecord1 =
-            server1.getVeniceServer().getStorageMetadataService().getLastOffset(storeName + "_v1", partitionId);
-        OffsetRecord offsetRecord2 =
-            server2.getVeniceServer().getStorageMetadataService().getLastOffset(storeName + "_v1", partitionId);
+        OffsetRecord offsetRecord1 = server1.getVeniceServer()
+            .getStorageMetadataService()
+            .getLastOffset(
+                storeName + "_v1",
+                partitionId,
+                server1.getVeniceServer().getKafkaStoreIngestionService().getPubSubContext());
+        OffsetRecord offsetRecord2 = server2.getVeniceServer()
+            .getStorageMetadataService()
+            .getLastOffset(
+                storeName + "_v1",
+                partitionId,
+                server2.getVeniceServer().getKafkaStoreIngestionService().getPubSubContext());
         Assert.assertEquals(
             offsetRecord2.getCheckpointedLocalVtPosition(),
             offsetRecord1.getCheckpointedLocalVtPosition());
@@ -478,10 +502,18 @@ public class BlobP2PTransferAmongServersTest {
     // server 1 and 2 offset record should be the same
     TestUtils.waitForNonDeterministicAssertion(3, TimeUnit.MINUTES, () -> {
       for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
-        OffsetRecord offsetServer1 =
-            server1.getVeniceServer().getStorageMetadataService().getLastOffset(storeName + "_v1", partitionId);
-        OffsetRecord offsetServer2 =
-            server2.getVeniceServer().getStorageMetadataService().getLastOffset(storeName + "_v1", partitionId);
+        OffsetRecord offsetServer1 = server1.getVeniceServer()
+            .getStorageMetadataService()
+            .getLastOffset(
+                storeName + "_v1",
+                partitionId,
+                server1.getVeniceServer().getKafkaStoreIngestionService().getPubSubContext());
+        OffsetRecord offsetServer2 = server2.getVeniceServer()
+            .getStorageMetadataService()
+            .getLastOffset(
+                storeName + "_v1",
+                partitionId,
+                server2.getVeniceServer().getKafkaStoreIngestionService().getPubSubContext());
         Assert.assertEquals(
             offsetServer1.getCheckpointedLocalVtPosition(),
             offsetServer2.getCheckpointedLocalVtPosition());

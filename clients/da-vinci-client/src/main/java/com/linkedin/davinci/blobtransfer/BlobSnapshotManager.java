@@ -342,7 +342,7 @@ public class BlobSnapshotManager {
 
     if (storageMetadataService.getStoreVersionState(blobTransferRequest.getTopicName()) == null
         || storageMetadataService
-            .getLastOffset(blobTransferRequest.getTopicName(), blobTransferRequest.getPartition()) == null) {
+            .getLastOffset(blobTransferRequest.getTopicName(), blobTransferRequest.getPartition(), null) == null) {
       throw new VeniceException("Cannot get store version state or offset record from storage metadata service.");
     }
 
@@ -352,8 +352,8 @@ public class BlobSnapshotManager {
     java.nio.ByteBuffer storeVersionStateByte =
         ByteBuffer.wrap(storeVersionStateSerializer.serialize(blobTransferRequest.getTopicName(), storeVersionState));
 
-    OffsetRecord offsetRecord =
-        storageMetadataService.getLastOffset(blobTransferRequest.getTopicName(), blobTransferRequest.getPartition());
+    OffsetRecord offsetRecord = storageMetadataService
+        .getLastOffset(blobTransferRequest.getTopicName(), blobTransferRequest.getPartition(), null);
     java.nio.ByteBuffer offsetRecordByte = ByteBuffer.wrap(offsetRecord.toBytes());
 
     return new BlobTransferPartitionMetadata(

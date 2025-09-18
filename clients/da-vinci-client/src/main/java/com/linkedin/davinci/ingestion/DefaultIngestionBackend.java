@@ -326,7 +326,8 @@ public class DefaultIngestionBackend implements IngestionBackend {
       long blobTransferDisabledOffsetLagThreshold,
       boolean hybridStore) {
     String topicName = Version.composeKafkaTopic(store, versionNumber);
-    OffsetRecord offsetRecord = storageMetadataService.getLastOffset(topicName, partition);
+    OffsetRecord offsetRecord =
+        storageMetadataService.getLastOffset(topicName, partition, storeIngestionService.getPubSubContext());
 
     if (offsetRecord == null) {
       return true;

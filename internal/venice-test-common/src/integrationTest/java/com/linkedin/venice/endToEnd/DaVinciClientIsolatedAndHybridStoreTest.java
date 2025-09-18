@@ -18,6 +18,7 @@ import static com.linkedin.venice.integration.utils.DaVinciTestContext.getCachin
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.DEFAULT_KEY_SCHEMA;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.DEFAULT_VALUE_SCHEMA;
 import static com.linkedin.venice.meta.PersistenceType.ROCKS_DB;
+import static com.linkedin.venice.utils.TestUtils.DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
@@ -203,8 +204,10 @@ public class DaVinciClientIsolatedAndHybridStoreTest {
       dummyOffsetMetadata.metadataUpdateType = IngestionMetadataUpdateType.PUT_OFFSET_RECORD.getValue();
       dummyOffsetMetadata.topicName = Version.composeKafkaTopic(storeName, 1);
       dummyOffsetMetadata.partitionId = 0;
-      dummyOffsetMetadata.payload =
-          ByteBuffer.wrap(new OffsetRecord(AvroProtocolDefinition.PARTITION_STATE.getSerializer()).toBytes());
+      dummyOffsetMetadata.payload = ByteBuffer.wrap(
+          new OffsetRecord(
+              AvroProtocolDefinition.PARTITION_STATE.getSerializer(),
+              DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING).toBytes());
       VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
       when(serverConfig.getIngestionServicePort()).thenReturn(12345);
       VeniceConfigLoader configLoader = mock(VeniceConfigLoader.class);
