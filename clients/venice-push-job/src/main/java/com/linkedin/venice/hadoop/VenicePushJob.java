@@ -1318,13 +1318,6 @@ public class VenicePushJob implements AutoCloseable {
     } else {
       RepushInfo repushInfo = pushJobSetting.repushInfoResponse.getRepushInfo();
       pushJobSetting.kafkaInputBrokerUrl = repushInfo.getKafkaBrokerUrl();
-      pushJobSetting.systemSchemaClusterD2ServiceName = repushInfo.getSystemSchemaClusterD2ServiceName();
-      pushJobSetting.systemSchemaClusterD2ZKHost = repushInfo.getSystemSchemaClusterD2ZkHost();
-    }
-    if (pushJobSetting.isSystemSchemaReaderEnabled
-        && (StringUtils.isEmpty(pushJobSetting.systemSchemaClusterD2ServiceName)
-            || StringUtils.isEmpty(pushJobSetting.systemSchemaClusterD2ZKHost))) {
-      throw new VeniceException("D2 service name and zk host must be provided when system schema reader is enabled");
     }
   }
 
