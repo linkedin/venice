@@ -65,7 +65,7 @@ public class VeniceAdaptiveIngestionThrottler extends EventThrottler implements 
   @Override
   public void maybeThrottle(double eventsSeen) {
     eventThrottlers.get(currentThrottlerIndex.get()).maybeThrottle(eventsSeen);
-    adaptiveThrottlingServiceStats.recordConsumptionRateForThrottler(this, (int) eventsSeen);
+    adaptiveThrottlingServiceStats.recordRateForAdaptiveThrottler(this, (int) eventsSeen);
   }
 
   @Override
