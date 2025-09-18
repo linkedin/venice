@@ -1142,8 +1142,8 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
   private void logLatency(long startTime, String storeName, int targetVersionNum) {
     long elapsedTime = LatencyUtils.getElapsedTimeFromMsToMs(startTime);
     if (elapsedTime > LOG_LATENCY_THRESHOLD) {
-      String message = "Store " + storeName + " version " + targetVersionNum + " spent " + elapsedTime
-          + "ms in the DeferredVersionSwapLoop";
+      String message = "Store " + storeName + " version " + targetVersionNum + " spent "
+          + TimeUnit.MILLISECONDS.toSeconds(elapsedTime) + "seconds in the DeferredVersionSwapLoop";
       logMessageIfNotRedundant(message);
     }
   }
