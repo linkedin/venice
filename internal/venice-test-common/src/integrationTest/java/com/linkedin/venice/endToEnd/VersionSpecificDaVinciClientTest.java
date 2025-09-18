@@ -140,6 +140,11 @@ public class VersionSpecificDaVinciClientTest {
         int nextVersion = 2;
         runVenicePushJob(storeName, nextVersion, Integer.toString(nextVersion), numKeys);
 
+        // Restart client to verify it can subscribe to the backup version on startup
+        client.close();
+        client.start();
+        client.subscribeAll().get();
+
         // DaVinci should still see data for version 1
         validateKeys(client, customValue, numKeys);
 

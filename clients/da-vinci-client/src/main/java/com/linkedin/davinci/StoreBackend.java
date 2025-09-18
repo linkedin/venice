@@ -170,10 +170,18 @@ public class StoreBackend {
     }
     subscription.addAll(partitions);
 
-    if (daVinciFutureVersion == null) {
-      trySubscribeDaVinciFutureVersion();
+    if (DaVinciBackend.ClientType.VERSION_SPECIFIC.equals(backend.getStoreClientType(getStoreName()))
+        && bootstrapVersion.isPresent()) {
+      LOGGER.info(
+          "Ignoring version swaps for store: {} since its a version-specific client. Staying on target version: {}.",
+          storeName,
+          bootstrapVersion.get().getNumber());
     } else {
-      daVinciFutureVersion.subscribe(partitions).whenComplete((v, e) -> trySwapDaVinciCurrentVersion(e));
+      if (daVinciFutureVersion == null) {
+        trySubscribeDaVinciFutureVersion();
+      } else {
+        daVinciFutureVersion.subscribe(partitions).whenComplete((v, e) -> trySwapDaVinciCurrentVersion(e));
+      }
     }
 
     VersionBackend savedVersion = daVinciCurrentVersion;

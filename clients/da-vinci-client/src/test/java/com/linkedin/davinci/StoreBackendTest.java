@@ -9,6 +9,7 @@ import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -263,6 +264,30 @@ public class StoreBackendTest {
         assertEquals(versionRef.get().getVersion().getNumber(), version2.getNumber());
       }
     });
+  }
+
+  @Test
+  void testSubscribeVersionSpecific() throws Exception {
+    when(backend.getStoreClientType(store.getName())).thenReturn(DaVinciBackend.ClientType.VERSION_SPECIFIC);
+    storeBackend = spy(storeBackend);
+
+    Version version3 = new VersionImpl(store.getName(), store.peekNextVersionNumber(), null, 15);
+    store.addVersion(version3);
+    store.setCurrentVersion(version2.getNumber());
+    backend.handleStoreChanged(storeBackend);
+
+    int partition = 2;
+    // Subscribe to the specified version (version1) with version-specific client
+    CompletableFuture subscribeResult = storeBackend.subscribe(ComplementSet.of(partition), Optional.of(version1));
+    versionMap.get(version1.kafkaTopicName()).completePartition(partition);
+    subscribeResult.get(3, TimeUnit.SECONDS);
+
+    // Verify that subscribe selected the specified version as current
+    try (ReferenceCounted<VersionBackend> versionRef = storeBackend.getDaVinciCurrentVersion()) {
+      assertEquals(versionRef.get().getVersion().getNumber(), version1.getNumber());
+    }
+
+    verify(storeBackend, never()).trySubscribeDaVinciFutureVersion();
   }
 
   @Test
