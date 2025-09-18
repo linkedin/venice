@@ -28,7 +28,6 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_SECONDS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_START_TIMESTAMP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_ETL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_KAFKA;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.SYSTEM_SCHEMA_READER_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUSH_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUSH_LIST;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP;
@@ -67,8 +66,6 @@ import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
-import com.linkedin.venice.controllerapi.RepushInfo;
-import com.linkedin.venice.controllerapi.RepushInfoResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
@@ -1120,20 +1117,6 @@ public class VenicePushJobTest {
       assertThrows(VeniceValidationException.class, pushJob::run);
       verify(pushJob, never()).postValidationConsumption(any());
     }
-  }
-
-  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = "D2 service name and zk host must be provided when system schema reader is enabled")
-  public void testEnableSchemaReaderConfigValidation() {
-    Properties props = getVpjRequiredProperties();
-    props.put(SYSTEM_SCHEMA_READER_ENABLED, true);
-    VenicePushJob pushJob = spy(new VenicePushJob(PUSH_JOB_ID, props));
-    doReturn("test_store_v1").when(pushJob).getSourceTopicNameForKafkaInput(anyString(), any());
-    RepushInfoResponse repushInfoResponse = new RepushInfoResponse();
-    RepushInfo repushInfo = new RepushInfo();
-    repushInfo.setSystemSchemaClusterD2ServiceName("cluster0");
-    repushInfoResponse.setRepushInfo(repushInfo);
-    pushJob.getPushJobSetting().repushInfoResponse = repushInfoResponse;
-    pushJob.initKIFRepushDetails();
   }
 
   @Test
