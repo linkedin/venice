@@ -4,7 +4,14 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 
 
 public enum RejectionReason implements VeniceDimensionInterface {
-  LOAD_CONTROLLER, NO_REPLICAS_AVAILABLE;
+  /**
+   * The request was rejected because the load controller is currently limiting or throttling requests.
+   */
+  THROTTLED_BY_LOAD_CONTROLLER,
+  /**
+   * The request was rejected because there are no available replicas to handle it.
+   */
+  NO_REPLICAS_AVAILABLE;
 
   private final String reason;
 

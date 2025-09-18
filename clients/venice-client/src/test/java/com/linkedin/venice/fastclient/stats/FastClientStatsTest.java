@@ -1,14 +1,12 @@
 package com.linkedin.venice.fastclient.stats;
 
 import static com.linkedin.venice.client.stats.BasicClientStats.CLIENT_METRIC_ENTITIES;
-import static com.linkedin.venice.fastclient.stats.FastClientMetricEntity.CALL_FANOUT_COUNT;
-import static com.linkedin.venice.fastclient.stats.FastClientMetricEntity.METADATA_STALENESS_DURATION;
-import static com.linkedin.venice.fastclient.stats.FastClientMetricEntity.REQUEST_REJECTION_RATIO;
+import static com.linkedin.venice.fastclient.stats.FastClientMetricEntity.*;
 import static com.linkedin.venice.read.RequestType.SINGLE_GET;
 import static com.linkedin.venice.stats.ClientType.FAST_CLIENT;
 import static com.linkedin.venice.stats.VeniceMetricsRepository.getVeniceMetricsRepository;
-import static com.linkedin.venice.stats.dimensions.RejectionReason.LOAD_CONTROLLER;
 import static com.linkedin.venice.stats.dimensions.RejectionReason.NO_REPLICAS_AVAILABLE;
+import static com.linkedin.venice.stats.dimensions.RejectionReason.THROTTLED_BY_LOAD_CONTROLLER;
 import static com.linkedin.venice.stats.dimensions.RequestFanoutType.ORIGINAL;
 import static com.linkedin.venice.stats.dimensions.RequestFanoutType.RETRY;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REJECTION_REASON;
@@ -62,7 +60,7 @@ public class FastClientStatsTest {
         inMemoryMetricReader,
         1,
         expectedAttr,
-        "retry.win_count",
+        RETRY_REQUEST_WIN_COUNT.getMetricEntity().getMetricName(),
         FAST_CLIENT.getMetricsPrefix());
   }
 
@@ -132,7 +130,7 @@ public class FastClientStatsTest {
         1,
         fanoutSize,
         expectedAttr,
-        CALL_FANOUT_COUNT.getMetricEntity().getMetricName(),
+        REQUEST_FANOUT_COUNT.getMetricEntity().getMetricName(),
         FAST_CLIENT.getMetricsPrefix());
   }
 
@@ -158,7 +156,7 @@ public class FastClientStatsTest {
         1,
         fanoutSize,
         expectedAttr,
-        "call_fanout_count",
+        REQUEST_FANOUT_COUNT.getMetricEntity().getMetricName(),
         FAST_CLIENT.getMetricsPrefix());
   }
 
@@ -176,7 +174,7 @@ public class FastClientStatsTest {
     assertEquals(metrics.get(".test_store--rejection_ratio.Max").value(), ratio, 1e-9);
 
     // Check OTel metric - REQUEST_REJECTION_RATIO is now MIN_MAX_COUNT_SUM_AGGREGATIONS (histogram)
-    Attributes expectedAttr = getAttributesWithRejectionReason("test_store", LOAD_CONTROLLER);
+    Attributes expectedAttr = getAttributesWithRejectionReason("test_store", THROTTLED_BY_LOAD_CONTROLLER);
     validateHistogramPointData(
         inMemoryMetricReader,
         ratio,
@@ -205,7 +203,7 @@ public class FastClientStatsTest {
         inMemoryMetricReader,
         1,
         expectedAttr,
-        "request.rejection_count",
+        REQUEST_REJECTION_COUNT.getMetricEntity().getMetricName(),
         FAST_CLIENT.getMetricsPrefix());
   }
 
@@ -221,12 +219,12 @@ public class FastClientStatsTest {
     assertTrue(metrics.get(".test_store--rejected_request_count_by_load_controller.OccurrenceRate").value() > 0.0);
 
     // Check OTel metric
-    Attributes expectedAttr = getAttributesWithRejectionReason("test_store", LOAD_CONTROLLER);
+    Attributes expectedAttr = getAttributesWithRejectionReason("test_store", THROTTLED_BY_LOAD_CONTROLLER);
     validateLongPointDataFromCounter(
         inMemoryMetricReader,
         1,
         expectedAttr,
-        "request.rejection_count",
+        REQUEST_REJECTION_COUNT.getMetricEntity().getMetricName(),
         FAST_CLIENT.getMetricsPrefix());
   }
 

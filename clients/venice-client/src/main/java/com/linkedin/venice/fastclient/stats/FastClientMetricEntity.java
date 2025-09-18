@@ -18,8 +18,8 @@ public enum FastClientMetricEntity implements ModuleMetricEntityInterface {
   /**
    * Count of retry requests where the retry "won" (outperformed the original).
    */
-  RETRY_WIN_COUNT(
-      "retry.win_count", MetricType.COUNTER, MetricUnit.NUMBER, "Count of retry requests which won",
+  RETRY_REQUEST_WIN_COUNT(
+      "retry.request.win_count", MetricType.COUNTER, MetricUnit.NUMBER, "Count of retry requests which won",
       setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)
   ),
 
@@ -27,15 +27,15 @@ public enum FastClientMetricEntity implements ModuleMetricEntityInterface {
    * Metadata staleness watermark reported asynchronously in milliseconds.
    */
   METADATA_STALENESS_DURATION(
-      MetricType.ASYNC_GAUGE, MetricUnit.MILLISECOND, "High watermark of metadata staleness in ms",
-      setOf(VENICE_STORE_NAME)
+      "metadata.staleness_duration", MetricType.ASYNC_GAUGE, MetricUnit.MILLISECOND,
+      "High watermark of metadata staleness in ms", setOf(VENICE_STORE_NAME)
   ),
 
   /**
    * Fanout size distribution for requests, with fanout type as a dimension.
    */
-  CALL_FANOUT_COUNT(
-      MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS, MetricUnit.NUMBER, "Fanout size for requests",
+  REQUEST_FANOUT_COUNT(
+      "request.fanout_count", MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS, MetricUnit.NUMBER, "Fanout size for requests",
       setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD, VENICE_REQUEST_FANOUT_TYPE)
   ),
 
