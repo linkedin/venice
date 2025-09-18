@@ -16,6 +16,7 @@ import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJ
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJProps;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithIntToStringSchema;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFER_VERSION_SWAP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_STORE_NAME_PROP;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNull;
@@ -60,7 +61,7 @@ import org.testng.annotations.Test;
 
 public class VersionSpecificDaVinciClientTest {
   private static final Logger LOGGER = LogManager.getLogger(DaVinciClientRecordTransformerTest.class);
-  private static final int TEST_TIMEOUT = 120_000;
+  private static final int TEST_TIMEOUT = 240_000;
   private VeniceClusterWrapper cluster;
   private D2Client d2Client;
   private static final String BASE_STORE_NAME = "test-store";
@@ -138,7 +139,7 @@ public class VersionSpecificDaVinciClientTest {
             () -> assertEquals(client.get(streamingKey1).get(), Integer.getInteger(customValue)));
 
         int nextVersion = 2;
-        runVenicePushJob(storeName, nextVersion, Integer.toString(nextVersion), numKeys);
+        runVenicePushJob(storeName, nextVersion, Integer.toString(nextVersion), numKeys, false);
 
         // Restart client to verify it can subscribe to the backup version on startup
         client.close();
@@ -158,8 +159,9 @@ public class VersionSpecificDaVinciClientTest {
             true,
             () -> assertEquals(client.get(streamingKey2).get(), Integer.getInteger(customValue)));
 
+        // Run push job with deferred version swap, so it stays on future version
         nextVersion++;
-        runVenicePushJob(storeName, nextVersion, Integer.toString(nextVersion), numKeys);
+        runVenicePushJob(storeName, nextVersion - 1, Integer.toString(nextVersion), numKeys, true);
 
         // DaVinci should still see data for version 1
         validateKeys(client, customValue, numKeys);
@@ -171,12 +173,21 @@ public class VersionSpecificDaVinciClientTest {
         // Wait 10 seconds to ensure the key doesn't appear
         Thread.sleep(10000);
         assertNull(client.get(streamingKey3).get());
-      }
 
-      // Restarting client should cause an exception, because verison is deleted
-      client.close();
-      client.start();
-      assertThrows(VeniceClientException.class, () -> client.subscribeAll().get());
+        // Restarting client should cause an exception, because version is deleted
+        client.close();
+        client.start();
+        assertThrows(VeniceClientException.class, () -> client.subscribeAll().get());
+        client.close();
+
+        // Have client subscribe to future version instead
+        DaVinciClient<Integer, Object> client2 =
+            factory.getAndStartVersionSpecificGenericAvroClient(storeName, nextVersion, clientConfig);
+        client2.subscribeAll().get();
+
+        // DaVinci should see data for future version
+        validateKeys(client2, Integer.toString(nextVersion), numKeys);
+      }
     }
   }
 
@@ -190,7 +201,12 @@ public class VersionSpecificDaVinciClientTest {
     }
   }
 
-  private void runVenicePushJob(String storeName, int expectedVersion, String customValue, int numKeys) {
+  private void runVenicePushJob(
+      String storeName,
+      int expectedVersion,
+      String customValue,
+      int numKeys,
+      boolean deferVersionSwap) {
     File inputDir = getTempDataDirectory();
     try {
       writeSimpleAvroFileWithIntToStringSchema(inputDir, customValue, numKeys);
@@ -201,6 +217,7 @@ public class VersionSpecificDaVinciClientTest {
     // Setup VPJ job properties.
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
     Properties vpjProperties = defaultVPJProps(cluster, inputDirPath, storeName);
+    vpjProperties.put(DEFER_VERSION_SWAP, deferVersionSwap);
     runVPJ(vpjProperties, expectedVersion, cluster);
   }
 
