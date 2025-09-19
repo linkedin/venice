@@ -104,6 +104,7 @@ public class TestDeferredVersionSwapService {
       doReturn(v).when(store).getVersion(n);
       doReturn(targetRegions).when(v).getTargetSwapRegion();
       doReturn(waitTime).when(v).getTargetSwapRegionWaitTime();
+      doReturn(true).when(v).isVersionSwapDeferred();
       versionList.add(v);
     });
     doReturn(versionList).when(store).getVersions();
