@@ -4,8 +4,7 @@ import static com.linkedin.venice.ConfigKeys.FREEZE_INGESTION_IF_READY_TO_SERVE_
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_D2_CLIENT_ENABLED;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.DEFAULT_KEY_SCHEMA;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.DEFAULT_VALUE_SCHEMA;
-import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertThrows;
+import static org.testng.Assert.*;
 
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.d2.balancer.D2ClientBuilder;
@@ -41,6 +40,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
@@ -97,7 +97,8 @@ public class DaVinciLiveUpdateSuppressionTest {
     }
   }
 
-  @Test(dataProvider = "Isolated-Ingestion", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT * 2)
+  @Test(dataProvider = "Isolated-Ingestion", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT
+      * 2, invocationCount = 3)
   public void testLiveUpdateSuppression(IngestionMode ingestionMode, Boolean isD2ClientEnabled) throws Exception {
     final String storeName = Utils.getUniqueString("store");
     AtomicReference<StoreInfo> storeInfo = new AtomicReference<>();
@@ -134,10 +135,10 @@ public class DaVinciLiveUpdateSuppressionTest {
             .setValuePayloadSerializer(valueSerializer)
             .build())) {
       batchProducer.broadcastStartOfPush(Collections.emptyMap());
-      for (int i = 0; i < KEY_COUNT; i++) {
+      for (int i = 1; i < KEY_COUNT; i++) {
         writerFutures[i] = batchProducer.put(i, i, valueSchemaId);
       }
-      for (int i = 0; i < KEY_COUNT; i++) {
+      for (int i = 1; i < KEY_COUNT; i++) {
         writerFutures[i].get();
       }
       batchProducer.broadcastEndOfPush(Collections.emptyMap());
@@ -166,10 +167,10 @@ public class DaVinciLiveUpdateSuppressionTest {
                 .build())) {
       client.subscribe(Collections.singleton(0)).get();
       writerFutures = new Future[KEY_COUNT];
-      for (int i = 0; i < KEY_COUNT; i++) {
+      for (int i = 1; i < KEY_COUNT; i++) {
         writerFutures[i] = realTimeProducer.put(i, i * 1000, valueSchemaId);
       }
-      for (int i = 0; i < KEY_COUNT; i++) {
+      for (int i = 1; i < KEY_COUNT; i++) {
         writerFutures[i].get();
       }
 
@@ -182,10 +183,7 @@ public class DaVinciLiveUpdateSuppressionTest {
           /**
            * Try to read the new value from real-time producer; assertion should fail
            */
-          for (int i = 0; i < KEY_COUNT; i++) {
-            int result = client.get(i).get();
-            assertEquals(result, i * 1000);
-          }
+          assertFalse(checkNoLiveUpdatesRead(client, 1000));
         });
         // It's wrong if new value can be read from da-vinci client
         throw new VeniceException("Should not be able to read live updates.");
@@ -210,21 +208,36 @@ public class DaVinciLiveUpdateSuppressionTest {
             new DaVinciConfig(),
             extraBackendConfigMap);
     try (CachingDaVinciClientFactory ignored = daVinciTestContext2.getDaVinciClientFactory();
-        DaVinciClient<Integer, Integer> client2 = daVinciTestContext2.getDaVinciClient()) {
+        DaVinciClient<Integer, Integer> client2 = daVinciTestContext2.getDaVinciClient();
+        VeniceWriter<Object, Object, byte[]> realTimeProducer = vwFactory.createVeniceWriter(
+            new VeniceWriterOptions.Builder(Utils.getRealTimeTopicName(storeInfo.get()))
+                .setKeyPayloadSerializer(keySerializer)
+                .setValuePayloadSerializer(valueSerializer)
+                .build())) {
       client2.subscribeAll().get();
+
+      /*
+      Commented out because this is not guaranteed due to main process will start consumption,
+      it will wait to consuming record from version topic to report COMPLETE and then stop ingesting from version topic.
       for (int i = 0; i < KEY_COUNT; i++) {
         int result = client2.get(i).get();
         assertEquals(result, i);
+      }
+      */
+
+      writerFutures = new Future[KEY_COUNT];
+      for (int i = 1; i < KEY_COUNT; i++) {
+        writerFutures[i] = realTimeProducer.put(i, i * 10000, valueSchemaId);
+      }
+      for (int i = 1; i < KEY_COUNT; i++) {
+        writerFutures[i].get();
       }
       try {
         TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, false, true, () -> {
           /**
            * Try to read the new value from real-time producer; assertion should fail
            */
-          for (int i = 0; i < KEY_COUNT; i++) {
-            int result = client2.get(i).get();
-            assertEquals(result, i * 1000);
-          }
+          assertFalse(checkNoLiveUpdatesRead(client2, 10000));
         });
         // It's wrong if new value can be read from da-vinci client
         throw new VeniceException("Should not be able to read live updates.");
@@ -232,6 +245,18 @@ public class DaVinciLiveUpdateSuppressionTest {
         // expected
       }
     }
+  }
+
+  private boolean checkNoLiveUpdatesRead(DaVinciClient<Integer, Integer> client, int multiplier)
+      throws ExecutionException, InterruptedException {
+    for (int i = 1; i < KEY_COUNT; i++) {
+      int result = client.get(i).get();
+      if (result == i * multiplier) {
+        return false;
+      }
+      ;
+    }
+    return true;
   }
 
 }
