@@ -71,7 +71,6 @@ import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.pubsub.ImmutablePubSubMessage;
 import com.linkedin.venice.pubsub.PubSubConstants;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
-import com.linkedin.venice.pubsub.PubSubUtil;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeader;
@@ -1416,11 +1415,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       OffsetRecord offsetRecord = partitionConsumptionState.getOffsetRecord();
       // DaVinci clients don't need to maintain leader production states
       if (!isDaVinciClient) {
-        // also update the leader topic offset using the upstream offset in ProducerMetadata
-        if (shouldUpdateUpstreamOffset(consumerRecord)) {
+        // also update the leader topic position using the upstream position in LeaderMetadata
+        PubSubPosition newUpstreamPosition = extractUpstreamPosition(consumerRecord);
+        if (!PubSubSymbolicPosition.EARLIEST.equals(newUpstreamPosition)) {
           final String sourceKafkaUrl = sourceKafkaUrlSupplier.get();
-          final PubSubPosition newUpstreamOffset =
-              PubSubUtil.fromKafkaOffset(kafkaValue.leaderMetadataFooter.upstreamOffset);
           PubSubTopic upstreamTopic = offsetRecord.getLeaderTopic(pubSubTopicRepository);
           if (upstreamTopic == null) {
             upstreamTopic = versionTopic;
@@ -1431,7 +1429,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             checkAndHandleUpstreamOffsetRewind(
                 partitionConsumptionState,
                 consumerRecord,
-                newUpstreamOffset,
+                newUpstreamPosition,
                 previousUpstreamOffset,
                 this);
           } else {
@@ -1439,7 +1437,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
              * Keep updating the upstream offset no matter whether there is a rewind or not; rewind could happen
              * to the true leader when the old leader doesn't stop producing.
              */
-            updateUpstreamTopicOffsetFunction.apply(sourceKafkaUrl, upstreamTopic, newUpstreamOffset);
+            updateUpstreamTopicOffsetFunction.apply(sourceKafkaUrl, upstreamTopic, newUpstreamPosition);
           }
         }
         if (!dryRun) {

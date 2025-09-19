@@ -76,6 +76,7 @@ import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.Delete;
 import com.linkedin.venice.kafka.protocol.EndOfIncrementalPush;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
+import com.linkedin.venice.kafka.protocol.LeaderMetadata;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.StartOfIncrementalPush;
 import com.linkedin.venice.kafka.protocol.StartOfPush;
@@ -94,8 +95,10 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.PubSubContext;
+import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.PubSubUtil;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
@@ -4655,16 +4658,20 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   /**
-   * Validate if the given consumerRecord has a valid upstream offset to update from.
-   * @param consumerRecord
-   * @return true, if the record is not null and contains a valid upstream offset, otherwise false.
+   * Extract the upstream position from the given consumer record's leader metadata.
+   * @param consumerRecord the consumer record to extract upstream position from
+   * @return the upstream position if available, otherwise PubSubSymbolicPosition.EARLIEST
    */
-  protected boolean shouldUpdateUpstreamOffset(DefaultPubSubMessage consumerRecord) {
-    if (consumerRecord == null) {
-      return false;
+  protected PubSubPosition extractUpstreamPosition(DefaultPubSubMessage consumerRecord) {
+    if (consumerRecord == null || consumerRecord.getValue() == null
+        || consumerRecord.getValue().leaderMetadataFooter == null) {
+      return PubSubSymbolicPosition.EARLIEST;
     }
-    KafkaMessageEnvelope kafkaValue = consumerRecord.getValue();
-    return kafkaValue.leaderMetadataFooter != null && kafkaValue.leaderMetadataFooter.upstreamOffset >= 0;
+    LeaderMetadata leaderMetadataFooter = consumerRecord.getValue().leaderMetadataFooter;
+    return deserializePositionWithOffsetFallback(
+        pubSubContext.getPubSubPositionDeserializer(),
+        leaderMetadataFooter.upstreamPubSubPosition,
+        leaderMetadataFooter.upstreamOffset);
   }
 
   /**
@@ -4957,5 +4964,38 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   @VisibleForTesting
   PubSubContext getPubSubContext() {
     return pubSubContext;
+  }
+
+  static PubSubPosition deserializePositionWithOffsetFallback(
+      PubSubPositionDeserializer pubSubPositionDeserializer,
+      ByteBuffer wireFormatBytes,
+      long offset) {
+    // Fast path: nothing to deserialize
+    if (wireFormatBytes == null || !wireFormatBytes.hasRemaining()) {
+      return PubSubUtil.fromKafkaOffset(offset);
+    }
+
+    try {
+      final PubSubPosition position = pubSubPositionDeserializer.toPosition(wireFormatBytes);
+
+      // Guard against regressions: honor the caller-provided minimum offset.
+      if (position.getNumericOffset() < offset) {
+        LOGGER.info(
+            "Deserialized position: {} is behind the provided offset: {}. Using offset-based position.",
+            position.getNumericOffset(),
+            offset);
+        return PubSubUtil.fromKafkaOffset(offset);
+      }
+
+      return position;
+    } catch (RuntimeException e) {
+      LOGGER.warn(
+          "Failed to deserialize PubSubPosition. Using offset-based position (offset={}, bufferRem={}, bufferCap={}).",
+          offset,
+          wireFormatBytes.remaining(),
+          wireFormatBytes.capacity(),
+          e);
+      return PubSubUtil.fromKafkaOffset(offset);
+    }
   }
 }
