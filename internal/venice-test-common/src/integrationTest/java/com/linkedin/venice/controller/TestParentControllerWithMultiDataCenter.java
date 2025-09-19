@@ -12,6 +12,7 @@ import static org.testng.AssertJUnit.fail;
 
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
+import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
@@ -22,12 +23,14 @@ import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.manager.TopicManager;
@@ -43,13 +46,17 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.IntStream;
 import org.apache.avro.Schema;
+import org.apache.log4j.LogManager;
+import org.apache.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -73,6 +80,8 @@ public class TestParentControllerWithMultiDataCenter {
       + "  \"type\": \"record\",   " + "  \"name\": \"User\",     " + "  \"fields\": [           "
       + "       { \"name\": \"id\", \"type\": \"string\", \"default\": \"\"}  " + "  ] " + " } ";
 
+  private static final Logger LOGGER = LogManager.getLogger(TestParentControllerWithMultiDataCenter.class);
+
   @BeforeClass
   public void setUp() {
     Properties controllerProps = new Properties();
@@ -80,18 +89,20 @@ public class TestParentControllerWithMultiDataCenter {
     controllerProps.put(DEFAULT_MAX_NUMBER_OF_PARTITIONS, 3);
     controllerProps.put(DEFAULT_PARTITION_SIZE, 1024);
     Properties serverProps = new Properties();
-    multiRegionMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
-        NUMBER_OF_CHILD_DATACENTERS,
-        NUMBER_OF_CLUSTERS,
-        1,
-        1,
-        2,
-        1,
-        2,
-        Optional.of(controllerProps),
-        Optional.of(controllerProps),
-        Optional.of(serverProps),
-        false);
+    VeniceMultiRegionClusterCreateOptions.Builder optionsBuilder =
+        new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(NUMBER_OF_CHILD_DATACENTERS)
+            .numberOfClusters(NUMBER_OF_CLUSTERS)
+            .numberOfParentControllers(1)
+            .numberOfChildControllers(1)
+            .numberOfServers(2)
+            .numberOfRouters(1)
+            .replicationFactor(2)
+            .forkServer(false)
+            .parentControllerProperties(controllerProps)
+            .childControllerProperties(controllerProps)
+            .serverProperties(serverProps);
+    multiRegionMultiClusterWrapper =
+        ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(optionsBuilder.build());
 
     childDatacenters = multiRegionMultiClusterWrapper.getChildRegions();
   }
@@ -120,7 +131,7 @@ public class TestParentControllerWithMultiDataCenter {
         newStoreResponse.isError(),
         "The NewStoreResponse returned an error: " + newStoreResponse.getError());
 
-    StoreInfo store = TestUtils.assertCommand(parentControllerClient.getStore(storeName)).getStore();
+    TestUtils.assertCommand(parentControllerClient.getStore(storeName));
 
     String metaSystemStoreTopic =
         Version.composeKafkaTopic(VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName), 1);
@@ -146,12 +157,15 @@ public class TestParentControllerWithMultiDataCenter {
     topicManagers
         .add(childDatacenters.get(1).getControllers().values().iterator().next().getVeniceAdmin().getTopicManager());
 
+    StoreInfo store = parentControllerClient.getStore(storeName).getStore();
     String rtTopicName = Utils.getRealTimeTopicName(store);
     PubSubTopic rtPubSubTopic = pubSubTopicRepository.getTopic(rtTopicName);
+
     for (TopicManager topicManager: topicManagers) {
       Assert.assertTrue(topicManager.containsTopic(versionPubsubTopic));
       Assert.assertTrue(topicManager.containsTopic(rtPubSubTopic));
     }
+
     for (ControllerClient controllerClient: childControllerClients) {
       Assert.assertEquals(controllerClient.getStore(storeName).getStore().getCurrentVersion(), 1);
     }
@@ -206,12 +220,12 @@ public class TestParentControllerWithMultiDataCenter {
     // now both the versions should be batch-only, so rt topic should get deleted by TopicCleanupService
     for (TopicManager topicManager: topicManagers) {
       Assert.assertTrue(topicManager.containsTopic(versionPubsubTopic));
-      TestUtils.waitForNonDeterministicAssertion(
-          30,
-          TimeUnit.SECONDS,
-          true,
-          true,
-          () -> Assert.assertFalse(topicManager.containsTopic(rtPubSubTopic)));
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
+        StoreInfo finalStore = parentControllerClient.getStore(storeName).getStore();
+        String finalRtTopicName = Utils.getRealTimeTopicName(finalStore);
+        PubSubTopic finalRtPubSubTopic = pubSubTopicRepository.getTopic(finalRtTopicName);
+        Assert.assertFalse(topicManager.containsTopic(finalRtPubSubTopic));
+      });
     }
 
     /*
@@ -607,6 +621,7 @@ public class TestParentControllerWithMultiDataCenter {
     String clusterName = CLUSTER_NAMES[0];
     String storeName = Utils.getUniqueString("testDeleteStore");
     String parentControllerURLs = multiRegionMultiClusterWrapper.getControllerConnectString();
+
     try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerURLs);
         ControllerClient dc0Client =
             new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
@@ -620,7 +635,9 @@ public class TestParentControllerWithMultiDataCenter {
       ControllerResponse response = parentControllerClient.updateStore(
           storeName,
           new UpdateStoreQueryParams().setHybridOffsetLagThreshold(1).setHybridRewindSeconds(60));
+
       Assert.assertFalse(response.isError(), "Update hybrid store returned an error");
+
       List<ControllerClient> childControllerClients = new ArrayList<>();
       childControllerClients.add(dc0Client);
       childControllerClients.add(dc1Client);
@@ -630,25 +647,29 @@ public class TestParentControllerWithMultiDataCenter {
           .add(childDatacenters.get(0).getControllers().values().iterator().next().getVeniceAdmin().getTopicManager());
       childDatacenterTopicManagers
           .add(childDatacenters.get(1).getControllers().values().iterator().next().getVeniceAdmin().getTopicManager());
+
+      StoreInfo storeInfo = parentControllerClient.getStore(storeName).getStore();
+      String storeRT = Utils.getRealTimeTopicName(storeInfo);
       String pushStatusSystemStoreRT =
           Utils.composeRealTimeTopic(VeniceSystemStoreUtils.getDaVinciPushStatusStoreName(storeName));
       String metaSystemStoreRT = Utils.composeRealTimeTopic(VeniceSystemStoreUtils.getMetaStoreName(storeName));
+
       // Ensure all the RT topics are created in all child datacenters
       TestUtils.waitForNonDeterministicAssertion(300, TimeUnit.SECONDS, false, true, () -> {
         for (TopicManager topicManager: childDatacenterTopicManagers) {
-          Assert.assertTrue(
-              topicManager.containsTopic(pubSubTopicRepository.getTopic(Utils.composeRealTimeTopic(storeName))));
+          Assert.assertTrue(topicManager.containsTopic(pubSubTopicRepository.getTopic(storeRT)));
           Assert.assertTrue(topicManager.containsTopic(pubSubTopicRepository.getTopic(pushStatusSystemStoreRT)));
           Assert.assertTrue(topicManager.containsTopic(pubSubTopicRepository.getTopic(metaSystemStoreRT)));
         }
       });
+
       response = parentControllerClient.disableAndDeleteStore(storeName);
       Assert.assertFalse(response.isError(), "Delete store returned an error");
+
       // Ensure all the RT topics are deleted in all child datacenters
       TestUtils.waitForNonDeterministicAssertion(600, TimeUnit.SECONDS, false, true, () -> {
         for (TopicManager topicManager: childDatacenterTopicManagers) {
-          Assert.assertFalse(
-              topicManager.containsTopic(pubSubTopicRepository.getTopic(Utils.composeRealTimeTopic(storeName))));
+          Assert.assertFalse(topicManager.containsTopic(pubSubTopicRepository.getTopic(storeRT)));
           Assert.assertFalse(topicManager.containsTopic(pubSubTopicRepository.getTopic(pushStatusSystemStoreRT)));
           Assert.assertFalse(topicManager.containsTopic(pubSubTopicRepository.getTopic(metaSystemStoreRT)));
         }
@@ -672,13 +693,253 @@ public class TestParentControllerWithMultiDataCenter {
         new UpdateStoreQueryParams().setPartitionCount(1).setBootstrapToOnlineTimeoutInHours(1);
     createStoreForJob(CLUSTER_NAMES[0], keySchemaStr, valueSchemaStr, props, storeParms).close();
 
-    TestWriteUtils.runPushJob("Test push job 1", props);
+    IntegrationTestPushUtils.runVPJ(props);
     try {
-      TestWriteUtils.runPushJob("Test push job 2", props);
+      IntegrationTestPushUtils.runVPJ(props);
       fail("Deferred version swap should fail second push");
     } catch (Exception e) {
       Assert.assertTrue(e.getMessage().contains("Unable to start the push with pushJobId"));
     }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testUpdateStoreInParentAfterDeletingInChildren() {
+    String clusterName = CLUSTER_NAMES[0];
+    String storeName = Utils.getUniqueString("storeDeletedInChildren");
+
+    String parentControllerURLs = multiRegionMultiClusterWrapper.getControllerConnectString();
+    try (ControllerClient parentControllerClient =
+        ControllerClient.constructClusterControllerClient(clusterName, parentControllerURLs)) {
+      // 1. Create a test store through parent controller
+      NewStoreResponse newStoreResponse =
+          parentControllerClient.retryableRequest(5, c -> c.createNewStore(storeName, "", "\"string\"", "\"string\""));
+      Assert.assertFalse(
+          newStoreResponse.isError(),
+          "The NewStoreResponse returned an error: " + newStoreResponse.getError());
+
+      // Wait for store creation to be reflected in all child controllers
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, true, () -> {
+        for (int i = 0; i < childDatacenters.size(); i++) {
+          ControllerClient childClient =
+              new ControllerClient(clusterName, childDatacenters.get(i).getControllerConnectString());
+          StoreResponse storeResponse = childClient.getStore(storeName);
+          Assert.assertFalse(storeResponse.isError(), "Store should exist in child datacenter " + i);
+          childClient.close();
+        }
+      });
+
+      // Update read quota as a random store config change
+      long newReadQuota = 110L;
+      UpdateStoreQueryParams updateParams = new UpdateStoreQueryParams().setReadQuotaInCU(newReadQuota);
+      ControllerResponse quotaUpdateResponse = parentControllerClient.updateStore(storeName, updateParams);
+      Assert
+          .assertFalse(quotaUpdateResponse.isError(), "Failed to update read quota: " + quotaUpdateResponse.getError());
+
+      // Verify the read quota update is reflected in all child controllers
+      // The update store command is critical in this test case - it's used as a synchronization point between the
+      // PUSH_STATUS_SYSTEM_STORE_AUTO_CREATION_VALIDATION message and the DELETE_STORE message in child controllers.
+      // Since the push jobs to the system stores are triggered in parent controller, it's possible that the pushes to
+      // system stores already completed, but the PUSH_STATUS_SYSTEM_STORE_AUTO_CREATION_VALIDATION messages haven't
+      // been processed yet in child controllers, so checking the push jobs completion of system stores is not enough.
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, true, () -> {
+        for (int i = 0; i < childDatacenters.size(); i++) {
+          ControllerClient childClient =
+              new ControllerClient(clusterName, childDatacenters.get(i).getControllerConnectString());
+          StoreResponse storeResponse = childClient.getStore(storeName);
+          Assert.assertFalse(storeResponse.isError(), "Failed to get store from child datacenter " + i);
+          StoreInfo storeInfo = storeResponse.getStore();
+          Assert.assertEquals(
+              storeInfo.getReadQuotaInCU(),
+              newReadQuota,
+              "Read quota should be updated to " + newReadQuota + " in child datacenter " + i);
+          childClient.close();
+        }
+      });
+
+      String metaSystemStoreTopic =
+          Version.composeKafkaTopic(VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName), 1);
+      String pushStatusSystemStoreTopic =
+          Version.composeKafkaTopic(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(storeName), 1);
+
+      // 2. Delete the store in all child regions by sending requests directly to child controllers
+      for (int i = 0; i < childDatacenters.size(); i++) {
+        try (ControllerClient childClient =
+            new ControllerClient(clusterName, childDatacenters.get(i).getControllerConnectString())) {
+          // Ensure the pushes to system stores are completed before deleting the parent store
+          TestUtils.waitForNonDeterministicPushCompletion(metaSystemStoreTopic, childClient, 30, TimeUnit.SECONDS);
+          TestUtils
+              .waitForNonDeterministicPushCompletion(pushStatusSystemStoreTopic, childClient, 30, TimeUnit.SECONDS);
+
+          ControllerResponse deleteResponse = childClient.disableAndDeleteStore(storeName);
+          Assert.assertFalse(
+              deleteResponse.isError(),
+              "Failed to delete store in child datacenter " + i + ": " + deleteResponse.getError());
+        }
+      }
+
+      // Verify store is deleted in all child controllers
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, true, () -> {
+        for (int i = 0; i < childDatacenters.size(); i++) {
+          ControllerClient childClient =
+              new ControllerClient(clusterName, childDatacenters.get(i).getControllerConnectString());
+          StoreResponse storeResponse = childClient.getStore(storeName);
+          Assert.assertTrue(
+              storeResponse.isError(),
+              "Store should not exist in child datacenter " + i + " after deletion");
+          Assert.assertTrue(
+              storeResponse.getError().contains("does not exist"),
+              "Error message should indicate store doesn't exist in child datacenter " + i);
+          childClient.close();
+        }
+      });
+
+      // Record the last successful execution ID for each child datacenter before the update
+      Map<Integer, Long> lastSuccessfulExecutionIds = new HashMap<>();
+      for (int i = 0; i < childDatacenters.size(); i++) {
+        VeniceMultiClusterWrapper childDC = childDatacenters.get(i);
+        Admin childAdmin = childDC.getControllers().values().iterator().next().getVeniceAdmin();
+        AdminConsumerService adminConsumerService = childAdmin.getAdminConsumerService(clusterName);
+        Long executionId = adminConsumerService.getLastSucceededExecutionId(storeName);
+        lastSuccessfulExecutionIds.put(i, executionId);
+        LOGGER.info(
+            "Child datacenter " + i + " has execution ID " + executionId + " for store " + storeName
+                + " before update");
+      }
+
+      // 3. Send an updateStore command through parent controller to disable write on the store
+      UpdateStoreQueryParams updateStoreParams = new UpdateStoreQueryParams().setEnableWrites(false);
+      ControllerResponse updateResponse =
+          parentControllerClient.retryableRequest(5, c -> c.updateStore(storeName, updateStoreParams));
+
+      // The update should succeed in the parent controller since the store still exists there
+      Assert.assertFalse(
+          updateResponse.isError(),
+          "Update in parent should succeed, but got error: " + updateResponse.getError());
+
+      // Check if the store in parent was updated successfully
+      StoreResponse parentStoreResponse = parentControllerClient.getStore(storeName);
+      Assert.assertFalse(parentStoreResponse.isError(), "Store should exist in parent controller");
+      StoreInfo storeInfo = parentStoreResponse.getStore();
+      Assert.assertFalse(storeInfo.isEnableStoreWrites(), "Store write should be disabled in parent");
+
+      // Verify that initially the admin consumption might fail in child controllers due to store not existing,
+      // but after MAX_RETRIES_FOR_NONEXISTENT_STORE retries, the error should be tolerated
+      for (int i = 0; i < childDatacenters.size(); i++) {
+        int datacenterId = i;
+        VeniceMultiClusterWrapper childDC = childDatacenters.get(datacenterId);
+        Admin childAdmin = childDC.getControllers().values().iterator().next().getVeniceAdmin();
+        AdminConsumerService adminConsumerService = childAdmin.getAdminConsumerService(clusterName);
+
+        // After MAX_RETRIES_FOR_NONEXISTENT_STORE retries, there should be no exception anymore
+        // as the message should be skipped
+        TestUtils.waitForNonDeterministicAssertion(90, TimeUnit.SECONDS, false, true, () -> {
+          Exception lastException = adminConsumerService.getLastExceptionForStore(storeName);
+          Assert.assertNull(
+              lastException,
+              "Exception should be null after max retries in child datacenter " + datacenterId);
+
+          // Verify execution ID hasn't changed
+          Long currentExecutionId = adminConsumerService.getLastSucceededExecutionId(storeName);
+          Long previousExecutionId = lastSuccessfulExecutionIds.get(datacenterId);
+
+          LOGGER.info(
+              "Child datacenter " + datacenterId + " has execution ID " + currentExecutionId + " for store " + storeName
+                  + " after update (previous: " + previousExecutionId + ")");
+
+          // The execution ID should be the same as before or both null since we're skipping the message
+          if (previousExecutionId != null) {
+            Assert.assertEquals(
+                currentExecutionId,
+                previousExecutionId,
+                "Execution ID should not change after skipping the admin message in child datacenter " + datacenterId);
+          }
+        });
+      }
+    }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testSelfManagedTTLRepushEnabledStoreProperty() {
+    String clusterName = CLUSTER_NAMES[0];
+    String storeName = Utils.getUniqueString("testTTLRepushEnabled");
+    String parentControllerURLs = multiRegionMultiClusterWrapper.getControllerConnectString();
+    try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerURLs)) {
+      NewStoreResponse newStoreResponse =
+          parentControllerClient.retryableRequest(5, c -> c.createNewStore(storeName, "", "\"string\"", "\"string\""));
+      Assert.assertFalse(
+          newStoreResponse.isError(),
+          "The NewStoreResponse returned an error: " + newStoreResponse.getError());
+      // ttlRepushEnabled flag should be false by default
+      getAndAssertTTLRepushEnabledFlag(parentControllerClient, storeName, false);
+      for (VeniceMultiClusterWrapper veniceMultiClusterWrapper: multiRegionMultiClusterWrapper.getChildRegions()) {
+        try (ControllerClient childControllerClient =
+            new ControllerClient(clusterName, veniceMultiClusterWrapper.getControllerConnectString())) {
+          getAndAssertTTLRepushEnabledFlag(childControllerClient, storeName, false);
+        }
+      }
+      // A TTL re-push should enable the flag
+      String ttlRePushId = Version.generateTTLRePushId("test-ttl-re-push");
+      VersionCreationResponse ttlRePushVersionCreation =
+          mimicVPJPushVersionCreation(parentControllerClient, storeName, ttlRePushId);
+      getAndAssertTTLRepushEnabledFlag(parentControllerClient, storeName, true);
+      for (VeniceMultiClusterWrapper veniceMultiClusterWrapper: multiRegionMultiClusterWrapper.getChildRegions()) {
+        try (ControllerClient childControllerClient =
+            new ControllerClient(clusterName, veniceMultiClusterWrapper.getControllerConnectString())) {
+          TestUtils.waitForNonDeterministicAssertion(
+              10,
+              TimeUnit.SECONDS,
+              () -> getAndAssertTTLRepushEnabledFlag(childControllerClient, storeName, true));
+        }
+      }
+      parentControllerClient.killOfflinePushJob(ttlRePushVersionCreation.getKafkaTopic());
+      // The override batch push should disable the flag
+      String overrideRegularPushId = Version.generateRegularPushWithTTLRePushId("regular-test-push-on-ttl-re-push");
+      mimicVPJPushVersionCreation(parentControllerClient, storeName, overrideRegularPushId);
+      getAndAssertTTLRepushEnabledFlag(parentControllerClient, storeName, false);
+      for (VeniceMultiClusterWrapper veniceMultiClusterWrapper: multiRegionMultiClusterWrapper.getChildRegions()) {
+        try (ControllerClient childControllerClient =
+            new ControllerClient(clusterName, veniceMultiClusterWrapper.getControllerConnectString())) {
+          TestUtils.waitForNonDeterministicAssertion(
+              10,
+              TimeUnit.SECONDS,
+              () -> getAndAssertTTLRepushEnabledFlag(childControllerClient, storeName, false));
+        }
+      }
+    }
+  }
+
+  private void getAndAssertTTLRepushEnabledFlag(
+      ControllerClient controllerClient,
+      String storeName,
+      boolean expectedTTLRepushEnabled) {
+    StoreResponse storeResponse = controllerClient.getStore(storeName);
+    Assert.assertFalse(storeResponse.isError());
+    Assert.assertEquals(storeResponse.getStore().isTTLRepushEnabled(), expectedTTLRepushEnabled);
+  }
+
+  private VersionCreationResponse mimicVPJPushVersionCreation(
+      ControllerClient controllerClient,
+      String storeName,
+      String pushId) {
+    return controllerClient.retryableRequest(
+        5,
+        c -> c.requestTopicForWrites(
+            storeName,
+            1000,
+            Version.PushType.BATCH,
+            pushId,
+            true,
+            true,
+            false,
+            Optional.of(DefaultVenicePartitioner.class.getName()),
+            Optional.empty(),
+            Optional.ofNullable(multiRegionMultiClusterWrapper.getChildRegions().get(0).getRegionName()),
+            false,
+            -1,
+            false,
+            null,
+            0,
+            false));
   }
 
   private void emptyPushToStore(
@@ -693,7 +954,7 @@ public class TestParentControllerWithMultiDataCenter {
         expectedVersion,
         "requesting a topic for a push should provide version number " + expectedVersion);
     for (ControllerClient childControllerClient: childControllerClients) {
-      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, false, true, () -> {
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, true, () -> {
         StoreResponse storeResponse = childControllerClient.getStore(storeName);
         Assert.assertFalse(storeResponse.isError());
         StoreInfo storeInfo = storeResponse.getStore();

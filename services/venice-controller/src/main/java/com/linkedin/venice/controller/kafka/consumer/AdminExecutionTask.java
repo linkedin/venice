@@ -34,6 +34,7 @@ import com.linkedin.venice.controller.kafka.protocol.admin.SetStoreCurrentVersio
 import com.linkedin.venice.controller.kafka.protocol.admin.SetStoreOwner;
 import com.linkedin.venice.controller.kafka.protocol.admin.SetStorePartitionCount;
 import com.linkedin.venice.controller.kafka.protocol.admin.StoreCreation;
+import com.linkedin.venice.controller.kafka.protocol.admin.StoreLifecycleHooksRecord;
 import com.linkedin.venice.controller.kafka.protocol.admin.SupersetSchemaCreation;
 import com.linkedin.venice.controller.kafka.protocol.admin.UpdateStoragePersona;
 import com.linkedin.venice.controller.kafka.protocol.admin.UpdateStore;
@@ -48,12 +49,18 @@ import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.DataReplicationPolicy;
+import com.linkedin.venice.meta.LifecycleHooksRecord;
+import com.linkedin.venice.meta.LifecycleHooksRecordImpl;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.utils.CollectionUtils;
+import com.linkedin.venice.utils.ConfigCommonUtils.ActivationState;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Queue;
@@ -124,8 +131,7 @@ public class AdminExecutionTask implements Callable<Void> {
           stats.recordAdminMessageStartProcessingLatency(
               Math.max(
                   0,
-                  adminOperationWrapper.getStartProcessingTimestamp()
-                      - adminOperationWrapper.getLocalBrokerTimestamp()));
+                  adminOperationWrapper.getStartProcessingTimestamp() - adminOperationWrapper.getDelegateTimestamp()));
         }
         processMessage(adminOperationWrapper.getAdminOperation());
         long completionTimestamp = System.currentTimeMillis();
@@ -144,7 +150,7 @@ public class AdminExecutionTask implements Callable<Void> {
       // The queue with the problematic operation will be delegated and retried by the worker thread in the next cycle.
       AdminOperationWrapper adminOperationWrapper = internalTopic.peek();
       String logMessage =
-          "when processing admin message for store " + storeName + " with offset " + adminOperationWrapper.getOffset()
+          "when processing admin message for store " + storeName + " with offset " + adminOperationWrapper.getPosition()
               + " and execution id " + adminOperationWrapper.getAdminOperation().executionId;
       if (e instanceof VeniceRetriableException) {
         // These retriable exceptions are expected, therefore logging at the info level should be sufficient.
@@ -475,6 +481,7 @@ public class AdminExecutionTask implements Callable<Void> {
           .setHybridTimeLagThreshold(message.hybridStoreConfig.producerTimestampLagThresholdToGoOnlineInSeconds)
           .setHybridDataReplicationPolicy(
               DataReplicationPolicy.valueOf(message.hybridStoreConfig.dataReplicationPolicy))
+          .setRealTimeTopicName(message.hybridStoreConfig.realTimeTopicName.toString())
           .setHybridBufferReplayPolicy(BufferReplayPolicy.valueOf(message.hybridStoreConfig.bufferReplayPolicy));
     }
     params.setAccessControlled(message.accessControlled)
@@ -497,11 +504,32 @@ public class AdminExecutionTask implements Callable<Void> {
         .setMigrationDuplicateStore(message.migrationDuplicateStore)
         .setLatestSupersetSchemaId(message.latestSuperSetValueSchemaId)
         .setBlobTransferEnabled(message.blobTransferEnabled)
+        .setBlobTransferInServerEnabled(
+            message.blobTransferInServerEnabled == null
+                ? ActivationState.NOT_SPECIFIED
+                : ActivationState.valueOf(message.blobTransferInServerEnabled.toString()))
         .setUnusedSchemaDeletionEnabled(message.unusedSchemaDeletionEnabled)
         .setNearlineProducerCompressionEnabled(message.nearlineProducerCompressionEnabled)
         .setNearlineProducerCountPerWriter(message.nearlineProducerCountPerWriter)
         .setTargetRegionSwapWaitTime(message.targetSwapRegionWaitTime)
-        .setIsDavinciHeartbeatReported(message.isDaVinciHeartBeatReported);
+        .setIsDavinciHeartbeatReported(message.isDaVinciHeartBeatReported)
+        .setGlobalRtDivEnabled(message.globalRtDivEnabled)
+        .setEnumSchemaEvolutionAllowed(message.enumSchemaEvolutionAllowed)
+        .setKeyUrnCompressionEnabled(message.keyUrnCompressionEnabled)
+        .setKeyUrnFields(message.keyUrnFields.stream().map(Object::toString).collect(Collectors.toList()));
+
+    if (message.storeLifecycleHooks.isEmpty()) {
+      params.setStoreLifecycleHooks(Collections.emptyList());
+    } else {
+      List<LifecycleHooksRecord> convertedLifecycleHooks = new ArrayList<>();
+      for (StoreLifecycleHooksRecord record: message.storeLifecycleHooks) {
+        convertedLifecycleHooks.add(
+            new LifecycleHooksRecordImpl(
+                record.getStoreLifecycleHooksClassName().toString(),
+                CollectionUtils.getStringMapFromCharSequenceMap(record.getStoreLifecycleHooksParams())));
+      }
+      params.setStoreLifecycleHooks(convertedLifecycleHooks);
+    }
 
     if (message.targetSwapRegion != null) {
       params.setTargetRegionSwap(message.getTargetSwapRegion().toString());
@@ -521,6 +549,10 @@ public class AdminExecutionTask implements Callable<Void> {
 
     if (message.largestUsedVersionNumber != null) {
       params.setLargestUsedVersionNumber(message.largestUsedVersionNumber);
+    }
+
+    if (message.largestUsedRTVersionNumber != null) {
+      params.setLargestUsedRTVersionNumber(message.largestUsedRTVersionNumber);
     }
 
     params.setNativeReplicationEnabled(message.nativeReplicationEnabled)
@@ -546,6 +578,8 @@ public class AdminExecutionTask implements Callable<Void> {
     }
 
     params.setStorageNodeReadQuotaEnabled(message.storageNodeReadQuotaEnabled);
+    params.setCompactionEnabled(message.compactionEnabled);
+    params.setCompactionThresholdMilliseconds(message.compactionThresholdMilliseconds);
     params.setMinCompactionLagSeconds(message.minCompactionLagSeconds);
     params.setMaxCompactionLagSeconds(message.maxCompactionLagSeconds);
     params.setMaxRecordSizeBytes(message.maxRecordSizeBytes);
@@ -635,6 +669,7 @@ public class AdminExecutionTask implements Callable<Void> {
     String pushJobId = message.pushJobId.toString();
     int repushSourceVersion = message.repushSourceVersion;
     int versionNumber = message.versionNum;
+    int currentRTVersionNumber = message.currentRTVersionNumber;
     int numberOfPartitions = message.numberOfPartitions;
     Version.PushType pushType = Version.PushType.valueOf(message.pushType);
     String remoteKafkaBootstrapServers =
@@ -647,7 +682,6 @@ public class AdminExecutionTask implements Callable<Void> {
         storeName,
         clusterName,
         versionNumber);
-
     if (isParentController) {
       if (checkPreConditionForReplicateAddVersion(clusterName, storeName)) {
         // Parent controller mirrors new version to src or dest cluster if the store is migrating
@@ -689,7 +723,8 @@ public class AdminExecutionTask implements Callable<Void> {
             replicationMetadataVersionId,
             message.versionSwapDeferred,
             targetedRegions,
-            repushSourceVersion);
+            repushSourceVersion,
+            currentRTVersionNumber);
       }
     }
   }

@@ -10,7 +10,10 @@ import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.stats.AggVersionedStorageEngineStats;
 import com.linkedin.davinci.stats.RocksDBMemoryStats;
 import com.linkedin.davinci.store.AbstractStorageEngine;
+import com.linkedin.davinci.store.DelegatingStorageEngine;
+import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.davinci.store.StorageEngineFactory;
+import com.linkedin.davinci.store.StoragePartitionConfig;
 import com.linkedin.davinci.store.blackhole.BlackHoleStorageEngineFactory;
 import com.linkedin.davinci.store.memory.InMemoryStorageEngineFactory;
 import com.linkedin.davinci.store.rocksdb.RocksDBStorageEngineFactory;
@@ -29,7 +32,9 @@ import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.LatencyUtils;
+import com.linkedin.venice.utils.ReferenceCounted;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -69,6 +74,31 @@ public class StorageService extends AbstractVeniceService {
   private final InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer;
   private final InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer;
   private final ReadOnlyStoreRepository storeRepository;
+
+  /**
+   * This map tracks the storage engines for which some other component needs to latch onto their lifecycle.
+   *
+   * At the time of writing this JavaDoc, the only component which needs such lifecycle latch is the
+   * {@link com.linkedin.davinci.kafka.consumer.StoreIngestionTask}. The latching is achieved via
+   * {@link ReferenceCounted}, which the dependent component(s) will release when it no longer needs it.
+   *
+   * Note that it is possible for storage engines to exist within the {@link #storageEngineRepository}
+   * without existing within this map, if no component has latched on to its lifecycle.
+   *
+   * Here is an example of the steps involved in the components discussed above:
+   *
+   * 1. A store-version gets assigned to a server for the first time.
+   * 2. The storage engine gets created for the first time via {@link #openStore(VeniceStoreVersionConfig, Supplier)}.
+   * 3. The {@link com.linkedin.davinci.kafka.consumer.StoreIngestionTask} then gets created for the first time, and it
+   *    gets its own handle to the storage engine via {@link #getRefCountedStorageEngine(String)}. This is the step
+   *    which establishes the latch from the SIT to the SE, via ref-counting.
+   *
+   * The above sequence is important, because in some cases, there can be a closing and re-opening of a store-version on
+   * a server, and it can be the case that the SE gets closed, and a new one gets created, while the SIT does not have
+   * time to get closed yet, and it instead gets reused. In that case, the value from this map can be retrieved such
+   * that the storage engine reference can be updated.
+   */
+  private final Map<String, ReferenceCounted<DelegatingStorageEngine>> storageEngines = new VeniceConcurrentHashMap<>();
 
   /**
    * Allocates a new {@code StorageService} object.
@@ -195,6 +225,10 @@ public class StorageService extends AbstractVeniceService {
         true);
   }
 
+  public static boolean isMetadataPartition(int partitionId) {
+    return partitionId == AbstractStorageEngine.METADATA_PARTITION_ID;
+  }
+
   /**
    * Initialize all the internal storage engine factories.
    * Please add it here if you want to add more.
@@ -253,7 +287,7 @@ public class StorageService extends AbstractVeniceService {
         // Load the metadata & data restore settings from config loader.
         storeConfig.setRestoreDataPartitions(restoreDataPartitions);
         storeConfig.setRestoreMetadataPartition(restoreMetadataPartitions);
-        AbstractStorageEngine storageEngine;
+        StorageEngine storageEngine;
 
         if (checkWhetherStorageEngineShouldBeKeptOrNot.apply(storeName)) {
           try {
@@ -287,24 +321,32 @@ public class StorageService extends AbstractVeniceService {
     LOGGER.info("Done restoring all the stores persisted previously");
   }
 
-  public synchronized AbstractStorageEngine openStoreForNewPartition(
+  public synchronized StorageEngine openStoreForNewPartition(
       VeniceStoreVersionConfig storeConfig,
       int partitionId,
       Supplier<StoreVersionState> initialStoreVersionStateSupplier) {
     LOGGER.info("Opening store for {} partition {}", storeConfig.getStoreVersionName(), partitionId);
-    AbstractStorageEngine engine = openStore(storeConfig, initialStoreVersionStateSupplier);
-    synchronized (engine) {
-      if (!engine.containsPartition(partitionId)) {
-        engine.addStoragePartition(partitionId);
-      }
-    }
+    StorageEngine engine = openStore(storeConfig, initialStoreVersionStateSupplier);
+    engine.addStoragePartitionIfAbsent(partitionId);
+    LOGGER.info("Opened store for {} partition {}", storeConfig.getStoreVersionName(), partitionId);
+    return engine;
+  }
+
+  public synchronized StorageEngine openStoreForNewPartition(
+      VeniceStoreVersionConfig storeConfig,
+      int partitionId,
+      Supplier<StoreVersionState> initialStoreVersionStateSupplier,
+      StoragePartitionConfig storagePartitionConfig) {
+    LOGGER.info("Opening store for {} partition {}", storeConfig.getStoreVersionName(), partitionId);
+    StorageEngine engine = openStore(storeConfig, initialStoreVersionStateSupplier);
+    engine.addStoragePartition(storagePartitionConfig);
     LOGGER.info("Opened store for {} partition {}", storeConfig.getStoreVersionName(), partitionId);
     return engine;
   }
 
   public BiConsumer<String, StoreVersionState> getStoreVersionStateSyncer() {
     return (storeVersionName, storeVersionState) -> {
-      AbstractStorageEngine storageEngine = storageEngineRepository.getLocalStorageEngine(storeVersionName);
+      StorageEngine storageEngine = storageEngineRepository.getLocalStorageEngine(storeVersionName);
       if (storageEngine != null) {
         storageEngine.updateStoreVersionStateCache(storeVersionState);
       }
@@ -342,11 +384,11 @@ public class StorageService extends AbstractVeniceService {
    * @param initialStoreVersionStateSupplier invoked to initialize the SVS when a brand-new storage engine is created
    * @return StorageEngine that was created for the given store definition.
    */
-  public synchronized AbstractStorageEngine openStore(
+  public synchronized StorageEngine openStore(
       VeniceStoreVersionConfig storeConfig,
       Supplier<StoreVersionState> initialStoreVersionStateSupplier) {
     String topicName = storeConfig.getStoreVersionName();
-    AbstractStorageEngine engine = storageEngineRepository.getLocalStorageEngine(topicName);
+    StorageEngine engine = storageEngineRepository.getLocalStorageEngine(topicName);
     if (engine != null) {
       return engine;
     }
@@ -361,18 +403,33 @@ public class StorageService extends AbstractVeniceService {
 
     LOGGER.info("Creating/Opening Storage Engine {} with type: {}", topicName, storeConfig.getStorePersistenceType());
     StorageEngineFactory factory = getInternalStorageEngineFactory(storeConfig);
-    engine =
+    StorageEngine newEngine =
         factory.getStorageEngine(storeConfig, isReplicationMetadataEnabled(topicName, factory.getPersistenceType()));
-    engine.updateStoreVersionStateCache(initialStoreVersionStateSupplier.get());
-    storageEngineRepository.addLocalStorageEngine(engine);
+    newEngine.updateStoreVersionStateCache(initialStoreVersionStateSupplier.get());
+
+    // Let's check if a previous incarnation of the storage engine existed earlier
+    ReferenceCounted<DelegatingStorageEngine> refCountedStorageEngine =
+        this.storageEngines.compute(topicName, (k, v) -> {
+          if (v != null) {
+            v.get().setDelegate(newEngine);
+            LOGGER.info(
+                "Injected newly created storage engine into existing ref-counted delegating storage engine for {}.",
+                k);
+          }
+          return v;
+        });
+    DelegatingStorageEngine delegatingStorageEngine =
+        refCountedStorageEngine == null ? new DelegatingStorageEngine(newEngine) : refCountedStorageEngine.get();
+
+    storageEngineRepository.addLocalStorageEngine(delegatingStorageEngine);
     // Setup storage engine stats
-    aggVersionedStorageEngineStats.setStorageEngine(topicName, engine);
+    aggVersionedStorageEngineStats.setStorageEngine(topicName, delegatingStorageEngine);
 
     LOGGER.info(
         "time spent on creating new storage Engine for store {}: {} ms",
         topicName,
         LatencyUtils.getElapsedTimeFromNSToMS(startTimeInBuildingNewEngine));
-    return engine;
+    return delegatingStorageEngine;
   }
 
   public synchronized void checkWhetherStoragePartitionsShouldBeKeptOrNot(SafeHelixManager manager) {
@@ -383,7 +440,7 @@ public class StorageService extends AbstractVeniceService {
     if (manager == null) {
       return;
     }
-    for (AbstractStorageEngine storageEngine: getStorageEngineRepository().getAllLocalStorageEngines()) {
+    for (StorageEngine storageEngine: getStorageEngineRepository().getAllLocalStorageEngines()) {
       String storeName = storageEngine.getStoreVersionName();
       Set<Integer> storageEnginePartitionIds = new HashSet<>(storageEngine.getPartitionIds());
       String instanceHostName = manager.getInstanceName();
@@ -401,7 +458,7 @@ public class StorageService extends AbstractVeniceService {
       if (idealState != null) {
         Map<String, List<String>> listFields = idealState.getRecord().getListFields();
         for (Integer partitionId: storageEnginePartitionIds) {
-          if (storageEngine.isMetadataPartition(partitionId)) {
+          if (isMetadataPartition(partitionId)) {
             continue;
           }
           String partitionDbName = storeName + "_" + partitionId;
@@ -448,7 +505,7 @@ public class StorageService extends AbstractVeniceService {
       int partition,
       boolean removeEmptyStorageEngine) {
     String kafkaTopic = storeConfig.getStoreVersionName();
-    AbstractStorageEngine storageEngine = storageEngineRepository.getLocalStorageEngine(kafkaTopic);
+    StorageEngine storageEngine = storageEngineRepository.getLocalStorageEngine(kafkaTopic);
     if (storageEngine == null) {
       LOGGER.warn("Storage engine {} does not exist, directly deleting DB files.", kafkaTopic);
       removeStoragePartition(kafkaTopic, partition);
@@ -471,7 +528,7 @@ public class StorageService extends AbstractVeniceService {
 
   public synchronized void closeStorePartition(VeniceStoreVersionConfig storeConfig, int partition) {
     String kafkaTopic = storeConfig.getStoreVersionName();
-    AbstractStorageEngine storageEngine = storageEngineRepository.getLocalStorageEngine(kafkaTopic);
+    StorageEngine storageEngine = storageEngineRepository.getLocalStorageEngine(kafkaTopic);
     if (storageEngine == null) {
       LOGGER.warn("Storage engine {} does not exist, ignoring close partition request.", kafkaTopic);
       return;
@@ -480,7 +537,8 @@ public class StorageService extends AbstractVeniceService {
   }
 
   public synchronized void removeStorageEngine(String kafkaTopic) {
-    AbstractStorageEngine<?> storageEngine = getStorageEngineRepository().removeLocalStorageEngine(kafkaTopic);
+    StorageEngine<? extends com.linkedin.davinci.store.AbstractStoragePartition> storageEngine =
+        getStorageEngineRepository().removeLocalStorageEngine(kafkaTopic);
     if (storageEngine == null) {
       LOGGER.warn("Storage engine {} does not exist, ignoring remove request.", kafkaTopic);
       return;
@@ -498,14 +556,15 @@ public class StorageService extends AbstractVeniceService {
    * This function is used to forcely clean up all the databases belonging to {@param kafkaTopic}.
    * This function will only be used when the {@link #removeStorageEngine(String)} function can't
    * handle some edge case, such as some partitions are lingering, which are not visible to the corresponding
-   * {@link AbstractStorageEngine}
+   * {@link StorageEngine}
    */
   public synchronized void forceStorageEngineCleanup(String kafkaTopic) {
     persistenceTypeToStorageEngineFactoryMap.values().forEach(factory -> factory.removeStorageEngine(kafkaTopic));
   }
 
   public synchronized void closeStorageEngine(String kafkaTopic) {
-    AbstractStorageEngine<?> storageEngine = getStorageEngineRepository().removeLocalStorageEngine(kafkaTopic);
+    StorageEngine<? extends com.linkedin.davinci.store.AbstractStoragePartition> storageEngine =
+        getStorageEngineRepository().removeLocalStorageEngine(kafkaTopic);
     if (storageEngine == null) {
       LOGGER.warn("Storage engine {} does not exist, ignoring close request.", kafkaTopic);
       return;
@@ -537,7 +596,7 @@ public class StorageService extends AbstractVeniceService {
   }
 
   public List<Integer> getUserPartitions(String kafkaTopicName) {
-    AbstractStorageEngine storageEngine = storageEngineRepository.getLocalStorageEngine(kafkaTopicName);
+    StorageEngine storageEngine = storageEngineRepository.getLocalStorageEngine(kafkaTopicName);
     if (storageEngine == null) {
       LOGGER.warn("Local storage engine does not exist for topic: {}", kafkaTopicName);
       return Collections.emptyList();
@@ -549,7 +608,7 @@ public class StorageService extends AbstractVeniceService {
     LOGGER.info(
         "Storage service has {} storage engines before cleanup.",
         storageEngineRepository.getAllLocalStorageEngines().size());
-    for (AbstractStorageEngine storageEngine: storageEngineRepository.getAllLocalStorageEngines()) {
+    for (StorageEngine storageEngine: storageEngineRepository.getAllLocalStorageEngines()) {
       closeStorageEngine(storageEngine.getStoreVersionName());
     }
     LOGGER.info(
@@ -561,21 +620,40 @@ public class StorageService extends AbstractVeniceService {
     return storageEngineRepository;
   }
 
-  public AbstractStorageEngine getStorageEngine(String kafkaTopic) {
+  public StorageEngine getStorageEngine(String kafkaTopic) {
     return getStorageEngineRepository().getLocalStorageEngine(kafkaTopic);
+  }
+
+  /**
+   * This function is for code paths which need to tie themselves to the lifecycle of the storage engine. When the
+   * caller's own lifecycle ends, it should call {@link ReferenceCounted#release()} on the instance returned by this
+   * function, to indicate that it no longer depends on it.
+   */
+  public ReferenceCounted<? extends StorageEngine> getRefCountedStorageEngine(String storeVersionName) {
+    return this.storageEngines.compute(storeVersionName, (k, v) -> {
+      if (v != null) {
+        v.retain();
+        return v;
+      }
+      DelegatingStorageEngine storageEngine = getStorageEngineRepository().getDelegatingStorageEngine(k);
+      if (storageEngine == null) {
+        throw new IllegalStateException("Did not find a storage engine for: " + k);
+      }
+      return new ReferenceCounted<>(storageEngine, se -> this.storageEngines.remove(k));
+    });
   }
 
   public Map<String, Set<Integer>> getStoreAndUserPartitionsMapping() {
     Map<String, Set<Integer>> storePartitionMapping = new HashMap<>();
-    for (AbstractStorageEngine engine: storageEngineRepository.getAllLocalStorageEngines()) {
+    for (StorageEngine engine: storageEngineRepository.getAllLocalStorageEngines()) {
       String storeName = engine.getStoreVersionName();
       Set<Integer> partitionIdSet = new HashSet<>();
       /**
-       * The reason to use {@link AbstractStorageEngine#getPersistedPartitionIds()} here is that
+       * The reason to use {@link StorageEngine#getPersistedPartitionIds()} here is that
        * Isolated process doesn't preload all the on-disk databases at startup time.
        */
       ((Set<Integer>) engine.getPersistedPartitionIds()).stream().forEach(partitionId -> {
-        if (!AbstractStorageEngine.isMetadataPartition(partitionId)) {
+        if (!isMetadataPartition(partitionId)) {
           partitionIdSet.add(partitionId);
         }
         storePartitionMapping.put(storeName, partitionIdSet);

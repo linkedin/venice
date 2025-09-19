@@ -6,6 +6,7 @@ import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -46,6 +47,7 @@ import io.netty.handler.codec.http.DefaultHttpHeaders;
 import io.netty.handler.codec.http.EmptyHttpHeaders;
 import io.netty.handler.codec.http.HttpHeaders;
 import io.netty.handler.codec.http.HttpMethod;
+import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpVersion;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -83,15 +85,19 @@ public class TestVenicePathParser {
     StaleVersionStats stats = mock(StaleVersionStats.class);
     HelixReadOnlyStoreConfigRepository storeConfigRepo = mock(HelixReadOnlyStoreConfigRepository.class);
     CompressorFactory compressorFactory = mock(CompressorFactory.class);
-    return new VeniceVersionFinder(
-        mockMetadataRepository,
-        TestVeniceVersionFinder.getCVBasedMockedRoutingRepo(),
-        stats,
-        storeConfigRepo,
-        clusterToD2Map,
-        CLUSTER,
-        compressorFactory,
-        null);
+    VeniceVersionFinder veniceVersionFinder = spy(
+        new VeniceVersionFinder(
+            mockMetadataRepository,
+            TestVeniceVersionFinder.getCVBasedMockedRoutingRepo(),
+            stats,
+            storeConfigRepo,
+            clusterToD2Map,
+            CLUSTER,
+            compressorFactory,
+            null));
+    doReturn(true).when(veniceVersionFinder).isDecompressorReady(any(), anyString());
+    doReturn(true).when(veniceVersionFinder).isPartitionResourcesReady(anyString());
+    return veniceVersionFinder;
   }
 
   RouterStats<AggRouterHttpRequestStats> getMockedStats() {
@@ -306,7 +312,8 @@ public class TestVenicePathParser {
       fail("A RouterException should be thrown here");
     } catch (RouterException e) {
       // expected and validate bad request metric
-      verify(multiGetStats, times(1)).recordBadRequestKeyCount(storeName, maxKeyCount + 1);
+      verify(multiGetStats, times(1))
+          .recordBadRequestKeyCount(storeName, HttpResponseStatus.REQUEST_ENTITY_TOO_LARGE, maxKeyCount + 1);
     } catch (Throwable t) {
       t.printStackTrace();
       fail("Only RouterException is expected, but got: " + t.getClass());

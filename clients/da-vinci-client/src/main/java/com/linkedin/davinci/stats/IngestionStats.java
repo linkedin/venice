@@ -4,13 +4,13 @@ import static com.linkedin.venice.stats.StatsErrorCode.INACTIVE_STORE_INGESTION_
 
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.kafka.consumer.PartitionConsumptionState;
+import com.linkedin.davinci.kafka.consumer.StorageUtilizationManager;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionTask;
 import com.linkedin.venice.stats.LongAdderRateGauge;
 import com.linkedin.venice.utils.RegionUtils;
 import io.tehuti.metrics.MetricConfig;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
-import io.tehuti.metrics.stats.Avg;
 import io.tehuti.metrics.stats.Count;
 import io.tehuti.metrics.stats.Rate;
 import it.unimi.dsi.fastutil.ints.Int2ObjectArrayMap;
@@ -26,19 +26,10 @@ public class IngestionStats {
   protected static final String INGESTION_TASK_ERROR_GAUGE = "ingestion_task_errored_gauge";
   protected static final String INGESTION_TASK_PUSH_TIMEOUT_GAUGE = "ingestion_task_push_timeout_gauge";
   protected static final String WRITE_COMPUTE_OPERATION_FAILURE = "write_compute_operation_failure";
-  protected static final String FOLLOWER_OFFSET_LAG = "follower_offset_lag";
-  protected static final String LEADER_OFFSET_LAG = "leader_offset_lag";
-  protected static final String HYBRID_LEADER_OFFSET_LAG = "hybrid_leader_offset_lag";
-  protected static final String HYBRID_FOLLOWER_OFFSET_LAG = "hybrid_follower_offset_lag";
-  protected static final String BATCH_REPLICATION_LAG = "batch_replication_lag";
-  protected static final String BATCH_LEADER_OFFSET_LAG = "batch_leader_offset_lag";
-  protected static final String BATCH_FOLLOWER_OFFSET_LAG = "batch_follower_offset_lag";
-
   protected static final String RECORDS_CONSUMED_METRIC_NAME = "records_consumed";
   protected static final String BYTES_CONSUMED_METRIC_NAME = "bytes_consumed";
   protected static final String LEADER_RECORDS_CONSUMED_METRIC_NAME = "leader_records_consumed";
   protected static final String LEADER_BYTES_CONSUMED_METRIC_NAME = "leader_bytes_consumed";
-  protected static final String LEADER_STALLED_HYBRID_INGESTION_METRIC_NAME = "leader_stalled_hybrid_ingestion";
   protected static final String FOLLOWER_RECORDS_CONSUMED_METRIC_NAME = "follower_records_consumed";
   protected static final String FOLLOWER_BYTES_CONSUMED_METRIC_NAME = "follower_bytes_consumed";
   protected static final String LEADER_RECORDS_PRODUCED_METRIC_NAME = "leader_records_produced";
@@ -48,18 +39,14 @@ public class IngestionStats {
       "consumed_record_end_to_end_processing_latency";
   protected static final String UPDATE_IGNORED_DCR = "update_ignored_dcr";
   protected static final String TOTAL_DCR = "total_dcr";
+  protected static final String TOTAL_DUPLICATE_KEY_UPDATE_COUNT = "total_duplicate_key_update_count";
+
   protected static final String TIMESTAMP_REGRESSION_DCR_ERROR = "timestamp_regression_dcr_error";
   protected static final String OFFSET_REGRESSION_DCR_ERROR = "offset_regression_dcr_error";
   protected static final String TOMBSTONE_CREATION_DCR = "tombstone_creation_dcr";
-  protected static final String READY_TO_SERVE_WITH_RT_LAG_METRIC_NAME = "ready_to_serve_with_rt_lag";
-  public static final String VERSION_TOPIC_END_OFFSET_REWIND_COUNT = "version_topic_end_offset_rewind_count";
-  protected static final String TRANSFORMER_ERROR_COUNT = "transformer_error_count";
   public static final String NEARLINE_PRODUCER_TO_LOCAL_BROKER_LATENCY = "nearline_producer_to_local_broker_latency";
   public static final String NEARLINE_LOCAL_BROKER_TO_READY_TO_SERVE_LATENCY =
       "nearline_local_broker_to_ready_to_serve_latency";
-  public static final String TRANSFORMER_LATENCY = "transformer_latency";
-  public static final String TRANSFORMER_LIFECYCLE_START_LATENCY = "transformer_lifecycle_start_latency";
-  public static final String TRANSFORMER_LIFECYCLE_END_LATENCY = "transformer_lifecycle_end_latency";
   public static final String IDLE_TIME = "idle_time";
   public static final String PRODUCER_CALLBACK_LATENCY = "producer_callback_latency";
   public static final String LEADER_PREPROCESSING_LATENCY = "leader_preprocessing_latency";
@@ -70,12 +57,13 @@ public class IngestionStats {
   public static final String BATCH_PROCESSING_REQUEST_LATENCY = "batch_processing_request_latency";
   public static final String BATCH_PROCESSING_REQUEST_ERROR = "batch_processing_request_error";
 
+  public static final String STORAGE_QUOTA_USED = "storage_quota_used";
+
   private static final MetricConfig METRIC_CONFIG = new MetricConfig();
   private StoreIngestionTask ingestionTask;
   private int ingestionTaskPushTimeoutGauge = 0;
   private final Int2ObjectMap<Rate> regionIdToHybridBytesConsumedRateMap;
   private final Int2ObjectMap<Rate> regionIdToHybridRecordsConsumedRateMap;
-  private final Int2ObjectMap<Avg> regionIdToHybridAvgConsumedOffsetMap;
   private final LongAdderRateGauge recordsConsumedSensor = new LongAdderRateGauge();
   private final LongAdderRateGauge bytesConsumedSensor = new LongAdderRateGauge();
   private final LongAdderRateGauge leaderRecordsConsumedSensor = new LongAdderRateGauge();
@@ -86,7 +74,6 @@ public class IngestionStats {
   private final LongAdderRateGauge leaderBytesProducedSensor = new LongAdderRateGauge();
   private final Int2ObjectMap<Sensor> regionIdToHybridBytesConsumedSensorMap;
   private final Int2ObjectMap<Sensor> regionIdToHybridRecordsConsumedSensorMap;
-  private final Int2ObjectMap<Sensor> regionIdToHybridAvgConsumedOffsetSensorMap;
 
   // write path latency sensors
   private final WritePathLatencySensor producerSourceBrokerLatencySensor;
@@ -98,9 +85,6 @@ public class IngestionStats {
   private final WritePathLatencySensor consumedRecordEndToEndProcessingLatencySensor;
   private final WritePathLatencySensor nearlineProducerToLocalBrokerLatencySensor;
   private final WritePathLatencySensor nearlineLocalBrokerToReadyToServeLatencySensor;
-  private WritePathLatencySensor transformerLatencySensor;
-  private WritePathLatencySensor transformerLifecycleStartLatencySensor;
-  private WritePathLatencySensor transformerLifecycleEndLatencySensor;
   private final WritePathLatencySensor producerCallBackLatency;
   private final WritePathLatencySensor leaderPreprocessingLatency;
   private final WritePathLatencySensor internalPreprocessingLatency;
@@ -112,16 +96,13 @@ public class IngestionStats {
   private final LongAdderRateGauge offsetRegressionDCRErrorSensor = new LongAdderRateGauge();
   private final LongAdderRateGauge tombstoneCreationDCRSensor = new LongAdderRateGauge();
 
-  /** Record a version-level offset rewind events for VTs across all stores. */
-  private final Count versionTopicEndOffsetRewindCount = new Count();
-  private final Sensor versionTopicEndOffsetRewindSensor;
+  private final Count totalDuplicateKeyUpdateCount = new Count();
+  private final Sensor totalDuplicateKeyUpdateCountSensor;
+
   private final MetricsRepository localMetricRepository;
 
   // Measure the max idle time among partitions for a given the store on this host
   private final LongAdderRateGauge idleTimeSensor = new LongAdderRateGauge();
-
-  private Count transformerErrorCount = new Count();
-  private Sensor transformerErrorSensor;
   private final LongAdderRateGauge batchProcessingRequestSensor = new LongAdderRateGauge();
   private final WritePathLatencySensor batchProcessingRequestSizeSensor;
   private final LongAdderRateGauge batchProcessingRequestRecordsSensor = new LongAdderRateGauge();
@@ -135,8 +116,6 @@ public class IngestionStats {
     regionIdToHybridBytesConsumedSensorMap = new Int2ObjectArrayMap<>(kafkaClusterIdToAliasMap.size());
     regionIdToHybridRecordsConsumedRateMap = new Int2ObjectArrayMap<>(kafkaClusterIdToAliasMap.size());
     regionIdToHybridRecordsConsumedSensorMap = new Int2ObjectArrayMap<>(kafkaClusterIdToAliasMap.size());
-    regionIdToHybridAvgConsumedOffsetMap = new Int2ObjectArrayMap<>(kafkaClusterIdToAliasMap.size());
-    regionIdToHybridAvgConsumedOffsetSensorMap = new Int2ObjectArrayMap<>(kafkaClusterIdToAliasMap.size());
 
     localMetricRepository = new MetricsRepository(METRIC_CONFIG);
     for (Int2ObjectMap.Entry<String> entry: kafkaClusterIdToAliasMap.int2ObjectEntrySet()) {
@@ -160,16 +139,6 @@ public class IngestionStats {
           regionHybridRecordsConsumedRate);
       regionIdToHybridRecordsConsumedRateMap.put(regionId, regionHybridRecordsConsumedRate);
       regionIdToHybridRecordsConsumedSensorMap.put(regionId, regionHybridRecordsConsumedSensor);
-
-      Avg regionHybridAvgConsumedOffset = new Avg();
-      String regionHybridAvgConsumedOffsetMetricName = regionNamePrefix + "_rt_consumed_offset";
-      Sensor regionHybridAvgConsumedOffsetSensor =
-          localMetricRepository.sensor(regionHybridAvgConsumedOffsetMetricName);
-      regionHybridAvgConsumedOffsetSensor.add(
-          regionHybridAvgConsumedOffsetMetricName + regionHybridAvgConsumedOffset.getClass().getSimpleName(),
-          regionHybridAvgConsumedOffset);
-      regionIdToHybridAvgConsumedOffsetMap.put(regionId, regionHybridAvgConsumedOffset);
-      regionIdToHybridAvgConsumedOffsetSensorMap.put(regionId, regionHybridAvgConsumedOffsetSensor);
     }
 
     registerSensor(localMetricRepository, RECORDS_CONSUMED_METRIC_NAME, recordsConsumedSensor);
@@ -181,8 +150,8 @@ public class IngestionStats {
     registerSensor(localMetricRepository, LEADER_RECORDS_PRODUCED_METRIC_NAME, leaderRecordsProducedSensor);
     registerSensor(localMetricRepository, LEADER_BYTES_PRODUCED_METRIC_NAME, leaderBytesProducedSensor);
 
-    versionTopicEndOffsetRewindSensor = localMetricRepository.sensor(VERSION_TOPIC_END_OFFSET_REWIND_COUNT);
-    versionTopicEndOffsetRewindSensor.add(VERSION_TOPIC_END_OFFSET_REWIND_COUNT, versionTopicEndOffsetRewindCount);
+    totalDuplicateKeyUpdateCountSensor = localMetricRepository.sensor(TOTAL_DUPLICATE_KEY_UPDATE_COUNT);
+    totalDuplicateKeyUpdateCountSensor.add(TOTAL_DUPLICATE_KEY_UPDATE_COUNT, totalDuplicateKeyUpdateCount);
 
     producerSourceBrokerLatencySensor =
         new WritePathLatencySensor(localMetricRepository, METRIC_CONFIG, "producer_to_source_broker_latency");
@@ -255,98 +224,11 @@ public class IngestionStats {
     return anyCompleted ? totalFailedIngestionPartitions : 0;
   }
 
-  public long getBatchReplicationLag() {
-    if (!hasActiveIngestionTask()) {
-      return 0;
-    }
-    return ingestionTask.getBatchReplicationLag();
-  }
-
-  public long getLeaderOffsetLag() {
-    if (!hasActiveIngestionTask()) {
-      return 0;
-    }
-    return ingestionTask.getLeaderOffsetLag();
-  }
-
-  public long getBatchLeaderOffsetLag() {
-    if (!hasActiveIngestionTask()) {
-      return 0;
-    }
-    return ingestionTask.getBatchLeaderOffsetLag();
-  }
-
-  public long getHybridLeaderOffsetLag() {
-    if (!hasActiveIngestionTask()) {
-      return 0;
-    }
-    return ingestionTask.getHybridLeaderOffsetLag();
-  }
-
-  /**
-   * @return This stats is usually aggregated across the nodes so that
-   * we can see the overall lags between leaders and followers.
-   *
-   * we return 0 instead of {@link com.linkedin.venice.stats.StatsErrorCode#INACTIVE_STORE_INGESTION_TASK}
-   * so the negative error code will not mess up the aggregation.
-   */
-  public long getFollowerOffsetLag() {
-    if (!hasActiveIngestionTask()) {
-      return 0;
-    }
-    return ingestionTask.getFollowerOffsetLag();
-  }
-
-  public long getBatchFollowerOffsetLag() {
-    if (!hasActiveIngestionTask()) {
-      return 0;
-    }
-    return ingestionTask.getBatchFollowerOffsetLag();
-  }
-
-  public long getHybridFollowerOffsetLag() {
-    if (!hasActiveIngestionTask()) {
-      return 0;
-    }
-    return ingestionTask.getHybridFollowerOffsetLag();
-  }
-
-  public long getRegionHybridOffsetLag(int regionId) {
-    if (!hasActiveIngestionTask()) {
-      return 0;
-    }
-    return ingestionTask.getRegionHybridOffsetLag(regionId);
-  }
-
   public int getWriteComputeErrorCode() {
     if (!hasActiveIngestionTask()) {
       return INACTIVE_STORE_INGESTION_TASK.code;
     }
     return ingestionTask.getWriteComputeErrorCode();
-  }
-
-  /**
-   * @return 1 if the leader offset lag is greater than 0 and not actively ingesting data, otherwise 0.
-   */
-  public double getLeaderStalledHybridIngestion() {
-    if (!hasActiveIngestionTask()) {
-      return 0;
-    }
-    if (getHybridLeaderOffsetLag() > 0 && getLeaderBytesConsumed() == 0) {
-      return 1;
-    } else {
-      return 0;
-    }
-  }
-
-  public double getReadyToServeWithRTLag() {
-    if (!hasActiveIngestionTask()) {
-      return 0;
-    }
-    if (ingestionTask.isReadyToServeAnnouncedWithRTLag()) {
-      return 1;
-    }
-    return 0;
   }
 
   public double getSubscribePrepLatencyAvg() {
@@ -391,14 +273,6 @@ public class IngestionStats {
 
   public void recordInternalPreprocessingLatency(double value, long currentTimeMs) {
     internalPreprocessingLatency.record(value, currentTimeMs);
-  }
-
-  public void recordVersionTopicEndOffsetRewind() {
-    versionTopicEndOffsetRewindSensor.record();
-  }
-
-  public double getVersionTopicEndOffsetRewindCount() {
-    return versionTopicEndOffsetRewindCount.measure(METRIC_CONFIG, System.currentTimeMillis());
   }
 
   public double getConsumedRecordEndToEndProcessingLatencyAvg() {
@@ -469,6 +343,10 @@ public class IngestionStats {
     totalConflictResolutionCountSensor.record();
   }
 
+  public void recordTotalDuplicateKeyUpdate() {
+    totalDuplicateKeyUpdateCountSensor.record();
+  }
+
   public void recordTimestampRegressionDCRError() {
     timestampRegressionDCRErrorSensor.record();
   }
@@ -505,18 +383,6 @@ public class IngestionStats {
     }
   }
 
-  public double getRegionHybridAvgConsumedOffset(int regionId) {
-    Avg avg = regionIdToHybridAvgConsumedOffsetMap.get(regionId);
-    return avg != null ? avg.measure(METRIC_CONFIG, System.currentTimeMillis()) : 0.0;
-  }
-
-  public void recordRegionHybridAvgConsumedOffset(int regionId, double value, long currentTimeMs) {
-    Sensor sensor = regionIdToHybridAvgConsumedOffsetSensorMap.get(regionId);
-    if (sensor != null) {
-      sensor.record(value, currentTimeMs);
-    }
-  }
-
   public double getLeaderRecordsProduced() {
     return leaderRecordsProducedSensor.getRate();
   }
@@ -527,6 +393,10 @@ public class IngestionStats {
 
   public double getTotalDCRRate() {
     return totalConflictResolutionCountSensor.getRate();
+  }
+
+  public double getTotalDuplicateKeyUpdateCount() {
+    return totalDuplicateKeyUpdateCount.measure(METRIC_CONFIG, System.currentTimeMillis());
   }
 
   public double getTombstoneCreationDCRRate() {
@@ -583,56 +453,6 @@ public class IngestionStats {
 
   public void recordNearlineLocalBrokerToReadyToServeLatency(double value, long currentTimeMs) {
     nearlineLocalBrokerToReadyToServeLatencySensor.record(value, currentTimeMs);
-  }
-
-  public void recordTransformerError(double value, long currentTimeMs) {
-    transformerErrorSensor.record(value, currentTimeMs);
-  }
-
-  public void registerTransformerErrorSensor() {
-    if (transformerErrorSensor == null) {
-      transformerErrorSensor = localMetricRepository.sensor(TRANSFORMER_ERROR_COUNT);
-      transformerErrorSensor.add(TRANSFORMER_ERROR_COUNT, transformerErrorCount);
-    }
-  }
-
-  public double getTransformerErrorCount() {
-    if (transformerErrorCount != null) {
-      return transformerErrorCount.measure(METRIC_CONFIG, System.currentTimeMillis());
-    }
-    return 0;
-  }
-
-  public void recordTransformerLatency(double value, long currentTimeMs) {
-    transformerLatencySensor.record(value, currentTimeMs);
-  }
-
-  public void registerTransformerLatencySensor() {
-    if (transformerLatencySensor == null) {
-      transformerLatencySensor = new WritePathLatencySensor(localMetricRepository, METRIC_CONFIG, TRANSFORMER_LATENCY);
-    }
-  }
-
-  public void recordTransformerLifecycleStartLatency(double value, long currentTimeMs) {
-    transformerLifecycleStartLatencySensor.record(value, currentTimeMs);
-  }
-
-  public void registerTransformerLifecycleStartLatencySensor() {
-    if (transformerLifecycleStartLatencySensor == null) {
-      transformerLifecycleStartLatencySensor =
-          new WritePathLatencySensor(localMetricRepository, METRIC_CONFIG, TRANSFORMER_LIFECYCLE_START_LATENCY);
-    }
-  }
-
-  public void recordTransformerLifecycleEndLatency(double value, long currentTimeMs) {
-    transformerLifecycleEndLatencySensor.record(value, currentTimeMs);
-  }
-
-  public void registerTransformerLifecycleEndLatencySensor() {
-    if (transformerLifecycleEndLatencySensor == null) {
-      transformerLifecycleEndLatencySensor =
-          new WritePathLatencySensor(localMetricRepository, METRIC_CONFIG, TRANSFORMER_LIFECYCLE_END_LATENCY);
-    }
   }
 
   public void recordIdleTime(long value) {
@@ -722,5 +542,18 @@ public class IngestionStats {
      This can cause problems when metrics are aggregated. Use only when zero makes semantic sense.
     */
     return Double.isFinite(value) ? value : 0;
+  }
+
+  /**
+   * Retrieves the storage quota usage for the current ingestion task.
+   *
+   * @return The disk quota usage as a double value, or 0 if unavailable.
+   */
+  public double getStorageQuotaUsed() {
+    if (!hasActiveIngestionTask()) {
+      return 0;
+    }
+    StorageUtilizationManager storageManager = ingestionTask.getStorageUtilizationManager();
+    return (storageManager != null) ? storageManager.getDiskQuotaUsage() : 0;
   }
 }

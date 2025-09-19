@@ -79,8 +79,8 @@ public class ApacheKafkaAdminAdapterTest {
     pubSubTopicRepository = new PubSubTopicRepository();
     testPubSubTopic = pubSubTopicRepository.getTopic("test-topic");
     apacheKafkaAdminConfig = mock(ApacheKafkaAdminConfig.class);
-    kafkaAdminAdapter =
-        new ApacheKafkaAdminAdapter(internalKafkaAdminClientMock, apacheKafkaAdminConfig, pubSubTopicRepository);
+    when(apacheKafkaAdminConfig.getPubSubTopicRepository()).thenReturn(pubSubTopicRepository);
+    kafkaAdminAdapter = new ApacheKafkaAdminAdapter(internalKafkaAdminClientMock, apacheKafkaAdminConfig);
     sampleTopicConfiguration = new PubSubTopicConfiguration(
         Optional.of(Duration.ofDays(3).toMillis()),
         true,

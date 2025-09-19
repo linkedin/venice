@@ -1,5 +1,6 @@
 package com.linkedin.venice.endToEnd;
 
+import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES;
 import static com.linkedin.venice.ConfigKeys.CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS;
 import static com.linkedin.venice.ConfigKeys.CLIENT_USE_SYSTEM_STORE_REPOSITORY;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_DISCOVERY_D2_SERVICE;
@@ -9,15 +10,15 @@ import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_SCAN_NO_REPORT_
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_DISK_FULL_THRESHOLD;
-import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
+import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_D2_CLIENT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.USE_DA_VINCI_SPECIFIC_EXECUTION_STATUS_FOR_ERROR;
+import static com.linkedin.venice.integration.utils.DaVinciTestContext.getCachingDaVinciClientFactory;
 import static com.linkedin.venice.integration.utils.ServiceFactory.getVeniceCluster;
 import static com.linkedin.venice.meta.PersistenceType.ROCKS_DB;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJProps;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.runVPJ;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_STATUS_UPLOAD_ENABLE;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
@@ -39,6 +40,7 @@ import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.SentPushJobDetailsTracker;
+import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
@@ -84,7 +86,6 @@ public class DaVinciClientDiskFullTest {
   public void setUp() {
     Utils.thisIsLocalhost();
     Properties clusterConfig = new Properties();
-    clusterConfig.put(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 10L);
     // To allow more times for DaVinci clients to report status
     clusterConfig.put(DAVINCI_PUSH_STATUS_SCAN_NO_REPORT_RETRY_MAX_ATTEMPTS, 15);
     venice = getVeniceCluster(
@@ -131,8 +132,9 @@ public class DaVinciClientDiskFullTest {
     return diskFullThreshold;
   }
 
-  private VeniceProperties getDaVinciBackendConfig(boolean useDaVinciSpecificExecutionStatusForError)
-      throws IOException {
+  private VeniceProperties getDaVinciBackendConfig(
+      boolean useDaVinciSpecificExecutionStatusForError,
+      Boolean isD2ClientEnabled) throws IOException {
     String baseDataPath = Utils.getTempDataDirectory().getAbsolutePath();
     PropertyBuilder venicePropertyBuilder = new PropertyBuilder();
 
@@ -142,9 +144,11 @@ public class DaVinciClientDiskFullTest {
         .put(PERSISTENCE_TYPE, ROCKS_DB)
         .put(PUSH_STATUS_STORE_ENABLED, true)
         .put(D2_ZK_HOSTS_ADDRESS, venice.getZk().getAddress())
+        .put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 2 * 1024 * 1024L)
         .put(CLUSTER_DISCOVERY_D2_SERVICE, VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
         .put(USE_DA_VINCI_SPECIFIC_EXECUTION_STATUS_FOR_ERROR, useDaVinciSpecificExecutionStatusForError)
-        .put(SERVER_DISK_FULL_THRESHOLD, getDiskFullThreshold(largePushRecordCount, largePushRecordMinSize));
+        .put(SERVER_DISK_FULL_THRESHOLD, getDiskFullThreshold(largePushRecordCount, largePushRecordMinSize))
+        .put(SERVER_INGESTION_ISOLATION_D2_CLIENT_ENABLED, isD2ClientEnabled);
     return venicePropertyBuilder.build();
   }
 
@@ -197,14 +201,17 @@ public class DaVinciClientDiskFullTest {
     }
   }
 
-  @Test(timeOut = TEST_TIMEOUT, dataProviderClass = DataProviderUtils.class, dataProvider = "True-and-False")
-  public void testDaVinciDiskFullFailure(boolean useDaVinciSpecificExecutionStatusForError) throws Exception {
+  @Test(timeOut = TEST_TIMEOUT, dataProviderClass = DataProviderUtils.class, dataProvider = "Two-True-and-False")
+  public void testDaVinciDiskFullFailure(boolean useDaVinciSpecificExecutionStatusForError, Boolean isD2ClientEnabled)
+      throws Exception {
     String storeName = Utils.getUniqueString("davinci_disk_full_test");
     // Test a small push
     File inputDir = getTempDataDirectory();
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
     Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir, 1, 10);
     Properties vpjProperties = defaultVPJProps(venice, inputDirPath, storeName);
+    vpjProperties.putAll(
+        PubSubBrokerWrapper.getBrokerDetailsForClients(Collections.singletonList(venice.getPubSubBrokerWrapper())));
 
     try (ControllerClient controllerClient = createStoreForJob(venice.getClusterName(), recordSchema, vpjProperties);
         AvroGenericStoreClient client = ClientFactory.getAndStartGenericAvroClient(
@@ -234,13 +241,15 @@ public class DaVinciClientDiskFullTest {
       });
 
       // Spin up DaVinci client
-      VeniceProperties backendConfig = getDaVinciBackendConfig(useDaVinciSpecificExecutionStatusForError);
+      VeniceProperties backendConfig =
+          getDaVinciBackendConfig(useDaVinciSpecificExecutionStatusForError, isD2ClientEnabled);
       MetricsRepository metricsRepository = new MetricsRepository();
-      try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
+      try (CachingDaVinciClientFactory factory = getCachingDaVinciClientFactory(
           d2Client,
           VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
           metricsRepository,
-          backendConfig)) {
+          backendConfig,
+          venice)) {
 
         DaVinciClient daVinciClient = factory.getGenericAvroClient(
             storeName,
@@ -262,7 +271,6 @@ public class DaVinciClientDiskFullTest {
         TestWriteUtils
             .writeSimpleAvroFileWithStringToStringSchema(inputDir, largePushRecordCount, largePushRecordMinSize);
         final Properties vpjPropertiesForV2 = defaultVPJProps(venice, inputDirPath, storeName);
-        vpjPropertiesForV2.setProperty(PUSH_JOB_STATUS_UPLOAD_ENABLE, "true");
 
         SentPushJobDetailsTrackerImpl pushJobDetailsTracker = new SentPushJobDetailsTrackerImpl();
 

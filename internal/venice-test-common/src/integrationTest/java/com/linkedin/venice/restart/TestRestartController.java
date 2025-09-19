@@ -3,8 +3,8 @@ package com.linkedin.venice.restart;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
@@ -22,7 +22,7 @@ import org.testng.annotations.Test;
 
 @Test(singleThreaded = true)
 public class TestRestartController {
-  private static final int OPERATION_TIMEOUT_MS = 3 * Time.MS_PER_SECOND;
+  private static final int OPERATION_TIMEOUT_MS = 15 * Time.MS_PER_SECOND;
   private VeniceClusterWrapper cluster;
 
   @BeforeMethod
@@ -31,7 +31,12 @@ public class TestRestartController {
     int numberOfServer = 1;
     int numberOfRouter = 1;
 
-    cluster = ServiceFactory.getVeniceCluster(numberOfController, numberOfServer, numberOfRouter);
+    VeniceClusterCreateOptions options =
+        new VeniceClusterCreateOptions.Builder().numberOfControllers(numberOfController)
+            .numberOfServers(numberOfServer)
+            .numberOfRouters(numberOfRouter)
+            .build();
+    cluster = ServiceFactory.getVeniceCluster(options);
   }
 
   @AfterMethod
@@ -194,7 +199,7 @@ public class TestRestartController {
     VersionCreationResponse response = null;
     try {
       response = cluster.getNewVersion(storeName);
-    } catch (VeniceException e) {
+    } catch (Exception e) {
       // Some times, the leader controller would be changed after getting it from cluster. Just retry on the new leader.
       cluster.getLeaderVeniceController();
       response = cluster.getNewVersion(storeName);

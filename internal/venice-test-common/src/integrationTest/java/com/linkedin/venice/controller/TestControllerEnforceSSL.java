@@ -8,6 +8,7 @@ import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
+import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.PubSubBrokerConfigs;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
@@ -18,6 +19,7 @@ import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
+import java.util.Collections;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
@@ -43,13 +45,19 @@ public class TestControllerEnforceSSL {
         PubSubBrokerWrapper pubSubBrokerWrapper = ServiceFactory.getPubSubBroker(
             new PubSubBrokerConfigs.Builder().setZkWrapper(zkServer).setRegionName(STANDALONE_REGION_NAME).build());
         VeniceControllerWrapper controllerWrapper = ServiceFactory.getVeniceController(
-            new VeniceControllerCreateOptions.Builder(CLUSTER_NAME, zkServer, pubSubBrokerWrapper).replicationFactor(1)
-                .partitionSize(10)
-                .rebalanceDelayMs(0)
-                .sslToKafka(true)
-                .extraProperties(extraProperties)
-                .regionName(STANDALONE_REGION_NAME)
-                .build());
+            new VeniceControllerCreateOptions.Builder(
+                CLUSTER_NAME,
+                zkServer,
+                pubSubBrokerWrapper,
+                Collections
+                    .singletonMap(STANDALONE_REGION_NAME, D2TestUtils.getAndStartD2Client(zkServer.getAddress())))
+                        .replicationFactor(1)
+                        .partitionSize(10)
+                        .rebalanceDelayMs(0)
+                        .sslToKafka(true)
+                        .extraProperties(extraProperties)
+                        .regionName(STANDALONE_REGION_NAME)
+                        .build());
         ControllerClient controllerClient =
             ControllerClient.constructClusterControllerClient(CLUSTER_NAME, controllerWrapper.getControllerUrl());
         ControllerClient secureControllerClient = ControllerClient.constructClusterControllerClient(

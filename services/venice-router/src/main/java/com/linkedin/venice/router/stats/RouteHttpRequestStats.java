@@ -29,6 +29,10 @@ public class RouteHttpRequestStats {
     this.storageNodeClient = storageNodeClient;
   }
 
+  public MetricsRepository getMetricsRepository() {
+    return metricsRepository;
+  }
+
   public void recordPendingRequest(String hostName) {
     InternalHostStats stats = routeStatsMap.computeIfAbsent(hostName, h -> new InternalHostStats(metricsRepository, h));
     stats.recordPendingRequestCount();
@@ -57,25 +61,24 @@ public class RouteHttpRequestStats {
     private final Sensor unhealthyPendingQueueDuration;
     private final Sensor unhealthyPendingRateSensor;
     private AtomicLong pendingRequestCount;
+    private final Sensor pendingRequestCountSensor;
 
     public InternalHostStats(MetricsRepository metricsRepository, String hostName) {
       super(metricsRepository, StatsUtils.convertHostnameToMetricName(hostName));
-      pendingRequestCount = new AtomicLong();
-      // pendingRequestCountSensor =
-      // registerSensor(new AsyncGauge((ignored, ignored2) -> pendingRequestCount.get(), "pending_request_count"));
+      this.pendingRequestCount = new AtomicLong();
+      this.pendingRequestCountSensor = registerSensor("pending_request_count", new Max());
 
-      unhealthyPendingQueueDuration = registerSensor(
+      this.unhealthyPendingQueueDuration = registerSensor(
           "unhealthy_pending_queue_duration_per_route",
           new Avg(),
           new Min(),
           new Max(),
           new SampledTotal());
-      ;
-      unhealthyPendingRateSensor = registerSensor("unhealthy_pending_queue_per_route", new OccurrenceRate());
+      this.unhealthyPendingRateSensor = registerSensor("unhealthy_pending_queue_per_route", new OccurrenceRate());
     }
 
     public void recordPendingRequestCount() {
-      pendingRequestCount.incrementAndGet();
+      pendingRequestCountSensor.record(pendingRequestCount.incrementAndGet());
     }
 
     public void recordFinishedRequestCount() {

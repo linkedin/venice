@@ -1,5 +1,6 @@
 package com.linkedin.venice.common;
 
+import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.authorization.AceEntry;
 import com.linkedin.venice.authorization.AclBinding;
 import com.linkedin.venice.authorization.Method;
@@ -14,16 +15,20 @@ import com.linkedin.venice.status.protocol.BatchJobHeartbeatKey;
 import com.linkedin.venice.status.protocol.BatchJobHeartbeatValue;
 import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
 import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 
 /**
  * Enum used to differentiate the different types of Venice system stores when access their metadata. Currently only
  * the store metadata system stores are treated differently because they are sharing metadata in Zookeeper. Future system
  * store types should be added here especially if they also would like to share metadata in Zookeeper.
+ *
+ * @see <a href="https://venicedb.org/docs/ops_guide/system_stores">System Stores in the docs</a>
  */
 public enum VeniceSystemStoreType {
   DAVINCI_PUSH_STATUS_STORE(
@@ -206,16 +211,32 @@ public enum VeniceSystemStoreType {
     return systemStoreAclBinding;
   }
 
+  private static final Map<String, VeniceSystemStoreType> STORE_TYPE_CACHE = new VeniceConcurrentHashMap<>(64);
+
+  /**
+   * Retrieves the VeniceSystemStoreType for the given store name, using caching for improved performance.
+   *
+   * @param storeName The name of the store.
+   * @return The corresponding VeniceSystemStoreType if found; otherwise, null.
+   */
   public static VeniceSystemStoreType getSystemStoreType(String storeName) {
-    if (storeName == null) {
+    if (storeName == null || storeName.isEmpty()) {
       return null;
     }
-    for (VeniceSystemStoreType systemStoreType: VALUES) {
-      if (storeName.startsWith(systemStoreType.getPrefix()) && !systemStoreType.getPrefix().equals(storeName)) {
-        return systemStoreType;
-      }
+    // perform lookup before prefix check to avoid prefix check for cached entries
+    VeniceSystemStoreType cachedStoreType = STORE_TYPE_CACHE.get(storeName);
+    if (cachedStoreType != null || !storeName.startsWith(Store.SYSTEM_STORE_NAME_PREFIX)) {
+      return cachedStoreType;
     }
-    return null;
+
+    return STORE_TYPE_CACHE.computeIfAbsent(storeName, key -> {
+      for (VeniceSystemStoreType systemStoreType: VALUES) {
+        if (storeName.startsWith(systemStoreType.getPrefix()) && !systemStoreType.getPrefix().equals(storeName)) {
+          return systemStoreType;
+        }
+      }
+      return null;
+    });
   }
 
   /**
@@ -248,5 +269,23 @@ public enum VeniceSystemStoreType {
       userStoreName = systemStoreType.extractRegularStoreName(storeName);
     }
     return userStoreName;
+  }
+
+  // Pre-computed immutable list of user system store types for performance
+  // Excludes non-user system stores like BATCH_JOB_HEARTBEAT_STORE
+  public static final List<VeniceSystemStoreType> USER_SYSTEM_STORES;
+  static {
+    List<VeniceSystemStoreType> userSystemStores = new ArrayList<>(VALUES.size() - 1);
+    for (VeniceSystemStoreType type: VALUES) {
+      if (type != BATCH_JOB_HEARTBEAT_STORE) {
+        userSystemStores.add(type);
+      }
+    }
+    USER_SYSTEM_STORES = Collections.unmodifiableList(userSystemStores);
+  }
+
+  @VisibleForTesting
+  static Map<String, VeniceSystemStoreType> getStoreTypeCache() {
+    return STORE_TYPE_CACHE;
   }
 }

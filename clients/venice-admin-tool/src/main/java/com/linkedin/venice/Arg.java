@@ -23,7 +23,8 @@ public enum Arg {
   VERSION("version", "v", true, "Active store version number"),
   LARGEST_USED_VERSION_NUMBER(
       "largest-used-version", "luv", true, "Largest used store version number (whether active or not)"
-  ), PUSH_ID("push-id", "pid", true, "Push Id"),
+  ), LARGEST_USED_RT_VERSION_NUMBER("largest-used-rt-version", "lurtv", true, "Largest used RT store version number"),
+  PUSH_ID("push-id", "pid", true, "Push Id"),
   STORE_SIZE("store-size", "ss", true, "Size of the store in bytes, used to calculate partitioning"),
   KEY_SCHEMA("key-schema-file", "ks", true, "Path to text file with key schema"),
   VALUE_SCHEMA_ID("value-schema-id", "vid", true, "value schema id"),
@@ -38,13 +39,14 @@ public enum Arg {
   STORAGE_NODE("storage-node", "n", true, "Helix instance ID for a storage node, eg. lva1-app1234_1690"),
   KEY("key", "k", true, "Plain-text key for identifying a record in a store"),
   OFFSET("offset", "of", true, "Kafka offset number"),
+  EXECUTION_ID("execution-id", "eid", true, "Execution ID of admin operation"),
   EXECUTION("execution", "e", true, "Execution ID of async admin command"),
   PARTITION_COUNT("partition-count", "pn", true, "number of partitions a store has"),
   PARTITIONER_CLASS("partitioner-class", "pc", true, "Name of chosen partitioner class"),
   PARTITIONER_PARAMS("partitioner-params", "pp", true, "Additional parameters for partitioner."),
   READABILITY("readability", "rb", true, "store's readability"),
   WRITEABILITY("writeability", "wb", true, "store's writeability"),
-  STORAGE_QUOTA("storage-quota", "sq", true, "maximum capacity a store version or storage persona could have"),
+  STORAGE_QUOTA("storage-quota", "sq", true, "maximum capacity a store version or storage persona could have in bytes"),
   STORAGE_NODE_READ_QUOTA_ENABLED(
       "storage-node-read-quota-enabled", "snrqe", true, "whether storage node read quota is enabled for this store"
   ),
@@ -117,6 +119,10 @@ public enum Arg {
   ),
   VENICE_CLIENT_SSL_CONFIG_FILE(
       "venice-client-ssl-config-file", "vcsc", true, "Configuration file for querying key in Venice client through SSL."
+  ),
+  STARTING_POSITION(
+      "starting_position", "sp", true,
+      "Starting <typeId:base64EncodedPositionWfBytes> when dumping admin messages, inclusive"
   ), STARTING_OFFSET("starting_offset", "so", true, "Starting offset when dumping admin messages, inclusive"),
   MESSAGE_COUNT("message_count", "mc", true, "Max message count when dumping admin messages"),
   PARENT_DIRECTORY(
@@ -160,6 +166,7 @@ public enum Arg {
   FLAT_JSON("flat-json", "flj", false, "Display output as flat json, without pretty-print indentation and line breaks"),
   HELP("help", "h", false, "Show usage"), FORCE("force", "f", false, "Force execute this operation"),
   INCLUDE_SYSTEM_STORES("include-system-stores", "iss", true, "Include internal stores maintained by the system."),
+  LOOK_BACK_MS("look-back-ms", "lbms", true, "Look back time in milliseconds for dead store detection"),
   SSL_CONFIG_PATH("ssl-config-path", "scp", true, "SSl config file path"),
   STORE_TYPE(
       "store-type", "st", true,
@@ -219,6 +226,9 @@ public enum Arg {
   KAFKA_TOPIC_RETENTION_IN_MS(
       "kafka-topic-retention-in-ms", "ktrim", true, "Kafka topic retention time in milliseconds"
   ), KAFKA_TOPIC_MIN_IN_SYNC_REPLICA("kafka-topic-min-in-sync-replica", "ktmisr", true, "Kafka topic minISR config"),
+  KAFKA_RT_TOPICS_MIN_IN_SYNC_REPLICAS(
+      "kafka-rt-topic-min-in-sync-replica", "krtmisr", true, "Kafka topic rt minISR config"
+  ),
   CHILD_CONTROLLER_ADMIN_TOPIC_CONSUMPTION_ENABLED(
       ConfigKeys.CHILD_CONTROLLER_ADMIN_TOPIC_CONSUMPTION_ENABLED, "atc", true,
       "whether child controller consumes admin topic"
@@ -228,7 +238,10 @@ public enum Arg {
       "Type of system store to backfill. Supported types are davinci_push_status_store and meta_store"
   ), TASK_NAME("task-name", "tn", true, "Name of the task for cluster command. Supported command [PushSystemStore]."),
   CHECKPOINT_FILE("checkpoint-file", "cf", true, "Checkpoint file path for cluster command."),
-  THREAD_COUNT("thread-count", "tc", true, "Number of threads to execute. 1 if not specified"),
+  STORE_FILTER_FILE(
+      "store-filter-file", "sff", true,
+      "Store filter file path for cluster command. By default we will be performing cluster operation on the intersection of this file and stores in the cluster."
+  ), THREAD_COUNT("thread-count", "tc", true, "Number of threads to execute. 1 if not specified"),
   RETRY("retry", "r", false, "Retry this operation"),
   DISABLE_LOG("disable-log", "dl", false, "Disable logs from internal classes. Only print command output on console"),
   STORE_VIEW_CONFIGS(
@@ -251,6 +264,10 @@ public enum Arg {
   EXTRA_COMMAND_ARGS("extra-command-args", "eca", true, "extra command arguments"),
   ENABLE_DISABLED_REPLICA("enable-disabled-replicas", "edr", true, "Reenable disabled replicas"),
   NON_INTERACTIVE("non-interactive", "nita", false, "non-interactive mode"),
+  ENABLE_COMPACTION("enable-compaction", "ec", true, "Enable compaction"),
+  COMPACTION_THRESHOLD_MILLISECONDS(
+      "compaction-threshold-milliseconds", "ctms", true, "Set compaction threshold in milliseconds"
+  ),
   MIN_COMPACTION_LAG_SECONDS(
       "min-compaction-lag-seconds", "mcls", true, "Min compaction lag seconds for version topic of hybrid stores"
   ),
@@ -280,6 +297,10 @@ public enum Arg {
   BACKUP_FOLDER("backup-folder", "bf", true, "Backup folder path"),
   DEBUG("debug", "d", false, "Print debugging messages for execute-data-recovery"),
   BLOB_TRANSFER_ENABLED("blob-transfer-enabled", "bt", true, "Flag to indicate if the blob transfer is allowed or not"),
+  BLOB_TRANSFER_IN_SERVER_ENABLED(
+      "blob-transfer-in-server-enabled", "bts", true,
+      "Flag to indicate if the blob transfer is allowed or not in server. Values can be 'NOT_SPECIFIED' as default, 'ENABLED', or 'DISABLED'."
+  ),
   NEARLINE_PRODUCER_COMPRESSION_ENABLED(
       "nearline-producer-compression-enabled", "npce", true,
       "Flag to control whether KafkaProducer will use compression or not for nearline workload"
@@ -297,7 +318,22 @@ public enum Arg {
   ),
   DAVINCI_HEARTBEAT_REPORTED(
       "dvc-heartbeat-reported", "dvchb", true, "Flag to indicate whether DVC is bootstrapping and sending heartbeats"
-  ), ENABLE_STORE_MIGRATION("enable-store-migration", "esm", true, "Toggle store migration store config");
+  ), ENABLE_STORE_MIGRATION("enable-store-migration", "esm", true, "Toggle store migration store config"),
+  ADMIN_OPERATION_PROTOCOL_VERSION(
+      "admin-operation-protocol-version", "aopv", true, "Admin operation protocol version"
+  ),
+  STORES_TO_REPLICATE(
+      "stores-to-replicate", "str", true,
+      "Comma separated list of stores to be replicated to dark cluster, eg. store1,store2,..."
+  ), GLOBAL_RT_DIV_ENABLED("global-rt-div-enabled", "grde", true, "Enable Global RT DIV for a store"),
+  ENUM_SCHEMA_EVOLUTION_ALLOWED(
+      "enum-schema-evolution-allowed", "esea", true, "Allow enum schema evolution for a store"
+  ), INITIAL_STEP("initial-step", "is", true, "Initial step of the auto store migration"),
+  ABORT_ON_FAILURE("abort-on-failure", "aof", true, "Abort the auto store migration if any step fails"),
+  STORE_LIFECYCLE_HOOKS_LIST("store-lifecycle-hooks-list", "slhl", true, "List of store lifecycle hooks"),
+  KEY_URN_COMPRESSION_EANBLED(
+      "key-urn-compression-enabled", "kuce", true, "Enable/Disable key urn compression for a store."
+  ), KEY_URN_FIELDS("key-urn-fields", "kuf", true, "Comma separated list of key urn fields.");
 
   private final String argName;
   private final String first;

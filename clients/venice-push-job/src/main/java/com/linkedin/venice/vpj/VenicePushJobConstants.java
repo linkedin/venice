@@ -1,15 +1,18 @@
 package com.linkedin.venice.vpj;
 
+import static com.linkedin.venice.ConfigKeys.PUBSUB_CLIENT_CONFIG_PREFIX;
 import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_MB;
 
 import com.github.luben.zstd.ZstdDictTrainer;
 import com.linkedin.venice.compression.CompressionStrategy;
-import com.linkedin.venice.hadoop.ValidateSchemaAndBuildDictMapper;
 import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.hadoop.mapreduce.datawriter.map.AbstractVeniceMapper;
 import com.linkedin.venice.jobs.DataWriterComputeJob;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.vpj.pubsub.input.PartitionSplitStrategy;
+import com.linkedin.venice.vpj.pubsub.input.SplitRequest;
+import java.util.concurrent.TimeUnit;
 import org.apache.hadoop.fs.PathFilter;
 import org.apache.hadoop.fs.permission.FsPermission;
 
@@ -24,14 +27,17 @@ public final class VenicePushJobConstants {
 
   public static final String KEY_FIELD_PROP = "key.field";
   public static final String VALUE_FIELD_PROP = "value.field";
+  public static final String RMD_FIELD_PROP = "timestamp.field";
   public static final String DEFAULT_KEY_FIELD_PROP = "key";
   public static final String DEFAULT_VALUE_FIELD_PROP = "value";
+  public static final String DEFAULT_RMD_FIELD_PROP = "rmd";
   public static final boolean DEFAULT_SSL_ENABLED = false;
   public static final String SCHEMA_STRING_PROP = "schema";
   public static final String KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP = "kafka.source.key.schema";
   public static final String EXTENDED_SCHEMA_VALIDITY_CHECK_ENABLED = "extended.schema.validity.check.enabled";
   public static final boolean DEFAULT_EXTENDED_SCHEMA_VALIDITY_CHECK_ENABLED = true;
   public static final String UPDATE_SCHEMA_STRING_PROP = "update.schema";
+  public static final String RMD_SCHEMA_PROP = "rmd.schema";
 
   // This is a temporary config used to rollout the native input format for Spark. This will be removed soon
   public static final String SPARK_NATIVE_INPUT_FORMAT_ENABLED = "spark.native.input.format.enabled";
@@ -50,12 +56,11 @@ public final class VenicePushJobConstants {
   public static final String CONTROLLER_REQUEST_RETRY_ATTEMPTS = "controller.request.retry.attempts";
   public static final String POLL_JOB_STATUS_INTERVAL_MS = "poll.job.status.interval.ms";
   public static final String JOB_STATUS_IN_UNKNOWN_STATE_TIMEOUT_MS = "job.status.in.unknown.state.timeout.ms";
+  public static final String PUSH_JOB_TIMEOUT_OVERRIDE_MS = "push.job.timeout.override.ms";
   public static final String SEND_CONTROL_MESSAGES_DIRECTLY = "send.control.messages.directly";
   public static final String SOURCE_ETL = "source.etl";
   public static final String ETL_VALUE_SCHEMA_TRANSFORMATION = "etl.value.schema.transformation";
   public static final String SYSTEM_SCHEMA_READER_ENABLED = "system.schema.reader.enabled";
-  public static final String SYSTEM_SCHEMA_CLUSTER_D2_SERVICE_NAME = "system.schema.cluster.d2.service.name";
-  public static final String SYSTEM_SCHEMA_CLUSTER_D2_ZK_HOST = "system.schema.cluster.d2.zk.host";
 
   /**
    *  Config to enable/disable the feature to collect extra metrics wrt compression.
@@ -72,22 +77,6 @@ public final class VenicePushJobConstants {
   public static final boolean DEFAULT_COMPRESSION_METRIC_COLLECTION_ENABLED = false;
 
   /**
-   * Config to enable/disable using mapper to do the below which are currently done in VPJ driver <br>
-   * 1. validate schema, <br>
-   * 2. collect the input data size <br>
-   * 3. build dictionary (if needed: refer {@link VenicePushJob#shouldBuildZstdCompressionDictionary}) <br><br>
-   *
-   * This new mapper was added because the sample collection for Zstd dictionary is currently
-   * in-memory and to help play around with the sample size and also to support future enhancements
-   * if needed. <br><br>
-   *
-   * Currently, the plan is to only have it available for MapReduce compute engine and remove it eventually as we
-   * remove the MapReduce-related codes.
-   */
-  public static final String USE_MAPPER_TO_BUILD_DICTIONARY = "use.mapper.to.build.dictionary";
-  public static final boolean DEFAULT_USE_MAPPER_TO_BUILD_DICTIONARY = false;
-
-  /**
    * Known <a href="https://github.com/luben/zstd-jni/issues/253">zstd lib issue</a> which
    * crashes if the input sample is too small. So adding a preventive check to skip training
    * the dictionary in such cases using a minimum limit of 20. Keeping it simple and hard coding
@@ -101,17 +90,6 @@ public final class VenicePushJobConstants {
    */
   public static final String ZSTD_DICTIONARY_CREATION_REQUIRED = "zstd.dictionary.creation.required";
   public static final String ZSTD_DICTIONARY_CREATION_SUCCESS = "zstd.dictionary.creation.success";
-
-  /**
-   * Location and key to store the output of {@link ValidateSchemaAndBuildDictMapper} and retrieve it back
-   * when USE_MAPPER_TO_BUILD_DICTIONARY is enabled
-   */
-  // used to send the dir details from VPJ driver to mapper
-  public static final String VALIDATE_SCHEMA_AND_BUILD_DICT_MAPPER_OUTPUT_DIRECTORY =
-      "validate.schema.and.build.dict.mapper.output.directory";
-
-  public static final String VALIDATE_SCHEMA_AND_BUILD_DICTIONARY_MAPPER_OUTPUT_FILE_PREFIX = "mapper-output-";
-  public static final String VALIDATE_SCHEMA_AND_BUILD_DICTIONARY_MAPPER_OUTPUT_FILE_EXTENSION = ".avro";
 
   // keys inside the avro file
   public static final String KEY_ZSTD_COMPRESSION_DICTIONARY = "zstdDictionary";
@@ -132,6 +110,86 @@ public final class VenicePushJobConstants {
   public static final String KAFKA_INPUT_BROKER_URL = "kafka.input.broker.url";
   // Optional
   public static final String KAFKA_INPUT_MAX_RECORDS_PER_MAPPER = "kafka.input.max.records.per.mapper";
+
+  // Legacy prefix kept for backward compatibility
+  public static final String KIF_RECORD_READER_KAFKA_CONFIG_PREFIX = "kif.record.reader.kafka.";
+
+  /**
+   * The default max records per mapper, and if there are more records in one topic partition, it will be
+   * consumed by multiple mappers in parallel.
+   * BTW, this calculation is not accurate since it is purely based on offset, and the topic
+   * being consumed could have log compaction enabled.
+   */
+  public static final long DEFAULT_PUBSUB_INPUT_MAX_RECORDS_PER_MAPPER = 5_000_000L;
+
+  /**
+   * Use a locally generated logical index as the secondary comparator after comparing keys
+   * in repush mappers. Both strategies order records latest first:
+   * - Disabled: use PubSub position/offset, higher position first.
+   * - Enabled: use a local logical index (assigned after poll call), higher indices first.
+   *
+   * This remains configurable because the local index may misorder records in rare cases:
+   * for example, if log compaction occurs during repush consumption and a split fails or
+   * runs speculatively, a newer record could get a lower logical index. Offsets avoid that risk.
+   *
+   * Once we no longer depend on PubSub log compaction, the logical index alone will be sufficient.
+   *
+   * Default: false
+   */
+  public static final String PUBSUB_INPUT_SECONDARY_COMPARATOR_USE_LOCAL_LOGICAL_INDEX =
+      PUBSUB_CLIENT_CONFIG_PREFIX + "input.secondary.comparator.use.local.logical.index";
+  public static final boolean DEFAULT_PUBSUB_INPUT_SECONDARY_COMPARATOR_USE_LOCAL_LOGICAL_INDEX = false;
+
+  /**
+   * Configuration key for specifying the PubSub input split strategy.
+   * <p>
+   * The split type determines how input splits are generated for processing PubSub records.
+   * Supported values include {@code PartitionSplitStrategy} supported by the system.
+   */
+  public static final String PUBSUB_INPUT_SPLIT_STRATEGY = PUBSUB_CLIENT_CONFIG_PREFIX + "input.split.strategy";
+
+  /**
+   * Default split type for PubSub input.
+   * <p>
+   * This value is derived from {@link PartitionSplitStrategy#FIXED_RECORD_COUNT}, which generates splits
+   * containing a fixed number of records.
+   */
+  public static final String DEFAULT_PUBSUB_INPUT_SPLIT_STRATEGY = PartitionSplitStrategy.FIXED_RECORD_COUNT.name();
+
+  /**
+   * Configuration key for the maximum number of splits to create per PubSub topic-partition.
+   * <p>
+   * This setting limits the total number of input splits generated for large partitions.
+   * The default value is {@link #DEFAULT_MAX_SPLITS_PER_PARTITION}.
+   */
+  public static final String PUBSUB_INPUT_MAX_SPLITS_PER_PARTITION =
+      PUBSUB_CLIENT_CONFIG_PREFIX + "input.max.splits.per.partition";
+
+  /**
+   * Default maximum number of splits to create per PubSub topic-partition.
+   * <p>
+   * This value is taken from {@link SplitRequest#DEFAULT_MAX_SPLITS}.
+   */
+  public static final int DEFAULT_MAX_SPLITS_PER_PARTITION = SplitRequest.DEFAULT_MAX_SPLITS;
+
+  /**
+   * Configuration key for the time window (in minutes) used to split PubSub input topic-partition.
+   * <p>
+   * Splits are generated so that each covers at most the configured time window.
+   * The default value is {@link #DEFAULT_PUBSUB_INPUT_TIME_WINDOW_IN_MINUTES}.
+   */
+  public static final String PUBSUB_INPUT_SPLIT_TIME_WINDOW_IN_MINUTES =
+      PUBSUB_CLIENT_CONFIG_PREFIX + "input.split.time.window.in.minutes";
+
+  /**
+   * Default time window (in minutes) for splitting PubSub input topic-partition.
+   * <p>
+   * This value is derived from {@link SplitRequest#DEFAULT_TIME_WINDOW_MS}
+   * and converted from milliseconds to minutes.
+   */
+  public static final long DEFAULT_PUBSUB_INPUT_TIME_WINDOW_IN_MINUTES =
+      TimeUnit.MILLISECONDS.toMinutes(SplitRequest.DEFAULT_TIME_WINDOW_MS);
+
   public static final String KAFKA_INPUT_COMBINER_ENABLED = "kafka.input.combiner.enabled";
   // Whether to build a new dict in the repushed version or not while the original version has already enabled dict
   // compression.
@@ -176,6 +234,13 @@ public final class VenicePushJobConstants {
   public static final String REWIND_EPOCH_TIME_IN_SECONDS_OVERRIDE = "rewind.epoch.time.in.seconds.override";
 
   /**
+   * Relates to the {@link #REWIND_EPOCH_TIME_IN_SECONDS_OVERRIDE}. An overridable amount of buffer to be applied to the epoch
+   * (as the rewind isn't perfectly instantaneous). Defaults to 1 minute.
+   */
+  public static final String REWIND_EPOCH_TIME_BUFFER_IN_SECONDS_OVERRIDE =
+      "rewind.epoch.time.buffer.in.seconds.override";
+
+  /**
    * This config is a boolean which suppresses submitting the end of push message after data has been sent and does
    * not poll for the status of the job to complete. Using this flag means that a user must manually mark the job success
    * or failed.
@@ -197,13 +262,6 @@ public final class VenicePushJobConstants {
    * This config specifies the region identifier where parent controller is running
    */
   public static final String PARENT_CONTROLLER_REGION_NAME = "parent.controller.region.name";
-
-  /**
-   * Relates to the above argument. An overridable amount of buffer to be applied to the epoch (as the rewind isn't
-   * perfectly instantaneous). Defaults to 1 minute.
-   */
-  public static final String REWIND_EPOCH_TIME_BUFFER_IN_SECONDS_OVERRIDE =
-      "rewind.epoch.time.buffer.in.seconds.override";
 
   /**
    * In single-region mode, this must be a comma-separated list of child controller URLs or {@literal d2://<d2ServiceNameForChildController>}
@@ -238,6 +296,8 @@ public final class VenicePushJobConstants {
   public static final FsPermission PERMISSION_700 = FsPermission.createImmutable((short) 0700);
 
   public static final String VALUE_SCHEMA_ID_PROP = "value.schema.id";
+
+  public static final String RMD_SCHEMA_ID_PROP = "rmd.schema.id";
   public static final String DERIVED_SCHEMA_ID_PROP = "derived.schema.id";
   public static final String TOPIC_PROP = "venice.kafka.topic";
   public static final String HADOOP_VALIDATE_SCHEMA_AND_BUILD_DICT_PREFIX = "hadoop-dict-build-conf.";
@@ -247,7 +307,6 @@ public final class VenicePushJobConstants {
   public static final String STORAGE_ENGINE_OVERHEAD_RATIO = "storage_engine_overhead_ratio";
   @Deprecated
   public static final String VSON_PUSH = "vson.push";
-  public static final String KAFKA_SECURITY_PROTOCOL = "SSL";
   public static final String COMPRESSION_STRATEGY = "compression.strategy";
   public static final String KAFKA_INPUT_SOURCE_COMPRESSION_STRATEGY = "kafka.input.source.compression.strategy";
   public static final String SSL_CONFIGURATOR_CLASS_CONFIG = "ssl.configurator.class";
@@ -272,11 +331,6 @@ public final class VenicePushJobConstants {
    */
   public static final String JOB_EXEC_ID = "job.execution.id";
 
-  /**
-   * Config to enable the service that uploads push job statuses to the controller using
-   * {@code ControllerClient.uploadPushJobStatus()}, the job status is then packaged and sent to dedicated Kafka channel.
-   */
-  public static final String PUSH_JOB_STATUS_UPLOAD_ENABLE = "push.job.status.upload.enable";
   public static final String REDUCER_SPECULATIVE_EXECUTION_ENABLE = "reducer.speculative.execution.enable";
 
   /**
@@ -289,7 +343,6 @@ public final class VenicePushJobConstants {
    */
   public static final String ZSTD_COMPRESSION_LEVEL = "zstd.compression.level";
   public static final int DEFAULT_BATCH_BYTES_SIZE = 1000000;
-  public static final boolean SORTED = true;
   /**
    * The rewind override when performing re-push to prevent data loss; if the store has higher rewind config setting than
    * 1 days, adopt the store config instead; otherwise, override the rewind config to 1 day if push job config doesn't
@@ -314,6 +367,13 @@ public final class VenicePushJobConstants {
    * For multiple targeted regions push, may use the advanced mode. See {@link #TARGETED_REGION_PUSH_LIST}.
    */
   public static final String TARGETED_REGION_PUSH_ENABLED = "targeted.region.push.enabled";
+
+  /**
+   * Config to enable memtable based ingestion of hybrid store batch push. In this mode servers
+   * will not use SST table writer to ingest batch data for hybrid store stores. This will help in
+   * preventing log compaction of contol messages from speculative producers.
+   */
+  public static final String HYBRID_BATCH_WRITE_OPTIMIZATION_ENABLED = "hybrid.batch.write.optimization.enabled";
 
   /**
    * This is experimental config to specify a list of regions used for targeted region push in VPJ.
@@ -366,4 +426,19 @@ public final class VenicePushJobConstants {
   public static final String DATA_WRITER_COMPUTE_JOB_CLASS = "data.writer.compute.job.class";
 
   public static final String PUSH_TO_SEPARATE_REALTIME_TOPIC = "push.to.separate.realtime.topic";
+  /**
+   * Currently regular batch pushes are not compatible with TTL re-push enabled stores. This is because a regular batch
+   * push does not provide any RMD to be used for TTL. You can use the TIMESTAMP_FIELD_PROP to provide record level
+   * timestamp to perform compatible batch push or use this setting to override the batch push and TTL re-push check.
+   */
+  public static final String ALLOW_REGULAR_PUSH_WITH_TTL_REPUSH = "allow.regular.push.with.ttl.repush";
+
+  /**
+   * Configuration prefix used to pass newer Kafka Message Envelope (KME) schemas into Hadoop job configurations.
+   * This prefix is used to store a map of schema ID to schema string pairs in job properties, where each
+   * property key follows the format: NEWER_KME_SCHEMAS_PREFIX + schemaId.
+   * These schemas represent newer KME schemas that have been added to the controller but may not yet be
+   * propagated to all {@link VenicePushJob} components.
+   */
+  public static final String NEWER_KME_SCHEMAS_PREFIX = "newer.kme.schemas.prefix.";
 }

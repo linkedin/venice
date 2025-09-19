@@ -3,11 +3,14 @@ package com.linkedin.venice.schema.rmd;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.schema.rmd.v1.RmdSchemaGeneratorV1;
+import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import io.tehuti.utils.Utils;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericData;
+import org.apache.avro.generic.GenericRecord;
 
 
 /**
@@ -43,6 +46,20 @@ public class RmdSchemaGenerator {
    */
   public static Schema generateMetadataSchema(Schema schema) {
     return generateMetadataSchema(schema, LATEST_VERSION);
+  }
+
+  /**
+   * Generate an RMD payload with contains only a record level timestamp for a given metadata schema
+   *
+   * @param schema metadata schema.  This schema MUST contain a root level timestamp field
+   * @param timestamp the timestamp to place in the record
+   * @return a byte array containing the serialized metadata payload with the passed timestamp
+   */
+  public static byte[] generateRecordLevelTimestampMetadata(Schema schema, Long timestamp) {
+    GenericRecord record = new GenericData.Record(schema);
+    record.put(RmdConstants.TIMESTAMP_FIELD_NAME, timestamp);
+    record.put(RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD_NAME, Collections.emptyList());
+    return FastSerializerDeserializerFactory.getFastAvroGenericSerializer(schema).serialize(record);
   }
 
   public static int getLatestVersion() {

@@ -16,6 +16,7 @@ public class DataWriterAccumulators implements Serializable {
   public final LongAccumulator emptyRecordCounter;
   public final LongAccumulator totalKeySizeCounter;
   public final LongAccumulator uncompressedValueSizeCounter;
+  public final MaxAccumulator<Integer> largestUncompressedValueSize;
   public final LongAccumulator compressedValueSizeCounter;
   public final LongAccumulator gzipCompressedValueSizeCounter;
   public final LongAccumulator zstdCompressedValueSizeCounter;
@@ -23,6 +24,7 @@ public class DataWriterAccumulators implements Serializable {
   public final LongAccumulator duplicateKeyWithIdenticalValueCounter;
   public final LongAccumulator writeAclAuthorizationFailureCounter;
   public final LongAccumulator recordTooLargeFailureCounter;
+  public final LongAccumulator uncompressedRecordTooLargeFailureCounter;
   public final LongAccumulator duplicateKeyWithDistinctValueCounter;
   public final LongAccumulator partitionWriterCloseCounter;
   public final LongAccumulator repushTtlFilteredRecordCounter;
@@ -33,6 +35,8 @@ public class DataWriterAccumulators implements Serializable {
     emptyRecordCounter = sparkContext.longAccumulator("Empty Records");
     totalKeySizeCounter = sparkContext.longAccumulator("Total Key Size");
     uncompressedValueSizeCounter = sparkContext.longAccumulator("Total Uncompressed Value Size");
+    largestUncompressedValueSize =
+        new MaxAccumulator<>(Integer.MIN_VALUE, sparkContext, "Largest uncompressed value size");
     compressedValueSizeCounter = sparkContext.longAccumulator("Total Compressed Value Size");
     gzipCompressedValueSizeCounter = sparkContext.longAccumulator("Total Gzip Compressed Value Size");
     zstdCompressedValueSizeCounter = sparkContext.longAccumulator("Total Zstd Compressed Value Size");
@@ -41,6 +45,7 @@ public class DataWriterAccumulators implements Serializable {
     repushTtlFilteredRecordCounter = sparkContext.longAccumulator("Repush TTL Filtered Records");
     writeAclAuthorizationFailureCounter = sparkContext.longAccumulator("ACL Authorization Failures");
     recordTooLargeFailureCounter = sparkContext.longAccumulator("Record Too Large Failures");
+    uncompressedRecordTooLargeFailureCounter = sparkContext.longAccumulator("Uncompressed Record Too Large Failures");
     duplicateKeyWithIdenticalValueCounter = sparkContext.longAccumulator("Duplicate Key With Identical Value");
     duplicateKeyWithDistinctValueCounter = sparkContext.longAccumulator("Duplicate Key With Distinct Value");
   }

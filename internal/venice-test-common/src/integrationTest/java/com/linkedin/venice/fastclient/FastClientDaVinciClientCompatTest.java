@@ -1,8 +1,10 @@
 package com.linkedin.venice.fastclient;
 
+import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES;
 import static com.linkedin.venice.ConfigKeys.CLIENT_USE_SYSTEM_STORE_REPOSITORY;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
+import static com.linkedin.venice.integration.utils.DaVinciTestContext.getCachingDaVinciClientFactory;
 import static com.linkedin.venice.meta.PersistenceType.ROCKS_DB;
 
 import com.linkedin.davinci.client.DaVinciClient;
@@ -31,7 +33,6 @@ public class FastClientDaVinciClientCompatTest extends AbstractClientEndToEndSet
         new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
             .setR2Client(r2Client)
             .setDualReadEnabled(false)
-            .setSpeculativeQueryEnabled(false)
             .setLongTailRetryEnabledForSingleGet(true)
             .setLongTailRetryThresholdForSingleGetInMicroSeconds(1000);
 
@@ -58,7 +59,6 @@ public class FastClientDaVinciClientCompatTest extends AbstractClientEndToEndSet
         new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
             .setR2Client(r2Client)
             .setDualReadEnabled(false)
-            .setSpeculativeQueryEnabled(false)
             .setLongTailRetryEnabledForSingleGet(true)
             .setLongTailRetryThresholdForSingleGetInMicroSeconds(1000);
     try (DaVinciClient<String, TestValueSchema> daVinciClient = setupDaVinciClient(storeName)) {
@@ -89,13 +89,15 @@ public class FastClientDaVinciClientCompatTest extends AbstractClientEndToEndSet
         new PropertyBuilder().put(DATA_BASE_PATH, Utils.getTempDataDirectory().getAbsolutePath())
             .put(PERSISTENCE_TYPE, ROCKS_DB)
             .put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
+            .put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 2 * 1024 * 1024L)
             .put(DATA_BASE_PATH, dataPath)
             .build();
-    daVinciClientFactory = new CachingDaVinciClientFactory(
+    daVinciClientFactory = getCachingDaVinciClientFactory(
         d2Client,
         VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
         new MetricsRepository(),
-        userStoreDaVinciBackendConfig);
+        userStoreDaVinciBackendConfig,
+        veniceCluster);
     return daVinciClientFactory.getAndStartSpecificAvroClient(storeName, new DaVinciConfig(), TestValueSchema.class);
   }
 

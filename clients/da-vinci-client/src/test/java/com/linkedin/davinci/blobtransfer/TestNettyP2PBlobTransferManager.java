@@ -1,16 +1,24 @@
 package com.linkedin.davinci.blobtransfer;
 
+import static com.linkedin.davinci.blobtransfer.BlobTransferGlobalTrafficShapingHandlerHolder.getGlobalChannelTrafficShapingHandlerInstance;
 import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferTableFormat;
+import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.createAclHandler;
+import static com.linkedin.venice.utils.TestUtils.DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 
 import com.linkedin.davinci.blobtransfer.client.NettyFileTransferClient;
 import com.linkedin.davinci.blobtransfer.server.P2PBlobTransferService;
+import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.stats.AggVersionedBlobTransferStats;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
+import com.linkedin.davinci.store.StorageEngine;
+import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.blobtransfer.BlobFinder;
 import com.linkedin.venice.blobtransfer.BlobPeersDiscoveryResponse;
 import com.linkedin.venice.exceptions.VeniceBlobTransferFileNotFoundException;
@@ -18,12 +26,16 @@ import com.linkedin.venice.exceptions.VenicePeersConnectionException;
 import com.linkedin.venice.exceptions.VenicePeersNotFoundException;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
-import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.store.rocksdb.RocksDBUtils;
+import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import io.netty.handler.traffic.GlobalChannelTrafficShapingHandler;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
@@ -34,6 +46,8 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Optional;
+import java.util.Properties;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -67,6 +81,9 @@ public class TestNettyP2PBlobTransferManager {
   Path destFile2;
   Path destFile3;
 
+  Optional<SSLFactory> sslFactory;
+  Optional<BlobTransferAclHandler> aclHandler;
+
   @BeforeMethod
   public void setUp() throws Exception {
     int port = TestUtils.getFreePort();
@@ -77,14 +94,47 @@ public class TestNettyP2PBlobTransferManager {
     storageMetadataService = mock(StorageMetadataService.class);
 
     blobTransferStats = mock(AggVersionedBlobTransferStats.class);
-    ReadOnlyStoreRepository readOnlyStoreRepository = mock(ReadOnlyStoreRepository.class);
     StorageEngineRepository storageEngineRepository = mock(StorageEngineRepository.class);
-    blobSnapshotManager =
-        Mockito.spy(new BlobSnapshotManager(readOnlyStoreRepository, storageEngineRepository, storageMetadataService));
+    GlobalChannelTrafficShapingHandler globalChannelTrafficShapingHandler =
+        getGlobalChannelTrafficShapingHandlerInstance(2000000, 2000000);
 
-    server =
-        new P2PBlobTransferService(port, tmpSnapshotDir.toString(), blobTransferMaxTimeoutInMin, blobSnapshotManager);
-    client = Mockito.spy(new NettyFileTransferClient(port, tmpPartitionDir.toString(), storageMetadataService));
+    StorageEngine storageEngine = Mockito.mock(StorageEngine.class);
+    Mockito.doReturn(storageEngine).when(storageEngineRepository).getLocalStorageEngine(Mockito.anyString());
+    Mockito.doReturn(true).when(storageEngine).containsPartition(Mockito.anyInt());
+
+    sslFactory = Optional.of(SslUtils.getVeniceLocalSslFactory());
+
+    Properties sslProperties = SslUtils.getVeniceLocalSslProperties();
+    sslProperties.setProperty(ConfigKeys.BLOB_TRANSFER_SSL_ENABLED, "true");
+    sslProperties.setProperty(ConfigKeys.BLOB_TRANSFER_ACL_ENABLED, "true");
+
+    VeniceProperties veniceProperties = new VeniceProperties(sslProperties);
+    VeniceConfigLoader configLoader = Mockito.mock(VeniceConfigLoader.class);
+
+    Mockito.when(configLoader.getCombinedProperties()).thenReturn(veniceProperties);
+    aclHandler = createAclHandler(configLoader);
+
+    blobSnapshotManager = Mockito.spy(new BlobSnapshotManager(storageEngineRepository, storageMetadataService));
+
+    server = new P2PBlobTransferService(
+        port,
+        tmpSnapshotDir.toString(),
+        blobTransferMaxTimeoutInMin,
+        blobSnapshotManager,
+        globalChannelTrafficShapingHandler,
+        sslFactory,
+        aclHandler,
+        20);
+    client = Mockito.spy(
+        new NettyFileTransferClient(
+            port,
+            tmpPartitionDir.toString(),
+            storageMetadataService,
+            30,
+            60,
+            blobTransferMaxTimeoutInMin,
+            globalChannelTrafficShapingHandler,
+            sslFactory));
     finder = mock(BlobFinder.class);
 
     manager = new NettyP2PBlobTransferManager(server, client, finder, tmpPartitionDir.toString(), blobTransferStats);
@@ -154,9 +204,12 @@ public class TestNettyP2PBlobTransferManager {
 
     InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer =
         AvroProtocolDefinition.PARTITION_STATE.getSerializer();
-    OffsetRecord expectOffsetRecord = new OffsetRecord(partitionStateSerializer);
+    OffsetRecord expectOffsetRecord =
+        new OffsetRecord(partitionStateSerializer, DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING);
     expectOffsetRecord.setOffsetLag(1000L);
-    Mockito.doReturn(expectOffsetRecord).when(storageMetadataService).getLastOffset(Mockito.any(), Mockito.anyInt());
+    Mockito.doReturn(expectOffsetRecord)
+        .when(storageMetadataService)
+        .getLastOffset(Mockito.any(), Mockito.anyInt(), any());
 
     // Execution:
     CompletionStage<InputStream> future =
@@ -177,8 +230,6 @@ public class TestNettyP2PBlobTransferManager {
   @Test
   public void testSnapshotFormatNotMatch() throws IOException {
     // Preparation:
-    Mockito.doReturn(false).when(blobSnapshotManager).isStoreHybrid(anyString(), anyInt());
-
     BlobPeersDiscoveryResponse response = new BlobPeersDiscoveryResponse();
     response.setDiscoveryResult(Collections.singletonList("localhost"));
     doReturn(response).when(finder).discoverBlobPeers(anyString(), anyInt(), anyInt());
@@ -188,11 +239,15 @@ public class TestNettyP2PBlobTransferManager {
 
     InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer =
         AvroProtocolDefinition.PARTITION_STATE.getSerializer();
-    OffsetRecord expectOffsetRecord = new OffsetRecord(partitionStateSerializer);
+    OffsetRecord expectOffsetRecord =
+        new OffsetRecord(partitionStateSerializer, DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING);
     expectOffsetRecord.setOffsetLag(1000L);
-    Mockito.doReturn(expectOffsetRecord).when(storageMetadataService).getLastOffset(Mockito.any(), Mockito.anyInt());
+    Mockito.doReturn(expectOffsetRecord)
+        .when(storageMetadataService)
+        .getLastOffset(Mockito.any(), Mockito.anyInt(), any());
 
     snapshotPreparation();
+    Mockito.doNothing().when(blobSnapshotManager).createSnapshot(anyString(), anyInt());
 
     // Execution:
     // Bootstrap try to get plain table snapshot,
@@ -209,9 +264,7 @@ public class TestNettyP2PBlobTransferManager {
   @Test
   public void testLocalFileTransferInBatchStore()
       throws IOException, ExecutionException, InterruptedException, TimeoutException {
-    // Preparation:
-    Mockito.doReturn(false).when(blobSnapshotManager).isStoreHybrid(anyString(), anyInt());
-
+    // Preparation
     BlobPeersDiscoveryResponse response = new BlobPeersDiscoveryResponse();
     response.setDiscoveryResult(Collections.singletonList("localhost"));
     doReturn(response).when(finder).discoverBlobPeers(anyString(), anyInt(), anyInt());
@@ -221,11 +274,15 @@ public class TestNettyP2PBlobTransferManager {
 
     InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer =
         AvroProtocolDefinition.PARTITION_STATE.getSerializer();
-    OffsetRecord expectOffsetRecord = new OffsetRecord(partitionStateSerializer);
+    OffsetRecord expectOffsetRecord =
+        new OffsetRecord(partitionStateSerializer, DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING);
     expectOffsetRecord.setOffsetLag(1000L);
-    Mockito.doReturn(expectOffsetRecord).when(storageMetadataService).getLastOffset(Mockito.any(), Mockito.anyInt());
+    Mockito.doReturn(expectOffsetRecord)
+        .when(storageMetadataService)
+        .getLastOffset(Mockito.any(), Mockito.anyInt(), any());
 
     snapshotPreparation();
+    Mockito.doNothing().when(blobSnapshotManager).createSnapshot(anyString(), anyInt());
 
     // Execution:
     // Manager should be able to fetch the file and download it to another directory
@@ -257,11 +314,15 @@ public class TestNettyP2PBlobTransferManager {
 
     InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer =
         AvroProtocolDefinition.PARTITION_STATE.getSerializer();
-    OffsetRecord expectOffsetRecord = new OffsetRecord(partitionStateSerializer);
+    OffsetRecord expectOffsetRecord =
+        new OffsetRecord(partitionStateSerializer, DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING);
     expectOffsetRecord.setOffsetLag(1000L);
-    Mockito.doReturn(expectOffsetRecord).when(storageMetadataService).getLastOffset(Mockito.any(), Mockito.anyInt());
+    Mockito.doReturn(expectOffsetRecord)
+        .when(storageMetadataService)
+        .getLastOffset(Mockito.any(), Mockito.anyInt(), any());
 
     snapshotPreparation();
+    Mockito.doNothing().when(blobSnapshotManager).createSnapshot(anyString(), anyInt());
 
     // Execution:
     // Manager should be able to fetch the file and download it to another directory, and future is done normally
@@ -273,15 +334,30 @@ public class TestNettyP2PBlobTransferManager {
     });
 
     // Verification:
-    // Verify that even has bad hosts in the list, it still finally uses good host to transfer the file
     Mockito.verify(client, Mockito.times(1))
         .get("localhost", TEST_STORE, TEST_VERSION, TEST_PARTITION, BlobTransferTableFormat.BLOCK_BASED_TABLE);
-    Mockito.verify(client, Mockito.times(1))
+    // Verify that bad hosts are not called to fetch the file as they are no longer connectable
+    Mockito.verify(client, Mockito.never())
         .get("badhost1", TEST_STORE, TEST_VERSION, TEST_PARTITION, BlobTransferTableFormat.BLOCK_BASED_TABLE);
-    Mockito.verify(client, Mockito.times(1))
+    Mockito.verify(client, Mockito.never())
         .get("badhost2", TEST_STORE, TEST_VERSION, TEST_PARTITION, BlobTransferTableFormat.BLOCK_BASED_TABLE);
+    Mockito.verify(client, Mockito.times(2)).purgeStaleConnectivityRecords(Mockito.any());
 
     verifyFileTransferSuccess(expectOffsetRecord);
+  }
+
+  /**
+   * The client is initialized with host freshness 30 sec, so when purgeStaleConnectivityRecords is called,
+   * All hosts connectivity records older than 30s should be purged.
+   */
+  @Test
+  public void testPurgeStaleConnectivityRecords() {
+    VeniceConcurrentHashMap<String, Long> connectivityMap = new VeniceConcurrentHashMap<>();
+    connectivityMap.put("oldestHost", System.currentTimeMillis() - TimeUnit.SECONDS.toMillis(120));
+    connectivityMap.put("newestHost", System.currentTimeMillis());
+    client.purgeStaleConnectivityRecords(connectivityMap);
+
+    Assert.assertEquals(connectivityMap.size(), 1);
   }
 
   /**
@@ -303,11 +379,15 @@ public class TestNettyP2PBlobTransferManager {
 
     InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer =
         AvroProtocolDefinition.PARTITION_STATE.getSerializer();
-    OffsetRecord expectOffsetRecord = new OffsetRecord(partitionStateSerializer);
+    OffsetRecord expectOffsetRecord =
+        new OffsetRecord(partitionStateSerializer, DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING);
     expectOffsetRecord.setOffsetLag(1000L);
-    Mockito.doReturn(expectOffsetRecord).when(storageMetadataService).getLastOffset(Mockito.any(), Mockito.anyInt());
+    Mockito.doReturn(expectOffsetRecord)
+        .when(storageMetadataService)
+        .getLastOffset(Mockito.any(), Mockito.anyInt(), any());
 
     snapshotPreparation();
+    Mockito.doNothing().when(blobSnapshotManager).createSnapshot(anyString(), anyInt());
 
     // Execution:
     // Manager should be able to fetch the file and download it to another directory, and future is done normally
@@ -335,7 +415,6 @@ public class TestNettyP2PBlobTransferManager {
   public void testLocalFileTransferInHybridStore()
       throws IOException, ExecutionException, InterruptedException, TimeoutException {
     // Preparation:
-    Mockito.doReturn(true).when(blobSnapshotManager).isStoreHybrid(anyString(), anyInt());
     Mockito.doNothing().when(blobSnapshotManager).createSnapshot(anyString(), anyInt());
 
     BlobPeersDiscoveryResponse response = new BlobPeersDiscoveryResponse();
@@ -347,9 +426,12 @@ public class TestNettyP2PBlobTransferManager {
 
     InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer =
         AvroProtocolDefinition.PARTITION_STATE.getSerializer();
-    OffsetRecord expectOffsetRecord = new OffsetRecord(partitionStateSerializer);
+    OffsetRecord expectOffsetRecord =
+        new OffsetRecord(partitionStateSerializer, DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING);
     expectOffsetRecord.setOffsetLag(1000L);
-    Mockito.doReturn(expectOffsetRecord).when(storageMetadataService).getLastOffset(Mockito.any(), Mockito.anyInt());
+    Mockito.doReturn(expectOffsetRecord)
+        .when(storageMetadataService)
+        .getLastOffset(Mockito.any(), Mockito.anyInt(), any());
 
     snapshotPreparation();
 
@@ -369,6 +451,68 @@ public class TestNettyP2PBlobTransferManager {
     // Verify the concurrent user of this partition is 0 as it should firstly be 1 and after the file is sent,
     // it should decrease to 0
     Assert.assertEquals(blobSnapshotManager.getConcurrentSnapshotUsers(TEST_STORE + "_v" + TEST_VERSION, 0), 0);
+  }
+
+  @Test
+  public void testGetCompletesWithTimeoutExceptionAndClosesChannel() throws Exception {
+    // Preparation:
+    GlobalChannelTrafficShapingHandler newGlobalChannelTrafficShapingHandler =
+        getGlobalChannelTrafficShapingHandlerInstance(2000000, 2000000);
+    BlobPeersDiscoveryResponse response = new BlobPeersDiscoveryResponse();
+    response.setDiscoveryResult(Collections.singletonList("localhost"));
+    doReturn(response).when(finder).discoverBlobPeers(anyString(), anyInt(), anyInt());
+
+    StoreVersionState storeVersionState = new StoreVersionState();
+    Mockito.doReturn(storeVersionState).when(storageMetadataService).getStoreVersionState(Mockito.any());
+
+    InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer =
+        AvroProtocolDefinition.PARTITION_STATE.getSerializer();
+    OffsetRecord expectOffsetRecord =
+        new OffsetRecord(partitionStateSerializer, DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING);
+    expectOffsetRecord.setOffsetLag(1000L);
+    Mockito.doReturn(expectOffsetRecord)
+        .when(storageMetadataService)
+        .getLastOffset(Mockito.any(), Mockito.anyInt(), any());
+
+    snapshotPreparation();
+    Mockito.doNothing().when(blobSnapshotManager).createSnapshot(anyString(), anyInt());
+
+    int port = TestUtils.getFreePort();
+    NettyFileTransferClient newClient = Mockito.spy(
+        new NettyFileTransferClient(
+            port,
+            tmpPartitionDir.toString(),
+            storageMetadataService,
+            30,
+            0, // general transfer timeout immediately
+            10,
+            newGlobalChannelTrafficShapingHandler,
+            sslFactory));
+
+    P2PBlobTransferService newServer = new P2PBlobTransferService(
+        port,
+        tmpSnapshotDir.toString(),
+        20,
+        blobSnapshotManager,
+        newGlobalChannelTrafficShapingHandler,
+        sslFactory,
+        aclHandler,
+        20);
+
+    NettyP2PBlobTransferManager newManager =
+        new NettyP2PBlobTransferManager(newServer, newClient, finder, tmpPartitionDir.toString(), blobTransferStats);
+    newManager.start();
+
+    // Action
+    CompletionStage<InputStream> future =
+        newManager.get(TEST_STORE, TEST_VERSION, TEST_PARTITION, BlobTransferTableFormat.BLOCK_BASED_TABLE);
+
+    // Verify that the future completes exceptionally with a TimeoutException
+    future.whenComplete((result, throwable) -> {
+      Assert.assertNotNull(throwable);
+      Assert.assertTrue(throwable instanceof TimeoutException);
+      Assert.assertTrue(throwable.getMessage().contains("Timeout while waiting for blob transfer"));
+    });
   }
 
   /**
@@ -425,9 +569,9 @@ public class TestNettyP2PBlobTransferManager {
     Assert.assertTrue(Arrays.equals(Files.readAllBytes(file3), Files.readAllBytes(destFile3)));
 
     // Verify the metadata is retrieved
-    Mockito.verify(storageMetadataService, Mockito.times(1))
-        .getLastOffset(TEST_STORE + "_v" + TEST_VERSION, TEST_PARTITION);
-    Mockito.verify(storageMetadataService, Mockito.times(1)).getStoreVersionState(TEST_STORE + "_v" + TEST_VERSION);
+    Mockito.verify(storageMetadataService, Mockito.times(2))
+        .getLastOffset(eq(TEST_STORE + "_v" + TEST_VERSION), eq(TEST_PARTITION), any());
+    Mockito.verify(storageMetadataService, Mockito.times(2)).getStoreVersionState(TEST_STORE + "_v" + TEST_VERSION);
 
     // Verify the record is updated
     Mockito.verify(storageMetadataService, Mockito.times(1))
@@ -453,7 +597,7 @@ public class TestNettyP2PBlobTransferManager {
 
     // Verify the metadata/record/svs is never retrieved/updated
     Mockito.verify(storageMetadataService, Mockito.never())
-        .getLastOffset(TEST_STORE + "_v" + TEST_VERSION, TEST_PARTITION);
+        .getLastOffset(TEST_STORE + "_v" + TEST_VERSION, TEST_PARTITION, DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING);
     Mockito.verify(storageMetadataService, Mockito.never()).getStoreVersionState(TEST_STORE + "_v" + TEST_VERSION);
     Mockito.verify(storageMetadataService, Mockito.never())
         .put(TEST_STORE + "_v" + TEST_VERSION, TEST_PARTITION, expectOffsetRecord);

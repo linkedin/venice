@@ -1,7 +1,8 @@
 package com.linkedin.venice.endToEnd;
 
-import static com.linkedin.davinci.store.AbstractStorageEngine.METADATA_PARTITION_ID;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
+import static com.linkedin.venice.ConfigKeys.SERVER_ADAPTIVE_THROTTLER_ENABLED;
+import static com.linkedin.venice.ConfigKeys.SERVER_BLOB_TRANSFER_ADAPTIVE_THROTTLER_ENABLED;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.DEFAULT_KEY_SCHEMA;
 import static com.linkedin.venice.meta.StoreStatus.FULLLY_REPLICATED;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJProps;
@@ -12,6 +13,7 @@ import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.meta.PersistenceType;
@@ -19,15 +21,18 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.store.rocksdb.RocksDBUtils;
+import com.linkedin.venice.utils.ConfigCommonUtils;
+import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Paths;
-import java.util.Arrays;
-import java.util.List;
+import java.util.Collections;
+import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
@@ -62,47 +67,34 @@ public class BlobP2PTransferAmongServersTest {
     }
   }
 
-  @Test(singleThreaded = true, timeOut = 180000)
+  @Test(singleThreaded = true, timeOut = 240000)
   public void testBlobP2PTransferAmongServersForBatchStore() throws Exception {
     cluster = initializeVeniceCluster();
 
     String storeName = "test-store";
-    Consumer<UpdateStoreQueryParams> paramsConsumer = params -> params.setBlobTransferEnabled(true);
+    Consumer<UpdateStoreQueryParams> paramsConsumer =
+        params -> params.setBlobTransferInServerEnabled(ConfigCommonUtils.ActivationState.ENABLED);
     setUpBatchStore(cluster, storeName, paramsConsumer, properties -> {}, true);
 
     VeniceServerWrapper server1 = cluster.getVeniceServerByPort(server1Port);
     VeniceServerWrapper server2 = cluster.getVeniceServerByPort(server2Port);
 
-    // verify the snapshot is generated for both servers after the job is done
+    // verify the snapshot is not generated for both servers after the job is done
     for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
       String snapshotPath1 = RocksDBUtils.composeSnapshotDir(path1 + "/rocksdb", storeName + "_v1", partitionId);
-      Assert.assertTrue(Files.exists(Paths.get(snapshotPath1)));
+      Assert.assertFalse(Files.exists(Paths.get(snapshotPath1)));
       String snapshotPath2 = RocksDBUtils.composeSnapshotDir(path2 + "/rocksdb", storeName + "_v1", partitionId);
-      Assert.assertTrue(Files.exists(Paths.get(snapshotPath2)));
-    }
-
-    // cleanup and restart server 1
-    FileUtils.deleteDirectory(
-        new File(RocksDBUtils.composePartitionDbDir(path1 + "/rocksdb", storeName + "_v1", METADATA_PARTITION_ID)));
-    for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
-      FileUtils.deleteDirectory(
-          new File(RocksDBUtils.composePartitionDbDir(path1 + "/rocksdb", storeName + "_v1", partitionId)));
-      // both partition db and snapshot should be deleted
-      Assert.assertFalse(
-          Files.exists(
-              Paths.get(RocksDBUtils.composePartitionDbDir(path1 + "/rocksdb", storeName + "_v1", partitionId))));
-      Assert.assertFalse(
-          Files.exists(Paths.get(RocksDBUtils.composeSnapshotDir(path1 + "/rocksdb", storeName + "_v1", partitionId))));
+      Assert.assertFalse(Files.exists(Paths.get(snapshotPath2)));
     }
 
     cluster.stopAndRestartVeniceServer(server1Port);
-    TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.MINUTES, () -> {
+    TestUtils.waitForNonDeterministicAssertion(3, TimeUnit.MINUTES, () -> {
       Assert.assertTrue(server1.isRunning());
     });
 
     // wait for server 1
     cluster.getVeniceControllers().forEach(controller -> {
-      TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.MINUTES, () -> {
+      TestUtils.waitForNonDeterministicAssertion(3, TimeUnit.MINUTES, () -> {
         Assert.assertEquals(
             controller.getController()
                 .getVeniceControllerService()
@@ -117,95 +109,36 @@ public class BlobP2PTransferAmongServersTest {
     TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.MINUTES, () -> {
       for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
         File file = new File(RocksDBUtils.composePartitionDbDir(path1 + "/rocksdb", storeName + "_v1", partitionId));
-        Boolean fileExisted = Files.exists(file.toPath());
+        boolean fileExisted = Files.exists(file.toPath());
         Assert.assertTrue(fileExisted);
         // ensure the snapshot file is not generated
         File snapshotFile =
             new File(RocksDBUtils.composeSnapshotDir(path1 + "/rocksdb", storeName + "_v1", partitionId));
-        Boolean snapshotFileExisted = Files.exists(snapshotFile.toPath());
+        boolean snapshotFileExisted = Files.exists(snapshotFile.toPath());
         Assert.assertFalse(snapshotFileExisted);
+        // at that moment, the path 2 snapshot should be created
+        String snapshotPath2 = RocksDBUtils.composeSnapshotDir(path2 + "/rocksdb", storeName + "_v1", partitionId);
+        Assert.assertTrue(Files.exists(Paths.get(snapshotPath2)));
       }
     });
 
     TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.MINUTES, () -> {
       for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
-        OffsetRecord offsetServer1 =
-            server1.getVeniceServer().getStorageMetadataService().getLastOffset("test-store_v1", partitionId);
-        OffsetRecord offsetServer2 =
-            server2.getVeniceServer().getStorageMetadataService().getLastOffset("test-store_v1", partitionId);
-        Assert.assertEquals(offsetServer1.getLocalVersionTopicOffset(), offsetServer2.getLocalVersionTopicOffset());
-      }
-    });
-  }
-
-  /**
-   * If there are no snapshots available for the store on server2, the blob transfer should throw an exception and return a 404 error.
-   * When server1 restarts and receives the 404 error from server2, it will switch to using Kafka to ingest the data.
-   */
-  @Test(singleThreaded = true, timeOut = 180000)
-  public void testBlobTransferThrowExceptionIfSnapshotNotExisted() throws Exception {
-    cluster = initializeVeniceCluster();
-    String storeName = "test-store-snapshot-not-existed";
-    Consumer<UpdateStoreQueryParams> paramsConsumer = params -> params.setBlobTransferEnabled(true);
-    setUpBatchStore(cluster, storeName, paramsConsumer, properties -> {}, true);
-
-    VeniceServerWrapper server1 = cluster.getVeniceServerByPort(server1Port);
-    // verify the snapshot is generated for both servers after the job is done
-    for (int i = 0; i < PARTITION_COUNT; i++) {
-      String snapshotPath1 = RocksDBUtils.composeSnapshotDir(path1 + "/rocksdb", storeName + "_v1", i);
-      Assert.assertTrue(Files.exists(Paths.get(snapshotPath1)));
-      String snapshotPath2 = RocksDBUtils.composeSnapshotDir(path2 + "/rocksdb", storeName + "_v1", i);
-      Assert.assertTrue(Files.exists(Paths.get(snapshotPath2)));
-    }
-
-    // cleanup and restart server 1
-    FileUtils.deleteDirectory(
-        new File(RocksDBUtils.composePartitionDbDir(path1 + "/rocksdb", storeName + "_v1", METADATA_PARTITION_ID)));
-
-    List<String> paths = Arrays.asList(path1, path2);
-
-    // clean up all snapshot files on server 1 and server 2,
-    // to simulate the case that snapshot is not existed on server2,
-    // should return 404 in response
-    for (String path: paths) {
-      for (int i = 0; i < PARTITION_COUNT; i++) {
-        FileUtils
-            .deleteDirectory(new File(RocksDBUtils.composePartitionDbDir(path + "/rocksdb", storeName + "_v1", i)));
-        // both partition db and snapshot should be deleted
-        Assert.assertFalse(
-            Files.exists(Paths.get(RocksDBUtils.composePartitionDbDir(path + "/rocksdb", storeName + "_v1", i))));
-        Assert.assertFalse(
-            Files.exists(Paths.get(RocksDBUtils.composeSnapshotDir(path + "/rocksdb", storeName + "_v1", i))));
-      }
-    }
-
-    cluster.stopAndRestartVeniceServer(server1Port);
-    TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.MINUTES, () -> {
-      Assert.assertTrue(server1.isRunning());
-    });
-
-    // wait for server 1
-    cluster.getVeniceControllers().forEach(controller -> {
-      TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.MINUTES, () -> {
+        OffsetRecord offsetServer1 = server1.getVeniceServer()
+            .getStorageMetadataService()
+            .getLastOffset(
+                "test-store_v1",
+                partitionId,
+                server1.getVeniceServer().getKafkaStoreIngestionService().getPubSubContext());
+        OffsetRecord offsetServer2 = server2.getVeniceServer()
+            .getStorageMetadataService()
+            .getLastOffset(
+                "test-store_v1",
+                partitionId,
+                server2.getVeniceServer().getKafkaStoreIngestionService().getPubSubContext());
         Assert.assertEquals(
-            controller.getController()
-                .getVeniceControllerService()
-                .getVeniceHelixAdmin()
-                .getAllStoreStatuses(cluster.getClusterName())
-                .get(storeName),
-            FULLLY_REPLICATED.toString());
-      });
-    });
-
-    TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.MINUTES, () -> {
-      for (int i = 0; i < PARTITION_COUNT; i++) {
-        File file = new File(RocksDBUtils.composePartitionDbDir(path1 + "/rocksdb", storeName + "_v1", i));
-        Boolean fileExisted = Files.exists(file.toPath());
-        Assert.assertTrue(fileExisted);
-        File snapshotFile = new File(RocksDBUtils.composeSnapshotDir(path1 + "/rocksdb", storeName + "_v1", i));
-        Boolean snapshotFileExisted = Files.exists(snapshotFile.toPath());
-        // snapshot file should be generated as it is re-ingested, not from server2 file transfer
-        Assert.assertTrue(snapshotFileExisted);
+            offsetServer1.getCheckpointedLocalVtPosition(),
+            offsetServer2.getCheckpointedLocalVtPosition());
       }
     });
   }
@@ -216,36 +149,24 @@ public class BlobP2PTransferAmongServersTest {
    */
   @Test(singleThreaded = true, timeOut = 180000)
   public void testBlobTransferThrowExceptionIfTableFormatNotMatch() throws Exception {
-    cluster = initializeVeniceCluster(false);
+    cluster = initializeVeniceCluster(Collections.singletonMap(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, "true"));
 
     String storeName = "test-store-format-not-match";
-    Consumer<UpdateStoreQueryParams> paramsConsumer = params -> params.setBlobTransferEnabled(true);
+    Consumer<UpdateStoreQueryParams> paramsConsumer =
+        params -> params.setBlobTransferInServerEnabled(ConfigCommonUtils.ActivationState.ENABLED);
     setUpBatchStore(cluster, storeName, paramsConsumer, properties -> {}, true);
 
     VeniceServerWrapper server1 = cluster.getVeniceServerByPort(server1Port);
 
-    // verify the snapshot is generated for both servers after the job is done
+    // The snapshot will not be generated, as none traffic is sent yet.
     for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
       String snapshotPath1 = RocksDBUtils.composeSnapshotDir(path1 + "/rocksdb", storeName + "_v1", partitionId);
-      Assert.assertTrue(Files.exists(Paths.get(snapshotPath1)));
+      Assert.assertFalse(Files.exists(Paths.get(snapshotPath1)));
       String snapshotPath2 = RocksDBUtils.composeSnapshotDir(path2 + "/rocksdb", storeName + "_v1", partitionId);
-      Assert.assertTrue(Files.exists(Paths.get(snapshotPath2)));
+      Assert.assertFalse(Files.exists(Paths.get(snapshotPath2)));
     }
 
-    // cleanup and restart server 1
-    FileUtils.deleteDirectory(
-        new File(RocksDBUtils.composePartitionDbDir(path1 + "/rocksdb", storeName + "_v1", METADATA_PARTITION_ID)));
-    for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
-      FileUtils.deleteDirectory(
-          new File(RocksDBUtils.composePartitionDbDir(path1 + "/rocksdb", storeName + "_v1", partitionId)));
-      // both partition db and snapshot should be deleted
-      Assert.assertFalse(
-          Files.exists(
-              Paths.get(RocksDBUtils.composePartitionDbDir(path1 + "/rocksdb", storeName + "_v1", partitionId))));
-      Assert.assertFalse(
-          Files.exists(Paths.get(RocksDBUtils.composeSnapshotDir(path1 + "/rocksdb", storeName + "_v1", partitionId))));
-    }
-
+    // restart server 1
     cluster.stopAndRestartVeniceServer(server1Port);
     TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.MINUTES, () -> {
       Assert.assertTrue(server1.isRunning());
@@ -267,22 +188,118 @@ public class BlobP2PTransferAmongServersTest {
     TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.MINUTES, () -> {
       for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
         File file = new File(RocksDBUtils.composePartitionDbDir(path1 + "/rocksdb", storeName + "_v1", partitionId));
-        Boolean fileExisted = Files.exists(file.toPath());
+        boolean fileExisted = Files.exists(file.toPath());
         Assert.assertTrue(fileExisted);
-        // ensure that the snapshot file is generated as it is re-ingested, not from server2 file transfer
+        // the snapshot from server 2 should not be generated as it should throw 404 error once detect the table format
+        // is not match.
+        File snapshotFile =
+            new File(RocksDBUtils.composeSnapshotDir(path2 + "/rocksdb", storeName + "_v1", partitionId));
+        boolean snapshotFileExisted = Files.exists(snapshotFile.toPath());
+        Assert.assertFalse(snapshotFileExisted);
+      }
+    });
+  }
+
+  @Test(singleThreaded = true, timeOut = 240000)
+  public void testBlobP2PTransferAmongServersForBatchStoreWithRestoreTempFolder() throws Exception {
+    cluster = initializeVeniceCluster();
+
+    String storeName = "test-store";
+    Consumer<UpdateStoreQueryParams> paramsConsumer =
+        params -> params.setBlobTransferInServerEnabled(ConfigCommonUtils.ActivationState.ENABLED);
+    setUpBatchStore(cluster, storeName, paramsConsumer, properties -> {}, true);
+
+    VeniceServerWrapper server1 = cluster.getVeniceServerByPort(server1Port);
+    VeniceServerWrapper server2 = cluster.getVeniceServerByPort(server2Port);
+
+    // verify the snapshot is not generated for both servers after the job is done
+    for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
+      String snapshotPath1 = RocksDBUtils.composeSnapshotDir(path1 + "/rocksdb", storeName + "_v1", partitionId);
+      Assert.assertFalse(Files.exists(Paths.get(snapshotPath1)));
+      String snapshotPath2 = RocksDBUtils.composeSnapshotDir(path2 + "/rocksdb", storeName + "_v1", partitionId);
+      Assert.assertFalse(Files.exists(Paths.get(snapshotPath2)));
+    }
+
+    // stop server 1
+    cluster.stopVeniceServer(server1Port);
+
+    // prepare temp folder: move the partition folders to temp folders to simulate the restore from temp folder scenario
+    for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
+      String partitionPath = RocksDBUtils.composePartitionDbDir(path1 + "/rocksdb", storeName + "_v1", partitionId);
+      String tempPartitionFolder =
+          RocksDBUtils.composeTempPartitionDir(path1 + "/rocksdb", storeName + "_v1", partitionId);
+      Files.move(Paths.get(partitionPath), Paths.get(tempPartitionFolder));
+      Assert.assertFalse(Files.exists(Paths.get(partitionPath)));
+      Assert.assertTrue(Files.exists(Paths.get(tempPartitionFolder)));
+    }
+
+    // restart server 1
+    cluster.restartVeniceServer(server1.getPort());
+    TestUtils.waitForNonDeterministicAssertion(3, TimeUnit.MINUTES, () -> {
+      Assert.assertTrue(server1.isRunning());
+    });
+
+    // wait for server 1 is fully replicated
+    cluster.getVeniceControllers().forEach(controller -> {
+      TestUtils.waitForNonDeterministicAssertion(3, TimeUnit.MINUTES, () -> {
+        Assert.assertEquals(
+            controller.getController()
+                .getVeniceControllerService()
+                .getVeniceHelixAdmin()
+                .getAllStoreStatuses(cluster.getClusterName())
+                .get(storeName),
+            FULLLY_REPLICATED.toString());
+      });
+    });
+
+    // the partition files should be transferred to server 1 and offset should be the same
+    TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.MINUTES, () -> {
+      for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
+        File file = new File(RocksDBUtils.composePartitionDbDir(path1 + "/rocksdb", storeName + "_v1", partitionId));
+        boolean fileExisted = Files.exists(file.toPath());
+        Assert.assertTrue(fileExisted);
+        // ensure the snapshot file is not generated
         File snapshotFile =
             new File(RocksDBUtils.composeSnapshotDir(path1 + "/rocksdb", storeName + "_v1", partitionId));
-        Boolean snapshotFileExisted = Files.exists(snapshotFile.toPath());
-        Assert.assertTrue(snapshotFileExisted);
+        boolean snapshotFileExisted = Files.exists(snapshotFile.toPath());
+        Assert.assertFalse(snapshotFileExisted);
+        // at that moment, the path 2 snapshot should be created
+        String snapshotPath2 = RocksDBUtils.composeSnapshotDir(path2 + "/rocksdb", storeName + "_v1", partitionId);
+        Assert.assertTrue(Files.exists(Paths.get(snapshotPath2)));
+
+        // validate that no temp folder existed anymore
+        String tempPartitionFolderPath1 =
+            RocksDBUtils.composeTempPartitionDir(path1 + "/rocksdb", storeName + "_v1", partitionId);
+        Assert.assertFalse(Files.exists(Paths.get(tempPartitionFolderPath1)));
+      }
+    });
+
+    TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.MINUTES, () -> {
+      for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
+        OffsetRecord offsetServer1 = server1.getVeniceServer()
+            .getStorageMetadataService()
+            .getLastOffset(
+                "test-store_v1",
+                partitionId,
+                server1.getVeniceServer().getKafkaStoreIngestionService().getPubSubContext());
+        OffsetRecord offsetServer2 = server2.getVeniceServer()
+            .getStorageMetadataService()
+            .getLastOffset(
+                "test-store_v1",
+                partitionId,
+                server2.getVeniceServer().getKafkaStoreIngestionService().getPubSubContext());
+        Assert.assertEquals(
+            offsetServer1.getCheckpointedLocalVtPosition(),
+            offsetServer2.getCheckpointedLocalVtPosition());
       }
     });
   }
 
   public VeniceClusterWrapper initializeVeniceCluster() {
-    return initializeVeniceCluster(true);
+    return initializeVeniceCluster(Collections.emptyMap());
   }
 
-  public VeniceClusterWrapper initializeVeniceCluster(boolean sameRocksDBFormat) {
+  public VeniceClusterWrapper initializeVeniceCluster(Map<String, String> configOverrideForSecondServer) {
     server1Port = -1;
     server2Port = -1;
     path1 = Utils.getTempDataDirectory().getAbsolutePath();
@@ -294,22 +311,33 @@ public class BlobP2PTransferAmongServersTest {
       port2 = TestUtils.getFreePort();
     }
 
-    VeniceClusterWrapper veniceClusterWrapper = ServiceFactory.getVeniceCluster(1, 0, 0, 2);
+    VeniceClusterCreateOptions options = new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
+        .numberOfServers(0)
+        .numberOfRouters(0)
+        .replicationFactor(2)
+        .sslToStorageNodes(true)
+        .sslToKafka(false)
+        .build();
+
+    VeniceClusterWrapper veniceClusterWrapper = ServiceFactory.getVeniceCluster(options);
     // add first server
     Properties serverProperties = new Properties();
     serverProperties.put(ConfigKeys.PERSISTENCE_TYPE, PersistenceType.ROCKS_DB);
-    serverProperties.put(ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1L));
     serverProperties.setProperty(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, "false");
     serverProperties.setProperty(ConfigKeys.SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED, "true");
     serverProperties.setProperty(ConfigKeys.SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE, "300");
-    serverProperties.setProperty(ConfigKeys.ENABLE_BLOB_TRANSFER, "true");
     serverProperties.setProperty(ConfigKeys.DATA_BASE_PATH, path1);
     serverProperties.setProperty(ConfigKeys.DAVINCI_P2P_BLOB_TRANSFER_SERVER_PORT, String.valueOf(port1));
     serverProperties.setProperty(ConfigKeys.DAVINCI_P2P_BLOB_TRANSFER_CLIENT_PORT, String.valueOf(port2));
     serverProperties.setProperty(ConfigKeys.BLOB_TRANSFER_MANAGER_ENABLED, "true");
-    veniceClusterWrapper.addVeniceServer(new Properties(), serverProperties);
-    // get the first port id for finding first server.
-    server1Port = veniceClusterWrapper.getVeniceServers().get(0).getPort();
+    serverProperties.setProperty(ConfigKeys.BLOB_TRANSFER_SSL_ENABLED, "true");
+    serverProperties.setProperty(ConfigKeys.BLOB_TRANSFER_ACL_ENABLED, "true");
+    serverProperties.setProperty(ConfigKeys.BLOB_TRANSFER_DISABLED_OFFSET_LAG_THRESHOLD, "-1000000");
+
+    Properties serverFeatureProperties = new Properties();
+    serverFeatureProperties.put(VeniceServerWrapper.SERVER_ENABLE_SSL, "true");
+
+    server1Port = veniceClusterWrapper.addVeniceServer(serverFeatureProperties, serverProperties).getPort();
 
     // add second server
     serverProperties.setProperty(ConfigKeys.DATA_BASE_PATH, path2);
@@ -318,19 +346,10 @@ public class BlobP2PTransferAmongServersTest {
     serverProperties.setProperty(ConfigKeys.DAVINCI_P2P_BLOB_TRANSFER_SERVER_PORT, String.valueOf(port2));
     serverProperties.setProperty(ConfigKeys.DAVINCI_P2P_BLOB_TRANSFER_CLIENT_PORT, String.valueOf(port1));
 
-    if (!sameRocksDBFormat) {
-      // the second server use PLAIN_TABLE_FORMAT
-      serverProperties.setProperty(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, "true");
-    }
+    // Add additional information for 2nd server.
+    serverProperties.putAll(configOverrideForSecondServer);
 
-    veniceClusterWrapper.addVeniceServer(new Properties(), serverProperties);
-    // get the second port num for finding second server,
-    // because the order of servers is not guaranteed, need to exclude the first server.
-    for (VeniceServerWrapper server: veniceClusterWrapper.getVeniceServers()) {
-      if (server.getPort() != server1Port) {
-        server2Port = server.getPort();
-      }
-    }
+    server2Port = veniceClusterWrapper.addVeniceServer(serverFeatureProperties, serverProperties).getPort();
 
     Properties routerProperties = new Properties();
     routerProperties.put(ConfigKeys.ROUTER_CLIENT_DECOMPRESSION_ENABLED, "true");
@@ -371,16 +390,20 @@ public class BlobP2PTransferAmongServersTest {
 
   private static void runVPJ(Properties vpjProperties, int expectedVersionNumber, VeniceClusterWrapper cluster) {
     long vpjStart = System.currentTimeMillis();
-    String jobName = Utils.getUniqueString("batch-job-" + expectedVersionNumber);
-    TestWriteUtils.runPushJob(jobName, vpjProperties);
+    IntegrationTestPushUtils.runVPJ(vpjProperties);
     String storeName = (String) vpjProperties.get(VENICE_STORE_NAME_PROP);
     cluster.waitVersion(storeName, expectedVersionNumber);
     LOGGER.info("**TIME** VPJ" + expectedVersionNumber + " takes " + (System.currentTimeMillis() - vpjStart));
   }
 
-  @Test(singleThreaded = true, timeOut = 180000)
-  public void testBlobP2PTransferAmongServersForHybridStore() throws Exception {
-    cluster = initializeVeniceCluster();
+  @Test(singleThreaded = true, timeOut = 240000, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testBlobP2PTransferAmongServersForHybridStore(boolean enableAdaptiveThrottling) {
+    Map<String, String> configOverride = new VeniceConcurrentHashMap<>();
+    if (enableAdaptiveThrottling) {
+      configOverride.put(SERVER_ADAPTIVE_THROTTLER_ENABLED, "true");
+      configOverride.put(SERVER_BLOB_TRANSFER_ADAPTIVE_THROTTLER_ENABLED, "true");
+    }
+    cluster = initializeVeniceCluster(configOverride);
 
     ControllerClient controllerClient = new ControllerClient(cluster.getClusterName(), cluster.getAllControllersURLs());
     // prepare hybrid store.
@@ -393,7 +416,7 @@ public class BlobP2PTransferAmongServersTest {
         new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
             .setHybridRewindSeconds(streamingRewindSeconds)
             .setHybridOffsetLagThreshold(streamingMessageLag)
-            .setBlobTransferEnabled(true));
+            .setBlobTransferInServerEnabled(ConfigCommonUtils.ActivationState.ENABLED));
 
     TestUtils.assertCommand(
         controllerClient.sendEmptyPushAndWait(storeName, Utils.getUniqueString("empty-hybrid-push"), 1L, 120000));
@@ -403,27 +426,32 @@ public class BlobP2PTransferAmongServersTest {
     // offset record should be same after the empty push
     TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.MINUTES, () -> {
       for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
-        OffsetRecord offsetRecord1 =
-            server1.getVeniceServer().getStorageMetadataService().getLastOffset(storeName + "_v1", partitionId);
-        OffsetRecord offsetRecord2 =
-            server2.getVeniceServer().getStorageMetadataService().getLastOffset(storeName + "_v1", partitionId);
-        Assert.assertEquals(offsetRecord2.getLocalVersionTopicOffset(), offsetRecord1.getLocalVersionTopicOffset());
+        OffsetRecord offsetRecord1 = server1.getVeniceServer()
+            .getStorageMetadataService()
+            .getLastOffset(
+                storeName + "_v1",
+                partitionId,
+                server1.getVeniceServer().getKafkaStoreIngestionService().getPubSubContext());
+        OffsetRecord offsetRecord2 = server2.getVeniceServer()
+            .getStorageMetadataService()
+            .getLastOffset(
+                storeName + "_v1",
+                partitionId,
+                server2.getVeniceServer().getKafkaStoreIngestionService().getPubSubContext());
+        Assert.assertEquals(
+            offsetRecord2.getCheckpointedLocalVtPosition(),
+            offsetRecord1.getCheckpointedLocalVtPosition());
       }
     });
 
     // cleanup and stop server 1
     cluster.stopVeniceServer(server1Port);
-    FileUtils.deleteDirectory(
-        new File(RocksDBUtils.composePartitionDbDir(path1 + "/rocksdb", storeName + "_v1", METADATA_PARTITION_ID)));
+    // verify that the server 1 is stopped but the files are retained.
+    // No need to check the snapshot as when server 1 and 2 initially started, blob transfer is not generated.
     for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
-      FileUtils.deleteDirectory(
-          new File(RocksDBUtils.composePartitionDbDir(path1 + "/rocksdb", storeName + "_v1", partitionId)));
-      // both partition db and snapshot should be deleted
-      Assert.assertFalse(
-          Files.exists(
-              Paths.get(RocksDBUtils.composePartitionDbDir(path1 + "/rocksdb", storeName + "_v1", partitionId))));
-      Assert.assertFalse(
-          Files.exists(Paths.get(RocksDBUtils.composeSnapshotDir(path1 + "/rocksdb", storeName + "_v1", partitionId))));
+      File file = new File(RocksDBUtils.composePartitionDbDir(path1 + "/rocksdb", storeName + "_v1", partitionId));
+      boolean fileExisted = Files.exists(file.toPath());
+      Assert.assertTrue(fileExisted);
     }
 
     // send records to server 2 only
@@ -436,8 +464,8 @@ public class BlobP2PTransferAmongServersTest {
       veniceProducer.stop();
     }
 
-    cluster.restartVeniceServer(server1.getPort());
     // restart server 1
+    cluster.restartVeniceServer(server1.getPort());
     TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.MINUTES, () -> {
       Assert.assertTrue(server1.isRunning());
     });
@@ -455,27 +483,40 @@ public class BlobP2PTransferAmongServersTest {
       });
     });
 
-    TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.MINUTES, () -> {
+    // Verify server 1 blob transfer is completed, and the snapshot is not generated.
+    TestUtils.waitForNonDeterministicAssertion(3, TimeUnit.MINUTES, () -> {
       for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
         File file = new File(RocksDBUtils.composePartitionDbDir(path1 + "/rocksdb", storeName + "_v1", partitionId));
         Boolean fileExisted = Files.exists(file.toPath());
         Assert.assertTrue(fileExisted);
-        // ensure that the snapshot is not generated.
         File snapshotFile =
             new File(RocksDBUtils.composeSnapshotDir(path1 + "/rocksdb", storeName + "_v1", partitionId));
         Boolean snapshotFileExisted = Files.exists(snapshotFile.toPath());
         Assert.assertFalse(snapshotFileExisted);
+        // Server 2 should have the snapshot file
+        String snapshotPath2 = RocksDBUtils.composeSnapshotDir(path2 + "/rocksdb", storeName + "_v1", partitionId);
+        Assert.assertTrue(Files.exists(Paths.get(snapshotPath2)));
       }
     });
 
     // server 1 and 2 offset record should be the same
-    TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.MINUTES, () -> {
+    TestUtils.waitForNonDeterministicAssertion(3, TimeUnit.MINUTES, () -> {
       for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
-        OffsetRecord offsetServer1 =
-            server1.getVeniceServer().getStorageMetadataService().getLastOffset(storeName + "_v1", partitionId);
-        OffsetRecord offsetServer2 =
-            server2.getVeniceServer().getStorageMetadataService().getLastOffset(storeName + "_v1", partitionId);
-        Assert.assertEquals(offsetServer1.getLocalVersionTopicOffset(), offsetServer2.getLocalVersionTopicOffset());
+        OffsetRecord offsetServer1 = server1.getVeniceServer()
+            .getStorageMetadataService()
+            .getLastOffset(
+                storeName + "_v1",
+                partitionId,
+                server1.getVeniceServer().getKafkaStoreIngestionService().getPubSubContext());
+        OffsetRecord offsetServer2 = server2.getVeniceServer()
+            .getStorageMetadataService()
+            .getLastOffset(
+                storeName + "_v1",
+                partitionId,
+                server2.getVeniceServer().getKafkaStoreIngestionService().getPubSubContext());
+        Assert.assertEquals(
+            offsetServer1.getCheckpointedLocalVtPosition(),
+            offsetServer2.getCheckpointedLocalVtPosition());
       }
     });
   }

@@ -40,11 +40,11 @@ public class PushJobSetting implements Serializable {
   public boolean isIncrementalPush;
   public String incrementalPushVersion;
   public boolean isDuplicateKeyAllowed;
-  public boolean enablePushJobStatusUpload;
   public int controllerRetries;
   public int controllerStatusPollRetries;
   public long pollJobStatusIntervalMs;
   public long jobStatusInUnknownStateTimeoutMs;
+  public long pushJobTimeoutOverrideMs;
   public boolean sendControlMessagesDirectly;
   public boolean isSourceETL;
   public boolean enableWriteCompute;
@@ -62,8 +62,6 @@ public class PushJobSetting implements Serializable {
   public boolean extendedSchemaValidityCheckEnabled;
   /** Refer {@link VenicePushJobConstants#COMPRESSION_METRIC_COLLECTION_ENABLED} **/
   public boolean compressionMetricCollectionEnabled;
-  /** Refer {@link VenicePushJobConstants#USE_MAPPER_TO_BUILD_DICTIONARY} **/
-  public boolean useMapperToBuildDict;
   public boolean repushTTLEnabled;
   // specify time to drop stale records.
   public long repushTTLStartTimeMs;
@@ -81,8 +79,6 @@ public class PushJobSetting implements Serializable {
   public boolean isTargetedRegionPushEnabled;
   public boolean isTargetRegionPushWithDeferredSwapEnabled;
   public boolean isSystemSchemaReaderEnabled;
-  public String systemSchemaClusterD2ServiceName;
-  public String systemSchemaClusterD2ZKHost;
   public boolean isZstdDictCreationRequired;
   public boolean isZstdDictCreationSuccess;
 
@@ -118,15 +114,19 @@ public class PushJobSetting implements Serializable {
   public boolean chunkingEnabled;
   public boolean rmdChunkingEnabled;
   public int maxRecordSizeBytes;
+  public boolean enableUncompressedRecordSizeLimit;
   public String kafkaSourceRegion;
   public transient RepushInfoResponse repushInfoResponse;
 
   // Schema-properties
   public boolean isAvro = true;
   public int valueSchemaId; // Value schema id retrieved from backend for valueSchemaString
+  public int rmdSchemaId = -1; // Replication metadata schema id retrieved from backend for
+                               // replicationMetadataSchemaString
   public int derivedSchemaId = -1;
   public String keyField;
   public String valueField;
+  public String rmdField;
 
   public Schema inputDataSchema;
   public String inputDataSchemaString;
@@ -137,6 +137,8 @@ public class PushJobSetting implements Serializable {
   public Schema valueSchema;
   public String valueSchemaString;
 
+  public String replicationMetadataSchemaString;
+
   public VsonSchema vsonInputKeySchema;
   public String vsonInputKeySchemaString;
 
@@ -145,6 +147,7 @@ public class PushJobSetting implements Serializable {
 
   public boolean generatePartialUpdateRecordFromInput;
   public ETLValueSchemaTransformation etlValueSchemaTransformation;
+  public Map<Integer, String> newKmeSchemasFromController;
 
   // Additional inferred properties
   public boolean inputHasRecords;
@@ -161,4 +164,9 @@ public class PushJobSetting implements Serializable {
   }
 
   public String materializedViewConfigFlatMap;
+
+  public boolean isBatchWriteOptimizationForHybridStoreEnabled;
+  public boolean isSortedIngestionEnabled;
+  public boolean allowRegularPushWithTTLRepush;
+
 }

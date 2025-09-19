@@ -14,8 +14,8 @@ import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
-import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.RoutingDataRepository;
@@ -74,8 +74,16 @@ public abstract class TestRestartServerDuringIngestion {
     int numberOfRouter = 1;
     int replicaFactor = 1;
     int partitionSize = 1000;
-    cluster = ServiceFactory
-        .getVeniceCluster(numberOfController, 0, numberOfRouter, replicaFactor, partitionSize, false, false);
+    VeniceClusterCreateOptions options =
+        new VeniceClusterCreateOptions.Builder().numberOfControllers(numberOfController)
+            .numberOfServers(0)
+            .numberOfRouters(numberOfRouter)
+            .replicationFactor(replicaFactor)
+            .partitionSize(partitionSize)
+            .sslToStorageNodes(false)
+            .sslToKafka(false)
+            .build();
+    cluster = ServiceFactory.getVeniceCluster(options);
     pubSubProducerAdapterFactory =
         cluster.getPubSubBrokerWrapper().getPubSubClientsFactory().getProducerAdapterFactory();
 
@@ -174,7 +182,7 @@ public abstract class TestRestartServerDuringIngestion {
        * the only server just gets restarted. Restart all routers to get the fresh state of
        * the cluster.
        */
-      restartAllRouters();
+      cluster.stopAndRestartAllVeniceRouters();
 
       try (AvroGenericStoreClient<String, CharSequence> storeClient = ClientFactory.getAndStartGenericAvroClient(
           ClientConfig.defaultGenericClientConfig(storeName)
@@ -225,7 +233,7 @@ public abstract class TestRestartServerDuringIngestion {
             Assert.assertTrue(routingDataRepository.getReadyToServeInstances(topic, partition).size() > 0);
           }
         });
-        restartAllRouters();
+        cluster.stopAndRestartAllVeniceRouters();
         TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
           // Verify all the key/value pairs
           for (Map.Entry<byte[], byte[]> entry: unsortedInputRecords.entrySet()) {
@@ -297,13 +305,6 @@ public abstract class TestRestartServerDuringIngestion {
               .getOffLinePushStatus(cluster.getClusterName(), topic)
               .getExecutionStatus()
               .equals(ExecutionStatus.COMPLETED));
-    }
-  }
-
-  private void restartAllRouters() {
-    for (VeniceRouterWrapper router: cluster.getVeniceRouters()) {
-      cluster.stopVeniceRouter(router.getPort());
-      cluster.restartVeniceRouter(router.getPort());
     }
   }
 }

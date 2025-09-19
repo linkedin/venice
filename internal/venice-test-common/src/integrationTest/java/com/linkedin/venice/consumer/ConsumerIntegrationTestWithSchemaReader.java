@@ -12,8 +12,8 @@ import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
-import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.util.Properties;
 import java.util.concurrent.ExecutionException;
@@ -70,7 +70,7 @@ public class ConsumerIntegrationTestWithSchemaReader extends ConsumerIntegration
     vpjProps.setProperty(KAFKA_INPUT_FABRIC, "dc-0");
     vpjProps.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
     vpjProps.setProperty(SYSTEM_SCHEMA_READER_ENABLED, "true");
-    TestWriteUtils.runPushJob("Test push job", vpjProps);
+    IntegrationTestPushUtils.runVPJ(vpjProps);
 
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
       try {

@@ -5,17 +5,25 @@ import static java.util.Collections.reverseOrder;
 import static java.util.Comparator.comparing;
 import static java.util.stream.Collectors.toList;
 
+import com.github.benmanes.caffeine.cache.Caffeine;
+import com.github.benmanes.caffeine.cache.LoadingCache;
 import com.linkedin.davinci.stats.StoreBufferServiceStats;
 import com.linkedin.davinci.utils.LockAssistedCompletableFuture;
+import com.linkedin.davinci.validation.PartitionTracker;
 import com.linkedin.venice.exceptions.VeniceChecksumException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.memory.ClassSizeEstimator;
 import com.linkedin.venice.memory.Measurable;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.DaemonThreadFactory;
+import com.linkedin.venice.utils.LogContext;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.collections.MemoryBoundBlockingQueue;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
@@ -62,19 +70,30 @@ public class StoreBufferService extends AbstractStoreBufferService {
 
   private final RecordHandler leaderRecordHandler;
   private final StoreBufferServiceStats storeBufferServiceStats;
+  private final LoadingCache<PubSubTopic, Integer> hashCodeCache;
 
   private final boolean isSorted;
 
   private volatile boolean isStarted = false;
+  private final LogContext logContext;
 
   public StoreBufferService(
       int drainerNum,
       long bufferCapacityPerDrainer,
       long bufferNotifyDelta,
       boolean queueLeaderWrites,
+      LogContext logContext,
       MetricsRepository metricsRepository,
       boolean sorted) {
-    this(drainerNum, bufferCapacityPerDrainer, bufferNotifyDelta, queueLeaderWrites, null, metricsRepository, sorted);
+    this(
+        drainerNum,
+        bufferCapacityPerDrainer,
+        bufferNotifyDelta,
+        queueLeaderWrites,
+        null,
+        logContext,
+        metricsRepository,
+        sorted);
   }
 
   /**
@@ -85,8 +104,9 @@ public class StoreBufferService extends AbstractStoreBufferService {
       long bufferCapacityPerDrainer,
       long bufferNotifyDelta,
       boolean queueLeaderWrites,
-      StoreBufferServiceStats stats) {
-    this(drainerNum, bufferCapacityPerDrainer, bufferNotifyDelta, queueLeaderWrites, stats, null, true);
+      StoreBufferServiceStats stats,
+      LogContext logContext) {
+    this(drainerNum, bufferCapacityPerDrainer, bufferNotifyDelta, queueLeaderWrites, stats, logContext, null, true);
   }
 
   /**
@@ -102,8 +122,10 @@ public class StoreBufferService extends AbstractStoreBufferService {
       long bufferNotifyDelta,
       boolean queueLeaderWrites,
       StoreBufferServiceStats stats,
+      LogContext logContext,
       MetricsRepository metricsRepository,
       boolean sorted) {
+    this.logContext = logContext;
     this.drainerNum = drainerNum;
     this.blockingQueueArr = new ArrayList<>();
     this.bufferCapacityPerDrainer = bufferCapacityPerDrainer;
@@ -121,30 +143,38 @@ public class StoreBufferService extends AbstractStoreBufferService {
             this::getTotalRemainingMemory,
             this::getMaxMemoryUsagePerDrainer,
             this::getMinMemoryUsagePerDrainer);
+    /*
+     * {@link #getDrainerIndexForConsumerRecord} hashes the topic name and partition to determine a drainer. Due to the
+     * different naming conventions for RT (_rt) and Separate RT (_rt_sep), different drainers might be assigned while
+     * the same drainer handling both topics would help with concurrency. Normalizing the topic name fixes this issue.
+     */
+    this.hashCodeCache = Caffeine.newBuilder().maximumSize(2000).build(Utils::calculateTopicHashCode);
   }
 
   protected MemoryBoundBlockingQueue<QueueNode> getDrainerForConsumerRecord(
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
+      DefaultPubSubMessage consumerRecord,
       int partition) {
     int drainerIndex = getDrainerIndexForConsumerRecord(consumerRecord, partition);
     return blockingQueueArr.get(drainerIndex);
   }
 
-  protected int getDrainerIndexForConsumerRecord(
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
-      int partition) {
+  protected int getDrainerIndexForConsumerRecord(DefaultPubSubMessage consumerRecord, int partition) {
     /**
      * This will guarantee that 'topicHash' will be a positive integer, whose maximum value is
      * {@link Integer.MAX_VALUE} / 2 + 1, which could make sure 'topicHash + consumerRecord.partition()' should be
      * positive for most time to guarantee even partition assignment.
      */
-    int topicHash = Math.abs(consumerRecord.getTopicPartition().getPubSubTopic().hashCode() / 2);
+    Integer topicHashCode = hashCodeCache.get(consumerRecord.getTopicPartition().getPubSubTopic());
+    if (topicHashCode == null) { // this should never happen, but FindBugs linting needs to be soothed
+      topicHashCode = Utils.calculateTopicHashCode(consumerRecord.getTopicPartition().getPubSubTopic());
+    }
+    int topicHash = Math.abs(topicHashCode / 2);
     return Math.abs((topicHash + partition) % this.drainerNum);
   }
 
   @Override
   public void putConsumerRecord(
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
+      DefaultPubSubMessage consumerRecord,
       StoreIngestionTask ingestionTask,
       LeaderProducedRecordContext leaderProducedRecordContext,
       int partition,
@@ -184,7 +214,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
 
   private interface RecordHandler {
     void handle(
-        PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
+        DefaultPubSubMessage consumerRecord,
         StoreIngestionTask ingestionTask,
         LeaderProducedRecordContext leaderProducedRecordContext,
         int partition,
@@ -193,7 +223,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
   }
 
   private void queueLeaderRecord(
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
+      DefaultPubSubMessage consumerRecord,
       StoreIngestionTask ingestionTask,
       LeaderProducedRecordContext leaderProducedRecordContext,
       int partition,
@@ -209,7 +239,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
   }
 
   private static void processRecord(
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
+      DefaultPubSubMessage consumerRecord,
       StoreIngestionTask ingestionTask,
       LeaderProducedRecordContext leaderProducedRecordContext,
       int partition,
@@ -237,7 +267,16 @@ public class StoreBufferService extends AbstractStoreBufferService {
       throw new VeniceException("Unsupported command type: " + cmd.getCommandType());
     }
 
-    cmd.executeSync(() -> ingestionTask.updateOffsetMetadataAndSyncOffset(pcs));
+    cmd.executeSync(() -> {
+      if (pcs == null) {
+        LOGGER.warn(
+            "PCS for topic-partition: {} is null. Skipping {} command in StoreBufferDrainer.",
+            cmd.getConsumerRecord().getTopicPartition(),
+            cmd.getCommandType());
+      } else {
+        ingestionTask.updateOffsetMetadataAndSyncOffset(pcs);
+      }
+    });
   }
 
   /**
@@ -257,7 +296,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
       PubSubTopicPartition topicPartition,
       int retryNum,
       int sleepIntervalInMS) throws InterruptedException {
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> fakeRecord = new FakePubSubMessage(topicPartition);
+    DefaultPubSubMessage fakeRecord = new FakePubSubMessage(topicPartition);
     int workerIndex = getDrainerIndexForConsumerRecord(fakeRecord, topicPartition.getPartitionNumber());
     BlockingQueue<QueueNode> blockingQueue = blockingQueueArr.get(workerIndex);
     if (!drainerList.get(workerIndex).isRunning.get()) {
@@ -290,18 +329,27 @@ public class StoreBufferService extends AbstractStoreBufferService {
   public CompletableFuture<Void> execSyncOffsetCommandAsync(
       PubSubTopicPartition topicPartition,
       StoreIngestionTask ingestionTask) throws InterruptedException {
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> fakeRecord = new FakePubSubMessage(topicPartition);
+    DefaultPubSubMessage fakeRecord = new FakePubSubMessage(topicPartition);
     CommandQueueNode syncOffsetCmd =
         new CommandQueueNode(CommandQueueNode.CommandType.SYNC_OFFSET, fakeRecord, ingestionTask);
     getDrainerForConsumerRecord(fakeRecord, topicPartition.getPartitionNumber()).put(syncOffsetCmd);
     return syncOffsetCmd.getCmdExecutedFuture();
   }
 
+  public void execSyncOffsetFromSnapshotAsync(
+      PubSubTopicPartition topicPartition,
+      PartitionTracker vtDivSnapshot,
+      StoreIngestionTask ingestionTask) throws InterruptedException {
+    DefaultPubSubMessage fakeRecord = new FakePubSubMessage(topicPartition);
+    SyncVtDivNode syncDivNode = new SyncVtDivNode(fakeRecord, vtDivSnapshot, ingestionTask);
+    getDrainerForConsumerRecord(fakeRecord, topicPartition.getPartitionNumber()).put(syncDivNode);
+  }
+
   @Override
   public boolean startInner() {
     this.executorService = Executors.newFixedThreadPool(
         drainerNum,
-        new DaemonThreadFactory(isSorted ? "Store-writer-sorted" : "Store-writer-hybrid"));
+        new DaemonThreadFactory(isSorted ? "Store-writer-sorted" : "Store-writer-hybrid", logContext));
 
     // Submit all the buffer drainers
     for (int cur = 0; cur < drainerNum; ++cur) {
@@ -400,13 +448,13 @@ public class StoreBufferService extends AbstractStoreBufferService {
    */
   static class QueueNode implements Measurable {
     private static final int SHALLOW_CLASS_OVERHEAD = ClassSizeEstimator.getClassOverhead(QueueNode.class);
-    private final PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord;
+    private final DefaultPubSubMessage consumerRecord;
     private final StoreIngestionTask ingestionTask;
     private final String kafkaUrl;
     private final long beforeProcessingRecordTimestampNs;
 
     public QueueNode(
-        PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
+        DefaultPubSubMessage consumerRecord,
         StoreIngestionTask ingestionTask,
         String kafkaUrl,
         long beforeProcessingRecordTimestampNs) {
@@ -416,7 +464,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
       this.beforeProcessingRecordTimestampNs = beforeProcessingRecordTimestampNs;
     }
 
-    public PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> getConsumerRecord() {
+    public DefaultPubSubMessage getConsumerRecord() {
       return this.consumerRecord;
     }
 
@@ -491,7 +539,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
     private final CompletableFuture<Void> queuedRecordPersistedFuture;
 
     public FollowerQueueNode(
-        PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
+        DefaultPubSubMessage consumerRecord,
         StoreIngestionTask ingestionTask,
         String kafkaUrl,
         long beforeProcessingRecordTimestampNs,
@@ -527,7 +575,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
     private final LeaderProducedRecordContext leaderProducedRecordContext;
 
     public LeaderQueueNode(
-        PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
+        DefaultPubSubMessage consumerRecord,
         StoreIngestionTask ingestionTask,
         String kafkaUrl,
         long beforeProcessingRecordTimestampNs,
@@ -576,7 +624,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
 
     public CommandQueueNode(
         CommandType commandType,
-        PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
+        DefaultPubSubMessage consumerRecord,
         StoreIngestionTask ingestionTask) {
       super(consumerRecord, ingestionTask, StringUtils.EMPTY, 0);
       this.commandType = commandType;
@@ -638,6 +686,41 @@ public class StoreBufferService extends AbstractStoreBufferService {
   }
 
   /**
+   * Allows the ConsumptionTask to command the Drainer to sync the VT DIV to the OffsetRecord.
+   */
+  private static class SyncVtDivNode extends QueueNode {
+    private static final int PARTIAL_CLASS_OVERHEAD = getClassOverhead(SyncVtDivNode.class);
+
+    private PartitionTracker vtDivSnapshot;
+
+    public SyncVtDivNode(
+        DefaultPubSubMessage consumerRecord,
+        PartitionTracker vtDivSnapshot,
+        StoreIngestionTask ingestionTask) {
+      super(consumerRecord, ingestionTask, StringUtils.EMPTY, 0);
+      this.vtDivSnapshot = vtDivSnapshot;
+    }
+
+    public void execute() {
+      getIngestionTask().updateAndSyncOffsetFromSnapshot(vtDivSnapshot, getConsumerRecord().getTopicPartition());
+    }
+
+    @Override
+    public int hashCode() {
+      return super.hashCode();
+    }
+
+    @Override
+    public boolean equals(Object o) {
+      return super.equals(o);
+    }
+
+    protected int getBaseClassOverhead() {
+      return PARTIAL_CLASS_OVERHEAD;
+    }
+  }
+
+  /**
    * Worker thread, which will invoke {@link StoreIngestionTask#processConsumerRecord}
    * to process each {@link PubSubMessage} buffered in {@link BlockingQueue}.
    */
@@ -663,7 +746,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
     public void run() {
       LOGGER.info("Starting StoreBufferDrainer Thread for drainer: {}....", drainerIndex);
       QueueNode node = null;
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord = null;
+      DefaultPubSubMessage consumerRecord = null;
       LeaderProducedRecordContext leaderProducedRecordContext = null;
       StoreIngestionTask ingestionTask = null;
       CompletableFuture<Void> recordPersistedFuture = null;
@@ -684,6 +767,9 @@ public class StoreBufferService extends AbstractStoreBufferService {
                 (CommandQueueNode) node,
                 ingestionTask,
                 ingestionTask.getPartitionConsumptionState(partitionNum));
+            continue;
+          } else if (node instanceof SyncVtDivNode) {
+            ((SyncVtDivNode) node).execute();
             continue;
           }
 
@@ -759,7 +845,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
     }
   }
 
-  private static class FakePubSubMessage implements PubSubMessage {
+  private static class FakePubSubMessage implements DefaultPubSubMessage {
     private static final int SHALLOW_CLASS_OVERHEAD = ClassSizeEstimator.getClassOverhead(FakePubSubMessage.class);
     private final PubSubTopicPartition topicPartition;
 
@@ -768,12 +854,12 @@ public class StoreBufferService extends AbstractStoreBufferService {
     }
 
     @Override
-    public Object getKey() {
+    public KafkaKey getKey() {
       return null;
     }
 
     @Override
-    public Object getValue() {
+    public KafkaMessageEnvelope getValue() {
       return null;
     }
 
@@ -783,7 +869,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
     }
 
     @Override
-    public Object getOffset() {
+    public PubSubPosition getPosition() {
       return null;
     }
 

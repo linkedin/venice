@@ -11,6 +11,7 @@ import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.helix.VeniceOfflinePushMonitorAccessor;
 import com.linkedin.venice.helix.ZkClientFactory;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
@@ -21,6 +22,7 @@ import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
+import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
@@ -80,7 +82,15 @@ public class TestHelixCustomizedView {
   @BeforeClass(alwaysRun = true)
   public void setUp() throws VeniceClientException {
     Utils.thisIsLocalhost();
-    veniceCluster = ServiceFactory.getVeniceCluster(1, 0, 0, replicationFactor, 10, true, false);
+    VeniceClusterCreateOptions options = new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
+        .numberOfServers(0)
+        .numberOfRouters(0)
+        .replicationFactor(replicationFactor)
+        .partitionSize(10)
+        .sslToStorageNodes(true)
+        .sslToKafka(false)
+        .build();
+    veniceCluster = ServiceFactory.getVeniceCluster(options);
     admin = new ZKHelixAdmin(veniceCluster.getZk().getAddress());
 
     Properties routerProperties = new Properties();
@@ -105,17 +115,21 @@ public class TestHelixCustomizedView {
     veniceWriter = IntegrationTestPushUtils
         .getVeniceWriterFactory(veniceCluster.getPubSubBrokerWrapper(), pubSubProducerAdapterFactory)
         .createVeniceWriter(
-            new VeniceWriterOptions.Builder(storeVersionName).setKeySerializer(keySerializer)
-                .setValueSerializer(valueSerializer)
+            new VeniceWriterOptions.Builder(storeVersionName).setKeyPayloadSerializer(keySerializer)
+                .setValuePayloadSerializer(valueSerializer)
                 .build());
 
     /**
-     * Explicitly add an emtpy push status ZK path to make both write and read paths are robust to empty push status ZNodes
+     * Explicitly add an empty push status ZK path to make both write and read paths are robust to empty push status ZNodes
      */
     ZkClient zkClient = ZkClientFactory.newZkClient(veniceCluster.getZk().getAddress());
     HelixAdapterSerializer adapterSerializer = new HelixAdapterSerializer();
-    VeniceOfflinePushMonitorAccessor offlinePushStatusAccessor =
-        new VeniceOfflinePushMonitorAccessor(veniceCluster.getClusterName(), zkClient, adapterSerializer, 3, 1000);
+    VeniceOfflinePushMonitorAccessor offlinePushStatusAccessor = new VeniceOfflinePushMonitorAccessor(
+        veniceCluster.getClusterName(),
+        zkClient,
+        adapterSerializer,
+        LogContext.newBuilder().setComponentName(TestHelixCustomizedView.class.getName()).build(),
+        3);
     HelixUtils.create(
         offlinePushStatusAccessor.getOfflinePushStatusAccessor(),
         offlinePushStatusAccessor.getOfflinePushStatuesParentPath() + "/invalid_topic",

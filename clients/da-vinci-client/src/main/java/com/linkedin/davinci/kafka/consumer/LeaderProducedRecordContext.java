@@ -11,6 +11,8 @@ import com.linkedin.venice.kafka.protocol.Delete;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.memory.Measurable;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
+import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import java.util.concurrent.CompletableFuture;
 
 
@@ -18,8 +20,8 @@ import java.util.concurrent.CompletableFuture;
  * This class holds all the necessary context information which is passed from
  * kafka consumer thread -> kafka producer callback thread -> drainer thread.
  *
- * All constructors are private by intention. This object should be created through the static utility function based on usecase.
- * Internally these utility function fills up the consumedOffset, messageType, keyBytes, valueUnion.
+ * All constructors are private by intention. This object should be created through the static utility function based on use case.
+ * Internally these utility function fills up the consumedPosition, messageType, keyBytes, valueUnion.
  *
  * consumer thread and drainer thread creates this object by calling the appropriate static utility function based on message type.
  *
@@ -27,20 +29,20 @@ import java.util.concurrent.CompletableFuture;
  *
  * drainer thread completes the persistedToDBFuture.
  */
-
 public class LeaderProducedRecordContext implements Measurable {
   private static final int PARTIAL_CLASS_OVERHEAD =
       getClassOverhead(LeaderProducedRecordContext.class) + getClassOverhead(CompletableFuture.class);
   private static final int NO_UPSTREAM = -1;
+
   /**
    * Kafka cluster ID where the source kafka consumer record was consumed from.
    */
   private final int consumedKafkaClusterId;
   /**
-   * This is the offset of the source kafka consumer record from upstream kafka
+   * This is the offset of the source PubSub consumer record from upstream PubSub
    * topic ( which could be either Real-Time or Stream-Reprocessing topic or remote VT topic).
    */
-  private final long consumedOffset;
+  private final PubSubPosition consumedPosition;
 
   /**
    * Type of message should be only PUT/DELETE/CONTROL_MESSAGE and never be UPDATE.
@@ -56,9 +58,9 @@ public class LeaderProducedRecordContext implements Measurable {
   private final Object valueUnion;
 
   /**
-   * This is the offset at which the message was produced in the Version Topic.
+   * This is the position at which the message was produced in the Version Topic.
    */
-  private long producedOffset = -1;
+  private PubSubPosition producedPosition = PubSubSymbolicPosition.EARLIEST;
 
   /**
    * This is the timestamp at which the message was produced in the Version Topic as
@@ -79,7 +81,7 @@ public class LeaderProducedRecordContext implements Measurable {
 
   public static LeaderProducedRecordContext newControlMessageRecord(
       int consumedKafkaClusterId,
-      long consumedOffset,
+      PubSubPosition consumedOffset,
       byte[] keyBytes,
       ControlMessage valueUnion) {
     checkConsumedOffsetParam(consumedOffset);
@@ -92,12 +94,17 @@ public class LeaderProducedRecordContext implements Measurable {
   }
 
   public static LeaderProducedRecordContext newControlMessageRecord(byte[] keyBytes, ControlMessage valueUnion) {
-    return new LeaderProducedRecordContext(NO_UPSTREAM, NO_UPSTREAM, CONTROL_MESSAGE, keyBytes, valueUnion);
+    return new LeaderProducedRecordContext(
+        NO_UPSTREAM,
+        PubSubSymbolicPosition.EARLIEST,
+        CONTROL_MESSAGE,
+        keyBytes,
+        valueUnion);
   }
 
   public static LeaderProducedRecordContext newPutRecord(
       int consumedKafkaClusterId,
-      long consumedOffset,
+      PubSubPosition consumedOffset,
       byte[] keyBytes,
       Put valueUnion) {
     checkConsumedOffsetParam(consumedOffset);
@@ -105,16 +112,16 @@ public class LeaderProducedRecordContext implements Measurable {
   }
 
   public static LeaderProducedRecordContext newChunkPutRecord(byte[] keyBytes, Put valueUnion) {
-    return new LeaderProducedRecordContext(NO_UPSTREAM, NO_UPSTREAM, PUT, keyBytes, valueUnion);
+    return new LeaderProducedRecordContext(NO_UPSTREAM, PubSubSymbolicPosition.EARLIEST, PUT, keyBytes, valueUnion);
   }
 
   public static LeaderProducedRecordContext newChunkDeleteRecord(byte[] keyBytes, Delete valueUnion) {
-    return new LeaderProducedRecordContext(NO_UPSTREAM, NO_UPSTREAM, DELETE, keyBytes, valueUnion);
+    return new LeaderProducedRecordContext(NO_UPSTREAM, PubSubSymbolicPosition.EARLIEST, DELETE, keyBytes, valueUnion);
   }
 
   public static LeaderProducedRecordContext newPutRecordWithFuture(
       int consumedKafkaClusterId,
-      long consumedOffset,
+      PubSubPosition consumedOffset,
       byte[] keyBytes,
       Put valueUnion,
       CompletableFuture<Void> persistedToDBFuture) {
@@ -130,7 +137,7 @@ public class LeaderProducedRecordContext implements Measurable {
 
   public static LeaderProducedRecordContext newDeleteRecord(
       int consumedKafkaClusterId,
-      long consumedOffset,
+      PubSubPosition consumedOffset,
       byte[] keyBytes,
       Delete valueUnion) {
     checkConsumedOffsetParam(consumedOffset);
@@ -139,22 +146,22 @@ public class LeaderProducedRecordContext implements Measurable {
 
   private LeaderProducedRecordContext(
       int consumedKafkaClusterId,
-      long consumedOffset,
+      PubSubPosition consumedPosition,
       MessageType messageType,
       byte[] keyBytes,
       Object valueUnion) {
-    this(consumedKafkaClusterId, consumedOffset, messageType, keyBytes, valueUnion, new CompletableFuture());
+    this(consumedKafkaClusterId, consumedPosition, messageType, keyBytes, valueUnion, new CompletableFuture());
   }
 
   private LeaderProducedRecordContext(
       int consumedKafkaClusterId,
-      long consumedOffset,
+      PubSubPosition consumedPosition,
       MessageType messageType,
       byte[] keyBytes,
       Object valueUnion,
       CompletableFuture persistedToDBFuture) {
     this.consumedKafkaClusterId = consumedKafkaClusterId;
-    this.consumedOffset = consumedOffset;
+    this.consumedPosition = consumedPosition;
     this.messageType = messageType;
     this.keyBytes = keyBytes;
     this.valueUnion = valueUnion;
@@ -165,16 +172,16 @@ public class LeaderProducedRecordContext implements Measurable {
     this.keyBytes = keyBytes;
   }
 
-  public void setProducedOffset(long producerOffset) {
-    this.producedOffset = producerOffset;
+  public void setProducedPosition(PubSubPosition producedPosition) {
+    this.producedPosition = producedPosition;
   }
 
   public int getConsumedKafkaClusterId() {
     return consumedKafkaClusterId;
   }
 
-  public long getConsumedOffset() {
-    return consumedOffset;
+  public PubSubPosition getConsumedPosition() {
+    return consumedPosition;
   }
 
   public MessageType getMessageType() {
@@ -189,8 +196,8 @@ public class LeaderProducedRecordContext implements Measurable {
     return valueUnion;
   }
 
-  public long getProducedOffset() {
-    return producedOffset;
+  public PubSubPosition getProducedPosition() {
+    return producedPosition;
   }
 
   public void setProducedTimestampMs(long timeMs) {
@@ -219,8 +226,8 @@ public class LeaderProducedRecordContext implements Measurable {
 
   @Override
   public String toString() {
-    return "{ consumedOffset: " + consumedOffset + ", messageType: " + messageType + ", producedOffset: "
-        + producedOffset + " }";
+    return "{ consumedOffset: " + consumedPosition + ", messageType: " + messageType + ", producedOffset: "
+        + producedPosition + " }";
   }
 
   /**
@@ -232,12 +239,13 @@ public class LeaderProducedRecordContext implements Measurable {
    *         false if the message does not (e.g. happens in cases of leader-generated chunks or TopicSwitch)
    */
   public boolean hasCorrespondingUpstreamMessage() {
-    return consumedOffset != NO_UPSTREAM;
+    return !PubSubSymbolicPosition.EARLIEST.equals(consumedPosition);
   }
 
-  private static void checkConsumedOffsetParam(long consumedOffset) {
-    if (consumedOffset < 0) {
-      throw new IllegalArgumentException("consumedOffset cannot be negative");
+  private static void checkConsumedOffsetParam(PubSubPosition consumedOffset) {
+    if (consumedOffset == null || PubSubSymbolicPosition.EARLIEST.equals(consumedOffset)
+        || PubSubSymbolicPosition.LATEST.equals(consumedOffset)) {
+      throw new IllegalArgumentException("consumedOffset cannot be null or symbolic");
     }
   }
 

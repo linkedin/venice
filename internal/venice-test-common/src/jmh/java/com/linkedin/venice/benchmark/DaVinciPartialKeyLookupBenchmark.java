@@ -1,6 +1,6 @@
 package com.linkedin.venice.benchmark;
 
-import static com.linkedin.venice.client.store.predicate.PredicateBuilder.equalTo;
+import static com.linkedin.venice.client.store.predicate.Predicate.equalTo;
 import static com.linkedin.venice.integration.utils.ServiceFactory.getGenericAvroDaVinciClient;
 import static com.linkedin.venice.integration.utils.ServiceFactory.getVeniceCluster;
 
@@ -10,6 +10,7 @@ import com.linkedin.davinci.client.StorageClass;
 import com.linkedin.venice.client.store.ComputeGenericRecord;
 import com.linkedin.venice.client.store.predicate.Predicate;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
+import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
@@ -76,7 +77,9 @@ public class DaVinciPartialKeyLookupBenchmark {
   @Setup
   public void setUp() throws Exception {
     Utils.thisIsLocalhost();
-    cluster = getVeniceCluster(1, 1, 1);
+    VeniceClusterCreateOptions options =
+        new VeniceClusterCreateOptions.Builder().numberOfControllers(1).numberOfServers(1).numberOfRouters(1).build();
+    cluster = getVeniceCluster(options);
 
     String storeName = buildVectorStore(cluster);
     client = getGenericAvroDaVinciClient(
@@ -104,7 +107,7 @@ public class DaVinciPartialKeyLookupBenchmark {
   @Benchmark
   @Threads(1)
   public void partialKeyGetHitT1(Blackhole blackhole) {
-    Predicate partialKey = equalTo("field1", "key_0");
+    Predicate<GenericRecord> partialKey = equalTo("field1", "key_0");
     client.compute()
         .project("value")
         .executeWithFilter(partialKey, new StreamingCallback<GenericRecord, GenericRecord>() {

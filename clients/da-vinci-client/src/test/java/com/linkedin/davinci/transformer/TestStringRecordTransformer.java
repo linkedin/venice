@@ -1,6 +1,7 @@
 package com.linkedin.davinci.transformer;
 
 import com.linkedin.davinci.client.DaVinciRecordTransformer;
+import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
 import com.linkedin.davinci.client.DaVinciRecordTransformerResult;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.io.IOException;
@@ -10,16 +11,17 @@ import org.apache.avro.util.Utf8;
 
 public class TestStringRecordTransformer extends DaVinciRecordTransformer<Integer, String, String> {
   public TestStringRecordTransformer(
+      String storeName,
       int storeVersion,
       Schema keySchema,
       Schema inputValueSchema,
       Schema outputValueSchema,
-      boolean storeRecordsInDaVinci) {
-    super(storeVersion, keySchema, inputValueSchema, outputValueSchema, storeRecordsInDaVinci);
+      DaVinciRecordTransformerConfig recordTransformerConfig) {
+    super(storeName, storeVersion, keySchema, inputValueSchema, outputValueSchema, recordTransformerConfig);
   }
 
   @Override
-  public DaVinciRecordTransformerResult<String> transform(Lazy<Integer> key, Lazy<String> value) {
+  public DaVinciRecordTransformerResult<String> transform(Lazy<Integer> key, Lazy<String> value, int partitionId) {
     Object valueObj = value.get();
     String valueStr;
 
@@ -35,7 +37,7 @@ public class TestStringRecordTransformer extends DaVinciRecordTransformer<Intege
   }
 
   @Override
-  public void processPut(Lazy<Integer> key, Lazy<String> value) {
+  public void processPut(Lazy<Integer> key, Lazy<String> value, int partitionId) {
     return;
   }
 

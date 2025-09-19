@@ -36,4 +36,23 @@ public class ControllerRequestParamValidator {
       throw new IllegalArgumentException("Store name is mandatory parameter");
     }
   }
+
+  public static void validateAdminCommandExecutionRequest(String clusterName, long executionId) {
+    if (StringUtils.isBlank(clusterName)) {
+      throw new IllegalArgumentException("Cluster name is required for admin command execution");
+    }
+    if (executionId <= 0) {
+      throw new IllegalArgumentException("Admin command execution id with positive value is required");
+    }
+  }
+
+  public static void validateAdminOperationProtocolVersionRequest(String clusterName, long protocolVersion) {
+    if (StringUtils.isBlank(clusterName)) {
+      throw new IllegalArgumentException("Cluster name is required for updating admin operation protocol version");
+    }
+    if (protocolVersion == 0 || protocolVersion < -1) {
+      throw new IllegalArgumentException(
+          "Admin operation protocol version is required and must be -1 or greater than 0");
+    }
+  }
 }

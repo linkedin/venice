@@ -9,8 +9,10 @@ import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.ImmutablePubSubMessage;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
+import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
 import com.linkedin.venice.utils.pools.LandFillObjectPool;
 import com.linkedin.venice.utils.pools.ObjectPool;
+import java.util.function.Supplier;
 import org.apache.avro.Schema;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -42,16 +44,16 @@ public class PubSubMessageDeserializer {
    * @param keyBytes the key bytes of the message
    * @param valueBytes the value bytes of the message
    * @param headers the headers of the message
-   * @param position the position of the message in the topic partition
+   * @param pubSubPosition the position of the message in the topic partition
    * @param timestamp the timestamp of the message
    * @return the deserialized PubSubMessage
    */
-  public PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> deserialize(
+  public DefaultPubSubMessage deserialize(
       PubSubTopicPartition topicPartition,
       byte[] keyBytes,
       byte[] valueBytes,
       PubSubMessageHeaders headers,
-      Long position,
+      PubSubPosition pubSubPosition,
       Long timestamp) {
     // TODO: Put the key in an object pool as well
     KafkaKey key = keySerializer.deserialize(null, keyBytes);
@@ -62,7 +64,7 @@ public class PubSubMessageDeserializer {
         // ImmutablePubSubMessage and used down the ingestion path later
         if (header.key().equals(VENICE_TRANSPORT_PROTOCOL_HEADER)) {
           try {
-            Schema providedProtocolSchema = AvroCompatibilityHelper.parse(new String(header.value()));
+            Supplier<Schema> providedProtocolSchema = () -> AvroCompatibilityHelper.parse(new String(header.value()));
             value =
                 valueSerializer.deserialize(valueBytes, providedProtocolSchema, getEnvelope(key.getKeyHeaderByte()));
           } catch (Exception e) {
@@ -80,11 +82,11 @@ public class PubSubMessageDeserializer {
       value = valueSerializer.deserialize(valueBytes, getEnvelope(key.getKeyHeaderByte()));
     }
     // TODO: Put the message container in an object pool as well
-    return new ImmutablePubSubMessage<>(
+    return new ImmutablePubSubMessage(
         key,
         value,
         topicPartition,
-        position,
+        pubSubPosition,
         timestamp,
         keyBytes.length + valueBytes.length,
         headers);
@@ -96,6 +98,7 @@ public class PubSubMessageDeserializer {
         return putEnvelopePool.get();
       // No need to pool control messages since there are so few of them, and they are varied anyway, limiting reuse.
       case MessageType.Constants.CONTROL_MESSAGE_KEY_HEADER_BYTE:
+      case MessageType.Constants.GLOBAL_RT_DIV_KEY_HEADER_BYTE:
         return new KafkaMessageEnvelope();
       case MessageType.Constants.UPDATE_KEY_HEADER_BYTE:
         return updateEnvelopePool.get();
@@ -115,9 +118,16 @@ public class PubSubMessageDeserializer {
     return valueSerializer;
   }
 
-  public static PubSubMessageDeserializer getInstance() {
+  public static PubSubMessageDeserializer createDefaultDeserializer() {
     return new PubSubMessageDeserializer(
         new KafkaValueSerializer(),
+        new LandFillObjectPool<>(KafkaMessageEnvelope::new),
+        new LandFillObjectPool<>(KafkaMessageEnvelope::new));
+  }
+
+  public static PubSubMessageDeserializer createOptimizedDeserializer() {
+    return new PubSubMessageDeserializer(
+        new OptimizedKafkaValueSerializer(),
         new LandFillObjectPool<>(KafkaMessageEnvelope::new),
         new LandFillObjectPool<>(KafkaMessageEnvelope::new));
   }

@@ -12,11 +12,11 @@ import static com.linkedin.venice.status.BatchJobHeartbeatConfigs.HEARTBEAT_ENAB
 import static com.linkedin.venice.utils.AvroSupersetSchemaUtils.validateSubsetValueSchema;
 import static com.linkedin.venice.utils.ByteUtils.generateHumanReadableByteCountString;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.ALLOW_DUPLICATE_KEY;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.ALLOW_REGULAR_PUSH_WITH_TTL_REPUSH;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.BATCH_NUM_BYTES_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.COMPRESSION_DICTIONARY_SAMPLE_SIZE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.COMPRESSION_DICTIONARY_SIZE_LIMIT;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.COMPRESSION_METRIC_COLLECTION_ENABLED;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.COMPRESSION_STRATEGY;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.CONTROLLER_REQUEST_RETRY_ATTEMPTS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.D2_ZK_HOSTS_PREFIX;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DATA_WRITER_COMPUTE_JOB_CLASS;
@@ -28,16 +28,13 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_JOB_STATUS_
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_POLL_STATUS_INTERVAL_MS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_RE_PUSH_REWIND_IN_SECONDS_OVERRIDE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_SSL_ENABLED;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_USE_MAPPER_TO_BUILD_DICTIONARY;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFER_VERSION_SWAP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.ENABLE_SSL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.ENABLE_WRITE_COMPUTE;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.ETL_VALUE_SCHEMA_TRANSFORMATION;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.EXTENDED_SCHEMA_VALIDITY_CHECK_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.HADOOP_TMP_DIR;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.HADOOP_VALIDATE_SCHEMA_AND_BUILD_DICT_PREFIX;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.HYBRID_BATCH_WRITE_OPTIMIZATION_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.INPUT_PATH_LAST_MODIFIED_TIME;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INPUT_PATH_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.JOB_EXEC_ID;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.JOB_EXEC_URL;
@@ -54,13 +51,12 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.LEGACY_AVRO_VALUE_F
 import static com.linkedin.venice.vpj.VenicePushJobConstants.NON_CRITICAL_EXCEPTION;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.NOT_SET;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PARENT_CONTROLLER_REGION_NAME;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.PARTITION_COUNT;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PATH_FILTER;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PERMISSION_700;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PERMISSION_777;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.POLL_JOB_STATUS_INTERVAL_MS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.POLL_STATUS_RETRY_ATTEMPTS;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_STATUS_UPLOAD_ENABLE;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_TIMEOUT_OVERRIDE_MS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_TO_SEPARATE_REALTIME_TOPIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_ENABLE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_SECONDS;
@@ -68,8 +64,8 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_START_TI
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REWIND_EPOCH_TIME_BUFFER_IN_SECONDS_OVERRIDE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REWIND_EPOCH_TIME_IN_SECONDS_OVERRIDE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REWIND_TIME_IN_SECONDS_OVERRIDE;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.RMD_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SEND_CONTROL_MESSAGES_DIRECTLY;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.SORTED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_ETL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_GRID_FABRIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_KAFKA;
@@ -80,16 +76,14 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUS
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TEMP_DIR_PREFIX;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.UNCREATED_VERSION_NUMBER;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.USE_MAPPER_TO_BUILD_DICTIONARY;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.VALIDATE_SCHEMA_AND_BUILD_DICTIONARY_MAPPER_OUTPUT_FILE_EXTENSION;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.VALIDATE_SCHEMA_AND_BUILD_DICTIONARY_MAPPER_OUTPUT_FILE_PREFIX;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.VALIDATE_SCHEMA_AND_BUILD_DICT_MAPPER_OUTPUT_DIRECTORY;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VALUE_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_DISCOVER_URL_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_STORE_NAME_PROP;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
+import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.PushJobCheckpoints;
+import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.ZstdWithDictCompressor;
 import com.linkedin.venice.controllerapi.ControllerClient;
@@ -103,16 +97,16 @@ import com.linkedin.venice.controllerapi.RepushInfoResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
+import com.linkedin.venice.d2.D2ClientFactory;
 import com.linkedin.venice.etl.ETLValueSchemaTransformation;
 import com.linkedin.venice.exceptions.ErrorType;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceResourceAccessException;
+import com.linkedin.venice.exceptions.VeniceTimeoutException;
+import com.linkedin.venice.hadoop.exceptions.VeniceInvalidInputException;
 import com.linkedin.venice.hadoop.input.kafka.KafkaInputDictTrainer;
-import com.linkedin.venice.hadoop.mapreduce.common.JobUtils;
-import com.linkedin.venice.hadoop.mapreduce.counter.MRJobCounterHelper;
 import com.linkedin.venice.hadoop.mapreduce.datawriter.jobs.DataWriterMRJob;
 import com.linkedin.venice.hadoop.mapreduce.engine.DefaultJobClientWrapper;
-import com.linkedin.venice.hadoop.output.avro.ValidateSchemaAndBuildDictMapperOutput;
 import com.linkedin.venice.hadoop.schema.HDFSSchemaSource;
 import com.linkedin.venice.hadoop.task.datawriter.DataWriterTaskTracker;
 import com.linkedin.venice.hadoop.utils.HadoopUtils;
@@ -130,7 +124,9 @@ import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.meta.ViewConfig;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
@@ -140,6 +136,7 @@ import com.linkedin.venice.schema.writecompute.WriteComputeOperation;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
+import com.linkedin.venice.spark.utils.RmdPushUtils;
 import com.linkedin.venice.status.PushJobDetailsStatus;
 import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.status.protocol.PushJobDetailsStatusTuple;
@@ -175,19 +172,17 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
-import org.apache.avro.mapred.AvroJob;
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.lang3.Validate;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
-import org.apache.hadoop.mapred.Counters;
-import org.apache.hadoop.mapred.JobConf;
-import org.apache.hadoop.mapred.RunningJob;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -208,7 +203,6 @@ public class VenicePushJob implements AutoCloseable {
    * The temp directory structure for VPJ will be: <br/>
    * |____{@code $sharedTmpDir} (777 permissions) - shared temp space for all VPJ executions <br/>
    * | |____{@code $jobTmpDir} (700 permissions) - temp space for the current execution ({@code $job.execution.id}_{@literal unique-suffix}) <br/>
-   * | | |____veniceMapperOutput (700 permissions) <br/>
    * | | |____rmd_schemas (700 permissions) <br/>
    * | | |____value_schemas (700 permissions) <br/>
    * | | |____...features_added_in_the_future (700 permissions) <br/>
@@ -241,23 +235,16 @@ public class VenicePushJob implements AutoCloseable {
   private ControllerClient controllerClient;
   private ControllerClient kmeSchemaSystemStoreControllerClient;
   private ControllerClient livenessHeartbeatStoreControllerClient;
-  private RunningJob runningJob;
 
   private DataWriterComputeJob dataWriterComputeJob = null;
 
-  // Job config for schema validation and Compression dictionary creation (if needed)
-  protected final JobConf validateSchemaAndBuildDictJobConf = new JobConf();
-
   private InputDataInfoProvider inputDataInfoProvider;
-  private ValidateSchemaAndBuildDictMapperOutputReader validateSchemaAndBuildDictMapperOutputReader;
   // Total input data size, which is used to talk to controller to decide whether we have enough quota or not
   private InputDataInfoProvider.InputDataInfo inputDataInfo;
 
   private Properties veniceWriterProperties;
   private JobClientWrapper jobClientWrapper;
   private SentPushJobDetailsTracker sentPushJobDetailsTracker;
-  private ValidateSchemaAndBuildDictMapperOutput validateSchemaAndBuildDictMapperOutput;
-  private Path validateSchemaAndBuildDictMapperOutputDirectory;
   private final PushJobSetting pushJobSetting;
 
   private final PushJobDetails pushJobDetails;
@@ -267,7 +254,9 @@ public class VenicePushJob implements AutoCloseable {
   private InputStorageQuotaTracker inputStorageQuotaTracker;
   private final PushJobHeartbeatSenderFactory pushJobHeartbeatSenderFactory;
   private PushJobHeartbeatSender pushJobHeartbeatSender = null;
-  private boolean pushJobStatusUploadDisabledHasBeenLogged = false;
+  private volatile boolean pushJobStatusUploadDisabledHasBeenLogged = false;
+  private final ScheduledExecutorService timeoutExecutor;
+  private static final int VERSION_SWAP_BUFFER_TIME_MINUTES = 20;
 
   /**
    * @param jobId  id of the job
@@ -276,6 +265,7 @@ public class VenicePushJob implements AutoCloseable {
   public VenicePushJob(String jobId, Properties vanillaProps) {
     this.jobId = jobId;
     this.props = getVenicePropsFromVanillaProps(Objects.requireNonNull(vanillaProps, "VPJ props cannot be null"));
+    this.timeoutExecutor = Executors.newSingleThreadScheduledExecutor();
     LOGGER.info("Constructing {}: {}", VenicePushJob.class.getSimpleName(), props.toString(true));
     this.sslProperties = Lazy.of(() -> {
       try {
@@ -303,6 +293,8 @@ public class VenicePushJob implements AutoCloseable {
         pushJobSetting.jobStartTimeMs + "_" + props.getString(JOB_EXEC_URL, "failed_to_obtain_execution_url");
     if (pushJobSetting.isSourceKafka) {
       pushId = pushJobSetting.repushTTLEnabled ? Version.generateTTLRePushId(pushId) : Version.generateRePushId(pushId);
+    } else if (pushJobSetting.allowRegularPushWithTTLRepush) {
+      pushId = Version.generateRegularPushWithTTLRePushId(pushId);
     }
     pushJobDetails.pushId = pushId;
   }
@@ -349,6 +341,7 @@ public class VenicePushJob implements AutoCloseable {
     pushJobSettingToReturn.jobServerName = props.getString(JOB_SERVER_NAME, "unknown_job_server");
     pushJobSettingToReturn.veniceControllerUrl = props.getString(VENICE_DISCOVER_URL_PROP);
     pushJobSettingToReturn.enableSSL = props.getBoolean(ENABLE_SSL, DEFAULT_SSL_ENABLED);
+    pushJobSettingToReturn.rmdField = props.getOrDefault(RMD_FIELD_PROP, "");
     if (pushJobSettingToReturn.enableSSL) {
       VPJSSLUtils.validateSslProperties(props);
     }
@@ -365,13 +358,13 @@ public class VenicePushJob implements AutoCloseable {
     pushJobSettingToReturn.batchNumBytes = props.getInt(BATCH_NUM_BYTES_PROP, DEFAULT_BATCH_BYTES_SIZE);
     pushJobSettingToReturn.isIncrementalPush = props.getBoolean(INCREMENTAL_PUSH, false);
     pushJobSettingToReturn.isDuplicateKeyAllowed = props.getBoolean(ALLOW_DUPLICATE_KEY, false);
-    pushJobSettingToReturn.enablePushJobStatusUpload = props.getBoolean(PUSH_JOB_STATUS_UPLOAD_ENABLE, false);
     pushJobSettingToReturn.controllerRetries = props.getInt(CONTROLLER_REQUEST_RETRY_ATTEMPTS, 1);
     pushJobSettingToReturn.controllerStatusPollRetries = props.getInt(POLL_STATUS_RETRY_ATTEMPTS, 15);
     pushJobSettingToReturn.pollJobStatusIntervalMs =
         props.getLong(POLL_JOB_STATUS_INTERVAL_MS, DEFAULT_POLL_STATUS_INTERVAL_MS);
     pushJobSettingToReturn.jobStatusInUnknownStateTimeoutMs =
         props.getLong(JOB_STATUS_IN_UNKNOWN_STATE_TIMEOUT_MS, DEFAULT_JOB_STATUS_IN_UNKNOWN_STATE_TIMEOUT_MS);
+    pushJobSettingToReturn.pushJobTimeoutOverrideMs = props.getLong(PUSH_JOB_TIMEOUT_OVERRIDE_MS, -1L);
     pushJobSettingToReturn.sendControlMessagesDirectly = props.getBoolean(SEND_CONTROL_MESSAGES_DIRECTLY, false);
     pushJobSettingToReturn.enableWriteCompute = props.getBoolean(ENABLE_WRITE_COMPUTE, false);
     pushJobSettingToReturn.pushToSeparateRealtimeTopicEnabled =
@@ -384,6 +377,8 @@ public class VenicePushJob implements AutoCloseable {
     pushJobSettingToReturn.suppressEndOfPushMessage = props.getBoolean(SUPPRESS_END_OF_PUSH_MESSAGE, false);
     pushJobSettingToReturn.deferVersionSwap = props.getBoolean(DEFER_VERSION_SWAP, false);
     pushJobSettingToReturn.repushTTLEnabled = props.getBoolean(REPUSH_TTL_ENABLE, false);
+    pushJobSettingToReturn.enableUncompressedRecordSizeLimit =
+        props.getBoolean(VeniceWriter.ENABLE_UNCOMPRESSED_RECORD_SIZE_LIMIT, false);
 
     if (pushJobSettingToReturn.repushTTLEnabled && !pushJobSettingToReturn.isSourceKafka) {
       throw new VeniceException("Repush with TTL is only supported while using Kafka Input Format");
@@ -408,17 +403,25 @@ public class VenicePushJob implements AutoCloseable {
       }
     }
 
+    pushJobSettingToReturn.isBatchWriteOptimizationForHybridStoreEnabled =
+        props.getBoolean(HYBRID_BATCH_WRITE_OPTIMIZATION_ENABLED, false);
     pushJobSettingToReturn.isTargetedRegionPushEnabled = props.getBoolean(TARGETED_REGION_PUSH_ENABLED, false);
     pushJobSettingToReturn.isSystemSchemaReaderEnabled = props.getBoolean(SYSTEM_SCHEMA_READER_ENABLED, false);
-    if (pushJobSettingToReturn.isIncrementalPush && pushJobSettingToReturn.isTargetedRegionPushEnabled) {
+    pushJobSettingToReturn.isTargetRegionPushWithDeferredSwapEnabled =
+        props.getBoolean(TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP, false);
+    if (pushJobSettingToReturn.isIncrementalPush && (pushJobSettingToReturn.isTargetedRegionPushEnabled
+        || pushJobSettingToReturn.isTargetRegionPushWithDeferredSwapEnabled)) {
       throw new VeniceException("Incremental push is not supported while using targeted region push mode");
     }
 
-    // If target region push with deferred version swap is enabled, enable deferVersionSwap and
-    // isTargetedRegionPushEnabled
-    if (props.getBoolean(TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP, false)) {
+    if (pushJobSettingToReturn.isTargetRegionPushWithDeferredSwapEnabled && pushJobSettingToReturn.deferVersionSwap) {
+      throw new VeniceException(
+          "Target region push with deferred swap and deferred swap cannot be enabled at the same time");
+    }
+
+    // If target region push with deferred version swap is enabled, enable deferVersionSwap
+    if (pushJobSettingToReturn.isTargetRegionPushWithDeferredSwapEnabled) {
       pushJobSettingToReturn.deferVersionSwap = true;
-      pushJobSettingToReturn.isTargetRegionPushWithDeferredSwapEnabled = true;
     }
 
     if (pushJobSettingToReturn.isTargetRegionPushWithDeferredSwapEnabled
@@ -511,11 +514,8 @@ public class VenicePushJob implements AutoCloseable {
 
     if (pushJobSettingToReturn.isSourceKafka) {
       // KIF uses a different code-path to build a dictionary, and we also don't need schema validations for KIF
-      pushJobSettingToReturn.useMapperToBuildDict = false;
       pushJobSettingToReturn.compressionMetricCollectionEnabled = false;
     } else {
-      pushJobSettingToReturn.useMapperToBuildDict =
-          props.getBoolean(USE_MAPPER_TO_BUILD_DICTIONARY, DEFAULT_USE_MAPPER_TO_BUILD_DICTIONARY);
       pushJobSettingToReturn.compressionMetricCollectionEnabled =
           props.getBoolean(COMPRESSION_METRIC_COLLECTION_ENABLED, DEFAULT_COMPRESSION_METRIC_COLLECTION_ENABLED);
     }
@@ -531,6 +531,7 @@ public class VenicePushJob implements AutoCloseable {
       Validate.isAssignableFrom(DataWriterComputeJob.class, objectClass);
       pushJobSettingToReturn.dataWriterComputeJobClass = objectClass;
     }
+    pushJobSettingToReturn.allowRegularPushWithTTLRepush = props.getBoolean(ALLOW_REGULAR_PUSH_WITH_TTL_REPUSH, false);
     return pushJobSettingToReturn;
   }
 
@@ -639,12 +640,6 @@ public class VenicePushJob implements AutoCloseable {
     this.sentPushJobDetailsTracker = sentPushJobDetailsTracker;
   }
 
-  // Visible for testing
-  protected void setValidateSchemaAndBuildDictMapperOutputReader(
-      ValidateSchemaAndBuildDictMapperOutputReader validateSchemaAndBuildDictMapperOutputReader) {
-    this.validateSchemaAndBuildDictMapperOutputReader = validateSchemaAndBuildDictMapperOutputReader;
-  }
-
   /**
    * Extensions of this class are allowed to extend this function and return a DataWriterComputeJob that will be used to
    * execute the job
@@ -680,11 +675,7 @@ public class VenicePushJob implements AutoCloseable {
    */
   public void run() {
     try {
-      Optional<SSLFactory> sslFactory = VPJSSLUtils.createSSLFactory(
-          pushJobSetting.enableSSL,
-          props.getString(SSL_FACTORY_CLASS_NAME, DEFAULT_SSL_FACTORY_CLASS_NAME),
-          this.sslProperties);
-      initControllerClient(pushJobSetting.storeName, sslFactory);
+      initControllerClient(pushJobSetting.storeName);
       pushJobSetting.clusterName = controllerClient.getClusterName();
       LOGGER.info(
           "The store {} is discovered in Venice cluster {}",
@@ -695,12 +686,13 @@ public class VenicePushJob implements AutoCloseable {
         initKIFRepushDetails();
       }
 
+      setupJobTimeoutMonitor();
       initPushJobDetails();
       logGreeting();
       sendPushJobDetailsToController();
       HadoopUtils.createDirectoryWithPermission(sharedTmpDir, PERMISSION_777);
       HadoopUtils.createDirectoryWithPermission(jobTmpDir, PERMISSION_700);
-      validateKafkaMessageEnvelopeSchema(pushJobSetting);
+      pushJobSetting.newKmeSchemasFromController = validateAndFetchNewKafkaMessageEnvelopeSchemas(pushJobSetting);
       validateRemoteHybridSettings(pushJobSetting);
       validateStoreSettingAndPopulate(controllerClient, pushJobSetting);
       inputStorageQuotaTracker = new InputStorageQuotaTracker(pushJobSetting.storeStorageQuota);
@@ -741,25 +733,13 @@ public class VenicePushJob implements AutoCloseable {
         }
 
         validateKeySchema(pushJobSetting);
-        validateValueSchema(controllerClient, pushJobSetting, pushJobSetting.isSchemaAutoRegisterFromPushJobEnabled);
-
-        if (pushJobSetting.useMapperToBuildDict) {
-          validateSchemaAndBuildDictMapperOutputDirectory = new Path(jobTmpDir, "veniceMapperOutput");
-          HadoopUtils.createDirectoryWithPermission(validateSchemaAndBuildDictMapperOutputDirectory, PERMISSION_700);
-
-          /**
-           * 1. validate whether the remaining file's schema are consistent with the first file
-           * 2. calculate {@link inputFileDataSize} during step 1
-           * 3. Build dictionary (if dictionary compression is enabled for this store version or compressionMetricCollectionEnabled)
-           */
-          validateSchemaAndBuildDict(
-              validateSchemaAndBuildDictJobConf,
-              pushJobSetting,
-              props,
-              jobId,
-              pushJobSetting.inputURI);
-          sendPushJobDetailsToController();
-        }
+        validateAndRetrieveValueSchemas(
+            controllerClient,
+            pushJobSetting,
+            pushJobSetting.isSchemaAutoRegisterFromPushJobEnabled);
+        // Retrieve metadata and timestamp schemas, we should do this last as this is pending potentially newly
+        // registered schemas with the push job
+        validateAndSetRmdSchemas(controllerClient, pushJobSetting);
       }
 
       Optional<ByteBuffer> optionalCompressionDictionary = getCompressionDictionary();
@@ -769,22 +749,8 @@ public class VenicePushJob implements AutoCloseable {
           pushJobSetting.rewindTimeInSecondsOverride = DEFAULT_RE_PUSH_REWIND_IN_SECONDS_OVERRIDE;
           LOGGER.info("Overriding re-push rewind time in seconds to: {}", pushJobSetting.rewindTimeInSecondsOverride);
         }
-        if (pushJobSetting.repushTTLEnabled) {
-          // Build the full path for HDFSRmdSchemaSource:
-          // RMD schemas: <job_temp_dir>/rmd_schemas
-          // Value schemas: <job_temp_dir>/value_schemas
-          Path rmdSchemaDir = new Path(jobTmpDir, "rmd_schemas");
-          HadoopUtils.createDirectoryWithPermission(rmdSchemaDir, PERMISSION_700);
-          Path valueSchemaDir = new Path(jobTmpDir, "value_schemas");
-          HadoopUtils.createDirectoryWithPermission(valueSchemaDir, PERMISSION_700);
-          try (HDFSSchemaSource schemaSource =
-              new HDFSSchemaSource(valueSchemaDir, rmdSchemaDir, pushJobSetting.storeName)) {
-            schemaSource.saveSchemasOnDisk(controllerClient);
-            pushJobSetting.rmdSchemaDir = schemaSource.getRmdSchemaPath();
-            pushJobSetting.valueSchemaDir = schemaSource.getValueSchemaPath();
-          }
-        }
       }
+      checkRegularPushWithTTLRepush(controllerClient, pushJobSetting);
       // Create new store version, topic and fetch Kafka url from backend
       createNewStoreVersion(
           pushJobSetting,
@@ -825,9 +791,12 @@ public class VenicePushJob implements AutoCloseable {
       } else {
         // Populate any view configs to job properties
         configureJobPropertiesWithMaterializedViewConfigs();
+        if (pushJobSetting.repushTTLEnabled || pushJobSetting.materializedViewConfigFlatMap != null) {
+          buildHDFSSchemaDir();
+        }
         if (pushJobSetting.sendControlMessagesDirectly) {
           getVeniceWriter(pushJobSetting).broadcastStartOfPush(
-              SORTED,
+              pushJobSetting.isSortedIngestionEnabled,
               pushJobSetting.isChunkingEnabled,
               pushJobSetting.topicCompressionStrategy,
               optionalCompressionDictionary,
@@ -866,7 +835,8 @@ public class VenicePushJob implements AutoCloseable {
             controllerClient,
             pushJobSetting,
             pushJobSetting.targetedRegions,
-            pushJobSetting.isTargetedRegionPushEnabled);
+            pushJobSetting.isTargetedRegionPushEnabled,
+            pushJobSetting.isTargetRegionPushWithDeferredSwapEnabled);
       }
 
       updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.JOB_STATUS_POLLING_COMPLETED);
@@ -885,7 +855,7 @@ public class VenicePushJob implements AutoCloseable {
       /**
        * Post validation + consumption
        */
-      Set<String> candidateRegions = getRegionsForPostValidationConsumption();
+      Set<String> candidateRegions = getNonTargetRegions();
       if (candidateRegions.isEmpty()) {
         LOGGER.info("No region that needs post-validation consumption identified. Finish the job now.");
         return;
@@ -898,6 +868,12 @@ public class VenicePushJob implements AutoCloseable {
       try {
         if (e instanceof VeniceResourceAccessException) {
           updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.WRITE_ACL_FAILED);
+        } else if (e instanceof VeniceInvalidInputException) {
+          /**
+           * We use {@link PushJobCheckpoints.INVALID_INPUT_FILE} for the scenario where the input
+           * data path contains no data as well in the avro flow.
+           */
+          updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.INVALID_INPUT_FILE);
         }
         pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(PushJobDetailsStatus.ERROR.getValue()));
         pushJobDetails.failureDetails = e.toString();
@@ -931,10 +907,65 @@ public class VenicePushJob implements AutoCloseable {
   }
 
   /**
-   * Get the set of regions that haven't been pushed yet after targeted region push.
-   * @return a set of regions that haven't been pushed yet.
+   * Sets up a timeout monitor that will cancel and fail the push job if it runs longer than the allowed time.
+   * The timeout duration is determined by one of the following:
+   * <ul>
+   *   <li>If {@code pushJobSetting.pushJobTimeoutOverrideMs} is set to a positive value, it takes precedence.</li>
+   *   <li>Otherwise, the timeout is derived from the store's {@code bootstrapToOnlineTimeoutInHours} setting.</li>
+   * </ul>
+   *
+   * If the resolved timeout is less than or equal to 0, no timeout monitor is scheduled.
    */
-  private Set<String> getRegionsForPostValidationConsumption() {
+  private void setupJobTimeoutMonitor() {
+    long timeoutMs;
+
+    if (pushJobSetting.pushJobTimeoutOverrideMs > 0) {
+      timeoutMs = pushJobSetting.pushJobTimeoutOverrideMs;
+      LOGGER.info(
+          "Using overridden push job timeout: {} ms ({} hours)",
+          timeoutMs,
+          TimeUnit.MILLISECONDS.toHours(timeoutMs));
+    } else {
+      long timeoutInHours = getStoreResponse(pushJobSetting.storeName).getStore().getBootstrapToOnlineTimeoutInHours();
+      timeoutMs = TimeUnit.HOURS.toMillis(timeoutInHours);
+      LOGGER.info("Using store-configured push job timeout: {} hours ({} ms)", timeoutInHours, timeoutMs);
+    }
+
+    if (timeoutMs <= 0) {
+      LOGGER.info(
+          "Store: {} does not have a valid bootstrap-to-online timeout configured. Skipping timeout monitor.",
+          pushJobSetting.storeName);
+      return;
+    }
+
+    timeoutExecutor.schedule(() -> {
+      cancel();
+      throw new VeniceTimeoutException(
+          "Failing push-job for store " + pushJobSetting.storeName + " which is still running after " + timeoutMs
+              + " ms (" + TimeUnit.MILLISECONDS.toHours(timeoutMs) + " hours)");
+    }, timeoutMs, TimeUnit.MILLISECONDS);
+  }
+
+  private void buildHDFSSchemaDir() throws IOException {
+    // Build the full path for HDFSRmdSchemaSource:
+    // RMD schemas: <job_temp_dir>/rmd_schemas
+    // Value schemas: <job_temp_dir>/value_schemas
+    Path rmdSchemaDir = new Path(jobTmpDir, "rmd_schemas");
+    HadoopUtils.createDirectoryWithPermission(rmdSchemaDir, PERMISSION_700);
+    Path valueSchemaDir = new Path(jobTmpDir, "value_schemas");
+    HadoopUtils.createDirectoryWithPermission(valueSchemaDir, PERMISSION_700);
+    try (HDFSSchemaSource schemaSource = new HDFSSchemaSource(valueSchemaDir, rmdSchemaDir, pushJobSetting.storeName)) {
+      schemaSource.saveSchemasOnDisk(controllerClient);
+      pushJobSetting.rmdSchemaDir = schemaSource.getRmdSchemaPath();
+      pushJobSetting.valueSchemaDir = schemaSource.getValueSchemaPath();
+    }
+  }
+
+  /**
+   * Get the set of non target regions for a target region push
+   * @return a set of regions that are the non target regions.
+   */
+  private Set<String> getNonTargetRegions() {
     Set<String> targetedRegions = RegionUtils.parseRegionsFilterList(pushJobSetting.targetedRegions);
     Set<String> candidateRegions =
         new HashSet<>(pushJobSetting.storeResponse.getStore().getColoToCurrentVersions().keySet());
@@ -996,6 +1027,7 @@ public class VenicePushJob implements AutoCloseable {
           controllerClient,
           pushJobSetting,
           RegionUtils.composeRegionList(candidateRegions),
+          false,
           false);
     }
     pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(PushJobDetailsStatus.COMPLETED.getValue()));
@@ -1098,6 +1130,10 @@ public class VenicePushJob implements AutoCloseable {
           throw new VeniceException(
               "Data writer job failed unexpectedly with status: " + dataWriterComputeJob.getStatus());
         } else {
+          if (t instanceof VeniceInvalidInputException) {
+            updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.INVALID_INPUT_FILE);
+          }
+
           throwVeniceException(t);
         }
       } else {
@@ -1112,47 +1148,13 @@ public class VenicePushJob implements AutoCloseable {
     }
   }
 
-  private void runValidateSchemaAndBuildDictJobAndUpdateStatus(JobConf conf) throws Exception {
-    updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.START_VALIDATE_SCHEMA_AND_BUILD_DICT_MAP_JOB);
-    runningJob = runJobWithConfig(conf);
-    validateCountersAfterValidateSchemaAndBuildDict();
-    getValidateSchemaAndBuildDictMapperOutput(runningJob.getID().toString());
-    updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.VALIDATE_SCHEMA_AND_BUILD_DICT_MAP_JOB_COMPLETED);
-  }
-
-  protected static String getValidateSchemaAndBuildDictionaryOutputFileNameNoExtension(String mrJobId) {
-    return VALIDATE_SCHEMA_AND_BUILD_DICTIONARY_MAPPER_OUTPUT_FILE_PREFIX + mrJobId;
-  }
-
-  protected static String getValidateSchemaAndBuildDictionaryOutputFileName(String mrJobId) {
-    return getValidateSchemaAndBuildDictionaryOutputFileNameNoExtension(mrJobId)
-        + VALIDATE_SCHEMA_AND_BUILD_DICTIONARY_MAPPER_OUTPUT_FILE_EXTENSION;
-  }
-
-  private void getValidateSchemaAndBuildDictMapperOutput(String mrJobId) throws Exception {
-    Path outputDir = validateSchemaAndBuildDictMapperOutputDirectory;
-    String outputAvroFile = getValidateSchemaAndBuildDictionaryOutputFileName(mrJobId);
-    try (ValidateSchemaAndBuildDictMapperOutputReader outputReader =
-        getValidateSchemaAndBuildDictMapperOutputReader(outputDir, outputAvroFile)) {
-      validateSchemaAndBuildDictMapperOutput = outputReader.getOutput();
-    }
-    inputDataInfo.setInputFileDataSizeInBytes(validateSchemaAndBuildDictMapperOutput.getInputFileDataSize());
-  }
-
   private void checkLastModificationTimeAndLog() throws IOException {
-    checkLastModificationTimeAndLog(false);
-  }
-
-  private void checkLastModificationTimeAndLog(boolean throwExceptionOnDataSetChange) throws IOException {
     long lastModificationTime = getInputDataInfoProvider().getInputLastModificationTime(pushJobSetting.inputURI);
     if (lastModificationTime > inputDataInfo.getInputModificationTime()) {
       updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.DATASET_CHANGED);
-      String error = "Dataset changed during the push job. Please check above logs to see if the change "
-          + "caused the MapReduce failure and rerun the job without dataset change.";
-      LOGGER.error(error);
-      if (throwExceptionOnDataSetChange) {
-        throw new VeniceException(error);
-      }
+      LOGGER.error(
+          "Dataset changed during the push job. Please investigate if the change caused the failure and "
+              + "rerun the job without changing the dataset while the job is running.");
     }
   }
 
@@ -1226,119 +1228,9 @@ public class VenicePushJob implements AutoCloseable {
     return true;
   }
 
-  /**
-   * Validate whether the Job ran successfully to validate schema and build dictionary:
-   * - No error counters are increased
-   * - Number of records processed == Num files + 1 (one extra to build dictionary)
-   *
-   * @throws IOException
-   */
-  private void validateCountersAfterValidateSchemaAndBuildDict() throws IOException {
-    if (inputDataInfo.hasRecords()) {
-      Counters counters = runningJob.getCounters();
-      final long dataModifiedDuringPushJobCount =
-          MRJobCounterHelper.getMapperErrorDataModifiedDuringPushJobCount(counters);
-      if (dataModifiedDuringPushJobCount != 0) {
-        updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.DATASET_CHANGED);
-        String err =
-            "Error while validating schema and building dictionary: Because Dataset changed during the push job. Rerun the job without dataset change";
-        LOGGER.error(err);
-        throw new VeniceException(err);
-      }
-
-      final long readInvalidInputIdxCount = MRJobCounterHelper.getMapperInvalidInputIdxCount(counters);
-      if (readInvalidInputIdxCount != 0) {
-        checkLastModificationTimeAndLog(true);
-        updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.INVALID_INPUT_FILE);
-        String err = "Error while validating schema and building dictionary: Input file Idx is invalid, "
-            + "MR job counter is not reliable to point out the reason";
-        LOGGER.error(err);
-        throw new VeniceException(err);
-      }
-
-      final long invalidInputFileCount = MRJobCounterHelper.getMapperInvalidInputFileCount(counters);
-      if (invalidInputFileCount != 0) {
-        updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.INVALID_INPUT_FILE);
-        String err = "Error while validating schema: Input directory should not have sub directory";
-        LOGGER.error(err);
-        throw new VeniceException(err);
-      }
-
-      final long schemaInconsistencyFailureCount =
-          MRJobCounterHelper.getMapperSchemaInconsistencyFailureCount(counters);
-      if (schemaInconsistencyFailureCount != 0) {
-        updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.INPUT_DATA_SCHEMA_VALIDATION_FAILED);
-        String err = "Error while validating schema: Inconsistent file schema found";
-        LOGGER.error(err);
-        throw new VeniceException(err);
-      }
-
-      final long zstdDictCreationFailureCount = MRJobCounterHelper.getMapperZstdDictTrainFailureCount(counters);
-      final long zstdDictCreationSuccessCount = MRJobCounterHelper.getMapperZstdDictTrainSuccessCount(counters);
-      final long zstdDictCreationSkippedCount = MRJobCounterHelper.getMapperZstdDictTrainSkippedCount(counters);
-      pushJobSetting.isZstdDictCreationSuccess = (zstdDictCreationSuccessCount == 1);
-      boolean isZstdDictCreationFailure = (zstdDictCreationFailureCount == 1);
-      boolean isZstdDictCreationSkipped = (zstdDictCreationSkippedCount == 1);
-
-      final long recordsSuccessfullyProcessedCount =
-          MRJobCounterHelper.getMapperNumRecordsSuccessfullyProcessedCount(counters);
-      if (recordsSuccessfullyProcessedCount == inputDataInfo.getNumInputFiles() + 1) {
-        if (pushJobSetting.isZstdDictCreationRequired) {
-          if (!pushJobSetting.isZstdDictCreationSuccess) {
-            checkLastModificationTimeAndLog(true);
-            updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.INVALID_INPUT_FILE);
-            String err = "Error while validating schema: MR job counter is not reliable to point out the exact reason";
-            LOGGER.error(err);
-            throw new VeniceException(err);
-          }
-        }
-      } else if (recordsSuccessfullyProcessedCount == inputDataInfo.getNumInputFiles()) {
-        if (isZstdDictCreationFailure || isZstdDictCreationSkipped) {
-          String err = isZstdDictCreationFailure
-              ? "Training ZSTD compression dictionary failed: The content might not be suitable for creating dictionary."
-              : "Training ZSTD compression dictionary skipped: The sample size is too small.";
-          if (pushJobSetting.storeCompressionStrategy != CompressionStrategy.ZSTD_WITH_DICT) {
-            // Tried creating dictionary due to compressionMetricCollectionEnabled
-            LOGGER.warn(
-                err + " But as this job's configured compression strategy don't need dictionary, the job is not stopped");
-          } else {
-            updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.ZSTD_DICTIONARY_CREATION_FAILED);
-            LOGGER.error(err);
-            throw new VeniceException(err);
-          }
-        } else {
-          checkLastModificationTimeAndLog(true);
-          String err = "Error while validating schema: MR job counter is not reliable to point out the reason";
-          LOGGER.error(err);
-          throw new VeniceException(err);
-        }
-      } else {
-        checkLastModificationTimeAndLog(true);
-        updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.INVALID_INPUT_FILE);
-        String err = "Error while validating schema: MR job counter is not reliable to point out the exact reason";
-        LOGGER.error(err);
-        throw new VeniceException(err);
-      }
-    }
-  }
-
   // Visible for testing
   void setKmeSchemaSystemStoreControllerClient(ControllerClient controllerClient) {
     this.kmeSchemaSystemStoreControllerClient = controllerClient;
-  }
-
-  private RunningJob runJobWithConfig(JobConf jobConf) throws IOException {
-    if (jobClientWrapper == null) {
-      jobClientWrapper = new DefaultJobClientWrapper();
-    }
-    try {
-      return jobClientWrapper.runJobWithConfig(jobConf);
-    } catch (Exception e) {
-      if (!pushJobSetting.isSourceKafka) {
-        checkLastModificationTimeAndLog();
-      }
-      throw e;
-    }
   }
 
   protected InputDataInfoProvider constructInputDataInfoProvider() {
@@ -1359,16 +1251,6 @@ public class VenicePushJob implements AutoCloseable {
     return inputDataInfoProvider;
   }
 
-  protected ValidateSchemaAndBuildDictMapperOutputReader getValidateSchemaAndBuildDictMapperOutputReader(
-      Path outputDir,
-      String fileName) throws Exception {
-    if (validateSchemaAndBuildDictMapperOutputReader == null) {
-      validateSchemaAndBuildDictMapperOutputReader =
-          new ValidateSchemaAndBuildDictMapperOutputReader(outputDir, fileName);
-    }
-    return validateSchemaAndBuildDictMapperOutputReader;
-  }
-
   /**
    * Create a new instance of controller client and set it to the controller client field if the controller client field
    * has null value. If the controller client field is not null, it could mean:
@@ -1376,9 +1258,12 @@ public class VenicePushJob implements AutoCloseable {
    *    2. A mock controller client is provided
    *
    * @param storeName
-   * @param sslFactory
    */
-  private void initControllerClient(String storeName, Optional<SSLFactory> sslFactory) {
+  private void initControllerClient(String storeName) {
+    Optional<SSLFactory> sslFactory = VPJSSLUtils.createSSLFactory(
+        pushJobSetting.enableSSL,
+        props.getString(SSL_FACTORY_CLASS_NAME, DEFAULT_SSL_FACTORY_CLASS_NAME),
+        this.sslProperties);
     final String controllerD2ZkHost;
     if (pushJobSetting.multiRegion) {
       // In multi region mode, push jobs will communicate with parent controller
@@ -1433,13 +1318,6 @@ public class VenicePushJob implements AutoCloseable {
     } else {
       RepushInfo repushInfo = pushJobSetting.repushInfoResponse.getRepushInfo();
       pushJobSetting.kafkaInputBrokerUrl = repushInfo.getKafkaBrokerUrl();
-      pushJobSetting.systemSchemaClusterD2ServiceName = repushInfo.getSystemSchemaClusterD2ServiceName();
-      pushJobSetting.systemSchemaClusterD2ZKHost = repushInfo.getSystemSchemaClusterD2ZkHost();
-    }
-    if (pushJobSetting.isSystemSchemaReaderEnabled
-        && (StringUtils.isEmpty(pushJobSetting.systemSchemaClusterD2ServiceName)
-            || StringUtils.isEmpty(pushJobSetting.systemSchemaClusterD2ZKHost))) {
-      throw new VeniceException("D2 service name and zk host must be provided when system schema reader is enabled");
     }
   }
 
@@ -1451,12 +1329,10 @@ public class VenicePushJob implements AutoCloseable {
       Optional<SSLFactory> sslFactory,
       int retryAttempts) {
     if (useD2ControllerClient) {
-      return D2ControllerClientFactory.discoverAndConstructControllerClient(
-          storeName,
-          controllerD2ServiceName,
-          d2ZkHosts,
-          sslFactory,
-          retryAttempts);
+      // TODO: we probably need to provide more for constructing d2Client here.
+      D2Client d2Client = D2ClientFactory.getD2Client(d2ZkHosts, sslFactory);
+      return D2ControllerClientFactory
+          .discoverAndConstructControllerClient(storeName, controllerD2ServiceName, retryAttempts, d2Client);
     } else {
       return ControllerClientFactory.discoverAndConstructControllerClient(
           storeName,
@@ -1501,6 +1377,7 @@ public class VenicePushJob implements AutoCloseable {
     // Prepare the param builder, which can be used by different scenarios.
     KafkaInputDictTrainer.ParamBuilder paramBuilder = new KafkaInputDictTrainer.ParamBuilder()
         .setKeySchema(AvroCompatibilityHelper.toParsingForm(pushJobSetting.storeKeySchema))
+        .setNewKMESchemasFromController(pushJobSetting.newKmeSchemasFromController)
         .setSslProperties(pushJobSetting.enableSSL ? sslProperties.get() : new Properties())
         .setCompressionDictSize(
             props.getInt(
@@ -1578,19 +1455,7 @@ public class VenicePushJob implements AutoCloseable {
       return ByteBuffer.wrap(dictTrainer.trainDict());
     }
 
-    if (!pushJobSetting.useMapperToBuildDict) {
-      return ByteBuffer.wrap(getInputDataInfoProvider().trainZstdDictionary());
-    } else {
-      // In case of pushJobSetting.useMapperToBuildDict job, the dictionary will already have been generated
-      if (pushJobSetting.isZstdDictCreationSuccess) {
-        LOGGER.info(
-            "Retrieving the Zstd dictionary trained by {}",
-            ValidateSchemaAndBuildDictMapper.class.getSimpleName());
-        return validateSchemaAndBuildDictMapperOutput.getZstdDictionary();
-      }
-    }
-
-    return null;
+    return ByteBuffer.wrap(getInputDataInfoProvider().trainZstdDictionary());
   }
 
   private void throwVeniceException(Throwable e) throws VeniceException {
@@ -1658,41 +1523,56 @@ public class VenicePushJob implements AutoCloseable {
     try {
       pushJobDetails.totalNumberOfRecords = taskTracker.getOutputRecordsCount();
       pushJobDetails.totalKeyBytes = taskTracker.getTotalKeySize();
-      // size of uncompressed value
+      // total size of uncompressed value
       pushJobDetails.totalRawValueBytes = taskTracker.getTotalUncompressedValueSize();
-      // size of the final stored data in SN (can be compressed using NO_OP/GZIP/ZSTD_WITH_DICT)
+      // total size of the final stored data in SN (can be compressed using NO_OP/GZIP/ZSTD_WITH_DICT)
       pushJobDetails.totalCompressedValueBytes = taskTracker.getTotalValueSize();
-      // size of the Gzip compressed data
+      // total size of the Gzip compressed data
       pushJobDetails.totalGzipCompressedValueBytes = taskTracker.getTotalGzipCompressedValueSize();
-      // size of the Zstd with Dict compressed data
+      // total size of the Zstd with Dict compressed data
       pushJobDetails.totalZstdWithDictCompressedValueBytes = taskTracker.getTotalZstdCompressedValueSize();
-      LOGGER.info(
-          "Data writer job summary: " + "\n\tTotal number of records: {}" + "\n\tSize of keys: {}"
-              + "\n\tSize of uncompressed values: {}" + "\n\tConfigured value compression strategy: {}"
-              + "\n\tSize of compressed values: {}" + "\n\tFinal data size stored in Venice: {}"
-              + "\n\tCompression Metrics collection: {}",
-          pushJobDetails.totalNumberOfRecords,
-          ByteUtils.generateHumanReadableByteCountString(pushJobDetails.totalKeyBytes),
-          ByteUtils.generateHumanReadableByteCountString(pushJobDetails.totalRawValueBytes),
-          pushJobSetting.topicCompressionStrategy,
-          ByteUtils.generateHumanReadableByteCountString(pushJobDetails.totalCompressedValueBytes),
-          ByteUtils.generateHumanReadableByteCountString(
-              pushJobDetails.totalKeyBytes + pushJobDetails.totalCompressedValueBytes),
-          pushJobSetting.compressionMetricCollectionEnabled ? "Enabled" : "Disabled");
+      // total records exceeding record size before compression
+      pushJobDetails.totalUncompressedRecordTooLargeFailures = taskTracker.getUncompressedRecordTooLargeFailureCount();
+      // size of largest uncompressed value
+      pushJobDetails.largestUncompressedValueSizeBytes = taskTracker.getLargestUncompressedValueSize();
+      List<String> summaryLogLines = new ArrayList<>();
+      summaryLogLines.add("Total number of records: " + pushJobDetails.totalNumberOfRecords);
+      summaryLogLines
+          .add("Size of keys: " + ByteUtils.generateHumanReadableByteCountString(pushJobDetails.totalKeyBytes));
+      summaryLogLines.add(
+          "Size of uncompressed values: "
+              + ByteUtils.generateHumanReadableByteCountString(pushJobDetails.totalRawValueBytes));
+      summaryLogLines.add("Configured value compression strategy: " + pushJobSetting.topicCompressionStrategy);
+      summaryLogLines.add(
+          "Size of compressed values: "
+              + ByteUtils.generateHumanReadableByteCountString(pushJobDetails.totalCompressedValueBytes));
+      summaryLogLines.add(
+          "Final data size stored in Venice: " + ByteUtils.generateHumanReadableByteCountString(
+              pushJobDetails.totalKeyBytes + pushJobDetails.totalCompressedValueBytes));
+      summaryLogLines.add(
+          "Compression Metrics collection: "
+              + (pushJobSetting.compressionMetricCollectionEnabled ? "Enabled" : "Disabled"));
+      summaryLogLines.add("Uncompressed records too large: " + pushJobDetails.totalUncompressedRecordTooLargeFailures);
+
+      if (pushJobDetails.largestUncompressedValueSizeBytes > 0) {
+        summaryLogLines.add(
+            "Largest Uncompressed value size: "
+                + ByteUtils.generateHumanReadableByteCountString(pushJobDetails.largestUncompressedValueSizeBytes));
+      }
       if (pushJobSetting.compressionMetricCollectionEnabled) {
-        LOGGER.info(
-            "\tData size if compressed using Gzip: {}",
-            ByteUtils.generateHumanReadableByteCountString(
+        summaryLogLines.add(
+            "Data size if compressed using Gzip: " + ByteUtils.generateHumanReadableByteCountString(
                 pushJobDetails.totalKeyBytes + pushJobDetails.totalGzipCompressedValueBytes));
         if (pushJobSetting.isZstdDictCreationSuccess) {
-          LOGGER.info(
-              "\tData size if compressed using Zstd with Dictionary: {}",
-              ByteUtils.generateHumanReadableByteCountString(
+          summaryLogLines.add(
+              "Data size if compressed using Zstd with Dictionary: " + ByteUtils.generateHumanReadableByteCountString(
                   pushJobDetails.totalKeyBytes + pushJobDetails.totalZstdWithDictCompressedValueBytes));
         } else {
-          LOGGER.info("\tZstd Dictionary creation Failed");
+          summaryLogLines.add("Zstd Dictionary creation Failed");
         }
       }
+
+      LOGGER.info("Data writer job summary: \n\t{}", StringUtils.join(summaryLogLines, "\n\t"));
     } catch (Exception e) {
       LOGGER.warn(
           "Exception caught while updating push job details with map reduce counters. {}",
@@ -1740,13 +1620,12 @@ public class VenicePushJob implements AutoCloseable {
     if (inputStorageQuotaTracker.exceedQuota(totalInputDataSizeInBytes)) {
       updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.QUOTA_EXCEEDED);
       Long storeQuota = inputStorageQuotaTracker.getStoreStorageQuota();
-      String errorMessage = String.format(
+      return String.format(
           "Storage quota exceeded. Store quota %s, Input data size %s."
               + " Please request at least %s additional quota.",
           generateHumanReadableByteCountString(storeQuota),
           generateHumanReadableByteCountString(totalInputDataSizeInBytes),
           generateHumanReadableByteCountString(totalInputDataSizeInBytes - storeQuota));
-      return errorMessage;
     }
     // Write ACL failed
     final long writeAclFailureCount = dataWriterTaskTracker.getWriteAclAuthorizationFailureCount();
@@ -1760,14 +1639,15 @@ public class VenicePushJob implements AutoCloseable {
       final long duplicateKeyWithDistinctValueCount = dataWriterTaskTracker.getDuplicateKeyWithDistinctValueCount();
       if (duplicateKeyWithDistinctValueCount > 0) {
         updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.DUP_KEY_WITH_DIFF_VALUE);
-        String errorMessage = String.format(
+        return String.format(
             "Input data has at least %d keys that appear more than once but have different values",
             duplicateKeyWithDistinctValueCount);
-        return errorMessage;
       }
     }
     // Record too large
-    final long recordTooLargeFailureCount = dataWriterTaskTracker.getRecordTooLargeFailureCount();
+    final long recordTooLargeFailureCount = this.pushJobSetting.enableUncompressedRecordSizeLimit
+        ? dataWriterTaskTracker.getUncompressedRecordTooLargeFailureCount()
+        : dataWriterTaskTracker.getRecordTooLargeFailureCount();
     if (recordTooLargeFailureCount > 0) {
       updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.RECORD_TOO_LARGE_FAILED);
 
@@ -1776,13 +1656,28 @@ public class VenicePushJob implements AutoCloseable {
       final int recordSizeLimit = (pushJobDetails.chunkingEnabled)
           ? getVeniceWriter(pushJobSetting).getMaxRecordSizeBytes()
           : getVeniceWriter(pushJobSetting).getMaxSizeForUserPayloadPerMessageInBytes();
-      final String errorMessage = String.format(
-          "Input data has at least %d records that exceed the maximum record limit of %s",
+
+      return String.format(
+          "Input data has at least %d records that exceed the maximum record limit of %s%s",
           recordTooLargeFailureCount,
-          generateHumanReadableByteCountString(recordSizeLimit));
-      return errorMessage;
+          generateHumanReadableByteCountString(recordSizeLimit),
+          formatRecordTooLargeCompressionStatus());
     }
     return null;
+  }
+
+  /* Helper function to format part of the record too large compression status */
+  private String formatRecordTooLargeCompressionStatus() {
+    if (this.pushJobSetting.storeCompressionStrategy != null
+        && this.pushJobSetting.storeCompressionStrategy.isCompressionEnabled()) {
+      if (this.pushJobSetting.enableUncompressedRecordSizeLimit) {
+        return " before compression";
+      } else {
+        return " after compression";
+      }
+    }
+
+    return "";
   }
 
   /** Transform per colo {@link ExecutionStatus} to per colo {@link PushJobDetailsStatus} */
@@ -1852,18 +1747,65 @@ public class VenicePushJob implements AutoCloseable {
     return tuple;
   }
 
-  private void sendPushJobDetailsToController() {
-    if (!pushJobSetting.enablePushJobStatusUpload) {
-      if (!pushJobStatusUploadDisabledHasBeenLogged) {
-        pushJobStatusUploadDisabledHasBeenLogged = true;
-        LOGGER.warn("Unable to send push job details for monitoring purpose. Feature is disabled");
-      }
-      return;
-    } else if (pushJobDetails == null) {
+  /**
+   * Tracks the last reported status to prevent duplicate terminal failure updates to the controller.
+   * Duplicate terminal statuses (e.g., ERROR, KILLED) may be misinterpreted in controller-side metrics,
+   * potentially skewing push job SLO calculations and causing confusion.
+   */
+  private volatile PushJobDetailsStatus lastReportedStatus = PushJobDetailsStatus.UNKNOWN;
+  private final Object lastReportedStatusLock = new Object();
+
+  private static PushJobDetailsStatus getCurrentOverallStatus(PushJobDetails pushJobDetails) {
+    if (pushJobDetails != null && pushJobDetails.overallStatus != null && !pushJobDetails.overallStatus.isEmpty()) {
+      return PushJobDetailsStatus
+          .valueOf(pushJobDetails.overallStatus.get(pushJobDetails.overallStatus.size() - 1).status);
+    }
+    return PushJobDetailsStatus.UNKNOWN;
+  }
+
+  /**
+   * Determines whether the push job status update should be skipped.
+   *
+   * <p>This method checks for several conditions that would make a status update unnecessary or
+   * potentially harmful:
+   * <ul>
+   *   <li>If status uploads are disabled via config, the update is skipped and a warning is logged
+   *       (only once).</li>
+   *   <li>If the push job details are not initialized, the update is skipped.</li>
+   *   <li>If the last reported status was a terminal failure (ERROR or KILLED) and the current status
+   *       is also a terminal failure, the update is skipped to avoid redundant controller updates,
+   *       which may negatively affect downstream metrics.</li>
+   * </ul>
+   *
+   * @return {@code true} if the status update should be skipped, {@code false} otherwise.
+   */
+  private boolean shouldSkipPushJobStatusUpdate() {
+    // Check if pushJobDetails is populated
+    if (pushJobDetails == null) {
       LOGGER.warn("Unable to send push job details for monitoring purpose. The payload was not populated properly");
-      return;
+      return true;
     }
 
+    PushJobDetailsStatus currentStatus = getCurrentOverallStatus(this.pushJobDetails);
+
+    // Early exit if both current and last status are terminal failures (ERROR or KILLED)
+    // This check is deliberately done outside the synchronized block to avoid locking in no-op paths.
+    if (PushJobDetailsStatus.isFailed(currentStatus) && PushJobDetailsStatus.isFailed(lastReportedStatus)) {
+      LOGGER.info(
+          "Skipping status update. Already reported terminal failure status: {} and current status is also terminal: {}",
+          lastReportedStatus,
+          currentStatus);
+      return true;
+    }
+
+    return false;
+  }
+
+  @VisibleForTesting
+  void sendPushJobDetailsToController() {
+    if (shouldSkipPushJobStatusUpdate()) {
+      return;
+    }
     // update push job details with more info if needed
     updatePushJobDetailsWithConfigs();
     updatePushJobDetailsWithLivenessHeartbeatException();
@@ -1872,14 +1814,34 @@ public class VenicePushJob implements AutoCloseable {
     try {
       pushJobDetails.reportTimestamp = System.currentTimeMillis();
       int version = pushJobSetting.version <= 0 ? UNCREATED_VERSION_NUMBER : pushJobSetting.version;
-      ControllerResponse response = controllerClient.sendPushJobDetails(
-          pushJobSetting.storeName,
-          version,
-          pushJobDetailsSerializer.serialize(null, pushJobDetails));
-      getSentPushJobDetailsTracker().record(pushJobSetting.storeName, version, pushJobDetails);
-
-      if (response.isError()) {
-        LOGGER.warn("Failed to send push job details. {} Details: {}", NON_CRITICAL_EXCEPTION, response.getError());
+      synchronized (lastReportedStatusLock) {
+        PushJobDetails pushJobDetailsCopy = this.pushJobDetails;
+        PushJobDetailsStatus currentStatus = getCurrentOverallStatus(pushJobDetailsCopy);
+        // Re-check terminal status inside synchronized block for correctness
+        if (PushJobDetailsStatus.isFailed(currentStatus) && PushJobDetailsStatus.isFailed(lastReportedStatus)) {
+          LOGGER.info(
+              "Skipping status update for store: {} version: {}. Already reported terminal failure: {} and current status is also terminal: {}",
+              pushJobSetting.storeName,
+              version,
+              lastReportedStatus,
+              currentStatus);
+          return;
+        }
+        ControllerResponse response = controllerClient.sendPushJobDetails(
+            pushJobSetting.storeName,
+            version,
+            pushJobDetailsSerializer.serialize(null, pushJobDetailsCopy));
+        if (response.isError()) {
+          LOGGER.warn("Failed to send push job details. {} Details: {}", NON_CRITICAL_EXCEPTION, response.getError());
+        } else {
+          LOGGER.info(
+              "Successfully reported push job status: {} for store: {} version: {}",
+              currentStatus,
+              pushJobSetting.storeName,
+              version);
+          lastReportedStatus = currentStatus;
+        }
+        getSentPushJobDetailsTracker().record(pushJobSetting.storeName, version, pushJobDetailsCopy);
       }
     } catch (Exception e) {
       LOGGER.error("Exception caught while sending push job details. {}", NON_CRITICAL_EXCEPTION, e);
@@ -1951,7 +1913,7 @@ public class VenicePushJob implements AutoCloseable {
       if (!setting.validateRemoteReplayPolicy.equals(hybridStoreConfig.getBufferReplayPolicy())) {
         throw new VeniceException(
             String.format(
-                "Remote rewind policy is {} but push settings require a policy of {}. "
+                "Remote rewind policy is %s but push settings require a policy of %s. "
                     + "Please adjust hybrid settings or push job configuration!",
                 hybridStoreConfig.getBufferReplayPolicy(),
                 setting.validateRemoteReplayPolicy));
@@ -1959,19 +1921,33 @@ public class VenicePushJob implements AutoCloseable {
     }
   }
 
-  private void validateKafkaMessageEnvelopeSchema(PushJobSetting setting) {
-    SchemaResponse response = ControllerClient.retryableRequest(
+  private Map<Integer, String> validateAndFetchNewKafkaMessageEnvelopeSchemas(PushJobSetting setting) {
+    // Obtain the highest schema for KME from controller
+    int localHighestKmeSchemaId = AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getCurrentProtocolVersion();
+
+    Map<Integer, String> newKmeSchemas = new HashMap<>();
+    MultiSchemaResponse multiSchemaResponse = ControllerClient.retryableRequest(
         kmeSchemaSystemStoreControllerClient,
         setting.controllerRetries,
-        c -> c.getValueSchema(
-            AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getSystemStoreName(),
-            AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getCurrentProtocolVersion()));
+        c -> c.getAllValueSchema(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getSystemStoreName()));
+    int highestKmeSchemaIdFromController = -1;
+    for (MultiSchemaResponse.Schema schema: multiSchemaResponse.getSchemas()) {
+      if (schema.getId() > highestKmeSchemaIdFromController) {
+        highestKmeSchemaIdFromController = schema.getId();
+      }
 
-    if (response.isError()) {
-      throw new VeniceException(
-          "KME protocol is upgraded in the push job but not in the Venice backend; Please contact Venice team. Error : "
-              + response.getError());
+      if (schema.getId() > localHighestKmeSchemaId) {
+        newKmeSchemas.put(schema.getId(), schema.getSchemaStr());
+      }
     }
+
+    if (highestKmeSchemaIdFromController < localHighestKmeSchemaId) {
+      throw new VeniceException(
+          "KME protocol is upgraded in the push job but not in the Venice controller; Please contact Venice team."
+              + "Local KME protocol version: " + localHighestKmeSchemaId
+              + ", highest schema version in Venice controller: " + highestKmeSchemaIdFromController);
+    }
+    return newKmeSchemas;
   }
 
   private Schema getKeySchemaFromController(ControllerClient controllerClient, int retries, String storeName) {
@@ -1989,12 +1965,11 @@ public class VenicePushJob implements AutoCloseable {
   /***
    * This method will talk to controller to validate value schema.
    */
-  void validateValueSchema(
+  void validateAndRetrieveValueSchemas(
       ControllerClient controllerClient,
       PushJobSetting setting,
       boolean schemaAutoRegisterFromPushJobEnabled) {
     LOGGER.info("Validating value schema: {} for store: {}", pushJobSetting.valueSchemaString, setting.storeName);
-
     SchemaResponse getValueSchemaIdResponse;
     if (setting.enableWriteCompute) {
       if (!isUpdateSchema(pushJobSetting.valueSchemaString)) {
@@ -2099,6 +2074,86 @@ public class VenicePushJob implements AutoCloseable {
         setting.storeName);
   }
 
+  /**
+   * Fetch RMD schemas if the push job contains RMD on top of key and value. Additionally, perform validations to ensure
+   * RMD schemas are fetched and disallow RMD pushes if the RMD schemas have evolved for the given value schema.
+   */
+  @VisibleForTesting
+  void validateAndSetRmdSchemas(ControllerClient controllerClient, PushJobSetting pushJobSetting) {
+    // No need to fetch RMD schema if the push does not include RMD or timestamp
+    if (!RmdPushUtils.rmdFieldPresent(pushJobSetting)) {
+      return;
+    }
+
+    MultiSchemaResponse replicationSchemasResponse = ControllerClient.retryableRequest(
+        controllerClient,
+        pushJobSetting.controllerRetries,
+        c -> c.getAllReplicationMetadataSchemas(pushJobSetting.storeName));
+    if (replicationSchemasResponse.isError()) {
+      LOGGER.error("Failed to fetch replication metadata schemas!" + replicationSchemasResponse.getError());
+    } else {
+      if (replicationSchemasResponse.getSchemas() != null && replicationSchemasResponse.getSchemas().length > 0) {
+        for (MultiSchemaResponse.Schema schema: replicationSchemasResponse.getSchemas()) {
+          if (schema.getRmdValueSchemaId() == pushJobSetting.valueSchemaId
+              && schema.getId() > pushJobSetting.rmdSchemaId) {
+            pushJobSetting.rmdSchemaId = schema.getId();
+            pushJobSetting.replicationMetadataSchemaString = schema.getSchemaStr();
+          }
+        }
+
+        if (pushJobSetting.rmdSchemaId > 0) {
+          LOGGER.info(
+              "Retrieved and using schema with id: {}, and string: {}",
+              pushJobSetting.rmdSchemaId,
+              pushJobSetting.replicationMetadataSchemaString);
+        } else {
+          LOGGER.info(
+              "No replication schema found for value schema id: {} in store: {}",
+              pushJobSetting.valueSchemaId,
+              pushJobSetting.storeName);
+        }
+      } else {
+        LOGGER.info("No replication schemas associated with the store!");
+      }
+    }
+
+    if (pushJobSetting.rmdSchemaId == -1) {
+      throw new VeniceException(
+          "Failed to find replication metadata schema for value schema id: " + pushJobSetting.valueSchemaId
+              + " in store: " + pushJobSetting.storeName + ". Cannot proceed with push to include RMD.");
+    } else if (pushJobSetting.rmdSchemaId > 1) {
+      throw new VeniceException(
+          "Cannot continue with push with RMD since the RMD schema for the value: " + pushJobSetting.valueSchemaId
+              + " has evolved to " + pushJobSetting.rmdSchemaId + ". RMD schema evolution is not supported yet.");
+
+    }
+  }
+
+  // Visible for unit testing
+  void checkRegularPushWithTTLRepush(ControllerClient controllerClient, PushJobSetting setting) {
+    if (setting.allowRegularPushWithTTLRepush) {
+      return;
+    }
+    // Validation only required for regular batch pushes with records since user could be scheduling an empty push to
+    // wipe all data
+    if (setting.isIncrementalPush || setting.isSourceKafka || !setting.inputHasRecords) {
+      return;
+    }
+    // Also allow batch push that will provide the row level timestamp field (compatible with TTL re-push)
+    if (setting.rmdField != null && !setting.rmdField.isEmpty()) {
+      return;
+    }
+    StoreResponse storeResponse = ControllerClient
+        .retryableRequest(controllerClient, setting.controllerRetries, c -> c.getStore(setting.storeName));
+    if (storeResponse.isError()) {
+      throw new VeniceException("Unable to fetch store to validate if regular push is allowed with TTL re-push");
+    }
+    if (storeResponse.getStore().isTTLRepushEnabled()) {
+      String errorMessage = "Store: %s is TTL re-push enabled and regular batch push is not allowed with TTL re-push";
+      throw new VeniceException(String.format(errorMessage, storeResponse.getName()));
+    }
+  }
+
   // Visible for testing
   boolean isUpdateSchema(String schemaString) {
     return schemaString.contains(WriteComputeOperation.NO_OP_ON_FIELD.getName());
@@ -2149,7 +2204,20 @@ public class VenicePushJob implements AutoCloseable {
       }
     }
 
+    if (jobSetting.isTargetedRegionPushEnabled || jobSetting.isTargetRegionPushWithDeferredSwapEnabled) {
+      Set<String> nonTargetRegionsList = getNonTargetRegions();
+      if (nonTargetRegionsList.isEmpty()) {
+        throw new VeniceException(
+            "Target region list cannot contain all regions:" + pushJobSetting.targetedRegions
+                + ". Please remove one or more of the regions from the target region push list.");
+      }
+    }
+
     HybridStoreConfig hybridStoreConfig = storeResponse.getStore().getHybridStoreConfig();
+
+    jobSetting.isSortedIngestionEnabled =
+        hybridStoreConfig == null || !pushJobSetting.isBatchWriteOptimizationForHybridStoreEnabled;
+
     if (jobSetting.repushTTLEnabled) {
       if (hybridStoreConfig == null) {
         throw new VeniceException("Repush TTL is only supported for real-time only store.");
@@ -2262,7 +2330,7 @@ public class VenicePushJob implements AutoCloseable {
             pushType,
             pushId,
             askControllerToSendControlMessage,
-            SORTED,
+            setting.isSortedIngestionEnabled,
             finalWriteComputeEnabled,
             Optional.of(partitioners),
             dictionary,
@@ -2373,6 +2441,7 @@ public class VenicePushJob implements AutoCloseable {
 
   private Properties createVeniceWriterProperties(String kafkaUrl, boolean sslToKafka) {
     Properties veniceWriterProperties = new Properties();
+    DataWriterComputeJob.populateWithPassThroughConfigs(props, veniceWriterProperties::setProperty);
     veniceWriterProperties.put(KAFKA_BOOTSTRAP_SERVERS, kafkaUrl);
     veniceWriterProperties.put(VeniceWriter.MAX_ELAPSED_TIME_FOR_SEGMENT_IN_MS, -1);
     if (props.containsKey(VeniceWriter.CLOSE_TIMEOUT_MS)) { /* Writer uses default if not specified */
@@ -2436,7 +2505,8 @@ public class VenicePushJob implements AutoCloseable {
       ControllerClient controllerClient,
       PushJobSetting pushJobSetting,
       String targetedRegions,
-      boolean isTargetedRegionPush) {
+      boolean isTargetedRegionPush,
+      boolean isTargetRegionPushWithDeferredSwap) {
     // Set of datacenters that have reported a completed status at least once.
     Set<String> completedDatacenters = new HashSet<>();
     // Datacenter-specific details. Stored in memory to avoid printing repetitive details.
@@ -2453,13 +2523,20 @@ public class VenicePushJob implements AutoCloseable {
      * no more than {@link DEFAULT_JOB_STATUS_IN_UNKNOWN_STATE_TIMEOUT_MS}.
      */
     long unknownStateStartTimeMs = 0;
-    long pollStartTimeMs = System.currentTimeMillis();
+
+    /**
+     * The start time for when a push reaches terminal state.
+     * If 0, it seems that the push has not reached terminal state yet.
+     * This will be used to calculate how long the push is stalled for version swap and it is allowed to stay
+     * in this state from terminal state time + store wait time + {@link DEFAULT_JOB_STATUS_IN_UNKNOWN_STATE_TIMEOUT_MS}
+     */
+    long versionSwapStartTimeMs = 0;
 
     String topicToMonitor = getTopicToMonitor(pushJobSetting);
 
     List<ExecutionStatus> successfulStatuses =
         Arrays.asList(ExecutionStatus.COMPLETED, ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED);
-
+    int fetchParentVersionRetryCount = 0;
     for (;;) {
       long currentTime = System.currentTimeMillis();
       if (currentTime < nextPollingTime) {
@@ -2472,8 +2549,11 @@ public class VenicePushJob implements AutoCloseable {
       JobStatusQueryResponse response = ControllerClient.retryableRequest(
           controllerClient,
           pushJobSetting.controllerStatusPollRetries,
-          client -> client
-              .queryOverallJobStatus(topicToMonitor, Optional.ofNullable(incrementalPushVersion), targetedRegions));
+          client -> client.queryOverallJobStatus(
+              topicToMonitor,
+              Optional.ofNullable(incrementalPushVersion),
+              targetedRegions,
+              isTargetRegionPushWithDeferredSwap));
 
       if (response.isError()) {
         // status could not be queried which could be due to a communication error.
@@ -2512,21 +2592,72 @@ public class VenicePushJob implements AutoCloseable {
           throw new VeniceException(errorMsg.toString());
         }
 
-        // Every known datacenter have successfully reported a completed status at least once.
-        if (isTargetedRegionPush) {
+        // For target region push with deferred swap, stall push completion until version swap is complete
+        // Version swap is complete when the parent version is online, partially online, or error
+        if (isTargetRegionPushWithDeferredSwap) {
+          if (versionSwapStartTimeMs == 0) {
+            LOGGER.info("Starting to monitor version swap status for {}", pushJobSetting.topic);
+            versionSwapStartTimeMs = System.currentTimeMillis();
+          }
+          StoreResponse parentStoreResponse = getStoreResponse(pushJobSetting.storeName, true);
+
+          StoreInfo parentStoreInfo = parentStoreResponse.getStore();
+          int latestUsedVersionNumber = parentStoreInfo.getLargestUsedVersionNumber();
+          Optional<Version> parentVersionFromStore = parentStoreInfo.getVersion(latestUsedVersionNumber);
+          if (!parentVersionFromStore.isPresent()) {
+            LOGGER.warn("Failed to get parent version for store: {}", pushJobSetting.storeName);
+            fetchParentVersionRetryCount++;
+            if (fetchParentVersionRetryCount > 5) {
+              throw new VeniceException(
+                  "Failed to get parent version from parent store after 5 attempts "
+                      + "and cannot infer version swap status after ingestion completed. Check nuage if the latest"
+                      + "version is being served");
+            }
+
+            continue;
+          }
+
+          fetchParentVersionRetryCount = 0; // Reset retry counter if we are able to get parent version
+          Version parentVersion = parentVersionFromStore.get();
+          VersionStatus parentVersionStatus = parentVersion.getStatus();
+          if (VersionStatus.ERROR.equals(parentVersionStatus)
+              && ExecutionStatus.COMPLETED.equals(overallStatus.getRootStatus())) {
+            throw new VeniceException(
+                "Version " + pushJobSetting.topic
+                    + " was rolled back after ingestion completed due to validation failure");
+          } else if (VersionStatus.KILLED.equals(parentVersionStatus)) {
+            throw new VeniceException("Version " + pushJobSetting.topic + " was killed and cannot be served.");
+          } else if (VersionStatus.PARTIALLY_ONLINE.equals(parentVersionStatus)) {
+            throw new VeniceException(
+                "Version " + pushJobSetting.topic + " is only partially online in some regions. "
+                    + "Check nuage to see which regions are not serving the latest version. It is possible that there"
+                    + " was a failure in rolling forward on the controller side or ingestion failed in some regions.");
+          } else if (VersionStatus.ONLINE.equals(parentVersionStatus)) {
+            LOGGER.info(
+                "Successfully pushed {} and it is being served in all regions. The version status is {}.",
+                pushJobSetting.topic,
+                parentVersionStatus);
+            return;
+          }
+
+          long timeoutTimeMs =
+              versionSwapStartTimeMs + TimeUnit.MINUTES.toMillis(parentStoreInfo.getTargetRegionSwapWaitTime())
+                  + TimeUnit.MINUTES.toMillis(VERSION_SWAP_BUFFER_TIME_MINUTES);
+          if (versionSwapStartTimeMs > 0
+              && LatencyUtils.getElapsedTimeFromMsToMs(versionSwapStartTimeMs) > timeoutTimeMs) {
+            throw new VeniceException(
+                "After waiting for " + timeoutTimeMs / Time.MS_PER_MINUTE
+                    + " minutes, version swap is still not complete.");
+          }
+
+          LOGGER.info("Version status is {} and version swap is not complete yet", parentVersion.getStatus());
+        } else if (isTargetedRegionPush) {
           LOGGER.info("Successfully pushed {} to targeted region {}", pushJobSetting.topic, targetedRegions);
+          return;
         } else {
           LOGGER.info("Successfully pushed {} to all the regions", pushJobSetting.topic);
+          return;
         }
-        return;
-      }
-      long bootstrapToOnlineTimeoutInHours =
-          VenicePushJob.this.pushJobSetting.storeResponse.getStore().getBootstrapToOnlineTimeoutInHours();
-      long durationMs = LatencyUtils.getElapsedTimeFromMsToMs(pollStartTimeMs);
-      if (durationMs > TimeUnit.HOURS.toMillis(bootstrapToOnlineTimeoutInHours)) {
-        throw new VeniceException(
-            "Failing push-job for store " + VenicePushJob.this.pushJobSetting.storeResponse.getName()
-                + " which is still running after " + TimeUnit.MILLISECONDS.toHours(durationMs) + " hours.");
       }
       if (!overallStatus.equals(ExecutionStatus.UNKNOWN)) {
         unknownStateStartTimeMs = 0;
@@ -2589,111 +2720,6 @@ public class VenicePushJob implements AutoCloseable {
     boolean detailsPresentWhenPreviouslyAbsent = (previous == null && current != null);
     boolean detailsDifferentFromPreviously = (previous != null && !previous.equals(current));
     return detailsPresentWhenPreviouslyAbsent || detailsDifferentFromPreviously;
-  }
-
-  /**
-   * Invoke a mapper only MR to do the below tasks:
-   * 1. Schema validation (whether the schema in all files is same as the first file which is
-   * already validated with the store schema)
-   * 2. Build dictionary for compression (if enabled)
-   * @throws IOException
-   */
-  private void validateSchemaAndBuildDict(
-      JobConf conf,
-      PushJobSetting pushJobSetting,
-      VeniceProperties props,
-      String id,
-      String inputDirectory) throws Exception {
-    setupMRConfToValidateSchemaAndBuildDict(conf, pushJobSetting, props, id, inputDirectory);
-    runValidateSchemaAndBuildDictJobAndUpdateStatus(conf);
-  }
-
-  /**
-   * Set up MR config to validate Schema and Build Dictionary
-   * @param conf MR Job Configuration
-   * @param id Job Id
-   */
-  private void setupMRConfToValidateSchemaAndBuildDict(
-      JobConf conf,
-      PushJobSetting pushJobSetting,
-      VeniceProperties props,
-      String id,
-      String inputDirectory) {
-    setupDefaultJobConfToValidateSchemaAndBuildDict(conf, pushJobSetting, props, id);
-    setupInputFormatConfToValidateSchemaAndBuildDict(conf, pushJobSetting, inputDirectory);
-  }
-
-  /**
-   * Default config includes the details related to jobids, output formats, compression configs, ssl configs, etc.
-   *
-   * @param conf
-   * @param id
-   */
-  private void setupDefaultJobConfToValidateSchemaAndBuildDict(
-      JobConf conf,
-      PushJobSetting pushJobSetting,
-      VeniceProperties props,
-      String id) {
-    JobUtils.setupCommonJobConf(
-        props,
-        conf,
-        id + ":venice_push_job_validate_schema_and_build_dict-" + pushJobSetting.storeName,
-        pushJobSetting);
-    conf.set(VENICE_STORE_NAME_PROP, pushJobSetting.storeName);
-    if (pushJobSetting.etlValueSchemaTransformation != null) {
-      conf.set(ETL_VALUE_SCHEMA_TRANSFORMATION, pushJobSetting.etlValueSchemaTransformation.name());
-    }
-    conf.setBoolean(INCREMENTAL_PUSH, pushJobSetting.isIncrementalPush);
-    conf.set(INPUT_PATH_LAST_MODIFIED_TIME, Long.toString(inputDataInfo.getInputModificationTime()));
-
-    /** Compression related config */
-    conf.setInt(
-        COMPRESSION_DICTIONARY_SIZE_LIMIT,
-        props.getInt(
-            COMPRESSION_DICTIONARY_SIZE_LIMIT,
-            VeniceWriter.DEFAULT_MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES));
-    conf.setInt(
-        COMPRESSION_DICTIONARY_SAMPLE_SIZE,
-        props.getInt(COMPRESSION_DICTIONARY_SAMPLE_SIZE, DEFAULT_COMPRESSION_DICTIONARY_SAMPLE_SIZE));
-    // USE_MAPPER_TO_BUILD_DICTIONARY is still needed to be passed here for validateInputAndGetInfo
-    conf.setBoolean(USE_MAPPER_TO_BUILD_DICTIONARY, pushJobSetting.useMapperToBuildDict);
-    conf.set(COMPRESSION_STRATEGY, VenicePushJob.this.pushJobSetting.storeCompressionStrategy.toString());
-    conf.set(
-        VALIDATE_SCHEMA_AND_BUILD_DICT_MAPPER_OUTPUT_DIRECTORY,
-        validateSchemaAndBuildDictMapperOutputDirectory.toUri().getPath());
-
-    /** adding below for {@link AbstractDataWriterTask.configure(EngineTaskConfigProvider)} to not crash: Doesn't affect this flow */
-    conf.setBoolean(VeniceWriter.ENABLE_CHUNKING, false);
-
-    /** Allow overriding properties if their names start with {@link HADOOP_VALIDATE_SCHEMA_AND_BUILD_DICT_PREFIX} */
-    for (String key: props.keySet()) {
-      String lowerCase = key.toLowerCase();
-      if (lowerCase.startsWith(HADOOP_VALIDATE_SCHEMA_AND_BUILD_DICT_PREFIX)) {
-        String overrideKey = key.substring(HADOOP_VALIDATE_SCHEMA_AND_BUILD_DICT_PREFIX.length());
-        conf.set(overrideKey, props.getString(key));
-      }
-    }
-
-    conf.setInt(PARTITION_COUNT, 0);
-    conf.setNumReduceTasks(0);
-  }
-
-  protected void setupInputFormatConfToValidateSchemaAndBuildDict(
-      JobConf conf,
-      PushJobSetting pushJobSetting,
-      String inputDirectory) {
-    conf.set(INPUT_PATH_PROP, inputDirectory);
-
-    conf.setInputFormat(VeniceFileInputFormat.class);
-    conf.setMapperClass(ValidateSchemaAndBuildDictMapper.class);
-
-    AvroJob.setOutputSchema(conf, ValidateSchemaAndBuildDictMapperOutput.getClassSchema());
-    conf.setOutputFormat(ValidateSchemaAndBuildDictOutputFormat.class);
-
-    /** key/value fields to be used in {@link DefaultInputDataInfoProvider#validateInputAndGetInfo(String)} in the mapper
-     * These values were populated to schemaInfo in the same function but in driver */
-    conf.set(KEY_FIELD_PROP, pushJobSetting.keyField);
-    conf.set(VALUE_FIELD_PROP, pushJobSetting.valueField);
   }
 
   /**
@@ -2800,9 +2826,8 @@ public class VenicePushJob implements AutoCloseable {
   }
 
   /**
-   * A cancel method for graceful cancellation of the running Job to be invoked as a result of user actions.
-   *
-   * @throws Exception
+   * A cancel method for graceful cancellation of the running Job to be invoked as a result of user actions or due to
+   * the job exceeding bootstrapToOnlineTimeoutInHours.
    */
   public void cancel() {
     killJob(pushJobSetting, controllerClient);
@@ -2815,9 +2840,9 @@ public class VenicePushJob implements AutoCloseable {
     sendPushJobDetailsToController();
   }
 
-  private void killJob(PushJobSetting pushJobSetting, ControllerClient controllerClient) {
+  void killJob(PushJobSetting pushJobSetting, ControllerClient controllerClient) {
     // Attempting to kill job. There's a race condition, but meh. Better kill when you know it's running
-    killComputeJob();
+    killDataWriterJob();
     if (!pushJobSetting.isIncrementalPush) {
       final int maxRetryAttempt = 10;
       int currentRetryAttempt = 0;
@@ -2840,36 +2865,7 @@ public class VenicePushJob implements AutoCloseable {
     }
   }
 
-  private void killComputeJob() {
-    killMRJob();
-    killDataWriterJob();
-  }
-
-  private void killMRJob() {
-    if (runningJob == null) {
-      LOGGER.warn("No op to kill a null running job");
-      return;
-    }
-    try {
-      if (runningJob.isComplete()) {
-        LOGGER.warn(
-            "No op to kill a completed job with name {} and ID {}",
-            runningJob.getJobName(),
-            runningJob.getID().getId());
-        return;
-      }
-      runningJob.killJob();
-    } catch (Exception ex) {
-      // Will try to kill Venice Offline Push Job no matter whether map-reduce job kill throws an exception or not.
-      LOGGER.info(
-          "Received exception while killing map-reduce job with name {} and ID {}",
-          runningJob.getJobName(),
-          runningJob.getID().getId(),
-          ex);
-    }
-  }
-
-  private void killDataWriterJob() {
+  void killDataWriterJob() {
     if (dataWriterComputeJob == null) {
       LOGGER.warn("No op to kill a null data writer job");
       return;
@@ -2943,6 +2939,7 @@ public class VenicePushJob implements AutoCloseable {
 
   @Override
   public void close() {
+    timeoutExecutor.shutdownNow();
     closeVeniceWriter();
     Utils.closeQuietlyWithErrorLogged(dataWriterComputeJob);
     Utils.closeQuietlyWithErrorLogged(controllerClient);
@@ -2956,7 +2953,6 @@ public class VenicePushJob implements AutoCloseable {
   }
 
   public static void main(String[] args) {
-
     if (args.length != 1) {
       Utils.exit("USAGE: java -jar venice-push-job-all.jar <VPJ_config_file_path>");
     }
@@ -2989,5 +2985,13 @@ public class VenicePushJob implements AutoCloseable {
 
   PushJobDetails getPushJobDetails() {
     return pushJobDetails;
+  }
+
+  @VisibleForTesting
+  void addPushJobDetailsOverallStatus(PushJobDetailsStatus pushJobDetailsStatus) {
+    if (pushJobDetails.overallStatus == null) {
+      pushJobDetails.overallStatus = new ArrayList<>();
+    }
+    pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(pushJobDetailsStatus.getValue()));
   }
 }

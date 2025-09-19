@@ -15,7 +15,6 @@ import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.davinci.helix.HelixParticipationService;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.notifier.LeaderErrorNotifier;
-import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
@@ -23,6 +22,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixBaseRoutingRepository;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.meta.Instance;
@@ -81,7 +81,6 @@ public class TestLeaderReplicaFailover {
     String stringSchemaStr = "\"string\"";
     serializer = new AvroSerializer(AvroCompatibilityHelper.parse(stringSchemaStr));
     Properties serverProperties = new Properties();
-    serverProperties.setProperty(ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1));
     serverProperties.put(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, false);
     serverProperties.put(SERVER_RESET_ERROR_REPLICA_ENABLED, true);
     serverProperties.put(DEFAULT_OFFLINE_PUSH_STRATEGY, OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
@@ -92,8 +91,17 @@ public class TestLeaderReplicaFailover {
     int numberOfServer = 3;
     int numberOfRouter = 1;
 
-    clusterWrapper = ServiceFactory
-        .getVeniceCluster(numberOfController, numberOfServer, numberOfRouter, 3, 1, false, false, serverProperties);
+    VeniceClusterCreateOptions options =
+        new VeniceClusterCreateOptions.Builder().numberOfControllers(numberOfController)
+            .numberOfServers(numberOfServer)
+            .numberOfRouters(numberOfRouter)
+            .replicationFactor(3)
+            .partitionSize(1)
+            .sslToStorageNodes(false)
+            .sslToKafka(false)
+            .extraProperties(serverProperties)
+            .build();
+    clusterWrapper = ServiceFactory.getVeniceCluster(options);
     clusterName = clusterWrapper.getClusterName();
   }
 

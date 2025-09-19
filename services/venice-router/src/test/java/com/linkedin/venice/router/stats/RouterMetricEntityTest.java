@@ -21,25 +21,13 @@ public class RouterMetricEntityTest {
   @Test
   public void testRouterMetricEntities() {
     Map<RouterMetricEntity, MetricEntity> expectedMetrics = new HashMap<>();
-
-    expectedMetrics.put(
-        RouterMetricEntity.INCOMING_CALL_COUNT,
-        new MetricEntity(
-            "incoming_call_count",
-            MetricType.COUNTER,
-            MetricUnit.NUMBER,
-            "Count of all incoming requests",
-            Utils.setOf(
-                VeniceMetricsDimensions.VENICE_STORE_NAME,
-                VeniceMetricsDimensions.VENICE_CLUSTER_NAME,
-                VeniceMetricsDimensions.VENICE_REQUEST_METHOD)));
     expectedMetrics.put(
         RouterMetricEntity.CALL_COUNT,
         new MetricEntity(
             "call_count",
             MetricType.COUNTER,
             MetricUnit.NUMBER,
-            "Count of all requests with response details",
+            "Count of all requests during response handling along with response codes",
             Utils.setOf(
                 VeniceMetricsDimensions.VENICE_STORE_NAME,
                 VeniceMetricsDimensions.VENICE_CLUSTER_NAME,
@@ -58,20 +46,46 @@ public class RouterMetricEntityTest {
                 VeniceMetricsDimensions.VENICE_STORE_NAME,
                 VeniceMetricsDimensions.VENICE_CLUSTER_NAME,
                 VeniceMetricsDimensions.VENICE_REQUEST_METHOD,
+                VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE,
                 VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE_CATEGORY,
                 VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY)));
     expectedMetrics.put(
-        RouterMetricEntity.CALL_KEY_COUNT,
+        RouterMetricEntity.CALL_SIZE,
         new MetricEntity(
-            "call_key_count",
-            MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS,
-            MetricUnit.NUMBER,
-            "Count of keys in multi key requests",
+            "call_size",
+            MetricType.HISTOGRAM,
+            MetricUnit.BYTES,
+            "Size of request and response in bytes",
             Utils.setOf(
                 VeniceMetricsDimensions.VENICE_STORE_NAME,
                 VeniceMetricsDimensions.VENICE_CLUSTER_NAME,
                 VeniceMetricsDimensions.VENICE_REQUEST_METHOD,
-                VeniceMetricsDimensions.VENICE_REQUEST_VALIDATION_OUTCOME)));
+                VeniceMetricsDimensions.VENICE_MESSAGE_TYPE)));
+    expectedMetrics.put(
+        RouterMetricEntity.KEY_SIZE,
+        new MetricEntity(
+            "key_size",
+            MetricType.HISTOGRAM,
+            MetricUnit.BYTES,
+            "Size of keys in bytes",
+            Utils.setOf(
+                VeniceMetricsDimensions.VENICE_STORE_NAME,
+                VeniceMetricsDimensions.VENICE_CLUSTER_NAME,
+                VeniceMetricsDimensions.VENICE_REQUEST_METHOD)));
+    expectedMetrics.put(
+        RouterMetricEntity.KEY_COUNT,
+        new MetricEntity(
+            "key_count",
+            MetricType.HISTOGRAM,
+            MetricUnit.NUMBER,
+            "Count of keys during response handling along with response codes",
+            Utils.setOf(
+                VeniceMetricsDimensions.VENICE_STORE_NAME,
+                VeniceMetricsDimensions.VENICE_CLUSTER_NAME,
+                VeniceMetricsDimensions.VENICE_REQUEST_METHOD,
+                VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE,
+                VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE_CATEGORY,
+                VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY)));
     expectedMetrics.put(
         RouterMetricEntity.RETRY_COUNT,
         new MetricEntity(

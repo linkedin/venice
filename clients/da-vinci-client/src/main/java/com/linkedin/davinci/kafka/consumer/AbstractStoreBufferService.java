@@ -1,8 +1,7 @@
 package com.linkedin.davinci.kafka.consumer;
 
-import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
-import com.linkedin.venice.message.KafkaKey;
-import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.davinci.validation.PartitionTracker;
+import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.service.AbstractVeniceService;
 import java.util.concurrent.CompletableFuture;
@@ -13,7 +12,7 @@ import java.util.concurrent.CompletableFuture;
  */
 public abstract class AbstractStoreBufferService extends AbstractVeniceService {
   public abstract void putConsumerRecord(
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
+      DefaultPubSubMessage consumerRecord,
       StoreIngestionTask ingestionTask,
       LeaderProducedRecordContext leaderProducedRecordContext,
       int partition,
@@ -37,5 +36,10 @@ public abstract class AbstractStoreBufferService extends AbstractVeniceService {
 
   public abstract CompletableFuture<Void> execSyncOffsetCommandAsync(
       PubSubTopicPartition topicPartition,
+      StoreIngestionTask ingestionTask) throws InterruptedException;
+
+  public abstract void execSyncOffsetFromSnapshotAsync(
+      PubSubTopicPartition topicPartition,
+      PartitionTracker vtDivSnapshot,
       StoreIngestionTask ingestionTask) throws InterruptedException;
 }

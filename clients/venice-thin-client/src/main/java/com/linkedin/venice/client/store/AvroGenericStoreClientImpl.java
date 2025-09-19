@@ -42,32 +42,14 @@ public class AvroGenericStoreClientImpl<K, V> extends AbstractAvroStoreClient<K,
   @Override
   public RecordDeserializer<V> getDataRecordDeserializer(int writerSchemaId) throws VeniceClientException {
     SchemaReader schemaReader = getSchemaReader();
-
-    // Get latest value schema
-    Schema readerSchema = schemaReader.getLatestValueSchema();
-    if (readerSchema == null) {
-      throw new VeniceClientException("Failed to get latest value schema for store: " + getStoreName());
-    }
-
     Schema writerSchema = schemaReader.getValueSchema(writerSchemaId);
     if (writerSchema == null) {
       throw new VeniceClientException(
           "Failed to get value schema for store: " + getStoreName() + " and id: " + writerSchemaId);
     }
 
-    /**
-     * The reason to fetch the latest value schema before fetching the writer schema since internally
-     * it will fetch all the available value schemas when no value schema is present in {@link SchemaReader},
-     * which means the latest value schema could be pretty accurate even the following read requests are
-     * asking for older schema versions.
-     *
-     * The reason to fetch latest value schema again after fetching the writer schema is that the new fetched
-     * writer schema could be newer than the cached value schema versions.
-     * When the latest value schema is present in {@link SchemaReader}, the following invocation is very cheap.
-      */
-    readerSchema = schemaReader.getLatestValueSchema();
-
-    return getDeserializerFromFactory(writerSchema, readerSchema);
+    // Always use the writer schema as the reader schema.
+    return getDeserializerFromFactory(writerSchema, writerSchema);
   }
 
   protected RecordDeserializer<V> getDeserializerFromFactory(Schema writer, Schema reader) {

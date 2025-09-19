@@ -68,9 +68,10 @@ public class VeniceReducer extends AbstractPartitionWriter
     } else {
       dataWriterTaskTracker = getDataWriterTaskTracker();
     }
+
     processValuesForKey(
         key.copyBytes(),
-        IteratorUtils.mapIterator(values, BytesWritable::copyBytes),
+        IteratorUtils.mapIterator(values, x -> new VeniceRecordWithMetadata(x.copyBytes(), null)),
         dataWriterTaskTracker);
   }
 

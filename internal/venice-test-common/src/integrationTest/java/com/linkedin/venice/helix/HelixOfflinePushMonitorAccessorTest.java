@@ -12,6 +12,7 @@ import com.linkedin.venice.pushmonitor.OfflinePushStatus;
 import com.linkedin.venice.pushmonitor.PartitionStatus;
 import com.linkedin.venice.pushmonitor.ReadOnlyPartitionStatus;
 import com.linkedin.venice.utils.HelixUtils;
+import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.Utils;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -40,7 +41,8 @@ public class HelixOfflinePushMonitorAccessorTest {
     zk = ServiceFactory.getZkServer();
     String zkAddress = zk.getAddress();
     zkClient = ZkClientFactory.newZkClient(zkAddress);
-    accessor = new VeniceOfflinePushMonitorAccessor(clusterName, zkClient, new HelixAdapterSerializer(), 1, 0);
+    accessor =
+        new VeniceOfflinePushMonitorAccessor(clusterName, zkClient, new HelixAdapterSerializer(), LogContext.EMPTY, 1);
   }
 
   @AfterMethod
@@ -79,8 +81,8 @@ public class HelixOfflinePushMonitorAccessorTest {
   public void testUpdateReplicaStatus() {
     accessor.createOfflinePushStatusAndItsPartitionStatuses(offlinePushStatus);
     int partitionId = 1;
-    accessor.updateReplicaStatus(topic, partitionId, "i1", ExecutionStatus.COMPLETED, 0, "");
-    accessor.updateReplicaStatus(topic, partitionId, "i2", ExecutionStatus.PROGRESS, 1000, "");
+    accessor.updateReplicaStatus(topic, partitionId, "i1", ExecutionStatus.COMPLETED, "");
+    accessor.updateReplicaStatus(topic, partitionId, "i2", ExecutionStatus.PROGRESS, "");
     offlinePushStatus.setPartitionStatus(
         ReadOnlyPartitionStatus.fromPartitionStatus(accessor.getPartitionStatus(topic, partitionId)));
     OfflinePushStatus remoteOfflinePushStatus = accessor.getOfflinePushStatusAndItsPartitionStatuses(topic);
@@ -91,7 +93,7 @@ public class HelixOfflinePushMonitorAccessorTest {
   public void testUpdateReplicaStatusThatDoesNotExist() {
     int partitionId = 1;
     try {
-      accessor.updateReplicaStatus(topic, partitionId, "i1", ExecutionStatus.COMPLETED, 0, "");
+      accessor.updateReplicaStatus(topic, partitionId, "i1", ExecutionStatus.COMPLETED, "");
       Assert.assertNull(accessor.getPartitionStatus(topic, partitionId));
     } catch (ZkDataAccessException e) {
       Assert.fail("Should skip the update instead of throw a exception here.");
@@ -114,13 +116,7 @@ public class HelixOfflinePushMonitorAccessorTest {
       accessor.createOfflinePushStatusAndItsPartitionStatuses(push);
       for (int j = 0; j < partitionCount; j++) {
         for (int k = 0; k < replicationFactor; k++) {
-          accessor.updateReplicaStatus(
-              topic + i,
-              j,
-              "i" + k,
-              ExecutionStatus.COMPLETED,
-              (long) (Math.random() * 10000),
-              "");
+          accessor.updateReplicaStatus(topic + i, j, "i" + k, ExecutionStatus.COMPLETED, "");
         }
         push.setPartitionStatus(ReadOnlyPartitionStatus.fromPartitionStatus(accessor.getPartitionStatus(topic + i, j)));
       }

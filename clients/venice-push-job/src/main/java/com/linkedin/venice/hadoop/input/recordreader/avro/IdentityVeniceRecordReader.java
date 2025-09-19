@@ -38,6 +38,11 @@ public class IdentityVeniceRecordReader extends AbstractVeniceRecordReader<ByteB
   }
 
   @Override
+  public Object getRmdValue(ByteBuffer inputKey, ByteBuffer inputValue) {
+    return null;
+  }
+
+  @Override
   public byte[] getValueBytes(ByteBuffer keyBuffer, ByteBuffer valueBuffer) {
     return ByteUtils.extractByteArray(valueBuffer);
   }

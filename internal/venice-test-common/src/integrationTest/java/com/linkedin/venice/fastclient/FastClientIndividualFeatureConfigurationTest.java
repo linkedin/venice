@@ -4,6 +4,7 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
+import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 
@@ -41,6 +42,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import org.apache.avro.AvroRuntimeException;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.logging.log4j.LogManager;
@@ -73,7 +75,6 @@ public class FastClientIndividualFeatureConfigurationTest extends AbstractClient
     ClientConfig.ClientConfigBuilder clientConfigBuilder =
         new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
             .setR2Client(r2Client)
-            .setSpeculativeQueryEnabled(false)
             .setInstanceHealthMonitor(
                 new InstanceHealthMonitor(
                     InstanceHealthMonitorConfig.builder()
@@ -146,6 +147,7 @@ public class FastClientIndividualFeatureConfigurationTest extends AbstractClient
     assertTrue(quotaRequestedKPSSum >= 0, "Quota request key count sum: " + quotaRequestedKPSSum);
     assertTrue(clientConnectionCountRateSum > 0, "Servers should have more than 0 client connections");
     assertEquals(routerConnectionCountRateSum, 0.0d, "Servers should have 0 router connections");
+
     // At least one server's usage ratio should eventually be a positive decimal
     TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
       double usageRatio = 0;
@@ -220,7 +222,6 @@ public class FastClientIndividualFeatureConfigurationTest extends AbstractClient
     ClientConfig.ClientConfigBuilder clientConfigBuilder =
         new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
             .setR2Client(r2Client)
-            .setSpeculativeQueryEnabled(false)
             .setInstanceHealthMonitor(
                 new InstanceHealthMonitor(
                     InstanceHealthMonitorConfig.builder()
@@ -281,7 +282,6 @@ public class FastClientIndividualFeatureConfigurationTest extends AbstractClient
     ClientConfig.ClientConfigBuilder clientConfigBuilder =
         new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
             .setR2Client(r2Client)
-            .setSpeculativeQueryEnabled(false)
             .setInstanceHealthMonitor(
                 new InstanceHealthMonitor(
                     InstanceHealthMonitorConfig.builder()
@@ -302,7 +302,8 @@ public class FastClientIndividualFeatureConfigurationTest extends AbstractClient
     for (int i = 0; i < recordCnt; ++i) {
       String key = keyPrefix + i;
       assertEquals((int) resultMap.get(key).get(VALUE_FIELD_NAME), i);
-      assertNull(resultMap.get(key).get(SECOND_VALUE_FIELD_NAME));
+      // The newly added field should not be involved when reading data that was written with value schema v1
+      assertThrows(AvroRuntimeException.class, () -> resultMap.get(key).get(SECOND_VALUE_FIELD_NAME));
     }
     VersionCreationResponse creationResponse = veniceCluster.getNewVersion(storeName, false);
     assertFalse(creationResponse.isError());
@@ -313,8 +314,8 @@ public class FastClientIndividualFeatureConfigurationTest extends AbstractClient
     VeniceWriter<Object, Object, Object> veniceWriter =
         IntegrationTestPushUtils.getVeniceWriterFactory(pubSubBrokerWrapper, pubSubProducerAdapterFactory)
             .createVeniceWriter(
-                new VeniceWriterOptions.Builder(storeVersion).setKeySerializer(keySerializer)
-                    .setValueSerializer(new VeniceAvroKafkaSerializer(VALUE_SCHEMA_V2_STR))
+                new VeniceWriterOptions.Builder(storeVersion).setKeyPayloadSerializer(keySerializer)
+                    .setValuePayloadSerializer(new VeniceAvroKafkaSerializer(VALUE_SCHEMA_V2_STR))
                     .build());
     veniceWriter.broadcastStartOfPush(new HashMap<>());
     for (int i = 0; i < recordCnt; ++i) {
@@ -327,13 +328,17 @@ public class FastClientIndividualFeatureConfigurationTest extends AbstractClient
     veniceCluster.useControllerClient(controllerClient -> {
       TestUtils.waitForNonDeterministicPushCompletion(storeVersion, controllerClient, 30, TimeUnit.SECONDS);
     });
-    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
       final Map<String, GenericRecord> result = genericFastClient.batchGet(keys).get();
       assertEquals(result.size(), recordCnt);
       for (int i = 0; i < recordCnt; ++i) {
         String key = keyPrefix + i;
         assertEquals((int) result.get(key).get(VALUE_FIELD_NAME), i);
-        assertEquals(result.get(key).get(SECOND_VALUE_FIELD_NAME), i);
+        try {
+          assertEquals(result.get(key).get(SECOND_VALUE_FIELD_NAME), i);
+        } catch (AvroRuntimeException e) {
+          fail("The FC didn't notice the new store-version yet...");
+        }
       }
     });
   }
@@ -354,7 +359,6 @@ public class FastClientIndividualFeatureConfigurationTest extends AbstractClient
             .setR2Client(r2Client)
             .setLongTailRetryEnabledForBatchGet(true)
             .setLongTailRetryThresholdForBatchGetInMicroSeconds(10000)
-            .setSpeculativeQueryEnabled(false)
             .setInstanceHealthMonitor(
                 new InstanceHealthMonitor(
                     InstanceHealthMonitorConfig.builder()
@@ -400,7 +404,6 @@ public class FastClientIndividualFeatureConfigurationTest extends AbstractClient
             .setR2Client(r2Client)
             .setLongTailRetryEnabledForBatchGet(true)
             .setLongTailRetryThresholdForBatchGetInMicroSeconds(10000)
-            .setSpeculativeQueryEnabled(false)
             .setInstanceHealthMonitor(
                 new InstanceHealthMonitor(
                     InstanceHealthMonitorConfig.builder()
@@ -421,20 +424,13 @@ public class FastClientIndividualFeatureConfigurationTest extends AbstractClient
      */
     String multiGetRequestKeyCountMetric =
         ".total--" + RequestType.MULTI_GET.getMetricPrefix() + "request_key_count.Rate";
-    String multiGetSuccessRequestKeyCountMetric =
-        ".total--" + RequestType.MULTI_GET.getMetricPrefix() + "success_request_key_count.Rate";
     boolean nonZeroRequestedKeyCount = false;
-    boolean nonZeroSuccessRequestKeyCount = false;
     for (MetricsRepository serverMetric: serverMetrics) {
       if (serverMetric.getMetric(multiGetRequestKeyCountMetric).value() > 0) {
         nonZeroRequestedKeyCount = true;
       }
-      if (serverMetric.getMetric(multiGetSuccessRequestKeyCountMetric).value() > 0) {
-        nonZeroSuccessRequestKeyCount = true;
-      }
     }
     assertTrue(nonZeroRequestedKeyCount);
-    assertTrue(nonZeroSuccessRequestKeyCount);
   }
 
   @Test(timeOut = TIME_OUT)
@@ -445,13 +441,13 @@ public class FastClientIndividualFeatureConfigurationTest extends AbstractClient
             .setLongTailRetryEnabledForBatchGet(true)
             .setLongTailRetryThresholdForBatchGetInMicroSeconds(10000)
             .setLongTailRetryBudgetEnforcementWindowInMs(1000)
-            .setSpeculativeQueryEnabled(false)
             .setInstanceHealthMonitor(
                 new InstanceHealthMonitor(
                     InstanceHealthMonitorConfig.builder()
                         .setClient(r2Client)
                         .setRoutingRequestDefaultTimeoutMS(10000)
-                        .build()));
+                        .build()))
+            .setRetryBudgetEnabled(true);
     String multiKeyLongTailRetryManagerStatsPrefix = ".multi-key-long-tail-retry-manager-" + storeName + "--";
     String singleKeyLongTailRetryManagerStatsPrefix = ".single-key-long-tail-retry-manager-" + storeName + "--";
     MetricsRepository clientMetric = new MetricsRepository();
@@ -489,7 +485,6 @@ public class FastClientIndividualFeatureConfigurationTest extends AbstractClient
     ClientConfig.ClientConfigBuilder clientConfigBuilder =
         new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
             .setR2Client(r2Client)
-            .setSpeculativeQueryEnabled(false)
             .setInstanceHealthMonitor(
                 new InstanceHealthMonitor(
                     InstanceHealthMonitorConfig.builder()
@@ -515,7 +510,6 @@ public class FastClientIndividualFeatureConfigurationTest extends AbstractClient
         new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
             .setR2Client(r2Client)
             .setLongTailRetryEnabledForBatchGet(true)
-            .setSpeculativeQueryEnabled(false)
             .setInstanceHealthMonitor(
                 new InstanceHealthMonitor(
                     InstanceHealthMonitorConfig.builder()

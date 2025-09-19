@@ -9,12 +9,14 @@ import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.pubsub.api.PubSubProduceResult;
+import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.views.VeniceView;
+import com.linkedin.venice.writer.VeniceWriterFactory;
 import com.linkedin.venice.writer.VeniceWriterOptions;
 import java.nio.ByteBuffer;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
@@ -32,16 +34,22 @@ import org.apache.avro.generic.GenericRecord;
  * view implementations.
  */
 public abstract class VeniceViewWriter extends VeniceView {
+  public enum ViewWriterType {
+    MATERIALIZED_VIEW, CHANGE_CAPTURE_VIEW
+  }
+
   protected final Version version;
   protected final int versionNumber;
   protected Optional<Boolean> isNearlineProducerCompressionEnabled = Optional.empty();
   protected Optional<Integer> nearlineProducerCountPerWriter = Optional.empty();
+  protected final VeniceWriterFactory veniceWriterFactory;
 
   public VeniceViewWriter(
       VeniceConfigLoader props,
       Version version,
       Schema keySchema,
-      Map<String, String> extraViewParameters) {
+      Map<String, String> extraViewParameters,
+      VeniceWriterFactory veniceWriterFactory) {
     super(props.getCombinedProperties().toProperties(), version.getStoreName(), extraViewParameters);
     this.version = version;
     this.versionNumber = version.getNumber();
@@ -53,6 +61,7 @@ public abstract class VeniceViewWriter extends VeniceView {
       nearlineProducerCountPerWriter =
           Optional.of(Integer.valueOf(extraViewParameters.get(NEARLINE_PRODUCER_COUNT_PER_WRITER)));
     }
+    this.veniceWriterFactory = veniceWriterFactory;
   }
 
   /**
@@ -62,18 +71,20 @@ public abstract class VeniceViewWriter extends VeniceView {
    * @param newValue the incoming fully specified value which hasn't yet been committed to Venice
    * @param oldValue the previous value which has already been locally committed to Venice for the given key
    * @param key the key of the record that designates newValue and oldValue
-   * @param version the version of the store taking this record
    * @param newValueSchemaId the schemaId of the incoming record
    * @param oldValueSchemaId the schemaId of the old record
    * @param replicationMetadataRecord the associated RMD for the incoming record.
+   * @param valueProvider to provide the corresponding deserialized newValue for PUT and UPDATE or the old value for the
+   *                      given key for DELETE.
    */
-  public abstract CompletableFuture<PubSubProduceResult> processRecord(
+  public abstract CompletableFuture<Void> processRecord(
       ByteBuffer newValue,
       ByteBuffer oldValue,
       byte[] key,
       int newValueSchemaId,
       int oldValueSchemaId,
-      GenericRecord replicationMetadataRecord);
+      GenericRecord replicationMetadataRecord,
+      Lazy<GenericRecord> valueProvider);
 
   /**
    * To be called as a given ingestion task consumes each record. This is called prior to writing to a
@@ -81,13 +92,21 @@ public abstract class VeniceViewWriter extends VeniceView {
    *
    * @param newValue the incoming fully specified value which hasn't yet been committed to Venice
    * @param key the key of the record that designates newValue and oldValue
-   * @param version the version of the store taking this record
    * @param newValueSchemaId the schemaId of the incoming record
+   * @param viewPartitionSet set of view partitions this record should be processed to. This is used in NR
+   *                                 pass-through when remote region leaders can forward record or chunks of a record
+   *                                 to the correct view partitions without the need to perform chunk assembly or
+   *                                 repartitioning.
+   * @param newValueProvider to provide the deserialized new value
    */
-  public abstract CompletableFuture<PubSubProduceResult> processRecord(
+  public abstract CompletableFuture<Void> processRecord(
       ByteBuffer newValue,
       byte[] key,
-      int newValueSchemaId);
+      int newValueSchemaId,
+      Set<Integer> viewPartitionSet,
+      Lazy<GenericRecord> newValueProvider);
+
+  public abstract ViewWriterType getViewWriterType();
 
   /**
    * Called when the server encounters a control message. There isn't (today) a strict ordering

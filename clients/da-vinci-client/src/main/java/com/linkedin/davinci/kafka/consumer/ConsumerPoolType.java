@@ -5,6 +5,7 @@ public enum ConsumerPoolType {
    * The following pool types are being used when the dedicated AA/WC leader consumer pool feature is enabled.
    */
   AA_WC_LEADER_POOL("_for_aa_wc_leader"), // For AA/WC leader
+  SEP_RT_LEADER_POOL("_for_sep_rt_leader"), // For Separate RT leader
   REGULAR_POOL(""), // For other kinds of workload except AA/WC leader, and this pool type is also being used when using
                     // a single consumer pool.
 

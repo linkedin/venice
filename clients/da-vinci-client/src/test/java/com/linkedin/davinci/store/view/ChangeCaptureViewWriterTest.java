@@ -21,11 +21,15 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
+import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.views.ChangeCaptureView;
 import com.linkedin.venice.writer.VeniceWriter;
+import com.linkedin.venice.writer.VeniceWriterFactory;
 import com.linkedin.venice.writer.VeniceWriterOptions;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
@@ -43,6 +47,7 @@ import org.apache.avro.generic.GenericRecord;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 import org.testng.Assert;
+import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 
@@ -57,24 +62,29 @@ public class ChangeCaptureViewWriterTest {
   public static final String LVA_1 = "lva1";
   public static final String LOR_1 = "lor1";
 
+  private VeniceWriterFactory veniceWriterFactory;
+
+  @BeforeMethod(alwaysRun = true)
+  public void setUp() {
+    veniceWriterFactory = mock(VeniceWriterFactory.class);
+  }
+
   @Test
   public void testConstructVersionSwapMessage() {
-    Map<String, Long> highWaterMarks = new HashMap<>();
-    highWaterMarks.put(LOR_1, 111L);
-    highWaterMarks.put(LTX_1, 99L);
-    highWaterMarks.put(LVA_1, 22222L);
+    Map<String, PubSubPosition> highWaterMarks = new HashMap<>();
+    highWaterMarks.put(LOR_1, ApacheKafkaOffsetPosition.of(111L));
+    highWaterMarks.put(LTX_1, ApacheKafkaOffsetPosition.of(99L));
+    highWaterMarks.put(LVA_1, ApacheKafkaOffsetPosition.of(22222L));
     PartitionConsumptionState mockLeaderPartitionConsumptionState = mock(PartitionConsumptionState.class);
     Mockito.when(mockLeaderPartitionConsumptionState.getLeaderFollowerState())
         .thenReturn(LeaderFollowerStateType.LEADER);
-    Mockito.when(mockLeaderPartitionConsumptionState.getLatestProcessedUpstreamRTOffsetMap())
-        .thenReturn(highWaterMarks);
+    Mockito.when(mockLeaderPartitionConsumptionState.getLatestProcessedRtPositions()).thenReturn(highWaterMarks);
     Mockito.when(mockLeaderPartitionConsumptionState.getPartition()).thenReturn(1);
 
     PartitionConsumptionState mockFollowerPartitionConsumptionState = mock(PartitionConsumptionState.class);
     Mockito.when(mockFollowerPartitionConsumptionState.getLeaderFollowerState())
         .thenReturn(LeaderFollowerStateType.STANDBY);
-    Mockito.when(mockFollowerPartitionConsumptionState.getLatestProcessedUpstreamRTOffsetMap())
-        .thenReturn(highWaterMarks);
+    Mockito.when(mockFollowerPartitionConsumptionState.getLatestProcessedRtPositions()).thenReturn(highWaterMarks);
     Mockito.when(mockFollowerPartitionConsumptionState.getPartition()).thenReturn(1);
 
     VersionSwap versionSwapMessage = new VersionSwap();
@@ -110,8 +120,12 @@ public class ChangeCaptureViewWriterTest {
     Mockito.when(mockVeniceConfigLoader.getVeniceServerConfig()).thenReturn(mockVeniceServerConfig);
 
     // Build the change capture writer and set the mock writer
-    ChangeCaptureViewWriter changeCaptureViewWriter =
-        new ChangeCaptureViewWriter(mockVeniceConfigLoader, version, SCHEMA, Collections.emptyMap());
+    ChangeCaptureViewWriter changeCaptureViewWriter = new ChangeCaptureViewWriter(
+        mockVeniceConfigLoader,
+        version,
+        SCHEMA,
+        Collections.emptyMap(),
+        veniceWriterFactory);
     changeCaptureViewWriter.setVeniceWriter(mockVeniceWriter);
 
     // Verify that we never produce the version swap from a follower replica
@@ -169,9 +183,16 @@ public class ChangeCaptureViewWriterTest {
     VersionSwap sentVersionSwapMessage = (VersionSwap) sentControlMessage.controlMessageUnion;
     Assert.assertEquals(sentVersionSwapMessage.oldServingVersionTopic, Version.composeKafkaTopic(STORE_NAME, 1));
     Assert.assertEquals(sentVersionSwapMessage.newServingVersionTopic, Version.composeKafkaTopic(STORE_NAME, 2));
-    Assert.assertEquals(sentVersionSwapMessage.localHighWatermarks.get(0), highWaterMarks.get(LTX_1));
-    Assert.assertEquals(sentVersionSwapMessage.localHighWatermarks.get(1), highWaterMarks.get(LVA_1));
-    Assert.assertEquals(sentVersionSwapMessage.localHighWatermarks.get(2), highWaterMarks.get(LOR_1));
+    Assert.assertEquals(
+        (long) sentVersionSwapMessage.localHighWatermarks.get(0),
+        highWaterMarks.get(LTX_1).getNumericOffset());
+    Assert.assertEquals(
+        (long) sentVersionSwapMessage.localHighWatermarks.get(1),
+        highWaterMarks.get(LVA_1).getNumericOffset());
+    Assert.assertEquals(
+        (long) sentVersionSwapMessage.localHighWatermarks.get(2),
+        highWaterMarks.get(LOR_1).getNumericOffset());
+    // TODO(sushantmane): Add assertions to verify the correctness localHighWatermarks with PubSubPosition
   }
 
   @Test
@@ -201,8 +222,12 @@ public class ChangeCaptureViewWriterTest {
     Mockito.when(mockVeniceServerConfig.getPubSubClientsFactory()).thenReturn(mockPubSubClientsFactory);
     Mockito.when(mockVeniceConfigLoader.getVeniceServerConfig()).thenReturn(mockVeniceServerConfig);
 
-    ChangeCaptureViewWriter changeCaptureViewWriter =
-        new ChangeCaptureViewWriter(mockVeniceConfigLoader, version, SCHEMA, Collections.emptyMap());
+    ChangeCaptureViewWriter changeCaptureViewWriter = new ChangeCaptureViewWriter(
+        mockVeniceConfigLoader,
+        version,
+        SCHEMA,
+        Collections.emptyMap(),
+        veniceWriterFactory);
 
     VeniceWriterOptions writerOptions = changeCaptureViewWriter.buildWriterOptions();
 
@@ -236,8 +261,12 @@ public class ChangeCaptureViewWriterTest {
     Mockito.when(mockVeniceConfigLoader.getCombinedProperties()).thenReturn(props);
     Mockito.when(mockVeniceConfigLoader.getVeniceServerConfig()).thenReturn(mockVeniceServerConfig);
 
-    ChangeCaptureViewWriter changeCaptureViewWriter =
-        new ChangeCaptureViewWriter(mockVeniceConfigLoader, version, SCHEMA, Collections.emptyMap());
+    ChangeCaptureViewWriter changeCaptureViewWriter = new ChangeCaptureViewWriter(
+        mockVeniceConfigLoader,
+        version,
+        SCHEMA,
+        Collections.emptyMap(),
+        veniceWriterFactory);
 
     Schema rmdSchema = RmdSchemaGenerator.generateMetadataSchema(SCHEMA, 1);
     List<Long> vectors = Arrays.asList(1L, 2L, 3L);
@@ -245,15 +274,21 @@ public class ChangeCaptureViewWriterTest {
     rmdRecordWithValueLevelTimeStamp.put(TIMESTAMP_FIELD_NAME, 20L);
     rmdRecordWithValueLevelTimeStamp.put(REPLICATION_CHECKPOINT_VECTOR_FIELD_NAME, vectors);
     changeCaptureViewWriter.setVeniceWriter(mockVeniceWriter);
-
+    Lazy<GenericRecord> dummyValueProvider = Lazy.of(() -> null);
     // Update Case
-    changeCaptureViewWriter.processRecord(NEW_VALUE, OLD_VALUE, KEY, 1, 1, rmdRecordWithValueLevelTimeStamp).get();
+    changeCaptureViewWriter
+        .processRecord(NEW_VALUE, OLD_VALUE, KEY, 1, 1, rmdRecordWithValueLevelTimeStamp, dummyValueProvider)
+        .get();
 
     // Insert Case
-    changeCaptureViewWriter.processRecord(NEW_VALUE, null, KEY, 1, 1, rmdRecordWithValueLevelTimeStamp).get();
+    changeCaptureViewWriter
+        .processRecord(NEW_VALUE, null, KEY, 1, 1, rmdRecordWithValueLevelTimeStamp, dummyValueProvider)
+        .get();
 
     // Deletion Case
-    changeCaptureViewWriter.processRecord(null, OLD_VALUE, KEY, 1, 1, rmdRecordWithValueLevelTimeStamp).get();
+    changeCaptureViewWriter
+        .processRecord(null, OLD_VALUE, KEY, 1, 1, rmdRecordWithValueLevelTimeStamp, dummyValueProvider)
+        .get();
 
     // Set up argument captors
     ArgumentCaptor<byte[]> keyCaptor = ArgumentCaptor.forClass(byte[].class);
@@ -288,8 +323,8 @@ public class ChangeCaptureViewWriterTest {
     Assert.assertEquals(changeEvents.get(2).previousValue.value, OLD_VALUE);
 
     // Test close
-    changeCaptureViewWriter.close();
-    Mockito.verify(mockVeniceWriter).close();
+    changeCaptureViewWriter.close(true);
+    Mockito.verify(mockVeniceWriter).close(true);
   }
 
 }

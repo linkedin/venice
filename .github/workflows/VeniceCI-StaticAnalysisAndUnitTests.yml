@@ -25,6 +25,12 @@ jobs:
       matrix:
         jdk: [17]
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+      checks: write
+      pull-requests: write
+      issues: write
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
@@ -46,7 +52,14 @@ jobs:
         with:
           add-job-summary: never
       - name: Run Static Analysis
-        run: ./gradlew --continue --no-daemon clean check --parallel -Pspotallbugs -x test -x integrationTest -x jacocoTestCoverageVerification
+        run: ./gradlew --continue --no-daemon clean check --parallel -Pspotallbugs -x test -x integrationTest -x jacocoTestCoverageVerification -Pspotbugs.reports.all=true
+      - name: Annotate PR with SpotBugs results
+        if: failure()
+        uses: jwgmeligmeyling/spotbugs-github-action@master
+        with:
+          path: |
+            **/build/reports/spotbugs/main.xml
+            **/build/reports/spotbugs/test.xml
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -62,6 +75,7 @@ jobs:
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
+
 
   Clients:
    uses: ./.github/workflows/UnitTests-core.yml
@@ -122,51 +136,18 @@ jobs:
      alpiniUnitTest
      --continue
 
-  StaticAnalysisAndUnitTestsCompletionCheck:
+  # This workflow gets skipped if all upstream jobs succeeded, but it runs (and fails) if any upstream failed.
+  # This is what we want since GitHub required actions do not block merging when skipped, but can block it when failed.
+  StaticAnalysisAndUnitTestsFailureAlert:
     strategy:
       fail-fast: false
     runs-on: ubuntu-latest
     needs: [ValidateGradleWrapper, StaticAnalysis, Clients, Integrations, Internal, Controller, Server, Router]
-    timeout-minutes: 120
-    if: success() || failure()  # Always run this job, regardless of previous job status
+    timeout-minutes: 20
+    if: ${{ cancelled() || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'failure') }}
     steps:
-      - name: Check previous job statuses
+      - name: NoGood
+        shell: bash
         run: |
-         if [ "${{ needs.ValidateGradleWrapper.result }}" != "success" ]; then
-           echo "ValidateGradleWrapper failed."
-           exit 1
-         fi
-         if [ "${{ needs.StaticAnalysis.result }}" != "success" ]; then
-           echo "StaticAnalysis failed."
-           exit 1
-         fi
-         if [ "${{ needs.Clients.result }}" != "success" ]; then
-           echo "Clients module unit tests failed."
-           exit 1
-         fi
-         if [ "${{ needs.Internal.result }}" != "success" ]; then
-           echo "Internal module unit tests failed."
-           exit 1
-         fi
-         if [ "${{ needs.Integrations.result }}" != "success" ]; then
-           echo "Integrations module unit tests failed."
-           exit 1
-         fi
-         if [ "${{ needs.Controller.result }}" != "success" ]; then
-           echo "Controller module unit tests failed."
-           exit 1
-         fi
-         if [ "${{ needs.Server.result }}" != "success" ]; then
-           echo "Server module unit tests failed."
-           exit 1
-         fi
-         if [ "${{ needs.Router.result }}" != "success" ]; then
-           echo "Router module unit tests failed."
-           exit 1
-         fi
-      # If all previous jobs were successful, proceed
-      - name: Final Completion Check
-        run: echo "All checks passed successfully!"
-
-
-
+          echo "Some workflows have failed!"
+          exit 1

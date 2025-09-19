@@ -3,8 +3,8 @@ package com.linkedin.venice.writer;
 import static com.linkedin.venice.ConfigKeys.INSTANCE_ID;
 import static com.linkedin.venice.ConfigKeys.LISTENER_PORT;
 import static com.linkedin.venice.message.KafkaKey.CONTROL_MESSAGE_KAFKA_KEY_LENGTH;
-import static com.linkedin.venice.pubsub.api.PubSubMessageHeaders.VENICE_LEADER_COMPLETION_STATE_HEADER;
 import static com.linkedin.venice.pubsub.api.PubSubMessageHeaders.VENICE_TRANSPORT_PROTOCOL_HEADER;
+import static com.linkedin.venice.pubsub.api.PubSubMessageHeaders.VENICE_VIEW_PARTITIONS_MAP_HEADER;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.annotation.Threadsafe;
@@ -42,6 +42,7 @@ import com.linkedin.venice.pubsub.api.PubSubMessageHeaders;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
+import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicAuthorizationException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
@@ -59,10 +60,12 @@ import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.VeniceResourceCloseResult;
+import com.linkedin.venice.views.ViewUtils;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -96,7 +99,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   private final ThreadPoolExecutor threadPoolExecutor;
 
   // log4j logger
-  private final Logger logger;
+  protected final Logger logger;
 
   // Config names
   public static final String VENICE_WRITER_CONFIG_PREFIX = "venice.writer.";
@@ -139,6 +142,12 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    */
   public static final String MAX_RECORD_SIZE_BYTES = VENICE_WRITER_CONFIG_PREFIX + "max.record.size.bytes";
 
+  /**
+  * Enable maximum record size before record compression. Default: false
+  * */
+  public static final String ENABLE_UNCOMPRESSED_RECORD_SIZE_LIMIT =
+      VENICE_WRITER_CONFIG_PREFIX + "enable.uncompressed.record.size.limit";
+
   public static final String PRODUCER_THREAD_COUNT = VENICE_WRITER_CONFIG_PREFIX + "producer.thread.count";
   public static final String PRODUCER_QUEUE_SIZE = VENICE_WRITER_CONFIG_PREFIX + "producer.queue.size";
 
@@ -151,7 +160,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
 
   /**
    * The default for {@link #maxRecordSizeBytes} is unlimited / unset (-1) just to be safe. A more specific default value
-   * should be set using {@link com.linkedin.venice.ConfigKeys#CONTROLLER_DEFAULT_MAX_RECORD_SIZE_BYTES} the controller
+   * should be set using {@link com.linkedin.venice.ConfigKeys#DEFAULT_MAX_RECORD_SIZE_BYTES} the controller
    * config on the cluster level.
    */
   public static final int UNLIMITED_MAX_RECORD_SIZE = -1;
@@ -172,19 +181,11 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    */
   public static final int DEFAULT_MAX_ATTEMPTS_WHEN_TOPIC_MISSING = 30;
 
-  /**
-   * The default value of the "upstreamOffset" field in avro record {@link LeaderMetadata}.
-   *
-   * Even though we have set the default value for "upstreamOffset" field as -1, the initial value for the long field
-   * "upstreamOffset" is still 0 when we construct a LeaderMetadata record. Default field values are primarily used
-   * when reading records that don't have those fields, typically when we deserialize a record from older version to
-   * newer version.
-   */
-  public static final long DEFAULT_UPSTREAM_OFFSET =
-      (long) AvroCompatibilityHelper.getSpecificDefaultValue(LeaderMetadata.SCHEMA$.getField("upstreamOffset"));
-
   public static final int DEFAULT_UPSTREAM_KAFKA_CLUSTER_ID =
       (int) AvroCompatibilityHelper.getSpecificDefaultValue(LeaderMetadata.SCHEMA$.getField("upstreamKafkaClusterId"));
+
+  public static final long DEFAULT_TERM_ID =
+      (long) AvroCompatibilityHelper.getSpecificDefaultValue(LeaderMetadata.SCHEMA$.getField("termId"));
 
   /**
    * A static counter shared by all VeniceWriter instances to track the number of active VeniceWriter
@@ -196,7 +197,10 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    */
   public static final AtomicLong VENICE_WRITER_CLOSE_FAILED_COUNT = new AtomicLong(0);
 
-  private static final long DEFAULT_MAX_ELAPSED_TIME_FOR_SEGMENT_IN_MS =
+  /**
+   * Default elapsed time for a segment in milliseconds.
+   */
+  public static final long DEFAULT_MAX_ELAPSED_TIME_FOR_SEGMENT_IN_MS =
       TimeUnit.MILLISECONDS.convert(5, TimeUnit.MINUTES);
 
   /**
@@ -224,19 +228,19 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   public static final ByteBuffer EMPTY_BYTE_BUFFER = ByteBuffer.wrap(EMPTY_BYTE_ARRAY);
 
   public static final LeaderMetadataWrapper DEFAULT_LEADER_METADATA_WRAPPER =
-      new LeaderMetadataWrapper(DEFAULT_UPSTREAM_OFFSET, DEFAULT_UPSTREAM_KAFKA_CLUSTER_ID);
+      new LeaderMetadataWrapper(PubSubSymbolicPosition.EARLIEST, DEFAULT_UPSTREAM_KAFKA_CLUSTER_ID, DEFAULT_TERM_ID);
 
   // Immutable state
-  private final PubSubMessageHeaders protocolSchemaHeaders;
+  private final PubSubMessageHeader protocolSchemaHeader;
 
-  private final VeniceKafkaSerializer<K> keySerializer;
-  private final VeniceKafkaSerializer<V> valueSerializer;
+  protected final VeniceKafkaSerializer<K> keySerializer;
+  protected final VeniceKafkaSerializer<V> valueSerializer;
   private final VeniceKafkaSerializer<U> writeComputeSerializer;
   private final PubSubProducerAdapter producerAdapter;
   private final GUID producerGUID;
   private final Time time;
-  private final VenicePartitioner partitioner;
-  private final int numberOfPartitions;
+  protected final VenicePartitioner partitioner;
+  protected final int numberOfPartitions;
   private final int closeTimeOutInMs;
   private final CheckSumType checkSumType;
   private final int maxSizeForUserPayloadPerMessageInBytes;
@@ -266,8 +270,10 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   public static class DefaultLeaderMetadata extends LeaderMetadata {
     public DefaultLeaderMetadata(CharSequence hostName) {
       this.hostName = hostName;
-      this.upstreamOffset = DEFAULT_LEADER_METADATA_WRAPPER.getUpstreamOffset();
+      this.upstreamOffset = DEFAULT_LEADER_METADATA_WRAPPER.getUpstreamPosition().getNumericOffset();
+      this.upstreamPubSubPosition = DEFAULT_LEADER_METADATA_WRAPPER.getUpstreamPosition().toWireFormatBuffer();
       this.upstreamKafkaClusterId = DEFAULT_LEADER_METADATA_WRAPPER.getUpstreamKafkaClusterId();
+      this.termId = DEFAULT_LEADER_METADATA_WRAPPER.getTermId();
     }
   }
 
@@ -293,6 +299,18 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
 
   private final ControlMessage heartBeatMessage;
 
+  public static final Map<LeaderCompleteState, PubSubMessageHeader> LEADER_COMPLETE_STATE_HEADERS;
+
+  static {
+    Map<LeaderCompleteState, PubSubMessageHeader> map = new EnumMap<>(LeaderCompleteState.class);
+    for (LeaderCompleteState state: LeaderCompleteState.values()) {
+      byte[] val = new byte[1];
+      val[0] = (byte) state.getValue();
+      map.put(state, new PubSubMessageHeader(PubSubMessageHeaders.VENICE_LEADER_COMPLETION_STATE_HEADER, val));
+    }
+    LEADER_COMPLETE_STATE_HEADERS = Collections.unmodifiableMap(map);
+  }
+
   public VeniceWriter(VeniceWriterOptions params, VeniceProperties props, PubSubProducerAdapter producerAdapter) {
     this(params, props, producerAdapter, KafkaMessageEnvelope.SCHEMA$);
   }
@@ -309,9 +327,9 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       PubSubProducerAdapter producerAdapter,
       Schema overrideProtocolSchema) {
     super(params.getTopicName());
-    this.keySerializer = params.getKeySerializer();
-    this.valueSerializer = params.getValueSerializer();
-    this.writeComputeSerializer = params.getWriteComputeSerializer();
+    this.keySerializer = params.getKeyPayloadSerializer();
+    this.valueSerializer = params.getValuePayloadSerializer();
+    this.writeComputeSerializer = params.getWriteComputePayloadSerializer();
     this.time = params.getTime();
     this.partitioner = params.getPartitioner();
     this.closeTimeOutInMs = props.getInt(CLOSE_TIMEOUT_MS, DEFAULT_CLOSE_TIMEOUT_MS);
@@ -372,10 +390,12 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         new DaemonThreadFactory("VW-" + topicName));
     this.threadPoolExecutor.allowCoreThreadTimeOut(true); // allow core threads to timeout
 
-    this.protocolSchemaHeaders = overrideProtocolSchema == null
-        ? EmptyPubSubMessageHeaders.SINGLETON
-        : new PubSubMessageHeaders()
-            .add(VENICE_TRANSPORT_PROTOCOL_HEADER, overrideProtocolSchema.toString().getBytes(StandardCharsets.UTF_8));
+    this.protocolSchemaHeader = overrideProtocolSchema == null
+        ? null
+        : new PubSubMessageHeader(
+            VENICE_TRANSPORT_PROTOCOL_HEADER,
+            overrideProtocolSchema.toString().getBytes(StandardCharsets.UTF_8));
+
     try {
       this.producerAdapter = producerAdapter;
       // We cache the number of partitions, as it is expected to be immutable, and the call to Kafka is expensive.
@@ -681,7 +701,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         APP_DEFAULT_LOGICAL_TS);
   }
 
-  private CompletableFuture<PubSubProduceResult> delete(
+  CompletableFuture<PubSubProduceResult> delete(
       K key,
       PubSubProducerCallback callback,
       LeaderMetadataWrapper leaderMetadataWrapper,
@@ -716,6 +736,26 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       ChunkedValueManifest oldRmdManifest) {
     byte[] serializedKey = keySerializer.serialize(topicName, key);
     int partition = getPartition(serializedKey);
+    return delete(
+        serializedKey,
+        callback,
+        leaderMetadataWrapper,
+        logicalTs,
+        deleteMetadata,
+        oldValueManifest,
+        oldRmdManifest,
+        partition);
+  }
+
+  protected CompletableFuture<PubSubProduceResult> delete(
+      byte[] serializedKey,
+      PubSubProducerCallback callback,
+      LeaderMetadataWrapper leaderMetadataWrapper,
+      long logicalTs,
+      DeleteMetadata deleteMetadata,
+      ChunkedValueManifest oldValueManifest,
+      ChunkedValueManifest oldRmdManifest,
+      int partition) {
 
     isChunkingFlagInvoked = true;
 
@@ -795,7 +835,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   }
 
   @Override
-  public Future<PubSubProduceResult> put(
+  public CompletableFuture<PubSubProduceResult> put(
       K key,
       V value,
       int valueSchemaId,
@@ -811,6 +851,17 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         putMetadata);
   }
 
+  @Override
+  public CompletableFuture<PubSubProduceResult> put(
+      K key,
+      V value,
+      int valueSchemaId,
+      long logicalTimestamp,
+      PubSubProducerCallback callback,
+      PutMetadata putMetadata) {
+    return put(key, value, valueSchemaId, callback, DEFAULT_LEADER_METADATA_WRAPPER, logicalTimestamp, putMetadata);
+  }
+
   /**
    * Execute a standard "put" on the key.
    *
@@ -819,11 +870,11 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    * @param valueSchemaId - value schema id for the given value
    * @param logicalTs - A timestamp field to indicate when this record was produced from apps view.
    * @param callback - Callback function invoked by Kafka producer after sending the message
-   * @return a java.util.concurrent.Future Future for the RecordMetadata that will be assigned to this
+   * @return a java.util.concurrent.Future for the RecordMetadata that will be assigned to this
    * record. Invoking java.util.concurrent.Future's get() on this future will block until the associated request
    * completes and then return the metadata for the record or throw any exception that occurred while sending the record.
    */
-  public Future<PubSubProduceResult> put(
+  public CompletableFuture<PubSubProduceResult> put(
       K key,
       V value,
       int valueSchemaId,
@@ -850,26 +901,6 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     return put(key, value, valueSchemaId, callback, leaderMetadataWrapper, APP_DEFAULT_LOGICAL_TS, null);
   }
 
-  public Future<PubSubProduceResult> put(
-      K key,
-      V value,
-      int valueSchemaId,
-      PubSubProducerCallback callback,
-      LeaderMetadataWrapper leaderMetadataWrapper,
-      ChunkedValueManifest oldValueManifest,
-      ChunkedValueManifest oldRmdManifest) {
-    return put(
-        key,
-        value,
-        valueSchemaId,
-        callback,
-        leaderMetadataWrapper,
-        APP_DEFAULT_LOGICAL_TS,
-        null,
-        oldValueManifest,
-        oldRmdManifest);
-  }
-
   public CompletableFuture<PubSubProduceResult> put(
       K key,
       V value,
@@ -892,13 +923,14 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    * @param callback - Callback function invoked by Kafka producer after sending the message
    * @param leaderMetadataWrapper - The leader Metadata of this message in the source topic:
    *    -1:  VeniceWriter is sending this message in a Samza app to the real-time topic; or it's
-   *         sending the message in VPJ plugin to the version topic;
+   *         sending the message in VPJ plugin to the version topic. If views are enabled the metadata
+   *         wrapper can also contain view partition map to be sent as {@link PubSubMessageHeader}.
    *    >=0: Leader replica consumes a put message from real-time topic, VeniceWriter in leader
    *         is sending this message to version topic with extra info: offset in the real-time topic.
    * @param logicalTs - An timestamp field to indicate when this record was produced from apps view.
    * @param putMetadata - a PutMetadata containing replication metadata related fields (can be null).
-   * @return a java.util.concurrent.Future Future for the RecordMetadata that will be assigned to this
-   * record. Invoking java.util.concurrent.Future's get() on this future will block until the associated request
+   * @return a java.util.concurrent.Future for the RecordMetadata that will be assigned to this record.
+   * Invoking java.util.concurrent.Future's get() on this future will block until the associated request
    * completes and then return the metadata for the record or throw any exception that occurred while sending the record.
    */
   public CompletableFuture<PubSubProduceResult> put(
@@ -914,78 +946,18 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     byte[] serializedKey = keySerializer.serialize(topicName, key);
     byte[] serializedValue = valueSerializer.serialize(topicName, value);
     int partition = getPartition(serializedKey);
-    int replicationMetadataPayloadSize = putMetadata == null ? 0 : putMetadata.getSerializedSize();
-    isChunkingFlagInvoked = true;
-
-    /**
-     * {@link RecordTooLargeException} will be thrown unless the record size fits within one of the following categories:
-     * Chunking Not Needed < ~1MB < Chunking Needed < MAX_RECORD_SIZE_BYTES
-     */
-    int veniceRecordSize = serializedKey.length + serializedValue.length + replicationMetadataPayloadSize;
-    if (isChunkingNeededForRecord(veniceRecordSize)) { // ~1MB default
-      // RMD size is not checked because it's an internal component, and a user's write should not be failed due to it
-      if (isChunkingEnabled && !isRecordTooLarge(serializedKey.length + serializedValue.length)) {
-        return putLargeValue(
-            serializedKey,
-            serializedValue,
-            valueSchemaId,
-            callback,
-            partition,
-            leaderMetadataWrapper,
-            logicalTs,
-            putMetadata,
-            oldValueManifest,
-            oldRmdManifest);
-      } else {
-        throw new RecordTooLargeException(
-            "This record exceeds the maximum size. "
-                + getSizeReport(serializedKey.length, serializedValue.length, replicationMetadataPayloadSize));
-      }
-    }
-
-    if (isChunkingEnabled) {
-      serializedKey = keyWithChunkingSuffixSerializer.serializeNonChunkedKey(serializedKey);
-    }
-
-    if (callback instanceof ChunkAwareCallback) {
-      ((ChunkAwareCallback) callback)
-          .setChunkingInfo(serializedKey, null, null, null, null, oldValueManifest, oldRmdManifest);
-    }
-
-    KafkaKey kafkaKey = new KafkaKey(MessageType.PUT, serializedKey);
-
-    // Initialize the SpecificRecord instances used by the Avro-based Kafka protocol
-    Put putPayload = new Put();
-    putPayload.putValue = ByteBuffer.wrap(serializedValue);
-    putPayload.schemaId = valueSchemaId;
-
-    if (putMetadata == null) {
-      putPayload.replicationMetadataVersionId = VENICE_DEFAULT_TIMESTAMP_METADATA_VERSION_ID;
-      putPayload.replicationMetadataPayload = EMPTY_BYTE_BUFFER;
-    } else {
-      putPayload.replicationMetadataVersionId = putMetadata.getRmdVersionId();
-      putPayload.replicationMetadataPayload = putMetadata.getRmdPayload();
-    }
-    CompletableFuture<PubSubProduceResult> produceResultFuture = sendMessage(
-        producerMetadata -> kafkaKey,
-        MessageType.PUT,
-        putPayload,
+    return put(
+        serializedKey,
+        serializedValue,
         partition,
+        valueSchemaId,
         callback,
         leaderMetadataWrapper,
-        logicalTs);
-    DeleteMetadata deleteMetadata =
-        new DeleteMetadata(valueSchemaId, putPayload.replicationMetadataVersionId, VeniceWriter.EMPTY_BYTE_BUFFER);
-    PubSubProducerCallback chunkCallback = callback == null ? null : new ErrorPropagationCallback(callback);
-    deleteDeprecatedChunksFromManifest(
+        logicalTs,
+        putMetadata,
         oldValueManifest,
-        partition,
-        chunkCallback,
-        leaderMetadataWrapper,
-        deleteMetadata);
-    deleteDeprecatedChunksFromManifest(oldRmdManifest, partition, chunkCallback, leaderMetadataWrapper, deleteMetadata);
-
-    return produceResultFuture;
+        oldRmdManifest,
+        true);
   }
 
   /**
@@ -1014,15 +986,186 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       ((ChunkAwareCallback) callback).setChunkingInfo(serializedKey, null, null, null, null, null, null);
     }
 
-    return sendMessage(producerMetadata -> kafkaKey, kafkaMessageEnvelopeProvider, upstreamPartition, callback, false);
+    return sendMessage(
+        producerMetadata -> kafkaKey,
+        kafkaMessageEnvelopeProvider,
+        upstreamPartition,
+        callback,
+        false,
+        EmptyPubSubMessageHeaders.SINGLETON);
+  }
+
+  /**
+   * Write a record with new DIV to a predetermined partition.
+   */
+
+  public CompletableFuture<PubSubProduceResult> put(
+      K key,
+      V value,
+      int valueSchemaId,
+      PubSubProducerCallback callback,
+      LeaderMetadataWrapper leaderMetadataWrapper,
+      long logicalTs,
+      PutMetadata putMetadata,
+      ChunkedValueManifest oldValueManifest,
+      ChunkedValueManifest oldRmdManifest,
+      PubSubMessageHeaders pubSubMessageHeaders) {
+    byte[] serializedKey = keySerializer.serialize(topicName, key);
+    byte[] serializedValue = valueSerializer.serialize(topicName, value);
+    int partition = getPartition(serializedKey);
+    return put(
+        serializedKey,
+        serializedValue,
+        partition,
+        valueSchemaId,
+        callback,
+        leaderMetadataWrapper,
+        logicalTs,
+        putMetadata,
+        oldValueManifest,
+        oldRmdManifest,
+        true,
+        pubSubMessageHeaders);
+  }
+
+  public CompletableFuture<PubSubProduceResult> put(
+      byte[] serializedKey,
+      byte[] serializedValue,
+      int partition,
+      int valueSchemaId,
+      PubSubProducerCallback callback,
+      LeaderMetadataWrapper leaderMetadataWrapper,
+      long logicalTs,
+      PutMetadata putMetadata,
+      ChunkedValueManifest oldValueManifest,
+      ChunkedValueManifest oldRmdManifest,
+      boolean isPutMessage) {
+    return put(
+        serializedKey,
+        serializedValue,
+        partition,
+        valueSchemaId,
+        callback,
+        leaderMetadataWrapper,
+        logicalTs,
+        putMetadata,
+        oldValueManifest,
+        oldRmdManifest,
+        isPutMessage,
+        EmptyPubSubMessageHeaders.SINGLETON);
+  }
+
+  /**
+   * Write a record with new DIV to a predetermined partition.
+   */
+  public CompletableFuture<PubSubProduceResult> put(
+      byte[] serializedKey,
+      byte[] serializedValue,
+      int partition,
+      int valueSchemaId,
+      PubSubProducerCallback callback,
+      LeaderMetadataWrapper leaderMetadataWrapper,
+      long logicalTs,
+      PutMetadata putMetadata,
+      ChunkedValueManifest oldValueManifest,
+      ChunkedValueManifest oldRmdManifest,
+      boolean isPutMessage,
+      PubSubMessageHeaders pubSubMessageHeaders) {
+    int replicationMetadataPayloadSize = putMetadata == null ? 0 : putMetadata.getSerializedSize();
+    isChunkingFlagInvoked = true;
+
+    /**
+     * {@link RecordTooLargeException} will be thrown unless the record size fits within one of the following categories:
+     * Chunking Not Needed < ~1MB < Chunking Needed < MAX_RECORD_SIZE_BYTES
+     */
+    int veniceRecordSize = serializedKey.length + serializedValue.length + replicationMetadataPayloadSize;
+    if (isChunkingNeededForRecord(veniceRecordSize)) { // ~1MB default
+      // RMD size is not checked because it's an internal component, and a user's write should not be failed due to it
+      if ((isChunkingEnabled && !isRecordTooLarge(serializedKey.length + serializedValue.length)) || !isPutMessage) {
+        return putLargeValue(
+            serializedKey,
+            serializedValue,
+            valueSchemaId,
+            callback,
+            partition,
+            leaderMetadataWrapper,
+            logicalTs,
+            putMetadata,
+            oldValueManifest,
+            oldRmdManifest,
+            isPutMessage);
+      } else {
+        throw new RecordTooLargeException(
+            "This record exceeds the maximum size. "
+                + getSizeReport(serializedKey.length, serializedValue.length, replicationMetadataPayloadSize));
+      }
+    }
+
+    if (isChunkingEnabled) {
+      serializedKey = keyWithChunkingSuffixSerializer.serializeNonChunkedKey(serializedKey);
+    }
+
+    if (callback instanceof ChunkAwareCallback) {
+      ((ChunkAwareCallback) callback)
+          .setChunkingInfo(serializedKey, null, null, null, null, oldValueManifest, oldRmdManifest);
+    }
+
+    MessageType keyType = (isPutMessage) ? MessageType.PUT : MessageType.GLOBAL_RT_DIV;
+    KafkaKey kafkaKey = new KafkaKey(keyType, serializedKey);
+    int schemaId =
+        (isPutMessage) ? valueSchemaId : AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion();
+
+    // Initialize the SpecificRecord instances used by the Avro-based Kafka protocol
+    Put putPayload = buildPutPayload(serializedValue, schemaId, putMetadata);
+    CompletableFuture<PubSubProduceResult> produceResultFuture = sendMessage(
+        producerMetadata -> kafkaKey,
+        MessageType.PUT,
+        putPayload,
+        false,
+        partition,
+        callback,
+        true,
+        leaderMetadataWrapper,
+        logicalTs,
+        pubSubMessageHeaders);
+
+    DeleteMetadata deleteMetadata =
+        new DeleteMetadata(valueSchemaId, putPayload.replicationMetadataVersionId, VeniceWriter.EMPTY_BYTE_BUFFER);
+    PubSubProducerCallback chunkCallback = callback == null ? null : new ErrorPropagationCallback(callback);
+    deleteDeprecatedChunksFromManifest(
+        oldValueManifest,
+        partition,
+        chunkCallback,
+        leaderMetadataWrapper,
+        deleteMetadata);
+    deleteDeprecatedChunksFromManifest(oldRmdManifest, partition, chunkCallback, leaderMetadataWrapper, deleteMetadata);
+
+    return produceResultFuture;
+  }
+
+  protected Put buildPutPayload(byte[] serializedValue, int valueSchemaId, PutMetadata putMetadata) {
+    Put putPayload = new Put();
+    putPayload.putValue = ByteBuffer.wrap(serializedValue);
+    putPayload.schemaId = valueSchemaId;
+
+    if (putMetadata == null) {
+      putPayload.replicationMetadataVersionId = VENICE_DEFAULT_TIMESTAMP_METADATA_VERSION_ID;
+      putPayload.replicationMetadataPayload = EMPTY_BYTE_BUFFER;
+    } else {
+      putPayload.replicationMetadataVersionId = putMetadata.getRmdVersionId();
+      putPayload.replicationMetadataPayload = putMetadata.getRmdPayload();
+    }
+    return putPayload;
   }
 
   private KafkaMessageEnvelopeProvider getKafkaMessageEnvelopeProvider(
       KafkaMessageEnvelope kafkaMessageEnvelope,
       LeaderMetadataWrapper leaderMetadataWrapper) {
     LeaderMetadata leaderMetadata = new LeaderMetadata();
-    leaderMetadata.upstreamOffset = leaderMetadataWrapper.getUpstreamOffset();
+    leaderMetadata.upstreamOffset = leaderMetadataWrapper.getUpstreamPosition().getNumericOffset();
+    leaderMetadata.upstreamPubSubPosition = leaderMetadataWrapper.getUpstreamPosition().toWireFormatBuffer();
     leaderMetadata.upstreamKafkaClusterId = leaderMetadataWrapper.getUpstreamKafkaClusterId();
+    leaderMetadata.termId = leaderMetadataWrapper.getTermId();
     leaderMetadata.hostName = writerId;
     kafkaMessageEnvelope.leaderMetadataFooter = leaderMetadata;
 
@@ -1049,7 +1192,13 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       ((ChunkAwareCallback) callback).setChunkingInfo(serializedKey, null, null, null, null, null, null);
     }
 
-    return sendMessage(producerMetadata -> kafkaKey, kafkaMessageEnvelopeProvider, upstreamPartition, callback, false);
+    return sendMessage(
+        producerMetadata -> kafkaKey,
+        kafkaMessageEnvelopeProvider,
+        upstreamPartition,
+        callback,
+        false,
+        EmptyPubSubMessageHeaders.SINGLETON);
   }
 
   @Override
@@ -1062,7 +1211,18 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     return update(key, update, valueSchemaId, derivedSchemaId, callback, APP_DEFAULT_LOGICAL_TS);
   }
 
-  public Future<PubSubProduceResult> update(
+  @Override
+  public CompletableFuture<PubSubProduceResult> update(
+      K key,
+      U update,
+      int valueSchemaId,
+      int derivedSchemaId,
+      long logicalTimestamp,
+      PubSubProducerCallback callback) {
+    return update(key, update, valueSchemaId, derivedSchemaId, callback, logicalTimestamp);
+  }
+
+  public CompletableFuture<PubSubProduceResult> update(
       K key,
       U update,
       int valueSchemaId,
@@ -1198,8 +1358,9 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   }
 
   /**
-   * Broadcast control message to real-time topic partition, to be consumed by venice leader. Partition high watermarks
-   * are left to local venice leader to prepare and then been produced to version topic partition.
+   * Broadcast control message to the real-time or version topic partition. If it's broadcasted to the RT, the leader
+   * will consume the Version Swap message and produce it to the VT to be consumed by the followers.
+   * Partition high watermarks are left to local venice leader to prepare and then been produced to version topic partition.
    *
    * @param oldServingVersionTopic the version topic change capture consumer should switch from.
    * @param newServingVersionTopic the version topic change capture consumer should switch to.
@@ -1215,6 +1376,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     VersionSwap versionSwap = new VersionSwap();
     versionSwap.oldServingVersionTopic = oldServingVersionTopic;
     versionSwap.newServingVersionTopic = newServingVersionTopic;
+    versionSwap.localHighWatermarkPubSubPositions = Collections.emptyList();
     controlMessage.controlMessageUnion = versionSwap;
     broadcastControlMessage(controlMessage, debugInfo);
     producerAdapter.flush();
@@ -1297,7 +1459,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   /**
    * Data message like PUT and DELETE should call this API to enable DIV check.
    */
-  private CompletableFuture<PubSubProduceResult> sendMessage(
+  protected CompletableFuture<PubSubProduceResult> sendMessage(
       KeyProvider keyProvider,
       MessageType messageType,
       Object payload,
@@ -1315,7 +1477,8 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
           callback,
           true,
           leaderMetadataWrapper,
-          logicalTs);
+          logicalTs,
+          EmptyPubSubMessageHeaders.SINGLETON);
     }
   }
 
@@ -1328,7 +1491,8 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       PubSubProducerCallback callback,
       boolean updateDIV,
       LeaderMetadataWrapper leaderMetadataWrapper,
-      long logicalTs) {
+      long logicalTs,
+      PubSubMessageHeaders pubSubMessageHeaders) {
     synchronized (this.partitionLocks[partition]) {
       KafkaMessageEnvelopeProvider kafkaMessageEnvelopeProvider = () -> {
         KafkaMessageEnvelope kafkaValue = getKafkaMessageEnvelope(
@@ -1341,7 +1505,21 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         kafkaValue.payloadUnion = payload;
         return kafkaValue;
       };
-      return sendMessage(keyProvider, kafkaMessageEnvelopeProvider, partition, callback, updateDIV);
+      PubSubMessageHeader viewPartitionHeader =
+          ViewUtils.getViewDestinationPartitionHeader(leaderMetadataWrapper.getViewPartitionMap());
+      if (viewPartitionHeader != null) {
+        if (pubSubMessageHeaders instanceof EmptyPubSubMessageHeaders) {
+          pubSubMessageHeaders = new PubSubMessageHeaders();
+        }
+        pubSubMessageHeaders.add(viewPartitionHeader);
+      }
+      return sendMessage(
+          keyProvider,
+          kafkaMessageEnvelopeProvider,
+          partition,
+          callback,
+          updateDIV,
+          pubSubMessageHeaders);
     }
   }
 
@@ -1374,7 +1552,13 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       KafkaMessageEnvelopeProvider valueProvider,
       int partition,
       PubSubProducerCallback callback,
-      boolean updateDIV) {
+      boolean updateDIV,
+      PubSubMessageHeaders pubSubMessageHeaders) {
+    if (isClosed) {
+      CompletableFuture<PubSubProduceResult> future = CompletableFuture.completedFuture(null);
+      logger.warn("VeniceWriter already closed for replica {}" + Utils.getReplicaId(topicName, partition));
+      return future;
+    }
     synchronized (this.partitionLocks[partition]) {
       KafkaMessageEnvelope kafkaValue = valueProvider.getKafkaMessageEnvelope();
       KafkaKey key = keyProvider.getKey(kafkaValue.producerMetadata);
@@ -1385,23 +1569,17 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         }
         segment.addToCheckSum(key, kafkaValue);
       }
-      PubSubProducerCallback messageCallback = callback;
-      if (callback == null) {
-        messageCallback = new SendMessageErrorLoggerCallback(kafkaValue, logger);
-      } else if (callback instanceof CompletableFutureCallback) {
-        CompletableFutureCallback completableFutureCallBack = (CompletableFutureCallback) callback;
-        if (completableFutureCallBack.getCallback() == null) {
-          completableFutureCallBack.setCallback(new SendMessageErrorLoggerCallback(kafkaValue, logger));
-        }
-      }
+
+      PubSubProducerCallback internalCallback = new SendMessageErrorLoggerCallback(kafkaValue, logger);
+      PubSubProducerCallback outputCallback = setInternalCallback(callback, internalCallback);
+      PubSubMessageHeaders finalPubSubMessageHeaders = getHeaders(
+          kafkaValue.getProducerMetadata(),
+          false,
+          LeaderCompleteState.LEADER_NOT_COMPLETED,
+          pubSubMessageHeaders);
       try {
-        return producerAdapter.sendMessage(
-            topicName,
-            partition,
-            key,
-            kafkaValue,
-            getHeaders(kafkaValue.getProducerMetadata()),
-            messageCallback);
+        return producerAdapter
+            .sendMessage(topicName, partition, key, kafkaValue, finalPubSubMessageHeaders, outputCallback);
       } catch (Exception e) {
         if (ExceptionUtils.recursiveClassEquals(e, PubSubTopicAuthorizationException.class)) {
           throw new VeniceResourceAccessException(
@@ -1414,17 +1592,24 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     }
   }
 
-  /**
-   * We only include the protocol schema headers on this writer's first message to each partition.
-   */
-  private PubSubMessageHeaders getHeaders(ProducerMetadata producerMetadata) {
-    return getHeaders(producerMetadata, false, LeaderCompleteState.LEADER_NOT_COMPLETED);
+  PubSubProducerCallback setInternalCallback(
+      PubSubProducerCallback inputCallback,
+      PubSubProducerCallback internalCallback) {
+    PubSubProducerCallback outputCallback = inputCallback;
+    if (inputCallback == null) {
+      outputCallback = internalCallback;
+    } else {
+      inputCallback.setInternalCallback(internalCallback);
+    }
+    return outputCallback;
   }
 
   /**
    * {@link PubSubMessageHeaders#VENICE_TRANSPORT_PROTOCOL_HEADER} or {@link EmptyPubSubMessageHeaders} is used for
    * all messages to a partition based on {@link VeniceWriter} param overrideProtocolSchema and whether it's a first message.
    * {@link PubSubMessageHeaders#VENICE_LEADER_COMPLETION_STATE_HEADER} is added to the above headers for HB SOS message.
+   * {@link PubSubMessageHeaders#VENICE_VIEW_PARTITIONS_MAP_HEADER} is added to the headers for chunked messages
+   * of materialized
    *
    * Note: In theory, we can enumerate all the possible headers like below, so that we don't need to create a new header every time
    * like how it's created for HB SOS in this method. But as it's only for HB SOS, we can ignore such optimization. But if we
@@ -1435,34 +1620,34 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    * leader complete header (LEADER_COMPLETED)
    * leader complete header (LEADER_NOT_COMPLETED)
    */
+
   private PubSubMessageHeaders getHeaders(
       ProducerMetadata producerMetadata,
       boolean addLeaderCompleteState,
-      LeaderCompleteState leaderCompleteState) {
-    PubSubMessageHeaders returnPubSubMessageHeaders;
-    PubSubMessageHeaders pubSubMessageHeaders =
-        producerMetadata.getSegmentNumber() == 0 && producerMetadata.getMessageSequenceNumber() == 0
-            ? protocolSchemaHeaders
-            : EmptyPubSubMessageHeaders.SINGLETON;
+      LeaderCompleteState leaderCompleteState,
+      PubSubMessageHeaders headers) {
+    PubSubMessageHeader viewPartitionHeader = headers.get(VENICE_VIEW_PARTITIONS_MAP_HEADER);
+    // If the message is the first message in a segment, we need to add the protocol schema headers.
+    boolean needVtpHeader =
+        producerMetadata.getSegmentNumber() == 0 && producerMetadata.getMessageSequenceNumber() == 0;
 
-    if (addLeaderCompleteState) {
-      // copy protocolSchemaHeaders locally and add extra header for leaderCompleteState
-      returnPubSubMessageHeaders = new PubSubMessageHeaders();
-      for (PubSubMessageHeader header: pubSubMessageHeaders) {
-        returnPubSubMessageHeaders.add(header);
-      }
-      returnPubSubMessageHeaders.add(getLeaderCompleteStateHeader(leaderCompleteState));
-    } else {
-      returnPubSubMessageHeaders = pubSubMessageHeaders;
+    // construct PubSubMessageHeaders only if it is needed
+    PubSubMessageHeaders returnPubSubMessageHeaders = (headers instanceof EmptyPubSubMessageHeaders)
+        && (needVtpHeader || addLeaderCompleteState || viewPartitionHeader != null)
+            ? new PubSubMessageHeaders()
+            : headers;
+
+    if (needVtpHeader && protocolSchemaHeader != null) {
+      returnPubSubMessageHeaders.add(protocolSchemaHeader);
     }
-    return returnPubSubMessageHeaders;
-  }
+    if (addLeaderCompleteState) {
+      returnPubSubMessageHeaders.add(LEADER_COMPLETE_STATE_HEADERS.get(leaderCompleteState));
+    }
+    if (viewPartitionHeader != null) {
+      returnPubSubMessageHeaders.add(viewPartitionHeader);
+    }
 
-  public static PubSubMessageHeader getLeaderCompleteStateHeader(LeaderCompleteState leaderCompleteState) {
-    // 1 byte holding 0/1 based on leaderCompleteState
-    byte[] val = new byte[1];
-    val[0] = (byte) (leaderCompleteState.getValue());
-    return new PubSubMessageHeader(VENICE_LEADER_COMPLETION_STATE_HEADER, val);
+    return returnPubSubMessageHeaders;
   }
 
   /**
@@ -1484,7 +1669,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   /**
    * This function implements chunking of a large value into many small values.
    */
-  private CompletableFuture<PubSubProduceResult> putLargeValue(
+  protected CompletableFuture<PubSubProduceResult> putLargeValue(
       byte[] serializedKey,
       byte[] serializedValue,
       int valueSchemaId,
@@ -1494,24 +1679,38 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       long logicalTs,
       PutMetadata putMetadata,
       ChunkedValueManifest oldValueManifest,
-      ChunkedValueManifest oldRmdManifest) {
+      ChunkedValueManifest oldRmdManifest,
+      boolean isPutMessage) {
     int replicationMetadataPayloadSize = putMetadata == null ? 0 : putMetadata.getSerializedSize();
     final Supplier<String> reportSizeGenerator =
         () -> getSizeReport(serializedKey.length, serializedValue.length, replicationMetadataPayloadSize);
     PubSubProducerCallback chunkCallback = callback == null ? null : new ErrorPropagationCallback(callback);
+    // Make sure the view partition map gets passed to the sendMessage for both the chunks and the manifest.
+    LeaderMetadataWrapper leaderMetadataWrapperForChunkSendFunction =
+        leaderMetadataWrapper.getViewPartitionMap() == null
+            ? DEFAULT_LEADER_METADATA_WRAPPER
+            : new LeaderMetadataWrapper(
+                PubSubSymbolicPosition.EARLIEST,
+                DEFAULT_UPSTREAM_KAFKA_CLUSTER_ID,
+                DEFAULT_TERM_ID,
+                leaderMetadataWrapper.getViewPartitionMap());
+    MessageType keyMessageType = (isPutMessage) ? MessageType.PUT : MessageType.GLOBAL_RT_DIV;
+    int schemaId =
+        (isPutMessage) ? valueSchemaId : AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion();
     BiConsumer<KeyProvider, Put> sendMessageFunction = (keyProvider, putPayload) -> sendMessage(
         keyProvider,
         MessageType.PUT,
         putPayload,
         partition,
         chunkCallback,
-        DEFAULT_LEADER_METADATA_WRAPPER,
+        leaderMetadataWrapperForChunkSendFunction,
         VENICE_DEFAULT_LOGICAL_TS);
     ChunkedPayloadAndManifest valueChunksAndManifest = WriterChunkingHelper.chunkPayloadAndSend(
         serializedKey,
         serializedValue,
+        keyMessageType,
         true,
-        valueSchemaId,
+        schemaId,
         0,
         callback instanceof ChunkAwareCallback,
         reportSizeGenerator,
@@ -1523,6 +1722,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         ? WriterChunkingHelper.chunkPayloadAndSend(
             serializedKey,
             putMetadata == null ? EMPTY_BYTE_ARRAY : ByteUtils.extractByteArray(putMetadata.getRmdPayload()),
+            MessageType.PUT,
             false,
             valueSchemaId,
             valueChunkCount,
@@ -1532,51 +1732,24 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
             keyWithChunkingSuffixSerializer,
             sendMessageFunction)
         : EMPTY_CHUNKED_PAYLOAD_AND_MANIFEST;
-    // Now that we've sent all the chunks, we can take care of the final value, the manifest.
-    byte[] topLevelKey = keyWithChunkingSuffixSerializer.serializeNonChunkedKey(serializedKey);
-    KeyProvider manifestKeyProvider = producerMetadata -> new KafkaKey(MessageType.PUT, topLevelKey);
 
-    Put putManifestsPayload = new Put();
-    putManifestsPayload.putValue =
-        chunkedValueManifestSerializer.serialize(valueChunksAndManifest.getChunkedValueManifest());
-    putManifestsPayload.schemaId = AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion();
-    if (putMetadata == null) {
-      putManifestsPayload.replicationMetadataVersionId = VENICE_DEFAULT_TIMESTAMP_METADATA_VERSION_ID;
-      putManifestsPayload.replicationMetadataPayload = EMPTY_BYTE_BUFFER;
-    } else {
-      putManifestsPayload.replicationMetadataVersionId = putMetadata.getRmdVersionId();
-      putManifestsPayload.replicationMetadataPayload = isRmdChunkingEnabled
-          ? chunkedValueManifestSerializer.serialize(rmdChunksAndManifest.getChunkedValueManifest())
-          : putMetadata.getRmdPayload();
-    }
     final int sizeAvailablePerMessage = maxSizeForUserPayloadPerMessageInBytes - serializedKey.length;
-    if (putManifestsPayload.putValue.remaining()
-        + putManifestsPayload.replicationMetadataPayload.remaining() > sizeAvailablePerMessage) {
-      // This is a very desperate edge case...
-      throw new VeniceException(
-          "This message cannot be chunked, because even its manifest is too big to go through. "
-              + "Please reconsider your life choices. " + reportSizeGenerator.get());
-    }
-    if (callback instanceof ChunkAwareCallback) {
-      /** We leave a handle to the key, chunks and manifests so that the {@link ChunkAwareCallback} can act on them */
-      ((ChunkAwareCallback) callback).setChunkingInfo(
-          topLevelKey,
-          valueChunksAndManifest.getPayloadChunks(),
-          valueChunksAndManifest.getChunkedValueManifest(),
-          rmdChunksAndManifest.getPayloadChunks(),
-          rmdChunksAndManifest.getChunkedValueManifest(),
-          oldValueManifest,
-          oldRmdManifest);
-    }
-
-    // We only return the last future (the one for the manifest) and assume that once this one is finished,
-    // all the chunks should also be finished, since they were sent first, and ordering should be guaranteed.
-    CompletableFuture<PubSubProduceResult> manifestProduceFuture = sendMessage(
-        manifestKeyProvider,
-        MessageType.PUT,
+    Put putManifestsPayload = buildManifestPayload(
+        rmdChunksAndManifest,
+        putMetadata,
+        valueChunksAndManifest,
+        sizeAvailablePerMessage,
+        reportSizeGenerator);
+    CompletableFuture<PubSubProduceResult> manifestProduceFuture = sendManifestMessage(
         putManifestsPayload,
-        partition,
+        serializedKey,
+        keyMessageType,
+        valueChunksAndManifest,
         callback,
+        rmdChunksAndManifest,
+        partition,
+        oldValueManifest,
+        oldRmdManifest,
         leaderMetadataWrapper,
         logicalTs);
 
@@ -1593,6 +1766,75 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     deleteDeprecatedChunksFromManifest(oldRmdManifest, partition, chunkCallback, leaderMetadataWrapper, deleteMetadata);
 
     return manifestProduceFuture;
+  }
+
+  private CompletableFuture<PubSubProduceResult> sendManifestMessage(
+      Object manifestPayload,
+      byte[] serializedKey,
+      MessageType keyType,
+      ChunkedPayloadAndManifest valueChunksAndManifest,
+      PubSubProducerCallback callback,
+      ChunkedPayloadAndManifest rmdChunksAndManifest,
+      int partition,
+      ChunkedValueManifest oldValueManifest,
+      ChunkedValueManifest oldRmdManifest,
+      LeaderMetadataWrapper leaderMetadataWrapper,
+      long logicalTs) {
+    // Now that we've sent all the chunks, we can take care of the final value, the manifest.
+    byte[] topLevelKey = keyWithChunkingSuffixSerializer.serializeNonChunkedKey(serializedKey);
+    KeyProvider manifestKeyProvider = producerMetadata -> new KafkaKey(keyType, topLevelKey);
+
+    if (callback instanceof ChunkAwareCallback) {
+      /** We leave a handle to the key, chunks and manifests so that the {@link ChunkAwareCallback} can act on them */
+      ((ChunkAwareCallback) callback).setChunkingInfo(
+          topLevelKey,
+          valueChunksAndManifest.getPayloadChunks(),
+          valueChunksAndManifest.getChunkedValueManifest(),
+          rmdChunksAndManifest.getPayloadChunks(),
+          rmdChunksAndManifest.getChunkedValueManifest(),
+          oldValueManifest,
+          oldRmdManifest);
+    }
+
+    // We only return the last future (the one for the manifest) and assume that once this one is finished,
+    // all the chunks should also be finished, since they were sent first, and ordering should be guaranteed.
+    return sendMessage(
+        manifestKeyProvider,
+        MessageType.PUT,
+        manifestPayload,
+        partition,
+        callback,
+        leaderMetadataWrapper,
+        logicalTs);
+  }
+
+  private Put buildManifestPayload(
+      ChunkedPayloadAndManifest rmdChunksAndManifest,
+      PutMetadata putMetadata,
+      ChunkedPayloadAndManifest valueChunksAndManifest,
+      int sizeAvailablePerMessage,
+      Supplier<String> reportSizeGenerator) {
+    Put putManifestsPayload = new Put();
+    putManifestsPayload.putValue =
+        chunkedValueManifestSerializer.serialize(valueChunksAndManifest.getChunkedValueManifest());
+    putManifestsPayload.schemaId = AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion();
+    if (putMetadata == null) {
+      putManifestsPayload.replicationMetadataVersionId = VENICE_DEFAULT_TIMESTAMP_METADATA_VERSION_ID;
+      putManifestsPayload.replicationMetadataPayload = EMPTY_BYTE_BUFFER;
+    } else {
+      putManifestsPayload.replicationMetadataVersionId = putMetadata.getRmdVersionId();
+      putManifestsPayload.replicationMetadataPayload = isRmdChunkingEnabled
+          ? chunkedValueManifestSerializer.serialize(rmdChunksAndManifest.getChunkedValueManifest())
+          : putMetadata.getRmdPayload();
+    }
+    if (putManifestsPayload.putValue.remaining()
+        + putManifestsPayload.replicationMetadataPayload.remaining() > sizeAvailablePerMessage) {
+      // This is a very desperate edge case...
+      throw new VeniceException(
+          "This message cannot be chunked, because even its manifest is too big to go through. "
+              + "Please reconsider your life choices. " + reportSizeGenerator.get());
+    }
+    return putManifestsPayload;
   }
 
   /**
@@ -1618,7 +1860,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     return "Key size: " + serializedKeySize + " bytes, " + "Value size: " + serializedValueSize + " bytes, "
         + "Replication Metadata size: " + replicationMetadataPayloadSize + " bytes, " + "Total payload size: "
         + (serializedKeySize + serializedValueSize + replicationMetadataPayloadSize) + " bytes, "
-        + "Max available payload size: " + maxSizeForUserPayloadPerMessageInBytes + " bytes, " + ", Max record size: "
+        + "Max available payload size: " + maxSizeForUserPayloadPerMessageInBytes + " bytes, " + "Max record size: "
         + ((maxRecordSizeBytes == UNLIMITED_MAX_RECORD_SIZE) ? "unlimited" : maxRecordSizeBytes) + " bytes.";
   }
 
@@ -1765,7 +2007,8 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
               callback,
               updateCheckSum,
               leaderMetadataWrapper,
-              VENICE_DEFAULT_LOGICAL_TS).get();
+              VENICE_DEFAULT_LOGICAL_TS,
+              EmptyPubSubMessageHeaders.SINGLETON).get();
           return;
         } catch (InterruptedException | ExecutionException e) {
           if (ExceptionUtils.recursiveClassEquals(e, PubSubTopicDoesNotExistException.class)) {
@@ -1831,7 +2074,8 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
           callback,
           true,
           leaderMetadataWrapper,
-          VENICE_DEFAULT_LOGICAL_TS);
+          VENICE_DEFAULT_LOGICAL_TS,
+          EmptyPubSubMessageHeaders.SINGLETON);
     }
   }
 
@@ -1861,7 +2105,8 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
           callback,
           updateCheckSum,
           leaderMetadataWrapper,
-          VENICE_DEFAULT_LOGICAL_TS);
+          VENICE_DEFAULT_LOGICAL_TS,
+          EmptyPubSubMessageHeaders.SINGLETON);
     }
   }
 
@@ -1879,8 +2124,10 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
 
     LeaderMetadata leaderMetadataFooter = new LeaderMetadata();
     leaderMetadataFooter.hostName = writerId;
-    leaderMetadataFooter.upstreamOffset = leaderMetadataWrapper.getUpstreamOffset();
+    leaderMetadataFooter.upstreamOffset = leaderMetadataWrapper.getUpstreamPosition().getNumericOffset();
+    leaderMetadataFooter.upstreamPubSubPosition = leaderMetadataWrapper.getUpstreamPosition().toWireFormatBuffer();
     leaderMetadataFooter.upstreamKafkaClusterId = leaderMetadataWrapper.getUpstreamKafkaClusterId();
+    leaderMetadataFooter.termId = leaderMetadataWrapper.getTermId();
 
     KafkaMessageEnvelope kafkaMessageEnvelope = new KafkaMessageEnvelope();
     kafkaMessageEnvelope.messageType = MessageType.CONTROL_MESSAGE.getValue();
@@ -1911,7 +2158,11 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         topicPartition.getPartitionNumber(),
         KafkaKey.HEART_BEAT,
         kafkaMessageEnvelope,
-        getHeaders(kafkaMessageEnvelope.getProducerMetadata(), addLeaderCompleteState, leaderCompleteState),
+        getHeaders(
+            kafkaMessageEnvelope.getProducerMetadata(),
+            addLeaderCompleteState,
+            leaderCompleteState,
+            EmptyPubSubMessageHeaders.SINGLETON),
         callback);
   }
 
@@ -1930,7 +2181,11 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         partitionNumber,
         KafkaKey.HEART_BEAT,
         kafkaMessageEnvelope,
-        getHeaders(kafkaMessageEnvelope.getProducerMetadata(), addLeaderCompleteState, leaderCompleteState),
+        getHeaders(
+            kafkaMessageEnvelope.getProducerMetadata(),
+            addLeaderCompleteState,
+            leaderCompleteState,
+            EmptyPubSubMessageHeaders.SINGLETON),
         callback);
   }
 
@@ -1962,7 +2217,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    * @param messageType an instance of the {@link MessageType} enum.
    * @return A {@link KafkaMessageEnvelope} for producing into Kafka
    */
-  protected KafkaMessageEnvelope getKafkaMessageEnvelope(
+  public KafkaMessageEnvelope getKafkaMessageEnvelope(
       MessageType messageType,
       boolean isEndOfSegment,
       int partition,
@@ -1986,13 +2241,17 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     producerMetadata.messageTimestamp = time.getMilliseconds();
     producerMetadata.logicalTimestamp = logicalTs;
     kafkaValue.producerMetadata = producerMetadata;
+
     if (leaderMetadataWrapper == DEFAULT_LEADER_METADATA_WRAPPER) {
       kafkaValue.leaderMetadataFooter = this.defaultLeaderMetadata;
     } else {
       kafkaValue.leaderMetadataFooter = new LeaderMetadata();
       kafkaValue.leaderMetadataFooter.hostName = writerId;
-      kafkaValue.leaderMetadataFooter.upstreamOffset = leaderMetadataWrapper.getUpstreamOffset();
+      kafkaValue.leaderMetadataFooter.upstreamOffset = leaderMetadataWrapper.getUpstreamPosition().getNumericOffset();
+      kafkaValue.leaderMetadataFooter.upstreamPubSubPosition =
+          leaderMetadataWrapper.getUpstreamPosition().toWireFormatBuffer();
       kafkaValue.leaderMetadataFooter.upstreamKafkaClusterId = leaderMetadataWrapper.getUpstreamKafkaClusterId();
+      kafkaValue.leaderMetadataFooter.termId = leaderMetadataWrapper.getTermId();
     }
 
     return kafkaValue;
@@ -2002,7 +2261,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    * @param key the {@link KafkaKey} for which we want to get the partition.
    * @return the partition number that the provided key belongs to.
    */
-  private int getPartition(byte[] key) {
+  protected int getPartition(byte[] key) {
     return partitioner.getPartitionId(key, numberOfPartitions);
   }
 

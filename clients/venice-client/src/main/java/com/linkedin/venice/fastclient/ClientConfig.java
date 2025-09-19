@@ -22,6 +22,7 @@ import java.util.Collections;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.Executor;
+import java.util.concurrent.ScheduledExecutorService;
 import org.apache.avro.specific.SpecificRecord;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -31,11 +32,11 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
   private static final Logger LOGGER = LogManager.getLogger(ClientConfig.class);
   private final Client r2Client;
   private final String statsPrefix;
-  private final boolean speculativeQueryEnabled;
   private final Class<T> specificValueClass;
   private final String storeName;
   private final Map<RequestType, FastClientStats> clientStatsMap = new VeniceConcurrentHashMap<>();
   private final Executor deserializationExecutor;
+  private final ScheduledExecutorService metadataRefreshExecutor;
   private final ClientRoutingStrategyType clientRoutingStrategyType;
   /**
    * For dual-read support.
@@ -87,57 +88,36 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
   private boolean projectionFieldValidation;
   private Set<String> harClusters;
   private final InstanceHealthMonitor instanceHealthMonitor;
+  private final boolean retryBudgetEnabled;
+  private final double retryBudgetPercentage;
+  private final boolean enableLeastLoadedRoutingStrategyForHelixGroupRouting;
 
   private final MetricsRepository metricsRepository;
 
-  private ClientConfig(
-      String storeName,
-      Client r2Client,
-      MetricsRepository metricsRepository,
-      String statsPrefix,
-      boolean speculativeQueryEnabled,
-      Class<T> specificValueClass,
-      Executor deserializationExecutor,
-      ClientRoutingStrategyType clientRoutingStrategyType,
-      boolean dualReadEnabled,
-      AvroGenericStoreClient<K, V> genericThinClient,
-      AvroSpecificStoreClient<K, T> specificThinClient,
-      DaVinciClient<StoreMetaKey, StoreMetaValue> daVinciClientForMetaStore,
-      boolean isMetadataConnWarmupEnabled,
-      long metadataRefreshIntervalInSeconds,
-      long metadataConnWarmupTimeoutInSeconds,
-      boolean longTailRetryEnabledForSingleGet,
-      int longTailRetryThresholdForSingleGetInMicroSeconds,
-      boolean longTailRetryEnabledForBatchGet,
-      int longTailRetryThresholdForBatchGetInMicroSeconds,
-      boolean longTailRetryEnabledForCompute,
-      int longTailRetryThresholdForComputeInMicroSeconds,
-      boolean isVsonStore,
-      StoreMetadataFetchMode storeMetadataFetchMode,
-      D2Client d2Client,
-      String clusterDiscoveryD2Service,
-      boolean useGrpc,
-      GrpcClientConfig grpcClientConfig,
-      boolean projectionFieldValidation,
-      long longTailRetryBudgetEnforcementWindowInMs,
-      Set<String> harClusters,
-      InstanceHealthMonitor instanceHealthMonitor) {
-    if (storeName == null || storeName.isEmpty()) {
+  private final boolean storeLoadControllerEnabled;
+  private final int storeLoadControllerWindowSizeInSec;
+  private final int storeLoadControllerRejectionRatioUpdateIntervalInSec;
+  private final double storeLoadControllerMaxRejectionRatio;
+  private final double storeLoadControllerAcceptMultiplier;
+
+  private ClientConfig(ClientConfigBuilder builder) {
+    if (builder.storeName == null || builder.storeName.isEmpty()) {
       throw new VeniceClientException("storeName param shouldn't be empty");
     }
-    if (r2Client == null && !useGrpc) {
+    if (builder.r2Client == null && !builder.useGrpc) {
       throw new VeniceClientException("r2Client param shouldn't be null");
     }
-    if (useGrpc && grpcClientConfig == null) {
+    if (builder.useGrpc && builder.grpcClientConfig == null) {
       throw new UnsupportedOperationException(
           "we require additional gRPC related configs when we create a gRPC enabled client");
     }
 
-    this.r2Client = r2Client;
-    this.storeName = storeName;
-    this.statsPrefix = (statsPrefix == null ? "" : statsPrefix);
-    this.metricsRepository =
-        metricsRepository != null ? metricsRepository : MetricsRepositoryUtils.createMultiThreadedMetricsRepository();
+    this.r2Client = builder.r2Client;
+    this.storeName = builder.storeName;
+    this.statsPrefix = (builder.statsPrefix == null ? "" : builder.statsPrefix);
+    this.metricsRepository = builder.metricsRepository != null
+        ? builder.metricsRepository
+        : MetricsRepositoryUtils.createMultiThreadedMetricsRepository();
     // TODO consider changing the implementation or make it explicit that the config builder can only build once with
     // the same metricsRepository
     for (RequestType requestType: RequestType.values()) {
@@ -146,14 +126,15 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           FastClientStats.getClientStats(this.metricsRepository, this.statsPrefix, storeName, requestType));
     }
     this.clusterStats = new ClusterStats(this.metricsRepository, storeName);
-    this.speculativeQueryEnabled = speculativeQueryEnabled;
-    this.specificValueClass = specificValueClass;
-    this.deserializationExecutor = deserializationExecutor;
-    this.clientRoutingStrategyType =
-        clientRoutingStrategyType == null ? ClientRoutingStrategyType.LEAST_LOADED : clientRoutingStrategyType;
-    this.dualReadEnabled = dualReadEnabled;
-    this.genericThinClient = genericThinClient;
-    this.specificThinClient = specificThinClient;
+    this.specificValueClass = builder.specificValueClass;
+    this.deserializationExecutor = builder.deserializationExecutor;
+    this.metadataRefreshExecutor = builder.metadataRefreshExecutor;
+    this.clientRoutingStrategyType = builder.clientRoutingStrategyType == null
+        ? ClientRoutingStrategyType.LEAST_LOADED
+        : builder.clientRoutingStrategyType;
+    this.dualReadEnabled = builder.dualReadEnabled;
+    this.genericThinClient = builder.genericThinClient;
+    this.specificThinClient = builder.specificThinClient;
     if (this.dualReadEnabled) {
       if (this.specificThinClient == null && this.genericThinClient == null) {
         throw new VeniceClientException(
@@ -167,19 +148,19 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
                 + " should not be specified when dual read is not enabled");
       }
     }
-    this.daVinciClientForMetaStore = daVinciClientForMetaStore;
-    this.isMetadataConnWarmupEnabled = isMetadataConnWarmupEnabled;
-    this.metadataRefreshIntervalInSeconds = metadataRefreshIntervalInSeconds;
-    this.metadataConnWarmupTimeoutInSeconds = metadataConnWarmupTimeoutInSeconds;
+    this.daVinciClientForMetaStore = builder.daVinciClientForMetaStore;
+    this.isMetadataConnWarmupEnabled = builder.isMetadataConnWarmupEnabled;
+    this.metadataRefreshIntervalInSeconds = builder.metadataRefreshIntervalInSeconds;
+    this.metadataConnWarmupTimeoutInSeconds = builder.metadataConnWarmupTimeoutInSeconds;
 
-    this.longTailRetryEnabledForSingleGet = longTailRetryEnabledForSingleGet;
-    this.longTailRetryThresholdForSingleGetInMicroSeconds = longTailRetryThresholdForSingleGetInMicroSeconds;
+    this.longTailRetryEnabledForSingleGet = builder.longTailRetryEnabledForSingleGet;
+    this.longTailRetryThresholdForSingleGetInMicroSeconds = builder.longTailRetryThresholdForSingleGetInMicroSeconds;
 
-    this.longTailRetryEnabledForBatchGet = longTailRetryEnabledForBatchGet;
-    this.longTailRetryThresholdForBatchGetInMicroSeconds = longTailRetryThresholdForBatchGetInMicroSeconds;
+    this.longTailRetryEnabledForBatchGet = builder.longTailRetryEnabledForBatchGet;
+    this.longTailRetryThresholdForBatchGetInMicroSeconds = builder.longTailRetryThresholdForBatchGetInMicroSeconds;
 
-    this.longTailRetryEnabledForCompute = longTailRetryEnabledForCompute;
-    this.longTailRetryThresholdForComputeInMicroSeconds = longTailRetryThresholdForComputeInMicroSeconds;
+    this.longTailRetryEnabledForCompute = builder.longTailRetryEnabledForCompute;
+    this.longTailRetryThresholdForComputeInMicroSeconds = builder.longTailRetryThresholdForComputeInMicroSeconds;
 
     if (this.longTailRetryEnabledForSingleGet) {
       if (this.longTailRetryThresholdForSingleGetInMicroSeconds <= 0) {
@@ -205,17 +186,10 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       }
     }
 
-    // TODO: Need to check whether this case applies for BatchGet
-    if (this.speculativeQueryEnabled && this.longTailRetryEnabledForSingleGet) {
-      throw new VeniceClientException(
-          "Speculative query feature can't be enabled together with long-tail retry for single-get");
-    }
-
-    this.isVsonStore = isVsonStore;
-
-    this.storeMetadataFetchMode = storeMetadataFetchMode;
-    this.d2Client = d2Client;
-    this.clusterDiscoveryD2Service = clusterDiscoveryD2Service;
+    this.isVsonStore = builder.isVsonStore;
+    this.storeMetadataFetchMode = builder.storeMetadataFetchMode;
+    this.d2Client = builder.d2Client;
+    this.clusterDiscoveryD2Service = builder.clusterDiscoveryD2Service;
     if (this.storeMetadataFetchMode == StoreMetadataFetchMode.SERVER_BASED_METADATA) {
       if (this.d2Client == null || this.clusterDiscoveryD2Service == null) {
         throw new VeniceClientException(
@@ -227,18 +201,32 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       throw new VeniceClientException("Helix assisted routing is only available with server based metadata enabled");
     }
 
-    this.useGrpc = useGrpc;
-    this.grpcClientConfig = grpcClientConfig;
+    this.useGrpc = builder.useGrpc;
+    this.grpcClientConfig = builder.grpcClientConfig;
 
-    this.projectionFieldValidation = projectionFieldValidation;
-    this.longTailRetryBudgetEnforcementWindowInMs = longTailRetryBudgetEnforcementWindowInMs;
-    this.harClusters = harClusters;
-    if (instanceHealthMonitor == null) {
+    this.projectionFieldValidation = builder.projectionFieldValidation;
+    this.longTailRetryBudgetEnforcementWindowInMs = builder.longTailRetryBudgetEnforcementWindowInMs;
+    this.harClusters = builder.harClusters;
+    if (builder.instanceHealthMonitor == null) {
       this.instanceHealthMonitor =
           new InstanceHealthMonitor(InstanceHealthMonitorConfig.builder().setClient(this.r2Client).build());
     } else {
-      this.instanceHealthMonitor = instanceHealthMonitor;
+      this.instanceHealthMonitor = builder.instanceHealthMonitor;
     }
+    this.enableLeastLoadedRoutingStrategyForHelixGroupRouting =
+        builder.enableLeastLoadedRoutingStrategyForHelixGroupRouting;
+    this.retryBudgetEnabled = builder.retryBudgetEnabled;
+    this.retryBudgetPercentage = builder.retryBudgetPercentage;
+    if (retryBudgetPercentage > 1.0 || retryBudgetPercentage < 0.0) {
+      throw new VeniceClientException(
+          "Invalid retryBudgetPercentage value: " + retryBudgetPercentage + ", should be in [0.0, 1.0]");
+    }
+    this.storeLoadControllerEnabled = builder.storeLoadControllerEnabled;
+    this.storeLoadControllerWindowSizeInSec = builder.storeLoadControllerWindowSizeInSec;
+    this.storeLoadControllerRejectionRatioUpdateIntervalInSec =
+        builder.storeLoadControllerRejectionRatioUpdateIntervalInSec;
+    this.storeLoadControllerMaxRejectionRatio = builder.storeLoadControllerMaxRejectionRatio;
+    this.storeLoadControllerAcceptMultiplier = builder.storeLoadControllerAcceptMultiplier;
   }
 
   public String getStoreName() {
@@ -257,16 +245,16 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     return clientStatsMap.get(requestType);
   }
 
-  public boolean isSpeculativeQueryEnabled() {
-    return speculativeQueryEnabled;
-  }
-
   public Class<T> getSpecificValueClass() {
     return specificValueClass;
   }
 
   public Executor getDeserializationExecutor() {
     return deserializationExecutor;
+  }
+
+  public ScheduledExecutorService getMetadataRefreshExecutor() {
+    return metadataRefreshExecutor;
   }
 
   public boolean isDualReadEnabled() {
@@ -375,13 +363,45 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     return instanceHealthMonitor;
   }
 
+  public boolean isRetryBudgetEnabled() {
+    return retryBudgetEnabled;
+  }
+
+  public double getRetryBudgetPercentage() {
+    return retryBudgetPercentage;
+  }
+
+  public boolean isEnableLeastLoadedRoutingStrategyForHelixGroupRouting() {
+    return enableLeastLoadedRoutingStrategyForHelixGroupRouting;
+  }
+
+  public boolean isStoreLoadControllerEnabled() {
+    return storeLoadControllerEnabled;
+  }
+
+  public int getStoreLoadControllerWindowSizeInSec() {
+    return storeLoadControllerWindowSizeInSec;
+  }
+
+  public int getStoreLoadControllerRejectionRatioUpdateIntervalInSec() {
+    return storeLoadControllerRejectionRatioUpdateIntervalInSec;
+  }
+
+  public double getStoreLoadControllerMaxRejectionRatio() {
+    return storeLoadControllerMaxRejectionRatio;
+  }
+
+  public double getStoreLoadControllerAcceptMultiplier() {
+    return storeLoadControllerAcceptMultiplier;
+  }
+
   public static class ClientConfigBuilder<K, V, T extends SpecificRecord> {
     private MetricsRepository metricsRepository;
     private String statsPrefix = "";
-    private boolean speculativeQueryEnabled = false;
     private Class<T> specificValueClass;
     private String storeName;
     private Executor deserializationExecutor;
+    private ScheduledExecutorService metadataRefreshExecutor;
     private ClientRoutingStrategyType clientRoutingStrategyType;
     private Client r2Client;
     private boolean dualReadEnabled = false;
@@ -419,6 +439,18 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
 
     private InstanceHealthMonitor instanceHealthMonitor;
 
+    private boolean retryBudgetEnabled = true;
+
+    // Default value of 0.1 meaning only 10 percent of the user requests are allowed to trigger long tail retry
+    private double retryBudgetPercentage = 0.1d;
+
+    private boolean enableLeastLoadedRoutingStrategyForHelixGroupRouting = true;
+    private boolean storeLoadControllerEnabled = false;
+    private int storeLoadControllerWindowSizeInSec = 30;
+    private int storeLoadControllerRejectionRatioUpdateIntervalInSec = 3;
+    private double storeLoadControllerMaxRejectionRatio = 0.9;
+    private double storeLoadControllerAcceptMultiplier = 2.0;
+
     public ClientConfigBuilder<K, V, T> setStoreName(String storeName) {
       this.storeName = storeName;
       return this;
@@ -434,11 +466,6 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       return this;
     }
 
-    public ClientConfigBuilder<K, V, T> setSpeculativeQueryEnabled(boolean speculativeQueryEnabled) {
-      this.speculativeQueryEnabled = speculativeQueryEnabled;
-      return this;
-    }
-
     public ClientConfigBuilder<K, V, T> setSpecificValueClass(Class<T> specificValueClass) {
       this.specificValueClass = specificValueClass;
       return this;
@@ -446,6 +473,11 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
 
     public ClientConfigBuilder<K, V, T> setDeserializationExecutor(Executor deserializationExecutor) {
       this.deserializationExecutor = deserializationExecutor;
+      return this;
+    }
+
+    public ClientConfigBuilder<K, V, T> setMetadataRefreshExecutor(ScheduledExecutorService metadataRefreshExecutor) {
+      this.metadataRefreshExecutor = metadataRefreshExecutor;
       return this;
     }
 
@@ -587,14 +619,58 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       return this;
     }
 
+    public ClientConfigBuilder<K, V, T> setRetryBudgetEnabled(boolean retryBudgetEnabled) {
+      this.retryBudgetEnabled = retryBudgetEnabled;
+      return this;
+    }
+
+    public ClientConfigBuilder<K, V, T> setRetryBudgetPercentage(double retryBudgetPercentage) {
+      this.retryBudgetPercentage = retryBudgetPercentage;
+      return this;
+    }
+
+    public ClientConfigBuilder<K, V, T> setEnableLeastLoadedRoutingStrategyForHelixGroupRouting(
+        boolean enableLeastLoadedRoutingStrategyForHelixGroupRouting) {
+      this.enableLeastLoadedRoutingStrategyForHelixGroupRouting = enableLeastLoadedRoutingStrategyForHelixGroupRouting;
+      return this;
+    }
+
+    public ClientConfigBuilder<K, V, T> setStoreLoadControllerEnabled(boolean storeLoadControllerEnabled) {
+      this.storeLoadControllerEnabled = storeLoadControllerEnabled;
+      return this;
+    }
+
+    public ClientConfigBuilder<K, V, T> setStoreLoadControllerWindowSizeInSec(int storeLoadControllerWindowSizeInSec) {
+      this.storeLoadControllerWindowSizeInSec = storeLoadControllerWindowSizeInSec;
+      return this;
+    }
+
+    public ClientConfigBuilder<K, V, T> setStoreLoadControllerRejectionRatioUpdateIntervalInSec(
+        int storeLoadControllerRejectionRatioUpdateIntervalInSec) {
+      this.storeLoadControllerRejectionRatioUpdateIntervalInSec = storeLoadControllerRejectionRatioUpdateIntervalInSec;
+      return this;
+    }
+
+    public ClientConfigBuilder<K, V, T> setStoreLoadControllerMaxRejectionRatio(
+        double storeLoadControllerMaxRejectionRatio) {
+      this.storeLoadControllerMaxRejectionRatio = storeLoadControllerMaxRejectionRatio;
+      return this;
+    }
+
+    public ClientConfigBuilder<K, V, T> setStoreLoadControllerAcceptMultiplier(
+        double storeLoadControllerAcceptMultiplier) {
+      this.storeLoadControllerAcceptMultiplier = storeLoadControllerAcceptMultiplier;
+      return this;
+    }
+
     public ClientConfigBuilder<K, V, T> clone() {
       return new ClientConfigBuilder().setStoreName(storeName)
           .setR2Client(r2Client)
           .setMetricsRepository(metricsRepository)
           .setStatsPrefix(statsPrefix)
-          .setSpeculativeQueryEnabled(speculativeQueryEnabled)
           .setSpecificValueClass(specificValueClass)
           .setDeserializationExecutor(deserializationExecutor)
+          .setMetadataRefreshExecutor(metadataRefreshExecutor)
           .setClientRoutingStrategyType(clientRoutingStrategyType)
           .setDualReadEnabled(dualReadEnabled)
           .setGenericThinClient(genericThinClient)
@@ -619,42 +695,19 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           .setProjectionFieldValidationEnabled(projectionFieldValidation)
           .setLongTailRetryBudgetEnforcementWindowInMs(longTailRetryBudgetEnforcementWindowInMs)
           .setHARClusters(harClusters)
-          .setInstanceHealthMonitor(instanceHealthMonitor);
+          .setInstanceHealthMonitor(instanceHealthMonitor)
+          .setRetryBudgetEnabled(retryBudgetEnabled)
+          .setRetryBudgetPercentage(retryBudgetPercentage)
+          .setEnableLeastLoadedRoutingStrategyForHelixGroupRouting(enableLeastLoadedRoutingStrategyForHelixGroupRouting)
+          .setStoreLoadControllerEnabled(storeLoadControllerEnabled)
+          .setStoreLoadControllerWindowSizeInSec(storeLoadControllerWindowSizeInSec)
+          .setStoreLoadControllerRejectionRatioUpdateIntervalInSec(storeLoadControllerRejectionRatioUpdateIntervalInSec)
+          .setStoreLoadControllerMaxRejectionRatio(storeLoadControllerMaxRejectionRatio)
+          .setStoreLoadControllerAcceptMultiplier(storeLoadControllerAcceptMultiplier);
     }
 
     public ClientConfig<K, V, T> build() {
-      return new ClientConfig<>(
-          storeName,
-          r2Client,
-          metricsRepository,
-          statsPrefix,
-          speculativeQueryEnabled,
-          specificValueClass,
-          deserializationExecutor,
-          clientRoutingStrategyType,
-          dualReadEnabled,
-          genericThinClient,
-          specificThinClient,
-          daVinciClientForMetaStore,
-          isMetadataConnWarmupEnabled,
-          metadataRefreshIntervalInSeconds,
-          metadataConnWarmupTimeoutInSeconds,
-          longTailRetryEnabledForSingleGet,
-          longTailRetryThresholdForSingleGetInMicroSeconds,
-          longTailRetryEnabledForBatchGet,
-          longTailRetryThresholdForBatchGetInMicroSeconds,
-          longTailRetryEnabledForCompute,
-          longTailRetryThresholdForComputeInMicroSeconds,
-          isVsonStore,
-          storeMetadataFetchMode,
-          d2Client,
-          clusterDiscoveryD2Service,
-          useGrpc,
-          grpcClientConfig,
-          projectionFieldValidation,
-          longTailRetryBudgetEnforcementWindowInMs,
-          harClusters,
-          instanceHealthMonitor);
+      return new ClientConfig<>(this);
     }
   }
 }

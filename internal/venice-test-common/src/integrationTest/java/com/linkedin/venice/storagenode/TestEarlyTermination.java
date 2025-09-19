@@ -12,6 +12,7 @@ import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.meta.Version;
@@ -50,7 +51,15 @@ public class TestEarlyTermination {
   @BeforeClass(alwaysRun = true)
   public void setUp() throws VeniceClientException {
     Utils.thisIsLocalhost();
-    veniceCluster = ServiceFactory.getVeniceCluster(1, 0, 1, 2, 100, true, false);
+    VeniceClusterCreateOptions options = new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
+        .numberOfServers(0)
+        .numberOfRouters(1)
+        .replicationFactor(2)
+        .partitionSize(100)
+        .sslToStorageNodes(true)
+        .sslToKafka(false)
+        .build();
+    veniceCluster = ServiceFactory.getVeniceCluster(options);
 
     // Create store first
     storeName = Utils.getUniqueString("test_early_termination");

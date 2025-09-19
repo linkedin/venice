@@ -320,6 +320,7 @@ public class VenicePathParser implements ExtendedResourcePathParser<VenicePath, 
       }
 
       AggRouterHttpRequestStats aggRouterHttpRequestStats = routerStats.getStatsByType(requestType);
+
       if (!requestType.equals(SINGLE_GET)) {
         /**
          * Here we only track key num for non single-get request, since single-get request will be always 1.
@@ -344,6 +345,7 @@ public class VenicePathParser implements ExtendedResourcePathParser<VenicePath, 
         routerStats.getStatsByType(keyCountLimitException.getRequestType())
             .recordBadRequestKeyCount(
                 keyCountLimitException.getStoreName(),
+                responseStatus,
                 keyCountLimitException.getRequestKeyCount());
       }
       /**
@@ -356,7 +358,6 @@ public class VenicePathParser implements ExtendedResourcePathParser<VenicePath, 
       // Right now we use key num as request usage, in the future we might consider the Capacity unit.
       routerStats.getStatsByType(SINGLE_GET).recordRequestUsage(storeName, keyNum);
     }
-
     return path;
   }
 

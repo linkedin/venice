@@ -2,6 +2,9 @@ package com.linkedin.venice.utils;
 
 import com.linkedin.venice.exceptions.UndefinedPropertyException;
 import com.linkedin.venice.exceptions.VeniceException;
+import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
+import it.unimi.dsi.fastutil.ints.Int2ObjectMaps;
+import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import java.io.BufferedOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
@@ -17,7 +20,9 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Function;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 
 
 public class VeniceProperties implements Serializable {
@@ -35,19 +40,11 @@ public class VeniceProperties implements Serializable {
   }
 
   public VeniceProperties(Properties properties) {
-    Map<String, String> tmpProps = new HashMap<>(properties.size());
-    for (Map.Entry<Object, Object> e: properties.entrySet()) {
-      tmpProps.put(e.getKey().toString(), e.getValue() == null ? null : e.getValue().toString());
-    }
-    props = Collections.unmodifiableMap(tmpProps);
+    this.props = Collections.unmodifiableMap(convertToStringMap(properties));
   }
 
-  public VeniceProperties(Map<CharSequence, CharSequence> properties) {
-    Map<String, String> tmpProps = new HashMap<>(properties.size());
-    for (Map.Entry<CharSequence, CharSequence> e: properties.entrySet()) {
-      tmpProps.put(e.getKey().toString(), e.getValue() == null ? null : e.getValue().toString());
-    }
-    props = Collections.unmodifiableMap(tmpProps);
+  public VeniceProperties(Map<String, String> properties) {
+    this.props = Collections.unmodifiableMap(new HashMap<>(properties));
   }
 
   public static VeniceProperties empty() {
@@ -80,30 +77,73 @@ public class VeniceProperties implements Serializable {
   }
 
   /**
-   * This method looks for all properties that begins with the given
-   * namespace. Once those properties are identified it removes
-   * the namespace and returns the properties.
+   * Extracts properties that begin with the specified namespace.
+   * <p>
+   * This method identifies all properties that start with the given namespace, removes the namespace
+   * prefix, and returns the filtered properties.
+   * </p>
+   * <p>
+   * This enables support for dynamic configurations (e.g., required by Pub/Sub clients).
+   * All properties following a namespace-based convention can be extracted and used
+   * by various adapters, such as Pub/Sub Producers or Consumers.
+   * </p>
    *
-   * This enables support of dynamic kafka configurations. All Kafka
-   * Properties can follow an convention of namespace and the properties
-   * are extracted and supplied to the Kafka Producer/Consumer.
-   *
-   * @param nameSpace namespace to look for
-   * @return properties matches a namespace, but after removing the namespace.
+   * @param nameSpace The namespace to filter properties by.
+   * @return A {@link VeniceProperties} instance containing properties with the namespace removed.
    */
   public VeniceProperties clipAndFilterNamespace(String nameSpace) {
+    return clipAndFilterNamespace(Collections.singleton(nameSpace));
+  }
+
+  /**
+   * Extracts properties that begin with any of the specified namespaces.
+   * <p>
+   * This method identifies all properties that start with one of the provided namespaces, removes
+   * the matching namespace prefix, and returns the filtered properties.
+   * </p>
+   * <p>
+   * This supports dynamic configurations for various use cases, including Pub/Sub clients,
+   * messaging systems, and other configurable components. By following a namespace-based convention,
+   * different configurations can be extracted and supplied to respective adapters.
+   * </p>
+   * <p>
+   * Example structure:
+   * </p>
+   * <pre>{@code
+   * "pubsub.kafka.bootstrap.servers"
+   * "pubsub.pulsar.service.url"
+   * "pubsub.warpstream.bucket.url"
+   * }</pre>
+   * <p>
+   * Using this method with namespaces {"pubsub.kafka.", "pubsub.pulsar."} would result in:
+   * </p>
+   * <pre>{@code
+   * "bootstrap.servers"
+   * "service.url"
+   * }</pre>
+   *
+   * @param namespaces A set of namespaces to filter properties by.
+   * @return A {@link VeniceProperties} instance containing properties with the matching namespaces removed.
+   */
+  public VeniceProperties clipAndFilterNamespace(Set<String> namespaces) {
     PropertyBuilder builder = new PropertyBuilder();
-    if (!nameSpace.endsWith(".")) {
-      nameSpace = nameSpace + ".";
-    }
+
+    // Ensure all namespaces end with "."
+    Set<String> formattedNamespaces =
+        namespaces.stream().map(ns -> ns.endsWith(".") ? ns : ns + ".").collect(Collectors.toSet());
 
     for (Map.Entry<String, String> entry: this.props.entrySet()) {
       String key = entry.getKey();
-      if (key.startsWith(nameSpace)) {
-        String extractedKey = key.substring(nameSpace.length());
-        builder.put(extractedKey, this.props.get(key));
+
+      for (String namespace: formattedNamespaces) {
+        if (key.startsWith(namespace)) {
+          String extractedKey = key.substring(namespace.length());
+          builder.put(extractedKey, entry.getValue());
+          break; // Avoid unnecessary checks once a match is found
+        }
       }
     }
+
     return builder.build();
   }
 
@@ -252,6 +292,14 @@ public class VeniceProperties implements Serializable {
       return get(key);
     } else {
       throw new UndefinedPropertyException(key);
+    }
+  }
+
+  public String getOrDefault(String key, String defaultValue) {
+    if (containsKey(key)) {
+      return get(key);
+    } else {
+      return defaultValue;
     }
   }
 
@@ -423,12 +471,79 @@ public class VeniceProperties implements Serializable {
     return getMap(key);
   }
 
+  /**
+   * Retrieves a map from the configuration using the given key,
+   * where each entry is a colon-separated string (e.g., "key:value").
+   *
+   * @param key the configuration key
+   * @return an unmodifiable {@code Map<String, String>}
+   * @throws UndefinedPropertyException if the key does not exist
+   * @throws VeniceException if any entry is malformed
+   */
   public Map<String, String> getMap(String key) {
+    return Collections.unmodifiableMap(
+        parseKeyValueList(
+            key,
+            k -> k, // identity function for string keys
+            HashMap::new));
+  }
+
+  /**
+   * Retrieves a map from the configuration using the given key,
+   * where keys are expected to be integers and values are strings.
+   *
+   * @param key the configuration key
+   * @return an {@code Int2ObjectMap<String>} of parsed entries
+   * @throws UndefinedPropertyException if the key does not exist
+   * @throws VeniceException if any entry is malformed or key is not a valid integer
+   */
+  public Int2ObjectMap<String> getIntKeyedMap(String key) {
+    Int2ObjectMap<String> parsedMap = parseKeyValueList(key, strKey -> {
+      try {
+        return Integer.parseInt(strKey.trim());
+      } catch (NumberFormatException e) {
+        throw new VeniceException("Invalid integer key: " + strKey, e);
+      }
+    }, Int2ObjectOpenHashMap::new);
+    return Int2ObjectMaps.unmodifiable(parsedMap);
+  }
+
+  /**
+   * Retrieves a map from the configuration using the given key.
+   * <p>
+   * The expected format of the value is a list of strings, where each entry is a colon-separated key-value pair.
+   * Only the first colon (`:`) is used to split the key from the value, allowing the value itself to contain colons.
+   * <p>
+   * Example input for the key:
+   * <pre>
+   *   config.key = ["1:broker1.kafka.com:9092", "2:broker2.kafka.com:9093"]
+   * </pre>
+   * This would return a map:
+   * <pre>
+   *   {
+   *     "1" -> "broker1.kafka.com:9092",
+   *     "2" -> "broker2.kafka.com:9093"
+   *   }
+   * </pre>
+   * @param key         the configuration key
+   * @param keyParser   a function to convert the string key into the desired key type
+   * @param mapSupplier a supplier that provides a mutable map instance
+   * @param <K>         the key type
+   * @param <M>         the map type
+   * @return a populated map from the config
+   * @throws UndefinedPropertyException if the key is missing
+   * @throws VeniceException if any entry is malformed
+   */
+  private <K, M extends Map<K, String>> M parseKeyValueList(
+      String key,
+      Function<String, K> keyParser,
+      Supplier<M> mapSupplier) {
     if (!containsKey(key)) {
       throw new UndefinedPropertyException(key);
     }
-    List<String> keyValuePairs = this.getList(key);
-    Map<String, String> map = new HashMap<>(keyValuePairs.size());
+
+    List<String> keyValuePairs = getList(key);
+    M map = mapSupplier.get();
 
     for (String keyValuePair: keyValuePairs) {
       // One entry could have multiple ":". For example, "<ID>:<Kafka URL>:<port>". In this case, we split the String by
@@ -440,9 +555,30 @@ public class VeniceProperties implements Serializable {
       }
       String mapKey = keyValuePair.substring(0, indexOfFirstColon);
       String mapValue = keyValuePair.substring(indexOfFirstColon + 1);
-      map.put(mapKey, mapValue);
+      map.put(keyParser.apply(mapKey), mapValue);
     }
-    return Collections.unmodifiableMap(map);
+
+    return map;
+  }
+
+  /**
+   * Helper function to convert a map to a string representation.
+   * @param map The map to convert
+   * @return
+   */
+  public static String mapToString(Map<?, ?> map) {
+    if (map == null || map.isEmpty()) {
+      return "";
+    }
+
+    StringBuilder builder = new StringBuilder();
+    for (Map.Entry<?, ?> entry: map.entrySet()) {
+      if (builder.length() > 0) {
+        builder.append(',');
+      }
+      builder.append(entry.getKey()).append(':').append(entry.getValue());
+    }
+    return builder.toString();
   }
 
   public Properties toProperties() {
@@ -457,5 +593,19 @@ public class VeniceProperties implements Serializable {
 
   public Map<String, String> getAsMap() {
     return props;
+  }
+
+  public static VeniceProperties fromCharSequenceMap(Map<CharSequence, CharSequence> properties) {
+    return new VeniceProperties(convertToStringMap(properties));
+  }
+
+  private static Map<String, String> convertToStringMap(Map<?, ?> input) {
+    Map<String, String> result = new HashMap<>(input.size());
+    for (Map.Entry<?, ?> entry: input.entrySet()) {
+      String key = entry.getKey().toString();
+      String value = entry.getValue() == null ? null : entry.getValue().toString();
+      result.put(key, value);
+    }
+    return result;
   }
 }

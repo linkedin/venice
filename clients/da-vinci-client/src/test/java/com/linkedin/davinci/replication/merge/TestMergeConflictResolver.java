@@ -11,6 +11,8 @@ import static org.mockito.Mockito.mock;
 import com.linkedin.davinci.replication.merge.helper.utils.ValueAndDerivedSchemas;
 import com.linkedin.davinci.serializer.avro.MapOrderPreservingSerDeFactory;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
+import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.rmd.RmdConstants;
 import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
@@ -31,9 +33,15 @@ import org.testng.annotations.BeforeClass;
 
 public class TestMergeConflictResolver {
   protected static final int RMD_VERSION_ID = 1;
+  protected static final PubSubPosition P1 = new ApacheKafkaOffsetPosition(1L);
+  protected static final PubSubPosition P2 = new ApacheKafkaOffsetPosition(2L);
 
   protected String storeName;
   protected ReadOnlySchemaRepository schemaRepository;
+  protected Schema nestedRecordSchemaV1;
+  protected Schema nestedRecordSchemaV2;
+  protected Schema nestedRecordRmdSchemaV2;
+
   protected Schema userSchemaV1;
   protected Schema userRmdSchemaV1;
   protected Schema userSchemaV2;
@@ -52,9 +60,15 @@ public class TestMergeConflictResolver {
     this.schemaRepository = mock(ReadOnlySchemaRepository.class);
     ValueAndDerivedSchemas userV1Schema = new ValueAndDerivedSchemas(storeName, -1, "avro/UserV1.avsc");
     ValueAndDerivedSchemas userV2Schema = new ValueAndDerivedSchemas(storeName, -1, "avro/UserV2.avsc");
+    ValueAndDerivedSchemas nestedV1Schema = new ValueAndDerivedSchemas(storeName, -1, "avro/NestedRecordV1.avsc");
+    ValueAndDerivedSchemas nestedV2Schema = new ValueAndDerivedSchemas(storeName, -1, "avro/NestedRecordV2.avsc");
     ValueAndDerivedSchemas personV1Schema = new ValueAndDerivedSchemas(storeName, -1, "avro/PersonV1.avsc");
     ValueAndDerivedSchemas personV2Schema = new ValueAndDerivedSchemas(storeName, -1, "avro/PersonV2.avsc");
     ValueAndDerivedSchemas personV3Schema = new ValueAndDerivedSchemas(storeName, -1, "avro/PersonV3.avsc");
+    this.nestedRecordSchemaV1 = nestedV1Schema.getValueSchema();
+    this.nestedRecordSchemaV2 = nestedV2Schema.getValueSchema();
+    this.nestedRecordRmdSchemaV2 = nestedV2Schema.getRmdSchema();
+
     this.userSchemaV1 = userV1Schema.getValueSchema();
     this.userRmdSchemaV1 = userV1Schema.getRmdSchema();
     this.userSchemaV2 = userV2Schema.getValueSchema();

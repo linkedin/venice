@@ -3,7 +3,7 @@ package com.linkedin.davinci.ingestion;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.notifier.VeniceNotifier;
-import com.linkedin.davinci.store.AbstractStorageEngine;
+import com.linkedin.davinci.store.StorageEngine;
 import java.io.Closeable;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicReference;
@@ -55,7 +55,7 @@ public interface IngestionBackend extends Closeable {
   void removeStorageEngine(String topicName);
 
   // setStorageEngineReference is used by Da Vinci exclusively to speed up storage engine retrieval for read path.
-  void setStorageEngineReference(String topicName, AtomicReference<AbstractStorageEngine> storageEngineReference);
+  void setStorageEngineReference(String topicName, AtomicReference<StorageEngine> storageEngineReference);
 
   /**
    * Check whether there are any current version bootstrapping or not.

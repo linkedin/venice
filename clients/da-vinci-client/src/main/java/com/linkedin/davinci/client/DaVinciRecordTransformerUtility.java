@@ -1,19 +1,24 @@
 package com.linkedin.davinci.client;
 
-import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.AbstractStorageIterator;
+import com.linkedin.davinci.store.StorageEngine;
+import com.linkedin.davinci.store.StoragePartitionAdjustmentTrigger;
+import com.linkedin.davinci.store.StoragePartitionConfig;
 import com.linkedin.venice.compression.VeniceCompressor;
-import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.serializer.AvroGenericDeserializer;
-import com.linkedin.venice.serializer.AvroSerializer;
+import com.linkedin.venice.kafka.protocol.state.PartitionState;
+import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.pubsub.PubSubContext;
+import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
+import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
+import com.linkedin.venice.serializer.RecordDeserializer;
+import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.utils.lazy.Lazy;
-import java.io.BufferedReader;
-import java.io.File;
-import java.io.FileReader;
-import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.Optional;
 import org.apache.avro.Schema;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -23,19 +28,37 @@ import org.apache.avro.Schema;
  * @param <O> the type of the output value
  */
 public class DaVinciRecordTransformerUtility<K, O> {
+  private static final Logger LOGGER = LogManager.getLogger(DaVinciRecordTransformerUtility.class);
   private final DaVinciRecordTransformer recordTransformer;
-  private final AvroGenericDeserializer<K> keyDeserializer;
-  private final AvroGenericDeserializer<O> outputValueDeserializer;
-  private final AvroSerializer<O> outputValueSerializer;
+  private final DaVinciRecordTransformerConfig recordTransformerConfig;
+  private final RecordDeserializer<K> keyDeserializer;
+  private final RecordDeserializer<O> outputValueDeserializer;
+  private final RecordSerializer<O> outputValueSerializer;
 
-  public DaVinciRecordTransformerUtility(DaVinciRecordTransformer recordTransformer) {
+  public DaVinciRecordTransformerUtility(
+      DaVinciRecordTransformer recordTransformer,
+      DaVinciRecordTransformerConfig recordTransformerConfig) {
     this.recordTransformer = recordTransformer;
+    this.recordTransformerConfig = recordTransformerConfig;
 
     Schema keySchema = recordTransformer.getKeySchema();
+    if (recordTransformerConfig.useSpecificRecordKeyDeserializer()) {
+      this.keyDeserializer = FastSerializerDeserializerFactory
+          .getFastAvroSpecificDeserializer(keySchema, recordTransformerConfig.getKeyClass());
+    } else {
+      this.keyDeserializer = FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(keySchema, keySchema);
+    }
+
     Schema outputValueSchema = recordTransformer.getOutputValueSchema();
-    this.keyDeserializer = new AvroGenericDeserializer<>(keySchema, keySchema);
-    this.outputValueDeserializer = new AvroGenericDeserializer<>(outputValueSchema, outputValueSchema);
-    this.outputValueSerializer = new AvroSerializer<>(outputValueSchema);
+    if (recordTransformerConfig.useSpecificRecordValueDeserializer()) {
+      this.outputValueDeserializer = FastSerializerDeserializerFactory
+          .getFastAvroSpecificDeserializer(outputValueSchema, recordTransformerConfig.getOutputValueClass());
+    } else {
+      this.outputValueDeserializer =
+          FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(outputValueSchema, outputValueSchema);
+    }
+
+    this.outputValueSerializer = FastSerializerDeserializerFactory.getFastAvroGenericSerializer(outputValueSchema);
   }
 
   /**
@@ -80,63 +103,91 @@ public class DaVinciRecordTransformerUtility<K, O> {
   /**
    * @return true if transformer logic has changed since the last time the class was loaded
    */
-  public boolean hasTransformerLogicChanged(int classHash) {
-    try {
-      String classHashPath = String.format("./classHash-%d.txt", recordTransformer.getStoreVersion());
-      File f = new File(classHashPath);
-      if (f.exists()) {
-        try (BufferedReader br = new BufferedReader(new FileReader(classHashPath))) {
-          int storedClassHash = Integer.parseInt(br.readLine());
-          if (storedClassHash == classHash) {
-            return false;
-          }
-        }
-      }
-
-      try (FileWriter fw = new FileWriter(classHashPath)) {
-        fw.write(String.valueOf(classHash));
-      }
-      return true;
-    } catch (IOException e) {
-      throw new VeniceException("Failed to check if transformation logic has changed", e);
+  public boolean hasTransformerLogicChanged(int currentClassHash, OffsetRecord offsetRecord) {
+    if (recordTransformerConfig.shouldSkipCompatibilityChecks()) {
+      LOGGER.info("Skip compatability checks have been enabled for DaVinciRecordTransformer");
+      return false;
     }
+
+    Integer persistedClassHash = offsetRecord.getRecordTransformerClassHash();
+
+    if (persistedClassHash != null && persistedClassHash == currentClassHash) {
+      LOGGER.info("Transformer logic hasn't changed. Class hash: {}", currentClassHash);
+      return false;
+    }
+    LOGGER.info(
+        "A change in transformer logic has been detected. Persisted class hash: {}. New class hash: {}",
+        persistedClassHash,
+        currentClassHash);
+    return true;
   }
 
   /**
    * Bootstraps the client after it comes online.
    */
   public final void onRecovery(
-      AbstractStorageEngine storageEngine,
-      Integer partition,
-      Lazy<VeniceCompressor> compressor) {
-    // ToDo: Store class hash in RocksDB to support blob transfer
+      StorageEngine storageEngine,
+      int partitionId,
+      InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer,
+      Lazy<VeniceCompressor> compressor,
+      PubSubContext pubSubContext) {
     int classHash = recordTransformer.getClassHash();
-    boolean transformerLogicChanged = hasTransformerLogicChanged(classHash);
+    Optional<OffsetRecord> optionalOffsetRecord = storageEngine.getPartitionOffset(partitionId, pubSubContext);
+    OffsetRecord offsetRecord =
+        optionalOffsetRecord.orElseGet(() -> new OffsetRecord(partitionStateSerializer, pubSubContext));
 
-    if (!recordTransformer.getStoreRecordsInDaVinci() || transformerLogicChanged) {
+    boolean transformerLogicChanged = hasTransformerLogicChanged(classHash, offsetRecord);
+
+    if (recordTransformer.getAlwaysBootstrapFromVersionTopic() || transformerLogicChanged) {
+      LOGGER.info("Bootstrapping directly from the VersionTopic for partition: {}", partitionId);
+
       // Bootstrap from VT
-      storageEngine.clearPartitionOffset(partition);
+      storageEngine.clearPartitionOffset(partitionId);
+
+      // Offset record is deleted, so create a new one and persist it
+      offsetRecord = new OffsetRecord(partitionStateSerializer, pubSubContext);
+      offsetRecord.setRecordTransformerClassHash(classHash);
+      storageEngine.putPartitionOffset(partitionId, offsetRecord);
     } else {
       // Bootstrap from local storage
-      AbstractStorageIterator iterator = storageEngine.getIterator(partition);
-      for (iterator.seekToFirst(); iterator.isValid(); iterator.next()) {
-        byte[] keyBytes = iterator.key();
-        byte[] valueBytes = iterator.value();
-        Lazy<K> lazyKey = Lazy.of(() -> keyDeserializer.deserialize(keyBytes));
-        Lazy<O> lazyValue = Lazy.of(() -> {
-          ByteBuffer valueByteBuffer = ByteBuffer.wrap(valueBytes);
-          // Skip schema id
-          valueByteBuffer.position(Integer.BYTES);
-          ByteBuffer decompressedValueBytes;
-          try {
-            decompressedValueBytes = compressor.get().decompress(valueByteBuffer);
-          } catch (IOException e) {
-            throw new RuntimeException(e);
-          }
-          return outputValueDeserializer.deserialize(decompressedValueBytes);
-        });
+      LOGGER.info("Bootstrapping from local storage for partition {}", partitionId);
 
-        recordTransformer.processPut(lazyKey, lazyValue);
+      // Open DB in read-only mode as a safeguard against updates happening during iteration
+      StoragePartitionConfig storagePartitionConfig =
+          new StoragePartitionConfig(storageEngine.getStoreVersionName(), partitionId);
+      storagePartitionConfig.setReadOnly(true);
+      storageEngine.adjustStoragePartition(
+          partitionId,
+          StoragePartitionAdjustmentTrigger.PREPARE_FOR_READ,
+          storagePartitionConfig);
+
+      try (AbstractStorageIterator iterator = storageEngine.getIterator(partitionId)) {
+        for (iterator.seekToFirst(); iterator.isValid(); iterator.next()) {
+          byte[] keyBytes = iterator.key();
+          byte[] valueBytes = iterator.value();
+          Lazy<K> lazyKey = Lazy.of(() -> keyDeserializer.deserialize(keyBytes));
+          Lazy<O> lazyValue = Lazy.of(() -> {
+            ByteBuffer valueByteBuffer = ByteBuffer.wrap(valueBytes);
+            // Skip schema id
+            valueByteBuffer.position(Integer.BYTES);
+            ByteBuffer decompressedValueBytes;
+            try {
+              decompressedValueBytes = compressor.get().decompress(valueByteBuffer);
+            } catch (IOException e) {
+              throw new RuntimeException(e);
+            }
+            return outputValueDeserializer.deserialize(decompressedValueBytes);
+          });
+
+          recordTransformer.processPut(lazyKey, lazyValue, partitionId);
+        }
+      } finally {
+        // Re-open partition with defaults
+        storagePartitionConfig = new StoragePartitionConfig(storageEngine.getStoreVersionName(), partitionId);
+        storageEngine.adjustStoragePartition(
+            partitionId,
+            StoragePartitionAdjustmentTrigger.REOPEN_WITH_DEFAULTS,
+            storagePartitionConfig);
       }
     }
   }

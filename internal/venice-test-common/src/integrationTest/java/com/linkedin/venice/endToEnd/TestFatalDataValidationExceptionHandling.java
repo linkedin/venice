@@ -15,11 +15,11 @@ import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POOL_SIZE_PER_KAFKA
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE;
 import static com.linkedin.venice.ConfigKeys.SERVER_DEDICATED_DRAINER_FOR_SORTED_INPUT_ENABLED;
-import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_SHARED_CONSUMER_ASSIGNMENT_STRATEGY;
 import static com.linkedin.venice.ConfigKeys.SSL_TO_KAFKA_LEGACY;
 import static com.linkedin.venice.status.BatchJobHeartbeatConfigs.HEARTBEAT_ENABLED_CONFIG;
 import static com.linkedin.venice.utils.TestWriteUtils.STRING_SCHEMA;
+import static com.linkedin.venice.writer.VeniceWriter.DEFAULT_TERM_ID;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -37,11 +37,15 @@ import com.linkedin.venice.controllerapi.VersionResponse;
 import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.status.PushJobDetailsStatus;
@@ -71,10 +75,12 @@ public class TestFatalDataValidationExceptionHandling {
   private VeniceClusterWrapper veniceCluster;
 
   protected final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+  private PubSubPositionTypeRegistry pubSubPositionTypeRegistry;
 
   @BeforeClass(alwaysRun = true)
   public void setUp() {
     veniceCluster = setUpCluster();
+    pubSubPositionTypeRegistry = veniceCluster.getPubSubBrokerWrapper().getPubSubPositionTypeRegistry();
   }
 
   @AfterClass(alwaysRun = true)
@@ -94,7 +100,16 @@ public class TestFatalDataValidationExceptionHandling {
     extraProperties
         .setProperty(FATAL_DATA_VALIDATION_FAILURE_TOPIC_RETENTION_MS, Long.toString(TimeUnit.SECONDS.toMillis(30)));
     extraProperties.setProperty(MIN_NUMBER_OF_UNUSED_KAFKA_TOPICS_TO_PRESERVE, "0");
-    VeniceClusterWrapper cluster = ServiceFactory.getVeniceCluster(1, 0, 1, 1, 1000000, false, false, extraProperties);
+    VeniceClusterCreateOptions options = new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
+        .numberOfServers(0)
+        .numberOfRouters(1)
+        .replicationFactor(1)
+        .partitionSize(1000000)
+        .sslToStorageNodes(false)
+        .sslToKafka(false)
+        .extraProperties(extraProperties)
+        .build();
+    VeniceClusterWrapper cluster = ServiceFactory.getVeniceCluster(options);
 
     // Add Venice Router
     Properties routerProperties = new Properties();
@@ -103,7 +118,6 @@ public class TestFatalDataValidationExceptionHandling {
     // Add Venice Server
     Properties serverProperties = new Properties();
     serverProperties.setProperty(PERSISTENCE_TYPE, PersistenceType.ROCKS_DB.name());
-    serverProperties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1L));
     serverProperties.setProperty(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, "false");
     serverProperties.setProperty(SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED, "true");
     serverProperties.setProperty(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE, "300");
@@ -176,15 +190,15 @@ public class TestFatalDataValidationExceptionHandling {
       PubSubProducerAdapterFactory pubSubProducerAdapterFactory =
           veniceCluster.getPubSubBrokerWrapper().getPubSubClientsFactory().getProducerAdapterFactory();
       try (
-          VeniceWriter<byte[], byte[], byte[]> veniceWriter1 =
-              TestUtils.getVeniceWriterFactory(veniceWriterProperties1, pubSubProducerAdapterFactory)
-                  .createVeniceWriter(new VeniceWriterOptions.Builder(versionTopicName).build());
-          VeniceWriter<byte[], byte[], byte[]> veniceWriter2 =
-              TestUtils.getVeniceWriterFactory(veniceWriterProperties2, pubSubProducerAdapterFactory)
-                  .createVeniceWriter(new VeniceWriterOptions.Builder(versionTopicName).build());
-          VeniceWriter<byte[], byte[], byte[]> veniceWriter3 =
-              TestUtils.getVeniceWriterFactory(veniceWriterProperties3, pubSubProducerAdapterFactory)
-                  .createVeniceWriter(new VeniceWriterOptions.Builder(versionTopicName).build())) {
+          VeniceWriter<byte[], byte[], byte[]> veniceWriter1 = TestUtils
+              .getVeniceWriterFactory(veniceWriterProperties1, pubSubProducerAdapterFactory, pubSubPositionTypeRegistry)
+              .createVeniceWriter(new VeniceWriterOptions.Builder(versionTopicName).build());
+          VeniceWriter<byte[], byte[], byte[]> veniceWriter2 = TestUtils
+              .getVeniceWriterFactory(veniceWriterProperties2, pubSubProducerAdapterFactory, pubSubPositionTypeRegistry)
+              .createVeniceWriter(new VeniceWriterOptions.Builder(versionTopicName).build());
+          VeniceWriter<byte[], byte[], byte[]> veniceWriter3 = TestUtils
+              .getVeniceWriterFactory(veniceWriterProperties3, pubSubProducerAdapterFactory, pubSubPositionTypeRegistry)
+              .createVeniceWriter(new VeniceWriterOptions.Builder(versionTopicName).build())) {
         createCorruptDIVScenario(veniceWriter1, veniceWriter2, veniceWriter3, stringSerializer);
       }
 
@@ -283,34 +297,39 @@ public class TestFatalDataValidationExceptionHandling {
     vw3.broadcastStartOfPush(false, Collections.emptyMap());
     vw3.flush();
 
+    PubSubPosition pubSubPosition0 = new ApacheKafkaOffsetPosition(0);
     vw1.put(
         stringSerializer.serialize("key_writer_1"),
         stringSerializer.serialize("value_writer_1"),
         1,
         null,
-        new LeaderMetadataWrapper(0, 0));
+        new LeaderMetadataWrapper(pubSubPosition0, 0, DEFAULT_TERM_ID));
     vw1.flush();
 
+    PubSubPosition pubSubPosition1 = new ApacheKafkaOffsetPosition(1);
     vw2.put(
         stringSerializer.serialize("key_writer_2"),
         stringSerializer.serialize("value_writer_2"),
         1,
         null,
-        new LeaderMetadataWrapper(1, 0));
+        new LeaderMetadataWrapper(pubSubPosition1, 0, DEFAULT_TERM_ID));
+
+    PubSubPosition pubSubPosition2 = new ApacheKafkaOffsetPosition(2);
     vw2.put(
         stringSerializer.serialize("key_writer_3"),
         stringSerializer.serialize("value_writer_3"),
         1,
         null,
-        new LeaderMetadataWrapper(2, 0));
+        new LeaderMetadataWrapper(pubSubPosition2, 0, DEFAULT_TERM_ID));
     vw2.flush();
 
+    PubSubPosition pubSubPosition3 = new ApacheKafkaOffsetPosition(3);
     vw1.put(
         stringSerializer.serialize("key_writer_4"),
         stringSerializer.serialize("value_writer_4"),
         1,
         null,
-        new LeaderMetadataWrapper(3, 0));
+        new LeaderMetadataWrapper(pubSubPosition3, 0, DEFAULT_TERM_ID));
     vw1.flush();
     vw1.closePartition(0);
     vw1.flush();

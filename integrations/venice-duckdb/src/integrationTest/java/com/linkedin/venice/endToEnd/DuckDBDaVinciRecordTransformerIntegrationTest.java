@@ -1,14 +1,16 @@
 package com.linkedin.venice.endToEnd;
 
+import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES;
 import static com.linkedin.venice.ConfigKeys.CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS;
 import static com.linkedin.venice.ConfigKeys.CLIENT_USE_SYSTEM_STORE_REPOSITORY;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_CHECK_INTERVAL_IN_MS;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_SPEEDUP_ENABLED;
+import static com.linkedin.venice.ConfigKeys.DA_VINCI_SUBSCRIBE_ON_DISK_PARTITIONS_AUTOMATICALLY;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
-import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
+import static com.linkedin.venice.integration.utils.DaVinciTestContext.getCachingDaVinciClientFactory;
 import static com.linkedin.venice.meta.PersistenceType.ROCKS_DB;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJProps;
@@ -29,20 +31,25 @@ import com.linkedin.d2.balancer.D2ClientBuilder;
 import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.davinci.client.DaVinciConfig;
 import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
+import com.linkedin.davinci.client.DaVinciRecordTransformerFunctionalInterface;
 import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
 import com.linkedin.venice.D2.D2ClientUtils;
+import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.duckdb.DuckDBDaVinciRecordTransformer;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
+import com.linkedin.venice.producer.online.OnlineProducerFactory;
+import com.linkedin.venice.producer.online.OnlineVeniceProducer;
+import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.PushInputSchemaBuilder;
 import com.linkedin.venice.utils.TestUtils;
-import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -66,7 +73,6 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
-import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 
@@ -88,33 +94,26 @@ public class DuckDBDaVinciRecordTransformerIntegrationTest {
   public void setUp() {
     Utils.thisIsLocalhost();
     Properties clusterConfig = new Properties();
-    clusterConfig.put(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 1L);
     clusterConfig.put(PUSH_STATUS_STORE_ENABLED, true);
     clusterConfig.put(DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS, 3);
-    cluster = ServiceFactory.getVeniceCluster(1, 2, 1, 2, 100, false, false, clusterConfig);
-    d2Client = new D2ClientBuilder().setZkHosts(cluster.getZk().getAddress())
+    this.cluster = ServiceFactory.getVeniceCluster(
+        new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
+            .numberOfServers(2)
+            .numberOfRouters(1)
+            .replicationFactor(2)
+            .extraProperties(clusterConfig)
+            .build());
+    this.d2Client = new D2ClientBuilder().setZkHosts(this.cluster.getZk().getAddress())
         .setZkSessionTimeout(3, TimeUnit.SECONDS)
         .setZkStartupTimeout(3, TimeUnit.SECONDS)
         .build();
-    D2ClientUtils.startClient(d2Client);
+    D2ClientUtils.startClient(this.d2Client);
   }
 
   @AfterClass
   public void cleanUp() {
-    if (d2Client != null) {
-      D2ClientUtils.shutdownClient(d2Client);
-    }
-    Utils.closeQuietlyWithErrorLogged(cluster);
-  }
-
-  @BeforeMethod
-  @AfterClass
-  public void deleteClassHash() {
-    int storeVersion = 1;
-    File file = new File(String.format("./classHash-%d.txt", storeVersion));
-    if (file.exists()) {
-      assertTrue(file.delete());
-    }
+    D2ClientUtils.shutdownClient(this.d2Client);
+    Utils.closeQuietlyWithErrorLogged(this.cluster);
   }
 
   @Test(timeOut = TEST_TIMEOUT)
@@ -122,7 +121,7 @@ public class DuckDBDaVinciRecordTransformerIntegrationTest {
     DaVinciConfig clientConfig = new DaVinciConfig();
 
     File tmpDir = Utils.getTempDataDirectory();
-    String storeName = Utils.getUniqueString("test_store");
+    String storeName = Utils.getUniqueString("test-store");
     boolean pushStatusStoreEnabled = false;
     boolean chunkingEnabled = false;
     CompressionStrategy compressionStrategy = CompressionStrategy.NO_OP;
@@ -133,22 +132,34 @@ public class DuckDBDaVinciRecordTransformerIntegrationTest {
     MetricsRepository metricsRepository = new MetricsRepository();
     String duckDBUrl = "jdbc:duckdb:" + tmpDir.getAbsolutePath() + "/my_database.duckdb";
 
-    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
+    try (CachingDaVinciClientFactory factory = getCachingDaVinciClientFactory(
         d2Client,
         VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
         metricsRepository,
-        backendConfig)) {
+        backendConfig,
+        cluster)) {
       Set<String> columnsToProject = Collections.emptySet();
-      DaVinciRecordTransformerConfig recordTransformerConfig = new DaVinciRecordTransformerConfig(
-          (storeVersion, keySchema, inputValueSchema, outputValueSchema) -> new DuckDBDaVinciRecordTransformer(
+
+      DaVinciRecordTransformerFunctionalInterface recordTransformerFunction = (
+          storeNameParam,
+          storeVersion,
+          keySchema,
+          inputValueSchema,
+          outputValueSchema,
+          config) -> new DuckDBDaVinciRecordTransformer(
+              storeNameParam,
               storeVersion,
               keySchema,
               inputValueSchema,
               outputValueSchema,
-              false,
+              config,
               tmpDir.getAbsolutePath(),
-              storeName,
-              columnsToProject));
+              columnsToProject);
+
+      DaVinciRecordTransformerConfig recordTransformerConfig =
+          new DaVinciRecordTransformerConfig.Builder().setRecordTransformerFunction(recordTransformerFunction)
+              .setStoreRecordsInDaVinci(false)
+              .build();
       clientConfig.setRecordTransformerConfig(recordTransformerConfig);
 
       DaVinciClient<Integer, Object> clientWithRecordTransformer =
@@ -156,24 +167,41 @@ public class DuckDBDaVinciRecordTransformerIntegrationTest {
 
       clientWithRecordTransformer.subscribeAll().get();
 
-      assertRowCount(duckDBUrl, storeName, "subscribeAll() finishes!");
+      assertRowCount(duckDBUrl, storeName, DEFAULT_USER_DATA_RECORD_COUNT, "subscribeAll() finishes!");
+
+      try (OnlineVeniceProducer producer = OnlineProducerFactory.createProducer(
+          ClientConfig.defaultGenericClientConfig(storeName)
+              .setD2Client(d2Client)
+              .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME),
+          VeniceProperties.empty(),
+          null)) {
+        producer.asyncDelete(getKey(1)).get();
+      }
+
+      TestUtils.waitForNonDeterministicAssertion(
+          10,
+          TimeUnit.SECONDS,
+          true,
+          () -> assertRowCount(duckDBUrl, storeName, DEFAULT_USER_DATA_RECORD_COUNT - 1, "deleting 1 row!"));
 
       clientWithRecordTransformer.unsubscribeAll();
     }
 
-    assertRowCount(duckDBUrl, storeName, "DVC gets closed!");
+    assertRowCount(duckDBUrl, storeName, DEFAULT_USER_DATA_RECORD_COUNT - 1, "DVC gets closed!");
   }
 
-  private void assertRowCount(String duckDBUrl, String storeName, String assertionErrorMsg) throws SQLException {
+  private void assertRowCount(String duckDBUrl, String storeName, int expectedCount, String assertionErrorMsg)
+      throws SQLException {
+    String selectStatement = "SELECT count(*) FROM \"%s\";";
     try (Connection connection = DriverManager.getConnection(duckDBUrl);
         Statement statement = connection.createStatement();
-        ResultSet rs = statement.executeQuery("SELECT count(*) FROM " + storeName)) {
+        ResultSet rs = statement.executeQuery(String.format(selectStatement, storeName))) {
       assertTrue(rs.next());
       int rowCount = rs.getInt(1);
       assertEquals(
           rowCount,
-          DEFAULT_USER_DATA_RECORD_COUNT,
-          "The DB should contain " + DEFAULT_USER_DATA_RECORD_COUNT + " right after " + assertionErrorMsg);
+          expectedCount,
+          "The DB should contain " + expectedCount + " rows right after " + assertionErrorMsg);
     }
   }
 
@@ -193,8 +221,7 @@ public class DuckDBDaVinciRecordTransformerIntegrationTest {
     String lastName = "last_name_";
     Schema valueSchema = writeSimpleAvroFile(inputDir, pushRecordSchema, i -> {
       GenericRecord keyValueRecord = new GenericData.Record(pushRecordSchema);
-      GenericRecord key = new GenericData.Record(SINGLE_FIELD_RECORD_SCHEMA);
-      key.put("key", i.toString());
+      GenericRecord key = getKey(i);
       keyValueRecord.put(DEFAULT_KEY_FIELD_PROP, key);
       GenericRecord valueRecord = new GenericData.Record(NAME_RECORD_V1_SCHEMA);
       valueRecord.put("firstName", firstName + i);
@@ -212,7 +239,9 @@ public class DuckDBDaVinciRecordTransformerIntegrationTest {
     final int numPartitions = 3;
     UpdateStoreQueryParams params = new UpdateStoreQueryParams().setPartitionCount(numPartitions)
         .setChunkingEnabled(chunkingEnabled)
-        .setCompressionStrategy(compressionStrategy);
+        .setCompressionStrategy(compressionStrategy)
+        .setHybridOffsetLagThreshold(10)
+        .setHybridRewindSeconds(1);
 
     paramsConsumer.accept(params);
 
@@ -229,10 +258,15 @@ public class DuckDBDaVinciRecordTransformerIntegrationTest {
     }
   }
 
+  private GenericRecord getKey(Integer i) {
+    GenericRecord key = new GenericData.Record(SINGLE_FIELD_RECORD_SCHEMA);
+    key.put("key", i.toString());
+    return key;
+  }
+
   private static void runVPJ(Properties vpjProperties, int expectedVersionNumber, VeniceClusterWrapper cluster) {
     long vpjStart = System.currentTimeMillis();
-    String jobName = Utils.getUniqueString("batch-job-" + expectedVersionNumber);
-    TestWriteUtils.runPushJob(jobName, vpjProperties);
+    IntegrationTestPushUtils.runVPJ(vpjProperties);
     String storeName = (String) vpjProperties.get(VENICE_STORE_NAME_PROP);
     cluster.waitVersion(storeName, expectedVersionNumber);
     LOGGER.info("**TIME** VPJ" + expectedVersionNumber + " takes " + (System.currentTimeMillis() - vpjStart));
@@ -244,8 +278,10 @@ public class DuckDBDaVinciRecordTransformerIntegrationTest {
         .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
         .put(DATA_BASE_PATH, baseDataPath)
         .put(PERSISTENCE_TYPE, ROCKS_DB)
+        .put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 2 * 1024 * 1024L)
         .put(DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_SPEEDUP_ENABLED, true)
         .put(PUSH_STATUS_STORE_ENABLED, pushStatusStoreEnabled)
+        .put(DA_VINCI_SUBSCRIBE_ON_DISK_PARTITIONS_AUTOMATICALLY, false)
         .put(DAVINCI_PUSH_STATUS_CHECK_INTERVAL_IN_MS, 1000);
 
     if (pushStatusStoreEnabled) {

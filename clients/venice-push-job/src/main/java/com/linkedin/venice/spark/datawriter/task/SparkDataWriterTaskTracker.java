@@ -31,6 +31,11 @@ public class SparkDataWriterTaskTracker implements DataWriterTaskTracker {
   }
 
   @Override
+  public void trackLargestUncompressedValueSize(int size) {
+    accumulators.largestUncompressedValueSize.add(size);
+  }
+
+  @Override
   public void trackCompressedValueSize(int size) {
     accumulators.compressedValueSizeCounter.add(size);
   }
@@ -53,6 +58,11 @@ public class SparkDataWriterTaskTracker implements DataWriterTaskTracker {
   @Override
   public void trackRecordTooLargeFailure() {
     accumulators.recordTooLargeFailureCounter.add(1);
+  }
+
+  @Override
+  public void trackUncompressedRecordTooLargeFailure() {
+    accumulators.uncompressedRecordTooLargeFailureCounter.add(1);
   }
 
   @Override
@@ -101,6 +111,11 @@ public class SparkDataWriterTaskTracker implements DataWriterTaskTracker {
   }
 
   @Override
+  public int getLargestUncompressedValueSize() {
+    return accumulators.largestUncompressedValueSize.value();
+  }
+
+  @Override
   public long getTotalGzipCompressedValueSize() {
     return accumulators.gzipCompressedValueSizeCounter.value();
   }
@@ -113,6 +128,11 @@ public class SparkDataWriterTaskTracker implements DataWriterTaskTracker {
   @Override
   public long getRecordTooLargeFailureCount() {
     return accumulators.recordTooLargeFailureCounter.value();
+  }
+
+  @Override
+  public long getUncompressedRecordTooLargeFailureCount() {
+    return accumulators.uncompressedRecordTooLargeFailureCounter.value();
   }
 
   @Override

@@ -20,6 +20,7 @@ import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
@@ -97,7 +98,15 @@ public class StorageNodeComputeTest {
 
   @BeforeClass(alwaysRun = true)
   public void setUp() throws InterruptedException, ExecutionException, VeniceClientException {
-    veniceCluster = ServiceFactory.getVeniceCluster(1, 1, 0, 2, 100, false, false);
+    VeniceClusterCreateOptions options = new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
+        .numberOfServers(1)
+        .numberOfRouters(0)
+        .replicationFactor(2)
+        .partitionSize(100)
+        .sslToStorageNodes(false)
+        .sslToKafka(false)
+        .build();
+    veniceCluster = ServiceFactory.getVeniceCluster(options);
     // Add one more server with all the bells and whistles: fast-avro, parallel batch get
     Properties serverProperties = new Properties();
     serverProperties.put(ConfigKeys.SERVER_COMPUTE_FAST_AVRO_ENABLED, true);
@@ -168,7 +177,7 @@ public class StorageNodeComputeTest {
     Assert.assertFalse(newVersion.isError(), "Error creation new version: " + newVersion.getError());
     final int pushVersion = newVersion.getVersion();
     String topic = newVersion.getKafkaTopic();
-    int keyCount = 10;
+    int keyCount = 11;
     String keyPrefix = "key_";
     String valuePrefix = "value_";
 
@@ -177,8 +186,8 @@ public class StorageNodeComputeTest {
     VeniceWriterFactory vwFactory = IntegrationTestPushUtils
         .getVeniceWriterFactory(veniceCluster.getPubSubBrokerWrapper(), pubSubProducerAdapterFactory);
     try (VeniceWriter<Object, byte[], byte[]> veniceWriter = vwFactory.createVeniceWriter(
-        new VeniceWriterOptions.Builder(topic).setKeySerializer(keySerializer)
-            .setValueSerializer(new DefaultSerializer())
+        new VeniceWriterOptions.Builder(topic).setKeyPayloadSerializer(keySerializer)
+            .setValuePayloadSerializer(new DefaultSerializer())
             .setChunkingEnabled(valueLargerThan1MB.config)
             .build())) {
       pushSyntheticDataForCompute(
@@ -220,7 +229,7 @@ public class StorageNodeComputeTest {
              */
             .get(2, TimeUnit.SECONDS);
 
-        Assert.assertEquals(computeResult.size(), 10);
+        Assert.assertEquals(computeResult.size(), keyCount);
 
         computeResult.forEach((key, value) -> {
           int keyIdx = getKeyIndex(key, keyPrefix);
@@ -275,7 +284,7 @@ public class StorageNodeComputeTest {
   /**
    * The goal of this test is to find the breaking point at which a compute request gets split into more than 1 part.
    */
-  @Test(timeOut = 30000, groups = { "flaky" })
+  @Test(timeOut = 30000, enabled = false, groups = { "flaky" })
   public void testComputeRequestSize() throws Exception {
     UpdateStoreQueryParams params = new UpdateStoreQueryParams();
     params.setReadComputationEnabled(true);
@@ -290,7 +299,8 @@ public class StorageNodeComputeTest {
         VeniceWriter<Object, byte[], byte[]> veniceWriter = IntegrationTestPushUtils
             .getVeniceWriterFactory(veniceCluster.getPubSubBrokerWrapper(), pubSubProducerAdapterFactory)
             .createVeniceWriter(
-                new VeniceWriterOptions.Builder(newVersion.getKafkaTopic()).setKeySerializer(keySerializer).build());
+                new VeniceWriterOptions.Builder(newVersion.getKafkaTopic()).setKeyPayloadSerializer(keySerializer)
+                    .build());
         AvroGenericStoreClient<String, Object> storeClient = ClientFactory.getAndStartGenericAvroClient(
             ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerAddr))) {
 

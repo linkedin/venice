@@ -22,6 +22,8 @@ import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.stats.AggServerHttpRequestStats;
 import com.linkedin.venice.stats.AggServerQuotaUsageStats;
 import com.linkedin.venice.stats.ServerConnectionStats;
+import com.linkedin.venice.stats.ServerLoadStats;
+import com.linkedin.venice.stats.ThreadPoolStats;
 import com.linkedin.venice.utils.ReflectUtils;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.Utils;
@@ -38,7 +40,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.Executor;
+import java.util.concurrent.ThreadPoolExecutor;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -50,8 +52,9 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
   private final AggServerHttpRequestStats singleGetStats;
   private final AggServerHttpRequestStats multiGetStats;
   private final AggServerHttpRequestStats computeStats;
+  private final ThreadPoolStats sslHandshakesThreadPoolStats;
   private final Optional<SSLFactory> sslFactory;
-  private final Executor sslHandshakeExecutor;
+  private final ThreadPoolExecutor sslHandshakeExecutor;
   private final Optional<ServerAclHandler> aclHandler;
   private final Optional<ServerStoreAclHandler> storeAclHandler;
   private final VerifySslHandler verifySsl = new VerifySslHandler();
@@ -62,7 +65,7 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
   private AggServerQuotaUsageStats quotaUsageStats;
   List<ServerInterceptor> aclInterceptors;
   private final IdentityParser identityParser;
-
+  private final ServerLoadControllerHandler loadControllerHandler;
   private boolean isDaVinciClient;
 
   public HttpChannelInitializer(
@@ -70,7 +73,7 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
       CompletableFuture<HelixCustomizedViewOfflinePushRepository> customizedViewRepository,
       MetricsRepository metricsRepository,
       Optional<SSLFactory> sslFactory,
-      Executor sslHandshakeExecutor,
+      ThreadPoolExecutor sslHandshakeExecutor,
       VeniceServerConfig serverConfig,
       Optional<StaticAccessController> routerAccessController,
       Optional<DynamicAccessController> storeAccessController,
@@ -113,12 +116,19 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
 
     this.sslFactory = sslFactory;
     this.sslHandshakeExecutor = sslHandshakeExecutor;
+    this.sslHandshakesThreadPoolStats =
+        new ThreadPoolStats(metricsRepository, sslHandshakeExecutor, "ssl_handshake_thread_pool");
 
     Class<IdentityParser> identityParserClass = ReflectUtils.loadClass(serverConfig.getIdentityParserClassName());
     this.identityParser = ReflectUtils.callConstructor(identityParserClass, new Class[0], new Object[0]);
 
     this.storeAclHandler = storeAccessController.isPresent()
-        ? Optional.of(new ServerStoreAclHandler(identityParser, storeAccessController.get(), storeMetadataRepository))
+        ? Optional.of(
+            new ServerStoreAclHandler(
+                identityParser,
+                storeAccessController.get(),
+                storeMetadataRepository,
+                serverConfig.getAclInMemoryCacheTTLMs()))
         : Optional.empty();
     /**
      * If the store-level access handler is present, we don't want to fail fast if the access gets denied by {@link ServerAclHandler}.
@@ -136,8 +146,7 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
           storeMetadataRepository,
           customizedViewRepository,
           nodeId,
-          quotaUsageStats,
-          metricsRepository);
+          quotaUsageStats);
     } else {
       this.quotaEnforcer = null;
     }
@@ -160,6 +169,14 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
     } else {
       this.serverConnectionStatsHandler = null;
     }
+    if (serverConfig.isLoadControllerEnabled()) {
+      this.loadControllerHandler =
+          new ServerLoadControllerHandler(serverConfig, new ServerLoadStats(metricsRepository, "server_load"));
+      LOGGER.info("Server load controller is enabled");
+    } else {
+      this.loadControllerHandler = null;
+      LOGGER.info("Server load controller is disabled");
+    }
   }
 
   /*
@@ -178,7 +195,8 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
     if (sslFactory.isPresent()) {
       SslInitializer sslInitializer = new SslInitializer(SslUtils.toAlpiniSSLFactory(sslFactory.get()), false);
       if (sslHandshakeExecutor != null) {
-        sslInitializer.enableSslTaskExecutor(sslHandshakeExecutor);
+        sslInitializer
+            .enableSslTaskExecutor(sslHandshakeExecutor, sslHandshakesThreadPoolStats::recordQueuedTasksCount);
       }
       sslInitializer.setIdentityParser(identityParser::parseIdentityFromCert);
       ch.pipeline().addLast(sslInitializer);
@@ -186,7 +204,7 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
     }
 
     ChannelPipelineConsumer httpPipelineInitializer = (pipeline, whetherNeedServerCodec) -> {
-      StatsHandler statsHandler = new StatsHandler(singleGetStats, multiGetStats, computeStats);
+      StatsHandler statsHandler = new StatsHandler(singleGetStats, multiGetStats, computeStats, loadControllerHandler);
       pipeline.addLast(statsHandler);
       if (whetherNeedServerCodec) {
         pipeline.addLast(new HttpServerCodec());
@@ -213,6 +231,9 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
       pipeline.addLast(new HttpObjectAggregator(serverConfig.getMaxRequestSize()))
           .addLast(new OutboundHttpWrapperHandler(statsHandler))
           .addLast(new IdleStateHandler(0, 0, serverConfig.getNettyIdleTimeInSeconds()));
+      if (loadControllerHandler != null) {
+        pipeline.addLast(loadControllerHandler);
+      }
       if (sslFactory.isPresent()) {
         pipeline.addLast(verifySsl);
         if (aclHandler.isPresent()) {
@@ -245,7 +266,7 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
   public VeniceServerGrpcRequestProcessor initGrpcRequestProcessor() {
     VeniceServerGrpcRequestProcessor grpcServerRequestProcessor = new VeniceServerGrpcRequestProcessor();
 
-    StatsHandler statsHandler = new StatsHandler(singleGetStats, multiGetStats, computeStats);
+    StatsHandler statsHandler = new StatsHandler(singleGetStats, multiGetStats, computeStats, null);
     GrpcStatsHandler grpcStatsHandler = new GrpcStatsHandler(statsHandler);
     grpcServerRequestProcessor.addHandler(grpcStatsHandler);
 

@@ -53,7 +53,7 @@ public class TestMergeWithValueLevelTimestamp extends TestMergeConflictResolver 
         newBB,
         30L,
         1,
-        1L,
+        P1,
         0,
         0);
 
@@ -68,7 +68,7 @@ public class TestMergeWithValueLevelTimestamp extends TestMergeConflictResolver 
         newBB,
         10L,
         1,
-        1L,
+        P1,
         0,
         0);
     Assert.assertTrue(mergeConflictResult.isUpdateIgnored());
@@ -80,7 +80,7 @@ public class TestMergeWithValueLevelTimestamp extends TestMergeConflictResolver 
         newBB,
         20L,
         1,
-        1L,
+        P1,
         0,
         0);
 
@@ -97,7 +97,7 @@ public class TestMergeWithValueLevelTimestamp extends TestMergeConflictResolver 
         newBB,
         30L,
         1,
-        1L,
+        P1,
         0,
         0);
     Assert.assertEquals(mergeConflictResult.getNewValue(), newBB);
@@ -111,7 +111,7 @@ public class TestMergeWithValueLevelTimestamp extends TestMergeConflictResolver 
             newBB,
             30L,
             1,
-            1L,
+            P1,
             0,
             0));
 
@@ -122,7 +122,7 @@ public class TestMergeWithValueLevelTimestamp extends TestMergeConflictResolver 
         newBB,
         30L,
         1,
-        1L,
+        P1,
         0,
         0);
     result = deserializer.deserialize(mergeConflictResult.getNewValue());
@@ -132,11 +132,11 @@ public class TestMergeWithValueLevelTimestamp extends TestMergeConflictResolver 
     // win on a tie, meaning
     // this should get an ignore result
     mergeConflictResult = mergeConflictResolver
-        .put(Lazy.of(() -> null), new RmdWithValueSchemaId(1, RMD_VERSION_ID, rmdRecord), newBB, 20L, 1, 1L, 0, 0);
+        .put(Lazy.of(() -> null), new RmdWithValueSchemaId(1, RMD_VERSION_ID, rmdRecord), newBB, 20L, 1, P1, 0, 0);
     Assert.assertTrue(mergeConflictResult.isUpdateIgnored());
 
     // Validate null RMD for existing old value
-    mergeConflictResult = mergeConflictResolver.put(Lazy.of(() -> oldBB), null, newBB, 30L, 1, 1L, 0, 0);
+    mergeConflictResult = mergeConflictResolver.put(Lazy.of(() -> oldBB), null, newBB, 30L, 1, P1, 0, 0);
     Assert.assertEquals(mergeConflictResult.getNewValue(), newBB);
   }
 
@@ -165,34 +165,34 @@ public class TestMergeWithValueLevelTimestamp extends TestMergeConflictResolver 
     // new MergeConflictResolver(schemaRepository, storeName, valueSchemaID -> new GenericData.Record(rmdSchemaV1));
 
     MergeConflictResult mergeConflictResult = mergeConflictResolver
-        .delete(Lazy.of(() -> null), new RmdWithValueSchemaId(1, RMD_VERSION_ID, timestampRecord), 30L, 1L, 0, 0);
+        .delete(Lazy.of(() -> null), new RmdWithValueSchemaId(1, RMD_VERSION_ID, timestampRecord), 30L, P1, 0, 0);
 
     // verify delete null value
     Assert.assertNull(mergeConflictResult.getNewValue());
 
     // verify update ignored.
     mergeConflictResult = mergeConflictResolver
-        .delete(Lazy.of(() -> null), new RmdWithValueSchemaId(1, RMD_VERSION_ID, timestampRecord), 10L, 1L, 0, 0);
+        .delete(Lazy.of(() -> null), new RmdWithValueSchemaId(1, RMD_VERSION_ID, timestampRecord), 10L, P1, 0, 0);
     Assert.assertTrue(mergeConflictResult.isUpdateIgnored());
 
     // verify same timestamp case
     mergeConflictResult = mergeConflictResolver
-        .delete(Lazy.of(() -> null), new RmdWithValueSchemaId(1, RMD_VERSION_ID, timestampRecord), 30L, 1L, 0, 0);
+        .delete(Lazy.of(() -> null), new RmdWithValueSchemaId(1, RMD_VERSION_ID, timestampRecord), 30L, P1, 0, 0);
     Assert.assertNull(mergeConflictResult.getNewValue());
 
     // Validate null RMD for existing old value
-    mergeConflictResult = mergeConflictResolver.delete(Lazy.of(() -> null), null, 30, 1, 0, 0);
+    mergeConflictResult = mergeConflictResolver.delete(Lazy.of(() -> null), null, 30, P1, 0, 0);
     Assert.assertFalse(mergeConflictResult.isUpdateIgnored());
     Assert.assertNull(mergeConflictResult.getNewValue());
 
     // Validate null RMD for invalid schema id
-    mergeConflictResult = mergeConflictResolver.delete(Lazy.of(() -> null), null, 30, 1, 0, 0);
+    mergeConflictResult = mergeConflictResolver.delete(Lazy.of(() -> null), null, 30, P1, 0, 0);
     Assert.assertFalse(mergeConflictResult.isUpdateIgnored());
     Assert.assertEquals(mergeConflictResult.getValueSchemaId(), 1);
 
     // Validate delete wins on same timestamp
     mergeConflictResult = mergeConflictResolver
-        .delete(Lazy.of(() -> null), new RmdWithValueSchemaId(1, RMD_VERSION_ID, timestampRecord), 30L, 1L, 0, 0);
+        .delete(Lazy.of(() -> null), new RmdWithValueSchemaId(1, RMD_VERSION_ID, timestampRecord), 30L, P1, 0, 0);
     Assert.assertFalse(mergeConflictResult.isUpdateIgnored());
     Assert.assertEquals(mergeConflictResult.getValueSchemaId(), 1);
 
@@ -200,7 +200,7 @@ public class TestMergeWithValueLevelTimestamp extends TestMergeConflictResolver 
     Assert.assertThrows(
         VeniceException.class,
         () -> mergeConflictResolver
-            .delete(Lazy.of(() -> null), new RmdWithValueSchemaId(-1, RMD_VERSION_ID, timestampRecord), 30L, 1L, 0, 0));
+            .delete(Lazy.of(() -> null), new RmdWithValueSchemaId(-1, RMD_VERSION_ID, timestampRecord), 30L, P1, 0, 0));
   }
 
   @Test
@@ -248,7 +248,7 @@ public class TestMergeWithValueLevelTimestamp extends TestMergeConflictResolver 
             newBB,
             writeTs.get(j),
             1,
-            1,
+            P1,
             0,
             0);
       }
@@ -268,7 +268,7 @@ public class TestMergeWithValueLevelTimestamp extends TestMergeConflictResolver 
             newBB,
             writeTs.get(i),
             1,
-            1,
+            P1,
             0,
             0);
       }

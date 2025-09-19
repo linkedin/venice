@@ -8,6 +8,7 @@ import com.linkedin.venice.pushstatus.PushStatusKey;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.utils.LatencyUtils;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import com.linkedin.venice.writer.update.UpdateBuilder;
@@ -42,9 +43,9 @@ public class PushStatusStoreWriter implements AutoCloseable {
         LOGGER.error("Failed to update push status. Error: ", exception);
       } else {
         LOGGER.info(
-            "Updated push status into topic {} at offset {}.",
-            produceResult.getTopic(),
-            produceResult.getOffset());
+            "Updated push status into topic: {} at position: {}",
+            Utils.getReplicaId(produceResult.getTopic(), produceResult.getPartition()),
+            produceResult.getPubSubPosition());
       }
     }
   };
@@ -96,7 +97,11 @@ public class PushStatusStoreWriter implements AutoCloseable {
     PushStatusKey pushStatusKey = PushStatusStoreUtils.getHeartbeatKey(instanceName);
     UpdateBuilder updateBuilder = new UpdateBuilderImpl(updateSchema);
     updateBuilder.setNewFieldValue("reportTimestamp", heartbeat);
-    LOGGER.info("Sending heartbeat of {}", instanceName);
+    LOGGER.info(
+        "Sending heartbeat: {} with instance name: {} for push status store of: {}",
+        heartbeat,
+        instanceName,
+        storeName);
     writer.update(pushStatusKey, updateBuilder.build(), valueSchemaId, derivedSchemaId, null);
   }
 

@@ -1,5 +1,7 @@
 package com.linkedin.venice.pubsub.adapter.kafka;
 
+import static com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaUtils.KAFKA_SSL_MANDATORY_CONFIGS;
+import static com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig.KAFKA_PRODUCER_CONFIG_PREFIXES;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertSame;
@@ -9,9 +11,13 @@ import static org.testng.Assert.assertTrue;
 import com.linkedin.venice.pubsub.api.EmptyPubSubMessageHeaders;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeader;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeaders;
+import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
+import com.linkedin.venice.utils.VeniceProperties;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Properties;
 import java.util.function.Supplier;
+import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.common.header.Header;
 import org.apache.kafka.common.header.internals.RecordHeaders;
 import org.testng.annotations.Test;
@@ -54,5 +60,33 @@ public class ApacheKafkaUtilsTest {
       assertTrue(headerMap.containsKey(header.key()));
       assertEquals(header.value(), headerMap.get(header.key()).getBytes());
     }
+  }
+
+  @Test
+  public void testCopySaslConfiguration() {
+    String SASL_JAAS_CONFIG =
+        "org.apache.kafka.common.security.plain.PlainLoginModule required " + "username=\"foo\" password=\"bar\"\n";
+    String SASL_MECHANISM = "PLAIN";
+    Properties config = new Properties();
+    config.put("kafka.sasl.jaas.config", SASL_JAAS_CONFIG);
+    config.put("kafka.sasl.mechanism", SASL_MECHANISM);
+    KAFKA_SSL_MANDATORY_CONFIGS.forEach(configName -> config.put(configName, configName + "DefaultValue"));
+    VeniceProperties veniceProperties = new VeniceProperties(config);
+    Properties filteredConfig = ApacheKafkaUtils.getValidKafkaClientProperties(
+        veniceProperties,
+        PubSubSecurityProtocol.SASL_SSL,
+        ProducerConfig.configNames(),
+        KAFKA_PRODUCER_CONFIG_PREFIXES);
+    assertEquals(filteredConfig.get("sasl.jaas.config"), SASL_JAAS_CONFIG);
+    assertEquals(filteredConfig.get("sasl.mechanism"), SASL_MECHANISM);
+    assertEquals(filteredConfig.get("security.protocol"), "SASL_SSL");
+  }
+
+  @Test
+  public void testIsKafkaProtocolValid() {
+    assertTrue(ApacheKafkaUtils.isKafkaProtocolValid("SSL"));
+    assertTrue(ApacheKafkaUtils.isKafkaProtocolValid("PLAINTEXT"));
+    assertTrue(ApacheKafkaUtils.isKafkaProtocolValid("SASL_SSL"));
+    assertTrue(ApacheKafkaUtils.isKafkaProtocolValid("SASL_PLAINTEXT"));
   }
 }

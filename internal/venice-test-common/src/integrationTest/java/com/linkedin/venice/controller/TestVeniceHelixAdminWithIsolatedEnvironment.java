@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller;
 
+import com.linkedin.venice.controller.stats.DeadStoreStats;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoClusterException;
@@ -10,8 +11,11 @@ import com.linkedin.venice.helix.ZkStoreConfigAccessor;
 import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
+import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.TestUtils;
@@ -21,10 +25,13 @@ import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import org.apache.helix.model.ExternalView;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
@@ -36,14 +43,16 @@ import org.testng.annotations.Test;
  * Please consider adding cases to {@link TestVeniceHelixAdminWithSharedEnvironment}.
  */
 public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVeniceHelixAdmin {
+  private static final Logger LOGGER = LogManager.getLogger(TestVeniceHelixAdminWithIsolatedEnvironment.class);
+
   @BeforeMethod(alwaysRun = true)
   public void setUp() throws Exception {
-    setupCluster(false, new MetricsRepository());
+    setupCluster(new MetricsRepository());
   }
 
   @AfterMethod(alwaysRun = true)
   public void cleanUp() {
-    cleanupCluster();
+    super.cleanUp();
   }
 
   @Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST_MS)
@@ -61,7 +70,8 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
         new MetricsRepository(),
         D2TestUtils.getAndStartD2Client(zkAddress),
         pubSubTopicRepository,
-        pubSubBrokerWrapper.getPubSubClientsFactory());
+        pubSubBrokerWrapper.getPubSubClientsFactory(),
+        pubSubBrokerWrapper.getPubSubPositionTypeRegistry());
     // Start stand by controller
     newAdmin.initStorageCluster(clusterName);
     List<VeniceHelixAdmin> allAdmins = new ArrayList<>();
@@ -141,7 +151,8 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
         new MetricsRepository(),
         D2TestUtils.getAndStartD2Client(zkAddress),
         pubSubTopicRepository,
-        pubSubBrokerWrapper.getPubSubClientsFactory());
+        pubSubBrokerWrapper.getPubSubClientsFactory(),
+        pubSubBrokerWrapper.getPubSubPositionTypeRegistry());
     newLeaderAdmin.initStorageCluster(clusterName);
     List<VeniceHelixAdmin> admins = new ArrayList<>();
     admins.add(veniceAdmin);
@@ -234,6 +245,42 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
     }
   }
 
+  @Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST_MS)
+  public void testAbortMigrationStoreDeletion() {
+    String storeName = Utils.getUniqueString("test_abort_migration_cleanup_store");
+    try {
+      veniceAdmin.createStore(clusterName, storeName, storeOwner, KEY_SCHEMA, VALUE_SCHEMA);
+      veniceAdmin.updateStore(
+          clusterName,
+          storeName,
+          new UpdateStoreQueryParams().setStoreMigration(false).setEnableReads(false).setEnableWrites(false));
+
+      PubSubTopic rtTopic = pubSubTopicRepository.getTopic(Utils.composeRealTimeTopic(storeName, 1));
+      veniceAdmin.getTopicManager().createTopic(rtTopic, 1, 1, true);
+
+      Assert.assertTrue(veniceAdmin.getTopicManager().containsTopic(rtTopic));
+      boolean abort = true;
+      veniceAdmin.deleteStore(clusterName, storeName, abort, Store.IGNORE_VERSION, false);
+      Assert.assertTrue(veniceAdmin.getTopicManager().containsTopic(rtTopic));
+      Assert.assertNotNull(veniceAdmin.getStore(clusterName, storeName));
+
+      String newStoreName = Utils.getUniqueString("test_cleanup_store");
+      veniceAdmin.createStore(clusterName, newStoreName, storeOwner, KEY_SCHEMA, VALUE_SCHEMA);
+      veniceAdmin.updateStore(
+          clusterName,
+          newStoreName,
+          new UpdateStoreQueryParams().setStoreMigration(false).setEnableReads(false).setEnableWrites(false));
+      PubSubTopic newRtTopic = pubSubTopicRepository.getTopic(Utils.composeRealTimeTopic(newStoreName, 1));
+      veniceAdmin.getTopicManager().createTopic(newRtTopic, 1, 1, true);
+      abort = false;
+      Assert.assertTrue(veniceAdmin.getTopicManager().containsTopic(newRtTopic));
+      veniceAdmin.deleteStore(clusterName, newStoreName, abort, Store.IGNORE_VERSION, false);
+      Assert.assertNull(veniceAdmin.getStore(clusterName, newStoreName));
+    } finally {
+      veniceAdmin.deleteStore(clusterName, storeName, false, Store.IGNORE_VERSION, false);
+    }
+  }
+
   @Test
   public void testIdempotentStoreDeletion() {
     String storeName = Utils.getUniqueString("test_delete_store");
@@ -263,6 +310,81 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
     Assert.assertNull(storeConfigAccessor.getStoreConfig(newStoreName));
   }
 
+  @Test
+  public void testStoreLifecycle_ValidateDeleted() {
+    String storeName = Utils.getUniqueString("test_validate_deleted_store");
+    int largestUsedVersion = Store.IGNORE_VERSION;
+
+    // Create store
+    veniceAdmin.createStore(clusterName, storeName, storeOwner, KEY_SCHEMA, VALUE_SCHEMA);
+
+    // Disable reads and writes before deletion (required by Venice)
+    veniceAdmin
+        .updateStore(clusterName, storeName, new UpdateStoreQueryParams().setEnableReads(false).setEnableWrites(false));
+
+    // Delete store
+    veniceAdmin.deleteStore(clusterName, storeName, largestUsedVersion, true);
+
+    // Validate deletion
+    StoreDeletedValidation result = veniceAdmin.validateStoreDeleted(clusterName, storeName);
+
+    Assert.assertTrue(result.isDeleted(), "Store should be completely deleted. Failure reason: " + result.getError());
+  }
+
+  @Test
+  public void testStoreLifecycleValidateDeleted_WithLeftoverTopics() {
+    String storeName = Utils.getUniqueString("test_validate_deleted_store_with_leftover_topics");
+
+    // Create store
+    veniceAdmin.createStore(clusterName, storeName, storeOwner, KEY_SCHEMA, VALUE_SCHEMA);
+
+    // Create a version topic manually to simulate a version that existed
+    String versionTopicName = Version.composeKafkaTopic(storeName, 1);
+    PubSubTopic versionTopic = pubSubTopicRepository.getTopic(versionTopicName);
+    TopicManager topicManager = veniceAdmin.getTopicManager();
+
+    // Create the topic to simulate that a version existed
+    topicManager.createTopic(versionTopic, 1, 1, true);
+
+    // Verify topic exists
+    Assert.assertTrue(topicManager.containsTopic(versionTopic), "Version topic should exist");
+
+    // Disable reads and writes before deletion (required by Venice)
+    veniceAdmin
+        .updateStore(clusterName, storeName, new UpdateStoreQueryParams().setEnableReads(false).setEnableWrites(false));
+
+    // Delete store metadata only (without trying to delete versions through normal flow)
+    // This simulates the scenario where store metadata is deleted but topics remain due to disabled cleanup
+    veniceAdmin.getHelixVeniceClusterResources(clusterName).getStoreMetadataRepository().deleteStore(storeName);
+
+    // Also delete the store config to simulate complete metadata cleanup
+    veniceAdmin.getHelixVeniceClusterResources(clusterName).getStoreConfigAccessor().deleteConfig(storeName);
+
+    // Verify store is gone from metadata but topic still exists (simulating leftover scenario)
+    Assert.assertNull(veniceAdmin.getStore(clusterName, storeName), "Store should be deleted from metadata");
+    Assert.assertTrue(topicManager.containsTopic(versionTopic), "Version topic should still exist");
+
+    // Now validate store deletion - this should detect the leftover topics
+    StoreDeletedValidation result = veniceAdmin.validateStoreDeleted(clusterName, storeName);
+
+    Assert.assertFalse(result.isDeleted(), "Store validation should fail due to leftover topics");
+    Assert.assertTrue(
+        result.getError().contains("PubSub topic still exists"),
+        "Error message should mention leftover PubSub topics. Actual error: " + result.getError());
+    Assert.assertTrue(
+        result.getError().contains(versionTopicName),
+        "Error message should mention the specific leftover topic. Actual error: " + result.getError());
+
+    // Clean up the leftover topic for the validation test
+    topicManager.ensureTopicIsDeletedAndBlockWithRetry(versionTopic);
+
+    // Verify that after cleanup, validation passes
+    StoreDeletedValidation resultAfterCleanup = veniceAdmin.validateStoreDeleted(clusterName, storeName);
+    Assert.assertTrue(
+        resultAfterCleanup.isDeleted(),
+        "Store validation should pass after topic cleanup. Error: " + resultAfterCleanup.getError());
+  }
+
   public static boolean resourceMissingTopState(SafeHelixManager helixManager, String clusterName, String resourceID) {
     ExternalView externalView = helixManager.getClusterManagmentTool().getResourceExternalView(clusterName, resourceID);
     for (String partition: externalView.getPartitionSet()) {
@@ -273,5 +395,41 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
       }
     }
     return false;
+  }
+
+  @Test
+  public void testDeadStoreStatsInitialization() {
+    int newAdminPort = controllerConfig.getAdminPort() + 100;
+    PropertyBuilder builder = new PropertyBuilder().put(controllerProps.toProperties())
+        .put("admin.port", newAdminPort)
+        .put("cluster.name", clusterName)
+        .put("controller.dead.store.endpoint.enabled", true)
+        .put("controller.dead.store.stats.class.name", MockDeadStoreStats.class.getName());
+    VeniceProperties newControllerProps = builder.build();
+    VeniceControllerClusterConfig newConfig = new VeniceControllerClusterConfig(newControllerProps);
+
+    VeniceHelixAdmin admin = new VeniceHelixAdmin(
+        TestUtils.getMultiClusterConfigFromOneCluster(newConfig),
+        new MetricsRepository(),
+        D2TestUtils.getAndStartD2Client(zkAddress),
+        pubSubTopicRepository,
+        pubSubBrokerWrapper.getPubSubClientsFactory(),
+        pubSubBrokerWrapper.getPubSubPositionTypeRegistry());
+
+    Assert.assertTrue(admin.deadStoreStatsMap.get(clusterName) instanceof MockDeadStoreStats);
+  }
+
+  public static class MockDeadStoreStats implements DeadStoreStats {
+    public MockDeadStoreStats(VeniceProperties props) {
+    }
+
+    @Override
+    public List<StoreInfo> getDeadStores(List<StoreInfo> storeInfos, Map<String, String> params) {
+      return null;
+    }
+
+    @Override
+    public void preFetchStats(List<StoreInfo> storeInfos) {
+    }
   }
 }

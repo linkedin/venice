@@ -8,13 +8,13 @@ import com.linkedin.venice.spark.SparkConstants;
 import com.linkedin.venice.spark.datawriter.task.DataWriterAccumulators;
 import com.linkedin.venice.spark.datawriter.task.SparkDataWriterTaskTracker;
 import com.linkedin.venice.spark.engine.SparkEngineTaskConfigProvider;
+import com.linkedin.venice.utils.TriConsumer;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Properties;
-import java.util.function.BiConsumer;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.catalyst.expressions.GenericRowWithSchema;
 
@@ -35,8 +35,9 @@ public class SparkInputRecordProcessor extends AbstractInputRecordProcessor<Byte
     List<Row> outputRows = new ArrayList<>();
     ByteBuffer keyBB = ByteBuffer.wrap(record.getAs(SparkConstants.KEY_COLUMN_NAME));
     byte[] value = record.getAs(SparkConstants.VALUE_COLUMN_NAME);
+    byte[] rmd = record.getAs(SparkConstants.RMD_COLUMN_NAME);
     ByteBuffer valueBB = value == null ? null : ByteBuffer.wrap(value);
-    super.processRecord(keyBB, valueBB, getRecordEmitter(outputRows), dataWriterTaskTracker);
+    super.processRecord(keyBB, valueBB, rmd, getRecordEmitter(outputRows), dataWriterTaskTracker);
     return outputRows.iterator();
   }
 
@@ -45,9 +46,9 @@ public class SparkInputRecordProcessor extends AbstractInputRecordProcessor<Byte
     return IdentityVeniceRecordReader.getInstance();
   }
 
-  private BiConsumer<byte[], byte[]> getRecordEmitter(List<Row> rows) {
-    return (key, value) -> {
-      rows.add(new GenericRowWithSchema(new Object[] { key, value }, SparkConstants.DEFAULT_SCHEMA));
+  private TriConsumer<byte[], byte[], byte[]> getRecordEmitter(List<Row> rows) {
+    return (key, value, rmd) -> {
+      rows.add(new GenericRowWithSchema(new Object[] { key, value, rmd }, SparkConstants.DEFAULT_SCHEMA));
     };
   }
 }

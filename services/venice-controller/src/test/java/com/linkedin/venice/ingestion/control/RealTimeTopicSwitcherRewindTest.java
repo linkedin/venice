@@ -12,7 +12,6 @@ import static org.testng.Assert.fail;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.BufferReplayPolicy;
-import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.Store;
@@ -63,7 +62,7 @@ public class RealTimeTopicSwitcherRewindTest {
     when(veniceWriterFactory.<byte[], byte[], byte[]>createVeniceWriter(any())).thenReturn(veniceWriter);
 
     // Methods under test
-    doCallRealMethod().when(topicReplicator).ensurePreconditions(any(), any(), any(), any());
+    doCallRealMethod().when(topicReplicator).ensurePreconditions(any(), any(), any());
     doCallRealMethod().when(topicReplicator).getRewindStartTime(any(), any(), anyLong());
     doCallRealMethod().when(topicReplicator).sendTopicSwitch(any(), any(), anyLong(), anyList());
   }
@@ -78,12 +77,12 @@ public class RealTimeTopicSwitcherRewindTest {
             REWIND_TIME_IN_SECONDS,
             1,
             HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD,
-            DataReplicationPolicy.NON_AGGREGATE,
             BufferReplayPolicy.REWIND_FROM_EOP)));
     final PubSubTopic sourceTopicName = pubSubTopicRepository.getTopic("source topic name_v1");
     final PubSubTopic destinationTopicName = pubSubTopicRepository.getTopic("destination topic name_v1");
+    store.setHybridStoreConfig(hybridStoreConfig.get());
 
-    topicReplicator.ensurePreconditions(sourceTopicName, destinationTopicName, store, hybridStoreConfig);
+    topicReplicator.ensurePreconditions(sourceTopicName, destinationTopicName, store);
     long rewindStartTime =
         topicReplicator.getRewindStartTime(mock(Version.class), hybridStoreConfig, VERSION_CREATION_TIME_MS);
     assertEquals(
@@ -94,8 +93,9 @@ public class RealTimeTopicSwitcherRewindTest {
 
     verify(topicReplicator).sendTopicSwitch(sourceTopicName, destinationTopicName, rewindStartTime, null);
 
+    store.setHybridStoreConfig(null);
     try {
-      topicReplicator.ensurePreconditions(sourceTopicName, destinationTopicName, store, Optional.empty());
+      topicReplicator.ensurePreconditions(sourceTopicName, destinationTopicName, store);
       fail("topicReplicator.startBufferReplay should fail (FOR NOW) for non-Hybrid stores.");
     } catch (VeniceException e) {
       // expected
@@ -112,12 +112,12 @@ public class RealTimeTopicSwitcherRewindTest {
             REWIND_TIME_IN_SECONDS,
             1,
             HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD,
-            DataReplicationPolicy.NON_AGGREGATE,
             BufferReplayPolicy.REWIND_FROM_SOP)));
     final PubSubTopic sourceTopicName = pubSubTopicRepository.getTopic("source topic name_v1");
     final PubSubTopic destinationTopicName = pubSubTopicRepository.getTopic("destination topic name_v1");
 
-    topicReplicator.ensurePreconditions(sourceTopicName, destinationTopicName, store, hybridStoreConfig);
+    store.setHybridStoreConfig(hybridStoreConfig.get());
+    topicReplicator.ensurePreconditions(sourceTopicName, destinationTopicName, store);
     long rewindStartTime =
         topicReplicator.getRewindStartTime(mock(Version.class), hybridStoreConfig, VERSION_CREATION_TIME_MS);
     assertEquals(
@@ -128,8 +128,9 @@ public class RealTimeTopicSwitcherRewindTest {
 
     verify(topicReplicator).sendTopicSwitch(sourceTopicName, destinationTopicName, rewindStartTime, null);
 
+    store.setHybridStoreConfig(null);
     try {
-      topicReplicator.ensurePreconditions(sourceTopicName, destinationTopicName, store, Optional.empty());
+      topicReplicator.ensurePreconditions(sourceTopicName, destinationTopicName, store);
       fail("topicReplicator.startBufferReplay should fail (FOR NOW) for non-Hybrid stores.");
     } catch (VeniceException e) {
       // expected

@@ -1,142 +1,83 @@
 package com.linkedin.venice.stats.metrics;
 
 import com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository;
+import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.metrics.DoubleHistogram;
 import io.opentelemetry.api.metrics.LongCounter;
+import io.opentelemetry.api.metrics.LongGauge;
+import io.opentelemetry.api.metrics.LongUpDownCounter;
 import io.tehuti.metrics.MeasurableStat;
-import io.tehuti.metrics.Sensor;
-import io.tehuti.utils.RedundantLogFilter;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 
 
 /**
- * Operational state of a metric. It holds <br>
- * 1. {@link MetricEntity}
- * 2. 1 Otel Instrument and
- * 3. multiple tehuti Sensors for this Otel Metric
+ * Abstract operational state of a non-async metric extended on top of {@link AsyncMetricEntityState}
+ * to provide common functionality for non-async metrics like record() which is not supported for
+ * async metrics.
+ *
+ * This abstract class should be extended by different MetricEntityStates like {@link MetricEntityStateBase} to
+ * pre-create/cache the {@link Attributes} for different number/type of dimensions. check out the
+ * classes extending this for more details. <br>
  */
-public class MetricEntityState {
-  private static final Logger LOGGER = LogManager.getLogger(MetricEntityState.class);
-  private static final RedundantLogFilter REDUNDANT_LOG_FILTER = RedundantLogFilter.getRedundantLogFilter();
-  private final MetricEntity metricEntity;
-  /** Otel metric */
-  private Object otelMetric = null;
-  /** Map of tehuti names and sensors: 1 Otel metric can cover multiple Tehuti sensors */
-  private Map<TehutiMetricNameEnum, Sensor> tehutiSensors = null;
-
-  public MetricEntityState(MetricEntity metricEntity, VeniceOpenTelemetryMetricsRepository otelRepository) {
-    this.metricEntity = metricEntity;
-    setOtelMetric(otelRepository.createInstrument(this.metricEntity));
-  }
-
+public abstract class MetricEntityState extends AsyncMetricEntityState {
   public MetricEntityState(
       MetricEntity metricEntity,
       VeniceOpenTelemetryMetricsRepository otelRepository,
-      TehutiSensorRegistrationFunction registerTehutiSensor,
-      Map<TehutiMetricNameEnum, List<MeasurableStat>> tehutiMetricInput) {
-    this.metricEntity = metricEntity;
-    createMetric(otelRepository, tehutiMetricInput, registerTehutiSensor);
-  }
-
-  public void setOtelMetric(Object otelMetric) {
-    this.otelMetric = otelMetric;
-  }
-
-  /**
-   * Add Tehuti {@link Sensor} to tehutiSensors map and throw exception if sensor with same name already exists
-   */
-  public void addTehutiSensors(TehutiMetricNameEnum name, Sensor tehutiSensor) {
-    if (tehutiSensors == null) {
-      tehutiSensors = new HashMap<>();
-    }
-    if (tehutiSensors.put(name, tehutiSensor) != null) {
-      throw new IllegalArgumentException("Sensor with name '" + name + "' already exists.");
-    }
-  }
-
-  /**
-   * create the metrics/Sensors
-   */
-  @FunctionalInterface
-  public interface TehutiSensorRegistrationFunction {
-    Sensor register(String sensorName, MeasurableStat... stats);
-  }
-
-  public void createMetric(
-      VeniceOpenTelemetryMetricsRepository otelRepository,
-      Map<TehutiMetricNameEnum, List<MeasurableStat>> tehutiMetricInput,
-      TehutiSensorRegistrationFunction registerTehutiSensor) {
-    // Otel metric: otelRepository will be null if otel is not enabled
-    if (otelRepository != null) {
-      setOtelMetric(otelRepository.createInstrument(this.metricEntity));
-    }
-    // tehuti metric
-    for (Map.Entry<TehutiMetricNameEnum, List<MeasurableStat>> entry: tehutiMetricInput.entrySet()) {
-      addTehutiSensors(
-          entry.getKey(),
-          registerTehutiSensor
-              .register(entry.getKey().getMetricName(), entry.getValue().toArray(new MeasurableStat[0])));
-    }
+      Map<VeniceMetricsDimensions, String> baseDimensionsMap,
+      TehutiSensorRegistrationFunction registerTehutiSensorFn,
+      TehutiMetricNameEnum tehutiMetricNameEnum,
+      List<MeasurableStat> tehutiMetricStats) {
+    super(
+        metricEntity,
+        otelRepository,
+        baseDimensionsMap,
+        registerTehutiSensorFn,
+        tehutiMetricNameEnum,
+        tehutiMetricStats,
+        null,
+        null);
   }
 
   /**
    * Record otel metrics
    */
-  void recordOtelMetric(double value, Attributes otelDimensions) {
+  public void recordOtelMetric(double value, Attributes attributes) {
     if (otelMetric != null) {
       MetricType metricType = this.metricEntity.getMetricType();
       switch (metricType) {
         case HISTOGRAM:
         case MIN_MAX_COUNT_SUM_AGGREGATIONS:
-          ((DoubleHistogram) otelMetric).record(value, otelDimensions);
+          ((DoubleHistogram) otelMetric).record(value, attributes);
           break;
         case COUNTER:
-          ((LongCounter) otelMetric).add((long) value, otelDimensions);
+          ((LongCounter) otelMetric).add((long) value, attributes);
           break;
-
+        case UP_DOWN_COUNTER:
+          ((LongUpDownCounter) otelMetric).add((long) value, attributes);
+          break;
+        case GAUGE:
+          ((LongGauge) otelMetric).set((long) value, attributes);
+          break;
         default:
           throw new IllegalArgumentException("Unsupported metric type: " + metricType);
       }
     }
   }
 
-  void recordTehutiMetric(TehutiMetricNameEnum tehutiMetricNameEnum, double value) {
-    if (tehutiSensors != null) {
-      Sensor sensor = tehutiSensors.get(tehutiMetricNameEnum);
-      if (sensor != null) {
-        sensor.record(value);
-      } else {
-        // Log using Redundant log filters to catch any bad tehutiMetricNameEnum is passed in
-        String errorLog = "Tehuti Sensor with name '" + tehutiMetricNameEnum + "' not found.";
-        if (!REDUNDANT_LOG_FILTER.isRedundantLog(errorLog)) {
-          LOGGER.error(errorLog);
-        }
-      }
+  void recordTehutiMetric(double value) {
+    if (tehutiSensor != null) {
+      tehutiSensor.record(value);
     }
   }
 
-  public void record(TehutiMetricNameEnum tehutiMetricNameEnum, long value, Attributes otelDimensions) {
-    recordOtelMetric(value, otelDimensions);
-    recordTehutiMetric(tehutiMetricNameEnum, value);
+  final void record(long value, Attributes attributes) {
+    record(Double.valueOf(value), attributes);
   }
 
-  public void record(TehutiMetricNameEnum tehutiMetricNameEnum, double value, Attributes otelDimensions) {
-    recordOtelMetric(value, otelDimensions);
-    recordTehutiMetric(tehutiMetricNameEnum, value);
-  }
-
-  /** used only for testing */
-  Map<TehutiMetricNameEnum, Sensor> getTehutiSensors() {
-    return tehutiSensors;
-  }
-
-  /** used only for testing */
-  static RedundantLogFilter getRedundantLogFilter() {
-    return REDUNDANT_LOG_FILTER;
+  final void record(double value, Attributes attributes) {
+    recordOtelMetric(value, attributes);
+    recordTehutiMetric(value);
   }
 }

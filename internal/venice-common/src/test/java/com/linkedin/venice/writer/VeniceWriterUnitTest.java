@@ -1,6 +1,7 @@
 package com.linkedin.venice.writer;
 
 import static com.linkedin.venice.message.KafkaKey.HEART_BEAT;
+import static com.linkedin.venice.pubsub.api.PubSubMessageHeaders.EXECUTION_ID_KEY;
 import static com.linkedin.venice.pubsub.api.PubSubMessageHeaders.VENICE_LEADER_COMPLETION_STATE_HEADER;
 import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_KB;
 import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_MB;
@@ -15,6 +16,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.longThat;
 import static org.mockito.Mockito.atLeast;
+import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
@@ -23,6 +25,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 
 import com.linkedin.davinci.kafka.consumer.LeaderFollowerStoreIngestionTask;
@@ -40,12 +43,16 @@ import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.kafka.validation.Segment;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
-import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
+import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeader;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeaders;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
+import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.pubsub.api.PubSubTopicType;
 import com.linkedin.venice.serialization.KeyWithChunkingSuffixSerializer;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -55,13 +62,16 @@ import com.linkedin.venice.storage.protocol.ChunkId;
 import com.linkedin.venice.storage.protocol.ChunkedKeySuffix;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.DataProviderUtils;
+import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.VeniceProperties;
+import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
@@ -76,6 +86,9 @@ import org.testng.annotations.Test;
 
 public class VeniceWriterUnitTest {
   private static final long TIMEOUT = 10 * Time.MS_PER_SECOND;
+  private static final int CHUNK_MANIFEST_SCHEMA_ID =
+      AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion();
+  private static final int CHUNK_VALUE_SCHEMA_ID = AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion();
 
   @Test(dataProvider = "Chunking-And-Partition-Counts", dataProviderClass = DataProviderUtils.class)
   public void testTargetPartitionIsSameForAllOperationsWithTheSameKey(boolean isChunkingEnabled, int partitionCount) {
@@ -86,13 +99,14 @@ public class VeniceWriterUnitTest {
     String stringSchema = "\"string\"";
     VeniceKafkaSerializer serializer = new VeniceAvroKafkaSerializer(stringSchema);
     String testTopic = "test";
-    VeniceWriterOptions veniceWriterOptions = new VeniceWriterOptions.Builder(testTopic).setKeySerializer(serializer)
-        .setValueSerializer(serializer)
-        .setWriteComputeSerializer(serializer)
-        .setPartitioner(new DefaultVenicePartitioner())
-        .setPartitionCount(partitionCount)
-        .setChunkingEnabled(isChunkingEnabled)
-        .build();
+    VeniceWriterOptions veniceWriterOptions =
+        new VeniceWriterOptions.Builder(testTopic).setKeyPayloadSerializer(serializer)
+            .setValuePayloadSerializer(serializer)
+            .setWriteComputePayloadSerializer(serializer)
+            .setPartitioner(new DefaultVenicePartitioner())
+            .setPartitionCount(partitionCount)
+            .setChunkingEnabled(isChunkingEnabled)
+            .build();
     VeniceWriter<Object, Object, Object> writer =
         new VeniceWriter(veniceWriterOptions, VeniceProperties.empty(), mockedProducer);
 
@@ -126,15 +140,16 @@ public class VeniceWriterUnitTest {
     String stringSchema = "\"string\"";
     VeniceKafkaSerializer serializer = new VeniceAvroKafkaSerializer(stringSchema);
     String testTopic = "test";
-    VeniceWriterOptions veniceWriterOptions = new VeniceWriterOptions.Builder(testTopic).setKeySerializer(serializer)
-        .setValueSerializer(serializer)
-        .setWriteComputeSerializer(serializer)
-        .setPartitioner(new DefaultVenicePartitioner())
-        .setTime(SystemTime.INSTANCE)
-        .setChunkingEnabled(true)
-        .setRmdChunkingEnabled(true)
-        .setPartitionCount(1)
-        .build();
+    VeniceWriterOptions veniceWriterOptions =
+        new VeniceWriterOptions.Builder(testTopic).setKeyPayloadSerializer(serializer)
+            .setValuePayloadSerializer(serializer)
+            .setWriteComputePayloadSerializer(serializer)
+            .setPartitioner(new DefaultVenicePartitioner())
+            .setTime(SystemTime.INSTANCE)
+            .setChunkingEnabled(true)
+            .setRmdChunkingEnabled(true)
+            .setPartitionCount(1)
+            .build();
     VeniceWriter<Object, Object, Object> writer =
         new VeniceWriter(veniceWriterOptions, VeniceProperties.empty(), mockedProducer);
     byte[] serializedKeyBytes = new byte[] { 0xa, 0xb };
@@ -144,10 +159,7 @@ public class VeniceWriterUnitTest {
         0,
         null,
         VeniceWriter.DEFAULT_LEADER_METADATA_WRAPPER,
-        new DeleteMetadata(
-            AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion(),
-            1,
-            WriterChunkingHelper.EMPTY_BYTE_BUFFER));
+        new DeleteMetadata(CHUNK_VALUE_SCHEMA_ID, 1, WriterChunkingHelper.EMPTY_BYTE_BUFFER));
 
     ArgumentCaptor<KafkaKey> keyArgumentCaptor = ArgumentCaptor.forClass(KafkaKey.class);
     ArgumentCaptor<KafkaMessageEnvelope> kmeArgumentCaptor = ArgumentCaptor.forClass(KafkaMessageEnvelope.class);
@@ -178,15 +190,16 @@ public class VeniceWriterUnitTest {
     String stringSchema = "\"string\"";
     VeniceKafkaSerializer serializer = new VeniceAvroKafkaSerializer(stringSchema);
     String testTopic = "test";
-    VeniceWriterOptions veniceWriterOptions = new VeniceWriterOptions.Builder(testTopic).setKeySerializer(serializer)
-        .setValueSerializer(serializer)
-        .setWriteComputeSerializer(serializer)
-        .setPartitioner(new DefaultVenicePartitioner())
-        .setTime(SystemTime.INSTANCE)
-        .setChunkingEnabled(true)
-        .setRmdChunkingEnabled(true)
-        .setPartitionCount(1)
-        .build();
+    VeniceWriterOptions veniceWriterOptions =
+        new VeniceWriterOptions.Builder(testTopic).setKeyPayloadSerializer(serializer)
+            .setValuePayloadSerializer(serializer)
+            .setWriteComputePayloadSerializer(serializer)
+            .setPartitioner(new DefaultVenicePartitioner())
+            .setTime(SystemTime.INSTANCE)
+            .setChunkingEnabled(true)
+            .setRmdChunkingEnabled(true)
+            .setPartitionCount(1)
+            .build();
     VeniceWriter<Object, Object, Object> writer =
         new VeniceWriter(veniceWriterOptions, VeniceProperties.empty(), mockedProducer);
 
@@ -200,18 +213,19 @@ public class VeniceWriterUnitTest {
     String valueString = stringBuilder.toString();
 
     LeaderProducerCallback leaderProducerCallback = mock(LeaderProducerCallback.class);
+    PubSubPosition consumedPositionMock = mock(PubSubPosition.class);
     PartitionConsumptionState.TransientRecord transientRecord =
-        new PartitionConsumptionState.TransientRecord(new byte[] { 0xa }, 0, 0, 0, 0, 0);
+        new PartitionConsumptionState.TransientRecord(new byte[] { 0xa }, 0, 0, 0, 0, consumedPositionMock);
     PartitionConsumptionState partitionConsumptionState = mock(PartitionConsumptionState.class);
     when(leaderProducerCallback.getPartitionConsumptionState()).thenReturn(partitionConsumptionState);
     when(partitionConsumptionState.getTransientRecord(any())).thenReturn(transientRecord);
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record = mock(PubSubMessage.class);
+    DefaultPubSubMessage record = mock(DefaultPubSubMessage.class);
     KafkaKey kafkaKey = mock(KafkaKey.class);
     when(record.getKey()).thenReturn(kafkaKey);
     when(kafkaKey.getKey()).thenReturn(new byte[] { 0xa });
     when(leaderProducerCallback.getSourceConsumerRecord()).thenReturn(record);
     LeaderFollowerStoreIngestionTask storeIngestionTask = mock(LeaderFollowerStoreIngestionTask.class);
-    when(storeIngestionTask.isTransientRecordBufferUsed()).thenReturn(true);
+    when(storeIngestionTask.isTransientRecordBufferUsed(any())).thenReturn(true);
     when(leaderProducerCallback.getIngestionTask()).thenReturn(storeIngestionTask);
     doCallRealMethod().when(leaderProducerCallback).setChunkingInfo(any(), any(), any(), any(), any(), any(), any());
     writer.put(
@@ -331,9 +345,7 @@ public class VeniceWriterUnitTest {
     // Check manifest for both value and rmd.
     KafkaMessageEnvelope actualValue4 = kmeArgumentCaptor.getAllValues().get(4);
     assertEquals(actualValue4.messageType, MessageType.PUT.getValue());
-    assertEquals(
-        ((Put) actualValue4.payloadUnion).schemaId,
-        AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion());
+    assertEquals(((Put) actualValue4.payloadUnion).schemaId, CHUNK_MANIFEST_SCHEMA_ID);
     assertEquals(((Put) actualValue4.payloadUnion).replicationMetadataVersionId, putMetadata.getRmdVersionId());
     assertEquals(
         ((Put) actualValue4.payloadUnion).replicationMetadataPayload,
@@ -354,13 +366,14 @@ public class VeniceWriterUnitTest {
     String stringSchema = "\"string\"";
     VeniceKafkaSerializer serializer = new VeniceAvroKafkaSerializer(stringSchema);
     String testTopic = "test";
-    VeniceWriterOptions veniceWriterOptions = new VeniceWriterOptions.Builder(testTopic).setKeySerializer(serializer)
-        .setValueSerializer(serializer)
-        .setWriteComputeSerializer(serializer)
-        .setPartitioner(new DefaultVenicePartitioner())
-        .setTime(SystemTime.INSTANCE)
-        .setPartitionCount(1)
-        .build();
+    VeniceWriterOptions veniceWriterOptions =
+        new VeniceWriterOptions.Builder(testTopic).setKeyPayloadSerializer(serializer)
+            .setValuePayloadSerializer(serializer)
+            .setWriteComputePayloadSerializer(serializer)
+            .setPartitioner(new DefaultVenicePartitioner())
+            .setTime(SystemTime.INSTANCE)
+            .setPartitionCount(1)
+            .build();
     VeniceWriter<Object, Object, Object> writer =
         new VeniceWriter(veniceWriterOptions, new VeniceProperties(writerProperties), mockedProducer);
 
@@ -451,13 +464,14 @@ public class VeniceWriterUnitTest {
     String stringSchema = "\"string\"";
     VeniceKafkaSerializer serializer = new VeniceAvroKafkaSerializer(stringSchema);
     String testTopic = "test";
-    VeniceWriterOptions veniceWriterOptions = new VeniceWriterOptions.Builder(testTopic).setKeySerializer(serializer)
-        .setValueSerializer(serializer)
-        .setWriteComputeSerializer(serializer)
-        .setPartitioner(new DefaultVenicePartitioner())
-        .setTime(SystemTime.INSTANCE)
-        .setPartitionCount(1)
-        .build();
+    VeniceWriterOptions veniceWriterOptions =
+        new VeniceWriterOptions.Builder(testTopic).setKeyPayloadSerializer(serializer)
+            .setValuePayloadSerializer(serializer)
+            .setWriteComputePayloadSerializer(serializer)
+            .setPartitioner(new DefaultVenicePartitioner())
+            .setTime(SystemTime.INSTANCE)
+            .setPartitionCount(1)
+            .build();
     VeniceWriter<Object, Object, Object> writer =
         new VeniceWriter(veniceWriterOptions, new VeniceProperties(writerProperties), mockedProducer);
     for (int i = 0; i < 1000; i++) {
@@ -491,13 +505,14 @@ public class VeniceWriterUnitTest {
     String stringSchema = "\"string\"";
     VeniceKafkaSerializer serializer = new VeniceAvroKafkaSerializer(stringSchema);
     String testTopic = "test_rt";
-    VeniceWriterOptions veniceWriterOptions = new VeniceWriterOptions.Builder(testTopic).setKeySerializer(serializer)
-        .setValueSerializer(serializer)
-        .setWriteComputeSerializer(serializer)
-        .setPartitioner(new DefaultVenicePartitioner())
-        .setTime(SystemTime.INSTANCE)
-        .setPartitionCount(1)
-        .build();
+    VeniceWriterOptions veniceWriterOptions =
+        new VeniceWriterOptions.Builder(testTopic).setKeyPayloadSerializer(serializer)
+            .setValuePayloadSerializer(serializer)
+            .setWriteComputePayloadSerializer(serializer)
+            .setPartitioner(new DefaultVenicePartitioner())
+            .setTime(SystemTime.INSTANCE)
+            .setPartitionCount(1)
+            .build();
     VeniceWriter<Object, Object, Object> writer =
         new VeniceWriter(veniceWriterOptions, new VeniceProperties(writerProperties), mockedProducer);
     PubSubTopicPartition topicPartition = mock(PubSubTopicPartition.class);
@@ -526,7 +541,7 @@ public class VeniceWriterUnitTest {
         pubSubMessageHeadersArgumentCaptor.capture(),
         any());
     for (KafkaKey key: kafkaKeyArgumentCaptor.getAllValues()) {
-      Assert.assertTrue(Arrays.equals(HEART_BEAT.getKey(), key.getKey()));
+      assertTrue(Arrays.equals(HEART_BEAT.getKey(), key.getKey()));
     }
     for (KafkaMessageEnvelope kme: kmeArgumentCaptor.getAllValues()) {
       assertEquals(kme.messageType, MessageType.CONTROL_MESSAGE.getValue());
@@ -636,8 +651,8 @@ public class VeniceWriterUnitTest {
     when(mockedProducer.sendMessage(any(), any(), any(), any(), any(), any())).thenReturn(mockedFuture);
     final VeniceKafkaSerializer<Object> serializer = new VeniceAvroKafkaSerializer(TestWriteUtils.STRING_SCHEMA);
     final VeniceWriterOptions options = new VeniceWriterOptions.Builder("testTopic").setPartitionCount(1)
-        .setKeySerializer(serializer)
-        .setValueSerializer(serializer)
+        .setKeyPayloadSerializer(serializer)
+        .setValuePayloadSerializer(serializer)
         .setChunkingEnabled(isChunkingEnabled)
         .setMaxRecordSizeBytes(maxRecordSizeBytes)
         .build();
@@ -658,12 +673,197 @@ public class VeniceWriterUnitTest {
           continue; // Ok behavior. Small records should never throw RecordTooLargeException
         }
         if (!isChunkingEnabled || size == TOO_LARGE_VALUE_SIZE) {
-          Assert.fail("Should've thrown RecordTooLargeException if chunking not enabled or record is too large");
+          fail("Should've thrown RecordTooLargeException if chunking not enabled or record is too large");
         }
       } catch (Exception e) {
-        Assert.assertTrue(e instanceof RecordTooLargeException);
+        assertTrue(e instanceof RecordTooLargeException);
         Assert.assertNotEquals(size, SMALL_VALUE_SIZE, "Small records shouldn't throw RecordTooLargeException");
       }
     }
+  }
+
+  /**
+   * Testing that VeniceWriter does not throw when calling put() with Global RT DIV messages
+   * and does not enforce size limits on them
+   */
+  @Test(timeOut = TIMEOUT)
+  public void testPutGlobalRtDiv() {
+    final int maxRecordSizeBytes = BYTES_PER_MB; // 1MB
+    CompletableFuture mockedFuture = mock(CompletableFuture.class);
+    PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
+    when(mockedProducer.sendMessage(any(), any(), any(), any(), any(), any())).thenReturn(mockedFuture);
+    ChunkedValueManifestSerializer manifestSerializer = new ChunkedValueManifestSerializer(true);
+    final VeniceKafkaSerializer<Object> serializer = new VeniceAvroKafkaSerializer(TestWriteUtils.STRING_SCHEMA);
+    final VeniceWriterOptions options = new VeniceWriterOptions.Builder("testTopic").setPartitionCount(1)
+        .setKeyPayloadSerializer(serializer)
+        .setValuePayloadSerializer(serializer)
+        .setChunkingEnabled(true)
+        .setMaxRecordSizeBytes(maxRecordSizeBytes)
+        .build();
+    VeniceProperties props = VeniceProperties.empty();
+    final VeniceWriter<Object, Object, Object> writer = new VeniceWriter<>(options, props, mockedProducer);
+
+    // "small" < maxSizeForUserPayloadPerMessageInBytes < "large" < maxRecordSizeBytes < "too large"
+    final int SMALL_VALUE_SIZE = maxRecordSizeBytes / 2;
+    final int LARGE_VALUE_SIZE = maxRecordSizeBytes - BYTES_PER_KB; // offset to account for the size of the key
+    final int TOO_LARGE_VALUE_SIZE = maxRecordSizeBytes * 2;
+
+    // Even when the value is too large, there should not be an exception thrown for Global RT DIV (non-put) messages
+    for (int size: Arrays.asList(SMALL_VALUE_SIZE, LARGE_VALUE_SIZE, TOO_LARGE_VALUE_SIZE)) {
+      char[] valueChars = new char[size];
+      Arrays.fill(valueChars, '*');
+      writer.put(
+          String.format("test-key-%d", size).getBytes(),
+          new String(valueChars).getBytes(),
+          0,
+          1,
+          null,
+          new LeaderMetadataWrapper(ApacheKafkaOffsetPosition.of(0), 0, 0),
+          APP_DEFAULT_LOGICAL_TS,
+          null,
+          null,
+          null,
+          false);
+
+      ArgumentCaptor<KafkaKey> keyArgumentCaptor = ArgumentCaptor.forClass(KafkaKey.class);
+      ArgumentCaptor<KafkaMessageEnvelope> kmeArgumentCaptor = ArgumentCaptor.forClass(KafkaMessageEnvelope.class);
+      verify(mockedProducer, atLeast(1))
+          .sendMessage(any(), any(), keyArgumentCaptor.capture(), kmeArgumentCaptor.capture(), any(), any());
+
+      // KafkaKey for Global RT DIV message should always have messageType == GLOBAL_RT_DIV rather than PUT
+      // (Some control messages are also created in the process of sending the Global RT DIV message)
+      keyArgumentCaptor.getAllValues().forEach(key -> assertTrue(key.isGlobalRtDiv() || key.isControlMessage()));
+
+      for (KafkaMessageEnvelope kme: kmeArgumentCaptor.getAllValues()) {
+        if (kme.messageType == MessageType.CONTROL_MESSAGE.getValue()) {
+          ControlMessage controlMessage = ((ControlMessage) kme.getPayloadUnion());
+          assertEquals(ControlMessageType.START_OF_SEGMENT.getValue(), controlMessage.getControlMessageType());
+        } else {
+          Put put = (Put) kme.payloadUnion;
+          assertEquals(kme.messageType, MessageType.PUT.getValue(), "KME should have type == PUT, not GLOBAL_RT_DIV");
+          if (size == SMALL_VALUE_SIZE) {
+            // The schemaId of the PutValue should indicate that the contents are a GlobalRtDivState object
+            assertEquals(put.getSchemaId(), AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion());
+          } else {
+            // The schemaId of the outer PutValue should indicate that the contents are a chunked object
+            assertTrue(put.getSchemaId() == CHUNK_VALUE_SCHEMA_ID || put.getSchemaId() == CHUNK_MANIFEST_SCHEMA_ID);
+            if (put.getSchemaId() == CHUNK_MANIFEST_SCHEMA_ID) {
+              // The schemaId of the inner ChunkedValueManifest should finally indicate that it's a GlobalRtDivState
+              ChunkedValueManifest chunkedValueManifest = manifestSerializer.deserialize(
+                  put.getPutValue().array(),
+                  AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion());
+              assertEquals(
+                  chunkedValueManifest.schemaId,
+                  AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion());
+            }
+          }
+        }
+      }
+      clearInvocations(mockedProducer); // important for the non-chunked messages don't appear in the next iteration
+    }
+  }
+
+  @Test
+  public void testSetMessageCallback() {
+    VeniceWriter writer = mock(VeniceWriter.class);
+    doCallRealMethod().when(writer).setInternalCallback(any(), any());
+    PubSubProducerCallback messageCallback = mock(PubSubProducerCallback.class);
+    CompletableFutureCallback inputCallback2 = new CompletableFutureCallback(new CompletableFuture<>());
+    CompletableFutureCallback mainCallback = new CompletableFutureCallback(new CompletableFuture<>());
+    CompletableFutureCallback dependentCallback1 = new CompletableFutureCallback(new CompletableFuture<>());
+    PubSubProducerCallback dependentCallback2 = mock(PubSubProducerCallback.class);
+    List<PubSubProducerCallback> dependentCallbackList = new ArrayList<>();
+    dependentCallbackList.add(dependentCallback1);
+    dependentCallbackList.add(dependentCallback2);
+    PubSubProducerCallback inputCallback3 = new ChainedPubSubCallback(mainCallback, dependentCallbackList);
+
+    PubSubProducerCallback resultCallback;
+    // Case 1: Null input
+    resultCallback = writer.setInternalCallback(null, messageCallback);
+    Assert.assertEquals(resultCallback, messageCallback);
+    // Case 2: CompletableCallback input
+    resultCallback = writer.setInternalCallback(inputCallback2, messageCallback);
+    Assert.assertEquals(resultCallback, inputCallback2);
+    Assert.assertEquals(inputCallback2.getCallback(), messageCallback);
+    // Case 3: ChainedCallback input
+    resultCallback = writer.setInternalCallback(inputCallback3, messageCallback);
+    Assert.assertEquals(resultCallback, inputCallback3);
+    Assert.assertEquals(mainCallback.getCallback(), messageCallback);
+    Assert.assertEquals(dependentCallback1.getCallback(), messageCallback);
+  }
+
+  @Test(timeOut = TIMEOUT)
+  public void testExecutionIdInHeader() throws IOException {
+    PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
+    CompletableFuture mockedFuture = mock(CompletableFuture.class);
+    when(mockedProducer.sendMessage(any(), any(), any(), any(), any(), any())).thenReturn(mockedFuture);
+    String stringSchema = "\"string\"";
+    VeniceKafkaSerializer serializer = new VeniceAvroKafkaSerializer(stringSchema);
+    long executionId = 10L;
+    PubSubMessageHeaders pubSubMessageHeaders = new PubSubMessageHeaders();
+    pubSubMessageHeaders.add(
+        new PubSubMessageHeader(EXECUTION_ID_KEY, ObjectMapperFactory.getInstance().writeValueAsBytes(executionId)));
+    String testTopic = PubSubTopicType.ADMIN_TOPIC_PREFIX + "test";
+    VeniceWriterOptions veniceWriterOptions =
+        new VeniceWriterOptions.Builder(testTopic).setKeyPayloadSerializer(serializer)
+            .setValuePayloadSerializer(serializer)
+            .setWriteComputePayloadSerializer(serializer)
+            .setPartitioner(new DefaultVenicePartitioner())
+            .setTime(SystemTime.INSTANCE)
+            .setPartitionCount(1)
+            .build();
+    VeniceWriter<Object, Object, Object> writer =
+        new VeniceWriter(veniceWriterOptions, VeniceProperties.empty(), mockedProducer);
+
+    ByteBuffer replicationMetadata = ByteBuffer.wrap(new byte[] { 0xa, 0xb });
+    PutMetadata putMetadata = new PutMetadata(1, replicationMetadata);
+    String valueString = "abcdefghabcdefghabcdefghabcdefgh";
+
+    writer.put(
+        Integer.toString(1),
+        valueString,
+        1,
+        null,
+        VeniceWriter.DEFAULT_LEADER_METADATA_WRAPPER,
+        APP_DEFAULT_LOGICAL_TS,
+        putMetadata,
+        null,
+        null,
+        pubSubMessageHeaders);
+    ArgumentCaptor<KafkaKey> keyArgumentCaptor = ArgumentCaptor.forClass(KafkaKey.class);
+    ArgumentCaptor<KafkaMessageEnvelope> kmeArgumentCaptor = ArgumentCaptor.forClass(KafkaMessageEnvelope.class);
+    ArgumentCaptor<PubSubMessageHeaders> pubSubMessageHeadersCaptor =
+        ArgumentCaptor.forClass(PubSubMessageHeaders.class);
+    verify(mockedProducer, atLeast(2)).sendMessage(
+        any(),
+        any(),
+        keyArgumentCaptor.capture(),
+        kmeArgumentCaptor.capture(),
+        pubSubMessageHeadersCaptor.capture(),
+        any());
+
+    // The order should be start segment start control message and then the data we wrote
+    assertEquals(kmeArgumentCaptor.getAllValues().size(), 2);
+
+    // Verify value of the 1st message which is segment start.
+    KafkaMessageEnvelope actualValue1 = kmeArgumentCaptor.getAllValues().get(0);
+    assertEquals(actualValue1.messageType, MessageType.CONTROL_MESSAGE.getValue());
+    assertEquals(actualValue1.producerMetadata.segmentNumber, 0);
+    assertEquals(actualValue1.producerMetadata.messageSequenceNumber, 0);
+
+    // Verify value of the 2nd message which is the admin message with execution id.
+    KafkaMessageEnvelope actualValue2 = kmeArgumentCaptor.getAllValues().get(1);
+    assertEquals(actualValue2.messageType, MessageType.PUT.getValue());
+    assertEquals(actualValue2.producerMetadata.segmentNumber, 0);
+    assertEquals(actualValue2.producerMetadata.messageSequenceNumber, 1);
+    assertEquals(((Put) actualValue2.payloadUnion).schemaId, 1);
+    assertEquals(((Put) actualValue2.payloadUnion).replicationMetadataVersionId, 1);
+
+    PubSubMessageHeaders actualPubSubMessageHeaders = pubSubMessageHeadersCaptor.getAllValues().get(1);
+    assertEquals(
+        ObjectMapperFactory.getInstance()
+            .readValue(actualPubSubMessageHeaders.get(PubSubMessageHeaders.EXECUTION_ID_KEY).value(), Long.class)
+            .longValue(),
+        executionId);
   }
 }

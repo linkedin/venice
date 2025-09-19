@@ -1,6 +1,7 @@
 package com.linkedin.venice.memory;
 
 import static com.linkedin.venice.kafka.protocol.enums.MessageType.PUT;
+import static org.mockito.Mockito.mock;
 
 import com.linkedin.davinci.kafka.consumer.LeaderProducedRecordContext;
 import com.linkedin.davinci.kafka.consumer.SBSQueueNodeFactory;
@@ -13,7 +14,9 @@ import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.ImmutablePubSubMessage;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
-import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
+import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.nio.ByteBuffer;
@@ -84,7 +87,9 @@ public class InstanceSizeEstimatorTest extends HeapSizeEstimatorTest {
         new LeaderMetadata(
             null, // shared instance
             0L,
-            0));
+            0,
+            null,
+            -1L));
     kmeSuppliers.add(rtKmeSupplier);
     kmeSuppliers.add(vtKmeSupplier);
     // TODO: Add updates, deletes...
@@ -93,12 +98,12 @@ public class InstanceSizeEstimatorTest extends HeapSizeEstimatorTest {
       empiricalInstanceMeasurement(KafkaMessageEnvelope.class, kmeSupplier);
     }
 
-    BiFunction<Supplier<KafkaKey>, Supplier<KafkaMessageEnvelope>, PubSubMessage> psmProvider =
-        (kafkaKeySupplier, kmeSupplier) -> new ImmutablePubSubMessage<>(
+    BiFunction<Supplier<KafkaKey>, Supplier<KafkaMessageEnvelope>, DefaultPubSubMessage> psmProvider =
+        (kafkaKeySupplier, kmeSupplier) -> new ImmutablePubSubMessage(
             kafkaKeySupplier.get(),
             kmeSupplier.get(),
             pubSubTopicPartition,
-            0,
+            ApacheKafkaOffsetPosition.of(0),
             0,
             0);
 
@@ -118,9 +123,10 @@ public class InstanceSizeEstimatorTest extends HeapSizeEstimatorTest {
       }
     }
 
+    PubSubPosition consumedPositionMock = mock(PubSubPosition.class);
     int kafkaClusterId = 0;
-    Supplier<LeaderProducedRecordContext> leaderProducedRecordContextSupplierForPut =
-        () -> LeaderProducedRecordContext.newPutRecord(kafkaClusterId, 0, new byte[10], vtPutSupplier.get());
+    Supplier<LeaderProducedRecordContext> leaderProducedRecordContextSupplierForPut = () -> LeaderProducedRecordContext
+        .newPutRecord(kafkaClusterId, consumedPositionMock, new byte[10], vtPutSupplier.get());
     List<Supplier<LeaderProducedRecordContext>> leaderProducedRecordContextSuppliers = new ArrayList<>();
     leaderProducedRecordContextSuppliers.add(leaderProducedRecordContextSupplierForPut);
 

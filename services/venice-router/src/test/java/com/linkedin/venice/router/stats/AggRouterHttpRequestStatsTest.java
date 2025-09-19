@@ -1,6 +1,7 @@
 package com.linkedin.venice.router.stats;
 
 import static io.netty.handler.codec.http.HttpResponseStatus.TOO_MANY_REQUESTS;
+import static org.mockito.Mockito.mock;
 
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.read.RequestType;
@@ -9,14 +10,14 @@ import com.linkedin.venice.tehuti.MockTehutiReporter;
 import com.linkedin.venice.utils.Utils;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.tehuti.TehutiException;
-import org.mockito.Mockito;
+import io.tehuti.metrics.Sensor;
 import org.testng.Assert;
 import org.testng.annotations.BeforeSuite;
 import org.testng.annotations.Test;
 
 
 public class AggRouterHttpRequestStatsTest {
-  VeniceMetricsRepository metricsRepository;
+  private VeniceMetricsRepository metricsRepository;
   private MockTehutiReporter reporter;
   private ReadOnlyStoreRepository storeMetadataRepository;
 
@@ -25,7 +26,7 @@ public class AggRouterHttpRequestStatsTest {
     this.metricsRepository = new VeniceMetricsRepository();
     reporter = new MockTehutiReporter();
     metricsRepository.addReporter(reporter);
-    storeMetadataRepository = Mockito.mock(ReadOnlyStoreRepository.class);
+    storeMetadataRepository = mock(ReadOnlyStoreRepository.class);
   }
 
   @Test
@@ -34,8 +35,10 @@ public class AggRouterHttpRequestStatsTest {
         "test-cluster",
         metricsRepository,
         RequestType.SINGLE_GET,
+        false,
         storeMetadataRepository,
-        true);
+        true,
+        mock(Sensor.class));
 
     stats.recordRequest("store5");
     Assert.assertEquals(reporter.query(".total--request.Count").value(), 1d);
@@ -45,8 +48,8 @@ public class AggRouterHttpRequestStatsTest {
     Assert.assertNotNull(metricsRepository.getMetric(".store1--request.Count"));
     Assert.assertEquals(reporter.query(".store1--request.Count").value(), 1d);
 
-    stats.recordThrottledRequest("store1", 1.0, TOO_MANY_REQUESTS);
-    stats.recordThrottledRequest("store2", 1.0, TOO_MANY_REQUESTS);
+    stats.recordThrottledRequest("store1", 1.0, TOO_MANY_REQUESTS, 1);
+    stats.recordThrottledRequest("store2", 1.0, TOO_MANY_REQUESTS, 1);
     stats.recordErrorRetryCount("store1");
     Assert.assertEquals(reporter.query(".total--request.Count").value(), 2d);
     Assert.assertEquals(reporter.query(".store1--request.Count").value(), 1d);
@@ -73,21 +76,19 @@ public class AggRouterHttpRequestStatsTest {
         RequestType.COMPUTE,
         true,
         storeMetadataRepository,
-        true);
+        true,
+        mock(Sensor.class));
 
     for (int i = 1; i <= 100; i += 1) {
       stats.recordKeySize(i);
       stats.recordResponseSize("store1", i);
     }
-
-    Assert.assertEquals((int) reporter.query(".total--compute_key_size_in_byte.1thPercentile").value(), 1);
-    Assert.assertEquals((int) reporter.query(".total--compute_key_size_in_byte.2thPercentile").value(), 2);
-    Assert.assertEquals((int) reporter.query(".total--compute_key_size_in_byte.3thPercentile").value(), 3);
-    Assert.assertEquals((int) reporter.query(".total--compute_key_size_in_byte.4thPercentile").value(), 4);
-    Assert.assertEquals((int) reporter.query(".total--compute_response_size.1thPercentile").value(), 1);
-    Assert.assertEquals((int) reporter.query(".total--compute_response_size.2thPercentile").value(), 2);
-    Assert.assertEquals((int) reporter.query(".total--compute_response_size.3thPercentile").value(), 3);
-    Assert.assertEquals((int) reporter.query(".total--compute_response_size.4thPercentile").value(), 4);
+    Assert.assertEquals((int) reporter.query(".total--compute_key_size_in_byte.50thPercentile").value(), 50);
+    Assert.assertEquals((int) reporter.query(".total--compute_key_size_in_byte.95thPercentile").value(), 95);
+    Assert.assertEquals((int) reporter.query(".total--compute_key_size_in_byte.99thPercentile").value(), 99);
+    Assert.assertEquals((int) reporter.query(".total--compute_response_size.50thPercentile").value(), 50);
+    Assert.assertEquals((int) reporter.query(".total--compute_response_size.95thPercentile").value(), 95);
+    Assert.assertEquals((int) reporter.query(".total--compute_response_size.99thPercentile").value(), 99);
   }
 
   @Test
@@ -97,19 +98,23 @@ public class AggRouterHttpRequestStatsTest {
         clusterName,
         metricsRepository,
         RequestType.MULTI_GET,
+        false,
         storeMetadataRepository,
-        true);
+        true,
+        mock(Sensor.class));
     AggRouterHttpRequestStats streamingMultiGetStats = new AggRouterHttpRequestStats(
         clusterName,
         metricsRepository,
         RequestType.MULTI_GET_STREAMING,
+        false,
         storeMetadataRepository,
-        true);
+        true,
+        mock(Sensor.class));
     String storeName = Utils.getUniqueString("test-store");
     multiGetStats.recordRequest(storeName);
     streamingMultiGetStats.recordRequest(storeName);
-    multiGetStats.recordHealthyRequest(storeName, 10, HttpResponseStatus.OK);
-    streamingMultiGetStats.recordHealthyRequest(storeName, 10, HttpResponseStatus.OK);
+    multiGetStats.recordHealthyRequest(storeName, 10, HttpResponseStatus.OK, 1);
+    streamingMultiGetStats.recordHealthyRequest(storeName, 10, HttpResponseStatus.OK, 1);
     // Total stats should exist for streaming and non-streaming multi-get
     Assert.assertEquals((int) reporter.query(".total--multiget_request.Count").value(), 1);
     Assert.assertEquals((int) reporter.query(".total--multiget_streaming_request.Count").value(), 1);

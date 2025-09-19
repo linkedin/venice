@@ -6,8 +6,8 @@ import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.schema.SchemaAndToString;
 import com.linkedin.venice.client.store.predicate.AndPredicate;
-import com.linkedin.venice.client.store.predicate.EqualsRelationalOperator;
 import com.linkedin.venice.client.store.predicate.Predicate;
+import com.linkedin.venice.client.store.predicate.RecordFieldProjectionEqualsPredicate;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
 import com.linkedin.venice.compute.ComputeRequestWrapper;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -31,7 +31,7 @@ public class AvroComputeRequestBuilderV4<K> extends AvroComputeRequestBuilderV3<
 
   @Override
   public void executeWithFilter(
-      Predicate requiredPrefixFields,
+      Predicate<GenericRecord> requiredPrefixFields,
       StreamingCallback<GenericRecord, GenericRecord> callback) {
     byte[] prefixBytes = extractKeyPrefixBytesFromPredicate(requiredPrefixFields, storeClient.getKeySchema());
     SchemaAndToString resultSchema = getResultSchema();
@@ -39,7 +39,7 @@ public class AvroComputeRequestBuilderV4<K> extends AvroComputeRequestBuilderV3<
     storeClient.computeWithKeyPrefixFilter(prefixBytes, computeRequestWrapper, callback);
   }
 
-  private byte[] extractKeyPrefixBytesFromPredicate(Predicate requiredPrefixFields, Schema keySchema) {
+  private byte[] extractKeyPrefixBytesFromPredicate(Predicate<GenericRecord> requiredPrefixFields, Schema keySchema) {
     if (requiredPrefixFields == null) {
       return null;
     }
@@ -75,19 +75,17 @@ public class AvroComputeRequestBuilderV4<K> extends AvroComputeRequestBuilderV3<
     }
   }
 
-  private void populateKeyFieldMapFromPredicate(Predicate predicate, Map<String, Object> keyFields) {
+  private void populateKeyFieldMapFromPredicate(Predicate<GenericRecord> predicate, Map<String, Object> keyFields) {
     if (predicate instanceof AndPredicate) {
-      List<Predicate> childPredicates = ((AndPredicate) predicate).getChildPredicates();
-      for (Predicate p: childPredicates) {
+      AndPredicate<GenericRecord> andPredicate = (AndPredicate) predicate;
+      for (Predicate<GenericRecord> p: andPredicate) {
         populateKeyFieldMapFromPredicate(p, keyFields);
       }
-    } else if (predicate instanceof EqualsRelationalOperator) {
-      EqualsRelationalOperator equalsPredicate = (EqualsRelationalOperator) predicate;
-      if (keyFields.containsKey(equalsPredicate.getFieldName())
-          && !keyFields.get(equalsPredicate.getFieldName()).equals(equalsPredicate.getExpectedValue())) {
+    } else if (predicate instanceof RecordFieldProjectionEqualsPredicate) {
+      RecordFieldProjectionEqualsPredicate equalsPredicate = (RecordFieldProjectionEqualsPredicate) predicate;
+      if (keyFields.put(equalsPredicate.getFieldName(), equalsPredicate.getExpectedValue()) != null) {
         throw new VeniceException("Key field \"" + equalsPredicate.getFieldName() + "\" cannot have multiple values");
       }
-      keyFields.put(equalsPredicate.getFieldName(), equalsPredicate.getExpectedValue());
     } else {
       throw new VeniceException(
           "Invalid filtering predicate. Filtering predicate can only contain AND and EQUALS operators");

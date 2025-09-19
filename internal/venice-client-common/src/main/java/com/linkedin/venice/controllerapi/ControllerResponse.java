@@ -105,4 +105,11 @@ public class ControllerResponse { /* Uses Json Reflective Serializer, get withou
         .append(")")
         .toString();
   }
+
+  public void copyValueOf(ControllerResponse response) {
+    this.cluster = response.getCluster();
+    this.name = response.getName();
+    this.error = response.getError();
+    this.errorType = response.getErrorType();
+  }
 }

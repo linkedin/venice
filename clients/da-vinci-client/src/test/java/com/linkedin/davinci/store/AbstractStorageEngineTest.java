@@ -1,5 +1,7 @@
 package com.linkedin.davinci.store;
 
+import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES;
+import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_RMD_BLOCK_CACHE_SIZE_IN_BYTES;
 import static com.linkedin.venice.ConfigKeys.ADMIN_PORT;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
@@ -10,7 +12,7 @@ import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 
 import com.linkedin.davinci.callback.BytesStreamingCallback;
 import com.linkedin.davinci.config.VeniceConfigLoader;
-import com.linkedin.venice.exceptions.StorageInitializationException;
+import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.utils.PropertyBuilder;
@@ -24,8 +26,8 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
-public abstract class AbstractStorageEngineTest extends AbstractStoreTest {
-  protected AbstractStorageEngine testStoreEngine;
+public abstract class AbstractStorageEngineTest<ASE extends AbstractStorageEngine> extends AbstractStoreTest {
+  protected ASE testStoreEngine;
   protected int partitionId;
 
   public static VeniceProperties getServerProperties(PersistenceType type) {
@@ -38,6 +40,8 @@ public abstract class AbstractStorageEngineTest extends AbstractStoreTest {
         .put(ZOOKEEPER_ADDRESS, "localhost:2181")
         .put(PERSISTENCE_TYPE, persistenceType.toString())
         .put(KAFKA_BOOTSTRAP_SERVERS, "127.0.0.1:9092")
+        .put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 2 * 1024 * 1024L)
+        .put(ROCKSDB_RMD_BLOCK_CACHE_SIZE_IN_BYTES, 1 * 1024 * 1024L)
         .put(LISTENER_PORT, 7072)
         .put(ADMIN_PORT, 7073)
         .put(DATA_BASE_PATH, dataDirectory.getAbsolutePath())
@@ -52,7 +56,7 @@ public abstract class AbstractStorageEngineTest extends AbstractStoreTest {
   // creates instance for testStoreEngine
   public abstract void createStorageEngineForTest() throws Exception;
 
-  public AbstractStorageEngine getTestStoreEngine() {
+  public StorageEngine getTestStoreEngine() {
     return testStoreEngine;
   }
 
@@ -62,7 +66,7 @@ public abstract class AbstractStorageEngineTest extends AbstractStoreTest {
   }
 
   public void doAddPartition(int partitionId) {
-    testStoreEngine.addStoragePartition(partitionId);
+    testStoreEngine.addStoragePartitionIfAbsent(partitionId);
   }
 
   public void doRemovePartition(int partitionId) {
@@ -114,16 +118,12 @@ public abstract class AbstractStorageEngineTest extends AbstractStoreTest {
     // add it again
     try {
       doAddPartition(partitionId);
-    } catch (StorageInitializationException e) {
-      // this should be the expected behavior.
-      return;
     } finally {
       // do clean up
       if (testStoreEngine.containsPartition(partitionId)) {
         doRemovePartition(partitionId);
       }
     }
-    Assert.fail("Adding the same partition:" + partitionId + " again did not throw any exception as expected.");
   }
 
   public void testRemovingPartitionTwice() throws Exception {
@@ -212,10 +212,8 @@ public abstract class AbstractStorageEngineTest extends AbstractStoreTest {
     String storeName = Utils.getUniqueString("dummy_store_name");
     int partitionId = 1;
     StoragePartitionConfig partitionConfig = new StoragePartitionConfig(storeName, partitionId);
-    testStoreEngine.adjustStoragePartition(
-        partitionId,
-        AbstractStorageEngine.StoragePartitionAdjustmentTrigger.BEGIN_BATCH_PUSH,
-        partitionConfig);
+    testStoreEngine
+        .adjustStoragePartition(partitionId, StoragePartitionAdjustmentTrigger.BEGIN_BATCH_PUSH, partitionConfig);
   }
 
   @Test(expectedExceptions = VeniceException.class)
@@ -225,7 +223,7 @@ public abstract class AbstractStorageEngineTest extends AbstractStoreTest {
     StoragePartitionConfig partitionConfig = new StoragePartitionConfig(storeName, unknownPartitionId);
     testStoreEngine.adjustStoragePartition(
         unknownPartitionId,
-        AbstractStorageEngine.StoragePartitionAdjustmentTrigger.BEGIN_BATCH_PUSH,
+        StoragePartitionAdjustmentTrigger.BEGIN_BATCH_PUSH,
         partitionConfig);
   }
 
@@ -245,7 +243,7 @@ public abstract class AbstractStorageEngineTest extends AbstractStoreTest {
 
     testStoreEngine.adjustStoragePartition(
         newPartitionId,
-        AbstractStorageEngine.StoragePartitionAdjustmentTrigger.BEGIN_BATCH_PUSH,
+        StoragePartitionAdjustmentTrigger.BEGIN_BATCH_PUSH,
         deferredWritePartitionConfig);
 
     storagePartition = testStoreEngine.getPartitionOrThrow(newPartitionId);
@@ -272,7 +270,7 @@ public abstract class AbstractStorageEngineTest extends AbstractStoreTest {
 
     testStoreEngine.adjustStoragePartition(
         newPartitionId,
-        AbstractStorageEngine.StoragePartitionAdjustmentTrigger.END_BATCH_PUSH,
+        StoragePartitionAdjustmentTrigger.END_BATCH_PUSH,
         transactionalPartitionConfig);
 
     storagePartition = testStoreEngine.getPartitionOrThrow(newPartitionId);
@@ -285,8 +283,7 @@ public abstract class AbstractStorageEngineTest extends AbstractStoreTest {
 
   @Test
   public void testIsMetadataPartition() {
-    Assert.assertTrue(AbstractStorageEngine.isMetadataPartition(AbstractStorageEngine.METADATA_PARTITION_ID));
-    Assert.assertFalse(AbstractStorageEngine.isMetadataPartition(AbstractStorageEngine.METADATA_PARTITION_ID + 1));
-
+    Assert.assertTrue(StorageService.isMetadataPartition(AbstractStorageEngine.METADATA_PARTITION_ID));
+    Assert.assertFalse(StorageService.isMetadataPartition(AbstractStorageEngine.METADATA_PARTITION_ID + 1));
   }
 }

@@ -8,6 +8,7 @@ import com.linkedin.venice.stats.AbstractVeniceAggStoreStats;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.tehuti.metrics.MetricsRepository;
+import io.tehuti.metrics.Sensor;
 import java.util.Map;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -29,7 +30,8 @@ public class AggRouterHttpRequestStats extends AbstractVeniceAggStoreStats<Route
         requestType,
         false,
         metadataRepository,
-        isUnregisterMetricForDeletedStoreEnabled);
+        isUnregisterMetricForDeletedStoreEnabled,
+        null);
   }
 
   public AggRouterHttpRequestStats(
@@ -38,7 +40,8 @@ public class AggRouterHttpRequestStats extends AbstractVeniceAggStoreStats<Route
       RequestType requestType,
       boolean isKeyValueProfilingEnabled,
       ReadOnlyStoreRepository metadataRepository,
-      boolean isUnregisterMetricForDeletedStoreEnabled) {
+      boolean isUnregisterMetricForDeletedStoreEnabled,
+      Sensor totalInFlightRequestSensor) {
     super(cluster, metricsRepository, metadataRepository, isUnregisterMetricForDeletedStoreEnabled);
     // Disable store level non-streaming multi get stats reporting because it's no longer used in clients. We still
     // report to the total stats for visibility of potential old clients.
@@ -61,7 +64,8 @@ public class AggRouterHttpRequestStats extends AbstractVeniceAggStoreStats<Route
           clusterName,
           requestType,
           stats,
-          isKeyValueProfilingEnabled);
+          isKeyValueProfilingEnabled,
+          totalInFlightRequestSensor);
     });
   }
 
@@ -80,9 +84,9 @@ public class AggRouterHttpRequestStats extends AbstractVeniceAggStoreStats<Route
     recordStoreStats(storeName, RouterHttpRequestStats::recordIncomingRequest);
   }
 
-  public void recordHealthyRequest(String storeName, double latency, HttpResponseStatus responseStatus) {
-    totalStats.recordHealthyRequest(latency, responseStatus);
-    recordStoreStats(storeName, stats -> stats.recordHealthyRequest(latency, responseStatus));
+  public void recordHealthyRequest(String storeName, double latency, HttpResponseStatus responseStatus, int keyNum) {
+    totalStats.recordHealthyRequest(latency, responseStatus, keyNum);
+    recordStoreStats(storeName, stats -> stats.recordHealthyRequest(latency, responseStatus, keyNum));
   }
 
   public void recordUnhealthyRequest(String storeName, HttpResponseStatus responseStatus) {
@@ -97,10 +101,10 @@ public class AggRouterHttpRequestStats extends AbstractVeniceAggStoreStats<Route
     recordStoreStats(storeName, RouterHttpRequestStats::recordUnavailableReplicaStreamingRequest);
   }
 
-  public void recordUnhealthyRequest(String storeName, double latency, HttpResponseStatus responseStatus) {
-    totalStats.recordUnhealthyRequest(latency, responseStatus);
+  public void recordUnhealthyRequest(String storeName, double latency, HttpResponseStatus responseStatus, int keyNum) {
+    totalStats.recordUnhealthyRequest(latency, responseStatus, keyNum);
     if (storeName != null) {
-      recordStoreStats(storeName, stats -> stats.recordUnhealthyRequest(latency, responseStatus));
+      recordStoreStats(storeName, stats -> stats.recordUnhealthyRequest(latency, responseStatus, keyNum));
     }
   }
 
@@ -115,9 +119,9 @@ public class AggRouterHttpRequestStats extends AbstractVeniceAggStoreStats<Route
     recordStoreStats(storeName, stats -> stats.recordReadQuotaUsage(quotaUsage));
   }
 
-  public void recordTardyRequest(String storeName, double latency, HttpResponseStatus responseStatus) {
-    totalStats.recordTardyRequest(latency, responseStatus);
-    recordStoreStats(storeName, stats -> stats.recordTardyRequest(latency, responseStatus));
+  public void recordTardyRequest(String storeName, double latency, HttpResponseStatus responseStatus, int keyNum) {
+    totalStats.recordTardyRequest(latency, responseStatus, keyNum);
+    recordStoreStats(storeName, stats -> stats.recordTardyRequest(latency, responseStatus, keyNum));
   }
 
   /**
@@ -132,9 +136,13 @@ public class AggRouterHttpRequestStats extends AbstractVeniceAggStoreStats<Route
     recordStoreStats(storeName, stats -> stats.recordThrottledRequest(httpResponseStatus));
   }
 
-  public void recordThrottledRequest(String storeName, double latency, HttpResponseStatus httpResponseStatus) {
-    totalStats.recordThrottledRequest(latency, httpResponseStatus);
-    recordStoreStats(storeName, stats -> stats.recordThrottledRequest(latency, httpResponseStatus));
+  public void recordThrottledRequest(
+      String storeName,
+      double latency,
+      HttpResponseStatus httpResponseStatus,
+      int keyNum) {
+    totalStats.recordThrottledRequest(latency, httpResponseStatus, keyNum);
+    recordStoreStats(storeName, stats -> stats.recordThrottledRequest(latency, httpResponseStatus, keyNum));
   }
 
   public void recordBadRequest(String storeName, HttpResponseStatus responseStatus) {
@@ -144,10 +152,10 @@ public class AggRouterHttpRequestStats extends AbstractVeniceAggStoreStats<Route
     }
   }
 
-  public void recordBadRequestKeyCount(String storeName, int keyCount) {
-    totalStats.recordBadRequestKeyCount(keyCount);
+  public void recordBadRequestKeyCount(String storeName, HttpResponseStatus responseStatus, int keyNum) {
+    totalStats.recordIncomingBadRequestKeyCountMetric(responseStatus, keyNum);
     if (storeName != null) {
-      recordStoreStats(storeName, stats -> stats.recordBadRequestKeyCount(keyCount));
+      recordStoreStats(storeName, stats -> stats.recordIncomingBadRequestKeyCountMetric(responseStatus, keyNum));
     }
   }
 
@@ -190,6 +198,11 @@ public class AggRouterHttpRequestStats extends AbstractVeniceAggStoreStats<Route
   public void recordCompressedResponseSize(String storeName, double compressedResponseSize) {
     totalStats.recordCompressedResponseSize(compressedResponseSize);
     recordStoreStats(storeName, stats -> stats.recordCompressedResponseSize(compressedResponseSize));
+  }
+
+  public void recordDecompressedResponseSize(String storeName, double decompressedResponseSize) {
+    totalStats.recordDecompressedResponseSize(decompressedResponseSize);
+    recordStoreStats(storeName, stats -> stats.recordDecompressedResponseSize(decompressedResponseSize));
   }
 
   public void recordResponseSize(String storeName, double valueSize) {
@@ -261,8 +274,8 @@ public class AggRouterHttpRequestStats extends AbstractVeniceAggStoreStats<Route
   }
 
   public void recordKeyNum(String storeName, int keyNum) {
-    totalStats.recordKeyNum(keyNum);
-    recordStoreStats(storeName, stats -> stats.recordKeyNum(keyNum));
+    totalStats.recordIncomingKeyCountMetric(keyNum);
+    recordStoreStats(storeName, stats -> stats.recordIncomingKeyCountMetric(keyNum));
   }
 
   public void recordRequestUsage(String storeName, int usage) {
@@ -291,18 +304,18 @@ public class AggRouterHttpRequestStats extends AbstractVeniceAggStoreStats<Route
   }
 
   public void recordDelayConstraintAbortedRetryRequest(String storeName) {
-    totalStats.recordDelayConstraintAbortedRetryRequest();
-    recordStoreStats(storeName, RouterHttpRequestStats::recordDelayConstraintAbortedRetryRequest);
+    totalStats.recordDelayConstraintAbortedRetryCountMetric();
+    recordStoreStats(storeName, RouterHttpRequestStats::recordDelayConstraintAbortedRetryCountMetric);
   }
 
   public void recordSlowRouteAbortedRetryRequest(String storeName) {
-    totalStats.recordSlowRouteAbortedRetryRequest();
-    recordStoreStats(storeName, RouterHttpRequestStats::recordSlowRouteAbortedRetryRequest);
+    totalStats.recordSlowRouteAbortedRetryCountMetric();
+    recordStoreStats(storeName, RouterHttpRequestStats::recordSlowRouteAbortedRetryCountMetric);
   }
 
   public void recordRetryRouteLimitAbortedRetryRequest(String storeName) {
-    totalStats.recordRetryRouteLimitAbortedRetryRequest();
-    recordStoreStats(storeName, RouterHttpRequestStats::recordRetryRouteLimitAbortedRetryRequest);
+    totalStats.recordRetryRouteLimitAbortedRetryCountMetric();
+    recordStoreStats(storeName, RouterHttpRequestStats::recordRetryRouteLimitAbortedRetryCountMetric);
   }
 
   public void recordKeySize(long keySize) {
@@ -320,8 +333,8 @@ public class AggRouterHttpRequestStats extends AbstractVeniceAggStoreStats<Route
   }
 
   public void recordNoAvailableReplicaAbortedRetryRequest(String storeName) {
-    totalStats.recordNoAvailableReplicaAbortedRetryRequest();
-    recordStoreStats(storeName, RouterHttpRequestStats::recordNoAvailableReplicaAbortedRetryRequest);
+    totalStats.recordNoAvailableReplicaAbortedRetryCountMetric();
+    recordStoreStats(storeName, RouterHttpRequestStats::recordNoAvailableReplicaAbortedRetryCountMetric);
   }
 
   public void recordErrorRetryAttemptTriggeredByPendingRequestCheck(String storeName) {

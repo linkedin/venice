@@ -95,7 +95,6 @@ public class TestVeniceHostHealth {
         "Host should be unhealthy when it has lots of pending connection.");
     verify(mockAggHostHealthStats, times(1)).recordUnhealthyHostOfflineInstance(deadInstance.getNodeId());
     verify(mockAggHostHealthStats, times(1)).recordUnhealthyHostTooManyPendingRequest(slowInstance.getNodeId());
-    verify(mockAggHostHealthStats, times(1)).recordPendingRequestCount(slowInstance.getNodeId(), 10);
   }
 
   @Test

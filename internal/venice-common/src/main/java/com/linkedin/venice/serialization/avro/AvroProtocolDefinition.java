@@ -12,11 +12,12 @@ import com.linkedin.venice.ingestion.protocol.LoadedStoreUserPartitionMapping;
 import com.linkedin.venice.ingestion.protocol.ProcessShutdownCommand;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
+import com.linkedin.venice.kafka.protocol.state.GlobalRtDivState;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.metadata.payload.StorePropertiesPayloadRecord;
 import com.linkedin.venice.metadata.response.MetadataResponseRecord;
-import com.linkedin.venice.metadata.response.StorePropertiesResponseRecord;
 import com.linkedin.venice.participant.protocol.ParticipantMessageValue;
 import com.linkedin.venice.pubsub.api.PubSubPositionWireFormat;
 import com.linkedin.venice.pushstatus.PushStatusKey;
@@ -25,6 +26,7 @@ import com.linkedin.venice.status.protocol.BatchJobHeartbeatValue;
 import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.storage.protocol.ChunkedKeySuffix;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
+import com.linkedin.venice.systemstore.schemas.ParentControllerMetadataValue;
 import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
 import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
 import java.nio.ByteBuffer;
@@ -41,18 +43,20 @@ import org.apache.avro.specific.SpecificRecord;
  *
  * Having these definitions in a single place makes it easy to ensure that magic bytes
  * are defined only once and do not conflict with each other.
+ *
+ * @see <a href="https://venicedb.org/docs/ops_guide/system_stores#schema-system-stores">System Stores in the docs</a>
  */
 public enum AvroProtocolDefinition {
   /**
    * Used for the Kafka topics, including the main data topics as well as the admin topic.
    */
-  KAFKA_MESSAGE_ENVELOPE(23, 11, KafkaMessageEnvelope.class),
+  KAFKA_MESSAGE_ENVELOPE(23, 12, KafkaMessageEnvelope.class),
 
   /**
    * Used to persist the state of a partition in Storage Nodes, including offset,
    * Data Ingest Validation state, etc.
    */
-  PARTITION_STATE(24, 14, PartitionState.class),
+  PARTITION_STATE(24, 19, PartitionState.class),
 
   /**
    * Used to persist state related to a store-version, including Start of Buffer Replay
@@ -63,7 +67,7 @@ public enum AvroProtocolDefinition {
   /**
    * Used to encode push job details records to be written to the PushJobDetails system store.
    */
-  PUSH_JOB_DETAILS(26, 4, PushJobDetails.class),
+  PUSH_JOB_DETAILS(26, 5, PushJobDetails.class),
 
   /**
    * Used to encode metadata changes about the system as a whole. Records of this type
@@ -73,7 +77,7 @@ public enum AvroProtocolDefinition {
    *
    * TODO: Move AdminOperation to venice-common module so that we can properly reference it here.
    */
-  ADMIN_OPERATION(84, SpecificData.get().getSchema(ByteBuffer.class), "AdminOperation"),
+  ADMIN_OPERATION(91, SpecificData.get().getSchema(ByteBuffer.class), "AdminOperation"),
 
   /**
    * Single chunk of a large multi-chunk value. Just a bunch of bytes.
@@ -144,7 +148,12 @@ public enum AvroProtocolDefinition {
   /**
    * Value schema for metadata system store.
    */
-  METADATA_SYSTEM_SCHEMA_STORE(27, StoreMetaValue.class),
+  METADATA_SYSTEM_SCHEMA_STORE(36, StoreMetaValue.class),
+
+  /*
+    Value Schema for Parent Controller Metadata system store
+  */
+  PARENT_CONTROLLER_METADATA_SYSTEM_STORE_VALUE(1, ParentControllerMetadataValue.class),
 
   /**
    * Key schema for push status system store.
@@ -174,13 +183,18 @@ public enum AvroProtocolDefinition {
   /**
    * Response record for metadata by client fetch request.
    */
-  SERVER_STORE_PROPERTIES_RESPONSE(1, StorePropertiesResponseRecord.class),
+  SERVER_STORE_PROPERTIES_PAYLOAD(1, StorePropertiesPayloadRecord.class),
 
   /**
    * Value schema for change capture event.
    * TODO: Figure out a way to pull in protocol from different view class.
    */
-  RECORD_CHANGE_EVENT(1, RecordChangeEvent.class);
+  RECORD_CHANGE_EVENT(1, RecordChangeEvent.class),
+
+  /**
+   * Global Realtime Topic Data Integrity Validator is the RT DIV snapshot propagated from the leader to followers.
+   */
+  GLOBAL_RT_DIV_STATE(1, GlobalRtDivState.class);
 
   private static final Set<Byte> magicByteSet = validateMagicBytes();
 

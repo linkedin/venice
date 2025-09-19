@@ -29,7 +29,7 @@ public class ChangeCaptureView extends VeniceView {
   public VeniceWriterOptions.Builder getWriterOptionsBuilder(String viewTopicName, Version version) {
     VeniceWriterOptions.Builder configBuilder = new VeniceWriterOptions.Builder(viewTopicName);
     VeniceKafkaSerializer valueSerializer = new VeniceAvroKafkaSerializer(RecordChangeEvent.getClassSchema());
-    configBuilder.setValueSerializer(valueSerializer);
+    configBuilder.setValuePayloadSerializer(valueSerializer);
 
     // Set writer properties based on the store version config
     PartitionerConfig partitionerConfig = version.getPartitionerConfig();
@@ -51,6 +51,11 @@ public class ChangeCaptureView extends VeniceView {
     VeniceProperties properties = new VeniceProperties(props);
     return Collections
         .singletonMap(Version.composeKafkaTopic(storeName, version) + CHANGE_CAPTURE_TOPIC_SUFFIX, properties);
+  }
+
+  @Override
+  public String composeTopicName(int version) {
+    return Version.composeKafkaTopic(storeName, version) + CHANGE_CAPTURE_TOPIC_SUFFIX;
   }
 
   @Override

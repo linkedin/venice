@@ -4,7 +4,6 @@ import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLA
 import static com.linkedin.venice.ConfigKeys.DEFAULT_MAX_NUMBER_OF_PARTITIONS;
 import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_SOURCE_FABRIC;
 import static com.linkedin.venice.ConfigKeys.PARENT_KAFKA_CLUSTER_FABRIC_LIST;
-import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_PARENT_DATA_CENTER_REGION_NAME;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRecord;
 import static com.linkedin.venice.utils.TestUtils.assertCommand;
@@ -24,10 +23,10 @@ import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.samza.VeniceObjectWithTimestamp;
-import com.linkedin.venice.samza.VeniceSystemFactory;
 import com.linkedin.venice.samza.VeniceSystemProducer;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
@@ -42,7 +41,6 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
@@ -53,7 +51,6 @@ import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.util.Utf8;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.apache.samza.config.MapConfig;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.AfterMethod;
@@ -104,7 +101,6 @@ public class TestPartialUpdateWithActiveActiveReplication {
   @BeforeClass(alwaysRun = true)
   public void setUp() throws IOException {
     Properties serverProperties = new Properties();
-    serverProperties.put(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 1L);
     serverProperties.put(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, false);
 
     Properties controllerProps = new Properties();
@@ -112,18 +108,20 @@ public class TestPartialUpdateWithActiveActiveReplication {
     controllerProps.put(NATIVE_REPLICATION_SOURCE_FABRIC, "dc-0");
     controllerProps.put(PARENT_KAFKA_CLUSTER_FABRIC_LIST, DEFAULT_PARENT_DATA_CENTER_REGION_NAME);
 
-    multiRegionMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
-        NUMBER_OF_CHILD_DATACENTERS,
-        NUMBER_OF_CLUSTERS,
-        1,
-        1,
-        2,
-        1,
-        2,
-        Optional.of(controllerProps),
-        Optional.of(controllerProps),
-        Optional.of(serverProperties),
-        false);
+    VeniceMultiRegionClusterCreateOptions.Builder optionsBuilder =
+        new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(NUMBER_OF_CHILD_DATACENTERS)
+            .numberOfClusters(NUMBER_OF_CLUSTERS)
+            .numberOfParentControllers(1)
+            .numberOfChildControllers(1)
+            .numberOfServers(2)
+            .numberOfRouters(1)
+            .replicationFactor(2)
+            .forkServer(false)
+            .parentControllerProperties(controllerProps)
+            .childControllerProperties(controllerProps)
+            .serverProperties(serverProperties);
+    multiRegionMultiClusterWrapper =
+        ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(optionsBuilder.build());
 
     parentControllers = multiRegionMultiClusterWrapper.getParentControllers();
     childDatacenters = multiRegionMultiClusterWrapper.getChildRegions();
@@ -181,12 +179,9 @@ public class TestPartialUpdateWithActiveActiveReplication {
   // Create one system producer per region
   private void startVeniceSystemProducers() {
     systemProducerMap = new HashMap<>(NUMBER_OF_CHILD_DATACENTERS);
-    VeniceSystemFactory factory = new VeniceSystemFactory();
     for (int dcId = 0; dcId < NUMBER_OF_CHILD_DATACENTERS; dcId++) {
-      Map<String, String> samzaConfig =
-          IntegrationTestPushUtils.getSamzaProducerConfig(childDatacenters, dcId, storeName);
-      VeniceSystemProducer veniceProducer = factory.getClosableProducer("venice", new MapConfig(samzaConfig), null);
-      veniceProducer.start();
+      VeniceSystemProducer veniceProducer =
+          IntegrationTestPushUtils.getSamzaProducerForStream(multiRegionMultiClusterWrapper, dcId, storeName);
       systemProducerMap.put(childDatacenters.get(dcId), veniceProducer);
     }
   }
@@ -345,8 +340,8 @@ public class TestPartialUpdateWithActiveActiveReplication {
     val3Prime.put(PERSON_F1_NAME, "val3PrimeF1");
     val3Prime.put(PERSON_F3_NAME, "val3PrimeF3");
     sendStreamingRecord(systemProducerMap.get(childDatacenters.get(1)), storeName, key3Prime, val3Prime);
-    validatePersonV1V2SupersetRecord(storeName, dc0RouterUrl, key3Prime, "val3PrimeF1", -1, "val3PrimeF3");
-    validatePersonV1V2SupersetRecord(storeName, dc1RouterUrl, key3Prime, "val3PrimeF1", -1, "val3PrimeF3");
+    validatePersonV2Record(storeName, dc0RouterUrl, key3Prime, "val3PrimeF1", "val3PrimeF3");
+    validatePersonV2Record(storeName, dc1RouterUrl, key3Prime, "val3PrimeF1", "val3PrimeF3");
   }
 
   private void validatePersonV1V2SupersetRecord(
@@ -412,6 +407,37 @@ public class TestPartialUpdateWithActiveActiveReplication {
       } else {
         assertNotNull(retrievedValue.get(PERSON_F2_NAME));
         assertEquals(retrievedValue.get(PERSON_F2_NAME), expectedAge);
+      }
+    });
+  }
+
+  private void validatePersonV2Record(
+      String storeName,
+      String routerUrl,
+      String key,
+      String expectedField1,
+      String expectedField3) {
+    AvroGenericStoreClient<String, GenericRecord> client = getStoreClient(storeName, routerUrl);
+    TestUtils.waitForNonDeterministicAssertion(120, TimeUnit.SECONDS, () -> {
+      GenericRecord retrievedValue = client.get(key).get();
+      if (expectedField1 == null && expectedField3 == null) {
+        assertNull(retrievedValue);
+        return;
+      }
+      assertNotNull(retrievedValue);
+      if (expectedField1 == null) {
+        assertNull(retrievedValue.get(PERSON_F1_NAME));
+      } else {
+        assertNotNull(retrievedValue.get(PERSON_F1_NAME));
+        assertEquals(retrievedValue.get(PERSON_F1_NAME).toString(), expectedField1);
+      }
+      if (expectedField3 == null) {
+        assertNull(retrievedValue.get(PERSON_F3_NAME));
+      } else {
+        Schema.Field field3 = retrievedValue.getSchema().getField(PERSON_F3_NAME);
+        assertNotNull(field3);
+        assertNotNull(retrievedValue.get(PERSON_F3_NAME));
+        assertEquals(retrievedValue.get(PERSON_F3_NAME).toString(), expectedField3);
       }
     });
   }

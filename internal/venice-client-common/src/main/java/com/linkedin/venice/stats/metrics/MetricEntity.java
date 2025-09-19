@@ -1,9 +1,9 @@
 package com.linkedin.venice.stats.metrics;
 
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
+import java.util.Collections;
 import java.util.Set;
 import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
 import org.apache.commons.lang.Validate;
 
 
@@ -11,32 +11,52 @@ import org.apache.commons.lang.Validate;
  * Metric entity class to define a metric with all its properties
  */
 public class MetricEntity {
+  /**
+   * The name of the metric: Only one instrument can be registered with this name in the
+   * {@link com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository}
+   */
   private final String metricName;
+  /**
+   * The type of the metric: Counter, Histogram, etc.
+   */
   private final MetricType metricType;
+  /**
+   * The unit of the metric: MILLISECOND, NUMBER, etc.
+   */
   private final MetricUnit unit;
+  /**
+   * The description of the metric.
+   */
   private final String description;
+  /**
+   * The custom metric prefix: This is used to override the default metric prefix for some metrics
+   * like {@link com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository.CommonMetricsEntity}
+   */
+  private final String customMetricPrefix;
+  /**
+   * List of dimensions that this metric is associated with. This is currently used to validate
+   * whether the Attributes object hold all these dimensions while creating the Attributes.
+   * Check {@link MetricEntityState#validateRequiredDimensions} for more details.
+   */
   private final Set<VeniceMetricsDimensions> dimensionsList;
 
   public MetricEntity(
       @Nonnull String metricName,
       @Nonnull MetricType metricType,
       @Nonnull MetricUnit unit,
-      @Nonnull String description) {
-    this(metricName, metricType, unit, description, null);
-  }
-
-  public MetricEntity(
-      @Nonnull String metricName,
-      @Nonnull MetricType metricType,
-      @Nonnull MetricUnit unit,
       @Nonnull String description,
-      @Nullable Set<VeniceMetricsDimensions> dimensionsList) {
-    Validate.notEmpty(metricName, "Metric name cannot be null or empty");
+      @Nonnull Set<VeniceMetricsDimensions> dimensionsList) {
+    Validate.notEmpty(metricName, "Metric name cannot be empty");
+    Validate.notNull(metricType, "Metric type cannot be null");
+    Validate.notNull(unit, "Metric unit cannot be null");
+    Validate.notEmpty(description, "Metric description cannot be empty");
+    Validate.notEmpty(dimensionsList, "Dimensions list cannot be empty");
     this.metricName = metricName;
     this.metricType = metricType;
     this.unit = unit;
     this.description = description;
     this.dimensionsList = dimensionsList;
+    this.customMetricPrefix = null;
   }
 
   @Nonnull
@@ -59,8 +79,48 @@ public class MetricEntity {
     return description;
   }
 
-  @Nullable
+  @Nonnull
   public Set<VeniceMetricsDimensions> getDimensionsList() {
     return dimensionsList;
+  }
+
+  public String getCustomMetricPrefix() {
+    return customMetricPrefix;
+  }
+
+  /**
+   * private: only from {@link #createInternalMetricEntityWithoutDimensions to use for internal metrics
+   * like {@link com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository.CommonMetricsEntity}
+   * that do not require dimensions.
+   */
+  private MetricEntity(
+      @Nonnull String metricName,
+      @Nonnull MetricType metricType,
+      @Nonnull MetricUnit unit,
+      @Nonnull String description,
+      String customMetricPrefix) {
+    Validate.notEmpty(metricName, "Metric name cannot be empty");
+    Validate.notNull(metricType, "Metric type cannot be null");
+    Validate.notNull(unit, "Metric unit cannot be null");
+    Validate.notEmpty(description, "Metric description cannot be empty");
+    this.metricName = metricName;
+    this.metricType = metricType;
+    this.unit = unit;
+    this.description = description;
+    this.dimensionsList = Collections.EMPTY_SET;
+    this.customMetricPrefix = customMetricPrefix;
+    if (customMetricPrefix != null && customMetricPrefix.startsWith("venice.")) {
+      // venice will be added automatically
+      throw new IllegalArgumentException("Custom prefix should not start with venice: " + customMetricPrefix);
+    }
+  }
+
+  public static MetricEntity createInternalMetricEntityWithoutDimensions(
+      @Nonnull String metricName,
+      @Nonnull MetricType metricType,
+      @Nonnull MetricUnit unit,
+      @Nonnull String description,
+      String customMetricPrefix) {
+    return new MetricEntity(metricName, metricType, unit, description, customMetricPrefix);
   }
 }

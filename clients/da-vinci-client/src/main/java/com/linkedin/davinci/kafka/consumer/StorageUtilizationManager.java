@@ -3,7 +3,7 @@ package com.linkedin.davinci.kafka.consumer;
 import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.LEADER;
 import static com.linkedin.venice.utils.RedundantExceptionFilter.getRedundantExceptionFilter;
 
-import com.linkedin.davinci.store.AbstractStorageEngine;
+import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.davinci.utils.StoragePartitionDiskUsage;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
@@ -11,6 +11,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import java.util.ArrayList;
@@ -57,7 +58,7 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
   private static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER = getRedundantExceptionFilter();
 
   private final Map<Integer, PartitionConsumptionState> partitionConsumptionStateMap;
-  private final AbstractStorageEngine storageEngine;
+  private final StorageEngine storageEngine;
   private final Function<Integer, StoragePartitionDiskUsage> storagePartitionDiskUsageFunctionConstructor;
   private final String versionTopic;
   private final String storeName;
@@ -93,7 +94,7 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
    *              is handled in {@link #handleStoreChanged(Store)}.
    */
   public StorageUtilizationManager(
-      AbstractStorageEngine storageEngine,
+      StorageEngine storageEngine,
       Store store,
       String versionTopic,
       int partitionCount,
@@ -107,7 +108,7 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
     this.partitionConsumptionStateMap = partitionConsumptionStateMap;
     this.storageEngine = storageEngine;
     this.storagePartitionDiskUsageFunctionConstructor =
-        partition -> new StoragePartitionDiskUsage(partition, storageEngine);
+        partition -> new StoragePartitionDiskUsage(() -> getUsageForPartition(partition));
     this.storeName = store.getName();
     this.versionTopic = versionTopic;
     if (partitionCount <= 0) {
@@ -127,6 +128,14 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
     setStoreQuota(store);
     Version version = store.getVersion(storeVersion);
     versionIsOnline = isVersionOnline(version);
+  }
+
+  private long getUsageForPartition(int partition) {
+    try {
+      return this.storageEngine.getPartitionOrThrow(partition).getPartitionSizeInBytes();
+    } catch (Exception e) {
+      return 0;
+    }
   }
 
   @Override
@@ -179,9 +188,10 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
     versionIsOnline = isVersionOnline(version);
     if (this.storeQuotaInBytes != store.getStorageQuotaInByte() || !store.isHybridStoreDiskQuotaEnabled()) {
       LOGGER.info(
-          "Store: {} changed, updated quota from {} to {} and store quota is {}enabled, "
+          "Store: {} changed, updated quota in: versionTopic: {} from: {} to: {} and store quota is {}enabled, "
               + "so we reset the store quota and resume all partitions.",
           this.storeName,
+          this.versionTopic,
           this.storeQuotaInBytes,
           store.getStorageQuotaInByte(),
           store.isHybridStoreDiskQuotaEnabled() ? "" : "not ");
@@ -206,7 +216,7 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
   }
 
   public void initPartition(int partition) {
-    partitionConsumptionSizeMap.put(partition, new StoragePartitionDiskUsage(partition, storageEngine));
+    partitionConsumptionSizeMap.put(partition, new StoragePartitionDiskUsage(() -> getUsageForPartition(partition)));
   }
 
   public void removePartition(int partition) {
@@ -281,10 +291,20 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
        * which will break the production.
        */
       for (String consumingTopic: getConsumingTopics(pcs)) {
-        pausePartition(partition, consumingTopic);
+        boolean isPartitionPaused = false;
+        if (Version.isIncrementalPushTopic(consumingTopic)) {
+          // We do not pause consumption from real time topics. The intent of this is that we still should drain
+          // the messages which have been submitted to the queue as best as we are able to. Ideally our mechanisms
+          // which kill the producer upstream have kicked in within a timely manner. We don't give the same preferential
+          // treatment to incremental push jobs as those have a lower priority and if we pause ingestion the job will
+          // at some point terminate.
+          pausePartition(partition, consumingTopic);
+          isPartitionPaused = true;
+        }
         String msgIdentifier = consumingTopic + "_" + partition + "_quota_exceeded";
         // Log quota exceeded info only once a minute per partition.
-        boolean shouldLogQuotaExceeded = !REDUNDANT_LOGGING_FILTER.isRedundantException(msgIdentifier);
+        boolean shouldLogQuotaExceeded =
+            !REDUNDANT_LOGGING_FILTER.isRedundantException(msgIdentifier) && isPartitionPaused;
         if (shouldLogQuotaExceeded) {
           LOGGER.info(
               "Quota exceeded for store version {} partition {}, paused this partition. Partition disk usage: {} >= partition quota: {}",
@@ -357,7 +377,7 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
         consumingTopics.add(offsetRecord.getLeaderTopic());
         // For separate RT topic enabled SIT, we should include separate RT topic, if leader topic is a RT topic.
         if (isSeparateRealtimeTopicEnabled && Version.isRealTimeTopic(offsetRecord.getLeaderTopic())) {
-          consumingTopics.add(Version.composeSeparateRealTimeTopic(storeName));
+          consumingTopics.add(Utils.getSeparateRealTimeTopicName(offsetRecord.getLeaderTopic()));
         }
       }
     }
@@ -395,8 +415,7 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
       if (partitionCount == 0) {
         return 0.;
       }
-      quota *= partitionConsumptionSizeMap.size();
-      quota /= partitionCount;
+      quota = diskQuotaPerPartition * partitionConsumptionSizeMap.size();
     }
 
     long usage = 0;

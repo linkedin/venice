@@ -4,13 +4,17 @@ import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_BLO
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_MAX_NUMBER_OF_PARTITIONS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
+import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_ENABLED;
+import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_INTERVAL_MS;
+import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_SCHEDULING_ENABLED;
+import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_THRESHOLD_MS;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
+import static com.linkedin.venice.ConfigKeys.REPUSH_ORCHESTRATOR_CLASS_NAME;
 import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POOL_ALLOCATION_STRATEGY;
 import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POOL_SIZE_PER_KAFKA_CLUSTER;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE;
 import static com.linkedin.venice.ConfigKeys.SERVER_DEDICATED_DRAINER_FOR_SORTED_INPUT_ENABLED;
-import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_SHARED_CONSUMER_ASSIGNMENT_STRATEGY;
 import static com.linkedin.venice.ConfigKeys.SSL_TO_KAFKA_LEGACY;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.DEFAULT_KEY_SCHEMA;
@@ -46,8 +50,11 @@ import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.controller.Admin;
+import com.linkedin.venice.controller.repush.RepushJobRequest;
+import com.linkedin.venice.controller.repush.RepushOrchestrator;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
+import com.linkedin.venice.controllerapi.RepushJobResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
@@ -56,6 +63,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixBaseRoutingRepository;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.kafka.protocol.GUID;
@@ -110,6 +118,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
@@ -137,6 +146,11 @@ import org.testng.annotations.Test;
 public class TestHybrid {
   private static final Logger LOGGER = LogManager.getLogger(TestHybrid.class);
   public static final int STREAMING_RECORD_SIZE = 1024;
+
+  // Log compaction test constants
+  private static final long TEST_LOG_COMPACTION_INTERVAL_MS = TimeUnit.SECONDS.toMillis(1);
+  private static final long TEST_LOG_COMPACTION_TIMEOUT = TEST_LOG_COMPACTION_INTERVAL_MS * 10; // ms
+  private static final long TEST_TIME_SINCE_LAST_LOG_COMPACTION_THRESHOLD_MS = 0;
 
   /**
    * IMPORTANT NOTE: if you use this sharedVenice cluster, please do not close it. The {@link #cleanUp()} function
@@ -188,7 +202,6 @@ public class TestHybrid {
       throws Exception {
     LOGGER.info("About to create VeniceClusterWrapper");
     Properties extraProperties = new Properties();
-    extraProperties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(3L));
     if (chunkingEnabled) {
       // We exercise chunking by setting the servers' max size arbitrarily low. For now, since the RT topic
       // does not support chunking, and write compute is not merged yet, there is no other way to make the
@@ -472,11 +485,18 @@ public class TestHybrid {
     Properties extraProperties = new Properties();
     extraProperties.setProperty(PERSISTENCE_TYPE, PersistenceType.ROCKS_DB.name());
     extraProperties.setProperty(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, "false");
-    extraProperties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1L));
 
     SystemProducer veniceBatchProducer = null;
-    try (VeniceClusterWrapper veniceClusterWrapper =
-        ServiceFactory.getVeniceCluster(1, 3, 1, 2, 1000000, false, false, extraProperties)) {
+    VeniceClusterCreateOptions options = new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
+        .numberOfServers(3)
+        .numberOfRouters(1)
+        .replicationFactor(2)
+        .partitionSize(1000000)
+        .sslToStorageNodes(false)
+        .sslToKafka(false)
+        .extraProperties(extraProperties)
+        .build();
+    try (VeniceClusterWrapper veniceClusterWrapper = ServiceFactory.getVeniceCluster(options)) {
       try {
         Admin admin = veniceClusterWrapper.getLeaderVeniceController().getVeniceAdmin();
         String clusterName = veniceClusterWrapper.getClusterName();
@@ -523,8 +543,7 @@ public class TestHybrid {
         // while running in L/F model, we try to stop the original SN; let Helix elect a new leader and push some extra
         // data here. This is for testing "pass-through" mode is working properly
         // wait a little time to make sure the leader has re-produced all existing messages
-        long waitTime = TimeUnit.SECONDS.toMillis(
-            Integer.parseInt(extraProperties.getProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS)) + 2);
+        long waitTime = TimeUnit.SECONDS.toMillis(8);
         Utils.sleep(waitTime);
 
         String resourceName = Version.composeKafkaTopic(storeName, 1);
@@ -559,7 +578,9 @@ public class TestHybrid {
         /**
          * Use the same VeniceWriter to write END_OF_PUSH message, which will guarantee the message order in topic
          */
-        ((VeniceSystemProducer) veniceBatchProducer).getInternalProducer().broadcastEndOfPush(new HashMap<>());
+        VeniceWriter<byte[], byte[], byte[]> writer =
+            (VeniceWriter<byte[], byte[], byte[]>) ((VeniceSystemProducer) veniceBatchProducer).getInternalWriter();
+        writer.broadcastEndOfPush(new HashMap<>());
 
         TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
           Assert.assertTrue(admin.getStore(clusterName, storeName).containsVersion(1));
@@ -614,8 +635,7 @@ public class TestHybrid {
           /**
            * Leader would wait for 5 seconds before switching to real-time topic.
            */
-          long extraWaitTime = TimeUnit.SECONDS
-              .toMillis(Long.parseLong(extraProperties.getProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS)));
+          long extraWaitTime = TimeUnit.SECONDS.toMillis(5);
           long normalTimeForConsuming = TimeUnit.SECONDS.toMillis(3);
           LOGGER.info("normalTimeForConsuming: {} ms; extraWaitTime: {} ms", normalTimeForConsuming, extraWaitTime);
           Utils.sleep(normalTimeForConsuming + extraWaitTime);
@@ -724,10 +744,16 @@ public class TestHybrid {
   @Test(timeOut = 180 * Time.MS_PER_SECOND)
   public void testLeaderHonorLastTopicSwitchMessage() throws Exception {
     Properties extraProperties = new Properties();
-    extraProperties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(10L));
-    try (
-        VeniceClusterWrapper venice =
-            ServiceFactory.getVeniceCluster(1, 2, 1, 2, 1000000, false, false, extraProperties);
+    VeniceClusterCreateOptions options = new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
+        .numberOfServers(2)
+        .numberOfRouters(1)
+        .replicationFactor(2)
+        .partitionSize(1000000)
+        .sslToStorageNodes(false)
+        .sslToKafka(false)
+        .extraProperties(extraProperties)
+        .build();
+    try (VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster(options);
         ControllerClient controllerClient =
             new ControllerClient(venice.getClusterName(), venice.getAllControllersURLs())) {
       long streamingRewindSeconds = 25L;
@@ -767,17 +793,21 @@ public class TestHybrid {
       /**
        *  Build a producer that writes to {@link tmpTopic1}
        */
+      PubSubBrokerWrapper pubSubBrokerWrapper = venice.getPubSubBrokerWrapper();
       Properties veniceWriterProperties = new Properties();
-      veniceWriterProperties.put(KAFKA_BOOTSTRAP_SERVERS, venice.getPubSubBrokerWrapper().getAddress());
+      veniceWriterProperties.put(KAFKA_BOOTSTRAP_SERVERS, pubSubBrokerWrapper.getAddress());
       veniceWriterProperties.putAll(
           PubSubBrokerWrapper.getBrokerDetailsForClients(Collections.singletonList(venice.getPubSubBrokerWrapper())));
       AvroSerializer<String> stringSerializer = new AvroSerializer(STRING_SCHEMA);
       PubSubProducerAdapterFactory pubSubProducerAdapterFactory =
           venice.getPubSubBrokerWrapper().getPubSubClientsFactory().getProducerAdapterFactory();
 
-      try (VeniceWriter<byte[], byte[], byte[]> tmpWriter1 =
-          TestUtils.getVeniceWriterFactory(veniceWriterProperties, pubSubProducerAdapterFactory)
-              .createVeniceWriter(new VeniceWriterOptions.Builder(tmpTopic1.getName()).build())) {
+      try (VeniceWriter<byte[], byte[], byte[]> tmpWriter1 = TestUtils
+          .getVeniceWriterFactory(
+              veniceWriterProperties,
+              pubSubProducerAdapterFactory,
+              pubSubBrokerWrapper.getPubSubPositionTypeRegistry())
+          .createVeniceWriter(new VeniceWriterOptions.Builder(tmpTopic1.getName()).build())) {
         // Write 10 records
         for (int i = 0; i < 10; ++i) {
           tmpWriter1.put(stringSerializer.serialize("key_" + i), stringSerializer.serialize("value_" + i), 1);
@@ -787,9 +817,12 @@ public class TestHybrid {
       /**
        *  Build a producer that writes to {@link tmpTopic2}
        */
-      try (VeniceWriter<byte[], byte[], byte[]> tmpWriter2 =
-          TestUtils.getVeniceWriterFactory(veniceWriterProperties, pubSubProducerAdapterFactory)
-              .createVeniceWriter(new VeniceWriterOptions.Builder(tmpTopic2.getName()).build())) {
+      try (VeniceWriter<byte[], byte[], byte[]> tmpWriter2 = TestUtils
+          .getVeniceWriterFactory(
+              veniceWriterProperties,
+              pubSubProducerAdapterFactory,
+              pubSubBrokerWrapper.getPubSubPositionTypeRegistry())
+          .createVeniceWriter(new VeniceWriterOptions.Builder(tmpTopic2.getName()).build())) {
         // Write 10 records
         for (int i = 10; i < 20; ++i) {
           tmpWriter2.put(stringSerializer.serialize("key_" + i), stringSerializer.serialize("value_" + i), 1);
@@ -812,9 +845,12 @@ public class TestHybrid {
       try (
           AvroGenericStoreClient<String, Utf8> client = ClientFactory.getAndStartGenericAvroClient(
               ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(venice.getRandomRouterURL()));
-          VeniceWriter<byte[], byte[], byte[]> realTimeTopicWriter =
-              TestUtils.getVeniceWriterFactory(veniceWriterProperties, pubSubProducerAdapterFactory)
-                  .createVeniceWriter(new VeniceWriterOptions.Builder(Utils.getRealTimeTopicName(storeInfo)).build())) {
+          VeniceWriter<byte[], byte[], byte[]> realTimeTopicWriter = TestUtils
+              .getVeniceWriterFactory(
+                  veniceWriterProperties,
+                  pubSubProducerAdapterFactory,
+                  pubSubBrokerWrapper.getPubSubPositionTypeRegistry())
+              .createVeniceWriter(new VeniceWriterOptions.Builder(Utils.getRealTimeTopicName(storeInfo)).build())) {
         // Build a producer to produce 2 TS messages into RT
         realTimeTopicWriter.broadcastTopicSwitch(
             Collections.singletonList(venice.getPubSubBrokerWrapper().getAddress()),
@@ -948,8 +984,6 @@ public class TestHybrid {
 
   @Test(timeOut = 180 * Time.MS_PER_SECOND)
   public void testHybridMultipleVersions() throws Exception {
-    final Properties extraProperties = new Properties();
-    extraProperties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1L));
     final int partitionCount = 2;
     final int keyCount = 10;
     VeniceClusterWrapper cluster = sharedVenice;
@@ -1033,118 +1067,75 @@ public class TestHybrid {
         IntStream.range(0, 10).mapToObj(i -> new AbstractMap.SimpleEntry<>(i, i)));
   }
 
-  @Test(timeOut = 180
-      * Time.MS_PER_SECOND, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testHybridStoreTimeLagThresholdWithEmptyRT(boolean isRealTimeTopicEmpty) throws Exception {
-    SystemProducer veniceProducer = null;
+  @Test
+  public void testHybridStoreLogCompaction() throws Exception {
+    UpdateStoreQueryParams params = new UpdateStoreQueryParams()
+        // set hybridRewindSecond to a big number so following versions won't ignore old records in RT
+        .setHybridRewindSeconds(2000000)
+        .setHybridOffsetLagThreshold(0)
+        .setPartitionCount(2)
+        .setActiveActiveReplicationEnabled(true);
+    String storeName = Utils.getUniqueString("store");
+    sharedVenice.useControllerClient(client -> {
+      client.createNewStore(storeName, "owner", DEFAULT_KEY_SCHEMA, DEFAULT_VALUE_SCHEMA);
+      client.updateStore(storeName, params);
+    });
+    sharedVenice.createVersion(
+        storeName,
+        DEFAULT_KEY_SCHEMA,
+        DEFAULT_VALUE_SCHEMA,
+        IntStream.range(0, 10).mapToObj(i -> new AbstractMap.SimpleEntry<>(i, i)));
 
-    VeniceClusterWrapper venice = sharedVenice;
+    LOGGER.info("LogCompactionService test store created: {}", storeName);
+    Admin admin = sharedVenice.getLeaderVeniceController().getVeniceAdmin();
+
+    StoreInfo compactionReadyStore = sharedVenice.getControllerClient().getStore(storeName).getStore();
+    Assert.assertNotNull(compactionReadyStore.getHybridStoreConfig());
+    Assert.assertTrue(
+        admin.getCompactionManager().isCompactionReady(compactionReadyStore, sharedVenice.getClusterName()));
+
+    // Wait for the latch to count down
     try {
-      long streamingRewindSeconds = 10L;
-      // Disable offset lag threshold
-      long streamingMessageLag = -1L;
-      // Time lag threshold is 30 seconds for the test case
-      long streamingTimeLag = 30L;
-
-      String storeName = Utils.getUniqueString("hybrid-store");
-      File inputDir = getTempDataDirectory();
-      String inputDirPath = "file://" + inputDir.getAbsolutePath();
-      Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir); // records 1-100
-      Properties vpjProperties = defaultVPJProps(venice, inputDirPath, storeName);
-
-      try (ControllerClient controllerClient = createStoreForJob(venice.getClusterName(), recordSchema, vpjProperties);
-          AvroGenericStoreClient client = ClientFactory.getAndStartGenericAvroClient(
-              ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(venice.getRandomRouterURL()))) {
-
-        ControllerResponse response = controllerClient.updateStore(
-            storeName,
-            new UpdateStoreQueryParams().setHybridRewindSeconds(streamingRewindSeconds)
-                .setHybridOffsetLagThreshold(streamingMessageLag)
-                .setHybridTimeLagThreshold(streamingTimeLag));
-
-        Assert.assertFalse(response.isError());
-
-        // Do a VPJ push with an empty RT
-        runVPJ(vpjProperties, 1, controllerClient);
-
-        // Verify some records (note, records 1-100 have been pushed)
-        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
-          try {
-            for (int i = 1; i < 100; i++) {
-              String key = Integer.toString(i);
-              Object value = client.get(key).get();
-              assertNotNull(value, "Key " + i + " should not be missing!");
-              assertEquals(value.toString(), "test_name_" + key);
-            }
-          } catch (Exception e) {
-            throw new VeniceException(e);
-          }
-        });
-
-        if (!isRealTimeTopicEmpty) {
-          // write streaming records
-          veniceProducer = getSamzaProducer(venice, storeName, Version.PushType.STREAM);
-          for (int i = 1; i <= 10; i++) {
-            // The batch values are small, but the streaming records are "big" (i.e.: not that big, but bigger than
-            // the server's max configured chunk size). In the scenario where chunking is disabled, the server's
-            // max chunk size is not altered, and thus this will be under threshold.
-            sendCustomSizeStreamingRecord(veniceProducer, storeName, i, STREAMING_RECORD_SIZE);
-          }
-
-          TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
-            try {
-              checkLargeRecord(client, 2);
-            } catch (Exception e) {
-              throw new VeniceException(e);
-            }
-          });
-        }
-
-        // bounce servers
-        List<VeniceServerWrapper> servers = venice.getVeniceServers();
-        for (VeniceServerWrapper server: servers) {
-          venice.stopAndRestartVeniceServer(server.getPort());
-        }
-        // Without waiting after bouncing servers, it may cause this test flaky. It takes for a while for this
-        // partition from BOOTSTRAP to ONLINE.
-        Utils.sleep(5000);
-        if (!isRealTimeTopicEmpty) {
-          TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
-            try {
-              checkLargeRecord(client, 2);
-            } catch (Exception e) {
-              throw new VeniceException(e);
-            }
-          });
-        } else {
-          // Verify some records (note, records 1-100 have been pushed)
-          TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
-            try {
-              for (int i = 1; i < 100; i++) {
-                String key = Integer.toString(i);
-                Object value = client.get(key).get();
-                assertNotNull(value, "Key " + i + " should not be missing!");
-                assertEquals(value.toString(), "test_name_" + key);
-              }
-            } catch (Exception e) {
-              throw new VeniceException(e);
-            }
-          });
-        }
+      if (TestRepushOrchestratorImpl.latch.await(TEST_LOG_COMPACTION_TIMEOUT, TimeUnit.MILLISECONDS)) {
+        LOGGER.info("Log compaction job triggered");
       }
-    } finally {
-      if (veniceProducer != null) {
-        veniceProducer.stop();
-      }
+    } catch (InterruptedException e) {
+      LOGGER.error("Log compaction job failed");
+      throw new RuntimeException(e);
+    }
+
+    // ok, now run repush manually with the controller client.
+    // this call should be synchronous and the count down will trigger immediately..
+    TestRepushOrchestratorImpl.latch = new CountDownLatch(1);
+    sharedVenice.useControllerClient(client -> {
+      RepushJobResponse response = client.repushStore(storeName);
+      Assert.assertFalse(response.isError(), "Repush failed with error: " + response.getError());
+      // No waiting this time, this should countdown immediately
+      Assert.assertEquals(TestRepushOrchestratorImpl.latch.getCount(), 0);
+    });
+  }
+
+  public static class TestRepushOrchestratorImpl implements RepushOrchestrator {
+    static CountDownLatch latch = new CountDownLatch(1);
+
+    public TestRepushOrchestratorImpl(VeniceProperties props) {
+    }
+
+    @Override
+    public RepushJobResponse repush(RepushJobRequest repushJobRequest) {
+      latch.countDown();
+      LOGGER.info("Repush job triggered for store: " + repushJobRequest.toString());
+      return new RepushJobResponse(repushJobRequest.getStoreName(), Utils.getUniqueString("repush-execId"));
+    }
+
+    public static CountDownLatch getLatch() {
+      return latch;
     }
   }
 
   @Test(dataProvider = "Compression-Strategies", dataProviderClass = DataProviderUtils.class, timeOut = 60
       * Time.MS_PER_SECOND)
   public void testDuplicatedMessagesWontBePersisted(CompressionStrategy compressionStrategy) throws Exception {
-    Properties extraProperties = new Properties();
-    extraProperties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(3L));
-
     SystemProducer veniceProducer = null;
     // N.B.: RF 2 with 2 servers is important, in order to test both the leader and follower code paths
     VeniceClusterWrapper venice = sharedVenice;
@@ -1164,7 +1155,6 @@ public class TestHybrid {
 
       try (
           ControllerClient controllerClient = createStoreForJob(venice.getClusterName(), recordSchema, vpjProperties)) {
-        StoreInfo storeInfo = TestUtils.assertCommand(controllerClient.getStore(storeName)).getStore();
         // Have 1 partition only, so that all keys are produced to the same partition
         ControllerResponse response = controllerClient.updateStore(
             storeName,
@@ -1195,9 +1185,14 @@ public class TestHybrid {
         AvroSerializer<String> stringSerializer = new AvroSerializer(STRING_SCHEMA);
         AvroGenericDeserializer<String> stringDeserializer =
             new AvroGenericDeserializer<>(STRING_SCHEMA, STRING_SCHEMA);
-        try (VeniceWriter<byte[], byte[], byte[]> realTimeTopicWriter =
-            TestUtils.getVeniceWriterFactory(veniceWriterProperties, pubSubProducerAdapterFactory)
-                .createVeniceWriter(new VeniceWriterOptions.Builder(Utils.getRealTimeTopicName(storeInfo)).build())) {
+        StoreInfo storeInfo = TestUtils.assertCommand(controllerClient.getStore(storeName)).getStore();
+
+        try (VeniceWriter<byte[], byte[], byte[]> realTimeTopicWriter = TestUtils
+            .getVeniceWriterFactory(
+                veniceWriterProperties,
+                pubSubProducerAdapterFactory,
+                venice.getPubSubBrokerWrapper().getPubSubPositionTypeRegistry())
+            .createVeniceWriter(new VeniceWriterOptions.Builder(Utils.getRealTimeTopicName(storeInfo)).build())) {
           // Send <key1, value1, seq: 1>
           Pair<KafkaKey, KafkaMessageEnvelope> record = getKafkaKeyAndValueEnvelope(
               stringSerializer.serialize(key1),
@@ -1336,9 +1331,6 @@ public class TestHybrid {
 
   @Test(timeOut = 180 * Time.MS_PER_SECOND)
   public void testVersionSwapDeferredWithHybrid() throws Exception {
-    Properties extraProperties = new Properties();
-    extraProperties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(3L));
-
     // N.B.: RF 2 with 2 servers is important, in order to test both the leader and follower code paths
     VeniceClusterWrapper venice = sharedVenice;
     LOGGER.info("Finished creating VeniceClusterWrapper");
@@ -1352,7 +1344,6 @@ public class TestHybrid {
     try (ControllerClient controllerClient = createStoreForJob(venice.getClusterName(), recordSchema, vpjProperties);
         AvroGenericStoreClient client = ClientFactory.getAndStartGenericAvroClient(
             ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(venice.getRandomRouterURL()))) {
-      StoreInfo storeInfo = controllerClient.getStore(storeName).getStore();
       // Have 1 partition only, so that all keys are produced to the same partition
       ControllerResponse response = controllerClient.updateStore(
           storeName,
@@ -1379,10 +1370,15 @@ public class TestHybrid {
       String prefix = "foo_object_";
       PubSubProducerAdapterFactory pubSubProducerAdapterFactory =
           venice.getPubSubBrokerWrapper().getPubSubClientsFactory().getProducerAdapterFactory();
+      StoreInfo storeInfo = controllerClient.getStore(storeName).getStore();
+
       for (int i = 0; i < 2; i++) {
-        try (VeniceWriter<byte[], byte[], byte[]> realTimeTopicWriter =
-            TestUtils.getVeniceWriterFactory(veniceWriterProperties, pubSubProducerAdapterFactory)
-                .createVeniceWriter(new VeniceWriterOptions.Builder(Utils.getRealTimeTopicName(storeInfo)).build())) {
+        try (VeniceWriter<byte[], byte[], byte[]> realTimeTopicWriter = TestUtils
+            .getVeniceWriterFactory(
+                veniceWriterProperties,
+                pubSubProducerAdapterFactory,
+                venice.getPubSubBrokerWrapper().getPubSubPositionTypeRegistry())
+            .createVeniceWriter(new VeniceWriterOptions.Builder(Utils.getRealTimeTopicName(storeInfo)).build())) {
           for (int j = i * 50 + 1; j <= i * 50 + 50; j++) {
             realTimeTopicWriter
                 .put(stringSerializer.serialize(String.valueOf(j)), stringSerializer.serialize(prefix + j), 1);
@@ -1392,6 +1388,7 @@ public class TestHybrid {
 
       // Now mark the deferred version as current and verify it has all the records.
       controllerClient.overrideSetActiveVersion(storeName, 2);
+      assertEquals(controllerClient.getStore(storeName).getStore().getCurrentVersion(), 2);
 
       // Check both leader and follower hosts
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
@@ -1411,9 +1408,6 @@ public class TestHybrid {
 
   @Test(timeOut = 180 * Time.MS_PER_SECOND)
   public void testHybridDIVEnhancement() throws Exception {
-    Properties extraProperties = new Properties();
-    extraProperties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(3L));
-
     // N.B.: RF 2 with 2 servers is important, in order to test both the leader and follower code paths
     VeniceClusterWrapper venice = sharedVenice;
     LOGGER.info("Finished creating VeniceClusterWrapper");
@@ -1427,7 +1421,6 @@ public class TestHybrid {
     try (ControllerClient controllerClient = createStoreForJob(venice.getClusterName(), recordSchema, vpjProperties);
         AvroGenericStoreClient client = ClientFactory.getAndStartGenericAvroClient(
             ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(venice.getRandomRouterURL()))) {
-      StoreInfo storeInfo = TestUtils.assertCommand(controllerClient.getStore(storeName)).getStore();
       // Have 1 partition only, so that all keys are produced to the same partition
       ControllerResponse response = controllerClient.updateStore(
           storeName,
@@ -1449,14 +1442,18 @@ public class TestHybrid {
       String prefix = "hybrid_DIV_enhancement_";
       PubSubProducerAdapterFactory pubSubProducerAdapterFactory =
           venice.getPubSubBrokerWrapper().getPubSubClientsFactory().getProducerAdapterFactory();
+      StoreInfo storeInfo = TestUtils.assertCommand(controllerClient.getStore(storeName)).getStore();
 
       // chunk the data into 2 parts and send each part by different producers. Also, close the producers
       // as soon as it finishes writing. This makes sure that closing or switching producers won't
       // impact the ingestion
       for (int i = 0; i < 2; i++) {
-        try (VeniceWriter<byte[], byte[], byte[]> realTimeTopicWriter =
-            TestUtils.getVeniceWriterFactory(veniceWriterProperties, pubSubProducerAdapterFactory)
-                .createVeniceWriter(new VeniceWriterOptions.Builder(Utils.getRealTimeTopicName(storeInfo)).build())) {
+        try (VeniceWriter<byte[], byte[], byte[]> realTimeTopicWriter = TestUtils
+            .getVeniceWriterFactory(
+                veniceWriterProperties,
+                pubSubProducerAdapterFactory,
+                venice.getPubSubBrokerWrapper().getPubSubPositionTypeRegistry())
+            .createVeniceWriter(new VeniceWriterOptions.Builder(Utils.getRealTimeTopicName(storeInfo)).build())) {
           for (int j = i * 50 + 1; j <= i * 50 + 50; j++) {
             realTimeTopicWriter
                 .put(stringSerializer.serialize(String.valueOf(j)), stringSerializer.serialize(prefix + j), 1);
@@ -1482,8 +1479,6 @@ public class TestHybrid {
 
   @Test(timeOut = 180 * Time.MS_PER_SECOND)
   public void testHybridWithPartitionWiseConsumer() throws Exception {
-    final Properties extraProperties = new Properties();
-    extraProperties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1L));
     // Using partition count of 4 to trigger realtime topics from different store versions' store ingestion task will
     // share one consumer.
     final int partitionCount = 4;
@@ -1603,11 +1598,18 @@ public class TestHybrid {
   @Test(timeOut = 180 * Time.MS_PER_SECOND)
   public void testLeaderShouldCalculateRewindDuringPromotion() {
     final Properties extraProperties = new Properties();
-    extraProperties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(20L));
     final int partitionCount = 1;
     final int keyCount = 10;
-    try (VeniceClusterWrapper cluster =
-        ServiceFactory.getVeniceCluster(1, 1, 1, 1, 1000000, false, false, extraProperties)) {
+    VeniceClusterCreateOptions options = new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
+        .numberOfServers(1)
+        .numberOfRouters(1)
+        .replicationFactor(1)
+        .partitionSize(1000000)
+        .sslToStorageNodes(false)
+        .sslToKafka(false)
+        .extraProperties(extraProperties)
+        .build();
+    try (VeniceClusterWrapper cluster = ServiceFactory.getVeniceCluster(options)) {
       UpdateStoreQueryParams params = new UpdateStoreQueryParams()
           // set hybridRewindSecond to a big number so following versions won't ignore old records in RT
           .setHybridRewindSeconds(10)
@@ -1695,7 +1697,24 @@ public class TestHybrid {
   private static VeniceClusterWrapper setUpCluster(boolean enablePartitionWiseSharedConsumer) {
     Properties extraProperties = new Properties();
     extraProperties.setProperty(DEFAULT_MAX_NUMBER_OF_PARTITIONS, "5");
-    VeniceClusterWrapper cluster = ServiceFactory.getVeniceCluster(1, 0, 0, 2, 1000000, false, false, extraProperties);
+
+    // log compaction controller configs
+    extraProperties.setProperty(REPUSH_ORCHESTRATOR_CLASS_NAME, TestHybrid.TestRepushOrchestratorImpl.class.getName());
+    extraProperties.setProperty(LOG_COMPACTION_ENABLED, "true");
+    extraProperties.setProperty(LOG_COMPACTION_SCHEDULING_ENABLED, "true");
+    extraProperties.setProperty(LOG_COMPACTION_INTERVAL_MS, String.valueOf(TEST_LOG_COMPACTION_INTERVAL_MS));
+    extraProperties
+        .setProperty(LOG_COMPACTION_THRESHOLD_MS, String.valueOf(TEST_TIME_SINCE_LAST_LOG_COMPACTION_THRESHOLD_MS));
+    VeniceClusterCreateOptions options = new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
+        .numberOfServers(0)
+        .numberOfRouters(0)
+        .replicationFactor(2)
+        .partitionSize(1000000)
+        .sslToStorageNodes(false)
+        .sslToKafka(false)
+        .extraProperties(extraProperties)
+        .build();
+    VeniceClusterWrapper cluster = ServiceFactory.getVeniceCluster(options);
 
     // Add Venice Router
     Properties routerProperties = new Properties();
@@ -1704,7 +1723,6 @@ public class TestHybrid {
     // Add Venice Server
     Properties serverProperties = new Properties();
     serverProperties.setProperty(PERSISTENCE_TYPE, PersistenceType.ROCKS_DB.name());
-    serverProperties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1L));
     serverProperties.setProperty(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, "false");
     serverProperties.setProperty(SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED, "true");
     serverProperties.setProperty(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE, "300");

@@ -6,6 +6,7 @@ import com.linkedin.davinci.consumer.ChangeEvent;
 import com.linkedin.davinci.consumer.VeniceChangeCoordinate;
 import com.linkedin.davinci.consumer.VeniceChangelogConsumer;
 import com.linkedin.davinci.consumer.VeniceCoordinateOutOfRangeException;
+import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
@@ -346,7 +347,10 @@ public final class VeniceChangelogConsumerIO {
 
     @Override
     public @Nonnull Coder<VeniceCheckpointMark> getCheckpointMarkCoder() {
-      return new VeniceCheckpointMark.Coder();
+      /**
+       * TODO: Figure out how to receive {@link PubSubPositionDeserializer) via {@link com.linkedin.davinci.consumer.ChangelogClientConfig}
+       */
+      return new VeniceCheckpointMark.Coder(PubSubPositionDeserializer.DEFAULT_DESERIALIZER);
     }
   }
 
@@ -476,7 +480,7 @@ public final class VeniceChangelogConsumerIO {
         return;
       }
 
-      VeniceChangeCoordinate veniceChangeCoordinate = pubSubMessage.getOffset();
+      VeniceChangeCoordinate veniceChangeCoordinate = pubSubMessage.getPosition();
       LOG.debug("Revised checkpoint for partition {}", veniceChangeCoordinate.getPartition());
       _partitionToVeniceChangeCoordinates.put(veniceChangeCoordinate.getPartition(), veniceChangeCoordinate);
 

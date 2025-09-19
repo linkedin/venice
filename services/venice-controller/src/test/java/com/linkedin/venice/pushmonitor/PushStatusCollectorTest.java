@@ -1,5 +1,6 @@
 package com.linkedin.venice.pushmonitor;
 
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
@@ -8,7 +9,9 @@ import static org.mockito.Mockito.when;
 
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
+import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.TestUtils;
 import java.util.Collections;
 import java.util.Map;
@@ -49,6 +52,10 @@ public class PushStatusCollectorTest {
     Store daVinciStore = mock(Store.class);
     when(daVinciStore.isDaVinciPushStatusStoreEnabled()).thenReturn(true);
     when(storeRepository.getStore(daVinciStoreName)).thenReturn(daVinciStore);
+    when(daVinciStore.getIsDavinciHeartbeatReported()).thenReturn(true);
+    Version versionMock = mock(Version.class);
+    when(versionMock.getIsDavinciHeartbeatReported()).thenReturn(true);
+    when(daVinciStore.getVersion(anyInt())).thenReturn(versionMock);
 
     String regularStoreName = "regularStore";
     String regularStoreTopicV1 = "regularStore_v1";
@@ -73,7 +80,8 @@ public class PushStatusCollectorTest {
         1,
         20,
         1,
-        true);
+        true,
+        LogContext.EMPTY);
     pushStatusCollector.start();
 
     pushStatusCollector.subscribeTopic(regularStoreTopicV1, 10);
@@ -209,6 +217,10 @@ public class PushStatusCollectorTest {
     Store daVinciStore = mock(Store.class);
     when(daVinciStore.isDaVinciPushStatusStoreEnabled()).thenReturn(true);
     when(storeRepository.getStore(daVinciStoreName)).thenReturn(daVinciStore);
+    when(daVinciStore.getIsDavinciHeartbeatReported()).thenReturn(true);
+    Version versionMock = mock(Version.class);
+    when(versionMock.getIsDavinciHeartbeatReported()).thenReturn(true);
+    when(daVinciStore.getVersion(anyInt())).thenReturn(versionMock);
 
     AtomicInteger pushCompletedCount = new AtomicInteger();
     AtomicInteger pushErrorCount = new AtomicInteger();
@@ -226,7 +238,8 @@ public class PushStatusCollectorTest {
         1,
         20,
         1,
-        true);
+        true,
+        LogContext.EMPTY);
     pushStatusCollector.start();
 
     pushCompletedCount.set(0);
@@ -302,6 +315,10 @@ public class PushStatusCollectorTest {
     Store daVinciStore = mock(Store.class);
     when(daVinciStore.isDaVinciPushStatusStoreEnabled()).thenReturn(true);
     when(storeRepository.getStore(daVinciStoreName)).thenReturn(daVinciStore);
+    when(daVinciStore.getIsDavinciHeartbeatReported()).thenReturn(true);
+    Version versionMock = mock(Version.class);
+    when(versionMock.getIsDavinciHeartbeatReported()).thenReturn(true);
+    when(daVinciStore.getVersion(anyInt())).thenReturn(versionMock);
 
     AtomicInteger pushCompletedCount = new AtomicInteger();
     AtomicInteger pushErrorCount = new AtomicInteger();
@@ -319,7 +336,8 @@ public class PushStatusCollectorTest {
         0,
         20,
         1,
-        true);
+        true,
+        LogContext.EMPTY);
     pushStatusCollector.start();
 
     pushCompletedCount.set(0);

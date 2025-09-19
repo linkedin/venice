@@ -1,6 +1,7 @@
 package com.linkedin.davinci.ingestion.main;
 
 import static com.linkedin.venice.serialization.avro.AvroProtocolDefinition.PARTITION_STATE;
+import static com.linkedin.venice.utils.TestUtils.DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
@@ -11,6 +12,7 @@ import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.stats.MetadataUpdateStats;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.pubsub.PubSubUtil;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.function.BiConsumer;
@@ -33,15 +35,19 @@ public class MainIngestionStorageMetadataServiceTest {
 
     String topicName = "blah";
     int partition = 0;
-    OffsetRecord offsetRecord1 = mainIngestionStorageMetadataService.getLastOffset(topicName, partition);
+
+    OffsetRecord offsetRecord1 = mainIngestionStorageMetadataService
+        .getLastOffset(topicName, partition, DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING);
 
     assertNotNull(offsetRecord1);
 
-    OffsetRecord offsetRecord2 = new OffsetRecord(PARTITION_STATE.getSerializer());
-    offsetRecord2.setCheckpointLocalVersionTopicOffset(10);
+    OffsetRecord offsetRecord2 =
+        new OffsetRecord(PARTITION_STATE.getSerializer(), DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING);
+    offsetRecord2.checkpointLocalVtPosition(PubSubUtil.fromKafkaOffset(10));
 
     mainIngestionStorageMetadataService.putOffsetRecord(topicName, partition, offsetRecord2);
-    OffsetRecord offsetRecord3 = mainIngestionStorageMetadataService.getLastOffset(topicName, partition);
+    OffsetRecord offsetRecord3 = mainIngestionStorageMetadataService
+        .getLastOffset(topicName, partition, DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING);
     assertNotNull(offsetRecord3);
     assertEquals(offsetRecord3, offsetRecord2);
     assertNotEquals(

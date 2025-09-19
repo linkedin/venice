@@ -2,6 +2,7 @@ package com.linkedin.venice.integration.utils;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.ExceptionUtils;
+import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.Utils;
 import java.io.Closeable;
 import java.io.File;
@@ -10,7 +11,6 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.apache.commons.io.FileUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.ThreadContext;
 
 
 /**
@@ -99,15 +99,14 @@ public abstract class ProcessWrapper implements Closeable {
     return serviceName;
   }
 
-  public String getComponentTagForLogging() {
+  public LogContext getComponentTagForLogging() {
     /**
      * We intentionally ignore hostname here since it will be always 'localhost' for the local integration tests.
      */
-    return getServiceName() + "-" + getPort();
-  }
-
-  public static String getComponentTagPrefix(String prefix) {
-    return prefix.isEmpty() ? "" : prefix + "-";
+    return LogContext.newBuilder()
+        .setComponentName(getServiceName())
+        .setInstanceName(Utils.getHelixNodeIdentifier(getHost(), getPort()))
+        .build();
   }
 
   /**
@@ -125,7 +124,7 @@ public abstract class ProcessWrapper implements Closeable {
        */
       Thread startThread = new Thread(() -> {
         // Setup component tag for logging
-        ThreadContext.put("component", getComponentTagForLogging());
+        LogContext.setLogContext(getComponentTagForLogging());
         try {
           internalStart();
         } catch (Exception e) {

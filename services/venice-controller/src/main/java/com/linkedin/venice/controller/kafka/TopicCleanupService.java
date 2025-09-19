@@ -8,6 +8,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.PubSubAdminAdapterContext;
 import com.linkedin.venice.pubsub.PubSubAdminAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
@@ -17,6 +18,7 @@ import com.linkedin.venice.pubsub.api.PubSubTopicType;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.ExceptionUtils;
+import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.ArrayList;
@@ -124,9 +126,14 @@ public class TopicCleanupService extends AbstractVeniceService {
   }
 
   private PubSubAdminAdapter constructSourceOfTruthPubSubAdminAdapter(
-      PubSubAdminAdapterFactory<?> sourceOfTruthAdminAdapterFactory) {
+      PubSubAdminAdapterFactory<? extends PubSubAdminAdapter> sourceOfTruthAdminAdapterFactory) {
     VeniceProperties veniceProperties = admin.getPubSubSSLProperties(getTopicManager().getPubSubClusterAddress());
-    return sourceOfTruthAdminAdapterFactory.create(veniceProperties, pubSubTopicRepository);
+    return sourceOfTruthAdminAdapterFactory.create(
+        new PubSubAdminAdapterContext.Builder().setAdminClientName("SourceOfTruthAdminClient")
+            .setVeniceProperties(veniceProperties)
+            .setPubSubPositionTypeRegistry(multiClusterConfigs.getPubSubPositionTypeRegistry())
+            .setPubSubTopicRepository(pubSubTopicRepository)
+            .build());
   }
 
   // For test purpose
@@ -177,6 +184,7 @@ public class TopicCleanupService extends AbstractVeniceService {
   private class TopicCleanupTask implements Runnable {
     @Override
     public void run() {
+      LogContext.setLogContext(multiClusterConfigs.getLogContext());
       while (!stop.get()) {
         try {
           Thread.sleep(sleepIntervalBetweenTopicListFetchMs);
@@ -231,10 +239,10 @@ public class TopicCleanupService extends AbstractVeniceService {
       String storeName = topic.getStoreName();
       String clusterDiscovered;
       try {
-        clusterDiscovered = admin.discoverCluster(storeName).getFirst();
+        clusterDiscovered = admin.discoverCluster(storeName);
       } catch (VeniceNoStoreException e) {
         LOGGER.warn(
-            "Store {} not found. Exception when trying to delete topic: {} - {}",
+            "Expected store: {} not found corresponding to topic: {} in Venice. Will delete the topic without running any safety checks. Error: {}",
             storeName,
             topic.getName(),
             e.toString());
@@ -242,7 +250,7 @@ public class TopicCleanupService extends AbstractVeniceService {
         continue;
       }
 
-      if (!topic.isRealTime() || admin.isRTTopicDeletionPermittedByAllControllers(clusterDiscovered, storeName)) {
+      if (!topic.isRealTime() || admin.isRTTopicDeletionPermittedByAllControllers(clusterDiscovered, topic.getName())) {
         // delete if it is a VT topic or an RT topic eligible for deletion by the above condition
         deleteTopic(topic);
       } else {
@@ -430,10 +438,10 @@ public class TopicCleanupService extends AbstractVeniceService {
             LOGGER.error("Skip dangling admin topic {}.", pubSubTopic);
             continue;
           }
-          String clusterDiscovered = admin.discoverCluster(storeName).getFirst();
+          String clusterDiscovered = admin.discoverCluster(storeName);
           Store store = admin.getStore(clusterDiscovered, storeName);
           LOGGER.warn("Find topic discrepancy case: {}", pubSubTopic);
-          if (!isStillValidRealtimeTopic(pubSubTopic, store) || !isStillValidVersionTopic(pubSubTopic, store)) {
+          if (!isStillValidPubSubTopic(pubSubTopic, store)) {
             if (checkIfDanglingTopicConsistentlyFound(pubSubTopic)) {
               LOGGER.warn("Will remove consistently found dangling topic {}.", pubSubTopic);
               topicsToCleanup.add(pubSubTopic);
@@ -455,25 +463,17 @@ public class TopicCleanupService extends AbstractVeniceService {
     return topicsToCleanup;
   }
 
-  private boolean isStillValidRealtimeTopic(PubSubTopic pubSubTopic, Store store) {
-    if (pubSubTopic.isRealTime() && !store.isHybrid()) {
-      for (Version version: store.getVersions()) {
-        if (version.getHybridStoreConfig() != null) {
-          break;
-        }
-      }
-      return false;
-    }
-    return true;
-  }
-
-  private boolean isStillValidVersionTopic(PubSubTopic pubSubTopic, Store store) {
+  /**
+   * Check if the given topic is still valid based on its type and associated store metadata.
+   */
+  private boolean isStillValidPubSubTopic(PubSubTopic pubSubTopic, Store store) {
     if (pubSubTopic.isVersionTopicOrStreamReprocessingTopic() || pubSubTopic.isViewTopic()) {
       int versionNum = Version.parseVersionFromKafkaTopicName(pubSubTopic.getName());
-      if (!store.containsVersion(versionNum)) {
-        return false;
-      }
+      return store.containsVersion(versionNum);
+    } else if (pubSubTopic.isRealTime()) {
+      return Version.containsHybridVersion(store.getVersions());
     }
+
     return true;
   }
 

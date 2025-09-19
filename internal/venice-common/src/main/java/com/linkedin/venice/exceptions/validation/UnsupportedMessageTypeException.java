@@ -5,9 +5,10 @@ package com.linkedin.venice.exceptions.validation;
  *
  * It may indicate that there is corrupt data which happened to touch the message
  * type section of the data. Or it may indicate that some service was upgraded to
- * a more recent version without properly planning the rollout process.
+ * a more recent version without properly planning the rollout process (which is
+ * the more likely explanation).
  */
-public class UnsupportedMessageTypeException extends CorruptDataException {
+public class UnsupportedMessageTypeException extends FatalDataValidationException {
   public UnsupportedMessageTypeException(String exceptionMessage) {
     super(exceptionMessage);
   }

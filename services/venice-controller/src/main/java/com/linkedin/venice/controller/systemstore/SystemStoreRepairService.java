@@ -26,9 +26,9 @@ public class SystemStoreRepairService extends AbstractVeniceService {
   private final int repairTaskIntervalInSeconds;
   private final VeniceParentHelixAdmin parentAdmin;
   private final AtomicBoolean isRunning = new AtomicBoolean(false);
-  private final int heartbeatWaitTimeSeconds;
+  private final int heartbeatWaitTimeInSeconds;
+  private final int versionRefreshThresholdInDays;
   private ScheduledExecutorService checkServiceExecutor;
-  private final int maxRepairRetry;
   private final Map<String, SystemStoreHealthCheckStats> clusterToSystemStoreHealthCheckStatsMap =
       new VeniceConcurrentHashMap<>();
 
@@ -39,12 +39,15 @@ public class SystemStoreRepairService extends AbstractVeniceService {
     this.parentAdmin = parentAdmin;
     this.repairTaskIntervalInSeconds =
         multiClusterConfigs.getCommonConfig().getParentSystemStoreRepairCheckIntervalSeconds();
-    this.maxRepairRetry = multiClusterConfigs.getCommonConfig().getParentSystemStoreRepairRetryCount();
-    this.heartbeatWaitTimeSeconds =
+    this.versionRefreshThresholdInDays =
+        multiClusterConfigs.getCommonConfig().getParentSystemStoreVersionRefreshThresholdInDays();
+    this.heartbeatWaitTimeInSeconds =
         multiClusterConfigs.getCommonConfig().getParentSystemStoreHeartbeatCheckWaitTimeSeconds();
     for (String clusterName: multiClusterConfigs.getClusters()) {
-      clusterToSystemStoreHealthCheckStatsMap
-          .put(clusterName, new SystemStoreHealthCheckStats(metricsRepository, clusterName));
+      if (multiClusterConfigs.getControllerConfig(clusterName).isParentSystemStoreRepairServiceEnabled()) {
+        getClusterToSystemStoreHealthCheckStatsMap()
+            .put(clusterName, new SystemStoreHealthCheckStats(metricsRepository, clusterName));
+      }
     }
   }
 
@@ -56,8 +59,8 @@ public class SystemStoreRepairService extends AbstractVeniceService {
         new SystemStoreRepairTask(
             parentAdmin,
             clusterToSystemStoreHealthCheckStatsMap,
-            maxRepairRetry,
-            heartbeatWaitTimeSeconds,
+            heartbeatWaitTimeInSeconds,
+            versionRefreshThresholdInDays,
             isRunning),
         repairTaskIntervalInSeconds,
         repairTaskIntervalInSeconds,
@@ -80,4 +83,7 @@ public class SystemStoreRepairService extends AbstractVeniceService {
     LOGGER.info("SystemStoreRepairService is shutdown.");
   }
 
+  final Map<String, SystemStoreHealthCheckStats> getClusterToSystemStoreHealthCheckStatsMap() {
+    return clusterToSystemStoreHealthCheckStatsMap;
+  }
 }

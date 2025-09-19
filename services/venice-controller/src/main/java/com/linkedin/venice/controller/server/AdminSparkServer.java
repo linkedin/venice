@@ -8,9 +8,11 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.ADD_VERSION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.AGGREGATED_HEALTH_STATUS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.ALLOW_LIST_ADD_NODE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.ALLOW_LIST_REMOVE_NODE;
+import static com.linkedin.venice.controllerapi.ControllerRoute.AUTO_MIGRATE_STORE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.BACKUP_VERSION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.CHECK_RESOURCE_CLEANUP_FOR_STORE_CREATION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.CLEANUP_INSTANCE_CUSTOMIZED_STATES;
+import static com.linkedin.venice.controllerapi.ControllerRoute.CLEAN_EXECUTION_IDS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.CLUSTER_DISCOVERY;
 import static com.linkedin.venice.controllerapi.ControllerRoute.CLUSTER_HEALTH_STORES;
 import static com.linkedin.venice.controllerapi.ControllerRoute.COMPARE_STORE;
@@ -34,17 +36,20 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.END_OF_PUSH;
 import static com.linkedin.venice.controllerapi.ControllerRoute.EXECUTION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.FUTURE_VERSION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_ACL;
+import static com.linkedin.venice.controllerapi.ControllerRoute.GET_ADMIN_OPERATION_VERSION_FROM_CONTROLLERS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_ADMIN_TOPIC_METADATA;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_ALL_MIGRATION_PUSH_STRATEGIES;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_ALL_REPLICATION_METADATA_SCHEMAS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_ALL_VALUE_AND_DERIVED_SCHEMA;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_ALL_VALUE_SCHEMA;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_CLUSTER_STORAGE_PERSONAS;
+import static com.linkedin.venice.controllerapi.ControllerRoute.GET_DEAD_STORES;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_DELETABLE_STORE_TOPICS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_HEARTBEAT_TIMESTAMP_FROM_SYSTEM_STORE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_INUSE_SCHEMA_IDS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_KAFKA_TOPIC_CONFIGS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_KEY_SCHEMA;
+import static com.linkedin.venice.controllerapi.ControllerRoute.GET_LOCAL_ADMIN_OPERATION_PROTOCOL_VERSION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_ONGOING_INCREMENTAL_PUSH_VERSIONS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_REGION_PUSH_DETAILS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_REPUSH_INFO;
@@ -52,6 +57,7 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.GET_ROUTERS_CLUS
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_STALE_STORES_IN_CLUSTER;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_STORAGE_PERSONA;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_STORAGE_PERSONA_ASSOCIATED_WITH_STORE;
+import static com.linkedin.venice.controllerapi.ControllerRoute.GET_STORES_FOR_COMPACTION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_STORES_IN_CLUSTER;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_STORE_LARGEST_USED_VERSION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_VALUE_OR_DERIVED_SCHEMA_ID;
@@ -80,6 +86,7 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.REMOVE_DERIVED_S
 import static com.linkedin.venice.controllerapi.ControllerRoute.REMOVE_NODE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.REMOVE_STORE_FROM_GRAVEYARD;
 import static com.linkedin.venice.controllerapi.ControllerRoute.REPLICATE_META_DATA;
+import static com.linkedin.venice.controllerapi.ControllerRoute.REPUSH_STORE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.REQUEST_TOPIC;
 import static com.linkedin.venice.controllerapi.ControllerRoute.ROLLBACK_TO_BACKUP_VERSION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.ROLL_FORWARD_TO_FUTURE_VERSION;
@@ -90,19 +97,22 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.SET_OWNER;
 import static com.linkedin.venice.controllerapi.ControllerRoute.SET_PARTITION_COUNT;
 import static com.linkedin.venice.controllerapi.ControllerRoute.SET_TOPIC_COMPACTION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.SET_VERSION;
-import static com.linkedin.venice.controllerapi.ControllerRoute.SKIP_ADMIN;
+import static com.linkedin.venice.controllerapi.ControllerRoute.SKIP_ADMIN_MESSAGE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.STORAGE_ENGINE_OVERHEAD_RATIO;
 import static com.linkedin.venice.controllerapi.ControllerRoute.STORE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.STORE_MIGRATION_ALLOWED;
 import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_ACL;
+import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_ADMIN_OPERATION_PROTOCOL_VERSION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_ADMIN_TOPIC_METADATA;
 import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_CLUSTER_CONFIG;
+import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_DARK_CLUSTER_CONFIG;
 import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_KAFKA_TOPIC_LOG_COMPACTION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_KAFKA_TOPIC_MIN_IN_SYNC_REPLICA;
 import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_KAFKA_TOPIC_RETENTION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_STORAGE_PERSONA;
 import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_STORE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.UPLOAD_PUSH_JOB_STATUS;
+import static com.linkedin.venice.controllerapi.ControllerRoute.VALIDATE_STORE_DELETED;
 import static com.linkedin.venice.controllerapi.ControllerRoute.WIPE_CLUSTER;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -119,6 +129,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.service.AbstractVeniceService;
+import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -171,6 +182,7 @@ public class AdminSparkServer extends AbstractVeniceService {
   private final boolean disableParentRequestTopicForStreamPushes;
   private final PubSubTopicRepository pubSubTopicRepository;
   private final VeniceControllerRequestHandler requestHandler;
+  private final LogContext logContext;
 
   public AdminSparkServer(
       int port,
@@ -186,6 +198,7 @@ public class AdminSparkServer extends AbstractVeniceService {
       boolean disableParentRequestTopicForStreamPushes,
       PubSubTopicRepository pubSubTopicRepository,
       VeniceControllerRequestHandler requestHandler) {
+    this.logContext = admin.getLogContext();
     this.port = port;
     this.enforceSSL = enforceSSL;
     this.sslEnabled = sslConfig.isPresent();
@@ -231,6 +244,7 @@ public class AdminSparkServer extends AbstractVeniceService {
     }
 
     httpService.before((request, response) -> {
+      LogContext.setLogContext(logContext);
       AuditInfo audit = new AuditInfo(request);
       LOGGER.info(audit.toString());
       SparkServerStats stats = statsMap.get(request.queryParams(CLUSTER));
@@ -260,6 +274,7 @@ public class AdminSparkServer extends AbstractVeniceService {
 
     // filter for blocked api calls
     httpService.before((request, response) -> {
+      LogContext.setLogContext(logContext);
       if (disabledRoutes.contains(ControllerRoute.valueOfPath(request.uri()))) {
         httpService.halt(403, String.format("Route %s has been disabled in venice controller config!!", request.uri()));
       }
@@ -273,12 +288,13 @@ public class AdminSparkServer extends AbstractVeniceService {
       }
       long latency = System.currentTimeMillis() - (long) request.attribute(REQUEST_START_TIME);
       if ((boolean) request.attribute(REQUEST_SUCCEED)) {
-        LOGGER.info(audit.successString());
+        LOGGER.info(audit.successString(latency));
         stats.recordSuccessfulRequestLatency(latency);
       } else {
-        LOGGER.info(audit.failureString(response.body()));
+        LOGGER.info(audit.failureString(response.body(), latency));
         stats.recordFailedRequestLatency(latency);
       }
+      LogContext.clearLogContext();
     });
 
     // Build all different routes
@@ -287,11 +303,7 @@ public class AdminSparkServer extends AbstractVeniceService {
     StoresRoutes storesRoutes = new StoresRoutes(sslEnabled, accessController, pubSubTopicRepository);
     JobRoutes jobRoutes = new JobRoutes(sslEnabled, accessController);
     SkipAdminRoute skipAdminRoute = new SkipAdminRoute(sslEnabled, accessController);
-    CreateVersion createVersion = new CreateVersion(
-        sslEnabled,
-        accessController,
-        this.checkReadMethodForKafka,
-        disableParentRequestTopicForStreamPushes);
+    CreateVersion createVersion = new CreateVersion(sslEnabled, accessController, this.checkReadMethodForKafka);
     CreateStore createStoreRoute = new CreateStore(sslEnabled, accessController);
     NodesAndReplicas nodesAndReplicas = new NodesAndReplicas(sslEnabled, accessController);
     SchemaRoutes schemaRoutes = new SchemaRoutes(sslEnabled, accessController);
@@ -319,6 +331,9 @@ public class AdminSparkServer extends AbstractVeniceService {
         LIST_STORES.getPath(),
         new VeniceParentControllerRegionStateHandler(admin, storesRoutes.getAllStores(admin)));
     httpService.get(
+        CLEAN_EXECUTION_IDS.getPath(),
+        new VeniceParentControllerRegionStateHandler(admin, storesRoutes.cleanExecutionIds(admin)));
+    httpService.get(
         CLUSTER_HEALTH_STORES.getPath(),
         new VeniceParentControllerRegionStateHandler(admin, storesRoutes.getAllStoresStatuses(admin)));
     httpService.get(STORE.getPath(), new VeniceParentControllerRegionStateHandler(admin, storesRoutes.getStore(admin)));
@@ -336,6 +351,9 @@ public class AdminSparkServer extends AbstractVeniceService {
         UPDATE_CLUSTER_CONFIG.getPath(),
         new VeniceParentControllerRegionStateHandler(admin, clusterRoutes.updateClusterConfig(admin)));
     httpService.post(
+        UPDATE_DARK_CLUSTER_CONFIG.getPath(),
+        new VeniceParentControllerRegionStateHandler(admin, clusterRoutes.updateDarkClusterConfig(admin)));
+    httpService.post(
         WIPE_CLUSTER.getPath(),
         new VeniceParentControllerRegionStateHandler(admin, clusterRoutes.wipeCluster(admin)));
     httpService.post(
@@ -349,7 +367,7 @@ public class AdminSparkServer extends AbstractVeniceService {
         KILL_OFFLINE_PUSH_JOB.getPath(),
         new VeniceParentControllerRegionStateHandler(admin, jobRoutes.killOfflinePushJob(admin)));
     httpService.post(
-        SKIP_ADMIN.getPath(),
+        SKIP_ADMIN_MESSAGE.getPath(),
         new VeniceParentControllerRegionStateHandler(admin, skipAdminRoute.skipAdminMessage(admin)));
 
     httpService.post(
@@ -380,6 +398,10 @@ public class AdminSparkServer extends AbstractVeniceService {
     httpService.post(
         UPDATE_STORE.getPath(),
         new VeniceParentControllerRegionStateHandler(admin, storesRoutes.updateStore(admin)));
+
+    httpService.post(
+        AUTO_MIGRATE_STORE.getPath(),
+        new VeniceParentControllerRegionStateHandler(admin, storesRoutes.autoMigrateStore(admin)));
 
     httpService.get(
         STORE_MIGRATION_ALLOWED.getPath(),
@@ -499,12 +521,15 @@ public class AdminSparkServer extends AbstractVeniceService {
 
     httpService.get(
         EXECUTION.getPath(),
-        new VeniceParentControllerRegionStateHandler(admin, adminCommandExecutionRoutes.getExecution(admin)));
+        new VeniceParentControllerRegionStateHandler(
+            admin,
+            adminCommandExecutionRoutes.getExecution(admin, requestHandler.getClusterAdminOpsRequestHandler())));
     httpService.get(
         LAST_SUCCEED_EXECUTION_ID.getPath(),
         new VeniceParentControllerRegionStateHandler(
             admin,
-            adminCommandExecutionRoutes.getLastSucceedExecutionId(admin)));
+            adminCommandExecutionRoutes
+                .getLastSucceedExecutionId(admin, requestHandler.getClusterAdminOpsRequestHandler())));
 
     httpService.get(
         STORAGE_ENGINE_OVERHEAD_RATIO.getPath(),
@@ -589,8 +614,17 @@ public class AdminSparkServer extends AbstractVeniceService {
         GET_STORES_IN_CLUSTER.getPath(),
         new VeniceParentControllerRegionStateHandler(admin, storesRoutes.getStoresInCluster(admin)));
     httpService.get(
+        GET_STORES_FOR_COMPACTION.getPath(),
+        new VeniceParentControllerRegionStateHandler(admin, storesRoutes.getStoresForCompaction(admin)));
+    httpService.post(
+        REPUSH_STORE.getPath(),
+        new VeniceParentControllerRegionStateHandler(admin, storesRoutes.repushStore(admin)));
+    httpService.get(
         GET_STORE_LARGEST_USED_VERSION.getPath(),
         new VeniceParentControllerRegionStateHandler(admin, storesRoutes.getStoreLargestUsedVersion(admin)));
+    httpService.get(
+        GET_DEAD_STORES.getPath(),
+        new VeniceParentControllerRegionStateHandler(admin, storesRoutes.getDeadStores(admin)));
     httpService.get(
         GET_REGION_PUSH_DETAILS.getPath(),
         new VeniceParentControllerRegionStateHandler(admin, storesRoutes.getRegionPushDetails(admin)));
@@ -624,11 +658,31 @@ public class AdminSparkServer extends AbstractVeniceService {
 
     httpService.get(
         GET_ADMIN_TOPIC_METADATA.getPath(),
-        new VeniceParentControllerRegionStateHandler(admin, adminTopicMetadataRoutes.getAdminTopicMetadata(admin)));
+        new VeniceParentControllerRegionStateHandler(
+            admin,
+            adminTopicMetadataRoutes.getAdminTopicMetadata(admin, requestHandler.getClusterAdminOpsRequestHandler())));
     httpService.post(
         UPDATE_ADMIN_TOPIC_METADATA.getPath(),
-        new VeniceParentControllerRegionStateHandler(admin, adminTopicMetadataRoutes.updateAdminTopicMetadata(admin)));
-
+        new VeniceParentControllerRegionStateHandler(
+            admin,
+            adminTopicMetadataRoutes
+                .updateAdminTopicMetadata(admin, requestHandler.getClusterAdminOpsRequestHandler())));
+    httpService.post(
+        UPDATE_ADMIN_OPERATION_PROTOCOL_VERSION.getPath(),
+        new VeniceParentControllerRegionStateHandler(
+            admin,
+            adminTopicMetadataRoutes
+                .updateAdminOperationProtocolVersion(admin, requestHandler.getClusterAdminOpsRequestHandler())));
+    httpService.get(
+        GET_ADMIN_OPERATION_VERSION_FROM_CONTROLLERS.getPath(),
+        new VeniceParentControllerRegionStateHandler(
+            admin,
+            controllerRoutes.getAdminOperationVersionFromControllers(admin)));
+    httpService.get(
+        GET_LOCAL_ADMIN_OPERATION_PROTOCOL_VERSION.getPath(),
+        new VeniceParentControllerRegionStateHandler(
+            admin,
+            controllerRoutes.getLocalAdminOperationProtocolVersion(admin)));
     httpService.post(
         DELETE_KAFKA_TOPIC.getPath(),
         new VeniceParentControllerRegionStateHandler(admin, storesRoutes.deleteKafkaTopic(admin)));
@@ -657,6 +711,9 @@ public class AdminSparkServer extends AbstractVeniceService {
     httpService.get(
         GET_INUSE_SCHEMA_IDS.getPath(),
         new VeniceParentControllerRegionStateHandler(admin, storesRoutes.getInUseSchemaIds(admin)));
+    httpService.get(
+        VALIDATE_STORE_DELETED.getPath(),
+        new VeniceParentControllerRegionStateHandler(admin, storesRoutes.validateStoreDeleted(admin)));
 
     httpService.post(
         CLEANUP_INSTANCE_CUSTOMIZED_STATES.getPath(),

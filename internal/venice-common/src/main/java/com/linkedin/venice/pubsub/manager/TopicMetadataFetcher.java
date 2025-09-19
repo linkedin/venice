@@ -4,40 +4,39 @@ import static com.linkedin.venice.pubsub.PubSubConstants.getPubsubOffsetApiTimeo
 import static com.linkedin.venice.pubsub.manager.TopicManagerStats.SENSOR_TYPE.CONSUMER_ACQUISITION_WAIT_TIME;
 import static com.linkedin.venice.pubsub.manager.TopicManagerStats.SENSOR_TYPE.CONTAINS_TOPIC;
 import static com.linkedin.venice.pubsub.manager.TopicManagerStats.SENSOR_TYPE.GET_OFFSET_FOR_TIME;
-import static com.linkedin.venice.pubsub.manager.TopicManagerStats.SENSOR_TYPE.GET_PARTITION_LATEST_OFFSETS;
-import static com.linkedin.venice.pubsub.manager.TopicManagerStats.SENSOR_TYPE.GET_PRODUCER_TIMESTAMP_OF_LAST_DATA_MESSAGE;
-import static com.linkedin.venice.pubsub.manager.TopicManagerStats.SENSOR_TYPE.GET_TOPIC_LATEST_OFFSETS;
+import static com.linkedin.venice.pubsub.manager.TopicManagerStats.SENSOR_TYPE.GET_PARTITION_END_POSITION;
+import static com.linkedin.venice.pubsub.manager.TopicManagerStats.SENSOR_TYPE.GET_PARTITION_START_POSITION;
+import static com.linkedin.venice.pubsub.manager.TopicManagerStats.SENSOR_TYPE.GET_TOPIC_END_POSITIONS;
+import static com.linkedin.venice.pubsub.manager.TopicManagerStats.SENSOR_TYPE.GET_TOPIC_START_POSITIONS;
 import static com.linkedin.venice.pubsub.manager.TopicManagerStats.SENSOR_TYPE.PARTITIONS_FOR;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 
 import com.linkedin.venice.annotation.Threadsafe;
+import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
-import com.linkedin.venice.message.KafkaKey;
-import com.linkedin.venice.pubsub.PubSubConstants;
+import com.linkedin.venice.pubsub.PubSubConsumerAdapterContext;
+import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
 import com.linkedin.venice.pubsub.api.PubSubAdminAdapter;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
-import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
+import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubClientRetriableException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
-import com.linkedin.venice.stats.StatsErrorCode;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.RetryUtils;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
-import it.unimi.dsi.fastutil.ints.Int2LongMap;
-import it.unimi.dsi.fastutil.ints.Int2LongMaps;
-import it.unimi.dsi.fastutil.ints.Int2LongOpenHashMap;
 import java.io.Closeable;
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
@@ -52,6 +51,7 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Function;
 import java.util.function.Supplier;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -63,7 +63,7 @@ class TopicMetadataFetcher implements Closeable {
   private static final int DEFAULT_MAX_RETRIES_FOR_POPULATING_TMD_CACHE_ENTRY = 5;
   private static final Duration INITIAL_RETRY_DELAY = Duration.ofMillis(100);
   private static final List<Class<? extends Throwable>> PUBSUB_RETRIABLE_FAILURES =
-      Arrays.asList(PubSubTopicDoesNotExistException.class, PubSubOpTimeoutException.class);
+      Collections.singletonList(Exception.class);
 
   /**
    * Blocking queue is used to ensure single-threaded access to a consumer as PubSubConsumerAdapter
@@ -85,8 +85,7 @@ class TopicMetadataFetcher implements Closeable {
    * key within the specific cache.
    */
   private final Map<PubSubTopic, ValueAndExpiryTime<Boolean>> topicExistenceCache = new VeniceConcurrentHashMap<>();
-  private final Map<PubSubTopicPartition, ValueAndExpiryTime<Long>> latestOffsetCache = new VeniceConcurrentHashMap<>();
-  private final Map<PubSubTopicPartition, ValueAndExpiryTime<Long>> lastProducerTimestampCache =
+  private final Map<PubSubTopicPartition, ValueAndExpiryTime<PubSubPosition>> latestPositionCache =
       new VeniceConcurrentHashMap<>();
   private final long cachedEntryTtlInNs;
   private final AtomicInteger consumerWaitListSize = new AtomicInteger(0);
@@ -102,15 +101,20 @@ class TopicMetadataFetcher implements Closeable {
     this.pubSubConsumerPool = new LinkedBlockingQueue<>(topicManagerContext.getTopicMetadataFetcherConsumerPoolSize());
     this.closeables = new ArrayList<>(topicManagerContext.getTopicMetadataFetcherConsumerPoolSize());
     this.cachedEntryTtlInNs = MILLISECONDS.toNanos(topicManagerContext.getTopicOffsetCheckIntervalMs());
-    PubSubMessageDeserializer pubSubMessageDeserializer = PubSubMessageDeserializer.getInstance();
+    PubSubMessageDeserializer pubSubMessageDeserializer = PubSubMessageDeserializer.createDefaultDeserializer();
+    VeniceProperties pubSubProperties = topicManagerContext.getPubSubProperties(pubSubClusterAddress);
+    PubSubConsumerAdapterFactory<PubSubConsumerAdapter> pubSubConsumerFactory =
+        topicManagerContext.getPubSubConsumerAdapterFactory();
+    PubSubConsumerAdapterContext.Builder pubSubConsumerContextBuilder =
+        new PubSubConsumerAdapterContext.Builder().setVeniceProperties(pubSubProperties)
+            .setIsOffsetCollectionEnabled(false)
+            .setPubSubMessageDeserializer(pubSubMessageDeserializer)
+            .setPubSubPositionTypeRegistry(topicManagerContext.getPubSubPositionTypeRegistry())
+            .setPubSubTopicRepository(topicManagerContext.getPubSubTopicRepository())
+            .setMetricsRepository(topicManagerContext.getMetricsRepository());
     for (int i = 0; i < topicManagerContext.getTopicMetadataFetcherConsumerPoolSize(); i++) {
-      PubSubConsumerAdapter pubSubConsumerAdapter = topicManagerContext.getPubSubConsumerAdapterFactory()
-          .create(
-              topicManagerContext.getPubSubProperties(pubSubClusterAddress),
-              false,
-              pubSubMessageDeserializer,
-              pubSubClusterAddress);
-
+      pubSubConsumerContextBuilder.setConsumerName("TopicManager-" + i);
+      PubSubConsumerAdapter pubSubConsumerAdapter = pubSubConsumerFactory.create(pubSubConsumerContextBuilder.build());
       closeables.add(pubSubConsumerAdapter);
       if (!pubSubConsumerPool.offer(pubSubConsumerAdapter)) {
         throw new VeniceException("Failed to initialize consumer pool for topic metadata fetcher");
@@ -126,7 +130,7 @@ class TopicMetadataFetcher implements Closeable {
         15L,
         TimeUnit.MINUTES,
         new LinkedBlockingQueue<>(),
-        new DaemonThreadFactory("TopicMetadataFetcherThreadPool"));
+        new DaemonThreadFactory("TopicMetadataFetcherThreadPool", topicManagerContext.getLogContext()));
     threadPoolExecutor.allowCoreThreadTimeOut(true);
 
     stats.registerTopicMetadataFetcherSensors(this);
@@ -284,42 +288,6 @@ class TopicMetadataFetcher implements Closeable {
   }
 
   /**
-   * Get the latest offsets for all partitions of a topic. This is a blocking call.
-   * @param topic topic to get latest offsets for
-   * @return a map of partition id to latest offset. If the topic does not exist, an empty map is returned.
-   */
-  Int2LongMap getTopicLatestOffsets(PubSubTopic topic) {
-    PubSubConsumerAdapter pubSubConsumerAdapter = acquireConsumer();
-    try {
-      long startTime = System.nanoTime();
-      List<PubSubTopicPartitionInfo> partitionInfoList = pubSubConsumerAdapter.partitionsFor(topic);
-      stats.recordLatency(PARTITIONS_FOR, startTime);
-
-      if (partitionInfoList == null || partitionInfoList.isEmpty()) {
-        LOGGER.warn("Topic: {} may not exist or has no partitions. Returning empty map.", topic);
-        return Int2LongMaps.EMPTY_MAP;
-      }
-
-      Collection<PubSubTopicPartition> topicPartitions = new HashSet<>(partitionInfoList.size());
-      for (PubSubTopicPartitionInfo partitionInfo: partitionInfoList) {
-        topicPartitions.add(partitionInfo.getTopicPartition());
-      }
-
-      startTime = System.nanoTime();
-      Map<PubSubTopicPartition, Long> offsetsMap =
-          pubSubConsumerAdapter.endOffsets(topicPartitions, getPubsubOffsetApiTimeoutDurationDefaultValue());
-      stats.recordLatency(GET_TOPIC_LATEST_OFFSETS, startTime);
-      Int2LongMap result = new Int2LongOpenHashMap(offsetsMap.size());
-      for (Map.Entry<PubSubTopicPartition, Long> entry: offsetsMap.entrySet()) {
-        result.put(entry.getKey().getPartitionNumber(), entry.getValue().longValue());
-      }
-      return result;
-    } finally {
-      releaseConsumer(pubSubConsumerAdapter);
-    }
-  }
-
-  /**
    * Get information about all partitions of a topic. This is a blocking call.
    * @param topic topic to get partition info for
    * @return a list of partition info. If the topic does not exist, NULL is returned.
@@ -336,84 +304,146 @@ class TopicMetadataFetcher implements Closeable {
     }
   }
 
-  /**
-   * Retrieves the latest offset for the specified partition of a PubSub topic.
-   *
-   * @param pubSubTopicPartition The topic and partition number to query for the latest offset.
-   * @return The latest offset for the specified partition.
-   * @throws PubSubTopicDoesNotExistException If the topic does not exist.
-   * @throws IllegalArgumentException If the partition number is negative.
-   * @throws VeniceException If the offset returned by the consumer is null.
-   *                         This could indicate a bug in the PubSubConsumerAdapter implementation.
-   * @throws PubSubOpTimeoutException If the consumer times out. This could indicate that the topic does not exist
-   *                         or the partition does not exist.
-   */
-  long getLatestOffset(PubSubTopicPartition pubSubTopicPartition) {
-    PubSubConsumerAdapter pubSubConsumerAdapter = acquireConsumer();
+  // Acquire/release wrapper
+  private <T> T withConsumer(Function<PubSubConsumerAdapter, T> fn) {
+    PubSubConsumerAdapter consumer = acquireConsumer();
     try {
-      long startTime = System.nanoTime();
-      Map<PubSubTopicPartition, Long> offsetMap = pubSubConsumerAdapter
-          .endOffsets(Collections.singleton(pubSubTopicPartition), getPubsubOffsetApiTimeoutDurationDefaultValue());
-      stats.recordLatency(GET_PARTITION_LATEST_OFFSETS, startTime);
-      Long offset = offsetMap.get(pubSubTopicPartition);
-      if (offset == null) {
-        LOGGER.error("Received null offset for topic-partition: {}", pubSubTopicPartition);
-        // This should never happen; if it does, it's a bug in the PubSubConsumerAdapter implementation
-        throw new VeniceException("Got null as latest offset for: " + pubSubTopicPartition);
-      }
-      return offset;
+      return fn.apply(consumer);
     } finally {
-      releaseConsumer(pubSubConsumerAdapter);
+      releaseConsumer(consumer);
     }
   }
 
-  long getLatestOffsetWithRetries(PubSubTopicPartition pubSubTopicPartition, int retries) {
+  // Get all partitions for a topic, record PARTITIONS_FOR once
+  private Collection<PubSubTopicPartition> listPartitionsForTopic(PubSubConsumerAdapter consumer, PubSubTopic topic) {
+    long t0 = System.nanoTime();
+    List<PubSubTopicPartitionInfo> infos = consumer.partitionsFor(topic);
+    stats.recordLatency(PARTITIONS_FOR, t0);
+
+    if (infos == null || infos.isEmpty()) {
+      LOGGER.warn("Topic: {} may not exist or has no partitions. Returning empty map.", topic);
+      return Collections.emptyList();
+    }
+    Collection<PubSubTopicPartition> parts = new HashSet<>(infos.size());
+    for (PubSubTopicPartitionInfo info: infos) {
+      parts.add(info.getTopicPartition());
+    }
+    return parts;
+  }
+
+  Map<PubSubTopicPartition, PubSubPosition> getEndPositionsForTopic(PubSubTopic topic) {
+    return withConsumer(consumer -> {
+      Collection<PubSubTopicPartition> parts = listPartitionsForTopic(consumer, topic);
+      if (parts.isEmpty()) {
+        return Collections.emptyMap();
+      }
+      long t0 = System.nanoTime();
+      Map<PubSubTopicPartition, PubSubPosition> res =
+          consumer.endPositions(parts, getPubsubOffsetApiTimeoutDurationDefaultValue());
+      stats.recordLatency(GET_TOPIC_END_POSITIONS, t0);
+      return res;
+    });
+  }
+
+  Map<PubSubTopicPartition, PubSubPosition> getStartPositionsForTopic(PubSubTopic topic) {
+    return withConsumer(consumer -> {
+      Collection<PubSubTopicPartition> parts = listPartitionsForTopic(consumer, topic);
+      if (parts.isEmpty()) {
+        return Collections.emptyMap();
+      }
+      long t0 = System.nanoTime();
+      Map<PubSubTopicPartition, PubSubPosition> res =
+          consumer.beginningPositions(parts, getPubsubOffsetApiTimeoutDurationDefaultValue());
+      stats.recordLatency(GET_TOPIC_START_POSITIONS, t0);
+      return res;
+    });
+  }
+
+  PubSubPosition getEndPositionForPartition(PubSubTopicPartition partition) {
+    return withConsumer(consumer -> {
+      long t0 = System.nanoTime();
+      Map<PubSubTopicPartition, PubSubPosition> res =
+          consumer.endPositions(Collections.singleton(partition), getPubsubOffsetApiTimeoutDurationDefaultValue());
+      stats.recordLatency(GET_PARTITION_END_POSITION, t0);
+      PubSubPosition pos = res.get(partition);
+      if (pos == null) {
+        LOGGER.error("Received null position for topic-partition: {}", partition);
+        throw new VeniceException("Got null position for: " + partition);
+      }
+      return pos;
+    });
+  }
+
+  PubSubPosition getStartPositionsForPartition(PubSubTopicPartition partition) {
+    validateTopicPartition(partition);
+    return withConsumer(consumer -> {
+      long t0 = System.nanoTime();
+      Map<PubSubTopicPartition, PubSubPosition> res = consumer
+          .beginningPositions(Collections.singleton(partition), getPubsubOffsetApiTimeoutDurationDefaultValue());
+      stats.recordLatency(GET_PARTITION_START_POSITION, t0);
+      PubSubPosition pos = res.get(partition);
+      if (pos == null) {
+        LOGGER.error("Received null position for topic-partition: {}", partition);
+        throw new VeniceException("Got null position for: " + partition);
+      }
+      return pos;
+    });
+  }
+
+  PubSubPosition getLatestPositionWithRetries(PubSubTopicPartition pubSubTopicPartition, int retries) {
     return RetryUtils.executeWithMaxAttemptAndExponentialBackoff(() -> {
       validateTopicPartition(pubSubTopicPartition);
-      return getLatestOffset(pubSubTopicPartition);
+      return getEndPositionForPartition(pubSubTopicPartition);
     }, retries, INITIAL_RETRY_DELAY, Duration.ofSeconds(5), Duration.ofMinutes(5), PUBSUB_RETRIABLE_FAILURES);
   }
 
-  CompletableFuture<Long> getLatestOffsetWithRetriesAsync(PubSubTopicPartition pubSubTopicPartition, int retries) {
-    return CompletableFuture
-        .supplyAsync(() -> getLatestOffsetWithRetries(pubSubTopicPartition, retries), threadPoolExecutor);
+  CompletableFuture<PubSubPosition> getLatestPositionNoRetry(PubSubTopicPartition pubSubTopicPartition) {
+    return CompletableFuture.supplyAsync(() -> {
+      validateTopicPartition(pubSubTopicPartition);
+      return getEndPositionForPartition(pubSubTopicPartition);
+    }, threadPoolExecutor);
   }
 
-  long getLatestOffsetCachedNonBlocking(PubSubTopicPartition pubSubTopicPartition) {
-    ValueAndExpiryTime<Long> cachedValue;
-    cachedValue = latestOffsetCache.get(pubSubTopicPartition);
+  CompletableFuture<PubSubPosition> getLatestOffsetWithRetriesAsync(
+      PubSubTopicPartition pubSubTopicPartition,
+      int retries) {
+    return CompletableFuture
+        .supplyAsync(() -> getLatestPositionWithRetries(pubSubTopicPartition, retries), threadPoolExecutor);
+  }
+
+  PubSubPosition getLatestPositionCachedNonBlocking(PubSubTopicPartition pubSubTopicPartition) {
+    ValueAndExpiryTime<PubSubPosition> cachedValue;
+    cachedValue = latestPositionCache.get(pubSubTopicPartition);
     updateCacheAsync(
         pubSubTopicPartition,
         cachedValue,
-        latestOffsetCache,
-        () -> getLatestOffsetWithRetriesAsync(
-            pubSubTopicPartition,
-            DEFAULT_MAX_RETRIES_FOR_POPULATING_TMD_CACHE_ENTRY));
+        latestPositionCache,
+        () -> getLatestPositionNoRetry(pubSubTopicPartition));
     if (cachedValue == null) {
-      cachedValue = latestOffsetCache.get(pubSubTopicPartition);
+      cachedValue = latestPositionCache.get(pubSubTopicPartition);
       if (cachedValue == null) {
-        return PubSubConstants.UNKNOWN_LATEST_OFFSET;
+        return PubSubSymbolicPosition.LATEST;
       }
     }
     return cachedValue.getValue();
   }
 
-  long getLatestOffsetCached(PubSubTopicPartition pubSubTopicPartition) {
-    ValueAndExpiryTime<Long> cachedValue;
+  PubSubPosition getLatestPositionCached(PubSubTopicPartition pubSubTopicPartition) {
+    ValueAndExpiryTime<PubSubPosition> cachedValue;
     try {
-      cachedValue = latestOffsetCache.computeIfAbsent(pubSubTopicPartition, k -> {
-        long latestOffset =
-            getLatestOffsetWithRetries(pubSubTopicPartition, DEFAULT_MAX_RETRIES_FOR_POPULATING_TMD_CACHE_ENTRY);
-        return new ValueAndExpiryTime<>(latestOffset);
+      cachedValue = latestPositionCache.computeIfAbsent(pubSubTopicPartition, k -> {
+        PubSubPosition latestPosition =
+            getLatestPositionWithRetries(pubSubTopicPartition, DEFAULT_MAX_RETRIES_FOR_POPULATING_TMD_CACHE_ENTRY);
+        return new ValueAndExpiryTime<>(latestPosition);
       });
     } catch (PubSubTopicDoesNotExistException | PubSubOpTimeoutException e) {
       LOGGER.error("Failed to get end offset for topic-partition: {}", pubSubTopicPartition, e);
-      return StatsErrorCode.LAG_MEASUREMENT_FAILURE.code;
+      return PubSubSymbolicPosition.LATEST;
     }
     updateCacheAsync(
         pubSubTopicPartition,
         cachedValue,
-        latestOffsetCache,
+        latestPositionCache,
         () -> getLatestOffsetWithRetriesAsync(
             pubSubTopicPartition,
             DEFAULT_MAX_RETRIES_FOR_POPULATING_TMD_CACHE_ENTRY));
@@ -424,57 +454,62 @@ class TopicMetadataFetcher implements Closeable {
   void populateCacheWithLatestOffset(PubSubTopicPartition pubSubTopicPartition) {
     CompletableFuture.runAsync(() -> {
       validateTopicPartition(pubSubTopicPartition);
-      getLatestOffsetCached(pubSubTopicPartition);
+      getLatestPositionCached(pubSubTopicPartition);
     }, threadPoolExecutor);
   }
 
   /**
-   * Get the offset for a given timestamp. This is a blocking call.
-   * @param pubSubTopicPartition topic partition to get the offset for
-   * @param timestamp timestamp to get the offset for
-   * @return the offset for the given timestamp
+   * Get the position for a given timestamp. This is a blocking call.
+   * @param pubSubTopicPartition topic partition to get the position for
+   * @param timestamp timestamp to get the position for
+   * @return the position for the given timestamp
    */
-  long getOffsetForTime(PubSubTopicPartition pubSubTopicPartition, long timestamp) {
+  PubSubPosition getPositionForTime(PubSubTopicPartition pubSubTopicPartition, long timestamp) {
     validateTopicPartition(pubSubTopicPartition);
-    // We start by retrieving the latest offset. If the provided timestamp is out of range,
-    // we return the latest offset. This ensures that we don't miss any records produced
-    // after the 'offsetForTime' call when the latest offset is obtained after timestamp checking.
-    long latestOffset = getLatestOffset(pubSubTopicPartition);
+    // We start by retrieving the latest position. If the provided timestamp is out of range,
+    // we return the latest position. This ensures that we don't miss any records produced
+    // after the 'getPositionByTimestamp' call when the latest position is obtained after timestamp checking.
+    PubSubPosition latestPosition = getEndPositionForPartition(pubSubTopicPartition);
 
     PubSubConsumerAdapter pubSubConsumerAdapter = acquireConsumer();
     try {
       long startTime = System.nanoTime();
-      Long result = pubSubConsumerAdapter
-          .offsetForTime(pubSubTopicPartition, timestamp, getPubsubOffsetApiTimeoutDurationDefaultValue());
+      PubSubPosition result = pubSubConsumerAdapter
+          .getPositionByTimestamp(pubSubTopicPartition, timestamp, getPubsubOffsetApiTimeoutDurationDefaultValue());
       stats.recordLatency(GET_OFFSET_FOR_TIME, startTime);
       if (result != null) {
         return result;
       }
-      // When the offset is null, it indicates that the provided timestamp is either out of range
+      // When the position is null, it indicates that the provided timestamp is either out of range
       // or the topic does not contain any messages. In such cases, we log a warning and return
-      // the offset of the last message available for the topic-partition.
+      // the position of the last message available for the topic-partition.
       LOGGER.warn(
-          "Received null offset for timestamp: {} on topic-partition: {}. This may occur if the timestamp is beyond "
-              + "the latest message timestamp or if the topic has no messages. Returning the latest offset: {}",
+          "Received null position for timestamp: {} on topic-partition: {}. This may occur if the timestamp "
+              + "is beyond the latest message timestamp or if the topic has no messages. Returning the latest position: {}",
           timestamp,
           pubSubTopicPartition,
-          latestOffset);
-      return latestOffset;
+          latestPosition);
+      return latestPosition;
     } finally {
       releaseConsumer(pubSubConsumerAdapter);
     }
   }
 
   /**
-   * Get the offset for a given timestamp with retries. This is a blocking call.
-   * @param pubSubTopicPartition topic partition to get the offset for
-   * @param timestamp timestamp to get the offset for
-   * @param retries number of retries
-   * @return the offset for the given timestamp
+   * Retrieves the position for a given timestamp in the specified topic partition, with retry logic.
+   * <p>
+   * This is a blocking call that attempts to find the position corresponding to the provided timestamp,
+   * retrying the operation up to the specified number of times in case of retriable failures.
+   * </p>
+   *
+   * @param pubSubTopicPartition the topic partition for which to retrieve the position
+   * @param timestamp the timestamp (in milliseconds) to find the corresponding position for
+   * @param retries the maximum number of retry attempts for retriable errors
+   * @return the offset corresponding to the given timestamp, or the latest position if the timestamp is out of range
    */
-  long getOffsetForTimeWithRetries(PubSubTopicPartition pubSubTopicPartition, long timestamp, int retries) {
+  PubSubPosition getPositionForTimeWithRetries(PubSubTopicPartition pubSubTopicPartition, long timestamp, int retries) {
     return RetryUtils.executeWithMaxAttemptAndExponentialBackoff(
-        () -> getOffsetForTime(pubSubTopicPartition, timestamp),
+        () -> getPositionForTime(pubSubTopicPartition, timestamp),
         retries,
         INITIAL_RETRY_DELAY,
         Duration.ofSeconds(5),
@@ -482,194 +517,36 @@ class TopicMetadataFetcher implements Closeable {
         PUBSUB_RETRIABLE_FAILURES);
   }
 
-  /**
-   * Get the producer timestamp of the last data message in a topic partition
-   * @param pubSubTopicPartition topic partition to get the producer timestamp for
-   * @return the producer timestamp of the last data message in the topic partition
-   * @throws VeniceException if failed to get the producer timestamp
-   */
-  long getProducerTimestampOfLastDataMessage(PubSubTopicPartition pubSubTopicPartition) {
-    int fetchSize = 10;
-    int totalAttempts = 3;
-    int fetchedRecordsCount;
-    long startTime = System.nanoTime();
-    do {
-      List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> lastConsumedRecords =
-          consumeLatestRecords(pubSubTopicPartition, fetchSize);
-      // if there are no records in this topic partition, return a special timestamp
-      if (lastConsumedRecords.isEmpty()) {
-        return PubSubConstants.PUBSUB_NO_PRODUCER_TIME_IN_EMPTY_TOPIC_PARTITION;
-      }
-      fetchedRecordsCount = lastConsumedRecords.size();
-      // iterate in reverse order to find the first data message (not control message) from the end
-      for (int i = lastConsumedRecords.size() - 1; i >= 0; i--) {
-        PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record = lastConsumedRecords.get(i);
-        if (!record.getKey().isControlMessage()
-            || Arrays.equals(record.getKey().getKey(), KafkaKey.HEART_BEAT.getKey())) {
-          stats.recordLatency(GET_PRODUCER_TIMESTAMP_OF_LAST_DATA_MESSAGE, startTime);
-          // note that the timestamp is the producer timestamp and not the pubsub message (broker) timestamp
-          return record.getValue().getProducerMetadata().getMessageTimestamp();
-        }
-      }
-      fetchSize = 50;
-    } while (--totalAttempts > 0);
-
-    String errorMsg = String.format(
-        "No data message found in topic-partition: %s when fetching producer timestamp of the last data message. Consumed %d records from the end.",
-        pubSubTopicPartition,
-        fetchedRecordsCount);
-    LOGGER.warn(errorMsg);
-    throw new VeniceException(errorMsg);
-  }
-
-  long getProducerTimestampOfLastDataMessageWithRetries(PubSubTopicPartition pubSubTopicPartition, int retries) {
-    return RetryUtils.executeWithMaxAttempt(
-        () -> getProducerTimestampOfLastDataMessage(pubSubTopicPartition),
-        retries,
-        INITIAL_RETRY_DELAY,
-        PUBSUB_RETRIABLE_FAILURES);
-  }
-
-  CompletableFuture<Long> getProducerTimestampOfLastDataMessageWithRetriesAsync(
-      PubSubTopicPartition pubSubTopicPartition,
-      int retries) {
-    return CompletableFuture.supplyAsync(
-        () -> getProducerTimestampOfLastDataMessageWithRetries(pubSubTopicPartition, retries),
-        threadPoolExecutor);
-  }
-
-  long getProducerTimestampOfLastDataMessageCached(PubSubTopicPartition pubSubTopicPartition) {
-    ValueAndExpiryTime<Long> cachedValue;
-    try {
-      cachedValue = lastProducerTimestampCache.computeIfAbsent(pubSubTopicPartition, k -> {
-        long producerTimestamp = getProducerTimestampOfLastDataMessageWithRetries(
-            pubSubTopicPartition,
-            DEFAULT_MAX_RETRIES_FOR_POPULATING_TMD_CACHE_ENTRY);
-        return new ValueAndExpiryTime<>(producerTimestamp);
-      });
-    } catch (PubSubTopicDoesNotExistException | PubSubOpTimeoutException e) {
-      LOGGER.error("Failed to get producer timestamp for topic-partition: {}", pubSubTopicPartition, e);
-      return StatsErrorCode.LAG_MEASUREMENT_FAILURE.code;
-    }
-
-    updateCacheAsync(
-        pubSubTopicPartition,
-        cachedValue,
-        lastProducerTimestampCache,
-        () -> getProducerTimestampOfLastDataMessageWithRetriesAsync(
-            pubSubTopicPartition,
-            DEFAULT_MAX_RETRIES_FOR_POPULATING_TMD_CACHE_ENTRY));
-
-    return cachedValue.getValue();
-  }
-
-  /**
-   * This method retrieves last {@code lastRecordsCount} records from a topic partition and there are 4 steps below.
-   *  1. Find the current end offset N
-   *  2. Seek back {@code lastRecordsCount} records from the end offset N
-   *  3. Keep consuming records until the last consumed offset is greater than or equal to N
-   *  4. Return all consumed records
-   *
-   * There are 2 things to note:
-   *   1. When this method returns, these returned records are not necessarily the "last" records because after step 2,
-   *      there could be more records produced to this topic partition and this method only consume records until the end
-   *      offset retrieved at the above step 2.
-   *
-   *   2. This method might return more than {@code lastRecordsCount} records since the consumer poll method gets a batch
-   *      of consumer records each time and the batch size is arbitrary.
-   */
-  List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> consumeLatestRecords(
-      PubSubTopicPartition pubSubTopicPartition,
-      int lastRecordsCount) {
-    if (lastRecordsCount < 1) {
-      throw new IllegalArgumentException(
-          "Last record count must be greater than or equal to 1. Got: " + lastRecordsCount);
-    }
-    validateTopicPartition(pubSubTopicPartition);
+  public PubSubPosition resolvePosition(PubSubTopicPartition partition, int positionTypeId, ByteBuffer buffer) {
     PubSubConsumerAdapter pubSubConsumerAdapter = acquireConsumer();
-    boolean subscribed = false;
     try {
-      // find the end offset
-      Map<PubSubTopicPartition, Long> offsetMap = pubSubConsumerAdapter
-          .endOffsets(Collections.singletonList(pubSubTopicPartition), getPubsubOffsetApiTimeoutDurationDefaultValue());
-      if (offsetMap == null || offsetMap.isEmpty()) {
-        throw new VeniceException("Failed to get the end offset for topic-partition: " + pubSubTopicPartition);
-      }
-      long latestOffset = offsetMap.get(pubSubTopicPartition);
-      if (latestOffset <= 0) {
-        return Collections.emptyList(); // no records in this topic partition
-      }
-
-      // find the beginning offset
-      long earliestOffset =
-          pubSubConsumerAdapter.beginningOffset(pubSubTopicPartition, getPubsubOffsetApiTimeoutDurationDefaultValue());
-      if (earliestOffset == latestOffset) {
-        return Collections.emptyList(); // no records in this topic partition
-      }
-
-      // consume latest records
-      ensureConsumerHasNoSubscriptions(pubSubConsumerAdapter);
-      long consumePastOffset = Math.max(Math.max(latestOffset - lastRecordsCount, earliestOffset) - 1, -1);
-      pubSubConsumerAdapter.subscribe(pubSubTopicPartition, consumePastOffset);
-      subscribed = true;
-      LOGGER.info(
-          "Subscribed to topic partition: {} starting from offset: {}",
-          pubSubTopicPartition,
-          consumePastOffset + 1);
-
-      List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> allConsumedRecords = new ArrayList<>(lastRecordsCount);
-
-      // Keep consuming records from that topic-partition until the last consumed record's
-      // offset is greater or equal to the partition end offset retrieved before.
-      do {
-        List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> consumedBatch = Collections.emptyList();
-        int pollAttempt = 1;
-        while (pollAttempt <= PubSubConstants.PUBSUB_CONSUMER_POLLING_FOR_METADATA_RETRY_MAX_ATTEMPT
-            && (consumedBatch == null || consumedBatch.isEmpty())) {
-          consumedBatch =
-              pubSubConsumerAdapter.poll(Math.max(10, getPubsubOffsetApiTimeoutDurationDefaultValue().toMillis()))
-                  .get(pubSubTopicPartition);
-          pollAttempt++;
-        }
-
-        // If batch is still empty after retries, give up.
-        if (consumedBatch == null || consumedBatch.isEmpty()) {
-          String message = String.format(
-              "Failed to get records from topic-partition: %s after %d attempts",
-              pubSubTopicPartition,
-              PubSubConstants.PUBSUB_CONSUMER_POLLING_FOR_METADATA_RETRY_MAX_ATTEMPT);
-          LOGGER.error(message);
-          throw new VeniceException(message);
-        }
-        allConsumedRecords.addAll(consumedBatch);
-      } while (allConsumedRecords.get(allConsumedRecords.size() - 1).getOffset() + 1 < latestOffset);
-
-      return allConsumedRecords;
+      return pubSubConsumerAdapter.decodePosition(partition, positionTypeId, buffer);
     } finally {
-      if (subscribed) {
-        pubSubConsumerAdapter.unSubscribe(pubSubTopicPartition);
-      }
       releaseConsumer(pubSubConsumerAdapter);
     }
   }
 
-  void ensureConsumerHasNoSubscriptions(PubSubConsumerAdapter pubSubConsumerAdapter) {
-    Set<PubSubTopicPartition> assignedPartitions = pubSubConsumerAdapter.getAssignment();
-    if (assignedPartitions.isEmpty()) {
-      return;
+  public long diffPosition(PubSubTopicPartition partition, PubSubPosition position1, PubSubPosition position2) {
+    validateTopicPartition(partition);
+    PubSubConsumerAdapter pubSubConsumerAdapter = acquireConsumer();
+    try {
+      return pubSubConsumerAdapter.positionDifference(partition, position1, position2);
+    } finally {
+      releaseConsumer(pubSubConsumerAdapter);
     }
-    LOGGER.warn(
-        "Consumer: {} of has lingering subscriptions: {}. Unsubscribing from all of them." + " Consumer belongs to {}",
-        pubSubConsumerAdapter,
-        assignedPartitions,
-        this);
-    pubSubConsumerAdapter.batchUnsubscribe(assignedPartitions);
+  }
+
+  public long comparePosition(PubSubTopicPartition partition, PubSubPosition position1, PubSubPosition position2) {
+    PubSubConsumerAdapter pubSubConsumerAdapter = acquireConsumer();
+    try {
+      return pubSubConsumerAdapter.comparePositions(partition, position1, position2);
+    } finally {
+      releaseConsumer(pubSubConsumerAdapter);
+    }
   }
 
   void invalidateKey(PubSubTopicPartition pubSubTopicPartition) {
-    latestOffsetCache.remove(pubSubTopicPartition);
-    lastProducerTimestampCache.remove(pubSubTopicPartition);
-    lastProducerTimestampCache.remove(pubSubTopicPartition);
+    latestPositionCache.remove(pubSubTopicPartition);
   }
 
   CompletableFuture<Void> invalidateKeyAsync(PubSubTopic pubSubTopic) {
@@ -682,17 +559,11 @@ class TopicMetadataFetcher implements Closeable {
     topicExistenceCache.remove(pubSubTopic);
     Set<PubSubTopicPartition> topicPartitions = new HashSet<>();
 
-    for (PubSubTopicPartition pubSubTopicPartition: latestOffsetCache.keySet()) {
+    for (PubSubTopicPartition pubSubTopicPartition: latestPositionCache.keySet()) {
       if (pubSubTopicPartition.getPubSubTopic().equals(pubSubTopic)) {
         topicPartitions.add(pubSubTopicPartition);
       }
     }
-    for (PubSubTopicPartition pubSubTopicPartition: lastProducerTimestampCache.keySet()) {
-      if (pubSubTopicPartition.getPubSubTopic().equals(pubSubTopic)) {
-        topicPartitions.add(pubSubTopicPartition);
-      }
-    }
-
     for (PubSubTopicPartition pubSubTopicPartition: topicPartitions) {
       invalidateKey(pubSubTopicPartition);
     }
@@ -733,6 +604,9 @@ class TopicMetadataFetcher implements Closeable {
     completableFutureSupplier.get().whenComplete((value, throwable) -> {
       if (throwable != null) {
         cache.remove(key);
+
+        T cachedContents = (cachedValue != null) ? cachedValue.getValue() : null;
+        LOGGER.warn("Failed to update cachedValue for key: {} cachedValue: {}", key, cachedContents, throwable);
         return;
       }
       putLatestValueInCache(key, value, cache);
@@ -813,6 +687,16 @@ class TopicMetadataFetcher implements Closeable {
 
   int getConsumerWaitListSize() {
     return consumerWaitListSize.get();
+  }
+
+  @VisibleForTesting
+  Map<PubSubTopic, ValueAndExpiryTime<Boolean>> getTopicExistenceCache() {
+    return topicExistenceCache;
+  }
+
+  @VisibleForTesting
+  Map<PubSubTopicPartition, ValueAndExpiryTime<PubSubPosition>> getLatestPositionCache() {
+    return latestPositionCache;
   }
 
   @Override

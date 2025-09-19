@@ -93,20 +93,95 @@ public class PushStatusStoreReader implements Closeable {
       int partitionId,
       Optional<String> incrementalPushVersion,
       Optional<String> incrementalPushPrefix) {
-    AvroSpecificStoreClient<PushStatusKey, PushStatusValue> client = getVeniceClient(storeName);
-    PushStatusKey pushStatusKey =
-        PushStatusStoreUtils.getPushKey(version, partitionId, incrementalPushVersion, incrementalPushPrefix);
+    // Reuse the async method but block here
     try {
-      PushStatusValue pushStatusValue = client.get(pushStatusKey).get(60, TimeUnit.SECONDS);
-      if (pushStatusValue == null) {
-        return Collections.emptyMap();
-      } else {
-        LOGGER.info(" {}/{} Instance status: {}", storeName, partitionId, pushStatusValue.instances);
-        return pushStatusValue.instances;
-      }
+      return getPartitionStatusAsync(storeName, version, partitionId, incrementalPushVersion, incrementalPushPrefix)
+          .get(60, TimeUnit.SECONDS);
     } catch (Exception e) {
       LOGGER.error("Failed to read push status of partition:{} store:{}", partitionId, storeName, e);
       throw new VeniceException(e);
+    }
+  }
+
+  public CompletableFuture<Map<CharSequence, Integer>> getPartitionStatusAsync(
+      String storeName,
+      int version,
+      int partitionId,
+      Optional<String> incrementalPushVersion,
+      Optional<String> incrementalPushPrefix) {
+    try {
+      AvroSpecificStoreClient<PushStatusKey, PushStatusValue> client = getVeniceClient(storeName);
+      PushStatusKey pushStatusKey =
+          PushStatusStoreUtils.getPushKey(version, partitionId, incrementalPushVersion, incrementalPushPrefix);
+
+      // Get the CompletableFuture from the client and transform it
+      return client.get(pushStatusKey).<Map<CharSequence, Integer>>thenApply(pushStatusValue -> {
+        if (pushStatusValue == null) {
+          return Collections.emptyMap();
+        } else {
+          return pushStatusValue.instances;
+        }
+      }).exceptionally(e -> {
+        LOGGER.error("Failed to read push status of partition:{} store:{}", partitionId, storeName, e);
+        throw new VeniceException(e);
+      });
+    } catch (Exception e) {
+      // Handle any exceptions during setup by returning a failed future
+      LOGGER.error(
+          "Failed to set up async request for partition:{} store:{} to get partition status",
+          partitionId,
+          storeName,
+          e);
+      CompletableFuture<Map<CharSequence, Integer>> failedFuture = new CompletableFuture<>();
+      failedFuture.completeExceptionally(new VeniceException(e));
+      return failedFuture;
+    }
+  }
+
+  /**
+   * If it is batch reporting, then only query with version-level key; else query with partition-level key.
+   * @param storeName store name
+   * @param version version
+   * @param partitionId partition id
+   * @param incrementalPushVersion incremental push version
+   * @param incrementalPushPrefix incremental push prefix
+   * @param isBatchReporting whether it is batch reporting, if batch reporting, then only query with version.
+   * @return a CompletableFuture containing the partition status
+   */
+  public CompletableFuture<Map<CharSequence, Integer>> getPartitionOrVersionStatusAsync(
+      String storeName,
+      int version,
+      int partitionId,
+      Optional<String> incrementalPushVersion,
+      Optional<String> incrementalPushPrefix,
+      boolean isBatchReporting) {
+    try {
+      AvroSpecificStoreClient<PushStatusKey, PushStatusValue> client = getVeniceClient(storeName);
+      PushStatusKey pushStatusKey = isBatchReporting
+          ? PushStatusStoreUtils.getPushKey(version, incrementalPushVersion)
+          : PushStatusStoreUtils.getPushKey(version, partitionId, incrementalPushVersion, incrementalPushPrefix);
+
+      // Get the CompletableFuture from the client and transform it
+      return client.get(pushStatusKey).<Map<CharSequence, Integer>>thenApply(pushStatusValue -> {
+        if (pushStatusValue == null) {
+          return Collections.emptyMap();
+        } else {
+          return pushStatusValue.instances;
+        }
+      }).exceptionally(e -> {
+        LOGGER.error("Failed to read push status of partition:{} store:{}", partitionId, storeName, e);
+        throw new VeniceException(e);
+      });
+    } catch (Exception e) {
+      // Handle any exceptions during setup by returning a failed future
+      LOGGER.error(
+          "Failed to set up async request for partition:{} store:{} to get partition status",
+          partitionId,
+          storeName,
+          e);
+      CompletableFuture<Map<CharSequence, Integer>> failedFuture = new CompletableFuture<>();
+      failedFuture.completeExceptionally(new VeniceException(e));
+      return failedFuture;
     }
   }
 
@@ -269,14 +344,16 @@ public class PushStatusStoreReader implements Closeable {
 
   // visible for testing
   AvroSpecificStoreClient<PushStatusKey, PushStatusValue> getVeniceClient(String storeName) {
-    return veniceClients.computeIfAbsent(storeName, (s) -> {
-      ClientConfig clientConfig =
-          ClientConfig.defaultGenericClientConfig(VeniceSystemStoreUtils.getDaVinciPushStatusStoreName(storeName))
-              .setD2Client(d2Client)
-              .setD2ServiceName(clusterDiscoveryD2ServiceName)
-              .setSpecificValueClass(PushStatusValue.class);
-      return ClientFactory.getAndStartSpecificAvroClient(clientConfig);
-    });
+    return veniceClients
+        .computeIfAbsent(storeName, (s) -> ClientFactory.getAndStartSpecificAvroClient(getClientConfig(storeName)));
+  }
+
+  ClientConfig getClientConfig(String storeName) {
+    return ClientConfig.defaultGenericClientConfig(VeniceSystemStoreUtils.getDaVinciPushStatusStoreName(storeName))
+        .setD2Client(d2Client)
+        .setD2ServiceName(clusterDiscoveryD2ServiceName)
+        .setStatTrackingEnabled(false)
+        .setSpecificValueClass(PushStatusValue.class);
   }
 
   @Override

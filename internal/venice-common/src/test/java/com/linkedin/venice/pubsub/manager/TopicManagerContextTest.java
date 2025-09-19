@@ -5,11 +5,13 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.expectThrows;
 
+import com.linkedin.venice.acl.VeniceComponent;
 import com.linkedin.venice.pubsub.PubSubAdminAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubAdminAdapter;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
+import com.linkedin.venice.utils.LogContext;
 import io.tehuti.metrics.MetricsRepository;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -57,6 +59,8 @@ public class TopicManagerContextTest {
             .setTopicOffsetCheckIntervalMs(topicOffsetCheckIntervalMs)
             .setTopicMetadataFetcherConsumerPoolSize(topicMetadataFetcherConsumerPoolSize)
             .setTopicMetadataFetcherThreadPoolSize(topicMetadataFetcherThreadPoolSize)
+            .setVeniceComponent(VeniceComponent.CONTROLLER)
+            .setLogContext(LogContext.newBuilder().setComponentName(VeniceComponent.CONTROLLER.getName()).build())
             .build();
 
     assertNotNull(topicManagerContext);
@@ -71,6 +75,7 @@ public class TopicManagerContextTest {
     assertEquals(topicManagerContext.getTopicOffsetCheckIntervalMs(), topicOffsetCheckIntervalMs);
     assertEquals(topicManagerContext.getTopicMetadataFetcherConsumerPoolSize(), topicMetadataFetcherConsumerPoolSize);
     assertEquals(topicManagerContext.getTopicMetadataFetcherThreadPoolSize(), topicMetadataFetcherThreadPoolSize);
+    assertEquals(topicManagerContext.getVeniceComponent(), VeniceComponent.CONTROLLER);
   }
 
   // test invalid arguments

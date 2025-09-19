@@ -8,21 +8,51 @@ import java.util.Map;
 
 
 /**
- * Enums of status of verion.
+ * Enums of status of version.
  */
 public enum VersionStatus implements VeniceEnumValue {
-  NOT_CREATED(0), STARTED(1),
-  // Version has been pushed to venice(offline job related to this version has been completed), but is not ready to
-  // serve read request because the writes to this store is disabled.
+  /**
+   * This version hasn't been created yet. It is not persisted in ZK
+   */
+  NOT_CREATED(0),
+
+  /**
+   * Version has been created and started to ingest new data, but has not completed ingestion and is not ready to serve read traffic
+   */
+  STARTED(1),
+
+  /**
+   * For the child version status, this means that servers have finished ingesting this version, but DVC clients have not ingested this version yet.
+   * For the parent version status, this is an intermediate status after a push job succeeds in all child regions
+   * before {@link com.linkedin.venice.controller.DeferredVersionSwapService} flips the status to ONLINE.
+   */
   PUSHED(2),
-  // Version has been pushed to venice and is ready to serve read request.
-  ONLINE(3), ERROR(4),
-  // Version is created and persisted inside ZK, but controller hasn't finished preparation works yet.
+
+  /**
+   * Version is serving read requests and DVC clients can ingest this version
+   */
+  ONLINE(3),
+
+  /**
+   * Version is not serving read requests, and it's relevant push job has failed
+   */
+  ERROR(4),
+
+  /**
+   * Version is created and persisted inside ZK. Currently not used
+   */
   CREATED(5),
-  // Version has been pushed to Venice and is ready to serve in some regions, but failed in other regions.
-  // This version status only exists in parent.
+
+  /**
+   * Version has been pushed to Venice and is serving read traffic in some regions, but failed in other regions.
+   * This status only exists in the parent
+   */
   PARTIALLY_ONLINE(6),
-  // This version has been killed.
+
+  /**
+   * Version is killed. Intermediate status after a push job is killed or fails before
+   * {@link com.linkedin.venice.controller.DeferredVersionSwapService} flips the status toeither ERROR or PARTIALLY_ONLINE
+   */
   KILLED(7);
 
   private final int value;

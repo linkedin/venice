@@ -31,6 +31,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreCleaner;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
+import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
@@ -135,6 +136,56 @@ public class PartitionStatusBasedPushMonitorTest extends AbstractPushMonitorTest
     Assert.assertEquals(getMonitor().getOfflinePushOrThrow(topic).getCurrentStatus(), ExecutionStatus.COMPLETED);
     // After offline push completed, bump up the current version of this store.
     Assert.assertEquals(store.getCurrentVersion(), 1);
+    Mockito.reset(getMockAccessor());
+  }
+
+  @Test
+  public void testVersionUpdateWithTargetRegionPush() {
+    String topic = getTopic();
+    Store store = prepareMockStore(topic, VersionStatus.STARTED, Collections.emptyMap(), null, "testRegion");
+    List<OfflinePushStatus> statusList = new ArrayList<>();
+    OfflinePushStatus pushStatus = new OfflinePushStatus(
+        topic,
+        getNumberOfPartition(),
+        getReplicationFactor(),
+        OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
+    statusList.add(pushStatus);
+    doReturn(statusList).when(getMockAccessor()).loadOfflinePushStatusesAndPartitionStatuses();
+    PartitionAssignment partitionAssignment = new PartitionAssignment(topic, getNumberOfPartition());
+    doReturn(true).when(getMockRoutingDataRepo()).containsKafkaTopic(eq(topic));
+    doReturn(partitionAssignment).when(getMockRoutingDataRepo()).getPartitionAssignments(topic);
+    for (int i = 0; i < getNumberOfPartition(); i++) {
+      Partition partition = mock(Partition.class);
+      Map<Instance, HelixState> instanceToStateMap = new HashMap<>();
+      instanceToStateMap.put(new Instance("instance0", "host0", 1), HelixState.STANDBY);
+      instanceToStateMap.put(new Instance("instance1", "host1", 1), HelixState.STANDBY);
+      instanceToStateMap.put(new Instance("instance2", "host2", 1), HelixState.LEADER);
+      when(partition.getInstanceToHelixStateMap()).thenReturn(instanceToStateMap);
+      when(partition.getId()).thenReturn(i);
+      partitionAssignment.addPartition(partition);
+      PartitionStatus partitionStatus = mock(ReadOnlyPartitionStatus.class);
+      when(partitionStatus.getPartitionId()).thenReturn(i);
+      when(partitionStatus.getReplicaHistoricStatusList(anyString()))
+          .thenReturn(Collections.singletonList(new StatusSnapshot(COMPLETED, "")));
+      pushStatus.setPartitionStatus(partitionStatus);
+    }
+    when(getMockAccessor().getOfflinePushStatusAndItsPartitionStatuses(Mockito.anyString())).thenAnswer(invocation -> {
+      String kafkaTopic = invocation.getArgument(0);
+      for (OfflinePushStatus status: statusList) {
+        if (status.getKafkaTopic().equals(kafkaTopic)) {
+          return status;
+        }
+      }
+      return null;
+    });
+    getMonitor().loadAllPushes();
+    verify(getMockStoreRepo(), atLeastOnce()).updateStore(store);
+    verify(getMockStoreCleaner(), atLeastOnce()).retireOldStoreVersions(anyString(), anyString(), eq(false), anyInt());
+
+    // Check that version was not swapped and that its status is PUSHED
+    Assert.assertEquals(getMonitor().getOfflinePushOrThrow(topic).getCurrentStatus(), ExecutionStatus.COMPLETED);
+    Assert.assertEquals(store.getCurrentVersion(), 0);
+    Assert.assertEquals(store.getVersion(1).getStatus(), VersionStatus.PUSHED);
     Mockito.reset(getMockAccessor());
   }
 
@@ -256,7 +307,7 @@ public class PartitionStatusBasedPushMonitorTest extends AbstractPushMonitorTest
     snapshot.setIncrementalPushVersion(KILLED_JOB_MESSAGE + store.getName());
     replicaStatuses1.get(2).setStatusHistory(Arrays.asList(snapshot));
     PartitionStatus partitionStatus1 = new PartitionStatus(0);
-    partitionStatus1.updateReplicaStatus(disabledHostName, ERROR, KILLED_JOB_MESSAGE + store.getName(), 1);
+    partitionStatus1.updateReplicaStatus(disabledHostName, ERROR, KILLED_JOB_MESSAGE + store.getName());
     offlinePushStatus.setPartitionStatus(partitionStatus1);
 
     offlinePushStatus.getStrategy()

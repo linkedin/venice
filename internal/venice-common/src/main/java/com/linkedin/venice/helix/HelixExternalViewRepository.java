@@ -154,12 +154,12 @@ public class HelixExternalViewRepository extends HelixBaseRoutingRepository impl
         this.liveInstancesMap = Collections.unmodifiableMap(liveInstanceSnapshot);
       }
       updates = resourceAssignment.updateResourceAssignment(newResourceAssignment);
-      LOGGER.info("Updated resource assignment and live instances.");
     }
-    LOGGER.info("External view is changed.");
+    LOGGER.info("External view is changed: {}", updates);
     // Start sending notification to listeners. As we can not get the changed data only from Helix, so we just notify
     // all listeners.
     // And assume that the listener would compare and decide how to handle this event.
+
     for (String kafkaTopic: updates.getUpdatedResources()) {
       PartitionAssignment partitionAssignment = resourceAssignment.getPartitionAssignment(kafkaTopic);
       listenerManager.trigger(kafkaTopic, listener -> listener.onExternalViewChange(partitionAssignment));

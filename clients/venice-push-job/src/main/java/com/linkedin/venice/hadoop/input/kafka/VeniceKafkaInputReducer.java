@@ -24,6 +24,7 @@ import com.linkedin.venice.hadoop.task.datawriter.DataWriterTaskTracker;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.utils.ByteUtils;
+import com.linkedin.venice.utils.IteratorUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.IOException;
@@ -125,15 +126,16 @@ public class VeniceKafkaInputReducer extends VeniceReducer {
   @Override
   protected AbstractPartitionWriter.VeniceWriterMessage extract(
       byte[] key,
-      Iterator<byte[]> valueIterator,
+      Iterator<VeniceRecordWithMetadata> values,
       DataWriterTaskTracker dataWriterTaskTracker) {
     KafkaInputMapperKey mapperKey = KAFKA_INPUT_MAPPER_KEY_AVRO_SPECIFIC_DESERIALIZER.deserialize(key);
     byte[] keyBytes = ByteUtils.extractByteArray(mapperKey.key);
-    if (!valueIterator.hasNext()) {
+    if (!values.hasNext()) {
       throw new VeniceException("There is no value corresponding to key bytes: " + ByteUtils.toHexString(keyBytes));
     }
 
-    return extractor.extract(keyBytes, valueIterator, dataWriterTaskTracker);
+    // We don't support a field override in KIF today, so we don't need to pass the rmdIterator
+    return extractor.extract(keyBytes, getValueOnlyIterator(values), dataWriterTaskTracker);
   }
 
   @Override
@@ -192,6 +194,10 @@ public class VeniceKafkaInputReducer extends VeniceReducer {
           isEnableWriteCompute(),
           getDerivedValueSchemaId());
     }
+  }
+
+  private Iterator<byte[]> getValueOnlyIterator(Iterator<VeniceRecordWithMetadata> valueRecordIterator) {
+    return IteratorUtils.mapIterator(valueRecordIterator, VeniceRecordWithMetadata::getValue);
   }
 
   private AbstractPartitionWriter.VeniceWriterMessage extractNonChunkedMessage(

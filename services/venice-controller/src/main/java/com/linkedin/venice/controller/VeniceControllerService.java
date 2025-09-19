@@ -17,6 +17,7 @@ import com.linkedin.venice.controller.supersetschema.SupersetSchemaGenerator;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
+import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.schema.SchemaReader;
@@ -60,16 +61,20 @@ public class VeniceControllerService extends AbstractVeniceService {
       Optional<DynamicAccessController> accessController,
       Optional<AuthorizerService> authorizerService,
       D2Client d2Client,
+      Map<String, D2Client> d2Clients,
       Optional<ClientConfig> routerClientConfig,
       Optional<ICProvider> icProvider,
       Optional<SupersetSchemaGenerator> externalSupersetSchemaGenerator,
       PubSubTopicRepository pubSubTopicRepository,
-      PubSubClientsFactory pubSubClientsFactory) {
+      PubSubClientsFactory pubSubClientsFactory,
+      PubSubPositionTypeRegistry pubSubPositionTypeRegistry) {
     this.multiClusterConfigs = multiClusterConfigs;
 
     DelegatingClusterLeaderInitializationRoutine initRoutineForPushJobDetailsSystemStore =
         new DelegatingClusterLeaderInitializationRoutine();
     DelegatingClusterLeaderInitializationRoutine initRoutineForHeartbeatSystemStore =
+        new DelegatingClusterLeaderInitializationRoutine();
+    DelegatingClusterLeaderInitializationRoutine initRoutineForParentControllerMetadataSystemStore =
         new DelegatingClusterLeaderInitializationRoutine();
 
     /**
@@ -80,6 +85,7 @@ public class VeniceControllerService extends AbstractVeniceService {
     if (!multiClusterConfigs.isParent()) {
       initRoutineForPushJobDetailsSystemStore.setAllowEmptyDelegateInitializationToSucceed();
       initRoutineForHeartbeatSystemStore.setAllowEmptyDelegateInitializationToSucceed();
+      initRoutineForParentControllerMetadataSystemStore.setAllowEmptyDelegateInitializationToSucceed();
     }
 
     VeniceHelixAdmin internalAdmin = new VeniceHelixAdmin(
@@ -87,12 +93,17 @@ public class VeniceControllerService extends AbstractVeniceService {
         metricsRepository,
         sslEnabled,
         d2Client,
+        d2Clients,
         sslConfig,
         accessController,
         icProvider,
         pubSubTopicRepository,
         pubSubClientsFactory,
-        Arrays.asList(initRoutineForPushJobDetailsSystemStore, initRoutineForHeartbeatSystemStore));
+        pubSubPositionTypeRegistry,
+        Arrays.asList(
+            initRoutineForPushJobDetailsSystemStore,
+            initRoutineForHeartbeatSystemStore,
+            initRoutineForParentControllerMetadataSystemStore));
 
     if (multiClusterConfigs.isParent()) {
       this.admin = new VeniceParentHelixAdmin(
@@ -107,7 +118,9 @@ public class VeniceControllerService extends AbstractVeniceService {
           externalSupersetSchemaGenerator,
           pubSubTopicRepository,
           initRoutineForPushJobDetailsSystemStore,
-          initRoutineForHeartbeatSystemStore);
+          initRoutineForHeartbeatSystemStore,
+          initRoutineForParentControllerMetadataSystemStore,
+          metricsRepository);
       LOGGER.info("Controller works as a parent controller.");
     } else {
       this.admin = internalAdmin;
@@ -137,6 +150,8 @@ public class VeniceControllerService extends AbstractVeniceService {
     newSchemaEncountered = (schemaId, schema) -> {
       LOGGER.info("Encountered a new KME value schema (id = {}), proceed to register", schemaId);
       try {
+        Optional<D2Client> regionD2Client =
+            Optional.ofNullable(d2Clients == null ? null : d2Clients.get(systemStoreClusterConfig.getRegionName()));
         ControllerClientBackedSystemSchemaInitializer schemaInitializer =
             new ControllerClientBackedSystemSchemaInitializer(
                 AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE,
@@ -147,6 +162,7 @@ public class VeniceControllerService extends AbstractVeniceService {
                 ((VeniceHelixAdmin) admin).getSslFactory(),
                 systemStoreClusterConfig.getChildControllerUrl(systemStoreClusterConfig.getRegionName()),
                 systemStoreClusterConfig.getChildControllerD2ServiceName(),
+                regionD2Client,
                 systemStoreClusterConfig.getChildControllerD2ZkHost(systemStoreClusterConfig.getRegionName()),
                 systemStoreClusterConfig.isControllerEnforceSSLOnly());
 
@@ -179,6 +195,7 @@ public class VeniceControllerService extends AbstractVeniceService {
             internalAdmin,
             clusterConfig,
             metricsRepository,
+            pubSubClientsFactory.getConsumerAdapterFactory(),
             pubSubTopicRepository,
             pubSubMessageDeserializer);
         this.consumerServicesByClusters.put(cluster, adminConsumerService);

@@ -1,18 +1,24 @@
 package com.linkedin.venice.offsets;
 
-import static com.linkedin.venice.writer.VeniceWriter.DEFAULT_UPSTREAM_OFFSET;
+import static com.linkedin.venice.pubsub.PubSubUtil.fromKafkaOffset;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.ProducerPartitionState;
+import com.linkedin.venice.pubsub.PubSubContext;
+import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
+import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
+import com.linkedin.venice.server.state.KeyUrnCompressionDict;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -24,6 +30,8 @@ import org.apache.avro.io.ByteBufferToHexFormatJsonEncoder;
 import org.apache.avro.io.Encoder;
 import org.apache.avro.util.Utf8;
 import org.apache.commons.lang.Validate;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -32,6 +40,7 @@ import org.apache.commons.lang.Validate;
  * after rolling back a server release with new protocol version to an old server release with old protocol version.
  */
 public class OffsetRecord {
+  private static final Logger LOGGER = LogManager.getLogger(OffsetRecord.class);
   // Offset 0 is still a valid offset, Using that will cause a message to be skipped.
   public static final long LOWEST_OFFSET = -1;
   public static final long LOWEST_OFFSET_LAG = 0;
@@ -41,24 +50,43 @@ public class OffsetRecord {
   private static final String NULL_STRING = "null";
   private final PartitionState partitionState;
   private final InternalAvroSpecificSerializer<PartitionState> serializer;
+  private final PubSubContext pubSubContext;
+  private final PubSubPositionDeserializer pubSubPositionDeserializer;
 
   private PubSubTopic leaderPubSubTopic;
 
-  public OffsetRecord(PartitionState partitionState, InternalAvroSpecificSerializer<PartitionState> serializer) {
+  public OffsetRecord(
+      PartitionState partitionState,
+      InternalAvroSpecificSerializer<PartitionState> serializer,
+      PubSubContext pubSubContext) {
     this.partitionState = partitionState;
     this.serializer = serializer;
+    this.pubSubContext = pubSubContext;
+    this.pubSubPositionDeserializer = pubSubContext.getPubSubPositionDeserializer();
   }
 
-  public OffsetRecord(InternalAvroSpecificSerializer<PartitionState> serializer) {
-    this(getEmptyPartitionState(), serializer);
+  public OffsetRecord(InternalAvroSpecificSerializer<PartitionState> serializer, PubSubContext pubSubContext) {
+    this(getEmptyPartitionState(), serializer, pubSubContext);
   }
 
   /**
    * @param bytes to deserialize from
    */
-  public OffsetRecord(byte[] bytes, InternalAvroSpecificSerializer<PartitionState> serializer) {
+  public OffsetRecord(
+      byte[] bytes,
+      InternalAvroSpecificSerializer<PartitionState> serializer,
+      PubSubContext pubSubContext) {
     this.serializer = serializer;
     this.partitionState = deserializePartitionState(bytes);
+    this.pubSubContext = pubSubContext;
+    if (pubSubContext != null) {
+      this.pubSubPositionDeserializer = pubSubContext.getPubSubPositionDeserializer();
+    } else {
+      // Without a proper PubSubContext, PubSubPosition cannot be deserialized from ByteBuffer.
+      // This should only be used in cases where PubSubPosition is not required,
+      // and the caller is responsible for handling such cases correctly.
+      this.pubSubPositionDeserializer = null;
+    }
   }
 
   private static PartitionState getEmptyPartitionState() {
@@ -70,20 +98,22 @@ public class OffsetRecord {
     emptyPartitionState.lastUpdate = 0;
     emptyPartitionState.databaseInfo = new VeniceConcurrentHashMap<>();
     emptyPartitionState.previousStatuses = new VeniceConcurrentHashMap<>();
-    emptyPartitionState.leaderOffset = DEFAULT_UPSTREAM_OFFSET;
+    emptyPartitionState.leaderOffset = PubSubSymbolicPosition.EARLIEST.getNumericOffset();
     emptyPartitionState.upstreamOffsetMap = new VeniceConcurrentHashMap<>();
-    emptyPartitionState.upstreamVersionTopicOffset = DEFAULT_UPSTREAM_OFFSET;
+    emptyPartitionState.upstreamVersionTopicOffset = PubSubSymbolicPosition.EARLIEST.getNumericOffset();
     emptyPartitionState.pendingReportIncrementalPushVersions = new ArrayList<>();
     emptyPartitionState.setRealtimeTopicProducerStates(new VeniceConcurrentHashMap<>());
+    emptyPartitionState.upstreamRealTimeTopicPubSubPositionMap = new VeniceConcurrentHashMap<>();
+    emptyPartitionState.currentTermStartPubSubPosition = PubSubSymbolicPosition.EARLIEST.toWireFormatBuffer();
+    emptyPartitionState.lastProcessedVersionTopicPubSubPosition = PubSubSymbolicPosition.EARLIEST.toWireFormatBuffer();
+    emptyPartitionState.lastConsumedVersionTopicPubSubPosition = PubSubSymbolicPosition.EARLIEST.toWireFormatBuffer();
+    emptyPartitionState.upstreamVersionTopicPubSubPosition = PubSubSymbolicPosition.EARLIEST.toWireFormatBuffer();
+    emptyPartitionState.lastConsumedVersionTopicPubSubPosition = PubSubSymbolicPosition.EARLIEST.toWireFormatBuffer();
     return emptyPartitionState;
   }
 
   private PartitionState deserializePartitionState(byte[] bytes) {
     return serializer.deserialize(PARTITION_STATE_STRING, bytes);
-  }
-
-  public long getLocalVersionTopicOffset() {
-    return this.partitionState.offset;
   }
 
   public void setPreviousStatusesEntry(String key, String value) {
@@ -94,16 +124,30 @@ public class OffsetRecord {
     return partitionState.getPreviousStatuses().getOrDefault(key, NULL_STRING).toString();
   }
 
-  public void setCheckpointLocalVersionTopicOffset(long offset) {
-    this.partitionState.offset = offset;
+  public PubSubPosition getCheckpointedLocalVtPosition() {
+    return deserializePositionWithOffsetFallback(
+        this.partitionState.lastProcessedVersionTopicPubSubPosition,
+        this.partitionState.offset);
   }
 
-  public long getCheckpointUpstreamVersionTopicOffset() {
-    return this.partitionState.upstreamVersionTopicOffset;
+  public void checkpointLocalVtPosition(PubSubPosition vtPosition) {
+    if (vtPosition == null || vtPosition.getPositionWireFormat() == null) {
+      String msg = (vtPosition == null) ? "Position" : "Position wire format";
+      throw new IllegalArgumentException(msg + " cannot be null");
+    }
+    this.partitionState.lastProcessedVersionTopicPubSubPosition = vtPosition.toWireFormatBuffer();
+    this.partitionState.offset = vtPosition.getNumericOffset();
   }
 
-  public void setCheckpointUpstreamVersionTopicOffset(long upstreamVersionTopicOffset) {
-    this.partitionState.upstreamVersionTopicOffset = upstreamVersionTopicOffset;
+  public PubSubPosition getCheckpointedRemoteVtPosition() {
+    return deserializePositionWithOffsetFallback(
+        this.partitionState.upstreamVersionTopicPubSubPosition,
+        this.partitionState.upstreamVersionTopicOffset);
+  }
+
+  public void checkpointRemoteVtPosition(PubSubPosition remoteVtPosition) {
+    this.partitionState.upstreamVersionTopicPubSubPosition = remoteVtPosition.toWireFormatBuffer();
+    this.partitionState.upstreamVersionTopicOffset = remoteVtPosition.getNumericOffset();
   }
 
   public long getOffsetLag() {
@@ -112,6 +156,22 @@ public class OffsetRecord {
 
   public void setOffsetLag(long offsetLag) {
     this.partitionState.offsetLag = offsetLag;
+  }
+
+  public long getHeartbeatTimestamp() {
+    return this.partitionState.heartbeatTimestamp;
+  }
+
+  public void setHeartbeatTimestamp(long heartbeatTimestamp) {
+    this.partitionState.heartbeatTimestamp = heartbeatTimestamp;
+  }
+
+  public long getLastCheckpointTimestamp() {
+    return this.partitionState.lastCheckpointTimestamp;
+  }
+
+  public void setLastCheckpointTimestamp(long timestamp) {
+    this.partitionState.lastCheckpointTimestamp = timestamp;
   }
 
   /**
@@ -133,11 +193,7 @@ public class OffsetRecord {
     this.partitionState.lastUpdate = updateTimeInMs;
   }
 
-  public void endOfPushReceived(long endOfPushOffset) {
-    if (endOfPushOffset < 1) {
-      // Even an empty push should have a SOP and EOP, so offset 1 is the absolute minimum.
-      throw new IllegalArgumentException("endOfPushOffset cannot be < 1.");
-    }
+  public void endOfPushReceived() {
     this.partitionState.endOfPush = true;
   }
 
@@ -211,12 +267,6 @@ public class OffsetRecord {
     this.leaderPubSubTopic = leaderTopic;
   }
 
-  public void setLeaderUpstreamOffset(String upstreamKafkaURL, long leaderOffset) {
-    partitionState.upstreamOffsetMap.put(upstreamKafkaURL, leaderOffset);
-    // Set this field as well so that we can rollback
-    partitionState.leaderOffset = leaderOffset;
-  }
-
   public void setLeaderGUID(GUID guid) {
     this.partitionState.leaderGUID = guid;
   }
@@ -249,38 +299,46 @@ public class OffsetRecord {
    * leader is still consuming VT, so it would return VT offset; users should
    * call this API to get the latest upstream offset.
    */
-  public long getUpstreamOffset(String kafkaURL) {
-    Long upstreamOffset = getUpstreamOffsetFromPartitionState(this.partitionState, kafkaURL);
-    if (upstreamOffset == null) {
-      return partitionState.leaderOffset;
+  public PubSubPosition getCheckpointedRtPosition(String pubSubBrokerAddress) {
+    Long offset = partitionState.upstreamOffsetMap.get(pubSubBrokerAddress);
+    ByteBuffer wfBuffer = partitionState.upstreamRealTimeTopicPubSubPositionMap.get(pubSubBrokerAddress);
+    if (offset == null) {
+      // If the offset is not set, return EARLIEST symbolic position.
+      return PubSubSymbolicPosition.EARLIEST;
     }
-    return upstreamOffset;
+    return deserializePositionWithOffsetFallback(wfBuffer, offset);
   }
 
-  public Long getUpstreamOffsetWithNoDefault(String kafkaURL) {
-    return getUpstreamOffsetFromPartitionState(this.partitionState, kafkaURL);
+  public void checkpointRtPosition(String pubSubBrokerAddress, PubSubPosition leaderPosition) {
+    partitionState.upstreamRealTimeTopicPubSubPositionMap.put(pubSubBrokerAddress, leaderPosition.toWireFormatBuffer());
+    partitionState.upstreamOffsetMap.put(pubSubBrokerAddress, leaderPosition.getNumericOffset());
   }
 
   /**
-   * Clone the checkpoint upstream offset map to another map provided as the input.
+   * Update the checkpoint upstream positions map with new values from another map provided as the input.
+   * @param newRtPositions
    */
-  public void cloneUpstreamOffsetMap(@Nonnull Map<String, Long> checkpointUpstreamOffsetMapReceiver) {
-    if (partitionState.upstreamOffsetMap != null && !partitionState.upstreamOffsetMap.isEmpty()) {
-      Validate.notNull(checkpointUpstreamOffsetMapReceiver);
-      checkpointUpstreamOffsetMapReceiver.clear();
-      checkpointUpstreamOffsetMapReceiver.putAll(partitionState.upstreamOffsetMap);
-    }
-  }
-
-  /**
-   * Reset the checkpoint upstream offset map to another map provided as the input.
-   * @param checkpointUpstreamOffsetMap
-   */
-  public void resetUpstreamOffsetMap(@Nonnull Map<String, Long> checkpointUpstreamOffsetMap) {
-    Validate.notNull(checkpointUpstreamOffsetMap);
-    for (Map.Entry<String, Long> offsetEntry: checkpointUpstreamOffsetMap.entrySet()) {
+  public void checkpointRtPositions(@Nonnull Map<String, PubSubPosition> newRtPositions) {
+    Validate.notNull(newRtPositions);
+    for (Map.Entry<String, PubSubPosition> offsetEntry: newRtPositions.entrySet()) {
       // leader offset can be the topic offset from any colo
-      this.setLeaderUpstreamOffset(offsetEntry.getKey(), offsetEntry.getValue());
+      this.checkpointRtPosition(offsetEntry.getKey(), offsetEntry.getValue());
+    }
+  }
+
+  /**
+   * Clone the checkpoint upstream positions map to another map provided as the input.
+   */
+  public void cloneRtPositionCheckpoints(@Nonnull Map<String, PubSubPosition> checkpointUpstreamPositionsReceiver) {
+    if (partitionState.upstreamOffsetMap != null && !partitionState.upstreamOffsetMap.isEmpty()) {
+      Validate.notNull(checkpointUpstreamPositionsReceiver);
+      checkpointUpstreamPositionsReceiver.clear();
+      for (Map.Entry<String, Long> offsetEntry: partitionState.upstreamOffsetMap.entrySet()) {
+        String pubSubBrokerAddress = offsetEntry.getKey();
+        ByteBuffer wfBuffer = partitionState.upstreamRealTimeTopicPubSubPositionMap.get(pubSubBrokerAddress);
+        checkpointUpstreamPositionsReceiver
+            .put(pubSubBrokerAddress, deserializePositionWithOffsetFallback(wfBuffer, offsetEntry.getValue()));
+      }
     }
   }
 
@@ -305,6 +363,33 @@ public class OffsetRecord {
     partitionState.pendingReportIncrementalPushVersions = new ArrayList<>(incPushVersionList);
   }
 
+  public Integer getRecordTransformerClassHash() {
+    Integer classHash = partitionState.getRecordTransformerClassHash();
+    return classHash;
+  }
+
+  public void setRecordTransformerClassHash(int classHash) {
+    this.partitionState.setRecordTransformerClassHash(classHash);
+  }
+
+  // Updated from {@link PartitionTracker#updateOffsetRecord}
+  public void setLatestConsumedVtPosition(PubSubPosition latestConsumedVtPosition) {
+    this.partitionState.setLastConsumedVersionTopicPubSubPosition(latestConsumedVtPosition.toWireFormatBuffer());
+    // TODO: deprecate lastConsumedVersionTopicOffset in PartitionState
+  }
+
+  public PubSubPosition getLatestConsumedVtPosition() {
+    return pubSubPositionDeserializer.toPosition(this.partitionState.getLastConsumedVersionTopicPubSubPosition());
+  }
+
+  public KeyUrnCompressionDict getKeyUrnCompressionDict() {
+    return this.partitionState.keyUrnCompressionDict;
+  }
+
+  public void setKeyUrnCompressionDict(KeyUrnCompressionDict keyUrnCompressionDict) {
+    this.partitionState.keyUrnCompressionDict = keyUrnCompressionDict;
+  }
+
   /**
    * It may be useful to cache this mapping. TODO: Explore GC tuning later.
    *
@@ -312,16 +397,21 @@ public class OffsetRecord {
    * @return a {@link Utf8} instance corresponding to the {@link GUID} that was passed in
    */
   CharSequence guidToUtf8(GUID guid) {
+    /** TODO: Consider replacing with {@link GuidUtils#getUtf8FromGuid(GUID)}, which might be more efficient. */
     return new Utf8(GuidUtils.getCharSequenceFromGuid(guid));
   }
 
   @Override
   public String toString() {
-    return "OffsetRecord{" + "localVersionTopicOffset=" + getLocalVersionTopicOffset() + ", upstreamOffset="
+    return "OffsetRecord{" + "localVtPosition=" + getCheckpointedLocalVtPosition() + ", rtPositions="
         + getPartitionUpstreamOffsetString() + ", leaderTopic=" + getLeaderTopic() + ", offsetLag=" + getOffsetLag()
         + ", eventTimeEpochMs=" + getMaxMessageTimeInMs() + ", latestProducerProcessingTimeInMs="
         + getLatestProducerProcessingTimeInMs() + ", isEndOfPushReceived=" + isEndOfPushReceived() + ", databaseInfo="
-        + getDatabaseInfo() + ", realTimeProducerState=" + getRealTimeProducerState() + '}';
+        + getDatabaseInfo() + ", realTimeProducerState=" + getRealTimeProducerState() + ", recordTransformerClassHash="
+        + getRecordTransformerClassHash() + ", lastProcessedVtPosition="
+        + partitionState.getLastProcessedVersionTopicPubSubPosition() + ", lastConsumedVtPosition="
+        + partitionState.getLastConsumedVersionTopicPubSubPosition() + ", remoteVtPosition="
+        + partitionState.getUpstreamVersionTopicPubSubPosition() + "}";
   }
 
   /**
@@ -329,17 +419,13 @@ public class OffsetRecord {
    * will not be printed.
    */
   public String toSimplifiedString() {
-    return "OffsetRecord{" + "localVersionTopicOffset=" + getLocalVersionTopicOffset()
+    return "OffsetRecord{" + "localVersionTopicOffset=" + getCheckpointedLocalVtPosition()
         + ", latestProducerProcessingTimeInMs=" + getLatestProducerProcessingTimeInMs() + ", isEndOfPushReceived="
         + isEndOfPushReceived() + ", upstreamOffset=" + getPartitionUpstreamOffsetString() + ", leaderTopic="
         + getLeaderTopic() + '}';
   }
 
   private String getPartitionUpstreamOffsetString() {
-    if (this.partitionState.upstreamOffsetMap.isEmpty()) {
-      // Fall back to use the "leaderOffset" field
-      return Long.toString(this.partitionState.leaderOffset);
-    }
     return this.partitionState.upstreamOffsetMap.toString();
   }
 
@@ -388,6 +474,15 @@ public class OffsetRecord {
   }
 
   /**
+   * Get the PubSubContext associated with this OffsetRecord.
+   *
+   * @return PubSubContext
+   */
+  public PubSubContext getPubSubContext() {
+    return pubSubContext;
+  }
+
+  /**
    * serialize to bytes
    *
    * @return byte[]
@@ -397,9 +492,31 @@ public class OffsetRecord {
   }
 
   /**
-   * Return the single entry value from upstreamOffsetMap in native replication.
+   * Deserializes a PubSubPosition from a ByteBuffer with fallback to offset-based position.
+   *
+   * This method attempts to deserialize a PubSubPosition from the provided ByteBuffer using
+   * the configured pubSubPositionDeserializer. If the buffer is null, empty, or deserialization
+   * fails for any reason, it falls back to creating a position based solely on the provided
+   * numeric offset.
+   *
+   * @param wireFormatBytes the ByteBuffer containing serialized position data, may be null
+   * @param offset the numeric offset to use as fallback if deserialization fails
+   * @return a PubSubPosition either deserialized from the buffer or created from the offset
    */
-  private Long getUpstreamOffsetFromPartitionState(PartitionState partitionState, String kafkaURL) {
-    return partitionState.upstreamOffsetMap.get(kafkaURL);
+  private PubSubPosition deserializePositionWithOffsetFallback(ByteBuffer wireFormatBytes, long offset) {
+    if (wireFormatBytes == null || !wireFormatBytes.hasRemaining()) {
+      return fromKafkaOffset(offset);
+    }
+    try {
+      return pubSubPositionDeserializer.toPosition(wireFormatBytes);
+    } catch (Exception e) {
+      LOGGER.warn(
+          "Failed to deserialize PubSubPosition from buffer. Falling back to offset ({}) only position. Buffer: {}",
+          offset,
+          wireFormatBytes,
+          e);
+      // Fallback to offset only position
+      return fromKafkaOffset(offset);
+    }
   }
 }

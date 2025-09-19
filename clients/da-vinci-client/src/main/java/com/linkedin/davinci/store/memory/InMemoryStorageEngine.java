@@ -5,7 +5,6 @@ import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.StoragePartitionConfig;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
-import com.linkedin.venice.stats.StatsErrorCode;
 import java.util.Collections;
 import java.util.Set;
 
@@ -40,11 +39,5 @@ public class InMemoryStorageEngine extends AbstractStorageEngine<InMemoryStorage
   @Override
   public InMemoryStoragePartition createStoragePartition(StoragePartitionConfig storagePartitionConfig) {
     return new InMemoryStoragePartition(storagePartitionConfig.getPartitionId());
-  }
-
-  @Override
-  public long getStoreSizeInBytes() {
-    // Not supported
-    return StatsErrorCode.NOT_SUPPORTED.code;
   }
 }

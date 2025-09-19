@@ -1,11 +1,17 @@
 package com.linkedin.venice.schema.rmd;
 
 import static com.linkedin.venice.schema.rmd.RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD_POS;
+import static com.linkedin.venice.schema.rmd.RmdConstants.TIMESTAMP_FIELD_NAME;
 import static com.linkedin.venice.schema.rmd.RmdConstants.TIMESTAMP_FIELD_POS;
+import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.ACTIVE_ELEM_TS_FIELD_NAME;
+import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.DELETED_ELEM_TS_FIELD_NAME;
+import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.TOP_LEVEL_TS_FIELD_NAME;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import org.antlr.v4.runtime.misc.NotNull;
+import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 
 
@@ -96,8 +102,75 @@ public class RmdUtils {
       }
       if (advancedOffset.get(i) < baseOffset.get(i)) {
         return false;
+      } else if (advancedOffset.get(i) > baseOffset.get(i)) {
+        return true;
       }
     }
     return true;
+  }
+
+  static public List<Long> mergeOffsetVectors(@NotNull List<Long> baseOffset, @NotNull List<Long> advancedOffset) {
+    List<Long> shortVector;
+    List<Long> longVector;
+
+    if (baseOffset.size() > advancedOffset.size()) {
+      shortVector = advancedOffset;
+      longVector = baseOffset;
+    } else {
+      shortVector = baseOffset;
+      longVector = advancedOffset;
+    }
+
+    List<Long> mergedVector = new ArrayList<>(longVector.size());
+
+    for (int i = 0; i < shortVector.size(); i++) {
+      mergedVector.add(Math.max(shortVector.get(i), longVector.get(i)));
+    }
+
+    if (longVector.size() != shortVector.size()) {
+      mergedVector.addAll(longVector.subList(shortVector.size(), longVector.size()));
+    }
+
+    return mergedVector;
+  }
+
+  static public long getLastUpdateTimestamp(Object object) {
+    // The replication metadata object contains a single field called "timestamp" which is a union of a long and a
+    // record.
+    // if the type is a long, we just return that
+    Object timestampRecord = ((GenericRecord) object).get(TIMESTAMP_FIELD_NAME);
+    if (RmdUtils.getRmdTimestampType(timestampRecord).equals(RmdTimestampType.VALUE_LEVEL_TIMESTAMP)) {
+      // return early
+      return (Long) timestampRecord;
+    }
+
+    // If the type is a record, then we need to iterate over the fields and find the latest timestamp of any of the
+    // fields
+    // the field types we're interested will either be of type long, or another record. Record is used to bookkeeping
+    // operations
+    // on fields which are collection types like arrays or maps.
+    Long lastUpdatedTimestamp = -1L;
+    // iterate through the fields, this is only a two level deep structure, so a loop with a single embedded loop will
+    // fit the bill
+    for (Schema.Field field: ((GenericRecord) timestampRecord).getSchema().getFields()) {
+      // if the field is a record, then we need to iterate through the fields of the record
+      if (field.schema().getType().equals(Schema.Type.RECORD)) {
+        lastUpdatedTimestamp = Math.max(
+            lastUpdatedTimestamp,
+            (Long) ((GenericRecord) ((GenericRecord) timestampRecord).get(field.name())).get(TOP_LEVEL_TS_FIELD_NAME));
+        for (long timestamp: (long[]) ((GenericRecord) ((GenericRecord) timestampRecord).get(field.name()))
+            .get(DELETED_ELEM_TS_FIELD_NAME)) {
+          lastUpdatedTimestamp = Math.max(lastUpdatedTimestamp, timestamp);
+        }
+        for (long timestamp: (long[]) ((GenericRecord) ((GenericRecord) timestampRecord).get(field.name()))
+            .get(ACTIVE_ELEM_TS_FIELD_NAME)) {
+          lastUpdatedTimestamp = Math.max(lastUpdatedTimestamp, timestamp);
+        }
+      } else if (field.schema().getType().equals(Schema.Type.LONG)) {
+        lastUpdatedTimestamp =
+            Math.max(lastUpdatedTimestamp, (Long) ((GenericRecord) timestampRecord).get(field.name()));
+      }
+    }
+    return lastUpdatedTimestamp;
   }
 }

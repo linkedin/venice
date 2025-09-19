@@ -1,20 +1,20 @@
 package com.linkedin.davinci.kafka.consumer;
 
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
-import static com.linkedin.venice.ConfigKeys.KAFKA_CLIENT_ID_CONFIG;
 
+import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.ingestion.consumption.ConsumedDataReceiver;
 import com.linkedin.davinci.stats.AggKafkaConsumerServiceStats;
 import com.linkedin.davinci.utils.IndexedHashMap;
 import com.linkedin.davinci.utils.IndexedMap;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
-import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
+import com.linkedin.venice.pubsub.PubSubConsumerAdapterContext;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
+import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
-import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.ExceptionUtils;
@@ -91,6 +91,8 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
   // 4MB bitset size, 2 bitmaps for active and old bitset
   private static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER =
       new RedundantExceptionFilter(8 * 1024 * 1024 * 4, TimeUnit.MINUTES.toMillis(10));
+  private final VeniceServerConfig serverConfig;
+  protected final ConsumerPollTracker consumerPollTracker;
 
   /**
    * @param statsOverride injection of stats, for test purposes
@@ -106,23 +108,25 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
       final MetricsRepository metricsRepository,
       final String kafkaClusterAlias,
       final long sharedConsumerNonExistingTopicCleanupDelayMS,
-      final TopicExistenceChecker topicExistenceChecker,
+      final StaleTopicChecker staleTopicChecker,
       final boolean liveConfigBasedKafkaThrottlingEnabled,
       final PubSubMessageDeserializer pubSubDeserializer,
       final Time time,
       final AggKafkaConsumerServiceStats statsOverride,
       final boolean isKafkaConsumerOffsetCollectionEnabled,
       final ReadOnlyStoreRepository metadataRepository,
-      final boolean isUnregisterMetricForDeletedStoreEnabled) {
+      final boolean isUnregisterMetricForDeletedStoreEnabled,
+      VeniceServerConfig serverConfig) {
     this.kafkaUrl = consumerProperties.getProperty(KAFKA_BOOTSTRAP_SERVERS);
     this.kafkaUrlForLogger = Utils.getSanitizedStringForLogger(kafkaUrl);
     this.LOGGER = LogManager.getLogger(
         KafkaConsumerService.class.getSimpleName() + " [" + kafkaUrlForLogger + "-" + poolType.getStatSuffix() + "]");
     this.poolType = poolType;
+    this.serverConfig = serverConfig;
 
     // Initialize consumers and consumerExecutor
     String consumerNamePrefix = "venice-shared-consumer-for-" + kafkaUrl + '-' + poolType.getStatSuffix();
-    threadFactory = new RandomAccessDaemonThreadFactory(consumerNamePrefix);
+    threadFactory = new RandomAccessDaemonThreadFactory(consumerNamePrefix, serverConfig.getLogContext());
     consumerExecutor = Executors.newFixedThreadPool(numOfConsumersPerKafkaCluster, threadFactory);
     this.consumerToConsumptionTask = new IndexedHashMap<>(numOfConsumersPerKafkaCluster);
     this.aggStats = statsOverride != null
@@ -133,22 +137,26 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
             this::getMaxElapsedTimeMSSinceLastPollInConsumerPool,
             metadataRepository,
             isUnregisterMetricForDeletedStoreEnabled);
+
+    VeniceProperties properties = new VeniceProperties(consumerProperties);
+    PubSubConsumerAdapterContext.Builder contextBuilder =
+        new PubSubConsumerAdapterContext.Builder().setVeniceProperties(properties)
+            .setPubSubMessageDeserializer(pubSubDeserializer)
+            .setIsOffsetCollectionEnabled(isKafkaConsumerOffsetCollectionEnabled)
+            .setPubSubPositionTypeRegistry(serverConfig.getPubSubPositionTypeRegistry());
+    this.consumerPollTracker = new ConsumerPollTracker(time);
     for (int i = 0; i < numOfConsumersPerKafkaCluster; ++i) {
       /**
        * We need to assign a unique client id across all the storage nodes, otherwise, they will fail into the same throttling bucket.
        */
-      consumerProperties.setProperty(KAFKA_CLIENT_ID_CONFIG, getUniqueClientId(kafkaUrl, i));
+      contextBuilder.setConsumerName(i + poolType.getStatSuffix());
       SharedKafkaConsumer pubSubConsumer = new SharedKafkaConsumer(
-          pubSubConsumerAdapterFactory.create(
-              new VeniceProperties(consumerProperties),
-              isKafkaConsumerOffsetCollectionEnabled,
-              pubSubDeserializer,
-              null),
+          pubSubConsumerAdapterFactory.create(contextBuilder.build()),
           aggStats,
           this::recordPartitionsPerConsumerSensor,
           this::handleUnsubscription);
 
-      Supplier<Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>>> pollFunction =
+      Supplier<Map<PubSubTopicPartition, List<DefaultPubSubMessage>>> pollFunction =
           liveConfigBasedKafkaThrottlingEnabled
               ? () -> kafkaClusterBasedRecordThrottler.poll(pubSubConsumer, kafkaUrl, readCycleDelayMs)
               : () -> pubSubConsumer.poll(readCycleDelayMs);
@@ -161,7 +169,7 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
       final ConsumerSubscriptionCleaner cleaner = new ConsumerSubscriptionCleaner(
           sharedConsumerNonExistingTopicCleanupDelayMS,
           1000,
-          topicExistenceChecker,
+          staleTopicChecker,
           pubSubConsumer::getAssignment,
           aggStats::recordTotalDetectedDeletedTopicNum,
           pubSubConsumer::batchUnsubscribe,
@@ -175,7 +183,8 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
           bandwidthThrottlerFunction,
           recordsThrottlerFunction,
           this.aggStats,
-          cleaner);
+          cleaner,
+          consumerPollTracker);
       consumerToConsumptionTask.putByIndex(pubSubConsumer, consumptionTask, i);
       consumerToLocks.put(pubSubConsumer, new ReentrantLock());
     }
@@ -188,10 +197,6 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
       SharedKafkaConsumer consumer,
       PubSubTopic versionTopic,
       PubSubTopicPartition topicPartition) {
-  }
-
-  private String getUniqueClientId(String kafkaUrl, int suffix) {
-    return Utils.getHostName() + "_" + kafkaUrl + "_" + suffix;
   }
 
   @Override
@@ -244,6 +249,7 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
             sharedConsumer.unSubscribe(topicPartition);
             removeTopicPartitionFromConsumptionTask(sharedConsumer, topicPartition);
           }
+          consumerPollTracker.removeTopicPartition(topicPartition);
         });
       }
       return null;
@@ -265,6 +271,7 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
         consumer.unSubscribe(pubSubTopicPartition, timeoutMs);
         removeTopicPartitionFromConsumptionTask(consumer, pubSubTopicPartition);
       }
+      consumerPollTracker.removeTopicPartition(pubSubTopicPartition);
       versionTopicToTopicPartitionToConsumer.compute(versionTopic, (k, topicPartitionToConsumerMap) -> {
         if (topicPartitionToConsumerMap != null) {
           topicPartitionToConsumerMap.remove(pubSubTopicPartition);
@@ -287,6 +294,7 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
             consumerUnSubTopicPartitionSet.computeIfAbsent(consumer, k -> new HashSet<>());
         topicPartitionSet.add(topicPartition);
       }
+      consumerPollTracker.removeTopicPartition(topicPartition);
     }
     /**
      * Leverage {@link PubSubConsumerAdapter#batchUnsubscribe(Set)}.
@@ -399,12 +407,7 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
         SharedKafkaConsumer consumer = consumerToConsumptionTask.getByIndex(slowestTaskId).getKey();
         Map<PubSubTopicPartition, TopicPartitionIngestionInfo> topicPartitionIngestionInfoMap =
             getIngestionInfoFromConsumer(consumer);
-        // Convert Map of ingestion info for this consumer to String for logging with each partition line by line
-        StringBuilder sb = new StringBuilder();
-        for (Map.Entry<PubSubTopicPartition, TopicPartitionIngestionInfo> entry: topicPartitionIngestionInfoMap
-            .entrySet()) {
-          sb.append(entry.getKey().toString()).append(": ").append(entry.getValue().toString()).append("\n");
-        }
+        String consumerIngestionInfoStr = convertTopicPartitionIngestionInfoMapToStr(topicPartitionIngestionInfoMap);
         // log the slowest consumer id if it couldn't make any progress in a minute!
         LOGGER.warn(
             "Shared consumer ({} - task {}) couldn't make any progress for over {} ms, thread name: {}, stack trace:\n{}, consumer info:\n{}",
@@ -413,17 +416,28 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
             maxElapsedTimeSinceLastPollInConsumerPool,
             slowestThread != null ? slowestThread.getName() : null,
             ExceptionUtils.threadToThrowableToString(slowestThread),
-            sb.toString());
+            consumerIngestionInfoStr);
       }
     }
     return maxElapsedTimeSinceLastPollInConsumerPool;
   }
 
+  public static String convertTopicPartitionIngestionInfoMapToStr(
+      // Convert Map of ingestion info for this consumer to String for logging with each partition line by line
+      Map<PubSubTopicPartition, TopicPartitionIngestionInfo> topicPartitionIngestionInfoMap) {
+    StringBuilder sb = new StringBuilder();
+    for (Map.Entry<PubSubTopicPartition, TopicPartitionIngestionInfo> entry: topicPartitionIngestionInfoMap
+        .entrySet()) {
+      sb.append(entry.getKey().toString()).append(": ").append(entry.getValue().toString()).append("\n");
+    }
+    return sb.toString();
+  }
+
   @Override
   public void startConsumptionIntoDataReceiver(
       PartitionReplicaIngestionContext partitionReplicaIngestionContext,
-      long lastReadOffset,
-      ConsumedDataReceiver<List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> consumedDataReceiver) {
+      PubSubPosition lastReadPosition,
+      ConsumedDataReceiver<List<DefaultPubSubMessage>> consumedDataReceiver) {
     PubSubTopic versionTopic = consumedDataReceiver.destinationIdentifier();
     PubSubTopicPartition topicPartition = partitionReplicaIngestionContext.getPubSubTopicPartition();
     SharedKafkaConsumer consumer = assignConsumerFor(versionTopic, topicPartition);
@@ -451,8 +465,14 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
        * {@link KafkaConsumerService.ConsumptionTask} will not be able to funnel the messages.
        */
       consumptionTask.setDataReceiver(topicPartition, consumedDataReceiver);
-      consumer.subscribe(consumedDataReceiver.destinationIdentifier(), topicPartition, lastReadOffset);
+      consumer.subscribe(consumedDataReceiver.destinationIdentifier(), topicPartition, lastReadPosition);
+      consumerPollTracker.recordSubscribed(topicPartition);
     }
+  }
+
+  @Override
+  public Map<PubSubTopicPartition, Long> getStaleTopicPartitions(long thresholdTimestamp) {
+    return consumerPollTracker.getStaleTopicPartitions(thresholdTimestamp);
   }
 
   interface KCSConstructor {
@@ -467,14 +487,15 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
         MetricsRepository metricsRepository,
         String kafkaClusterAlias,
         long sharedConsumerNonExistingTopicCleanupDelayMS,
-        TopicExistenceChecker topicExistenceChecker,
+        StaleTopicChecker staleTopicChecker,
         boolean liveConfigBasedKafkaThrottlingEnabled,
         PubSubMessageDeserializer pubSubDeserializer,
         Time time,
         AggKafkaConsumerServiceStats stats,
         boolean isKafkaConsumerOffsetCollectionEnabled,
         ReadOnlyStoreRepository metadataRepository,
-        boolean unregisterMetricForDeletedStoreEnabled);
+        boolean unregisterMetricForDeletedStoreEnabled,
+        VeniceServerConfig serverConfig);
   }
 
   /**
@@ -501,42 +522,19 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
     aggStats.recordTotalSubscribedPartitionsNum(totalPartitions);
   }
 
-  public long getOffsetLagBasedOnMetrics(PubSubTopic versionTopic, PubSubTopicPartition pubSubTopicPartition) {
-    return getSomeOffsetFor(
-        versionTopic,
-        pubSubTopicPartition,
-        PubSubConsumerAdapter::getOffsetLag,
-        aggStats::recordTotalOffsetLagIsAbsent,
-        aggStats::recordTotalOffsetLagIsPresent);
-  }
-
   public long getLatestOffsetBasedOnMetrics(PubSubTopic versionTopic, PubSubTopicPartition pubSubTopicPartition) {
-    return getSomeOffsetFor(
-        versionTopic,
-        pubSubTopicPartition,
-        PubSubConsumerAdapter::getLatestOffset,
-        aggStats::recordTotalLatestOffsetIsAbsent,
-        aggStats::recordTotalLatestOffsetIsPresent);
+    return getSomeOffsetFor(versionTopic, pubSubTopicPartition, PubSubConsumerAdapter::getLatestOffset);
   }
 
   private long getSomeOffsetFor(
       PubSubTopic versionTopic,
       PubSubTopicPartition pubSubTopicPartition,
-      OffsetGetter offsetGetter,
-      Runnable sensorIfAbsent,
-      Runnable sensorIfPresent) {
+      OffsetGetter offsetGetter) {
     PubSubConsumerAdapter consumer = getConsumerAssignedToVersionTopicPartition(versionTopic, pubSubTopicPartition);
     if (consumer == null) {
-      sensorIfAbsent.run();
       return -1;
     } else {
-      long result = offsetGetter.apply(consumer, pubSubTopicPartition);
-      if (result < 0) {
-        sensorIfAbsent.run();
-      } else {
-        sensorIfPresent.run();
-      }
-      return result;
+      return offsetGetter.apply(consumer, pubSubTopicPartition);
     }
   }
 
@@ -558,13 +556,20 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
       for (PubSubTopicPartition topicPartition: consumer.getAssignment()) {
         long offsetLag = consumer.getOffsetLag(topicPartition);
         long latestOffset = consumer.getLatestOffset(topicPartition);
-        double msgRate = consumptionTask.getMessageRate(topicPartition);
-        double byteRate = consumptionTask.getByteRate(topicPartition);
-        long lastSuccessfulPollTimestamp = consumptionTask.getLastSuccessfulPollTimestamp(topicPartition);
-        long elapsedTimeSinceLastPollInMs = ConsumptionTask.DEFAULT_TOPIC_PARTITION_NO_POLL_TIMESTAMP;
-        if (lastSuccessfulPollTimestamp != ConsumptionTask.DEFAULT_TOPIC_PARTITION_NO_POLL_TIMESTAMP) {
-          elapsedTimeSinceLastPollInMs =
-              LatencyUtils.getElapsedTimeFromMsToMs(consumptionTask.getLastSuccessfulPollTimestamp());
+        ConsumptionTask.PartitionStats partitionStats = consumptionTask.getPartitionStats(topicPartition);
+        double msgRate = partitionStats.getMessageRate();
+        double byteRate = partitionStats.getBytesRate();
+        long lastSuccessfulPollTimestamp = partitionStats.getLastSuccessfulPollTimestamp();
+        long elapsedTimeSinceLastRecordForPartitionInMs = ConsumptionTask.DEFAULT_TOPIC_PARTITION_NO_POLL_TIMESTAMP;
+
+        // Consumer level elapsed time
+        long elapsedTimeSinceLastConsumerPollInMs =
+            LatencyUtils.getElapsedTimeFromMsToMs(consumptionTask.getLastSuccessfulPollTimestamp());
+
+        // Partition level elapsed time
+        if (lastSuccessfulPollTimestamp > 0) {
+          elapsedTimeSinceLastRecordForPartitionInMs =
+              LatencyUtils.getElapsedTimeFromMsToMs(lastSuccessfulPollTimestamp);
         }
         PubSubTopic destinationVersionTopic = consumptionTask.getDestinationIdentifier(topicPartition);
         String destinationVersionTopicName = destinationVersionTopic == null ? "" : destinationVersionTopic.getName();
@@ -574,7 +579,8 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
             msgRate,
             byteRate,
             consumerIdStr,
-            elapsedTimeSinceLastPollInMs,
+            elapsedTimeSinceLastConsumerPollInMs,
+            elapsedTimeSinceLastRecordForPartitionInMs,
             destinationVersionTopicName);
         topicPartitionIngestionInfoMap.put(topicPartition, topicPartitionIngestionInfo);
       }
@@ -592,7 +598,6 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
    * respectively. Each strategy will have a specific extension of {@link KafkaConsumerService}.
    */
   public enum ConsumerAssignmentStrategy {
-    TOPIC_WISE_SHARED_CONSUMER_ASSIGNMENT_STRATEGY(TopicWiseKafkaConsumerService::new),
     PARTITION_WISE_SHARED_CONSUMER_ASSIGNMENT_STRATEGY(PartitionWiseKafkaConsumerService::new),
     STORE_AWARE_PARTITION_WISE_SHARED_CONSUMER_ASSIGNMENT_STRATEGY(StoreAwarePartitionWiseKafkaConsumerService::new);
 

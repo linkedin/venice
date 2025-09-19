@@ -33,6 +33,7 @@ import com.linkedin.venice.helix.HelixReadOnlySchemaRepositoryAdapter;
 import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
 import com.linkedin.venice.helix.HelixReadOnlyStoreRepository;
 import com.linkedin.venice.helix.HelixReadOnlyStoreRepositoryAdapter;
+import com.linkedin.venice.helix.HelixReadOnlyStoreViewConfigRepositoryAdapter;
 import com.linkedin.venice.helix.HelixReadOnlyZKSharedSchemaRepository;
 import com.linkedin.venice.helix.HelixReadOnlyZKSharedSystemStoreRepository;
 import com.linkedin.venice.helix.SafeHelixManager;
@@ -71,7 +72,6 @@ import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
 import com.linkedin.venice.router.stats.HealthCheckStats;
 import com.linkedin.venice.router.stats.LongTailRetryStatsProvider;
 import com.linkedin.venice.router.stats.RouteHttpRequestStats;
-import com.linkedin.venice.router.stats.RouterHttpRequestStats;
 import com.linkedin.venice.router.stats.RouterMetricEntity;
 import com.linkedin.venice.router.stats.RouterStats;
 import com.linkedin.venice.router.stats.RouterThrottleStats;
@@ -88,6 +88,7 @@ import com.linkedin.venice.stats.VeniceJVMStats;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.stats.ZkClientStatusStats;
 import com.linkedin.venice.stats.metrics.MetricEntity;
+import com.linkedin.venice.stats.metrics.ModuleMetricEntityInterface;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.HelixUtils;
@@ -114,7 +115,6 @@ import java.net.InetSocketAddress;
 import java.net.SocketAddress;
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -128,7 +128,6 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
-import java.util.stream.Collectors;
 import org.apache.helix.InstanceType;
 import org.apache.helix.manager.zk.ZKHelixManager;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
@@ -162,7 +161,7 @@ public class RouterServer extends AbstractVeniceService {
   private Optional<HelixHybridStoreQuotaRepository> hybridStoreQuotaRepository;
   private ReadOnlyStoreRepository metadataRepository;
   private RouterStats<AggRouterHttpRequestStats> routerStats;
-  private HelixReadOnlyStoreConfigRepository storeConfigRepository;
+  private HelixReadOnlyStoreViewConfigRepositoryAdapter storeConfigRepository;
 
   private PushStatusStoreReader pushStatusStoreReader;
   private HelixLiveInstanceMonitor liveInstanceMonitor;
@@ -202,8 +201,8 @@ public class RouterServer extends AbstractVeniceService {
 
   public static final String ROUTER_SERVICE_NAME = "venice-router";
   public static final String ROUTER_SERVICE_METRIC_PREFIX = "router";
-  public static final Collection<MetricEntity> ROUTER_SERVICE_METRIC_ENTITIES = Collections.unmodifiableList(
-      Arrays.stream(RouterMetricEntity.values()).map(RouterMetricEntity::getMetricEntity).collect(Collectors.toList()));
+  public static final Collection<MetricEntity> ROUTER_SERVICE_METRIC_ENTITIES =
+      ModuleMetricEntityInterface.getUniqueMetricEntities(RouterMetricEntity.class);
   /**
    * Thread number used to monitor the listening port;
    */
@@ -213,6 +212,8 @@ public class RouterServer extends AbstractVeniceService {
   private final AggHostHealthStats aggHostHealthStats;
 
   private ScheduledExecutorService retryManagerExecutorService;
+
+  private InFlightRequestStat inFlightRequestStat;
 
   public static void main(String args[]) throws Exception {
     if (args.length != 1) {
@@ -320,15 +321,10 @@ public class RouterServer extends AbstractVeniceService {
       D2Client d2Client,
       String d2ServiceName) {
     this(properties, serviceDiscoveryAnnouncers, accessController, sslFactory, metricsRepository, true);
-
     HelixReadOnlyZKSharedSystemStoreRepository readOnlyZKSharedSystemStoreRepository =
         new HelixReadOnlyZKSharedSystemStoreRepository(zkClient, adapter, config.getSystemSchemaClusterName());
-    HelixReadOnlyStoreRepository readOnlyStoreRepository = new HelixReadOnlyStoreRepository(
-        zkClient,
-        adapter,
-        config.getClusterName(),
-        config.getRefreshAttemptsForZkReconnect(),
-        config.getRefreshIntervalForZkReconnectInMs());
+    HelixReadOnlyStoreRepository readOnlyStoreRepository =
+        new HelixReadOnlyStoreRepository(zkClient, adapter, config.getClusterName());
     this.metadataRepository = new HelixReadOnlyStoreRepositoryAdapter(
         readOnlyZKSharedSystemStoreRepository,
         readOnlyStoreRepository,
@@ -340,7 +336,8 @@ public class RouterServer extends AbstractVeniceService {
             requestType,
             config.isKeyValueProfilingEnabled(),
             metadataRepository,
-            config.isUnregisterMetricForDeletedStoreEnabled()));
+            config.isUnregisterMetricForDeletedStoreEnabled(),
+            inFlightRequestStat.getTotalInflightRequestSensor()));
     this.schemaRepository = new HelixReadOnlySchemaRepositoryAdapter(
         new HelixReadOnlyZKSharedSchemaRepository(
             readOnlyZKSharedSystemStoreRepository,
@@ -363,7 +360,8 @@ public class RouterServer extends AbstractVeniceService {
     this.hybridStoreQuotaRepository = config.isHelixHybridStoreQuotaEnabled()
         ? Optional.of(new HelixHybridStoreQuotaRepository(manager))
         : Optional.empty();
-    this.storeConfigRepository = new HelixReadOnlyStoreConfigRepository(zkClient, adapter);
+    this.storeConfigRepository =
+        new HelixReadOnlyStoreViewConfigRepositoryAdapter(new HelixReadOnlyStoreConfigRepository(zkClient, adapter));
     this.liveInstanceMonitor = new HelixLiveInstanceMonitor(this.zkClient, config.getClusterName());
 
     this.pushStatusStoreReader = new PushStatusStoreReader(
@@ -403,7 +401,7 @@ public class RouterServer extends AbstractVeniceService {
 
     Class<IdentityParser> identityParserClass = ReflectUtils.loadClass(config.getIdentityParserClassName());
     this.identityParser = ReflectUtils.callConstructor(identityParserClass, new Class[0], new Object[0]);
-
+    inFlightRequestStat = new InFlightRequestStat(config);
     verifySslOk();
   }
 
@@ -419,7 +417,7 @@ public class RouterServer extends AbstractVeniceService {
       Optional<HelixHybridStoreQuotaRepository> hybridStoreQuotaRepository,
       HelixReadOnlyStoreRepository metadataRepository,
       HelixReadOnlySchemaRepository schemaRepository,
-      HelixReadOnlyStoreConfigRepository storeConfigRepository,
+      HelixReadOnlyStoreViewConfigRepositoryAdapter storeConfigRepository,
       List<ServiceDiscoveryAnnouncer> serviceDiscoveryAnnouncers,
       Optional<SSLFactory> sslFactory,
       HelixLiveInstanceMonitor liveInstanceMonitor) {
@@ -444,7 +442,8 @@ public class RouterServer extends AbstractVeniceService {
             requestType,
             config.isKeyValueProfilingEnabled(),
             metadataRepository,
-            config.isUnregisterMetricForDeletedStoreEnabled()));
+            config.isUnregisterMetricForDeletedStoreEnabled(),
+            inFlightRequestStat.getTotalInflightRequestSensor()));
     this.schemaRepository = schemaRepository;
     this.storeConfigRepository = storeConfigRepository;
     this.liveInstanceMonitor = liveInstanceMonitor;
@@ -571,7 +570,7 @@ public class RouterServer extends AbstractVeniceService {
 
     retryManagerExecutorService = Executors.newScheduledThreadPool(
         config.getRetryManagerCorePoolSize(),
-        new DaemonThreadFactory(ROUTER_RETRY_MANAGER_THREAD_PREFIX));
+        new DaemonThreadFactory(ROUTER_RETRY_MANAGER_THREAD_PREFIX, config.getLogContext()));
 
     VenicePathParser pathParser = new VenicePathParser(
         versionFinder,
@@ -597,7 +596,8 @@ public class RouterServer extends AbstractVeniceService {
         config.getKafkaBootstrapServers(),
         config.isSslToKafka(),
         versionFinder,
-        pushStatusStoreReader);
+        pushStatusStoreReader,
+        metricsRepository);
 
     // Setup stat tracking for exceptional case
     RouterExceptionAndTrackingUtils.setRouterStats(routerStats);
@@ -631,10 +631,7 @@ public class RouterServer extends AbstractVeniceService {
         .enableRetryRequestAlwaysUseADifferentHost(true)
         .build();
 
-    SecurityStats securityStats = new SecurityStats(
-        this.metricsRepository,
-        "security",
-        secureRouter != null ? () -> secureRouter.getConnectedCount() : () -> 0);
+    SecurityStats securityStats = new SecurityStats(this.metricsRepository, "security");
     RouterThrottleStats routerThrottleStats = new RouterThrottleStats(this.metricsRepository, "router_throttler_stats");
     routerEarlyThrottler = new EventThrottler(
         config.getMaxRouterReadCapacityCu(),
@@ -660,6 +657,9 @@ public class RouterServer extends AbstractVeniceService {
               .bossPoolBuilder(EventLoopGroup.class, ignored -> serverEventLoopGroup)
               .ioWorkerPoolBuilder(EventLoopGroup.class, ignored -> workerEventLoopGroup)
               .connectionLimit(config.getConnectionLimit())
+              .connectionHandleMode(config.getConnectionHandleMode())
+              .connectionCountRecorder(securityStats::recordLiveConnectionCount)
+              .rejectedConnectionCountRecorder(securityStats::recordRejectedConnectionCount)
               .timeoutProcessor(timeoutProcessor)
               .beforeHttpRequestHandler(ChannelPipeline.class, (pipeline) -> {
                 pipeline.addLast(
@@ -679,40 +679,38 @@ public class RouterServer extends AbstractVeniceService {
 
     RouterSslVerificationHandler routerSslVerificationHandler = new RouterSslVerificationHandler(securityStats);
     RouterStoreAclHandler aclHandler = accessController.isPresent()
-        ? new RouterStoreAclHandler(identityParser, accessController.get(), metadataRepository)
+        ? new RouterStoreAclHandler(
+            identityParser,
+            accessController.get(),
+            metadataRepository,
+            config.getAclInMemoryCacheTTLMs())
         : null;
     final SslInitializer sslInitializer;
     if (sslFactory.isPresent()) {
       sslInitializer = new SslInitializer(SslUtils.toAlpiniSSLFactory(sslFactory.get()), false);
-      if (config.getClientSslHandshakeThreads() > 0) {
-        if (config.isResolveBeforeSSL()) {
-          ExecutorService sslHandshakeExecutor = registry.factory(ShutdownableExecutors.class)
-              .newFixedThreadPool(
-                  config.getClientSslHandshakeThreads(),
-                  new DefaultThreadFactory("RouterDNSBeforeSSLThread", true, Thread.NORM_PRIORITY));
-          int clientSslHandshakeThreads = config.getClientSslHandshakeThreads();
-          int maxConcurrentResolution = config.getMaxConcurrentResolutions();
-          int clientResolutionRetryAttempts = config.getClientResolutionRetryAttempts();
-          long clientResolutionRetryBackoffMs = config.getClientResolutionRetryBackoffMs();
-          if (useEpoll) {
-            sslResolverEventLoopGroup = new EpollEventLoopGroup(clientSslHandshakeThreads, sslHandshakeExecutor);
-          } else {
-            sslResolverEventLoopGroup = new NioEventLoopGroup(clientSslHandshakeThreads, sslHandshakeExecutor);
-          }
-          sslInitializer.enableResolveBeforeSSL(
-              sslResolverEventLoopGroup,
-              clientResolutionRetryAttempts,
-              clientResolutionRetryBackoffMs,
-              maxConcurrentResolution);
+      if (config.getResolveThreads() > 0) {
+        ThreadPoolExecutor dnsResolveExecutor = ThreadPoolFactory.createThreadPool(
+            config.getResolveThreads(),
+            "DNSResolveThread",
+            config.getLogContext(),
+            config.getResolveQueueCapacity(),
+            LINKED_BLOCKING_QUEUE);
+        new ThreadPoolStats(metricsRepository, dnsResolveExecutor, "dns_resolution_thread_pool");
+        int resolveThreads = config.getResolveThreads();
+        int maxConcurrentSslHandshakes = config.getMaxConcurrentSslHandshakes();
+        int clientResolutionRetryAttempts = config.getClientResolutionRetryAttempts();
+        long clientResolutionRetryBackoffMs = config.getClientResolutionRetryBackoffMs();
+        if (useEpoll) {
+          sslResolverEventLoopGroup = new EpollEventLoopGroup(resolveThreads, dnsResolveExecutor);
         } else {
-          ThreadPoolExecutor sslHandshakeExecutor = ThreadPoolFactory.createThreadPool(
-              config.getClientSslHandshakeThreads(),
-              "SSLHandShakeThread",
-              config.getClientSslHandshakeQueueCapacity(),
-              LINKED_BLOCKING_QUEUE);
-          new ThreadPoolStats(metricsRepository, sslHandshakeExecutor, "ssl_handshake_thread_pool");
-          sslInitializer.enableSslTaskExecutor(sslHandshakeExecutor);
+          sslResolverEventLoopGroup = new NioEventLoopGroup(resolveThreads, dnsResolveExecutor);
         }
+        sslInitializer.enableResolveBeforeSSL(
+            sslResolverEventLoopGroup,
+            clientResolutionRetryAttempts,
+            clientResolutionRetryBackoffMs,
+            maxConcurrentSslHandshakes,
+            config.isClientIPSpoofingCheckEnabled());
       }
       sslInitializer.setIdentityParser(identityParser::parseIdentityFromCert);
       securityStats.registerSslHandshakeSensors(sslInitializer);
@@ -754,6 +752,9 @@ public class RouterServer extends AbstractVeniceService {
         .bossPoolBuilder(EventLoopGroup.class, ignored -> serverEventLoopGroup)
         .ioWorkerPoolBuilder(EventLoopGroup.class, ignored -> workerEventLoopGroup)
         .connectionLimit(config.getConnectionLimit())
+        .connectionHandleMode(config.getConnectionHandleMode())
+        .connectionCountRecorder(securityStats::recordLiveConnectionCount)
+        .rejectedConnectionCountRecorder(securityStats::recordRejectedConnectionCount)
         .timeoutProcessor(timeoutProcessor)
         .beforeHttpServerCodec(ChannelPipeline.class, sslFactory.isPresent() ? addSslInitializer : noop) // Compare once
                                                                                                          // per router.
@@ -810,6 +811,10 @@ public class RouterServer extends AbstractVeniceService {
     optionalChannelHandlers.put(key, channelHandler);
   }
 
+  public double getInFlightRequestRate() {
+    return inFlightRequestStat.getInFlightRequestRate();
+  }
+
   @Override
   public void stopInner() throws Exception {
     for (ServiceDiscoveryAnnouncer serviceDiscoveryAnnouncer: serviceDiscoveryAnnouncers) {
@@ -846,20 +851,20 @@ public class RouterServer extends AbstractVeniceService {
      * correctly.
      */
 
+    LOGGER.info("Waiting to make sure all in-flight requests are drained");
     // Graceful shutdown: Wait till all the requests are drained
     try {
       RetryUtils.executeWithMaxAttempt(() -> {
-        if (RouterHttpRequestStats.hasInFlightRequests()) {
-          throw new VeniceException("There are still in-flight requests in router");
+        double inFlightRequestRate = inFlightRequestStat.getInFlightRequestRate();
+        if (inFlightRequestRate > 0.0) {
+          throw new VeniceException("There are still in-flight requests in router :" + inFlightRequestRate);
         }
-      },
-          10,
-          Duration.ofSeconds(config.getRouterNettyGracefulShutdownPeriodSeconds()),
-          Collections.singletonList(VeniceException.class));
+      }, 30, Duration.ofSeconds(1), Collections.singletonList(VeniceException.class));
     } catch (VeniceException e) {
       LOGGER.error(
           "There are still in-flight request during router shutdown, still continuing shutdown, it might cause unhealthy request in client");
     }
+    LOGGER.info("Drained all in-flight requests, starting to shutdown the router.");
     storageNodeClient.close();
     workerEventLoopGroup.shutdownGracefully();
     serverEventLoopGroup.shutdownGracefully();
@@ -943,7 +948,7 @@ public class RouterServer extends AbstractVeniceService {
           // TODO: Remove this check once test constructor is removed or otherwise fixed.
           LOGGER.info("Not connecting to Helix because the HelixManager is null (the test constructor was used)");
         } else {
-          HelixUtils.connectHelixManager(manager, 30, 1);
+          HelixUtils.connectHelixManager(manager, config.getRefreshAttemptsForZkReconnect());
           LOGGER.info("{} finished connectHelixManager()", this);
         }
       } catch (VeniceException ve) {
@@ -989,7 +994,7 @@ public class RouterServer extends AbstractVeniceService {
         /**
          * This statement should be invoked after {@link #manager} is connected.
          */
-        instanceConfigRepository = new HelixInstanceConfigRepository(manager, config.isUseGroupFieldInHelixDomain());
+        instanceConfigRepository = new HelixInstanceConfigRepository(manager);
         instanceConfigRepository.refresh();
         helixGroupSelector = new HelixGroupSelector(
             metricsRepository,

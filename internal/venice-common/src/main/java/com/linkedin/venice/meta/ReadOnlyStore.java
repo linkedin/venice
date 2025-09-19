@@ -6,11 +6,13 @@ import com.linkedin.venice.exceptions.StoreVersionNotFoundException;
 import com.linkedin.venice.systemstore.schemas.DataRecoveryConfig;
 import com.linkedin.venice.systemstore.schemas.StoreETLConfig;
 import com.linkedin.venice.systemstore.schemas.StoreHybridConfig;
+import com.linkedin.venice.systemstore.schemas.StoreLifecycleHooksRecord;
 import com.linkedin.venice.systemstore.schemas.StorePartitionerConfig;
 import com.linkedin.venice.systemstore.schemas.StoreProperties;
 import com.linkedin.venice.systemstore.schemas.StoreVersion;
 import com.linkedin.venice.systemstore.schemas.StoreViewConfig;
 import com.linkedin.venice.systemstore.schemas.SystemStoreProperties;
+import com.linkedin.venice.utils.CollectionUtils;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -306,7 +308,7 @@ public class ReadOnlyStore implements Store {
    * A read-only wrapper of {@link Version}
    */
   public static class ReadOnlyVersion implements Version {
-    private final Version delegate;
+    protected final Version delegate;
 
     public ReadOnlyVersion(Version delegate) {
       this.delegate = delegate;
@@ -517,6 +519,16 @@ public class ReadOnlyStore implements Store {
     }
 
     @Override
+    public String getBlobTransferInServerEnabled() {
+      return this.delegate.getBlobTransferInServerEnabled();
+    }
+
+    @Override
+    public void setBlobTransferInServerEnabled(String blobTransferInServerEnabled) {
+      throw new UnsupportedOperationException("Blob transfer in server not supported");
+    }
+
+    @Override
     public boolean isUseVersionLevelIncrementalPushEnabled() {
       return this.delegate.isUseVersionLevelIncrementalPushEnabled();
     }
@@ -628,6 +640,36 @@ public class ReadOnlyStore implements Store {
     }
 
     @Override
+    public boolean isGlobalRtDivEnabled() {
+      return delegate.isGlobalRtDivEnabled();
+    }
+
+    @Override
+    public void setGlobalRtDivEnabled(boolean globalRtDivEnabled) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public void setKeyUrnCompressionEnabled(boolean keyUrnCompressionEnabled) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public boolean isKeyUrnCompressionEnabled() {
+      return this.delegate.isKeyUrnCompressionEnabled();
+    }
+
+    @Override
+    public void setKeyUrnFields(List<String> keyUrnFields) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public List<String> getKeyUrnFields() {
+      return delegate.getKeyUrnFields();
+    }
+
+    @Override
     public void setRepushSourceVersion(int version) {
       throw new UnsupportedOperationException();
     }
@@ -716,6 +758,16 @@ public class ReadOnlyStore implements Store {
     }
 
     @Override
+    public int getLargestUsedRTVersionNumber() {
+      return this.delegate.getLargestUsedRTVersionNumber();
+    }
+
+    @Override
+    public void setLargestUsedRTVersionNumber(int largestUsedRTVersionNumber) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
     public int getCurrentVersion() {
       return this.delegate.getCurrentVersion();
     }
@@ -769,7 +821,7 @@ public class ReadOnlyStore implements Store {
     }
   }
 
-  private final Store delegate;
+  protected final Store delegate;
 
   public ReadOnlyStore(Store delegate) {
     this.delegate = delegate;
@@ -856,6 +908,16 @@ public class ReadOnlyStore implements Store {
   }
 
   @Override
+  public int getLargestUsedRTVersionNumber() {
+    return this.delegate.getLargestUsedRTVersionNumber();
+  }
+
+  @Override
+  public void setLargestUsedRTVersionNumber(int largestUsedRTVersionNumber) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
   public long getStorageQuotaInByte() {
     return this.delegate.getStorageQuotaInByte();
   }
@@ -924,7 +986,7 @@ public class ReadOnlyStore implements Store {
     storeProperties.setBootstrapToOnlineTimeoutInHours(getBootstrapToOnlineTimeoutInHours());
     // storeProperties.setLeaderFollowerModelEnabled(isLeaderFollowerModelEnabled());
     storeProperties.setNativeReplicationEnabled(isNativeReplicationEnabled());
-    // storeProperties.setReplicationMetadataVersionID(getReplicationMetadataVersionID());
+    storeProperties.setReplicationMetadataVersionID(getRmdVersion());
     storeProperties.setPushStreamSourceAddress(getPushStreamSourceAddress());
     storeProperties.setBackupStrategy(getBackupStrategy().getValue());
     storeProperties.setSchemaAutoRegisteFromPushJobEnabled(isSchemaAutoRegisterFromPushJobEnabled());
@@ -943,6 +1005,8 @@ public class ReadOnlyStore implements Store {
     storeProperties.setDaVinciPushStatusStoreEnabled(isDaVinciPushStatusStoreEnabled());
     storeProperties.setActiveActiveReplicationEnabled(isActiveActiveReplicationEnabled());
     // storeProperties.setApplyTargetVersionFilterForIncPush(isApplyTargetVersionFilterForIncPush());
+    storeProperties.setCompactionEnabled(isCompactionEnabled());
+    storeProperties.setCompactionThresholdMilliseconds(getCompactionThresholdMilliseconds());
     storeProperties.setMinCompactionLagSeconds(getMinCompactionLagSeconds());
     storeProperties.setMaxCompactionLagSeconds(getMaxCompactionLagSeconds());
     storeProperties.setMaxRecordSizeBytes(getMaxRecordSizeBytes());
@@ -952,11 +1016,15 @@ public class ReadOnlyStore implements Store {
     storeProperties.setSystemStores(convertSystemStores(getSystemStores()));
     storeProperties.setStorageNodeReadQuotaEnabled(isStorageNodeReadQuotaEnabled());
     storeProperties.setBlobTransferEnabled(isBlobTransferEnabled());
+    storeProperties.setBlobTransferInServerEnabled(getBlobTransferInServerEnabled());
     storeProperties.setNearlineProducerCompressionEnabled(isNearlineProducerCompressionEnabled());
     storeProperties.setNearlineProducerCountPerWriter(getNearlineProducerCountPerWriter());
     storeProperties.setTargetSwapRegion(getTargetSwapRegion());
     storeProperties.setTargetSwapRegionWaitTime(getTargetSwapRegionWaitTime());
     storeProperties.setIsDaVinciHeartBeatReported(getIsDavinciHeartbeatReported());
+    storeProperties.setStoreLifecycleHooks(convertStoreLifecycleHooks(getStoreLifecycleHooks()));
+    storeProperties.setKeyUrnCompressionEnabled(isKeyUrnCompressionEnabled());
+    storeProperties.setKeyUrnFields(getKeyUrnFields().stream().map(String::toString).collect(Collectors.toList()));
 
     return storeProperties;
   }
@@ -1379,7 +1447,7 @@ public class ReadOnlyStore implements Store {
   }
 
   @Override
-  public void addVersion(Version version, boolean isClonedVersion) {
+  public void addVersion(Version version, boolean isClonedVersion, int currentRTVersionNumber) {
     throw new UnsupportedOperationException();
   }
 
@@ -1409,8 +1477,8 @@ public class ReadOnlyStore implements Store {
   }
 
   @Override
-  public Version peekNextVersion() {
-    return this.delegate.peekNextVersion();
+  public int peekNextVersionNumber() {
+    return this.delegate.peekNextVersionNumber();
   }
 
   @Override
@@ -1459,6 +1527,26 @@ public class ReadOnlyStore implements Store {
 
   @Override
   public void setStorageNodeReadQuotaEnabled(boolean storageNodeReadQuotaEnabled) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public boolean isCompactionEnabled() {
+    return this.delegate.isCompactionEnabled();
+  }
+
+  @Override
+  public void setCompactionEnabled(boolean compactionEnabled) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public long getCompactionThresholdMilliseconds() {
+    return this.delegate.getCompactionThresholdMilliseconds();
+  }
+
+  @Override
+  public void setCompactionThresholdMilliseconds(long compactionThreshold) {
     throw new UnsupportedOperationException();
   }
 
@@ -1523,6 +1611,16 @@ public class ReadOnlyStore implements Store {
   }
 
   @Override
+  public void setBlobTransferInServerEnabled(String blobTransferInServerEnabled) {
+    throw new UnsupportedOperationException("Blob transfer server not supported");
+  }
+
+  @Override
+  public String getBlobTransferInServerEnabled() {
+    return this.delegate.getBlobTransferInServerEnabled();
+  }
+
+  @Override
   public boolean isNearlineProducerCompressionEnabled() {
     return delegate.isNearlineProducerCompressionEnabled();
   }
@@ -1578,6 +1676,66 @@ public class ReadOnlyStore implements Store {
   }
 
   @Override
+  public boolean isGlobalRtDivEnabled() {
+    return delegate.isGlobalRtDivEnabled();
+  }
+
+  @Override
+  public void setGlobalRtDivEnabled(boolean globalRtDivEnabled) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public boolean isTTLRepushEnabled() {
+    return delegate.isTTLRepushEnabled();
+  }
+
+  @Override
+  public void setTTLRepushEnabled(boolean ttlRepushEnabled) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public boolean isEnumSchemaEvolutionAllowed() {
+    return delegate.isEnumSchemaEvolutionAllowed();
+  }
+
+  @Override
+  public void setEnumSchemaEvolutionAllowed(boolean enumSchemaEvolutionAllowed) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public List<LifecycleHooksRecord> getStoreLifecycleHooks() {
+    return delegate.getStoreLifecycleHooks();
+  }
+
+  @Override
+  public void setStoreLifecycleHooks(List<LifecycleHooksRecord> storeLifecycleHooks) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public void setKeyUrnCompressionEnabled(boolean keyUrnCompressionEnabled) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public boolean isKeyUrnCompressionEnabled() {
+    return delegate.isKeyUrnCompressionEnabled();
+  }
+
+  @Override
+  public void setKeyUrnFields(List<String> keyUrnFieldList) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public List<String> getKeyUrnFields() {
+    return delegate.getKeyUrnFields();
+  }
+
+  @Override
   public String toString() {
     return this.delegate.toString();
   }
@@ -1600,6 +1758,9 @@ public class ReadOnlyStore implements Store {
   }
 
   private static StoreETLConfig convertETLStoreConfig(ETLStoreConfig etlStoreConfig) {
+    if (etlStoreConfig == null) {
+      return null;
+    }
     StoreETLConfig storeETLConfig = new StoreETLConfig();
 
     storeETLConfig.setEtledUserProxyAccount(etlStoreConfig.getEtledUserProxyAccount());
@@ -1610,6 +1771,9 @@ public class ReadOnlyStore implements Store {
   }
 
   private static StorePartitionerConfig convertPartitionerConfig(PartitionerConfig partitionerConfig) {
+    if (partitionerConfig == null) {
+      return null;
+    }
     StorePartitionerConfig storePartitionerConfig = new StorePartitionerConfig();
 
     // Partitioner Class
@@ -1708,20 +1872,38 @@ public class ReadOnlyStore implements Store {
     storeVersion.setIncrementalPushEnabled(version.isIncrementalPushEnabled());
     storeVersion.setSeparateRealTimeTopicEnabled(version.isSeparateRealTimeTopicEnabled());
     storeVersion.setBlobTransferEnabled(version.isBlobTransferEnabled());
+    storeVersion.setBlobTransferInServerEnabled(version.getBlobTransferInServerEnabled());
     storeVersion.setUseVersionLevelIncrementalPushEnabled(version.isUseVersionLevelIncrementalPushEnabled());
     storeVersion.setHybridConfig(convertHybridStoreConfig(version.getHybridStoreConfig()));
     storeVersion.setUseVersionLevelHybridConfig(version.isUseVersionLevelHybridConfig());
     storeVersion.setActiveActiveReplicationEnabled(version.isActiveActiveReplicationEnabled());
     storeVersion.setTimestampMetadataVersionId(version.getRmdVersionId());
-    storeVersion.setDataRecoveryConfig((DataRecoveryConfig) version.getDataRecoveryVersionConfig());
+    storeVersion.setDataRecoveryConfig(convertDataRecoveryVersionConfig(version.getDataRecoveryVersionConfig()));
     storeVersion.setDeferVersionSwap(version.isVersionSwapDeferred());
     storeVersion.setRepushSourceVersion(version.getRepushSourceVersion());
     storeVersion.setTargetSwapRegion(version.getTargetSwapRegion());
     storeVersion.setTargetSwapRegionWaitTime(version.getTargetSwapRegionWaitTime());
     storeVersion.setIsDaVinciHeartBeatReported(version.getIsDavinciHeartbeatReported());
+    storeVersion.setGlobalRtDivEnabled(version.isGlobalRtDivEnabled());
     storeVersion.setViews(convertViewConfigsStringMap(version.getViewConfigs()));
+    storeVersion.setKeyUrnCompressionEnabled(version.isKeyUrnCompressionEnabled());
+    storeVersion.setKeyUrnFields(version.getKeyUrnFields().stream().map(String::toString).collect(Collectors.toList()));
 
     return storeVersion;
+  }
+
+  private static DataRecoveryConfig convertDataRecoveryVersionConfig(
+      DataRecoveryVersionConfig dataRecoveryVersionConfig) {
+    if (dataRecoveryVersionConfig == null) {
+      return null;
+    }
+    DataRecoveryConfig dataRecoveryConfig = new DataRecoveryConfig();
+
+    dataRecoveryConfig.setDataRecoverySourceFabric(dataRecoveryVersionConfig.getDataRecoverySourceFabric());
+    dataRecoveryConfig.setIsDataRecoveryComplete(dataRecoveryConfig.getIsDataRecoveryComplete());
+    dataRecoveryConfig.setDataRecoverySourceVersionNumber(dataRecoveryConfig.getDataRecoverySourceVersionNumber());
+
+    return dataRecoveryConfig;
   }
 
   private static Map<CharSequence, SystemStoreProperties> convertSystemStores(
@@ -1742,5 +1924,22 @@ public class ReadOnlyStore implements Store {
     }
 
     return systemStorePropertiesMap;
+  }
+
+  private static List<StoreLifecycleHooksRecord> convertStoreLifecycleHooks(
+      List<LifecycleHooksRecord> storeLifecycleHooks) {
+    if (storeLifecycleHooks.isEmpty()) {
+      return Collections.emptyList();
+    }
+
+    List<StoreLifecycleHooksRecord> convertedStoreLifecycleHooks = new ArrayList<>();
+    for (LifecycleHooksRecord storeLifecycleHooksRecord: storeLifecycleHooks) {
+      convertedStoreLifecycleHooks.add(
+          new StoreLifecycleHooksRecord(
+              storeLifecycleHooksRecord.getStoreLifecycleHooksClassName(),
+              CollectionUtils
+                  .convertStringMapToCharSequenceMap(storeLifecycleHooksRecord.getStoreLifecycleHooksParams())));
+    }
+    return convertedStoreLifecycleHooks;
   }
 }

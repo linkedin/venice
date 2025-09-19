@@ -16,12 +16,15 @@ import com.linkedin.davinci.listener.response.MetadataResponse;
 import com.linkedin.davinci.listener.response.ReadResponse;
 import com.linkedin.davinci.listener.response.ReplicaIngestionResponse;
 import com.linkedin.davinci.listener.response.ServerCurrentVersionResponse;
+import com.linkedin.davinci.listener.response.StorePropertiesPayload;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.listener.grpc.GrpcRequestContext;
 import com.linkedin.venice.listener.grpc.handlers.GrpcOutboundResponseHandler;
 import com.linkedin.venice.protocols.VeniceServerResponse;
+import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
 import com.linkedin.venice.utils.ObjectMapperFactory;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.grpc.stub.StreamObserver;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
@@ -42,6 +45,35 @@ public class OutboundHttpWrapperHandlerTest {
   public void testWriteMetadataResponse() {
     MetadataResponse msg = new MetadataResponse();
     msg.setVersions(Collections.emptyList());
+    StatsHandler statsHandler = mock(StatsHandler.class);
+    ChannelHandlerContext mockCtx = mock(ChannelHandlerContext.class);
+
+    FullHttpResponse response = new DefaultFullHttpResponse(HTTP_1_1, HttpResponseStatus.OK, msg.getResponseBody());
+    response.headers().set(CONTENT_TYPE, HttpConstants.AVRO_BINARY);
+    response.headers().set(CONTENT_LENGTH, msg.getResponseBody().readableBytes());
+    response.headers().set(HttpConstants.VENICE_COMPRESSION_STRATEGY, CompressionStrategy.NO_OP.getValue());
+    response.headers().set(HttpConstants.VENICE_SCHEMA_ID, msg.getResponseSchemaIdHeader());
+    response.headers().set(HttpConstants.VENICE_REQUEST_RCU, 1);
+
+    OutboundHttpWrapperHandler outboundHttpWrapperHandler = new OutboundHttpWrapperHandler(statsHandler);
+
+    when(mockCtx.writeAndFlush(any())).then(i -> {
+      FullHttpResponse actualResponse = (DefaultFullHttpResponse) i.getArguments()[0];
+      Assert.assertEquals(actualResponse.content(), response.content());
+      Assert.assertTrue(actualResponse.headers().equals(response.headers()));
+      Assert.assertTrue(actualResponse.equals(response));
+      return null;
+    });
+
+    outboundHttpWrapperHandler.write(mockCtx, msg, null);
+  }
+
+  @Test
+  public void testWriteStorePropertiesPayload() {
+    StorePropertiesPayload msg = new StorePropertiesPayload();
+    msg.setRoutingInfo(new VeniceConcurrentHashMap<>());
+    msg.setHelixGroupInfo(new VeniceConcurrentHashMap<>());
+    msg.setStoreMetaValue(new StoreMetaValue());
     StatsHandler statsHandler = mock(StatsHandler.class);
     ChannelHandlerContext mockCtx = mock(ChannelHandlerContext.class);
 
@@ -149,6 +181,34 @@ public class OutboundHttpWrapperHandlerTest {
   }
 
   @Test
+  public void testWriteStorePropertiesUnknownErrorPayload() {
+    StorePropertiesPayload msg = new StorePropertiesPayload();
+    msg.setError(true);
+    ByteBuf body = Unpooled.wrappedBuffer("Unknown error".getBytes(StandardCharsets.UTF_8));
+    StatsHandler statsHandler = mock(StatsHandler.class);
+    ChannelHandlerContext mockCtx = mock(ChannelHandlerContext.class);
+
+    FullHttpResponse response = new DefaultFullHttpResponse(HTTP_1_1, HttpResponseStatus.INTERNAL_SERVER_ERROR, body);
+    response.headers().set(CONTENT_TYPE, HttpConstants.TEXT_PLAIN);
+    response.headers().set(CONTENT_LENGTH, body.readableBytes());
+    response.headers().set(HttpConstants.VENICE_COMPRESSION_STRATEGY, CompressionStrategy.NO_OP.getValue());
+    response.headers().set(HttpConstants.VENICE_SCHEMA_ID, -1);
+    response.headers().set(HttpConstants.VENICE_REQUEST_RCU, 1);
+
+    OutboundHttpWrapperHandler outboundHttpWrapperHandler = new OutboundHttpWrapperHandler(statsHandler);
+
+    when(mockCtx.writeAndFlush(any())).then(i -> {
+      FullHttpResponse actualResponse = (DefaultFullHttpResponse) i.getArguments()[0];
+      Assert.assertEquals(actualResponse.content(), response.content());
+      Assert.assertTrue(actualResponse.headers().equals(response.headers()));
+      Assert.assertTrue(actualResponse.equals(response));
+      return null;
+    });
+
+    outboundHttpWrapperHandler.write(mockCtx, msg, null);
+  }
+
+  @Test
   public void testWriteDefaultFullHttpResponse() {
     FullHttpResponse msg = new DefaultFullHttpResponse(HTTP_1_1, HttpResponseStatus.NOT_FOUND);
     StatsHandler statsHandler = mock(StatsHandler.class);
@@ -199,8 +259,10 @@ public class OutboundHttpWrapperHandlerTest {
     int expectedPartitionId = 12345;
     String jsonStr = "{\n" + "\"kafkaUrl\" : {\n" + "  TP(topic: \"" + topic + "\", partition: " + expectedPartitionId
         + ") : {\n" + "      \"latestOffset\" : 0,\n" + "      \"offsetLag\" : 1,\n" + "      \"msgRate\" : 2.0,\n"
-        + "      \"byteRate\" : 4.0,\n" + "      \"consumerIdx\" : 6,\n"
-        + "      \"elapsedTimeSinceLastPollInMs\" : 7\n" + "    }\n" + "  }\n" + "}";
+        + "      \"byteRate\" : 6.0,\n" + "      \"consumerIdStr\" : \"consumer1\",\n"
+        + "      \"elapsedTimeSinceLastConsumerPollInMs\" : 7,\n"
+        + "      \"elapsedTimeSinceLastRecordForPartitionInMs\" : 8,\n"
+        + "      \"versionTopicName\" : \"test_store_v1\"\n" + "    }\n" + "  }\n" + "}";
     msg.setPayload(jsonStr.getBytes());
     StatsHandler statsHandler = mock(StatsHandler.class);
     ChannelHandlerContext mockCtx = mock(ChannelHandlerContext.class);

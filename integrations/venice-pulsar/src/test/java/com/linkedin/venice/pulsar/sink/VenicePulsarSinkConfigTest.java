@@ -1,6 +1,8 @@
 package com.linkedin.venice.pulsar.sink;
 
-import static org.testng.Assert.*;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertTrue;
 
 import java.util.Map;
 import org.testng.annotations.Test;
@@ -44,7 +46,6 @@ public class VenicePulsarSinkConfigTest {
 
     assertEquals(props.get("systems.test-system.push.type"), "INCREMENTAL");
     assertEquals(props.get("systems.test-system.store"), "test-store");
-    assertEquals(props.get("systems.test-system.aggregate"), "false");
   }
 
   @Test
@@ -83,7 +84,6 @@ public class VenicePulsarSinkConfigTest {
 
     assertEquals(props.get("systems.test-system.push.type"), "INCREMENTAL");
     assertEquals(props.get("systems.test-system.store"), "test-store");
-    assertEquals(props.get("systems.test-system.aggregate"), "false");
   }
 
   @Test

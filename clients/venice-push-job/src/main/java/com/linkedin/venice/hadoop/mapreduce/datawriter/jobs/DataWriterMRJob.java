@@ -1,15 +1,16 @@
 package com.linkedin.venice.hadoop.mapreduce.datawriter.jobs;
 
-import static com.linkedin.venice.CommonConfigKeys.SSL_FACTORY_CLASS_NAME;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_PRODUCER_DELIVERY_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_PRODUCER_REQUEST_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_PRODUCER_RETRIES_CONFIG;
 import static com.linkedin.venice.ConfigKeys.PARTITIONER_CLASS;
+import static com.linkedin.venice.ConfigKeys.PUBSUB_SECURITY_PROTOCOL;
 import static com.linkedin.venice.ConfigKeys.PUSH_JOB_GUID_LEAST_SIGNIFICANT_BITS;
 import static com.linkedin.venice.ConfigKeys.PUSH_JOB_GUID_MOST_SIGNIFICANT_BITS;
 import static com.linkedin.venice.ConfigKeys.PUSH_JOB_VIEW_CONFIGS;
-import static com.linkedin.venice.VeniceConstants.DEFAULT_SSL_FACTORY_CLASS_NAME;
+import static com.linkedin.venice.guid.GuidUtils.DEFAULT_GUID_GENERATOR_IMPLEMENTATION;
+import static com.linkedin.venice.guid.GuidUtils.GUID_GENERATOR_IMPLEMENTATION;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.ALLOW_DUPLICATE_KEY;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.BATCH_NUM_BYTES_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.COMPRESSION_STRATEGY;
@@ -24,7 +25,6 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_BROKER_
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_SOURCE_COMPRESSION_STRATEGY;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_SOURCE_TOPIC_CHUNKING_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_SECURITY_PROTOCOL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KEY_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.MAP_REDUCE_PARTITIONER_CLASS_CONFIG;
@@ -33,12 +33,11 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.REDUCER_SPECULATIVE
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_ENABLE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_POLICY;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_START_TIMESTAMP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.RMD_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.RMD_SCHEMA_DIR;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SCHEMA_STRING_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_PREFIX;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.STORAGE_QUOTA_PROP;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.SYSTEM_SCHEMA_CLUSTER_D2_SERVICE_NAME;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.SYSTEM_SCHEMA_CLUSTER_D2_ZK_HOST;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SYSTEM_SCHEMA_READER_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TELEMETRY_MESSAGE_INTERVAL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TOPIC_PROP;
@@ -61,6 +60,7 @@ import com.linkedin.venice.hadoop.input.kafka.KafkaInputFormat;
 import com.linkedin.venice.hadoop.input.kafka.KafkaInputFormatCombiner;
 import com.linkedin.venice.hadoop.input.kafka.KafkaInputKeyComparator;
 import com.linkedin.venice.hadoop.input.kafka.KafkaInputMRPartitioner;
+import com.linkedin.venice.hadoop.input.kafka.KafkaInputUtils;
 import com.linkedin.venice.hadoop.input.kafka.KafkaInputValueGroupingComparator;
 import com.linkedin.venice.hadoop.input.kafka.VeniceKafkaInputMapper;
 import com.linkedin.venice.hadoop.input.kafka.VeniceKafkaInputReducer;
@@ -73,6 +73,7 @@ import com.linkedin.venice.hadoop.mapreduce.datawriter.reduce.VeniceReducer;
 import com.linkedin.venice.hadoop.mapreduce.datawriter.task.CounterBackedMapReduceDataWriterTaskTracker;
 import com.linkedin.venice.hadoop.task.datawriter.DataWriterTaskTracker;
 import com.linkedin.venice.jobs.DataWriterComputeJob;
+import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
 import com.linkedin.venice.utils.ReflectUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
@@ -88,7 +89,6 @@ import org.apache.hadoop.mapred.FileInputFormat;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapred.Partitioner;
 import org.apache.hadoop.mapred.RunningJob;
-import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -137,7 +137,7 @@ public class DataWriterMRJob extends DataWriterComputeJob {
       pushJobSetting.partitionerParams.forEach(conf::set);
     }
     if (pushJobSetting.sslToKafka) {
-      conf.set(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, KAFKA_SECURITY_PROTOCOL);
+      conf.set(PUBSUB_SECURITY_PROTOCOL, PubSubSecurityProtocol.SSL.name());
       props.keySet().stream().filter(key -> key.toLowerCase().startsWith(SSL_PREFIX)).forEach(key -> {
         conf.set(key, props.getString(key));
       });
@@ -173,11 +173,6 @@ public class DataWriterMRJob extends DataWriterComputeJob {
           Boolean.toString(pushJobSetting.sourceVersionChunkingEnabled));
 
       conf.setBoolean(SYSTEM_SCHEMA_READER_ENABLED, pushJobSetting.isSystemSchemaReaderEnabled);
-      if (pushJobSetting.isSystemSchemaReaderEnabled) {
-        conf.set(SYSTEM_SCHEMA_CLUSTER_D2_SERVICE_NAME, pushJobSetting.systemSchemaClusterD2ServiceName);
-        conf.set(SYSTEM_SCHEMA_CLUSTER_D2_ZK_HOST, pushJobSetting.systemSchemaClusterD2ZKHost);
-        conf.set(SSL_FACTORY_CLASS_NAME, props.getString(SSL_FACTORY_CLASS_NAME, DEFAULT_SSL_FACTORY_CLASS_NAME));
-      }
     } else {
       conf.setInt(VALUE_SCHEMA_ID_PROP, pushJobSetting.valueSchemaId);
       conf.setInt(DERIVED_SCHEMA_ID_PROP, pushJobSetting.derivedSchemaId);
@@ -213,32 +208,21 @@ public class DataWriterMRJob extends DataWriterComputeJob {
         props.getString(ZSTD_COMPRESSION_LEVEL, String.valueOf(Zstd.maxCompressionLevel())));
     conf.setBoolean(ZSTD_DICTIONARY_CREATION_SUCCESS, pushJobSetting.isZstdDictCreationSuccess);
 
-    // We generate a random UUID once, and the tasks of the compute job can use this to build the same producerGUID
-    // deterministically.
-    UUID producerGuid = UUID.randomUUID();
-    conf.setLong(PUSH_JOB_GUID_MOST_SIGNIFICANT_BITS, producerGuid.getMostSignificantBits());
-    conf.setLong(PUSH_JOB_GUID_LEAST_SIGNIFICANT_BITS, producerGuid.getLeastSignificantBits());
-
-    /**
-     * Override the configs following the rules:
-     * <ul>
-     *   <li>Pass-through the properties whose names start with the prefixes defined in {@link PASS_THROUGH_CONFIG_PREFIXES}.</li>
-     *   <li>Override the properties that are specified with the {@link HADOOP_PREFIX} prefix.</li>
-     * </ul>
-     **/
-    for (String configKey: props.keySet()) {
-      String lowerCaseConfigKey = configKey.toLowerCase();
-      if (lowerCaseConfigKey.startsWith(HADOOP_PREFIX)) {
-        String overrideKey = configKey.substring(HADOOP_PREFIX.length());
-        jobConf.set(overrideKey, props.getString(configKey));
-      }
-      for (String prefix: PASS_THROUGH_CONFIG_PREFIXES) {
-        if (lowerCaseConfigKey.startsWith(prefix)) {
-          jobConf.set(configKey, props.getString(configKey));
-          break;
-        }
-      }
+    if (pushJobSetting.isSortedIngestionEnabled) {
+      // We generate a random UUID once, and the tasks of the compute job can use this to build the same producerGUID
+      // deterministically.
+      UUID producerGuid = UUID.randomUUID();
+      conf.setLong(PUSH_JOB_GUID_MOST_SIGNIFICANT_BITS, producerGuid.getMostSignificantBits());
+      conf.setLong(PUSH_JOB_GUID_LEAST_SIGNIFICANT_BITS, producerGuid.getLeastSignificantBits());
+    } else {
+      // Use unique GUID for every speculative producers when the config `isSortedIngestionEnabled` is false
+      // This prevents log compaction of control message which triggers the following during rebalance or store
+      // migration
+      // UNREGISTERED_PRODUCER data detected for producer
+      conf.set(GUID_GENERATOR_IMPLEMENTATION, DEFAULT_GUID_GENERATOR_IMPLEMENTATION);
     }
+    DataWriterComputeJob
+        .populateWithPassThroughConfigs(props, jobConf::set, PASS_THROUGH_CONFIG_PREFIXES, HADOOP_PREFIX);
   }
 
   protected void setupInputFormatConf(JobConf jobConf, PushJobSetting pushJobSetting) {
@@ -246,6 +230,7 @@ public class DataWriterMRJob extends DataWriterComputeJob {
       Schema keySchemaFromController = pushJobSetting.storeKeySchema;
       String keySchemaString = AvroCompatibilityHelper.toParsingForm(keySchemaFromController);
       jobConf.set(KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP, keySchemaString);
+      KafkaInputUtils.putSchemaMapIntoProperties(pushJobSetting.newKmeSchemasFromController).forEach(jobConf::set);
       jobConf.setInputFormat(KafkaInputFormat.class);
       jobConf.setMapperClass(VeniceKafkaInputMapper.class);
       if (pushJobSetting.kafkaInputCombinerEnabled) {
@@ -265,6 +250,7 @@ public class DataWriterMRJob extends DataWriterComputeJob {
 
       jobConf.set(KEY_FIELD_PROP, pushJobSetting.keyField);
       jobConf.set(VALUE_FIELD_PROP, pushJobSetting.valueField);
+      jobConf.set(RMD_FIELD_PROP, pushJobSetting.rmdField);
       if (pushJobSetting.etlValueSchemaTransformation != null) {
         jobConf.set(ETL_VALUE_SCHEMA_TRANSFORMATION, pushJobSetting.etlValueSchemaTransformation.name());
       }
@@ -308,6 +294,8 @@ public class DataWriterMRJob extends DataWriterComputeJob {
     }
     if (pushJobSetting.materializedViewConfigFlatMap != null) {
       jobConf.set(PUSH_JOB_VIEW_CONFIGS, pushJobSetting.materializedViewConfigFlatMap);
+      jobConf.set(VALUE_SCHEMA_DIR, pushJobSetting.valueSchemaDir);
+      jobConf.set(RMD_SCHEMA_DIR, pushJobSetting.rmdSchemaDir);
     }
     jobConf.setReduceSpeculativeExecution(vpjProperties.getBoolean(REDUCER_SPECULATIVE_EXECUTION_ENABLE, false));
     int partitionCount = pushJobSetting.partitionCount;
@@ -342,7 +330,7 @@ public class DataWriterMRJob extends DataWriterComputeJob {
   }
 
   @Override
-  protected void runComputeJob() {
+  public void runComputeJob() {
     LOGGER.info("Triggering MR job for data writer");
     try {
       runningJob = JobUtils.runJobWithConfig(jobConf, jobClientWrapper);
@@ -360,6 +348,7 @@ public class DataWriterMRJob extends DataWriterComputeJob {
   public void kill() {
     if (runningJob == null) {
       LOGGER.warn("No op to kill a null running job");
+      super.kill();
       return;
     }
     try {

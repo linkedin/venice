@@ -1,8 +1,5 @@
 package com.linkedin.davinci.kafka.consumer;
 
-import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
-import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
-import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyDouble;
@@ -11,6 +8,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doCallRealMethod;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -24,17 +22,12 @@ import static org.testng.Assert.expectThrows;
 
 import com.github.luben.zstd.Zstd;
 import com.linkedin.davinci.config.VeniceServerConfig;
-import com.linkedin.davinci.config.VeniceStoreVersionConfig;
-import com.linkedin.davinci.stats.AggHostLevelIngestionStats;
 import com.linkedin.davinci.stats.AggVersionedDIVStats;
 import com.linkedin.davinci.stats.AggVersionedIngestionStats;
 import com.linkedin.davinci.stats.HostLevelIngestionStats;
-import com.linkedin.davinci.storage.StorageEngineRepository;
-import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.storage.chunking.ChunkedValueManifestContainer;
 import com.linkedin.davinci.storage.chunking.ChunkingUtils;
-import com.linkedin.davinci.store.AbstractStorageEngine;
-import com.linkedin.davinci.store.blackhole.BlackHoleStorageEngine;
+import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.davinci.store.record.ByteBufferValueRecord;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.CompressorFactory;
@@ -52,29 +45,19 @@ import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
-import com.linkedin.venice.meta.BufferReplayPolicy;
-import com.linkedin.venice.meta.DataReplicationPolicy;
-import com.linkedin.venice.meta.HybridStoreConfig;
-import com.linkedin.venice.meta.HybridStoreConfigImpl;
-import com.linkedin.venice.meta.OfflinePushStrategy;
-import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
-import com.linkedin.venice.meta.ReadOnlyStoreRepository;
-import com.linkedin.venice.meta.ReadStrategy;
-import com.linkedin.venice.meta.RoutingStrategy;
-import com.linkedin.venice.meta.Store;
-import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.meta.VersionImpl;
-import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.pubsub.ImmutablePubSubMessage;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
-import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
+import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.pubsub.mock.InMemoryPubSubPosition;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.serialization.KeyWithChunkingSuffixSerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -83,24 +66,24 @@ import com.linkedin.venice.storage.protocol.ChunkId;
 import com.linkedin.venice.storage.protocol.ChunkedKeySuffix;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.ByteUtils;
+import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterOptions;
 import it.unimi.dsi.fastutil.ints.Int2ObjectArrayMap;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
-import it.unimi.dsi.fastutil.objects.Object2IntArrayMap;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import it.unimi.dsi.fastutil.objects.Object2IntMaps;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
-import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicLong;
@@ -117,10 +100,6 @@ import org.testng.annotations.Test;
 public class ActiveActiveStoreIngestionTaskTest {
   private static final Logger LOGGER = LogManager.getLogger(ActiveActiveStoreIngestionTaskTest.class);
   private static final PubSubTopicRepository TOPIC_REPOSITORY = new PubSubTopicRepository();
-  String STORE_NAME = "Thvorusleikir_store";
-  String PUSH_JOB_ID = "yule";
-  String BOOTSTRAP_SERVER = "Stekkjastaur";
-  String TEST_CLUSTER_NAME = "venice-GRYLA";
 
   @DataProvider(name = "CompressionStrategy")
   public static Object[] compressionStrategyProvider() {
@@ -134,19 +113,19 @@ public class ActiveActiveStoreIngestionTaskTest {
         .processMessageAndMaybeProduceToKafka(any(), any(), anyInt(), anyString(), anyInt(), anyLong(), anyLong());
     PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
     when(pcs.isEndOfPushReceived()).thenReturn(false);
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord = mock(PubSubMessage.class);
+    DefaultPubSubMessage consumerRecord = mock(DefaultPubSubMessage.class);
     KafkaKey kafkaKey = mock(KafkaKey.class);
     when(consumerRecord.getKey()).thenReturn(kafkaKey);
     KafkaMessageEnvelope kafkaValue = new KafkaMessageEnvelope();
     when(consumerRecord.getValue()).thenReturn(kafkaValue);
-    when(consumerRecord.getOffset()).thenReturn(1L);
+    when(consumerRecord.getPosition()).thenReturn(ApacheKafkaOffsetPosition.of(1));
     kafkaValue.messageType = MessageType.DELETE.getValue();
     Delete deletePayload = new Delete();
     kafkaValue.payloadUnion = deletePayload;
     ArgumentCaptor<LeaderProducedRecordContext> leaderProducedRecordContextArgumentCaptor =
         ArgumentCaptor.forClass(LeaderProducedRecordContext.class);
     ingestionTask.processMessageAndMaybeProduceToKafka(
-        new PubSubMessageProcessedResultWrapper<>(consumerRecord),
+        new PubSubMessageProcessedResultWrapper(consumerRecord),
         pcs,
         0,
         "dummyUrl",
@@ -192,97 +171,6 @@ public class ActiveActiveStoreIngestionTaskTest {
     byte[] resultByteArray = new byte[result.remaining()];
     result.get(resultByteArray);
     Assert.assertEquals("Hello World", new String(resultByteArray));
-  }
-
-  @Test
-  public void testisReadyToServeAnnouncedWithRTLag() {
-    // Setup store/schema/storage repository
-    ReadOnlyStoreRepository readOnlyStoreRepository = mock(ReadOnlyStoreRepository.class);
-    ReadOnlySchemaRepository readOnlySchemaRepository = mock(ReadOnlySchemaRepository.class);
-    StorageEngineRepository storageEngineRepository = mock(StorageEngineRepository.class);
-    when(storageEngineRepository.getLocalStorageEngine(any())).thenReturn(new BlackHoleStorageEngine(STORE_NAME));
-
-    // Setup server config
-    VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
-    when(serverConfig.freezeIngestionIfReadyToServeOrLocalDataExists()).thenReturn(false);
-    when(serverConfig.getKafkaClusterUrlResolver()).thenReturn(null);
-    when(serverConfig.getKafkaClusterUrlToIdMap()).thenReturn(new Object2IntArrayMap<>());
-    when(serverConfig.getKafkaClusterIdToUrlMap()).thenReturn(new Int2ObjectArrayMap<>());
-    when(serverConfig.getConsumerPoolSizePerKafkaCluster()).thenReturn(1);
-
-    // Set up IngestionTask Builder
-    StoreIngestionTaskFactory.Builder builder = new StoreIngestionTaskFactory.Builder();
-    builder.setPubSubTopicRepository(TOPIC_REPOSITORY);
-    builder.setHostLevelIngestionStats(mock(AggHostLevelIngestionStats.class));
-    builder.setAggKafkaConsumerService(mock(AggKafkaConsumerService.class));
-    builder.setMetadataRepository(readOnlyStoreRepository);
-    builder.setServerConfig(serverConfig);
-    builder.setSchemaRepository(readOnlySchemaRepository);
-    builder.setStorageEngineRepository(storageEngineRepository);
-
-    // Set up version config and store config
-    HybridStoreConfig hybridStoreConfig = new HybridStoreConfigImpl(
-        100L,
-        100L,
-        100L,
-        DataReplicationPolicy.NON_AGGREGATE,
-        BufferReplayPolicy.REWIND_FROM_EOP);
-
-    StorageService storageService = mock(StorageService.class);
-    Store store = new ZKStore(
-        STORE_NAME,
-        "Felix",
-        100L,
-        PersistenceType.BLACK_HOLE,
-        RoutingStrategy.CONSISTENT_HASH,
-        ReadStrategy.ANY_OF_ONLINE,
-        OfflinePushStrategy.WAIT_ALL_REPLICAS,
-        1);
-    store.setHybridStoreConfig(hybridStoreConfig);
-    Version mockVersion = new VersionImpl(STORE_NAME, 1, PUSH_JOB_ID);
-    mockVersion.setHybridStoreConfig(hybridStoreConfig);
-    store.setVersions(Collections.singletonList(mockVersion));
-
-    Properties kafkaConsumerProperties = new Properties();
-    kafkaConsumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, BOOTSTRAP_SERVER);
-    kafkaConsumerProperties.put(CLUSTER_NAME, TEST_CLUSTER_NAME);
-    kafkaConsumerProperties.put(ZOOKEEPER_ADDRESS, BOOTSTRAP_SERVER);
-    VeniceStoreVersionConfig storeVersionConfig =
-        new VeniceStoreVersionConfig(STORE_NAME + "_v1", new VeniceProperties(kafkaConsumerProperties));
-    int port = 123;
-    ActiveActiveStoreIngestionTask ingestionTask = new ActiveActiveStoreIngestionTask(
-        storageService,
-        builder,
-        store,
-        mockVersion,
-        kafkaConsumerProperties,
-        () -> true,
-        storeVersionConfig,
-        1,
-        false,
-        Optional.empty(),
-        null,
-        null);
-
-    PartitionConsumptionState badPartitionConsumptionState = mock(PartitionConsumptionState.class);
-    when(badPartitionConsumptionState.hasLagCaughtUp()).thenReturn(true);
-    // short circuit isReadyToServe
-    when(badPartitionConsumptionState.isEndOfPushReceived()).thenReturn(false);
-    ingestionTask.addPartitionConsumptionState(1, badPartitionConsumptionState);
-
-    Assert.assertTrue(ingestionTask.isReadyToServeAnnouncedWithRTLag());
-
-    PartitionConsumptionState goodPartitionConsumptionState = mock(PartitionConsumptionState.class);
-    when(goodPartitionConsumptionState.hasLagCaughtUp()).thenReturn(true);
-    when(goodPartitionConsumptionState.isEndOfPushReceived()).thenReturn(true);
-    when(goodPartitionConsumptionState.isWaitingForReplicationLag()).thenReturn(false);
-    ingestionTask.addPartitionConsumptionState(1, goodPartitionConsumptionState);
-
-    Assert.assertFalse(ingestionTask.isReadyToServeAnnouncedWithRTLag());
-
-    ingestionTask.addPartitionConsumptionState(2, badPartitionConsumptionState);
-
-    Assert.assertTrue(ingestionTask.isReadyToServeAnnouncedWithRTLag());
   }
 
   @Test
@@ -354,7 +242,7 @@ public class ActiveActiveStoreIngestionTaskTest {
               PubSubProducerCallback callback = invocation.getArgument(5);
               PubSubProduceResult produceResult = mock(PubSubProduceResult.class);
               offset.addAndGet(1);
-              when(produceResult.getOffset()).thenReturn(offset.get());
+              when(produceResult.getPubSubPosition()).thenReturn(InMemoryPubSubPosition.of(offset.get()));
               MessageType messageType = MessageType.valueOf(kafkaMessageEnvelope.messageType);
               when(produceResult.getSerializedSize()).thenReturn(
                   kafkaKey.getKeyLength() + (messageType.equals(MessageType.PUT)
@@ -372,7 +260,7 @@ public class ActiveActiveStoreIngestionTaskTest {
             .build();
     VeniceWriter<byte[], byte[], byte[]> writer =
         new VeniceWriter(veniceWriterOptions, VeniceProperties.empty(), mockedProducer);
-    when(ingestionTask.isTransientRecordBufferUsed()).thenReturn(true);
+    when(ingestionTask.isTransientRecordBufferUsed(any())).thenReturn(true);
     when(ingestionTask.getVeniceWriter(any())).thenReturn(Lazy.of(() -> writer));
     StringBuilder stringBuilder = new StringBuilder();
     for (int i = 0; i < 50000; i++) {
@@ -381,8 +269,8 @@ public class ActiveActiveStoreIngestionTaskTest {
     ByteBuffer valueBytes = ByteBuffer.wrap(stringBuilder.toString().getBytes());
     ByteBuffer updatedValueBytes = ByteUtils.prependIntHeaderToByteBuffer(valueBytes, 1);
     ByteBuffer updatedRmdBytes = ByteBuffer.wrap(new byte[] { 0xa, 0xb });
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord = mock(PubSubMessage.class);
-    when(consumerRecord.getOffset()).thenReturn(100L);
+    DefaultPubSubMessage consumerRecord = mock(DefaultPubSubMessage.class);
+    when(consumerRecord.getPosition()).thenReturn(ApacheKafkaOffsetPosition.of(100L));
 
     Put updatedPut = new Put();
     updatedPut.putValue = ByteUtils.prependIntHeaderToByteBuffer(updatedValueBytes, valueSchemaId, resultReuseInput);
@@ -390,10 +278,11 @@ public class ActiveActiveStoreIngestionTaskTest {
     updatedPut.replicationMetadataVersionId = rmdProtocolVersionID;
     updatedPut.replicationMetadataPayload = updatedRmdBytes;
     LeaderProducedRecordContext leaderProducedRecordContext = LeaderProducedRecordContext
-        .newPutRecord(kafkaClusterId, consumerRecord.getOffset(), updatedKeyBytes, updatedPut);
+        .newPutRecord(kafkaClusterId, consumerRecord.getPosition(), updatedKeyBytes, updatedPut);
 
+    PubSubPosition consumedPositionMock = mock(PubSubPosition.class);
     PartitionConsumptionState.TransientRecord transientRecord =
-        new PartitionConsumptionState.TransientRecord(new byte[] { 0xa }, 0, 0, 0, 0, 0);
+        new PartitionConsumptionState.TransientRecord(new byte[] { 0xa }, 0, 0, 0, 0, consumedPositionMock);
 
     PartitionConsumptionState partitionConsumptionState = mock(PartitionConsumptionState.class);
     when(partitionConsumptionState.getTransientRecord(any())).thenReturn(transientRecord);
@@ -504,7 +393,7 @@ public class ActiveActiveStoreIngestionTaskTest {
     /**
      * The 1st key does not have any chunk but only has a top level key.
      */
-    AbstractStorageEngine storageEngine = mock(AbstractStorageEngine.class);
+    StorageEngine storageEngine = mock(StorageEngine.class);
     ReadOnlySchemaRepository schemaRepository = mock(ReadOnlySchemaRepository.class);
     String stringSchema = "\"string\"";
     when(schemaRepository.getSupersetOrLatestValueSchema(storeName))
@@ -520,14 +409,14 @@ public class ActiveActiveStoreIngestionTaskTest {
     when(ingestionTask.getStorageEngine()).thenReturn(storageEngine);
     when(ingestionTask.getSchemaRepo()).thenReturn(schemaRepository);
     when(ingestionTask.getServerConfig()).thenReturn(serverConfig);
-    when(ingestionTask.getRmdWithValueSchemaByteBufferFromStorage(anyInt(), any(), any(), anyLong()))
-        .thenCallRealMethod();
+    when(ingestionTask.getRmdWithValueSchemaByteBufferFromStorageInternal(anyInt(), any(), any())).thenCallRealMethod();
     when(ingestionTask.isChunked()).thenReturn(true);
     when(ingestionTask.getHostLevelIngestionStats()).thenReturn(mock(HostLevelIngestionStats.class));
     ChunkedValueManifestContainer container = new ChunkedValueManifestContainer();
     when(storageEngine.getReplicationMetadata(partition, ByteBuffer.wrap(topLevelKey1)))
         .thenReturn(expectedNonChunkedValue);
-    byte[] result = ingestionTask.getRmdWithValueSchemaByteBufferFromStorage(partition, key1, container, 0L);
+    byte[] result =
+        ingestionTask.getRmdWithValueSchemaByteBufferFromStorageInternal(partition, key1, container).serialize();
     Assert.assertNotNull(result);
     Assert.assertNull(container.getManifest());
     Assert.assertEquals(result, expectedNonChunkedValue);
@@ -557,7 +446,8 @@ public class ActiveActiveStoreIngestionTaskTest {
     when(storageEngine.getReplicationMetadata(partition, ByteBuffer.wrap(topLevelKey2)))
         .thenReturn(chunkedManifestBytes.array());
     when(storageEngine.getReplicationMetadata(partition, ByteBuffer.wrap(chunkedKey1InKey2))).thenReturn(chunkedValue1);
-    byte[] result2 = ingestionTask.getRmdWithValueSchemaByteBufferFromStorage(partition, key2, container, 0L);
+    byte[] result2 =
+        ingestionTask.getRmdWithValueSchemaByteBufferFromStorageInternal(partition, key2, container).serialize();
     Assert.assertNotNull(result2);
     Assert.assertNotNull(container.getManifest());
     Assert.assertEquals(container.getManifest().getKeysWithChunkIdSuffix().size(), 1);
@@ -593,7 +483,8 @@ public class ActiveActiveStoreIngestionTaskTest {
         .thenReturn(chunkedManifestBytes.array());
     when(storageEngine.getReplicationMetadata(partition, ByteBuffer.wrap(chunkedKey1InKey3))).thenReturn(chunkedValue1);
     when(storageEngine.getReplicationMetadata(partition, ByteBuffer.wrap(chunkedKey2InKey3))).thenReturn(chunkedValue2);
-    byte[] result3 = ingestionTask.getRmdWithValueSchemaByteBufferFromStorage(partition, key3, container, 0L);
+    byte[] result3 =
+        ingestionTask.getRmdWithValueSchemaByteBufferFromStorageInternal(partition, key3, container).serialize();
     Assert.assertNotNull(result3);
     Assert.assertNotNull(container.getManifest());
     Assert.assertEquals(container.getManifest().getKeysWithChunkIdSuffix().size(), 2);
@@ -616,6 +507,7 @@ public class ActiveActiveStoreIngestionTaskTest {
   public void testGetUpstreamKafkaUrlFromKafkaValue() {
     PubSubTopicPartition partition = new PubSubTopicPartitionImpl(TOPIC_REPOSITORY.getTopic("topic"), 0);
     long offset = 100;
+    PubSubPosition position = ApacheKafkaOffsetPosition.of(offset);
     long timestamp = System.currentTimeMillis();
     int payloadSize = 200;
     String sourceKafka = "sourceKafkaURL";
@@ -625,14 +517,13 @@ public class ActiveActiveStoreIngestionTaskTest {
     kafkaClusterIdToUrlMap.put(1, "url1");
 
     KafkaMessageEnvelope kmeWithNullLeaderMetadata = new KafkaMessageEnvelope();
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> pubSubMessageWithNullLeaderMetadata =
-        new ImmutablePubSubMessage<>(
-            new KafkaKey(MessageType.PUT, new byte[] { 1 }),
-            kmeWithNullLeaderMetadata,
-            partition,
-            offset,
-            timestamp,
-            payloadSize);
+    DefaultPubSubMessage pubSubMessageWithNullLeaderMetadata = new ImmutablePubSubMessage(
+        new KafkaKey(MessageType.PUT, new byte[] { 1 }),
+        kmeWithNullLeaderMetadata,
+        partition,
+        position,
+        timestamp,
+        payloadSize);
     try {
       ActiveActiveStoreIngestionTask
           .getUpstreamKafkaUrlFromKafkaValue(pubSubMessageWithNullLeaderMetadata, sourceKafka, kafkaClusterIdToUrlMap);
@@ -646,11 +537,11 @@ public class ActiveActiveStoreIngestionTaskTest {
     kmeWithAbsentUpstreamCluster.getLeaderMetadataFooter().upstreamKafkaClusterId = -1;
     kmeWithAbsentUpstreamCluster.setMessageType(MessageType.PUT.getValue());
     kmeWithAbsentUpstreamCluster.setProducerMetadata(new ProducerMetadata());
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> msgWithAbsentUpstreamCluster = new ImmutablePubSubMessage<>(
+    DefaultPubSubMessage msgWithAbsentUpstreamCluster = new ImmutablePubSubMessage(
         new KafkaKey(MessageType.PUT, new byte[] { 1 }),
         kmeWithAbsentUpstreamCluster,
         partition,
-        offset,
+        position,
         timestamp,
         payloadSize);
     try {
@@ -658,7 +549,7 @@ public class ActiveActiveStoreIngestionTaskTest {
           .getUpstreamKafkaUrlFromKafkaValue(msgWithAbsentUpstreamCluster, sourceKafka, kafkaClusterIdToUrlMap);
     } catch (VeniceException e) {
       LOGGER.info("kmeWithAbsentUpstreamCluster", e);
-      assertTrue(e.getMessage().startsWith("No Kafka cluster ID found in the cluster ID to Kafka URL map."));
+      assertTrue(e.getMessage().startsWith("No PubSub cluster ID found in the cluster ID to PubSub URL map."));
       assertTrue(e.getMessage().contains("Message type: " + MessageType.PUT));
     }
 
@@ -670,11 +561,11 @@ public class ActiveActiveStoreIngestionTaskTest {
     controlMessage.setControlMessageType(ControlMessageType.TOPIC_SWITCH.getValue());
     kmeForControlMessage.setPayloadUnion(controlMessage);
     kmeForControlMessage.setProducerMetadata(new ProducerMetadata());
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> msgForControlMessage = new ImmutablePubSubMessage<>(
+    DefaultPubSubMessage msgForControlMessage = new ImmutablePubSubMessage(
         new KafkaKey(MessageType.CONTROL_MESSAGE, new byte[] { 1 }),
         kmeForControlMessage,
         partition,
-        offset,
+        position,
         timestamp,
         payloadSize);
     try {
@@ -682,7 +573,7 @@ public class ActiveActiveStoreIngestionTaskTest {
           .getUpstreamKafkaUrlFromKafkaValue(msgForControlMessage, sourceKafka, kafkaClusterIdToUrlMap);
     } catch (VeniceException e) {
       LOGGER.info("kmeForControlMessage", e);
-      assertTrue(e.getMessage().startsWith("No Kafka cluster ID found in the cluster ID to Kafka URL map."));
+      assertTrue(e.getMessage().startsWith("No PubSub cluster ID found in the cluster ID to PubSub URL map."));
       assertTrue(
           e.getMessage()
               .contains("Message type: " + MessageType.CONTROL_MESSAGE + "/" + ControlMessageType.TOPIC_SWITCH));
@@ -692,11 +583,11 @@ public class ActiveActiveStoreIngestionTaskTest {
     validKME.setLeaderMetadataFooter(new LeaderMetadata());
     validKME.getLeaderMetadataFooter().upstreamKafkaClusterId = 0;
     validKME.setProducerMetadata(new ProducerMetadata());
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> validMsg = new ImmutablePubSubMessage<>(
+    DefaultPubSubMessage validMsg = new ImmutablePubSubMessage(
         new KafkaKey(MessageType.PUT, new byte[] { 1 }),
         validKME,
         partition,
-        offset,
+        position,
         timestamp,
         payloadSize);
     assertEquals(
@@ -723,9 +614,14 @@ public class ActiveActiveStoreIngestionTaskTest {
         .thenReturn(KafkaConsumerServiceDelegator.ConsumerPoolStrategyType.DEFAULT);
     when(serverConfig.getConsumerPoolSizePerKafkaCluster()).thenReturn(100);
     when(serverConfig.getKafkaClusterIdToUrlMap()).thenReturn(clusterIdToUrlMap);
+    when(serverConfig.getDedicatedConsumerPoolSizeForSepRTLeader()).thenReturn(3);
+    when(serverConfig.getDedicatedConsumerPoolSizeForAAWCLeader()).thenReturn(5);
     assertEquals(ActiveActiveStoreIngestionTask.getKeyLevelLockMaxPoolSizeBasedOnServerConfig(serverConfig, 10), 31);
-
+    when(serverConfig.isDedicatedConsumerPoolForAAWCLeaderEnabled()).thenReturn(true);
+    assertEquals(ActiveActiveStoreIngestionTask.getKeyLevelLockMaxPoolSizeBasedOnServerConfig(serverConfig, 10), 25);
+    assertEquals(ActiveActiveStoreIngestionTask.getKeyLevelLockMaxPoolSizeBasedOnServerConfig(serverConfig, 1), 4);
     // Test when current version prioritization strategy is enabled.
+    when(serverConfig.isDedicatedConsumerPoolForAAWCLeaderEnabled()).thenReturn(false);
     when(serverConfig.getConsumerPoolStrategyType())
         .thenReturn(KafkaConsumerServiceDelegator.ConsumerPoolStrategyType.CURRENT_VERSION_PRIORITIZATION);
     when(serverConfig.getConsumerPoolSizeForCurrentVersionAAWCLeader()).thenReturn(10);
@@ -753,27 +649,28 @@ public class ActiveActiveStoreIngestionTaskTest {
     when(mockServerConfig.getKafkaClusterUrlToIdMap()).thenReturn(kafkaClusterUrlToIdMap);
 
     // Set up real method call
-    doCallRealMethod().when(ingestionTask).consumerSubscribe(any(), anyLong(), anyString());
+    doCallRealMethod().when(ingestionTask).consumerSubscribe(any(), any(), anyString());
 
     PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(TOPIC_REPOSITORY.getTopic("test"), 0);
+    PubSubPosition p100 = ApacheKafkaOffsetPosition.of(100L);
     VeniceException exception = expectThrows(
         VeniceException.class,
-        () -> ingestionTask.consumerSubscribe(pubSubTopicPartition, 100L, "invalidPubSubAddress"));
+        () -> ingestionTask.consumerSubscribe(pubSubTopicPartition, p100, "invalidPubSubAddress"));
     assertNotNull(exception.getMessage(), "Exception message should not be null");
     assertTrue(
         exception.getMessage().contains("is not in the pubsub cluster map"),
         "Exception message should contain the expected message but found: " + exception.getMessage());
 
-    verify(ingestionTask, times(1)).consumerSubscribe(pubSubTopicPartition, 100L, "invalidPubSubAddress");
+    verify(ingestionTask, times(1)).consumerSubscribe(pubSubTopicPartition, p100, "invalidPubSubAddress");
 
     // Case 2: DaVinci client
     ActiveActiveStoreIngestionTask dvcIngestionTask = mock(ActiveActiveStoreIngestionTask.class);
-    doCallRealMethod().when(dvcIngestionTask).consumerSubscribe(any(), anyLong(), anyString());
+    doCallRealMethod().when(dvcIngestionTask).consumerSubscribe(any(), any(), anyString());
     when(dvcIngestionTask.getServerConfig()).thenReturn(mockServerConfig);
     when(dvcIngestionTask.isDaVinciClient()).thenReturn(true);
     when(mockServerConfig.getKafkaClusterUrlToIdMap()).thenReturn(Object2IntMaps.emptyMap());
     try {
-      dvcIngestionTask.consumerSubscribe(pubSubTopicPartition, 100L, "validPubSubAddress");
+      dvcIngestionTask.consumerSubscribe(pubSubTopicPartition, p100, "validPubSubAddress");
     } catch (Exception e) {
       if (e.getMessage() != null) {
         assertFalse(
@@ -781,6 +678,163 @@ public class ActiveActiveStoreIngestionTaskTest {
             "Exception message should not contain the expected message but found: " + e.getMessage());
       }
     }
-    verify(dvcIngestionTask, times(1)).consumerSubscribe(pubSubTopicPartition, 100L, "validPubSubAddress");
+    verify(dvcIngestionTask, times(1)).consumerSubscribe(pubSubTopicPartition, p100, "validPubSubAddress");
   }
+
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testGetStorageOperationTypeForDaVinci(boolean isDeferredWrite) {
+    ByteBuffer payload = ByteBuffer.wrap("abc".getBytes());
+    ByteBuffer emptyPayload = ByteBuffer.allocate(0);
+    Map<Integer, PartitionConsumptionState> partitionConsumptionStateMap = new VeniceConcurrentHashMap<>();
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    partitionConsumptionStateMap.put(1, pcs);
+    ActiveActiveStoreIngestionTask ingestionTask = mock(ActiveActiveStoreIngestionTask.class);
+    doCallRealMethod().when(ingestionTask).checkStorageOperationCommonInvalidPattern(any(), any());
+    doCallRealMethod().when(ingestionTask).getStorageOperationTypeForPut(anyInt(), any());
+    doCallRealMethod().when(ingestionTask).getStorageOperationTypeForDelete(anyInt(), any());
+    Put putWithEmptyPayloadAndWithoutRmd = new Put();
+    putWithEmptyPayloadAndWithoutRmd.putValue = emptyPayload;
+    Put putWithEmptyPayloadAndWithEmptyRmd = new Put();
+    putWithEmptyPayloadAndWithEmptyRmd.putValue = emptyPayload;
+    putWithEmptyPayloadAndWithEmptyRmd.replicationMetadataPayload = emptyPayload;
+    Put putWithEmptyPayloadAndWithRmd = new Put();
+    putWithEmptyPayloadAndWithRmd.putValue = emptyPayload;
+    putWithEmptyPayloadAndWithRmd.replicationMetadataPayload = payload;
+    Put putWithPayloadAndWithoutRmd = new Put();
+    putWithPayloadAndWithoutRmd.putValue = payload;
+    Put putWithPayloadAndWithEmptyRmd = new Put();
+    putWithPayloadAndWithEmptyRmd.putValue = payload;
+    putWithPayloadAndWithEmptyRmd.replicationMetadataPayload = emptyPayload;
+    Put putWithPayloadAndWithRmd = new Put();
+    putWithPayloadAndWithRmd.putValue = payload;
+    putWithPayloadAndWithRmd.replicationMetadataPayload = payload;
+
+    Delete deleteWithoutRmd = new Delete();
+    Delete deleteWithEmptyRmd = new Delete();
+    deleteWithEmptyRmd.replicationMetadataPayload = emptyPayload;
+    Delete deleteWithRmd = new Delete();
+    deleteWithRmd.replicationMetadataPayload = payload;
+
+    doReturn(partitionConsumptionStateMap).when(ingestionTask).getPartitionConsumptionStateMap();
+    // PCS == null should not persist.
+    Assert.assertEquals(
+        ingestionTask.getStorageOperationTypeForDelete(0, deleteWithoutRmd),
+        ActiveActiveStoreIngestionTask.StorageOperationType.SKIP);
+    /**
+     * Da Vinci case
+     */
+    doReturn(true).when(ingestionTask).isDaVinciClient();
+
+    doReturn(isDeferredWrite).when(pcs).isDeferredWrite();
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> ingestionTask.getStorageOperationTypeForDelete(1, deleteWithoutRmd));
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> ingestionTask.getStorageOperationTypeForPut(1, putWithEmptyPayloadAndWithoutRmd));
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> ingestionTask.getStorageOperationTypeForPut(1, putWithPayloadAndWithoutRmd));
+
+    Assert.assertEquals(
+        ingestionTask.getStorageOperationTypeForDelete(1, deleteWithEmptyRmd),
+        isDeferredWrite
+            ? ActiveActiveStoreIngestionTask.StorageOperationType.SKIP
+            : ActiveActiveStoreIngestionTask.StorageOperationType.VALUE);
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> ingestionTask.getStorageOperationTypeForPut(1, putWithEmptyPayloadAndWithEmptyRmd));
+    Assert.assertEquals(
+        ingestionTask.getStorageOperationTypeForPut(1, putWithPayloadAndWithEmptyRmd),
+        ActiveActiveStoreIngestionTask.StorageOperationType.VALUE);
+
+    Assert.assertEquals(
+        ingestionTask.getStorageOperationTypeForDelete(1, deleteWithRmd),
+        isDeferredWrite
+            ? ActiveActiveStoreIngestionTask.StorageOperationType.SKIP
+            : ActiveActiveStoreIngestionTask.StorageOperationType.VALUE);
+    Assert.assertEquals(
+        ingestionTask.getStorageOperationTypeForPut(1, putWithEmptyPayloadAndWithRmd),
+        ActiveActiveStoreIngestionTask.StorageOperationType.SKIP);
+    Assert.assertEquals(
+        ingestionTask.getStorageOperationTypeForPut(1, putWithPayloadAndWithRmd),
+        ActiveActiveStoreIngestionTask.StorageOperationType.VALUE);
+  }
+
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testGetStorageOperationTypeForServer(boolean isEndOfPush) {
+    ByteBuffer payload = ByteBuffer.wrap("abc".getBytes());
+    ByteBuffer emptyPayload = ByteBuffer.allocate(0);
+    Map<Integer, PartitionConsumptionState> partitionConsumptionStateMap = new VeniceConcurrentHashMap<>();
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    partitionConsumptionStateMap.put(1, pcs);
+    ActiveActiveStoreIngestionTask ingestionTask = mock(ActiveActiveStoreIngestionTask.class);
+    doCallRealMethod().when(ingestionTask).checkStorageOperationCommonInvalidPattern(any(), any());
+    doCallRealMethod().when(ingestionTask).getStorageOperationTypeForPut(anyInt(), any());
+    doCallRealMethod().when(ingestionTask).getStorageOperationTypeForDelete(anyInt(), any());
+    Put putWithEmptyPayloadAndWithoutRmd = new Put();
+    putWithEmptyPayloadAndWithoutRmd.putValue = emptyPayload;
+    Put putWithEmptyPayloadAndWithEmptyRmd = new Put();
+    putWithEmptyPayloadAndWithEmptyRmd.putValue = emptyPayload;
+    putWithEmptyPayloadAndWithEmptyRmd.replicationMetadataPayload = emptyPayload;
+    Put putWithEmptyPayloadAndWithRmd = new Put();
+    putWithEmptyPayloadAndWithRmd.putValue = emptyPayload;
+    putWithEmptyPayloadAndWithRmd.replicationMetadataPayload = payload;
+    Put putWithPayloadAndWithoutRmd = new Put();
+    putWithPayloadAndWithoutRmd.putValue = payload;
+    Put putWithPayloadAndWithEmptyRmd = new Put();
+    putWithPayloadAndWithEmptyRmd.putValue = payload;
+    putWithPayloadAndWithEmptyRmd.replicationMetadataPayload = emptyPayload;
+    Put putWithPayloadAndWithRmd = new Put();
+    putWithPayloadAndWithRmd.putValue = payload;
+    putWithPayloadAndWithRmd.replicationMetadataPayload = payload;
+
+    Delete deleteWithoutRmd = new Delete();
+    Delete deleteWithEmptyRmd = new Delete();
+    deleteWithEmptyRmd.replicationMetadataPayload = emptyPayload;
+    Delete deleteWithRmd = new Delete();
+    deleteWithRmd.replicationMetadataPayload = payload;
+
+    doReturn(partitionConsumptionStateMap).when(ingestionTask).getPartitionConsumptionStateMap();
+    // PCS == null should not persist.
+    Assert.assertEquals(
+        ingestionTask.getStorageOperationTypeForDelete(0, deleteWithoutRmd),
+        ActiveActiveStoreIngestionTask.StorageOperationType.SKIP);
+
+    doReturn(false).when(ingestionTask).isDaVinciClient();
+    // deferred write = false.
+    doReturn(isEndOfPush).when(pcs).isEndOfPushReceived();
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> ingestionTask.getStorageOperationTypeForDelete(1, deleteWithoutRmd));
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> ingestionTask.getStorageOperationTypeForPut(1, putWithEmptyPayloadAndWithoutRmd));
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> ingestionTask.getStorageOperationTypeForPut(1, putWithPayloadAndWithoutRmd));
+
+    Assert.assertEquals(
+        ingestionTask.getStorageOperationTypeForDelete(1, deleteWithEmptyRmd),
+        isEndOfPush
+            ? ActiveActiveStoreIngestionTask.StorageOperationType.VALUE_AND_RMD
+            : ActiveActiveStoreIngestionTask.StorageOperationType.VALUE);
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> ingestionTask.getStorageOperationTypeForPut(1, putWithEmptyPayloadAndWithEmptyRmd));
+    Assert.assertEquals(
+        ingestionTask.getStorageOperationTypeForPut(1, putWithPayloadAndWithEmptyRmd),
+        ActiveActiveStoreIngestionTask.StorageOperationType.VALUE);
+
+    Assert.assertEquals(
+        ingestionTask.getStorageOperationTypeForDelete(1, deleteWithRmd),
+        ActiveActiveStoreIngestionTask.StorageOperationType.VALUE_AND_RMD);
+    Assert.assertEquals(
+        ingestionTask.getStorageOperationTypeForPut(1, putWithEmptyPayloadAndWithRmd),
+        ActiveActiveStoreIngestionTask.StorageOperationType.RMD_CHUNK);
+    Assert.assertEquals(
+        ingestionTask.getStorageOperationTypeForPut(1, putWithPayloadAndWithRmd),
+        ActiveActiveStoreIngestionTask.StorageOperationType.VALUE_AND_RMD);
+  }
+
 }

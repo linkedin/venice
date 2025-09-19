@@ -3,10 +3,14 @@ package com.linkedin.venice.controller;
 import com.linkedin.venice.acl.AclException;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
+import com.linkedin.venice.controller.logcompaction.CompactionManager;
+import com.linkedin.venice.controller.repush.RepushJobRequest;
 import com.linkedin.venice.controllerapi.NodeReplicasReadinessState;
 import com.linkedin.venice.controllerapi.RepushInfo;
+import com.linkedin.venice.controllerapi.RepushJobResponse;
 import com.linkedin.venice.controllerapi.StoreComparisonInfo;
 import com.linkedin.venice.controllerapi.UpdateClusterConfigQueryParams;
+import com.linkedin.venice.controllerapi.UpdateDarkClusterConfigQueryParams;
 import com.linkedin.venice.controllerapi.UpdateStoragePersonaQueryParams;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
@@ -24,7 +28,6 @@ import com.linkedin.venice.meta.UncompletedPartition;
 import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.persona.StoragePersona;
-import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
@@ -43,6 +46,7 @@ import com.linkedin.venice.system.store.MetaStoreReader;
 import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
 import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
+import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriterFactory;
@@ -175,11 +179,23 @@ public interface Admin extends AutoCloseable, Closeable {
 
   void abortMigration(String srcClusterName, String destClusterName, String storeName);
 
+  void autoMigrateStore(
+      String srcClusterName,
+      String destClusterName,
+      String storeName,
+      Optional<Integer> currStep,
+      Optional<Boolean> abortOnFailure);
+
   /**
   * Delete the entire store including both metadata and real user's data. Before deleting a store, we should disable
   * the store manually to ensure there is no reading/writing request hitting this tore.
   */
-  void deleteStore(String clusterName, String storeName, int largestUsedVersionNumber, boolean waitOnRTTopicDeletion);
+  void deleteStore(
+      String clusterName,
+      String storeName,
+      boolean isAbortMigrationCleanup,
+      int largestUsedVersionNumber,
+      boolean waitOnRTTopicDeletion);
 
   /**
    * This method behaves differently in {@link VeniceHelixAdmin} and {@link VeniceParentHelixAdmin}.
@@ -305,8 +321,6 @@ public interface Admin extends AutoCloseable, Closeable {
   int getFutureVersion(String clusterName, String storeName);
 
   RepushInfo getRepushInfo(String clusterNae, String storeName, Optional<String> fabricName);
-
-  Version peekNextVersion(String clusterName, String storeName);
 
   /**
    * Delete all of venice versions in given store(including venice resource, kafka topic, offline pushs and all related
@@ -443,6 +457,8 @@ public interface Admin extends AutoCloseable, Closeable {
 
   void setStoreLargestUsedVersion(String clusterName, String storeName, int versionNumber);
 
+  void setStoreLargestUsedRTVersion(String clusterName, String storeName, int versionNumber);
+
   void setStoreOwner(String clusterName, String storeName, String owner);
 
   void setStorePartitionCount(String clusterName, String storeName, int partitionCount);
@@ -456,6 +472,8 @@ public interface Admin extends AutoCloseable, Closeable {
   void updateStore(String clusterName, String storeName, UpdateStoreQueryParams params);
 
   void updateClusterConfig(String clusterName, UpdateClusterConfigQueryParams params);
+
+  void updateDarkClusterConfig(String clusterName, UpdateDarkClusterConfigQueryParams params);
 
   double getStorageEngineOverheadRatio(String clusterName);
 
@@ -489,7 +507,8 @@ public interface Admin extends AutoCloseable, Closeable {
       String kafkaTopic,
       Optional<String> incrementalPushVersion,
       String region,
-      String targetedRegions);
+      String targetedRegions,
+      boolean isTargetRegionPushWithDeferredSwap);
 
   /**
    * Return the ssl or non-ssl bootstrap servers based on the given flag.
@@ -529,7 +548,7 @@ public interface Admin extends AutoCloseable, Closeable {
       List<String> toBeStoppedInstances,
       boolean isSSLEnabled);
 
-  boolean isRTTopicDeletionPermittedByAllControllers(String clusterName, String storeName);
+  boolean isRTTopicDeletionPermittedByAllControllers(String clusterName, String rtTopicName);
 
   /**
    * Check if this controller itself is the leader controller for a given cluster or not. Note that the controller can be
@@ -606,6 +625,8 @@ public interface Admin extends AutoCloseable, Closeable {
 
   void setAdminConsumerService(String clusterName, AdminConsumerService service);
 
+  AdminConsumerService getAdminConsumerService(String clusterName);
+
   /**
    * The admin consumption task tries to deal with failures to process an admin message by retrying.  If there is a
    * message that cannot be processed for some reason, we will need to forcibly skip that message in order to unblock
@@ -614,7 +635,7 @@ public interface Admin extends AutoCloseable, Closeable {
    * @param offset
    * @param skipDIV tries to skip only the DIV check for the blocking message.
    */
-  void skipAdminMessage(String clusterName, long offset, boolean skipDIV);
+  void skipAdminMessage(String clusterName, long offset, boolean skipDIV, long executionId);
 
   /**
    * Get the id of the last succeed execution in this controller.
@@ -651,7 +672,12 @@ public interface Admin extends AutoCloseable, Closeable {
    *
    * @throws com.linkedin.venice.exceptions.VeniceException if not cluster is found.
    */
-  Pair<String, String> discoverCluster(String storeName);
+  String discoverCluster(String storeName);
+
+  /**
+   * Find the router d2 service associated with a given cluster name.
+   */
+  String getRouterD2Service(String clusterName);
 
   /**
    * Find the server d2 service associated with a given cluster name.
@@ -664,8 +690,6 @@ public interface Admin extends AutoCloseable, Closeable {
   Map<String, String> findAllBootstrappingVersions(String clusterName);
 
   VeniceWriterFactory getVeniceWriterFactory();
-
-  PubSubConsumerAdapterFactory getPubSubConsumerAdapterFactory();
 
   VeniceProperties getPubSubSSLProperties(String pubSubBrokerAddress);
 
@@ -725,7 +749,7 @@ public interface Admin extends AutoCloseable, Closeable {
 
   void writeEndOfPush(String clusterName, String storeName, int versionNumber, boolean alsoWriteStartOfPush);
 
-  boolean whetherEnableBatchPushFromAdmin(String storeName);
+  boolean whetherEnableBatchPushFromAdmin(String clusterName, String storeName);
 
   /**
    * Provision a new set of ACL for a venice store and its associated kafka topic.
@@ -928,9 +952,40 @@ public interface Admin extends AutoCloseable, Closeable {
   Map<String, StoreDataAudit> getClusterStaleStores(String clusterName);
 
   /**
-   * @return the largest used version number for the given store from store graveyard.
+   * implemented in {@link VeniceHelixAdmin#getStoresForCompaction}
+   * @param clusterName, the name of the cluster to search for stores that are ready for compaction
+   * @return the list of stores ready for compaction
    */
+  List<StoreInfo> getStoresForCompaction(String clusterName);
+
+  /**
+   * triggers repush for storeName for log compaction of store topic implemented in
+   * {@link VeniceHelixAdmin#repushStore}
+   *
+   * @param repushJobRequest contains params for repush job
+   * @return data model of repush job run info
+   */
+  RepushJobResponse repushStore(RepushJobRequest repushJobRequest) throws Exception;
+
+  CompactionManager getCompactionManager();
+
+  /**
+   * Deprecated but remain here to keep compatibility until {@link #getLargestUsedVersion(String, String)} is used.
+   */
+  @Deprecated
   int getLargestUsedVersionFromStoreGraveyard(String clusterName, String storeName);
+
+  int getLargestUsedVersion(String clusterName, String storeName);
+
+  /**
+   * @return list of stores infos that are considered dead. A store is considered dead if it exists but has no
+   * user traffic in it's read or write path.
+   * @param params Parameters for dead store detection including:
+   *               - "includeSystemStores": boolean (default: false)
+   *               - "lookBackMS": long (optional)
+   *               - Future extension points
+   */
+  List<StoreInfo> getDeadStores(String clusterName, String storeName, Map<String, String> params);
 
   Map<String, RegionPushDetails> listStorePushInfo(
       String clusterName,
@@ -947,6 +1002,12 @@ public interface Admin extends AutoCloseable, Closeable {
       Optional<String> storeName,
       Optional<Long> offset,
       Optional<Long> upstreamOffset);
+
+  void updateAdminOperationProtocolVersion(String clusterName, Long adminOperationProtocolVersion);
+
+  Map<String, Long> getAdminOperationVersionFromControllers(String clusterName);
+
+  long getLocalAdminOperationProtocolVersion();
 
   void createStoragePersona(
       String clusterName,
@@ -1004,4 +1065,21 @@ public interface Admin extends AutoCloseable, Closeable {
   HelixVeniceClusterResources getHelixVeniceClusterResources(String cluster);
 
   PubSubTopicRepository getPubSubTopicRepository();
+
+  LogContext getLogContext();
+
+  VeniceControllerClusterConfig getControllerConfig(String clusterName);
+
+  String getControllerName();
+
+  /**
+   * Validates that a store has been completely deleted from the Venice cluster.
+   * This method performs comprehensive checks across multiple subsystems to ensure
+   * no lingering resources remain that would prevent safe store recreation.
+   *
+   * @param clusterName the name of the cluster to check
+   * @param storeName the name of the store to validate deletion for
+   * @return StoreDeletedValidation indicating whether the store is fully deleted or what resources remain
+   */
+  StoreDeletedValidation validateStoreDeleted(String clusterName, String storeName);
 }

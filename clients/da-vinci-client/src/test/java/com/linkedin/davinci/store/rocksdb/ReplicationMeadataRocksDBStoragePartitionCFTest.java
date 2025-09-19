@@ -1,5 +1,7 @@
 package com.linkedin.davinci.store.rocksdb;
 
+import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES;
+import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_RMD_BLOCK_CACHE_SIZE_IN_BYTES;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_SEPARATE_RMD_CACHE_ENABLED;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -11,6 +13,7 @@ import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.stats.AggVersionedStorageEngineStats;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.store.AbstractStorageEngineTest;
+import com.linkedin.davinci.store.StorageEngineAccessor;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
@@ -49,6 +52,8 @@ public class ReplicationMeadataRocksDBStoragePartitionCFTest extends Replication
 
     Properties properties = new Properties();
     properties.put(ROCKSDB_SEPARATE_RMD_CACHE_ENABLED, "true");
+    properties.put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 1024 * 1024 * 1024L);
+    properties.put(ROCKSDB_RMD_BLOCK_CACHE_SIZE_IN_BYTES, 1024 * 1024L);
     VeniceProperties serverProps = AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB, properties);
     storageService = new StorageService(
         AbstractStorageEngineTest.getVeniceConfigLoader(serverProps),
@@ -58,7 +63,8 @@ public class ReplicationMeadataRocksDBStoragePartitionCFTest extends Replication
         AvroProtocolDefinition.PARTITION_STATE.getSerializer(),
         mockReadOnlyStoreRepository);
     storeConfig = new VeniceStoreVersionConfig(topicName, serverProps, PersistenceType.ROCKS_DB);
-    testStoreEngine = storageService.openStoreForNewPartition(storeConfig, PARTITION_ID, () -> null);
+    testStoreEngine = StorageEngineAccessor
+        .getInnerStorageEngine(storageService.openStoreForNewPartition(storeConfig, PARTITION_ID, () -> null));
     createStoreForTest();
     String stringSchema = "\"string\"";
     Schema aaSchema = RmdSchemaGenerator.generateMetadataSchema(stringSchema, 1);

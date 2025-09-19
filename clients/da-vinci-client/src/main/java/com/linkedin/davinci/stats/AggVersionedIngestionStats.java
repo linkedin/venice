@@ -4,6 +4,7 @@ import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionTask;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.views.VeniceView;
 import io.tehuti.metrics.MetricsRepository;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -30,11 +31,14 @@ public class AggVersionedIngestionStats
   }
 
   public void setIngestionTask(String storeVersionTopic, StoreIngestionTask ingestionTask) {
-    if (!Version.isVersionTopicOrStreamReprocessingTopic(storeVersionTopic)) {
+    if (!Version.isATopicThatIsVersioned(storeVersionTopic)) {
       LOGGER.warn("Invalid store version topic name: {}", storeVersionTopic);
       return;
     }
-    String storeName = Version.parseStoreFromKafkaTopicName(storeVersionTopic);
+    // For metrics reporting purpose the store name for Venice view ingestion will be <storeName>_<viewName>
+    String storeName = VeniceView.isViewTopic(storeVersionTopic)
+        ? VeniceView.parseStoreAndViewFromViewTopic(storeVersionTopic)
+        : Version.parseStoreFromKafkaTopicName(storeVersionTopic);
     int version = Version.parseVersionFromKafkaTopicName(storeVersionTopic);
     try {
       /**
@@ -86,12 +90,10 @@ public class AggVersionedIngestionStats
       int version,
       int regionId,
       long bytesConsumed,
-      long offsetConsumed,
       long currentTimeMs) {
     recordVersionedAndTotalStat(storeName, version, stat -> {
       stat.recordRegionHybridBytesConsumed(regionId, bytesConsumed, currentTimeMs);
       stat.recordRegionHybridRecordsConsumed(regionId, 1, currentTimeMs);
-      stat.recordRegionHybridAvgConsumedOffset(regionId, offsetConsumed, currentTimeMs);
     });
   }
 
@@ -101,6 +103,10 @@ public class AggVersionedIngestionStats
 
   public void recordTotalDCR(String storeName, int version) {
     recordVersionedAndTotalStat(storeName, version, IngestionStats::recordTotalDCR);
+  }
+
+  public void recordTotalDuplicateKeyUpdate(String storeName, int version) {
+    recordVersionedAndTotalStat(storeName, version, IngestionStats::recordTotalDuplicateKeyUpdate);
   }
 
   public void recordTimestampRegressionDCRError(String storeName, int version) {
@@ -188,10 +194,6 @@ public class AggVersionedIngestionStats
         stat -> stat.recordConsumedRecordEndToEndProcessingLatency(value, currentTimeMs));
   }
 
-  public void recordVersionTopicEndOffsetRewind(String storeName, int version) {
-    recordVersionedAndTotalStat(storeName, version, IngestionStats::recordVersionTopicEndOffsetRewind);
-  }
-
   public void recordNearlineProducerToLocalBrokerLatency(String storeName, int version, double value, long timestamp) {
     recordVersionedAndTotalStat(
         storeName,
@@ -210,50 +212,8 @@ public class AggVersionedIngestionStats
         stat -> stat.recordNearlineLocalBrokerToReadyToServeLatency(value, timestamp));
   }
 
-  public void recordTransformerLatency(String storeName, int version, double value, long timestamp) {
-    recordVersionedAndTotalStat(storeName, version, stat -> stat.recordTransformerLatency(value, timestamp));
-  }
-
-  public void recordTransformerLifecycleStartLatency(String storeName, int version, double value, long timestamp) {
-    recordVersionedAndTotalStat(
-        storeName,
-        version,
-        stat -> stat.recordTransformerLifecycleStartLatency(value, timestamp));
-  }
-
-  public void recordTransformerLifecycleEndLatency(String storeName, int version, double value, long timestamp) {
-    recordVersionedAndTotalStat(
-        storeName,
-        version,
-        stat -> stat.recordTransformerLifecycleEndLatency(value, timestamp));
-  }
-
-  public void recordTransformerError(String storeName, int version, double value, long timestamp) {
-    recordVersionedAndTotalStat(storeName, version, stat -> stat.recordTransformerError(value, timestamp));
-  }
-
   public void recordMaxIdleTime(String storeName, int version, long idleTimeMs) {
     getStats(storeName, version).recordIdleTime(idleTimeMs);
-  }
-
-  public void registerTransformerLatencySensor(String storeName, int version) {
-    getStats(storeName, version).registerTransformerLatencySensor();
-    getTotalStats(storeName).registerTransformerLatencySensor();
-  }
-
-  public void registerTransformerLifecycleStartLatency(String storeName, int version) {
-    getStats(storeName, version).registerTransformerLifecycleStartLatencySensor();
-    getTotalStats(storeName).registerTransformerLifecycleStartLatencySensor();
-  }
-
-  public void registerTransformerLifecycleEndLatency(String storeName, int version) {
-    getStats(storeName, version).registerTransformerLifecycleEndLatencySensor();
-    getTotalStats(storeName).registerTransformerLifecycleEndLatencySensor();
-  }
-
-  public void registerTransformerErrorSensor(String storeName, int version) {
-    getStats(storeName, version).registerTransformerErrorSensor();
-    getTotalStats(storeName).registerTransformerErrorSensor();
   }
 
   public void recordBatchProcessingRequest(String storeName, int version, int size, long timestamp) {

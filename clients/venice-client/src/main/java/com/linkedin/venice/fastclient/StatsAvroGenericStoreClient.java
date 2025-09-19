@@ -21,7 +21,6 @@ import com.linkedin.venice.fastclient.stats.ClusterStats;
 import com.linkedin.venice.fastclient.stats.FastClientStats;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.utils.LatencyUtils;
-import com.linkedin.venice.utils.Time;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Map;
 import java.util.Optional;
@@ -34,8 +33,6 @@ import org.apache.avro.Schema;
  * This class is in charge of all the metric emissions per request.
  */
 public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient<K, V> {
-  private static final int TIMEOUT_IN_SECOND = 5;
-
   private final FastClientStats clientStatsForSingleGet;
   private final FastClientStats clientStatsForStreamingBatchGet;
   private final FastClientStats clientStatsForStreamingCompute;
@@ -54,7 +51,7 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
   }
 
   @Override
-  protected CompletableFuture<V> get(GetRequestContext requestContext, K key) throws VeniceClientException {
+  protected CompletableFuture<V> get(GetRequestContext<K> requestContext, K key) throws VeniceClientException {
     long startTimeInNS = System.nanoTime();
     CompletableFuture<V> innerFuture = super.get(requestContext, key);
     return recordMetrics(requestContext, 1, innerFuture, startTimeInNS, clientStatsForSingleGet);
@@ -138,6 +135,10 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
       FastClientStats clientStats) {
     return innerFuture.handle((value, throwable) -> {
       double latency = LatencyUtils.getElapsedTimeFromNSToMS(startTimeInNS);
+      clientStats.recordRejectionRatio(requestContext.requestRejectionRatio);
+      if (requestContext.requestRejectedByLoadController) {
+        clientStats.recordRejectedRequestByLoadController();
+      }
       clientStats.recordRequestKeyCount(numberOfKeys);
       // If partial success is allowed, the previous layers will not complete the future exceptionally. In such cases,
       // we check if the request is completed successfully with partial exceptions - and these are considered unhealthy
@@ -156,19 +157,11 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
         }
       }
 
-      if (exceptionReceived || (latency > TIMEOUT_IN_SECOND * Time.MS_PER_SECOND)) {
-        clientStats.recordUnhealthyRequest();
-        clientStats.recordUnhealthyLatency(latency);
+      if (exceptionReceived) {
+        clientStats.emitUnhealthyRequestMetrics(latency, throwable);
       } else {
-        clientStats.recordHealthyRequest();
-        clientStats.recordHealthyLatency(latency);
-      }
+        clientStats.emitHealthyRequestMetrics(latency, requestContext.successRequestKeyCount.get());
 
-      if (requestContext.noAvailableReplica) {
-        clientStats.recordNoAvailableReplicaRequest();
-      }
-
-      if (!exceptionReceived) {
         // Record additional metrics
         if (requestContext.requestSerializationTime > 0) {
           clientStats.recordRequestSerializationTime(requestContext.requestSerializationTime);
@@ -183,7 +176,12 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
         if (requestContext.responseDeserializationTime > 0) {
           clientStats.recordResponseDeserializationTime(requestContext.responseDeserializationTime);
         }
-        clientStats.recordSuccessRequestKeyCount(requestContext.successRequestKeyCount.get());
+      }
+      // We want to record the response key count number, no matter the request is healthy or unhealthy.
+      clientStats.recordResponseKeyCount(requestContext.successRequestKeyCount.get());
+
+      if (requestContext.noAvailableReplica) {
+        clientStats.recordNoAvailableReplicaRequest();
       }
 
       if (requestContext instanceof GetRequestContext) {
@@ -245,6 +243,7 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
       if (monitor != null) {
         clusterStats.recordBlockedInstanceCount(monitor.getBlockedInstanceCount());
         clusterStats.recordUnhealthyInstanceCount(monitor.getUnhealthyInstanceCount());
+        clusterStats.recordOverloadedInstanceCount(monitor.getOverloadedInstanceCount());
       }
       replicaRequestFuture.forEach((instance, future) -> {
         future.whenComplete((status, throwable) -> {
@@ -267,7 +266,9 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
           }
 
           routeStats.recordRequest();
+          routeStats.recordPendingRequestCount(monitor.getPendingRequestCounter(instance));
           routeStats.recordResponseWaitingTime(LatencyUtils.getElapsedTimeFromNSToMS(requestSentTimestampNS));
+          routeStats.recordRejectionRatio(monitor.getRejectionRatio(instance));
           switch (status) {
             case SC_OK:
             case SC_NOT_FOUND:

@@ -1,7 +1,7 @@
 package com.linkedin.davinci.consumer;
 
-import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import java.util.Objects;
 
@@ -10,7 +10,7 @@ public class ImmutableChangeCapturePubSubMessage<K, V> implements PubSubMessage<
   private final K key;
   private final V value;
   private final PubSubTopicPartition topicPartition;
-  private final VeniceChangeCoordinate offset;
+  private final VeniceChangeCoordinate changeCoordinate;
   private final long timestamp;
   private final int payloadSize;
   private final boolean isEndOfBootstrap;
@@ -19,19 +19,21 @@ public class ImmutableChangeCapturePubSubMessage<K, V> implements PubSubMessage<
       K key,
       V value,
       PubSubTopicPartition topicPartition,
-      long offset,
+      PubSubPosition pubSubPosition,
       long timestamp,
       int payloadSize,
-      boolean isEndOfBootstrap) {
+      boolean isEndOfBootstrap,
+      long consumerSequenceId) {
     this.key = key;
     this.value = value;
     this.topicPartition = Objects.requireNonNull(topicPartition);
     this.timestamp = timestamp;
     this.payloadSize = payloadSize;
-    this.offset = new VeniceChangeCoordinate(
+    this.changeCoordinate = new VeniceChangeCoordinate(
         this.topicPartition.getPubSubTopic().getName(),
-        new ApacheKafkaOffsetPosition(offset),
-        this.topicPartition.getPartitionNumber());
+        pubSubPosition,
+        this.topicPartition.getPartitionNumber(),
+        consumerSequenceId);
     this.isEndOfBootstrap = isEndOfBootstrap;
   }
 
@@ -51,8 +53,8 @@ public class ImmutableChangeCapturePubSubMessage<K, V> implements PubSubMessage<
   }
 
   @Override
-  public VeniceChangeCoordinate getOffset() {
-    return offset;
+  public VeniceChangeCoordinate getPosition() {
+    return changeCoordinate;
   }
 
   @Override
@@ -72,8 +74,8 @@ public class ImmutableChangeCapturePubSubMessage<K, V> implements PubSubMessage<
 
   @Override
   public String toString() {
-    return "PubSubMessage{" + topicPartition + ", offset=" + offset + ", timestamp=" + timestamp + ", isEndOfBootstrap="
-        + isEndOfBootstrap + '}';
+    return "PubSubMessage{" + topicPartition + ", changeCoordinate=" + changeCoordinate + ", timestamp=" + timestamp
+        + ", isEndOfBootstrap=" + isEndOfBootstrap + '}';
   }
 
   @Override

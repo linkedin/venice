@@ -39,23 +39,23 @@ if (project.hasProperty('overrideBuildEnvironment')) {
 }
 
 def avroVersion = '1.10.2'
-def avroUtilVersion = '0.4.22'
-def grpcVersion = '1.49.2'
+def avroUtilVersion = '0.4.30'
+def grpcVersion = '1.59.1'
 // N.B.: The build should also work when substituting Kafka from the Apache fork to LinkedIn's fork:
 def kafkaGroup = 'org.apache.kafka' // 'com.linkedin.kafka'
 def kafkaVersion = '2.4.1' // '2.4.1.65'
 def log4j2Version = '2.17.1'
 def pegasusVersion = '29.31.0'
-def protobufVersion = '3.21.7'
-def jacksonVersion = '2.13.4'
+def protobufVersion = '3.24.0'
+def jacksonVersion = '2.15.0'
 def pulsarGroup = 'org.apache.pulsar'
-def pulsarVersion = '2.10.3'
+def pulsarVersion = '2.10.4'
 def alpnAgentVersion = '2.0.10'
 def hadoopVersion = '2.10.2'
 def apacheSparkVersion = '3.3.3'
 def antlrVersion = '4.8'
 def scala = '2.12'
-def openTelemetryVersion = '1.33.0'
+def openTelemetryVersion = '1.47.0'
 
 ext.libraries = [
     alpnAgent: "org.mortbay.jetty.alpn:jetty-alpn-agent:${alpnAgentVersion}",
@@ -64,6 +64,7 @@ ext.libraries = [
     apacheSparkAvro: "org.apache.spark:spark-avro_${scala}:${apacheSparkVersion}",
     apacheSparkCore: "org.apache.spark:spark-core_${scala}:${apacheSparkVersion}",
     apacheSparkSql: "org.apache.spark:spark-sql_${scala}:${apacheSparkVersion}",
+    asm: "org.ow2.asm:asm:9.7",
     avro: "org.apache.avro:avro:${avroVersion}",
     avroCompiler: "org.apache.avro:avro-compiler:${avroVersion}",
     avroMapred: "org.apache.avro:avro-mapred:${avroVersion}",
@@ -82,13 +83,14 @@ ext.libraries = [
     commonsLang: 'commons-lang:commons-lang:2.6',
     conscrypt: 'org.conscrypt:conscrypt-openjdk-uber:2.5.2',
     d2: "com.linkedin.pegasus:d2:${pegasusVersion}",
-    duckdbJdbc: "org.duckdb:duckdb_jdbc:1.2.0-20250121.012246-127", // TODO: Remove SNAPSHOT when the real release is published!
+    duckdbJdbc: "org.duckdb:duckdb_jdbc:1.2.0",
     failsafe: 'net.jodah:failsafe:2.4.0',
     fastUtil: 'it.unimi.dsi:fastutil:8.3.0',
     grpcNettyShaded: "io.grpc:grpc-netty-shaded:${grpcVersion}",
     grpcProtobuf: "io.grpc:grpc-protobuf:${grpcVersion}",
     grpcServices: "io.grpc:grpc-services:${grpcVersion}",
     grpcStub: "io.grpc:grpc-stub:${grpcVersion}",
+    grpcInprocess: "io.grpc:grpc-inprocess:${grpcVersion}",
     grpcTesting: "io.grpc:grpc-testing:${grpcVersion}",
     hadoopCommon: "org.apache.hadoop:hadoop-common:${hadoopVersion}",
     hadoopHdfs: "org.apache.hadoop:hadoop-hdfs:${hadoopVersion}",
@@ -123,13 +125,14 @@ ext.libraries = [
     opentelemetryExporterLogging: "io.opentelemetry:opentelemetry-exporter-logging:${openTelemetryVersion}",
     opentelemetryExporterOtlp: "io.opentelemetry:opentelemetry-exporter-otlp:${openTelemetryVersion}",
     opentelemetryExporterCommon: "io.opentelemetry:opentelemetry-exporter-common:${openTelemetryVersion}",
+    openTelemetryTestSdk: "io.opentelemetry:opentelemetry-sdk-testing:${openTelemetryVersion}",
     oss: 'org.sonatype.oss:oss-parent:7',
     pulsarClient: "${pulsarGroup}:pulsar-client:${pulsarVersion}",
     pulsarIoCore: "${pulsarGroup}:pulsar-io-core:${pulsarVersion}",
     pulsarIoCommon: "${pulsarGroup}:pulsar-io-common:${pulsarVersion}",
     r2: "com.linkedin.pegasus:r2:${pegasusVersion}",
     restliCommon: "com.linkedin.pegasus:restli-common:${pegasusVersion}",
-    rocksdbjni: 'org.rocksdb:rocksdbjni:8.8.1',
+    rocksdbjni: 'org.rocksdb:rocksdbjni:9.11.2',
     samzaApi: 'org.apache.samza:samza-api:1.5.1',
     beamSdk: 'org.apache.beam:beam-sdks-java-core:2.60.0',
     beamExtensionAvro: 'org.apache.beam:beam-sdks-java-extensions-avro:2.60.0',
@@ -139,7 +142,7 @@ ext.libraries = [
     snappy: 'org.iq80.snappy:snappy:0.4',
     spark: 'com.sparkjava:spark-core:2.9.4', // Spark-Java Rest framework
     spotbugs: 'com.github.spotbugs:spotbugs:4.5.2',
-    tehuti: 'io.tehuti:tehuti:0.12.3',
+    tehuti: 'io.tehuti:tehuti:0.12.4',
     testcontainers: 'org.testcontainers:testcontainers:1.18.0',
     testng: 'org.testng:testng:6.14.3',
     tomcatAnnotations: 'org.apache.tomcat:annotations-api:6.0.53',
@@ -149,7 +152,7 @@ ext.libraries = [
     xerces: 'xerces:xercesImpl:2.9.1',
     zkclient: 'com.101tec:zkclient:0.7', // For Kafka AdminUtils
     zookeeper: 'org.apache.zookeeper:zookeeper:3.6.3',
-    zstd: 'com.github.luben:zstd-jni:1.5.2-3'
+    zstd: 'com.github.luben:zstd-jni:1.5.6-8'
 ]
 
 group = 'com.linkedin.venice'
@@ -170,6 +173,10 @@ publishing {
   }
 }
 
+afterEvaluate {
+  mavenPublishing.ensureCatchAllModuleGetsPublishedLast(publishing.repositories)
+}
+
 def parser = new XmlSlurper()
 parser.setFeature("http://apache.org/xml/features/disallow-doctype-decl", false)
 parser.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false)
@@ -181,6 +188,10 @@ configurations {
 
 dependencies {
   alpnAgent libraries.alpnAgent
+}
+
+subprojects {
+  task allDeps(type: DependencyReportTask) {}
 }
 
 subprojects {
@@ -291,7 +302,7 @@ subprojects {
     implementation libraries.grpcProtobuf
     implementation libraries.grpcServices
     implementation libraries.grpcStub
-    implementation 'org.ow2.asm:asm:9.7'
+    implementation libraries.grpcInprocess
     compileOnly libraries.tomcatAnnotations
   }
 
@@ -312,9 +323,7 @@ subprojects {
     outputs.cacheIf { true }
 
     doFirst {
-      def versionOverrides = [
-//        project(':internal:venice-common').file('src/main/resources/avro/StoreVersionState/v5', PathValidation.DIRECTORY)
-      ]
+      def versionOverrides = []
 
       def schemaDirs = [sourceDir]
       sourceDir.eachDir { typeDir ->
@@ -368,10 +377,10 @@ subprojects {
     showStackTraces = false
     reports ({
       xml {
-        enabled = project.hasProperty('spotbugs.xml')
+        enabled = project.hasProperty('spotbugs.xml') || project.hasProperty('spotbugs.reports.all')
       }
       html {
-        enabled = !reports.getByName('XML').enabled
+        enabled = !reports.getByName('XML').enabled || project.hasProperty('spotbugs.reports.all')
         stylesheet = 'fancy-hist.xsl'
       }
     })
@@ -588,7 +597,7 @@ subprojects {
 
   // Only publish artifacts for projects that are at the leaf level
   if (isLeafSubModule) {
-    publishing.configureArtifactPublishing(project, testJar)
+    mavenPublishing.configureArtifactPublishing(project, testJar)
   }
 }
 
@@ -617,7 +626,7 @@ spotless {
     importOrder()
     removeUnusedImports()
     eclipse().configFile("$rootDir/gradle/spotless/eclipse-java-formatter.xml")
-    target '**/*.java'
+    target '**/src/**/*.java'
     targetExclude '**/generated/**'
   }
 }
@@ -758,6 +767,9 @@ ext.createDiffFile = { ->
       ':!internal/venice-common/src/main/java/com/linkedin/venice/controllerapi/ControllerClient.java',
       ':!internal/venice-common/src/main/java/com/linkedin/venice/acl/handler/StoreAclHandler.java',
 
+      // venice-client-common
+      ':!internal/venice-client-common/src/main/java/com/linkedin/venice/schema/avro/SchemaCompatibility19.java',
+
       // venice-test-common
       ':!internal/venice-test-common/*',
 
@@ -766,6 +778,7 @@ ext.createDiffFile = { ->
       ':!services/venice-controller/src/main/java/com/linkedin/venice/controller/VeniceControllerService.java',
       ':!services/venice-controller/src/main/java/com/linkedin/venice/controller/VeniceHelixAdmin.java',
       ':!services/venice-controller/src/main/java/com/linkedin/venice/controller/VeniceParentHelixAdmin.java',
+      ':!services/venice-controller/src/main/java/com/linkedin/venice/controller/HelixVeniceClusterResources.java',
 
       // venice-router
       ':!services/venice-router/src/main/java/com/linkedin/venice/router/RouterServer.java',

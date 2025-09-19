@@ -9,10 +9,12 @@ import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.VersionSwap;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.utils.lazy.Lazy;
+import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.nio.ByteBuffer;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
@@ -25,29 +27,41 @@ public class TestViewWriter extends VeniceViewWriter {
       VeniceConfigLoader props,
       Version version,
       Schema keySchema,
-      Map<String, String> extraViewParameters) {
-    super(props, version, keySchema, extraViewParameters);
+      Map<String, String> extraViewParameters,
+      VeniceWriterFactory viewWriterFactory) {
+    super(props, version, keySchema, extraViewParameters, viewWriterFactory);
     internalView =
         new TestView(props.getCombinedProperties().toProperties(), version.getStoreName(), extraViewParameters);
   }
 
   @Override
-  public CompletableFuture<PubSubProduceResult> processRecord(
+  public CompletableFuture<Void> processRecord(
       ByteBuffer newValue,
       ByteBuffer oldValue,
       byte[] key,
       int newValueSchemaId,
       int oldValueSchemaId,
-      GenericRecord replicationMetadataRecord) {
+      GenericRecord replicationMetadataRecord,
+      Lazy<GenericRecord> valueProvider) {
     internalView.incrementRecordCount(storeName);
     return CompletableFuture.completedFuture(null);
 
   }
 
   @Override
-  public CompletableFuture<PubSubProduceResult> processRecord(ByteBuffer newValue, byte[] key, int newValueSchemaId) {
+  public CompletableFuture<Void> processRecord(
+      ByteBuffer newValue,
+      byte[] key,
+      int newValueSchemaId,
+      Set<Integer> viewPartitionSet,
+      Lazy<GenericRecord> newValueProvider) {
     internalView.incrementRecordCount(storeName);
     return CompletableFuture.completedFuture(null);
+  }
+
+  @Override
+  public ViewWriterType getViewWriterType() {
+    return null;
   }
 
   @Override
@@ -95,8 +109,8 @@ public class TestViewWriter extends VeniceViewWriter {
   }
 
   @Override
-  public void close() {
-    internalView.close();
+  public void close(boolean gracefulClose) {
+    internalView.close(gracefulClose);
   }
 
 }

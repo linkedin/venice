@@ -1,6 +1,6 @@
 package com.linkedin.davinci.store;
 
-public abstract class AbstractStorageIterator {
+public abstract class AbstractStorageIterator implements AutoCloseable {
   /**
    * @return true if the iterator is valid
    */
@@ -56,6 +56,13 @@ public abstract class AbstractStorageIterator {
    * Seek to the last key
    */
   public void seekToLast() {
+    throw new UnsupportedOperationException("Method not implemented");
+  }
+
+  /**
+   * Close the iterator
+   */
+  public void close() {
     throw new UnsupportedOperationException("Method not implemented");
   }
 }

@@ -9,17 +9,20 @@ import static com.linkedin.venice.pushmonitor.ExecutionStatus.PROGRESS;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.STARTED;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.TOPIC_SWITCH_RECEIVED;
+import static com.linkedin.venice.pushmonitor.ReplicaStatus.NO_PROGRESS;
 
 import com.linkedin.davinci.config.VeniceServerConfig.IncrementalPushStatusWriteMode;
 import com.linkedin.venice.common.PushStatusStoreUtils;
 import com.linkedin.venice.helix.HelixPartitionStatusAccessor;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.HybridStoreQuotaStatus;
 import com.linkedin.venice.pushmonitor.OfflinePushAccessor;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreWriter;
 import com.linkedin.venice.utils.RetryUtils;
+import com.linkedin.venice.utils.Utils;
 import java.time.Duration;
 import java.util.Collections;
 import java.util.List;
@@ -64,13 +67,13 @@ public class PushStatusNotifier implements VeniceNotifier {
   }
 
   @Override
-  public void restarted(String topic, int partitionId, long offset, String message) {
+  public void restarted(String topic, int partitionId, PubSubPosition position, String message) {
     helixPartitionStatusAccessor.updateReplicaStatus(topic, partitionId, STARTED);
-    offLinePushAccessor.updateReplicaStatus(topic, partitionId, instanceId, STARTED, offset, "");
+    offLinePushAccessor.updateReplicaStatus(topic, partitionId, instanceId, STARTED, "");
   }
 
   @Override
-  public void completed(String topic, int partitionId, long offset, String message) {
+  public void completed(String topic, int partitionId, PubSubPosition position, String message) {
     try {
       RetryUtils.executeWithMaxAttempt(
           () -> helixPartitionStatusAccessor.updateReplicaStatus(topic, partitionId, COMPLETED),
@@ -81,51 +84,50 @@ public class PushStatusNotifier implements VeniceNotifier {
       LOGGER.error("Could not update CV update to COMPLETED, skipping to update OfflinePushStatus for {}", topic, e);
       return;
     }
-    offLinePushAccessor.updateReplicaStatus(topic, partitionId, instanceId, COMPLETED, offset, "");
+    offLinePushAccessor.updateReplicaStatus(topic, partitionId, instanceId, COMPLETED, "");
   }
 
   @Override
-  public void quotaViolated(String topic, int partitionId, long offset, String message) {
+  public void quotaViolated(String topic, int partitionId, PubSubPosition position, String message) {
     helixPartitionStatusAccessor
         .updateHybridQuotaReplicaStatus(topic, partitionId, HybridStoreQuotaStatus.QUOTA_VIOLATED);
   }
 
   @Override
-  public void quotaNotViolated(String topic, int partitionId, long offset, String message) {
+  public void quotaNotViolated(String topic, int partitionId, PubSubPosition position, String message) {
     helixPartitionStatusAccessor
         .updateHybridQuotaReplicaStatus(topic, partitionId, HybridStoreQuotaStatus.QUOTA_NOT_VIOLATED);
   }
 
   @Override
-  public void progress(String topic, int partitionId, long offset, String message) {
+  public void progress(String topic, int partitionId, PubSubPosition position, String message) {
     helixPartitionStatusAccessor.updateReplicaStatus(topic, partitionId, PROGRESS);
-    offLinePushAccessor.updateReplicaStatus(topic, partitionId, instanceId, PROGRESS, offset, "");
+    offLinePushAccessor.updateReplicaStatus(topic, partitionId, instanceId, PROGRESS, "");
   }
 
   @Override
-  public void endOfPushReceived(String topic, int partitionId, long offset, String message) {
-    offLinePushAccessor.updateReplicaStatus(topic, partitionId, instanceId, END_OF_PUSH_RECEIVED, offset, "");
+  public void endOfPushReceived(String topic, int partitionId, PubSubPosition position, String message) {
+    offLinePushAccessor.updateReplicaStatus(topic, partitionId, instanceId, END_OF_PUSH_RECEIVED, "");
   }
 
   @Override
-  public void topicSwitchReceived(String topic, int partitionId, long offset, String message) {
-    offLinePushAccessor.updateReplicaStatus(topic, partitionId, instanceId, TOPIC_SWITCH_RECEIVED, offset, "");
+  public void topicSwitchReceived(String topic, int partitionId, PubSubPosition position, String message) {
+    offLinePushAccessor.updateReplicaStatus(topic, partitionId, instanceId, TOPIC_SWITCH_RECEIVED, "");
   }
 
   @Override
-  public void dataRecoveryCompleted(String kafkaTopic, int partitionId, long offset, String message) {
-    offLinePushAccessor
-        .updateReplicaStatus(kafkaTopic, partitionId, instanceId, DATA_RECOVERY_COMPLETED, offset, message);
+  public void dataRecoveryCompleted(String kafkaTopic, int partitionId, PubSubPosition position, String message) {
+    offLinePushAccessor.updateReplicaStatus(kafkaTopic, partitionId, instanceId, DATA_RECOVERY_COMPLETED, message);
   }
 
   @Override
-  public void startOfIncrementalPushReceived(String topic, int partitionId, long offset, String message) {
-    updateIncrementalPushStatus(topic, partitionId, offset, message, START_OF_INCREMENTAL_PUSH_RECEIVED);
+  public void startOfIncrementalPushReceived(String topic, int partitionId, PubSubPosition position, String message) {
+    updateIncrementalPushStatus(topic, partitionId, NO_PROGRESS, message, START_OF_INCREMENTAL_PUSH_RECEIVED);
   }
 
   @Override
-  public void endOfIncrementalPushReceived(String topic, int partitionId, long offset, String message) {
-    updateIncrementalPushStatus(topic, partitionId, offset, message, END_OF_INCREMENTAL_PUSH_RECEIVED);
+  public void endOfIncrementalPushReceived(String topic, int partitionId, PubSubPosition position, String message) {
+    updateIncrementalPushStatus(topic, partitionId, NO_PROGRESS, message, END_OF_INCREMENTAL_PUSH_RECEIVED);
   }
 
   private void updateIncrementalPushStatus(
@@ -136,7 +138,7 @@ public class PushStatusNotifier implements VeniceNotifier {
       ExecutionStatus status) {
     if (incrementalPushStatusWriteMode == IncrementalPushStatusWriteMode.ZOOKEEPER_ONLY
         || incrementalPushStatusWriteMode == IncrementalPushStatusWriteMode.DUAL) {
-      offLinePushAccessor.updateReplicaStatus(topic, partitionId, instanceId, status, offset, message);
+      offLinePushAccessor.updateReplicaStatus(topic, partitionId, instanceId, status, message);
     }
     if (incrementalPushStatusWriteMode == IncrementalPushStatusWriteMode.PUSH_STATUS_SYSTEM_STORE_ONLY
         || incrementalPushStatusWriteMode == IncrementalPushStatusWriteMode.DUAL) {
@@ -148,13 +150,13 @@ public class PushStatusNotifier implements VeniceNotifier {
   public void batchEndOfIncrementalPushReceived(
       String topic,
       int partitionId,
-      long offset,
+      PubSubPosition position,
       List<String> pendingReportIncPushVersionList) {
 
     if (incrementalPushStatusWriteMode == IncrementalPushStatusWriteMode.ZOOKEEPER_ONLY
         || incrementalPushStatusWriteMode == IncrementalPushStatusWriteMode.DUAL) {
       offLinePushAccessor
-          .batchUpdateReplicaIncPushStatus(topic, partitionId, instanceId, offset, pendingReportIncPushVersionList);
+          .batchUpdateReplicaIncPushStatus(topic, partitionId, instanceId, pendingReportIncPushVersionList);
     }
     if (incrementalPushStatusWriteMode == IncrementalPushStatusWriteMode.PUSH_STATUS_SYSTEM_STORE_ONLY
         || incrementalPushStatusWriteMode == IncrementalPushStatusWriteMode.DUAL) {
@@ -189,9 +191,8 @@ public class PushStatusNotifier implements VeniceNotifier {
           e);
     }
     LOGGER.info(
-        "Update server inc push status for topic: {}, partition: {}, inc push version: {}, status: {} to push status store",
-        kafkaTopic,
-        partitionId,
+        "Update server inc push status for replica: {}, inc push version: {}, status: {} to push status store",
+        Utils.getReplicaId(kafkaTopic, partitionId),
         incPushVersion,
         status);
     pushStatusStoreWriter.writePushStatus(
@@ -210,6 +211,7 @@ public class PushStatusNotifier implements VeniceNotifier {
 
   @Override
   public void error(String topic, int partitionId, String message, Exception ex) {
+    LOGGER.error("Ingestion failed for replica: {} : {}", Utils.getReplicaId(topic, partitionId), message, ex);
     helixPartitionStatusAccessor.updateReplicaStatus(topic, partitionId, ERROR);
     offLinePushAccessor.updateReplicaStatus(topic, partitionId, instanceId, ERROR, message);
   }

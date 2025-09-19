@@ -1,5 +1,6 @@
 package com.linkedin.venice.router;
 
+import static com.linkedin.venice.ConfigKeys.ACL_IN_MEMORY_CACHE_TTL_MS;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_TO_D2;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_TO_SERVER_D2;
@@ -20,11 +21,12 @@ import static com.linkedin.venice.ConfigKeys.REFRESH_ATTEMPTS_FOR_ZK_RECONNECT;
 import static com.linkedin.venice.ConfigKeys.REFRESH_INTERVAL_FOR_ZK_RECONNECT_MS;
 import static com.linkedin.venice.ConfigKeys.ROUTER_ASYNC_START_ENABLED;
 import static com.linkedin.venice.ConfigKeys.ROUTER_CLIENT_DECOMPRESSION_ENABLED;
+import static com.linkedin.venice.ConfigKeys.ROUTER_CLIENT_IP_SPOOFING_CHECK_ENABLED;
 import static com.linkedin.venice.ConfigKeys.ROUTER_CLIENT_RESOLUTION_RETRY_ATTEMPTS;
 import static com.linkedin.venice.ConfigKeys.ROUTER_CLIENT_RESOLUTION_RETRY_BACKOFF_MS;
 import static com.linkedin.venice.ConfigKeys.ROUTER_CLIENT_SSL_HANDSHAKE_QUEUE_CAPACITY;
-import static com.linkedin.venice.ConfigKeys.ROUTER_CLIENT_SSL_HANDSHAKE_THREADS;
 import static com.linkedin.venice.ConfigKeys.ROUTER_COMPUTE_TARDY_LATENCY_MS;
+import static com.linkedin.venice.ConfigKeys.ROUTER_CONNECTION_HANDLE_MODE;
 import static com.linkedin.venice.ConfigKeys.ROUTER_CONNECTION_LIMIT;
 import static com.linkedin.venice.ConfigKeys.ROUTER_CONNECTION_TIMEOUT;
 import static com.linkedin.venice.ConfigKeys.ROUTER_DICTIONARY_PROCESSING_THREADS;
@@ -36,7 +38,6 @@ import static com.linkedin.venice.ConfigKeys.ROUTER_ENABLE_READ_THROTTLING;
 import static com.linkedin.venice.ConfigKeys.ROUTER_FULL_PENDING_QUEUE_SERVER_OOR_MS;
 import static com.linkedin.venice.ConfigKeys.ROUTER_HEART_BEAT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.ROUTER_HELIX_ASSISTED_ROUTING_GROUP_SELECTION_STRATEGY;
-import static com.linkedin.venice.ConfigKeys.ROUTER_HELIX_VIRTUAL_GROUP_FIELD_IN_DOMAIN;
 import static com.linkedin.venice.ConfigKeys.ROUTER_HTTP2_HEADER_TABLE_SIZE;
 import static com.linkedin.venice.ConfigKeys.ROUTER_HTTP2_INBOUND_ENABLED;
 import static com.linkedin.venice.ConfigKeys.ROUTER_HTTP2_INITIAL_WINDOW_SIZE;
@@ -64,7 +65,7 @@ import static com.linkedin.venice.ConfigKeys.ROUTER_LONG_TAIL_RETRY_BUDGET_ENFOR
 import static com.linkedin.venice.ConfigKeys.ROUTER_LONG_TAIL_RETRY_FOR_BATCH_GET_THRESHOLD_MS;
 import static com.linkedin.venice.ConfigKeys.ROUTER_LONG_TAIL_RETRY_FOR_SINGLE_GET_THRESHOLD_MS;
 import static com.linkedin.venice.ConfigKeys.ROUTER_LONG_TAIL_RETRY_MAX_ROUTE_FOR_MULTI_KEYS_REQ;
-import static com.linkedin.venice.ConfigKeys.ROUTER_MAX_CONCURRENT_RESOLUTIONS;
+import static com.linkedin.venice.ConfigKeys.ROUTER_MAX_CONCURRENT_SSL_HANDSHAKES;
 import static com.linkedin.venice.ConfigKeys.ROUTER_MAX_KEY_COUNT_IN_MULTIGET_REQ;
 import static com.linkedin.venice.ConfigKeys.ROUTER_MAX_OUTGOING_CONNECTION;
 import static com.linkedin.venice.ConfigKeys.ROUTER_MAX_OUTGOING_CONNECTION_PER_ROUTE;
@@ -75,14 +76,18 @@ import static com.linkedin.venice.ConfigKeys.ROUTER_MULTIGET_TARDY_LATENCY_MS;
 import static com.linkedin.venice.ConfigKeys.ROUTER_MULTI_KEY_LONG_TAIL_RETRY_BUDGET_PERCENT_DECIMAL;
 import static com.linkedin.venice.ConfigKeys.ROUTER_MULTI_KEY_ROUTING_STRATEGY;
 import static com.linkedin.venice.ConfigKeys.ROUTER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS;
+import static com.linkedin.venice.ConfigKeys.ROUTER_PARALLEL_ROUTING_CHUNK_SIZE;
+import static com.linkedin.venice.ConfigKeys.ROUTER_PARALLEL_ROUTING_THREAD_POOL_SIZE;
 import static com.linkedin.venice.ConfigKeys.ROUTER_PENDING_CONNECTION_RESUME_THRESHOLD_PER_ROUTE;
 import static com.linkedin.venice.ConfigKeys.ROUTER_PER_NODE_CLIENT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.ROUTER_PER_NODE_CLIENT_THREAD_COUNT;
 import static com.linkedin.venice.ConfigKeys.ROUTER_PER_STORE_ROUTER_QUOTA_BUFFER;
 import static com.linkedin.venice.ConfigKeys.ROUTER_QUOTA_CHECK_WINDOW;
 import static com.linkedin.venice.ConfigKeys.ROUTER_READ_QUOTA_THROTTLING_LEASE_TIMEOUT_MS;
-import static com.linkedin.venice.ConfigKeys.ROUTER_RESOLVE_BEFORE_SSL;
+import static com.linkedin.venice.ConfigKeys.ROUTER_RESOLVE_QUEUE_CAPACITY;
+import static com.linkedin.venice.ConfigKeys.ROUTER_RESOLVE_THREADS;
 import static com.linkedin.venice.ConfigKeys.ROUTER_RETRY_MANAGER_CORE_POOL_SIZE;
+import static com.linkedin.venice.ConfigKeys.ROUTER_ROUTING_COMPUTATION_MODE;
 import static com.linkedin.venice.ConfigKeys.ROUTER_SINGLEGET_TARDY_LATENCY_MS;
 import static com.linkedin.venice.ConfigKeys.ROUTER_SINGLE_KEY_LONG_TAIL_RETRY_BUDGET_PERCENT_DECIMAL;
 import static com.linkedin.venice.ConfigKeys.ROUTER_SMART_LONG_TAIL_RETRY_ABORT_THRESHOLD_MS;
@@ -97,17 +102,20 @@ import static com.linkedin.venice.ConfigKeys.SSL_TO_STORAGE_NODES;
 import static com.linkedin.venice.ConfigKeys.SYSTEM_SCHEMA_CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.UNREGISTER_METRIC_FOR_DELETED_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
-import static com.linkedin.venice.helix.HelixInstanceConfigRepository.GROUP_FIELD_NAME_IN_DOMAIN;
-import static com.linkedin.venice.helix.HelixInstanceConfigRepository.ZONE_FIELD_NAME_IN_DOMAIN;
 import static com.linkedin.venice.router.api.VeniceMultiKeyRoutingStrategy.LEAST_LOADED_ROUTING;
 import static com.linkedin.venice.router.api.routing.helix.HelixGroupSelectionStrategyEnum.LEAST_LOADED;
 
+import com.linkedin.alpini.netty4.handlers.ConnectionHandleMode;
+import com.linkedin.venice.acl.VeniceComponent;
 import com.linkedin.venice.authorization.DefaultIdentityParser;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.NameRepository;
+import com.linkedin.venice.router.api.RoutingComputationMode;
 import com.linkedin.venice.router.api.VeniceMultiKeyRoutingStrategy;
 import com.linkedin.venice.router.api.routing.helix.HelixGroupSelectionStrategyEnum;
 import com.linkedin.venice.router.httpclient.StorageNodeClientType;
+import com.linkedin.venice.utils.LogContext;
+import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -128,7 +136,7 @@ public class VeniceRouterConfig implements RouterRetryConfig {
   private static final Logger LOGGER = LogManager.getLogger(VeniceRouterConfig.class);
 
   // IMMUTABLE CONFIGS
-
+  private final String regionName;
   private final String clusterName;
   private final String zkConnection;
   private final int port;
@@ -145,6 +153,7 @@ public class VeniceRouterConfig implements RouterRetryConfig {
   private final int longTailRetryMaxRouteForMultiKeyReq;
   private final int maxKeyCountInMultiGetReq;
   private final int connectionLimit;
+  private final ConnectionHandleMode connectionHandleMode;
   private final int httpClientPoolSize;
   private final int maxOutgoingConnPerRoute;
   private final int maxOutgoingConn;
@@ -153,6 +162,7 @@ public class VeniceRouterConfig implements RouterRetryConfig {
   private final int refreshAttemptsForZkReconnect;
   private final long refreshIntervalForZkReconnectInMs;
   private final int routerNettyGracefulShutdownPeriodSeconds;
+  private final int routerInFlightMetricWindowSeconds;
   private final boolean enforceSecureOnly;
   private final boolean dnsCacheEnabled;
   private final String hostPatternForDnsCache;
@@ -191,16 +201,16 @@ public class VeniceRouterConfig implements RouterRetryConfig {
   private final long maxRouterReadCapacityCu;
   private final boolean helixHybridStoreQuotaEnabled;
   private final int ioThreadCountInPoolMode;
-  private final boolean useGroupFieldInHelixDomain;
   private final VeniceMultiKeyRoutingStrategy multiKeyRoutingStrategy;
   private final HelixGroupSelectionStrategyEnum helixGroupSelectionStrategy;
   private final String systemSchemaClusterName;
-  private final int clientSslHandshakeThreads;
-  private final boolean resolveBeforeSSL;
-  private final int maxConcurrentResolutions;
+  private final int maxConcurrentSslHandshakes;
+  private final int resolveThreads;
+  private final int resolveQueueCapacity;
   private final int clientResolutionRetryAttempts;
   private final long clientResolutionRetryBackoffMs;
   private final int clientSslHandshakeQueueCapacity;
+  private final boolean clientIPSpoofingCheckEnabled;
   private final long readQuotaThrottlingLeaseTimeoutMs;
   private final boolean routerHeartBeatEnabled;
   private final int httpClient5PoolSize;
@@ -223,6 +233,11 @@ public class VeniceRouterConfig implements RouterRetryConfig {
   private final long longTailRetryBudgetEnforcementWindowInMs;
   private final int retryManagerCorePoolSize;
   private final int nameRepoMaxEntryCount;
+  private final int aclInMemoryCacheTTLMs;
+  private final LogContext logContext;
+  private final RoutingComputationMode routingComputationMode;
+  private final int parallelRoutingThreadCount;
+  private final int parallelRoutingChunkSize;;
 
   // MUTABLE CONFIGS
 
@@ -231,9 +246,14 @@ public class VeniceRouterConfig implements RouterRetryConfig {
 
   public VeniceRouterConfig(VeniceProperties props) {
     try {
+      regionName = RegionUtils.getLocalRegionName(props, false);
       clusterName = props.getString(CLUSTER_NAME);
       port = props.getInt(LISTENER_PORT);
       hostname = props.getString(LISTENER_HOSTNAME, () -> Utils.getHostName());
+      logContext = new LogContext.Builder().setComponentName(VeniceComponent.ROUTER.name())
+          .setRegionName(regionName)
+          .setInstanceName(Utils.getHelixNodeIdentifier(hostname, port))
+          .build();
       sslPort = props.getInt(LISTENER_SSL_PORT);
       zkConnection = props.getString(ZOOKEEPER_ADDRESS);
       kafkaBootstrapServers = props.getString(KAFKA_BOOTSTRAP_SERVERS);
@@ -254,15 +274,20 @@ public class VeniceRouterConfig implements RouterRetryConfig {
       longTailRetryMaxRouteForMultiKeyReq = props.getInt(ROUTER_LONG_TAIL_RETRY_MAX_ROUTE_FOR_MULTI_KEYS_REQ, 2);
       maxKeyCountInMultiGetReq = props.getInt(ROUTER_MAX_KEY_COUNT_IN_MULTIGET_REQ, 500);
       connectionLimit = props.getInt(ROUTER_CONNECTION_LIMIT, 10000);
+      // When connection limit is breached, fail fast to client request by default.
+      connectionHandleMode = ConnectionHandleMode.valueOf(
+          props
+              .getString(ROUTER_CONNECTION_HANDLE_MODE, ConnectionHandleMode.FAIL_FAST_WHEN_LIMIT_EXCEEDED.toString()));
       httpClientPoolSize = props.getInt(ROUTER_HTTP_CLIENT_POOL_SIZE, 12);
       maxOutgoingConnPerRoute = props.getInt(ROUTER_MAX_OUTGOING_CONNECTION_PER_ROUTE, 120);
       maxOutgoingConn = props.getInt(ROUTER_MAX_OUTGOING_CONNECTION, 1200);
       clusterToD2Map = props.getMap(CLUSTER_TO_D2);
       clusterToServerD2Map = props.getMap(CLUSTER_TO_SERVER_D2, Collections.emptyMap());
-      refreshAttemptsForZkReconnect = props.getInt(REFRESH_ATTEMPTS_FOR_ZK_RECONNECT, 3);
+      refreshAttemptsForZkReconnect = props.getInt(REFRESH_ATTEMPTS_FOR_ZK_RECONNECT, 9);
       refreshIntervalForZkReconnectInMs =
           props.getLong(REFRESH_INTERVAL_FOR_ZK_RECONNECT_MS, java.util.concurrent.TimeUnit.SECONDS.toMillis(10));
       routerNettyGracefulShutdownPeriodSeconds = props.getInt(ROUTER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS, 10);
+      routerInFlightMetricWindowSeconds = props.getInt(ROUTER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS, 5);
       enforceSecureOnly = props.getBoolean(ENFORCE_SECURE_ROUTER, false);
 
       // This only needs to be enabled in some DC, where slow DNS lookup happens.
@@ -331,28 +356,17 @@ public class VeniceRouterConfig implements RouterRetryConfig {
       ioThreadCountInPoolMode =
           props.getInt(ROUTER_HTTPASYNCCLIENT_CLIENT_POOL_THREAD_COUNT, Runtime.getRuntime().availableProcessors());
 
-      clientSslHandshakeThreads = props.getInt(ROUTER_CLIENT_SSL_HANDSHAKE_THREADS, 0);
-      resolveBeforeSSL = props.getBoolean(ROUTER_RESOLVE_BEFORE_SSL, false);
-      maxConcurrentResolutions = props.getInt(ROUTER_MAX_CONCURRENT_RESOLUTIONS, 100);
+      maxConcurrentSslHandshakes = props.getInt(ROUTER_MAX_CONCURRENT_SSL_HANDSHAKES, 1000);
+      resolveThreads = props.getInt(ROUTER_RESOLVE_THREADS, 0);
+      resolveQueueCapacity = props.getInt(ROUTER_RESOLVE_QUEUE_CAPACITY, 500000);
       clientResolutionRetryAttempts = props.getInt(ROUTER_CLIENT_RESOLUTION_RETRY_ATTEMPTS, 3);
       clientResolutionRetryBackoffMs = props.getLong(ROUTER_CLIENT_RESOLUTION_RETRY_BACKOFF_MS, 5 * Time.MS_PER_SECOND);
-      clientSslHandshakeQueueCapacity = props.getInt(ROUTER_CLIENT_SSL_HANDSHAKE_QUEUE_CAPACITY, Integer.MAX_VALUE);
+      clientSslHandshakeQueueCapacity = props.getInt(ROUTER_CLIENT_SSL_HANDSHAKE_QUEUE_CAPACITY, 500000);
+      clientIPSpoofingCheckEnabled = props.getBoolean(ROUTER_CLIENT_IP_SPOOFING_CHECK_ENABLED, true);
 
       readQuotaThrottlingLeaseTimeoutMs =
           props.getLong(ROUTER_READ_QUOTA_THROTTLING_LEASE_TIMEOUT_MS, 6 * Time.MS_PER_HOUR);
 
-      String helixVirtualGroupFieldNameInDomain =
-          props.getString(ROUTER_HELIX_VIRTUAL_GROUP_FIELD_IN_DOMAIN, GROUP_FIELD_NAME_IN_DOMAIN);
-      if (helixVirtualGroupFieldNameInDomain.equals(GROUP_FIELD_NAME_IN_DOMAIN)) {
-        useGroupFieldInHelixDomain = true;
-      } else if (helixVirtualGroupFieldNameInDomain.equals(ZONE_FIELD_NAME_IN_DOMAIN)) {
-        useGroupFieldInHelixDomain = false;
-      } else {
-        throw new VeniceException(
-            "Unknown value: " + helixVirtualGroupFieldNameInDomain + " for config: "
-                + ROUTER_HELIX_VIRTUAL_GROUP_FIELD_IN_DOMAIN + ", and " + "allowed values: ["
-                + GROUP_FIELD_NAME_IN_DOMAIN + ", " + ZONE_FIELD_NAME_IN_DOMAIN + "]");
-      }
       String multiKeyRoutingStrategyStr =
           props.getString(ROUTER_MULTI_KEY_ROUTING_STRATEGY, LEAST_LOADED_ROUTING.name());
       VeniceMultiKeyRoutingStrategy multiKeyRoutingStrategyEnum;
@@ -410,6 +424,20 @@ public class VeniceRouterConfig implements RouterRetryConfig {
       retryManagerCorePoolSize = props.getInt(ROUTER_RETRY_MANAGER_CORE_POOL_SIZE, 5);
       this.nameRepoMaxEntryCount =
           props.getInt(NAME_REPOSITORY_MAX_ENTRY_COUNT, NameRepository.DEFAULT_MAXIMUM_ENTRY_COUNT);
+      aclInMemoryCacheTTLMs = props.getInt(ACL_IN_MEMORY_CACHE_TTL_MS, -1); // acl caching is disabled by default
+
+      String routingComputationModeStr =
+          props.getString(ROUTER_ROUTING_COMPUTATION_MODE, RoutingComputationMode.SEQUENTIAL.name());
+      try {
+        routingComputationMode = RoutingComputationMode.valueOf(routingComputationModeStr);
+      } catch (Exception e) {
+        throw new VeniceException(
+            "Invalid " + ROUTER_ROUTING_COMPUTATION_MODE + " config: " + routingComputationModeStr
+                + ", and allowed values are: " + Arrays.toString(RoutingComputationMode.values()));
+      }
+      parallelRoutingThreadCount =
+          props.getInt(ROUTER_PARALLEL_ROUTING_THREAD_POOL_SIZE, Runtime.getRuntime().availableProcessors());
+      parallelRoutingChunkSize = props.getInt(ROUTER_PARALLEL_ROUTING_CHUNK_SIZE, 100);
       LOGGER.info("Loaded configuration");
     } catch (Exception e) {
       String errorMessage = "Can not load properties.";
@@ -478,6 +506,10 @@ public class VeniceRouterConfig implements RouterRetryConfig {
     return connectionLimit;
   }
 
+  public ConnectionHandleMode getConnectionHandleMode() {
+    return connectionHandleMode;
+  }
+
   public int getHttpClientPoolSize() {
     return httpClientPoolSize;
   }
@@ -500,6 +532,10 @@ public class VeniceRouterConfig implements RouterRetryConfig {
 
   public int getRouterNettyGracefulShutdownPeriodSeconds() {
     return routerNettyGracefulShutdownPeriodSeconds;
+  }
+
+  public int getRouterInFlightMetricWindowSeconds() {
+    return routerInFlightMetricWindowSeconds;
   }
 
   public boolean isEnforcingSecureOnly() {
@@ -686,10 +722,6 @@ public class VeniceRouterConfig implements RouterRetryConfig {
     return ioThreadCountInPoolMode;
   }
 
-  public boolean isUseGroupFieldInHelixDomain() {
-    return useGroupFieldInHelixDomain;
-  }
-
   public VeniceMultiKeyRoutingStrategy getMultiKeyRoutingStrategy() {
     return multiKeyRoutingStrategy;
   }
@@ -775,16 +807,16 @@ public class VeniceRouterConfig implements RouterRetryConfig {
     return retryThresholdMap;
   }
 
-  public int getClientSslHandshakeThreads() {
-    return clientSslHandshakeThreads;
+  public int getResolveThreads() {
+    return resolveThreads;
   }
 
-  public boolean isResolveBeforeSSL() {
-    return resolveBeforeSSL;
+  public int getResolveQueueCapacity() {
+    return resolveQueueCapacity;
   }
 
-  public int getMaxConcurrentResolutions() {
-    return maxConcurrentResolutions;
+  public int getMaxConcurrentSslHandshakes() {
+    return maxConcurrentSslHandshakes;
   }
 
   public int getClientResolutionRetryAttempts() {
@@ -797,6 +829,10 @@ public class VeniceRouterConfig implements RouterRetryConfig {
 
   public int getClientSslHandshakeQueueCapacity() {
     return clientSslHandshakeQueueCapacity;
+  }
+
+  public boolean isClientIPSpoofingCheckEnabled() {
+    return clientIPSpoofingCheckEnabled;
   }
 
   public long getReadQuotaThrottlingLeaseTimeoutMs() {
@@ -881,5 +917,29 @@ public class VeniceRouterConfig implements RouterRetryConfig {
 
   public int getNameRepoMaxEntryCount() {
     return this.nameRepoMaxEntryCount;
+  }
+
+  public int getAclInMemoryCacheTTLMs() {
+    return aclInMemoryCacheTTLMs;
+  }
+
+  public String getRegionName() {
+    return regionName;
+  }
+
+  public LogContext getLogContext() {
+    return logContext;
+  }
+
+  public RoutingComputationMode getRoutingComputationMode() {
+    return routingComputationMode;
+  }
+
+  public int getParallelRoutingThreadCount() {
+    return parallelRoutingThreadCount;
+  }
+
+  public int getParallelRoutingChunkSize() {
+    return parallelRoutingChunkSize;
   }
 }

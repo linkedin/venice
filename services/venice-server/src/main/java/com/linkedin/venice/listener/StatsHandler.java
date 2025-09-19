@@ -21,14 +21,17 @@ public class StatsHandler extends ChannelDuplexHandler {
   private final AggServerHttpRequestStats singleGetStats;
   private final AggServerHttpRequestStats multiGetStats;
   private final AggServerHttpRequestStats computeStats;
+  private final ServerLoadControllerHandler loadControllerHandler;
 
   public StatsHandler(
       AggServerHttpRequestStats singleGetStats,
       AggServerHttpRequestStats multiGetStats,
-      AggServerHttpRequestStats computeStats) {
+      AggServerHttpRequestStats computeStats,
+      ServerLoadControllerHandler loadControllerHandler) {
     this.singleGetStats = singleGetStats;
     this.multiGetStats = multiGetStats;
     this.computeStats = computeStats;
+    this.loadControllerHandler = loadControllerHandler;
 
     this.serverStatsContext = new ServerStatsContext(singleGetStats, multiGetStats, computeStats);
   }
@@ -78,25 +81,12 @@ public class StatsHandler extends ChannelDuplexHandler {
     if (serverStatsContext.isNewRequest()) {
       // Reset for every request
       serverStatsContext.resetContext();
-      /**
-       * For a single 'channelRead' invocation, Netty will guarantee all the following 'channelRead' functions
-       * registered by the pipeline to be executed in the same thread.
-       */
-      ctx.fireChannelRead(msg);
-      double firstPartLatency = LatencyUtils.getElapsedTimeFromNSToMS(serverStatsContext.getRequestStartTimeInNS());
-      serverStatsContext.setFirstPartLatency(firstPartLatency);
-    } else {
-      // Only works for multi-get request.
-      long startTimeOfPart2InNS = System.nanoTime();
-      long startTimeInNS = serverStatsContext.getRequestStartTimeInNS();
-
-      serverStatsContext.setPartsInvokeDelayLatency(LatencyUtils.convertNSToMS(startTimeOfPart2InNS - startTimeInNS));
-
-      ctx.fireChannelRead(msg);
-
-      serverStatsContext.setSecondPartLatency(LatencyUtils.getElapsedTimeFromNSToMS(startTimeOfPart2InNS));
-      serverStatsContext.incrementRequestPartCount();
     }
+    /**
+     * For a single 'channelRead' invocation, Netty will guarantee all the following 'channelRead' functions
+     * registered by the pipeline to be executed in the same thread.
+     */
+    ctx.fireChannelRead(msg);
   }
 
   @Override
@@ -137,6 +127,12 @@ public class StatsHandler extends ChannelDuplexHandler {
           serverStatsContext.successRequest(serverHttpRequestStats, elapsedTime);
         } else if (!serverStatsContext.getResponseStatus().equals(TOO_MANY_REQUESTS)) {
           serverStatsContext.errorRequest(serverHttpRequestStats, elapsedTime);
+        }
+        if (loadControllerHandler != null) {
+          loadControllerHandler.recordLatency(
+              serverStatsContext.getRequestType(),
+              elapsedTime,
+              serverStatsContext.getResponseStatus().code());
         }
         serverStatsContext.setStatCallBackExecuted(true);
       }

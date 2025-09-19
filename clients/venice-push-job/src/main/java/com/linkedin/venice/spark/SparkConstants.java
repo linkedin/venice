@@ -2,6 +2,8 @@ package com.linkedin.venice.spark;
 
 import static org.apache.spark.sql.types.DataTypes.BinaryType;
 import static org.apache.spark.sql.types.DataTypes.IntegerType;
+import static org.apache.spark.sql.types.DataTypes.LongType;
+import static org.apache.spark.sql.types.DataTypes.StringType;
 
 import org.apache.spark.sql.types.Metadata;
 import org.apache.spark.sql.types.StructField;
@@ -12,17 +14,20 @@ public class SparkConstants {
   // Required column names for input dataframes
   public static final String KEY_COLUMN_NAME = "key";
   public static final String VALUE_COLUMN_NAME = "value";
+  public static final String RMD_COLUMN_NAME = "rmd";
 
   // Internal column names, hence begins with "_"
   public static final String PARTITION_COLUMN_NAME = "__partition__";
 
   public static final StructType DEFAULT_SCHEMA = new StructType(
       new StructField[] { new StructField(KEY_COLUMN_NAME, BinaryType, false, Metadata.empty()),
-          new StructField(VALUE_COLUMN_NAME, BinaryType, true, Metadata.empty()) });
+          new StructField(VALUE_COLUMN_NAME, BinaryType, true, Metadata.empty()),
+          new StructField(RMD_COLUMN_NAME, BinaryType, true, Metadata.empty()) });
 
   public static final StructType DEFAULT_SCHEMA_WITH_PARTITION = new StructType(
       new StructField[] { new StructField(KEY_COLUMN_NAME, BinaryType, false, Metadata.empty()),
           new StructField(VALUE_COLUMN_NAME, BinaryType, true, Metadata.empty()),
+          new StructField(RMD_COLUMN_NAME, BinaryType, true, Metadata.empty()),
           new StructField(PARTITION_COLUMN_NAME, IntegerType, false, Metadata.empty()) });
 
   /**
@@ -45,4 +50,14 @@ public class SparkConstants {
    */
   public static final String SPARK_DATA_WRITER_CONF_PREFIX = "spark.data.writer.conf.";
 
+  public static final StructType RAW_PUBSUB_INPUT_TABLE_SCHEMA = new StructType(
+      new StructField[] { new StructField("__region__", StringType, false, Metadata.empty()),
+          new StructField("__partition__", IntegerType, false, Metadata.empty()),
+          new StructField("__offset__", LongType, true, Metadata.empty()), // offset in the topic
+          new StructField("__message_type__", IntegerType, false, Metadata.empty()), // enum of put/delete/update
+          new StructField("__schema_id__", IntegerType, false, Metadata.empty()),
+          new StructField(KEY_COLUMN_NAME, BinaryType, false, Metadata.empty()), // serialized key
+          new StructField(VALUE_COLUMN_NAME, BinaryType, true, Metadata.empty()), // serialized value
+          new StructField("__replication_metadata_version_id__", IntegerType, false, Metadata.empty()),
+          new StructField("__replication_metadata_payload__", BinaryType, false, Metadata.empty()) });
 }

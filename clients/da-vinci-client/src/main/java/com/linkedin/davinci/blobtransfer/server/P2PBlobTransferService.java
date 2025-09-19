@@ -1,6 +1,8 @@
 package com.linkedin.davinci.blobtransfer.server;
 
 import com.linkedin.davinci.blobtransfer.BlobSnapshotManager;
+import com.linkedin.davinci.blobtransfer.BlobTransferAclHandler;
+import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.service.AbstractVeniceService;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.ChannelFuture;
@@ -12,6 +14,8 @@ import io.netty.channel.epoll.EpollEventLoopGroup;
 import io.netty.channel.epoll.EpollServerSocketChannel;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
+import io.netty.handler.traffic.GlobalChannelTrafficShapingHandler;
+import java.util.Optional;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -24,20 +28,24 @@ public class P2PBlobTransferService extends AbstractVeniceService {
   private EventLoopGroup workerGroup;
   private final int port;
   private ChannelFuture channelFuture;
-  // TODO 1: move tunable configs to a config class
-  // TODO 2: add SSL/auth/Quota support
-  // TODO 3: consider adding support for HTTP2
-  // TODO 4: add monitoring
-  // TODO 5: add compression support
-  // TODO 6: consider either increasing worker threads or have a dedicated thread pool to handle requests.
+  private BlobSnapshotManager blobSnapshotManager;
+  // TODO 1: Quota support
+  // TODO 2: consider adding support for HTTP2
+  // TODO 3: add compression support
+  // TODO 4: consider either increasing worker threads or have a dedicated thread pool to handle requests.
 
   public P2PBlobTransferService(
       int port,
       String baseDir,
       int blobTransferMaxTimeoutInMin,
-      BlobSnapshotManager blobSnapshotManager) {
+      BlobSnapshotManager blobSnapshotManager,
+      GlobalChannelTrafficShapingHandler globalChannelTrafficShapingHandler,
+      Optional<SSLFactory> sslFactory,
+      Optional<BlobTransferAclHandler> aclHandler,
+      int maxAllowedConcurrentSnapshotUsers) {
     this.port = port;
     this.serverBootstrap = new ServerBootstrap();
+    this.blobSnapshotManager = blobSnapshotManager;
 
     Class<? extends ServerChannel> socketChannelClass = NioServerSocketChannel.class;
 
@@ -53,7 +61,14 @@ public class P2PBlobTransferService extends AbstractVeniceService {
     serverBootstrap.group(bossGroup, workerGroup)
         .channel(socketChannelClass)
         .childHandler(
-            new BlobTransferNettyChannelInitializer(baseDir, blobTransferMaxTimeoutInMin, blobSnapshotManager))
+            new BlobTransferNettyChannelInitializer(
+                baseDir,
+                blobTransferMaxTimeoutInMin,
+                blobSnapshotManager,
+                globalChannelTrafficShapingHandler,
+                sslFactory,
+                aclHandler,
+                maxAllowedConcurrentSnapshotUsers))
         .option(ChannelOption.SO_BACKLOG, 1000)
         .option(ChannelOption.SO_REUSEADDR, true)
         .childOption(ChannelOption.SO_KEEPALIVE, true)
@@ -71,6 +86,9 @@ public class P2PBlobTransferService extends AbstractVeniceService {
   @Override
   public void stopInner() throws Exception {
     LOGGER.info("Shutting down NettyP2PBlobTransferManager");
+    if (blobSnapshotManager != null) {
+      blobSnapshotManager.shutdown();
+    }
     bossGroup.shutdownGracefully();
     workerGroup.shutdownGracefully();
     channelFuture.channel().closeFuture().sync();

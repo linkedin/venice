@@ -2,10 +2,8 @@ package com.linkedin.davinci.kafka.consumer;
 
 import com.linkedin.davinci.ingestion.consumption.ConsumedDataReceiver;
 import com.linkedin.davinci.stats.AggKafkaConsumerServiceStats;
-import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
-import com.linkedin.venice.message.KafkaKey;
-import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.davinci.stats.KafkaConsumerServiceStats;
+import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.ExceptionUtils;
@@ -42,29 +40,28 @@ import org.apache.logging.log4j.Logger;
  * 3. Recording some stats.
  */
 class ConsumptionTask implements Runnable {
+  private static final MetricConfig DEFAULT_METRIC_CONFIG = new MetricConfig();
+  private static final PartitionStats EMPTY_PARTITION_STATS = new PartitionStats();
+
   private final Logger LOGGER;
   private final int taskId;
   private final String consumptionTaskIdStr;
-  private final Map<PubSubTopicPartition, ConsumedDataReceiver<List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>>> dataReceiverMap =
+  private final Map<PubSubTopicPartition, ConsumedDataReceiver<List<DefaultPubSubMessage>>> dataReceiverMap =
       new VeniceConcurrentHashMap<>();
   private final long readCycleDelayMs;
-  private final Supplier<Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>>> pollFunction;
+  private final Supplier<Map<PubSubTopicPartition, List<DefaultPubSubMessage>>> pollFunction;
   private final IntConsumer bandwidthThrottler;
   private final IntConsumer recordsThrottler;
   private final AggKafkaConsumerServiceStats aggStats;
   private final ConsumerSubscriptionCleaner cleaner;
+  private final ConsumerPollTracker consumerPollTracker;
 
   /**
    * Maintain rate counter with default window size to calculate the message and bytes rate at topic partition level.
    * Those topic partition level information will not be emitted out as a metric, to avoid emitting too many metrics per
    * server host, they are for admin tool debugging purpose.
    */
-  private final Map<PubSubTopicPartition, Rate> messageRatePerTopicPartition = new VeniceConcurrentHashMap<>();
-  private final Map<PubSubTopicPartition, Rate> bytesRatePerTopicPartition = new VeniceConcurrentHashMap<>();
-  private final Map<PubSubTopicPartition, Long> lastSuccessfulPollTimestampPerTopicPartition =
-      new VeniceConcurrentHashMap<>();
-
-  private final MetricConfig metricConfig = new MetricConfig();
+  private final Map<PubSubTopicPartition, LivePartitionStats> partitionToStatsMap = new VeniceConcurrentHashMap<>();
 
   private volatile boolean running = true;
 
@@ -83,17 +80,19 @@ class ConsumptionTask implements Runnable {
       final String consumerNamePrefix,
       final int taskId,
       final long readCycleDelayMs,
-      final Supplier<Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>>> pollFunction,
+      final Supplier<Map<PubSubTopicPartition, List<DefaultPubSubMessage>>> pollFunction,
       final IntConsumer bandwidthThrottler,
       final IntConsumer recordsThrottler,
       final AggKafkaConsumerServiceStats aggStats,
-      final ConsumerSubscriptionCleaner cleaner) {
+      final ConsumerSubscriptionCleaner cleaner,
+      final ConsumerPollTracker consumerPollTracker) {
     this.readCycleDelayMs = readCycleDelayMs;
     this.pollFunction = pollFunction;
     this.bandwidthThrottler = bandwidthThrottler;
     this.recordsThrottler = recordsThrottler;
     this.aggStats = aggStats;
     this.cleaner = cleaner;
+    this.consumerPollTracker = consumerPollTracker;
     this.taskId = taskId;
     this.consumptionTaskIdStr = Utils.getSanitizedStringForLogger(consumerNamePrefix) + " - " + taskId;
     this.LOGGER = LogManager.getLogger(getClass().getSimpleName() + "[ " + consumptionTaskIdStr + " ]");
@@ -105,12 +104,16 @@ class ConsumptionTask implements Runnable {
 
     // Pre-allocate some variables to clobber in the loop
     long beforePollingTimeStamp;
-    Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> polledPubSubMessages;
+    Map<PubSubTopicPartition, List<DefaultPubSubMessage>> polledPubSubMessages;
     long beforeProducingToWriteBufferTimestamp;
-    ConsumedDataReceiver<List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> consumedDataReceiver;
+    ConsumedDataReceiver<List<DefaultPubSubMessage>> consumedDataReceiver;
     Set<PubSubTopicPartition> topicPartitionsToUnsub = new HashSet<>();
+    List<DefaultPubSubMessage> topicPartitionMessages;
+    int msgCount;
     int payloadBytesConsumedInOnePoll;
-    int polledPubSubMessagesCount = 0;
+    int polledPubSubMessagesCount;
+    int payloadSizePerTopicPartition;
+    KafkaConsumerServiceStats storeStats;
     Map<String, StorePollCounter> storePollCounterMap = new HashMap<>();
     try {
       while (running) {
@@ -126,13 +129,15 @@ class ConsumptionTask implements Runnable {
             addSomeDelay = false;
           }
           beforePollingTimeStamp = System.currentTimeMillis();
-          topicPartitionsToUnsub = cleaner.getTopicPartitionsToUnsubscribe(topicPartitionsToUnsub); // N.B. cheap call
+          // N.B. cheap call
+          topicPartitionsToUnsub = cleaner.getTopicPartitionsToUnsubscribe(topicPartitionsToUnsub);
           for (PubSubTopicPartition topicPartitionToUnSub: topicPartitionsToUnsub) {
-            ConsumedDataReceiver<List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> dataReceiver =
+            ConsumedDataReceiver<List<DefaultPubSubMessage>> dataReceiver =
                 dataReceiverMap.remove(topicPartitionToUnSub);
             if (dataReceiver != null) {
               dataReceiver.notifyOfTopicDeletion(topicPartitionToUnSub.getPubSubTopic().getName());
             }
+            consumerPollTracker.removeTopicPartition(topicPartitionToUnSub);
           }
           topicPartitionsToUnsub.clear();
 
@@ -148,13 +153,9 @@ class ConsumptionTask implements Runnable {
             payloadBytesConsumedInOnePoll = 0;
             polledPubSubMessagesCount = 0;
             beforeProducingToWriteBufferTimestamp = System.currentTimeMillis();
-            for (Map.Entry<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> entry: polledPubSubMessages
-                .entrySet()) {
+            storePollCounterMap.clear();
+            for (Map.Entry<PubSubTopicPartition, List<DefaultPubSubMessage>> entry: polledPubSubMessages.entrySet()) {
               PubSubTopicPartition pubSubTopicPartition = entry.getKey();
-              String storeName = Version.parseStoreFromKafkaTopicName(pubSubTopicPartition.getTopicName());
-              StorePollCounter counter =
-                  storePollCounterMap.computeIfAbsent(storeName, k -> new StorePollCounter(0, 0));
-              List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> topicPartitionMessages = entry.getValue();
               consumedDataReceiver = dataReceiverMap.get(pubSubTopicPartition);
               if (consumedDataReceiver == null) {
                 // defensive code
@@ -164,37 +165,38 @@ class ConsumptionTask implements Runnable {
                 topicPartitionsToUnsub.add(pubSubTopicPartition);
                 continue;
               }
-              polledPubSubMessagesCount += topicPartitionMessages.size();
-              counter.msgCount += topicPartitionMessages.size();
-              int payloadSizePerTopicPartition = 0;
-              for (PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> pubSubMessage: topicPartitionMessages) {
+
+              topicPartitionMessages = entry.getValue();
+
+              // Per-poll bookkeeping
+              consumerPollTracker.recordMessageReceived(pubSubTopicPartition);
+              msgCount = topicPartitionMessages.size();
+              polledPubSubMessagesCount += msgCount;
+              payloadSizePerTopicPartition = 0;
+              for (DefaultPubSubMessage pubSubMessage: topicPartitionMessages) {
                 payloadSizePerTopicPartition += pubSubMessage.getPayloadSize();
               }
-              counter.byteSize += payloadSizePerTopicPartition;
               payloadBytesConsumedInOnePoll += payloadSizePerTopicPartition;
-
-              lastSuccessfulPollTimestampPerTopicPartition.put(pubSubTopicPartition, lastSuccessfulPollTimestamp);
-              messageRatePerTopicPartition
-                  .computeIfAbsent(pubSubTopicPartition, tp -> createRate(lastSuccessfulPollTimestamp))
-                  .record(topicPartitionMessages.size(), lastSuccessfulPollTimestamp);
-              bytesRatePerTopicPartition
-                  .computeIfAbsent(pubSubTopicPartition, tp -> createRate(lastSuccessfulPollTimestamp))
-                  .record(payloadSizePerTopicPartition, lastSuccessfulPollTimestamp);
+              storePollCounterMap
+                  .computeIfAbsent(pubSubTopicPartition.getPubSubTopic().getStoreName(), this::newStorePollCounter)
+                  .record(msgCount, payloadSizePerTopicPartition);
+              this.partitionToStatsMap.computeIfAbsent(pubSubTopicPartition, this::newPartitionStats)
+                  .record(this.lastSuccessfulPollTimestamp, msgCount, payloadSizePerTopicPartition);
 
               consumedDataReceiver.write(topicPartitionMessages);
             }
             aggStats.recordTotalConsumerRecordsProducingToWriterBufferLatency(
                 LatencyUtils.getElapsedTimeFromMsToMs(beforeProducingToWriteBufferTimestamp));
             aggStats.recordTotalNonZeroPollResultNum(polledPubSubMessagesCount);
-            storePollCounterMap.forEach((storeName, counter) -> {
-              aggStats.getStoreStats(storeName).recordPollResultNum(counter.msgCount);
-              aggStats.getStoreStats(storeName).recordByteSizePerPoll(counter.byteSize);
-            });
+            for (Map.Entry<String, StorePollCounter> entry: storePollCounterMap.entrySet()) {
+              storeStats = aggStats.getStoreStats(entry.getKey());
+              storeStats.recordPollResultNum(entry.getValue().msgCount);
+              storeStats.recordByteSizePerPoll(entry.getValue().byteSize);
+            }
             bandwidthThrottler.accept(payloadBytesConsumedInOnePoll);
             recordsThrottler.accept(polledPubSubMessagesCount);
             cleaner.unsubscribe(topicPartitionsToUnsub);
             aggStats.recordTotalDetectedNoRunningIngestionTopicPartitionNum(topicPartitionsToUnsub.size());
-            storePollCounterMap.clear();
           } else {
             // No result came back, here will add some delay
             addSomeDelay = true;
@@ -242,8 +244,8 @@ class ConsumptionTask implements Runnable {
 
   void setDataReceiver(
       PubSubTopicPartition pubSubTopicPartition,
-      ConsumedDataReceiver<List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> consumedDataReceiver) {
-    ConsumedDataReceiver<List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> previousConsumedDataReceiver =
+      ConsumedDataReceiver<List<DefaultPubSubMessage>> consumedDataReceiver) {
+    ConsumedDataReceiver<List<DefaultPubSubMessage>> previousConsumedDataReceiver =
         dataReceiverMap.put(pubSubTopicPartition, consumedDataReceiver);
     if (previousConsumedDataReceiver != null
         && !previousConsumedDataReceiver.destinationIdentifier().equals(consumedDataReceiver.destinationIdentifier())) {
@@ -258,41 +260,80 @@ class ConsumptionTask implements Runnable {
     }
   }
 
-  private Rate createRate(long now) {
-    Rate rate = new Rate();
-    rate.init(metricConfig, now);
-    return rate;
-  }
-
-  Double getMessageRate(PubSubTopicPartition topicPartition) {
-    if (messageRatePerTopicPartition.containsKey(topicPartition)) {
-      return messageRatePerTopicPartition.get(topicPartition).measure(metricConfig, System.currentTimeMillis());
-    }
-    return 0.0D;
-  }
-
-  Double getByteRate(PubSubTopicPartition topicPartition) {
-    if (bytesRatePerTopicPartition.containsKey(topicPartition)) {
-      return bytesRatePerTopicPartition.get(topicPartition).measure(metricConfig, System.currentTimeMillis());
-    }
-    return 0.0D;
-  }
-
   PubSubTopic getDestinationIdentifier(PubSubTopicPartition topicPartition) {
-    ConsumedDataReceiver<List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> dataReceiver =
-        dataReceiverMap.get(topicPartition);
+    ConsumedDataReceiver<List<DefaultPubSubMessage>> dataReceiver = dataReceiverMap.get(topicPartition);
     return dataReceiver == null ? null : dataReceiver.destinationIdentifier();
   }
 
-  Long getLastSuccessfulPollTimestamp(PubSubTopicPartition topicPartition) {
-    if (lastSuccessfulPollTimestampPerTopicPartition.containsKey(topicPartition)) {
-      return lastSuccessfulPollTimestampPerTopicPartition.get(topicPartition);
-    }
-    return DEFAULT_TOPIC_PARTITION_NO_POLL_TIMESTAMP;
+  public PartitionStats getPartitionStats(PubSubTopicPartition topicPartition) {
+    PartitionStats partitionStats = this.partitionToStatsMap.get(topicPartition);
+    return partitionStats == null ? EMPTY_PARTITION_STATS : partitionStats;
   }
 
   void removeDataReceiver(PubSubTopicPartition topicPartition) {
-    dataReceiverMap.remove(topicPartition);
+    this.dataReceiverMap.remove(topicPartition);
+    this.partitionToStatsMap.remove(topicPartition);
+  }
+
+  private LivePartitionStats newPartitionStats(PubSubTopicPartition pubSubTopicPartition) {
+    return new LivePartitionStats(this.lastSuccessfulPollTimestamp);
+  }
+
+  public static class PartitionStats {
+    public double getMessageRate() {
+      return 0.0D;
+    }
+
+    public double getBytesRate() {
+      return 0.0D;
+    }
+
+    public long getLastSuccessfulPollTimestamp() {
+      return DEFAULT_TOPIC_PARTITION_NO_POLL_TIMESTAMP;
+    }
+  }
+
+  /**
+   * These stats are not meant to be emitted as metrics, since partitions are too numerous, but can be accessed via the
+   * admin tool on an on-demand basis.
+   */
+  private static class LivePartitionStats extends PartitionStats {
+    protected final Rate messageRate;
+    protected final Rate bytesRate;
+    protected long lastSuccessfulPollTimestamp;
+
+    private LivePartitionStats(long lastSuccessfulPollTimestamp) {
+      this.messageRate = new Rate();
+      this.messageRate.init(DEFAULT_METRIC_CONFIG, lastSuccessfulPollTimestamp);
+      this.bytesRate = new Rate();
+      this.bytesRate.init(DEFAULT_METRIC_CONFIG, lastSuccessfulPollTimestamp);
+      this.lastSuccessfulPollTimestamp = lastSuccessfulPollTimestamp;
+    }
+
+    @Override
+    public double getMessageRate() {
+      return this.messageRate.measure(DEFAULT_METRIC_CONFIG, System.currentTimeMillis());
+    }
+
+    @Override
+    public double getBytesRate() {
+      return this.bytesRate.measure(DEFAULT_METRIC_CONFIG, System.currentTimeMillis());
+    }
+
+    @Override
+    public long getLastSuccessfulPollTimestamp() {
+      return this.lastSuccessfulPollTimestamp;
+    }
+
+    void record(long lastSuccessfulPollTimestamp, int messageCount, int bytesCount) {
+      this.lastSuccessfulPollTimestamp = lastSuccessfulPollTimestamp;
+      this.messageRate.record(messageCount, lastSuccessfulPollTimestamp);
+      this.bytesRate.record(bytesCount, lastSuccessfulPollTimestamp);
+    }
+  }
+
+  StorePollCounter newStorePollCounter(String storeName) {
+    return new StorePollCounter(0, 0);
   }
 
   /**
@@ -305,6 +346,11 @@ class ConsumptionTask implements Runnable {
     StorePollCounter(int msgCount, int byteSize) {
       this.msgCount = msgCount;
       this.byteSize = byteSize;
+    }
+
+    void record(int msgCount, int byteSize) {
+      this.msgCount += msgCount;
+      this.byteSize += byteSize;
     }
   }
 }

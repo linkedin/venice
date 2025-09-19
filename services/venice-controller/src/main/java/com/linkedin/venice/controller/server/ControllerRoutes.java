@@ -17,6 +17,7 @@ import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.InstanceRemovableStatuses;
+import com.linkedin.venice.controllerapi.AdminOperationProtocolVersionControllerResponse;
 import com.linkedin.venice.controllerapi.AggregatedHealthStatusRequest;
 import com.linkedin.venice.controllerapi.ChildAwareResponse;
 import com.linkedin.venice.controllerapi.ControllerResponse;
@@ -33,6 +34,7 @@ import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.Utils;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.apache.commons.lang.StringUtils;
 import org.apache.http.HttpStatus;
@@ -121,7 +123,7 @@ public class ControllerRoutes extends AbstractRoute {
     return updateKafkaTopicConfig(admin, adminRequest -> {
       AdminSparkServer.validateParams(adminRequest, UPDATE_KAFKA_TOPIC_LOG_COMPACTION.getParams(), admin);
       PubSubTopic topicName = pubSubTopicRepository.getTopic(adminRequest.queryParams(TOPIC));
-      boolean kafkaTopicLogCompactionEnabled = Utils.parseBooleanFromString(
+      boolean kafkaTopicLogCompactionEnabled = Utils.parseBooleanOrThrow(
           adminRequest.queryParams(KAFKA_TOPIC_LOG_COMPACTION_ENABLED),
           KAFKA_TOPIC_LOG_COMPACTION_ENABLED);
 
@@ -241,6 +243,48 @@ public class ControllerRoutes extends AbstractRoute {
       String responseContent = AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
       LOGGER.info("[AggregatedHealthStatus] Response: {}", responseContent);
       return responseContent;
+    };
+  }
+
+  /**
+   * Get all admin operation protocol versions of the given cluster from controllers (leader + standby).
+   */
+  public Route getAdminOperationVersionFromControllers(Admin admin) {
+    return (request, response) -> {
+      AdminOperationProtocolVersionControllerResponse responseObject =
+          new AdminOperationProtocolVersionControllerResponse();
+      response.type(HttpConstants.JSON);
+      try {
+        String clusterName = request.queryParams(CLUSTER);
+        responseObject.setCluster(clusterName);
+        Map<String, Long> controllerNameToVersionMap = admin.getAdminOperationVersionFromControllers(clusterName);
+        responseObject.setControllerNameToVersionMap(controllerNameToVersionMap);
+        responseObject.setLocalControllerName(admin.getControllerName());
+        responseObject.setLocalAdminOperationProtocolVersion(admin.getLocalAdminOperationProtocolVersion());
+      } catch (Throwable e) {
+        responseObject.setError(e);
+        AdminSparkServer.handleError(e, request, response);
+      }
+      return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
+    };
+  }
+
+  /**
+   * Get the local admin operation protocol version in current controller
+   */
+  public Route getLocalAdminOperationProtocolVersion(Admin admin) {
+    return (request, response) -> {
+      AdminOperationProtocolVersionControllerResponse responseObject =
+          new AdminOperationProtocolVersionControllerResponse();
+      response.type(HttpConstants.JSON);
+      try {
+        responseObject.setLocalAdminOperationProtocolVersion(admin.getLocalAdminOperationProtocolVersion());
+        responseObject.setLocalControllerName(admin.getControllerName());
+      } catch (Throwable e) {
+        responseObject.setError(e);
+        AdminSparkServer.handleError(e, request, response);
+      }
+      return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
     };
   }
 

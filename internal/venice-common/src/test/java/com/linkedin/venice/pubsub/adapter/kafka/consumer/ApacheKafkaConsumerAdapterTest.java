@@ -1,11 +1,15 @@
 package com.linkedin.venice.pubsub.adapter.kafka.consumer;
 
+import static com.linkedin.venice.pubsub.PubSubPositionTypeRegistry.APACHE_KAFKA_OFFSET_POSITION_TYPE_ID;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -16,6 +20,7 @@ import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
 
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceMessageException;
 import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
@@ -23,24 +28,28 @@ import com.linkedin.venice.kafka.protocol.ProducerMetadata;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
-import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.TopicPartitionsOffsetsTracker;
-import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
+import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
+import com.linkedin.venice.pubsub.api.PubSubPositionWireFormat;
+import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubClientException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubClientRetriableException;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicAuthorizationException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubUnsubscribedTopicPartitionException;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
 import com.linkedin.venice.utils.DataProviderUtils;
-import com.linkedin.venice.utils.VeniceProperties;
 import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -50,11 +59,11 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Properties;
 import java.util.Set;
 import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
+import org.apache.kafka.clients.consumer.OffsetAndTimestamp;
 import org.apache.kafka.common.Node;
 import org.apache.kafka.common.PartitionInfo;
 import org.apache.kafka.common.TopicPartition;
@@ -70,30 +79,123 @@ import org.testng.annotations.Test;
 
 
 public class ApacheKafkaConsumerAdapterTest {
+  private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+  private final PubSubTopicPartition pubSubTopicPartition =
+      new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic("test"), 0);
+  private final TopicPartition topicPartition = new TopicPartition("test", 0);
   private Consumer<byte[], byte[]> internalKafkaConsumer;
   private ApacheKafkaConsumerAdapter kafkaConsumerAdapter;
   private PubSubMessageDeserializer pubSubMessageDeserializer;
-  private PubSubTopicRepository pubSubTopicRepository;
+  private PubSubPositionTypeRegistry pubSubPositionTypeRegistry;
   private TopicPartitionsOffsetsTracker topicPartitionsOffsetsTracker;
   private ApacheKafkaConsumerConfig apacheKafkaConsumerConfig;
 
   @BeforeMethod(alwaysRun = true)
   public void setUp() {
     internalKafkaConsumer = mock(Consumer.class);
-    pubSubMessageDeserializer = PubSubMessageDeserializer.getInstance();
-    pubSubTopicRepository = new PubSubTopicRepository();
+    pubSubMessageDeserializer = PubSubMessageDeserializer.createDefaultDeserializer();
     topicPartitionsOffsetsTracker = mock(TopicPartitionsOffsetsTracker.class);
-    apacheKafkaConsumerConfig = new ApacheKafkaConsumerConfig(new VeniceProperties(new Properties()), "testConsumer");
-    kafkaConsumerAdapter = new ApacheKafkaConsumerAdapter(
-        internalKafkaConsumer,
-        apacheKafkaConsumerConfig,
-        pubSubMessageDeserializer,
-        topicPartitionsOffsetsTracker);
+    pubSubPositionTypeRegistry = PubSubPositionTypeRegistry.RESERVED_POSITION_TYPE_REGISTRY;
+    apacheKafkaConsumerConfig = mock(ApacheKafkaConsumerConfig.class);
+    when(apacheKafkaConsumerConfig.getTopicPartitionsOffsetsTracker()).thenReturn(topicPartitionsOffsetsTracker);
+    when(apacheKafkaConsumerConfig.getPubSubMessageDeserializer()).thenReturn(pubSubMessageDeserializer);
+    when(apacheKafkaConsumerConfig.getPubSubPositionTypeRegistry()).thenReturn(pubSubPositionTypeRegistry);
+    kafkaConsumerAdapter = new ApacheKafkaConsumerAdapter(internalKafkaConsumer, apacheKafkaConsumerConfig);
   }
 
   @AfterMethod(alwaysRun = true)
   public void cleanUp() {
     pubSubMessageDeserializer.close();
+  }
+
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testSubscribeWithValidPosition(boolean isInclusive) {
+    when(internalKafkaConsumer.assignment()).thenReturn(Collections.emptySet());
+    doNothing().when(internalKafkaConsumer).assign(any());
+
+    ApacheKafkaOffsetPosition p100 = new ApacheKafkaOffsetPosition(100L);
+    ApacheKafkaOffsetPosition p101 = new ApacheKafkaOffsetPosition(101L);
+    ApacheKafkaOffsetPosition p200 = new ApacheKafkaOffsetPosition(200L);
+
+    kafkaConsumerAdapter.subscribe(pubSubTopicPartition, p100, isInclusive);
+    assertTrue(kafkaConsumerAdapter.getAssignment().contains(pubSubTopicPartition));
+    verify(internalKafkaConsumer).assign(any(List.class));
+    verify(internalKafkaConsumer)
+        .seek(topicPartition, isInclusive ? p100.getInternalOffset() : p101.getInternalOffset());
+
+    kafkaConsumerAdapter.subscribe(pubSubTopicPartition, p200, isInclusive);
+    verify(internalKafkaConsumer, times(2)).assign(any(List.class));
+    verify(internalKafkaConsumer)
+        .seek(topicPartition, isInclusive ? p200.getInternalOffset() : p200.getInternalOffset() + 1);
+
+    // Try other position types
+    PubSubPosition p300 = mock(PubSubPosition.class);
+    when(p300.getNumericOffset()).thenReturn(300L);
+    kafkaConsumerAdapter.subscribe(pubSubTopicPartition, p300, isInclusive);
+    verify(internalKafkaConsumer, times(3)).assign(any(List.class));
+    verify(internalKafkaConsumer).seek(topicPartition, isInclusive ? 300L : 301L);
+  }
+
+  @Test
+  public void testSubscribeWithEarliestPosition() {
+    when(internalKafkaConsumer.assignment()).thenReturn(Collections.emptySet());
+    doNothing().when(internalKafkaConsumer).assign(any());
+
+    kafkaConsumerAdapter.subscribe(pubSubTopicPartition, PubSubSymbolicPosition.EARLIEST);
+    assertTrue(kafkaConsumerAdapter.getAssignment().contains(pubSubTopicPartition));
+    verify(internalKafkaConsumer).assign(any(List.class));
+    verify(internalKafkaConsumer).seekToBeginning(Collections.singletonList(topicPartition));
+  }
+
+  @Test
+  public void testSubscribeAlreadySubscribed() {
+    when(internalKafkaConsumer.assignment()).thenReturn(Collections.singleton(topicPartition));
+
+    kafkaConsumerAdapter.subscribe(pubSubTopicPartition, new ApacheKafkaOffsetPosition(100), false);
+
+    verify(internalKafkaConsumer, never()).assign(any());
+    verify(internalKafkaConsumer, never()).seek(any(), anyLong());
+  }
+
+  @Test
+  public void testSubscribeWithLatestPubSubPosition() {
+    when(internalKafkaConsumer.assignment()).thenReturn(Collections.emptySet());
+
+    kafkaConsumerAdapter.subscribe(pubSubTopicPartition, PubSubSymbolicPosition.LATEST);
+
+    assertTrue(kafkaConsumerAdapter.getAssignment().contains(pubSubTopicPartition));
+    verify(internalKafkaConsumer).assign(any(List.class));
+    verify(internalKafkaConsumer).seekToEnd(Collections.singletonList(topicPartition));
+  }
+
+  @Test(expectedExceptions = IllegalArgumentException.class)
+  public void testSubscribeWithNullPubSubPosition() {
+    kafkaConsumerAdapter.subscribe(pubSubTopicPartition, null);
+  }
+
+  @Test
+  public void testSubscribeWithApacheKafkaPosition() {
+    ApacheKafkaOffsetPosition position = ApacheKafkaOffsetPosition.of(50);
+    when(internalKafkaConsumer.assignment()).thenReturn(Collections.emptySet());
+
+    kafkaConsumerAdapter.subscribe(pubSubTopicPartition, position, false);
+    assertTrue(kafkaConsumerAdapter.getAssignment().contains(pubSubTopicPartition));
+    verify(internalKafkaConsumer).assign(any(List.class));
+    verify(internalKafkaConsumer).seek(topicPartition, position.getInternalOffset() + 1);
+  }
+
+  @Test
+  public void testSubscribeTwiceWithSamePartition() {
+    when(internalKafkaConsumer.assignment()).thenReturn(Collections.emptySet())
+        .thenReturn(Collections.singleton(topicPartition));
+
+    ApacheKafkaOffsetPosition p100 = new ApacheKafkaOffsetPosition(100L);
+    ApacheKafkaOffsetPosition p200 = new ApacheKafkaOffsetPosition(200L);
+
+    kafkaConsumerAdapter.subscribe(pubSubTopicPartition, p100, false);
+    assertTrue(kafkaConsumerAdapter.getAssignment().contains(pubSubTopicPartition));
+    kafkaConsumerAdapter.subscribe(pubSubTopicPartition, p200, false);
+    verify(internalKafkaConsumer, times(1)).assign(any());
   }
 
   @Test
@@ -232,6 +334,7 @@ public class ApacheKafkaConsumerAdapterTest {
     ConsumerRecords<byte[], byte[]> records = new ConsumerRecords<>(
         Collections.singletonMap(new TopicPartition("test", 0), Collections.singletonList(record)));
     doReturn(records).when(internalKafkaConsumer).poll(any());
+    doReturn(3).when(apacheKafkaConsumerConfig).getConsumerPollRetryTimes();
 
     PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic("test"), 0);
 
@@ -241,10 +344,9 @@ public class ApacheKafkaConsumerAdapterTest {
     when(internalKafkaConsumer.partitionsFor(pubSubTopicPartition.getTopicName())).thenReturn(partitionInfoList);
 
     // add partition to assignments
-    kafkaConsumerAdapter.subscribe(pubSubTopicPartition, -1);
+    kafkaConsumerAdapter.subscribe(pubSubTopicPartition, PubSubSymbolicPosition.EARLIEST, false);
     // poll
-    Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> messages =
-        kafkaConsumerAdapter.poll(Long.MAX_VALUE);
+    Map<PubSubTopicPartition, List<DefaultPubSubMessage>> messages = kafkaConsumerAdapter.poll(Long.MAX_VALUE);
 
     // verify
     assertEquals(messages.size(), 1);
@@ -264,6 +366,7 @@ public class ApacheKafkaConsumerAdapterTest {
     ConsumerRecords<byte[], byte[]> records = new ConsumerRecords<>(
         Collections.singletonMap(new TopicPartition("test", 42), Collections.singletonList(record)));
     doReturn(records).when(internalKafkaConsumer).poll(any());
+    doReturn(3).when(apacheKafkaConsumerConfig).getConsumerPollRetryTimes();
     kafkaConsumerAdapter.poll(Long.MAX_VALUE);
   }
 
@@ -274,17 +377,15 @@ public class ApacheKafkaConsumerAdapterTest {
             new TopicPartition("test", 42),
             Collections.singletonList(new ConsumerRecord<>("test", 42, 75, "key".getBytes(), "value".getBytes()))));
     doReturn(consumerRecords).when(internalKafkaConsumer).poll(any());
+    doReturn(3).when(apacheKafkaConsumerConfig).getConsumerPollRetryTimes();
     kafkaConsumerAdapter.poll(Long.MAX_VALUE);
   }
 
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testApacheKafkaConsumer(boolean enabledOffsetCollection) {
     if (!enabledOffsetCollection) {
-      kafkaConsumerAdapter = new ApacheKafkaConsumerAdapter(
-          internalKafkaConsumer,
-          apacheKafkaConsumerConfig,
-          pubSubMessageDeserializer,
-          null);
+      when(apacheKafkaConsumerConfig.getTopicPartitionsOffsetsTracker()).thenReturn(null);
+      kafkaConsumerAdapter = new ApacheKafkaConsumerAdapter(internalKafkaConsumer, apacheKafkaConsumerConfig);
     }
 
     PubSubTopic testTopic = pubSubTopicRepository.getTopic("test_topic_v1");
@@ -305,7 +406,7 @@ public class ApacheKafkaConsumerAdapterTest {
     when(internalKafkaConsumer.partitionsFor(testTopic.getName())).thenReturn(partitionInfoList);
 
     // Test subscribe
-    kafkaConsumerAdapter.subscribe(pubSubTopicPartition, OffsetRecord.LOWEST_OFFSET);
+    kafkaConsumerAdapter.subscribe(pubSubTopicPartition, PubSubSymbolicPosition.EARLIEST, false);
     verify(internalKafkaConsumer).assign(Collections.singletonList(topicPartition));
     verify(internalKafkaConsumer).seekToBeginning(Collections.singletonList(topicPartition));
 
@@ -327,12 +428,12 @@ public class ApacheKafkaConsumerAdapterTest {
     kafkaConsumerAdapter.unSubscribe(pubSubTopicPartition);
     verify(internalKafkaConsumer).assign(Collections.EMPTY_LIST);
 
-    // Test subscribe with not seek beginning.
-    int lastReadOffset = 0;
+    // Test subscribe with non-beginning position
+    ApacheKafkaOffsetPosition lastReadPosition = ApacheKafkaOffsetPosition.of(0);
     doReturn(Collections.EMPTY_SET).when(internalKafkaConsumer).assignment();
     assertFalse(kafkaConsumerAdapter.hasAnySubscription());
-    kafkaConsumerAdapter.subscribe(pubSubTopicPartition, lastReadOffset);
-    verify(internalKafkaConsumer).seek(topicPartition, lastReadOffset + 1);
+    kafkaConsumerAdapter.subscribe(pubSubTopicPartition, lastReadPosition, false);
+    verify(internalKafkaConsumer).seek(topicPartition, lastReadPosition.getInternalOffset() + 1);
 
     // Test batch unsubscribe.
     Set<PubSubTopicPartition> pubSubTopicPartitionsToUnSub = new HashSet<>();
@@ -344,7 +445,7 @@ public class ApacheKafkaConsumerAdapterTest {
       pubSubTopicPartitionsToUnSub.add(pubSubTopicPartitionToSub);
       allTopicPartitions.add(new TopicPartition(testTopic.getName(), i));
       allPubSubTopicPartitions.add(pubSubTopicPartitionToSub);
-      kafkaConsumerAdapter.subscribe(pubSubTopicPartitionToSub, -1);
+      kafkaConsumerAdapter.subscribe(pubSubTopicPartitionToSub, PubSubSymbolicPosition.EARLIEST, false);
     }
 
     PubSubTopic testTopicV2 = pubSubTopicRepository.getTopic("test_topic_v2");
@@ -361,7 +462,7 @@ public class ApacheKafkaConsumerAdapterTest {
       topicPartitionsLeft.add(topicPartitionLeft);
       allTopicPartitions.add(topicPartitionLeft);
       allPubSubTopicPartitions.add(pubSubTopicPartitionToUnSub);
-      kafkaConsumerAdapter.subscribe(pubSubTopicPartitionToUnSub, -1);
+      kafkaConsumerAdapter.subscribe(pubSubTopicPartitionToUnSub, PubSubSymbolicPosition.EARLIEST, false);
     }
     doReturn(allTopicPartitions).when(internalKafkaConsumer).assignment();
     assertTrue(kafkaConsumerAdapter.hasSubscription(pubSubTopicPartition));
@@ -377,7 +478,6 @@ public class ApacheKafkaConsumerAdapterTest {
   // isValidTopicPartition
   @Test
   public void testIsValidTopicPartitionReturnsFalseWhenRetriableExceptionIsThrown() {
-    PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic("test"), 0);
     int retryTimes = apacheKafkaConsumerConfig.getTopicQueryRetryTimes();
     doThrow(new TimeoutException()).when(internalKafkaConsumer).partitionsFor(pubSubTopicPartition.getTopicName());
     assertFalse(kafkaConsumerAdapter.isValidTopicPartition(pubSubTopicPartition));
@@ -391,7 +491,369 @@ public class ApacheKafkaConsumerAdapterTest {
     PubSubTopicPartition pubSubTopicPartition =
         new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic("testTopic"), 0);
     doReturn(partitionInfos).when(internalKafkaConsumer).partitionsFor(pubSubTopicPartition.getTopicName());
+    doReturn(3).when(apacheKafkaConsumerConfig).getTopicQueryRetryTimes();
     assertTrue(kafkaConsumerAdapter.isValidTopicPartition(pubSubTopicPartition));
     verify(internalKafkaConsumer).partitionsFor(pubSubTopicPartition.getTopicName());
+  }
+
+  @Test
+  public void testBeginningOffsetSuccess() {
+    long expectedOffset = 0L;
+    when(internalKafkaConsumer.beginningOffsets(Collections.singleton(topicPartition), Duration.ofMillis(500)))
+        .thenReturn(Collections.singletonMap(topicPartition, expectedOffset));
+
+    ApacheKafkaOffsetPosition actualOffset = (ApacheKafkaOffsetPosition) kafkaConsumerAdapter
+        .beginningPosition(pubSubTopicPartition, Duration.ofMillis(500));
+    assertEquals(actualOffset.getInternalOffset(), expectedOffset);
+  }
+
+  @Test(expectedExceptions = PubSubOpTimeoutException.class)
+  public void testBeginningOffsetThrowsTimeoutException() {
+    when(internalKafkaConsumer.beginningOffsets(Collections.singleton(topicPartition), Duration.ofMillis(500)))
+        .thenThrow(new TimeoutException("Test timeout"));
+
+    kafkaConsumerAdapter.beginningPosition(pubSubTopicPartition, Duration.ofMillis(500));
+  }
+
+  @Test
+  public void testBeginningPosition() {
+    Map<TopicPartition, Long> mockResponse = Collections.singletonMap(topicPartition, 0L);
+    doReturn(mockResponse).when(internalKafkaConsumer)
+        .beginningOffsets(Collections.singleton(topicPartition), Duration.ofMillis(500));
+
+    PubSubPosition position = kafkaConsumerAdapter.beginningPosition(pubSubTopicPartition, Duration.ofMillis(500));
+    assertNotNull(position);
+    assertTrue(position instanceof ApacheKafkaOffsetPosition);
+    assertEquals(((ApacheKafkaOffsetPosition) position).getInternalOffset(), 0L);
+
+    // Case 2: return empty response
+    doReturn(Collections.emptyMap()).when(internalKafkaConsumer)
+        .beginningOffsets(Collections.singleton(topicPartition), Duration.ofMillis(500));
+    position = kafkaConsumerAdapter.beginningPosition(pubSubTopicPartition, Duration.ofMillis(500));
+    assertNull(position);
+  }
+
+  @Test
+  public void testEndPositions() {
+    PubSubTopicPartition pubSubTopicPartition1 =
+        new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic("test"), 0);
+    PubSubTopicPartition pubSubTopicPartition2 =
+        new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic("test"), 1);
+    TopicPartition topicPartition1 = new TopicPartition("test", 0);
+    TopicPartition topicPartition2 = new TopicPartition("test", 1);
+    Map<TopicPartition, Long> mockResponse = new HashMap<>();
+    ApacheKafkaOffsetPosition p500 = ApacheKafkaOffsetPosition.of(500L);
+    ApacheKafkaOffsetPosition p600 = ApacheKafkaOffsetPosition.of(600L);
+    mockResponse.put(topicPartition1, p500.getInternalOffset());
+    mockResponse.put(topicPartition2, p600.getInternalOffset());
+
+    when(
+        internalKafkaConsumer
+            .endOffsets(new HashSet<>(Arrays.asList(topicPartition1, topicPartition2)), Duration.ofMillis(500)))
+                .thenReturn(mockResponse);
+
+    Map<PubSubTopicPartition, PubSubPosition> actualPositions = kafkaConsumerAdapter
+        .endPositions(Arrays.asList(pubSubTopicPartition1, pubSubTopicPartition2), Duration.ofMillis(500));
+    assertEquals(actualPositions.get(pubSubTopicPartition1), p500);
+    assertEquals(actualPositions.get(pubSubTopicPartition2), p600);
+  }
+
+  @Test(expectedExceptions = PubSubOpTimeoutException.class)
+  public void testEndPositionsThrowsTimeoutException() {
+    when(internalKafkaConsumer.endOffsets(Collections.singleton(topicPartition), Duration.ofMillis(500)))
+        .thenThrow(new TimeoutException("Test timeout"));
+    kafkaConsumerAdapter.endPositions(Collections.singleton(pubSubTopicPartition), Duration.ofMillis(500));
+  }
+
+  @Test
+  public void testEndPosition() {
+    long expectedOffset = 700L;
+    Map<TopicPartition, Long> mockResponse = Collections.singletonMap(topicPartition, expectedOffset);
+    doReturn(mockResponse).when(internalKafkaConsumer)
+        .endOffsets(eq(Collections.singleton(topicPartition)), any(Duration.class));
+
+    PubSubPosition position = kafkaConsumerAdapter.endPosition(pubSubTopicPartition);
+    assertNotNull(position);
+    assertTrue(position instanceof ApacheKafkaOffsetPosition);
+    assertEquals(((ApacheKafkaOffsetPosition) position).getInternalOffset(), expectedOffset);
+
+    // Case 2: return empty response
+    doReturn(Collections.emptyMap()).when(internalKafkaConsumer)
+        .endOffsets(eq(Collections.singleton(topicPartition)), any(Duration.class));
+    position = kafkaConsumerAdapter.endPosition(pubSubTopicPartition);
+    assertEquals(position, PubSubSymbolicPosition.LATEST);
+  }
+
+  @Test
+  public void testOffsetForTimeWithTimeoutSuccess() {
+    PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic("test"), 0);
+    TopicPartition topicPartition =
+        new TopicPartition(pubSubTopicPartition.getTopicName(), pubSubTopicPartition.getPartitionNumber());
+    long timestamp = 1000000L;
+    ApacheKafkaOffsetPosition expectedPosition = ApacheKafkaOffsetPosition.of(500L);
+    OffsetAndTimestamp offsetAndTimestamp = new OffsetAndTimestamp(expectedPosition.getInternalOffset(), timestamp);
+    Map<TopicPartition, OffsetAndTimestamp> mockResponse = Collections.singletonMap(topicPartition, offsetAndTimestamp);
+
+    when(
+        internalKafkaConsumer
+            .offsetsForTimes(Collections.singletonMap(topicPartition, timestamp), Duration.ofMillis(500)))
+                .thenReturn(mockResponse);
+
+    PubSubPosition actualPosition =
+        kafkaConsumerAdapter.getPositionByTimestamp(pubSubTopicPartition, timestamp, Duration.ofMillis(500));
+    assertEquals(actualPosition, expectedPosition);
+  }
+
+  @Test
+  public void testOffsetForTimeWithTimeoutReturnsNull() {
+    PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic("test"), 0);
+    TopicPartition topicPartition =
+        new TopicPartition(pubSubTopicPartition.getTopicName(), pubSubTopicPartition.getPartitionNumber());
+    long timestamp = 1000000L;
+    Map<TopicPartition, OffsetAndTimestamp> mockResponse = Collections.emptyMap();
+
+    when(
+        internalKafkaConsumer
+            .offsetsForTimes(Collections.singletonMap(topicPartition, timestamp), Duration.ofMillis(500)))
+                .thenReturn(mockResponse);
+
+    assertNull(
+        kafkaConsumerAdapter.getPositionByTimestamp(pubSubTopicPartition, timestamp, Duration.ofMillis(500)),
+        "Should return null when no offset found for the given timestamp");
+  }
+
+  @Test(expectedExceptions = PubSubOpTimeoutException.class)
+  public void testOffsetForTimeWithTimeoutThrowsTimeoutException() {
+    PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic("test"), 0);
+    TopicPartition topicPartition =
+        new TopicPartition(pubSubTopicPartition.getTopicName(), pubSubTopicPartition.getPartitionNumber());
+    long timestamp = 1000000L;
+
+    when(
+        internalKafkaConsumer
+            .offsetsForTimes(Collections.singletonMap(topicPartition, timestamp), Duration.ofMillis(500)))
+                .thenThrow(new TimeoutException("Test timeout"));
+
+    kafkaConsumerAdapter.getPositionByTimestamp(pubSubTopicPartition, timestamp, Duration.ofMillis(500));
+  }
+
+  @Test
+  public void testOffsetForTimeWithoutTimeoutSuccess() {
+    PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic("test"), 0);
+    TopicPartition topicPartition =
+        new TopicPartition(pubSubTopicPartition.getTopicName(), pubSubTopicPartition.getPartitionNumber());
+    long timestamp = 1000000L;
+    ApacheKafkaOffsetPosition expectedPosition = ApacheKafkaOffsetPosition.of(500L);
+    OffsetAndTimestamp offsetAndTimestamp = new OffsetAndTimestamp(expectedPosition.getInternalOffset(), timestamp);
+    Map<TopicPartition, OffsetAndTimestamp> mockResponse = Collections.singletonMap(topicPartition, offsetAndTimestamp);
+
+    when(internalKafkaConsumer.offsetsForTimes(Collections.singletonMap(topicPartition, timestamp)))
+        .thenReturn(mockResponse);
+
+    PubSubPosition actualPosition = kafkaConsumerAdapter.getPositionByTimestamp(pubSubTopicPartition, timestamp);
+    assertEquals(actualPosition, expectedPosition);
+  }
+
+  @Test
+  public void testGetPositionByTimestampWithTimeout() {
+    PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic("test"), 0);
+    TopicPartition topicPartition =
+        new TopicPartition(pubSubTopicPartition.getTopicName(), pubSubTopicPartition.getPartitionNumber());
+    long timestamp = 1000000L;
+    long expectedOffset = 500L;
+
+    Map<TopicPartition, OffsetAndTimestamp> offsetsForTimesResponse =
+        Collections.singletonMap(topicPartition, new OffsetAndTimestamp(expectedOffset, timestamp));
+
+    doReturn(offsetsForTimesResponse).when(internalKafkaConsumer)
+        .offsetsForTimes(Collections.singletonMap(topicPartition, timestamp), Duration.ofMillis(500));
+
+    PubSubPosition position =
+        kafkaConsumerAdapter.getPositionByTimestamp(pubSubTopicPartition, timestamp, Duration.ofMillis(500));
+    assertNotNull(position);
+    assertTrue(position instanceof ApacheKafkaOffsetPosition);
+    assertEquals(((ApacheKafkaOffsetPosition) position).getInternalOffset(), expectedOffset);
+  }
+
+  @Test
+  public void testGetPositionByTimestampWithoutTimeout() {
+    PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic("test"), 0);
+    TopicPartition topicPartition =
+        new TopicPartition(pubSubTopicPartition.getTopicName(), pubSubTopicPartition.getPartitionNumber());
+    long timestamp = 1000000L;
+    long expectedOffset = 500L;
+    Map<TopicPartition, OffsetAndTimestamp> offsetsForTimesResponse =
+        Collections.singletonMap(topicPartition, new OffsetAndTimestamp(expectedOffset, timestamp));
+
+    doReturn(offsetsForTimesResponse).when(internalKafkaConsumer)
+        .offsetsForTimes(Collections.singletonMap(topicPartition, timestamp));
+
+    PubSubPosition position = kafkaConsumerAdapter.getPositionByTimestamp(pubSubTopicPartition, timestamp);
+    assertNotNull(position);
+    assertTrue(position instanceof ApacheKafkaOffsetPosition);
+    assertEquals(((ApacheKafkaOffsetPosition) position).getInternalOffset(), expectedOffset);
+  }
+
+  @Test
+  public void testGetPositionByTimestampReturnsNull() {
+    PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic("test"), 0);
+    TopicPartition topicPartition =
+        new TopicPartition(pubSubTopicPartition.getTopicName(), pubSubTopicPartition.getPartitionNumber());
+    long timestamp = 1000000L;
+
+    doReturn(Collections.emptyMap()).when(internalKafkaConsumer)
+        .offsetsForTimes(Collections.singletonMap(topicPartition, timestamp));
+
+    PubSubPosition position = kafkaConsumerAdapter.getPositionByTimestamp(pubSubTopicPartition, timestamp);
+    assertNull(position);
+  }
+
+  @Test
+  public void testGetPositionByTimestampThrowsException() {
+    PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic("test"), 0);
+    TopicPartition topicPartition =
+        new TopicPartition(pubSubTopicPartition.getTopicName(), pubSubTopicPartition.getPartitionNumber());
+    long timestamp = 1000000L;
+
+    doThrow(new RuntimeException("Simulate exception")).when(internalKafkaConsumer)
+        .offsetsForTimes(Collections.singletonMap(topicPartition, timestamp));
+
+    Exception e = expectThrows(
+        PubSubClientException.class,
+        () -> kafkaConsumerAdapter.getPositionByTimestamp(pubSubTopicPartition, timestamp));
+    assertTrue(e.getMessage().contains("Failed to fetch offset for time"), "Actual message: " + e.getMessage());
+  }
+
+  @Test
+  public void testComparePositionsWithSymbolicPositions() {
+    long beginningOffset = 10L;
+    long endOffset = 100L;
+
+    when(internalKafkaConsumer.beginningOffsets(eq(Collections.singleton(topicPartition)), any(Duration.class)))
+        .thenReturn(Collections.singletonMap(topicPartition, beginningOffset));
+    when(internalKafkaConsumer.endOffsets(eq(Collections.singleton(topicPartition)), any(Duration.class)))
+        .thenReturn(Collections.singletonMap(topicPartition, endOffset));
+
+    // EARLIEST vs EARLIEST = 0
+    assertEquals(
+        kafkaConsumerAdapter
+            .comparePositions(pubSubTopicPartition, PubSubSymbolicPosition.EARLIEST, PubSubSymbolicPosition.EARLIEST),
+        0L);
+
+    // LATEST vs LATEST = 0
+    assertEquals(
+        kafkaConsumerAdapter
+            .comparePositions(pubSubTopicPartition, PubSubSymbolicPosition.LATEST, PubSubSymbolicPosition.LATEST),
+        0L);
+
+    // EARLIEST (10) < LATEST (100)
+    assertTrue(
+        kafkaConsumerAdapter.comparePositions(
+            pubSubTopicPartition,
+            PubSubSymbolicPosition.EARLIEST,
+            PubSubSymbolicPosition.LATEST) < 0);
+
+    // LATEST (100) > EARLIEST (10)
+    assertTrue(
+        kafkaConsumerAdapter.comparePositions(
+            pubSubTopicPartition,
+            PubSubSymbolicPosition.LATEST,
+            PubSubSymbolicPosition.EARLIEST) > 0);
+  }
+
+  @Test
+  public void testComparePositionsWithConcretePositions() {
+    PubSubPosition pos10 = new ApacheKafkaOffsetPosition(10L);
+    PubSubPosition pos20 = new ApacheKafkaOffsetPosition(20L);
+
+    assertEquals(kafkaConsumerAdapter.comparePositions(pubSubTopicPartition, pos10, pos10), 0L);
+    assertTrue(kafkaConsumerAdapter.comparePositions(pubSubTopicPartition, pos10, pos20) < 0);
+    assertTrue(kafkaConsumerAdapter.comparePositions(pubSubTopicPartition, pos20, pos10) > 0);
+  }
+
+  @Test(expectedExceptions = IllegalArgumentException.class)
+  public void testComparePositionsWithNull() {
+    kafkaConsumerAdapter.comparePositions(pubSubTopicPartition, null, PubSubSymbolicPosition.LATEST);
+  }
+
+  @Test
+  public void testPositionDifferenceWithSymbolicPositions() {
+    when(internalKafkaConsumer.beginningOffsets(eq(Collections.singleton(topicPartition)), any(Duration.class)))
+        .thenReturn(Collections.singletonMap(topicPartition, 10L));
+    when(internalKafkaConsumer.endOffsets(eq(Collections.singleton(topicPartition)), any(Duration.class)))
+        .thenReturn(Collections.singletonMap(topicPartition, 100L));
+
+    // EARLIEST - EARLIEST = 0
+    assertEquals(
+        kafkaConsumerAdapter
+            .positionDifference(pubSubTopicPartition, PubSubSymbolicPosition.EARLIEST, PubSubSymbolicPosition.EARLIEST),
+        0L);
+
+    // LATEST - LATEST = 0
+    assertEquals(
+        kafkaConsumerAdapter
+            .positionDifference(pubSubTopicPartition, PubSubSymbolicPosition.LATEST, PubSubSymbolicPosition.LATEST),
+        0L);
+
+    // EARLIEST (10) - LATEST (100) = -90
+    assertEquals(
+        kafkaConsumerAdapter
+            .positionDifference(pubSubTopicPartition, PubSubSymbolicPosition.EARLIEST, PubSubSymbolicPosition.LATEST),
+        -90L);
+
+    // LATEST (100) - EARLIEST (10) = 90
+    assertEquals(
+        kafkaConsumerAdapter
+            .positionDifference(pubSubTopicPartition, PubSubSymbolicPosition.LATEST, PubSubSymbolicPosition.EARLIEST),
+        90L);
+  }
+
+  @Test
+  public void testPositionDifferenceWithConcretePositions() {
+    PubSubPosition pos10 = new ApacheKafkaOffsetPosition(10L);
+    PubSubPosition pos25 = new ApacheKafkaOffsetPosition(25L);
+
+    assertEquals(kafkaConsumerAdapter.positionDifference(pubSubTopicPartition, pos10, pos25), -15L);
+    assertEquals(kafkaConsumerAdapter.positionDifference(pubSubTopicPartition, pos25, pos10), 15L);
+    assertEquals(kafkaConsumerAdapter.positionDifference(pubSubTopicPartition, pos25, pos25), 0L);
+  }
+
+  @Test
+  public void testPositionDifferenceWithSymbolicAndConcrete() {
+    ApacheKafkaOffsetPosition p0 = new ApacheKafkaOffsetPosition(0L);
+    ApacheKafkaOffsetPosition p10 = new ApacheKafkaOffsetPosition(10L);
+    doReturn(Collections.singletonMap(topicPartition, p0.getInternalOffset())).when(internalKafkaConsumer)
+        .beginningOffsets(eq(Collections.singleton(topicPartition)), any(Duration.class));
+
+    assertEquals(
+        kafkaConsumerAdapter.positionDifference(pubSubTopicPartition, PubSubSymbolicPosition.EARLIEST, p10),
+        -10L);
+
+    assertEquals(
+        kafkaConsumerAdapter.positionDifference(pubSubTopicPartition, p10, PubSubSymbolicPosition.LATEST),
+        -9223372036854775797L); // Long.MAX_VALUE - 10
+  }
+
+  @Test(expectedExceptions = IllegalArgumentException.class)
+  public void testPositionDifferenceWithNull() {
+    kafkaConsumerAdapter.positionDifference(pubSubTopicPartition, null, new ApacheKafkaOffsetPosition(1L));
+  }
+
+  @Test
+  public void testDecodePositionFromBuffer() {
+    long expectedOffset = 12345L;
+    ApacheKafkaOffsetPosition original = new ApacheKafkaOffsetPosition(expectedOffset);
+
+    PubSubPositionWireFormat wireFormat = original.getPositionWireFormat();
+    PubSubPosition decoded =
+        kafkaConsumerAdapter.decodePosition(pubSubTopicPartition, wireFormat.getType(), wireFormat.getRawBytes());
+    assertTrue(decoded instanceof ApacheKafkaOffsetPosition);
+    assertEquals(((ApacheKafkaOffsetPosition) decoded).getInternalOffset(), expectedOffset);
+  }
+
+  @Test(expectedExceptions = VeniceException.class)
+  public void testDecodePositionWithInvalidBuffer() {
+    ByteBuffer invalidBuffer = ByteBuffer.wrap(new byte[] {}); // Too short to decode
+    kafkaConsumerAdapter.decodePosition(pubSubTopicPartition, APACHE_KAFKA_OFFSET_POSITION_TYPE_ID, invalidBuffer);
   }
 }

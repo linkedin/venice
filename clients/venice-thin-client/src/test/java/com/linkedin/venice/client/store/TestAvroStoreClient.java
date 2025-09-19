@@ -49,7 +49,10 @@ public class TestAvroStoreClient {
     doReturn(mockTransportClient).when(mockTransportClient).getCopyIfNotUsableInCallback();
 
     byte[] schemaResponseInBytes = StoreClientTestUtils.constructSchemaResponseInBytes(STORE_NAME, 1, KEY_SCHEMA_STR);
-    setupSchemaResponse(schemaResponseInBytes, RouterBackedSchemaReader.TYPE_KEY_SCHEMA + "/" + STORE_NAME);
+    StoreClientTestUtils.setupSchemaResponse(
+        mockTransportClient,
+        schemaResponseInBytes,
+        RouterBackedSchemaReader.TYPE_KEY_SCHEMA + "/" + STORE_NAME);
     genericStoreClient =
         new AvroGenericStoreClientImpl(mockTransportClient, ClientConfig.defaultGenericClientConfig(STORE_NAME));
   }
@@ -65,11 +68,6 @@ public class TestAvroStoreClient {
   }
 
   @Test
-  public void testStartClient() throws VeniceClientException {
-    genericStoreClient.start();
-  }
-
-  @Test(dependsOnMethods = { "testStartClient" })
   public void testGet() {
     genericStoreClient.start();
 
@@ -94,72 +92,57 @@ public class TestAvroStoreClient {
     verify(mockTransportClient, atLeast(2)).get(any());
   }
 
-  @Test(dependsOnMethods = { "testStartClient" })
+  @Test
   public void testFetchRecordDeserializer() throws IOException {
-    // Setup multi-schema response
-    Map schemas = new HashMap<>();
-    schemas.put(1, TestValueRecord.SCHEMA$.toString());
-    schemas.put(2, TestValueRecordWithMoreFields.SCHEMA$.toString());
-    byte[] multiSchemasInBytes = StoreClientTestUtils.constructMultiSchemaResponseInBytes(STORE_NAME, schemas);
-    setupSchemaResponse(multiSchemasInBytes, RouterBackedSchemaReader.TYPE_VALUE_SCHEMA + "/" + STORE_NAME);
+    // Setup multi-schema response to simulate a field deletion of the int_field
+    Map<Integer, Schema> schemas = new HashMap<>();
+    schemas.put(1, TestValueRecordWithMoreFields.SCHEMA$);
+    schemas.put(2, TestValueRecord.SCHEMA$);
 
-    // Setup individual schema responses
-    setupSchemaResponse(1, TestValueRecord.SCHEMA$);
-    setupSchemaResponse(2, TestValueRecordWithMoreFields.SCHEMA$);
+    StoreClientTestUtils.setupMultiValueSchemaResponse(mockTransportClient, STORE_NAME, schemas);
 
     genericStoreClient.start();
 
     AvroSpecificStoreClientImpl specificStoreClient = new AvroSpecificStoreClientImpl(
         mockTransportClient,
-        ClientConfig.defaultSpecificClientConfig(STORE_NAME, TestValueRecord.class));
+        ClientConfig.defaultSpecificClientConfig(STORE_NAME, TestValueRecordWithMoreFields.class));
 
     specificStoreClient.start();
     RecordDeserializer specificRecordDeserializer = specificStoreClient.getDataRecordDeserializer(1);
 
-    TestValueRecord testValue;
-    testValue = new TestValueRecord();
-    testValue.long_field = 0l;
+    TestValueRecordWithMoreFields testValue;
+    testValue = new TestValueRecordWithMoreFields();
+    testValue.long_field = 0L;
     testValue.string_field = "";
+    testValue.int_field = 5;
 
-    byte[] testValueInBytes = StoreClientTestUtils.serializeRecord(testValue, TestValueRecord.SCHEMA$);
+    byte[] testValueInBytes = StoreClientTestUtils.serializeRecord(testValue, TestValueRecordWithMoreFields.SCHEMA$);
 
     // Test deserialization
-    genericStoreClient.getDataRecordDeserializer(1); // This will pull in all the value schemas
+    // Generic record deserialization
+    Assert.assertEquals(genericStoreClient.getSchemaReader().getLatestValueSchemaId().intValue(), 2);
     RecordDeserializer genericRecordDeserializer = genericStoreClient.getDataRecordDeserializer(1);
     Object genericTestValue = genericRecordDeserializer.deserialize(testValueInBytes);
     Assert.assertTrue(genericTestValue instanceof GenericData.Record);
     Assert.assertEquals(
         ((GenericData.Record) genericTestValue).get("int_field"),
-        10,
-        "we are supposed to get the default value for the missing field");
+        5,
+        "we are still suppose to get the value for the deleted field since it was written with schema id 1");
 
-    Assert.assertTrue(specificRecordDeserializer.deserialize(testValueInBytes) instanceof TestValueRecord);
+    // Specific record deserialization
+    Assert
+        .assertTrue(specificRecordDeserializer.deserialize(testValueInBytes) instanceof TestValueRecordWithMoreFields);
 
     specificStoreClient.close();
-  }
-
-  private void setupSchemaResponse(int schemaId, Schema schema) throws IOException {
-    byte[] schemaResponseInBytes =
-        StoreClientTestUtils.constructSchemaResponseInBytes(STORE_NAME, schemaId, schema.toString());
-    setupSchemaResponse(
-        schemaResponseInBytes,
-        RouterBackedSchemaReader.TYPE_VALUE_SCHEMA + "/" + STORE_NAME + "/" + schemaId);
-  }
-
-  private void setupSchemaResponse(byte[] response, String path) {
-    CompletableFuture<TransportClientResponse> transportFuture = new CompletableFuture<>();
-    transportFuture.complete(new TransportClientResponse(-1, CompressionStrategy.NO_OP, response));
-    doReturn(transportFuture).when(mockTransportClient).get(path);
   }
 
   @Test
   public void testDeserializeWriterSchemaMissingReaderNamespace() throws IOException {
     Schema schemaWithoutNamespace = Utils.getSchemaFromResource("testSchemaWithoutNamespace.avsc");
-    byte[] singleSchemaResponseInBytes =
-        StoreClientTestUtils.constructSchemaResponseInBytes(STORE_NAME, 1, schemaWithoutNamespace.toString());
-    setupSchemaResponse(
-        singleSchemaResponseInBytes,
-        RouterBackedSchemaReader.TYPE_VALUE_SCHEMA + "/" + STORE_NAME + "/" + 1);
+
+    Map<Integer, Schema> valueSchemas = new HashMap<>();
+    valueSchemas.put(1, schemaWithoutNamespace);
+    StoreClientTestUtils.setupMultiValueSchemaResponse(mockTransportClient, STORE_NAME, valueSchemas);
 
     AvroSpecificStoreClientImpl specificStoreClient = new AvroSpecificStoreClientImpl(
         mockTransportClient,

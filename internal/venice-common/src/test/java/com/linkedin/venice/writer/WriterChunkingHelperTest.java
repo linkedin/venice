@@ -1,5 +1,6 @@
 package com.linkedin.venice.writer;
 
+import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.serialization.KeyWithChunkingSuffixSerializer;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -14,6 +15,7 @@ public class WriterChunkingHelperTest {
     ChunkedPayloadAndManifest result = WriterChunkingHelper.chunkPayloadAndSend(
         keyBytes,
         valueBytes,
+        MessageType.PUT,
         true,
         1,
         0,

@@ -1,24 +1,23 @@
 package com.linkedin.davinci.store;
 
-import static com.linkedin.davinci.store.AbstractStorageEngine.StoragePartitionAdjustmentTrigger.BEGIN_BATCH_PUSH;
-import static com.linkedin.davinci.store.AbstractStorageEngine.StoragePartitionAdjustmentTrigger.CHECK_DATABASE_INTEGRITY;
-import static com.linkedin.davinci.store.AbstractStorageEngine.StoragePartitionAdjustmentTrigger.END_BATCH_PUSH;
+import static com.linkedin.davinci.store.StoragePartitionAdjustmentTrigger.BEGIN_BATCH_PUSH;
+import static com.linkedin.davinci.store.StoragePartitionAdjustmentTrigger.CHECK_DATABASE_INTEGRITY;
+import static com.linkedin.davinci.store.StoragePartitionAdjustmentTrigger.END_BATCH_PUSH;
 
 import com.linkedin.davinci.callback.BytesStreamingCallback;
-import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.PersistenceFailureException;
 import com.linkedin.venice.exceptions.StorageInitializationException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
-import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.pubsub.PubSubContext;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.SparseConcurrentList;
-import java.io.Closeable;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -51,11 +50,8 @@ import org.apache.logging.log4j.Logger;
  * The point of having one storage engine(environment) or one database for one partition, is to simplify the complexity of rebalancing/partition migration/host swap.
  * The team agreed to take (2.2) as default storage-partition model for now, and run performance tests to see if it goes well.
  */
-public abstract class AbstractStorageEngine<Partition extends AbstractStoragePartition> implements Closeable {
-  public enum StoragePartitionAdjustmentTrigger {
-    CHECK_DATABASE_INTEGRITY, BEGIN_BATCH_PUSH, END_BATCH_PUSH, PREPARE_FOR_READ, PROMOTE_TO_LEADER, DEMOTE_TO_FOLLOWER
-  }
-
+public abstract class AbstractStorageEngine<Partition extends AbstractStoragePartition>
+    implements StorageEngine<Partition> {
   private static final Logger LOGGER = LogManager.getLogger(AbstractStorageEngine.class);
 
   private static final byte[] VERSION_METADATA_KEY = "VERSION_METADATA".getBytes();
@@ -108,6 +104,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     return readWriteLock;
   }
 
+  @Override
   public String getStoreVersionName() {
     return storeVersionName;
   }
@@ -116,24 +113,6 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
   public String toString() {
     return getStoreVersionName();
   }
-
-  public abstract PersistenceType getType();
-
-  public abstract long getStoreSizeInBytes();
-
-  public long getCachedStoreSizeInBytes() {
-    return 0;
-  }
-
-  public long getRMDSizeInBytes() {
-    return 0;
-  }
-
-  public long getCachedRMDSizeInBytes() {
-    return 0;
-  }
-
-  public abstract Set<Integer> getPersistedPartitionIds();
 
   public abstract Partition createStoragePartition(StoragePartitionConfig partitionConfig);
 
@@ -164,7 +143,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
       partitionIds.stream()
           .sorted((o1, o2) -> Integer.compare(o2, o1)) // reverse order, to minimize array resizing in {@link
                                                        // SparseConcurrentList}
-          .forEach(this::addStoragePartition);
+          .forEach(this::addStoragePartitionIfAbsent);
     }
   }
 
@@ -173,7 +152,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
   }
 
   // For testing purpose only.
-  public AbstractStoragePartition getMetadataPartition() {
+  protected AbstractStoragePartition getMetadataPartition() {
     return metadataPartition;
   }
 
@@ -183,6 +162,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
    *
    * The reason to have {@param partitionId} is mainly used to ease the unit test.
    */
+  @Override
   public synchronized void adjustStoragePartition(
       int partitionId,
       StoragePartitionAdjustmentTrigger mode,
@@ -211,10 +191,15 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     }
   }
 
-  public void addStoragePartition(int partitionId) {
+  @Override
+  public synchronized void addStoragePartitionIfAbsent(int partitionId) {
+    if (containsPartition(partitionId)) {
+      return;
+    }
     addStoragePartition(new StoragePartitionConfig(storeVersionName, partitionId));
   }
 
+  @Override
   public synchronized void addStoragePartition(StoragePartitionConfig storagePartitionConfig) {
     validateStoreName(storagePartitionConfig);
     int partitionId = storagePartitionConfig.getPartitionId();
@@ -246,6 +231,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     }
   }
 
+  @Override
   public synchronized void closePartition(int partitionId) {
     AbstractStoragePartition partition = this.partitionList.remove(partitionId);
     if (partition == null) {
@@ -258,6 +244,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     }
   }
 
+  @Override
   public synchronized void closeMetadataPartition() {
     if (metadataPartitionCreated()) {
       metadataPartition.close();
@@ -271,7 +258,19 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
    *
    * @param partitionId - id of partition to retrieve and remove
    */
+  @Override
   public synchronized void dropPartition(int partitionId) {
+    dropPartition(partitionId, true);
+  }
+
+  /**
+   * Removes and returns a partition from the current store
+   *
+   * @param partitionId - id of partition to retrieve and remove
+   * @param dropMetadataPartitionWhenEmpty - if true, the whole store will be dropped if ALL partitions are removed
+   */
+  @Override
+  public synchronized void dropPartition(int partitionId, boolean dropMetadataPartitionWhenEmpty) {
     /**
      * The caller of this method should ensure that:
      * 1. The SimpleKafkaConsumerTask associated with this partition is shutdown
@@ -298,7 +297,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     AbstractStoragePartition partition = this.partitionList.remove(partitionId);
     partition.drop();
 
-    if (getNumberOfPartitions() == 0) {
+    if (getNumberOfPartitions() == 0 && dropMetadataPartitionWhenEmpty) {
       if (!suppressLogs) {
         LOGGER.info("All Partitions deleted for Store {}", getStoreVersionName());
       }
@@ -310,7 +309,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     }
   }
 
-  public synchronized void dropMetadataPartition() {
+  private synchronized void dropMetadataPartition() {
     if (metadataPartitionCreated()) {
       metadataPartition.drop();
       metadataPartition = null;
@@ -321,6 +320,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
   /**
    * Drop the whole store
    */
+  @Override
   public synchronized void drop() {
     // check if its already dropped.
     if (getNumberOfPartitions() == 0 && !metadataPartitionCreated()) {
@@ -344,6 +344,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     }
   }
 
+  @Override
   public synchronized Map<String, String> sync(int partitionId) {
     AbstractStoragePartition partition = partitionList.get(partitionId);
     if (partition == null) {
@@ -369,6 +370,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     closeMetadataPartition();
   }
 
+  @Override
   public boolean isClosed() {
     return this.partitionList.isEmpty();
   }
@@ -377,6 +379,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
    * checks whether the current state of the database is valid
    * during the start of ingestion.
    */
+  @Override
   public boolean checkDatabaseIntegrity(
       int partitionId,
       Map<String, String> checkpointedInfo,
@@ -390,6 +393,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
    * number of writes (puts/deletes) against the data source. This method puts
    * the storage engine in this batch write mode
    */
+  @Override
   public synchronized void beginBatchWrite(
       StoragePartitionConfig storagePartitionConfig,
       Map<String, String> checkpointedInfo,
@@ -409,6 +413,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
   /**
    * @return true if the storage engine successfully returned to normal mode
    */
+  @Override
   public synchronized void endBatchWrite(StoragePartitionConfig storagePartitionConfig) {
     LOGGER.info("End batch write for storage partition config: {}", storagePartitionConfig);
     AbstractStoragePartition partition = getPartitionOrThrow(storagePartitionConfig.getPartitionId());
@@ -423,15 +428,6 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     }
   }
 
-  /**
-   * Create snapshot for the given partition
-   * @param storagePartitionConfig
-   */
-  public synchronized void createSnapshot(StoragePartitionConfig storagePartitionConfig) {
-    AbstractStoragePartition partition = getPartitionOrThrow(storagePartitionConfig.getPartitionId());
-    partition.createSnapshot();
-  }
-
   private void executeWithSafeGuard(int partitionId, Runnable runnable) {
     executeWithSafeGuard(partitionId, () -> {
       runnable.run();
@@ -439,7 +435,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     });
   }
 
-  private <T> T executeWithSafeGuard(int partitionId, Callable<T> callable) {
+  protected <T> T executeWithSafeGuard(int partitionId, Callable<T> callable) {
     ReadWriteLock readWriteLock = getRWLockForPartitionOrThrow(partitionId);
     readWriteLock.readLock().lock();
     try {
@@ -457,6 +453,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
   /**
    * Reopen the underlying database.
    */
+  @Override
   public void reopenStoragePartition(int partitionId) {
     executeWithSafeGuard(partitionId, () -> {
       if (!containsPartition(partitionId)) {
@@ -468,6 +465,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     });
   }
 
+  @Override
   public void put(int partitionId, byte[] key, byte[] value) throws VeniceException {
     executeWithSafeGuard(partitionId, () -> {
       AbstractStoragePartition partition = getPartitionOrThrow(partitionId);
@@ -475,6 +473,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     });
   }
 
+  @Override
   public void put(int partitionId, byte[] key, ByteBuffer value) throws VeniceException {
     executeWithSafeGuard(partitionId, () -> {
       AbstractStoragePartition partition = getPartitionOrThrow(partitionId);
@@ -482,6 +481,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     });
   }
 
+  @Override
   public void putWithReplicationMetadata(int partitionId, byte[] key, ByteBuffer value, byte[] replicationMetadata)
       throws VeniceException {
     executeWithSafeGuard(partitionId, () -> {
@@ -490,6 +490,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     });
   }
 
+  @Override
   public void putReplicationMetadata(int partitionId, byte[] key, byte[] replicationMetadata) throws VeniceException {
     executeWithSafeGuard(partitionId, () -> {
       AbstractStoragePartition partition = getPartitionOrThrow(partitionId);
@@ -497,13 +498,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     });
   }
 
-  public <K, V> void put(int partitionId, K key, V value) {
-    executeWithSafeGuard(partitionId, () -> {
-      AbstractStoragePartition partition = getPartitionOrThrow(partitionId);
-      partition.put(key, value);
-    });
-  }
-
+  @Override
   public byte[] get(int partitionId, byte[] key) throws VeniceException {
     return executeWithSafeGuard(partitionId, () -> {
       AbstractStoragePartition partition = getPartitionOrThrow(partitionId);
@@ -511,6 +506,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     });
   }
 
+  @Override
   public ByteBuffer get(int partitionId, byte[] key, ByteBuffer valueToBePopulated) throws VeniceException {
     return executeWithSafeGuard(partitionId, () -> {
       AbstractStoragePartition partition = getPartitionOrThrow(partitionId);
@@ -518,6 +514,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     });
   }
 
+  @Override
   public byte[] get(int partitionId, ByteBuffer keyBuffer) throws VeniceException {
     return executeWithSafeGuard(partitionId, () -> {
       AbstractStoragePartition partition = getPartitionOrThrow(partitionId);
@@ -525,6 +522,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     });
   }
 
+  @Override
   public void getByKeyPrefix(int partitionId, byte[] partialKey, BytesStreamingCallback bytesStreamingCallback) {
     executeWithSafeGuard(partitionId, () -> {
       AbstractStoragePartition partition = getPartitionOrThrow(partitionId);
@@ -532,6 +530,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     });
   }
 
+  @Override
   public void delete(int partitionId, byte[] key) throws VeniceException {
     executeWithSafeGuard(partitionId, () -> {
       AbstractStoragePartition partition = getPartitionOrThrow(partitionId);
@@ -539,6 +538,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     });
   }
 
+  @Override
   public void deleteWithReplicationMetadata(int partitionId, byte[] key, byte[] replicationMetadata)
       throws VeniceException {
     executeWithSafeGuard(partitionId, () -> {
@@ -547,6 +547,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     });
   }
 
+  @Override
   public byte[] getReplicationMetadata(int partitionId, ByteBuffer key) {
     return executeWithSafeGuard(partitionId, () -> {
       AbstractStoragePartition partition = getPartitionOrThrow(partitionId);
@@ -557,6 +558,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
   /**
    * Put the offset associated with the partitionId into the metadata partition.
    */
+  @Override
   public synchronized void putPartitionOffset(int partitionId, OffsetRecord offsetRecord) {
     if (!metadataPartitionCreated()) {
       throw new StorageInitializationException("Metadata partition not created!");
@@ -573,7 +575,8 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
   /**
    * Retrieve the offset associated with the partitionId from the metadata partition.
    */
-  public synchronized Optional<OffsetRecord> getPartitionOffset(int partitionId) {
+  @Override
+  public synchronized Optional<OffsetRecord> getPartitionOffset(int partitionId, PubSubContext pubSubContext) {
     if (!metadataPartitionCreated()) {
       throw new StorageInitializationException("Metadata partition not created!");
     }
@@ -587,12 +590,13 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     if (value == null) {
       return Optional.empty();
     }
-    return Optional.of(new OffsetRecord(value, partitionStateSerializer));
+    return Optional.of(new OffsetRecord(value, partitionStateSerializer, pubSubContext));
   }
 
   /**
    * Clear the offset associated with the partitionId in the metadata partition.
    */
+  @Override
   public synchronized void clearPartitionOffset(int partitionId) {
     if (!metadataPartitionCreated()) {
       LOGGER.info(
@@ -611,13 +615,10 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     metadataPartition.delete(getPartitionMetadataKey(partitionId));
   }
 
-  public static boolean isMetadataPartition(int partitionId) {
-    return partitionId == METADATA_PARTITION_ID;
-  }
-
   /**
    * Put the store version state into the metadata partition.
    */
+  @Override
   public synchronized void putStoreVersionState(StoreVersionState versionState) {
     if (!metadataPartitionCreated()) {
       throw new StorageInitializationException("Metadata partition not created!");
@@ -631,6 +632,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
    * Used in ingestion isolation mode update the storage engine's cache in sync with the updates to the state in
    * {@link com.linkedin.davinci.ingestion.main.MainIngestionStorageMetadataService}
    */
+  @Override
   public void updateStoreVersionStateCache(StoreVersionState versionState) {
     versionStateCache.set(versionState);
   }
@@ -638,6 +640,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
   /**
    * Retrieve the store version state from the metadata partition.
    */
+  @Override
   public StoreVersionState getStoreVersionState() {
     while (true) {
       StoreVersionState versionState = versionStateCache.get();
@@ -661,6 +664,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
   /**
    * Clear the store version state in the metadata partition.
    */
+  @Override
   public synchronized void clearStoreVersionState() {
     versionStateCache.set(null);
     metadataPartition.delete(VERSION_METADATA_KEY);
@@ -672,6 +676,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
    * @param partitionId The partition to look for
    * @return True/False, does the partition exist on this node
    */
+  @Override
   public synchronized boolean containsPartition(int partitionId) {
     return this.partitionList.get(partitionId) != null;
   }
@@ -691,12 +696,18 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
    *
    * @return partition Ids that are hosted in the current Storage Engine.
    */
+  @Override
   public synchronized Set<Integer> getPartitionIds() {
     return this.partitionList.values().stream().map(Partition::getPartitionId).collect(Collectors.toSet());
   }
 
-  public AbstractStoragePartition getPartitionOrThrow(int partitionId) {
-    AbstractStoragePartition partition;
+  protected Collection<Partition> getPartitions() {
+    return this.partitionList.values();
+  }
+
+  @Override
+  public Partition getPartitionOrThrow(int partitionId) {
+    Partition partition;
     ReadWriteLock readWriteLock = getRWLockForPartitionOrThrow(partitionId);
     readWriteLock.readLock().lock();
     try {
@@ -711,11 +722,6 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
       throw e;
     }
     return partition;
-  }
-
-  public synchronized long getPartitionSizeInBytes(int partitionId) {
-    AbstractStoragePartition partition = partitionList.get(partitionId);
-    return partition != null ? partition.getPartitionSizeInBytes() : 0;
   }
 
   private static byte[] getPartitionMetadataKey(int partitionId) {
@@ -734,24 +740,11 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     }
   }
 
-  public CompressionStrategy getCompressionStrategy() {
-    StoreVersionState svs = getStoreVersionState();
-    return svs == null ? CompressionStrategy.NO_OP : CompressionStrategy.valueOf(svs.compressionStrategy);
-  }
-
-  public boolean isChunked() {
-    StoreVersionState svs = getStoreVersionState();
-    return svs == null ? false : svs.chunked;
-  }
-
   public void suppressLogs(boolean suppressLogs) {
     this.suppressLogs = suppressLogs;
   }
 
-  public boolean hasMemorySpaceLeft() {
-    return true;
-  }
-
+  @Override
   public AbstractStorageIterator getIterator(int partitionId) {
     throw new UnsupportedOperationException("Method not supported for storage engine");
   }

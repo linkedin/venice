@@ -55,7 +55,7 @@ public class Replica {
   @JsonIgnore
   public String toString() {
     StringJoiner joiner = new StringJoiner(" ");
-    joiner.add("Host:").add(instance.getUrl());
+    joiner.add("Host:").add(instance.getUrl(false));
     joiner.add("Resource:").add(resource);
     joiner.add("Partition:").add(Integer.toString(partitionId));
     if (status != null) {

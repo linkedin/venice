@@ -1,0 +1,12 @@
+{
+  "name": "ParentControllerMetadataValue",
+  "namespace": "com.linkedin.venice.systemstore.schemas",
+  "type": "record",
+  "fields": [
+    {
+      "name": "valueFields",
+      "type": "string",
+      "doc": "A string of all the Znode contents. Data, config, keySchema, valueSchema, etc."
+    }
+  ]
+}

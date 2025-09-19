@@ -4,21 +4,27 @@ import static com.linkedin.venice.ConfigKeys.ACTIVE_ACTIVE_REAL_TIME_SOURCE_FABR
 import static com.linkedin.venice.ConfigKeys.ADMIN_TOPIC_SOURCE_REGION;
 import static com.linkedin.venice.ConfigKeys.AGGREGATE_REAL_TIME_SOURCE_REGION;
 import static com.linkedin.venice.ConfigKeys.CHILD_DATA_CENTER_KAFKA_URL_PREFIX;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_ENABLE_REAL_TIME_TOPIC_VERSIONING;
 import static com.linkedin.venice.ConfigKeys.KAFKA_CLUSTER_MAP_KEY_NAME;
 import static com.linkedin.venice.ConfigKeys.KAFKA_CLUSTER_MAP_KEY_OTHER_URLS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_CLUSTER_MAP_KEY_URL;
 import static com.linkedin.venice.ConfigKeys.KAFKA_CLUSTER_MAP_SECURITY_PROTOCOL;
-import static com.linkedin.venice.ConfigKeys.KAFKA_SECURITY_PROTOCOL;
 import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_FABRIC_ALLOWLIST;
 import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_BATCH_ONLY_STORES;
 import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_HYBRID_STORES;
 import static com.linkedin.venice.ConfigKeys.PARENT_KAFKA_CLUSTER_FABRIC_LIST;
 import static com.linkedin.venice.ConfigKeys.PARTICIPANT_MESSAGE_STORE_ENABLED;
+import static com.linkedin.venice.ConfigKeys.PUBSUB_SECURITY_PROTOCOL_LEGACY;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.CHILD_REGION_NAME_PREFIX;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_PARENT_DATA_CENTER_REGION_NAME;
 
+import com.linkedin.d2.balancer.D2Client;
+import com.linkedin.davinci.helix.HelixParticipationService;
+import com.linkedin.davinci.notifier.LeaderErrorNotifier;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
+import com.linkedin.venice.utils.LogContext;
+import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import java.io.File;
@@ -30,6 +36,8 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import org.apache.commons.io.IOUtils;
@@ -47,11 +55,13 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
   private final String[] clusterNames;
   private final ZkServerWrapper zkServerWrapper;
   private final PubSubBrokerWrapper parentPubSubBrokerWrapper;
+  private final Map<String, String> pubSubBrokerDetails;
 
   VeniceTwoLayerMultiRegionMultiClusterWrapper(
       File dataDirectory,
       ZkServerWrapper zkServerWrapper,
       PubSubBrokerWrapper parentPubSubBrokerWrapper,
+      Map<String, String> pubSubBrokerDetails,
       List<VeniceMultiClusterWrapper> childRegions,
       List<VeniceControllerWrapper> parentControllers,
       String parentRegionName,
@@ -59,6 +69,7 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
     super(SERVICE_NAME, dataDirectory);
     this.zkServerWrapper = zkServerWrapper;
     this.parentPubSubBrokerWrapper = parentPubSubBrokerWrapper;
+    this.pubSubBrokerDetails = pubSubBrokerDetails;
     this.parentControllers = parentControllers;
     this.childRegions = childRegions;
     this.parentRegionName = parentRegionName;
@@ -76,6 +87,9 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
      */
     Properties defaultParentControllerProps = new Properties();
     defaultParentControllerProps.setProperty(PARTICIPANT_MESSAGE_STORE_ENABLED, "true");
+    defaultParentControllerProps.setProperty(
+        CONTROLLER_ENABLE_REAL_TIME_TOPIC_VERSIONING,
+        VeniceClusterWrapper.CONTROLLER_ENABLE_REAL_TIME_TOPIC_VERSIONING_IN_TESTS);
 
     ZkServerWrapper zkServer = null;
     PubSubBrokerWrapper parentPubSubBrokerWrapper = null;
@@ -136,6 +150,7 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
       nativeReplicationRequiredChildControllerProps.put(PARENT_KAFKA_CLUSTER_FABRIC_LIST, parentRegionName);
       nativeReplicationRequiredChildControllerProps
           .put(CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + parentRegionName, parentPubSubBrokerWrapper.getAddress());
+      Map<String, D2Client> d2Clients = new HashMap<>();
       for (String regionName: childRegionName) {
         ZkServerWrapper zkServerWrapper = ServiceFactory.getZkServer();
         IntegrationTestUtils.ensureZkPathExists(zkServer.getAddress(), options.getChildVeniceZkBasePath());
@@ -146,6 +161,7 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
         pubSubBrokerByRegionName.put(regionName, regionalPubSubBrokerWrapper);
         nativeReplicationRequiredChildControllerProps
             .put(CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + regionName, regionalPubSubBrokerWrapper.getAddress());
+        d2Clients.put(regionName, D2TestUtils.getAndStartD2Client(zkServerWrapper.getAddress()));
       }
       Properties activeActiveRequiredChildControllerProps = new Properties();
       activeActiveRequiredChildControllerProps.put(ACTIVE_ACTIVE_REAL_TIME_SOURCE_FABRIC_LIST, childRegionList);
@@ -173,6 +189,11 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
       finalChildControllerProperties.putAll(pubSubBrokerProps); // child controllers
 
       Properties additionalServerProps = new Properties();
+      if (finalParentControllerProperties.containsKey(PARTICIPANT_MESSAGE_STORE_ENABLED)) {
+        additionalServerProps.put(
+            PARTICIPANT_MESSAGE_STORE_ENABLED,
+            finalParentControllerProperties.get(PARTICIPANT_MESSAGE_STORE_ENABLED));
+      }
       Properties serverPropsOverride = options.getServerProperties();
       if (serverPropsOverride != null) {
         additionalServerProps.putAll(serverPropsOverride);
@@ -192,7 +213,8 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
           .sslToStorageNodes(options.isSslToStorageNodes())
           .sslToKafka(options.isSslToKafka())
           .forkServer(options.isForkServer())
-          .kafkaClusterMap(kafkaClusterMap);
+          .kafkaClusterMap(kafkaClusterMap)
+          .d2Clients(d2Clients);
       // Create multi-clusters
       for (int i = 0; i < options.getNumberOfRegions(); i++) {
         String regionName = childRegionName.get(i);
@@ -214,8 +236,10 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
           false,
           VeniceControllerWrapper.PARENT_D2_CLUSTER_NAME,
           VeniceControllerWrapper.PARENT_D2_SERVICE_NAME);
+      d2Clients.put(parentRegionName + ".parent", D2TestUtils.getAndStartD2Client(zkServer.getAddress()));
       VeniceControllerCreateOptions parentControllerCreateOptions =
-          new VeniceControllerCreateOptions.Builder(clusterNames, zkServer, parentPubSubBrokerWrapper).multiRegion(true)
+          new VeniceControllerCreateOptions.Builder(clusterNames, zkServer, parentPubSubBrokerWrapper, d2Clients)
+              .multiRegion(true)
               .veniceZkBasePath(options.getParentVeniceZkBasePath())
               .replicationFactor(options.getReplicationFactor())
               .childControllers(childControllers)
@@ -224,6 +248,7 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
               .clusterToServerD2(clusterToServerD2)
               .regionName(parentRegionName)
               .authorizerService(options.getParentAuthorizerService())
+              .dynamicAccessController(options.getAccessController())
               .build();
       // Create parentControllers for multi-cluster
       for (int i = 0; i < options.getNumberOfParentControllers(); i++) {
@@ -238,6 +263,7 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
           null,
           finalZkServer,
           finalParentKafka,
+          pubSubBrokerProps,
           multiClusters,
           parentControllers,
           parentRegionName,
@@ -257,8 +283,8 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
       List<PubSubBrokerWrapper> kafkaBrokers) {
     PubSubSecurityProtocol baseSecurityProtocol = serverProperties
         .map(
-            properties -> PubSubSecurityProtocol
-                .valueOf(properties.getProperty(KAFKA_SECURITY_PROTOCOL, PubSubSecurityProtocol.PLAINTEXT.name())))
+            properties -> PubSubSecurityProtocol.valueOf(
+                properties.getProperty(PUBSUB_SECURITY_PROTOCOL_LEGACY, PubSubSecurityProtocol.PLAINTEXT.name())))
         .orElse(PubSubSecurityProtocol.PLAINTEXT);
     Map<String, Map<String, String>> kafkaClusterMap = new HashMap<>();
     Map<String, String> mapping;
@@ -325,8 +351,8 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
   }
 
   @Override
-  public String getComponentTagForLogging() {
-    return getServiceName();
+  public LogContext getComponentTagForLogging() {
+    return LogContext.newBuilder().setComponentName(getServiceName()).build();
   }
 
   @Override
@@ -336,10 +362,78 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
 
   @Override
   protected void internalStop() throws Exception {
-    parentControllers.forEach(IOUtils::closeQuietly);
-    childRegions.forEach(IOUtils::closeQuietly);
-    IOUtils.closeQuietly(parentPubSubBrokerWrapper);
-    IOUtils.closeQuietly(zkServerWrapper);
+    LOGGER.info("Starting sequential shutdown of VeniceTwoLayerMultiRegionMultiClusterWrapper");
+    long overallStartTime = System.currentTimeMillis();
+
+    // Step 1: Stop parent controllers first (in parallel)
+    long parentControllersTime = TimingUtils.timeOperationAndReturnDuration(
+        LOGGER,
+        "Step 1: Shutting down " + parentControllers.size() + " parent controllers in parallel",
+        () -> {
+          // Create individual shutdown tasks for each parent controller
+          List<CompletableFuture<Void>> parentControllerShutdownTasks = new ArrayList<>();
+          for (int i = 0; i < parentControllers.size(); i++) {
+            final int controllerIndex = i;
+            final VeniceControllerWrapper parentController = parentControllers.get(i);
+            CompletableFuture<Void> controllerShutdownTask = CompletableFuture.runAsync(() -> {
+              long controllerStartTime = System.currentTimeMillis();
+              LOGGER.debug("Shutting down parent controller {}", controllerIndex);
+              IOUtils.closeQuietly(parentController);
+              long controllerDuration = System.currentTimeMillis() - controllerStartTime;
+              LOGGER.debug("Completed shutdown of parent controller {} in {} ms", controllerIndex, controllerDuration);
+            });
+            parentControllerShutdownTasks.add(controllerShutdownTask);
+          }
+          // Wait for all parent controllers to complete shutdown
+          CompletableFuture.allOf(parentControllerShutdownTasks.toArray(new CompletableFuture[0])).join();
+        });
+
+    // Step 2: Stop child regions in parallel
+    long childRegionsTime = TimingUtils.timeOperationAndReturnDuration(
+        LOGGER,
+        "Step 2: Shutting down " + childRegions.size() + " child regions in parallel",
+        () -> {
+          // Create individual shutdown tasks for each child region
+          List<CompletableFuture<Void>> childRegionShutdownTasks = new ArrayList<>();
+          for (int i = 0; i < childRegions.size(); i++) {
+            final int regionIndex = i;
+            final VeniceMultiClusterWrapper childRegion = childRegions.get(i);
+            CompletableFuture<Void> regionShutdownTask = CompletableFuture.runAsync(() -> {
+              long regionStartTime = System.currentTimeMillis();
+              LOGGER.debug("Shutting down child region {}", regionIndex);
+              IOUtils.closeQuietly(childRegion);
+              long regionDuration = System.currentTimeMillis() - regionStartTime;
+              LOGGER.debug("Completed shutdown of child region {} in {} ms", regionIndex, regionDuration);
+            });
+            childRegionShutdownTasks.add(regionShutdownTask);
+          }
+          // Wait for all child regions to complete shutdown
+          CompletableFuture.allOf(childRegionShutdownTasks.toArray(new CompletableFuture[0])).join();
+        });
+
+    // Step 3: Stop parent PubSub broker
+    long pubSubBrokerTime = TimingUtils.timeOperationAndReturnDuration(
+        LOGGER,
+        "Step 3: Shutting down parent PubSub broker",
+        () -> IOUtils.closeQuietly(parentPubSubBrokerWrapper));
+
+    // Step 4: Stop parent ZooKeeper last
+    long zkShutdownTime = TimingUtils.timeOperationAndReturnDuration(
+        LOGGER,
+        "Step 4: Shutting down ZooKeeper server",
+        () -> IOUtils.closeQuietly(zkServerWrapper));
+
+    long totalShutdownTime = System.currentTimeMillis() - overallStartTime;
+
+    // Log comprehensive timing summary
+    LOGGER.info(
+        "Sequential shutdown timing summary - Total: {} ms, "
+            + "Parent controllers: {} ms, Child regions: {} ms, PubSub broker: {} ms, ZooKeeper: {} ms",
+        totalShutdownTime,
+        parentControllersTime,
+        childRegionsTime,
+        pubSubBrokerTime,
+        zkShutdownTime);
   }
 
   @Override
@@ -446,5 +540,33 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
         }
       }
     }
+  }
+
+  public void failPushInRegion(String regions) {
+    Set<String> regionsList = RegionUtils.parseRegionsFilterList(regions);
+    for (VeniceMultiClusterWrapper childRegion: getChildRegions()) {
+      for (Map.Entry<String, VeniceClusterWrapper> cluster: childRegion.getClusters().entrySet()) {
+        if (regionsList.contains(childRegion.getRegionName())) {
+          LeaderErrorNotifier leaderErrorNotifier = null;
+          List<VeniceServerWrapper> veniceServerWrapperList = cluster.getValue().getVeniceServers();
+          for (VeniceServerWrapper veniceServerWrapper: veniceServerWrapperList) {
+            // Add error notifier which will report leader to be in ERROR instead of COMPLETE
+            HelixParticipationService participationService =
+                veniceServerWrapper.getVeniceServer().getHelixParticipationService();
+            leaderErrorNotifier = new LeaderErrorNotifier(
+                participationService.getVeniceOfflinePushMonitorAccessor(),
+                null,
+                participationService.getStatusStoreWriter(),
+                participationService.getHelixReadOnlyStoreRepository(),
+                participationService.getInstance().getNodeId());
+            participationService.replaceAndAddTestIngestionNotifier(leaderErrorNotifier);
+          }
+        }
+      }
+    }
+  }
+
+  public Map<String, String> getPubSubClientProperties() {
+    return pubSubBrokerDetails;
   }
 }

@@ -41,7 +41,7 @@ public abstract class AbstractVenicePartitionStateModelTest<MODEL_TYPE extends A
   protected String systemStoreName;
   protected int version = 1;
   protected String resourceName;
-  protected String systemSoreResourceName;
+  protected String systemStoreResourceName;
   protected String instanceName;
 
   protected AggVersionedIngestionStats mockAggVersionedIngestionStats;
@@ -52,12 +52,12 @@ public abstract class AbstractVenicePartitionStateModelTest<MODEL_TYPE extends A
   protected ParticipantStateTransitionStats mockParticipantStateTransitionStats;
 
   @BeforeMethod
-  public void setUp() {
+  public void setUp() throws InterruptedException {
     this.storeName = Utils.getUniqueString("stateModelTestStore");
     this.systemStoreName =
         VeniceSystemStoreUtils.getDaVinciPushStatusStoreName(Utils.getUniqueString("stateModelTestStore"));
     this.resourceName = Version.composeKafkaTopic(storeName, version);
-    this.systemSoreResourceName = Version.composeKafkaTopic(systemStoreName, version);
+    this.systemStoreResourceName = Version.composeKafkaTopic(systemStoreName, version);
     this.instanceName = "testInstance";
 
     mockStoreIngestionService = Mockito.mock(KafkaStoreIngestionService.class);
@@ -83,11 +83,12 @@ public abstract class AbstractVenicePartitionStateModelTest<MODEL_TYPE extends A
     mockHelixManager = Mockito.mock(HelixManager.class);
 
     Mockito.when(mockMessage.getResourceName()).thenReturn(resourceName);
-    Mockito.when(mockSystemStoreMessage.getResourceName()).thenReturn(systemSoreResourceName);
+    Mockito.when(mockSystemStoreMessage.getResourceName()).thenReturn(systemStoreResourceName);
     Mockito.when(mockReadOnlyStoreRepository.getStoreOrThrow(Version.parseStoreFromKafkaTopicName(resourceName)))
         .thenReturn(mockStore);
     Mockito
-        .when(mockReadOnlyStoreRepository.getStoreOrThrow(Version.parseStoreFromKafkaTopicName(systemSoreResourceName)))
+        .when(
+            mockReadOnlyStoreRepository.getStoreOrThrow(Version.parseStoreFromKafkaTopicName(systemStoreResourceName)))
         .thenReturn(mockSystemStore);
     Mockito.when(mockStore.getBootstrapToOnlineTimeoutInHours()).thenReturn(Store.BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS);
     Mockito.when(mockSystemStore.getBootstrapToOnlineTimeoutInHours())
@@ -107,5 +108,5 @@ public abstract class AbstractVenicePartitionStateModelTest<MODEL_TYPE extends A
 
   protected abstract MODEL_TYPE getParticipantStateModel();
 
-  protected abstract NOTIFIER_TYPE getNotifier();
+  protected abstract NOTIFIER_TYPE getNotifier() throws InterruptedException;
 }

@@ -15,14 +15,11 @@ public enum VeniceMetricsDimensions {
   /** {@link com.linkedin.venice.read.RequestType} */
   VENICE_REQUEST_METHOD("venice.request.method"),
 
-  /** {@link io.netty.handler.codec.http.HttpResponseStatus} ie. 200, 400, etc */
+  /** {@link HttpResponseStatusEnum} ie. 200, 400, etc */
   HTTP_RESPONSE_STATUS_CODE("http.response.status_code"),
 
   /** {@link HttpResponseStatusCodeCategory} ie. 1xx, 2xx, etc */
   HTTP_RESPONSE_STATUS_CODE_CATEGORY("http.response.status_code_category"),
-
-  /** {@link RequestValidationOutcome#outcome} */
-  VENICE_REQUEST_VALIDATION_OUTCOME("venice.request.validation_outcome"),
 
   /** {@link VeniceResponseStatusCategory} */
   VENICE_RESPONSE_STATUS_CODE_CATEGORY("venice.response.status_code_category"),
@@ -30,8 +27,17 @@ public enum VeniceMetricsDimensions {
   /** {@link RequestRetryType} */
   VENICE_REQUEST_RETRY_TYPE("venice.request.retry_type"),
 
+  /** {@link com.linkedin.venice.stats.dimensions.MessageType} */
+  VENICE_MESSAGE_TYPE("venice.message.type"),
+
+  /** Streaming delivery progress for batch responses (e.g., first, 50pct, 90pct, etc.) */
+  VENICE_STREAM_PROGRESS("venice.stream.progress"),
+
   /** {@link RequestRetryAbortReason} */
-  VENICE_REQUEST_RETRY_ABORT_REASON("venice.request.retry_abort_reason");
+  VENICE_REQUEST_RETRY_ABORT_REASON("venice.request.retry_abort_reason"),
+
+  /** {@link RepushStoreTriggerSource} */
+  REPUSH_TRIGGER_SOURCE("repush.trigger.source");
 
   private final String[] dimensionName = new String[VeniceOpenTelemetryMetricNamingFormat.SIZE];
 
@@ -44,5 +50,10 @@ public enum VeniceMetricsDimensions {
 
   public String getDimensionName(VeniceOpenTelemetryMetricNamingFormat format) {
     return dimensionName[format.getValue()];
+  }
+
+  // visible for testing
+  public String getDimensionNameInDefaultFormat() {
+    return dimensionName[VeniceOpenTelemetryMetricNamingFormat.getDefaultFormat().getValue()];
   }
 }

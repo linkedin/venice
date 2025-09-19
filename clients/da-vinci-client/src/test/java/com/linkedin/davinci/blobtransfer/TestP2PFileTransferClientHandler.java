@@ -4,6 +4,7 @@ import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_
 import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_STATUS;
 import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_TYPE;
 import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferType;
+import static com.linkedin.venice.utils.TestUtils.DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -28,6 +29,7 @@ import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpVersion;
 import io.netty.handler.codec.http.LastHttpContent;
+import io.netty.handler.timeout.IdleStateEvent;
 import io.netty.util.CharsetUtil;
 import java.io.IOException;
 import java.io.InputStream;
@@ -230,6 +232,10 @@ public class TestP2PFileTransferClientHandler {
     Path file1 = dest.resolve("test_file.txt");
     Assert.assertTrue(Files.exists(file1));
     Assert.assertEquals(Files.size(file1), 5);
+
+    // Verify the temp directory is cleaned up
+    Path tempDir = Paths.get(payload.getTempPartitionDir());
+    Assert.assertFalse(Files.exists(tempDir), "Temporary directory should be cleaned up after transfer.");
   }
 
   @Test
@@ -291,7 +297,7 @@ public class TestP2PFileTransferClientHandler {
     expectedMetadata.setPartitionId(TEST_PARTITION);
     InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer =
         AvroProtocolDefinition.PARTITION_STATE.getSerializer();
-    OffsetRecord offsetRecord = new OffsetRecord(partitionStateSerializer);
+    OffsetRecord offsetRecord = new OffsetRecord(partitionStateSerializer, DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING);
     offsetRecord.setOffsetLag(1000L);
     expectedMetadata.setOffsetRecord(ByteBuffer.wrap(offsetRecord.toBytes()));
 
@@ -363,7 +369,7 @@ public class TestP2PFileTransferClientHandler {
     expectMetadata.setPartitionId(TEST_PARTITION);
     InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer =
         AvroProtocolDefinition.PARTITION_STATE.getSerializer();
-    OffsetRecord offsetRecord = new OffsetRecord(partitionStateSerializer);
+    OffsetRecord offsetRecord = new OffsetRecord(partitionStateSerializer, DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING);
     offsetRecord.setOffsetLag(1000L);
     expectMetadata.setOffsetRecord(ByteBuffer.wrap(offsetRecord.toBytes()));
 
@@ -420,8 +426,65 @@ public class TestP2PFileTransferClientHandler {
     Assert.assertEquals(actualMetadata.getPartitionId(), expectMetadata.getPartitionId());
     Assert.assertEquals(actualMetadata.getOffsetRecord(), expectMetadata.getOffsetRecord());
 
+    // Verify the temp directory is cleaned up
+    Path tempDir = Paths.get(payload.getTempPartitionDir());
+    Assert.assertFalse(Files.exists(tempDir), "Temporary directory should be cleaned up after transfer.");
+
     // Ensure the future is completed
     Assert.assertTrue(inputStreamFuture.toCompletableFuture().isDone());
+  }
+
+  @Test
+  public void testChannelInactiveBeforeTransferComplete() throws IOException {
+    // Prepare, response is not complete yet.
+    DefaultHttpResponse response = new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
+    response.headers().add("Content-Disposition", "filename=\"test_file.txt\"");
+    response.headers().add("Content-Length", "5");
+    response.headers().add(BLOB_TRANSFER_TYPE, BlobTransferType.FILE);
+    response.headers().add("Content-MD5", checksumGenerateHelper("12345"));
+
+    ch.writeInbound(response);
+    // Simulate server graceful shutdown by closing channel
+    ch.close();
+
+    // Verification
+    try {
+      inputStreamFuture.toCompletableFuture().get(1, TimeUnit.SECONDS);
+      Assert.fail("Expected exception not thrown");
+    } catch (Exception e) {
+      Assert.assertTrue(e.getCause() instanceof VeniceException);
+      Assert.assertTrue(e.getCause().getMessage().contains("might due to server graceful shutdown"));
+      Assert.assertTrue(e.getCause().getMessage().contains("test_store_v1-0"));
+    }
+  }
+
+  @Test
+  public void testReaderIdleEventBeforeTransferComplete() throws IOException {
+    // Prepare a non complete response
+    DefaultHttpResponse response = new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
+    response.headers().add("Content-Disposition", "filename=\"test_file.txt\"");
+    response.headers().add("Content-Length", "5");
+    response.headers().add(BLOB_TRANSFER_TYPE, BlobTransferType.FILE);
+    response.headers().add("Content-MD5", checksumGenerateHelper("12345"));
+
+    ch.writeInbound(response);
+    // Simulate READER_IDLE timeout event
+    IdleStateEvent idleEvent = IdleStateEvent.READER_IDLE_STATE_EVENT;
+    ch.pipeline().fireUserEventTriggered(idleEvent);
+
+    // Assert: Future should complete exceptionally
+    try {
+      inputStreamFuture.toCompletableFuture().get(1, TimeUnit.SECONDS);
+      Assert.fail("Expected exception not thrown");
+    } catch (Exception e) {
+      Assert.assertTrue(e.getCause() instanceof VeniceException);
+      Assert.assertTrue(
+          e.getCause()
+              .getMessage()
+              .contains("Channel idle before completing transfer, might due to server unexpected abrupt termination."));
+      Assert.assertTrue(e.getCause().getMessage().contains("test_store_v1-0"));
+      Assert.assertTrue(e.getCause().getMessage().contains("channel active:"));
+    }
   }
 
   /**

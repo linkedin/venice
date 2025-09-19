@@ -5,24 +5,16 @@ import static com.linkedin.venice.spark.input.hdfs.VeniceHdfsInputTable.INPUT_TA
 import static com.linkedin.venice.utils.TestWriteUtils.DEFAULT_USER_DATA_VALUE_PREFIX;
 import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V2_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.STRING_TO_STRING_SCHEMA;
+import static com.linkedin.venice.utils.TestWriteUtils.STRING_TO_STRING_WITH_TIMESTAMP;
 import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithStringToNameRecordV1Schema;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.FILE_KEY_SCHEMA;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.FILE_VALUE_SCHEMA;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.GENERATE_PARTIAL_UPDATE_RECORD_FROM_INPUT;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.INPUT_PATH_PROP;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.KEY_FIELD_PROP;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.SCHEMA_STRING_PROP;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.UPDATE_SCHEMA_STRING_PROP;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.VALUE_FIELD_PROP;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.VSON_PUSH;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.*;
 
 import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
 import com.linkedin.venice.schema.vson.VsonAvroSerializer;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
+import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
 import java.io.File;
 import java.io.IOException;
@@ -56,6 +48,7 @@ import org.testng.annotations.Test;
 
 public class TestSparkInputFromHdfs {
   private static final Schema AVRO_FILE_SCHEMA = STRING_TO_STRING_SCHEMA;
+  private static final Schema AVRO_FILE_WITH_TIMESTAMPS_SCHEMA = STRING_TO_STRING_WITH_TIMESTAMP;
   private static final String VSON_STRING_SCHEMA = "\"string\"";
 
   @Test
@@ -64,19 +57,24 @@ public class TestSparkInputFromHdfs {
     Assert.assertEquals(source.inferSchema(null), DEFAULT_SCHEMA);
   }
 
-  @Test
-  public void testAvroInputSource() throws IOException {
+  @Test(dataProviderClass = DataProviderUtils.class, dataProvider = "True-and-False")
+  public void testAvroInputSource(boolean useRecordLevelTimestamp) throws IOException {
     File inputDir = TestWriteUtils.getTempDataDirectory();
     Map<String, String> config = getDefaultConfigs(inputDir);
 
     String file1Path = "string2string1.avro";
-    writeAvroFile(inputDir, file1Path, 1, 100);
+    writeAvroFile(inputDir, file1Path, 1, 100, useRecordLevelTimestamp);
     String file2Path = "string2string2.avro";
-    writeAvroFile(inputDir, file2Path, 101, 200);
+    writeAvroFile(inputDir, file2Path, 101, 200, useRecordLevelTimestamp);
 
     config.put(KEY_FIELD_PROP, DEFAULT_KEY_FIELD_PROP);
     config.put(VALUE_FIELD_PROP, DEFAULT_VALUE_FIELD_PROP);
-    config.put(SCHEMA_STRING_PROP, AVRO_FILE_SCHEMA.toString());
+    if (useRecordLevelTimestamp) {
+      config.put(SCHEMA_STRING_PROP, AVRO_FILE_WITH_TIMESTAMPS_SCHEMA.toString());
+      config.put(RMD_FIELD_PROP, DEFAULT_RMD_FIELD_PROP);
+    } else {
+      config.put(SCHEMA_STRING_PROP, AVRO_FILE_SCHEMA.toString());
+    }
     config.put(VSON_PUSH, String.valueOf(false));
 
     CaseInsensitiveStringMap caseInsensitiveConfig = new CaseInsensitiveStringMap(config);
@@ -114,9 +112,9 @@ public class TestSparkInputFromHdfs {
       try (PartitionReader<InternalRow> reader = readerFactory.createReader(partition)) {
         Assert.assertTrue(reader instanceof VeniceHdfsInputPartitionReader);
         if (((VeniceHdfsInputPartition) partition).getFilePath().getName().equals(file1Path)) {
-          verifyAvroData(reader, 1, 100);
+          verifyAvroData(reader, 1, 100, useRecordLevelTimestamp);
         } else if (((VeniceHdfsInputPartition) partition).getFilePath().getName().equals(file2Path)) {
-          verifyAvroData(reader, 101, 200);
+          verifyAvroData(reader, 101, 200, useRecordLevelTimestamp);
         } else {
           Assert.fail("Unexpected partition: " + partition);
         }
@@ -257,16 +255,22 @@ public class TestSparkInputFromHdfs {
     return config;
   }
 
-  private void writeAvroFile(File inputDir, String fileName, int start, int end) throws IOException {
+  private void writeAvroFile(File inputDir, String fileName, int start, int end, boolean includeTimestamps)
+      throws IOException {
     File file = new File(inputDir, fileName);
 
-    DatumWriter<GenericRecord> datumWriter = new GenericDatumWriter<>(AVRO_FILE_SCHEMA);
+    Schema recordSchema = includeTimestamps ? AVRO_FILE_WITH_TIMESTAMPS_SCHEMA : AVRO_FILE_SCHEMA;
+    DatumWriter<GenericRecord> datumWriter = new GenericDatumWriter<>(recordSchema);
+    long timestampBytes = 123456789L;
     try (DataFileWriter<GenericRecord> dataFileWriter = new DataFileWriter<>(datumWriter)) {
-      dataFileWriter.create(AVRO_FILE_SCHEMA, file);
+      dataFileWriter.create(recordSchema, file);
       for (int i = start; i <= end; ++i) {
-        GenericRecord user = new GenericData.Record(AVRO_FILE_SCHEMA);
+        GenericRecord user = new GenericData.Record(recordSchema);
         user.put(DEFAULT_KEY_FIELD_PROP, Integer.toString(i));
         user.put(DEFAULT_VALUE_FIELD_PROP, DEFAULT_USER_DATA_VALUE_PREFIX + i);
+        if (includeTimestamps) {
+          user.put(DEFAULT_RMD_FIELD_PROP, timestampBytes);
+        }
         dataFileWriter.append(user);
       }
     }
@@ -293,7 +297,8 @@ public class TestSparkInputFromHdfs {
     }
   }
 
-  private void verifyAvroData(PartitionReader<InternalRow> reader, int start, int end) throws IOException {
+  private void verifyAvroData(PartitionReader<InternalRow> reader, int start, int end, boolean containsTimestamp)
+      throws IOException {
     Schema avroStringSchema = Schema.create(Schema.Type.STRING);
     RecordDeserializer<CharSequence> deserializer =
         FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(avroStringSchema, avroStringSchema);
@@ -304,6 +309,10 @@ public class TestSparkInputFromHdfs {
       Assert.assertEquals(
           deserializer.deserialize(row.getBinary(1)).toString(),
           DEFAULT_USER_DATA_VALUE_PREFIX + currentIdx);
+      if (containsTimestamp) {
+        byte[] timestamp = row.getBinary(2);
+        Assert.assertNotNull(timestamp);
+      }
       currentIdx++;
     }
     Assert.assertEquals(currentIdx, end + 1);

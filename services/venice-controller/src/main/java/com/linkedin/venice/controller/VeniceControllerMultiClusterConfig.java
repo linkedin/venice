@@ -1,10 +1,15 @@
 package com.linkedin.venice.controller;
 
 import com.linkedin.venice.SSLConfig;
+import com.linkedin.venice.controller.helix.HelixCapacityConfig;
 import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.exceptions.VeniceNoClusterException;
 import com.linkedin.venice.pubsub.PubSubAdminAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
+import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
+import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.time.Duration;
 import java.util.Collection;
@@ -13,10 +18,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import org.apache.helix.model.CloudConfig;
+import org.apache.helix.model.ClusterConfig;
 
 
 public class VeniceControllerMultiClusterConfig {
   private final Map<String, VeniceControllerClusterConfig> clusterToControllerConfigMap;
+  private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
 
   public VeniceControllerMultiClusterConfig(Collection<VeniceProperties> controllerClusterProperties) {
     clusterToControllerConfigMap = new HashMap<>();
@@ -26,7 +34,7 @@ public class VeniceControllerMultiClusterConfig {
     }
   }
 
-  // This contructor is used for testing.
+  // This constructor is used for testing.
   public VeniceControllerMultiClusterConfig(Map<String, VeniceControllerClusterConfig> clusterToControllerConfigMap) {
     this.clusterToControllerConfigMap = new HashMap<>(clusterToControllerConfigMap);
   }
@@ -93,10 +101,6 @@ public class VeniceControllerMultiClusterConfig {
 
   public String getControllerHAASSuperClusterName() {
     return getCommonConfig().getControllerHAASSuperClusterName();
-  }
-
-  public int getControllerClusterReplica() {
-    return getCommonConfig().getControllerClusterReplica();
   }
 
   public String getKafkaBootstrapServers() {
@@ -211,6 +215,10 @@ public class VeniceControllerMultiClusterConfig {
     return getCommonConfig().getPushJobStatusStoreClusterName();
   }
 
+  public String getParentControllerMetadataStoreClusterName() {
+    return getCommonConfig().getParentControllerMetadataStoreClusterName();
+  }
+
   public String getSystemSchemaClusterName() {
     return getCommonConfig().getSystemSchemaClusterName();
   }
@@ -221,6 +229,22 @@ public class VeniceControllerMultiClusterConfig {
 
   public long getBackupVersionCleanupSleepMs() {
     return getCommonConfig().getBackupVersionCleanupSleepMs();
+  }
+
+  public long getDeferredVersionSwapSleepMs() {
+    return getCommonConfig().getDeferredVersionSwapSleepMs();
+  }
+
+  public double getDeferredVersionSwapBufferTime() {
+    return getCommonConfig().getDeferredVersionSwapBufferTime();
+  }
+
+  public boolean isDeferredVersionSwapServiceEnabled() {
+    return getCommonConfig().isDeferredVersionSwapServiceEnabled();
+  }
+
+  public boolean isSkipDeferredVersionSwapForDVCEnabled() {
+    return getCommonConfig().isSkipDeferredVersionSwapForDVCEnabled();
   }
 
   public boolean isControllerEnforceSSLOnly() {
@@ -279,6 +303,14 @@ public class VeniceControllerMultiClusterConfig {
     return getCommonConfig().getPubSubClientsFactory();
   }
 
+  public PubSubPositionTypeRegistry getPubSubPositionTypeRegistry() {
+    return getCommonConfig().getPubSubPositionTypeRegistry();
+  }
+
+  public PubSubPositionDeserializer getPubSubPositionDeserializer() {
+    return getCommonConfig().getPubSubPositionDeserializer();
+  }
+
   public PubSubAdminAdapterFactory getSourceOfTruthAdminAdapterFactory() {
     return getCommonConfig().getSourceOfTruthAdminAdapterFactory();
   }
@@ -301,5 +333,65 @@ public class VeniceControllerMultiClusterConfig {
 
   public List<String> getControllerInstanceTagList() {
     return getCommonConfig().getControllerInstanceTagList();
+  }
+
+  public Map<ClusterConfig.GlobalRebalancePreferenceKey, Integer> getHelixGlobalRebalancePreference() {
+    return getCommonConfig().getHelixGlobalRebalancePreference();
+  }
+
+  public HelixCapacityConfig getHelixCapacityConfig() {
+    return getCommonConfig().getHelixCapacityConfig();
+  }
+
+  public boolean isControllerClusterHelixCloudEnabled() {
+    return getCommonConfig().isControllerClusterHelixCloudEnabled();
+  }
+
+  public CloudConfig getHelixCloudConfig() {
+    return getCommonConfig().getHelixCloudConfig();
+  }
+
+  public long getControllerHelixParticipantDeregistrationTimeoutMs() {
+    return getCommonConfig().getControllerHelixParticipantDeregistrationTimeoutMs();
+  }
+
+  public String getRepushOrchestratorClassName() {
+    return getCommonConfig().getRepushOrchestratorClassName();
+  }
+
+  public VeniceProperties getRepushOrchestratorConfigs() {
+    return getCommonConfig().getRepushOrchestratorConfigs();
+  }
+
+  public boolean isLogCompactionEnabled() {
+    return getCommonConfig().isLogCompactionEnabled();
+  }
+
+  public boolean isLogCompactionSchedulingEnabled() {
+    return getCommonConfig().isLogCompactionSchedulingEnabled();
+  }
+
+  public int getLogCompactionThreadCount() {
+    return getCommonConfig().getLogCompactionThreadCount();
+  }
+
+  public long getLogCompactionIntervalMS() {
+    return getCommonConfig().getLogCompactionIntervalMS();
+  }
+
+  public long getLogCompactionThresholdMS() {
+    return getCommonConfig().getLogCompactionThresholdMS();
+  }
+
+  public boolean isRealTimeTopicVersioningEnabled() {
+    return getCommonConfig().getRealTimeTopicVersioningEnabled();
+  }
+
+  public LogContext getLogContext() {
+    return getCommonConfig().getLogContext();
+  }
+
+  public PubSubTopicRepository getPubSubTopicRepository() {
+    return pubSubTopicRepository;
   }
 }

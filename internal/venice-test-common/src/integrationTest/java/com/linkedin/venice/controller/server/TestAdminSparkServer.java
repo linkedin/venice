@@ -26,6 +26,7 @@ import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.OwnerResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StorageEngineOverheadRatioResponse;
+import com.linkedin.venice.controllerapi.StoreMigrationResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.TrackableControllerResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
@@ -905,6 +906,28 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
   }
 
   @Test(timeOut = TEST_TIMEOUT)
+  public void controllerClientCanNotDeleteStore() {
+    String storeName = Utils.getUniqueString("test-store-not-delete");
+    assertCommand(parentControllerClient.createNewStore(storeName, "owner", "\"string\"", "\"string\""));
+    VersionCreationResponse versionCreationResponse =
+        parentControllerClient.emptyPush(storeName, Utils.getUniqueString(storeName), 1024);
+    Assert.assertFalse(versionCreationResponse.isError(), versionCreationResponse.getError());
+    try {
+      parentControllerClient.enableStoreReads(storeName, false);
+      parentControllerClient.enableStoreWrites(storeName, false);
+
+      TrackableControllerResponse response = parentControllerClient.deleteStore(storeName, true);
+      Assert.assertTrue(response.isError(), response.getError());
+      Assert.assertEquals(response.getErrorType(), ErrorType.INVALID_CONFIG);
+      StoreResponse storeResponse = parentControllerClient.getStore(storeName);
+      Assert.assertFalse(storeResponse.isError(), storeResponse.getError());
+      Assert.assertEquals(storeName, storeResponse.getStore().getName());
+    } finally {
+      deleteStore(storeName);
+    }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
   public void controllerClientCanGetExecutionOfDeleteStore() {
     String clusterName = venice.getClusterNames()[0];
 
@@ -1132,4 +1155,14 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
     parentControllerClient.enableStoreReadWrites(storeName, false);
     parentControllerClient.deleteStore(storeName);
   }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void controllerClientCanNotAutoMigrateStore() {
+    String storeName = Utils.getUniqueString("test-store-can-not-migrate");
+    StoreMigrationResponse response =
+        parentControllerClient.autoMigrateStore(storeName, "dest-cluster", Optional.empty(), Optional.empty());
+    Assert.assertTrue(response.isError());
+    Assert.assertEquals(response.getErrorType(), ErrorType.STORE_NOT_FOUND);
+  }
+
 }

@@ -1,0 +1,10 @@
+version: 2
+
+updates:
+  - package-ecosystem: "gradle"
+    directory: "/"
+    schedule:
+      interval: "daily"
+    # Automatically update these dependencies
+    allow:
+      - dependency-name: "org.duckdb:duckdb_jdbc"

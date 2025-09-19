@@ -5,6 +5,7 @@ import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstant
 import com.linkedin.venice.integration.utils.PubSubBrokerConfigs;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.pubsub.PubSubProducerAdapterContext;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
@@ -17,7 +18,6 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
-import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.Test;
 
@@ -44,7 +44,12 @@ public class TopicManagerIntegrationTest extends TopicManagerTest {
   protected PubSubProducerAdapter createPubSubProducerAdapter() {
     return pubSubBrokerWrapper.getPubSubClientsFactory()
         .getProducerAdapterFactory()
-        .create(VeniceProperties.empty(), "topicManagerTestProducer", pubSubBrokerWrapper.getAddress());
+        .create(
+            new PubSubProducerAdapterContext.Builder().setVeniceProperties(VeniceProperties.empty())
+                .setProducerName("topicManagerTestProducer")
+                .setBrokerAddress(pubSubBrokerWrapper.getAddress())
+                .setPubSubPositionTypeRegistry(pubSubBrokerWrapper.getPubSubPositionTypeRegistry())
+                .build());
   }
 
   @Test
@@ -55,9 +60,6 @@ public class TopicManagerIntegrationTest extends TopicManagerTest {
     long timestamp = System.currentTimeMillis();
     produceRandomPubSubMessage(topic, true, timestamp); // This timestamp is expected to be retrieved
     produceRandomPubSubMessage(topic, false, timestamp + 1000L); // produce a control message
-
-    long retrievedTimestamp = topicManager.getProducerTimestampOfLastDataMessageWithRetries(pubSubTopicPartition, 1);
-    Assert.assertEquals(retrievedTimestamp, timestamp);
 
     // Produce more data records to this topic partition
     for (int i = 0; i < 100; i++) {
@@ -73,11 +75,10 @@ public class TopicManagerIntegrationTest extends TopicManagerTest {
     ExecutorService executorService = Executors.newFixedThreadPool(numberOfThreads);
     Future[] vwFutures = new Future[numberOfThreads];
     // Put all topic manager calls related to partition offset fetcher with admin and consumer here.
-    Runnable[] tasks = { () -> topicManager.getOffsetByTime(pubSubTopicPartition, checkTimestamp),
-        () -> topicManager.getProducerTimestampOfLastDataMessageWithRetries(pubSubTopicPartition, 1),
+    Runnable[] tasks = { () -> topicManager.getPositionByTime(pubSubTopicPartition, checkTimestamp),
         () -> topicManager.getPartitionCount(topic),
-        () -> topicManager.getLatestOffsetWithRetries(pubSubTopicPartition, 1),
-        () -> topicManager.getTopicLatestOffsets(topic) };
+        () -> topicManager.getLatestPositionWithRetries(pubSubTopicPartition, 1),
+        () -> topicManager.getEndPositionsForTopicWithRetries(topic) };
 
     for (int i = 0; i < numberOfThreads; i++) {
       vwFutures[i] = executorService.submit(tasks[i % tasks.length]);

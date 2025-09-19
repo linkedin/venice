@@ -32,6 +32,8 @@ import com.linkedin.venice.ingestion.protocol.ProcessShutdownCommand;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionAction;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionReportType;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
+import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.security.DefaultSSLFactory;
 import com.linkedin.venice.security.SSLConfig;
 import com.linkedin.venice.security.SSLFactory;
@@ -357,14 +359,14 @@ public class IsolatedIngestionUtils {
       IngestionReportType ingestionReportType,
       String kafkaTopic,
       int partitionId,
-      long offset,
+      PubSubPosition position,
       String message) {
     IngestionTaskReport report = new IngestionTaskReport();
     report.reportType = ingestionReportType.getValue();
     report.message = message;
     report.topicName = kafkaTopic;
     report.partitionId = partitionId;
-    report.offset = offset;
+    report.pubSubPosition = position.toWireFormatBuffer();
     return report;
   }
 
@@ -374,7 +376,7 @@ public class IsolatedIngestionUtils {
     report.message = "";
     report.topicName = kafkaTopic;
     report.partitionId = partitionId;
-    report.offset = 0;
+    report.pubSubPosition = PubSubSymbolicPosition.EARLIEST.toWireFormatBuffer();
     return report;
   }
 
@@ -430,7 +432,12 @@ public class IsolatedIngestionUtils {
       String kafkaTopic,
       int partitionId,
       String message) {
-    return createIngestionTaskReport(ingestionReportType, kafkaTopic, partitionId, 0, message);
+    return createIngestionTaskReport(
+        ingestionReportType,
+        kafkaTopic,
+        partitionId,
+        PubSubSymbolicPosition.EARLIEST,
+        message);
   }
 
   public static String buildAndSaveConfigsForForkedIngestionProcess(VeniceConfigLoader configLoader) {

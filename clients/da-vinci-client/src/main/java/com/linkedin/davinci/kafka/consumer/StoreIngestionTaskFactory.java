@@ -1,15 +1,15 @@
 package com.linkedin.davinci.kafka.consumer;
 
-import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
+import com.linkedin.davinci.client.InternalDaVinciRecordTransformerConfig;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
+import com.linkedin.davinci.ingestion.utils.IngestionTaskReusableObjects;
 import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.stats.AggHostLevelIngestionStats;
 import com.linkedin.davinci.stats.AggVersionedDIVStats;
 import com.linkedin.davinci.stats.AggVersionedIngestionStats;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
-import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
@@ -19,8 +19,7 @@ import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.pubsub.PubSubTopicRepository;
-import com.linkedin.venice.pubsub.manager.TopicManagerRepository;
+import com.linkedin.venice.pubsub.PubSubContext;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.utils.DiskUsage;
@@ -31,6 +30,7 @@ import java.util.Properties;
 import java.util.Queue;
 import java.util.concurrent.ExecutorService;
 import java.util.function.BooleanSupplier;
+import java.util.function.Supplier;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
 
 
@@ -55,7 +55,7 @@ public class StoreIngestionTaskFactory {
       int partitionId,
       boolean isIsolatedIngestion,
       Optional<ObjectCacheBackend> cacheBackend,
-      DaVinciRecordTransformerConfig recordTransformerConfig,
+      InternalDaVinciRecordTransformerConfig internalRecordTransformerConfig,
       Lazy<ZKHelixAdmin> zkHelixAdmin) {
     if (version.isActiveActiveReplicationEnabled()) {
       return new ActiveActiveStoreIngestionTask(
@@ -69,7 +69,7 @@ public class StoreIngestionTaskFactory {
           partitionId,
           isIsolatedIngestion,
           cacheBackend,
-          recordTransformerConfig,
+          internalRecordTransformerConfig,
           zkHelixAdmin);
     }
     return new LeaderFollowerStoreIngestionTask(
@@ -83,7 +83,7 @@ public class StoreIngestionTaskFactory {
         partitionId,
         isIsolatedIngestion,
         cacheBackend,
-        recordTransformerConfig,
+        internalRecordTransformerConfig,
         zkHelixAdmin);
   }
 
@@ -105,12 +105,10 @@ public class StoreIngestionTaskFactory {
 
     private HeartbeatMonitoringService heartbeatMonitoringService;
     private VeniceViewWriterFactory veniceViewWriterFactory;
-    private StorageEngineRepository storageEngineRepository;
     private StorageMetadataService storageMetadataService;
     private Queue<VeniceNotifier> leaderFollowerNotifiers;
     private ReadOnlySchemaRepository schemaRepo;
     private ReadOnlyStoreRepository metadataRepo;
-    private TopicManagerRepository topicManagerRepository;
     private AggHostLevelIngestionStats ingestionStats;
     private AggVersionedDIVStats versionedDIVStats;
     private AggVersionedIngestionStats versionedStorageIngestionStats;
@@ -123,9 +121,10 @@ public class StoreIngestionTaskFactory {
     private RemoteIngestionRepairService remoteIngestionRepairService;
     private MetaStoreWriter metaStoreWriter;
     private StorageEngineBackedCompressorFactory compressorFactory;
-    private PubSubTopicRepository pubSubTopicRepository;
-    private Runnable runnableForKillIngestionTasksForNonCurrentVersions;
+    private PubSubContext pubSubContext;
     private ExecutorService aaWCWorkLoadProcessingThreadPool;
+    private ExecutorService aaWCIngestionStorageLookupThreadPool;
+    private Supplier<IngestionTaskReusableObjects> reusableObjectsSupplier;
 
     private interface Setter {
       void apply();
@@ -184,16 +183,8 @@ public class StoreIngestionTaskFactory {
       return this.metaStoreWriter;
     }
 
-    public StorageEngineRepository getStorageEngineRepository() {
-      return storageEngineRepository;
-    }
-
     public StorageMetadataService getStorageMetadataService() {
       return storageMetadataService;
-    }
-
-    public Builder setStorageEngineRepository(StorageEngineRepository storageEngineRepository) {
-      return set(() -> this.storageEngineRepository = storageEngineRepository);
     }
 
     public Builder setStorageMetadataService(StorageMetadataService storageMetadataService) {
@@ -224,12 +215,12 @@ public class StoreIngestionTaskFactory {
       return set(() -> this.metadataRepo = metadataRepo);
     }
 
-    public TopicManagerRepository getTopicManagerRepository() {
-      return topicManagerRepository;
+    public Builder setPubSubContext(PubSubContext pubSubContext) {
+      return set(() -> this.pubSubContext = pubSubContext);
     }
 
-    public Builder setTopicManagerRepository(TopicManagerRepository topicManagerRepository) {
-      return set(() -> this.topicManagerRepository = topicManagerRepository);
+    public PubSubContext getPubSubContext() {
+      return pubSubContext;
     }
 
     public AggHostLevelIngestionStats getIngestionStats() {
@@ -313,28 +304,28 @@ public class StoreIngestionTaskFactory {
       return set(() -> this.compressorFactory = compressorFactory);
     }
 
-    public PubSubTopicRepository getPubSubTopicRepository() {
-      return pubSubTopicRepository;
-    }
-
-    public Builder setPubSubTopicRepository(PubSubTopicRepository pubSubTopicRepository) {
-      return set(() -> this.pubSubTopicRepository = pubSubTopicRepository);
-    }
-
-    public Runnable getRunnableForKillIngestionTasksForNonCurrentVersions() {
-      return runnableForKillIngestionTasksForNonCurrentVersions;
-    }
-
-    public Builder setRunnableForKillIngestionTasksForNonCurrentVersions(Runnable runnable) {
-      return set(() -> this.runnableForKillIngestionTasksForNonCurrentVersions = runnable);
-    }
-
     public Builder setAAWCWorkLoadProcessingThreadPool(ExecutorService executorService) {
       return set(() -> this.aaWCWorkLoadProcessingThreadPool = executorService);
     }
 
+    public Builder setAAWCIngestionStorageLookupThreadPool(ExecutorService executorService) {
+      return set(() -> this.aaWCIngestionStorageLookupThreadPool = executorService);
+    }
+
+    public ExecutorService getAaWCIngestionStorageLookupThreadPool() {
+      return aaWCIngestionStorageLookupThreadPool;
+    }
+
     public ExecutorService getAAWCWorkLoadProcessingThreadPool() {
       return this.aaWCWorkLoadProcessingThreadPool;
+    }
+
+    public Builder setReusableObjectsSupplier(Supplier<IngestionTaskReusableObjects> reusableObjectsSupplier) {
+      return set(() -> this.reusableObjectsSupplier = reusableObjectsSupplier);
+    }
+
+    public Supplier<IngestionTaskReusableObjects> getReusableObjectsSupplier() {
+      return this.reusableObjectsSupplier;
     }
   }
 }

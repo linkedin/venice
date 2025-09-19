@@ -30,8 +30,10 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceTimeoutException;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.StoreVersionInfo;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.utils.Pair;
+import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.HashMap;
@@ -57,7 +59,7 @@ public class IsolatedIngestionBackendTest {
       KafkaStoreIngestionService storeIngestionService = mock(KafkaStoreIngestionService.class);
       ReadOnlyStoreRepository repository = mock(ReadOnlyStoreRepository.class);
       when(repository.waitVersion(anyString(), anyInt(), any()))
-          .thenReturn(Pair.create(mock(Store.class), mock(Version.class)));
+          .thenReturn(new StoreVersionInfo(mock(Store.class), mock(Version.class)));
       when(storeIngestionService.getMetadataRepo()).thenReturn(repository);
       when(storeIngestionService.isPartitionConsuming(topic, partition)).thenReturn(true);
       when(backend.getStoreIngestionService()).thenReturn(storeIngestionService);
@@ -122,7 +124,7 @@ public class IsolatedIngestionBackendTest {
       KafkaStoreIngestionService storeIngestionService = mock(KafkaStoreIngestionService.class);
       ReadOnlyStoreRepository repository = mock(ReadOnlyStoreRepository.class);
       when(repository.waitVersion(anyString(), anyInt(), any()))
-          .thenReturn(Pair.create(mock(Store.class), mock(Version.class)));
+          .thenReturn(new StoreVersionInfo(mock(Store.class), mock(Version.class)));
       when(storeIngestionService.getMetadataRepo()).thenReturn(repository);
       when(storeIngestionService.isPartitionConsuming(topic, partition)).thenReturn(true);
       when(backend.getStoreIngestionService()).thenReturn(storeIngestionService);
@@ -171,7 +173,7 @@ public class IsolatedIngestionBackendTest {
        */
       executionFlag.set(0);
       topicIngestionStatusMap.clear();
-      when(repository.waitVersion(anyString(), anyInt(), any())).thenReturn(Pair.create(null, null));
+      when(repository.waitVersion(anyString(), anyInt(), any())).thenReturn(new StoreVersionInfo(null, null));
 
       Assert.assertThrows(VeniceException.class, () -> {
         backend.executeCommandWithRetry(topic, partition, START_CONSUMPTION, () -> {
@@ -201,21 +203,22 @@ public class IsolatedIngestionBackendTest {
     when(backend.getConfigLoader()).thenReturn(configLoader);
 
     String topic = "topic_v1";
+    PubSubPosition p123 = ApacheKafkaOffsetPosition.of(123L);
     when(configLoader.getStoreConfig(topic)).thenReturn(storeVersionConfig);
     when(backend.isTopicPartitionHosted(topic, 0)).thenReturn(false);
     when(backend.isTopicPartitionHosted(topic, 1)).thenReturn(true);
     when(backend.isTopicPartitionHosted(topic, 2)).thenReturn(true);
-    backend.getIsolatedIngestionNotifier(ingestionNotifier).completed(topic, 0, 123L, "");
+    backend.getIsolatedIngestionNotifier(ingestionNotifier).completed(topic, 0, p123, "");
     verify(backend, times(0)).getCompletionHandlingExecutor();
 
-    backend.getIsolatedIngestionNotifier(ingestionNotifier).completed(topic, 1, 123L, "");
+    backend.getIsolatedIngestionNotifier(ingestionNotifier).completed(topic, 1, p123, "");
     TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, true, () -> {
       verify(backend, times(1)).getCompletionHandlingExecutor();
       verify(mainIngestionMonitorService, times(1)).setVersionPartitionToLocalIngestion(topic, 1);
     });
     // Throw exception with calling startConsumptionLocally for next partition
     doThrow(new VeniceException("Store not in repo")).when(backend).startConsumptionLocally(any(), anyInt());
-    backend.getIsolatedIngestionNotifier(ingestionNotifier).completed(topic, 2, 123L, "");
+    backend.getIsolatedIngestionNotifier(ingestionNotifier).completed(topic, 2, p123, "");
     TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, true, () -> {
       verify(backend, times(2)).getCompletionHandlingExecutor();
       // It should also set the state to locally no matter what.

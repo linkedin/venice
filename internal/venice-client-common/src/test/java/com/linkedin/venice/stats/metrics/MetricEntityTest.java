@@ -2,8 +2,10 @@ package com.linkedin.venice.stats.metrics;
 
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
+import static com.linkedin.venice.stats.metrics.MetricEntity.createInternalMetricEntityWithoutDimensions;
 
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.Set;
 import org.testng.Assert;
@@ -11,22 +13,6 @@ import org.testng.annotations.Test;
 
 
 public class MetricEntityTest {
-  @Test
-  public void testMetricEntityConstructorWithoutDimensions() {
-    String metricName = "testMetric";
-    MetricType metricType = MetricType.COUNTER;
-    MetricUnit unit = MetricUnit.MILLISECOND;
-    String description = "Test description";
-
-    MetricEntity metricEntity = new MetricEntity(metricName, metricType, unit, description);
-
-    Assert.assertEquals(metricEntity.getMetricName(), metricName, "Metric name should match");
-    Assert.assertEquals(metricEntity.getMetricType(), metricType, "Metric type should match");
-    Assert.assertEquals(metricEntity.getUnit(), unit, "Metric unit should match");
-    Assert.assertEquals(metricEntity.getDescription(), description, "Description should match");
-    Assert.assertNull(metricEntity.getDimensionsList(), "Dimensions list should be null");
-  }
-
   @Test
   public void testMetricEntityConstructorWithDimensions() {
     String metricName = "testMetric";
@@ -48,8 +34,54 @@ public class MetricEntityTest {
     Assert.assertEquals(metricEntity.getDimensionsList(), dimensions, "Dimensions list should match");
   }
 
-  @Test(expectedExceptions = IllegalArgumentException.class)
+  @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = "Metric name cannot be empty")
   public void testMetricEntityConstructorWithEmptyName() {
-    new MetricEntity("", MetricType.COUNTER, MetricUnit.MILLISECOND, "Empty name test");
+    new MetricEntity("", MetricType.COUNTER, MetricUnit.MILLISECOND, "Empty name test", new HashSet<>());
+  }
+
+  @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = "Metric description cannot be empty")
+  public void testMetricEntityConstructorWithEmptyDescription() {
+    new MetricEntity("testMetric", MetricType.COUNTER, MetricUnit.MILLISECOND, "", new HashSet<>());
+  }
+
+  @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = "Dimensions list cannot be empty")
+  public void testMetricEntityConstructorWithEmptyDimensionsList() {
+    new MetricEntity(
+        "testMetric",
+        MetricType.COUNTER,
+        MetricUnit.MILLISECOND,
+        "test empty dimension list",
+        new HashSet<>());
+  }
+
+  @Test
+  public void testCreateInternalMetricEntityWithoutDimensions() {
+    MetricEntity metricEntity = createInternalMetricEntityWithoutDimensions(
+        "testMetric",
+        MetricType.COUNTER,
+        MetricUnit.MILLISECOND,
+        "test createInternalMetricEntityWithoutDimensions",
+        "test");
+
+    Assert.assertEquals(metricEntity.getMetricName(), "testMetric", "Metric name should match");
+    Assert.assertEquals(metricEntity.getMetricType(), MetricType.COUNTER, "Metric type should match");
+    Assert.assertEquals(metricEntity.getUnit(), MetricUnit.MILLISECOND, "Metric unit should match");
+    Assert.assertEquals(
+        metricEntity.getDescription(),
+        "test createInternalMetricEntityWithoutDimensions",
+        "Description should match");
+    Assert.assertEquals(metricEntity.getDimensionsList(), Collections.EMPTY_SET, "Dimensions list should be empty");
+    Assert.assertEquals(metricEntity.getCustomMetricPrefix(), "test", "Custom metric prefix should match");
+
+    try {
+      createInternalMetricEntityWithoutDimensions(
+          "testMetric",
+          MetricType.COUNTER,
+          MetricUnit.MILLISECOND,
+          "test createInternalMetricEntityWithoutDimensions",
+          "venice.test");
+    } catch (IllegalArgumentException e) {
+      Assert.assertTrue(e.getMessage().startsWith("Custom prefix should not start with venice"), e.getMessage());
+    }
   }
 }

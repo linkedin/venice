@@ -1,19 +1,23 @@
 package com.linkedin.davinci;
 
 import com.linkedin.davinci.config.StoreBackendConfig;
+import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.serialization.AvroStoreDeserializerCache;
 import com.linkedin.venice.serialization.StoreDeserializerCache;
 import com.linkedin.venice.utils.ComplementSet;
 import com.linkedin.venice.utils.ConcurrentRef;
 import com.linkedin.venice.utils.ReferenceCounted;
+import com.linkedin.venice.utils.RegionUtils;
 import java.util.HashSet;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import org.apache.commons.lang.StringUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -72,8 +76,6 @@ public class StoreBackend {
       setDaVinciCurrentVersion(null);
       version.close();
     }
-
-    backend.getStoreRepository().unsubscribe(storeName);
   }
 
   synchronized void delete() {
@@ -108,6 +110,10 @@ public class StoreBackend {
     return stats;
   }
 
+  public ComplementSet<Integer> getSubscription() {
+    return subscription;
+  }
+
   public ReferenceCounted<VersionBackend> getDaVinciCurrentVersion() {
     return daVinciCurrentVersionRef.get();
   }
@@ -128,14 +134,22 @@ public class StoreBackend {
     return subscribe(partitions, Optional.empty());
   }
 
-  synchronized CompletableFuture<Void> subscribe(
+  private Version getCurrentVersion() {
+    return backend.getVeniceCurrentVersion(storeName);
+  }
+
+  private Version getLatestNonFaultyVersion() {
+    return backend.getVeniceLatestNonFaultyVersion(storeName, faultyVersionSet);
+  }
+
+  public synchronized CompletableFuture<Void> subscribe(
       ComplementSet<Integer> partitions,
       Optional<Version> bootstrapVersion) {
     if (daVinciCurrentVersion == null) {
       setDaVinciCurrentVersion(new VersionBackend(backend, bootstrapVersion.orElseGet(() -> {
-        Version version = backend.getVeniceCurrentVersion(storeName);
+        Version version = getCurrentVersion();
         if (version == null) {
-          version = backend.getVeniceLatestNonFaultyVersion(storeName, faultyVersionSet);
+          version = getLatestNonFaultyVersion();
         }
         if (version == null) {
           throw new VeniceException("Cannot subscribe to an empty store, storeName=" + storeName);
@@ -156,10 +170,18 @@ public class StoreBackend {
     }
     subscription.addAll(partitions);
 
-    if (daVinciFutureVersion == null) {
-      trySubscribeDaVinciFutureVersion();
+    if (DaVinciBackend.ClientType.VERSION_SPECIFIC.equals(backend.getStoreClientType(getStoreName()))
+        && bootstrapVersion.isPresent()) {
+      LOGGER.info(
+          "Ignoring version swaps for store: {} since its a version-specific client. Staying on target version: {}.",
+          storeName,
+          bootstrapVersion.get().getNumber());
     } else {
-      daVinciFutureVersion.subscribe(partitions).whenComplete((v, e) -> trySwapDaVinciCurrentVersion(e));
+      if (daVinciFutureVersion == null) {
+        trySubscribeDaVinciFutureVersion();
+      } else {
+        daVinciFutureVersion.subscribe(partitions).whenComplete((v, e) -> trySwapDaVinciCurrentVersion(e));
+      }
     }
 
     VersionBackend savedVersion = daVinciCurrentVersion;
@@ -218,9 +240,9 @@ public class StoreBackend {
       return;
     }
 
-    Version veniceCurrentVersion = backend.getVeniceCurrentVersion(storeName);
+    Version veniceCurrentVersion = getCurrentVersion();
     // Latest non-faulty store version in Venice store.
-    Version veniceLatestVersion = backend.getVeniceLatestNonFaultyVersion(storeName, faultyVersionSet);
+    Version veniceLatestVersion = getLatestNonFaultyVersion();
     Version targetVersion;
     // Make sure current version in the store config has highest priority.
     if (veniceCurrentVersion != null
@@ -232,9 +254,31 @@ public class StoreBackend {
     } else {
       return;
     }
-    LOGGER.info("Subscribing to future version {}", targetVersion.kafkaTopicName());
-    setDaVinciFutureVersion(new VersionBackend(backend, targetVersion, stats));
-    daVinciFutureVersion.subscribe(subscription).whenComplete((v, e) -> trySwapDaVinciCurrentVersion(e));
+
+    Set<String> targetRegions = RegionUtils.parseRegionsFilterList(targetVersion.getTargetSwapRegion());
+    VeniceServerConfig veniceServerConfig = backend.getConfigLoader().getVeniceServerConfig();
+    String currentRegion = veniceServerConfig.getRegionName();
+    boolean isTargetRegionEnabled = !StringUtils.isEmpty(targetVersion.getTargetSwapRegion());
+    boolean startIngestionInNonTargetRegion = isTargetRegionEnabled && !targetRegions.contains(currentRegion)
+        && targetVersion.getStatus() == VersionStatus.ONLINE;
+
+    // Subscribe to the future version if:
+    // 1. Target region push with delayed ingestion is not enabled
+    // 2. Target region push with delayed ingestion is enabled and the current region is a target region
+    // 3. Target region push with delayed ingestion is enabled and the current region is a non target region
+    // and the wait time has elapsed. The wait time has elapsed when the version status is marked ONLINE
+    if (targetRegions.contains(currentRegion) || startIngestionInNonTargetRegion || !isTargetRegionEnabled) {
+      LOGGER.info("Subscribing to future version {}", targetVersion.kafkaTopicName());
+      setDaVinciFutureVersion(new VersionBackend(backend, targetVersion, stats));
+      daVinciFutureVersion.subscribe(subscription).whenComplete((v, e) -> trySwapDaVinciCurrentVersion(e));
+    } else {
+      LOGGER.info(
+          "Skipping subscribe to future version: {} in region: {} because the target version status is: {} and the target regions are: {}",
+          targetVersion.kafkaTopicName(),
+          currentRegion,
+          targetVersion.getStatus(),
+          targetVersion.getTargetSwapRegion());
+    }
   }
 
   /**
@@ -246,7 +290,7 @@ public class StoreBackend {
    * failure.
    */
   synchronized void validateDaVinciAndVeniceCurrentVersion() {
-    Version veniceCurrentVersion = backend.getVeniceCurrentVersion(storeName);
+    Version veniceCurrentVersion = getCurrentVersion();
     if (veniceCurrentVersion != null && daVinciCurrentVersion != null) {
       if (veniceCurrentVersion.getNumber() > daVinciCurrentVersion.getVersion().getNumber()
           && faultyVersionSet.contains(veniceCurrentVersion.getNumber())) {
@@ -294,7 +338,7 @@ public class StoreBackend {
   synchronized void trySwapDaVinciCurrentVersion(Throwable failure) {
     if (daVinciFutureVersion != null) {
       // Fetch current version from store config.
-      Version veniceCurrentVersion = backend.getVeniceCurrentVersion(storeName);
+      Version veniceCurrentVersion = getCurrentVersion();
       if (veniceCurrentVersion == null) {
         LOGGER.warn("Failed to retrieve current version of store: " + storeName);
         return;
@@ -364,5 +408,9 @@ public class StoreBackend {
 
   public StoreDeserializerCache getStoreDeserializerCache() {
     return storeDeserializerCache;
+  }
+
+  public String getStoreName() {
+    return storeName;
   }
 }

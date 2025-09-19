@@ -1,11 +1,12 @@
 package com.linkedin.davinci.storage;
 
-import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.AbstractStoragePartition;
+import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.pubsub.PubSubContext;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.service.AbstractVeniceService;
 import java.util.Optional;
@@ -38,7 +39,8 @@ public class StorageEngineMetadataService extends AbstractVeniceService implemen
 
   @Override
   public void clearOffset(String topicName, int partitionId) {
-    AbstractStorageEngine<?> storageEngine = this.storageEngineRepository.getLocalStorageEngine(topicName);
+    StorageEngine<? extends AbstractStoragePartition> storageEngine =
+        this.storageEngineRepository.getLocalStorageEngine(topicName);
     if (storageEngine == null) {
       LOGGER.info("Store: {} could not be located, ignoring the reset partition message.", topicName);
       return;
@@ -47,9 +49,10 @@ public class StorageEngineMetadataService extends AbstractVeniceService implemen
   }
 
   @Override
-  public OffsetRecord getLastOffset(String topicName, int partitionId) throws VeniceException {
-    Optional<OffsetRecord> record = getStorageEngineOrThrow(topicName).getPartitionOffset(partitionId);
-    return record.orElseGet(() -> new OffsetRecord(partitionStateSerializer));
+  public OffsetRecord getLastOffset(String topicName, int partitionId, PubSubContext pubSubContext)
+      throws VeniceException {
+    Optional<OffsetRecord> record = getStorageEngineOrThrow(topicName).getPartitionOffset(partitionId, pubSubContext);
+    return record.orElseGet(() -> new OffsetRecord(partitionStateSerializer, pubSubContext));
   }
 
   @Override
@@ -62,13 +65,15 @@ public class StorageEngineMetadataService extends AbstractVeniceService implemen
   }
 
   @Override
-  public void computeStoreVersionState(String topicName, Function<StoreVersionState, StoreVersionState> mapFunction)
-      throws VeniceException {
-    AbstractStorageEngine engine = getStorageEngineOrThrow(topicName);
+  public StoreVersionState computeStoreVersionState(
+      String topicName,
+      Function<StoreVersionState, StoreVersionState> mapFunction) throws VeniceException {
+    StorageEngine engine = getStorageEngineOrThrow(topicName);
     synchronized (engine) {
       StoreVersionState previousSVS = engine.getStoreVersionState();
       StoreVersionState newSVS = mapFunction.apply(previousSVS);
       engine.putStoreVersionState(newSVS);
+      return newSVS;
     }
   }
 
@@ -86,8 +91,9 @@ public class StorageEngineMetadataService extends AbstractVeniceService implemen
     }
   }
 
-  private AbstractStorageEngine<? extends AbstractStoragePartition> getStorageEngineOrThrow(String topicName) {
-    AbstractStorageEngine<?> storageEngine = this.storageEngineRepository.getLocalStorageEngine(topicName);
+  private StorageEngine<? extends AbstractStoragePartition> getStorageEngineOrThrow(String topicName) {
+    StorageEngine<? extends AbstractStoragePartition> storageEngine =
+        this.storageEngineRepository.getLocalStorageEngine(topicName);
     if (storageEngine == null) {
       throw new VeniceException("Topic " + topicName + " not found in storageEngineRepository");
     }

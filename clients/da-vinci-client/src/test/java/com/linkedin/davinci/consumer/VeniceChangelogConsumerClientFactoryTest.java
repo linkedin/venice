@@ -3,24 +3,30 @@ package com.linkedin.davinci.consumer;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.data.ByteString;
+import com.linkedin.davinci.repository.NativeMetadataRepositoryViewAdapter;
 import com.linkedin.r2.message.rest.RestResponse;
+import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.client.store.schemas.TestKeyRecord;
+import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
+import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
+import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.ViewConfig;
 import com.linkedin.venice.meta.ViewConfigImpl;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.schema.SchemaReader;
-import com.linkedin.venice.serialization.KafkaKeySerializer;
-import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.views.ChangeCaptureView;
 import io.tehuti.metrics.MetricsRepository;
@@ -30,8 +36,6 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
-import org.apache.kafka.clients.CommonClientConfigs;
-import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -49,10 +53,7 @@ public class VeniceChangelogConsumerClientFactoryTest {
   public void testGetChangelogConsumer() throws ExecutionException, InterruptedException, JsonProcessingException {
     Properties consumerProperties = new Properties();
     String localKafkaUrl = "http://www.fooAddress.linkedin.com:16337";
-    consumerProperties.put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, localKafkaUrl);
-    consumerProperties.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, KafkaKeySerializer.class);
-    consumerProperties.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, KafkaValueSerializer.class);
-    consumerProperties.put(ConsumerConfig.RECEIVE_BUFFER_CONFIG, 1024 * 1024);
+    consumerProperties.put(ConfigKeys.PUBSUB_BROKER_ADDRESS, localKafkaUrl);
 
     SchemaReader mockSchemaReader = Mockito.mock(SchemaReader.class);
     Mockito.when(mockSchemaReader.getKeySchema()).thenReturn(TestKeyRecord.SCHEMA$);
@@ -78,6 +79,7 @@ public class VeniceChangelogConsumerClientFactoryTest {
     mockStoreInfo.setViewConfigs(viewConfigMap);
     Mockito.when(mockStoreResponse.getStore()).thenReturn(mockStoreInfo);
     Mockito.when(mockControllerClient.getStore(STORE_NAME)).thenReturn(mockStoreResponse);
+    Mockito.when(mockControllerClient.retryableRequest(Mockito.anyInt(), Mockito.any())).thenReturn(mockStoreResponse);
     VeniceChangelogConsumer consumer = veniceChangelogConsumerClientFactory.getChangelogConsumer(STORE_NAME);
 
     Assert.assertTrue(consumer instanceof VeniceAfterImageConsumerImpl);
@@ -128,11 +130,7 @@ public class VeniceChangelogConsumerClientFactoryTest {
       throws ExecutionException, InterruptedException, JsonProcessingException {
     Properties consumerProperties = new Properties();
     String localKafkaUrl = "http://www.fooAddress.linkedin.com:16337";
-    consumerProperties.put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, localKafkaUrl);
-    consumerProperties.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, KafkaKeySerializer.class);
-    consumerProperties.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, KafkaValueSerializer.class);
-    consumerProperties.put(ConsumerConfig.RECEIVE_BUFFER_CONFIG, 1024 * 1024);
-
+    consumerProperties.put(ConfigKeys.PUBSUB_BROKER_ADDRESS, localKafkaUrl);
     SchemaReader mockSchemaReader = Mockito.mock(SchemaReader.class);
     Mockito.when(mockSchemaReader.getKeySchema()).thenReturn(TestKeyRecord.SCHEMA$);
     PubSubConsumerAdapter mockKafkaConsumer = Mockito.mock(PubSubConsumerAdapter.class);
@@ -184,10 +182,7 @@ public class VeniceChangelogConsumerClientFactoryTest {
   public void testGetChangelogConsumerThrowsException() {
     Properties consumerProperties = new Properties();
     String localKafkaUrl = "http://www.fooAddress.linkedin.com:16337";
-    consumerProperties.put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, localKafkaUrl);
-    consumerProperties.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, KafkaKeySerializer.class);
-    consumerProperties.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, KafkaValueSerializer.class);
-    consumerProperties.put(ConsumerConfig.RECEIVE_BUFFER_CONFIG, 1024 * 1024);
+    consumerProperties.put(ConfigKeys.PUBSUB_BROKER_ADDRESS, localKafkaUrl);
 
     SchemaReader mockSchemaReader = Mockito.mock(SchemaReader.class);
     Mockito.when(mockSchemaReader.getKeySchema()).thenReturn(TestKeyRecord.SCHEMA$);
@@ -220,9 +215,6 @@ public class VeniceChangelogConsumerClientFactoryTest {
     Properties consumerProperties = new Properties();
     String localKafkaUrl = "http://www.fooAddress.linkedin.com:16337";
     consumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, localKafkaUrl);
-    consumerProperties.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, KafkaKeySerializer.class);
-    consumerProperties.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, KafkaValueSerializer.class);
-    consumerProperties.put(ConsumerConfig.RECEIVE_BUFFER_CONFIG, 1024 * 1024);
     consumerProperties.put(CLUSTER_NAME, TEST_CLUSTER_NAME);
     consumerProperties.put(ZOOKEEPER_ADDRESS, TEST_ZOOKEEPER_ADDRESS);
 
@@ -234,7 +226,8 @@ public class VeniceChangelogConsumerClientFactoryTest {
         new ChangelogClientConfig().setConsumerProperties(consumerProperties)
             .setSchemaReader(mockSchemaReader)
             .setBootstrapFileSystemPath(TEST_BOOTSTRAP_FILE_SYSTEM_PATH)
-            .setLocalD2ZkHosts(TEST_ZOOKEEPER_ADDRESS);
+            .setLocalD2ZkHosts(TEST_ZOOKEEPER_ADDRESS)
+            .setIsBeforeImageView(true);
     VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =
         new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig, new MetricsRepository());
     D2ControllerClient mockControllerClient = Mockito.mock(D2ControllerClient.class);
@@ -259,6 +252,20 @@ public class VeniceChangelogConsumerClientFactoryTest {
     Assert.assertTrue(consumer instanceof LocalBootstrappingVeniceChangelogConsumer);
 
     globalChangelogClientConfig.setViewName(VIEW_NAME);
+
+    NativeMetadataRepositoryViewAdapter mockRepository = mock(NativeMetadataRepositoryViewAdapter.class);
+    Store store = mock(Store.class);
+    Version mockVersion = new VersionImpl(STORE_NAME, 1, "foo");
+    mockVersion.setPartitionCount(2);
+    Mockito.when(store.getCurrentVersion()).thenReturn(1);
+    Mockito.when(store.getCompressionStrategy()).thenReturn(CompressionStrategy.NO_OP);
+    Mockito.when(store.getPartitionCount()).thenReturn(2);
+    Mockito.when(store.getVersion(anyInt())).thenReturn(mockVersion);
+    Mockito.when(mockRepository.getStore(anyString())).thenReturn(store);
+    Mockito.when(store.getVersionOrThrow(Mockito.anyInt())).thenReturn(mockVersion);
+
+    ((LocalBootstrappingVeniceChangelogConsumer) consumer).setStoreRepository(mockRepository);
+
     consumer = veniceChangelogConsumerClientFactory.getBootstrappingChangelogConsumer(STORE_NAME);
     Assert.assertTrue(consumer instanceof LocalBootstrappingVeniceChangelogConsumer);
 
@@ -303,9 +310,6 @@ public class VeniceChangelogConsumerClientFactoryTest {
     Properties consumerProperties = new Properties();
     String localKafkaUrl = "http://www.fooAddress.linkedin.com:16337";
     consumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, localKafkaUrl);
-    consumerProperties.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, KafkaKeySerializer.class);
-    consumerProperties.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, KafkaValueSerializer.class);
-    consumerProperties.put(ConsumerConfig.RECEIVE_BUFFER_CONFIG, 1024 * 1024);
     consumerProperties.put(CLUSTER_NAME, TEST_CLUSTER_NAME);
     consumerProperties.put(ZOOKEEPER_ADDRESS, TEST_ZOOKEEPER_ADDRESS);
 

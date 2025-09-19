@@ -1,9 +1,13 @@
 package com.linkedin.venice.restart;
 
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
-import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
+import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
+import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED;
+import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE;
 
 import com.linkedin.davinci.storage.StorageService;
+import com.linkedin.davinci.store.StorageEngineAccessor;
 import com.linkedin.davinci.store.rocksdb.RocksDBStorageEngine;
 import com.linkedin.davinci.store.rocksdb.RocksDBStoragePartition;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
@@ -85,7 +89,6 @@ public class TestRestartServerAfterDeletingSstFiles {
     // Create one server
     Properties serverProperties = new Properties();
     serverProperties.put(PERSISTENCE_TYPE, PersistenceType.ROCKS_DB);
-    serverProperties.put(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1L));
     serverProperties.setProperty(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, "false");
     serverProperties.setProperty(SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED, "true");
     serverProperties.setProperty(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE, "300");
@@ -153,8 +156,8 @@ public class TestRestartServerAfterDeletingSstFiles {
     VeniceServerWrapper server = veniceCluster.getVeniceServers().get(0);
     TestVeniceServer testVeniceServer = server.getVeniceServer();
     StorageService storageService = testVeniceServer.getStorageService();
-    RocksDBStorageEngine rocksDBStorageEngine =
-        (RocksDBStorageEngine) storageService.getStorageEngineRepository().getLocalStorageEngine(storeVersionName);
+    RocksDBStorageEngine rocksDBStorageEngine = StorageEngineAccessor
+        .getInnerStorageEngine(storageService.getStorageEngineRepository().getLocalStorageEngine(storeVersionName));
 
     LOGGER.info("Waiting for the process to Finish ingesting all the data to sst files");
     // Verify the total number of records ingested

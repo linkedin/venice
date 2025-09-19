@@ -18,14 +18,16 @@ import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.hadoop.input.recordreader.AbstractVeniceRecordReader;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.DictionaryUtils;
+import com.linkedin.venice.utils.TriConsumer;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.vpj.VenicePushJobConstants;
+import com.linkedin.venice.writer.VeniceWriter;
 import java.io.Closeable;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.Iterator;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -43,6 +45,7 @@ public abstract class AbstractInputRecordProcessor<INPUT_KEY, INPUT_VALUE> exten
     implements Closeable {
   private static final Logger LOGGER = LogManager.getLogger(AbstractInputRecordProcessor.class);
   private static final int TASK_ID_WHICH_SHOULD_SPRAY_ALL_PARTITIONS = 0;
+  public static final byte[] EMPTY_BYTES = new byte[0];
 
   // Compression related
   private CompressionStrategy compressionStrategy;
@@ -51,28 +54,31 @@ public abstract class AbstractInputRecordProcessor<INPUT_KEY, INPUT_VALUE> exten
   private VeniceCompressor[] compressors;
 
   protected AbstractVeniceRecordReader<INPUT_KEY, INPUT_VALUE> veniceRecordReader;
-  private static final byte[] EMPTY_BYTES = new byte[0];
   private final AtomicReference<byte[]> processedKey = new AtomicReference<>();
   private final AtomicReference<byte[]> processedValue = new AtomicReference<>();
+  private final AtomicReference<byte[]> processedRmd = new AtomicReference<>();
   private boolean firstRecord = true;
+  private boolean enableUncompressedMaxRecordSizeLimit = false;
+  private int maxRecordSizeBytes = VeniceWriter.UNLIMITED_MAX_RECORD_SIZE;
 
   protected final void processRecord(
       INPUT_KEY inputKey,
       INPUT_VALUE inputValue,
-      BiConsumer<byte[], byte[]> recordEmitter,
+      byte[] inputRmd,
+      TriConsumer<byte[], byte[], byte[]> recordEmitter,
       DataWriterTaskTracker dataWriterTaskTracker) {
     if (firstRecord) {
       maybeSprayAllPartitions(recordEmitter, dataWriterTaskTracker);
     }
     firstRecord = false;
-    if (process(inputKey, inputValue, processedKey, processedValue, dataWriterTaskTracker)) {
+    if (process(inputKey, inputValue, inputRmd, processedKey, processedValue, processedRmd, dataWriterTaskTracker)) {
       // key/value pair is valid.
-      recordEmitter.accept(processedKey.get(), processedValue.get());
+      recordEmitter.accept(processedKey.get(), processedValue.get(), processedRmd.get());
     }
   }
 
   private void maybeSprayAllPartitions(
-      BiConsumer<byte[], byte[]> recordEmitter,
+      TriConsumer<byte[], byte[], byte[]> recordEmitter,
       DataWriterTaskTracker dataWriterTaskTracker) {
     /** First map invocation, since the {@link recordKey} will be set after this. */
     if (getTaskId() == TASK_ID_NOT_SET) {
@@ -84,7 +90,7 @@ public abstract class AbstractInputRecordProcessor<INPUT_KEY, INPUT_VALUE> exten
     for (int i = 0; i < getPartitionCount(); i++) {
       byte[] recordValue = new byte[Integer.BYTES];
       ByteUtils.writeInt(recordValue, i, 0);
-      recordEmitter.accept(EMPTY_BYTES, recordValue);
+      recordEmitter.accept(EMPTY_BYTES, recordValue, null);
     }
     dataWriterTaskTracker.trackSprayAllPartitions();
     LOGGER.info(
@@ -93,17 +99,33 @@ public abstract class AbstractInputRecordProcessor<INPUT_KEY, INPUT_VALUE> exten
   }
 
   /**
-   * This function will return true if the input key/value pair is valid.
+   * This function compresses the record and checks whether its uncompressed size exceeds the maximum allowed size.
+   * Regardless of the configuration, it tracks uncompressed record size violations in the {@code DataWriterTaskTracker}.
+   * If {@code enableUncompressedMaxRecordSizeLimit} is enabled, any record that exceeds the limit will be dropped from further processing.
+   * <p>
+   * The metrics collected by this function will be exposed in the PushJobDetails system store.
+   * Downstream, the {@code trackUncompressedRecordTooLargeFailure} metric is used to verify that the job
+   * does not violate the maximum uncompressed record size constraint.
+   * <p>
+   * If {@code trackUncompressedRecordTooLargeFailure} is non-zero and
+   * {@code enableUncompressedMaxRecordSizeLimit} is enabled, the job will throw a {@link VeniceException}
+   * in {@link VenicePushJob#runJobAndUpdateStatus()}, using the output of
+   * {@link VenicePushJob#updatePushJobDetailsWithJobDetails(DataWriterTaskTracker)}.
+   * <p>
+   * When {@code enableUncompressedMaxRecordSizeLimit} is enabled, no records will be produced to Kafka
+   * in {@link AbstractPartitionWriter#processValuesForKey(byte[], Iterator, Iterator, DataWriterTaskTracker)}.
    */
   protected boolean process(
       INPUT_KEY inputKey,
       INPUT_VALUE inputValue,
+      byte[] rmd,
       AtomicReference<byte[]> keyRef,
       AtomicReference<byte[]> valueRef,
+      AtomicReference<byte[]> rmdRef,
       DataWriterTaskTracker dataWriterTaskTracker) {
     byte[] recordKey = veniceRecordReader.getKeyBytes(inputKey, inputValue);
     byte[] recordValue = veniceRecordReader.getValueBytes(inputKey, inputValue);
-
+    byte[] recordRmd = rmd;
     if (recordKey == null) {
       throw new VeniceException("Mapper received a empty key record");
     }
@@ -117,6 +139,15 @@ public abstract class AbstractInputRecordProcessor<INPUT_KEY, INPUT_VALUE> exten
     // both key and value are not null: Record uncompressed Key and value lengths
     dataWriterTaskTracker.trackKeySize(recordKey.length);
     dataWriterTaskTracker.trackUncompressedValueSize(recordValue.length);
+    dataWriterTaskTracker.trackLargestUncompressedValueSize(recordValue.length);
+
+    if (this.maxRecordSizeBytes != VeniceWriter.UNLIMITED_MAX_RECORD_SIZE
+        && recordKey.length + recordValue.length > this.maxRecordSizeBytes) {
+      dataWriterTaskTracker.trackUncompressedRecordTooLargeFailure();
+      if (this.enableUncompressedMaxRecordSizeLimit) {
+        return false;
+      }
+    }
 
     // Compress and save the details based on the configured compression strategy: This should not fail
     byte[] finalRecordValue;
@@ -132,6 +163,7 @@ public abstract class AbstractInputRecordProcessor<INPUT_KEY, INPUT_VALUE> exten
     dataWriterTaskTracker.trackCompressedValueSize(finalRecordValue.length);
     keyRef.set(recordKey);
     valueRef.set(finalRecordValue);
+    rmdRef.set(recordRmd);
 
     if (compressionMetricCollectionEnabled) {
       // Compress based on all compression strategies to collect metrics
@@ -189,6 +221,11 @@ public abstract class AbstractInputRecordProcessor<INPUT_KEY, INPUT_VALUE> exten
     // init compressor array
     this.compressors = new VeniceCompressor[CompressionStrategy.getCompressionStrategyTypesArrayLength()];
     setupCompression(props);
+
+    // max record size bytes
+    this.enableUncompressedMaxRecordSizeLimit =
+        props.getBoolean(VeniceWriter.ENABLE_UNCOMPRESSED_RECORD_SIZE_LIMIT, false);
+    props.getOptionalInt(VeniceWriter.MAX_RECORD_SIZE_BYTES).ifPresent(i -> this.maxRecordSizeBytes = i);
   }
 
   /**

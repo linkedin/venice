@@ -1,9 +1,15 @@
 package com.linkedin.venice.client.utils;
 
+import static org.mockito.Mockito.doReturn;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
+import com.linkedin.venice.client.schema.RouterBackedSchemaReader;
+import com.linkedin.venice.client.store.transport.TransportClient;
+import com.linkedin.venice.client.store.transport.TransportClientResponse;
+import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaIdResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
@@ -18,7 +24,9 @@ import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpVersion;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericDatumWriter;
 import org.apache.avro.io.Encoder;
@@ -160,5 +168,37 @@ public class StoreClientTestUtils {
       }
     }
     return output.toByteArray();
+  }
+
+  public static void setupSchemaResponse(TransportClient transportClient, byte[] response, String path) {
+    CompletableFuture<TransportClientResponse> transportFuture = new CompletableFuture<>();
+    transportFuture.complete(new TransportClientResponse(-1, CompressionStrategy.NO_OP, response));
+    doReturn(transportFuture).when(transportClient).get(path);
+  }
+
+  public static void setupMultiValueSchemaResponse(
+      TransportClient transportClient,
+      String storeName,
+      Map<Integer, Schema> valueSchemas) throws IOException {
+    Map<Integer, String> valueSchemaEntries = new HashMap<>();
+    valueSchemas.forEach((schemaId, schema) -> valueSchemaEntries.put(schemaId, schema.toString()));
+    byte[] multiSchemaResponseInBytes =
+        StoreClientTestUtils.constructMultiSchemaIdResponseInBytes(storeName, valueSchemaEntries);
+    setupSchemaResponse(
+        transportClient,
+        multiSchemaResponseInBytes,
+        RouterBackedSchemaReader.TYPE_ALL_VALUE_SCHEMA_IDS + "/" + storeName);
+    valueSchemaEntries.forEach((schemaId, schema) -> {
+      byte[] singleSchemaResponseInBytes = null;
+      try {
+        singleSchemaResponseInBytes = StoreClientTestUtils.constructSchemaResponseInBytes(storeName, schemaId, schema);
+      } catch (IOException e) {
+        throw new RuntimeException(e);
+      }
+      setupSchemaResponse(
+          transportClient,
+          singleSchemaResponseInBytes,
+          RouterBackedSchemaReader.TYPE_VALUE_SCHEMA + "/" + storeName + "/" + schemaId);
+    });
   }
 }

@@ -4,7 +4,6 @@ import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_SCAN_INTERVAL_I
 import static com.linkedin.venice.ConfigKeys.OFFLINE_JOB_START_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_HTTP2_INBOUND_ENABLED;
-import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_QUOTA_ENFORCEMENT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS;
 import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_CLUSTER_NAME;
@@ -15,6 +14,7 @@ import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SEND_CONTROL_MESSAGES_DIRECTLY;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_STORE_NAME_PROP;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
@@ -28,6 +28,7 @@ import com.linkedin.davinci.client.DaVinciConfig;
 import com.linkedin.r2.transport.common.Client;
 import com.linkedin.venice.AdminTool;
 import com.linkedin.venice.AdminTool.PrintFunction;
+import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.client.store.AbstractAvroStoreClient;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
@@ -54,6 +55,7 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.Store;
@@ -125,27 +127,29 @@ public class TestStoreMigration {
     parentControllerProperties
         .setProperty(TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS, String.valueOf(Long.MAX_VALUE));
     parentControllerProperties.setProperty(OFFLINE_JOB_START_TIMEOUT_MS, "180000");
+    parentControllerProperties.put(ConfigKeys.MULTITASK_SCHEDULER_SERVICE_ENABLED, true);
 
     Properties serverProperties = new Properties();
-    serverProperties.put(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 1L);
     serverProperties.put(SERVER_HTTP2_INBOUND_ENABLED, "true");
     serverProperties.put(SERVER_QUOTA_ENFORCEMENT_ENABLED, "true");
 
     // 1 parent controller, 1 child region, 2 clusters per child region, 2 servers per cluster
     // RF=2 to test both leader and follower SNs
-    twoLayerMultiRegionMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
-        1,
-        2,
-        1,
-        1,
-        2,
-        1,
-        2,
-        Optional.of(parentControllerProperties),
-        Optional.empty(),
-        Optional.of(serverProperties),
-        false,
-        true);
+    VeniceMultiRegionClusterCreateOptions.Builder optionsBuilder =
+        new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(1)
+            .numberOfClusters(2)
+            .numberOfParentControllers(1)
+            .numberOfChildControllers(1)
+            .numberOfServers(2)
+            .numberOfRouters(1)
+            .replicationFactor(2)
+            .sslToStorageNodes(true)
+            .forkServer(false)
+            .parentControllerProperties(parentControllerProperties)
+            .childControllerProperties(null)
+            .serverProperties(serverProperties);
+    twoLayerMultiRegionMultiClusterWrapper =
+        ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(optionsBuilder.build());
 
     multiClusterWrapper = twoLayerMultiRegionMultiClusterWrapper.getChildRegions().get(0);
     String[] clusterNames = multiClusterWrapper.getClusterNames();
@@ -203,6 +207,16 @@ public class TestStoreMigration {
       });
     }
 
+    StoreInfo storeInfo = new ControllerClient(destClusterName, parentControllerUrl).getStore(storeName).getStore();
+    Assert.assertEquals(storeInfo.getLargestUsedRTVersionNumber(), 2);
+    Assert.assertEquals(
+        storeInfo.getHybridStoreConfig().getRealTimeTopicName(),
+        Utils.composeRealTimeTopic(storeName, 1));
+    // we set largestUsedRTVersionNumber=2 before VPJ, so the version would have rt=<store_name>_rt_v2
+    Assert.assertEquals(
+        storeInfo.getVersions().get(0).getHybridStoreConfig().getRealTimeTopicName(),
+        Utils.composeRealTimeTopic(storeName, 2));
+
     // Test abort migration on parent controller
     try (ControllerClient srcParentControllerClient = new ControllerClient(srcClusterName, parentControllerUrl);
         ControllerClient destParentControllerClient = new ControllerClient(destClusterName, parentControllerUrl)) {
@@ -233,7 +247,7 @@ public class TestStoreMigration {
           () -> Assert.assertTrue(srcParentControllerClient.getStore(storeName).getStore().isMigrating()));
 
       // Push v2
-      TestWriteUtils.runPushJob("Test push job 2", props);
+      IntegrationTestPushUtils.runVPJ(props);
       // Update store
       srcParentControllerClient.updateStore(storeName, new UpdateStoreQueryParams().setOwner(NEW_OWNER));
 
@@ -254,6 +268,43 @@ public class TestStoreMigration {
         // Test replication metadata version id is updated
         Assert.assertEquals(srcStore.getVersions().get(1).getRmdVersionId(), 1);
         Assert.assertEquals(destStore.getVersions().get(1).getRmdVersionId(), 1);
+      });
+    }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testStoreMigrationWithStoreConfigs() throws Exception {
+    String storeName = Utils.getUniqueString("testWithStoreConfigsMigration");
+    createAndPushStore(srcClusterName, storeName);
+
+    try (ControllerClient srcParentControllerClient = new ControllerClient(srcClusterName, parentControllerUrl);
+        ControllerClient destParentControllerClient = new ControllerClient(destClusterName, parentControllerUrl)) {
+      ControllerResponse initialUpdate = srcParentControllerClient.updateStore(
+          storeName,
+          new UpdateStoreQueryParams().setMaxCompactionLagSeconds(1000)
+              .setMinCompactionLagSeconds(500)
+              .setNearlineProducerCountPerWriter(5)
+              .setIsDavinciHeartbeatReported(true));
+      Assert.assertFalse(initialUpdate.isError());
+
+      StoreMigrationTestUtil.startMigration(parentControllerUrl, storeName, srcClusterName, destClusterName);
+      // Ensure migration status is updated in source parent controller
+      TestUtils.waitForNonDeterministicAssertion(
+          30,
+          TimeUnit.SECONDS,
+          () -> Assert.assertTrue(srcParentControllerClient.getStore(storeName).getStore().isMigrating()));
+
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+        StoreInfo srcStore = srcParentControllerClient.getStore(storeName).getStore();
+        StoreInfo destStore = destParentControllerClient.getStore(storeName).getStore();
+        Assert.assertNotNull(srcStore);
+        Assert.assertNotNull(destStore);
+
+        Assert.assertEquals(srcStore.getMaxCompactionLagSeconds(), destStore.getMaxCompactionLagSeconds());
+        Assert.assertEquals(srcStore.getMinCompactionLagSeconds(), destStore.getMinCompactionLagSeconds());
+        Assert
+            .assertEquals(srcStore.getNearlineProducerCountPerWriter(), destStore.getNearlineProducerCountPerWriter());
+        Assert.assertEquals(srcStore.getIsDavinciHeartbeatReported(), destStore.getIsDavinciHeartbeatReported());
       });
     }
   }
@@ -528,6 +579,8 @@ public class TestStoreMigration {
             .setHybridRewindSeconds(TEST_TIMEOUT)
             .setHybridOffsetLagThreshold(2L)
             .setHybridStoreDiskQuotaEnabled(true)
+            .setLargestUsedRTVersionNumber(2)
+            .setRealTimeTopicName(Utils.composeRealTimeTopic(props.getProperty(VENICE_STORE_NAME_PROP), 1))
             .setCompressionStrategy(CompressionStrategy.ZSTD_WITH_DICT)
             .setStorageNodeReadQuotaEnabled(true); // enable this for using fast client
     IntegrationTestPushUtils.createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, updateStoreQueryParams)
@@ -596,7 +649,6 @@ public class TestStoreMigration {
             .setD2Client(d2Client)
             .setMetadataRefreshIntervalInSeconds(1)
             .setDualReadEnabled(false)
-            .setSpeculativeQueryEnabled(false)
             .setClusterDiscoveryD2Service(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
             .setStoreMetadataFetchMode(StoreMetadataFetchMode.SERVER_BASED_METADATA);
 
@@ -818,6 +870,19 @@ public class TestStoreMigration {
         assertEquals(destStoreInfo.getCurrentVersion(), 1);
       });
     }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testAutoStoreMigration() throws Exception {
+    String storeName = Utils.getUniqueString("testAutoMigration");
+    try {
+      createAndPushStore(srcClusterName, storeName);
+      StoreMigrationTestUtil
+          .autoStoreMigration(parentControllerUrl, storeName, srcClusterName, destClusterName, "0", "false");
+    } finally {
+      StoreMigrationTestUtil.deleteStore(parentControllerUrl, storeName);
+    }
+
   }
 
   private void verifyKillMessageInParticipantStore(

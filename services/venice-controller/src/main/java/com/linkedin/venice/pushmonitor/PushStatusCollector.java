@@ -4,6 +4,8 @@ import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
+import com.linkedin.venice.utils.DaemonThreadFactory;
+import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -48,6 +50,7 @@ public class PushStatusCollector {
 
   private final Map<String, Integer> topicToNoDaVinciStatusRetryCountMap = new HashMap<>();
   private final boolean useDaVinciSpecificExecutionStatusForError;
+  private final LogContext logContext;
 
   public PushStatusCollector(
       ReadWriteStoreRepository storeRepository,
@@ -60,7 +63,8 @@ public class PushStatusCollector {
       int daVinciPushStatusNoReportRetryMaxAttempts,
       int daVinciPushStatusScanMaxOfflineInstanceCount,
       double daVinciPushStatusScanMaxOfflineInstanceRatio,
-      boolean useDaVinciSpecificExecutionStatusForError) {
+      boolean useDaVinciSpecificExecutionStatusForError,
+      LogContext logContext) {
     this.storeRepository = storeRepository;
     this.pushStatusStoreReader = pushStatusStoreReader;
     this.pushCompletedHandler = pushCompletedHandler;
@@ -72,6 +76,7 @@ public class PushStatusCollector {
     this.daVinciPushStatusScanMaxOfflineInstanceCount = daVinciPushStatusScanMaxOfflineInstanceCount;
     this.daVinciPushStatusScanMaxOfflineInstanceRatio = daVinciPushStatusScanMaxOfflineInstanceRatio;
     this.useDaVinciSpecificExecutionStatusForError = useDaVinciSpecificExecutionStatusForError;
+    this.logContext = logContext;
   }
 
   public void start() {
@@ -82,11 +87,14 @@ public class PushStatusCollector {
 
     if (isStarted.compareAndSet(false, true)) {
       if (offlinePushCheckScheduler == null || offlinePushCheckScheduler.isShutdown()) {
-        offlinePushCheckScheduler = Executors.newScheduledThreadPool(1);
+        offlinePushCheckScheduler =
+            Executors.newScheduledThreadPool(1, new DaemonThreadFactory("OfflinePushCheckScheduler", logContext));
         LOGGER.info("Created a new offline push check scheduler");
       }
       if (pushStatusStoreScanExecutor == null || pushStatusStoreScanExecutor.isShutdown()) {
-        pushStatusStoreScanExecutor = Executors.newFixedThreadPool(daVinciPushStatusScanThreadNumber);
+        pushStatusStoreScanExecutor = Executors.newFixedThreadPool(
+            daVinciPushStatusScanThreadNumber,
+            new DaemonThreadFactory("PushStatusStoreScanExecutor", logContext));
         LOGGER.info("Created a new push status store executor with {} threads", daVinciPushStatusScanThreadNumber);
       }
       offlinePushCheckScheduler
@@ -118,6 +126,7 @@ public class PushStatusCollector {
   }
 
   private void scanDaVinciPushStatus() {
+    LogContext.setLogContext(logContext);
     List<CompletableFuture<TopicPushStatus>> resultList = new ArrayList<>();
     for (Map.Entry<String, TopicPushStatus> entry: topicToPushStatusMap.entrySet()) {
       String topicName = entry.getKey();
@@ -153,40 +162,47 @@ public class PushStatusCollector {
         continue;
       }
       ExecutionStatusWithDetails daVinciStatus = pushStatus.getDaVinciStatus();
+      String storeName = Version.parseStoreFromKafkaTopicName(pushStatus.topicName);
+      Store store = storeRepository.getStore(storeName);
+      int dvcRetryCount = topicToNoDaVinciStatusRetryCountMap.getOrDefault(pushStatus.topicName, 0);
       if (daVinciStatus.isNoDaVinciStatusReport()) {
-        LOGGER.info("Received empty DaVinci status report for topic: {}", pushStatus.topicName);
-        // poll DaVinci status more
-        int noDaVinciStatusRetryAttempts = topicToNoDaVinciStatusRetryCountMap.compute(pushStatus.topicName, (k, v) -> {
-          if (v == null) {
-            return 1;
-          }
-          return v + 1;
-        });
-        if (noDaVinciStatusRetryAttempts <= daVinciPushStatusNoReportRetryMaxAttempts) {
+        if (dvcRetryCount < daVinciPushStatusNoReportRetryMaxAttempts) {
+          LOGGER.info(
+              "Received empty DaVinci status report for topic: {}. Server status: {}, DvcStatus: {}",
+              pushStatus.topicName,
+              pushStatus.getServerStatus(),
+              daVinciStatus);
+          // poll DaVinci status more
+          topicToNoDaVinciStatusRetryCountMap.compute(pushStatus.topicName, (k, v) -> {
+            if (v == null) {
+              return 1;
+            }
+            return v + 1;
+          });
           daVinciStatus = new ExecutionStatusWithDetails(ExecutionStatus.NOT_STARTED, daVinciStatus.getDetails());
           pushStatus.setDaVinciStatus(daVinciStatus);
-        } else {
-          topicToNoDaVinciStatusRetryCountMap.remove(pushStatus.topicName);
+        } else if (store.getIsDavinciHeartbeatReported()) { // Update dvc heartbeat to false if there is no dvc status
+          store.setIsDavinciHeartbeatReported(false);
+          storeRepository.updateStore(store);
         }
       } else {
         topicToNoDaVinciStatusRetryCountMap.remove(pushStatus.topicName);
-      }
 
-      // If there is some status for a davinci push, mark that there is a dvc heartbeat reported for the latest version
-      String storeName = Version.parseStoreFromKafkaTopicName(pushStatus.topicName);
-      Store store = storeRepository.getStore(storeName);
-      if (!store.getIsDavinciHeartbeatReported() && daVinciStatus.getStatus() != ExecutionStatus.NOT_CREATED) {
+        // Mark that there is a dvc heartbeat reported for this version
         int versionNum = Version.parseVersionFromVersionTopicName(pushStatus.topicName);
-        store.updateVersionForDaVinciHeartbeat(versionNum, true);
-        store.setIsDavinciHeartbeatReported(true);
-        storeRepository.updateStore(store);
+        Version version = store.getVersion(versionNum);
+        if (version != null && !version.getIsDavinciHeartbeatReported()) {
+          store.updateVersionForDaVinciHeartbeat(versionNum, true);
+          store.setIsDavinciHeartbeatReported(true);
+          storeRepository.updateStore(store);
+        }
       }
 
       LOGGER.info(
-          "Received DaVinci status: {} with details: {} for topic: {}",
-          daVinciStatus.getStatus(),
-          daVinciStatus.getDetails(),
-          pushStatus.topicName);
+          "Received DaVinci status: {} for topic: {} and server status: {}",
+          daVinciStatus,
+          pushStatus.topicName,
+          pushStatus.getServerStatus());
       ExecutionStatusWithDetails serverStatus = pushStatus.getServerStatus();
       if (serverStatus == null) {
         continue;

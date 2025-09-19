@@ -5,9 +5,9 @@ package com.linkedin.venice.pubsub.api;
  */
 public interface PubSubProduceResult {
   /**
-   * The offset of the record in the topic/partition.
+   * The position of the record in the topic/partition.
    */
-  long getOffset();
+  PubSubPosition getPubSubPosition();
 
   /**
    * Sum of the size of the serialized, uncompressed key and value in bytes.

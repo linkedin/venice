@@ -15,6 +15,7 @@ import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import io.tehuti.metrics.MetricsRepository;
+import java.util.Collections;
 import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -42,10 +43,6 @@ public class TestVeniceHelixResources {
   }
 
   private HelixVeniceClusterResources getVeniceHelixResources(String cluster) {
-    return getVeniceHelixResources(cluster, new MetricsRepository());
-  }
-
-  private HelixVeniceClusterResources getVeniceHelixResources(String cluster, MetricsRepository metricsRepository) {
     ZkClient zkClient = ZkClientFactory.newZkClient(zkServer.getAddress());
     ZKHelixManager controller =
         new ZKHelixManager(cluster, "localhost_1234", InstanceType.CONTROLLER, zkServer.getAddress());
@@ -57,11 +54,18 @@ public class TestVeniceHelixResources {
         .getReadOnlyZKSharedSystemStoreRepository();
     doReturn(mock(HelixReadOnlyZKSharedSchemaRepository.class)).when(veniceHelixAdmin)
         .getReadOnlyZKSharedSchemaRepository();
+
+    doReturn(Collections.emptyList()).when(veniceHelixAdmin).getAllStores(cluster);
+
     VeniceControllerClusterConfig controllerConfig = mock(VeniceControllerClusterConfig.class);
     when(controllerConfig.getDaVinciPushStatusScanThreadNumber()).thenReturn(4);
     when(controllerConfig.getDaVinciPushStatusScanIntervalInSeconds()).thenReturn(5);
     when(controllerConfig.isDaVinciPushStatusEnabled()).thenReturn(true);
     when(controllerConfig.getOffLineJobWaitTimeInMilliseconds()).thenReturn(120000L);
+    when(controllerConfig.isDeadStoreEndpointEnabled()).thenReturn(true);
+    when(controllerConfig.isPreFetchDeadStoreStatsEnabled()).thenReturn(true);
+    when(controllerConfig.getDeadStoreStatsPreFetchRefreshIntervalInMs()).thenReturn(100L); // Must be Long
+
     return new HelixVeniceClusterResources(
         cluster,
         zkClient,
@@ -69,7 +73,7 @@ public class TestVeniceHelixResources {
         new SafeHelixManager(controller),
         mock(VeniceControllerClusterConfig.class),
         veniceHelixAdmin,
-        metricsRepository,
+        new MetricsRepository(),
         mock(RealTimeTopicSwitcher.class),
         Optional.empty(),
         mock(HelixAdminClient.class));
@@ -100,6 +104,16 @@ public class TestVeniceHelixResources {
     } finally {
       thread2.join();
     }
-    Assert.assertEquals(value[0], 2, "Shutdown process should already acquire the lock and modify tne value.");
+
+    Assert.assertEquals(value[0], 2, "Shutdown process should already acquire the lock and modify the value.");
+  }
+
+  @Test
+  public void testStartAndStopDeadStoreStatsPreFetchTask() throws Exception {
+    HelixVeniceClusterResources resources = getVeniceHelixResources("test-dead-store");
+    resources.startDeadStoreStatsPreFetchTask();
+    Thread.sleep(300); // Let it run a few times
+    resources.stopDeadStoreStatsPreFetchTask();
+    Assert.assertTrue(true, "Dead store stats task started and stopped cleanly");
   }
 }

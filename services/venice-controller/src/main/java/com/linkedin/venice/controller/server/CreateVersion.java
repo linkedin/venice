@@ -28,6 +28,7 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.REQUEST_TOPIC;
 import static com.linkedin.venice.meta.Version.PushType;
 import static com.linkedin.venice.meta.Version.REPLICATION_METADATA_VERSION_ID_UNSET;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.compression.CompressionStrategy;
@@ -41,19 +42,20 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
-import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.Optional;
 import java.util.Set;
 import org.apache.http.HttpStatus;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import spark.Request;
+import spark.Response;
 import spark.Route;
 
 
@@ -63,16 +65,13 @@ import spark.Route;
 public class CreateVersion extends AbstractRoute {
   private static final Logger LOGGER = LogManager.getLogger(CreateVersion.class);
   private final boolean checkReadMethodForKafka;
-  private final boolean disableParentRequestTopicForStreamPushes;
 
   public CreateVersion(
       boolean sslEnabled,
       Optional<DynamicAccessController> accessController,
-      boolean checkReadMethodForKafka,
-      boolean disableParentRequestTopicForStreamPushes) {
+      boolean checkReadMethodForKafka) {
     super(sslEnabled, accessController);
     this.checkReadMethodForKafka = checkReadMethodForKafka;
-    this.disableParentRequestTopicForStreamPushes = disableParentRequestTopicForStreamPushes;
   }
 
   protected static void extractOptionalParamsFromRequestTopicRequest(
@@ -82,20 +81,19 @@ public class CreateVersion extends AbstractRoute {
     request.setPartitioners(httpRequest.queryParamOrDefault(PARTITIONERS, null));
 
     request.setSendStartOfPush(
-        Utils.parseBooleanFromString(httpRequest.queryParamOrDefault(SEND_START_OF_PUSH, "false"), SEND_START_OF_PUSH));
+        Utils.parseBooleanOrThrow(httpRequest.queryParamOrDefault(SEND_START_OF_PUSH, "false"), SEND_START_OF_PUSH));
 
     request.setSorted(
-        Utils.parseBooleanFromString(
-            httpRequest.queryParamOrDefault(PUSH_IN_SORTED_ORDER, "false"),
-            PUSH_IN_SORTED_ORDER));
+        Utils
+            .parseBooleanOrThrow(httpRequest.queryParamOrDefault(PUSH_IN_SORTED_ORDER, "false"), PUSH_IN_SORTED_ORDER));
 
     request.setWriteComputeEnabled(
-        Utils.parseBooleanFromString(
+        Utils.parseBooleanOrThrow(
             httpRequest.queryParamOrDefault(IS_WRITE_COMPUTE_ENABLED, "false"),
             IS_WRITE_COMPUTE_ENABLED));
 
     request.setSeparateRealTimeTopicEnabled(
-        Utils.parseBooleanFromString(
+        Utils.parseBooleanOrThrow(
             httpRequest.queryParamOrDefault(SEPARATE_REAL_TIME_TOPIC_ENABLED, "false"),
             SEPARATE_REAL_TIME_TOPIC_ENABLED));
 
@@ -109,7 +107,7 @@ public class CreateVersion extends AbstractRoute {
      * Version level override to defer marking this new version to the serving version post push completion.
      */
     request.setDeferVersionSwap(
-        Utils.parseBooleanFromString(httpRequest.queryParamOrDefault(DEFER_VERSION_SWAP, "false"), DEFER_VERSION_SWAP));
+        Utils.parseBooleanOrThrow(httpRequest.queryParamOrDefault(DEFER_VERSION_SWAP, "false"), DEFER_VERSION_SWAP));
 
     request.setTargetedRegions(httpRequest.queryParamOrDefault(TARGETED_REGIONS, null));
 
@@ -254,12 +252,12 @@ public class CreateVersion extends AbstractRoute {
     if (pushType == PushType.INCREMENTAL) {
       // If incremental push with a dedicated real-time topic is enabled then use the separate real-time topic
       if (version.isSeparateRealTimeTopicEnabled() && request.isSeparateRealTimeTopicEnabled()) {
-        responseTopic = Version.composeSeparateRealTimeTopic(storeName);
+        responseTopic = Utils.getSeparateRealTimeTopicName(version);
       } else {
         responseTopic = Utils.getRealTimeTopicName(version);
       }
     } else if (pushType == PushType.STREAM) {
-      responseTopic = Version.composeRealTimeTopic(storeName);
+      responseTopic = Utils.getRealTimeTopicName(version);
     } else if (pushType == PushType.STREAM_REPROCESSING) {
       responseTopic = Version.composeStreamReprocessingTopic(storeName, version.getNumber());
     } else {
@@ -278,7 +276,7 @@ public class CreateVersion extends AbstractRoute {
     String storeName = request.getStoreName();
     PushType pushType = request.getPushType();
     // Check if requestTopicForPush can be handled by child controllers for the given store
-    if (!admin.whetherEnableBatchPushFromAdmin(storeName)) {
+    if (!admin.whetherEnableBatchPushFromAdmin(clusterName, storeName)) {
       throw new VeniceUnsupportedOperationException(
           request.getPushType().name(),
           "Please push data to Venice Parent Colo instead");
@@ -321,46 +319,10 @@ public class CreateVersion extends AbstractRoute {
       Admin admin,
       Store store,
       RequestTopicForPushRequest request,
-      VersionCreationResponse response,
-      Lazy<Boolean> isActiveActiveReplicationEnabledInAllRegionAllVersions) {
-    DataReplicationPolicy dataReplicationPolicy = store.getHybridStoreConfig().getDataReplicationPolicy();
-    boolean isAggregateMode = DataReplicationPolicy.AGGREGATE.equals(dataReplicationPolicy);
+      VersionCreationResponse response) {
     if (admin.isParent()) {
-      // Conditionally check if the controller allows for fetching this information
-      if (disableParentRequestTopicForStreamPushes) {
-        throw new VeniceException(
-            "Write operations to the parent region are not permitted with push type: STREAM, as this feature is currently disabled.");
-      }
-
-      // Conditionally check if this store has aggregate mode enabled. If not, throw an exception (as aggregate
-      // mode is required to produce to parent colo)
-      // We check the store config instead of the version config because we want this policy to go into effect
-      // without needing to perform empty pushes everywhere
-      if (!isAggregateMode) {
-        if (!isActiveActiveReplicationEnabledInAllRegionAllVersions.get()) {
-          throw new VeniceException(
-              "Store is not in aggregate mode!  Cannot push data to parent topic!!. Current store setup: non-aggregate mode, AA is not enabled in all regions");
-        } else {
-          // TODO: maybe throw exception here since this mode (REGION: PARENT, PUSH: STREAM, REPLICATION: AA-ENABLED)
-          // doesn't seem valid anymore
-          LOGGER.info(
-              "Store: {} samza job running in Aggregate mode; Store config is in Non-Aggregate mode; "
-                  + "AA is enabled in all regions, letting the job continue",
-              store.getName());
-        }
-      }
-    } else {
-      if (isAggregateMode) {
-        if (!store.isActiveActiveReplicationEnabled()) {
-          throw new VeniceException(
-              "Store is in aggregate mode and AA is not enabled. Cannot push data to child topic!!");
-        } else {
-          LOGGER.info(
-              "Store: {} samza job running in Non-Aggregate mode, Store config is in Aggregate mode, "
-                  + "AA is enabled in the local region, letting the job continue",
-              store.getName());
-        }
-      }
+      throw new VeniceException(
+          "Write operations to the parent region are not permitted with push type: STREAM, as this feature is currently disabled.");
     }
 
     Version referenceHybridVersion = admin.getReferenceVersionForStreamingWrites(
@@ -379,7 +341,7 @@ public class CreateVersion extends AbstractRoute {
     }
     response.setPartitions(referenceHybridVersion.getPartitionCount());
     response.setCompressionStrategy(CompressionStrategy.NO_OP);
-    response.setKafkaTopic(Version.composeRealTimeTopic(store.getName()));
+    response.setKafkaTopic(Utils.getRealTimeTopicName(referenceHybridVersion));
   }
 
   /**
@@ -406,8 +368,6 @@ public class CreateVersion extends AbstractRoute {
     // Create aa replication checks with lazy evaluation
     Lazy<Boolean> isActiveActiveReplicationEnabledInAllRegions =
         getActiveActiveReplicationCheck(admin, store, clusterName, storeName, false);
-    Lazy<Boolean> isActiveActiveReplicationEnabledInAllRegionAllVersions =
-        getActiveActiveReplicationCheck(admin, store, clusterName, storeName, true);
 
     // Validate source and emergency region details and update request object
     String sourceGridFabric = applyConfigBasedOnReplication(
@@ -440,7 +400,7 @@ public class CreateVersion extends AbstractRoute {
 
     PushType pushType = request.getPushType();
     if (pushType == PushType.STREAM) {
-      handleStreamPushType(admin, store, request, response, isActiveActiveReplicationEnabledInAllRegionAllVersions);
+      handleStreamPushType(admin, store, request, response);
     } else {
       handleNonStreamPushType(admin, store, request, response, isActiveActiveReplicationEnabledInAllRegions);
     }
@@ -460,29 +420,14 @@ public class CreateVersion extends AbstractRoute {
       response.type(HttpConstants.JSON);
       try {
         // Also allow allowList users to run this command
-        if (!isAllowListUser(request)
-            && (!hasWriteAccessToTopic(request) || (this.checkReadMethodForKafka && !hasReadAccessToTopic(request)))) {
-          response.status(HttpStatus.SC_FORBIDDEN);
-          String userId = getPrincipalId(request);
-
-          /**
-           * When partners have ACL issues for their push, we should provide an accurate and informative messages that
-           * help partners to unblock by themselves.
-           */
-          String errorMsg;
-          boolean missingWriteAccess = !hasWriteAccessToTopic(request);
-          boolean missingReadAccess = this.checkReadMethodForKafka && !hasReadAccessToTopic(request);
-          if (missingWriteAccess && missingReadAccess) {
-            errorMsg = "[Error] Missing [read] and [write] ACLs for user \"" + userId
-                + "\". Please setup ACLs for your store.";
-          } else if (missingWriteAccess) {
-            errorMsg = "[Error] Missing [write] ACLs for user \"" + userId + "\". Please setup ACLs for your store.";
-          } else {
-            errorMsg = "[Error] Missing [read] ACLs for user \"" + userId + "\". Please setup ACLs for your store.";
+        if (!isAllowListUser(request)) {
+          if (!hasWriteAccessToTopic(request)) {
+            return buildAclErrorResponse(request, response, true, false);
           }
-          responseObject.setError(errorMsg);
-          responseObject.setErrorType(ErrorType.BAD_REQUEST);
-          return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
+
+          if (this.checkReadMethodForKafka && !hasReadAccessToTopic(request)) {
+            return buildAclErrorResponse(request, response, false, true);
+          }
         }
 
         // Validate the request parameters
@@ -506,6 +451,30 @@ public class CreateVersion extends AbstractRoute {
 
       return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
     };
+  }
+
+  /**
+   * When partners have ACL issues for their push, we should provide an accurate and informative messages that
+   * help partners to unblock by themselves.
+   */
+  private String buildAclErrorResponse(
+      Request request,
+      Response response,
+      boolean missingWriteAccess,
+      boolean missingReadAccess) throws JsonProcessingException {
+    response.status(HttpStatus.SC_FORBIDDEN);
+    VersionCreationResponse responseObject = new VersionCreationResponse();
+    String userId = getPrincipalId(request);
+    String errorMessage = "Missing [%s] ACLs for user \"" + userId + "\". Please setup ACLs for your store.";
+    if (missingWriteAccess) {
+      errorMessage = String.format(errorMessage, "write");
+    }
+    if (missingReadAccess) {
+      errorMessage = String.format(errorMessage, "read");
+    }
+    responseObject.setError(errorMessage);
+    responseObject.setErrorType(ErrorType.BAD_REQUEST);
+    return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
   }
 
   /**
@@ -577,22 +546,6 @@ public class CreateVersion extends AbstractRoute {
           HttpStatus.SC_BAD_REQUEST,
           "requesting topic for streaming writes to store " + store.getName()
               + " which is not configured to be a hybrid store",
-          ErrorType.BAD_REQUEST);
-    }
-    /**
-     * Allow STREAM push type if one of the following conditions is true
-     * 1. AA is enabled for the store
-     * 2. AA is not enabled for the store but the store is configured with NON_AGGREGATE data replication policy
-     * 3. AA is not enabled for the store but the store is configured with AGGREGATE data replication policy
-     */
-    if (pushType.equals(PushType.STREAM) && !(store.isActiveActiveReplicationEnabled()
-        || store.getHybridStoreConfig().getDataReplicationPolicy().equals(DataReplicationPolicy.NON_AGGREGATE)
-        || store.getHybridStoreConfig().getDataReplicationPolicy().equals(DataReplicationPolicy.AGGREGATE))) {
-      throw new VeniceHttpException(
-          HttpStatus.SC_BAD_REQUEST,
-          "requesting topic for streaming writes to store " + store.getName()
-              + " which is configured to have a hybrid data replication policy "
-              + store.getHybridStoreConfig().getDataReplicationPolicy(),
           ErrorType.BAD_REQUEST);
     }
     if (pushType.isIncremental() && !store.isHybrid()) {
@@ -772,19 +725,29 @@ public class CreateVersion extends AbstractRoute {
         AdminSparkServer.validateParams(request, EMPTY_PUSH.getParams(), admin);
 
         String storeName = request.queryParams(NAME);
-        if (!admin.whetherEnableBatchPushFromAdmin(storeName)) {
+        clusterName = request.queryParams(CLUSTER);
+        if (!admin.whetherEnableBatchPushFromAdmin(clusterName, storeName)) {
           throw new VeniceUnsupportedOperationException(
               "EMPTY PUSH",
               "Please push data to Venice Parent Colo instead or use Aggregate mode if you are running Samza GF Job.");
         }
 
-        clusterName = request.queryParams(CLUSTER);
         String pushJobId = request.queryParams(PUSH_JOB_ID);
         int partitionNum = admin.calculateNumberOfPartitions(clusterName, storeName);
         int replicationFactor = admin.getReplicationFactor(clusterName, storeName);
+
+        Store store = admin.getStore(clusterName, storeName);
+        if (store == null) {
+          LOGGER.error(
+              "Request to empty push with job id: {} for store: {} in cluster: {} is rejected as no store found",
+              pushJobId,
+              storeName,
+              clusterName);
+          throw new VeniceNoStoreException(storeName, clusterName);
+        }
+        Set<Version> previousVersions = new HashSet<>(store.getVersions());
         version = admin.incrementVersionIdempotent(clusterName, storeName, pushJobId, partitionNum, replicationFactor);
         int versionNumber = version.getNumber();
-
         responseObject.setCluster(clusterName);
         responseObject.setName(storeName);
         responseObject.setVersion(versionNumber);
@@ -793,7 +756,20 @@ public class CreateVersion extends AbstractRoute {
         responseObject.setKafkaTopic(version.kafkaTopicName());
         responseObject.setKafkaBootstrapServers(version.getPushStreamSourceAddress());
 
-        admin.writeEndOfPush(clusterName, storeName, versionNumber, true);
+        if (!previousVersions.contains(version)) {
+          LOGGER.info(
+              "Sending SOP and EOP for empty push job: {} for store: {} in cluster: {}",
+              pushJobId,
+              storeName,
+              clusterName);
+          admin.writeEndOfPush(clusterName, storeName, versionNumber, true);
+        } else {
+          LOGGER.info(
+              "Empty push job: {} for store: {} in cluster: {} is a duplicate empty push. No new version was created and no SOP/EOP was sent again.",
+              pushJobId,
+              storeName,
+              clusterName);
+        }
 
         /** TODO: Poll {@link com.linkedin.venice.controller.VeniceParentHelixAdmin#getOffLineJobStatus(String, String, Map, TopicManager)} until it is terminal... */
 

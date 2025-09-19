@@ -1,5 +1,6 @@
 package com.linkedin.venice.utils;
 
+import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.PARTITIONER_CLASS;
 import static com.linkedin.venice.ConfigKeys.SERVER_FORKED_PROCESS_JVM_ARGUMENT_LIST;
@@ -17,15 +18,14 @@ import static org.testng.Assert.assertTrue;
 
 import com.github.luben.zstd.Zstd;
 import com.linkedin.davinci.config.VeniceServerConfig;
+import com.linkedin.davinci.ingestion.utils.IngestionTaskReusableObjects;
 import com.linkedin.davinci.kafka.consumer.AggKafkaConsumerService;
 import com.linkedin.davinci.kafka.consumer.StoreBufferService;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionTaskFactory;
 import com.linkedin.davinci.stats.AggHostLevelIngestionStats;
 import com.linkedin.davinci.stats.AggVersionedDIVStats;
 import com.linkedin.davinci.stats.AggVersionedIngestionStats;
-import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
-import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.CompressorFactory;
@@ -48,8 +48,10 @@ import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.helix.VeniceOfflinePushMonitorAccessor;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
+import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.BufferReplayPolicy;
-import com.linkedin.venice.meta.DataReplicationPolicy;
+import com.linkedin.venice.meta.DataRecoveryVersionConfig;
+import com.linkedin.venice.meta.DataRecoveryVersionConfigImpl;
 import com.linkedin.venice.meta.ETLStoreConfig;
 import com.linkedin.venice.meta.ETLStoreConfigImpl;
 import com.linkedin.venice.meta.HybridStoreConfig;
@@ -76,7 +78,12 @@ import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
+import com.linkedin.venice.pubsub.PubSubContext;
+import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
+import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicType;
 import com.linkedin.venice.pubsub.manager.TopicManagerRepository;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
@@ -144,6 +151,22 @@ import org.testng.Assert;
  * General-purpose utility functions for tests.
  */
 public class TestUtils {
+  /**
+   * **FOR UNIT TESTING PURPOSES ONLY** - Do not use in production code.
+   *
+   * A pre-configured PubSubContext instance with default test values for use in unit tests.
+   * This instance is initialized with basic default components suitable for testing scenarios
+   * where a fully configured PubSubContext is not required.
+   *
+   * Production code should propagate properly configured PubSubContext instances
+   * with appropriate TopicManagerRepository and other production-ready components.
+   *
+   */
+  public static final PubSubContext DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING =
+      new PubSubContext.Builder().setPubSubTopicRepository(new PubSubTopicRepository())
+          .setPubSubPositionDeserializer(PubSubPositionDeserializer.DEFAULT_DESERIALIZER)
+          .setPubSubPositionTypeRegistry(PubSubPositionTypeRegistry.RESERVED_POSITION_TYPE_REGISTRY)
+          .build();
   private static final Logger LOGGER = LogManager.getLogger(TestUtils.class);
 
   /** In milliseconds */
@@ -288,7 +311,8 @@ public class TestUtils {
       String valueSchema,
       Stream<Map.Entry> batchData,
       PubSubProducerAdapterFactory pubSubProducerAdapterFactory,
-      Map<String, String> additionalProperties) {
+      Map<String, String> additionalProperties,
+      PubSubPositionTypeRegistry pubSubPositionTypeRegistry) {
     return createVersionWithBatchData(
         controllerClient,
         storeName,
@@ -297,7 +321,8 @@ public class TestUtils {
         batchData,
         HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID,
         pubSubProducerAdapterFactory,
-        additionalProperties);
+        additionalProperties,
+        pubSubPositionTypeRegistry);
   }
 
   public static VersionCreationResponse createVersionWithBatchData(
@@ -308,7 +333,8 @@ public class TestUtils {
       Stream<Map.Entry> batchData,
       int valueSchemaId,
       PubSubProducerAdapterFactory pubSubProducerAdapterFactory,
-      Map<String, String> additionalProperties) {
+      Map<String, String> additionalProperties,
+      PubSubPositionTypeRegistry pubSubPositionTypeRegistry) {
     VersionCreationResponse response = TestUtils.assertCommand(
         controllerClient.requestTopicForWrites(
             storeName,
@@ -330,7 +356,8 @@ public class TestUtils {
         batchData,
         valueSchemaId,
         pubSubProducerAdapterFactory,
-        additionalProperties);
+        additionalProperties,
+        pubSubPositionTypeRegistry);
     return response;
   }
 
@@ -341,7 +368,8 @@ public class TestUtils {
       Stream<Map.Entry> batchData,
       int valueSchemaId,
       PubSubProducerAdapterFactory pubSubProducerAdapterFactory,
-      Map<String, String> additionalProperties) {
+      Map<String, String> additionalProperties,
+      PubSubPositionTypeRegistry pubSubPositionTypeRegistry) {
     writeBatchData(
         response,
         keySchema,
@@ -351,7 +379,8 @@ public class TestUtils {
         CompressionStrategy.NO_OP,
         null,
         pubSubProducerAdapterFactory,
-        additionalProperties);
+        additionalProperties,
+        pubSubPositionTypeRegistry);
   }
 
   public static void writeBatchData(
@@ -363,13 +392,15 @@ public class TestUtils {
       CompressionStrategy compressionStrategy,
       Function<String, ByteBuffer> compressionDictionaryGenerator,
       PubSubProducerAdapterFactory pubSubProducerAdapterFactory,
-      Map<String, String> additionalProperties) {
+      Map<String, String> additionalProperties,
+      PubSubPositionTypeRegistry pubSubPositionTypeRegistry) {
     Properties props = new Properties();
     props.put(KAFKA_BOOTSTRAP_SERVERS, response.getKafkaBootstrapServers());
     props.setProperty(PARTITIONER_CLASS, response.getPartitionerClass());
     props.putAll(response.getPartitionerParams());
     props.putAll(additionalProperties);
-    VeniceWriterFactory writerFactory = TestUtils.getVeniceWriterFactory(props, pubSubProducerAdapterFactory);
+    VeniceWriterFactory writerFactory =
+        TestUtils.getVeniceWriterFactory(props, pubSubProducerAdapterFactory, pubSubPositionTypeRegistry);
 
     Properties partitionerProperties = new Properties();
     partitionerProperties.putAll(response.getPartitionerParams());
@@ -459,8 +490,8 @@ public class TestUtils {
       Stream<Map.Entry> batchData) {
 
     try (VeniceWriter<Object, Object, byte[]> writer = writerFactory.createVeniceWriter(
-        new VeniceWriterOptions.Builder(kafkaTopic).setKeySerializer(new VeniceAvroKafkaSerializer(keySchema))
-            .setValueSerializer(new VeniceAvroKafkaSerializer(valueSchema))
+        new VeniceWriterOptions.Builder(kafkaTopic).setKeyPayloadSerializer(new VeniceAvroKafkaSerializer(keySchema))
+            .setValuePayloadSerializer(new VeniceAvroKafkaSerializer(valueSchema))
             .setPartitionCount(partitionCount)
             .setPartitioner(venicePartitioner)
             .build())) {
@@ -495,10 +526,7 @@ public class TestUtils {
       if (executionStatus.isError()) {
         throw new VeniceException("Unexpected push failure for topic: " + topicName + ": " + jobStatusQueryResponse);
       }
-      assertEquals(
-          executionStatus,
-          ExecutionStatus.COMPLETED,
-          "Push is yet to complete: " + jobStatusQueryResponse.toString());
+      assertEquals(executionStatus, ExecutionStatus.COMPLETED, "Push is yet to complete: " + jobStatusQueryResponse);
     });
   }
 
@@ -517,12 +545,63 @@ public class TestUtils {
     return store;
   }
 
+  public static ZKStore populateZKStore(ZKStore store, Random random) {
+    store.setCurrentVersion(random.nextInt());
+    store.setPartitionCount(random.nextInt());
+    store.setLowWatermark(random.nextLong());
+    store.setEnableWrites(false);
+    store.setEnableReads(true);
+    store.setStorageQuotaInByte(random.nextLong());
+    store.setReadQuotaInCU(random.nextLong());
+    store.setHybridStoreConfig(TestUtils.createTestHybridStoreConfig(random));
+    store.setViewConfigs(TestUtils.createTestViewConfigs(random));
+    store.setCompressionStrategy(CompressionStrategy.GZIP);
+    store.setClientDecompressionEnabled(true);
+    store.setChunkingEnabled(true);
+    store.setRmdChunkingEnabled(true);
+    store.setBatchGetLimit(random.nextInt());
+    store.setNumVersionsToPreserve(random.nextInt());
+    store.setIncrementalPushEnabled(true);
+    store.setSeparateRealTimeTopicEnabled(true);
+    store.setMigrating(true);
+    store.setWriteComputationEnabled(true);
+    store.setReadComputationEnabled(true);
+    store.setBootstrapToOnlineTimeoutInHours(random.nextInt());
+    store.setNativeReplicationEnabled(true);
+    store.setPushStreamSourceAddress("push_stream_source");
+    store.setBackupStrategy(BackupStrategy.DELETE_ON_NEW_PUSH_START);
+    store.setSchemaAutoRegisterFromPushJobEnabled(true);
+    store.setLatestSuperSetValueSchemaId(random.nextInt());
+    store.setHybridStoreDiskQuotaEnabled(true);
+    store.setStoreMetaSystemStoreEnabled(true);
+    store.setEtlStoreConfig(TestUtils.createTestETLStoreConfig());
+    store.setPartitionerConfig(TestUtils.createTestPartitionerConfig(random));
+    store.setLatestVersionPromoteToCurrentTimestamp(random.nextLong());
+    store.setBackupVersionRetentionMs(random.nextLong());
+    store.setMigrationDuplicateStore(true);
+    store.setNativeReplicationSourceFabric("native_replication_source_fabric");
+    store.setDaVinciPushStatusStoreEnabled(true);
+    store.setStoreMetadataSystemStoreEnabled(true);
+    store.setActiveActiveReplicationEnabled(true);
+    store.setMinCompactionLagSeconds(random.nextLong());
+    store.setMaxCompactionLagSeconds(random.nextLong());
+    store.setMaxRecordSizeBytes(random.nextInt());
+    store.setMaxNearlineRecordSizeBytes(random.nextInt());
+    store.setUnusedSchemaDeletionEnabled(true);
+    store.setVersions(TestUtils.createTestVersions(store.getName(), random));
+    store.setSystemStores(TestUtils.createTestSystemStores(store.getName(), random));
+    store.setStorageNodeReadQuotaEnabled(true);
+    store.setBlobTransferEnabled(true);
+    store.setNearlineProducerCompressionEnabled(true);
+    store.setNearlineProducerCountPerWriter(random.nextInt());
+    return store;
+  }
+
   public static HybridStoreConfig createTestHybridStoreConfig(Random random) {
     HybridStoreConfig hybridStoreConfig = new HybridStoreConfigImpl(
         random.nextLong(),
         random.nextLong(),
         random.nextInt(),
-        DataReplicationPolicy.AGGREGATE,
         BufferReplayPolicy.REWIND_FROM_SOP);
     hybridStoreConfig.setRealTimeTopicName(Long.toString(random.nextLong()));
     return hybridStoreConfig;
@@ -562,9 +641,18 @@ public class TestUtils {
 
   public static List<Version> createTestVersions(String storeName, Random random) {
     List<Version> versions = new ArrayList<>();
-    versions.add(new VersionImpl(storeName, 0, Long.toString(random.nextLong())));
-    versions.add(new VersionImpl(storeName, 1, Long.toString(random.nextLong())));
-    versions.add(new VersionImpl(storeName, 2, Long.toString(random.nextLong())));
+    for (int i = 0; i < 5; i++) {
+      String pushJobId = Long.toString(random.nextLong());
+      PartitionerConfig partitionerConfig = createTestPartitionerConfig(random);
+      DataRecoveryVersionConfig dataRecoveryVersionConfig =
+          new DataRecoveryVersionConfigImpl(Utils.getUniqueString(), false, 1);
+      Version version = new VersionImpl(storeName, i, pushJobId);
+
+      version.setPartitionerConfig(partitionerConfig);
+      version.setDataRecoveryVersionConfig(dataRecoveryVersionConfig);
+      version.setHybridStoreConfig(createTestHybridStoreConfig(random));
+      versions.add(version);
+    }
     return versions;
   }
 
@@ -598,8 +686,12 @@ public class TestUtils {
       String stateModelDef) {
     ZkClient foo = new ZkClient(zkAddress);
     foo.close();
-    VeniceOfflinePushMonitorAccessor offlinePushStatusAccessor =
-        new VeniceOfflinePushMonitorAccessor(cluster, new ZkClient(zkAddress), new HelixAdapterSerializer(), 3, 1000);
+    VeniceOfflinePushMonitorAccessor offlinePushStatusAccessor = new VeniceOfflinePushMonitorAccessor(
+        cluster,
+        new ZkClient(zkAddress),
+        new HelixAdapterSerializer(),
+        LogContext.newBuilder().setComponentName(TestUtils.class.getName()).build(),
+        3);
     MockTestStateModelFactory stateModelFactory = new MockTestStateModelFactory(offlinePushStatusAccessor);
     return getParticipant(cluster, nodeId, zkAddress, httpPort, stateModelFactory, stateModelDef);
   }
@@ -619,19 +711,14 @@ public class TestUtils {
     return participant;
   }
 
-  public static OffsetRecord getOffsetRecord(long currentOffset) {
-    return getOffsetRecord(currentOffset, Optional.empty());
-  }
-
-  public static OffsetRecord getOffsetRecord(long currentOffset, boolean complete) {
-    return getOffsetRecord(currentOffset, complete ? Optional.of(1000L) : Optional.of(0L));
-  }
-
-  public static OffsetRecord getOffsetRecord(long currentOffset, Optional<Long> endOfPushOffset) {
-    OffsetRecord offsetRecord = new OffsetRecord(partitionStateSerializer);
-    offsetRecord.setCheckpointLocalVersionTopicOffset(currentOffset);
+  public static OffsetRecord getOffsetRecord(
+      PubSubPosition currentPosition,
+      Optional<PubSubPosition> endOfPushOffset,
+      PubSubContext pubSubContext) {
+    OffsetRecord offsetRecord = new OffsetRecord(partitionStateSerializer, pubSubContext);
+    offsetRecord.checkpointLocalVtPosition(currentPosition);
     if (endOfPushOffset.isPresent()) {
-      offsetRecord.endOfPushReceived(endOfPushOffset.get());
+      offsetRecord.endOfPushReceived();
     }
     return offsetRecord;
   }
@@ -662,10 +749,11 @@ public class TestUtils {
 
   public static VeniceWriterFactory getVeniceWriterFactory(
       Properties properties,
-      PubSubProducerAdapterFactory pubSubProducerAdapterFactory) {
+      PubSubProducerAdapterFactory pubSubProducerAdapterFactory,
+      PubSubPositionTypeRegistry pubSubPositionTypeRegistry) {
     Properties factoryProperties = new Properties();
     factoryProperties.putAll(properties);
-    return new VeniceWriterFactory(factoryProperties, pubSubProducerAdapterFactory, null);
+    return new VeniceWriterFactory(factoryProperties, pubSubProducerAdapterFactory, null, pubSubPositionTypeRegistry);
   }
 
   public static Store getRandomStore() {
@@ -686,6 +774,11 @@ public class TestUtils {
 
   public static <T extends ControllerResponse> T assertCommand(T response, String assertionErrorMessage) {
     Assert.assertFalse(response.isError(), assertionErrorMessage + ": " + response.getError());
+    return response;
+  }
+
+  public static <T extends ControllerResponse> T assertCommandFailure(T response, String assertionErrorMessage) {
+    Assert.assertTrue(response.isError(), assertionErrorMessage + ": " + response.getError());
     return response;
   }
 
@@ -748,14 +841,15 @@ public class TestUtils {
   }
 
   public static StoreIngestionTaskFactory.Builder getStoreIngestionTaskBuilder(String storeName) {
+    return getStoreIngestionTaskBuilder(storeName, false);
+  }
+
+  public static StoreIngestionTaskFactory.Builder getStoreIngestionTaskBuilder(String storeName, boolean isHybrid) {
     VeniceServerConfig mockVeniceServerConfig = mock(VeniceServerConfig.class);
     doReturn(false).when(mockVeniceServerConfig).isHybridQuotaEnabled();
     VeniceProperties mockVeniceProperties = mock(VeniceProperties.class);
     doReturn(true).when(mockVeniceProperties).isEmpty();
     doReturn(mockVeniceProperties).when(mockVeniceServerConfig).getKafkaConsumerConfigsForLocalConsumption();
-
-    StorageEngineRepository mockStorageEngineRepository = mock(StorageEngineRepository.class);
-    doReturn(mock(AbstractStorageEngine.class)).when(mockStorageEngineRepository).getLocalStorageEngine(anyString());
 
     ReadOnlyStoreRepository mockReadOnlyStoreRepository = mock(ReadOnlyStoreRepository.class);
     Store mockStore = mock(Store.class);
@@ -769,7 +863,7 @@ public class TestUtils {
     OffsetRecord mockOffsetRecord = mock(OffsetRecord.class);
     doReturn(Collections.emptyMap()).when(mockOffsetRecord).getProducerPartitionStateMap();
     String versionTopic = Version.composeKafkaTopic(storeName, 1);
-    doReturn(mockOffsetRecord).when(mockStorageMetadataService).getLastOffset(eq(versionTopic), eq(0));
+    doReturn(mockOffsetRecord).when(mockStorageMetadataService).getLastOffset(eq(versionTopic), eq(0), any());
 
     int partitionCount = 1;
     VenicePartitioner partitioner = new DefaultVenicePartitioner();
@@ -785,8 +879,14 @@ public class TestUtils {
     doReturn(false).when(mockStore).isIncrementalPushEnabled();
 
     version.setHybridStoreConfig(null);
-    doReturn(null).when(mockStore).getHybridStoreConfig();
-    doReturn(false).when(mockStore).isHybrid();
+    if (isHybrid) {
+      HybridStoreConfig hybridStoreConfig = mock(HybridStoreConfig.class);
+      doReturn(hybridStoreConfig).when(mockStore).getHybridStoreConfig();
+      doReturn(true).when(mockStore).isHybrid();
+    } else {
+      doReturn(null).when(mockStore).getHybridStoreConfig();
+      doReturn(false).when(mockStore).isHybrid();
+    }
 
     version.setBufferReplayEnabledForHybrid(true);
 
@@ -805,12 +905,14 @@ public class TestUtils {
     doReturn(version).when(mockStore).getVersion(anyInt());
 
     return new StoreIngestionTaskFactory.Builder().setVeniceWriterFactory(mock(VeniceWriterFactory.class))
-        .setStorageEngineRepository(mockStorageEngineRepository)
         .setStorageMetadataService(mockStorageMetadataService)
         .setLeaderFollowerNotifiersQueue(new ArrayDeque<>())
         .setSchemaRepository(mock(ReadOnlySchemaRepository.class))
         .setMetadataRepository(mockReadOnlyStoreRepository)
-        .setTopicManagerRepository(mock(TopicManagerRepository.class))
+        .setPubSubContext(
+            new PubSubContext.Builder().setPubSubTopicRepository(new PubSubTopicRepository())
+                .setTopicManagerRepository(mock(TopicManagerRepository.class))
+                .build())
         .setHostLevelIngestionStats(mock(AggHostLevelIngestionStats.class))
         .setVersionedDIVStats(mock(AggVersionedDIVStats.class))
         .setVersionedIngestionStats(mock(AggVersionedIngestionStats.class))
@@ -820,6 +922,7 @@ public class TestUtils {
         .setServerConfig(mock(VeniceServerConfig.class))
         .setServerConfig(mockVeniceServerConfig)
         .setPartitionStateSerializer(mock(InternalAvroSpecificSerializer.class))
+        .setReusableObjectsSupplier(IngestionTaskReusableObjects.Strategy.SINGLETON_THREAD_LOCAL.supplier())
         .setIsDaVinciClient(false);
   }
 
@@ -875,6 +978,7 @@ public class TestUtils {
   public static Map<String, Object> getIngestionIsolationPropertyMap() {
     Map<String, Object> propertyMap = new HashMap<>();
     propertyMap.put(SERVER_INGESTION_MODE, IngestionMode.ISOLATED);
+    propertyMap.put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 1 * 1024 * 1024 * 1024L);
     propertyMap.put(SERVER_FORKED_PROCESS_JVM_ARGUMENT_LIST, "-Xms256M;-Xmx1G");
     return propertyMap;
   }

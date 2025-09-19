@@ -6,12 +6,16 @@ import static org.testng.Assert.assertTrue;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.pubsub.PubSubAdminAdapterContext;
+import com.linkedin.venice.pubsub.PubSubConsumerAdapterContext;
 import com.linkedin.venice.pubsub.PubSubTopicConfiguration;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapter;
 import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminConfig;
+import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.Utils;
@@ -39,13 +43,20 @@ public class ApacheKafkaConsumerTest {
     kafkaBroker = ServiceFactory.getPubSubBroker();
     Properties properties = new Properties();
     properties.setProperty(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, kafkaBroker.getAddress());
-    ApacheKafkaConsumerConfig apacheKafkaConsumerConfig =
-        new ApacheKafkaConsumerConfig(new VeniceProperties(properties), "testConsumer");
-    consumer =
-        new ApacheKafkaConsumerAdapter(apacheKafkaConsumerConfig, PubSubMessageDeserializer.getInstance(), false);
+    ApacheKafkaConsumerConfig apacheKafkaConsumerConfig = new ApacheKafkaConsumerConfig(
+        new PubSubConsumerAdapterContext.Builder().setVeniceProperties(new VeniceProperties(properties))
+            .setPubSubMessageDeserializer(PubSubMessageDeserializer.createDefaultDeserializer())
+            .setPubSubPositionTypeRegistry(kafkaBroker.getPubSubPositionTypeRegistry())
+            .setConsumerName("testConsumer")
+            .build());
+    consumer = new ApacheKafkaConsumerAdapter(apacheKafkaConsumerConfig);
     admin = new ApacheKafkaAdminAdapter(
-        new ApacheKafkaAdminConfig(new VeniceProperties(properties)),
-        pubSubTopicRepository);
+        new ApacheKafkaAdminConfig(
+            new PubSubAdminAdapterContext.Builder().setAdminClientName("testAdminClient")
+                .setVeniceProperties(new VeniceProperties(properties))
+                .setPubSubTopicRepository(pubSubTopicRepository)
+                .setPubSubPositionTypeRegistry(kafkaBroker.getPubSubPositionTypeRegistry())
+                .build()));
   }
 
   @AfterMethod
@@ -68,9 +79,10 @@ public class ApacheKafkaConsumerTest {
     assertTrue(admin.containsTopicWithPartitionCheck(existingTopicPartition2));
     assertTrue(admin.containsTopicWithPartitionCheck(existingTopicPartition3));
 
-    consumer.subscribe(existingTopicPartition1, 100L);
-    consumer.subscribe(existingTopicPartition2, 100L);
-    consumer.subscribe(existingTopicPartition3, 100L);
+    PubSubPosition p100 = ApacheKafkaOffsetPosition.of(100L);
+    consumer.subscribe(existingTopicPartition1, p100, false);
+    consumer.subscribe(existingTopicPartition2, p100, false);
+    consumer.subscribe(existingTopicPartition3, p100, false);
 
     Set<PubSubTopicPartition> topicPartitions = new HashSet<>();
     topicPartitions.add(existingTopicPartition1);
@@ -106,7 +118,7 @@ public class ApacheKafkaConsumerTest {
     assertTrue(admin.containsTopic(topic));
 
     PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(topic, 1);
-    consumer.subscribe(pubSubTopicPartition, 0);
+    consumer.subscribe(pubSubTopicPartition, ApacheKafkaOffsetPosition.of(0), false);
     assertConsumerHasSpecificNumberOfAssignedPartitions(consumer, 1);
     consumer.pause(pubSubTopicPartition);
     assertConsumerHasSpecificNumberOfAssignedPartitions(consumer, 1);

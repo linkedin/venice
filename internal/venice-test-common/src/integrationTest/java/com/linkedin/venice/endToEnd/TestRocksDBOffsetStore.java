@@ -7,6 +7,7 @@ import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.meta.PersistenceType;
@@ -26,7 +27,9 @@ public class TestRocksDBOffsetStore {
 
   @BeforeClass
   public void setUp() {
-    veniceCluster = ServiceFactory.getVeniceCluster(1, 0, 1);
+    VeniceClusterCreateOptions options =
+        new VeniceClusterCreateOptions.Builder().numberOfControllers(1).numberOfServers(0).numberOfRouters(1).build();
+    veniceCluster = ServiceFactory.getVeniceCluster(options);
   }
 
   @AfterClass
@@ -42,7 +45,14 @@ public class TestRocksDBOffsetStore {
     String storeName = veniceCluster.createStore(keyCount);
     String storeTopicName = storeName + "_v1";
     StorageMetadataService storageMetadataService = serverWrapper.getVeniceServer().getStorageMetadataService();
-    Assert.assertTrue(storageMetadataService.getLastOffset(storeTopicName, 0).getLocalVersionTopicOffset() != -1);
+    Assert.assertTrue(
+        storageMetadataService
+            .getLastOffset(
+                storeTopicName,
+                0,
+                serverWrapper.getVeniceServer().getKafkaStoreIngestionService().getPubSubContext())
+            .getCheckpointedLocalVtPosition()
+            .getNumericOffset() != -1);
     veniceCluster.stopVeniceServer(serverWrapper.getPort());
     TestUtils.waitForNonDeterministicAssertion(
         30,
@@ -51,7 +61,14 @@ public class TestRocksDBOffsetStore {
             veniceCluster.getRandomVeniceRouter().getRoutingDataRepository().containsKafkaTopic(storeTopicName)));
     veniceCluster.restartVeniceServer(serverWrapper.getPort());
     storageMetadataService = veniceCluster.getVeniceServers().get(0).getVeniceServer().getStorageMetadataService();
-    Assert.assertTrue(storageMetadataService.getLastOffset(storeTopicName, 0).getLocalVersionTopicOffset() != -1);
+    Assert.assertTrue(
+        storageMetadataService
+            .getLastOffset(
+                storeTopicName,
+                0,
+                serverWrapper.getVeniceServer().getKafkaStoreIngestionService().getPubSubContext())
+            .getCheckpointedLocalVtPosition()
+            .getNumericOffset() != -1);
     try (AvroGenericStoreClient<Integer, Integer> client = ClientFactory.getAndStartGenericAvroClient(
         ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(veniceCluster.getRandomRouterURL()))) {
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, true, () -> {

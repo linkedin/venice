@@ -26,7 +26,6 @@ import com.linkedin.venice.helix.ZkClientFactory;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
-import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pushmonitor.KillOfflinePushMessage;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreWriter;
 import com.linkedin.venice.schema.SchemaEntry;
@@ -39,8 +38,6 @@ import com.linkedin.venice.status.StatusMessageHandler;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.Utils;
-import com.linkedin.venice.utils.VeniceProperties;
-import com.linkedin.venice.writer.VeniceWriterFactory;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
 import java.util.List;
@@ -71,9 +68,6 @@ import org.apache.logging.log4j.Logger;
 public class HelixParticipationService extends AbstractVeniceService
     implements StatusMessageHandler<KillOfflinePushMessage> {
   private static final Logger LOGGER = LogManager.getLogger(HelixParticipationService.class);
-
-  private static final int MAX_RETRY = 30;
-  private static final int RETRY_INTERVAL_SEC = 1;
 
   private final Instance instance;
   private final String clusterName;
@@ -155,7 +149,7 @@ public class HelixParticipationService extends AbstractVeniceService
         300L,
         TimeUnit.SECONDS,
         new LinkedBlockingQueue<>(),
-        new DaemonThreadFactory(threadName));
+        new DaemonThreadFactory(threadName, veniceConfigLoader.getVeniceServerConfig().getLogContext()));
     helixStateTransitionThreadPool.allowCoreThreadTimeOut(true);
 
     return helixStateTransitionThreadPool;
@@ -177,7 +171,10 @@ public class HelixParticipationService extends AbstractVeniceService
 
   @Override
   public boolean startInner() {
-    LOGGER.info("Attempting to start HelixParticipation service");
+    LOGGER.info(
+        "Attempting to start HelixParticipation service for participant: {} in cluster: {}",
+        participantName,
+        clusterName);
     VeniceServerConfig config = veniceConfigLoader.getVeniceServerConfig();
     HelixManagerProperty helixManagerProperty = buildHelixManagerProperty(config);
     helixManager = new SafeHelixManager(
@@ -308,7 +305,10 @@ public class HelixParticipationService extends AbstractVeniceService
     HelixAdmin admin = new ZKHelixAdmin(zkAddress);
     try {
       // Check whether the cluster is ready or not at first to prevent zk no node exception.
-      HelixUtils.checkClusterSetup(admin, clusterName, MAX_RETRY, RETRY_INTERVAL_SEC);
+      HelixUtils.checkClusterSetup(
+          admin,
+          clusterName,
+          veniceConfigLoader.getVeniceClusterConfig().getRefreshAttemptsForZkReconnect());
       List<String> instances = admin.getInstancesInCluster(clusterName);
       if (instances.contains(instance.getNodeId())) {
         LOGGER.info("{} is not a new node to cluster: {}, skip the cleaning up.", instance.getNodeId(), clusterName);
@@ -336,13 +336,7 @@ public class HelixParticipationService extends AbstractVeniceService
    */
   private void asyncStart() {
     zkClient = ZkClientFactory.newZkClient(zkAddress);
-
     VeniceServerConfig veniceServerConfig = veniceConfigLoader.getVeniceServerConfig();
-    VeniceProperties veniceProperties = veniceServerConfig.getClusterProperties();
-    PubSubProducerAdapterFactory pubSubProducerAdapterFactory =
-        veniceServerConfig.getPubSubClientsFactory().getProducerAdapterFactory();
-    VeniceWriterFactory writerFactory =
-        new VeniceWriterFactory(veniceProperties.toProperties(), pubSubProducerAdapterFactory, null);
     SchemaEntry valueSchemaEntry;
     DerivedSchemaEntry updateSchemaEntry;
     try {
@@ -362,8 +356,11 @@ public class HelixParticipationService extends AbstractVeniceService
           WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(valueSchema));
     }
     // We use push status store for persisting incremental push statuses
-    statusStoreWriter =
-        new PushStatusStoreWriter(writerFactory, instance.getNodeId(), valueSchemaEntry, updateSchemaEntry);
+    statusStoreWriter = new PushStatusStoreWriter(
+        ingestionService.getVeniceWriterFactory(),
+        instance.getNodeId(),
+        valueSchemaEntry,
+        updateSchemaEntry);
 
     // Record replica status in Zookeeper.
     // Need to be started before connecting to ZK, otherwise some notification will not be sent by this notifier.
@@ -371,8 +368,8 @@ public class HelixParticipationService extends AbstractVeniceService
         clusterName,
         zkClient,
         new HelixAdapterSerializer(),
-        veniceConfigLoader.getVeniceClusterConfig().getRefreshAttemptsForZkReconnect(),
-        veniceConfigLoader.getVeniceClusterConfig().getRefreshIntervalForZkReconnectInMs());
+        veniceServerConfig.getLogContext(),
+        veniceConfigLoader.getVeniceClusterConfig().getRefreshAttemptsForZkReconnect());
 
     /**
      * The accessor can only get created successfully after helix manager is created.

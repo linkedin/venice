@@ -79,7 +79,8 @@ public class TestVeniceKafkaInputReducer {
     /**
      * Construct a list of values, which contain only 'PUT'.
      */
-    List<byte[]> values = getValues(
+    List<AbstractPartitionWriter.VeniceRecordWithMetadata> values = getValues(
+        keyBytes,
         Arrays.asList(MapperValueType.PUT, MapperValueType.PUT, MapperValueType.PUT),
         valueContainsRmdPayload);
 
@@ -97,6 +98,7 @@ public class TestVeniceKafkaInputReducer {
      * Construct a list of values, which contains both 'PUT' and 'DELETE', but 'DELETE' is the last one.
      */
     values = getValues(
+        keyBytes,
         Arrays.asList(MapperValueType.PUT, MapperValueType.PUT, MapperValueType.DELETE),
         valueContainsRmdPayload);
 
@@ -115,6 +117,7 @@ public class TestVeniceKafkaInputReducer {
      * Construct a list of values, which contains both 'PUT' and 'DELETE', but 'DELETE' is in the middle.
      */
     values = getValues(
+        keyBytes,
         Arrays.asList(MapperValueType.PUT, MapperValueType.DELETE, MapperValueType.PUT),
         valueContainsRmdPayload);
 
@@ -151,7 +154,8 @@ public class TestVeniceKafkaInputReducer {
     /**
      * Construct a list of values, which contain only 'PUT'.
      */
-    List<byte[]> values = getValues(Arrays.asList(MapperValueType.PUT, MapperValueType.PUT, MapperValueType.PUT), true);
+    List<AbstractPartitionWriter.VeniceRecordWithMetadata> values =
+        getValues(keyBytes, Arrays.asList(MapperValueType.PUT, MapperValueType.PUT, MapperValueType.PUT), true);
 
     AbstractPartitionWriter.VeniceWriterMessage message = reducer.extract(
         serializedMapperKey,
@@ -167,8 +171,11 @@ public class TestVeniceKafkaInputReducer {
     }
   }
 
-  public List<byte[]> getValues(List<MapperValueType> valueTypes, boolean hasRmdPayload) {
-    List<byte[]> values = new ArrayList<>();
+  public List<AbstractPartitionWriter.VeniceRecordWithMetadata> getValues(
+      byte[] keyBytes,
+      List<MapperValueType> valueTypes,
+      boolean hasRmdPayload) {
+    List<AbstractPartitionWriter.VeniceRecordWithMetadata> values = new ArrayList<>();
     long offset = 0;
     for (MapperValueType valueType: valueTypes) {
       KafkaInputMapperValue value = new KafkaInputMapperValue();
@@ -184,7 +191,10 @@ public class TestVeniceKafkaInputReducer {
         value.value = ByteBuffer.wrap((VALUE_PREFIX + value.offset).getBytes());
       }
       byte[] serializedValue = KAFKA_INPUT_MAPPER_VALUE_SERIALIZER.serialize(value);
-      values.add(serializedValue);
+      values.add(
+          new AbstractPartitionWriter.VeniceRecordWithMetadata(
+              serializedValue,
+              value.replicationMetadataPayload.array()));
     }
     Collections.reverse(values);
     return values;

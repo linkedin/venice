@@ -21,8 +21,6 @@ import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptio
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
-import com.linkedin.venice.meta.Store;
-import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
@@ -37,7 +35,6 @@ import io.tehuti.Metric;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.commons.io.IOUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -90,7 +87,7 @@ public class ParticipantStoreTest {
     IOUtils.closeQuietly(venice);
   }
 
-  // @Test(timeOut = 60 * Time.MS_PER_SECOND)
+  @Test(timeOut = 60 * Time.MS_PER_SECOND)
   // TODO: killed_push_jobs_count seems to be a broken metric in L/F (at least for participant stores)
   public void testParticipantStoreKill() {
     VersionCreationResponse versionCreationResponse = getNewStoreVersion(parentControllerClient, true);
@@ -112,22 +109,26 @@ public class ParticipantStoreTest {
     ControllerResponse response = parentControllerClient.killOfflinePushJob(topicName);
     assertFalse(response.isError());
     verifyKillMessageInParticipantStore(topicName, true);
+    String requestMetricExample =
+        VeniceSystemStoreUtils.getParticipantStoreNameForCluster(clusterName) + "--success_request_key_count.Avg";
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
       // Poll job status to verify the job is indeed killed
       assertEquals(controllerClient.queryJobStatus(topicName).getStatus(), ExecutionStatus.ERROR.toString());
+
+      // Verify participant store consumption stats
+      // (not sure why these are flaky, but they are, so we're putting them in the non-deterministic assertion loop...)
+      Map<String, ? extends Metric> metrics =
+          veniceLocalCluster.getVeniceServers().iterator().next().getMetricsRepository().metrics();
+      assertEquals(getMetric(metrics, metricPrefix + "--killed_push_jobs.Count").value(), 1.0);
+      assertTrue(getMetric(metrics, metricPrefix + "--kill_push_job_latency.Avg").value() > 0);
+      assertTrue(getMetric(metrics, ".venice-client_" + requestMetricExample).value() > 0);
     });
-    // Verify participant store consumption stats
-    String requestMetricExample =
-        VeniceSystemStoreUtils.getParticipantStoreNameForCluster(clusterName) + "--success_request_key_count.Avg";
-    Map<String, ? extends Metric> metrics =
-        veniceLocalCluster.getVeniceServers().iterator().next().getMetricsRepository().metrics();
-    assertEquals(metrics.get(metricPrefix + "--killed_push_jobs.Count").value(), 1.0);
-    assertTrue(metrics.get(metricPrefix + "--kill_push_job_latency.Avg").value() > 0);
-    // One from the server stats and the other from the client stats.
-    assertTrue(metrics.get("." + requestMetricExample).value() > 0);
-    // "." will be replaced by "_" in AbstractVeniceStats constructor to ensure Tahuti is able to parse metric name by
-    // ".".
-    assertTrue(metrics.get(".venice-client_" + requestMetricExample).value() > 0);
+  }
+
+  private static Metric getMetric(Map<String, ? extends Metric> metrics, String name) {
+    Metric metric = metrics.get(name);
+    assertNotNull(metric, "Metric '" + name + "' was not found!");
+    return metric;
   }
 
   @Test(timeOut = 60 * Time.MS_PER_SECOND)
@@ -148,10 +149,7 @@ public class ParticipantStoreTest {
     });
 
     // restart routers to discard in-memory throttler info
-    for (VeniceRouterWrapper router: veniceLocalCluster.getVeniceRouters()) {
-      veniceLocalCluster.stopVeniceRouter(router.getPort());
-      veniceLocalCluster.restartVeniceRouter(router.getPort());
-    }
+    veniceLocalCluster.stopAndRestartAllVeniceRouters();
     // Verify still can read from participant stores.
     ParticipantMessageKey key = new ParticipantMessageKey();
     key.resourceName = topicName;
@@ -252,40 +250,6 @@ public class ParticipantStoreTest {
     parentControllerClient
         .deleteOldVersion(storeName, Version.parseVersionFromKafkaTopicName(topicNameForOnlineVersion));
     verifyKillMessageInParticipantStore(topicNameForOnlineVersion, true);
-  }
-
-  static class TestListener implements StoreDataChangedListener {
-    AtomicInteger creationCount = new AtomicInteger(0);
-    AtomicInteger changeCount = new AtomicInteger(0);
-    AtomicInteger deletionCount = new AtomicInteger(0);
-
-    @Override
-    public void handleStoreCreated(Store store) {
-      creationCount.incrementAndGet();
-    }
-
-    @Override
-    public void handleStoreDeleted(String storeName) {
-      deletionCount.incrementAndGet();
-    }
-
-    @Override
-    public void handleStoreChanged(Store store) {
-      LOGGER.info("Received handleStoreChanged: {}", store);
-      changeCount.incrementAndGet();
-    }
-
-    public int getCreationCount() {
-      return creationCount.get();
-    }
-
-    public int getChangeCount() {
-      return changeCount.get();
-    }
-
-    public int getDeletionCount() {
-      return deletionCount.get();
-    }
   }
 
   private void verifyKillMessageInParticipantStore(String topic, boolean shouldPresent) {

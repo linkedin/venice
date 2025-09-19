@@ -3,19 +3,18 @@ package com.linkedin.davinci.kafka.consumer;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.ingestion.consumption.ConsumedDataReceiver;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
-import com.linkedin.venice.message.KafkaKey;
-import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
-import java.util.stream.Collectors;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -177,35 +176,30 @@ public class KafkaConsumerServiceDelegator extends AbstractKafkaConsumerService 
 
   @Override
   public boolean hasAnySubscriptionFor(PubSubTopic versionTopic) {
-    return consumerServices.stream()
-        .anyMatch(kafkaConsumerService -> kafkaConsumerService.hasAnySubscriptionFor(versionTopic));
+    for (KafkaConsumerService kafkaConsumerService: this.consumerServices) {
+      if (kafkaConsumerService.hasAnySubscriptionFor(versionTopic)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   @Override
   public long getMaxElapsedTimeMSSinceLastPollInConsumerPool() {
-    return Collections.max(
-        consumerServices.stream()
-            .map(KafkaConsumerService::getMaxElapsedTimeMSSinceLastPollInConsumerPool)
-            .collect(Collectors.toList()));
+    long max = -1;
+    for (KafkaConsumerService kafkaConsumerService: this.consumerServices) {
+      max = Math.max(max, kafkaConsumerService.getMaxElapsedTimeMSSinceLastPollInConsumerPool());
+    }
+    return max;
   }
 
   @Override
   public void startConsumptionIntoDataReceiver(
       PartitionReplicaIngestionContext partitionReplicaIngestionContext,
-      long lastReadOffset,
-      ConsumedDataReceiver<List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> consumedDataReceiver) {
+      PubSubPosition lastReadPosition,
+      ConsumedDataReceiver<List<DefaultPubSubMessage>> consumedDataReceiver) {
     assignKafkaConsumerServiceFor(partitionReplicaIngestionContext)
-        .startConsumptionIntoDataReceiver(partitionReplicaIngestionContext, lastReadOffset, consumedDataReceiver);
-  }
-
-  @Override
-  public long getOffsetLagBasedOnMetrics(PubSubTopic versionTopic, PubSubTopicPartition pubSubTopicPartition) {
-    KafkaConsumerService kafkaConsumerService = getKafkaConsumerService(versionTopic, pubSubTopicPartition);
-    if (kafkaConsumerService != null) {
-      return kafkaConsumerService.getOffsetLagBasedOnMetrics(versionTopic, pubSubTopicPartition);
-    } else {
-      return -1;
-    }
+        .startConsumptionIntoDataReceiver(partitionReplicaIngestionContext, lastReadPosition, consumedDataReceiver);
   }
 
   @Override
@@ -233,6 +227,27 @@ public class KafkaConsumerServiceDelegator extends AbstractKafkaConsumerService 
           pubSubTopicPartition);
       return Collections.emptyMap();
     }
+  }
+
+  @Override
+  public Map<PubSubTopicPartition, Long> getStaleTopicPartitions(long thresholdTimestamp) {
+    Map<PubSubTopicPartition, Long> consolidatedMap = new HashMap<>();
+    for (KafkaConsumerService kafkaConsumerService: consumerServices) {
+      Map<PubSubTopicPartition, Long> staleTopicPartitions =
+          kafkaConsumerService.getStaleTopicPartitions(thresholdTimestamp);
+      for (Map.Entry<PubSubTopicPartition, Long> entry: staleTopicPartitions.entrySet()) {
+        if (consolidatedMap.containsKey(entry.getKey())) {
+          // Keep the entry with older timestamp.
+          long subscribeTimestamp = consolidatedMap.get(entry.getKey());
+          if (entry.getValue() < subscribeTimestamp) {
+            consolidatedMap.put(entry.getKey(), entry.getValue());
+          }
+        } else {
+          consolidatedMap.put(entry.getKey(), entry.getValue());
+        }
+      }
+    }
+    return consolidatedMap;
   }
 
   @Override
@@ -281,13 +296,17 @@ public class KafkaConsumerServiceDelegator extends AbstractKafkaConsumerService 
   }
 
   public class AAOrWCLeaderConsumerPoolStrategy extends DefaultConsumerPoolStrategy {
-    private final KafkaConsumerService dedicatedConsumerService;
+    private final KafkaConsumerService dedicatedConsumerServiceForAAWCLeader;
+    private final KafkaConsumerService dedicatedConsumerServiceForSepRT;
 
     public AAOrWCLeaderConsumerPoolStrategy() {
       super();
-      dedicatedConsumerService = consumerServiceConstructor
+      dedicatedConsumerServiceForAAWCLeader = consumerServiceConstructor
           .apply(serverConfig.getDedicatedConsumerPoolSizeForAAWCLeader(), ConsumerPoolType.AA_WC_LEADER_POOL);
-      consumerServices.add(dedicatedConsumerService);
+      dedicatedConsumerServiceForSepRT = consumerServiceConstructor
+          .apply(serverConfig.getDedicatedConsumerPoolSizeForSepRTLeader(), ConsumerPoolType.SEP_RT_LEADER_POOL);
+      consumerServices.add(dedicatedConsumerServiceForAAWCLeader);
+      consumerServices.add(dedicatedConsumerServiceForSepRT);
     }
 
     @Override
@@ -295,9 +314,12 @@ public class KafkaConsumerServiceDelegator extends AbstractKafkaConsumerService 
         PartitionReplicaIngestionContext topicPartitionReplicaRole) {
       PubSubTopicPartition topicPartition = topicPartitionReplicaRole.getPubSubTopicPartition();
       PubSubTopic versionTopic = topicPartitionReplicaRole.getVersionTopic();
-      if (isAAWCStoreFunc.apply(versionTopic.getName()) && topicPartition.getPubSubTopic().isRealTime()
-          && !topicPartition.getPubSubTopic().isSeparateRealTimeTopic()) {
-        return dedicatedConsumerService;
+      if (isAAWCStoreFunc.apply(versionTopic.getName()) && topicPartition.getPubSubTopic().isRealTime()) {
+        if (topicPartition.getPubSubTopic().isSeparateRealTimeTopic()) {
+          return dedicatedConsumerServiceForSepRT;
+        } else {
+          return dedicatedConsumerServiceForAAWCLeader;
+        }
       }
       return defaultConsumerService;
     }

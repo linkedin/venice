@@ -6,9 +6,8 @@ import static com.linkedin.venice.ConfigKeys.CLUSTER_TO_SERVER_D2;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.LISTENER_PORT;
 import static com.linkedin.venice.ConfigKeys.LISTENER_SSL_PORT;
-import static com.linkedin.venice.ConfigKeys.ROUTER_CLIENT_SSL_HANDSHAKE_THREADS;
 import static com.linkedin.venice.ConfigKeys.ROUTER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS;
-import static com.linkedin.venice.ConfigKeys.ROUTER_RESOLVE_BEFORE_SSL;
+import static com.linkedin.venice.ConfigKeys.ROUTER_RESOLVE_THREADS;
 import static com.linkedin.venice.ConfigKeys.ROUTER_STORAGE_NODE_CLIENT_TYPE;
 import static com.linkedin.venice.ConfigKeys.SSL_TO_STORAGE_NODES;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
@@ -20,8 +19,8 @@ import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.helix.HelixHybridStoreQuotaRepository;
 import com.linkedin.venice.helix.HelixLiveInstanceMonitor;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
-import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
 import com.linkedin.venice.helix.HelixReadOnlyStoreRepository;
+import com.linkedin.venice.helix.HelixReadOnlyStoreViewConfigRepositoryAdapter;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.PartitionerConfigImpl;
@@ -102,11 +101,11 @@ public class MockVeniceRouterWrapper extends ProcessWrapper {
         Optional.of(Mockito.mock(HelixHybridStoreQuotaRepository.class));
 
     Instance mockControllerInstance = Mockito.mock(Instance.class);
-    doReturn(CONTROLLER).when(mockControllerInstance).getUrl();
+    doReturn(CONTROLLER).when(mockControllerInstance).getUrl(false);
     doReturn(mockControllerInstance).when(mockRepo).getLeaderController();
 
-    HelixReadOnlyStoreConfigRepository mockStoreConfigRepository =
-        Mockito.mock(HelixReadOnlyStoreConfigRepository.class);
+    HelixReadOnlyStoreViewConfigRepositoryAdapter mockStoreConfigRepository =
+        Mockito.mock(HelixReadOnlyStoreViewConfigRepositoryAdapter.class);
 
     HelixLiveInstanceMonitor mockLiveInstanceMonitor = Mockito.mock(HelixLiveInstanceMonitor.class);
     doReturn(true).when(mockLiveInstanceMonitor).isInstanceAlive(any());
@@ -139,8 +138,7 @@ public class MockVeniceRouterWrapper extends ProcessWrapper {
               CLUSTER_TO_SERVER_D2,
               TestUtils.getClusterToD2String(Collections.singletonMap(clusterName, serverD2ServiceName)))
           .put(ROUTER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS, 1)
-          .put(ROUTER_CLIENT_SSL_HANDSHAKE_THREADS, 10)
-          .put(ROUTER_RESOLVE_BEFORE_SSL, true)
+          .put(ROUTER_RESOLVE_THREADS, 5)
           .put(ROUTER_STORAGE_NODE_CLIENT_TYPE, StorageNodeClientType.APACHE_HTTP_ASYNC_CLIENT.name())
           .put(extraConfigs);
       StoreConfig storeConfig = new StoreConfig("test");

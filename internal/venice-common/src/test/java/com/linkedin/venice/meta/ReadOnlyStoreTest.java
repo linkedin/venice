@@ -1,8 +1,8 @@
 package com.linkedin.venice.meta;
 
-import static org.testng.Assert.*;
+import static com.linkedin.venice.utils.ConfigCommonUtils.ActivationState;
+import static org.testng.Assert.assertEquals;
 
-import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.systemstore.schemas.StoreETLConfig;
 import com.linkedin.venice.systemstore.schemas.StoreHybridConfig;
 import com.linkedin.venice.systemstore.schemas.StorePartitionerConfig;
@@ -10,6 +10,9 @@ import com.linkedin.venice.systemstore.schemas.StoreProperties;
 import com.linkedin.venice.systemstore.schemas.StoreViewConfig;
 import com.linkedin.venice.systemstore.schemas.SystemStoreProperties;
 import com.linkedin.venice.utils.TestUtils;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import org.apache.logging.log4j.LogManager;
@@ -33,12 +36,16 @@ public class ReadOnlyStoreTest {
   @Test
   public void testCloneStoreProperties() {
 
-    ZKStore store = populateZKStore(
+    ZKStore store = TestUtils.populateZKStore(
         (ZKStore) TestUtils.createTestStore(
             Long.toString(RANDOM.nextLong()),
             Long.toString(RANDOM.nextLong()),
-            System.currentTimeMillis()));
+            System.currentTimeMillis()),
+        RANDOM);
 
+    List<LifecycleHooksRecord> storeLifecycleHooks = new ArrayList<>();
+    storeLifecycleHooks.add(new LifecycleHooksRecordImpl("testLifecycleHooksClassName", Collections.emptyMap()));
+    store.setStoreLifecycleHooks(storeLifecycleHooks);
     ReadOnlyStore readOnlyStore = new ReadOnlyStore(store);
     StoreProperties storeProperties = readOnlyStore.cloneStoreProperties();
 
@@ -102,60 +109,11 @@ public class ReadOnlyStoreTest {
     assertEqualsSystemStores(storeProperties.getSystemStores(), store.getSystemStores());
     assertEquals(storeProperties.getStorageNodeReadQuotaEnabled(), store.isStorageNodeReadQuotaEnabled());
     assertEquals(storeProperties.getBlobTransferEnabled(), store.isBlobTransferEnabled());
+    assertEquals(storeProperties.getBlobTransferInServerEnabled(), store.getBlobTransferInServerEnabled());
+    assertEquals(storeProperties.getBlobTransferInServerEnabled(), ActivationState.NOT_SPECIFIED.name());
     assertEquals(storeProperties.getNearlineProducerCompressionEnabled(), store.isNearlineProducerCompressionEnabled());
     assertEquals(storeProperties.getNearlineProducerCountPerWriter(), store.getNearlineProducerCountPerWriter());
-  }
-
-  private ZKStore populateZKStore(ZKStore store) {
-    store.setCurrentVersion(RANDOM.nextInt());
-    store.setPartitionCount(RANDOM.nextInt());
-    store.setLowWatermark(RANDOM.nextLong());
-    store.setEnableWrites(false);
-    store.setEnableReads(true);
-    store.setStorageQuotaInByte(RANDOM.nextLong());
-    store.setReadQuotaInCU(RANDOM.nextLong());
-    store.setHybridStoreConfig(TestUtils.createTestHybridStoreConfig(RANDOM));
-    store.setViewConfigs(TestUtils.createTestViewConfigs(RANDOM));
-    store.setCompressionStrategy(CompressionStrategy.GZIP);
-    store.setClientDecompressionEnabled(true);
-    store.setChunkingEnabled(true);
-    store.setRmdChunkingEnabled(true);
-    store.setBatchGetLimit(RANDOM.nextInt());
-    store.setNumVersionsToPreserve(RANDOM.nextInt());
-    store.setIncrementalPushEnabled(true);
-    store.setSeparateRealTimeTopicEnabled(true);
-    store.setMigrating(true);
-    store.setWriteComputationEnabled(true);
-    store.setReadComputationEnabled(true);
-    store.setBootstrapToOnlineTimeoutInHours(RANDOM.nextInt());
-    store.setNativeReplicationEnabled(true);
-    store.setPushStreamSourceAddress("push_stream_source");
-    store.setBackupStrategy(BackupStrategy.DELETE_ON_NEW_PUSH_START);
-    store.setSchemaAutoRegisterFromPushJobEnabled(true);
-    store.setLatestSuperSetValueSchemaId(RANDOM.nextInt());
-    store.setHybridStoreDiskQuotaEnabled(true);
-    store.setStoreMetaSystemStoreEnabled(true);
-    store.setEtlStoreConfig(TestUtils.createTestETLStoreConfig());
-    store.setPartitionerConfig(TestUtils.createTestPartitionerConfig(RANDOM));
-    store.setLatestVersionPromoteToCurrentTimestamp(RANDOM.nextLong());
-    store.setBackupVersionRetentionMs(RANDOM.nextLong());
-    store.setMigrationDuplicateStore(true);
-    store.setNativeReplicationSourceFabric("native_replication_source_fabric");
-    store.setDaVinciPushStatusStoreEnabled(true);
-    store.setStoreMetadataSystemStoreEnabled(true);
-    store.setActiveActiveReplicationEnabled(true);
-    store.setMinCompactionLagSeconds(RANDOM.nextLong());
-    store.setMaxCompactionLagSeconds(RANDOM.nextLong());
-    store.setMaxRecordSizeBytes(RANDOM.nextInt());
-    store.setMaxNearlineRecordSizeBytes(RANDOM.nextInt());
-    store.setUnusedSchemaDeletionEnabled(true);
-    store.setVersions(TestUtils.createTestVersions(store.getName(), RANDOM));
-    store.setSystemStores(TestUtils.createTestSystemStores(store.getName(), RANDOM));
-    store.setStorageNodeReadQuotaEnabled(true);
-    store.setBlobTransferEnabled(true);
-    store.setNearlineProducerCompressionEnabled(true);
-    store.setNearlineProducerCountPerWriter(RANDOM.nextInt());
-    return store;
+    assertEquals(storeProperties.getStoreLifecycleHooks().size(), store.getStoreLifecycleHooks().size());
   }
 
   private void assertEqualHybridConfig(StoreHybridConfig actual, HybridStoreConfig expected) {

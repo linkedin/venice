@@ -1,14 +1,24 @@
 package com.linkedin.venice.pubsub.adapter.kafka.producer;
 
+import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_CLIENT_CONFIG_PREFIX;
 import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_PRODUCER_USE_HIGH_THROUGHPUT_DEFAULTS;
 
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.serialization.KafkaKeySerializer;
-import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
-import com.linkedin.venice.utils.KafkaSSLUtils;
+import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
+import com.linkedin.venice.pubsub.PubSubProducerAdapterContext;
+import com.linkedin.venice.pubsub.PubSubUtil;
+import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaUtils;
+import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPositionFactory;
+import com.linkedin.venice.pubsub.api.PubSubMessageSerializer;
 import com.linkedin.venice.utils.VeniceProperties;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.Objects;
 import java.util.Properties;
+import java.util.Set;
 import org.apache.kafka.clients.producer.ProducerConfig;
+import org.apache.kafka.common.serialization.ByteArraySerializer;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -22,21 +32,32 @@ import org.apache.logging.log4j.Logger;
 public class ApacheKafkaProducerConfig {
   private static final Logger LOGGER = LogManager.getLogger(ApacheKafkaProducerConfig.class);
 
+  /**
+   * Legacy Kafka configs are using only kafka prefix. But now we are using pubsub.kafka prefix for all Kafka configs.
+   */
   public static final String KAFKA_CONFIG_PREFIX = "kafka.";
+  public static final String PUBSUB_KAFKA_CLIENT_CONFIG_PREFIX = PUBSUB_CLIENT_CONFIG_PREFIX + KAFKA_CONFIG_PREFIX;
+
+  /**
+   * Use the following prefix to get the producer properties from the {@link VeniceProperties} object.
+   */
+  private static final String PUBSUB_KAFKA_PRODUCER_CONFIG_PREFIX =
+      PubSubUtil.getPubSubProducerConfigPrefix(KAFKA_CONFIG_PREFIX);
+  public static final Set<String> KAFKA_PRODUCER_CONFIG_PREFIXES = Collections.unmodifiableSet(
+      new HashSet<>(
+          Arrays.asList(KAFKA_CONFIG_PREFIX, PUBSUB_KAFKA_PRODUCER_CONFIG_PREFIX, PUBSUB_KAFKA_CLIENT_CONFIG_PREFIX)));
   public static final String KAFKA_BOOTSTRAP_SERVERS = KAFKA_CONFIG_PREFIX + ProducerConfig.BOOTSTRAP_SERVERS_CONFIG;
   public static final String KAFKA_PRODUCER_RETRIES_CONFIG = KAFKA_CONFIG_PREFIX + ProducerConfig.RETRIES_CONFIG;
   public static final String KAFKA_LINGER_MS = KAFKA_CONFIG_PREFIX + ProducerConfig.LINGER_MS_CONFIG;
   public static final String KAFKA_BUFFER_MEMORY = KAFKA_CONFIG_PREFIX + ProducerConfig.BUFFER_MEMORY_CONFIG;
   public static final String KAFKA_CLIENT_ID = KAFKA_CONFIG_PREFIX + ProducerConfig.CLIENT_ID_CONFIG;
-  public static final String KAFKA_KEY_SERIALIZER = KAFKA_CONFIG_PREFIX + ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG;
-  public static final String KAFKA_COMPRESSION_TYPE = KAFKA_CONFIG_PREFIX + ProducerConfig.COMPRESSION_TYPE_CONFIG;
-  public static final String KAFKA_VALUE_SERIALIZER =
-      KAFKA_CONFIG_PREFIX + ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG;
   public static final String KAFKA_PRODUCER_DELIVERY_TIMEOUT_MS =
       KAFKA_CONFIG_PREFIX + ProducerConfig.DELIVERY_TIMEOUT_MS_CONFIG;
   public static final String KAFKA_PRODUCER_REQUEST_TIMEOUT_MS =
       KAFKA_CONFIG_PREFIX + ProducerConfig.REQUEST_TIMEOUT_MS_CONFIG;
   public static final String SSL_KAFKA_BOOTSTRAP_SERVERS = "ssl." + KAFKA_BOOTSTRAP_SERVERS;
+
+  protected static final String KAFKA_POSITION_FACTORY_CLASS_NAME = ApacheKafkaOffsetPositionFactory.class.getName();
 
   /**
    * N.B. do not attempt to change spelling, "kakfa", without carefully replacing all instances in use and some of them
@@ -54,36 +75,32 @@ public class ApacheKafkaProducerConfig {
   public static final String DEFAULT_KAFKA_LINGER_MS = "1000";
 
   private final Properties producerProperties;
+  private final PubSubMessageSerializer pubSubMessageSerializer;
 
-  public ApacheKafkaProducerConfig(Properties allVeniceProperties) {
-    this(new VeniceProperties(allVeniceProperties), null, null, true);
-  }
-
-  public ApacheKafkaProducerConfig(
-      VeniceProperties allVeniceProperties,
-      String brokerAddressToOverride,
-      String producerName,
-      boolean strictConfigs) {
-    String brokerAddress =
-        brokerAddressToOverride != null ? brokerAddressToOverride : getPubsubBrokerAddress(allVeniceProperties);
-    this.producerProperties =
-        getValidProducerProperties(allVeniceProperties.clipAndFilterNamespace(KAFKA_CONFIG_PREFIX).toProperties());
-    this.producerProperties.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, brokerAddress);
-    validateAndUpdateProperties(this.producerProperties, strictConfigs);
-    if (producerName != null) {
-      this.producerProperties.put(ProducerConfig.CLIENT_ID_CONFIG, producerName);
-    }
-
+  public ApacheKafkaProducerConfig(PubSubProducerAdapterContext context) {
+    String brokerAddress = Objects.requireNonNull(context.getBrokerAddress(), "Broker address cannot be null");
+    VeniceProperties allVeniceProperties = context.getVeniceProperties();
+    validateKafkaPositionType(context.getPubSubPositionTypeRegistry());
+    this.pubSubMessageSerializer = context.getPubSubMessageSerializer();
+    this.producerProperties = ApacheKafkaUtils.getValidKafkaClientProperties(
+        allVeniceProperties,
+        context.getPubSubSecurityProtocol(),
+        ProducerConfig.configNames(),
+        KAFKA_PRODUCER_CONFIG_PREFIXES);
+    validateAndUpdateProperties(this.producerProperties, context.shouldValidateProducerConfigStrictly());
     if (allVeniceProperties.getBoolean(PUBSUB_PRODUCER_USE_HIGH_THROUGHPUT_DEFAULTS, false)) {
       addHighThroughputDefaults();
     }
 
-    // Setup ssl config if needed.
-    if (KafkaSSLUtils.validateAndCopyKafkaSSLConfig(allVeniceProperties, this.producerProperties)) {
-      LOGGER.info("Will initialize an SSL Kafka producer");
-    } else {
-      LOGGER.info("Will initialize a non-SSL Kafka producer");
+    if (context.isProducerCompressionEnabled()) {
+      this.producerProperties.put(ProducerConfig.COMPRESSION_TYPE_CONFIG, context.getCompressionType());
     }
+
+    producerProperties.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, brokerAddress);
+    producerProperties.put(ProducerConfig.CLIENT_ID_CONFIG, context.getProducerName());
+    // Do not remove the following configurations unless you fully understand the implications.
+    producerProperties.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, ByteArraySerializer.class);
+    producerProperties.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, ByteArraySerializer.class);
   }
 
   /**
@@ -99,42 +116,15 @@ public class ApacheKafkaProducerConfig {
     }
   }
 
-  public Properties getProducerProperties() {
+  protected Properties getProducerProperties() {
     return producerProperties;
   }
 
-  public static String getPubsubBrokerAddress(VeniceProperties properties) {
-    if (Boolean.parseBoolean(properties.getStringWithAlternative(SSL_TO_KAFKA_LEGACY, KAFKA_OVER_SSL, "false"))) {
-      checkProperty(properties, SSL_KAFKA_BOOTSTRAP_SERVERS);
-      return properties.getString(SSL_KAFKA_BOOTSTRAP_SERVERS);
-    }
-    checkProperty(properties, KAFKA_BOOTSTRAP_SERVERS);
-    return properties.getString(KAFKA_BOOTSTRAP_SERVERS);
-  }
-
-  private static void checkProperty(VeniceProperties properties, String key) {
-    if (!properties.containsKey(key)) {
-      throw new VeniceException(
-          "Invalid properties for Kafka producer factory. Required property: " + key + " is missing.");
-    }
-  }
-
-  public String getBrokerAddress() {
+  protected String getBrokerAddress() {
     return producerProperties.getProperty(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG);
   }
 
   private void validateAndUpdateProperties(Properties kafkaProducerProperties, boolean strictConfigs) {
-    validateClassProp(
-        kafkaProducerProperties,
-        strictConfigs,
-        ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG,
-        KafkaKeySerializer.class.getName());
-    validateClassProp(
-        kafkaProducerProperties,
-        strictConfigs,
-        ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG,
-        KafkaValueSerializer.class.getName());
-
     // This is to guarantee ordering, even in the face of failures.
     validateOrPopulateProp(
         kafkaProducerProperties,
@@ -205,77 +195,45 @@ public class ApacheKafkaProducerConfig {
     }
   }
 
-  public static Properties getValidProducerProperties(Properties extractedProperties) {
-    Properties validProperties = new Properties();
-    extractedProperties.forEach((configKey, configVal) -> {
-      if (ProducerConfig.configNames().contains(configKey)) {
-        validProperties.put(configKey, configVal);
-      }
-    });
-    return validProperties;
+  public PubSubMessageSerializer getPubSubMessageSerializer() {
+    return pubSubMessageSerializer;
   }
 
   /**
-   * Validate and load Class properties.
+   * Validates that the {@link PubSubPositionTypeRegistry} includes support for the Kafka offset-based position type.
+   * <p>
+   * Since this client uses a <b>reserved type ID</b> for Kafka positions (see
+   * {@link PubSubPositionTypeRegistry#APACHE_KAFKA_OFFSET_POSITION_TYPE_ID}), we do not rely on the type ID returned
+   * by the registry for functional behavior. Instead, we perform a <b>sanity check</b> to ensure that the registry
+   * mapping is consistent with the reserved value. This helps detect misconfigured or corrupted mappings.
+   * <p>
+   * If the position class is not registered or the associated type ID does not match the expected reserved value,
+   * this method logs a descriptive error and throws a {@link VeniceException}.
+   *
+   * @param typeRegistry the position type registry to validate
+   * @throws VeniceException if the type is missing or mismatched
    */
-  private void validateClassProp(
-      Properties properties,
-      boolean strictConfigs,
-      String requiredConfigKey,
-      String requiredConfigValue) {
-    validateOrPopulateProp(properties, strictConfigs, requiredConfigKey, requiredConfigValue);
-    String className = properties.getProperty(requiredConfigKey);
-    if (className == null) {
-      return;
-    }
-    try {
-      /*
-       * The following code is trying to fix ClassNotFoundException while using JDK11.
-       * Instead of letting Kafka lib load the specified class, application will load it on its own.
-       * The difference is that Kafka lib is trying to load the specified class by `Thread.currentThread().getContextClassLoader()`,
-       * which seems to be problematic with JDK11.
-       */
-      properties.put(requiredConfigKey, Class.forName(className));
-    } catch (ClassNotFoundException e) {
-      throw new VeniceException(
-          "Failed to load the specified class: " + className + " for key: " + requiredConfigKey,
-          e);
-    }
-  }
-
-  public static void copyKafkaSASLProperties(
-      VeniceProperties configuration,
-      Properties properties,
-      boolean stripPrefix) {
-    copyKafkaSASLProperties(configuration.toProperties(), properties, stripPrefix);
-  }
-
-  public static void copyKafkaSASLProperties(Properties configuration, Properties properties, boolean stripPrefix) {
-    String saslConfiguration = configuration.getProperty("kafka.sasl.jaas.config", "");
-    if (saslConfiguration != null && !saslConfiguration.isEmpty()) {
-      if (stripPrefix) {
-        properties.put("sasl.jaas.config", saslConfiguration);
-      } else {
-        properties.put("kafka.sasl.jaas.config", saslConfiguration);
-      }
+  private static void validateKafkaPositionType(PubSubPositionTypeRegistry typeRegistry) {
+    if (!typeRegistry.containsFactoryClass(KAFKA_POSITION_FACTORY_CLASS_NAME)) {
+      String message = String.format(
+          "Kafka position factory type class (%s) not found in PubSubPositionMapper: %s",
+          KAFKA_POSITION_FACTORY_CLASS_NAME,
+          typeRegistry);
+      LOGGER.error(message);
+      throw new VeniceException(message);
     }
 
-    String saslMechanism = configuration.getProperty("kafka.sasl.mechanism", "");
-    if (saslMechanism != null && !saslMechanism.isEmpty()) {
-      if (stripPrefix) {
-        properties.put("sasl.mechanism", saslMechanism);
-      } else {
-        properties.put("kafka.sasl.mechanism", saslMechanism);
-      }
-    }
+    int positionTypeId = typeRegistry.getTypeIdForFactoryClass(KAFKA_POSITION_FACTORY_CLASS_NAME);
+    int expectedTypeId = PubSubPositionTypeRegistry.APACHE_KAFKA_OFFSET_POSITION_TYPE_ID;
 
-    String securityProtocol = configuration.getProperty("kafka.security.protocol", "");
-    if (securityProtocol != null && !securityProtocol.isEmpty()) {
-      if (stripPrefix) {
-        properties.put("security.protocol", securityProtocol);
-      } else {
-        properties.put("kafka.security.protocol", securityProtocol);
-      }
+    if (positionTypeId != expectedTypeId) {
+      String message = String.format(
+          "Unexpected type ID for Kafka position factory. Expected: %d, Found: %d, Registry: %s",
+          expectedTypeId,
+          positionTypeId,
+          typeRegistry);
+      LOGGER.error(message);
+      throw new VeniceException(message);
     }
   }
 }

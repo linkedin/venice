@@ -7,7 +7,11 @@ public class ControllerApiConstants {
   public static final String SOURCE_GRID_FABRIC = "source_grid_fabric";
   public static final String BATCH_JOB_HEARTBEAT_ENABLED = "batch_job_heartbeat_enabled";
 
+  public static final String IS_ABORT_MIGRATION_CLEANUP = "is_abort_migration_cleanup";
   public static final String STORE_NAME = "store_name";
+
+  public static final String AUTO_STORE_MIGRATION_CURRENT_STEP = "auto_store_migration_current_step";
+  public static final String AUTO_STORE_MIGRATION_ABORT_ON_FAILURE = "auto_store_migration_abort_on_failure";
   /**
    * @deprecated Use {@link #STORE_NAME} instead.
    */
@@ -70,6 +74,7 @@ public class ControllerApiConstants {
   public static final String BATCH_GET_ROUTER_CACHE_ENABLED = "batch_get_router_cache_enabled";
   public static final String BATCH_GET_LIMIT = "batch_get_limit";
   public static final String LARGEST_USED_VERSION_NUMBER = "largest_used_version_number";
+  public static final String LARGEST_USED_RT_VERSION_NUMBER = "largest_used_rt_version_number";
   public static final String NUM_VERSIONS_TO_PRESERVE = "num_versions_to_preserve";
   public static final String DISABLE_META_STORE = "disable_meta_store";
   public static final String DISABLE_DAVINCI_PUSH_STATUS_STORE = "disable_davinci_push_status_store";
@@ -87,6 +92,7 @@ public class ControllerApiConstants {
   public static final String PUSH_STRATEGY = "push_strategy";
 
   public static final String ACCESS_CONTROLLED = "access_controlled";
+
   /**
    * @deprecated Use {@link #ENABLE_STORE_MIGRATION} instead. This constant is kept for backward compatibility
    * and will be removed in a future release.
@@ -109,6 +115,7 @@ public class ControllerApiConstants {
   public static final String BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS = "bootstrap_to_online_timeout_in_hours";
 
   public static final String INCLUDE_SYSTEM_STORES = "include_system_stores";
+  public static final String LOOK_BACK_MS = "look_back_ms";
 
   public static final String STORE_VIEW = "store_view";
   public static final String STORE_VIEW_NAME = "store_view_name";
@@ -224,6 +231,7 @@ public class ControllerApiConstants {
   public static final String KAFKA_TOPIC_RETENTION_IN_MS = "kafka.topic.retention.in.ms";
   public static final String KAFKA_TOPIC_MIN_IN_SYNC_REPLICA = "kafka.topic.min.in.sync.replica";
   public static final String UPSTREAM_OFFSET = "upstream_offset";
+  public static final String ADMIN_OPERATION_PROTOCOL_VERSION = "admin_operation_protocol_version";
 
   public static final String PERSONA_NAME = "persona_name";
   public static final String PERSONA_OWNERS = "persona_owners";
@@ -238,11 +246,13 @@ public class ControllerApiConstants {
    * String representation of the list of regions that is separated by comma for targeted region push
    */
   public static final String TARGETED_REGIONS = "targeted_regions";
+  public static final String TARGET_REGION_PUSH_WITH_DEFERRED_SWAP = "target_region_push_with_deferred_swap";
 
   public static final String STORAGE_NODE_READ_QUOTA_ENABLED = "storage_node_read_quota_enabled";
 
+  public static final String COMPACTION_ENABLED = "compaction_enabled";
+  public static final String COMPACTION_THRESHOLD_MILLISECONDS = "compaction_threshold_milliseconds";
   public static final String MIN_COMPACTION_LAG_SECONDS = "min_compaction_lag_seconds";
-
   public static final String MAX_COMPACTION_LAG_SECONDS = "max_compaction_lag_seconds";
 
   public static final String MAX_RECORD_SIZE_BYTES = "max_record_size_bytes";
@@ -251,6 +261,7 @@ public class ControllerApiConstants {
   public static final String UNUSED_SCHEMA_DELETION_ENABLED = "unused_schema_deletion_enabled";
 
   public static final String BLOB_TRANSFER_ENABLED = "blob_transfer_enabled";
+  public static final String BLOB_TRANSFER_IN_SERVER_ENABLED = "blob_transfer_in_server_enabled";
 
   public static final String HEARTBEAT_TIMESTAMP = "heartbeat_timestamp";
 
@@ -259,4 +270,20 @@ public class ControllerApiConstants {
   public static final String TARGET_SWAP_REGION = "target_swap_region";
   public static final String TARGET_SWAP_REGION_WAIT_TIME = "target_swap_region_wait_time";
   public static final String IS_DAVINCI_HEARTBEAT_REPORTED = "is_davinci_heartbeat_reported";
+  public static final String GLOBAL_RT_DIV_ENABLED = "global_rt_div_enabled";
+  public static final String ENUM_SCHEMA_EVOLUTION_ALLOWED = "enum_schema_evolution_allowed";
+  public static final String STORE_LIFECYCLE_HOOKS_LIST = "store_lifecycle_hooks_list";
+  public static final String KEY_URN_COMPRESSION_ENABLED = "key_urn_compression_enabled";
+  public static final String KEY_URN_FIELDS = "key_urn_fields";
+
+  /**
+   * Params for repush job
+   */
+  public static final String SOURCE_REGION = "source_region";
+  public static final String TTL_REPUSH_ENABLED = "ttl_repush_enabled";
+
+  /**
+   * Params for dark cluster
+   */
+  public static final String STORES_TO_REPLICATE = "stores_to_replicate";
 }

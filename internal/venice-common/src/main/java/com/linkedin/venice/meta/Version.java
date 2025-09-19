@@ -1,5 +1,6 @@
 package com.linkedin.venice.meta;
 
+import static com.linkedin.venice.utils.Utils.SEPARATE_TOPIC_SUFFIX;
 import static java.lang.Character.isDigit;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
@@ -23,8 +24,8 @@ import java.util.Map;
 public interface Version extends Comparable<Version>, DataModelBackedStructure<StoreVersion> {
   String VERSION_SEPARATOR = "_v";
   String REAL_TIME_TOPIC_SUFFIX = "_rt";
+  String REAL_TIME_TOPIC_TEMPLATE = "%s_rt_v%d";
   String STREAM_REPROCESSING_TOPIC_SUFFIX = "_sr";
-  String SEPARATE_REAL_TIME_TOPIC_SUFFIX = "_rt_sep";
   /**
    * Special number indicating no replication metadata version is set.
    */
@@ -36,6 +37,13 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
   String VENICE_RE_PUSH_PUSH_ID_PREFIX = "venice_re_push_";
 
   String VENICE_TTL_RE_PUSH_PUSH_ID_PREFIX = "venice_ttl_re_push_";
+
+  /**
+   * Prefix used in push id to indicate a regular batch push is made to a store with TTL re-push enabled. This disables
+   * the TTL re-push enabled flag for the corresponding store.
+   */
+  String VENICE_REGULAR_PUSH_WITH_TTL_RE_PUSH_PREFIX = "venice_regular_push_with_ttl_re_push_";
+  int DEFAULT_RT_VERSION_NUMBER = 0;
 
   /**
    * Producer type for writing data to Venice
@@ -207,6 +215,10 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
 
   void setBlobTransferEnabled(boolean blobTransferEnabled);
 
+  String getBlobTransferInServerEnabled();
+
+  void setBlobTransferInServerEnabled(String blobTransferInServerEnabled);
+
   boolean isUseVersionLevelIncrementalPushEnabled();
 
   void setUseVersionLevelIncrementalPushEnabled(boolean versionLevelIncrementalPushEnabled);
@@ -279,6 +291,18 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
   @JsonIgnore
   void setRmdVersionId(int replicationMetadataVersionId);
 
+  boolean isGlobalRtDivEnabled();
+
+  void setGlobalRtDivEnabled(boolean globalRtDivEnabled);
+
+  void setKeyUrnCompressionEnabled(boolean keyUrnCompressionEnabled);
+
+  boolean isKeyUrnCompressionEnabled();
+
+  void setKeyUrnFields(List<String> keyUrnFields);
+
+  List<String> getKeyUrnFields();
+
   /**
    * Kafka topic name is composed by store name and version.
    * <p>
@@ -292,6 +316,28 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
 
   static String parseStoreFromVersionTopic(String kafkaTopic) {
     return kafkaTopic.substring(0, getLastIndexOfVersionSeparator(kafkaTopic));
+  }
+
+  static String removeRTVersionSuffix(String kafkaTopic) {
+    int lastIndexOfVersionSeparator = kafkaTopic.lastIndexOf(VERSION_SEPARATOR);
+
+    if (lastIndexOfVersionSeparator == 0) {
+      throw new VeniceException(
+          "There is nothing prior to the version separator '" + VERSION_SEPARATOR + "' in the provided topic name: '"
+              + kafkaTopic + "'");
+    } else if (lastIndexOfVersionSeparator == -1) {
+      return kafkaTopic;
+    }
+
+    int start = lastIndexOfVersionSeparator + VERSION_SEPARATOR.length();
+    int end = kafkaTopic.length();
+
+    for (int i = start; i < end; i++) {
+      if (!isDigit(kafkaTopic.charAt(i))) {
+        return kafkaTopic;
+      }
+    }
+    return kafkaTopic.substring(0, lastIndexOfVersionSeparator);
   }
 
   /**
@@ -318,6 +364,22 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
     return Integer.parseInt(kafkaTopic.substring(versionStartIndex));
   }
 
+  static int parseVersionFromVersionTopicPartition(String kafkaTopic) {
+    int versionStartIndex = getLastIndexOfVersionSeparator(kafkaTopic) + VERSION_SEPARATOR.length();
+
+    // Remove partition number if present
+    // e.g. store_89c1b5c06764_75ba3e03_v1-0
+    String versionString = kafkaTopic.substring(versionStartIndex);
+    versionString =
+        versionString.contains("-") ? versionString.substring(0, versionString.indexOf('-')) : versionString;
+
+    try {
+      return Integer.parseInt(versionString);
+    } catch (NumberFormatException e) {
+      return 1;
+    }
+  }
+
   static int getLastIndexOfVersionSeparator(String kafkaTopic) {
     int lastIndexOfVersionSeparator = kafkaTopic.lastIndexOf(VERSION_SEPARATOR);
     if (lastIndexOfVersionSeparator == -1) {
@@ -340,14 +402,6 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
     return storeName + VERSION_SEPARATOR + versionNumber;
   }
 
-  static String composeRealTimeTopic(String storeName) {
-    return storeName + REAL_TIME_TOPIC_SUFFIX;
-  }
-
-  static String composeSeparateRealTimeTopic(String storeName) {
-    return storeName + SEPARATE_REAL_TIME_TOPIC_SUFFIX;
-  }
-
   static String composeStreamReprocessingTopic(String storeName, int versionNumber) {
     return composeKafkaTopic(storeName, versionNumber) + STREAM_REPROCESSING_TOPIC_SUFFIX;
   }
@@ -367,10 +421,14 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
     if (!isRealTimeTopic(kafkaTopic)) {
       throw new VeniceException("Kafka topic: " + kafkaTopic + " is not a real-time topic");
     }
-    if (kafkaTopic.endsWith(REAL_TIME_TOPIC_SUFFIX)) {
-      return kafkaTopic.substring(0, kafkaTopic.length() - REAL_TIME_TOPIC_SUFFIX.length());
+
+    boolean isSeparateRT = kafkaTopic.endsWith(SEPARATE_TOPIC_SUFFIX);
+    if (isSeparateRT) {
+      kafkaTopic = kafkaTopic.substring(0, kafkaTopic.length() - SEPARATE_TOPIC_SUFFIX.length());
     }
-    return kafkaTopic.substring(0, kafkaTopic.length() - SEPARATE_REAL_TIME_TOPIC_SUFFIX.length());
+    String topicWithoutRTVersionSuffix = removeRTVersionSuffix(kafkaTopic);
+    return topicWithoutRTVersionSuffix
+        .substring(0, topicWithoutRTVersionSuffix.length() - REAL_TIME_TOPIC_SUFFIX.length());
   }
 
   static String parseStoreFromStreamReprocessingTopic(String kafkaTopic) {
@@ -398,8 +456,18 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
     return "";
   }
 
-  static boolean isRealTimeTopic(String kafkaTopic) {
-    return kafkaTopic.endsWith(REAL_TIME_TOPIC_SUFFIX) || kafkaTopic.endsWith(SEPARATE_REAL_TIME_TOPIC_SUFFIX);
+  static boolean isRealTimeTopic(String topicName) {
+    // valid rt topics are - abc_rt, abc_rt_v1, abc_rt_sep, abc_rt_v1_sep
+    if (topicName.endsWith(SEPARATE_TOPIC_SUFFIX)) {
+      topicName = topicName.substring(0, topicName.length() - SEPARATE_TOPIC_SUFFIX.length());
+    }
+    String topicWithoutRTVersionSuffix = removeRTVersionSuffix(topicName);
+    return topicWithoutRTVersionSuffix.endsWith(REAL_TIME_TOPIC_SUFFIX);
+  }
+
+  static boolean isIncrementalPushTopic(String topicName) {
+    String topicWithoutVersionSuffix = removeRTVersionSuffix(topicName);
+    return topicWithoutVersionSuffix.endsWith(SEPARATE_TOPIC_SUFFIX);
   }
 
   static boolean isStreamReprocessingTopic(String kafkaTopic) {
@@ -428,6 +496,10 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
 
   static boolean checkVersionSRTopic(String kafkaTopic, boolean checkSR) {
     int lastIndexOfVersionSeparator = kafkaTopic.lastIndexOf(VERSION_SEPARATOR);
+    if (lastIndexOfVersionSeparator != -1
+        && kafkaTopic.substring(0, lastIndexOfVersionSeparator).endsWith(REAL_TIME_TOPIC_SUFFIX)) {
+      return false;
+    }
     if (checkSR && !kafkaTopic.endsWith(STREAM_REPROCESSING_TOPIC_SUFFIX)) {
       return false;
     }
@@ -468,6 +540,10 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
     return VENICE_TTL_RE_PUSH_PUSH_ID_PREFIX + pushId;
   }
 
+  static String generateRegularPushWithTTLRePushId(String pushId) {
+    return VENICE_REGULAR_PUSH_WITH_TTL_RE_PUSH_PREFIX + pushId;
+  }
+
   static boolean isPushIdTTLRePush(String pushId) {
     if (pushId == null || pushId.isEmpty()) {
       return false;
@@ -480,6 +556,13 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
       return false;
     }
     return pushId.startsWith(VENICE_RE_PUSH_PUSH_ID_PREFIX);
+  }
+
+  static boolean isPushIdRegularPushWithTTLRePush(String pushId) {
+    if (pushId == null || pushId.isEmpty()) {
+      return false;
+    }
+    return pushId.startsWith(VENICE_REGULAR_PUSH_WITH_TTL_RE_PUSH_PREFIX);
   }
 
   static boolean containsHybridVersion(List<Version> versions) {

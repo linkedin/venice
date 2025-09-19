@@ -8,6 +8,7 @@ import com.linkedin.alpini.base.registry.Shutdownable;
 import com.linkedin.alpini.base.registry.ShutdownableExecutors;
 import com.linkedin.alpini.base.registry.ShutdownableResource;
 import com.linkedin.alpini.netty4.handlers.ConnectionControlHandler;
+import com.linkedin.alpini.netty4.handlers.ConnectionHandleMode;
 import com.linkedin.alpini.netty4.handlers.ConnectionLimitHandler;
 import com.linkedin.alpini.netty4.handlers.Http2SettingsFrameLogger;
 import com.linkedin.alpini.netty4.http2.Http2PipelineInitializer;
@@ -69,6 +70,10 @@ public class Router4<C extends Channel> implements Router.Builder, Router.Pipeli
       executor -> register(new ShutdownableNioEventLoopGroup(_ioWorkerPoolSize, executor));
   private Executor _executor;
   private IntSupplier _connectionLimit = () -> Integer.MAX_VALUE;
+  // Default is a no-op consumer
+  private Consumer<Integer> _connectionCountRecorder = (count) -> {};
+  private Consumer<Integer> _rejectedConnectionCountRecorder = (count) -> {};
+  private ConnectionHandleMode _connectionHandleMode = ConnectionHandleMode.STALL_WHEN_LIMIT_EXCEEDED;
   private RouterTimeoutProcessor _timeoutProcessor;
   private final Map<String, Object> _serverSocketOptions = new HashMap<>();
   private BooleanSupplier _shutdownFlag;
@@ -190,15 +195,36 @@ public class Router4<C extends Channel> implements Router.Builder, Router.Pipeli
     return this;
   }
 
+  /**
+   * Allow 0 limit to reject all connections as well as testing.
+   */
   @Override
   public Router.Builder connectionLimit(int connectionLimit) {
-    Preconditions.notLessThan(connectionLimit, 1, "connectionLimit");
+    Preconditions.notLessThan(connectionLimit, 0, "connectionLimit");
     return connectionLimit(() -> connectionLimit);
   }
 
   @Override
   public Router.Builder connectionLimit(@Nonnull IntSupplier connectionLimit) {
     _connectionLimit = Objects.requireNonNull(connectionLimit);
+    return this;
+  }
+
+  @Override
+  public Router.Builder connectionCountRecorder(@Nonnull Consumer<Integer> connectionCountConsumer) {
+    _connectionCountRecorder = connectionCountConsumer;
+    return this;
+  }
+
+  @Override
+  public Router.Builder rejectedConnectionCountRecorder(@Nonnull Consumer<Integer> rejectedConnectionCountRecorderr) {
+    _rejectedConnectionCountRecorder = rejectedConnectionCountRecorderr;
+    return this;
+  }
+
+  @Override
+  public Router.Builder connectionHandleMode(@Nonnull ConnectionHandleMode connectionHandleMode) {
+    _connectionHandleMode = connectionHandleMode;
     return this;
   }
 
@@ -457,7 +483,18 @@ public class Router4<C extends Channel> implements Router.Builder, Router.Pipeli
     RouterTimeoutProcessor timeoutProcessor =
         Optional.ofNullable(_timeoutProcessor).orElseGet(() -> new TimerTimeoutProcessor(nettyTimer));
 
-    ConnectionLimitHandler connectionLimit = new ConnectionControlHandler(_connectionLimit);
+    ConnectionLimitHandler connectionLimit;
+    switch (_connectionHandleMode) {
+      case STALL_WHEN_LIMIT_EXCEEDED:
+        connectionLimit =
+            new ConnectionControlHandler(_connectionLimit, _connectionCountRecorder, _rejectedConnectionCountRecorder);
+        break;
+      case FAIL_FAST_WHEN_LIMIT_EXCEEDED:
+      default:
+        connectionLimit =
+            new ConnectionLimitHandler(_connectionLimit, _connectionCountRecorder, _rejectedConnectionCountRecorder);
+        break;
+    }
 
     ActiveStreamsCountHandler activeStreamsCountHandler = new ActiveStreamsCountHandler();
 

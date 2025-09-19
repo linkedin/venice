@@ -1,22 +1,16 @@
 package com.linkedin.davinci.kafka.consumer;
 
 import com.linkedin.davinci.store.record.ValueRecord;
-import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
-import com.linkedin.venice.message.KafkaKey;
-import com.linkedin.venice.pubsub.api.PubSubMessage;
-import com.linkedin.venice.pubsub.api.PubSubProduceResult;
+import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.nio.ByteBuffer;
 
 
 public class ActiveActiveProducerCallback extends LeaderProducerCallback {
-  private static final Runnable NO_OP = () -> {};
-  private Runnable onCompletionFunction = NO_OP;
-
   public ActiveActiveProducerCallback(
       LeaderFollowerStoreIngestionTask ingestionTask,
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> sourceConsumerRecord,
+      DefaultPubSubMessage sourceConsumerRecord,
       PartitionConsumptionState partitionConsumptionState,
       LeaderProducedRecordContext leaderProducedRecordContext,
       int partition,
@@ -30,12 +24,6 @@ public class ActiveActiveProducerCallback extends LeaderProducerCallback {
         partition,
         kafkaUrl,
         beforeProcessingRecordTimestamp);
-  }
-
-  @Override
-  public void onCompletion(PubSubProduceResult produceResult, Exception exception) {
-    this.onCompletionFunction.run();
-    super.onCompletion(produceResult, exception);
   }
 
   @Override
@@ -69,9 +57,5 @@ public class ActiveActiveProducerCallback extends LeaderProducerCallback {
     }
 
     return manifestPut;
-  }
-
-  public void setOnCompletionFunction(Runnable onCompletionFunction) {
-    this.onCompletionFunction = onCompletionFunction;
   }
 }

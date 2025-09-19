@@ -2,6 +2,7 @@ package com.linkedin.venice.controller;
 
 import static com.linkedin.venice.controller.VeniceHelixAdmin.OfflinePushStatusInfo;
 import static com.linkedin.venice.controller.VeniceHelixAdmin.VERSION_ID_UNSET;
+import static com.linkedin.venice.meta.Version.DEFAULT_RT_VERSION_NUMBER;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyBoolean;
@@ -30,7 +31,6 @@ import com.linkedin.venice.helix.HelixStatusMessageChannel;
 import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.helix.ZkStoreConfigAccessor;
 import com.linkedin.venice.integration.utils.D2TestUtils;
-import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.LiveClusterConfig;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PartitionAssignment;
@@ -48,7 +48,9 @@ import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.pubsub.manager.TopicManagerRepository;
@@ -78,9 +80,6 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
@@ -108,16 +107,12 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
 
   @BeforeClass(alwaysRun = true)
   public void setUp() throws Exception {
-    setupCluster(true, metricsRepository);
+    setupCluster(metricsRepository);
   }
 
   @AfterClass(alwaysRun = true)
   public void cleanUp() {
-    // Controller shutdown needs to complete within 5 minutes
-    ExecutorService ex = Executors.newSingleThreadExecutor();
-    Future clusterShutdownFuture = ex.submit(this::cleanupCluster);
-    TestUtils.waitForNonDeterministicCompletion(5, TimeUnit.MINUTES, clusterShutdownFuture::isDone);
-    ex.shutdownNow();
+    super.cleanUp();
   }
 
   @Test(timeOut = TOTAL_TIMEOUT_FOR_SHORT_TEST_MS)
@@ -156,7 +151,8 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
         new MetricsRepository(),
         D2TestUtils.getAndStartD2Client(zkAddress),
         pubSubTopicRepository,
-        pubSubBrokerWrapper.getPubSubClientsFactory());
+        pubSubBrokerWrapper.getPubSubClientsFactory(),
+        pubSubBrokerWrapper.getPubSubPositionTypeRegistry());
     // Start stand by controller
     newLeaderAdmin.initStorageCluster(clusterName);
     Assert.assertFalse(
@@ -416,9 +412,12 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
       return !routingDataRepository.containsKafkaTopic(version.kafkaTopicName());
     });
 
-    stateModelFactoryByNodeID.forEach(
-        (nodeId, stateModelFactory) -> Assert
-            .assertEquals(stateModelFactory.getModelList(version.kafkaTopicName(), 0).size(), 1));
+    TestUtils.waitForNonDeterministicAssertion(3, TimeUnit.SECONDS, () -> {
+      stateModelFactoryByNodeID.forEach(
+          (nodeId, stateModelFactory) -> Assert
+              .assertEquals(stateModelFactory.getModelList(version.kafkaTopicName(), 0).size(), 1));
+    });
+
     // Replica become OFFLINE state
     stateModelFactoryByNodeID.forEach(
         (nodeId, stateModelFactory) -> Assert.assertEquals(
@@ -515,15 +514,6 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
         new UpdateStoreQueryParams().setHybridRewindSeconds(TimeUnit.SECONDS.convert(2, TimeUnit.DAYS))
             .setHybridOffsetLagThreshold(1000L));
     Assert.assertTrue(veniceAdmin.getStore(clusterName, storeName).isHybrid());
-
-    // test updating hybrid data replication policy
-    veniceAdmin.updateStore(
-        clusterName,
-        storeName,
-        new UpdateStoreQueryParams().setHybridDataReplicationPolicy(DataReplicationPolicy.AGGREGATE));
-    Assert.assertEquals(
-        veniceAdmin.getStore(clusterName, storeName).getHybridStoreConfig().getDataReplicationPolicy(),
-        DataReplicationPolicy.AGGREGATE);
 
     // test reverting hybrid store back to batch-only store; negative config value will undo hybrid setting
     veniceAdmin.updateStore(
@@ -798,7 +788,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     // Version 1 and version 2 are added to this store. Version 1 is deleted by early backup deletion
     Assert.assertTrue(store.isEnableWrites());
     Assert.assertEquals(store.getVersions().size(), 1);
-    Assert.assertEquals(store.peekNextVersion().getNumber(), 3);
+    Assert.assertEquals(store.peekNextVersionNumber(), 3);
     PushMonitor monitor = veniceAdmin.getHelixVeniceClusterResources(clusterName).getPushMonitor();
     TestUtils.waitForNonDeterministicCompletion(
         TOTAL_TIMEOUT_FOR_SHORT_TEST_MS,
@@ -912,15 +902,17 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
       }
     });
     // Now we have two participants blocked on ST from BOOTSTRAP to ONLINE.
-    Map<Integer, Long> participantTopicOffsets =
-        veniceAdmin.getTopicManager().getTopicLatestOffsets(participantStoreRTTopic);
+    Map<PubSubTopicPartition, PubSubPosition> participantTopicOffsets =
+        veniceAdmin.getTopicManager().getEndPositionsForTopicWithRetries(participantStoreRTTopic);
     veniceAdmin.killOfflinePush(clusterName, version.kafkaTopicName(), false);
     // Verify the kill offline push message have been written to the participant message store RT topic.
     TestUtils.waitForNonDeterministicCompletion(5, TimeUnit.SECONDS, () -> {
-      Map<Integer, Long> newPartitionTopicOffsets =
-          veniceAdmin.getTopicManager().getTopicLatestOffsets(participantStoreRTTopic);
-      for (Map.Entry<Integer, Long> entry: participantTopicOffsets.entrySet()) {
-        if (newPartitionTopicOffsets.get(entry.getKey()) > entry.getValue()) {
+      Map<PubSubTopicPartition, PubSubPosition> newPartitionTopicOffsets =
+          veniceAdmin.getTopicManager().getEndPositionsForTopicWithRetries(participantStoreRTTopic);
+      for (Map.Entry<PubSubTopicPartition, PubSubPosition> entry: participantTopicOffsets.entrySet()) {
+        PubSubPosition oldPosition = entry.getValue();
+        PubSubPosition newPosition = newPartitionTopicOffsets.get(entry.getKey());
+        if (veniceAdmin.getTopicManager().comparePosition(entry.getKey(), newPosition, oldPosition) > 0) {
           return true;
         }
       }
@@ -1634,7 +1626,10 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
         -1,
         1,
         Optional.empty(),
-        false);
+        false,
+        null,
+        -1,
+        DEFAULT_RT_VERSION_NUMBER);
     // Version 1 should exist.
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getVersions().size(), 1);
 
@@ -1659,7 +1654,10 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
         -1,
         1,
         Optional.empty(),
-        false);
+        false,
+        null,
+        -1,
+        DEFAULT_RT_VERSION_NUMBER);
     // Version 2 should exist and remote Kafka bootstrap servers info should exist in version 2.
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getVersions().size(), 2);
     Assert.assertEquals(
@@ -1794,7 +1792,10 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
         -1,
         1,
         Optional.empty(),
-        false);
+        false,
+        null,
+        -1,
+        DEFAULT_RT_VERSION_NUMBER);
     // Version 1 should exist.
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getVersions().size(), 1);
     // A/A version level config should be true
@@ -1884,10 +1885,9 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     Assert.assertTrue(veniceAdmin.getStore(clusterName, storeName).getVersion(1).isSeparateRealTimeTopicEnabled());
 
     Store store = Objects.requireNonNull(veniceAdmin.getStore(clusterName, storeName), "Store should not be null");
-
     String rtTopic = Utils.getRealTimeTopicName(store);
     PubSubTopic rtPubSubTopic = pubSubTopicRepository.getTopic(rtTopic);
-    String incrementalPushRealTimeTopic = Version.composeSeparateRealTimeTopic(storeName);
+    String incrementalPushRealTimeTopic = Utils.getSeparateRealTimeTopicName(rtTopic);
     PubSubTopic incrementalPushRealTimePubSubTopic = pubSubTopicRepository.getTopic(incrementalPushRealTimeTopic);
     TestUtils.waitForNonDeterministicCompletion(
         TOTAL_TIMEOUT_FOR_SHORT_TEST_MS,
@@ -1919,6 +1919,10 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
         TOTAL_TIMEOUT_FOR_SHORT_TEST_MS,
         TimeUnit.MILLISECONDS,
         () -> veniceAdmin.getCurrentVersion(clusterName, storeName) == 3);
+
+    store = Objects.requireNonNull(veniceAdmin.getStore(clusterName, storeName), "Store should not be null");
+    rtTopic = Utils.getRealTimeTopicName(store.getVersions().get(0));
+
     Assert.assertTrue(veniceAdmin.isTopicTruncated(rtTopic));
     Assert.assertTrue(veniceAdmin.isTopicTruncated(incrementalPushRealTimeTopic));
   }

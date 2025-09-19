@@ -16,7 +16,6 @@ import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_STATUS_UPLOAD_ENABLE;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
@@ -32,13 +31,16 @@ import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
+import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.status.PushJobDetailsStatus;
 import com.linkedin.venice.status.protocol.PushJobDetails;
@@ -57,10 +59,10 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import org.apache.avro.Schema;
+import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
@@ -98,23 +100,25 @@ public class PushJobDetailsTest {
 
     // Need to add this in controller props when creating venice system for tests
     parentControllerProperties.setProperty(ConfigKeys.PUSH_JOB_STATUS_STORE_CLUSTER_NAME, "venice-cluster0");
-    multiRegionMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
-        1,
-        1,
-        1,
-        1,
-        1,
-        1,
-        1,
-        Optional.of(parentControllerProperties),
-        Optional.empty(),
-        Optional.of(serverProperties),
-        false);
+    VeniceMultiRegionClusterCreateOptions.Builder optionsBuilder =
+        new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(1)
+            .numberOfClusters(1)
+            .numberOfParentControllers(1)
+            .numberOfChildControllers(1)
+            .numberOfServers(1)
+            .numberOfRouters(1)
+            .replicationFactor(1)
+            .forkServer(false)
+            .parentControllerProperties(parentControllerProperties)
+            .serverProperties(serverProperties);
+    multiRegionMultiClusterWrapper =
+        ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(optionsBuilder.build());
     String clusterName = multiRegionMultiClusterWrapper.getClusterNames()[0];
 
     VeniceMultiClusterWrapper childRegionMultiClusterWrapper = multiRegionMultiClusterWrapper.getChildRegions().get(0);
     childRegionClusterWrapper = childRegionMultiClusterWrapper.getClusters().get(clusterName);
-    metricsRepository = multiRegionMultiClusterWrapper.getParentControllers().get(0).getMetricRepository();
+    metricsRepository =
+        multiRegionMultiClusterWrapper.getChildRegions().get(0).getLeaderController(clusterName).getMetricRepository();
     controllerClient = new ControllerClient(clusterName, childRegionMultiClusterWrapper.getControllerConnectString());
     parentControllerClient =
         new ControllerClient(clusterName, multiRegionMultiClusterWrapper.getControllerConnectString());
@@ -319,11 +323,21 @@ public class PushJobDetailsTest {
     }
   }
 
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = 180
+  @Test(dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = 180
       * Time.MS_PER_SECOND)
-  public void testPushJobDetails(boolean useCustomCheckpoints) throws IOException {
+  public void testPushJobDetails(boolean useCustomCheckpoints, boolean migratePushStatusStoreToAA) throws IOException {
     try {
       setUp(useCustomCheckpoints);
+      // Simulate the migration phase from AGG to A/A
+      if (migratePushStatusStoreToAA) {
+        childRegionClusterWrapper.waitVersion(VeniceSystemStoreUtils.getPushJobDetailsStoreName(), 1);
+        ControllerResponse updateStoreResponse = parentControllerClient.updateStore(
+            VeniceSystemStoreUtils.getPushJobDetailsStoreName(),
+            new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true));
+        Assert.assertFalse(updateStoreResponse.isError());
+        parentControllerClient.emptyPush(VeniceSystemStoreUtils.getPushJobDetailsStoreName(), "xxx", 100000);
+        childRegionClusterWrapper.waitVersion(VeniceSystemStoreUtils.getPushJobDetailsStoreName(), 2);
+      }
       // create a map for expected metrics for Count type which will be incremented through the test
       HashMap<String, Double> metricsExpectedCount = new HashMap<>();
 
@@ -342,10 +356,10 @@ public class PushJobDetailsTest {
               .setPartitionCount(2)
               .setHybridOffsetLagThreshold(10)
               .setHybridRewindSeconds(10)
+              .setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
               .setActiveActiveReplicationEnabled(true)
               .setIncrementalPushEnabled(true));
       Properties pushJobProps = defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPathForFullPush, testStoreName);
-      pushJobProps.setProperty(PUSH_JOB_STATUS_UPLOAD_ENABLE, String.valueOf(true));
       try (VenicePushJob testPushJob = new VenicePushJob("test-push-job-details-job", pushJobProps)) {
         testPushJob.run();
       }
@@ -362,7 +376,6 @@ public class PushJobDetailsTest {
       // case 2: successful incremental push job
       Properties pushJobPropsInc =
           defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPathForIncPush, testStoreName);
-      pushJobPropsInc.setProperty(PUSH_JOB_STATUS_UPLOAD_ENABLE, String.valueOf(true));
       pushJobPropsInc.setProperty(INCREMENTAL_PUSH, String.valueOf(true));
       try (VenicePushJob testPushJob = new VenicePushJob("test-push-job-details-job-with-inc-push", pushJobPropsInc)) {
         testPushJob.run();
@@ -400,7 +413,6 @@ public class PushJobDetailsTest {
 
       // case 4: failed incremental push job, non-user error
       pushJobPropsInc = defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPathForIncPush, testStoreName);
-      pushJobPropsInc.setProperty(PUSH_JOB_STATUS_UPLOAD_ENABLE, String.valueOf(true));
       pushJobPropsInc.setProperty(INCREMENTAL_PUSH, String.valueOf(true));
       try (VenicePushJob testPushJob =
           new VenicePushJob("test-push-job-details-job-with-inc-push-v2", pushJobPropsInc)) {
@@ -422,7 +434,6 @@ public class PushJobDetailsTest {
       parentControllerClient.updateStore(testStoreName, queryParams);
 
       pushJobProps = defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPathWithDupKeys, testStoreName);
-      pushJobProps.setProperty(PUSH_JOB_STATUS_UPLOAD_ENABLE, String.valueOf(true));
       try (final VenicePushJob testPushJob = new VenicePushJob("test-push-job-details-job-v3", pushJobProps)) {
         assertThrows(VeniceException.class, testPushJob::run); // Push job should fail
       }
@@ -439,7 +450,6 @@ public class PushJobDetailsTest {
 
       // case 6: failed incremental push job, user error
       pushJobPropsInc = defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPathWithDupKeys, testStoreName);
-      pushJobPropsInc.setProperty(PUSH_JOB_STATUS_UPLOAD_ENABLE, String.valueOf(true));
       pushJobPropsInc.setProperty(INCREMENTAL_PUSH, String.valueOf(true));
       try (VenicePushJob testPushJob =
           new VenicePushJob("test-push-job-details-job-with-inc-push-v3", pushJobPropsInc)) {

@@ -146,7 +146,8 @@ public abstract class AbstractPushMonitor
         controllerConfig.getDaVinciPushStatusScanNoReportRetryMaxAttempt(),
         controllerConfig.getDaVinciPushStatusScanMaxOfflineInstanceCount(),
         controllerConfig.getDaVinciPushStatusScanMaxOfflineInstanceRatio(),
-        controllerConfig.useDaVinciSpecificExecutionStatusForError());
+        controllerConfig.useDaVinciSpecificExecutionStatusForError(),
+        controllerConfig.getLogContext());
     this.isOfflinePushMonitorDaVinciPushStatusEnabled = controllerConfig.isDaVinciPushStatusEnabled();
     this.regionName = controllerConfig.getRegionName();
     this.veniceWriterFactory = veniceWriterFactory;
@@ -823,11 +824,8 @@ public abstract class AbstractPushMonitor
 
       @Override
       public void disableReplica(String instance, int partitionId) {
-        LOGGER.warn(
-            "Disabling errored out leader replica of {} partition: {} on host {}",
-            kafkaTopic,
-            partitionId,
-            instance);
+        String replicaId = Utils.getReplicaId(kafkaTopic, partitionId);
+        LOGGER.warn("Disabling errored out leader replica: {} on host {}", replicaId, instance);
         helixAdminClient.enablePartition(
             false,
             clusterName,
@@ -868,21 +866,25 @@ public abstract class AbstractPushMonitor
           LOGGER.warn("Skip updating push status: {} since it is already in: {}", kafkaTopic, previousStatus);
           return;
         }
-
-        ExecutionStatusWithDetails statusWithDetails =
-            checkPushStatus(pushStatus, partitionAssignment, getDisableReplicaCallback(kafkaTopic));
-        if (!statusWithDetails.getStatus().equals(pushStatus.getCurrentStatus())) {
-          if (statusWithDetails.getStatus().isTerminal()) {
-            LOGGER.info(
-                "Offline push status will be changed to {} for topic: {} from status: {}",
-                statusWithDetails.getStatus(),
-                kafkaTopic,
-                pushStatus.getCurrentStatus());
-            handleTerminalOfflinePushUpdate(pushStatus, statusWithDetails);
-          } else if (statusWithDetails.getStatus().equals(ExecutionStatus.END_OF_PUSH_RECEIVED)) {
-            // For all partitions, at least one replica has received the EOP. Check if it's time to start buffer replay.
-            checkWhetherToStartEOPProcedures(pushStatus);
+        try {
+          ExecutionStatusWithDetails statusWithDetails =
+              checkPushStatus(pushStatus, partitionAssignment, getDisableReplicaCallback(kafkaTopic));
+          if (!statusWithDetails.getStatus().equals(pushStatus.getCurrentStatus())) {
+            if (statusWithDetails.getStatus().isTerminal()) {
+              LOGGER.info(
+                  "Offline push status will be changed to {} for topic: {} from status: {}",
+                  statusWithDetails.getStatus(),
+                  kafkaTopic,
+                  pushStatus.getCurrentStatus());
+              handleTerminalOfflinePushUpdate(pushStatus, statusWithDetails);
+            } else if (statusWithDetails.getStatus().equals(ExecutionStatus.END_OF_PUSH_RECEIVED)) {
+              // For all partitions, at least one replica has received the EOP. Check if it's time to start buffer
+              // replay.
+              checkWhetherToStartEOPProcedures(pushStatus);
+            }
           }
+        } catch (Exception e) {
+          LOGGER.error("Failed to process external view change for topic: {}", partitionAssignment.getTopic(), e);
         }
       } else {
         LOGGER.info(
@@ -1174,8 +1176,6 @@ public abstract class AbstractPushMonitor
         }
       }
 
-      store.updateVersionStatus(versionNumber, newStatus);
-      LOGGER.info("Updated store: {} version: {} to status: {}", store.getName(), versionNumber, newStatus.toString());
       if (newStatus.equals(VersionStatus.ONLINE)) {
         if (versionNumber > store.getCurrentVersion()) {
           // Here we'll check if version swap is deferred. If so, we don't perform the setCurrentVersion. We'll continue
@@ -1210,7 +1210,7 @@ public abstract class AbstractPushMonitor
                 "Swapping to version {} for store {} in region {} during "
                     + (isNormalPush ? "normal push" : "target region push with deferred version swap"),
                 versionNumber,
-                store.getName(),
+                storeName,
                 regionName,
                 isTargetRegionPushWithDeferredSwap,
                 isNormalPush);
@@ -1221,9 +1221,23 @@ public abstract class AbstractPushMonitor
             LOGGER.info(
                 "Version swap is deferred for store {} on version {} in region {} because "
                     + (isDeferredSwap ? "deferred version swap is enabled" : "it is not in the target regions"),
-                store.getName(),
+                storeName,
                 versionNumber,
                 regionName);
+
+            // For non target region in a target region push w/ deferred version swap, mark status as PUSHED as it will
+            // be marked ONLINE after roll forward
+            boolean isVersionSwapDeferredInNonTargetRegion =
+                !targetRegions.isEmpty() && !targetRegions.contains(regionName) && version.isVersionSwapDeferred();
+            if (isVersionSwapDeferredInNonTargetRegion) {
+              newStatus = VersionStatus.PUSHED;
+              LOGGER.info(
+                  "Marking version status as {} for version: {} in store: {} during a target region push w/ deferred swap"
+                      + "because it is a non target region",
+                  newStatus,
+                  versionNumber,
+                  storeName);
+            }
           }
         } else {
           LOGGER.info(
@@ -1234,7 +1248,9 @@ public abstract class AbstractPushMonitor
               versionNumber);
         }
       }
+      store.updateVersionStatus(versionNumber, newStatus);
       metadataRepository.updateStore(store);
+      LOGGER.info("Updated store: {} version: {} to status: {}", store.getName(), versionNumber, newStatus.toString());
     }
   }
 

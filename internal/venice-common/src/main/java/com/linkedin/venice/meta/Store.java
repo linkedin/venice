@@ -80,6 +80,10 @@ public interface Store {
 
   void setLargestUsedVersionNumber(int largestUsedVersionNumber);
 
+  int getLargestUsedRTVersionNumber();
+
+  void setLargestUsedRTVersionNumber(int largestUsedRTVersionNumber);
+
   long getStorageQuotaInByte();
 
   void setStorageQuotaInByte(long storageQuotaInByte);
@@ -260,7 +264,7 @@ public interface Store {
 
   void addVersion(Version version);
 
-  void addVersion(Version version, boolean isClonedVersion);
+  void addVersion(Version version, boolean isClonedVersion, int currentRTVersionNumber);
 
   void forceAddVersion(Version version, boolean isClonedVersion);
 
@@ -272,7 +276,7 @@ public interface Store {
 
   void updateVersionStatus(int versionNumber, VersionStatus status);
 
-  Version peekNextVersion();
+  int peekNextVersionNumber();
 
   /**
    * @param versionNumber for which to get the {@link Version}
@@ -295,6 +299,14 @@ public interface Store {
   boolean isStorageNodeReadQuotaEnabled();
 
   void setStorageNodeReadQuotaEnabled(boolean storageNodeReadQuotaEnabled);
+
+  boolean isCompactionEnabled();
+
+  void setCompactionEnabled(boolean compactionEnabled);
+
+  long getCompactionThresholdMilliseconds();
+
+  void setCompactionThresholdMilliseconds(long compactionThreshold);
 
   long getMinCompactionLagSeconds();
 
@@ -320,6 +332,10 @@ public interface Store {
 
   void setBlobTransferEnabled(boolean blobTransferEnabled);
 
+  void setBlobTransferInServerEnabled(String blobTransferInServerEnabled);
+
+  String getBlobTransferInServerEnabled();
+
   boolean isNearlineProducerCompressionEnabled();
 
   void setNearlineProducerCompressionEnabled(boolean compressionEnabled);
@@ -341,4 +357,28 @@ public interface Store {
   boolean getIsDavinciHeartbeatReported();
 
   void updateVersionForDaVinciHeartbeat(int versionNumber, boolean reported);
+
+  boolean isGlobalRtDivEnabled();
+
+  void setGlobalRtDivEnabled(boolean globalRtDivEnabled);
+
+  boolean isTTLRepushEnabled();
+
+  void setTTLRepushEnabled(boolean ttlRepushEnabled);
+
+  boolean isEnumSchemaEvolutionAllowed();
+
+  void setEnumSchemaEvolutionAllowed(boolean enumSchemaEvolutionAllowed);
+
+  List<LifecycleHooksRecord> getStoreLifecycleHooks();
+
+  void setStoreLifecycleHooks(List<LifecycleHooksRecord> storeLifecycleHooks);
+
+  void setKeyUrnCompressionEnabled(boolean keyUrnCompressionEnabled);
+
+  boolean isKeyUrnCompressionEnabled();
+
+  void setKeyUrnFields(List<String> keyUrnFields);
+
+  List<String> getKeyUrnFields();
 }

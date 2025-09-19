@@ -3,6 +3,7 @@ package com.linkedin.venice.fastclient.meta;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.Iterator;
 import java.util.List;
 
 
@@ -23,33 +24,34 @@ public class LeastLoadedClientRoutingStrategy extends AbstractClientRoutingStrat
   }
 
   @Override
-  public List<String> getReplicas(long ignored, List<String> replicas, int requiredReplicaCount) {
+  public String getReplicas(long requestId, int groupId, List<String> replicas) {
     if (replicas.isEmpty()) {
-      return Collections.emptyList();
+      return null;
     }
-    List<String> availReplicas = new ArrayList<>();
+    /**
+     * Need to make a copy of the replicas list to avoid modifying the original list.
+     */
+    List<String> availReplicas = new ArrayList<>(replicas);
     /**
      * For even distribution, we need to shuffle the replicas.
      */
-    Collections.shuffle(replicas);
-    for (String replica: replicas) {
-      if (!instanceHealthMonitor.isInstanceBlocked(replica) && instanceHealthMonitor.isInstanceHealthy(replica)) {
-        availReplicas.add(replica);
+    Collections.shuffle(availReplicas);
+
+    Iterator<String> iterator = availReplicas.iterator();
+    while (iterator.hasNext()) {
+      String replica = iterator.next();
+      if (!instanceHealthMonitor.isRequestAllowed(replica)) {
+        iterator.remove();
       }
     }
+    if (availReplicas.isEmpty()) {
+      return null;
+    }
+    /**
+     * TODO: maybe we can apply the response-waiting-time-based rather than pending request counter based least-loaded strategy here
+     * since application QPS normally is much lower and pending request count can be very low.
+     */
     availReplicas.sort(Comparator.comparingInt(instanceHealthMonitor::getPendingRequestCounter));
-
-    if (requiredReplicaCount < availReplicas.size()) {
-      List<String> selectedReplicas = new ArrayList<>();
-
-      for (int i = 0; i < requiredReplicaCount; ++i) {
-        String currentReplica = availReplicas.get(i);
-        selectedReplicas.add(currentReplica);
-      }
-
-      return selectedReplicas;
-    } else {
-      return availReplicas;
-    }
+    return availReplicas.get(0);
   }
 }

@@ -2,7 +2,7 @@ package com.linkedin.venice.listener;
 
 import com.linkedin.davinci.listener.response.MetadataResponse;
 import com.linkedin.davinci.listener.response.ServerCurrentVersionResponse;
-import com.linkedin.davinci.listener.response.StorePropertiesResponse;
+import com.linkedin.davinci.listener.response.StorePropertiesPayload;
 import com.linkedin.davinci.stats.ServerMetadataServiceStats;
 import com.linkedin.davinci.storage.ReadMetadataRetriever;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -150,13 +150,13 @@ public class ServerReadMetadataRepository implements ReadMetadataRetriever {
    * Return the store properties for the given store. The data is retrieved from its respective repositories which
    * originate from the VeniceServer.
    * @param storeName
-   * @return {@link StorePropertiesResponse} object that holds all the information required for answering a server metadata
+   * @return {@link StorePropertiesPayload} object that holds all the information required for answering a server metadata
    * fetch request.
    */
   @Override
-  public StorePropertiesResponse getStoreProperties(String storeName, Optional<Integer> largestKnownSchemaId) {
+  public StorePropertiesPayload getStoreProperties(String storeName, Optional<Integer> largestKnownSchemaId) {
     serverMetadataServiceStats.recordRequestBasedMetadataInvokeCount();
-    StorePropertiesResponse response = new StorePropertiesResponse();
+    StorePropertiesPayload response = new StorePropertiesPayload();
 
     try {
       Store store = storeRepository.getStoreOrThrow(storeName);
@@ -180,7 +180,7 @@ public class ServerReadMetadataRepository implements ReadMetadataRetriever {
         for (Map.Entry<CharSequence, CharSequence> entry: valueSchemas.entrySet()) {
           int schemaId = Integer.parseInt(entry.getKey().toString());
           if (schemaId > largestKnownSchemaId.get()) {
-            storeValueSchemas.put(schemaId, entry.getValue());
+            storeValueSchemas.valueSchemaMap.put(Integer.toString(schemaId), entry.getValue());
           }
         }
       } else {
@@ -214,8 +214,7 @@ public class ServerReadMetadataRepository implements ReadMetadataRetriever {
       response.setHelixGroupInfo(helixGroupInfo);
       response.setRoutingInfo(routingInfo);
     } catch (VeniceException e) {
-      LOGGER
-          .warn("Failed to populate request based store properties for store {}: [Venice Expection] {}.", storeName, e);
+      LOGGER.error("Failed to populate request based store properties for store {}:", storeName, e);
       response
           .setMessage("Failed to populate metadata by client for store: " + storeName + " due to: " + e.getMessage());
       response.setError(true);
@@ -226,7 +225,7 @@ public class ServerReadMetadataRepository implements ReadMetadataRetriever {
         e.printStackTrace(pw);
       }
       String trace = sw.toString();
-      LOGGER.warn("Failed to populate request based store properties for store {}: [Exception] {}.", storeName, e);
+      LOGGER.error("Failed to populate request based store properties for store {}", storeName, e);
       response
           .setMessage("Failed to populate metadata by client for store: " + storeName + " due to: " + e + "\n" + trace);
       response.setError(true);

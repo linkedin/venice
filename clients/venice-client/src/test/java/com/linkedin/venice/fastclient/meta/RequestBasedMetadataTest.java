@@ -11,8 +11,10 @@ import static com.linkedin.venice.fastclient.meta.RequestBasedMetadataTestUtils.
 import static com.linkedin.venice.utils.TestUtils.waitForNonDeterministicAssertion;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
@@ -22,6 +24,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.client.exceptions.VeniceClientException;
@@ -40,12 +43,17 @@ import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.IOException;
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.http.HttpStatus;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -67,12 +75,18 @@ public class RequestBasedMetadataTest {
       boolean isMetadataConnWarmupEnabled) throws IOException, InterruptedException {
     String storeName = "testStore";
 
-    ClientConfig clientConfig =
-        RequestBasedMetadataTestUtils.getMockClientConfig(storeName, firstConnWarmupFails, isMetadataConnWarmupEnabled);
-    RequestBasedMetadata requestBasedMetadata = null;
     ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
+    ScheduledExecutorService mockRefreshExecutor = mock(ScheduledExecutorService.class);
+    doAnswer(invocation -> {
+      scheduler.schedule((Runnable) invocation.getArgument(0), invocation.getArgument(1), invocation.getArgument(2));
+      return null;
+    }).when(mockRefreshExecutor).schedule(any(Runnable.class), anyLong(), any(TimeUnit.class));
+    ClientConfig clientConfig = RequestBasedMetadataTestUtils
+        .getMockClientConfig(storeName, firstConnWarmupFails, isMetadataConnWarmupEnabled, mockRefreshExecutor);
+    RequestBasedMetadata requestBasedMetadata = null;
+
     try {
-      requestBasedMetadata = getMockMetaData(clientConfig, storeName, false, true, firstMetadataUpdateFails, scheduler);
+      requestBasedMetadata = getMockMetaData(clientConfig, storeName, false, true, firstMetadataUpdateFails);
       requestBasedMetadata.start();
       CountDownLatch isReadyLatch = requestBasedMetadata.getIsReadyLatch();
 
@@ -92,9 +106,12 @@ public class RequestBasedMetadataTest {
       // testing that start() is only finished after warmup is done
       long periodicRetryAfterSuccessfulWarmup = requestBasedMetadata.getRefreshIntervalInSeconds();
       waitForNonDeterministicAssertion(2, TimeUnit.SECONDS, () -> {
+        assertSame(finalRequestBasedMetadata.getScheduler(), mockRefreshExecutor);
         verify(finalRequestBasedMetadata.getScheduler())
             .schedule(any(Runnable.class), eq(periodicRetryAfterSuccessfulWarmup), eq(TimeUnit.SECONDS));
       });
+    } catch (Exception e) {
+      e.printStackTrace();
     } finally {
       scheduler.shutdownNow();
       if (requestBasedMetadata != null) {
@@ -401,5 +418,88 @@ public class RequestBasedMetadataTest {
       // the first failed refresh triggers a onDemand refresh
       verify(spy, timeout(3000).atLeast(1)).updateCache(true);
     }
+  }
+
+  @Test
+  public void testIsPartitionResourceReady() {
+    String storeName = "testStore";
+    int version = 10;
+    int partitionCount = 3;
+    Map<Integer, List<String>> routingInfo = new HashMap<>();
+    routingInfo.put(0, Collections.singletonList("replica1"));
+    routingInfo.put(1, Collections.singletonList("replica2"));
+
+    assertFalse(RequestBasedMetadata.isPartitionResourcesReady(storeName, version, partitionCount, null));
+    assertFalse(RequestBasedMetadata.isPartitionResourcesReady(storeName, version, -1, null));
+    assertFalse(RequestBasedMetadata.isPartitionResourcesReady(storeName, version, partitionCount, routingInfo));
+
+    // Add a wrong partition
+    routingInfo.put(10, Collections.singletonList("replica1"));
+    assertFalse(RequestBasedMetadata.isPartitionResourcesReady(storeName, version, partitionCount, routingInfo));
+    // Add the correct partition
+    routingInfo.remove(10);
+    routingInfo.put(2, Collections.singletonList("replica3"));
+    assertTrue(RequestBasedMetadata.isPartitionResourcesReady(storeName, version, partitionCount, routingInfo));
+  }
+
+  @Test
+  public void testWhetherToSwitchToFetchedCurrentVersion() {
+    String storeName = "testStore";
+    AtomicInteger currentVersion = new AtomicInteger(10);
+    int fetchedCurrentVersion = 11;
+    int partitionCountForFetchedCurrentVersion = 3;
+    Set<Integer> activeVersions = new HashSet<>();
+    activeVersions.add(currentVersion.get());
+    activeVersions.add(fetchedCurrentVersion);
+    Map<Integer, List<String>> routingInfo = new HashMap<>();
+    routingInfo.put(0, Collections.singletonList("replica1"));
+    routingInfo.put(1, Collections.singletonList("replica2"));
+
+    // Same current version
+    assertFalse(
+        RequestBasedMetadata.whetherToSwitchToFetchedCurrentVersion(
+            storeName,
+            activeVersions,
+            currentVersion,
+            currentVersion.get(),
+            partitionCountForFetchedCurrentVersion,
+            routingInfo));
+    // Partition resource is not ready for the fetched current version
+    assertFalse(
+        RequestBasedMetadata.isPartitionResourcesReady(
+            storeName,
+            fetchedCurrentVersion,
+            partitionCountForFetchedCurrentVersion,
+            routingInfo));
+    assertFalse(
+        RequestBasedMetadata.whetherToSwitchToFetchedCurrentVersion(
+            storeName,
+            activeVersions,
+            currentVersion,
+            fetchedCurrentVersion,
+            partitionCountForFetchedCurrentVersion,
+            routingInfo));
+    activeVersions.remove(currentVersion.get());
+    // Current version is gone and partition resource is not ready for the fetched current version
+    assertTrue(
+        RequestBasedMetadata.whetherToSwitchToFetchedCurrentVersion(
+            storeName,
+            activeVersions,
+            currentVersion,
+            fetchedCurrentVersion,
+            partitionCountForFetchedCurrentVersion,
+            routingInfo));
+    // Add back current version
+    activeVersions.add(currentVersion.get());
+    // Add back the missing partition
+    routingInfo.put(2, Collections.singletonList("replica3"));
+    assertTrue(
+        RequestBasedMetadata.whetherToSwitchToFetchedCurrentVersion(
+            storeName,
+            activeVersions,
+            currentVersion,
+            fetchedCurrentVersion,
+            partitionCountForFetchedCurrentVersion,
+            routingInfo));
   }
 }

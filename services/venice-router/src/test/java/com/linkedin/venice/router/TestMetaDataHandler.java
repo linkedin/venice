@@ -15,7 +15,6 @@ import static com.linkedin.venice.router.MetaDataHandler.REQUEST_TOPIC_ERROR_CUR
 import static com.linkedin.venice.router.MetaDataHandler.REQUEST_TOPIC_ERROR_FORMAT_UNSUPPORTED_PARTITIONER;
 import static com.linkedin.venice.router.MetaDataHandler.REQUEST_TOPIC_ERROR_MISSING_CURRENT_VERSION;
 import static com.linkedin.venice.router.MetaDataHandler.REQUEST_TOPIC_ERROR_NO_CURRENT_VERSION;
-import static com.linkedin.venice.router.MetaDataHandler.REQUEST_TOPIC_ERROR_UNSUPPORTED_REPLICATION_POLICY;
 import static com.linkedin.venice.router.MetaDataHandler.REQUEST_TOPIC_ERROR_WRITES_DISABLED;
 import static com.linkedin.venice.router.api.VenicePathParser.TYPE_BLOB_DISCOVERY;
 import static com.linkedin.venice.router.api.VenicePathParser.TYPE_REQUEST_TOPIC;
@@ -38,7 +37,6 @@ import com.linkedin.venice.helix.HelixReadOnlyStoreRepository;
 import com.linkedin.venice.helix.StoreJSONSerializer;
 import com.linkedin.venice.helix.SystemStoreJSONSerializer;
 import com.linkedin.venice.meta.BufferReplayPolicy;
-import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.ETLStoreConfigImpl;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
@@ -74,6 +72,7 @@ import io.netty.handler.codec.http.EmptyHttpHeaders;
 import io.netty.handler.codec.http.FullHttpRequest;
 import io.netty.handler.codec.http.FullHttpResponse;
 import io.netty.handler.codec.http.HttpResponseStatus;
+import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -83,6 +82,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
@@ -97,6 +97,8 @@ public class TestMetaDataHandler {
   private static final ObjectMapper OBJECT_MAPPER = ObjectMapperFactory.getInstance();
   private final HelixHybridStoreQuotaRepository hybridStoreQuotaRepository =
       Mockito.mock(HelixHybridStoreQuotaRepository.class);
+
+  private final MetricsRepository metricsRepository = new MetricsRepository();
 
   public FullHttpResponse passRequestToMetadataHandler(
       String requestUri,
@@ -191,7 +193,8 @@ public class TestMetaDataHandler {
         KAFKA_BOOTSTRAP_SERVERS,
         false,
         null,
-        pushStatusStoreReader);
+        pushStatusStoreReader,
+        metricsRepository);
     handler.channelRead0(ctx, httpRequest);
     ArgumentCaptor<Object> captor = ArgumentCaptor.forClass(Object.class);
     Mockito.verify(ctx).writeAndFlush(captor.capture());
@@ -690,6 +693,10 @@ public class TestMetaDataHandler {
     Assert.assertEquals(d2ServiceResponse.getD2Service(), d2Service);
     Assert.assertEquals(d2ServiceResponse.getName(), storeName);
     Assert.assertFalse(d2ServiceResponse.isError());
+    Assert.assertEquals(
+        metricsRepository.getMetric(".d2_store_discovery--" + storeName + "-success_request_count.Count").value(),
+        1.0,
+        "Request count should be 1 after first request");
 
     FullHttpResponse response2 = passRequestToMetadataHandler(
         "http://myRouterHost:4567/discover_cluster?store_name=" + storeName,
@@ -707,6 +714,10 @@ public class TestMetaDataHandler {
     Assert.assertEquals(d2ServiceResponse2.getD2Service(), d2Service);
     Assert.assertEquals(d2ServiceResponse2.getName(), storeName);
     Assert.assertFalse(d2ServiceResponse2.isError());
+    Assert.assertEquals(
+        metricsRepository.getMetric(".d2_store_discovery--" + storeName + "-success_request_count.Count").value(),
+        2.0,
+        "Request count should be 2 after second request");
   }
 
   @Test
@@ -723,6 +734,10 @@ public class TestMetaDataHandler {
         Collections.emptyMap());
 
     Assert.assertEquals(response.status(), HttpResponseStatus.NOT_FOUND);
+    Assert.assertEquals(
+        metricsRepository.getMetric(".d2_store_discovery--" + storeName + "-failure_request_count.Count").value(),
+        1.0,
+        "Failure request count should be incremented when no cluster found");
   }
 
   @Test
@@ -964,7 +979,8 @@ public class TestMetaDataHandler {
         KAFKA_BOOTSTRAP_SERVERS,
         false,
         null,
-        pushStatusStoreReader);
+        pushStatusStoreReader,
+        metricsRepository);
     handler.channelRead0(ctx, httpRequest);
     // '/storage' request should be handled by upstream, instead of current MetaDataHandler
     Mockito.verify(ctx, Mockito.times(1)).fireChannelRead(Mockito.any());
@@ -994,7 +1010,6 @@ public class TestMetaDataHandler {
         Time.SECONDS_PER_DAY,
         1,
         TimeUnit.MINUTES.toSeconds(1),
-        DataReplicationPolicy.NON_AGGREGATE,
         BufferReplayPolicy.REWIND_FROM_EOP);
     zkSharedStore.setHybridStoreConfig(hybridStoreConfig);
     SystemStore systemStore = new SystemStore(zkSharedStore, VeniceSystemStoreType.META_STORE, testStore);
@@ -1108,7 +1123,6 @@ public class TestMetaDataHandler {
         Time.SECONDS_PER_DAY,
         1,
         TimeUnit.MINUTES.toSeconds(1),
-        DataReplicationPolicy.NON_AGGREGATE,
         BufferReplayPolicy.REWIND_FROM_EOP);
     Mockito.doReturn(true).when(store).isHybrid();
     Mockito.doReturn(badCurrentVersionStoreConfig).when(store).getHybridStoreConfig();
@@ -1143,7 +1157,6 @@ public class TestMetaDataHandler {
         Time.SECONDS_PER_DAY,
         1,
         TimeUnit.MINUTES.toSeconds(1),
-        DataReplicationPolicy.NON_AGGREGATE,
         BufferReplayPolicy.REWIND_FROM_EOP);
     Mockito.doReturn(true).when(store).isHybrid();
     Mockito.doReturn(badCurrentVersionStoreConfig).when(store).getHybridStoreConfig();
@@ -1179,7 +1192,6 @@ public class TestMetaDataHandler {
         Time.SECONDS_PER_DAY,
         1,
         TimeUnit.MINUTES.toSeconds(1),
-        DataReplicationPolicy.AGGREGATE,
         BufferReplayPolicy.REWIND_FROM_EOP);
     Mockito.doReturn(true).when(store).isHybrid();
     Mockito.doReturn(aggStoreConfig).when(store).getHybridStoreConfig();
@@ -1208,47 +1220,7 @@ public class TestMetaDataHandler {
   }
 
   @Test
-  public void testRequestTopicForHybridStoreWithAggregateReplicationPolicy() throws IOException {
-    HelixReadOnlyStoreRepository storeRepository = Mockito.mock(HelixReadOnlyStoreRepository.class);
-    HelixReadOnlyStoreConfigRepository storeConfigRepository = Mockito.mock(HelixReadOnlyStoreConfigRepository.class);
-
-    String storeName = "test-store";
-    Store store = Mockito.mock(Store.class);
-    Mockito.doReturn(true).when(store).isEnableWrites();
-
-    HybridStoreConfig aggStoreConfig = new HybridStoreConfigImpl(
-        Time.SECONDS_PER_DAY,
-        1,
-        TimeUnit.MINUTES.toSeconds(1),
-        DataReplicationPolicy.AGGREGATE,
-        BufferReplayPolicy.REWIND_FROM_EOP);
-    Mockito.doReturn(true).when(store).isHybrid();
-    Mockito.doReturn(aggStoreConfig).when(store).getHybridStoreConfig();
-
-    Version currentVersion = Mockito.mock(Version.class);
-    Mockito.doReturn(aggStoreConfig).when(currentVersion).getHybridStoreConfig();
-    Mockito.doReturn(1).when(currentVersion).getNumber();
-
-    Mockito.doReturn(1).when(store).getCurrentVersion();
-    Mockito.doReturn(currentVersion).when(store).getVersion(1);
-
-    Mockito.doReturn(store).when(storeRepository).getStore(storeName);
-    FullHttpResponse response = passRequestToMetadataHandler(
-        "http://myRouterHost:4567/" + TYPE_REQUEST_TOPIC + "/" + storeName,
-        null,
-        null,
-        storeConfigRepository,
-        Collections.emptyMap(),
-        Collections.emptyMap(),
-        storeRepository);
-    Assert.assertEquals(response.status(), HttpResponseStatus.BAD_REQUEST);
-    Assert.assertEquals(
-        new String(response.content().array(), StandardCharsets.UTF_8),
-        REQUEST_TOPIC_ERROR_UNSUPPORTED_REPLICATION_POLICY);
-  }
-
-  @Test
-  public void testRequestTopicForStoreWithNonAggregateReplicationPolicy() throws IOException {
+  public void testRequestTopicForStore() throws IOException {
     String clusterName = "test-cluster";
     HelixReadOnlyStoreRepository storeRepository = Mockito.mock(HelixReadOnlyStoreRepository.class);
     HelixReadOnlyStoreConfigRepository storeConfigRepository = Mockito.mock(HelixReadOnlyStoreConfigRepository.class);
@@ -1261,7 +1233,6 @@ public class TestMetaDataHandler {
         Time.SECONDS_PER_DAY,
         1,
         TimeUnit.MINUTES.toSeconds(1),
-        DataReplicationPolicy.NON_AGGREGATE,
         BufferReplayPolicy.REWIND_FROM_EOP);
     Mockito.doReturn(true).when(store).isHybrid();
     Mockito.doReturn(nonAggStoreConfig).when(store).getHybridStoreConfig();
@@ -1315,7 +1286,6 @@ public class TestMetaDataHandler {
         Time.SECONDS_PER_DAY,
         1,
         TimeUnit.MINUTES.toSeconds(1),
-        DataReplicationPolicy.NON_AGGREGATE,
         BufferReplayPolicy.REWIND_FROM_EOP);
     Mockito.doReturn(true).when(store).isHybrid();
     Mockito.doReturn(nonAggStoreConfig).when(store).getHybridStoreConfig();
@@ -1369,7 +1339,6 @@ public class TestMetaDataHandler {
         Time.SECONDS_PER_DAY,
         1,
         TimeUnit.MINUTES.toSeconds(1),
-        DataReplicationPolicy.NON_AGGREGATE,
         BufferReplayPolicy.REWIND_FROM_EOP);
     Mockito.doReturn(true).when(store).isHybrid();
     Mockito.doReturn(nonAggStoreConfig).when(store).getHybridStoreConfig();
@@ -1424,7 +1393,6 @@ public class TestMetaDataHandler {
         Time.SECONDS_PER_DAY,
         1,
         TimeUnit.MINUTES.toSeconds(1),
-        DataReplicationPolicy.NON_AGGREGATE,
         BufferReplayPolicy.REWIND_FROM_EOP);
     Mockito.doReturn(true).when(store).isHybrid();
     Mockito.doReturn(nonAggStoreConfig).when(store).getHybridStoreConfig();
@@ -1538,6 +1506,28 @@ public class TestMetaDataHandler {
     String storeVersion = "3";
     String storePartition = "30";
 
+    // Set up empty map for instance results from PushStatusStore when query partition level status
+    Mockito.doReturn(CompletableFuture.completedFuture(new HashMap<CharSequence, Integer>()))
+        .when(pushStatusStoreReader)
+        .getPartitionOrVersionStatusAsync(
+            storeName,
+            Integer.parseInt(storeVersion),
+            Integer.parseInt(storePartition),
+            Optional.empty(),
+            Optional.empty(),
+            false);
+
+    // Set up empty map for instance results from PushStatusStore when query version level status
+    Mockito.doReturn(CompletableFuture.completedFuture(new HashMap<CharSequence, Integer>()))
+        .when(pushStatusStoreReader)
+        .getPartitionOrVersionStatusAsync(
+            storeName,
+            Integer.parseInt(storeVersion),
+            Integer.parseInt(storePartition),
+            Optional.empty(),
+            Optional.empty(),
+            true);
+
     Store store = Mockito.mock(Store.class);
     Mockito.doReturn(store).when(storeRepository).getStore(storeName);
     Mockito.doReturn(isBlobTransferEnabled).when(store).isBlobTransferEnabled();
@@ -1589,7 +1579,24 @@ public class TestMetaDataHandler {
 
     Mockito.doThrow(new VeniceException("exception"))
         .when(pushStatusStoreReader)
-        .getPartitionStatus(storeName, storeVersion, storePartition, Optional.empty());
+        .getPartitionOrVersionStatusAsync(
+            storeName,
+            storeVersion,
+            storePartition,
+            Optional.empty(),
+            Optional.empty(),
+            false);
+
+    // Set up empty map for instance results from PushStatusStore when query version level status
+    Mockito.doReturn(CompletableFuture.completedFuture(new HashMap<CharSequence, Integer>()))
+        .when(pushStatusStoreReader)
+        .getPartitionOrVersionStatusAsync(
+            storeName,
+            storeVersion,
+            storePartition,
+            Optional.empty(),
+            Optional.empty(),
+            true);
 
     String requestUri = String.format(
         "http://myRouterHost:4567/%s?store_name=%s&store_version=%s&store_partition=%s",
@@ -1633,6 +1640,9 @@ public class TestMetaDataHandler {
       }
     };
 
+    CompletableFuture<Map<CharSequence, Integer>> instanceResultsFromPushStatusStoreFuture =
+        CompletableFuture.completedFuture(instanceResultsFromPushStatusStore);
+
     Map<String, Boolean> instanceHealth = new HashMap<String, Boolean>() {
       {
         put("ltx1-test.prod.linkedin.com_137", true);
@@ -1643,9 +1653,25 @@ public class TestMetaDataHandler {
 
     List<String> expectedResult = Arrays.asList("ltx1-test.prod.linkedin.com_137", "ltx1-test2.prod.linkedin.com_137");
 
-    Mockito.doReturn(instanceResultsFromPushStatusStore)
+    Mockito.doReturn(instanceResultsFromPushStatusStoreFuture)
         .when(pushStatusStoreReader)
-        .getPartitionStatus(storeName, storeVersion, storePartition, Optional.empty());
+        .getPartitionOrVersionStatusAsync(
+            storeName,
+            storeVersion,
+            storePartition,
+            Optional.empty(),
+            Optional.empty(),
+            false);
+
+    Mockito.doReturn(CompletableFuture.completedFuture(new HashMap<CharSequence, Integer>()))
+        .when(pushStatusStoreReader)
+        .getPartitionOrVersionStatusAsync(
+            storeName,
+            storeVersion,
+            storePartition,
+            Optional.empty(),
+            Optional.empty(),
+            true);
 
     instanceHealth.forEach((instance, isLive) -> {
       Mockito.doReturn(isLive).when(pushStatusStoreReader).isInstanceAlive(storeName, instance);
@@ -1702,6 +1728,8 @@ public class TestMetaDataHandler {
         put("ltx1-test2.prod.linkedin.com_137", 1);
       }
     };
+    CompletableFuture<Map<CharSequence, Integer>> instanceResultsFromPushStatusStoreFuture =
+        CompletableFuture.completedFuture(instanceResultsFromPushStatusStore);
 
     Map<String, Boolean> instanceHealth = new HashMap<String, Boolean>() {
       {
@@ -1713,13 +1741,25 @@ public class TestMetaDataHandler {
 
     List<String> expectedResult = Collections.emptyList();
 
-    Mockito.doReturn(instanceResultsFromPushStatusStore)
+    Mockito.doReturn(instanceResultsFromPushStatusStoreFuture)
         .when(pushStatusStoreReader)
-        .getPartitionStatus(
+        .getPartitionOrVersionStatusAsync(
             storeName,
             Integer.valueOf(storeVersion),
             Integer.valueOf(storePartition),
-            Optional.empty());
+            Optional.empty(),
+            Optional.empty(),
+            false);
+
+    Mockito.doReturn(CompletableFuture.completedFuture(new HashMap<CharSequence, Integer>()))
+        .when(pushStatusStoreReader)
+        .getPartitionOrVersionStatusAsync(
+            storeName,
+            storeVersion,
+            Integer.valueOf(storePartition),
+            Optional.empty(),
+            Optional.empty(),
+            true);
 
     instanceHealth.forEach((instance, isLive) -> {
       Mockito.doReturn(isLive).when(pushStatusStoreReader).isInstanceAlive(storeName, instance);
@@ -1750,6 +1790,95 @@ public class TestMetaDataHandler {
     BlobPeersDiscoveryResponse blobDiscoveryResponse =
         OBJECT_MAPPER.readValue(response.content().array(), BlobPeersDiscoveryResponse.class);
     List<String> hostNames = blobDiscoveryResponse.getDiscoveryResult();
+
+    Assert.assertEquals(hostNames, expectedResult);
+    Assert.assertEquals(response.status(), HttpResponseStatus.OK);
+    Assert.assertEquals(response.headers().get(CONTENT_TYPE), JSON);
+  }
+
+  @Test
+  public void testHandleBlobDiscoveryLiveNodesWhenQueryVersionLevel() throws IOException {
+    HelixReadOnlyStoreRepository storeRepository = Mockito.mock(HelixReadOnlyStoreRepository.class);
+    HelixReadOnlyStoreConfigRepository storeConfigRepository = Mockito.mock(HelixReadOnlyStoreConfigRepository.class);
+    PushStatusStoreReader pushStatusStoreReader = Mockito.mock(PushStatusStoreReader.class);
+
+    String storeName = "store_name";
+    int storeVersion = 1;
+    int storePartition = 30;
+
+    Map<CharSequence, Integer> instanceResultsFromPushStatusStore = new HashMap<CharSequence, Integer>() {
+      {
+        put("ltx1-test.prod.linkedin.com_137", ExecutionStatus.COMPLETED.getValue());
+        put("ltx1-test1.prod.linkedin.com_137", ExecutionStatus.NOT_CREATED.getValue());
+        put("ltx1-test2.prod.linkedin.com_137", ExecutionStatus.COMPLETED.getValue());
+      }
+    };
+
+    CompletableFuture<Map<CharSequence, Integer>> instanceResultsFromPushStatusStoreFuture =
+        CompletableFuture.completedFuture(instanceResultsFromPushStatusStore);
+
+    Map<String, Boolean> instanceHealth = new HashMap<String, Boolean>() {
+      {
+        put("ltx1-test.prod.linkedin.com_137", true);
+        put("ltx1-test1.prod.linkedin.com_137", false);
+        put("ltx1-test2.prod.linkedin.com_137", true);
+      }
+    };
+
+    List<String> expectedResult = Arrays.asList("ltx1-test.prod.linkedin.com_137", "ltx1-test2.prod.linkedin.com_137");
+
+    Mockito.doReturn(CompletableFuture.completedFuture(new HashMap<CharSequence, Integer>()))
+        .when(pushStatusStoreReader)
+        .getPartitionOrVersionStatusAsync(
+            storeName,
+            storeVersion,
+            storePartition,
+            Optional.empty(),
+            Optional.empty(),
+            false);
+
+    Mockito.doReturn(instanceResultsFromPushStatusStoreFuture)
+        .when(pushStatusStoreReader)
+        .getPartitionOrVersionStatusAsync(
+            storeName,
+            storeVersion,
+            storePartition,
+            Optional.empty(),
+            Optional.empty(),
+            true);
+
+    instanceHealth.forEach((instance, isLive) -> {
+      Mockito.doReturn(isLive).when(pushStatusStoreReader).isInstanceAlive(storeName, instance);
+    });
+
+    Store store = Mockito.mock(Store.class);
+    Mockito.doReturn(store).when(storeRepository).getStore(storeName);
+    Mockito.doReturn(true).when(store).isBlobTransferEnabled();
+    Mockito.doReturn(false).when(store).isHybrid();
+
+    String requestUri = String.format(
+        "http://myRouterHost:4567/%s?store_name=%s&store_version=%s&store_partition=%s",
+        TYPE_BLOB_DISCOVERY,
+        storeName,
+        storeVersion,
+        storePartition);
+
+    FullHttpResponse response = passRequestToMetadataHandler(
+        requestUri,
+        null,
+        null,
+        storeConfigRepository,
+        Collections.emptyMap(),
+        Collections.emptyMap(),
+        storeRepository,
+        pushStatusStoreReader);
+
+    BlobPeersDiscoveryResponse blobDiscoveryResponse =
+        OBJECT_MAPPER.readValue(response.content().array(), BlobPeersDiscoveryResponse.class);
+    List<String> hostNames = blobDiscoveryResponse.getDiscoveryResult();
+
+    Collections.sort(hostNames);
+    Collections.sort(expectedResult);
 
     Assert.assertEquals(hostNames, expectedResult);
     Assert.assertEquals(response.status(), HttpResponseStatus.OK);

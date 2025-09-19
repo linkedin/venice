@@ -1,7 +1,7 @@
 package com.linkedin.venice.pubsub.adapter.kafka.producer;
 
+import com.linkedin.venice.pubsub.PubSubProducerAdapterContext;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
-import com.linkedin.venice.utils.VeniceProperties;
 
 
 /**
@@ -9,16 +9,19 @@ import com.linkedin.venice.utils.VeniceProperties;
  *
  * A producer created using this factory is usually used to send data to a single pub-sub topic.
  */
-public class ApacheKafkaProducerAdapterFactory implements PubSubProducerAdapterFactory<ApacheKafkaProducerAdapter> {
+public class ApacheKafkaProducerAdapterFactory extends PubSubProducerAdapterFactory<ApacheKafkaProducerAdapter> {
   private static final String NAME = "ApacheKafkaProducer";
 
+  /**
+   * Constructor for ApacheKafkaProducerAdapterFactory used for reflective instantiation.
+   */
+  public ApacheKafkaProducerAdapterFactory() {
+    // no-op
+  }
+
   @Override
-  public ApacheKafkaProducerAdapter create(
-      VeniceProperties veniceProperties,
-      String producerName,
-      String brokerAddressToOverride) {
-    return new ApacheKafkaProducerAdapter(
-        new ApacheKafkaProducerConfig(veniceProperties, brokerAddressToOverride, producerName, true));
+  public ApacheKafkaProducerAdapter create(PubSubProducerAdapterContext context) {
+    return new ApacheKafkaProducerAdapter(new ApacheKafkaProducerConfig(context));
   }
 
   @Override

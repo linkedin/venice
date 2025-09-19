@@ -9,7 +9,7 @@ import com.linkedin.davinci.listener.response.ReadResponse;
 import com.linkedin.davinci.listener.response.ReadResponseStats;
 import com.linkedin.davinci.listener.response.ReplicaIngestionResponse;
 import com.linkedin.davinci.listener.response.ServerCurrentVersionResponse;
-import com.linkedin.davinci.listener.response.StorePropertiesResponse;
+import com.linkedin.davinci.listener.response.StorePropertiesPayload;
 import com.linkedin.davinci.storage.DiskHealthCheckService;
 import com.linkedin.davinci.storage.IngestionMetadataRetriever;
 import com.linkedin.davinci.storage.ReadMetadataRetriever;
@@ -17,7 +17,7 @@ import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.chunking.BatchGetChunkingAdapter;
 import com.linkedin.davinci.storage.chunking.GenericRecordChunkingAdapter;
 import com.linkedin.davinci.storage.chunking.SingleGetChunkingAdapter;
-import com.linkedin.davinci.store.AbstractStorageEngine;
+import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.venice.cleaner.ResourceReadUsageTracker;
 import com.linkedin.venice.compression.CompressionStrategy;
@@ -31,6 +31,7 @@ import com.linkedin.venice.compute.protocol.response.ComputeResponseRecordV1;
 import com.linkedin.venice.exceptions.OperationNotAllowedException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
+import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.listener.request.AdminRequest;
 import com.linkedin.venice.listener.request.ComputeRouterRequestWrapper;
 import com.linkedin.venice.listener.request.CurrentVersionRequest;
@@ -73,6 +74,7 @@ import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.ComplementSet;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
+import com.linkedin.venice.utils.StoreVersionStateUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
@@ -140,10 +142,10 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
 
   private static class PerStoreVersionState {
     final StoreDeserializerCache<GenericRecord> storeDeserializerCache;
-    AbstractStorageEngine storageEngine;
+    StorageEngine storageEngine;
 
     public PerStoreVersionState(
-        AbstractStorageEngine storageEngine,
+        StorageEngine storageEngine,
         StoreDeserializerCache<GenericRecord> storeDeserializerCache) {
       this.storageEngine = storageEngine;
       this.storeDeserializerCache = storeDeserializerCache;
@@ -372,7 +374,7 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
       }
     } else if (message instanceof StorePropertiesFetchRequest) {
       try {
-        StorePropertiesResponse response = handleStorePropertiesFetchRequest((StorePropertiesFetchRequest) message);
+        StorePropertiesPayload response = handleStorePropertiesFetchRequest((StorePropertiesFetchRequest) message);
         context.writeAndFlush(response);
       } catch (UnsupportedOperationException e) {
         LOGGER.warn(
@@ -443,15 +445,15 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
 
   private PerStoreVersionState generatePerStoreVersionState(String storeVersion) {
     String storeName = Version.parseStoreFromKafkaTopicName(storeVersion);
-    AbstractStorageEngine storageEngine = getStorageEngineOrThrow(storeVersion);
+    StorageEngine storageEngine = getStorageEngineOrThrow(storeVersion);
     StoreDeserializerCache<GenericRecord> storeDeserializerCache = storeDeserializerCacheMap.computeIfAbsent(
         storeName,
         s -> new AvroStoreDeserializerCache<>(this.schemaRepository, s, this.fastAvroEnabled));
     return new PerStoreVersionState(storageEngine, storeDeserializerCache);
   }
 
-  private AbstractStorageEngine getStorageEngineOrThrow(String storeVersion) {
-    AbstractStorageEngine storageEngine = storageEngineRepository.getLocalStorageEngine(storeVersion);
+  private StorageEngine getStorageEngineOrThrow(String storeVersion) {
+    StorageEngine storageEngine = storageEngineRepository.getLocalStorageEngine(storeVersion);
     if (storageEngine == null) {
       throw new VeniceNoStoreException(storeVersion);
     }
@@ -472,10 +474,11 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
       PerStoreVersionState perStoreVersionState = getPerStoreVersionState(topic);
       byte[] key = request.getKeyBytes();
 
-      AbstractStorageEngine storageEngine = perStoreVersionState.storageEngine;
-      boolean isChunked = storageEngine.isChunked();
+      StorageEngine storageEngine = perStoreVersionState.storageEngine;
+      StoreVersionState svs = perStoreVersionState.storageEngine.getStoreVersionState();
+      boolean isChunked = StoreVersionStateUtils.isChunked(svs);
       SingleGetResponseWrapper response = new SingleGetResponseWrapper();
-      response.setCompressionStrategy(storageEngine.getCompressionStrategy());
+      response.setCompressionStrategy(StoreVersionStateUtils.getCompressionStrategy(svs));
 
       ValueRecord valueRecord =
           SingleGetChunkingAdapter.get(storageEngine, request.getPartition(), key, isChunked, response.getStats());
@@ -495,7 +498,7 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
 
     return processBatchInParallel(
         keys,
-        requestContext.storeVersion.storageEngine.getCompressionStrategy(),
+        requestContext.compressionStrategy,
         request,
         ParallelMultiKeyResponseWrapper::multiGet,
         this.multiGetResponseProvider,
@@ -610,7 +613,7 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
       List<MultiGetRouterRequestKeyV1> keys = request.getKeys();
       MultiGetResponseWrapper responseWrapper = this.multiGetResponseProvider.apply(request.getKeyCount());
       RequestContext requestContext = new RequestContext(request, this);
-      responseWrapper.setCompressionStrategy(requestContext.storeVersion.storageEngine.getCompressionStrategy());
+      responseWrapper.setCompressionStrategy(requestContext.compressionStrategy);
 
       processMultiGet(0, request.getKeyCount(), keys, requestContext, responseWrapper);
 
@@ -681,10 +684,13 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
     final PerStoreVersionState storeVersion;
     final boolean isChunked;
     final boolean isStreaming;
+    final CompressionStrategy compressionStrategy;
 
     RequestContext(MultiKeyRouterRequestWrapper request, StorageReadRequestHandler handler) {
       this.storeVersion = handler.getPerStoreVersionState(request.getResourceName());
-      this.isChunked = storeVersion.storageEngine.isChunked();
+      StoreVersionState svs = storeVersion.storageEngine.getStoreVersionState();
+      this.isChunked = StoreVersionStateUtils.isChunked(svs);
+      this.compressionStrategy = StoreVersionStateUtils.getCompressionStrategy(svs);
       this.isStreaming = request.isStreamingRequest();
     }
   }
@@ -703,7 +709,7 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
       this.resultSchema = handler.getComputeResultSchema(request.getComputeRequest(), valueSchemaEntry.getSchema());
       this.resultSerializer = handler.genericSerializerGetter.apply(resultSchema);
       this.compressor = handler.compressorFactory.getCompressor(
-          storeVersion.storageEngine.getCompressionStrategy(),
+          this.compressionStrategy,
           request.getResourceName(),
           handler.serverConfig.getZstdDictCompressionLevel());
       this.operations = request.getComputeRequest().getOperations();
@@ -795,7 +801,7 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
     return readMetadataRetriever.getMetadata(request.getStoreName());
   }
 
-  private StorePropertiesResponse handleStorePropertiesFetchRequest(StorePropertiesFetchRequest request) {
+  private StorePropertiesPayload handleStorePropertiesFetchRequest(StorePropertiesFetchRequest request) {
     return readMetadataRetriever.getStoreProperties(request.getStoreName(), request.getLargestKnownSchemaId());
   }
 

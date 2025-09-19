@@ -5,6 +5,7 @@ import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
@@ -45,8 +46,15 @@ public class LeaderFollowerThreadPoolTest {
     int numOfController = 1;
     int numOfServers = 0;
     int numOfRouters = 1;
-    cluster = ServiceFactory
-        .getVeniceCluster(numOfController, numOfServers, numOfRouters, replicaFactor, partitionSize, false, false);
+    VeniceClusterCreateOptions options = new VeniceClusterCreateOptions.Builder().numberOfControllers(numOfController)
+        .numberOfServers(numOfServers)
+        .numberOfRouters(numOfRouters)
+        .replicationFactor(replicaFactor)
+        .partitionSize(partitionSize)
+        .sslToStorageNodes(false)
+        .sslToKafka(false)
+        .build();
+    cluster = ServiceFactory.getVeniceCluster(options);
   }
 
   @AfterMethod

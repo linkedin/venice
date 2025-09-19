@@ -8,11 +8,14 @@ import static com.linkedin.venice.ConfigKeys.PARTITIONER_CLASS;
 import static com.linkedin.venice.ConfigKeys.PUSH_JOB_GUID_LEAST_SIGNIFICANT_BITS;
 import static com.linkedin.venice.ConfigKeys.PUSH_JOB_GUID_MOST_SIGNIFICANT_BITS;
 import static com.linkedin.venice.ConfigKeys.PUSH_JOB_VIEW_CONFIGS;
+import static com.linkedin.venice.guid.GuidUtils.DEFAULT_GUID_GENERATOR_IMPLEMENTATION;
+import static com.linkedin.venice.guid.GuidUtils.GUID_GENERATOR_IMPLEMENTATION;
 import static com.linkedin.venice.spark.SparkConstants.DEFAULT_SCHEMA;
 import static com.linkedin.venice.spark.SparkConstants.DEFAULT_SCHEMA_WITH_PARTITION;
 import static com.linkedin.venice.spark.SparkConstants.DEFAULT_SPARK_CLUSTER;
 import static com.linkedin.venice.spark.SparkConstants.KEY_COLUMN_NAME;
 import static com.linkedin.venice.spark.SparkConstants.PARTITION_COLUMN_NAME;
+import static com.linkedin.venice.spark.SparkConstants.RMD_COLUMN_NAME;
 import static com.linkedin.venice.spark.SparkConstants.SPARK_CASE_SENSITIVE_CONFIG;
 import static com.linkedin.venice.spark.SparkConstants.SPARK_CLUSTER_CONFIG;
 import static com.linkedin.venice.spark.SparkConstants.SPARK_DATA_WRITER_CONF_PREFIX;
@@ -30,12 +33,13 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_BROKER_
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_SOURCE_COMPRESSION_STRATEGY;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_SOURCE_TOPIC_CHUNKING_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_SECURITY_PROTOCOL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PARTITION_COUNT;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_ENABLE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_POLICY;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_START_TIMESTAMP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.RMD_SCHEMA_DIR;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.RMD_SCHEMA_ID_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.RMD_SCHEMA_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_CONFIGURATOR_CLASS_CONFIG;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_KEY_PASSWORD_PROPERTY_NAME;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_KEY_STORE_PROPERTY_NAME;
@@ -44,35 +48,43 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_TRUST_STORE_PRO
 import static com.linkedin.venice.vpj.VenicePushJobConstants.STORAGE_QUOTA_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TELEMETRY_MESSAGE_INTERVAL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TOPIC_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.VALUE_SCHEMA_DIR;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VALUE_SCHEMA_ID_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.ZSTD_COMPRESSION_LEVEL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.ZSTD_DICTIONARY_CREATION_REQUIRED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.ZSTD_DICTIONARY_CREATION_SUCCESS;
 
 import com.github.luben.zstd.Zstd;
+import com.linkedin.venice.ConfigKeys;
+import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.hadoop.PushJobSetting;
+import com.linkedin.venice.hadoop.exceptions.VeniceInvalidInputException;
 import com.linkedin.venice.hadoop.input.kafka.ttl.TTLResolutionPolicy;
 import com.linkedin.venice.hadoop.ssl.TempFileSSLConfigurator;
 import com.linkedin.venice.hadoop.task.datawriter.DataWriterTaskTracker;
 import com.linkedin.venice.jobs.DataWriterComputeJob;
+import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
+import com.linkedin.venice.schema.AvroSchemaParseUtils;
 import com.linkedin.venice.spark.datawriter.partition.PartitionSorter;
 import com.linkedin.venice.spark.datawriter.partition.VeniceSparkPartitioner;
 import com.linkedin.venice.spark.datawriter.recordprocessor.SparkInputRecordProcessorFactory;
+import com.linkedin.venice.spark.datawriter.recordprocessor.SparkLogicalTimestampProcessor;
 import com.linkedin.venice.spark.datawriter.task.DataWriterAccumulators;
 import com.linkedin.venice.spark.datawriter.task.SparkDataWriterTaskTracker;
 import com.linkedin.venice.spark.datawriter.writer.SparkPartitionWriterFactory;
+import com.linkedin.venice.spark.utils.RmdPushUtils;
 import com.linkedin.venice.spark.utils.SparkPartitionUtils;
 import com.linkedin.venice.spark.utils.SparkScalaUtils;
+import com.linkedin.venice.utils.AvroSchemaUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.io.IOException;
-import java.util.Objects;
 import java.util.Properties;
 import java.util.UUID;
-import org.apache.kafka.clients.CommonClientConfigs;
+import org.apache.avro.Schema;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.spark.SparkConf;
@@ -87,6 +99,7 @@ import org.apache.spark.sql.SparkSession;
 import org.apache.spark.sql.catalyst.encoders.ExpressionEncoder;
 import org.apache.spark.sql.catalyst.encoders.RowEncoder;
 import org.apache.spark.sql.functions;
+import org.apache.spark.sql.types.DataType;
 import org.apache.spark.sql.types.DataTypes;
 import org.apache.spark.sql.types.StructField;
 import org.apache.spark.sql.types.StructType;
@@ -104,7 +117,6 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
 
   private String jobGroupId;
   private SparkSession sparkSession;
-  private Dataset<Row> dataFrame;
   private DataWriterAccumulators accumulatorsForDataWriterJob;
   private SparkDataWriterTaskTracker taskTracker;
 
@@ -113,54 +125,11 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
     this.props = props;
     this.pushJobSetting = pushJobSetting;
     setupDefaultSparkSessionForDataWriterJob(pushJobSetting, props);
-    setupSparkDataWriterJobFlow(pushJobSetting);
-  }
-
-  private void setupSparkDataWriterJobFlow(PushJobSetting pushJobSetting) {
-    ExpressionEncoder<Row> rowEncoder = RowEncoder.apply(DEFAULT_SCHEMA);
-    ExpressionEncoder<Row> rowEncoderWithPartition = RowEncoder.apply(DEFAULT_SCHEMA_WITH_PARTITION);
-    int numOutputPartitions = pushJobSetting.partitionCount;
-
-    // Load data from input path
-    Dataset<Row> dataFrameForDataWriterJob = getInputDataFrame();
-    Objects.requireNonNull(dataFrameForDataWriterJob, "The input data frame cannot be null");
 
     Properties jobProps = new Properties();
     sparkSession.conf().getAll().foreach(entry -> jobProps.setProperty(entry._1, entry._2));
-    if (pushJobSetting.materializedViewConfigFlatMap != null) {
-      jobProps.put(PUSH_JOB_VIEW_CONFIGS, pushJobSetting.materializedViewConfigFlatMap);
-    }
-    JavaSparkContext sparkContext = JavaSparkContext.fromSparkContext(sparkSession.sparkContext());
-    Broadcast<Properties> broadcastProperties = sparkContext.broadcast(jobProps);
     accumulatorsForDataWriterJob = new DataWriterAccumulators(sparkSession);
     taskTracker = new SparkDataWriterTaskTracker(accumulatorsForDataWriterJob);
-
-    // Validate the schema of the input data
-    validateDataFrameSchema(dataFrameForDataWriterJob);
-
-    // Convert all rows to byte[], byte[] pairs (compressed if compression is enabled)
-    // We could have worked with "map", but because of spraying all PartitionWriters, we need to use "flatMap"
-    dataFrameForDataWriterJob = dataFrameForDataWriterJob
-        .flatMap(new SparkInputRecordProcessorFactory(broadcastProperties, accumulatorsForDataWriterJob), rowEncoder);
-
-    // TODO: Add map-side combiner to reduce the data size before shuffling
-
-    // Partition the data using the custom partitioner and sort the data within that partition
-    dataFrameForDataWriterJob = SparkPartitionUtils.repartitionAndSortWithinPartitions(
-        dataFrameForDataWriterJob,
-        new VeniceSparkPartitioner(broadcastProperties, numOutputPartitions),
-        new PartitionSorter());
-
-    // Add a partition column to all rows based on the custom partitioner
-    dataFrameForDataWriterJob =
-        dataFrameForDataWriterJob.withColumn(PARTITION_COLUMN_NAME, functions.spark_partition_id());
-
-    // Write the data to PubSub
-    dataFrameForDataWriterJob = dataFrameForDataWriterJob.mapPartitions(
-        new SparkPartitionWriterFactory(broadcastProperties, accumulatorsForDataWriterJob),
-        rowEncoderWithPartition);
-
-    this.dataFrame = dataFrameForDataWriterJob;
   }
 
   /**
@@ -219,11 +188,11 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
     jobConf.set(PARTITIONER_CLASS, pushJobSetting.partitionerClass);
     // flatten partitionerParams since RuntimeConfig class does not support set an object
     if (pushJobSetting.partitionerParams != null) {
-      pushJobSetting.partitionerParams.forEach((key, value) -> jobConf.set(key, value));
+      pushJobSetting.partitionerParams.forEach(jobConf::set);
     }
     jobConf.set(PARTITION_COUNT, pushJobSetting.partitionCount);
     if (pushJobSetting.sslToKafka) {
-      jobConf.set(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, KAFKA_SECURITY_PROTOCOL);
+      jobConf.set(ConfigKeys.PUBSUB_SECURITY_PROTOCOL, PubSubSecurityProtocol.SSL.name());
       props.keySet().stream().filter(key -> key.toLowerCase().startsWith(SSL_PREFIX)).forEach(key -> {
         jobConf.set(key, props.getString(key));
       });
@@ -261,8 +230,12 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
     } else {
       jobConf.set(VALUE_SCHEMA_ID_PROP, pushJobSetting.valueSchemaId);
       jobConf.set(DERIVED_SCHEMA_ID_PROP, pushJobSetting.derivedSchemaId);
+      jobConf.set(RMD_SCHEMA_ID_PROP, pushJobSetting.rmdSchemaId);
     }
     jobConf.set(ENABLE_WRITE_COMPUTE, pushJobSetting.enableWriteCompute);
+    if (pushJobSetting.replicationMetadataSchemaString != null) {
+      jobConf.set(RMD_SCHEMA_PROP, pushJobSetting.replicationMetadataSchemaString);
+    }
 
     if (!props.containsKey(KAFKA_PRODUCER_REQUEST_TIMEOUT_MS)) {
       // If the push job plug-in doesn't specify the request timeout config, default will be infinite
@@ -293,32 +266,31 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
         props.getString(ZSTD_COMPRESSION_LEVEL, String.valueOf(Zstd.maxCompressionLevel())));
     jobConf.set(ZSTD_DICTIONARY_CREATION_SUCCESS, pushJobSetting.isZstdDictCreationSuccess);
 
-    // We generate a random UUID once, and the tasks of the compute job can use this to build the same producerGUID
-    // deterministically.
-    UUID producerGuid = UUID.randomUUID();
-    jobConf.set(PUSH_JOB_GUID_MOST_SIGNIFICANT_BITS, producerGuid.getMostSignificantBits());
-    jobConf.set(PUSH_JOB_GUID_LEAST_SIGNIFICANT_BITS, producerGuid.getLeastSignificantBits());
-
-    /**
-     * Override the configs following the rules:
-     * <ul>
-     *   <li>Pass-through the properties whose names start with the prefixes defined in {@link PASS_THROUGH_CONFIG_PREFIXES}.</li>
-     *   <li>Override the properties that are specified with the {@link SPARK_DATA_WRITER_CONF_PREFIX} prefix.</li>
-     * </ul>
-     **/
-    for (String configKey: props.keySet()) {
-      String lowerCaseConfigKey = configKey.toLowerCase();
-      if (lowerCaseConfigKey.startsWith(SPARK_DATA_WRITER_CONF_PREFIX)) {
-        String overrideKey = configKey.substring(SPARK_DATA_WRITER_CONF_PREFIX.length());
-        jobConf.set(overrideKey, props.getString(configKey));
-      }
-      for (String prefix: PASS_THROUGH_CONFIG_PREFIXES) {
-        if (lowerCaseConfigKey.startsWith(prefix)) {
-          jobConf.set(configKey, props.getString(configKey));
-          break;
-        }
-      }
+    if (pushJobSetting.isSortedIngestionEnabled) {
+      // We generate a random UUID once, and the tasks of the compute job can use this to build the same producerGUID
+      // deterministically.
+      UUID producerGuid = UUID.randomUUID();
+      jobConf.set(PUSH_JOB_GUID_MOST_SIGNIFICANT_BITS, producerGuid.getMostSignificantBits());
+      jobConf.set(PUSH_JOB_GUID_LEAST_SIGNIFICANT_BITS, producerGuid.getLeastSignificantBits());
+    } else {
+      // Use unique GUID for every speculative producers when the config `isSortedIngestionEnabled` is false
+      // This prevents log compaction of control message which triggers the following during rebalance or store
+      // migration
+      // UNREGISTERED_PRODUCER data detected for producer
+      jobConf.set(GUID_GENERATOR_IMPLEMENTATION, DEFAULT_GUID_GENERATOR_IMPLEMENTATION);
     }
+
+    if (pushJobSetting.materializedViewConfigFlatMap != null) {
+      jobConf.set(PUSH_JOB_VIEW_CONFIGS, pushJobSetting.materializedViewConfigFlatMap);
+      jobConf.set(VALUE_SCHEMA_DIR, pushJobSetting.valueSchemaDir);
+      jobConf.set(RMD_SCHEMA_DIR, pushJobSetting.rmdSchemaDir);
+    }
+
+    DataWriterComputeJob.populateWithPassThroughConfigs(
+        props,
+        jobConf::set,
+        PASS_THROUGH_CONFIG_PREFIXES,
+        SPARK_DATA_WRITER_CONF_PREFIX);
   }
 
   protected SparkSession getSparkSession() {
@@ -333,11 +305,29 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
    *   <li>Must not contain fields with names beginning with "_". These are reserved for internal use.</li>
    *   <li>Can contain fields that do not violate the above constraints</li>
    * </ul>
-   * @see {@link #validateDataFrameSchema(StructType)}
+   * @see {@link #validateDataFrame(Dataset)}
    *
    * @return The data frame based on the user's input data
    */
   protected abstract Dataset<Row> getUserInputDataFrame();
+
+  /*
+   * Validates the presence of RMD field and then ensures the input schema is valid for the rest of the pipeline to run.
+   * In case of input RMD being logical timestamp, we adapt the timestamp to RMD in # getUserInputDataFrame().
+   * Otherwise, check for subset check with the RMD schema associated with the store for the given input value schema.
+   */
+  protected void validateRmdSchema(PushJobSetting pushJobSetting) {
+    if (RmdPushUtils.rmdFieldPresent(pushJobSetting)) {
+      Schema inputRmdSchema = RmdPushUtils.getInputRmdSchema(pushJobSetting);
+      if ((!RmdPushUtils.containsLogicalTimestamp(pushJobSetting) && !AvroSchemaUtils.compareSchema(
+          inputRmdSchema,
+          AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation(pushJobSetting.replicationMetadataSchemaString)))) {
+        throw new VeniceException(
+            "Input rmd schema does not match the server side RMD schema. Input rmd schema: " + inputRmdSchema
+                + " , server side schema: " + pushJobSetting.replicationMetadataSchemaString);
+      }
+    }
+  }
 
   private Dataset<Row> getInputDataFrame() {
     if (pushJobSetting.isSourceKafka) {
@@ -371,9 +361,49 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
   }
 
   @Override
-  protected void runComputeJob() {
+  public void runComputeJob() {
+    // Load data from input path
+    Dataset<Row> dataFrame = getInputDataFrame();
+    validateDataFrame(dataFrame);
+    validateRmdSchema(pushJobSetting);
+
+    ExpressionEncoder<Row> rowEncoder = RowEncoder.apply(DEFAULT_SCHEMA);
+    ExpressionEncoder<Row> rowEncoderWithPartition = RowEncoder.apply(DEFAULT_SCHEMA_WITH_PARTITION);
+    int numOutputPartitions = pushJobSetting.partitionCount;
+
+    Properties jobProps = new Properties();
+    this.sparkSession.conf().getAll().foreach(entry -> jobProps.setProperty(entry._1, entry._2));
+    JavaSparkContext sparkContext = JavaSparkContext.fromSparkContext(sparkSession.sparkContext());
+    Broadcast<Properties> broadcastProperties = sparkContext.broadcast(jobProps);
+
     LOGGER.info("Triggering Spark job for data writer");
     try {
+      // Convert all rows to byte[], byte[] pairs (compressed if compression is enabled)
+      // We could have worked with "map", but because of spraying all PartitionWriters, we need to use "flatMap"
+      dataFrame = dataFrame
+          .map(
+              new SparkLogicalTimestampProcessor(
+                  RmdPushUtils.containsLogicalTimestamp(pushJobSetting),
+                  pushJobSetting.replicationMetadataSchemaString),
+              rowEncoder)
+          .flatMap(new SparkInputRecordProcessorFactory(broadcastProperties, accumulatorsForDataWriterJob), rowEncoder);
+
+      // TODO: Add map-side combiner to reduce the data size before shuffling
+
+      // Partition the data using the custom partitioner and sort the data within that partition
+      dataFrame = SparkPartitionUtils.repartitionAndSortWithinPartitions(
+          dataFrame,
+          new VeniceSparkPartitioner(broadcastProperties, numOutputPartitions),
+          new PartitionSorter());
+
+      // Add a partition column to all rows based on the custom partitioner
+      dataFrame = dataFrame.withColumn(PARTITION_COLUMN_NAME, functions.spark_partition_id());
+
+      // Write the data to PubSub
+      dataFrame = dataFrame.mapPartitions(
+          new SparkPartitionWriterFactory(broadcastProperties, accumulatorsForDataWriterJob),
+          rowEncoderWithPartition);
+
       // For VPJ, we don't care about the output from the DAG. ".count()" is an action that will trigger execution of
       // the DAG to completion and will not copy all the rows to the driver to be more memory efficient.
       dataFrame.count();
@@ -418,60 +448,65 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
     logAccumulatorValue(accumulatorsForDataWriterJob.recordTooLargeFailureCounter);
     logAccumulatorValue(accumulatorsForDataWriterJob.duplicateKeyWithIdenticalValueCounter);
     logAccumulatorValue(accumulatorsForDataWriterJob.duplicateKeyWithDistinctValueCounter);
+    logAccumulatorValue(accumulatorsForDataWriterJob.largestUncompressedValueSize);
   }
 
   private void logAccumulatorValue(AccumulatorV2<?, ?> accumulator) {
     LOGGER.info("  {}: {}", accumulator.name().get(), accumulator.value());
   }
 
-  private void validateDataFrameSchema(Dataset<Row> dataFrameForDataWriterJob) {
-    StructType dataSchema = dataFrameForDataWriterJob.schema();
-    if (!validateDataFrameSchema(dataSchema)) {
-      String errorMessage =
-          String.format("The provided input data schema is not supported. Provided schema: %s.", dataSchema);
-      throw new VeniceException(errorMessage);
+  @VisibleForTesting
+  void validateDataFrame(Dataset<Row> dataFrameForDataWriterJob) {
+    if (dataFrameForDataWriterJob == null) {
+      throw new VeniceInvalidInputException("The input data frame cannot be null");
     }
-  }
 
-  private boolean validateDataFrameSchema(StructType dataSchema) {
+    StructType dataSchema = dataFrameForDataWriterJob.schema();
     StructField[] fields = dataSchema.fields();
 
-    if (fields.length < 2) {
-      LOGGER.error("The provided input data schema does not have enough fields");
-      return false;
+    if (fields.length < 3) {
+      String errorMessage =
+          String.format("The provided input data does not have enough fields. Provided schema: %s.", dataSchema);
+      throw new VeniceInvalidInputException(errorMessage);
     }
 
-    int keyFieldIndex = SparkScalaUtils.getFieldIndex(dataSchema, KEY_COLUMN_NAME);
+    validateDataFrameFieldAndTypes(fields, dataSchema, KEY_COLUMN_NAME, DataTypes.BinaryType);
+    validateDataFrameFieldAndTypes(fields, dataSchema, VALUE_COLUMN_NAME, DataTypes.BinaryType);
 
-    if (keyFieldIndex == -1) {
-      LOGGER.error("The provided input data schema does not have a {} field", KEY_COLUMN_NAME);
-      return false;
-    }
-
-    if (!fields[keyFieldIndex].dataType().equals(DataTypes.BinaryType)) {
-      LOGGER.error("The provided input key field's schema must be {}", DataTypes.BinaryType);
-      return false;
-    }
-
-    int valueFieldIndex = SparkScalaUtils.getFieldIndex(dataSchema, VALUE_COLUMN_NAME);
-
-    if (valueFieldIndex == -1) {
-      LOGGER.error("The provided input data schema does not have a {} field", VALUE_COLUMN_NAME);
-      return false;
-    }
-
-    if (!fields[valueFieldIndex].dataType().equals(DataTypes.BinaryType)) {
-      LOGGER.error("The provided input value field's schema must be {}", DataTypes.BinaryType);
-      return false;
-    }
+    validateDataFrameFieldAndTypes(fields, dataSchema, RMD_COLUMN_NAME, DataTypes.BinaryType);
 
     for (StructField field: fields) {
       if (field.name().startsWith("_")) {
-        LOGGER.error("The provided input must not have fields that start with an underscore");
-        return false;
+        String errorMessage = String
+            .format("The provided input must not have fields that start with an underscore. Got: %s", field.name());
+        throw new VeniceInvalidInputException(errorMessage);
       }
     }
+  }
 
-    return true;
+  @VisibleForTesting
+  void validateDataFrameFieldAndTypes(
+      StructField[] fields,
+      StructType dataSchema,
+      String fieldName,
+      DataType allowedType) {
+    int fieldIndex = SparkScalaUtils.getFieldIndex(dataSchema, fieldName);
+
+    if (fieldIndex == -1) {
+      String errorMessage = String.format(
+          "The provided input data frame does not have a %s field. Provided schema: %s.",
+          fieldName,
+          dataSchema);
+      throw new VeniceInvalidInputException(errorMessage);
+    }
+
+    StructField field = fields[fieldIndex];
+    DataType fieldType = field.dataType();
+
+    if (!allowedType.equals(fieldType)) {
+      String errorMessage =
+          String.format("The provided input %s schema must be %s. Got: %s.", fieldName, allowedType, fieldType);
+      throw new VeniceInvalidInputException(errorMessage);
+    }
   }
 }

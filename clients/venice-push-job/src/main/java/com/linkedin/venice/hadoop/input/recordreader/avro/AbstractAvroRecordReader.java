@@ -26,6 +26,7 @@ public abstract class AbstractAvroRecordReader<INPUT_KEY, INPUT_VALUE>
 
   private final int keyFieldPos;
   private final int valueFieldPos;
+  private int rmdFieldPos;
   private final Schema valueSchema;
 
   private final boolean generatePartialUpdateRecordFromInput;
@@ -41,12 +42,27 @@ public abstract class AbstractAvroRecordReader<INPUT_KEY, INPUT_VALUE>
       Schema dataSchema,
       String keyFieldStr,
       String valueFieldStr,
+      String rmdFieldStr,
       ETLValueSchemaTransformation etlValueSchemaTransformation,
       Schema updateSchema) {
     this.dataSchema = dataSchema;
     Schema.Field keyField = getField(dataSchema, keyFieldStr);
     keyFieldPos = keyField.pos();
     Schema keySchema = keyField.schema();
+
+    Schema rmdSchema = null;
+    // The timestamp field is optional
+    if (!rmdFieldStr.isEmpty()) {
+      try {
+        Schema.Field rmdField = getField(dataSchema, rmdFieldStr);
+        rmdSchema = rmdField.schema();
+        rmdFieldPos = rmdField.pos();
+      } catch (VeniceSchemaFieldNotFoundException e) {
+        rmdFieldPos = -1;
+      }
+    } else {
+      rmdFieldPos = -1;
+    }
 
     Schema outputSchema;
     if (!etlValueSchemaTransformation.equals(ETLValueSchemaTransformation.NONE)) {
@@ -95,7 +111,11 @@ public abstract class AbstractAvroRecordReader<INPUT_KEY, INPUT_VALUE>
       valueSchema = outputValueField.schema();
     }
 
-    configure(keySchema, valueSchema);
+    if (rmdSchema != null) {
+      configure(keySchema, valueSchema, rmdSchema);
+    } else {
+      configure(keySchema, valueSchema);
+    }
   }
 
   private static Schema.Field getField(Schema fileSchema, String fieldName) {
@@ -127,6 +147,15 @@ public abstract class AbstractAvroRecordReader<INPUT_KEY, INPUT_VALUE>
     }
 
     return keyDatum;
+  }
+
+  @Override
+  public Object getRmdValue(INPUT_KEY inputKey, INPUT_VALUE inputValue) {
+    if (rmdFieldPos == -1) {
+      return null;
+    }
+
+    return getRecordDatum(inputKey, inputValue).get(rmdFieldPos);
   }
 
   @Override

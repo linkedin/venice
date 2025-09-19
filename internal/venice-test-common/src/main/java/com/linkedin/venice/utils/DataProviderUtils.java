@@ -6,6 +6,8 @@ import static com.linkedin.venice.compression.CompressionStrategy.ZSTD_WITH_DICT
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.davinci.client.DaVinciConfig;
+import com.linkedin.davinci.ingestion.utils.IngestionTaskReusableObjects;
+import com.linkedin.davinci.kafka.consumer.KafkaConsumerService;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheConfig;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.meta.IngestionMode;
@@ -25,6 +27,7 @@ import org.testng.collections.Lists;
 public class DataProviderUtils {
   public static final Object[] BOOLEAN = { false, true };
   public static final Object[] BOOLEAN_FALSE = { false };
+  public static final Object[] OPTIONAL_BOOLEAN = { false, true, null };
   public static final Object[] COMPRESSION_STRATEGIES = { NO_OP, GZIP, ZSTD_WITH_DICT };
   public static final Object[] PARTITION_COUNTS = { 1, 2, 3, 4, 8, 10, 16, 19, 92, 128 };
 
@@ -49,6 +52,11 @@ public class DataProviderUtils {
     return allPermutationGenerator(BOOLEAN, BOOLEAN);
   }
 
+  @DataProvider(name = "Boolean-and-Optional-Boolean")
+  public static Object[][] booleanAndOptionalBoolean() {
+    return allPermutationGenerator(BOOLEAN, OPTIONAL_BOOLEAN);
+  }
+
   @DataProvider(name = "Three-True-and-False")
   public static Object[][] threeBoolean() {
     return allPermutationGenerator(BOOLEAN, BOOLEAN, BOOLEAN);
@@ -62,6 +70,11 @@ public class DataProviderUtils {
   @DataProvider(name = "Five-True-and-False")
   public static Object[][] fiveBoolean() {
     return allPermutationGenerator(BOOLEAN, BOOLEAN, BOOLEAN, BOOLEAN, BOOLEAN);
+  }
+
+  @DataProvider(name = "Six-True-and-False", parallel = true)
+  public static Object[][] sixBoolean() {
+    return allPermutationGenerator(BOOLEAN, BOOLEAN, BOOLEAN, BOOLEAN, BOOLEAN, BOOLEAN);
   }
 
   @DataProvider(name = "CheckpointingSupported-CheckSum-Types")
@@ -87,7 +100,8 @@ public class DataProviderUtils {
 
   @DataProvider(name = "Isolated-Ingestion")
   public static Object[][] isolatedIngestion() {
-    return new Object[][] { { IngestionMode.BUILT_IN }, { IngestionMode.ISOLATED } };
+    return new Object[][] { { IngestionMode.BUILT_IN, true }, { IngestionMode.ISOLATED, false },
+        { IngestionMode.ISOLATED, true } };
   }
 
   @DataProvider(name = "Chunking-And-Partition-Counts")
@@ -139,6 +153,16 @@ public class DataProviderUtils {
     }
 
     return resultingArray.toArray(new Object[resultingArray.size()][]);
+  }
+
+  @DataProvider(name = "sharedConsumerStrategy")
+  public static Object[][] sharedConsumerStrategy() {
+    return allPermutationGenerator(KafkaConsumerService.ConsumerAssignmentStrategy.values());
+  }
+
+  @DataProvider(name = "ingestionTaskReusableObjectsStrategy")
+  public static Object[][] ingestionTaskReusableObjectsStrategy() {
+    return allPermutationGenerator(IngestionTaskReusableObjects.Strategy.values());
   }
 
   /**

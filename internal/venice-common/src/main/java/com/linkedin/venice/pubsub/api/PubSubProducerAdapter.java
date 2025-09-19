@@ -1,5 +1,6 @@
 package com.linkedin.venice.pubsub.api;
 
+import com.linkedin.venice.annotation.UnderDevelopment;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubClientException;
@@ -49,6 +50,31 @@ public interface PubSubProducerAdapter {
       KafkaMessageEnvelope value,
       PubSubMessageHeaders pubSubMessageHeaders,
       PubSubProducerCallback pubSubProducerCallback);
+
+  /**
+   * Sends a message to a PubSub topic asynchronously and returns a {@link CompletableFuture} representing the result of the produce operation.
+   * @param pubSubTopicPartition The partition of the PubSub topic to which the message will be sent.
+   * @param keyBytes The key associated with the message, used for partitioning and message retrieval, represented as a byte array.
+   * @param valueBytes The message payload to be sent to the PubSub topic, represented as a byte array.
+   * @param pubSubMessageHeaders Additional headers to be included with the message, encapsulated in a {@link PubSubMessageHeaders} object.
+   * @param pubSubProducerCallback An optional callback to handle the result of the produce operation, encapsulated in a {@link PubSubProducerCallback} object.
+   * @return A {@link CompletableFuture} representing the result of the produce operation, encapsulated in a {@link PubSubProduceResult} object.
+   *
+   * @throws PubSubOpTimeoutException If the produce operation times out.
+   * @throws PubSubTopicAuthorizationException If there's an authorization error while producing the message.
+   * @throws PubSubTopicDoesNotExistException If the target topic does not exist.
+   * @throws PubSubClientRetriableException If a retriable error occurs while producing the message.
+   * @throws PubSubClientException If an error occurs while producing the message.
+   */
+  @UnderDevelopment
+  default CompletableFuture<PubSubProduceResult> sendMessage(
+      PubSubTopicPartition pubSubTopicPartition,
+      byte[] keyBytes,
+      byte[] valueBytes,
+      PubSubMessageHeaders pubSubMessageHeaders,
+      PubSubProducerCallback pubSubProducerCallback) {
+    throw new UnsupportedOperationException("Method not implemented");
+  }
 
   void flush();
 

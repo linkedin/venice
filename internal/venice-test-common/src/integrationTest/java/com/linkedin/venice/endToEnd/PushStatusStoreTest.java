@@ -6,7 +6,6 @@ import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_SCAN_INTERVAL_I
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_INSTANCE_NAME_SUFFIX;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_INCREMENTAL_PUSH_STATUS_WRITE_MODE;
-import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
 import static com.linkedin.venice.ConfigKeys.USE_PUSH_STATUS_STORE_FOR_INCREMENTAL_PUSH;
 import static com.linkedin.venice.common.PushStatusStoreUtils.SERVER_INCREMENTAL_PUSH_PREFIX;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.DEFAULT_KEY_SCHEMA;
@@ -35,6 +34,7 @@ import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.DaVinciTestContext;
@@ -63,6 +63,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -70,6 +71,7 @@ import org.apache.avro.Schema;
 import org.apache.avro.util.Utf8;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.BeforeMethod;
@@ -93,7 +95,6 @@ public class PushStatusStoreTest {
   @BeforeClass
   public void setUp() {
     Properties extraProperties = new Properties();
-    extraProperties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1L));
     // all tests in this class will be reading incremental push status from push status store
     extraProperties.setProperty(USE_PUSH_STATUS_STORE_FOR_INCREMENTAL_PUSH, String.valueOf(true));
     extraProperties.setProperty(
@@ -151,7 +152,7 @@ public class PushStatusStoreTest {
     Map<String, Object> extraBackendConfigMap =
         isIsolated ? TestUtils.getIngestionIsolationPropertyMap() : new HashMap<>();
     extraBackendConfigMap.put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true);
-    extraBackendConfigMap.put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 10);
+    extraBackendConfigMap.put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1);
     extraBackendConfigMap.put(PUSH_STATUS_STORE_ENABLED, true);
     extraBackendConfigMap.put(DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS, 5);
     String expectedInstanceSuffix = "sampleApp_i015";
@@ -331,6 +332,73 @@ public class PushStatusStoreTest {
       TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT_MS, TimeUnit.MILLISECONDS, () -> {
         assertEquals(reader.getPartitionStatus(storeName, 1, 0, Optional.empty()).size(), 0);
       });
+    }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT_MS * 2)
+  public void testGetPartitionStatusAsync() throws Exception {
+    VeniceProperties backendConfig = getBackendConfigBuilder().build();
+    Properties vpjProperties = getVPJProperties();
+    // case 1: happy path
+    runVPJ(vpjProperties, 1, cluster);
+    try (DaVinciClient daVinciClient =
+        ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster, new DaVinciConfig(), backendConfig)) {
+      daVinciClient.subscribeAll().get();
+
+      // First let's make sure the partition status is available in the push status store
+      TestUtils.waitForNonDeterministicAssertion(
+          TEST_TIMEOUT_MS,
+          TimeUnit.MILLISECONDS,
+          () -> assertEquals(reader.getPartitionStatus(storeName, 1, 0, Optional.empty()).size(), 1));
+
+      // Now let's test the async API
+      CompletableFuture<Map<CharSequence, Integer>> future1 =
+          reader.getPartitionOrVersionStatusAsync(storeName, 1, 0, Optional.empty(), Optional.empty(), false);
+      future1.whenComplete((result, throwable) -> {
+        {
+          Assert.assertEquals(result.size(), 1);
+        }
+      }).join();
+
+      // case 2: throw exception for non-existing store
+      try {
+        reader.getPartitionOrVersionStatusAsync(
+            "non-existed-store-name",
+            1,
+            0,
+            Optional.empty(),
+            Optional.empty(),
+            false);
+      } catch (VeniceException e) {
+        assertTrue(e.getMessage().contains("Failed to read push status of partition:1 store:non-existed-store-name"));
+      }
+
+      // case 3: query non-existed version should return empty
+      CompletableFuture<Map<CharSequence, Integer>> future3 =
+          reader.getPartitionOrVersionStatusAsync(storeName, 100, 0, Optional.empty(), Optional.empty(), false);
+      future3.whenComplete((result, throwable) -> {
+        {
+          Assert.assertEquals(result.size(), 0);
+        }
+      }).join();
+
+      // case 4: query non existed partition should return empty
+      CompletableFuture<Map<CharSequence, Integer>> future4 =
+          reader.getPartitionOrVersionStatusAsync(storeName, 100, 10000, Optional.empty(), Optional.empty(), false);
+      future4.whenComplete((result, throwable) -> {
+        {
+          Assert.assertEquals(result.size(), 0);
+        }
+      }).join();
+
+      // case 5: query version level request should be empty
+      CompletableFuture<Map<CharSequence, Integer>> future5 =
+          reader.getPartitionOrVersionStatusAsync(storeName, 1, 0, Optional.empty(), Optional.empty(), true);
+      future5.whenComplete((result, throwable) -> {
+        {
+          Assert.assertEquals(result.size(), 0);
+        }
+      }).join();
     }
   }
 

@@ -6,7 +6,6 @@ import static org.mockito.Mockito.mock;
 
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.stats.AggVersionedIngestionStats;
-import com.linkedin.davinci.stats.IngestionStats;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
@@ -30,94 +29,6 @@ import org.testng.annotations.Test;
 
 
 public class AggVersionedIngestionStatsTest {
-  /**
-   * testIngestionOffsetRewind does the following steps:
-   *
-   * 1. Create a store with 3 versions: backup, current, and future.
-   * 2. Verify that no metrics exist initially.
-   * 3. Increase the offset rewind counter for the store's backup, current, and future version.
-   * 4. Verify that metrics repository contains the right counter value.
-   * 5. Verify that no metrics after store is deleted, if UNREGISTER_METRIC_FOR_DELETED_STORE_ENABLED is enabled.
-   */
-  @Test
-  public void testIngestionOffsetRewind() {
-    MetricsRepository metricsRepo = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
-    MockTehutiReporter reporter = new MockTehutiReporter();
-    VeniceServerConfig mockVeniceServerConfig = Mockito.mock(VeniceServerConfig.class);
-
-    String storeName = Utils.getUniqueString("store_foo");
-    String prefix = "." + storeName;
-    String postfix = IngestionStats.VERSION_TOPIC_END_OFFSET_REWIND_COUNT + ".IngestionStatsGauge";
-    String totalKey = prefix + "_total--" + postfix;
-    String currentKey = prefix + "_current--" + postfix;
-    String futureKey = prefix + "_future--" + postfix;
-
-    metricsRepo.addReporter(reporter);
-    ReadOnlyStoreRepository mockMetaRepository = mock(ReadOnlyStoreRepository.class);
-    doReturn(Int2ObjectMaps.emptyMap()).when(mockVeniceServerConfig).getKafkaClusterIdToAliasMap();
-    doReturn(true).when(mockVeniceServerConfig).isUnregisterMetricForDeletedStoreEnabled();
-
-    AggVersionedIngestionStats stats =
-        new AggVersionedIngestionStats(metricsRepo, mockMetaRepository, mockVeniceServerConfig);
-    Store mockStore = createStore(storeName);
-    List<Store> storeList = new ArrayList<>();
-    storeList.add(mockStore);
-
-    doReturn(mockStore).when(mockMetaRepository).getStoreOrThrow(any());
-    doReturn(storeList).when(mockMetaRepository).getAllStores();
-
-    // No metrics initially.
-    verifyNoMetrics(metricsRepo, totalKey);
-    verifyNoMetrics(metricsRepo, currentKey);
-    verifyNoMetrics(metricsRepo, futureKey);
-    Version backupVer = new VersionImpl(storeName, 1);
-    backupVer.setStatus(VersionStatus.ONLINE);
-    mockStore.addVersion(backupVer);
-
-    Version currentVer = new VersionImpl(storeName, 2);
-    currentVer.setStatus(VersionStatus.ONLINE);
-    mockStore.addVersion(currentVer);
-
-    Version futureVer = new VersionImpl(storeName, 3);
-    futureVer.setStatus(VersionStatus.PUSHED);
-    mockStore.addVersion(futureVer);
-    mockStore.setCurrentVersion(currentVer.getNumber());
-
-    int backupVerCnt = 2, curVerCnt = 3, futureVerCnt = 4;
-    for (int i = 0; i < backupVerCnt; i++) {
-      stats.recordVersionTopicEndOffsetRewind(storeName, backupVer.getNumber());
-    }
-    verifyCounters(reporter, totalKey, backupVerCnt);
-    verifyCounters(reporter, currentKey, 0);
-    verifyCounters(reporter, futureKey, 0);
-
-    for (int i = 0; i < curVerCnt; i++) {
-      stats.recordVersionTopicEndOffsetRewind(storeName, currentVer.getNumber());
-    }
-    verifyCounters(reporter, totalKey, backupVerCnt + curVerCnt);
-    verifyCounters(reporter, currentKey, curVerCnt);
-    verifyCounters(reporter, futureKey, 0);
-
-    for (int i = 0; i < futureVerCnt; i++) {
-      stats.recordVersionTopicEndOffsetRewind(storeName, futureVer.getNumber());
-    }
-
-    verifyCounters(reporter, totalKey, backupVerCnt + curVerCnt + futureVerCnt);
-    verifyCounters(reporter, currentKey, curVerCnt);
-    verifyCounters(reporter, futureKey, futureVerCnt);
-
-    stats.handleStoreDeleted(storeName);
-    // Metrics are unregistered when UNREGISTER_METRIC_FOR_DELETED_STORE_ENABLED is enabled.
-    if (mockVeniceServerConfig.isUnregisterMetricForDeletedStoreEnabled()) {
-      verifyNoMetrics(metricsRepo, totalKey);
-      verifyNoMetrics(metricsRepo, currentKey);
-      verifyNoMetrics(metricsRepo, futureKey);
-    }
-
-    metricsRepo.close();
-    reporter.close();
-  }
-
   @Test
   public void testStatsCanUpdateVersionStatus() {
     MetricsRepository metricsRepo = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
@@ -272,13 +183,5 @@ public class AggVersionedIngestionStatsTest {
         ReadStrategy.ANY_OF_ONLINE,
         OfflinePushStrategy.WAIT_ALL_REPLICAS,
         1);
-  }
-
-  private void verifyNoMetrics(MetricsRepository metricsRepository, String key) {
-    Assert.assertNull(metricsRepository.getMetric(key));
-  }
-
-  private void verifyCounters(MockTehutiReporter reporter, String key, double value) {
-    Assert.assertEquals(reporter.query(key).value(), value);
   }
 }

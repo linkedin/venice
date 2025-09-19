@@ -1,0 +1,68 @@
+syntax = 'proto3';
+package com.linkedin.venice.protocols.controller;
+
+
+import "controller/ControllerGrpcRequestContext.proto";
+
+option java_multiple_files = true;
+
+service ClusterAdminOpsGrpcService {
+  // AdminCommandExecution
+  rpc getAdminCommandExecutionStatus(AdminCommandExecutionStatusGrpcRequest) returns (AdminCommandExecutionStatusGrpcResponse) {}
+  rpc getLastSuccessfulAdminCommandExecutionId(LastSuccessfulAdminCommandExecutionGrpcRequest) returns (LastSuccessfulAdminCommandExecutionGrpcResponse) {}
+
+  // AdminTopicMetadata
+  rpc getAdminTopicMetadata(AdminTopicMetadataGrpcRequest) returns (AdminTopicMetadataGrpcResponse) {}
+  rpc updateAdminTopicMetadata(UpdateAdminTopicMetadataGrpcRequest) returns (AdminTopicMetadataGrpcResponse) {}
+  rpc updateAdminOperationProtocolVersion(UpdateAdminOperationProtocolVersionGrpcRequest) returns (AdminTopicMetadataGrpcResponse) {}
+}
+
+
+message AdminCommandExecutionStatusGrpcRequest {
+  string clusterName = 1;
+  int64 adminCommandExecutionId = 2;
+}
+
+message AdminCommandExecutionStatusGrpcResponse {
+  string clusterName = 1;
+  int64 adminCommandExecutionId = 2;
+  string operation = 3;
+  string startTime = 4;
+  map<string, string> fabricToExecutionStatusMap = 5;
+}
+
+message LastSuccessfulAdminCommandExecutionGrpcRequest {
+  string clusterName = 1;
+}
+
+message LastSuccessfulAdminCommandExecutionGrpcResponse {
+  string clusterName = 1;
+  int64 lastSuccessfulAdminCommandExecutionId = 2;
+}
+
+message AdminTopicMetadataGrpcRequest {
+  string clusterName = 1;
+  optional string storeName = 2;
+}
+
+message AdminTopicMetadataGrpcResponse {
+  AdminTopicGrpcMetadata metadata = 1;
+}
+
+message UpdateAdminTopicMetadataGrpcRequest {
+  AdminTopicGrpcMetadata metadata = 1;
+}
+
+message UpdateAdminOperationProtocolVersionGrpcRequest {
+  string clusterName = 1;
+  int64 adminOperationProtocolVersion = 2;
+}
+
+message AdminTopicGrpcMetadata {
+  string clusterName = 1;
+  optional int64 executionId = 2;
+  optional string storeName = 3;
+  optional int64 offset = 4;
+  optional int64 upstreamOffset = 5;
+  optional int64 adminOperationProtocolVersion = 6;
+}

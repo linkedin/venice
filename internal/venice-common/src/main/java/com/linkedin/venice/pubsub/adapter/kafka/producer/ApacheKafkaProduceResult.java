@@ -1,6 +1,7 @@
 package com.linkedin.venice.pubsub.adapter.kafka.producer;
 
 import com.linkedin.venice.pubsub.adapter.SimplePubSubProduceResultImpl;
+import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import org.apache.kafka.clients.producer.RecordMetadata;
 
@@ -13,7 +14,7 @@ public class ApacheKafkaProduceResult extends SimplePubSubProduceResultImpl {
     super(
         recordMetadata.topic(),
         recordMetadata.partition(),
-        recordMetadata.offset(),
+        new ApacheKafkaOffsetPosition(recordMetadata.offset()),
         recordMetadata.serializedKeySize() + recordMetadata.serializedValueSize());
   }
 }

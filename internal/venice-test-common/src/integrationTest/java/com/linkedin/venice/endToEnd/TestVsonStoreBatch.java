@@ -25,11 +25,13 @@ import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
 import com.linkedin.venice.schema.vson.VsonSchema;
 import com.linkedin.venice.spark.datawriter.jobs.DataWriterSparkJob;
+import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.KeyAndValueSchemas;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.TestWriteUtils;
@@ -69,7 +71,9 @@ public class TestVsonStoreBatch {
 
   @BeforeClass
   public void setUp() {
-    veniceCluster = ServiceFactory.getVeniceCluster();
+    VeniceClusterCreateOptions options =
+        new VeniceClusterCreateOptions.Builder().numberOfControllers(1).numberOfServers(1).numberOfRouters(1).build();
+    veniceCluster = ServiceFactory.getVeniceCluster(options);
     controllerClient = new ControllerClient(
         veniceCluster.getClusterName(),
         veniceCluster.getLeaderVeniceController().getControllerUrl());
@@ -340,7 +344,7 @@ public class TestVsonStoreBatch {
       }
 
       LOGGER.info("Start of push job #" + testBatchStoreRunCount.get());
-      TestWriteUtils.runPushJob("Test Batch push job", props);
+      IntegrationTestPushUtils.runVPJ(props);
       LOGGER.info("End of push job #" + testBatchStoreRunCount.get());
       MetricsRepository metricsRepository = new MetricsRepository();
       avroClient = ClientFactory.getAndStartGenericAvroClient(

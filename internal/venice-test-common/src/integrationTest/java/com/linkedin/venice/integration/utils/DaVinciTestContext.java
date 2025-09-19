@@ -1,5 +1,6 @@
 package com.linkedin.venice.integration.utils;
 
+import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES;
 import static com.linkedin.venice.ConfigKeys.CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS;
 import static com.linkedin.venice.ConfigKeys.CLIENT_USE_SYSTEM_STORE_REPOSITORY;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_DISCOVERY_D2_SERVICE;
@@ -25,6 +26,7 @@ import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Properties;
 import java.util.Set;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -39,6 +41,73 @@ public class DaVinciTestContext<K, V> {
   public DaVinciTestContext(CachingDaVinciClientFactory factory, DaVinciClient<K, V> client) {
     daVinciClientFactory = factory;
     daVinciClient = client;
+  }
+
+  public static CachingDaVinciClientFactory getCachingDaVinciClientFactory(
+      D2Client d2Client,
+      String clusterDiscoveryD2ServiceName,
+      MetricsRepository metricsRepository,
+      VeniceProperties backendConfig,
+      VeniceClusterWrapper clusterWrapper) {
+    return getCachingDaVinciClientFactory(
+        d2Client,
+        clusterDiscoveryD2ServiceName,
+        metricsRepository,
+        backendConfig,
+        clusterWrapper,
+        Optional.empty());
+  }
+
+  public static CachingDaVinciClientFactory getCachingDaVinciClientFactory(
+      D2Client d2Client,
+      String clusterDiscoveryD2ServiceName,
+      MetricsRepository metricsRepository,
+      VeniceProperties backendConfig,
+      VeniceClusterWrapper clusterWrapper,
+      Optional<Set<String>> managedClients) {
+    Properties properties = backendConfig.getPropertiesCopy();
+    properties.putAll(clusterWrapper.getPubSubClientProperties());
+    backendConfig = new VeniceProperties(properties);
+    return new CachingDaVinciClientFactory(
+        d2Client,
+        clusterDiscoveryD2ServiceName,
+        metricsRepository,
+        backendConfig,
+        managedClients);
+  }
+
+  public static CachingDaVinciClientFactory getCachingDaVinciClientFactory(
+      D2Client d2Client,
+      String clusterDiscoveryD2ServiceName,
+      MetricsRepository metricsRepository,
+      VeniceProperties backendConfig,
+      VeniceMultiClusterWrapper clusterWrapper) {
+    Properties properties = backendConfig.getPropertiesCopy();
+    properties.putAll(clusterWrapper.getPubSubClientProperties());
+    backendConfig = new VeniceProperties(properties);
+    return new CachingDaVinciClientFactory(
+        d2Client,
+        clusterDiscoveryD2ServiceName,
+        metricsRepository,
+        backendConfig,
+        Optional.empty());
+  }
+
+  public static CachingDaVinciClientFactory getCachingDaVinciClientFactory(
+      D2Client d2Client,
+      String clusterDiscoveryD2ServiceName,
+      MetricsRepository metricsRepository,
+      VeniceProperties backendConfig,
+      VeniceTwoLayerMultiRegionMultiClusterWrapper clusterWrapper) {
+    Properties properties = backendConfig.getPropertiesCopy();
+    properties.putAll(clusterWrapper.getPubSubClientProperties());
+    backendConfig = new VeniceProperties(properties);
+    return new CachingDaVinciClientFactory(
+        d2Client,
+        clusterDiscoveryD2ServiceName,
+        metricsRepository,
+        backendConfig,
+        Optional.empty());
   }
 
   public CachingDaVinciClientFactory getDaVinciClientFactory() {
@@ -132,6 +201,7 @@ public class DaVinciTestContext<K, V> {
         .put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
         .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
         .put(D2_ZK_HOSTS_ADDRESS, zkAddress)
+        .put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 4 * 1024 * 1024 * 1024L)
         .put(CLUSTER_DISCOVERY_D2_SERVICE, VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME);
   }
 }

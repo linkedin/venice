@@ -19,6 +19,13 @@ public interface DataWriterTaskTracker extends TaskTracker {
   default void trackUncompressedValueSize(int size) {
   }
 
+  /**
+   * This accumulator performs a 'max' operation, which is not natively supported
+   * by either Spark or Hadoop. It is implemented using a custom accumulator in Spark.
+   */
+  default void trackLargestUncompressedValueSize(int size) {
+  }
+
   default void trackCompressedValueSize(int size) {
   }
 
@@ -32,6 +39,9 @@ public interface DataWriterTaskTracker extends TaskTracker {
   }
 
   default void trackRecordTooLargeFailure() {
+  }
+
+  default void trackUncompressedRecordTooLargeFailure() {
   }
 
   default void trackRecordSentToPubSub() {
@@ -68,6 +78,14 @@ public interface DataWriterTaskTracker extends TaskTracker {
     return 0;
   }
 
+  /**
+   * This accumulator performs a 'max' operation, which is not natively supported
+   * by either Spark or Hadoop. It is implemented using a custom accumulator in Spark.
+   */
+  default int getLargestUncompressedValueSize() {
+    return 0;
+  }
+
   default long getTotalGzipCompressedValueSize() {
     return 0;
   }
@@ -77,6 +95,10 @@ public interface DataWriterTaskTracker extends TaskTracker {
   }
 
   default long getRecordTooLargeFailureCount() {
+    return 0;
+  }
+
+  default long getUncompressedRecordTooLargeFailureCount() {
     return 0;
   }
 

@@ -1,6 +1,7 @@
 package com.linkedin.davinci.kafka.consumer;
 
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.eq;
@@ -13,15 +14,23 @@ import com.linkedin.davinci.stats.AggHostLevelIngestionStats;
 import com.linkedin.davinci.stats.HostLevelIngestionStats;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
+import com.linkedin.davinci.store.DelegatingStorageEngine;
 import com.linkedin.venice.exceptions.VeniceTimeoutException;
+import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.pubsub.PubSubContext;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
+import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.utils.ExceptionCaptorNotifier;
+import com.linkedin.venice.utils.ReferenceCounted;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.VeniceProperties;
 import it.unimi.dsi.fastutil.objects.Object2IntMaps;
 import java.util.ArrayDeque;
 import java.util.Collections;
@@ -49,14 +58,20 @@ public class PushTimeoutTest {
     AggHostLevelIngestionStats mockAggStoreIngestionStats = mock(AggHostLevelIngestionStats.class);
     HostLevelIngestionStats mockStoreIngestionStats = mock(HostLevelIngestionStats.class);
     doReturn(mockStoreIngestionStats).when(mockAggStoreIngestionStats).getStoreStats(anyString());
+    ReadOnlySchemaRepository mockSchemaRepository = mock(ReadOnlySchemaRepository.class);
+    doReturn(new SchemaEntry(1, "\"string\"")).when(mockSchemaRepository).getKeySchema(anyString());
 
     StoreIngestionTaskFactory.Builder builder = TestUtils.getStoreIngestionTaskBuilder(storeName)
         .setLeaderFollowerNotifiersQueue(notifiers)
         .setServerConfig(mockVeniceServerConfig)
         .setHostLevelIngestionStats(mockAggStoreIngestionStats)
-        .setPubSubTopicRepository(pubSubTopicRepository);
+        .setSchemaRepository(mockSchemaRepository)
+        .setPubSubContext(new PubSubContext.Builder().setPubSubTopicRepository(pubSubTopicRepository).build());
 
     StorageService storageService = mock(StorageService.class);
+    doReturn(new ReferenceCounted<>(mock(DelegatingStorageEngine.class), se -> {})).when(storageService)
+        .getRefCountedStorageEngine(anyString());
+
     Store mockStore = builder.getMetadataRepo().getStoreOrThrow(storeName);
     Version version = mockStore.getVersion(versionNumber);
 
@@ -106,18 +121,26 @@ public class PushTimeoutTest {
     StorageMetadataService mockStorageMetadataService = mock(StorageMetadataService.class);
     VeniceServerConfig mockVeniceServerConfig = mock(VeniceServerConfig.class);
     doReturn(Object2IntMaps.emptyMap()).when(mockVeniceServerConfig).getKafkaClusterUrlToIdMap();
+    doReturn(VeniceProperties.empty()).when(mockVeniceServerConfig).getClusterProperties();
+    doReturn(VeniceProperties.empty()).when(mockVeniceServerConfig).getKafkaConsumerConfigsForRemoteConsumption();
+    doReturn(VeniceProperties.empty()).when(mockVeniceServerConfig).getKafkaConsumerConfigsForLocalConsumption();
     AggHostLevelIngestionStats mockAggStoreIngestionStats = mock(AggHostLevelIngestionStats.class);
     HostLevelIngestionStats mockStoreIngestionStats = mock(HostLevelIngestionStats.class);
     doReturn(mockStoreIngestionStats).when(mockAggStoreIngestionStats).getStoreStats(anyString());
+    ReadOnlySchemaRepository mockSchemaRepository = mock(ReadOnlySchemaRepository.class);
+    doReturn(new SchemaEntry(1, "\"string\"")).when(mockSchemaRepository).getKeySchema(anyString());
 
     StoreIngestionTaskFactory.Builder builder = TestUtils.getStoreIngestionTaskBuilder(storeName)
         .setLeaderFollowerNotifiersQueue(notifiers)
         .setStorageMetadataService(mockStorageMetadataService)
         .setServerConfig(mockVeniceServerConfig)
+        .setSchemaRepository(mockSchemaRepository)
         .setHostLevelIngestionStats(mockAggStoreIngestionStats)
-        .setPubSubTopicRepository(pubSubTopicRepository);
+        .setPubSubContext(new PubSubContext.Builder().setPubSubTopicRepository(pubSubTopicRepository).build());
 
     StorageService storageService = mock(StorageService.class);
+    doReturn(new ReferenceCounted<>(mock(DelegatingStorageEngine.class), se -> {})).when(storageService)
+        .getRefCountedStorageEngine(anyString());
     Store mockStore = builder.getMetadataRepo().getStoreOrThrow(storeName);
     Version version = mockStore.getVersion(versionNumber);
 
@@ -140,8 +163,9 @@ public class PushTimeoutTest {
      * Return 0 as the max offset for VT and 1 as the overall consume progress, so reportIfCatchUpVersionTopicOffset()
      * will determine that base topic is caught up.
      */
-    doReturn(1L).when(mockOffsetRecord).getLocalVersionTopicOffset();
-    doReturn(mockOffsetRecord).when(mockStorageMetadataService).getLastOffset(eq(versionTopic), eq(0));
+    PubSubPosition p1 = ApacheKafkaOffsetPosition.of(1L);
+    doReturn(p1).when(mockOffsetRecord).getCheckpointedLocalVtPosition();
+    doReturn(mockOffsetRecord).when(mockStorageMetadataService).getLastOffset(eq(versionTopic), eq(0), any());
 
     LeaderFollowerStoreIngestionTask leaderFollowerStoreIngestionTask = new LeaderFollowerStoreIngestionTask(
         storageService,

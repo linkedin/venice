@@ -1,12 +1,15 @@
 package com.linkedin.davinci.helix;
 
 import com.linkedin.davinci.config.VeniceConfigLoader;
+import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.ingestion.IngestionBackend;
 import com.linkedin.davinci.stats.ParticipantStateTransitionStats;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import com.linkedin.venice.helix.HelixPartitionStatusAccessor;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.utils.HelixUtils;
+import com.linkedin.venice.utils.LogContext;
+import com.linkedin.venice.utils.Utils;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 
@@ -47,11 +50,18 @@ public class LeaderFollowerPartitionStateModelFactory extends AbstractStateModel
 
   @Override
   public LeaderFollowerPartitionStateModel createNewStateModel(String resourceName, String partitionName) {
-    logger.info("Creating LeaderFollowerParticipantModel handler for partition: {}", partitionName);
+    // TODO: we should cache config object and reuse it for all the partitions of the same store.
+    VeniceStoreVersionConfig storeVersionConfig =
+        getConfigService().getStoreConfig(HelixUtils.getResourceName(partitionName));
+    int partitionId = HelixUtils.getPartitionId(partitionName);
+    LogContext.setLogContext(storeVersionConfig.getLogContext());
+    logger.info(
+        "Creating LeaderFollowerParticipantModel handler for partition: {}",
+        Utils.getReplicaId(resourceName, partitionId));
     return new LeaderFollowerPartitionStateModel(
         getIngestionBackend(),
-        getConfigService().getStoreConfig(HelixUtils.getResourceName(partitionName)),
-        HelixUtils.getPartitionId(partitionName),
+        storeVersionConfig,
+        partitionId,
         leaderFollowerStateModelNotifier,
         getStoreMetadataRepo(),
         partitionPushStatusAccessorFuture,

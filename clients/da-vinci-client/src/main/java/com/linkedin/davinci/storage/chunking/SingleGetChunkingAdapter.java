@@ -1,7 +1,7 @@
 package com.linkedin.davinci.storage.chunking;
 
 import com.linkedin.davinci.listener.response.ReadResponseStats;
-import com.linkedin.davinci.store.AbstractStorageEngine;
+import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import io.netty.buffer.CompositeByteBuf;
@@ -40,7 +40,7 @@ public class SingleGetChunkingAdapter implements ChunkingAdapter<CompositeByteBu
   }
 
   public static ValueRecord get(
-      AbstractStorageEngine store,
+      StorageEngine store,
       int partition,
       byte[] key,
       boolean isChunked,
@@ -52,7 +52,7 @@ public class SingleGetChunkingAdapter implements ChunkingAdapter<CompositeByteBu
   }
 
   public static ValueRecord getReplicationMetadata(
-      AbstractStorageEngine store,
+      StorageEngine store,
       int partition,
       byte[] key,
       boolean isChunked,

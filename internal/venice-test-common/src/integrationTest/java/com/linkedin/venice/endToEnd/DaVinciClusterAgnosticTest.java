@@ -1,10 +1,12 @@
 package com.linkedin.venice.endToEnd;
 
+import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES;
 import static com.linkedin.venice.ConfigKeys.CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS;
 import static com.linkedin.venice.ConfigKeys.CLIENT_USE_SYSTEM_STORE_REPOSITORY;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
 import static com.linkedin.venice.ConfigKeys.OFFLINE_JOB_START_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
+import static com.linkedin.venice.integration.utils.DaVinciTestContext.getCachingDaVinciClientFactory;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
@@ -25,10 +27,12 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.TestUtils;
@@ -40,7 +44,6 @@ import java.util.AbstractMap;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
@@ -66,6 +69,7 @@ public class DaVinciClusterAgnosticTest {
   private static final String FABRIC = "dc-0";
 
   private VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegionMultiClusterWrapper;
+  private PubSubPositionTypeRegistry pubSubPositionTypeRegistry;
   private VeniceMultiClusterWrapper multiClusterVenice;
   private String[] clusterNames;
   private String parentControllerURLs;
@@ -78,24 +82,26 @@ public class DaVinciClusterAgnosticTest {
     Utils.thisIsLocalhost();
     Properties parentControllerProps = new Properties();
     parentControllerProps.put(OFFLINE_JOB_START_TIMEOUT_MS, "180000");
-    multiRegionMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
-        1,
-        2,
-        1,
-        1,
-        3,
-        1,
-        3,
-        Optional.of(parentControllerProps),
-        Optional.empty(),
-        Optional.empty(),
-        false);
+    VeniceMultiRegionClusterCreateOptions.Builder optionsBuilder =
+        new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(1)
+            .numberOfClusters(2)
+            .numberOfParentControllers(1)
+            .numberOfChildControllers(1)
+            .numberOfServers(3)
+            .numberOfRouters(1)
+            .replicationFactor(3)
+            .forkServer(false)
+            .parentControllerProperties(parentControllerProps);
+    multiRegionMultiClusterWrapper =
+        ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(optionsBuilder.build());
     multiClusterVenice = multiRegionMultiClusterWrapper.getChildRegions().get(0);
     clusterNames = multiClusterVenice.getClusterNames();
     parentControllerURLs = multiRegionMultiClusterWrapper.getParentControllers()
         .stream()
         .map(VeniceControllerWrapper::getControllerUrl)
         .collect(Collectors.joining(","));
+    pubSubPositionTypeRegistry =
+        multiRegionMultiClusterWrapper.getParentKafkaBrokerWrapper().getPubSubPositionTypeRegistry();
 
     for (String cluster: clusterNames) {
       try (ControllerClient controllerClient =
@@ -151,7 +157,8 @@ public class DaVinciClusterAgnosticTest {
             INT_VALUE_SCHEMA,
             IntStream.range(0, initialKeyCount).mapToObj(i -> new AbstractMap.SimpleEntry<>(i, value)),
             pubSubProducerAdapterFactory,
-            additionalPubSubProperties);
+            additionalPubSubProperties,
+            pubSubPositionTypeRegistry);
         // Verify the data can be ingested by classical Venice before proceeding.
         TestUtils.waitForNonDeterministicPushCompletion(
             response.getKafkaTopic(),
@@ -166,16 +173,18 @@ public class DaVinciClusterAgnosticTest {
         new PropertyBuilder().put(DATA_BASE_PATH, Utils.getTempDataDirectory().getAbsolutePath())
             .put(PERSISTENCE_TYPE, PersistenceType.ROCKS_DB)
             .put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
+            .put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 2 * 1024 * 1024L)
             .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
             .build();
     DaVinciConfig daVinciConfig = new DaVinciConfig();
     D2Client daVinciD2 = D2TestUtils.getAndStartD2Client(multiClusterVenice.getZkServerWrapper().getAddress());
 
-    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
+    try (CachingDaVinciClientFactory factory = getCachingDaVinciClientFactory(
         daVinciD2,
         VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
         new MetricsRepository(),
-        backendConfig)) {
+        backendConfig,
+        multiClusterVenice)) {
       List<DaVinciClient<Integer, Object>> clients = new ArrayList<>();
       for (int i = 0; i < stores.size(); i++) {
         String store = stores.get(i);
@@ -201,7 +210,8 @@ public class DaVinciClusterAgnosticTest {
             INT_VALUE_SCHEMA,
             IntStream.range(0, initialKeyCount).mapToObj(i -> new AbstractMap.SimpleEntry<>(i, newValue)),
             pubSubProducerAdapterFactory,
-            additionalPubSubProperties);
+            additionalPubSubProperties,
+            pubSubPositionTypeRegistry);
         TestUtils.waitForNonDeterministicPushCompletion(
             versionCreationResponse.getKafkaTopic(),
             parentControllerClient,
@@ -234,7 +244,8 @@ public class DaVinciClusterAgnosticTest {
             INT_VALUE_SCHEMA,
             IntStream.range(0, initialKeyCount).mapToObj(i -> new AbstractMap.SimpleEntry<>(i, newMigratedStoreValue)),
             pubSubProducerAdapterFactory,
-            additionalPubSubProperties);
+            additionalPubSubProperties,
+            pubSubPositionTypeRegistry);
         TestUtils.waitForNonDeterministicPushCompletion(
             versionCreationResponse.getKafkaTopic(),
             parentControllerClient,
@@ -306,7 +317,8 @@ public class DaVinciClusterAgnosticTest {
           IntStream.range(0, keyCount).mapToObj(i -> new AbstractMap.SimpleEntry<>(i, record1)),
           1,
           pubSubProducerAdapterFactory,
-          additionalPubSubProperties);
+          additionalPubSubProperties,
+          pubSubPositionTypeRegistry);
       // Verify the data can be ingested by classical Venice before proceeding.
       TestUtils.waitForNonDeterministicPushCompletion(
           response.getKafkaTopic(),
@@ -320,15 +332,17 @@ public class DaVinciClusterAgnosticTest {
           new PropertyBuilder().put(DATA_BASE_PATH, Utils.getTempDataDirectory().getAbsolutePath())
               .put(PERSISTENCE_TYPE, PersistenceType.ROCKS_DB)
               .put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
+              .put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 2 * 1024 * 1024L)
               .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
               .build();
       D2Client daVinciD2 = D2TestUtils.getAndStartD2Client(multiClusterVenice.getZkServerWrapper().getAddress());
 
-      try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
+      try (CachingDaVinciClientFactory factory = getCachingDaVinciClientFactory(
           daVinciD2,
           VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
           new MetricsRepository(),
-          backendConfig)) {
+          backendConfig,
+          multiRegionMultiClusterWrapper)) {
         DaVinciClient<Integer, Object> client = factory.getAndStartGenericAvroClient(storeName, new DaVinciConfig());
 
         client.subscribeAll().get();
@@ -351,7 +365,8 @@ public class DaVinciClusterAgnosticTest {
             IntStream.range(0, keyCount).mapToObj(i -> new AbstractMap.SimpleEntry<>(i, record2)),
             2,
             pubSubProducerAdapterFactory,
-            additionalPubSubProperties);
+            additionalPubSubProperties,
+            pubSubPositionTypeRegistry);
 
         TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
           for (int k = 0; k < keyCount; k++) {

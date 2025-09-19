@@ -2,6 +2,7 @@ package com.linkedin.venice.listener;
 
 import static com.linkedin.venice.read.RequestType.SINGLE_GET;
 import static com.linkedin.venice.router.api.VenicePathParser.TYPE_STORAGE;
+import static com.linkedin.venice.utils.TestUtils.DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING;
 import static io.netty.handler.codec.http.HttpResponseStatus.BAD_REQUEST;
 import static io.netty.handler.codec.http.HttpResponseStatus.SERVICE_UNAVAILABLE;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -33,7 +34,7 @@ import com.linkedin.davinci.storage.DiskHealthCheckService;
 import com.linkedin.davinci.storage.IngestionMetadataRetriever;
 import com.linkedin.davinci.storage.ReadMetadataRetriever;
 import com.linkedin.davinci.storage.StorageEngineRepository;
-import com.linkedin.davinci.store.AbstractStorageEngine;
+import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.davinci.store.rocksdb.RocksDBServerConfig;
 import com.linkedin.venice.HttpConstants;
@@ -50,6 +51,7 @@ import com.linkedin.venice.exceptions.PersistenceFailureException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.guid.JavaUtilGuidV4Generator;
 import com.linkedin.venice.kafka.protocol.GUID;
+import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.listener.grpc.GrpcRequestContext;
 import com.linkedin.venice.listener.grpc.handlers.GrpcStorageReadRequestHandler;
 import com.linkedin.venice.listener.grpc.handlers.VeniceServerGrpcHandler;
@@ -82,6 +84,8 @@ import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.protocols.VeniceClientRequest;
 import com.linkedin.venice.protocols.VeniceServerResponse;
+import com.linkedin.venice.pubsub.PubSubContext;
+import com.linkedin.venice.pubsub.mock.SimplePartitioner;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.read.protocol.request.router.MultiGetRouterRequestKeyV1;
 import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
@@ -105,7 +109,6 @@ import com.linkedin.venice.storage.protocol.ChunkId;
 import com.linkedin.venice.storage.protocol.ChunkedKeySuffix;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.streaming.StreamingUtils;
-import com.linkedin.venice.unit.kafka.SimplePartitioner;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.ValueSize;
@@ -175,7 +178,7 @@ public class StorageReadRequestHandlerTest {
       BlockingQueueType.LINKED_BLOCKING_QUEUE);
   private final Store store = mock(Store.class);
   private final Version version = mock(Version.class);
-  private final AbstractStorageEngine storageEngine = mock(AbstractStorageEngine.class);
+  private final StorageEngine storageEngine = mock(StorageEngine.class);
   private final StorageEngineRepository storageEngineRepository = mock(StorageEngineRepository.class);
   private final ReadOnlyStoreRepository storeRepository = mock(ReadOnlyStoreRepository.class);
   private final ReadOnlySchemaRepository schemaRepository = mock(ReadOnlySchemaRepository.class);
@@ -189,6 +192,8 @@ public class StorageReadRequestHandlerTest {
   private final ChunkedValueManifestSerializer chunkedValueManifestSerializer =
       new ChunkedValueManifestSerializer(true);
   private final KeyWithChunkingSuffixSerializer keyWithChunkingSuffixSerializer = new KeyWithChunkingSuffixSerializer();
+
+  private PubSubContext pubSubContext;
 
   @BeforeMethod
   public void setUp() {
@@ -206,6 +211,7 @@ public class StorageReadRequestHandlerTest {
 
     RocksDBServerConfig rocksDBServerConfig = mock(RocksDBServerConfig.class);
     doReturn(rocksDBServerConfig).when(serverConfig).getRocksDBServerConfig();
+    pubSubContext = DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING;
   }
 
   @AfterMethod
@@ -311,7 +317,9 @@ public class StorageReadRequestHandlerTest {
       throws Exception {
 
     doReturn(largeValue.config).when(version).isChunkingEnabled();
-    doReturn(largeValue.config).when(storageEngine).isChunked();
+    StoreVersionState svs = mock(StoreVersionState.class);
+    doReturn(largeValue.config).when(svs).getChunked();
+    doReturn(svs).when(storageEngine).getStoreVersionState();
 
     int schemaId = 1;
 
@@ -436,7 +444,7 @@ public class StorageReadRequestHandlerTest {
       reset(context);
       long startTime = System.currentTimeMillis();
       requestHandler.channelRead(context, request);
-      verify(context, timeout(5000)).writeAndFlush(argumentCaptor.capture());
+      verify(context, timeout(10000)).writeAndFlush(argumentCaptor.capture());
       long timeSpent = System.currentTimeMillis() - startTime;
       System.out.println("Time spent: " + timeSpent + " ms for " + recordCount + " records.");
 
@@ -460,9 +468,6 @@ public class StorageReadRequestHandlerTest {
 
       ServerHttpRequestStats stats = mock(ServerHttpRequestStats.class);
       multiGetResponseWrapper.getStatsRecorder().recordMetrics(stats);
-      if (responseProvider == validResponseProvider) {
-        verify(stats).recordSuccessRequestKeyCount(recordCount);
-      }
       if (largeValue.config) {
         /**
          * The assertion below can catch an issue where metrics are inaccurate during parallel batch gets. This was due
@@ -549,8 +554,12 @@ public class StorageReadRequestHandlerTest {
     PartitionConsumptionState state = new PartitionConsumptionState(
         Utils.getReplicaId(topic, expectedPartitionId),
         expectedPartitionId,
-        new OffsetRecord(AvroProtocolDefinition.PARTITION_STATE.getSerializer()),
-        false);
+        new OffsetRecord(
+            AvroProtocolDefinition.PARTITION_STATE.getSerializer(),
+            DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING),
+        pubSubContext,
+        false,
+        Schema.create(Schema.Type.STRING));
     expectedAdminResponse.addPartitionConsumptionState(state);
     doReturn(expectedAdminResponse).when(ingestionMetadataRetriever).getConsumptionSnapshots(eq(topic), any());
 
@@ -581,8 +590,10 @@ public class StorageReadRequestHandlerTest {
     ReplicaIngestionResponse expectedReplicaIngestionResponse = new ReplicaIngestionResponse();
     String jsonStr = "{\n" + "\"kafkaUrl\" : {\n" + "  TP(topic: \"" + topic + "\", partition: " + expectedPartitionId
         + ") : {\n" + "      \"latestOffset\" : 0,\n" + "      \"offsetLag\" : 1,\n" + "      \"msgRate\" : 2.0,\n"
-        + "      \"byteRate\" : 4.0,\n" + "      \"consumerIdx\" : 6,\n"
-        + "      \"elapsedTimeSinceLastPollInMs\" : 7\n" + "    }\n" + "  }\n" + "}";
+        + "      \"byteRate\" : 6.0,\n" + "      \"consumerIdStr\" : \"consumer1\",\n"
+        + "      \"elapsedTimeSinceLastConsumerPollInMs\" : 7,\n"
+        + "      \"elapsedTimeSinceLastRecordForPartitionInMs\" : 8,\n"
+        + "      \"versionTopicName\" : \"test_store_v1\"\n" + "    }\n" + "  }\n" + "}";
     byte[] expectedTopicPartitionContext = jsonStr.getBytes();
     expectedReplicaIngestionResponse.setPayload(expectedTopicPartitionContext);
     doReturn(expectedReplicaIngestionResponse).when(ingestionMetadataRetriever)
@@ -758,7 +769,6 @@ public class StorageReadRequestHandlerTest {
 
       ServerHttpRequestStats stats = mock(ServerHttpRequestStats.class);
       computeResponse.getStatsRecorder().recordMetrics(stats);
-      verify(stats).recordSuccessRequestKeyCount(keySet.size());
       verify(stats).recordDotProductCount(1);
       verify(stats).recordHadamardProduct(1);
       verify(stats).recordReadComputeEfficiency(expectedReadComputeEfficiency);
@@ -810,7 +820,7 @@ public class StorageReadRequestHandlerTest {
     // After that first request, the original storage engine gets closed, and a second storage engine takes its place.
     when(storageEngine.get(anyInt(), any(ByteBuffer.class))).thenThrow(new PersistenceFailureException());
     when(storageEngine.isClosed()).thenReturn(true);
-    AbstractStorageEngine storageEngine2 = mock(AbstractStorageEngine.class);
+    StorageEngine storageEngine2 = mock(StorageEngine.class);
     when(storageEngine2.get(anyInt(), any(ByteBuffer.class))).thenReturn(valueRecord.serialize());
     doReturn(storageEngine2).when(storageEngineRepository).getLocalStorageEngine(any());
 

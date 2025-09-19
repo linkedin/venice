@@ -3,6 +3,7 @@ package com.linkedin.davinci.replication.merge;
 import static com.linkedin.venice.schema.rmd.RmdConstants.TIMESTAMP_FIELD_POS;
 
 import com.linkedin.davinci.schema.merge.ValueAndRmd;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.schema.rmd.RmdTimestampType;
 import com.linkedin.venice.schema.rmd.RmdUtils;
 import com.linkedin.venice.utils.lazy.Lazy;
@@ -22,7 +23,7 @@ public class MergeByteBuffer extends AbstractMerge<ByteBuffer> {
       ByteBuffer newValue,
       long putOperationTimestamp,
       int writeOperationColoID,
-      long sourceOffsetOfNewValue,
+      PubSubPosition sourcePositionOfNewValue,
       int newValueSourceBrokerID) {
     final GenericRecord oldReplicationMetadata = oldValueAndRmd.getRmd();
     final Object tsObject = oldReplicationMetadata.get(TIMESTAMP_FIELD_POS);
@@ -33,7 +34,7 @@ public class MergeByteBuffer extends AbstractMerge<ByteBuffer> {
           (long) tsObject,
           oldValueAndRmd,
           putOperationTimestamp,
-          sourceOffsetOfNewValue,
+          sourcePositionOfNewValue,
           newValueSourceBrokerID,
           newValue);
     } else {
@@ -46,7 +47,7 @@ public class MergeByteBuffer extends AbstractMerge<ByteBuffer> {
       ValueAndRmd<ByteBuffer> oldValueAndRmd,
       long deleteOperationTimestamp,
       int deleteOperationColoID,
-      long newValueSourceOffset,
+      PubSubPosition newValueSourcePosition,
       int newValueSourceBrokerID) {
     final GenericRecord oldReplicationMetadata = oldValueAndRmd.getRmd();
     final Object tsObject = oldReplicationMetadata.get(TIMESTAMP_FIELD_POS);
@@ -55,7 +56,7 @@ public class MergeByteBuffer extends AbstractMerge<ByteBuffer> {
       return deleteWithValueLevelTimestamp(
           (long) tsObject,
           deleteOperationTimestamp,
-          newValueSourceOffset,
+          newValueSourcePosition,
           newValueSourceBrokerID,
           oldValueAndRmd);
     } else {
@@ -70,7 +71,7 @@ public class MergeByteBuffer extends AbstractMerge<ByteBuffer> {
       Schema currValueSchema,
       long updateOperationTimestamp,
       int updateOperationColoID,
-      long newValueSourceOffset,
+      PubSubPosition newValueSourcePosition,
       int newValueSourceBrokerID) {
     throw new IllegalStateException("Update request should not be handled by this class.");
   }

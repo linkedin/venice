@@ -31,20 +31,21 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
-import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
-import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.PubSubConsumerAdapterContext;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
-import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeader;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeaders;
+import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
@@ -58,7 +59,6 @@ import java.io.IOException;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -90,18 +90,20 @@ public class IngestionHeartBeatTest {
     Properties serverProperties = new Properties();
     Properties controllerProps = new Properties();
     controllerProps.put(ConfigKeys.CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE, false);
-    this.multiRegionMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
-        NUMBER_OF_CHILD_DATACENTERS,
-        NUMBER_OF_CLUSTERS,
-        1,
-        1,
-        4,
-        1,
-        2,
-        Optional.of(controllerProps),
-        Optional.of(controllerProps),
-        Optional.of(serverProperties),
-        false);
+    VeniceMultiRegionClusterCreateOptions.Builder optionsBuilder =
+        new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(NUMBER_OF_CHILD_DATACENTERS)
+            .numberOfClusters(NUMBER_OF_CLUSTERS)
+            .numberOfParentControllers(1)
+            .numberOfChildControllers(1)
+            .numberOfServers(4)
+            .numberOfRouters(1)
+            .replicationFactor(2)
+            .forkServer(false)
+            .parentControllerProperties(controllerProps)
+            .childControllerProperties(controllerProps)
+            .serverProperties(serverProperties);
+    this.multiRegionMultiClusterWrapper =
+        ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(optionsBuilder.build());
     this.childDatacenters = multiRegionMultiClusterWrapper.getChildRegions();
     List<VeniceControllerWrapper> parentControllers = multiRegionMultiClusterWrapper.getParentControllers();
     if (parentControllers.size() != 1) {
@@ -127,11 +129,9 @@ public class IngestionHeartBeatTest {
         .allPermutationGenerator(DataProviderUtils.BOOLEAN, DataProviderUtils.BOOLEAN, DataReplicationPolicy.values());
   }
 
-  @Test(dataProvider = "AAConfigAndIncPushAndDRPProvider", timeOut = TEST_TIMEOUT_MS)
-  public void testIngestionHeartBeat(
-      boolean isActiveActiveEnabled,
-      boolean isIncrementalPushEnabled,
-      DataReplicationPolicy dataReplicationPolicy) throws IOException, InterruptedException {
+  @Test(dataProvider = "Two-True-and-False", timeOut = TEST_TIMEOUT_MS, dataProviderClass = DataProviderUtils.class)
+  public void testIngestionHeartBeat(boolean isActiveActiveEnabled, boolean isIncrementalPushEnabled)
+      throws IOException, InterruptedException {
     storeName = Utils.getUniqueString("ingestionHeartBeatTest");
     String parentControllerUrl = parentController.getControllerUrl();
     File inputDir = getTempDataDirectory();
@@ -148,7 +148,7 @@ public class IngestionHeartBeatTest {
       assertCommand(
           parentControllerClient
               .createNewStore(storeName, "test_owner", keySchemaStr, NAME_RECORD_V1_SCHEMA.toString()));
-      StoreInfo storeInfo = TestUtils.assertCommand(parentControllerClient.getStore(storeName)).getStore();
+      TestUtils.assertCommand(parentControllerClient.getStore(storeName));
       UpdateStoreQueryParams updateStoreParams =
           new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
               .setCompressionStrategy(CompressionStrategy.NO_OP)
@@ -158,8 +158,7 @@ public class IngestionHeartBeatTest {
               .setPartitionCount(2)
               .setReplicationFactor(2)
               .setNativeReplicationEnabled(true)
-              .setActiveActiveReplicationEnabled(isActiveActiveEnabled)
-              .setHybridDataReplicationPolicy(dataReplicationPolicy);
+              .setActiveActiveReplicationEnabled(isActiveActiveEnabled);
 
       ControllerResponse updateStoreResponse =
           parentControllerClient.retryableRequest(5, c -> c.updateStore(storeName, updateStoreParams));
@@ -207,6 +206,8 @@ public class IngestionHeartBeatTest {
         });
       }
 
+      StoreInfo storeInfo = TestUtils.assertCommand(parentControllerClient.getStore(storeName)).getStore();
+
       // create consumer to consume from RT/VT to verify HB and Leader completed header
       for (int dc = 0; dc < NUMBER_OF_CHILD_DATACENTERS; dc++) {
         PubSubBrokerWrapper pubSubBrokerWrapper =
@@ -216,29 +217,19 @@ public class IngestionHeartBeatTest {
         properties.setProperty(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, pubSubBrokerWrapper.getAddress());
         try (PubSubConsumerAdapter pubSubConsumer = pubSubBrokerWrapper.getPubSubClientsFactory()
             .getConsumerAdapterFactory()
-            .create(new VeniceProperties(properties), false, PubSubMessageDeserializer.getInstance(), "testConsumer")) {
-
+            .create(
+                new PubSubConsumerAdapterContext.Builder().setVeniceProperties(new VeniceProperties(properties))
+                    .setPubSubMessageDeserializer(PubSubMessageDeserializer.createDefaultDeserializer())
+                    .setPubSubPositionTypeRegistry(pubSubBrokerWrapper.getPubSubPositionTypeRegistry())
+                    .setConsumerName("testConsumer")
+                    .build())) {
           for (int partition = 0; partition < response.getPartitions(); partition++) {
             // RT: verify HB is received
-            verifyHBinKafkaTopic(
-                pubSubConsumer,
-                storeInfo,
-                partition,
-                isActiveActiveEnabled,
-                isIncrementalPushEnabled,
-                dataReplicationPolicy,
-                true);
+            verifyHBinKafkaTopic(pubSubConsumer, storeInfo, partition, isIncrementalPushEnabled, true);
 
             // VT: verify leader topic partition receives HB from RT, and is forwarded with leader completed
             // header to all VT.
-            verifyHBinKafkaTopic(
-                pubSubConsumer,
-                storeInfo,
-                partition,
-                isActiveActiveEnabled,
-                isIncrementalPushEnabled,
-                dataReplicationPolicy,
-                false);
+            verifyHBinKafkaTopic(pubSubConsumer, storeInfo, partition, isIncrementalPushEnabled, false);
           }
         }
       }
@@ -249,26 +240,23 @@ public class IngestionHeartBeatTest {
       PubSubConsumerAdapter pubSubConsumer,
       StoreInfo storeInfo,
       int partition,
-      boolean isActiveActiveEnabled,
       boolean isIncrementalPushEnabled,
-      DataReplicationPolicy dataReplicationPolicy,
       boolean isRealTime) throws InterruptedException {
     String topicToSubscribeTo = isRealTime
         ? Utils.getRealTimeTopicName(storeInfo)
         : Version.composeKafkaTopic(storeName, isIncrementalPushEnabled ? 1 : 2);
     pubSubConsumer.subscribe(
         new PubSubTopicPartitionImpl(new PubSubTopicRepository().getTopic(topicToSubscribeTo), partition),
-        0);
+        PubSubSymbolicPosition.EARLIEST,
+        false);
     AtomicBoolean isHBFound = new AtomicBoolean(false);
     AtomicBoolean isLeaderCompletionHeaderFound = new AtomicBoolean(false);
     AtomicBoolean isLeaderCompleted = new AtomicBoolean(false);
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-      Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> messages =
-          pubSubConsumer.poll(100 * Time.MS_PER_SECOND);
-      for (Map.Entry<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> entry: messages
-          .entrySet()) {
-        List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> pubSubMessages = entry.getValue();
-        for (PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> message: pubSubMessages) {
+      Map<PubSubTopicPartition, List<DefaultPubSubMessage>> messages = pubSubConsumer.poll(100 * Time.MS_PER_SECOND);
+      for (Map.Entry<PubSubTopicPartition, List<DefaultPubSubMessage>> entry: messages.entrySet()) {
+        List<DefaultPubSubMessage> pubSubMessages = entry.getValue();
+        for (DefaultPubSubMessage message: pubSubMessages) {
           if (Arrays.equals(message.getKey().getKey(), HEART_BEAT.getKey())) {
             isHBFound.set(true);
           }
@@ -287,50 +275,25 @@ public class IngestionHeartBeatTest {
           break;
         }
       }
-      if ((!isIncrementalPushEnabled || isActiveActiveEnabled)
-          && (isActiveActiveEnabled || dataReplicationPolicy != DataReplicationPolicy.AGGREGATE)) {
-        assertTrue(
-            isHBFound.get(),
-            String.format("Heartbeat not found in %s partition %d", isRealTime ? "RT" : "VT", partition));
-        if (isRealTime) {
-          assertFalse(
-              isLeaderCompletionHeaderFound.get(),
-              String.format("Leader completed header found in RT partition %d", partition));
-          assertFalse(
-              isLeaderCompleted.get(),
-              String.format("Leader completed header set to completed in RT partition %d", partition));
-        } else {
-          assertTrue(
-              isLeaderCompletionHeaderFound.get(),
-              String.format("Leader completed header not found in VT partition %d", partition));
-          assertTrue(
-              isLeaderCompleted.get(),
-              String.format("Leader completed header not set to completed in VT partition %d", partition));
-        }
-      } else {
-        // If AA is not enabled: SIT reads from parent RT but HB is sent to local RT, so HB is never propagated to VT
-        if (isRealTime) {
-          assertTrue(
-              isHBFound.get(),
-              String.format("Heartbeat not found in RT partition %d with AA not enabled", partition));
-        } else {
-          assertFalse(
-              isHBFound.get(),
-              String.format("Heartbeat found in VT partition %d with AA not enabled", partition));
-        }
+      assertTrue(
+          isHBFound.get(),
+          String.format("Heartbeat not found in %s partition %d", isRealTime ? "RT" : "VT", partition));
+      if (isRealTime) {
         assertFalse(
             isLeaderCompletionHeaderFound.get(),
-            String.format(
-                "Leader completed header found in %s partition %d with AA not enabled",
-                isRealTime ? "RT" : "VT",
-                partition));
+            String.format("Leader completed header found in RT partition %d", partition));
         assertFalse(
             isLeaderCompleted.get(),
-            String.format(
-                "Leader completed header set to completed in %s partition %d with AA not enabled",
-                isRealTime ? "RT" : "VT",
-                partition));
+            String.format("Leader completed header set to completed in RT partition %d", partition));
+      } else {
+        assertTrue(
+            isLeaderCompletionHeaderFound.get(),
+            String.format("Leader completed header not found in VT partition %d", partition));
+        assertTrue(
+            isLeaderCompleted.get(),
+            String.format("Leader completed header not set to completed in VT partition %d", partition));
       }
+
     });
 
     pubSubConsumer

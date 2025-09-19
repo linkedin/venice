@@ -12,17 +12,23 @@ public class VeniceSystemStoreUtils {
       String.format(Store.SYSTEM_STORE_FORMAT, "davinci_push_status_store");
   public static final String META_STORE_STR = String.format(Store.SYSTEM_STORE_FORMAT, "meta_store");
 
+  public static final String PARENT_CONTROLLER_METADATA_STORE = "parent_controller_metadata_store";
+
+  private static final String PARENT_CONTROLLER_METADATA_STORE_NAME_FORMAT =
+      String.format(Store.SYSTEM_STORE_FORMAT, PARENT_CONTROLLER_METADATA_STORE + "_cluster_%s");
+
   private static final String PARTICIPANT_STORE_PREFIX = String.format(Store.SYSTEM_STORE_FORMAT, PARTICIPANT_STORE);
   private static final String PARTICIPANT_STORE_FORMAT = PARTICIPANT_STORE_PREFIX + "_cluster_%s";
   private static final String PUSH_JOB_DETAILS_STORE_NAME =
       String.format(Store.SYSTEM_STORE_FORMAT, PUSH_JOB_DETAILS_STORE);
   public static final String SEPARATOR = "_";
+  public static final int DEFAULT_USER_SYSTEM_STORE_PARTITION_COUNT = 1;
   public static final UpdateStoreQueryParams DEFAULT_USER_SYSTEM_STORE_UPDATE_QUERY_PARAMS =
       new UpdateStoreQueryParams().setHybridRewindSeconds(TimeUnit.DAYS.toSeconds(1)) // 1 day rewind
           .setHybridOffsetLagThreshold(1)
           .setHybridTimeLagThreshold(-1) // Explicitly disable hybrid time lag measurement on system store
           .setWriteComputationEnabled(true)
-          .setPartitionCount(1);
+          .setPartitionCount(DEFAULT_USER_SYSTEM_STORE_PARTITION_COUNT);
 
   public static String getParticipantStoreNameForCluster(String clusterName) {
     return String.format(PARTICIPANT_STORE_FORMAT, clusterName);
@@ -37,6 +43,10 @@ public class VeniceSystemStoreUtils {
 
   public static String getPushJobDetailsStoreName() {
     return PUSH_JOB_DETAILS_STORE_NAME;
+  }
+
+  public static String getParentControllerMetadataStoreNameForCluster(String clusterName) {
+    return String.format(PARENT_CONTROLLER_METADATA_STORE_NAME_FORMAT, clusterName);
   }
 
   public static boolean isSystemStore(String storeName) {

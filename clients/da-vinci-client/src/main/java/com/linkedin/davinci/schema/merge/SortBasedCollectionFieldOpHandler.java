@@ -2,6 +2,7 @@ package com.linkedin.davinci.schema.merge;
 
 import com.linkedin.avro.api.PrimitiveLongList;
 import com.linkedin.avro.fastserde.primitive.PrimitiveLongArrayList;
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.davinci.schema.SchemaUtils;
 import com.linkedin.davinci.utils.IndexedHashMap;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -20,6 +21,7 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 import javax.annotation.concurrent.ThreadSafe;
 import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 
 
@@ -289,8 +291,11 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
     collectionFieldRmd.setPutOnlyPartLength(0); // No put-only part because it should be deleted completely.
 
     if (collectionFieldRmd.isInPutOnlyState()) {
-      // Do not use Collections.empty() in case this field is modified later.
-      currValueRecord.put(currValueRecordField.pos(), new ArrayList<>(0));
+      Object curFieldDefaultValue = GenericData.get()
+          .deepCopy(
+              currValueRecordField.schema(),
+              AvroCompatibilityHelper.getGenericDefaultValue(currValueRecordField));
+      currValueRecord.put(currValueRecordField.pos(), curFieldDefaultValue);
       return UpdateResultStatus.COMPLETELY_UPDATED;
     }
 
@@ -313,8 +318,15 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
     while (currListIterator.hasNext()) {
       remainingList.add(currListIterator.next());
     }
-
-    currValueRecord.put(currValueRecordField.pos(), remainingList);
+    if (remainingList.isEmpty()) {
+      Object curFieldDefaultValue = GenericData.get()
+          .deepCopy(
+              currValueRecordField.schema(),
+              AvroCompatibilityHelper.getGenericDefaultValue(currValueRecordField));
+      currValueRecord.put(currValueRecordField.pos(), curFieldDefaultValue);
+    } else {
+      currValueRecord.put(currValueRecordField.pos(), remainingList);
+    }
     return collectionFieldRmd.isInPutOnlyState()
         ? UpdateResultStatus.COMPLETELY_UPDATED
         : UpdateResultStatus.PARTIALLY_UPDATED;
@@ -339,7 +351,11 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
     collectionFieldRmd.setPutOnlyPartLength(0); // No put-only part because it should be deleted completely.
 
     if (collectionFieldRmd.isInPutOnlyState()) {
-      currValueRecord.put(currValueRecordField.pos(), new IndexedHashMap<>(0));
+      Object curFieldDefaultValue = GenericData.get()
+          .deepCopy(
+              currValueRecordField.schema(),
+              AvroCompatibilityHelper.getGenericDefaultValue(currValueRecordField));
+      currValueRecord.put(currValueRecordField.pos(), curFieldDefaultValue);
       return UpdateResultStatus.COMPLETELY_UPDATED;
     }
 
@@ -363,7 +379,15 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
       Map.Entry<String, Object> remainingEntry = currMap.getByIndex(i);
       remainingMap.put(remainingEntry.getKey(), remainingEntry.getValue());
     }
-    currValueRecord.put(currValueRecordField.pos(), remainingMap);
+    if (remainingMap.isEmpty()) {
+      Object curFieldDefaultValue = GenericData.get()
+          .deepCopy(
+              currValueRecordField.schema(),
+              AvroCompatibilityHelper.getGenericDefaultValue(currValueRecordField));
+      currValueRecord.put(currValueRecordField.pos(), curFieldDefaultValue);
+    } else {
+      currValueRecord.put(currValueRecordField.pos(), remainingMap);
+    }
     return collectionFieldRmd.isInPutOnlyState()
         ? UpdateResultStatus.COMPLETELY_UPDATED
         : UpdateResultStatus.PARTIALLY_UPDATED;

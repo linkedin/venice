@@ -9,6 +9,7 @@ import org.apache.http.HttpStatus;
 public class VeniceNoStoreException extends VeniceException {
   private final String storeName;
   private final String clusterName;
+  public static final String DOES_NOT_EXISTS = " does not exist";
 
   public VeniceNoStoreException(String storeName, String clusterName) {
     super(getErrorMessage(storeName, clusterName, null), ErrorType.STORE_NOT_FOUND);
@@ -54,7 +55,7 @@ public class VeniceNoStoreException extends VeniceException {
   }
 
   private static String getErrorMessage(String storeName, String clusterName, String additionalMessage) {
-    StringBuilder errorBuilder = new StringBuilder().append("Store: ").append(storeName).append(" does not exist");
+    StringBuilder errorBuilder = new StringBuilder().append("Store: ").append(storeName).append(DOES_NOT_EXISTS);
     if (clusterName != null) {
       errorBuilder.append(" in cluster ").append(clusterName);
     } else {

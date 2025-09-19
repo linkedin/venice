@@ -10,8 +10,10 @@ import org.apache.avro.Schema;
 @FunctionalInterface
 public interface DaVinciRecordTransformerFunctionalInterface {
   DaVinciRecordTransformer apply(
+      String storeName,
       Integer storeVersion,
       Schema keySchema,
       Schema inputValueSchema,
-      Schema outputValueSchema);
+      Schema outputValueSchema,
+      DaVinciRecordTransformerConfig recordTransformerConfig);
 }

@@ -13,10 +13,11 @@ import com.linkedin.venice.kafka.protocol.VersionSwap;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
-import com.linkedin.venice.pubsub.api.PubSubProduceResult;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
+import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.schema.rmd.RmdUtils;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.views.ChangeCaptureView;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
@@ -27,6 +28,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
@@ -37,35 +39,34 @@ public class ChangeCaptureViewWriter extends VeniceViewWriter {
   private VeniceWriter veniceWriter;
   private final Object2IntMap<String> kafkaClusterUrlToIdMap;
   private final int maxColoIdValue;
-
-  private final PubSubProducerAdapterFactory pubSubProducerAdapterFactory;
   private final String changeCaptureTopicName;
 
   public ChangeCaptureViewWriter(
       VeniceConfigLoader props,
       Version version,
       Schema keySchema,
-      Map<String, String> extraViewParameters) {
-    super(props, version, keySchema, extraViewParameters);
+      Map<String, String> extraViewParameters,
+      VeniceWriterFactory veniceWriterFactory) {
+    super(props, version, keySchema, extraViewParameters, veniceWriterFactory);
     internalView = new ChangeCaptureView(
         props.getCombinedProperties().toProperties(),
         version.getStoreName(),
         extraViewParameters);
     kafkaClusterUrlToIdMap = props.getVeniceServerConfig().getKafkaClusterUrlToIdMap();
-    pubSubProducerAdapterFactory = props.getVeniceServerConfig().getPubSubClientsFactory().getProducerAdapterFactory();
     maxColoIdValue = kafkaClusterUrlToIdMap.values().stream().max(Integer::compareTo).orElse(-1);
     changeCaptureTopicName =
         this.getTopicNamesAndConfigsForVersion(version.getNumber()).keySet().stream().findAny().get();
   }
 
   @Override
-  public CompletableFuture<PubSubProduceResult> processRecord(
+  public CompletableFuture<Void> processRecord(
       ByteBuffer newValue,
       ByteBuffer oldValue,
       byte[] key,
       int newValueSchemaId,
       int oldValueSchemaId,
-      GenericRecord replicationMetadataRecord) {
+      GenericRecord replicationMetadataRecord,
+      Lazy<GenericRecord> valueProvider) {
     // TODO: not sold about having currentValue in the interface but it VASTLY simplifies a lot of things with regards
     // to dealing with compression/chunking/etc. in the storage layer.
 
@@ -83,9 +84,19 @@ public class ChangeCaptureViewWriter extends VeniceViewWriter {
   }
 
   @Override
-  public CompletableFuture<PubSubProduceResult> processRecord(ByteBuffer newValue, byte[] key, int newValueSchemaId) {
+  public CompletableFuture<Void> processRecord(
+      ByteBuffer newValue,
+      byte[] key,
+      int newValueSchemaId,
+      Set<Integer> viewPartitionSet,
+      Lazy<GenericRecord> newValueProvider) {
     // No op
     return CompletableFuture.completedFuture(null);
+  }
+
+  @Override
+  public ViewWriterType getViewWriterType() {
+    return ViewWriterType.CHANGE_CAPTURE_VIEW;
   }
 
   @Override
@@ -115,18 +126,25 @@ public class ChangeCaptureViewWriter extends VeniceViewWriter {
       return;
     }
 
-    Map<String, Long> sortedWaterMarkOffsets = partitionConsumptionState.getLatestProcessedUpstreamRTOffsetMap();
+    Map<String, PubSubPosition> sortedWaterMarkOffsets = partitionConsumptionState.getLatestProcessedRtPositions();
 
     List<Long> highWaterMarkOffsets;
+    List<ByteBuffer> highWaterMarkPubSubPositions;
     if (maxColoIdValue > -1) {
       highWaterMarkOffsets = new ArrayList<>(Collections.nCopies(maxColoIdValue + 1, 0L));
+      highWaterMarkPubSubPositions = new ArrayList<>(
+          Collections.nCopies(maxColoIdValue + 1, PubSubSymbolicPosition.EARLIEST.toWireFormatBuffer()));
       for (String url: sortedWaterMarkOffsets.keySet()) {
         highWaterMarkOffsets.set(
             kafkaClusterUrlToIdMap.getInt(url),
-            partitionConsumptionState.getLatestProcessedUpstreamRTOffsetMap().get(url));
+            partitionConsumptionState.getLatestProcessedRtPositions().get(url).getNumericOffset());
+        highWaterMarkPubSubPositions.set(
+            kafkaClusterUrlToIdMap.getInt(url),
+            partitionConsumptionState.getLatestProcessedRtPositions().get(url).toWireFormatBuffer());
       }
     } else {
       highWaterMarkOffsets = Collections.emptyList();
+      highWaterMarkPubSubPositions = Collections.emptyList();
     }
 
     // Write the message on veniceWriter to the change capture topic
@@ -135,7 +153,7 @@ public class ChangeCaptureViewWriter extends VeniceViewWriter {
     }
 
     veniceWriter.sendControlMessage(
-        constructVersionSwapControlMessage(versionSwapMessage, highWaterMarkOffsets),
+        constructVersionSwapControlMessage(versionSwapMessage, highWaterMarkOffsets, highWaterMarkPubSubPositions),
         partitionConsumptionState.getPartition(),
         Collections.emptyMap(),
         null,
@@ -148,15 +166,20 @@ public class ChangeCaptureViewWriter extends VeniceViewWriter {
   }
 
   @Override
+  public String composeTopicName(int version) {
+    return internalView.composeTopicName(version);
+  }
+
+  @Override
   public String getWriterClassName() {
     return internalView.getWriterClassName();
   }
 
   @Override
-  public void close() {
-    internalView.close();
+  public void close(boolean gracefulClose) {
+    internalView.close(gracefulClose);
     if (veniceWriter != null) {
-      veniceWriter.close();
+      veniceWriter.close(gracefulClose);
     }
   }
 
@@ -173,8 +196,7 @@ public class ChangeCaptureViewWriter extends VeniceViewWriter {
     if (veniceWriter != null) {
       return;
     }
-    veniceWriter =
-        new VeniceWriterFactory(props, pubSubProducerAdapterFactory, null).createVeniceWriter(buildWriterOptions());
+    veniceWriter = veniceWriterFactory.createVeniceWriter(buildWriterOptions());
   }
 
   private ValueBytes constructValueBytes(ByteBuffer value, int schemaId) {
@@ -189,7 +211,8 @@ public class ChangeCaptureViewWriter extends VeniceViewWriter {
 
   private ControlMessage constructVersionSwapControlMessage(
       VersionSwap versionSwapMessage,
-      List<Long> localHighWatermarks) {
+      List<Long> localHighWatermarks,
+      List<ByteBuffer> localHighWatermarkPubSubPositions) {
     ControlMessage controlMessageToBroadcast = new ControlMessage();
     controlMessageToBroadcast.controlMessageType = ControlMessageType.VERSION_SWAP.getValue();
     controlMessageToBroadcast.controlMessageUnion = ControlMessageType.VERSION_SWAP.getNewInstance();
@@ -197,6 +220,7 @@ public class ChangeCaptureViewWriter extends VeniceViewWriter {
     versionSwapToBroadcast.oldServingVersionTopic = versionSwapMessage.oldServingVersionTopic;
     versionSwapToBroadcast.newServingVersionTopic = versionSwapMessage.newServingVersionTopic;
     versionSwapToBroadcast.localHighWatermarks = localHighWatermarks;
+    versionSwapToBroadcast.localHighWatermarkPubSubPositions = localHighWatermarkPubSubPositions;
     controlMessageToBroadcast.controlMessageUnion = versionSwapToBroadcast;
     return controlMessageToBroadcast;
   }

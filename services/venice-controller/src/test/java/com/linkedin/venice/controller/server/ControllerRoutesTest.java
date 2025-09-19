@@ -14,6 +14,7 @@ import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.ControllerRequestHandlerDependencies;
 import com.linkedin.venice.controller.InstanceRemovableStatuses;
 import com.linkedin.venice.controller.VeniceParentHelixAdmin;
+import com.linkedin.venice.controllerapi.AdminOperationProtocolVersionControllerResponse;
 import com.linkedin.venice.controllerapi.AggregatedHealthStatusRequest;
 import com.linkedin.venice.controllerapi.ControllerApiConstants;
 import com.linkedin.venice.controllerapi.LeaderControllerResponse;
@@ -196,5 +197,65 @@ public class ControllerRoutesTest {
         "reason2");
     assertEquals(removableAndNonRemovableStoppableResponse.getStoppableInstances().size(), 1);
     assertEquals(removableAndNonRemovableStoppableResponse.getStoppableInstances().get(0), "instance1_5000");
+  }
+
+  @Test
+  public void testGetLocalAdminOperationProtocolVersion() throws Exception {
+    doReturn(true).when(mockAdmin).isLeaderControllerFor(anyString());
+    Instance leaderController =
+        new Instance(TEST_NODE_ID, TEST_HOST, TEST_PORT, TEST_SSL_PORT, TEST_GRPC_PORT, TEST_GRPC_SSL_PORT);
+
+    doReturn(leaderController).when(mockAdmin).getLeaderController(anyString());
+    String leaderControllerHost = String.format("http://%s:%s", TEST_HOST, TEST_PORT);
+    doReturn(leaderControllerHost).when(mockAdmin).getControllerName();
+
+    Request request = mock(Request.class);
+    doReturn(TEST_CLUSTER).when(request).queryParams(eq(ControllerApiConstants.CLUSTER));
+    doReturn(1L).when(mockAdmin).getLocalAdminOperationProtocolVersion();
+    doReturn(leaderControllerHost + "/get_local_admin_operation_protocol_version").when(request).url();
+
+    Route localAdminOperationVersionRoute =
+        new ControllerRoutes(false, Optional.empty(), pubSubTopicRepository, requestHandler)
+            .getLocalAdminOperationProtocolVersion(mockAdmin);
+    AdminOperationProtocolVersionControllerResponse response = OBJECT_MAPPER.readValue(
+        localAdminOperationVersionRoute.handle(request, mock(Response.class)).toString(),
+        AdminOperationProtocolVersionControllerResponse.class);
+    assertEquals(response.getLocalAdminOperationProtocolVersion(), 1L);
+    assertEquals(response.getControllerNameToVersionMap().size(), 0);
+  }
+
+  @Test
+  public void testGetAdminOperationVersionFromControllers() throws Exception {
+    doReturn(true).when(mockAdmin).isLeaderControllerFor(anyString());
+    Instance leaderController =
+        new Instance(TEST_NODE_ID, TEST_HOST, TEST_PORT, TEST_SSL_PORT, TEST_GRPC_PORT, TEST_GRPC_SSL_PORT);
+
+    doReturn(leaderController).when(mockAdmin).getLeaderController(anyString());
+    String leaderControllerHostHttps = String.format("https://%s:%s", TEST_HOST, TEST_PORT);
+    String leaderControllerHost = String.format("%s_%s", TEST_HOST, TEST_PORT);
+    doReturn(leaderControllerHost).when(mockAdmin).getControllerName();
+
+    Request request = mock(Request.class);
+    doReturn(TEST_CLUSTER).when(request).queryParams(eq(ControllerApiConstants.CLUSTER));
+    doReturn(1L).when(mockAdmin).getLocalAdminOperationProtocolVersion();
+    doReturn(leaderControllerHostHttps + "/get_admin_operation_version_from_controllers").when(request).url();
+
+    Map<String, Long> controllerNameToVersionMap = new HashMap<>();
+    controllerNameToVersionMap.put("localhost_8080", 1L);
+    controllerNameToVersionMap.put("localhost_8081", 2L);
+    controllerNameToVersionMap.put(leaderControllerHost, 1L);
+    doReturn(controllerNameToVersionMap).when(mockAdmin).getAdminOperationVersionFromControllers(anyString());
+
+    Route adminOperationVersionRoute =
+        new ControllerRoutes(false, Optional.empty(), pubSubTopicRepository, requestHandler)
+            .getAdminOperationVersionFromControllers(mockAdmin);
+    AdminOperationProtocolVersionControllerResponse response = OBJECT_MAPPER.readValue(
+        adminOperationVersionRoute.handle(request, mock(Response.class)).toString(),
+        AdminOperationProtocolVersionControllerResponse.class);
+    assertEquals(response.getLocalAdminOperationProtocolVersion(), 1L);
+    assertEquals(response.getControllerNameToVersionMap().size(), 3);
+    assertEquals(response.getControllerNameToVersionMap(), controllerNameToVersionMap);
+    assertEquals(response.getLocalControllerName(), leaderControllerHost);
+    assertEquals(response.getCluster(), TEST_CLUSTER);
   }
 }

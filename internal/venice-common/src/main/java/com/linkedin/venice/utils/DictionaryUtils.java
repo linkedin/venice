@@ -1,21 +1,23 @@
 package com.linkedin.venice.utils;
 
+import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.StartOfPush;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.pubsub.PubSubClientsFactory;
+import com.linkedin.venice.pubsub.PubSubConsumerAdapterContext;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
+import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
-import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapterFactory;
+import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
-import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
+import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
-import com.linkedin.venice.utils.pools.LandFillObjectPool;
 import java.nio.ByteBuffer;
 import java.util.List;
 import java.util.Map;
@@ -31,19 +33,23 @@ public class DictionaryUtils {
   private static VeniceProperties getKafkaConsumerProps(VeniceProperties veniceProperties) {
     Properties props = veniceProperties.toProperties();
     // Increase receive buffer to 1MB to check whether it can solve the metadata timing out issue
-    props.put(ConsumerConfig.RECEIVE_BUFFER_CONFIG, 1024 * 1024);
+    // TODO: Remove hardcoded buffer size and pass it down from the job config.
+    props.put(ConfigKeys.KAFKA_CONFIG_PREFIX + ConsumerConfig.RECEIVE_BUFFER_CONFIG, 1024 * 1024);
     return new VeniceProperties(props);
   }
 
   public static ByteBuffer readDictionaryFromKafka(String topicName, VeniceProperties props) {
-    PubSubConsumerAdapterFactory pubSubConsumerAdapterFactory = new ApacheKafkaConsumerAdapterFactory();
+    PubSubConsumerAdapterFactory pubSubConsumerAdapterFactory = PubSubClientsFactory.createConsumerFactory(props);
     PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
-    PubSubMessageDeserializer pubSubMessageDeserializer = new PubSubMessageDeserializer(
-        new KafkaValueSerializer(),
-        new LandFillObjectPool<>(KafkaMessageEnvelope::new),
-        new LandFillObjectPool<>(KafkaMessageEnvelope::new));
-    try (PubSubConsumerAdapter pubSubConsumer = pubSubConsumerAdapterFactory
-        .create(getKafkaConsumerProps(props), false, pubSubMessageDeserializer, "DictionaryUtilsConsumer")) {
+    VeniceProperties pubSubProperties = getKafkaConsumerProps(props);
+    PubSubConsumerAdapterContext context =
+        new PubSubConsumerAdapterContext.Builder().setVeniceProperties(pubSubProperties)
+            .setPubSubTopicRepository(pubSubTopicRepository)
+            .setPubSubMessageDeserializer(PubSubMessageDeserializer.createDefaultDeserializer())
+            .setPubSubPositionTypeRegistry(PubSubPositionTypeRegistry.fromPropertiesOrDefault(pubSubProperties))
+            .setConsumerName("DictionaryUtilsConsumer")
+            .build();
+    try (PubSubConsumerAdapter pubSubConsumer = pubSubConsumerAdapterFactory.create(context)) {
       return DictionaryUtils.readDictionaryFromKafka(topicName, pubSubConsumer, pubSubTopicRepository);
     }
   }
@@ -61,7 +67,7 @@ public class DictionaryUtils {
     LOGGER.info("Consuming from topic: {} till StartOfPush", topicName);
     PubSubTopic pubSubTopic = pubSubTopicRepository.getTopic(topicName);
     PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(pubSubTopic, 0);
-    pubSubConsumer.subscribe(pubSubTopicPartition, 0);
+    pubSubConsumer.subscribe(pubSubTopicPartition, PubSubSymbolicPosition.EARLIEST);
     try {
       boolean startOfPushReceived = false;
       ByteBuffer compressionDictionary = null;
@@ -69,14 +75,13 @@ public class DictionaryUtils {
       KafkaKey kafkaKey;
       KafkaMessageEnvelope kafkaValue = null;
       while (!startOfPushReceived) {
-        Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> messages =
-            pubSubConsumer.poll(10 * Time.MS_PER_SECOND);
+        Map<PubSubTopicPartition, List<DefaultPubSubMessage>> messages = pubSubConsumer.poll(10 * Time.MS_PER_SECOND);
 
         if (!messages.containsKey(pubSubTopicPartition)) {
           continue;
         }
 
-        for (final PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> message: messages.get(pubSubTopicPartition)) {
+        for (final DefaultPubSubMessage message: messages.get(pubSubTopicPartition)) {
           kafkaKey = message.getKey();
           kafkaValue = message.getValue();
           if (kafkaKey.isControlMessage()) {

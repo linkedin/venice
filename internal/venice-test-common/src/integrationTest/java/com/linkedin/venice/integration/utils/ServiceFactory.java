@@ -55,7 +55,7 @@ public class ServiceFactory {
   private static final String ULIMIT;
   private static final String VM_ARGS;
   // System property key for the fully qualified class name of the PubSubBrokerFactory implementation
-  private static final String PUBSUB_BROKER_FACTORY_FQCN = "pubSubBrokerFactory";
+  protected static final String PUBSUB_BROKER_FACTORY_FQCN = "pubSubBrokerFactory";
   // PubSubBrokerFactory implementation to use for tests
   private static final PubSubBrokerFactory<PubSubBrokerWrapper> PUBSUB_BROKER_FACTORY;
   private static final PubSubBrokerConfigs PUBSUB_BROKER_EMPTY_CONFIGS =
@@ -281,7 +281,7 @@ public class ServiceFactory {
   /**
    * Start up a testing Venice cluster in another process.
    *
-   * The reason to call this method instead of other {@link #getVeniceCluster()} methods is
+   * The reason to call this method instead of other {@link #getVeniceCluster(VeniceClusterCreateOptions)} methods is
    * when one wants to maximize its testing environment isolation.
    * Example usage: {@literal com.linkedin.venice.benchmark.IngestionBenchmarkWithTwoProcesses}
    *
@@ -294,7 +294,7 @@ public class ServiceFactory {
   /**
    * Start up a testing Venice cluster in another process.
    *
-   * The reason to call this method instead of other {@link #getVeniceCluster()} methods is
+   * The reason to call this method instead of other {@link #getVeniceCluster(VeniceClusterCreateOptions)} methods is
    * when one wants to maximize its testing environment isolation.
    * Example usage: {@literal com.linkedin.venice.benchmark.IngestionBenchmarkWithTwoProcesses}
    *
@@ -319,191 +319,8 @@ public class ServiceFactory {
     return getService(VeniceClusterWrapper.SERVICE_NAME, VeniceClusterWrapper.generateService(options));
   }
 
-  /**
-   * @deprecated
-   * <p> Use {@link ServiceFactory#getVeniceCluster(VeniceClusterCreateOptions)} instead.
-   */
-  @Deprecated
-  public static VeniceClusterWrapper getVeniceCluster() {
-    VeniceClusterCreateOptions options =
-        new VeniceClusterCreateOptions.Builder().numberOfControllers(1).numberOfServers(1).numberOfRouters(1).build();
-    return getVeniceCluster(options);
-  }
-
-  @Deprecated
-  public static VeniceClusterWrapper getVeniceCluster(
-      int numberOfControllers,
-      int numberOfServers,
-      int numberOfRouters) {
-    VeniceClusterCreateOptions options =
-        new VeniceClusterCreateOptions.Builder().numberOfControllers(numberOfControllers)
-            .numberOfServers(numberOfServers)
-            .numberOfRouters(numberOfRouters)
-            .build();
-    return getVeniceCluster(options);
-  }
-
-  @Deprecated
-  public static VeniceClusterWrapper getVeniceCluster(
-      int numberOfControllers,
-      int numberOfServers,
-      int numberOfRouters,
-      int replicationFactor) {
-    VeniceClusterCreateOptions options =
-        new VeniceClusterCreateOptions.Builder().numberOfControllers(numberOfControllers)
-            .numberOfServers(numberOfServers)
-            .numberOfRouters(numberOfRouters)
-            .replicationFactor(replicationFactor)
-            .build();
-    return getVeniceCluster(options);
-  }
-
-  @Deprecated
-  public static VeniceClusterWrapper getVeniceCluster(
-      int numberOfControllers,
-      int numberOfServers,
-      int numberOfRouters,
-      int replicationFactor,
-      int partitionSize,
-      boolean sslToStorageNodes,
-      boolean sslToKafka,
-      Properties extraProperties) {
-    VeniceClusterCreateOptions options =
-        new VeniceClusterCreateOptions.Builder().numberOfControllers(numberOfControllers)
-            .numberOfServers(numberOfServers)
-            .numberOfRouters(numberOfRouters)
-            .replicationFactor(replicationFactor)
-            .partitionSize(partitionSize)
-            .sslToStorageNodes(sslToStorageNodes)
-            .sslToKafka(sslToKafka)
-            .extraProperties(extraProperties)
-            .build();
-    return getVeniceCluster(options);
-  }
-
-  @Deprecated
-  public static VeniceClusterWrapper getVeniceCluster(
-      int numberOfControllers,
-      int numberOfServers,
-      int numberOfRouters,
-      int replicationFactor,
-      int partitionSize,
-      boolean sslToStorageNodes,
-      boolean sslToKafka) {
-    VeniceClusterCreateOptions options =
-        new VeniceClusterCreateOptions.Builder().numberOfControllers(numberOfControllers)
-            .numberOfServers(numberOfServers)
-            .numberOfRouters(numberOfRouters)
-            .replicationFactor(replicationFactor)
-            .partitionSize(partitionSize)
-            .sslToStorageNodes(sslToStorageNodes)
-            .sslToKafka(sslToKafka)
-            .build();
-    return getVeniceCluster(options);
-  }
-
   public static VeniceMultiClusterWrapper getVeniceMultiClusterWrapper(VeniceMultiClusterCreateOptions options) {
     return getService(VeniceMultiClusterWrapper.SERVICE_NAME, VeniceMultiClusterWrapper.generateService(options));
-  }
-
-  public static VeniceTwoLayerMultiRegionMultiClusterWrapper getVeniceTwoLayerMultiRegionMultiClusterWrapper(
-      int numberOfRegions,
-      int numberOfClustersInEachRegion,
-      int numberOfParentControllers,
-      int numberOfControllers,
-      int numberOfServers,
-      int numberOfRouters) {
-    VeniceMultiRegionClusterCreateOptions.Builder optionsBuilder =
-        new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(numberOfRegions)
-            .numberOfClusters(numberOfClustersInEachRegion)
-            .numberOfParentControllers(numberOfParentControllers)
-            .numberOfChildControllers(numberOfControllers)
-            .numberOfServers(numberOfServers)
-            .numberOfRouters(numberOfRouters);
-    return getVeniceTwoLayerMultiRegionMultiClusterWrapper(optionsBuilder.build());
-  }
-
-  public static VeniceTwoLayerMultiRegionMultiClusterWrapper getVeniceTwoLayerMultiRegionMultiClusterWrapper(
-      int numberOfRegions,
-      int numberOfClustersInEachRegion,
-      int numberOfParentControllers,
-      int numberOfControllers,
-      int numberOfServers,
-      int numberOfRouters,
-      int replicationFactor,
-      Optional<Properties> parentControllerProps,
-      Optional<Properties> childControllerProperties,
-      Optional<Properties> serverProps) {
-    return getVeniceTwoLayerMultiRegionMultiClusterWrapper(
-        numberOfRegions,
-        numberOfClustersInEachRegion,
-        numberOfParentControllers,
-        numberOfControllers,
-        numberOfServers,
-        numberOfRouters,
-        replicationFactor,
-        parentControllerProps,
-        childControllerProperties,
-        serverProps,
-        false);
-  }
-
-  public static VeniceTwoLayerMultiRegionMultiClusterWrapper getVeniceTwoLayerMultiRegionMultiClusterWrapper(
-      int numberOfRegions,
-      int numberOfClustersInEachRegion,
-      int numberOfParentControllers,
-      int numberOfControllers,
-      int numberOfServers,
-      int numberOfRouters,
-      int replicationFactor,
-      Optional<Properties> parentControllerProps,
-      Optional<Properties> childControllerProperties,
-      Optional<Properties> serverProps,
-      boolean forkServer,
-      boolean sslToStorageNodes) {
-    VeniceMultiRegionClusterCreateOptions.Builder optionsBuilder =
-        new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(numberOfRegions)
-            .numberOfClusters(numberOfClustersInEachRegion)
-            .numberOfParentControllers(numberOfParentControllers)
-            .numberOfChildControllers(numberOfControllers)
-            .numberOfServers(numberOfServers)
-            .numberOfRouters(numberOfRouters)
-            .replicationFactor(replicationFactor)
-            .sslToStorageNodes(sslToStorageNodes)
-            .forkServer(forkServer);
-
-    parentControllerProps.ifPresent(optionsBuilder::parentControllerProperties);
-    childControllerProperties.ifPresent(optionsBuilder::childControllerProperties);
-    serverProps.ifPresent(optionsBuilder::serverProperties);
-    return getVeniceTwoLayerMultiRegionMultiClusterWrapper(optionsBuilder.build());
-  }
-
-  public static VeniceTwoLayerMultiRegionMultiClusterWrapper getVeniceTwoLayerMultiRegionMultiClusterWrapper(
-      int numberOfRegions,
-      int numberOfClustersInEachRegion,
-      int numberOfParentControllers,
-      int numberOfControllers,
-      int numberOfServers,
-      int numberOfRouters,
-      int replicationFactor,
-      Optional<Properties> parentControllerProps,
-      Optional<Properties> childControllerProperties,
-      Optional<Properties> serverProps,
-      boolean forkServer) {
-    VeniceMultiRegionClusterCreateOptions.Builder optionsBuilder =
-        new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(numberOfRegions)
-            .numberOfClusters(numberOfClustersInEachRegion)
-            .numberOfParentControllers(numberOfParentControllers)
-            .numberOfChildControllers(numberOfControllers)
-            .numberOfServers(numberOfServers)
-            .numberOfRouters(numberOfRouters)
-            .replicationFactor(replicationFactor)
-            .forkServer(forkServer);
-
-    parentControllerProps.ifPresent(optionsBuilder::parentControllerProperties);
-    childControllerProperties.ifPresent(optionsBuilder::childControllerProperties);
-    serverProps.ifPresent(optionsBuilder::serverProperties);
-    return getVeniceTwoLayerMultiRegionMultiClusterWrapper(optionsBuilder.build());
   }
 
   public static VeniceTwoLayerMultiRegionMultiClusterWrapper getVeniceTwoLayerMultiRegionMultiClusterWrapper(
@@ -604,8 +421,11 @@ public class ServiceFactory {
       VeniceClusterWrapper cluster,
       String dataBasePath,
       DaVinciConfig daVinciConfig) {
+    Properties pubSubProps = new Properties();
+    pubSubProps.putAll(cluster.getPubSubClientProperties());
     VeniceProperties backendConfig = DaVinciTestContext.getDaVinciPropertyBuilder(cluster.getZk().getAddress())
         .put(DATA_BASE_PATH, dataBasePath)
+        .put(pubSubProps)
         .build();
     return getGenericAvroDaVinciClient(storeName, cluster, daVinciConfig, backendConfig);
   }
@@ -615,6 +435,9 @@ public class ServiceFactory {
       VeniceClusterWrapper cluster,
       DaVinciConfig daVinciConfig,
       VeniceProperties backendConfig) {
+    Properties properties = backendConfig.getPropertiesCopy();
+    properties.putAll(cluster.getPubSubClientProperties());
+    backendConfig = new VeniceProperties(properties);
     return getGenericAvroDaVinciClient(storeName, cluster.getZk().getAddress(), daVinciConfig, backendConfig);
   }
 
@@ -664,10 +487,12 @@ public class ServiceFactory {
       D2Client d2Client,
       MetricsRepository metricsRepository,
       Optional<Set<String>> managedClients,
-      String zkAddress,
+      VeniceClusterWrapper cluster,
       String storeName,
       DaVinciConfig daVinciConfig,
       Map<String, Object> extraBackendProperties) {
+    String zkAddress = cluster.getZk().getAddress();
+    extraBackendProperties.putAll(cluster.getPubSubClientProperties());
     return DaVinciTestContext.getGenericAvroDaVinciFactoryAndClientWithRetries(
         d2Client,
         metricsRepository,

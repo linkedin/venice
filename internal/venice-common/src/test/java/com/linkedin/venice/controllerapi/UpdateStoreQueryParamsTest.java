@@ -22,5 +22,7 @@ public class UpdateStoreQueryParamsTest {
     assertEquals(params.getStoreMigration(), Optional.of(Boolean.FALSE));
     assertEquals(params.getString(STORE_MIGRATION).orElse(null), "false");
     assertEquals(params.getString(ENABLE_STORE_MIGRATION).orElse(null), "false");
+    params.setEnumSchemaEvolutionAllowed(true);
+    assertEquals(params.isEnumSchemaEvolutionAllowed(), Optional.of(Boolean.TRUE));
   }
 }

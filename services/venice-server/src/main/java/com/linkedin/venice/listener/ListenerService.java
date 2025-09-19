@@ -102,7 +102,6 @@ public class ListenerService extends AbstractVeniceService {
           serverConfig.getSslHandshakeThreadPoolSize(),
           "SSLHandShakeThread",
           serverConfig.getSslHandshakeQueueCapacity());
-      new ThreadPoolStats(metricsRepository, this.sslHandshakeExecutor, "ssl_handshake_thread_pool");
     }
 
     StorageReadRequestHandler requestHandler = createRequestHandler(
@@ -218,8 +217,12 @@ public class ListenerService extends AbstractVeniceService {
   }
 
   protected ThreadPoolExecutor createThreadPool(int threadCount, String threadNamePrefix, int capacity) {
-    return ThreadPoolFactory
-        .createThreadPool(threadCount, threadNamePrefix, capacity, serverConfig.getBlockingQueueType());
+    return ThreadPoolFactory.createThreadPool(
+        threadCount,
+        threadNamePrefix,
+        serverConfig.getLogContext(),
+        capacity,
+        serverConfig.getBlockingQueueType());
   }
 
   protected StorageReadRequestHandler createRequestHandler(

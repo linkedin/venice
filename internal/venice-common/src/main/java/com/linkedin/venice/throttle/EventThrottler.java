@@ -1,6 +1,7 @@
 package com.linkedin.venice.throttle;
 
 import com.linkedin.venice.exceptions.QuotaExceededException;
+import com.linkedin.venice.utils.RedundantExceptionFilter;
 import io.tehuti.metrics.MetricConfig;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Quota;
@@ -31,6 +32,8 @@ import org.apache.logging.log4j.Logger;
  * throttle Bytes read or written, number of entries scanned, etc.
  */
 public class EventThrottler implements VeniceRateLimiter {
+  private static final RedundantExceptionFilter REDUNDANT_EXCEPTION_FILTER =
+      RedundantExceptionFilter.getRedundantExceptionFilter();
   private static final Logger LOGGER = LogManager.getLogger(EventThrottler.class);
   private static final long DEFAULT_CHECK_INTERVAL_MS = TimeUnit.SECONDS.toMillis(30);
   private static final String THROTTLER_NAME = "event-throttler";
@@ -209,22 +212,27 @@ public class EventThrottler implements VeniceRateLimiter {
       if (quota == 0) {
         sleepTimeMs = timeWindowMS;
       } else {
-        sleepTimeMs = Math.round(excessRate / quota * Time.MS_PER_SECOND);
+        sleepTimeMs = Math.min(Math.round(excessRate / quota * Time.MS_PER_SECOND), timeWindowMS * 5);
       }
-      LOGGER.debug(
-          "Throttler: {} quota exceeded:\ncurrentRate \t={}{}\nmaxRatePerSecond \t= {}{}\nexcessRate \t= {}{}\nsleeping for \t {} ms to compensate.\nrateConfig.timeWindowMs = {}",
-          throttlerName,
-          currentRate,
-          UNIT_POSTFIX,
-          quota,
-          UNIT_POSTFIX,
-          excessRate,
-          UNIT_POSTFIX,
-          sleepTimeMs,
-          timeWindowMS);
+      String msg = "Throttler: " + throttlerName;
+      if (!REDUNDANT_EXCEPTION_FILTER.isRedundantException(msg)) {
+        LOGGER.warn(
+            "Throttler: {} quota exceeded:\ncurrentRate \t={}{}\nmaxRatePerSecond \t= {}{}\nexcessRate \t= {}{}\nsleeping for \t {} ms to compensate.\nrateConfig.timeWindowMs = {}",
+            throttlerName,
+            currentRate,
+            UNIT_POSTFIX,
+            quota,
+            UNIT_POSTFIX,
+            excessRate,
+            UNIT_POSTFIX,
+            sleepTimeMs,
+            timeWindowMS);
+      }
       if (sleepTimeMs > timeWindowMS) {
         LOGGER.warn(
-            "Throttler: {} sleep time ({} ms) exceeds window size ({} ms). This will likely result in not being able to honor the rate limit accurately.",
+            "Throttler: With current rate {}, quota {}, {} sleep time ({} ms) exceeds window size ({} ms). This will likely result in not being able to honor the rate limit accurately.",
+            currentRate,
+            quota,
             throttlerName,
             sleepTimeMs,
             timeWindowMS);
@@ -309,6 +317,10 @@ public class EventThrottler implements VeniceRateLimiter {
   @Override
   public long getQuota() {
     return quota;
+  }
+
+  public String getThrottlerName() {
+    return throttlerName;
   }
 
   @Override

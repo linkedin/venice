@@ -1,8 +1,13 @@
 package com.linkedin.venice.client.store;
 
 import static com.linkedin.venice.VeniceConstants.VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME;
-import static com.linkedin.venice.client.schema.RouterBackedSchemaReader.TYPE_KEY_SCHEMA;
+import static com.linkedin.venice.client.schema.RouterBackedSchemaReader.TYPE_ALL_VALUE_SCHEMA_IDS;
+import static com.linkedin.venice.client.schema.RouterBackedSchemaReader.TYPE_VALUE_SCHEMA;
+import static com.linkedin.venice.client.schema.RouterBasedStoreSchemaFetcher.TYPE_KEY_SCHEMA;
+import static com.linkedin.venice.client.stats.BasicClientStats.CLIENT_METRIC_ENTITIES;
 import static com.linkedin.venice.client.store.AbstractAvroStoreClient.TYPE_STORAGE;
+import static com.linkedin.venice.stats.ClientType.THIN_CLIENT;
+import static com.linkedin.venice.stats.VeniceMetricsRepository.getVeniceMetricsRepository;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 
@@ -13,6 +18,7 @@ import com.linkedin.venice.client.stats.ClientStats;
 import com.linkedin.venice.client.store.transport.TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.client.store.transport.TransportClientStreamingCallback;
+import com.linkedin.venice.client.utils.StoreClientTestUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compute.protocol.response.ComputeResponseRecordV1;
 import com.linkedin.venice.controllerapi.SchemaResponse;
@@ -26,9 +32,10 @@ import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
+import com.linkedin.venice.stats.ClientType;
+import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.TestUtils;
-import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -71,12 +78,21 @@ public class AbstractAvroStoreClientTest {
         boolean needSchemaReader,
         Executor deserializationExecutor,
         boolean overrideGetSchemaReader) {
-      super(
+      this(
           transportClient,
           needSchemaReader,
+          overrideGetSchemaReader,
           ClientConfig.defaultGenericClientConfig(storeName).setDeserializationExecutor(deserializationExecutor));
+    }
+
+    public SimpleStoreClient(
+        TransportClient transportClient,
+        boolean needSchemaReader,
+        boolean overrideGetSchemaReader,
+        ClientConfig clientConfig) {
+      super(transportClient, needSchemaReader, clientConfig);
       this.transportClient = transportClient;
-      this.storeName = storeName;
+      this.storeName = clientConfig.getStoreName();
       this.overrideGetSchemaReader = overrideGetSchemaReader;
     }
 
@@ -244,10 +260,11 @@ public class AbstractAvroStoreClientTest {
         storeName,
         true,
         AbstractAvroStoreClient.getDefaultDeserializationExecutor());
-    MetricsRepository metricsRepository = new MetricsRepository();
-    ClientStats stats = ClientStats.getClientStats(metricsRepository, storeName, RequestType.COMPUTE, null);
-    ClientStats streamingStats =
-        ClientStats.getClientStats(metricsRepository, storeName, RequestType.COMPUTE_STREAMING, null);
+    VeniceMetricsRepository metricsRepository = getVeniceMetricsRepository(THIN_CLIENT, CLIENT_METRIC_ENTITIES, true);
+    ClientStats stats =
+        ClientStats.getClientStats(metricsRepository, storeName, RequestType.COMPUTE, null, ClientType.THIN_CLIENT);
+    ClientStats streamingStats = ClientStats
+        .getClientStats(metricsRepository, storeName, RequestType.COMPUTE_STREAMING, null, ClientType.THIN_CLIENT);
     CompletableFuture<Map<String, ComputeGenericRecord>> computeFuture =
         storeClient.compute(Optional.of(stats), Optional.of(streamingStats), 0)
             .project("int_field")
@@ -313,10 +330,11 @@ public class AbstractAvroStoreClientTest {
         storeName,
         true,
         AbstractAvroStoreClient.getDefaultDeserializationExecutor());
-    MetricsRepository metricsRepository = new MetricsRepository();
-    ClientStats stats = ClientStats.getClientStats(metricsRepository, storeName, RequestType.COMPUTE, null);
-    ClientStats streamingStats =
-        ClientStats.getClientStats(metricsRepository, storeName, RequestType.COMPUTE_STREAMING, null);
+    VeniceMetricsRepository metricsRepository = getVeniceMetricsRepository(THIN_CLIENT, CLIENT_METRIC_ENTITIES, true);
+    ClientStats stats =
+        ClientStats.getClientStats(metricsRepository, storeName, RequestType.COMPUTE, null, ClientType.THIN_CLIENT);
+    ClientStats streamingStats = ClientStats
+        .getClientStats(metricsRepository, storeName, RequestType.COMPUTE_STREAMING, null, ClientType.THIN_CLIENT);
     CompletableFuture<Map<String, ComputeGenericRecord>> computeFuture =
         storeClient.compute(Optional.of(stats), Optional.of(streamingStats), 0)
             .project("int_field")
@@ -370,93 +388,6 @@ public class AbstractAvroStoreClientTest {
     CompletableFuture<Map<String, ComputeGenericRecord>> computeFuture =
         storeClient.compute().project("int_field").execute(keys);
     computeFuture.get();
-  }
-
-  @Test
-  public void testStoreInitAsyncRetry() {
-    TransportClient mockTransportClient = new TransportClient() {
-      private final ObjectMapper OBJECT_MAPPER = ObjectMapperFactory.getInstance();
-      int retryCnt = 0;
-      int totalFailedRetryCnt = 50;
-
-      @Override
-      public CompletableFuture<TransportClientResponse> get(String requestPath, Map<String, String> headers) {
-        CompletableFuture<TransportClientResponse> result = new CompletableFuture<>();
-
-        if (requestPath.contains(TYPE_KEY_SCHEMA)) {
-          if (++retryCnt <= totalFailedRetryCnt) {
-            // Fail
-            result.completeExceptionally(new VeniceException("Fake request failure for key schema request"));
-          } else {
-            SchemaResponse keySchemaResponse = new SchemaResponse();
-            keySchemaResponse.setSchemaStr("\"string\"");
-            keySchemaResponse.setId(1);
-            try {
-              result.complete(
-                  new TransportClientResponse(
-                      -1,
-                      CompressionStrategy.NO_OP,
-                      OBJECT_MAPPER.writeValueAsBytes(keySchemaResponse)));
-            } catch (Exception e) {
-              throw new RuntimeException(e);
-            }
-          }
-          return result;
-        } else if (requestPath.contains(TYPE_STORAGE)) {
-          // Not found
-          result.complete(null);
-        } else {
-          result.completeExceptionally(new VeniceException("Fake request failure for path: " + requestPath));
-        }
-        return result;
-      }
-
-      @Override
-      public CompletableFuture<TransportClientResponse> post(
-          String requestPath,
-          Map<String, String> headers,
-          byte[] requestBody) {
-        return null;
-      }
-
-      @Override
-      public void streamPost(
-          String requestPath,
-          Map<String, String> headers,
-          byte[] requestBody,
-          TransportClientStreamingCallback callback,
-          int keyCount) {
-
-      }
-
-      @Override
-      public void close() throws IOException {
-
-      }
-    };
-    SimpleStoreClient<String, GenericRecord> storeClient = new SimpleStoreClient<>(
-        mockTransportClient,
-        "test_store_init_retry",
-        true,
-        AbstractAvroStoreClient.getDefaultDeserializationExecutor(),
-        false);
-    storeClient.setAsyncStoreInitSleepIntervalMs(1);
-    storeClient.start();
-    String testKey = "test_key";
-
-    VeniceException thrownException = Assert.expectThrows(VeniceException.class, () -> storeClient.get(testKey));
-    Assert.assertTrue(thrownException.getMessage().contains("Failed to initializing Venice Client"));
-
-    // Retry for enough time, the store client should recover by the store init happening in the async thread
-    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-      try {
-        storeClient.get(testKey).get();
-      } catch (Exception e) {
-        Assert.fail("Failed to get key: " + testKey);
-      }
-    });
-
-    storeClient.close();
   }
 
   @Test
@@ -517,5 +448,120 @@ public class AbstractAvroStoreClientTest {
     Assert.assertEquals(result.size(), 2);
     Assert.assertEquals(result.get("key1"), result1);
     Assert.assertEquals(result.get("key2"), result2);
+  }
+
+  @Test
+  public void testStoreStart() {
+    String storeName = "test_store_start";
+    TransportClient mockTransportClient = new TransportClient() {
+      private final ObjectMapper OBJECT_MAPPER = ObjectMapperFactory.getInstance();
+      int retryCnt = 0;
+      int totalFailedRetryCnt = 50;
+
+      @Override
+      public CompletableFuture<TransportClientResponse> get(String requestPath, Map<String, String> headers) {
+        CompletableFuture<TransportClientResponse> result = new CompletableFuture<>();
+
+        if (requestPath.contains(TYPE_KEY_SCHEMA)) {
+          if (++retryCnt <= totalFailedRetryCnt) {
+            // Fail
+            result.completeExceptionally(
+                new VeniceException("Fake request failure for key schema request for try: " + retryCnt));
+          } else {
+            SchemaResponse keySchemaResponse = new SchemaResponse();
+            keySchemaResponse.setSchemaStr("\"string\"");
+            keySchemaResponse.setId(1);
+            try {
+              result.complete(
+                  new TransportClientResponse(
+                      -1,
+                      CompressionStrategy.NO_OP,
+                      OBJECT_MAPPER.writeValueAsBytes(keySchemaResponse)));
+            } catch (Exception e) {
+              throw new RuntimeException(e);
+            }
+          }
+          return result;
+        } else if (requestPath.contains(TYPE_ALL_VALUE_SCHEMA_IDS)) {
+          Map<Integer, String> valueSchemaEntries = new HashMap<>();
+          valueSchemaEntries.put(1, VALUE_SCHEMA.toString());
+          try {
+            result.complete(
+                new TransportClientResponse(
+                    -1,
+                    CompressionStrategy.NO_OP,
+                    StoreClientTestUtils.constructMultiSchemaIdResponseInBytes(storeName, valueSchemaEntries)));
+          } catch (IOException e) {
+            throw new RuntimeException(e);
+          }
+        } else if (requestPath.contains(TYPE_VALUE_SCHEMA)) {
+          try {
+            result.complete(
+                new TransportClientResponse(
+                    -1,
+                    CompressionStrategy.NO_OP,
+                    StoreClientTestUtils.constructSchemaResponseInBytes(storeName, 1, VALUE_SCHEMA.toString())));
+          } catch (IOException e) {
+            throw new RuntimeException(e);
+          }
+        } else if (requestPath.contains(TYPE_STORAGE)) {
+          // Not found
+          result.complete(null);
+        } else {
+          result.completeExceptionally(new VeniceException("Fake request failure for path: " + requestPath));
+        }
+        return result;
+      }
+
+      @Override
+      public CompletableFuture<TransportClientResponse> post(
+          String requestPath,
+          Map<String, String> headers,
+          byte[] requestBody) {
+        return null;
+      }
+
+      @Override
+      public void streamPost(
+          String requestPath,
+          Map<String, String> headers,
+          byte[] requestBody,
+          TransportClientStreamingCallback callback,
+          int keyCount) {
+
+      }
+
+      @Override
+      public void close() throws IOException {
+
+      }
+    };
+    SimpleStoreClient<String, GenericRecord> storeClient = new SimpleStoreClient<>(
+        mockTransportClient,
+        storeName,
+        true,
+        AbstractAvroStoreClient.getDefaultDeserializationExecutor(),
+        false);
+    storeClient.start();
+
+    VeniceClientException thrownExceptionDuringStart =
+        Assert.expectThrows(VeniceClientException.class, () -> storeClient.startWithExceptionThrownWhenFail());
+    Assert.assertTrue(thrownExceptionDuringStart.getMessage().contains("Failed to initialize Venice client for store"));
+
+    String testKey = "test_key";
+
+    VeniceException thrownException = Assert.expectThrows(VeniceException.class, () -> storeClient.get(testKey));
+    Assert.assertTrue(thrownException.getMessage().contains("Failed to initialize Venice client for store"));
+
+    // Retry for enough time, the store client should recover by the store init happening in the async thread
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+      try {
+        storeClient.get(testKey).get();
+      } catch (Exception e) {
+        Assert.fail("Failed to get key: " + testKey);
+      }
+    });
+
+    storeClient.close();
   }
 }

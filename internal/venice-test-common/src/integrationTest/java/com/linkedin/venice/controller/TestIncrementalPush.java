@@ -1,6 +1,5 @@
 package com.linkedin.venice.controller;
 
-import static com.linkedin.venice.utils.IntegrationTestPushUtils.runVPJ;
 import static com.linkedin.venice.utils.TestUtils.assertCommand;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 import static java.util.Objects.requireNonNull;
@@ -23,6 +22,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.OfflinePushStatus;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
+import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Time;
@@ -87,9 +87,10 @@ public class TestIncrementalPush {
     Properties propsBatch = IntegrationTestPushUtils.defaultVPJProps(cluster, inputDirPathBatch, storeName);
     TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDirBatch);
     ControllerClient controllerClient = new ControllerClient(cluster.getClusterName(), cluster.getAllControllersURLs());
-    runVPJ(propsBatch, 1, controllerClient);
+    IntegrationTestPushUtils.runVPJ(propsBatch, 1, controllerClient);
     String incPushTopic = "TEST_INC_PUSH";
 
+    storeInfo.set(controllerClient.getStore(storeName).getStore());
     VeniceWriter<String, String, byte[]> veniceWriterRt =
         cluster.getVeniceWriter(Utils.getRealTimeTopicName(storeInfo.get()));
     veniceWriterRt.broadcastStartOfIncrementalPush(incPushTopic, new HashMap<>());
@@ -104,13 +105,18 @@ public class TestIncrementalPush {
                 Version.composeKafkaTopic(storeName, 1),
                 Optional.of(incPushTopic),
                 null,
-                null)
+                null,
+                false)
             .getExecutionStatus()
             .equals(ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED));
 
     ZkClient zkClient = ZkClientFactory.newZkClient(cluster.getZk().getAddress());
-    VeniceOfflinePushMonitorAccessor accessor =
-        new VeniceOfflinePushMonitorAccessor(cluster.getClusterName(), zkClient, new HelixAdapterSerializer(), 1, 0);
+    VeniceOfflinePushMonitorAccessor accessor = new VeniceOfflinePushMonitorAccessor(
+        cluster.getClusterName(),
+        zkClient,
+        new HelixAdapterSerializer(),
+        LogContext.EMPTY,
+        1);
 
     // Even after consuming SOIP, we should see replica current status not flipped to non-terminal status
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
@@ -159,7 +165,7 @@ public class TestIncrementalPush {
         TimeUnit.SECONDS,
         () -> cluster.getLeaderVeniceController()
             .getVeniceAdmin()
-            .getOffLinePushStatus(cluster.getClusterName(), versionTopic1, Optional.of(incPushV1), null, null)
+            .getOffLinePushStatus(cluster.getClusterName(), versionTopic1, Optional.of(incPushV1), null, null, false)
             .getExecutionStatus()
             .equals(ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED));
 
@@ -187,7 +193,7 @@ public class TestIncrementalPush {
         TimeUnit.SECONDS,
         () -> cluster.getLeaderVeniceController()
             .getVeniceAdmin()
-            .getOffLinePushStatus(cluster.getClusterName(), versionTopic2, Optional.of(incPushV1), null, null)
+            .getOffLinePushStatus(cluster.getClusterName(), versionTopic2, Optional.of(incPushV1), null, null, false)
             .getExecutionStatus()
             .equals(ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED));
 
@@ -199,7 +205,7 @@ public class TestIncrementalPush {
         TimeUnit.SECONDS,
         () -> cluster.getLeaderVeniceController()
             .getVeniceAdmin()
-            .getOffLinePushStatus(cluster.getClusterName(), versionTopic2, Optional.of(incPush2), null, null)
+            .getOffLinePushStatus(cluster.getClusterName(), versionTopic2, Optional.of(incPush2), null, null, false)
             .getExecutionStatus()
             .equals(ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED));
   }

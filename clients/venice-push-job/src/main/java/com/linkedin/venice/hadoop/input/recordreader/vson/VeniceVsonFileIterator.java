@@ -16,7 +16,7 @@ import org.apache.logging.log4j.Logger;
 public class VeniceVsonFileIterator implements VeniceRecordIterator {
   private static final Logger LOGGER = LogManager.getLogger(VeniceVsonRecordReader.class);
 
-  private SequenceFile.Reader fileReader;
+  private final SequenceFile.Reader fileReader;
   private final VeniceVsonRecordReader recordReader;
 
   private final BytesWritable currentKey = new BytesWritable();
@@ -27,7 +27,7 @@ public class VeniceVsonFileIterator implements VeniceRecordIterator {
       try {
         fileReader = new SequenceFile.Reader(fs, hdfsPath, new Configuration());
       } catch (IOException e) {
-        LOGGER.info("Path: {} is not a sequence file.", hdfsPath.getName());
+        throw new VeniceException(e);
       }
     } else {
       throw new VeniceException("Invalid file system or path");
@@ -44,6 +44,11 @@ public class VeniceVsonFileIterator implements VeniceRecordIterator {
   @Override
   public byte[] getCurrentValue() {
     return recordReader.getValueBytes(currentKey, currentValue);
+  }
+
+  @Override
+  public byte[] getCurrentRmd() {
+    return recordReader.getRmdBytes(currentKey, currentValue);
   }
 
   @Override

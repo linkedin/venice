@@ -17,6 +17,7 @@ import com.linkedin.venice.kafka.protocol.state.ProducerPartitionState;
 import com.linkedin.venice.kafka.validation.checksum.CheckSum;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.utils.CollectionUtils;
 import it.unimi.dsi.fastutil.objects.Object2ObjectArrayMap;
 import java.nio.ByteBuffer;
@@ -60,21 +61,21 @@ public class Segment {
   private final Map<CharSequence, Long> aggregates;
 
   // Mutable state
-  private int sequenceNumber;
-  private boolean registered;
-  private boolean started;
-  private boolean ended;
-  private boolean finalSegment;
+  private volatile int sequenceNumber;
+  private volatile boolean registered;
+  private volatile boolean started;
+  private volatile boolean ended;
+  private volatile boolean finalSegment;
   /**
    * Set this field to true when building a new segment for an incoming message, and update this flag to false immediately
    * after checking incoming message's sequence number.
    */
-  private boolean newSegment;
-  private long lastSuccessfulOffset;
+  private volatile boolean newSegment;
+  private volatile PubSubPosition lastSuccessfulPosition;
   // record the last timestamp that a validation for this segment happened and passed.
-  private long lastRecordTimestamp = -1;
+  private volatile long lastRecordTimestamp = -1;
   // record the last producer message time stamp passed within the ConsumerRecord
-  private long lastRecordProducerTimestamp = -1;
+  private volatile long lastRecordProducerTimestamp = -1;
 
   public Segment(
       int partition,
@@ -202,12 +203,12 @@ public class Segment {
     return this.registered;
   }
 
-  public long getLastSuccessfulOffset() {
-    return lastSuccessfulOffset;
+  public PubSubPosition getLastSuccessfulPosition() {
+    return lastSuccessfulPosition;
   }
 
-  public void setLastSuccessfulOffset(long lastSuccessfulOffset) {
-    this.lastSuccessfulOffset = lastSuccessfulOffset;
+  public void setLastSuccessfulPosition(PubSubPosition lastSuccessfulPosition) {
+    this.lastSuccessfulPosition = lastSuccessfulPosition;
   }
 
   public long getLastRecordTimestamp() {
@@ -291,6 +292,8 @@ public class Segment {
                     + controlMessage.getControlMessageType());
         }
       case PUT:
+      case GLOBAL_RT_DIV: // GLOBAL_RT_DIV is the same as PUT, but contains a DIV object rather than user data
+        // TODO: revisit to see if the GLOBAL_RT_DIV message is needed as part of the checksum
         updateCheckSum(messageEnvelope.getMessageType());
         updateCheckSum(key.getKey());
         Put putPayload = (Put) messageEnvelope.getPayloadUnion();
@@ -406,6 +409,20 @@ public class Segment {
       deduped.put(DEDUPED_DEBUG_INFO.get(entry.getKey(), k -> k), DEDUPED_DEBUG_INFO.get(entry.getValue(), k -> k));
     }
     return deduped;
+  }
+
+  public ProducerPartitionState toProducerPartitionState() {
+    ProducerPartitionState pps = new ProducerPartitionState();
+    pps.segmentNumber = segmentNumber;
+    pps.segmentStatus = getStatus().getValue();
+    pps.messageSequenceNumber = sequenceNumber;
+    pps.checksumState = ByteBuffer.wrap(checkSum.getEncodedState());
+    pps.checksumType = checkSum.getType().getValue();
+    pps.aggregates = aggregates;
+    pps.debugInfo = debugInfo;
+    pps.messageTimestamp = lastRecordProducerTimestamp;
+    pps.isRegistered = registered;
+    return pps;
   }
 
   // Only for testing.

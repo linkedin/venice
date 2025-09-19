@@ -9,7 +9,6 @@ import static com.linkedin.venice.pubsub.PubSubConstants.DEFAULT_KAFKA_REPLICATI
 
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
@@ -126,13 +125,9 @@ public class RealTimeTopicSwitcher {
   /**
    * General verification and topic creation for hybrid stores.
    */
-  void ensurePreconditions(
-      PubSubTopic srcTopicName,
-      PubSubTopic topicWhereToSendTheTopicSwitch,
-      Store store,
-      Optional<HybridStoreConfig> hybridStoreConfig) {
+  void ensurePreconditions(PubSubTopic srcTopicName, PubSubTopic topicWhereToSendTheTopicSwitch, Store store) {
     // Carrying on assuming that there needs to be only one and only TopicManager
-    if (!hybridStoreConfig.isPresent()) {
+    if (!store.isHybrid()) {
       throw new VeniceException("Topic switching is only supported for Hybrid Stores.");
     }
     Version version =
@@ -143,19 +138,14 @@ public class RealTimeTopicSwitcher {
      * it if necessary.
      * TODO: Remove topic creation logic from here once new code is deployed to all regions.
      */
-    createRealTimeTopicIfNeeded(store, version, srcTopicName, hybridStoreConfig.get());
+    createRealTimeTopicIfNeeded(store, version, srcTopicName);
     if (version != null && version.isSeparateRealTimeTopicEnabled()) {
-      PubSubTopic separateRealTimeTopic =
-          pubSubTopicRepository.getTopic(Version.composeSeparateRealTimeTopic(store.getName()));
-      createRealTimeTopicIfNeeded(store, version, separateRealTimeTopic, hybridStoreConfig.get());
+      PubSubTopic separateRealTimeTopic = pubSubTopicRepository.getTopic(Utils.getSeparateRealTimeTopicName(version));
+      createRealTimeTopicIfNeeded(store, version, separateRealTimeTopic);
     }
   }
 
-  void createRealTimeTopicIfNeeded(
-      Store store,
-      Version version,
-      PubSubTopic realTimeTopic,
-      HybridStoreConfig hybridStoreConfig) {
+  void createRealTimeTopicIfNeeded(Store store, Version version, PubSubTopic realTimeTopic) {
     if (!getTopicManager().containsTopicAndAllPartitionsAreOnline(realTimeTopic)) {
       int partitionCount;
       if (version != null) {
@@ -169,7 +159,7 @@ public class RealTimeTopicSwitcher {
           realTimeTopic,
           partitionCount,
           replicationFactor,
-          StoreUtils.getExpectedRetentionTimeInMs(store, hybridStoreConfig),
+          StoreUtils.getExpectedRetentionTimeInMs(store, store.getHybridStoreConfig()),
           false,
           minISR,
           false);
@@ -178,7 +168,7 @@ public class RealTimeTopicSwitcher {
        * If real-time topic already exists, check whether its retention time is correct.
        */
       long topicRetentionTimeInMs = getTopicManager().getTopicRetention(realTimeTopic);
-      long expectedRetentionTimeMs = StoreUtils.getExpectedRetentionTimeInMs(store, hybridStoreConfig);
+      long expectedRetentionTimeMs = StoreUtils.getExpectedRetentionTimeInMs(store, store.getHybridStoreConfig());
       if (topicRetentionTimeInMs != expectedRetentionTimeMs) {
         getTopicManager().updateTopicRetention(realTimeTopic, expectedRetentionTimeMs);
       }
@@ -213,7 +203,6 @@ public class RealTimeTopicSwitcher {
   }
 
   public void transmitVersionSwapMessage(Store store, int previousVersion, int nextVersion) {
-
     if (previousVersion == Store.NON_EXISTING_VERSION || nextVersion == Store.NON_EXISTING_VERSION) {
       // NoOp
       return;
@@ -222,42 +211,77 @@ public class RealTimeTopicSwitcher {
     Version previousStoreVersion = store.getVersionOrThrow(previousVersion);
     Version nextStoreVersion = store.getVersionOrThrow(nextVersion);
 
-    // Only transmit version swap message to RT's if there is a view config (temporary check)
-    if (!hasViewConfigs(nextStoreVersion, previousStoreVersion)) {
-      // NoOp for now
-      return;
+    // If there exists an RT, then broadcast the Version Swap message to it
+    String storeName = store.getName();
+    String rtForPreviousVersion = Utils.getRealTimeTopicName(previousStoreVersion);
+    String rtForNextVersion = Utils.getRealTimeTopicName(nextStoreVersion);
+    boolean rtExistsForPreviousVersion = previousStoreVersion.isHybrid()
+        && topicManager.containsTopic(pubSubTopicRepository.getTopic(rtForPreviousVersion));
+    boolean rtExistsForNextVersion =
+        nextStoreVersion.isHybrid() && topicManager.containsTopic(pubSubTopicRepository.getTopic(rtForNextVersion));
+    LOGGER.info(
+        "Previous store version - {}, nextStoreVersion - {}, RT for previous version - {}, RT for next version - {}",
+        previousStoreVersion,
+        nextStoreVersion,
+        rtForPreviousVersion,
+        rtForNextVersion);
+
+    if (rtExistsForPreviousVersion || rtExistsForNextVersion) {
+      if (rtExistsForPreviousVersion) {
+        LOGGER.info(
+            "RT topic exists for store: {}, versionNum: {}. Broadcasting Version Swap message directly to RT {} to switch to the next store version {}.",
+            storeName,
+            previousVersion,
+            rtForPreviousVersion,
+            nextVersion);
+        broadcastVersionSwap(previousStoreVersion, nextStoreVersion, rtForPreviousVersion);
+      }
+      if (rtExistsForNextVersion && !rtForNextVersion.equals(rtForPreviousVersion)) {
+        LOGGER.info(
+            "RT topic exists for store: {}, versionNum: {}. Broadcasting Version Swap message directly to RT {} to switch to the next store version {}.",
+            storeName,
+            nextVersion,
+            rtForNextVersion,
+            nextVersion);
+        // todo - when hybrid store repartition project completes, there can exist two different real time topics,
+        // it is not clear yet, how to make CDC client, that depends on this `Version Swap` message, work in that case
+        broadcastVersionSwap(previousStoreVersion, nextStoreVersion, rtForNextVersion);
+      }
+    } else {
+      LOGGER.info("RT doesn't exist for store: {}. Skipping broadcast for Version Swap message.");
+    }
+  }
+
+  private void broadcastVersionSwap(Version previousStoreVersion, Version nextStoreVersion, String topicName) {
+    String storeName = previousStoreVersion.getStoreName();
+    int partitionCount;
+
+    if (topicName.equals(previousStoreVersion.kafkaTopicName())) {
+      partitionCount = previousStoreVersion.getPartitionCount();
+    } else {
+      partitionCount = nextStoreVersion.getPartitionCount();
     }
 
-    // Only transmit version swap for stores which have an RT.
-    // if a previous version didn't have an RT, then there will be no
-    // version consuming the topic switch message. We'll transmit the version switch
-    // message so long as there exists some RT
-    if (!topicManager.containsTopic(pubSubTopicRepository.getTopic(Version.composeRealTimeTopic(store.getName())))) {
-      // NoOp
-      return;
-    }
-    // Write the thing!
+    LOGGER.info(
+        "Broadcasting Version Swap message to topic: {} for store: {} to {} partitions",
+        topicName,
+        storeName,
+        partitionCount);
+
     try (VeniceWriter veniceWriter = getVeniceWriterFactory().createVeniceWriter(
-        new VeniceWriterOptions.Builder(Utils.getRealTimeTopicName(store)).setTime(getTimer())
-            .setPartitionCount(previousStoreVersion.getPartitionCount())
-            .build())) {
+        new VeniceWriterOptions.Builder(topicName).setTime(getTimer()).setPartitionCount(partitionCount).build())) {
       veniceWriter.broadcastVersionSwap(
           previousStoreVersion.kafkaTopicName(),
           nextStoreVersion.kafkaTopicName(),
           Collections.emptyMap());
     }
-    LOGGER.info(
-        "Successfully sent VersionTopicSwitch for store {} from version {} to version {}",
-        store.getName(),
-        previousVersion,
-        nextVersion);
-  }
 
-  // TODO: Delete this function once we have confidence in version swap to not stipulate views as a precondition for
-  // transmitting version swap messages on RT.
-  public boolean hasViewConfigs(Version nextStoreVersion, Version previousStoreVersion) {
-    return ((previousStoreVersion.getViewConfigs() != null) && !previousStoreVersion.getViewConfigs().isEmpty())
-        || ((nextStoreVersion.getViewConfigs() != null) && !nextStoreVersion.getViewConfigs().isEmpty());
+    LOGGER.info(
+        "Successfully sent Version Swap message for store: {} from version: {} to version: {} to topic: {}",
+        storeName,
+        previousStoreVersion.getNumber(),
+        nextStoreVersion.getNumber(),
+        topicName);
   }
 
   public void switchToRealTimeTopic(
@@ -274,14 +298,13 @@ public class RealTimeTopicSwitcher {
 
     Version version =
         store.getVersionOrThrow(Version.parseVersionFromKafkaTopicName(topicWhereToSendTheTopicSwitch.getName()));
-
+    ensurePreconditions(realTimeTopic, topicWhereToSendTheTopicSwitch, store);
     Optional<HybridStoreConfig> hybridStoreConfig;
     if (version.isUseVersionLevelHybridConfig()) {
       hybridStoreConfig = Optional.ofNullable(version.getHybridStoreConfig());
     } else {
       hybridStoreConfig = Optional.ofNullable(store.getHybridStoreConfig());
     }
-    ensurePreconditions(realTimeTopic, topicWhereToSendTheTopicSwitch, store, hybridStoreConfig);
     long rewindStartTimestamp = getRewindStartTime(version, hybridStoreConfig, version.getCreatedTime());
     PubSubTopic finalTopicWhereToSendTheTopicSwitch = version.getPushType().isStreamReprocessing()
         ? pubSubTopicRepository.getTopic(Version.composeStreamReprocessingTopic(store.getName(), version.getNumber()))
@@ -290,8 +313,6 @@ public class RealTimeTopicSwitcher {
 
     if (version.isActiveActiveReplicationEnabled()) {
       remoteKafkaUrls.addAll(activeActiveRealTimeSourceKafkaURLs);
-    } else if (version.isNativeReplicationEnabled() && (isAggregate(store) || (isIncrementalPush(version)))) {
-      remoteKafkaUrls.add(aggregateRealTimeSourceKafkaUrl);
     }
     LOGGER.info(
         "Will send {} into '{}' instructing to switch to '{}' with a rewindStartTimestamp of {}.",
@@ -300,14 +321,6 @@ public class RealTimeTopicSwitcher {
         realTimeTopic,
         rewindStartTimestamp);
     sendTopicSwitch(realTimeTopic, finalTopicWhereToSendTheTopicSwitch, rewindStartTimestamp, remoteKafkaUrls);
-  }
-
-  private static boolean isAggregate(Store store) {
-    return store.getHybridStoreConfig().getDataReplicationPolicy() == DataReplicationPolicy.AGGREGATE;
-  }
-
-  private static boolean isIncrementalPush(Version version) {
-    return version.isIncrementalPushEnabled();
   }
 
   /**

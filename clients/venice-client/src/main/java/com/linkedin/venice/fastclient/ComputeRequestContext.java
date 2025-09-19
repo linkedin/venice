@@ -18,4 +18,12 @@ public class ComputeRequestContext<K, V> extends MultiKeyRequestContext<K, V> {
   public RequestType getRequestType() {
     return RequestType.COMPUTE_STREAMING;
   }
+
+  public ComputeRequestContext<K, V> createRetryRequestContext(int numKeysInRequest) {
+    ComputeRequestContext<K, V> retryContext =
+        new ComputeRequestContext(numKeysInRequest, this.isPartialSuccessAllowed);
+    copyStateToRetryRequestContext(retryContext);
+
+    return retryContext;
+  }
 }

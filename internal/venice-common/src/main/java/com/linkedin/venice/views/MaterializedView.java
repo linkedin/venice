@@ -4,6 +4,8 @@ import static com.linkedin.venice.views.ViewUtils.PARTITION_COUNT;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.MaterializedViewParameters;
+import com.linkedin.venice.meta.PartitionerConfig;
+import com.linkedin.venice.meta.PartitionerConfigImpl;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.ViewConfig;
@@ -18,27 +20,32 @@ import java.util.Properties;
 
 
 public class MaterializedView extends VeniceView {
+  private static final int DEFAULT_AMP_FACTOR = 1;
   public static final String MATERIALIZED_VIEW_TOPIC_SUFFIX = "_mv";
   public static final String MATERIALIZED_VIEW_WRITER_CLASS_NAME =
       "com.linkedin.davinci.store.view.MaterializedViewWriter";
   private static final String MISSING_PARAMETER_MESSAGE = "%s is required for materialized view!";
+  private final String viewName;
   private final int viewPartitionCount;
-
+  private final PartitionerConfig partitionerConfig;
   private Lazy<VenicePartitioner> viewPartitioner;
 
   public MaterializedView(Properties props, String storeName, Map<String, String> viewParameters) {
     super(props, storeName, viewParameters);
+    this.viewName = viewParameters.get(MaterializedViewParameters.MATERIALIZED_VIEW_NAME.name());
     // Override topic partition count config
-    viewPartitionCount =
+    this.viewPartitionCount =
         Integer.parseInt(viewParameters.get(MaterializedViewParameters.MATERIALIZED_VIEW_PARTITION_COUNT.name()));
     this.props.put(PARTITION_COUNT, viewPartitionCount);
-    viewPartitioner = Lazy.of(() -> {
-      String viewPartitionerClass =
-          this.viewParameters.get(MaterializedViewParameters.MATERIALIZED_VIEW_PARTITIONER.name());
-      String viewPartitionerParamsString =
-          this.viewParameters.get(MaterializedViewParameters.MATERIALIZED_VIEW_PARTITIONER_PARAMS.name());
-      return PartitionUtils.getVenicePartitioner(viewPartitionerClass, viewPartitionerParamsString);
-    });
+    String viewPartitionerClass =
+        this.viewParameters.get(MaterializedViewParameters.MATERIALIZED_VIEW_PARTITIONER.name());
+    String viewPartitionerParamsString =
+        this.viewParameters.get(MaterializedViewParameters.MATERIALIZED_VIEW_PARTITIONER_PARAMS.name());
+    this.viewPartitioner =
+        Lazy.of(() -> PartitionUtils.getVenicePartitioner(viewPartitionerClass, viewPartitionerParamsString));
+    Map<String, String> viewPartitionerParamsMap = PartitionUtils.getPartitionerParamsMap(viewPartitionerParamsString);
+    this.partitionerConfig =
+        new PartitionerConfigImpl(viewPartitionerClass, viewPartitionerParamsMap, DEFAULT_AMP_FACTOR);
   }
 
   @Override
@@ -54,11 +61,15 @@ public class MaterializedView extends VeniceView {
   @Override
   public Map<String, VeniceProperties> getTopicNamesAndConfigsForVersion(int version) {
     VeniceProperties properties = new VeniceProperties(props);
-    String viewName = viewParameters.get(MaterializedViewParameters.MATERIALIZED_VIEW_NAME.name());
     return Collections.singletonMap(
-        Version.composeKafkaTopic(storeName, version) + VIEW_TOPIC_SEPARATOR + viewName
-            + MATERIALIZED_VIEW_TOPIC_SUFFIX,
+        Version.composeKafkaTopic(storeName, version) + VIEW_NAME_SEPARATOR + viewName + MATERIALIZED_VIEW_TOPIC_SUFFIX,
         properties);
+  }
+
+  @Override
+  public String composeTopicName(int version) {
+    return Version.composeKafkaTopic(storeName, version) + VIEW_NAME_SEPARATOR + viewName
+        + MATERIALIZED_VIEW_TOPIC_SUFFIX;
   }
 
   /**
@@ -128,5 +139,13 @@ public class MaterializedView extends VeniceView {
 
   public VenicePartitioner getViewPartitioner() {
     return viewPartitioner.get();
+  }
+
+  public String getViewName() {
+    return viewName;
+  }
+
+  public PartitionerConfig getPartitionerConfig() {
+    return partitionerConfig;
   }
 }

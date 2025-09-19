@@ -133,11 +133,44 @@ public class AvroToSQL {
   }
 
   @Nonnull
-  public static InsertProcessor upsertProcessor(
+  public static PreparedStatementProcessor upsertProcessor(
       @Nonnull Schema keySchema,
       @Nonnull Schema valueSchema,
       @Nonnull Set<String> columnsToProject) {
-    return new InsertProcessor(keySchema, valueSchema, columnsToProject);
+    return new KeyValuePreparedStatementProcessor(keySchema, valueSchema, columnsToProject);
+  }
+
+  @Nonnull
+  public static String deleteStatement(@Nonnull String tableName, @Nonnull Schema keySchema) {
+    StringBuffer stringBuffer = new StringBuffer();
+    stringBuffer.append("DELETE FROM " + SQLUtils.cleanTableName(tableName) + " WHERE ");
+    boolean firstColumn = true;
+
+    for (Schema.Field field: keySchema.getFields()) {
+      JDBCType correspondingType = getCorrespondingType(field);
+      if (correspondingType == null) {
+        // Skipped field.
+        throw new IllegalArgumentException(
+            "All types from the key schema must be supported, but field '" + field.name() + "' is of type: "
+                + field.schema().getType());
+      }
+
+      if (firstColumn) {
+        firstColumn = false;
+      } else {
+        stringBuffer.append(" AND ");
+      }
+      stringBuffer.append(SQLUtils.cleanColumnName(field.name()));
+      stringBuffer.append(" = ?");
+    }
+    stringBuffer.append(";");
+
+    return stringBuffer.toString();
+  }
+
+  @Nonnull
+  public static PreparedStatementProcessor deleteProcessor(@Nonnull Schema keySchema) {
+    return new KeyOnlyPreparedStatementProcessor(keySchema);
   }
 
   @Nullable

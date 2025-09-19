@@ -36,6 +36,7 @@ import java.util.TreeSet;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import org.apache.avro.AvroRuntimeException;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.logging.log4j.LogManager;
@@ -264,6 +265,20 @@ public class AvroGenericStoreClientImplTest {
 
   @Test
   public void getByStoreKeyTestWithNonExistingKey() throws Throwable {
+    String schema1Str = "\"string\"";
+
+    Map<Integer, String> valueSchemaEntries = new HashMap<>();
+    valueSchemaEntries.put(1, schema1Str);
+    // Push value schema
+    FullHttpResponse valueSchemaResponse = StoreClientTestUtils.constructHttpSchemaResponse(storeName, 1, schema1Str);
+    String valueSchemaPath = "/" + RouterBackedSchemaReader.TYPE_VALUE_SCHEMA + "/" + storeName + "/1";
+    routerServer.addResponseForUri(valueSchemaPath, valueSchemaResponse);
+
+    FullHttpResponse multiValueSchemaIDResponse =
+        StoreClientTestUtils.constructHttpMultiSchemaIdResponse(storeName, valueSchemaEntries);
+    String multiValueSchemaIDPath = "/" + RouterBackedSchemaReader.TYPE_ALL_VALUE_SCHEMA_IDS + "/" + storeName;
+    routerServer.addResponseForUri(multiValueSchemaIDPath, multiValueSchemaIDResponse);
+
     String key = "test_key";
     for (Map.Entry<String, AvroGenericStoreClient<String, Object>> entry: storeClients.entrySet()) {
       LOGGER.info("Execute test for transport client: {}", entry.getKey());
@@ -322,11 +337,26 @@ public class AvroGenericStoreClientImplTest {
     String keyStr = "test_key";
     String valueStr = "test_value";
 
+    String schema1Str = "\"string\"";
+
+    Map<Integer, String> valueSchemaEntries = new HashMap<>();
+    valueSchemaEntries.put(1, schema1Str);
+    // Push value schema
+    FullHttpResponse valueSchemaResponse = StoreClientTestUtils.constructHttpSchemaResponse(storeName, 1, schema1Str);
+    String valueSchemaPath = "/" + RouterBackedSchemaReader.TYPE_VALUE_SCHEMA + "/" + storeName + "/1";
+    routerServer.addResponseForUri(valueSchemaPath, valueSchemaResponse);
+
+    FullHttpResponse multiValueSchemaIDResponse =
+        StoreClientTestUtils.constructHttpMultiSchemaIdResponse(storeName, valueSchemaEntries);
+    String multiValueSchemaIDPath = "/" + RouterBackedSchemaReader.TYPE_ALL_VALUE_SCHEMA_IDS + "/" + storeName;
+    routerServer.addResponseForUri(multiValueSchemaIDPath, multiValueSchemaIDResponse);
+
     int nonExistingSchemaId = 2;
     FullHttpResponse valueResponse =
         StoreClientTestUtils.constructStoreResponse(nonExistingSchemaId, valueStr.getBytes());
     String storeRequestPath = "/" + someStoreClient.getRequestPathByKey(keyStr);
     routerServer.addResponseForUri(storeRequestPath, valueResponse);
+
     for (int i = 0; i < TEST_ITERATIONS; i++) {
       LOGGER.info("Iteration: {}", i);
       for (Map.Entry<String, AvroGenericStoreClient<String, Object>> entry: storeClients.entrySet()) {
@@ -337,7 +367,7 @@ public class AvroGenericStoreClientImplTest {
           Throwable cause = e.getCause();
           boolean causeOfCorrectType = cause instanceof VeniceClientException;
           boolean correctMessage =
-              cause.getMessage().contains("Failed to get latest value schema for store: test_store");
+              cause.getMessage().contains("Failed to get value schema for store: test_store and id: 2");
           if (!causeOfCorrectType || !correctMessage) {
             LOGGER.error(
                 "Received ExecutionException, as expected, but it doesn't have the right characteristics. Logging stacktrace. Client: {}",
@@ -367,6 +397,20 @@ public class AvroGenericStoreClientImplTest {
     String keyStr = "test_key";
     int valueSchemaId = 1;
     String valueStr = "test_value";
+
+    String schema1Str = "\"string\"";
+
+    Map<Integer, String> valueSchemaEntries = new HashMap<>();
+    valueSchemaEntries.put(1, schema1Str);
+    // Push value schema
+    FullHttpResponse valueSchemaResponse = StoreClientTestUtils.constructHttpSchemaResponse(storeName, 1, schema1Str);
+    String valueSchemaPath = "/" + RouterBackedSchemaReader.TYPE_VALUE_SCHEMA + "/" + storeName + "/1";
+    routerServer.addResponseForUri(valueSchemaPath, valueSchemaResponse);
+
+    FullHttpResponse multiValueSchemaIDResponse =
+        StoreClientTestUtils.constructHttpMultiSchemaIdResponse(storeName, valueSchemaEntries);
+    String multiValueSchemaIDPath = "/" + RouterBackedSchemaReader.TYPE_ALL_VALUE_SCHEMA_IDS + "/" + storeName;
+    routerServer.addResponseForUri(multiValueSchemaIDPath, multiValueSchemaIDResponse);
 
     FullHttpResponse valueResponse = StoreClientTestUtils.constructStoreResponse(valueSchemaId, valueStr.getBytes());
     valueResponse.headers().remove(HttpConstants.VENICE_SCHEMA_ID);
@@ -446,13 +490,13 @@ public class AvroGenericStoreClientImplTest {
       LOGGER.info("Execute test for transport client: {}", entry.getKey());
 
       // Query value 1 while not having encountered any schema yet.
-      // The current logic will always pull all the value schemas if no schema is available yet.
+      // The current logic will always read with the writer schema which will not have field c.
       Object value = entry.getValue().get(key).get();
       Assert.assertTrue(value instanceof GenericData.Record);
       GenericData.Record recordValue = (GenericData.Record) value;
       Assert.assertEquals(recordValue.get("a"), 100L);
       Assert.assertEquals(recordValue.get("b").toString(), "test_b_value");
-      Assert.assertEquals(recordValue.get("c").toString(), "c_default_value");
+      Assert.assertThrows(AvroRuntimeException.class, () -> recordValue.get("c"));
 
       // Query value 2 while having already encountered schema v1 but not schema v2 yet.
       Object value2 = entry.getValue().get(key2).get();

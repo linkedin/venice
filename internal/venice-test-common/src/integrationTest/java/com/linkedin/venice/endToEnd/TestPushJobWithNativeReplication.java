@@ -1,9 +1,11 @@
 package com.linkedin.venice.endToEnd;
 
+import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
-import static com.linkedin.venice.CommonConfigKeys.SSL_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS;
 import static com.linkedin.venice.ConfigKeys.CLIENT_USE_SYSTEM_STORE_REPOSITORY;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_DEFERRED_VERSION_SWAP_SERVICE_ENABLED;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_DEFERRED_VERSION_SWAP_SLEEP_MS;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_MAX_NUMBER_OF_PARTITIONS;
 import static com.linkedin.venice.ConfigKeys.EMERGENCY_SOURCE_REGION;
@@ -11,20 +13,8 @@ import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
 import static com.linkedin.venice.ConfigKeys.PUSH_JOB_STATUS_STORE_CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE;
-import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
-import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.D2_SERVICE_NAME;
-import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.PARENT_D2_SERVICE_NAME;
+import static com.linkedin.venice.integration.utils.DaVinciTestContext.getCachingDaVinciClientFactory;
 import static com.linkedin.venice.meta.PersistenceType.ROCKS_DB;
-import static com.linkedin.venice.samza.VeniceSystemFactory.DEPLOYMENT_ID;
-import static com.linkedin.venice.samza.VeniceSystemFactory.DOT;
-import static com.linkedin.venice.samza.VeniceSystemFactory.SYSTEMS_PREFIX;
-import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_AGGREGATE;
-import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_CHILD_CONTROLLER_D2_SERVICE;
-import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_CHILD_D2_ZK_HOSTS;
-import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_PARENT_CONTROLLER_D2_SERVICE;
-import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_PARENT_D2_ZK_HOSTS;
-import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_PUSH_TYPE;
-import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_STORE;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRecord;
 import static com.linkedin.venice.utils.TestUtils.assertCommand;
@@ -34,12 +24,13 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_KEY_FIELD_P
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INPUT_PATH_PROP;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_STATUS_UPLOAD_ENABLE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SEND_CONTROL_MESSAGES_DIRECTLY;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUSH_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP;
+import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertTrue;
 
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.d2.balancer.D2ClientBuilder;
@@ -49,12 +40,14 @@ import com.linkedin.davinci.client.StorageClass;
 import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.venice.D2.D2ClientUtils;
+import com.linkedin.venice.annotation.PubSubAgnosticTest;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
@@ -68,20 +61,23 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
-import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import com.linkedin.venice.samza.VeniceSystemFactory;
+import com.linkedin.venice.pubsub.manager.TopicManager;
+import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.samza.VeniceSystemProducer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.server.VeniceServer;
@@ -120,7 +116,6 @@ import org.apache.avro.util.Utf8;
 import org.apache.commons.io.FileUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.apache.samza.config.MapConfig;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -128,6 +123,7 @@ import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
+@PubSubAgnosticTest
 public class TestPushJobWithNativeReplication {
   private static final Logger LOGGER = LogManager.getLogger(TestPushJobWithNativeReplication.class);
   private static final int TEST_TIMEOUT = 2 * Time.MS_PER_MINUTE;
@@ -164,7 +160,6 @@ public class TestPushJobWithNativeReplication {
      * Set server and replication factor to 2 to ensure at least 1 leader replica and 1 follower replica;
      */
     Properties serverProperties = new Properties();
-    serverProperties.put(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 1L);
     serverProperties.setProperty(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, "false");
     serverProperties.setProperty(SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED, "true");
     serverProperties.setProperty(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE, "300");
@@ -175,19 +170,23 @@ public class TestPushJobWithNativeReplication {
     controllerProps.put(BatchJobHeartbeatConfigs.HEARTBEAT_ENABLED_CONFIG.getConfigName(), true);
     controllerProps.put(PUSH_JOB_STATUS_STORE_CLUSTER_NAME, SYSTEM_STORE_CLUSTER);
     controllerProps.put(EMERGENCY_SOURCE_REGION, "dc-0");
+    controllerProps.put(CONTROLLER_DEFERRED_VERSION_SWAP_SERVICE_ENABLED, true);
+    controllerProps.put(CONTROLLER_DEFERRED_VERSION_SWAP_SLEEP_MS, 100);
 
-    multiRegionMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
-        NUMBER_OF_CHILD_DATACENTERS,
-        NUMBER_OF_CLUSTERS,
-        1,
-        1,
-        2,
-        1,
-        2,
-        Optional.of(controllerProps),
-        Optional.of(controllerProps),
-        Optional.of(serverProperties),
-        false);
+    VeniceMultiRegionClusterCreateOptions.Builder optionsBuilder =
+        new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(NUMBER_OF_CHILD_DATACENTERS)
+            .numberOfClusters(NUMBER_OF_CLUSTERS)
+            .numberOfParentControllers(1)
+            .numberOfChildControllers(1)
+            .numberOfServers(2)
+            .numberOfRouters(1)
+            .replicationFactor(2)
+            .forkServer(false)
+            .parentControllerProperties(controllerProps)
+            .childControllerProperties(controllerProps)
+            .serverProperties(serverProperties);
+    multiRegionMultiClusterWrapper =
+        ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(optionsBuilder.build());
     childDatacenters = multiRegionMultiClusterWrapper.getChildRegions();
     parentControllers = multiRegionMultiClusterWrapper.getParentControllers();
     VeniceClusterWrapper clusterWrapper =
@@ -217,7 +216,7 @@ public class TestPushJobWithNativeReplication {
             job.run();
 
             // Verify the kafka URL being returned to the push job is the same as dc-0 kafka url.
-            Assert.assertEquals(job.getKafkaUrl(), childDatacenters.get(0).getKafkaBrokerWrapper().getAddress());
+            Assert.assertEquals(job.getKafkaUrl(), childDatacenters.get(0).getPubSubBrokerWrapper().getAddress());
           }
 
           TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
@@ -259,8 +258,10 @@ public class TestPushJobWithNativeReplication {
               PushJobStatusRecordKey key = new PushJobStatusRecordKey();
               key.setStoreName(storeName);
               key.setVersionNumber(1);
-              Object value = client.get(key).get();
-              Assert.assertNotNull(value);
+              waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+                Object value = client.get(key).get();
+                Assert.assertNotNull(value);
+              });
             }
 
             /**
@@ -275,18 +276,29 @@ public class TestPushJobWithNativeReplication {
                 .getPartitionIds();
             Assert.assertFalse(partitionIds.isEmpty());
             int partitionId = partitionIds.iterator().next();
-            // Get the end offset of the selected partition from version topic
+            // Get the end position of the selected partition from version topic
             PubSubTopicPartition versionTopicPartition =
                 new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(versionTopic), partitionId);
-            long latestOffsetInVersionTopic = childDataCenter.getRandomController()
-                .getVeniceAdmin()
-                .getTopicManager()
-                .getLatestOffsetWithRetries(versionTopicPartition, 5);
+
+            TopicManager tmInChildRegion = childDataCenter.getRandomController().getVeniceAdmin().getTopicManager();
+            PubSubPosition latestPositionInVersionTopic =
+                tmInChildRegion.getLatestPositionWithRetries(versionTopicPartition, 5);
             // Get the offset metadata of the selected partition from storage node
             StorageMetadataService metadataService = serverInRemoteFabric.getStorageMetadataService();
-            OffsetRecord offsetRecord = metadataService.getLastOffset(versionTopic, partitionId);
+            OffsetRecord offsetRecord = metadataService.getLastOffset(
+                versionTopic,
+                partitionId,
+                serverInRemoteFabric.getKafkaStoreIngestionService().getPubSubContext());
 
-            Assert.assertTrue(offsetRecord.getLocalVersionTopicOffset() <= latestOffsetInVersionTopic);
+            assertTrue(
+                tmInChildRegion.diffPosition(
+                    versionTopicPartition,
+                    latestPositionInVersionTopic,
+                    offsetRecord.getCheckpointedLocalVtPosition()) >= 0,
+                "The offset recorded in storage node is larger than the end offset of version topic. "
+                    + "versionTopic: " + versionTopic + ", partitionId: " + partitionId
+                    + ", latestPositionInVersionTopic: " + latestPositionInVersionTopic + ", offsetRecord: "
+                    + offsetRecord);
           });
         });
   }
@@ -299,7 +311,7 @@ public class TestPushJobWithNativeReplication {
         updateStoreQueryParams -> updateStoreQueryParams.setPartitionCount(1),
         recordCount,
         (parentControllerClient, clusterName, storeName, props, inputDir) -> {
-          Thread pushJobThread = new Thread(() -> TestWriteUtils.runPushJob("Test push job", props));
+          Thread pushJobThread = new Thread(() -> IntegrationTestPushUtils.runVPJ(props));
           pushJobThread.start();
           try {
             /**
@@ -364,7 +376,7 @@ public class TestPushJobWithNativeReplication {
           try (VenicePushJob job = new VenicePushJob("Test push job", props)) {
             job.run();
             // Verify the kafka URL being returned to the push job is the same as dc-0 kafka url.
-            Assert.assertEquals(job.getKafkaUrl(), childDatacenters.get(0).getKafkaBrokerWrapper().getAddress());
+            Assert.assertEquals(job.getKafkaUrl(), childDatacenters.get(0).getPubSubBrokerWrapper().getAddress());
           }
 
           // Test Da-vinci client is able to consume from NR region which is consuming remotely
@@ -391,44 +403,23 @@ public class TestPushJobWithNativeReplication {
         "testNativeReplicationForHybrid",
         updateStoreQueryParams -> updateStoreQueryParams.setPartitionCount(1)
             .setHybridRewindSeconds(TEST_TIMEOUT)
-            .setHybridOffsetLagThreshold(2)
-            .setHybridDataReplicationPolicy(DataReplicationPolicy.AGGREGATE),
+            .setHybridOffsetLagThreshold(2),
         50,
         (parentControllerClient, clusterName, storeName, props, inputDir) -> {
           // Write batch data
-          TestWriteUtils.runPushJob("Test push job", props);
+          IntegrationTestPushUtils.runVPJ(props);
 
           // Verify version level hybrid config is set correctly. The current version should be 1.
-          VeniceMultiClusterWrapper childDataCenter = childDatacenters.get(NUMBER_OF_CHILD_DATACENTERS - 1);
+          VeniceMultiClusterWrapper childDataCenter = childDatacenters.get(0);
           Version version =
               childDataCenter.getRandomController().getVeniceAdmin().getStore(clusterName, storeName).getVersion(1);
           HybridStoreConfig hybridConfig = version.getHybridStoreConfig();
           Assert.assertNotNull(hybridConfig);
           Assert.assertEquals(hybridConfig.getRewindTimeInSeconds(), TEST_TIMEOUT);
           Assert.assertEquals(hybridConfig.getOffsetLagThresholdToGoOnline(), 2);
-          Assert.assertEquals(hybridConfig.getDataReplicationPolicy(), DataReplicationPolicy.AGGREGATE);
 
-          // Write Samza data (aggregated mode)
-          Map<String, String> samzaConfig = new HashMap<>();
-          String configPrefix = SYSTEMS_PREFIX + "venice" + DOT;
-          samzaConfig.put(configPrefix + VENICE_PUSH_TYPE, Version.PushType.STREAM.toString());
-          samzaConfig.put(configPrefix + VENICE_STORE, storeName);
-          samzaConfig.put(configPrefix + VENICE_AGGREGATE, "true");
-          samzaConfig.put(VENICE_CHILD_D2_ZK_HOSTS, childDatacenters.get(0).getZkServerWrapper().getAddress());
-          samzaConfig.put(VENICE_CHILD_CONTROLLER_D2_SERVICE, D2_SERVICE_NAME);
-          samzaConfig.put(VENICE_PARENT_D2_ZK_HOSTS, multiRegionMultiClusterWrapper.getZkServerWrapper().getAddress());
-          samzaConfig.put(VENICE_PARENT_CONTROLLER_D2_SERVICE, PARENT_D2_SERVICE_NAME);
-          samzaConfig.put(DEPLOYMENT_ID, Utils.getUniqueString("venice-push-id"));
-          samzaConfig.put(SSL_ENABLED, "false");
-          VeniceSystemFactory factory = new VeniceSystemFactory();
           try (VeniceSystemProducer veniceProducer =
-              factory.getClosableProducer("venice", new MapConfig(samzaConfig), null)) {
-            veniceProducer.start();
-
-            // Verify the kafka URL being returned to Samza is the same as parent region kafka url.
-            Assert.assertEquals(
-                veniceProducer.getKafkaBootstrapServers(),
-                multiRegionMultiClusterWrapper.getParentKafkaBrokerWrapper().getAddress());
+              IntegrationTestPushUtils.getSamzaProducerForStream(multiRegionMultiClusterWrapper, 0, storeName)) {
 
             for (int i = 1; i <= 10; i++) {
               sendStreamingRecord(veniceProducer, storeName, i);
@@ -478,7 +469,7 @@ public class TestPushJobWithNativeReplication {
           try (VenicePushJob job = new VenicePushJob("Batch Push", props)) {
             job.run();
             // Verify the kafka URL being returned to the push job is the same as dc-0 kafka url.
-            Assert.assertEquals(job.getKafkaUrl(), childDatacenters.get(0).getKafkaBrokerWrapper().getAddress());
+            Assert.assertEquals(job.getKafkaUrl(), childDatacenters.get(0).getPubSubBrokerWrapper().getAddress());
           }
 
           props.setProperty(INCREMENTAL_PUSH, "true");
@@ -521,7 +512,7 @@ public class TestPushJobWithNativeReplication {
             job.run();
 
             // Verify the kafka URL being returned to the push job is the same as dc-0 kafka url.
-            Assert.assertEquals(job.getKafkaUrl(), childDatacenters.get(0).getKafkaBrokerWrapper().getAddress());
+            Assert.assertEquals(job.getKafkaUrl(), childDatacenters.get(0).getPubSubBrokerWrapper().getAddress());
           }
 
           TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
@@ -601,7 +592,7 @@ public class TestPushJobWithNativeReplication {
     Properties props = IntegrationTestPushUtils.defaultVPJProps(childDatacenters.get(0), inputDirPath, storeName);
     createStoreForJob(clusterName, recordSchema, props).close();
 
-    TestWriteUtils.runPushJob("Test push job", props);
+    IntegrationTestPushUtils.runVPJ(props);
   }
 
   @Test(timeOut = TEST_TIMEOUT)
@@ -773,7 +764,7 @@ public class TestPushJobWithNativeReplication {
   public void testTargetRegionPushWithDeferredVersionSwap() throws Exception {
     motherOfAllTests(
         "testTargetRegionPushWithDeferredVersionSwap",
-        updateStoreQueryParams -> updateStoreQueryParams.setPartitionCount(1),
+        updateStoreQueryParams -> updateStoreQueryParams.setPartitionCount(1).setTargetRegionSwapWaitTime(1),
         100,
         (parentControllerClient, clusterName, storeName, props, inputDir) -> {
           // start a regular push job
@@ -781,7 +772,7 @@ public class TestPushJobWithNativeReplication {
             job.run();
 
             // Verify the kafka URL being returned to the push job is the same as dc-0 kafka url.
-            Assert.assertEquals(job.getKafkaUrl(), childDatacenters.get(0).getKafkaBrokerWrapper().getAddress());
+            Assert.assertEquals(job.getKafkaUrl(), childDatacenters.get(0).getPubSubBrokerWrapper().getAddress());
 
             TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
               // Current version should become 1 all data centers
@@ -804,14 +795,82 @@ public class TestPushJobWithNativeReplication {
                   parentControllerClient.getStore(storeName).getStore().getColoToCurrentVersions();
 
               coloVersions.forEach((colo, version) -> {
-                if (colo.equals(DEFAULT_NATIVE_REPLICATION_SOURCE)) {
-                  Assert.assertEquals((int) version, 2); // Version should only be swapped in dc-0
-                } else {
-                  Assert.assertEquals((int) version, 1); // The remaining regions shouldn't be swapped
-                }
+                Assert.assertEquals((int) version, 2);
               });
             });
           }
+        });
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testKilledRepushJobVersionStatus() throws Exception {
+    motherOfAllTests(
+        "testKilledRepushJobVersionStatus",
+        updateStoreQueryParams -> updateStoreQueryParams.setPartitionCount(1),
+        100,
+        (parentControllerClient, clusterName, storeName, props, inputDir) -> {
+          // start a regular push job
+          try (VenicePushJob job = new VenicePushJob("Test regular push job", props)) {
+            job.run();
+
+            TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+              // Current version should become 1 all data centers
+              for (int version: parentControllerClient.getStore(storeName)
+                  .getStore()
+                  .getColoToCurrentVersions()
+                  .values()) {
+                Assert.assertEquals(version, 1);
+              }
+            });
+          }
+
+          // create repush topic
+          parentControllerClient.requestTopicForWrites(
+              storeName,
+              1000,
+              Version.PushType.BATCH,
+              Version.generateRePushId("2"),
+              true,
+              true,
+              false,
+              Optional.empty(),
+              Optional.empty(),
+              Optional.of("dc-1"),
+              false,
+              -1,
+              false,
+              null,
+              1,
+              false);
+
+          // kill repush version
+          parentControllerClient.killOfflinePushJob(Version.composeKafkaTopic(storeName, 2));
+
+          // verify parent version status is marked as killed
+          TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+            StoreInfo parentStore = parentControllerClient.getStore(storeName).getStore();
+            Assert.assertEquals(parentStore.getVersion(2).get().getStatus(), VersionStatus.KILLED);
+          });
+
+          // verify child version status is marked as killed
+          for (VeniceMultiClusterWrapper childDatacenter: childDatacenters) {
+            ControllerClient childControllerClient =
+                new ControllerClient(clusterName, childDatacenter.getControllerConnectString());
+            TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+              StoreResponse store = childControllerClient.getStore(storeName);
+              Optional<Version> version = store.getStore().getVersion(2);
+              assertNotNull(version);
+              assertEquals(version.get().getStatus(), VersionStatus.KILLED);
+            });
+          }
+
+          TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.MINUTES, true, () -> {
+            JobStatusQueryResponse jobStatusQueryResponse = assertCommand(
+                parentControllerClient
+                    .queryOverallJobStatus(Version.composeKafkaTopic(storeName, 2), Optional.empty()));
+            ExecutionStatus executionStatus = ExecutionStatus.valueOf(jobStatusQueryResponse.getStatus());
+            assertEquals(executionStatus, ExecutionStatus.ERROR);
+          });
         });
   }
 
@@ -836,7 +895,6 @@ public class TestPushJobWithNativeReplication {
     String storeName = Utils.getUniqueString(storeNamePrefix);
     Properties props =
         IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, storeName);
-    props.setProperty(PUSH_JOB_STATUS_UPLOAD_ENABLE, "true");
     props.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
 
     UpdateStoreQueryParams updateStoreParams = updateStoreParamsTransformer
@@ -883,16 +941,18 @@ public class TestPushJobWithNativeReplication {
     VeniceProperties backendConfig = new PropertyBuilder().put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
         .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
         .put(DATA_BASE_PATH, baseDataPath)
+        .put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 2 * 1024 * 1024L)
         .put(PERSISTENCE_TYPE, ROCKS_DB)
         .build();
     MetricsRepository metricsRepository = new MetricsRepository();
     DaVinciConfig clientConfig = new DaVinciConfig();
     clientConfig.setStorageClass(StorageClass.DISK);
-    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
+    try (CachingDaVinciClientFactory factory = getCachingDaVinciClientFactory(
         d2Client,
         VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
         metricsRepository,
-        backendConfig)) {
+        backendConfig,
+        multiRegionMultiClusterWrapper)) {
       client = factory.getGenericAvroClient(storeName, clientConfig);
       client.start();
       client.subscribeAll().get(30, TimeUnit.SECONDS);

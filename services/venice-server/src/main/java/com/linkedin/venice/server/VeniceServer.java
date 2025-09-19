@@ -1,9 +1,13 @@
 package com.linkedin.venice.server;
 
 import com.linkedin.avro.fastserde.FastDeserializerGeneratorAccessor;
+import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.davinci.blobtransfer.BlobTransferManager;
-import com.linkedin.davinci.blobtransfer.BlobTransferUtil;
+import com.linkedin.davinci.blobtransfer.BlobTransferManagerBuilder;
+import com.linkedin.davinci.blobtransfer.BlobTransferUtils;
 import com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferTableFormat;
+import com.linkedin.davinci.blobtransfer.P2PBlobTransferConfig;
+import com.linkedin.davinci.blobtransfer.VeniceAdaptiveBlobTransferTrafficThrottler;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceClusterConfig;
 import com.linkedin.davinci.config.VeniceConfigLoader;
@@ -127,6 +131,8 @@ public class VeniceServer {
   private AggVersionedBlobTransferStats aggVersionedBlobTransferStats;
   private Lazy<ZKHelixAdmin> zkHelixAdmin;
 
+  private final Optional<D2Client> d2Client;
+
   /**
    * @deprecated Use {@link VeniceServer#VeniceServer(VeniceServerContext)} instead.
    *
@@ -192,6 +198,7 @@ public class VeniceServer {
     this.routerAccessController = Optional.ofNullable(ctx.getRouterAccessController());
     this.storeAccessController = Optional.ofNullable(ctx.getStoreAccessController());
     this.clientConfigForConsumer = Optional.ofNullable(ctx.getClientConfigForConsumer());
+    this.d2Client = Optional.ofNullable(ctx.getD2Client());
   }
 
   /**
@@ -231,6 +238,7 @@ public class VeniceServer {
               sslFactory,
               localControllerUrl,
               d2ServiceName,
+              d2Client,
               d2ZkHost,
               false);
       ControllerClientBackedSystemSchemaInitializer kmeSchemaInitializer =
@@ -243,6 +251,7 @@ public class VeniceServer {
               sslFactory,
               localControllerUrl,
               d2ServiceName,
+              d2Client,
               d2ZkHost,
               false);
       metaSystemStoreSchemaInitializer.execute();
@@ -360,7 +369,7 @@ public class VeniceServer {
         });
 
     CompletableFuture<HelixInstanceConfigRepository> helixInstanceFuture = managerFuture.thenApply(manager -> {
-      HelixInstanceConfigRepository helixData = new HelixInstanceConfigRepository(manager, false);
+      HelixInstanceConfigRepository helixData = new HelixInstanceConfigRepository(manager);
       helixData.refresh();
       return helixData;
     });
@@ -376,9 +385,9 @@ public class VeniceServer {
     heartbeatMonitoringService = new HeartbeatMonitoringService(
         metricsRepository,
         metadataRepo,
-        serverConfig.getRegionNames(),
-        serverConfig.getRegionName(),
-        heartbeatMonitoringServiceStats);
+        serverConfig,
+        heartbeatMonitoringServiceStats,
+        customizedViewFuture);
     services.add(heartbeatMonitoringService);
 
     this.zkHelixAdmin = Lazy.of(() -> new ZKHelixAdmin(serverConfig.getZookeeperAddress()));
@@ -406,14 +415,14 @@ public class VeniceServer {
         false,
         compressorFactory,
         Optional.empty(),
-        null,
         false,
         remoteIngestionRepairService,
         pubSubClientsFactory,
         sslFactory,
         heartbeatMonitoringService,
         zkHelixAdmin,
-        adaptiveThrottlerSignalService);
+        adaptiveThrottlerSignalService,
+        d2Client);
 
     this.diskHealthCheckService = new DiskHealthCheckService(
         serverConfig.isDiskHealthCheckServiceEnabled(),
@@ -475,23 +484,63 @@ public class VeniceServer {
     /**
      * Initialize Blob transfer manager for Service
      */
-    if (serverConfig.isBlobTransferManagerEnabled()) {
+    if (BlobTransferUtils.isBlobTransferManagerEnabled(serverConfig, false)) {
       aggVersionedBlobTransferStats = new AggVersionedBlobTransferStats(metricsRepository, metadataRepo, serverConfig);
-      blobTransferManager = BlobTransferUtil.getP2PBlobTransferManagerForServerAndStart(
+
+      P2PBlobTransferConfig p2PBlobTransferConfig = new P2PBlobTransferConfig(
           serverConfig.getDvcP2pBlobTransferServerPort(),
           serverConfig.getDvcP2pBlobTransferClientPort(),
           serverConfig.getRocksDBPath(),
-          customizedViewFuture,
-          storageMetadataService,
-          metadataRepo,
-          storageService.getStorageEngineRepository(),
           serverConfig.getMaxConcurrentSnapshotUser(),
           serverConfig.getSnapshotRetentionTimeInMin(),
           serverConfig.getBlobTransferMaxTimeoutInMin(),
-          aggVersionedBlobTransferStats,
+          serverConfig.getBlobReceiveMaxTimeoutInMin(),
+          serverConfig.getBlobReceiveReaderIdleTimeInSeconds(),
           serverConfig.getRocksDBServerConfig().isRocksDBPlainTableFormatEnabled()
               ? BlobTransferTableFormat.PLAIN_TABLE
-              : BlobTransferTableFormat.BLOCK_BASED_TABLE);
+              : BlobTransferTableFormat.BLOCK_BASED_TABLE,
+          serverConfig.getBlobTransferPeersConnectivityFreshnessInSeconds(),
+          serverConfig.getBlobTransferClientReadLimitBytesPerSec(),
+          serverConfig.getBlobTransferServiceWriteLimitBytesPerSec(),
+          serverConfig.getSnapshotCleanupIntervalInMins());
+      VeniceAdaptiveBlobTransferTrafficThrottler writeThrottler = null;
+      VeniceAdaptiveBlobTransferTrafficThrottler readThrottler = null;
+      if (serverConfig.isAdaptiveThrottlerEnabled() && serverConfig.isBlobTransferAdaptiveThrottlerEnabled()) {
+        writeThrottler = new VeniceAdaptiveBlobTransferTrafficThrottler(
+            serverConfig.getAdaptiveThrottlerSignalIdleThreshold(),
+            serverConfig.getBlobTransferServiceWriteLimitBytesPerSec(),
+            serverConfig.getBlobTransferAdaptiveThrottlerUpdatePercentage(),
+            true);
+        readThrottler = new VeniceAdaptiveBlobTransferTrafficThrottler(
+            serverConfig.getAdaptiveThrottlerSignalIdleThreshold(),
+            serverConfig.getBlobTransferClientReadLimitBytesPerSec(),
+            serverConfig.getBlobTransferAdaptiveThrottlerUpdatePercentage(),
+            false);
+        // Setup Limiter Signal for Read
+        readThrottler.registerLimiterSignal(adaptiveThrottlerSignalService::isReadLatencySignalActive);
+        readThrottler
+            .registerLimiterSignal(adaptiveThrottlerSignalService::isCurrentFollowerMaxHeartbeatLagSignalActive);
+        readThrottler.registerLimiterSignal(adaptiveThrottlerSignalService::isCurrentLeaderMaxHeartbeatLagSignalActive);
+        // Setup Limiter Signal for Write
+        writeThrottler.registerLimiterSignal(adaptiveThrottlerSignalService::isReadLatencySignalActive);
+        writeThrottler
+            .registerLimiterSignal(adaptiveThrottlerSignalService::isCurrentFollowerMaxHeartbeatLagSignalActive);
+        writeThrottler
+            .registerLimiterSignal(adaptiveThrottlerSignalService::isCurrentLeaderMaxHeartbeatLagSignalActive);
+        adaptiveThrottlerSignalService.registerThrottler(writeThrottler);
+        adaptiveThrottlerSignalService.registerThrottler(readThrottler);
+      }
+      blobTransferManager = new BlobTransferManagerBuilder().setBlobTransferConfig(p2PBlobTransferConfig)
+          .setCustomizedViewFuture(customizedViewFuture)
+          .setStorageMetadataService(storageMetadataService)
+          .setReadOnlyStoreRepository(metadataRepo)
+          .setStorageEngineRepository(storageService.getStorageEngineRepository())
+          .setAggVersionedBlobTransferStats(aggVersionedBlobTransferStats)
+          .setBlobTransferSSLFactory(sslFactory)
+          .setBlobTransferAclHandler(BlobTransferUtils.createAclHandler(veniceConfigLoader))
+          .setAdaptiveBlobTransferWriteTrafficThrottler(writeThrottler)
+          .setAdaptiveBlobTransferReadTrafficThrottler(readThrottler)
+          .build();
     } else {
       aggVersionedBlobTransferStats = null;
       blobTransferManager = null;

@@ -5,28 +5,23 @@ import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.controllerapi.D2ControllerClientFactory;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.meta.ViewConfig;
-import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
-import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapterFactory;
+import com.linkedin.venice.pubsub.PubSubConsumerAdapterContext;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
-import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
-import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
-import com.linkedin.venice.utils.pools.LandFillObjectPool;
 import com.linkedin.venice.views.ChangeCaptureView;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Map;
-import java.util.Optional;
-import java.util.Properties;
+import org.apache.avro.Schema;
+import org.apache.avro.specific.SpecificRecord;
 import org.apache.commons.lang.StringUtils;
 
 
 public class VeniceChangelogConsumerClientFactory {
-  private static final PubSubConsumerAdapterFactory kafkaConsumerAdapterFactory =
-      new ApacheKafkaConsumerAdapterFactory();
   private final Map<String, VeniceChangelogConsumer> storeClientMap = new VeniceConcurrentHashMap<>();
+  private final Map<String, BootstrappingVeniceChangelogConsumer> storeBootstrappingClientMap =
+      new VeniceConcurrentHashMap<>();
 
   private final MetricsRepository metricsRepository;
 
@@ -70,25 +65,48 @@ public class VeniceChangelogConsumerClientFactory {
    * Creates a VeniceChangelogConsumer with consumer id. This is used to create multiple consumers so that
    * each consumer can only subscribe to certain partitions. Multiple such consumers can work in parallel.
    */
-  public <K, V> VeniceChangelogConsumer<K, V> getChangelogConsumer(String storeName, String consumerId, Class clazz) {
-    return storeClientMap.computeIfAbsent(suffixConsumerIdToStore(storeName, consumerId), name -> {
+  public <K, V> VeniceChangelogConsumer<K, V> getChangelogConsumer(
+      String storeName,
+      String consumerId,
+      Class<V> valueClass) {
+    return getChangelogConsumer(storeName, consumerId, valueClass, globalChangelogClientConfig.getViewName());
+  }
+
+  public <K, V> VeniceChangelogConsumer<K, V> getChangelogConsumer(
+      String storeName,
+      String consumerId,
+      Class<V> valueClass,
+      String viewNameOverride) {
+    String adjustedConsumerId;
+    if (!StringUtils.isEmpty(viewNameOverride)) {
+      if (StringUtils.isEmpty(consumerId)) {
+        adjustedConsumerId = viewNameOverride;
+      } else {
+        adjustedConsumerId = consumerId + "-" + viewNameOverride;
+      }
+    } else {
+      adjustedConsumerId = consumerId;
+    }
+
+    return storeClientMap.computeIfAbsent(suffixConsumerIdToStore(storeName, adjustedConsumerId), name -> {
       ChangelogClientConfig newStoreChangelogClientConfig =
-          getNewStoreChangelogClientConfig(storeName).setSpecificValue(clazz);
+          getNewStoreChangelogClientConfig(storeName).setSpecificValue(valueClass);
       newStoreChangelogClientConfig.setConsumerName(name);
+      newStoreChangelogClientConfig.setViewName(viewNameOverride);
       String viewClass = getViewClass(newStoreChangelogClientConfig, storeName);
-      String consumerName = suffixConsumerIdToStore(storeName + "-" + viewClass.getClass().getSimpleName(), consumerId);
+      String consumerName =
+          suffixConsumerIdToStore(storeName + "-" + viewClass.getClass().getSimpleName(), adjustedConsumerId);
       if (viewClass.equals(ChangeCaptureView.class.getCanonicalName())) {
+        // TODO: This is a little bit of a hack. This is to deal with the an issue where the before image change
+        // capture topic doesn't follow the same naming convention as view topics.
+        newStoreChangelogClientConfig.setIsBeforeImageView(true);
         return new VeniceChangelogConsumerImpl(
             newStoreChangelogClientConfig,
-            consumer != null
-                ? consumer
-                : getConsumer(newStoreChangelogClientConfig.getConsumerProperties(), consumerName));
+            consumer != null ? consumer : getPubSubConsumer(newStoreChangelogClientConfig, consumerName));
       }
       return new VeniceAfterImageConsumerImpl(
           newStoreChangelogClientConfig,
-          consumer != null
-              ? consumer
-              : getConsumer(newStoreChangelogClientConfig.getConsumerProperties(), consumerName));
+          consumer != null ? consumer : getPubSubConsumer(newStoreChangelogClientConfig, consumerName));
     });
   }
 
@@ -101,27 +119,49 @@ public class VeniceChangelogConsumerClientFactory {
   }
 
   /**
+   * Use this if you're using the experimental client
+   * @param keyClass The {@link SpecificRecord} class for your key
+   * @param valueClass The {@link SpecificRecord} class for your value
+   * @param valueSchema The {@link Schema} for your values
+   */
+  public <K, V> BootstrappingVeniceChangelogConsumer<K, V> getBootstrappingChangelogConsumer(
+      String storeName,
+      String consumerId,
+      Class<K> keyClass,
+      Class<V> valueClass,
+      Schema valueSchema) {
+    String consumerName = suffixConsumerIdToStore(storeName, consumerId);
+
+    return storeBootstrappingClientMap.computeIfAbsent(consumerName, name -> {
+      ChangelogClientConfig newStoreChangelogClientConfig =
+          getNewStoreChangelogClientConfig(storeName).setSpecificKey(keyClass)
+              .setSpecificValue(valueClass)
+              .setSpecificValueSchema(valueSchema)
+              .setConsumerName(consumerName);
+
+      if (globalChangelogClientConfig.isExperimentalClientEnabled()) {
+        return new BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>(
+            newStoreChangelogClientConfig);
+      } else {
+        return new LocalBootstrappingVeniceChangelogConsumer<K, V>(
+            newStoreChangelogClientConfig,
+            consumer != null
+                ? consumer
+                : VeniceChangelogConsumerClientFactory.getPubSubConsumer(newStoreChangelogClientConfig, consumerName),
+            consumerId);
+      }
+    });
+  }
+
+  /**
    * Creates a BootstrappingVeniceChangelogConsumer with consumer id. This is used to create multiple
    * consumers so that each consumer can only subscribe to certain partitions.
    */
   public <K, V> BootstrappingVeniceChangelogConsumer<K, V> getBootstrappingChangelogConsumer(
       String storeName,
       String consumerId,
-      Class clazz) {
-    return (BootstrappingVeniceChangelogConsumer<K, V>) storeClientMap
-        .computeIfAbsent(suffixConsumerIdToStore(storeName, consumerId), name -> {
-          ChangelogClientConfig newStoreChangelogClientConfig =
-              getNewStoreChangelogClientConfig(storeName).setSpecificValue(clazz);
-          String viewClass = getViewClass(newStoreChangelogClientConfig, storeName);
-          String consumerName =
-              suffixConsumerIdToStore(storeName + "-" + viewClass.getClass().getSimpleName(), consumerId);
-          return new LocalBootstrappingVeniceChangelogConsumer(
-              newStoreChangelogClientConfig,
-              consumer != null
-                  ? consumer
-                  : getConsumer(newStoreChangelogClientConfig.getConsumerProperties(), consumerName),
-              consumerId);
-        });
+      Class<V> valueClass) {
+    return getBootstrappingChangelogConsumer(storeName, consumerId, null, valueClass, null);
   }
 
   public <K, V> BootstrappingVeniceChangelogConsumer<K, V> getBootstrappingChangelogConsumer(
@@ -145,12 +185,7 @@ public class VeniceChangelogConsumerClientFactory {
           globalChangelogClientConfig.getControllerRequestRetryCount(),
           newStoreChangelogClientConfig.getD2Client());
     } else {
-      d2ControllerClient = D2ControllerClientFactory.discoverAndConstructControllerClient(
-          storeName,
-          globalChangelogClientConfig.getControllerD2ServiceName(),
-          globalChangelogClientConfig.getLocalD2ZkHosts(),
-          Optional.ofNullable(newStoreChangelogClientConfig.getInnerClientConfig().getSslFactory()),
-          globalChangelogClientConfig.getControllerRequestRetryCount());
+      throw new IllegalArgumentException("D2Client should be set, please check the config");
     }
     newStoreChangelogClientConfig.setD2ControllerClient(d2ControllerClient);
     if (newStoreChangelogClientConfig.getSchemaReader() == null) {
@@ -178,13 +213,16 @@ public class VeniceChangelogConsumerClientFactory {
     return viewClass;
   }
 
-  static PubSubConsumerAdapter getConsumer(Properties consumerProps, String consumerName) {
-    PubSubMessageDeserializer pubSubMessageDeserializer = new PubSubMessageDeserializer(
-        new OptimizedKafkaValueSerializer(),
-        new LandFillObjectPool<>(KafkaMessageEnvelope::new),
-        new LandFillObjectPool<>(KafkaMessageEnvelope::new));
-    return kafkaConsumerAdapterFactory
-        .create(new VeniceProperties(consumerProps), false, pubSubMessageDeserializer, consumerName);
+  protected static PubSubConsumerAdapter getPubSubConsumer(
+      ChangelogClientConfig changelogClientConfig,
+      String consumerName) {
+    PubSubConsumerAdapterContext context = new PubSubConsumerAdapterContext.Builder().setConsumerName(consumerName)
+        .setVeniceProperties(new VeniceProperties(changelogClientConfig.getConsumerProperties()))
+        .setPubSubMessageDeserializer(changelogClientConfig.getPubSubMessageDeserializer())
+        .setPubSubTopicRepository(changelogClientConfig.getPubSubContext().getPubSubTopicRepository())
+        .setPubSubPositionTypeRegistry(changelogClientConfig.getPubSubContext().getPubSubPositionTypeRegistry())
+        .build();
+    return changelogClientConfig.getPubSubConsumerAdapterFactory().create(context);
   }
 
   private String getViewClass(String storeName, String viewName, D2ControllerClient d2ControllerClient, int retries) {

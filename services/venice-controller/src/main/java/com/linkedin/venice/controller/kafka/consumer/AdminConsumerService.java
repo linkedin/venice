@@ -1,24 +1,23 @@
 package com.linkedin.venice.controller.kafka.consumer;
 
-import static com.linkedin.venice.ConfigKeys.KAFKA_AUTO_OFFSET_RESET_CONFIG;
-import static com.linkedin.venice.ConfigKeys.KAFKA_CLIENT_ID_CONFIG;
-import static com.linkedin.venice.ConfigKeys.KAFKA_ENABLE_AUTO_COMMIT_CONFIG;
-
-import com.linkedin.venice.controller.AdminTopicMetadataAccessor;
+import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.controller.VeniceControllerClusterConfig;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controller.ZkAdminTopicMetadataAccessor;
 import com.linkedin.venice.controller.stats.AdminConsumptionStats;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.pubsub.PubSubConsumerAdapterContext;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.DaemonThreadFactory;
+import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import io.tehuti.metrics.MetricsRepository;
-import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.ThreadFactory;
@@ -39,23 +38,26 @@ public class AdminConsumerService extends AbstractVeniceService {
   private final Optional<String> remoteKafkaServerUrl;
   // Only support single cluster right now
   private AdminConsumptionTask consumerTask;
-  private final ThreadFactory threadFactory = new DaemonThreadFactory("AdminTopicConsumer");
+  private final ThreadFactory threadFactory;
   private Thread consumerThread;
 
   private final PubSubTopicRepository pubSubTopicRepository;
   private final String localKafkaServerUrl;
   private final PubSubMessageDeserializer pubSubMessageDeserializer;
+  private final LogContext logContext;
 
   public AdminConsumerService(
       VeniceHelixAdmin admin,
       VeniceControllerClusterConfig config,
       MetricsRepository metricsRepository,
+      PubSubConsumerAdapterFactory consumerFactory,
       PubSubTopicRepository pubSubTopicRepository,
       PubSubMessageDeserializer pubSubMessageDeserializer) {
     this.config = config;
+    this.logContext = config.getLogContext();
     this.admin = admin;
     this.adminTopicMetadataAccessor =
-        new ZkAdminTopicMetadataAccessor(admin.getZkClient(), admin.getAdapterSerializer());
+        new ZkAdminTopicMetadataAccessor(admin.getZkClient(), admin.getAdapterSerializer(), config);
     this.metricsRepository = metricsRepository;
     this.remoteConsumptionEnabled = config.isAdminTopicRemoteConsumptionEnabled();
     this.pubSubTopicRepository = pubSubTopicRepository;
@@ -67,7 +69,8 @@ public class AdminConsumerService extends AbstractVeniceService {
       remoteKafkaServerUrl = Optional.empty();
     }
     this.localKafkaServerUrl = admin.getKafkaBootstrapServers(admin.isSslToKafka());
-    this.consumerFactory = admin.getPubSubConsumerAdapterFactory();
+    this.consumerFactory = consumerFactory;
+    this.threadFactory = new DaemonThreadFactory("AdminConsumerService", logContext);
   }
 
   @Override
@@ -96,7 +99,7 @@ public class AdminConsumerService extends AbstractVeniceService {
   private AdminConsumptionTask getAdminConsumptionTaskForCluster(String clusterName) {
     return new AdminConsumptionTask(
         clusterName,
-        createKafkaConsumer(clusterName),
+        createPubSubConsumer(clusterName),
         this.remoteConsumptionEnabled,
         remoteKafkaServerUrl,
         admin,
@@ -126,6 +129,20 @@ public class AdminConsumerService extends AbstractVeniceService {
       throw new VeniceException(
           "This AdminConsumptionService is for cluster " + config.getClusterName()
               + ".  Cannot skip admin message with offset " + offset + " for cluster " + clusterName);
+    }
+  }
+
+  public void setExecutionIdToSkip(String clusterName, long executionId, boolean skipDIV) {
+    if (clusterName.equals(config.getClusterName())) {
+      if (skipDIV) {
+        consumerTask.skipMessageDIVWithExecutionId(executionId);
+      } else {
+        consumerTask.skipMessageWithExecutionId(executionId);
+      }
+    } else {
+      throw new VeniceException(
+          "This AdminConsumptionService is for cluster " + config.getClusterName()
+              + ".  Cannot skip admin message with execution ID " + executionId + " for cluster " + clusterName);
     }
   }
 
@@ -163,16 +180,25 @@ public class AdminConsumerService extends AbstractVeniceService {
   }
 
   /**
-   * @return The first or the smallest failing offset.
+   * @return The first or the smallest failing position.
    */
-  public long getFailingOffset() {
-    return consumerTask.getFailingOffset();
+  @VisibleForTesting
+  public PubSubPosition getFailingPosition() {
+    return consumerTask.getFailingPosition();
   }
 
   /**
-   * @return cluster-level execution id, offset, and upstream offset in a child colo.
+   * @return The first or the smallest failing execution id.
    */
-  public Map<String, Long> getAdminTopicMetadata(String clusterName) {
+  @VisibleForTesting
+  public long getFailingExecutionId() {
+    return consumerTask.getFailingExecutionId();
+  }
+
+  /**
+   * @return cluster-level execution id, position, and upstream position in a child colo.
+   */
+  public AdminMetadata getAdminTopicMetadata(String clusterName) {
     if (clusterName.equals(config.getClusterName())) {
       return adminTopicMetadataAccessor.getMetadata(clusterName);
     } else {
@@ -183,12 +209,18 @@ public class AdminConsumerService extends AbstractVeniceService {
   }
 
   /**
-   * Update cluster-level execution id, offset, and upstream offset in a child colo.
+   * Update cluster-level execution id, position, and upstream position in a child colo.
    */
   public void updateAdminTopicMetadata(String clusterName, long executionId, long offset, long upstreamOffset) {
     if (clusterName.equals(config.getClusterName())) {
-      Map<String, Long> metadata = AdminTopicMetadataAccessor.generateMetadataMap(offset, upstreamOffset, executionId);
-      adminTopicMetadataAccessor.updateMetadata(clusterName, metadata);
+      try (AutoCloseableLock ignore =
+          admin.getHelixVeniceClusterResources(clusterName).getClusterLockManager().createClusterWriteLock()) {
+        AdminMetadata metadata = new AdminMetadata();
+        metadata.setOffset(offset);
+        metadata.setUpstreamOffset(upstreamOffset);
+        metadata.setExecutionId(executionId);
+        adminTopicMetadataAccessor.updateMetadata(clusterName, metadata);
+      }
     } else {
       throw new VeniceException(
           "This AdminConsumptionService is for cluster: " + config.getClusterName()
@@ -196,21 +228,35 @@ public class AdminConsumerService extends AbstractVeniceService {
     }
   }
 
-  private PubSubConsumerAdapter createKafkaConsumer(String clusterName) {
+  /**
+   * Update the admin operation protocol version for the given cluster.
+   */
+  public void updateAdminOperationProtocolVersion(String clusterName, long adminOperationProtocolVersion) {
+    if (clusterName.equals(config.getClusterName())) {
+      try (AutoCloseableLock ignore =
+          admin.getHelixVeniceClusterResources(clusterName).getClusterLockManager().createClusterWriteLock()) {
+        AdminMetadata metadata = new AdminMetadata();
+        metadata.setAdminOperationProtocolVersion(adminOperationProtocolVersion);
+        adminTopicMetadataAccessor.updateMetadata(clusterName, metadata);
+      }
+    } else {
+      throw new VeniceException(
+          "This AdminConsumptionService is for cluster: " + config.getClusterName()
+              + ".  Cannot update the version for cluster: " + clusterName);
+    }
+  }
+
+  private PubSubConsumerAdapter createPubSubConsumer(String clusterName) {
     String pubSubServerUrl = remoteConsumptionEnabled ? remoteKafkaServerUrl.get() : localKafkaServerUrl;
     Properties kafkaConsumerProperties = admin.getPubSubSSLProperties(pubSubServerUrl).toProperties();
-    /**
-     * {@link KAFKA_CLIENT_ID_CONFIG} can be used to identify different consumers while checking Kafka related metrics.
-     */
-    kafkaConsumerProperties.setProperty(KAFKA_CLIENT_ID_CONFIG, clusterName);
-    kafkaConsumerProperties.setProperty(KAFKA_AUTO_OFFSET_RESET_CONFIG, "earliest");
-    /**
-     * Reason to disable auto_commit
-     * 1. {@link AdminConsumptionTask} is persisting {@link com.linkedin.venice.offsets.OffsetRecord} in Zookeeper.
-     */
-    kafkaConsumerProperties.setProperty(KAFKA_ENABLE_AUTO_COMMIT_CONFIG, "false");
-    return consumerFactory
-        .create(new VeniceProperties(kafkaConsumerProperties), false, pubSubMessageDeserializer, clusterName);
+    PubSubConsumerAdapterContext pubSubConsumerAdapterContext = new PubSubConsumerAdapterContext.Builder()
+        .setConsumerName("admin-channel-consumer-for-" + clusterName + (logContext != null ? "-" + logContext : ""))
+        .setVeniceProperties(new VeniceProperties(kafkaConsumerProperties))
+        .setPubSubMessageDeserializer(pubSubMessageDeserializer)
+        .setPubSubPositionTypeRegistry(config.getPubSubPositionTypeRegistry())
+        .setPubSubTopicRepository(pubSubTopicRepository)
+        .build();
+    return consumerFactory.create(pubSubConsumerAdapterContext);
   }
 
   // For testing only.
