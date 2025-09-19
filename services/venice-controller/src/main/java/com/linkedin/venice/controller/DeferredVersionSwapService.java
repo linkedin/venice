@@ -556,7 +556,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
 
     if (nextEligibleRegion == null) {
       LOGGER.info(
-          "Marking parent version {} as ONLINE because all non target " + "regions are serving the target version.",
+          "Marking parent version {} as ONLINE because all regions are serving the target version.",
           kafkaTopicName);
       updateStore(clusterName, parentStore.getName(), ONLINE, targetVersionNum);
       return null;
@@ -607,7 +607,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
     } else if (VersionStatus.ONLINE.equals(version.getStatus())
         && rolloutOrder.get(rolloutOrder.size() - 1).equals(nextEligibleRegion)) {
       LOGGER.info(
-          "Marking parent version {} as ONLINE because all non target " + "regions are serving the target version.",
+          "Marking parent version {} as ONLINE because all regions are serving the target version.",
           kafkaTopicName);
       updateStore(clusterName, parentStore.getName(), ONLINE, targetVersionNum);
 
