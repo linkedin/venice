@@ -4670,6 +4670,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     LeaderMetadata leaderMetadataFooter = consumerRecord.getValue().leaderMetadataFooter;
     return deserializePositionWithOffsetFallback(
         pubSubContext.getPubSubPositionDeserializer(),
+        consumerRecord.getTopicPartition(),
         leaderMetadataFooter.upstreamPubSubPosition,
         leaderMetadataFooter.upstreamOffset);
   }
@@ -4966,8 +4967,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return pubSubContext;
   }
 
-  static PubSubPosition deserializePositionWithOffsetFallback(
+  PubSubPosition deserializePositionWithOffsetFallback(
       PubSubPositionDeserializer pubSubPositionDeserializer,
+      PubSubTopicPartition topicPartition,
       ByteBuffer wireFormatBytes,
       long offset) {
     // Fast path: nothing to deserialize
@@ -4981,16 +4983,20 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       // Guard against regressions: honor the caller-provided minimum offset.
       if (position.getNumericOffset() < offset) {
         LOGGER.info(
-            "Deserialized position: {} is behind the provided offset: {}. Using offset-based position.",
+            "Deserialized position: {} is behind the provided offset: {}. Using offset-based position for: {}/{}",
             position.getNumericOffset(),
-            offset);
+            offset,
+            topicPartition,
+            versionTopic);
         return PubSubUtil.fromKafkaOffset(offset);
       }
 
       return position;
     } catch (RuntimeException e) {
       LOGGER.warn(
-          "Failed to deserialize PubSubPosition. Using offset-based position (offset={}, bufferRem={}, bufferCap={}).",
+          "Failed to deserialize PubSubPosition for: {}/{}. Using offset-based position (offset={}, bufferRem={}, bufferCap={}).",
+          topicPartition,
+          versionTopic,
           offset,
           wireFormatBytes.remaining(),
           wireFormatBytes.capacity(),
