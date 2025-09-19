@@ -11,7 +11,7 @@ public class VeniceAdaptiveIngestionThrottlerTest {
   public void testAdaptiveIngestionThrottler() {
     List<Double> factors = Arrays.asList(0.4D, 0.6D, 0.8D, 1.0D, 1.2D, 1.4D);
     VeniceAdaptiveIngestionThrottler adaptiveIngestionThrottler =
-        new VeniceAdaptiveIngestionThrottler(10, 100, factors, 10, "test");
+        new VeniceAdaptiveIngestionThrottler(10, 100, factors, 10, "test", null);
     adaptiveIngestionThrottler.registerLimiterSignal(() -> true);
     adaptiveIngestionThrottler.checkSignalAndAdjustThrottler();
     Assert.assertEquals(adaptiveIngestionThrottler.getCurrentThrottlerIndex(), 1);
@@ -21,12 +21,12 @@ public class VeniceAdaptiveIngestionThrottlerTest {
     Assert.assertEquals(adaptiveIngestionThrottler.getCurrentThrottlerIndex(), 0);
     adaptiveIngestionThrottler.checkSignalAndAdjustThrottler();
     Assert.assertEquals(adaptiveIngestionThrottler.getCurrentThrottlerIndex(), 0);
-    adaptiveIngestionThrottler = new VeniceAdaptiveIngestionThrottler(10, 100, factors, 10, "test");
+    adaptiveIngestionThrottler = new VeniceAdaptiveIngestionThrottler(10, 100, factors, 10, "test", null);
     adaptiveIngestionThrottler.registerBoosterSignal(() -> true);
     adaptiveIngestionThrottler.checkSignalAndAdjustThrottler();
     Assert.assertEquals(adaptiveIngestionThrottler.getCurrentThrottlerIndex(), 4);
 
-    adaptiveIngestionThrottler = new VeniceAdaptiveIngestionThrottler(3, 100, factors, 10, "test");
+    adaptiveIngestionThrottler = new VeniceAdaptiveIngestionThrottler(3, 100, factors, 10, "test", null);
 
     adaptiveIngestionThrottler.checkSignalAndAdjustThrottler();
     Assert.assertEquals(adaptiveIngestionThrottler.getCurrentThrottlerIndex(), 3);

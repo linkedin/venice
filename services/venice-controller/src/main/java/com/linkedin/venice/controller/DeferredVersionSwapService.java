@@ -1062,7 +1062,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
                   parentStore,
                   targetVersionNum,
                   cluster,
-                  parentStore.getTargetSwapRegion(),
+                  parentStore.getVersion(targetVersionNum).getTargetSwapRegion(),
                   kafkaTopicName)) {
                 logLatency(startTime, storeName, targetVersionNum);
                 continue;
