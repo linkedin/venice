@@ -2356,7 +2356,7 @@ public class VeniceParentHelixAdmin implements Admin {
         // Otherwise, it will be handled by DeferredVersionSwapService since it will handle marking the parent ONLINE
         // and tracking when version swap is complete
         Version parentVersion = parentStore.getVersion(futureVersionBeforeRollForward);
-        if (parentStore.getTargetSwapRegion() == null && parentVersion.isVersionSwapDeferred()) {
+        if (StringUtils.isEmpty(parentStore.getTargetSwapRegion()) && parentVersion.isVersionSwapDeferred()) {
           int version = Version.parseVersionFromKafkaTopicName(kafkaTopic);
           parentStore.updateVersionStatus(version, ONLINE);
           repository.updateStore(parentStore);

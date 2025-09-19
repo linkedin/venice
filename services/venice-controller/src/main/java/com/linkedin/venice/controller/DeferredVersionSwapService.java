@@ -107,11 +107,9 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
     deferredVersionSwapExecutor.shutdown();
   }
 
-  private Set<String> getRegionsForVersionSwap(
-      Map<String, ControllerClient> candidateRegions,
-      Set<String> targetRegions) {
+  private Set<String> getRegionsForVersionSwap(Map<String, ControllerClient> candidateRegions, String targetRegion) {
     Set<String> remainingRegions = new HashSet<>(candidateRegions.keySet());
-    remainingRegions.removeAll(targetRegions);
+    remainingRegions.remove(targetRegion);
     return remainingRegions;
   }
 
@@ -134,25 +132,23 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
   /**
    * Checks whether the wait time has passed since the push completion time in the list of regions
    * @param completionTimes a mapping of region to push completion time
-   * @param targetRegions the list of regions to check if wait time has elapsed
+   * @param targetRegion the list of regions to check if wait time has elapsed
    * @param store the store to check if the push wait time has elapsed
    * @return
    */
   private boolean didWaitTimeElapseInTargetRegions(
       Map<String, Long> completionTimes,
-      Set<String> targetRegions,
+      String targetRegion,
       Store store) {
-    for (String targetRegion: targetRegions) {
-      if (!completionTimes.containsKey(targetRegion)) {
-        continue;
-      }
+    if (!completionTimes.containsKey(targetRegion)) {
+      return false;
+    }
 
-      long completionTime = completionTimes.get(targetRegion);
-      long storeWaitTime = TimeUnit.MINUTES.toSeconds(store.getTargetSwapRegionWaitTime());
-      long currentTime = LocalDateTime.now().toEpochSecond(ZoneOffset.UTC);
-      if ((completionTime + storeWaitTime) > currentTime) {
-        return false;
-      }
+    long completionTime = completionTimes.get(targetRegion);
+    long storeWaitTime = TimeUnit.MINUTES.toSeconds(store.getTargetSwapRegionWaitTime());
+    long currentTime = LocalDateTime.now().toEpochSecond(ZoneOffset.UTC);
+    if ((completionTime + storeWaitTime) > currentTime) {
+      return false;
     }
 
     return true;
@@ -160,14 +156,14 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
 
   /**
    * Checks whether the wait time has passed since the cached push completion time in the list of regions
-   * @param targetRegions the list of regions to check if wait time has elapsed
+   * @param targetRegion the list of regions to check if wait time has elapsed
    * @param store the store to check if the push wait time has elapsed
    * @param targetVersionNum the version to check if the push wait time has elapsed
    * @param kafkaTopicName the name of the kafka topic for this target version
    * @return
    */
   private boolean didCachedWaitTimeElapseInTargetRegions(
-      Set<String> targetRegions,
+      String targetRegion,
       Store store,
       int targetVersionNum,
       String kafkaTopicName) {
@@ -180,7 +176,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       return true;
     }
 
-    return didWaitTimeElapseInTargetRegions(storePushCompletionTimes, targetRegions, store);
+    return didWaitTimeElapseInTargetRegions(storePushCompletionTimes, targetRegion, store);
   }
 
   private void logMessageIfNotRedundant(String message) {
@@ -321,7 +317,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       String storeName,
       int targetVersionNum,
       Set<String> nonTargetRegions,
-      Set<String> targetRegions) {
+      String targetRegion) {
     // The version could've been manually rolled forward in non target regions. If that is the case, we should check if
     // we emitted any stalled metric for it and remove it if so
     if (stalledVersionSwapSet.contains(storeName)) {
@@ -342,7 +338,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
         // Because the parent status is updated when we poll for the job status, the parent status will not always be an
         // accurate representation of push status if vpj runs away
         boolean didPushCompleteInTargetRegions = doesRegionsHaveVersionStatus(
-            targetRegions,
+            Collections.singleton(targetRegion),
             clusterName,
             storeName,
             targetVersion.getNumber(),
@@ -395,6 +391,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       ExecutionStatus status) {
     int regionsWithStatus = 0;
     for (String region: regions) {
+      LOGGER.info("Checking push status for region: {}", region);
       String executionStatus = pushStatusInfo.getExtraInfo().get(region);
       if (executionStatus.equals(status.toString())) {
         regionsWithStatus += 1;
@@ -407,27 +404,28 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
    * Checks if a push completed in all target regions.
    * If the push failed in a majority of target regions, mark the parent version status as ERROR.
    * If all target regions have not reached a terminal push status yet, do not proceed yet
-   * @param targetRegions list of regions to check the push status for
+   * @param targetRegion target region to check the push status for
    * @param pushStatusInfo wrapper containing push status information
    * @return
    */
   private boolean didPushCompleteInTargetRegions(
-      Set<String> targetRegions,
+      String targetRegion,
       Admin.OfflinePushStatusInfo pushStatusInfo,
       Store store,
       int targetVersionNum,
       String clusterName) {
+    Set<String> targetRegionSet = Collections.singleton(targetRegion);
     int numCompletedTargetRegions =
-        getRegionsWithPushStatusCount(targetRegions, pushStatusInfo, ExecutionStatus.COMPLETED);
-    int numFailedTargetRegions = getRegionsWithPushStatusCount(targetRegions, pushStatusInfo, ExecutionStatus.ERROR);
+        getRegionsWithPushStatusCount(targetRegionSet, pushStatusInfo, ExecutionStatus.COMPLETED);
+    int numFailedTargetRegions = getRegionsWithPushStatusCount(targetRegionSet, pushStatusInfo, ExecutionStatus.ERROR);
     if (numFailedTargetRegions > 0) {
       String message = "Skipping version swap for store: " + store.getName() + " on version: " + targetVersionNum
           + " as push failed in 1+ target regions. Completed target regions: " + numCompletedTargetRegions
-          + " , failed target regions: " + numFailedTargetRegions + ", target regions: " + targetRegions;
+          + " , failed target regions: " + numFailedTargetRegions + ", target regions: " + targetRegion;
       logMessageIfNotRedundant(message);
       updateStore(clusterName, store.getName(), ERROR, targetVersionNum);
       return false;
-    } else if (numCompletedTargetRegions + numFailedTargetRegions != targetRegions.size()) {
+    } else if (numCompletedTargetRegions < 1) {
       // TODO remove after ramp as this is a temporary log to help with debugging
       String message = "Skipping version swap for store: " + store.getName() + " on version: " + targetVersionNum
           + " as push is not complete yet in target regions. num completed target regions: " + numFailedTargetRegions;
@@ -443,13 +441,13 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
    * more than the wait time * {deferred.version.swap.buffer.time} has passed without switching to the target version.
    * Emit a metric is this happens
    * @param completionTimes the push completion time of the regions
-   * @param targetRegions the list of target regions
+   * @param targetRegion the list of target regions
    * @param store the store to check for
    * @param targetVersionNum the target version number to check for
    */
   private void emitMetricIfVersionSwapIsStalled(
       Map<String, Long> completionTimes,
-      Set<String> targetRegions,
+      String targetRegion,
       Store store,
       int targetVersionNum,
       Version parentVersion) {
@@ -463,25 +461,23 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       return;
     }
 
-    for (String targetRegion: targetRegions) {
-      if (!completionTimes.containsKey(targetRegion)) {
-        continue;
-      }
+    if (!completionTimes.containsKey(targetRegion)) {
+      return;
+    }
 
-      long completionTime = completionTimes.get(targetRegion);
-      long bufferedWaitTime = TimeUnit.MINUTES.toSeconds(
-          Math.round(
-              store.getTargetSwapRegionWaitTime()
-                  * veniceControllerMultiClusterConfig.getDeferredVersionSwapBufferTime()));
-      long currentTime = LocalDateTime.now().toEpochSecond(ZoneOffset.UTC);
-      if ((completionTime + bufferedWaitTime) < currentTime) {
-        String message = "Store: " + store.getName() + " has not swapped to the target version: " + targetVersionNum
-            + " and the wait time: " + store.getTargetSwapRegionWaitTime() + " has passed in target region "
-            + targetRegion;
-        logMessageIfNotRedundant(message);
-        stalledVersionSwapSet.add(store.getName());
-        deferredVersionSwapStats.recordDeferredVersionSwapStalledVersionSwapSensor(stalledVersionSwapSet.size());
-      }
+    long completionTime = completionTimes.get(targetRegion);
+    long bufferedWaitTime = TimeUnit.MINUTES.toSeconds(
+        Math.round(
+            store.getTargetSwapRegionWaitTime()
+                * veniceControllerMultiClusterConfig.getDeferredVersionSwapBufferTime()));
+    long currentTime = LocalDateTime.now().toEpochSecond(ZoneOffset.UTC);
+    if ((completionTime + bufferedWaitTime) < currentTime) {
+      String message = "Store: " + store.getName() + " has not swapped to the target version: " + targetVersionNum
+          + " and the wait time: " + store.getTargetSwapRegionWaitTime() + " has passed in target region "
+          + targetRegion;
+      logMessageIfNotRedundant(message);
+      stalledVersionSwapSet.add(store.getName());
+      deferredVersionSwapStats.recordDeferredVersionSwapStalledVersionSwapSensor(stalledVersionSwapSet.size());
     }
   }
 
@@ -633,7 +629,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
     return true;
   }
 
-  private boolean didWaitTimePassInRegionForSequentialRollout(
+  private boolean isRegionReadyForRollout(
       String previousEligibleRegion,
       Store parentStore,
       String clusterName,
@@ -916,8 +912,8 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       }
 
       String storeName = parentStore.getName();
-      Set<String> targetRegions = Collections.singleton(rolloutOrder.get(0));
-      Set<String> remainingRegions = getRegionsForVersionSwap(childControllerClientMap, targetRegions);
+      String targetRegion = rolloutOrder.get(0);
+      Set<String> remainingRegions = getRegionsForVersionSwap(childControllerClientMap, targetRegion);
 
       // Check if the target version is in a terminal state (push job completed or failed)
       long startTime = System.currentTimeMillis();
@@ -927,7 +923,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
           parentStore.getName(),
           targetVersionNum,
           remainingRegions,
-          targetRegions)) {
+          targetRegion)) {
         logLatency(startTime, storeName, targetVersionNum);
         continue;
       }
@@ -946,7 +942,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       }
 
       Admin.OfflinePushStatusInfo pushStatusInfo = veniceParentHelixAdmin.getOffLinePushStatus(cluster, kafkaTopicName);
-      if (!didPushCompleteInTargetRegions(targetRegions, pushStatusInfo, parentStore, targetVersionNum, cluster)) {
+      if (!didPushCompleteInTargetRegions(targetRegion, pushStatusInfo, parentStore, targetVersionNum, cluster)) {
         logLatency(startTime, storeName, targetVersionNum);
         continue;
       }
@@ -970,11 +966,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
             + parentStore.getName() + " for version: " + targetVersionNum;
         logMessageIfNotRedundant(message2);
 
-        if (!didWaitTimePassInRegionForSequentialRollout(
-            priorRegionRolledForward,
-            parentStore,
-            cluster,
-            kafkaTopicName)) {
+        if (!isRegionReadyForRollout(priorRegionRolledForward, parentStore, cluster, kafkaTopicName)) {
           logLatency(startTime, storeName, targetVersionNum);
           continue;
         }
@@ -1048,8 +1040,8 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       }
 
       String storeName = parentStore.getName();
-      Set<String> targetRegions = RegionUtils.parseRegionsFilterList(targetVersion.getTargetSwapRegion());
-      Set<String> remainingRegions = getRegionsForVersionSwap(childControllerClientMap, targetRegions);
+      String targetRegion = RegionUtils.parseRegionRolloutOrderList(targetVersion.getTargetSwapRegion()).get(0);
+      Set<String> remainingRegions = getRegionsForVersionSwap(childControllerClientMap, targetRegion);
 
       // Check if the target version is in a terminal state (push job completed or failed)
       long startTime = System.currentTimeMillis();
@@ -1059,20 +1051,20 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
           parentStore.getName(),
           targetVersionNum,
           remainingRegions,
-          targetRegions)) {
+          targetRegion)) {
         logLatency(startTime, storeName, targetVersionNum);
         continue;
       }
 
       // Check if the cached waitTime for the target version has elapsed
       String kafkaTopicName = Version.composeKafkaTopic(storeName, targetVersionNum);
-      if (!didCachedWaitTimeElapseInTargetRegions(targetRegions, parentStore, targetVersionNum, kafkaTopicName)) {
+      if (!didCachedWaitTimeElapseInTargetRegions(targetRegion, parentStore, targetVersionNum, kafkaTopicName)) {
         logLatency(startTime, storeName, targetVersionNum);
         continue;
       }
 
       Admin.OfflinePushStatusInfo pushStatusInfo = veniceParentHelixAdmin.getOffLinePushStatus(cluster, kafkaTopicName);
-      if (!didPushCompleteInTargetRegions(targetRegions, pushStatusInfo, parentStore, targetVersionNum, cluster)) {
+      if (!didPushCompleteInTargetRegions(targetRegion, pushStatusInfo, parentStore, targetVersionNum, cluster)) {
         logLatency(startTime, storeName, targetVersionNum);
         continue;
       }
@@ -1086,7 +1078,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       }
 
       // Check that waitTime has elapsed in target regions
-      if (!didWaitTimeElapseInTargetRegions(pushStatusInfo.getExtraInfoUpdateTimestamp(), targetRegions, parentStore)) {
+      if (!didWaitTimeElapseInTargetRegions(pushStatusInfo.getExtraInfoUpdateTimestamp(), targetRegion, parentStore)) {
         storePushCompletionTimeCache.put(kafkaTopicName, pushStatusInfo.getExtraInfoUpdateTimestamp());
         logLatency(startTime, storeName, targetVersionNum);
         continue;
@@ -1095,7 +1087,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       // Check if version swap is stalled for the store
       emitMetricIfVersionSwapIsStalled(
           pushStatusInfo.getExtraInfoUpdateTimestamp(),
-          targetRegions,
+          targetRegion,
           parentStore,
           targetVersionNum,
           targetVersion);
