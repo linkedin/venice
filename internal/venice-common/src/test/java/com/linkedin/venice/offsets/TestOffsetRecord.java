@@ -155,7 +155,7 @@ public class TestOffsetRecord {
         { "consistency_fallback_empty", EMPTY_BUF, 1500L, 1500L, true }, };
   }
 
-  @Test(dataProvider = "dpDeserialize", timeOut = 30_000)
+  @Test(dataProvider = "dpDeserialize", timeOut = 10_000)
   public void testDeserializePositionWithOffsetFallback(
       String name,
       Supplier<ByteBuffer> bufferSupplier,
