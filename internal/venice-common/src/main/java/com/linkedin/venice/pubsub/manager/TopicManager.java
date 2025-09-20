@@ -26,6 +26,7 @@ import com.linkedin.venice.pubsub.PubSubTopicConfiguration;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.PubSubUtil;
 import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.PubSubAdminAdapter;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
@@ -938,7 +939,7 @@ public class TopicManager implements Closeable {
     long targetOffset = Math.addExact(startOffset, n);
 
     // Create the new position.
-    return ApacheKafkaOffsetPosition.of(targetOffset);
+    return PubSubUtil.fromKafkaOffset(targetOffset);
   }
 
   public PubSubTopicRepository getTopicRepository() {
