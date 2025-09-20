@@ -28,6 +28,12 @@ public class VeniceMetricsDimensionsTest {
         case HTTP_RESPONSE_STATUS_CODE_CATEGORY:
           assertEquals(dimension.getDimensionName(format), "http.response.status_code_category");
           break;
+        case HTTP_REQUEST_URI:
+          assertEquals(dimension.getDimensionName(format), "http.request.uri");
+          break;
+        case HTTP_REQUEST_METHOD:
+          assertEquals(dimension.getDimensionName(format), "http.request.method");
+          break;
         case VENICE_RESPONSE_STATUS_CODE_CATEGORY:
           assertEquals(dimension.getDimensionName(format), "venice.response.status_code_category");
           break;
@@ -72,6 +78,12 @@ public class VeniceMetricsDimensionsTest {
         case HTTP_RESPONSE_STATUS_CODE_CATEGORY:
           assertEquals(dimension.getDimensionName(format), "http.response.statusCodeCategory");
           break;
+        case HTTP_REQUEST_URI:
+          assertEquals(dimension.getDimensionName(format), "http.request.uri");
+          break;
+        case HTTP_REQUEST_METHOD:
+          assertEquals(dimension.getDimensionName(format), "http.request.method");
+          break;
         case VENICE_RESPONSE_STATUS_CODE_CATEGORY:
           assertEquals(dimension.getDimensionName(format), "venice.response.statusCodeCategory");
           break;
@@ -115,6 +127,12 @@ public class VeniceMetricsDimensionsTest {
           break;
         case HTTP_RESPONSE_STATUS_CODE_CATEGORY:
           assertEquals(dimension.getDimensionName(format), "Http.Response.StatusCodeCategory");
+          break;
+        case HTTP_REQUEST_URI:
+          assertEquals(dimension.getDimensionName(format), "Http.Request.Uri");
+          break;
+        case HTTP_REQUEST_METHOD:
+          assertEquals(dimension.getDimensionName(format), "Http.Request.Method");
           break;
         case VENICE_RESPONSE_STATUS_CODE_CATEGORY:
           assertEquals(dimension.getDimensionName(format), "Venice.Response.StatusCodeCategory");
