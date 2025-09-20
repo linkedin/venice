@@ -57,6 +57,7 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
+import org.apache.commons.lang.StringUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -101,6 +102,7 @@ public abstract class AbstractPushMonitor
   private final DisabledPartitionStats disabledPartitionStats;
   private final String regionName;
   private final VeniceWriterFactory veniceWriterFactory;
+  private String sequentialRollForwardFirstRegion = null;
 
   public AbstractPushMonitor(
       String clusterName,
@@ -151,6 +153,11 @@ public abstract class AbstractPushMonitor
     this.isOfflinePushMonitorDaVinciPushStatusEnabled = controllerConfig.isDaVinciPushStatusEnabled();
     this.regionName = controllerConfig.getRegionName();
     this.veniceWriterFactory = veniceWriterFactory;
+    if (StringUtils.isNotEmpty(controllerConfig.getDeferredVersionSwapRegionRollforwardOrder())) {
+      List<String> rolloutOrderList =
+          RegionUtils.parseRegionRolloutOrderList(controllerConfig.getDeferredVersionSwapRegionRollforwardOrder());
+      this.sequentialRollForwardFirstRegion = rolloutOrderList.get(0);
+    }
     pushStatusCollector.start();
   }
 
@@ -1192,8 +1199,9 @@ public abstract class AbstractPushMonitor
 
           /**
            * Switch to the new version if:
-           * 1.deferred version swap is not enabled and it is not a target region push w/ deferred version swap
-           * 2.target region push w/ deferred swap is enabled and the current region matches the target region
+           * 1.sequential roll forward is enabled
+           * 2.deferred version swap is not enabled and it is not a target region push w/ deferred version swap
+           * 3.target region push w/ deferred swap is enabled and the current region matches the target region
            *
            * Do not switch to the new version now if:
            * 1.deferred version swap is enabled (it will be manually swapped at a later date)
@@ -1201,11 +1209,22 @@ public abstract class AbstractPushMonitor
            *  after targetSwapRegionWaitTime passes)
            */
           Set<String> targetRegions = RegionUtils.parseRegionsFilterList(version.getTargetSwapRegion());
+          boolean isSequentialRollForward = StringUtils.isNotEmpty(sequentialRollForwardFirstRegion)
+              && sequentialRollForwardFirstRegion.equals(regionName);
           boolean isTargetRegionPushWithDeferredSwap =
               version.isVersionSwapDeferred() && targetRegions.contains(regionName);
           boolean isNormalPush = !version.isVersionSwapDeferred();
           boolean isDeferredSwap = version.isVersionSwapDeferred() && targetRegions.isEmpty();
-          if (isTargetRegionPushWithDeferredSwap || isNormalPush) {
+          if (isSequentialRollForward) {
+            LOGGER.info(
+                "Swapping to version {} for store {} in region {} during sequential roll forward",
+                versionNumber,
+                storeName,
+                regionName);
+            int previousVersion = store.getCurrentVersion();
+            store.setCurrentVersion(versionNumber);
+            realTimeTopicSwitcher.transmitVersionSwapMessage(store, previousVersion, versionNumber);
+          } else if (isTargetRegionPushWithDeferredSwap || isNormalPush) {
             LOGGER.info(
                 "Swapping to version {} for store {} in region {} during "
                     + (isNormalPush ? "normal push" : "target region push with deferred version swap"),
