@@ -32,6 +32,7 @@ dependencies {
   testImplementation project(':internal:venice-common')
   testImplementation project(':internal:venice-test-common')
   testImplementation libraries.kafkaClients
+  testImplementation libraries.openTelemetryTestSdk
 }
 
 ext {
