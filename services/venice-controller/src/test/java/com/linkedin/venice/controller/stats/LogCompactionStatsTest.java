@@ -1,6 +1,6 @@
 package com.linkedin.venice.controller.stats;
 
-import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.REPUSH_TRIGGER_SOURCE;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.STORE_REPUSH_TRIGGER_SOURCE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
@@ -9,7 +9,7 @@ import static org.mockito.Mockito.doReturn;
 import com.linkedin.venice.controller.AbstractTestVeniceParentHelixAdmin;
 import com.linkedin.venice.stats.VeniceMetricsConfig;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
-import com.linkedin.venice.stats.dimensions.RepushStoreTriggerSource;
+import com.linkedin.venice.stats.dimensions.StoreRepushTriggerSource;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
 import com.linkedin.venice.stats.metrics.MetricEntity;
 import com.linkedin.venice.utils.OpenTelemetryDataPointTestUtils;
@@ -32,7 +32,8 @@ public class LogCompactionStatsTest extends AbstractTestVeniceParentHelixAdmin {
   @BeforeMethod
   public void setUp() throws Exception {
     // add all the metrics that are used in the test
-    Collection<MetricEntity> metricEntities = Arrays.asList(ControllerMetricEntity.REPUSH_CALL_COUNT.getMetricEntity());
+    Collection<MetricEntity> metricEntities =
+        Arrays.asList(ControllerMetricEntity.STORE_REPUSH_CALL_COUNT.getMetricEntity());
 
     // setup metric reader to validate metric emission
     this.inMemoryMetricReader = InMemoryMetricReader.create();
@@ -56,8 +57,8 @@ public class LogCompactionStatsTest extends AbstractTestVeniceParentHelixAdmin {
         .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), TEST_CLUSTER_NAME)
         .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), TEST_STORE_NAME)
         .put(
-            REPUSH_TRIGGER_SOURCE.getDimensionNameInDefaultFormat(),
-            RepushStoreTriggerSource.MANUAL.getDimensionValue())
+            STORE_REPUSH_TRIGGER_SOURCE.getDimensionNameInDefaultFormat(),
+            StoreRepushTriggerSource.MANUAL.getDimensionValue())
         .put(
             VENICE_RESPONSE_STATUS_CODE_CATEGORY.getDimensionNameInDefaultFormat(),
             VeniceResponseStatusCategory.SUCCESS.getDimensionValue())
@@ -65,20 +66,23 @@ public class LogCompactionStatsTest extends AbstractTestVeniceParentHelixAdmin {
 
     // Record metric
     this.logCompactionStats
-        .recordRepushStoreCall(TEST_STORE_NAME, RepushStoreTriggerSource.MANUAL, VeniceResponseStatusCategory.SUCCESS);
+        .recordRepushStoreCall(TEST_STORE_NAME, StoreRepushTriggerSource.MANUAL, VeniceResponseStatusCategory.SUCCESS);
 
     // test validation
-    validateLongPointFromDataFromSum(ControllerMetricEntity.REPUSH_CALL_COUNT.getMetricName(), 1, expectedAttributes);
+    validateLongPointFromDataFromSum(
+        ControllerMetricEntity.STORE_REPUSH_CALL_COUNT.getMetricName(),
+        1,
+        expectedAttributes);
   }
 
   @Test
-  public void testEmitRepushStoreCallCountManualFailWithErrorResponseMetric() throws Exception {
+  public void testEmitRepushStoreCallCountManualFailWithErrorResponseMetric() {
     Attributes expectedAttributes = Attributes.builder()
         .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), TEST_CLUSTER_NAME)
         .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), TEST_STORE_NAME)
         .put(
-            REPUSH_TRIGGER_SOURCE.getDimensionNameInDefaultFormat(),
-            RepushStoreTriggerSource.MANUAL.getDimensionValue())
+            STORE_REPUSH_TRIGGER_SOURCE.getDimensionNameInDefaultFormat(),
+            StoreRepushTriggerSource.MANUAL.getDimensionValue())
         .put(
             VENICE_RESPONSE_STATUS_CODE_CATEGORY.getDimensionNameInDefaultFormat(),
             VeniceResponseStatusCategory.FAIL.getDimensionValue())
@@ -86,10 +90,13 @@ public class LogCompactionStatsTest extends AbstractTestVeniceParentHelixAdmin {
 
     // Record metric
     this.logCompactionStats
-        .recordRepushStoreCall(TEST_STORE_NAME, RepushStoreTriggerSource.MANUAL, VeniceResponseStatusCategory.FAIL);
+        .recordRepushStoreCall(TEST_STORE_NAME, StoreRepushTriggerSource.MANUAL, VeniceResponseStatusCategory.FAIL);
 
     // test validation
-    validateLongPointFromDataFromSum(ControllerMetricEntity.REPUSH_CALL_COUNT.getMetricName(), 1, expectedAttributes);
+    validateLongPointFromDataFromSum(
+        ControllerMetricEntity.STORE_REPUSH_CALL_COUNT.getMetricName(),
+        1,
+        expectedAttributes);
   }
 
   @Test
@@ -98,8 +105,8 @@ public class LogCompactionStatsTest extends AbstractTestVeniceParentHelixAdmin {
         .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), TEST_CLUSTER_NAME)
         .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), TEST_STORE_NAME)
         .put(
-            REPUSH_TRIGGER_SOURCE.getDimensionNameInDefaultFormat(),
-            RepushStoreTriggerSource.SCHEDULED.getDimensionValue())
+            STORE_REPUSH_TRIGGER_SOURCE.getDimensionNameInDefaultFormat(),
+            StoreRepushTriggerSource.SCHEDULED_FOR_LOG_COMPACTION.getDimensionValue())
         .put(
             VENICE_RESPONSE_STATUS_CODE_CATEGORY.getDimensionNameInDefaultFormat(),
             VeniceResponseStatusCategory.SUCCESS.getDimensionValue())
@@ -108,11 +115,14 @@ public class LogCompactionStatsTest extends AbstractTestVeniceParentHelixAdmin {
     // Record metric
     this.logCompactionStats.recordRepushStoreCall(
         TEST_STORE_NAME,
-        RepushStoreTriggerSource.SCHEDULED,
+        StoreRepushTriggerSource.SCHEDULED_FOR_LOG_COMPACTION,
         VeniceResponseStatusCategory.SUCCESS);
 
     // test validation
-    validateLongPointFromDataFromSum(ControllerMetricEntity.REPUSH_CALL_COUNT.getMetricName(), 1, expectedAttributes);
+    validateLongPointFromDataFromSum(
+        ControllerMetricEntity.STORE_REPUSH_CALL_COUNT.getMetricName(),
+        1,
+        expectedAttributes);
   }
 
   @Test
@@ -127,7 +137,7 @@ public class LogCompactionStatsTest extends AbstractTestVeniceParentHelixAdmin {
 
     // test validation
     validateLongPointFromDataFromGauge(
-        ControllerMetricEntity.COMPACTION_ELIGIBLE_STATE.getMetricName(),
+        ControllerMetricEntity.STORE_COMPACTION_ELIGIBLE_STATE.getMetricName(),
         1,
         expectedAttributes);
   }
@@ -144,7 +154,7 @@ public class LogCompactionStatsTest extends AbstractTestVeniceParentHelixAdmin {
 
     // test validation
     validateLongPointFromDataFromGauge(
-        ControllerMetricEntity.COMPACTION_ELIGIBLE_STATE.getMetricName(),
+        ControllerMetricEntity.STORE_COMPACTION_ELIGIBLE_STATE.getMetricName(),
         0,
         expectedAttributes);
   }
@@ -161,7 +171,7 @@ public class LogCompactionStatsTest extends AbstractTestVeniceParentHelixAdmin {
 
     // test validation
     validateLongPointFromDataFromSum(
-        ControllerMetricEntity.STORE_NOMINATED_FOR_COMPACTION_COUNT.getMetricName(),
+        ControllerMetricEntity.STORE_COMPACTION_NOMINATED_COUNT.getMetricName(),
         1,
         expectedAttributes);
   }
