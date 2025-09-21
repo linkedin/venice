@@ -16,21 +16,32 @@ import java.util.Set;
 
 
 public enum ControllerMetricEntity implements ModuleMetricEntityInterface {
+  /** Count of all requests to repush a store */
   STORE_REPUSH_CALL_COUNT(
       "store.repush.call_count", MetricType.COUNTER, MetricUnit.NUMBER, "Count of all requests to repush a store",
       setOf(VENICE_STORE_NAME, VENICE_RESPONSE_STATUS_CODE_CATEGORY, VENICE_CLUSTER_NAME, STORE_REPUSH_TRIGGER_SOURCE)
   ),
 
   /** log compaction related metrics */
+
+  /** Count of stores nominated for scheduled compaction */
   STORE_COMPACTION_NOMINATED_COUNT(
       "store.compaction.nominated_count", MetricType.COUNTER, MetricUnit.NUMBER,
       "Count of stores nominated for scheduled compaction", setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME)
   ),
+
+  /**
+   * Track the state from the time a store is nominated for compaction to the
+   * time the repush is completed to finish compaction. stays 1 after nomination
+   * and becomes 0 when the compaction is compacted
+   */
   STORE_COMPACTION_ELIGIBLE_STATE(
       "store.compaction.eligible_state", MetricType.GAUGE, MetricUnit.NUMBER,
-      "State of the compaction eligibility: shows the duration from compaction nomination to triggered to completion. stays 1 after nomination and becomes 0 when the compaction is compacted",
+      "Track the state from the time a store is nominated for compaction to the time the repush is completed",
       setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME)
   ),
+
+  /** Count of log compaction repush triggered for a store after it becomes eligible */
   STORE_COMPACTION_TRIGGERED_COUNT(
       "store.compaction.triggered_count", MetricType.COUNTER, MetricUnit.NUMBER,
       "Count of log compaction repush triggered for a store after it becomes eligible",
