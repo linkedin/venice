@@ -1,5 +1,7 @@
 package com.linkedin.venice.controller;
 
+import static com.linkedin.venice.meta.Store.NON_EXISTING_VERSION;
+
 import com.linkedin.venice.VeniceResource;
 import com.linkedin.venice.acl.AclCreationDeletionListener;
 import com.linkedin.venice.acl.DynamicAccessController;
@@ -10,6 +12,7 @@ import com.linkedin.venice.controller.stats.AggPartitionHealthStats;
 import com.linkedin.venice.controller.stats.ProtocolVersionAutoDetectionStats;
 import com.linkedin.venice.controller.stats.VeniceAdminStats;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.helix.HelixExternalViewRepository;
@@ -27,6 +30,7 @@ import com.linkedin.venice.ingestion.control.RealTimeTopicSwitcher;
 import com.linkedin.venice.meta.ReadWriteSchemaRepository;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.pushmonitor.AggPushHealthStats;
 import com.linkedin.venice.pushmonitor.AggPushStatusCleanUpStats;
 import com.linkedin.venice.pushmonitor.LeakedPushStatusCleanUpService;
@@ -72,7 +76,7 @@ public class HelixVeniceClusterResources implements VeniceResource {
   private final LogCompactionService logCompactionService;
   private final ZkRoutersClusterManager routersClusterManager;
   private final AggPartitionHealthStats aggPartitionHealthStats;
-  private final ZkStoreConfigAccessor storeConfigAccessor;
+  private ZkStoreConfigAccessor storeConfigAccessor;
   private final Optional<DynamicAccessController> accessController;
   private final ExecutorService errorPartitionResetExecutorService = Executors.newSingleThreadExecutor();
   private final StoragePersonaRepository storagePersonaRepository;
@@ -85,6 +89,7 @@ public class HelixVeniceClusterResources implements VeniceResource {
   private final VeniceAdminStats veniceAdminStats;
   private final VeniceHelixAdmin admin;
   private final Optional<MultiTaskSchedulerService> multiTaskSchedulerService;
+  private final VeniceVersionLifecycleEventManager veniceVersionLifecycleEventManager;
 
   public HelixVeniceClusterResources(
       String clusterName,
@@ -96,7 +101,8 @@ public class HelixVeniceClusterResources implements VeniceResource {
       MetricsRepository metricsRepository,
       RealTimeTopicSwitcher realTimeTopicSwitcher,
       Optional<DynamicAccessController> accessController,
-      HelixAdminClient helixAdminClient) {
+      HelixAdminClient helixAdminClient,
+      VeniceVersionLifecycleEventManager veniceVersionLifecycleEventManager) {
     this.clusterName = clusterName;
     this.config = config;
     this.helixManager = helixManager;
@@ -173,6 +179,7 @@ public class HelixVeniceClusterResources implements VeniceResource {
     String aggregateRealTimeSourceKafkaUrl =
         config.getChildDataCenterKafkaUrlMap().get(config.getAggregateRealTimeSourceRegion());
     boolean unregisterMetricEnabled = config.isUnregisterMetricForDeletedStoreEnabled();
+    this.veniceVersionLifecycleEventManager = veniceVersionLifecycleEventManager;
 
     this.pushMonitor = new PushMonitorDelegator(
         clusterName,
@@ -189,7 +196,19 @@ public class HelixVeniceClusterResources implements VeniceResource {
         config,
         admin.getPushStatusStoreReader(),
         admin.getDisabledPartitionStats(clusterName),
-        admin.getVeniceWriterFactory());
+        admin.getVeniceWriterFactory(),
+        (updatedStore, updatedClusterName, currentVersion, previousVersion) -> {
+          boolean isSourceCluster = true;
+          if (updatedStore.isMigrating()) {
+            isSourceCluster = isSourceCluster(updatedClusterName, updatedStore.getName());
+          }
+          this.veniceVersionLifecycleEventManager
+              .notifyVersionBecomingCurrentFromFuture(updatedStore.getVersionOrThrow(currentVersion), isSourceCluster);
+          if (previousVersion != NON_EXISTING_VERSION) {
+            this.veniceVersionLifecycleEventManager
+                .notifyVersionBecomingBackup(updatedStore.getVersionOrThrow(previousVersion), isSourceCluster);
+          }
+        });
 
     this.leakedPushStatusCleanUpService = new LeakedPushStatusCleanUpService(
         clusterName,
@@ -509,6 +528,11 @@ public class HelixVeniceClusterResources implements VeniceResource {
     return metaStoreWriter;
   }
 
+  // setStoreConfigAccessor is used for testing only.
+  void setStoreConfigAccessor(ZkStoreConfigAccessor storeConfigAccessor) {
+    this.storeConfigAccessor = storeConfigAccessor;
+  }
+
   public ZkStoreConfigAccessor getStoreConfigAccessor() {
     return storeConfigAccessor;
   }
@@ -535,6 +559,21 @@ public class HelixVeniceClusterResources implements VeniceResource {
    */
   public AutoCloseableLock lockForShutdown() {
     return clusterLockManager.createClusterWriteLock();
+  }
+
+  public VeniceVersionLifecycleEventManager getVeniceVersionLifecycleEventManager() {
+    return veniceVersionLifecycleEventManager;
+  }
+
+  public boolean isSourceCluster(String clusterName, String storeName) {
+    if (clusterName == null) {
+      throw new IllegalArgumentException("clusterName is null, storeName: " + storeName);
+    }
+    StoreConfig storeConfig = storeConfigAccessor.getStoreConfig(storeName);
+    if (storeConfig == null) {
+      throw new VeniceNoStoreException(storeName);
+    }
+    return clusterName.equals(storeConfig.getCluster());
   }
 
   private SafeHelixManager getSpectatorManager(String clusterName, String zkAddress) {

@@ -36,6 +36,7 @@ public class VeniceControllerContext {
   private ICProvider icProvider;
   private SupersetSchemaGenerator externalSupersetSchemaGenerator;
   private PubSubClientsFactory pubSubClientsFactory;
+  private VeniceVersionLifecycleEventListener versionLifecycleEventListener;
 
   public List<VeniceProperties> getPropertiesList() {
     return propertiesList;
@@ -81,6 +82,10 @@ public class VeniceControllerContext {
     return pubSubClientsFactory;
   }
 
+  public VeniceVersionLifecycleEventListener getVersionLifecycleEventListener() {
+    return versionLifecycleEventListener;
+  }
+
   public VeniceControllerContext(Builder builder) {
     this.propertiesList = builder.propertiesList;
     this.metricsRepository = builder.metricsRepository;
@@ -93,6 +98,7 @@ public class VeniceControllerContext {
     this.externalSupersetSchemaGenerator = builder.externalSupersetSchemaGenerator;
     this.pubSubClientsFactory = builder.pubSubClientsFactory;
     this.d2Clients = builder.d2Clients;
+    this.versionLifecycleEventListener = builder.versionLifecycleEventListener;
   }
 
   public static class Builder {
@@ -110,6 +116,7 @@ public class VeniceControllerContext {
 
     private boolean isMetricsRepositorySet;
     private boolean isServiceDiscoveryAnnouncerSet;
+    private VeniceVersionLifecycleEventListener versionLifecycleEventListener;
 
     public Builder setPropertiesList(List<VeniceProperties> propertiesList) {
       this.propertiesList = propertiesList;
@@ -166,6 +173,11 @@ public class VeniceControllerContext {
     // Set D2 Client
     public Builder setD2Clients(Map<String, D2Client> d2Clients) {
       this.d2Clients = d2Clients;
+      return this;
+    }
+
+    public Builder setVersionLifecycleEventListener(VeniceVersionLifecycleEventListener versionLifecycleEventListener) {
+      this.versionLifecycleEventListener = versionLifecycleEventListener;
       return this;
     }
 

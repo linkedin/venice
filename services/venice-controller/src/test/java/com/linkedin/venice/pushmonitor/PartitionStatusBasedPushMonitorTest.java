@@ -4,6 +4,7 @@ import static com.linkedin.venice.LogMessages.KILLED_JOB_MESSAGE;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.COMPLETED;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.ERROR;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.STARTED;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.anyInt;
@@ -13,6 +14,7 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -68,7 +70,8 @@ public class PartitionStatusBasedPushMonitorTest extends AbstractPushMonitorTest
         getMockControllerConfig(),
         null,
         mock(DisabledPartitionStats.class),
-        getMockVeniceWriterFactory());
+        getMockVeniceWriterFactory(),
+        getCurrentVersionChangeNotifier());
   }
 
   @Override
@@ -88,7 +91,8 @@ public class PartitionStatusBasedPushMonitorTest extends AbstractPushMonitorTest
         getMockControllerConfig(),
         null,
         mock(DisabledPartitionStats.class),
-        getMockVeniceWriterFactory());
+        getMockVeniceWriterFactory(),
+        getCurrentVersionChangeNotifier());
   }
 
   @Test
@@ -186,6 +190,7 @@ public class PartitionStatusBasedPushMonitorTest extends AbstractPushMonitorTest
     Assert.assertEquals(getMonitor().getOfflinePushOrThrow(topic).getCurrentStatus(), ExecutionStatus.COMPLETED);
     Assert.assertEquals(store.getCurrentVersion(), 0);
     Assert.assertEquals(store.getVersion(1).getStatus(), VersionStatus.PUSHED);
+    verify(currentVersionChangeNotifier, never()).onCurrentVersionChange(any(), anyString(), anyInt(), anyInt());
     Mockito.reset(getMockAccessor());
   }
 

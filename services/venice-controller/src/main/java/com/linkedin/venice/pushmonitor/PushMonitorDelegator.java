@@ -59,7 +59,8 @@ public class PushMonitorDelegator implements PushMonitor {
       VeniceControllerClusterConfig controllerConfig,
       PushStatusStoreReader pushStatusStoreReader,
       DisabledPartitionStats disabledPartitionStats,
-      VeniceWriterFactory veniceWriterFactory) {
+      VeniceWriterFactory veniceWriterFactory,
+      AbstractPushMonitor.CurrentVersionChangeNotifier currentVersionChangeNotifier) {
     this.clusterName = clusterName;
     this.metadataRepository = metadataRepository;
 
@@ -78,7 +79,8 @@ public class PushMonitorDelegator implements PushMonitor {
         controllerConfig,
         pushStatusStoreReader,
         disabledPartitionStats,
-        veniceWriterFactory);
+        veniceWriterFactory,
+        currentVersionChangeNotifier);
     this.clusterLockManager = clusterLockManager;
 
     this.topicToPushMonitorMap = new VeniceConcurrentHashMap<>();

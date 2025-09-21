@@ -54,7 +54,8 @@ public class TestVeniceControllerStateModel {
         mock(ClusterLeaderInitializationRoutine.class),
         mock(RealTimeTopicSwitcher.class),
         Optional.empty(),
-        mock(HelixAdminClient.class));
+        mock(HelixAdminClient.class),
+        Optional.empty());
   }
 
   @Test
@@ -118,7 +119,8 @@ public class TestVeniceControllerStateModel {
         mock(ClusterLeaderInitializationRoutine.class),
         mock(RealTimeTopicSwitcher.class),
         Optional.empty(),
-        mock(HelixAdminClient.class));
+        mock(HelixAdminClient.class),
+        Optional.empty());
     int testPartition = 0;
     String resourceName = Version.composeKafkaTopic("testStore", 1);
     String partitionName = HelixUtils.getPartitionName(resourceName, testPartition);
