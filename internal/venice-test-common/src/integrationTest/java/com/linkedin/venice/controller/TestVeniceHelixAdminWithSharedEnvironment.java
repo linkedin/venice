@@ -2220,5 +2220,6 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     Assert.assertEquals(
         veniceAdmin.getStore(clusterName, storeName).getVersion(version.getNumber()).getPartitionCount(),
         oldPartitionCount);
+    stopParticipant(additionalNode);
   }
 }
