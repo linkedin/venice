@@ -49,6 +49,7 @@ public enum FastClientMetricEntity implements ModuleMetricEntityInterface {
 
   /**
    * Ratio of requests rejected by the client to total requests.
+   * TODO: Evaluate if this metric can be implemented as a derived OTel metric and if so, migrate to that.
    */
   REQUEST_REJECTION_RATIO(
       "request.rejection_ratio", MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS, MetricUnit.NUMBER,
