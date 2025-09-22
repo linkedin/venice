@@ -1,10 +1,9 @@
 package com.linkedin.venice.controller.stats;
 
-import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.HTTP_REQUEST_METHOD;
-import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.HTTP_REQUEST_URI;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE_CATEGORY;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CONTROLLER_ENDPOINT;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY;
 
 import com.google.common.collect.ImmutableMap;
@@ -18,6 +17,7 @@ import com.linkedin.venice.stats.dimensions.HttpResponseStatusEnum;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
 import com.linkedin.venice.stats.metrics.MetricEntityStateGeneric;
+import com.linkedin.venice.stats.metrics.MetricEntityStateOneEnum;
 import com.linkedin.venice.stats.metrics.TehutiMetricNameEnum;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
@@ -38,12 +38,11 @@ public class SparkServerStats extends AbstractVeniceStats {
   private final Sensor requests;
   private final Sensor finishedRequests;
 
+  private final MetricEntityStateOneEnum<ControllerRoute> inFlightRequestTotalCountMetric;
   private final MetricEntityStateGeneric successfulRequestCountMetric;
   private final MetricEntityStateGeneric failedRequestCountMetric;
   private final MetricEntityStateGeneric successfulRequestLatencyHistogramMetric;
   private final MetricEntityStateGeneric failedRequestLatencyHistogramMetric;
-
-  private final MetricEntityStateGeneric inFlightRequestTotalCountMetric;
 
   public SparkServerStats(MetricsRepository metricsRepository, String clusterName) {
     super(metricsRepository, clusterName);
@@ -72,6 +71,15 @@ public class SparkServerStats extends AbstractVeniceStats {
         new Count(),
         new OccurrenceRate());
 
+    inFlightRequestTotalCountMetric = MetricEntityStateOneEnum.create(
+        ControllerMetricEntity.IN_FLIGHT_CALL_COUNT.getMetricEntity(),
+        otelRepository,
+        this::registerSensor,
+        ControllerTehutiMetricNameEnum.CURRENT_IN_FLIGHT_REQUEST,
+        Collections.singletonList(new OccurrenceRate()),
+        baseDimensionsMap,
+        ControllerRoute.class);
+
     successfulRequestCountMetric = MetricEntityStateGeneric.create(
         ControllerMetricEntity.CALL_COUNT.getMetricEntity(),
         otelRepository,
@@ -89,7 +97,7 @@ public class SparkServerStats extends AbstractVeniceStats {
         baseDimensionsMap);
 
     successfulRequestLatencyHistogramMetric = MetricEntityStateGeneric.create(
-        ControllerMetricEntity.REQUEST_TIME.getMetricEntity(),
+        ControllerMetricEntity.CALL_TIME.getMetricEntity(),
         otelRepository,
         this::registerSensor,
         ControllerTehutiMetricNameEnum.SUCCESSFUL_REQUEST_LATENCY,
@@ -97,26 +105,19 @@ public class SparkServerStats extends AbstractVeniceStats {
         baseDimensionsMap);
 
     failedRequestLatencyHistogramMetric = MetricEntityStateGeneric.create(
-        ControllerMetricEntity.REQUEST_TIME.getMetricEntity(),
+        ControllerMetricEntity.CALL_TIME.getMetricEntity(),
         otelRepository,
         this::registerSensor,
         ControllerTehutiMetricNameEnum.FAILED_REQUEST_LATENCY,
         Collections.singletonList(new OccurrenceRate()),
         baseDimensionsMap);
 
-    inFlightRequestTotalCountMetric = MetricEntityStateGeneric.create(
-        ControllerMetricEntity.IN_FLIGHT_CALL_COUNT.getMetricEntity(),
-        otelRepository,
-        this::registerSensor,
-        ControllerTehutiMetricNameEnum.CURRENT_IN_FLIGHT_REQUEST,
-        Collections.singletonList(new OccurrenceRate()),
-        baseDimensionsMap);
   }
 
   public void recordRequest(Request request) {
-    Map<VeniceMetricsDimensions, String> dimensions = getDimensionsFromRequestAndResponse(request, null).build();
+    ControllerRoute route = ControllerRoute.valueOfPath(request.uri());
     requests.record(1);
-    inFlightRequestTotalCountMetric.record(1, dimensions);
+    inFlightRequestTotalCountMetric.record(1, route);
   }
 
   public void recordSuccessfulRequest(Request request, Response response, double latency) {
@@ -138,9 +139,9 @@ public class SparkServerStats extends AbstractVeniceStats {
   }
 
   private void finishRequest(Request request) {
-    Map<VeniceMetricsDimensions, String> dimensions = getDimensionsFromRequestAndResponse(request, null).build();
+    ControllerRoute route = ControllerRoute.valueOfPath(request.uri());
     finishedRequests.record(1);
-    inFlightRequestTotalCountMetric.record(-1, dimensions);
+    inFlightRequestTotalCountMetric.record(-1, route);
   }
 
   private ImmutableMap.Builder<VeniceMetricsDimensions, String> getDimensionsBuilder() {
@@ -161,9 +162,8 @@ public class SparkServerStats extends AbstractVeniceStats {
     if (request != null) {
       ControllerRoute route = ControllerRoute.valueOfPath(request.uri());
       if (route != null) {
-        builder = builder.put(HTTP_REQUEST_URI, route.getPath());
+        builder = builder.put(VENICE_CONTROLLER_ENDPOINT, route.toString());
       }
-      builder = builder.put(HTTP_REQUEST_METHOD, request.requestMethod());
     }
 
     if (response != null) {

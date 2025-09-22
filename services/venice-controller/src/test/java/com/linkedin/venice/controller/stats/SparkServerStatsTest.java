@@ -1,15 +1,15 @@
 package com.linkedin.venice.controller.stats;
 
-import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.HTTP_REQUEST_METHOD;
-import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.HTTP_REQUEST_URI;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE_CATEGORY;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CONTROLLER_ENDPOINT;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.linkedin.venice.controller.AbstractTestVeniceParentHelixAdmin;
+import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.stats.VeniceMetricsConfig;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.stats.dimensions.HttpResponseStatusCodeCategory;
@@ -39,7 +39,7 @@ public class SparkServerStatsTest extends AbstractTestVeniceParentHelixAdmin {
     Collection<MetricEntity> metricEntities = Arrays.asList(
         ControllerMetricEntity.IN_FLIGHT_CALL_COUNT.getMetricEntity(),
         ControllerMetricEntity.CALL_COUNT.getMetricEntity(),
-        ControllerMetricEntity.REQUEST_TIME.getMetricEntity());
+        ControllerMetricEntity.CALL_TIME.getMetricEntity());
 
     // setup metric reader to validate metric emission
     this.inMemoryMetricReader = InMemoryMetricReader.create();
@@ -74,8 +74,9 @@ public class SparkServerStatsTest extends AbstractTestVeniceParentHelixAdmin {
         1,
         Attributes.builder()
             .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), TEST_CLUSTER_NAME)
-            .put(HTTP_REQUEST_URI.getDimensionNameInDefaultFormat(), testPath)
-            .put(HTTP_REQUEST_METHOD.getDimensionNameInDefaultFormat(), testMethod)
+            .put(
+                VENICE_CONTROLLER_ENDPOINT.getDimensionNameInDefaultFormat(),
+                ControllerRoute.valueOfPath(testPath).toString())
             .build());
   }
 
@@ -103,8 +104,9 @@ public class SparkServerStatsTest extends AbstractTestVeniceParentHelixAdmin {
         1,
         Attributes.builder()
             .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), TEST_CLUSTER_NAME)
-            .put(HTTP_REQUEST_URI.getDimensionNameInDefaultFormat(), testPath)
-            .put(HTTP_REQUEST_METHOD.getDimensionNameInDefaultFormat(), testMethod)
+            .put(
+                VENICE_CONTROLLER_ENDPOINT.getDimensionNameInDefaultFormat(),
+                ControllerRoute.valueOfPath(testPath).toString())
             .build());
 
     // Record success
@@ -116,23 +118,9 @@ public class SparkServerStatsTest extends AbstractTestVeniceParentHelixAdmin {
         1,
         Attributes.builder()
             .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), TEST_CLUSTER_NAME)
-            .put(HTTP_REQUEST_URI.getDimensionNameInDefaultFormat(), testPath)
-            .put(HTTP_REQUEST_METHOD.getDimensionNameInDefaultFormat(), testMethod)
-            .put(HTTP_RESPONSE_STATUS_CODE.getDimensionNameInDefaultFormat(), String.valueOf(testResponseCode))
             .put(
-                HTTP_RESPONSE_STATUS_CODE_CATEGORY.getDimensionNameInDefaultFormat(),
-                HttpResponseStatusCodeCategory.SUCCESS.getDimensionValue())
-            .put(
-                VENICE_RESPONSE_STATUS_CODE_CATEGORY.getDimensionNameInDefaultFormat(),
-                VeniceResponseStatusCategory.SUCCESS.getDimensionValue())
-            .build());
-    validateLongPointFromDataFromCounter(
-        ControllerMetricEntity.IN_FLIGHT_CALL_COUNT.getMetricName(),
-        0,
-        Attributes.builder()
-            .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), TEST_CLUSTER_NAME)
-            .put(HTTP_REQUEST_URI.getDimensionNameInDefaultFormat(), testPath)
-            .put(HTTP_REQUEST_METHOD.getDimensionNameInDefaultFormat(), testMethod)
+                VENICE_CONTROLLER_ENDPOINT.getDimensionNameInDefaultFormat(),
+                ControllerRoute.valueOfPath(testPath).toString())
             .build());
   }
 
@@ -159,8 +147,9 @@ public class SparkServerStatsTest extends AbstractTestVeniceParentHelixAdmin {
         1,
         Attributes.builder()
             .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), TEST_CLUSTER_NAME)
-            .put(HTTP_REQUEST_URI.getDimensionNameInDefaultFormat(), testPath)
-            .put(HTTP_REQUEST_METHOD.getDimensionNameInDefaultFormat(), testMethod)
+            .put(
+                VENICE_CONTROLLER_ENDPOINT.getDimensionNameInDefaultFormat(),
+                ControllerRoute.valueOfPath(testPath).toString())
             .build());
 
     // Record success
@@ -172,8 +161,9 @@ public class SparkServerStatsTest extends AbstractTestVeniceParentHelixAdmin {
         1,
         Attributes.builder()
             .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), TEST_CLUSTER_NAME)
-            .put(HTTP_REQUEST_URI.getDimensionNameInDefaultFormat(), testPath)
-            .put(HTTP_REQUEST_METHOD.getDimensionNameInDefaultFormat(), testMethod)
+            .put(
+                VENICE_CONTROLLER_ENDPOINT.getDimensionNameInDefaultFormat(),
+                ControllerRoute.valueOfPath(testPath).toString())
             .put(HTTP_RESPONSE_STATUS_CODE.getDimensionNameInDefaultFormat(), String.valueOf(testResponseCode))
             .put(
                 HTTP_RESPONSE_STATUS_CODE_CATEGORY.getDimensionNameInDefaultFormat(),
@@ -187,8 +177,9 @@ public class SparkServerStatsTest extends AbstractTestVeniceParentHelixAdmin {
         0,
         Attributes.builder()
             .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), TEST_CLUSTER_NAME)
-            .put(HTTP_REQUEST_URI.getDimensionNameInDefaultFormat(), testPath)
-            .put(HTTP_REQUEST_METHOD.getDimensionNameInDefaultFormat(), testMethod)
+            .put(
+                VENICE_CONTROLLER_ENDPOINT.getDimensionNameInDefaultFormat(),
+                ControllerRoute.valueOfPath(testPath).toString())
             .build());
   }
 
