@@ -22,10 +22,10 @@ public class AdaptiveThrottlingServiceStats extends AbstractVeniceStats {
     sensors.put(throttlerName, registerSensorIfAbsent(throttlerName, new Rate()));
   }
 
-  public void recordRateForAdaptiveThrottler(VeniceAdaptiveThrottler throttler, int recordsConsumed) {
+  public void recordRateForAdaptiveThrottler(VeniceAdaptiveThrottler throttler, int rate) {
     Sensor sensor = sensors.get(throttler.getThrottlerName());
     if (sensor != null) {
-      sensor.record(recordsConsumed);
+      sensor.record(rate);
     }
   }
 }
