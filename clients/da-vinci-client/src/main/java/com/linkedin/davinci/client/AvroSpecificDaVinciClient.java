@@ -30,6 +30,7 @@ public class AvroSpecificDaVinciClient<K, V extends SpecificRecord> extends Avro
           Class<V> valueClass = clientConfig.getSpecificValueClass();
           FastSerializerDeserializerFactory.verifyWhetherFastSpecificDeserializerWorks(valueClass);
         },
-        readChunkExecutorForLargeRequest);
+        readChunkExecutorForLargeRequest,
+        null);
   }
 }

@@ -4756,38 +4756,42 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         throw new VeniceException(
             "Unable to update store:" + storeName + " current version since store does not enable writes");
       }
-      // check whether the future version has enough ready-to-serve instances for all partitions in CV
+      // check whether the future version has enough ready-to-serve instances for all partitions in CV for manual
+      // deferred version swap. it is safe to skip this for automatic deferred version swap as ST is stalled until
+      // the future version replica is ready
       int previousVersion = store.getCurrentVersion();
       Version futureVersionObj = store.getVersion(futureVersion);
-      int partitionCount = futureVersionObj.getPartitionCount();
-      int minActiveReplicas = futureVersionObj.getMinActiveReplicas();
-      String currentVersionKafka = Version.composeKafkaTopic(storeName, futureVersion);
-      HelixCustomizedViewOfflinePushRepository customizedViewRepository =
-          getHelixVeniceClusterResources(clusterName).getCustomizedViewRepository();
-      // Check if all partitions have enough ready-to-serve instances
-      for (int partition = 0; partition < partitionCount; partition++) {
-        List<Instance> readyToServeInstances;
-        try {
-          readyToServeInstances = customizedViewRepository.getReadyToServeInstances(currentVersionKafka, partition);
-        } catch (Exception e) {
-          readyToServeInstances = Collections.emptyList();
-        }
+      if (futureVersionObj.isVersionSwapDeferred() && StringUtils.isEmpty(futureVersionObj.getTargetSwapRegion())) {
+        int partitionCount = futureVersionObj.getPartitionCount();
+        int minActiveReplicas = futureVersionObj.getMinActiveReplicas();
+        String currentVersionKafka = Version.composeKafkaTopic(storeName, futureVersion);
+        HelixCustomizedViewOfflinePushRepository customizedViewRepository =
+            getHelixVeniceClusterResources(clusterName).getCustomizedViewRepository();
+        // Check if all partitions have enough ready-to-serve instances
+        for (int partition = 0; partition < partitionCount; partition++) {
+          List<Instance> readyToServeInstances;
+          try {
+            readyToServeInstances = customizedViewRepository.getReadyToServeInstances(currentVersionKafka, partition);
+          } catch (Exception e) {
+            readyToServeInstances = Collections.emptyList();
+          }
 
-        if (readyToServeInstances.size() < minActiveReplicas) {
-          // fail rolling forward if any partition does not have enough ready-to-serve instances
-          StringBuilder errorBuilder = new StringBuilder();
-          errorBuilder.append("Rolling forward current version ")
-              .append(previousVersion)
-              .append(" to future version: ")
-              .append(futureVersion)
-              .append(" failed for store: ")
-              .append(storeName)
-              .append(" as partition ")
-              .append(partition)
-              .append(" and probably others do not have enough ready-to-serve instances");
-          String errorMessage = errorBuilder.toString();
-          LOGGER.error(errorMessage);
-          throw new VeniceException(errorMessage);
+          if (readyToServeInstances.size() < minActiveReplicas) {
+            // fail rolling forward if any partition does not have enough ready-to-serve instances
+            StringBuilder errorBuilder = new StringBuilder();
+            errorBuilder.append("Rolling forward current version ")
+                .append(previousVersion)
+                .append(" to future version: ")
+                .append(futureVersion)
+                .append(" failed for store: ")
+                .append(storeName)
+                .append(" as partition ")
+                .append(partition)
+                .append(" and probably others do not have enough ready-to-serve instances");
+            String errorMessage = errorBuilder.toString();
+            LOGGER.error(errorMessage);
+            throw new VeniceException(errorMessage);
+          }
         }
       }
       store.setCurrentVersion(futureVersion);

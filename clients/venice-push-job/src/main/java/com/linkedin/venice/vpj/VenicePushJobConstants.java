@@ -393,6 +393,12 @@ public final class VenicePushJobConstants {
    */
   public static final String TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP = "targeted.region.push.with.deferred.swap";
 
+  /**
+   * Config to update the wait time in minutes for target region push with deferred version swap
+   */
+  public static final String TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP_WAIT_TIME_MINUTES =
+      "targeted.region.push.with.deferred.swap.wait.time.minutes";
+
   public static final boolean DEFAULT_IS_DUPLICATED_KEY_ALLOWED = false;
 
   /**
