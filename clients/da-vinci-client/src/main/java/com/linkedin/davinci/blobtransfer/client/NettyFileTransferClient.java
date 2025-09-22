@@ -298,7 +298,7 @@ public class NettyFileTransferClient {
       String replicaId = Utils.getReplicaId(Version.composeKafkaTopic(storeName, version), partition);
       requestFuture.addListener(f -> {
         if (f.isSuccess()) {
-          LOGGER.debug("Request successfully sent to the server for replica {} to remove host {}", replicaId, host);
+          LOGGER.info("Request successfully sent to the server for replica {} to remove host {}", replicaId, host);
         } else {
           LOGGER.error("Failed to send request for replica {} to host {}", replicaId, host, f.cause());
         }

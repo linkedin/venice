@@ -274,8 +274,8 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
     ctx.write(response);
 
     // Use ChunkedFile with adaptive chunk size
-    // It means minimum chunk size: 8 KB (8192 bytes), maximum chunk size: 1 MB (1024 * 1024 bytes)
-    int chunkSize = Math.min(1024 * 1024, (int) Math.max(8192, length / 4));
+    // It means minimum chunk size: 8 KB (8192 bytes), maximum chunk size: 2 MB (1024 * 1024 bytes)
+    int chunkSize = Math.min(2 * 1024 * 1024, (int) Math.max(8192, length / 4));
     sendFileFuture = ctx.writeAndFlush(new HttpChunkedInput(new ChunkedFile(raf, 0, length, chunkSize)));
 
     sendFileFuture.addListener(future -> {
