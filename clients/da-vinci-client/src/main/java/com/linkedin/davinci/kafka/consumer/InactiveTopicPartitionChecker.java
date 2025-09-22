@@ -87,8 +87,8 @@ public class InactiveTopicPartitionChecker extends AbstractVeniceService {
     // Start the scheduled task to check inactive topic partitions
     executorService.scheduleWithFixedDelay(
         this::checkInactiveTopicPartition,
-        inactiveTopicPartitionCheckIntervalInMs,
-        inactiveTopicPartitionCheckIntervalInMs,
+        getInactiveTopicPartitionCheckIntervalInMs(),
+        getInactiveTopicPartitionCheckIntervalInMs(),
         TimeUnit.MICROSECONDS);
     return true;
   }
@@ -143,16 +143,16 @@ public class InactiveTopicPartitionChecker extends AbstractVeniceService {
    * to get accurate activity information for each topic partition individually, rather than using a global
    * last poll timestamp for the entire consumer.
    */
-  private void checkInactiveTopicPartition() {
+  void checkInactiveTopicPartition() {
     try {
       long currentTime = System.currentTimeMillis();
 
       // Process each consumer: check for inactive topic-partitions, then pause/resume as needed
-      for (Map.Entry<SharedKafkaConsumer, ConsumptionTask> entry: consumerToConsumptionTask.entrySet()) {
+      for (Map.Entry<SharedKafkaConsumer, ConsumptionTask> entry: getConsumerToConsumptionTask().entrySet()) {
         SharedKafkaConsumer consumer = entry.getKey();
         ConsumptionTask task = entry.getValue();
         Set<PubSubTopicPartition> previouslyPausedTopicPartitions =
-            consumerToPausedTopicPartitionsMap.computeIfAbsent(consumer, x -> new HashSet<>());
+            getConsumerToPausedTopicPartitionsMap().computeIfAbsent(consumer, x -> new HashSet<>());
         Set<PubSubTopicPartition> assignedTopicPartitions = consumer.getAssignment();
         Set<PubSubTopicPartition> currentlyInactiveTopicPartitions = new HashSet<>();
 
@@ -163,14 +163,14 @@ public class InactiveTopicPartitionChecker extends AbstractVeniceService {
           }
           long lastSuccessfulPollTimestamp = task.getPartitionStats(topicPartition).getLastSuccessfulPollTimestamp();
           long timeSinceLastPoll = currentTime - lastSuccessfulPollTimestamp;
-          if (lastSuccessfulPollTimestamp == -1 || timeSinceLastPoll > inactiveTopicPartitionThresholdInMs) {
+          if (lastSuccessfulPollTimestamp == -1 || timeSinceLastPoll > getInactiveTopicPartitionThresholdInMs()) {
             currentlyInactiveTopicPartitions.add(topicPartition);
             LOGGER.warn(
                 "Detected inactive topic partition: {} for consumer task: {}. Time since last poll: {} ms, threshold: {} ms",
                 topicPartition,
                 task.getTaskIdStr(),
                 timeSinceLastPoll,
-                inactiveTopicPartitionThresholdInMs);
+                getInactiveTopicPartitionThresholdInMs());
           }
         }
 
@@ -178,6 +178,7 @@ public class InactiveTopicPartitionChecker extends AbstractVeniceService {
         for (PubSubTopicPartition topicPartition: previouslyPausedTopicPartitions) {
           if (!currentlyInactiveTopicPartitions.contains(topicPartition)) {
             consumer.resume(topicPartition);
+            previouslyPausedTopicPartitions.remove(topicPartition);
             LOGGER.info("Resumed previously paused topic partition {} for consumer", topicPartition);
           }
         }
@@ -196,5 +197,21 @@ public class InactiveTopicPartitionChecker extends AbstractVeniceService {
       // Log the exception to avoid breaking the scheduled execution
       LOGGER.warn("Error during inactive topic partition check: {}", e.getMessage(), e);
     }
+  }
+
+  long getInactiveTopicPartitionCheckIntervalInMs() {
+    return inactiveTopicPartitionCheckIntervalInMs;
+  }
+
+  long getInactiveTopicPartitionThresholdInMs() {
+    return inactiveTopicPartitionThresholdInMs;
+  }
+
+  IndexedMap<SharedKafkaConsumer, ConsumptionTask> getConsumerToConsumptionTask() {
+    return consumerToConsumptionTask;
+  }
+
+  Map<SharedKafkaConsumer, Set<PubSubTopicPartition>> getConsumerToPausedTopicPartitionsMap() {
+    return consumerToPausedTopicPartitionsMap;
   }
 }
