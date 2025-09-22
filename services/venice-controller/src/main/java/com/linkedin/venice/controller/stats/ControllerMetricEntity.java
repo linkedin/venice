@@ -19,10 +19,6 @@ import java.util.Set;
 
 
 public enum ControllerMetricEntity implements ModuleMetricEntityInterface {
-  // REQUEST_COUNT(
-  // MetricType.COUNTER, MetricUnit.NUMBER, "Count of all calls to controller spark server",
-  // setOf(VENICE_CLUSTER_NAME, HTTP_REQUEST_URL, HTTP_REQUEST_METHOD)
-  // ),
   IN_FLIGHT_CALL_COUNT(
       MetricType.UP_DOWN_COUNTER, MetricUnit.NUMBER, "Count of all current inflight calls to controller spark server",
       setOf(VENICE_CLUSTER_NAME, HTTP_REQUEST_URI, HTTP_REQUEST_METHOD)
