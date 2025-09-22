@@ -1124,7 +1124,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     this.inactiveTopicPartitionCheckerInternalInSeconds =
         serverProperties.getInt(SERVER_INACTIVE_TOPIC_PARTITION_CHECKER_INTERNAL_IN_SECONDS, 60);
     this.inactiveTopicPartitionCheckerThresholdInSeconds =
-        serverProperties.getInt(SERVER_INACTIVE_TOPIC_PARTITION_CHECKER_THRESHOLD_IN_SECONDS, 10);
+        serverProperties.getInt(SERVER_INACTIVE_TOPIC_PARTITION_CHECKER_THRESHOLD_IN_SECONDS, 5);
   }
 
   List<Double> extractThrottleLimitFactorsFor(VeniceProperties serverProperties, String configKey) {
