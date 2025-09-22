@@ -146,7 +146,6 @@ import com.linkedin.venice.controller.kafka.protocol.admin.PartitionerConfigReco
 import com.linkedin.venice.controller.kafka.protocol.admin.PauseStore;
 import com.linkedin.venice.controller.kafka.protocol.admin.PushStatusSystemStoreAutoCreationValidation;
 import com.linkedin.venice.controller.kafka.protocol.admin.ResumeStore;
-import com.linkedin.venice.controller.kafka.protocol.admin.RollForwardCurrentVersion;
 import com.linkedin.venice.controller.kafka.protocol.admin.RollbackCurrentVersion;
 import com.linkedin.venice.controller.kafka.protocol.admin.SchemaMeta;
 import com.linkedin.venice.controller.kafka.protocol.admin.SetStoreOwner;
@@ -2305,15 +2304,6 @@ public class VeniceParentHelixAdmin implements Admin {
     acquireAdminMessageLock(clusterName, storeName);
     try {
       getVeniceHelixAdmin().checkPreConditionForUpdateStoreMetadata(clusterName, storeName);
-      // Send admin message to set future version as current version. Child controllers will execute the admin message.
-      RollForwardCurrentVersion rollForwardCurrentVersion =
-          (RollForwardCurrentVersion) AdminMessageType.ROLLFORWARD_CURRENT_VERSION.getNewInstance();
-      rollForwardCurrentVersion.clusterName = clusterName;
-      rollForwardCurrentVersion.storeName = storeName;
-      rollForwardCurrentVersion.regionsFilter = regionFilter;
-      AdminOperation message = new AdminOperation();
-      message.operationType = AdminMessageType.ROLLFORWARD_CURRENT_VERSION.getValue();
-      message.payloadUnion = rollForwardCurrentVersion;
 
       // get the future version from the interested regions which will be used to compare after roll forward
       Map<String, String> futureVersionsBeforeRollForward = getFutureVersionsForMultiColos(clusterName, storeName);
@@ -2365,12 +2355,11 @@ public class VeniceParentHelixAdmin implements Admin {
         Store parentStore = repository.getStore(storeName);
 
         // Mark the parent store as ONLINE if it's a manual deferred version swap. Manual deferred swaps happen when
-        // only
-        // the deferred version swap version config is set and no target regions are defined
+        // only the deferred version swap version config is set and no target regions are defined
         // Otherwise, it will be handled by DeferredVersionSwapService since it will handle marking the parent ONLINE
         // and tracking when version swap is complete
         Version parentVersion = parentStore.getVersion(futureVersionBeforeRollForward);
-        if (parentStore.getTargetSwapRegion() == null && parentVersion.isVersionSwapDeferred()) {
+        if (StringUtils.isEmpty(parentStore.getTargetSwapRegion()) && parentVersion.isVersionSwapDeferred()) {
           int version = Version.parseVersionFromKafkaTopicName(kafkaTopic);
           parentStore.updateVersionStatus(version, ONLINE);
           repository.updateStore(parentStore);

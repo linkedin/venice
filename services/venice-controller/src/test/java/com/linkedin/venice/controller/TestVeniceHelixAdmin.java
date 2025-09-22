@@ -1261,6 +1261,7 @@ public class TestVeniceHelixAdmin {
     when(mockStore.getCurrentVersion()).thenReturn(1);
 
     Version v2 = mock(Version.class);
+    when(v2.isVersionSwapDeferred()).thenReturn(true);
     when(v2.getPartitionCount()).thenReturn(2);
     when(v2.getMinActiveReplicas()).thenReturn(isPartitionReadyToServe ? 1 : 2);
     when(mockStore.getVersion(2)).thenReturn(v2);

@@ -78,6 +78,7 @@ public class PushJobSetting implements Serializable {
   public String targetedRegions;
   public boolean isTargetedRegionPushEnabled;
   public boolean isTargetRegionPushWithDeferredSwapEnabled;
+  public int targetRegionPushWithDeferredSwapWaitTime;
   public boolean isSystemSchemaReaderEnabled;
   public boolean isZstdDictCreationRequired;
   public boolean isZstdDictCreationSuccess;

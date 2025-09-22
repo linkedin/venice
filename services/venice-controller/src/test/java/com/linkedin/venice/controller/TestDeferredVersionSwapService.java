@@ -1,6 +1,7 @@
 package com.linkedin.venice.controller;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.atLeast;
@@ -12,6 +13,7 @@ import static org.mockito.Mockito.verify;
 
 import com.linkedin.venice.controller.stats.DeferredVersionSwapStats;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hooks.StoreVersionLifecycleEventOutcome;
@@ -102,6 +104,7 @@ public class TestDeferredVersionSwapService {
       doReturn(v).when(store).getVersion(n);
       doReturn(targetRegions).when(v).getTargetSwapRegion();
       doReturn(waitTime).when(v).getTargetSwapRegionWaitTime();
+      doReturn(true).when(v).isVersionSwapDeferred();
       versionList.add(v);
     });
     doReturn(versionList).when(store).getVersions();
@@ -209,6 +212,10 @@ public class TestDeferredVersionSwapService {
     for (Map.Entry<String, ControllerClient> entry: controllerClientMap.entrySet()) {
       ControllerClient controllerClient = entry.getValue();
       doReturn(storeResponse).when(controllerClient).getStore(any(), anyInt());
+      JobStatusQueryResponse response = mock(JobStatusQueryResponse.class);
+      doReturn(false).when(response).isError();
+      doReturn(ExecutionStatus.COMPLETED.toString()).when(response).getStatus();
+      doReturn(response).when(controllerClient).queryJobStatus(any(), any(), anyInt(), any(), anyBoolean());
     }
 
     mockVeniceHelixAdmin(controllerClientMap);
@@ -466,6 +473,10 @@ public class TestDeferredVersionSwapService {
     for (Map.Entry<String, ControllerClient> entry: controllerClientMap.entrySet()) {
       ControllerClient controllerClient = entry.getValue();
       doReturn(storeResponse).when(controllerClient).getStore(any(), anyInt());
+      JobStatusQueryResponse response = mock(JobStatusQueryResponse.class);
+      doReturn(false).when(response).isError();
+      doReturn(ExecutionStatus.COMPLETED.toString()).when(response).getStatus();
+      doReturn(response).when(controllerClient).queryJobStatus(any(), any(), anyInt(), any(), anyBoolean());
     }
 
     mockVeniceHelixAdmin(controllerClientMap);
@@ -547,6 +558,64 @@ public class TestDeferredVersionSwapService {
 
     TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
       verify(deferredVersionSwapStats, atLeast(1)).recordDeferredVersionSwapParentChildStatusMismatchSensor();
+    });
+  }
+
+  @Test
+  public void testDeferredVersionSwapWithOnlineChild() throws Exception {
+    String storeName = "testStore";
+    Map<Integer, VersionStatus> versions = new HashMap<>();
+    versions.put(versionOne, VersionStatus.ONLINE);
+    versions.put(versionTwo, VersionStatus.PUSHED);
+    Store store = mockStore(versionOne, 1, region1, versions, storeName);
+    doReturn(versionTwo).when(store).getLargestUsedVersionNumber();
+
+    List<Store> storeList = new ArrayList<>();
+    storeList.add(store);
+    doReturn(storeList).when(admin).getAllStores(clusterName);
+    doReturn(true).when(admin).isLeaderControllerFor(clusterName);
+
+    Version versionOneImpl = new VersionImpl(storeName, versionOne);
+    Version versionTwoImpl = new VersionImpl(storeName, versionTwo);
+    versionTwoImpl.setStatus(VersionStatus.ONLINE);
+    List<Version> versionList = new ArrayList<>();
+    versionList.add(versionOneImpl);
+    versionList.add(versionTwoImpl);
+    StoreInfo storeInfo = new StoreInfo();
+    storeInfo.setCurrentVersion(versionTwoImpl.getNumber());
+    storeInfo.setVersions(versionList);
+    StoreResponse storeResponse = new StoreResponse();
+    storeResponse.setStore(storeInfo);
+
+    Map<String, ControllerClient> controllerClientMap = mockControllerClients(versionList);
+    for (Map.Entry<String, ControllerClient> entry: controllerClientMap.entrySet()) {
+      ControllerClient controllerClient = entry.getValue();
+      doReturn(storeResponse).when(controllerClient).getStore(storeName, controllerTimeout);
+    }
+
+    mockVeniceHelixAdmin(controllerClientMap);
+    doReturn(store).when(repository).getStore(storeName);
+
+    Long time = LocalDateTime.now().toEpochSecond(ZoneOffset.UTC);
+    Admin.OfflinePushStatusInfo offlinePushStatusInfoWithCompletedPush = getOfflinePushStatusInfo(
+        ExecutionStatus.COMPLETED.toString(),
+        ExecutionStatus.COMPLETED.toString(),
+        ExecutionStatus.COMPLETED.toString(),
+        time - TimeUnit.MINUTES.toSeconds(90),
+        time - TimeUnit.MINUTES.toSeconds(30),
+        time - TimeUnit.MINUTES.toSeconds(30));
+
+    String kafkaTopicName = Version.composeKafkaTopic(storeName, versionTwo);
+    doReturn(offlinePushStatusInfoWithCompletedPush).when(admin).getOffLinePushStatus(clusterName, kafkaTopicName);
+
+    DeferredVersionSwapStats deferredVersionSwapStats = mock(DeferredVersionSwapStats.class);
+    DeferredVersionSwapService deferredVersionSwapService =
+        new DeferredVersionSwapService(admin, veniceControllerMultiClusterConfig, deferredVersionSwapStats);
+
+    deferredVersionSwapService.startInner();
+
+    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+      verify(admin, atLeast(1)).truncateKafkaTopic(versionTwoImpl.kafkaTopicName());
     });
   }
 }

@@ -34,7 +34,6 @@ import com.linkedin.venice.controllerapi.ControllerApiConstants;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerClientFactory;
 import com.linkedin.venice.controllerapi.ControllerResponse;
-import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.MigrationPushStrategyResponse;
@@ -72,7 +71,6 @@ import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.controllerapi.VersionResponse;
 import com.linkedin.venice.controllerapi.routes.AdminCommandExecutionResponse;
-import com.linkedin.venice.d2.D2ClientFactory;
 import com.linkedin.venice.datarecovery.DataRecoveryClient;
 import com.linkedin.venice.datarecovery.EstimateDataRecoveryTimeCommand;
 import com.linkedin.venice.datarecovery.MonitorCommand;
@@ -2081,7 +2079,7 @@ public class AdminTool {
 
     ChildAwareResponse response = srcControllerClient.listChildControllers(srcClusterName);
 
-    if (response.getChildDataCenterControllerUrlMap() == null && response.getChildDataCenterControllerD2Map() == null) {
+    if (response.getChildDataCenterControllerUrlMap() == null) {
       // This is a controller in single datacenter setup
       printMigrationStatus(srcControllerClient, storeName, printFunction);
       printMigrationStatus(destControllerClient, storeName, printFunction);
@@ -2127,7 +2125,7 @@ public class AdminTool {
     checkPreconditionForStoreMigration(srcControllerClient, destControllerClient);
 
     ChildAwareResponse response = destControllerClient.listChildControllers(destClusterName);
-    if (response.getChildDataCenterControllerUrlMap() == null && response.getChildDataCenterControllerD2Map() == null) {
+    if (response.getChildDataCenterControllerUrlMap() == null) {
       // This is a controller in single datacenter setup
       System.out.println("WARN: fabric option is ignored on child controller.");
       if (isClonedStoreOnline(srcControllerClient, destControllerClient, storeName)) {
@@ -2261,17 +2259,6 @@ public class AdminTool {
         response.getChildDataCenterControllerUrlMap()
             .forEach(
                 (key, value) -> controllerClientMap.put(key, new ControllerClient(clusterName, value, sslFactory)));
-      }
-      if (response.getChildDataCenterControllerD2Map() != null) {
-        // TODO: D2Client
-        response.getChildDataCenterControllerD2Map()
-            .forEach(
-                (key, value) -> controllerClientMap.put(
-                    key,
-                    new D2ControllerClient(
-                        response.getD2ServiceName(),
-                        clusterName,
-                        D2ClientFactory.getD2Client(value, sslFactory))));
       }
       return controllerClientMap;
     });
@@ -3306,8 +3293,7 @@ public class AdminTool {
     String clusterName = getRequiredArgument(cmd, Arg.CLUSTER);
     try {
       ChildAwareResponse response = checkControllerResponse(controllerClient.listChildControllers(clusterName));
-      if (response.getChildDataCenterControllerUrlMap() == null
-          && response.getChildDataCenterControllerD2Map() == null) {
+      if (response.getChildDataCenterControllerUrlMap() == null) {
         throw new VeniceException("ERROR: Child controller could not run fabric buildout commands");
       }
       System.out.println("Enabling store migration from/to cluster " + clusterName);
@@ -3686,7 +3672,7 @@ public class AdminTool {
       String srcFabric,
       String destFabric) {
     ChildAwareResponse response = checkControllerResponse(controllerClient.listChildControllers(clusterName));
-    if (response.getChildDataCenterControllerUrlMap() == null && response.getChildDataCenterControllerD2Map() == null) {
+    if (response.getChildDataCenterControllerUrlMap() == null) {
       throw new VeniceException("ERROR: Child controller could not run fabric buildout commands");
     }
     Map<String, ControllerClient> childControllerClientMap = getControllerClientMap(clusterName, response);

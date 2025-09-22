@@ -1388,6 +1388,7 @@ public class TestHybrid {
 
       // Now mark the deferred version as current and verify it has all the records.
       controllerClient.overrideSetActiveVersion(storeName, 2);
+      assertEquals(controllerClient.getStore(storeName).getStore().getCurrentVersion(), 2);
 
       // Check both leader and follower hosts
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
