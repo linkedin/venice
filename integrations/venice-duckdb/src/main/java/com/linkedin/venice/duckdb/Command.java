@@ -1,6 +1,6 @@
 package com.linkedin.venice.duckdb;
 
-import static com.linkedin.venice.duckdb.Arg.CLUSTER_DISCOVERY_D2_SERVICE_NAME;
+import static com.linkedin.venice.duckdb.Arg.COLUMNS_TO_PROJECT;
 import static com.linkedin.venice.duckdb.Arg.DUCKDB_OUTPUT_DIRECTORY;
 import static com.linkedin.venice.duckdb.Arg.STORE_NAME;
 import static com.linkedin.venice.duckdb.Arg.ZK_HOST_URL;
@@ -18,9 +18,9 @@ import org.apache.commons.cli.CommandLine;
  * Contains all the possible commands for DuckVinciTool
  */
 public enum Command {
-  GET(
-      "get", "Ingests all of the data from a Venice store into DuckDB",
-      new Arg[] { STORE_NAME, CLUSTER_DISCOVERY_D2_SERVICE_NAME, ZK_HOST_URL }, new Arg[] { DUCKDB_OUTPUT_DIRECTORY }
+  INGEST(
+      "ingest", "Ingests all of the data from a Venice store into DuckDB", new Arg[] { STORE_NAME, ZK_HOST_URL },
+      new Arg[] { DUCKDB_OUTPUT_DIRECTORY, COLUMNS_TO_PROJECT }
   );
 
   private final String commandName;

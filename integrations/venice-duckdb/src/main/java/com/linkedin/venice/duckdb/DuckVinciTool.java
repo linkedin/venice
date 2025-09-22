@@ -1,7 +1,7 @@
 package com.linkedin.venice.duckdb;
 
+import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES;
 import static com.linkedin.venice.CommonConfigKeys.SSL_ENABLED;
-import static com.linkedin.venice.CommonConfigKeys.SSL_FACTORY_CLASS_NAME;
 import static com.linkedin.venice.CommonConfigKeys.SSL_KEYMANAGER_ALGORITHM;
 import static com.linkedin.venice.CommonConfigKeys.SSL_KEYSTORE_LOCATION;
 import static com.linkedin.venice.CommonConfigKeys.SSL_KEYSTORE_PASSWORD;
@@ -12,9 +12,12 @@ import static com.linkedin.venice.CommonConfigKeys.SSL_TRUSTMANAGER_ALGORITHM;
 import static com.linkedin.venice.CommonConfigKeys.SSL_TRUSTSTORE_LOCATION;
 import static com.linkedin.venice.CommonConfigKeys.SSL_TRUSTSTORE_PASSWORD;
 import static com.linkedin.venice.CommonConfigKeys.SSL_TRUSTSTORE_TYPE;
+import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
 import static com.linkedin.venice.ConfigKeys.DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_SPEEDUP_ENABLED;
-import static com.linkedin.venice.ConfigKeys.KAFKA_SECURITY_PROTOCOL;
-import static com.linkedin.venice.VeniceConstants.DEFAULT_SSL_FACTORY_CLASS_NAME;
+import static com.linkedin.venice.ConfigKeys.DA_VINCI_SUBSCRIBE_ON_DISK_PARTITIONS_AUTOMATICALLY;
+import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
+import static com.linkedin.venice.ConfigKeys.PUBSUB_SECURITY_PROTOCOL;
+import static com.linkedin.venice.meta.PersistenceType.ROCKS_DB;
 
 import com.fasterxml.jackson.databind.ObjectWriter;
 import com.linkedin.d2.balancer.D2Client;
@@ -22,25 +25,24 @@ import com.linkedin.d2.balancer.D2ClientBuilder;
 import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.davinci.client.DaVinciConfig;
 import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
+import com.linkedin.davinci.client.DaVinciRecordTransformerFunctionalInterface;
 import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
 import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.LogConfigurator;
+import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.security.SSLConfig;
 import com.linkedin.venice.security.SSLFactory;
+import com.linkedin.venice.utils.CliUtils;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.PropertyBuilder;
-import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
-import java.io.IOException;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.HashSet;
 import java.util.Optional;
-import java.util.Properties;
 import java.util.Set;
 import java.util.StringJoiner;
 import java.util.concurrent.ExecutionException;
@@ -48,9 +50,7 @@ import java.util.concurrent.TimeUnit;
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.CommandLineParser;
 import org.apache.commons.cli.DefaultParser;
-import org.apache.commons.cli.HelpFormatter;
 import org.apache.commons.cli.Option;
-import org.apache.commons.cli.OptionBuilder;
 import org.apache.commons.cli.OptionGroup;
 import org.apache.commons.cli.Options;
 import org.apache.commons.cli.ParseException;
@@ -76,11 +76,16 @@ public class DuckVinciTool {
       /**
        * Initialize SSL config if provided.
        */
-      buildSslFactory(cmd);
+      sslFactory = CliUtils.buildSslFactory(cmd, Arg.SSL_CONFIG_PATH.toString());
+
+      // Handle flat JSON output
+      if (cmd.hasOption(Arg.FLAT_JSON.toString())) {
+        jsonWriter = ObjectMapperFactory.getInstance().writer();
+      }
 
       switch (foundCommand) {
-        case GET:
-          get(cmd);
+        case INGEST:
+          ingest(cmd);
         default:
           StringJoiner availableCommands = new StringJoiner(", ");
           for (Command c: Command.values()) {
@@ -89,32 +94,49 @@ public class DuckVinciTool {
           throw new VeniceException("Must supply one of the following commands: " + availableCommands.toString());
       }
     } catch (Exception e) {
-      printErrAndThrow(e, e.getMessage(), null);
+      CliUtils.printErrAndThrow(e, e.getMessage(), null);
     }
   }
 
-  private static void get(CommandLine cmd) {
-    String storeName = getRequiredArgument(cmd, Arg.STORE_NAME, Command.GET);
-    String clusterDiscoveryD2ServiceName = getRequiredArgument(cmd, Arg.CLUSTER_DISCOVERY_D2_SERVICE_NAME, Command.GET);
-    String zkHostUrl = getRequiredArgument(cmd, Arg.ZK_HOST_URL, Command.GET);
+  private static void ingest(CommandLine cmd) {
+    String storeName = CliUtils.getRequiredArgument(cmd, Arg.STORE_NAME.toString(), "when using --" + Command.INGEST);
+    String zkHostUrl = CliUtils.getRequiredArgument(cmd, Arg.ZK_HOST_URL.toString(), "when using --" + Command.INGEST);
 
-    String duckdbOutputDirectory = getOptionalArgument(cmd, Arg.DUCKDB_OUTPUT_DIRECTORY, "./");
+    String duckdbOutputDirectory = CliUtils.getOptionalArgument(cmd, Arg.DUCKDB_OUTPUT_DIRECTORY.toString(), "./");
+    String columnsToProjectStr = CliUtils.getOptionalArgument(cmd, Arg.COLUMNS_TO_PROJECT.toString());
 
     DaVinciConfig clientConfig = new DaVinciConfig();
     MetricsRepository metricsRepository = new MetricsRepository();
 
-    Set<String> columnsToProject = Collections.emptySet();
+    final Set<String> columnsToProject;
+    if (columnsToProjectStr != null && !columnsToProjectStr.trim().isEmpty()) {
+      Set<String> tempColumnsToProject = new HashSet<>(Arrays.asList(columnsToProjectStr.split(",")));
+      // Trim whitespace from column names
+      columnsToProject = tempColumnsToProject.stream().map(String::trim).collect(java.util.stream.Collectors.toSet());
+    } else {
+      columnsToProject = Collections.emptySet();
+    }
 
-    DaVinciRecordTransformerConfig recordTransformerConfig = new DaVinciRecordTransformerConfig(
-        (storeVersion, keySchema, inputValueSchema, outputValueSchema) -> new DuckDBDaVinciRecordTransformer(
+    DaVinciRecordTransformerFunctionalInterface recordTransformerFunction = (
+        storeNameParam,
+        storeVersion,
+        keySchema,
+        inputValueSchema,
+        outputValueSchema,
+        config) -> new DuckDBDaVinciRecordTransformer(
+            storeNameParam,
             storeVersion,
             keySchema,
             inputValueSchema,
             outputValueSchema,
-            false,
+            config,
             duckdbOutputDirectory,
-            storeName,
-            columnsToProject));
+            columnsToProject);
+
+    DaVinciRecordTransformerConfig recordTransformerConfig =
+        new DaVinciRecordTransformerConfig.Builder().setRecordTransformerFunction(recordTransformerFunction)
+            .setStoreRecordsInDaVinci(false)
+            .build();
     clientConfig.setRecordTransformerConfig(recordTransformerConfig);
 
     D2ClientBuilder d2ClientBuilder = new D2ClientBuilder().setZkHosts(zkHostUrl)
@@ -122,7 +144,11 @@ public class DuckVinciTool {
         .setZkStartupTimeout(3, TimeUnit.SECONDS);
 
     PropertyBuilder backendConfigBuilder =
-        new PropertyBuilder().put(DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_SPEEDUP_ENABLED, true);
+        new PropertyBuilder().put(DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_SPEEDUP_ENABLED, true)
+            .put(DATA_BASE_PATH, Utils.getTempDataDirectory().getAbsolutePath())
+            .put(DA_VINCI_SUBSCRIBE_ON_DISK_PARTITIONS_AUTOMATICALLY, false)
+            .put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 0)
+            .put(PERSISTENCE_TYPE, ROCKS_DB);
 
     if (sslFactory.isPresent()) {
       d2ClientBuilder.setIsSSLEnabled(true)
@@ -130,7 +156,7 @@ public class DuckVinciTool {
           .setSSLParameters(sslFactory.get().getSSLParameters());
 
       SSLConfig sslConfig = sslFactory.get().getSSLConfig();
-      backendConfigBuilder.put(KAFKA_SECURITY_PROTOCOL, "SSL")
+      backendConfigBuilder.put(PUBSUB_SECURITY_PROTOCOL, "SSL")
           .put(SSL_ENABLED, true)
           .put(SSL_KEYSTORE_LOCATION, sslConfig.getKeyStoreFilePath())
           .put(SSL_KEYSTORE_PASSWORD, sslConfig.getKeyStorePassword())
@@ -149,16 +175,18 @@ public class DuckVinciTool {
 
     VeniceProperties backendConfig = backendConfigBuilder.build();
 
-    try (CachingDaVinciClientFactory factory =
-        new CachingDaVinciClientFactory(d2Client, clusterDiscoveryD2ServiceName, metricsRepository, backendConfig)) {
+    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
+        d2Client,
+        ClientConfig.DEFAULT_CLUSTER_DISCOVERY_D2_SERVICE_NAME,
+        metricsRepository,
+        backendConfig)) {
       DaVinciClient<Integer, Object> clientWithRecordTransformer =
           factory.getAndStartGenericAvroClient(storeName, clientConfig);
 
       LOGGER.info("Starting ingestion");
-      // Data will get written to DucksDB
+      // Data will get written to DuckDB
       clientWithRecordTransformer.subscribeAll().get();
-      // ToDo: Make database file name configurable
-      LOGGER.info("Finished ingestion. Data written to " + duckdbOutputDirectory + "my_database.duckdb");
+      LOGGER.info("Finished ingestion. Data written to directory:" + duckdbOutputDirectory);
     } catch (InterruptedException | ExecutionException e) {
       throw new RuntimeException(e);
     }
@@ -174,7 +202,7 @@ public class DuckVinciTool {
      **/
     OptionGroup commandGroup = new OptionGroup();
     for (Command c: Command.values()) {
-      createCommandOpt(c, commandGroup);
+      CliUtils.createCommandOpt(c.toString(), c.getDesc(), commandGroup);
     }
 
     /**
@@ -182,7 +210,7 @@ public class DuckVinciTool {
      */
     Options options = new Options();
     for (Arg arg: Arg.values()) {
-      createOpt(arg, arg.isParameterized(), arg.getHelpText(), options);
+      CliUtils.createOpt(arg.first(), arg.toString(), arg.isParameterized(), arg.getHelpText(), options);
     }
 
     Options parameterOptionsForHelp = new Options();
@@ -197,87 +225,12 @@ public class DuckVinciTool {
     CommandLine cmd = parser.parse(options, args);
 
     if (cmd.hasOption(Arg.HELP.first())) {
-      printUsageAndExit(commandGroup, parameterOptionsForHelp);
+      CliUtils.printUsageAndExit("duckvinci-tool", commandGroup, parameterOptionsForHelp);
     }
 
-    // SSl config path is mandatory
-    if (!cmd.hasOption(Arg.SSL_CONFIG_PATH.first())) {
-      /**
-       * Don't throw exception yet until all controllers are deployed with SSL support and the script
-       * that automatically generates SSL config file is provided.
-       */
-      System.out.println("[WARN] Running duckvinci tool without SSL.");
-    }
+    // SSL config path validation with improved warning message
+    CliUtils.validateSslConfiguration(cmd, Arg.SSL_CONFIG_PATH.toString(), "duckvinci tool");
     return cmd;
-  }
-
-  private static String getRequiredArgument(CommandLine cmd, Arg arg, Command command) {
-    return getRequiredArgument(cmd, arg, "when using --" + command.toString());
-  }
-
-  private static String getRequiredArgument(CommandLine cmd, Arg arg, String errorClause) {
-    if (!cmd.hasOption(arg.first())) {
-      printErrAndExit(arg.toString() + " is a required argument " + errorClause);
-    }
-    return cmd.getOptionValue(arg.first());
-  }
-
-  private static void printErrAndExit(String err) {
-    Map<String, String> errMap = new HashMap<>();
-    printErrAndExit(err, errMap);
-  }
-
-  private static void printErrAndExit(String errorMessage, Map<String, String> customMessages) {
-    printErr(errorMessage, customMessages);
-    Utils.exit("duck-vinci-tool encountered and error, exiting now.");
-  }
-
-  private static void printUsageAndExit(OptionGroup commandGroup, Options options) {
-
-    /* Commands */
-    String command = "java -jar "
-        + new java.io.File(DuckVinciTool.class.getProtectionDomain().getCodeSource().getLocation().getPath()).getName();
-
-    HelpFormatter helpFormatter = new HelpFormatter();
-    helpFormatter.setWidth(140);
-    helpFormatter
-        .printHelp(command + " --<command> [parameters]\n\nCommands:", new Options().addOptionGroup(commandGroup));
-
-    /* Parameters */
-    helpFormatter.printHelp("Parameters: ", options);
-
-    /* Examples */
-    System.out.println("\nExamples:");
-    Command[] commands = Command.values();
-    Arrays.sort(commands, Command.commandComparator);
-    for (Command c: commands) {
-      StringJoiner exampleArgs = new StringJoiner(" ");
-      for (Arg a: c.getRequiredArgs()) {
-        exampleArgs.add("--" + a.toString());
-        if (a.isParameterized()) {
-          exampleArgs.add("<" + a + ">");
-        }
-      }
-      for (Arg a: c.getOptionalArgs()) {
-        exampleArgs.add("[--" + a.toString());
-        String param = "";
-        if (a.isParameterized()) {
-          param += "<" + a + ">";
-        }
-        exampleArgs.add(param + "]");
-      }
-
-      System.out.println(command + " --" + c + " " + exampleArgs);
-    }
-    Utils.exit("printUsageAndExit");
-  }
-
-  private static void createOpt(Arg name, boolean hasArg, String help, Options options) {
-    options.addOption(new Option(name.first(), name.toString(), hasArg, help));
-  }
-
-  private static void createCommandOpt(Command command, OptionGroup group) {
-    group.addOption(OptionBuilder.withLongOpt(command.toString()).withDescription(command.getDesc()).create());
   }
 
   private static Command ensureOnlyOneCommand(CommandLine cmd) {
@@ -292,51 +245,5 @@ public class DuckVinciTool {
       }
     }
     return Command.getCommand(foundCommand, cmd);
-  }
-
-  private static String getOptionalArgument(CommandLine cmd, Arg arg) {
-    return getOptionalArgument(cmd, arg, null);
-  }
-
-  private static String getOptionalArgument(CommandLine cmd, Arg arg, String defaultArgValue) {
-    if (!cmd.hasOption(arg.first())) {
-      return defaultArgValue;
-    } else {
-      return cmd.getOptionValue(arg.first());
-    }
-  }
-
-  private static void buildSslFactory(CommandLine cmd) throws IOException {
-    if (cmd.hasOption(Arg.SSL_CONFIG_PATH.first())) {
-      String sslConfigPath = getOptionalArgument(cmd, Arg.SSL_CONFIG_PATH);
-      Properties sslProperties = SslUtils.loadSSLConfig(sslConfigPath);
-      String sslFactoryClassName = sslProperties.getProperty(SSL_FACTORY_CLASS_NAME, DEFAULT_SSL_FACTORY_CLASS_NAME);
-      sslFactory = Optional.of(SslUtils.getSSLFactory(sslProperties, sslFactoryClassName));
-    }
-  }
-
-  private static void printErrAndThrow(Exception e, String errorMessage, Map<String, String> customMessages)
-      throws Exception {
-    printErr(errorMessage, customMessages);
-    throw e;
-  }
-
-  private static void printErr(String errorMessage, Map<String, String> customMessages) {
-    Map<String, String> errMap = new HashMap<>();
-    if (customMessages != null) {
-      for (Map.Entry<String, String> messagePair: customMessages.entrySet()) {
-        errMap.put(messagePair.getKey(), messagePair.getValue());
-      }
-    }
-    if (errMap.keySet().contains(ERROR)) {
-      errMap.put(ERROR, errMap.get(ERROR) + " " + errorMessage);
-    } else {
-      errMap.put(ERROR, errorMessage);
-    }
-    try {
-      System.out.println(jsonWriter.writeValueAsString(errMap));
-    } catch (IOException e) {
-      System.out.println("{\"" + ERROR + "\":\"" + e.getMessage() + "\"}");
-    }
   }
 }
