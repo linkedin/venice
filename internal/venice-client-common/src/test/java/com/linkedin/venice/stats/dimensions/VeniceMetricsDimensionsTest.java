@@ -49,6 +49,12 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_ROUTE_NAME:
           assertEquals(dimension.getDimensionName(format), "venice.route.name");
           break;
+        case VENICE_REQUEST_REJECTION_REASON:
+          assertEquals(dimension.getDimensionName(format), "venice.request.rejection_reason");
+          break;
+        case VENICE_REQUEST_FANOUT_TYPE:
+          assertEquals(dimension.getDimensionName(format), "venice.request.fanout_type");
+          break;
         case VENICE_INSTANCE_ERROR_TYPE:
           assertEquals(dimension.getDimensionName(format), "venice.instance.error_type");
           break;
@@ -99,6 +105,12 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_ROUTE_NAME:
           assertEquals(dimension.getDimensionName(format), "venice.route.name");
           break;
+        case VENICE_REQUEST_REJECTION_REASON:
+          assertEquals(dimension.getDimensionName(format), "venice.request.rejectionReason");
+          break;
+        case VENICE_REQUEST_FANOUT_TYPE:
+          assertEquals(dimension.getDimensionName(format), "venice.request.fanoutType");
+          break;
         case VENICE_INSTANCE_ERROR_TYPE:
           assertEquals(dimension.getDimensionName(format), "venice.instance.errorType");
           break;
@@ -148,6 +160,12 @@ public class VeniceMetricsDimensionsTest {
           break;
         case VENICE_ROUTE_NAME:
           assertEquals(dimension.getDimensionName(format), "Venice.Route.Name");
+          break;
+        case VENICE_REQUEST_REJECTION_REASON:
+          assertEquals(dimension.getDimensionName(format), "Venice.Request.RejectionReason");
+          break;
+        case VENICE_REQUEST_FANOUT_TYPE:
+          assertEquals(dimension.getDimensionName(format), "Venice.Request.FanoutType");
           break;
         case VENICE_INSTANCE_ERROR_TYPE:
           assertEquals(dimension.getDimensionName(format), "Venice.Instance.ErrorType");
