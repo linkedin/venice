@@ -46,6 +46,12 @@ public class VeniceMetricsDimensionsTest {
         case REPUSH_TRIGGER_SOURCE:
           assertEquals(dimension.getDimensionName(format), "repush.trigger.source");
           break;
+        case VENICE_REQUEST_REJECTION_REASON:
+          assertEquals(dimension.getDimensionName(format), "venice.request.rejection_reason");
+          break;
+        case VENICE_REQUEST_FANOUT_TYPE:
+          assertEquals(dimension.getDimensionName(format), "venice.request.fanout_type");
+          break;
         case VENICE_INSTANCE_ERROR_TYPE:
           assertEquals(dimension.getDimensionName(format), "venice.instance.error_type");
           break;
@@ -93,6 +99,12 @@ public class VeniceMetricsDimensionsTest {
         case REPUSH_TRIGGER_SOURCE:
           assertEquals(dimension.getDimensionName(format), "repush.trigger.source");
           break;
+        case VENICE_REQUEST_REJECTION_REASON:
+          assertEquals(dimension.getDimensionName(format), "venice.request.rejectionReason");
+          break;
+        case VENICE_REQUEST_FANOUT_TYPE:
+          assertEquals(dimension.getDimensionName(format), "venice.request.fanoutType");
+          break;
         case VENICE_INSTANCE_ERROR_TYPE:
           assertEquals(dimension.getDimensionName(format), "venice.instance.errorType");
           break;
@@ -139,6 +151,12 @@ public class VeniceMetricsDimensionsTest {
           break;
         case REPUSH_TRIGGER_SOURCE:
           assertEquals(dimension.getDimensionName(format), "Repush.Trigger.Source");
+          break;
+        case VENICE_REQUEST_REJECTION_REASON:
+          assertEquals(dimension.getDimensionName(format), "Venice.Request.RejectionReason");
+          break;
+        case VENICE_REQUEST_FANOUT_TYPE:
+          assertEquals(dimension.getDimensionName(format), "Venice.Request.FanoutType");
           break;
         case VENICE_INSTANCE_ERROR_TYPE:
           assertEquals(dimension.getDimensionName(format), "Venice.Instance.ErrorType");

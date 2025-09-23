@@ -382,6 +382,10 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
     return baseDimensionsMap;
   }
 
+  protected Attributes getBaseAttributes() {
+    return baseAttributes;
+  }
+
   /**
    * Metric names for tehuti metrics used in this class.
    */
