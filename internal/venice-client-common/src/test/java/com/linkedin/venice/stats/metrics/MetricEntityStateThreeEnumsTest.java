@@ -42,7 +42,7 @@ import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 
-public class MetricEntityStateThreeEnumTest {
+public class MetricEntityStateThreeEnumsTest {
   private VeniceOpenTelemetryMetricsRepository mockOtelRepository;
   private MetricEntity mockMetricEntity;
   private Map<VeniceMetricsDimensions, String> baseDimensionsMap;
