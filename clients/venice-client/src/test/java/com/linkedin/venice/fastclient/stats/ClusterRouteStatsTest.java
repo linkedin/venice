@@ -14,6 +14,7 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.HTTP_
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE_CATEGORY;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_METHOD;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_REJECTION_REASON;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_ROUTE_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory.FAIL;
@@ -28,6 +29,7 @@ import com.linkedin.venice.client.stats.ClientMetricEntity;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.stats.dimensions.HttpResponseStatusCodeCategory;
+import com.linkedin.venice.stats.dimensions.RejectionReason;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import io.tehuti.Metric;
@@ -596,6 +598,85 @@ public class ClusterRouteStatsTest {
         count1 + count2 + count3, // sum
         expectedAttributes,
         ClientMetricEntity.ROUTE_REQUEST_PENDING_COUNT.getMetricEntity().getMetricName(),
+        otelMetricPrefix);
+  }
+
+  @Test
+  public void testRejectionRatioMetric() {
+    // Get a route stats instance
+    ClusterRouteStats.RouteStats routeStats =
+        clusterRouteStats.getRouteStats(metricsRepository, CLUSTER_NAME, INSTANCE_URL, REQUEST_TYPE);
+    assertNotNull(routeStats);
+
+    // Verify that RouteStats was created successfully
+    assertNotNull(routeStats, "RouteStats should be created successfully");
+
+    // Record rejection ratio with different values and reasons
+    double rejectionRatio1 = 0.15; // 15% rejection
+    double rejectionRatio2 = 0.05; // 5% rejection
+
+    // Test that recording doesn't throw exceptions
+    try {
+      routeStats.recordRejectionRatio(rejectionRatio1, RejectionReason.THROTTLED_BY_LOAD_CONTROLLER);
+      routeStats.recordRejectionRatio(rejectionRatio2, RejectionReason.THROTTLED_BY_LOAD_CONTROLLER);
+    } catch (Exception e) {
+      throw new AssertionError("Recording rejection ratio should not throw exceptions", e);
+    }
+
+    // Verify Tehuti metrics functionality
+    validateRejectionRatioTehutiMetrics();
+
+    // Verify OpenTelemetry metrics functionality
+    validateRejectionRatioOtelMetrics(rejectionRatio1, rejectionRatio2);
+  }
+
+  private void validateRejectionRatioTehutiMetrics() {
+    Map<String, ? extends Metric> metrics = metricsRepository.metrics();
+
+    assertTrue(
+        metrics.size() > 0,
+        "Metrics repository should contain some metrics after RouteStats creation and recording");
+
+    String expectedRejectionRatioAvgMetricName =
+        String.format(".%s_%s--rejection_ratio.Avg", CLUSTER_NAME, instanceUrl.getHost());
+    String expectedRejectionRatioMaxMetricName =
+        String.format(".%s_%s--rejection_ratio.Max", CLUSTER_NAME, instanceUrl.getHost());
+
+    assertNotNull(
+        metrics.get(expectedRejectionRatioAvgMetricName),
+        String.format("Metric: %s should exist", expectedRejectionRatioAvgMetricName));
+    assertNotNull(
+        metrics.get(expectedRejectionRatioMaxMetricName),
+        String.format("Metric: %s should exist", expectedRejectionRatioMaxMetricName));
+
+    // Verify that the metrics have reasonable values
+    assertTrue(
+        metrics.get(expectedRejectionRatioAvgMetricName).value() > 0,
+        String.format("Metric: %s should have a value greater than 0", expectedRejectionRatioAvgMetricName));
+    assertTrue(
+        metrics.get(expectedRejectionRatioMaxMetricName).value() >= 0.15,
+        String.format("Metric: %s should have a max value of at least 0.15", expectedRejectionRatioMaxMetricName));
+  }
+
+  private void validateRejectionRatioOtelMetrics(double ratio1, double ratio2) {
+    // Test with THROTTLED_BY_LOAD_CONTROLLER reason
+    Attributes expectedAttributesThrottled = Attributes.builder()
+        .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), CLUSTER_NAME)
+        .put(VENICE_REQUEST_METHOD.getDimensionNameInDefaultFormat(), REQUEST_TYPE.getDimensionValue())
+        .put(VENICE_ROUTE_NAME.getDimensionNameInDefaultFormat(), instanceUrl.getHost())
+        .put(
+            VENICE_REQUEST_REJECTION_REASON.getDimensionNameInDefaultFormat(),
+            RejectionReason.THROTTLED_BY_LOAD_CONTROLLER.getDimensionValue())
+        .build();
+
+    validateHistogramPointData(
+        inMemoryMetricReader,
+        Math.min(ratio1, ratio2), // min
+        Math.max(ratio1, ratio2), // max
+        2, // count
+        ratio1 + ratio2, // sum
+        expectedAttributesThrottled,
+        ClientMetricEntity.ROUTE_REQUEST_REJECTION_RATIO.getMetricEntity().getMetricName(),
         otelMetricPrefix);
   }
 

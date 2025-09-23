@@ -24,6 +24,7 @@ import com.linkedin.venice.fastclient.stats.FastClientStats;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.dimensions.HttpResponseStatusCodeCategory;
 import com.linkedin.venice.stats.dimensions.HttpResponseStatusEnum;
+import com.linkedin.venice.stats.dimensions.RejectionReason;
 import com.linkedin.venice.utils.LatencyUtils;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.tehuti.metrics.MetricsRepository;
@@ -277,7 +278,8 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
 
           routeStats.recordRequest();
           routeStats.recordPendingRequestCount(monitor.getPendingRequestCounter(instance));
-          routeStats.recordRejectionRatio(monitor.getRejectionRatio(instance));
+          routeStats
+              .recordRejectionRatio(monitor.getRejectionRatio(instance), RejectionReason.THROTTLED_BY_LOAD_CONTROLLER);
 
           switch (status) {
             case SC_OK:

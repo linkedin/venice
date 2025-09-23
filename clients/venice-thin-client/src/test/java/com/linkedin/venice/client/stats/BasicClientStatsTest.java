@@ -16,6 +16,7 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.HTTP_
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE_CATEGORY;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_METHOD;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_REJECTION_REASON;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_RETRY_TYPE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_ROUTE_NAME;
@@ -547,6 +548,18 @@ public class BasicClientStatsTest {
             MetricUnit.NUMBER,
             "Pending request count for requests routed to different instances in a cluster",
             Utils.setOf(VENICE_CLUSTER_NAME, VENICE_REQUEST_METHOD, VENICE_ROUTE_NAME)));
+    expectedMetrics.put(
+        ClientMetricEntity.ROUTE_REQUEST_REJECTION_RATIO,
+        new MetricEntity(
+            "route.request.rejection_ratio",
+            MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS,
+            MetricUnit.NUMBER,
+            "Request rejection ratio for requests routed to different instances in a cluster",
+            Utils.setOf(
+                VENICE_CLUSTER_NAME,
+                VENICE_ROUTE_NAME,
+                VENICE_REQUEST_METHOD,
+                VENICE_REQUEST_REJECTION_REASON)));
 
     Set<String> uniqueMetricEntitiesNames = new HashSet<>();
 

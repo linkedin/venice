@@ -3,6 +3,7 @@ package com.linkedin.venice.fastclient.stats;
 import static com.linkedin.venice.client.stats.ClientMetricEntity.ROUTE_CALL_COUNT;
 import static com.linkedin.venice.client.stats.ClientMetricEntity.ROUTE_CALL_TIME;
 import static com.linkedin.venice.client.stats.ClientMetricEntity.ROUTE_REQUEST_PENDING_COUNT;
+import static com.linkedin.venice.client.stats.ClientMetricEntity.ROUTE_REQUEST_REJECTION_RATIO;
 import static com.linkedin.venice.stats.dimensions.HttpResponseStatusEnum.UNKNOWN;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_METHOD;
@@ -17,9 +18,11 @@ import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository;
 import com.linkedin.venice.stats.dimensions.HttpResponseStatusCodeCategory;
 import com.linkedin.venice.stats.dimensions.HttpResponseStatusEnum;
+import com.linkedin.venice.stats.dimensions.RejectionReason;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
 import com.linkedin.venice.stats.metrics.MetricEntityStateBase;
+import com.linkedin.venice.stats.metrics.MetricEntityStateOneEnum;
 import com.linkedin.venice.stats.metrics.MetricEntityStateThreeEnums;
 import com.linkedin.venice.stats.metrics.TehutiMetricNameEnum;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -76,10 +79,12 @@ public class ClusterRouteStats {
    */
   public static class RouteStats extends AbstractVeniceHttpStats {
     private final Sensor requestCountSensor;
-    private final Sensor rejectionRatioSensor;
 
     // OpenTelemetry integration for pending request count
     private final MetricEntityStateBase pendingRequestCount;
+
+    // OpenTelemetry integration for rejection ratio
+    private final MetricEntityStateOneEnum<RejectionReason> rejectionRatio;
 
     // OpenTelemetry integration for healthy request count
     private final MetricEntityStateThreeEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory> healthyRequestCount;
@@ -144,7 +149,6 @@ public class ClusterRouteStats {
 
       // Initialize traditional Tehuti sensors
       this.requestCountSensor = registerSensor("request_count", new OccurrenceRate());
-      this.rejectionRatioSensor = registerSensor("rejection_ratio", new Avg(), new Max());
 
       // Initialize OpenTelemetry metric for pending request count using ROUTE_REQUEST_PENDING_COUNT
       this.pendingRequestCount = MetricEntityStateBase.create(
@@ -155,6 +159,16 @@ public class ClusterRouteStats {
           Arrays.asList(new Avg(), new Max()),
           baseDimensionsMap,
           baseAttributes);
+
+      // Initialize OpenTelemetry metric for rejection ratio using ROUTE_REQUEST_REJECTION_RATIO
+      this.rejectionRatio = MetricEntityStateOneEnum.create(
+          ROUTE_REQUEST_REJECTION_RATIO.getMetricEntity(),
+          otelRepository,
+          this::registerSensor,
+          RouteTehutiMetricName.REJECTION_RATIO,
+          Arrays.asList(new Avg(), new Max()),
+          baseDimensionsMap,
+          RejectionReason.class);
 
       // Initialize OpenTelemetry metric for healthy request count using ROUTE_CALL_COUNT
       this.healthyRequestCount = MetricEntityStateThreeEnums.create(
@@ -297,8 +311,9 @@ public class ClusterRouteStats {
       pendingRequestCount.record(count);
     }
 
-    public void recordRejectionRatio(double rejectionRatio) {
-      rejectionRatioSensor.record(rejectionRatio);
+    public void recordRejectionRatio(double rejectionRatio, RejectionReason reason) {
+      // Record to OpenTelemetry metric
+      this.rejectionRatio.record(rejectionRatio, reason);
     }
   }
 
@@ -307,7 +322,8 @@ public class ClusterRouteStats {
    */
   public enum RouteTehutiMetricName implements TehutiMetricNameEnum {
     HEALTHY_REQUEST_COUNT, QUOTA_EXCEEDED_REQUEST_COUNT, INTERNAL_SERVER_ERROR_REQUEST_COUNT, LEAKED_REQUEST_COUNT,
-    SERVICE_UNAVAILABLE_REQUEST_COUNT, OTHER_ERROR_REQUEST_COUNT, RESPONSE_WAITING_TIME, PENDING_REQUEST_COUNT;
+    SERVICE_UNAVAILABLE_REQUEST_COUNT, OTHER_ERROR_REQUEST_COUNT, RESPONSE_WAITING_TIME, PENDING_REQUEST_COUNT,
+    REJECTION_RATIO;
 
     private final String metricName;
 
