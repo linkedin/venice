@@ -1,107 +1,59 @@
 package com.linkedin.venice.stats.metrics;
 
 import static com.linkedin.venice.read.RequestType.MULTI_GET_STREAMING;
-import static com.linkedin.venice.stats.VeniceOpenTelemetryMetricNamingFormat.getDefaultFormat;
 import static com.linkedin.venice.stats.dimensions.RequestRetryAbortReason.SLOW_ROUTE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_METHOD;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_RETRY_ABORT_REASON;
 import static com.linkedin.venice.stats.metrics.MetricEntityStateTest.DimensionEnum1.DIMENSION_ONE;
 import static com.linkedin.venice.stats.metrics.MetricEntityStateTest.DimensionEnum1.DIMENSION_TWO;
 import static com.linkedin.venice.stats.metrics.MetricType.COUNTER;
-import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.doReturn;
-import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 
-import com.linkedin.venice.read.RequestType;
-import com.linkedin.venice.stats.VeniceMetricsConfig;
-import com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository;
-import com.linkedin.venice.stats.dimensions.HttpResponseStatusCodeCategory;
-import com.linkedin.venice.stats.dimensions.HttpResponseStatusEnum;
-import com.linkedin.venice.stats.dimensions.MessageType;
-import com.linkedin.venice.stats.dimensions.RepushStoreTriggerSource;
-import com.linkedin.venice.stats.dimensions.VeniceDimensionInterface;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
-import com.linkedin.venice.utils.Time;
 import io.opentelemetry.api.common.Attributes;
-import io.opentelemetry.api.common.AttributesBuilder;
 import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ThreadLocalRandom;
-import java.util.concurrent.TimeUnit;
 import org.mockito.Mockito;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 
-public class MetricEntityStateFiveEnumsTest {
-  private VeniceOpenTelemetryMetricsRepository mockOtelRepository;
-  private MetricEntity mockMetricEntity;
-  private Map<VeniceMetricsDimensions, String> baseDimensionsMap;
+/**
+ * Test class for {@link MetricEntityStateFiveEnums}.
+ */
+public class MetricEntityStateFiveEnumsTest extends MetricEntityStateEnumTestBase {
   private final Map<String, Attributes> attributesMap = new HashMap<>();
 
   @BeforeMethod
   public void setUp() {
-    mockOtelRepository = Mockito.mock(VeniceOpenTelemetryMetricsRepository.class);
-    when(mockOtelRepository.emitOpenTelemetryMetrics()).thenReturn(true);
-    when(mockOtelRepository.getMetricFormat()).thenReturn(getDefaultFormat());
-    when(mockOtelRepository.getDimensionName(any())).thenCallRealMethod();
-    when(mockOtelRepository.createAttributes(any(), any(), (VeniceDimensionInterface) any())).thenCallRealMethod();
-    VeniceMetricsConfig mockMetricsConfig = Mockito.mock(VeniceMetricsConfig.class);
-    when(mockMetricsConfig.getOtelCustomDimensionsMap()).thenReturn(new HashMap<>());
-    when(mockOtelRepository.getMetricsConfig()).thenReturn(mockMetricsConfig);
-    mockMetricEntity = Mockito.mock(MetricEntity.class);
-    Set<VeniceMetricsDimensions> dimensionsSet = new HashSet<>();
-    doReturn(COUNTER).when(mockMetricEntity).getMetricType();
-    dimensionsSet.add(VENICE_REQUEST_METHOD);
-    dimensionsSet.add(DIMENSION_ONE.getDimensionName());
-    dimensionsSet.add(MetricEntityStateTest.DimensionEnum2.DIMENSION_ONE.getDimensionName());
-    dimensionsSet.add(MetricEntityStateTest.DimensionEnum3.DIMENSION_ONE.getDimensionName());
-    dimensionsSet.add(MetricEntityStateTest.DimensionEnum4.DIMENSION_ONE.getDimensionName());
-    dimensionsSet.add(MetricEntityStateTest.DimensionEnum5.DIMENSION_ONE.getDimensionName());
-    // Duplicate: ignored
-    dimensionsSet.add(MetricEntityStateTest.DimensionEnum1Duplicate.DIMENSION_ONE.getDimensionName());
-    doReturn(dimensionsSet).when(mockMetricEntity).getDimensionsList();
-    baseDimensionsMap = new HashMap<>();
-    baseDimensionsMap.put(VENICE_REQUEST_METHOD, MULTI_GET_STREAMING.getDimensionValue());
+    setUpCommonMocks();
 
+    Set<VeniceMetricsDimensions> dimensionsSet = createDimensionSet(
+        DIMENSION_ONE.getDimensionName(),
+        MetricEntityStateTest.DimensionEnum2.DIMENSION_ONE.getDimensionName(),
+        MetricEntityStateTest.DimensionEnum3.DIMENSION_ONE.getDimensionName(),
+        MetricEntityStateTest.DimensionEnum4.DIMENSION_ONE.getDimensionName(),
+        MetricEntityStateTest.DimensionEnum5.DIMENSION_ONE.getDimensionName(),
+        MetricEntityStateTest.DimensionEnum1Duplicate.DIMENSION_ONE.getDimensionName() // Duplicate: ignored
+    );
+    setupMockMetricEntity(dimensionsSet);
+
+    // Pre-build attributes for all enum combinations
     for (MetricEntityStateTest.DimensionEnum1 enum1: MetricEntityStateTest.DimensionEnum1.values()) {
       for (MetricEntityStateTest.DimensionEnum2 enum2: MetricEntityStateTest.DimensionEnum2.values()) {
         for (MetricEntityStateTest.DimensionEnum3 enum3: MetricEntityStateTest.DimensionEnum3.values()) {
           for (MetricEntityStateTest.DimensionEnum4 enum4: MetricEntityStateTest.DimensionEnum4.values()) {
             for (MetricEntityStateTest.DimensionEnum5 enum5: MetricEntityStateTest.DimensionEnum5.values()) {
-              AttributesBuilder attributesBuilder = Attributes.builder();
-              for (Map.Entry<VeniceMetricsDimensions, String> entry: baseDimensionsMap.entrySet()) {
-                attributesBuilder.put(mockOtelRepository.getDimensionName(entry.getKey()), entry.getValue());
-              }
-              attributesBuilder
-                  .put(mockOtelRepository.getDimensionName(enum1.getDimensionName()), enum1.getDimensionValue());
-              attributesBuilder
-                  .put(mockOtelRepository.getDimensionName(enum2.getDimensionName()), enum2.getDimensionValue());
-              attributesBuilder
-                  .put(mockOtelRepository.getDimensionName(enum3.getDimensionName()), enum3.getDimensionValue());
-              attributesBuilder
-                  .put(mockOtelRepository.getDimensionName(enum4.getDimensionName()), enum4.getDimensionValue());
-              attributesBuilder
-                  .put(mockOtelRepository.getDimensionName(enum5.getDimensionName()), enum5.getDimensionValue());
-              Attributes attributes = attributesBuilder.build();
-              String attributeName = String.format(
-                  "attributesDimensionEnum1%sEnum2%sEnum3%sEnum4%sEnum5%s",
-                  enum1.name(),
-                  enum2.name(),
-                  enum3.name(),
-                  enum4.name(),
-                  enum5.name());
+              Attributes attributes = buildAttributes(enum1, enum2, enum3, enum4, enum5);
+              String attributeName = createAttributeName("attributesDimension", enum1, enum2, enum3, enum4, enum5);
               attributesMap.put(attributeName, attributes);
             }
           }
@@ -485,160 +437,6 @@ public class MetricEntityStateFiveEnumsTest {
       fail();
     } catch (IllegalArgumentException e) {
       assertTrue(e.getMessage().contains("doesn't match with the required dimensions"));
-    }
-  }
-
-  /**
-   * Test concurrent access to MetricEntityStateFiveEnums to ensure thread safety and correctness and the idempotent
-   * nature of the result stored in cache: by creating multiple threads that concurrently write and read to the
-   * MetricEntityStateFiveEnums instance. It verifies that the attributes are correctly retrieved everytime while
-   * there are concurrent writes and the values are always the same for each set of enums.
-   */
-  @Test(timeOut = 20 * Time.MS_PER_SECOND, invocationCount = 10)
-  public void testConcurrentAccess() throws InterruptedException {
-    MetricEntity mockMetricEntity = Mockito.mock(MetricEntity.class);
-    when(mockMetricEntity.getMetricType()).thenReturn(MetricType.COUNTER);
-    Set<VeniceMetricsDimensions> dimensionsSet = new HashSet<>();
-    dimensionsSet.add(VENICE_REQUEST_RETRY_ABORT_REASON);
-    dimensionsSet.add(HttpResponseStatusEnum.CONTINUE.getDimensionName());
-    dimensionsSet.add(HttpResponseStatusCodeCategory.UNKNOWN.getDimensionName());
-    dimensionsSet.add(MULTI_GET_STREAMING.getDimensionName());
-    dimensionsSet.add(MessageType.REQUEST.getDimensionName());
-    dimensionsSet.add(RepushStoreTriggerSource.MANUAL.getDimensionName());
-
-    doReturn(dimensionsSet).when(mockMetricEntity).getDimensionsList();
-    Map<VeniceMetricsDimensions, String> baseDimensionsMap = new HashMap<>();
-    baseDimensionsMap.put(VENICE_REQUEST_RETRY_ABORT_REASON, SLOW_ROUTE.getDimensionValue());
-
-    // use a metric and populate dimensions to use as a base for comparison
-    MetricEntityStateFiveEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, RequestType, MessageType, RepushStoreTriggerSource> metricEntityStateForComparison =
-        MetricEntityStateFiveEnums.create(
-            mockMetricEntity,
-            mockOtelRepository,
-            baseDimensionsMap,
-            HttpResponseStatusEnum.class,
-            HttpResponseStatusCodeCategory.class,
-            RequestType.class,
-            MessageType.class,
-            RepushStoreTriggerSource.class);
-    for (HttpResponseStatusEnum enum1: HttpResponseStatusEnum.values()) {
-      for (HttpResponseStatusCodeCategory enum2: HttpResponseStatusCodeCategory.values()) {
-        for (RequestType enum3: RequestType.values()) {
-          for (MessageType enum4: MessageType.values()) {
-            for (RepushStoreTriggerSource enum5: RepushStoreTriggerSource.values()) {
-              Attributes attributes = metricEntityStateForComparison.getAttributes(enum1, enum2, enum3, enum4, enum5);
-              assertNotNull(attributes);
-            }
-          }
-        }
-      }
-    }
-    EnumMap<HttpResponseStatusEnum, EnumMap<HttpResponseStatusCodeCategory, EnumMap<RequestType, EnumMap<MessageType, EnumMap<RepushStoreTriggerSource, Attributes>>>>> attributesEnumMapForComparison =
-        metricEntityStateForComparison.getAttributesEnumMap();
-
-    // create a new metric keeping everything the same to concurrently access for testing
-    MetricEntityStateFiveEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, RequestType, MessageType, RepushStoreTriggerSource> metricEntityStateForTest =
-        MetricEntityStateFiveEnums.create(
-            mockMetricEntity,
-            mockOtelRepository,
-            baseDimensionsMap,
-            HttpResponseStatusEnum.class,
-            HttpResponseStatusCodeCategory.class,
-            RequestType.class,
-            MessageType.class,
-            RepushStoreTriggerSource.class);
-
-    int writerThreads = 10;
-    int readerThreads = 10;
-    int totalThreads = writerThreads + readerThreads;
-    int iterations = 100;
-
-    ExecutorService executor = Executors.newFixedThreadPool(totalThreads);
-    CountDownLatch startLatch = new CountDownLatch(1);
-    CountDownLatch finishLatch = new CountDownLatch(totalThreads);
-
-    // Writer threads
-    for (int threadNum = 0; threadNum < writerThreads; threadNum++) {
-      executor.submit(() -> {
-        try {
-          startLatch.await();
-          // Random sleep of 0-2 ms to randomize the order of execution
-          Thread.sleep(ThreadLocalRandom.current().nextInt(3));
-          for (HttpResponseStatusEnum enum1: HttpResponseStatusEnum.values()) {
-            for (HttpResponseStatusCodeCategory enum2: HttpResponseStatusCodeCategory.values()) {
-              for (RequestType enum3: RequestType.values()) {
-                for (MessageType enum4: MessageType.values()) {
-                  for (RepushStoreTriggerSource enum5: RepushStoreTriggerSource.values()) {
-                    metricEntityStateForTest.record(1L, enum1, enum2, enum3, enum4, enum5);
-                    metricEntityStateForTest.record(1.0, enum1, enum2, enum3, enum4, enum5);
-                    metricEntityStateForTest.record(100.0, enum1, enum2, enum3, enum4, enum5);
-                  }
-                }
-              }
-            }
-          }
-        } catch (InterruptedException e) {
-          Thread.currentThread().interrupt();
-        } finally {
-          finishLatch.countDown();
-        }
-      });
-    }
-
-    // Reader threads
-    for (int threadNum = 0; threadNum < readerThreads; threadNum++) {
-      executor.submit(() -> {
-        try {
-          startLatch.await();
-          for (int j = 0; j < iterations; j++) {
-            for (HttpResponseStatusEnum enum1: HttpResponseStatusEnum.values()) {
-              for (HttpResponseStatusCodeCategory enum2: HttpResponseStatusCodeCategory.values()) {
-                for (RequestType enum3: RequestType.values()) {
-                  for (MessageType enum4: MessageType.values()) {
-                    for (RepushStoreTriggerSource enum5: RepushStoreTriggerSource.values()) {
-                      Attributes attributes = metricEntityStateForTest.getAttributes(enum1, enum2, enum3, enum4, enum5);
-                      assertNotNull(attributes);
-                      assertEquals(
-                          attributes,
-                          attributesEnumMapForComparison.get(enum1).get(enum2).get(enum3).get(enum4).get(enum5));
-                    }
-                  }
-                }
-              }
-            }
-          }
-        } catch (InterruptedException e) {
-          Thread.currentThread().interrupt();
-        } finally {
-          finishLatch.countDown();
-        }
-      });
-    }
-
-    // start executing all threads
-    startLatch.countDown();
-    // wait to finish
-    finishLatch.await();
-
-    executor.shutdownNow();
-    executor.awaitTermination(5, TimeUnit.SECONDS);
-
-    // Verify the end result
-    EnumMap<HttpResponseStatusEnum, EnumMap<HttpResponseStatusCodeCategory, EnumMap<RequestType, EnumMap<MessageType, EnumMap<RepushStoreTriggerSource, Attributes>>>>> attributesEnumMapForTest =
-        metricEntityStateForTest.getAttributesEnumMap();
-
-    for (HttpResponseStatusEnum enum1: HttpResponseStatusEnum.values()) {
-      for (HttpResponseStatusCodeCategory enum2: HttpResponseStatusCodeCategory.values()) {
-        for (RequestType enum3: RequestType.values()) {
-          for (MessageType enum4: MessageType.values()) {
-            for (RepushStoreTriggerSource enum5: RepushStoreTriggerSource.values()) {
-              assertEquals(
-                  attributesEnumMapForTest.get(enum1).get(enum2).get(enum3).get(enum4).get(enum5),
-                  attributesEnumMapForComparison.get(enum1).get(enum2).get(enum3).get(enum4).get(enum5));
-            }
-          }
-        }
-      }
     }
   }
 }
