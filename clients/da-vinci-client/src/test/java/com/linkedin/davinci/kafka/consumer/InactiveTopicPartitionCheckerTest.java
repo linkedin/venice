@@ -22,7 +22,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import org.testng.Assert;
-import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
@@ -94,11 +93,6 @@ public class InactiveTopicPartitionCheckerTest {
 
     when(mockChecker.getInactiveTopicPartitionCheckIntervalInMs()).thenReturn(CHECK_INTERVAL_SECONDS);
     when(mockChecker.getInactiveTopicPartitionThresholdInMs()).thenReturn(THRESHOLD_MS);
-  }
-
-  @AfterMethod
-  public void tearDown() throws Exception {
-    // No cleanup needed for mock objects
   }
 
   @Test
