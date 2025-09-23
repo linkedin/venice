@@ -1,6 +1,6 @@
 package com.linkedin.venice.stats.dimensions;
 
-import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REJECTION_REASON;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_REJECTION_REASON;
 
 
 public enum RejectionReason implements VeniceDimensionInterface {
@@ -25,7 +25,7 @@ public enum RejectionReason implements VeniceDimensionInterface {
    */
   @Override
   public VeniceMetricsDimensions getDimensionName() {
-    return VENICE_REJECTION_REASON;
+    return VENICE_REQUEST_REJECTION_REASON;
   }
 
   @Override

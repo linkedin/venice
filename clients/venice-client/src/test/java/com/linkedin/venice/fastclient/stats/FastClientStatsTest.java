@@ -9,9 +9,9 @@ import static com.linkedin.venice.stats.dimensions.RejectionReason.NO_REPLICAS_A
 import static com.linkedin.venice.stats.dimensions.RejectionReason.THROTTLED_BY_LOAD_CONTROLLER;
 import static com.linkedin.venice.stats.dimensions.RequestFanoutType.ORIGINAL;
 import static com.linkedin.venice.stats.dimensions.RequestFanoutType.RETRY;
-import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REJECTION_REASON;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_FANOUT_TYPE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_METHOD;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_REJECTION_REASON;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
 import static com.linkedin.venice.utils.OpenTelemetryDataPointTestUtils.validateHistogramPointData;
 import static com.linkedin.venice.utils.OpenTelemetryDataPointTestUtils.validateLongPointDataFromCounter;
@@ -251,7 +251,7 @@ public class FastClientStatsTest {
     return Attributes.builder()
         .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), storeName)
         .put(VENICE_REQUEST_METHOD.getDimensionNameInDefaultFormat(), SINGLE_GET.getDimensionValue())
-        .put(VENICE_REJECTION_REASON.getDimensionNameInDefaultFormat(), rejectionReason.getDimensionValue())
+        .put(VENICE_REQUEST_REJECTION_REASON.getDimensionNameInDefaultFormat(), rejectionReason.getDimensionValue())
         .build();
   }
 }
