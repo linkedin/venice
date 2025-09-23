@@ -70,7 +70,7 @@ public class AsyncMetricEntityStateBase extends AsyncMetricEntityState {
       MetricEntity metricEntity,
       VeniceOpenTelemetryMetricsRepository otelRepository,
       Map<VeniceMetricsDimensions, String> baseDimensionsMap,
-      @Nonnull Attributes baseAttributes,
+      Attributes baseAttributes,
       @Nonnull LongSupplier asyncCallback) {
     return new AsyncMetricEntityStateBase(
         metricEntity,
@@ -88,7 +88,7 @@ public class AsyncMetricEntityStateBase extends AsyncMetricEntityState {
       TehutiMetricNameEnum tehutiMetricNameEnum,
       List<MeasurableStat> tehutiMetricStats,
       Map<VeniceMetricsDimensions, String> baseDimensionsMap,
-      @Nonnull Attributes baseAttributes,
+      Attributes baseAttributes,
       @Nonnull LongSupplier asyncCallback) {
     return new AsyncMetricEntityStateBase(
         metricEntity,

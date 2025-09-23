@@ -51,11 +51,11 @@ public class P2PBlobTransferService extends AbstractVeniceService {
 
     if (Epoll.isAvailable()) {
       bossGroup = new EpollEventLoopGroup(1);
-      workerGroup = new EpollEventLoopGroup(6);
+      workerGroup = new EpollEventLoopGroup(32);
       socketChannelClass = EpollServerSocketChannel.class;
     } else {
       bossGroup = new NioEventLoopGroup(1);
-      workerGroup = new NioEventLoopGroup(6);
+      workerGroup = new NioEventLoopGroup(32);
     }
 
     serverBootstrap.group(bossGroup, workerGroup)
