@@ -416,8 +416,8 @@ public class Segment {
     pps.segmentNumber = segmentNumber;
     pps.segmentStatus = getStatus().getValue();
     pps.messageSequenceNumber = sequenceNumber;
-    pps.checksumState = ByteBuffer.wrap(checkSum.getEncodedState());
-    pps.checksumType = checkSum.getType().getValue();
+    pps.checksumState = ByteBuffer.wrap(getCheckSumState());
+    pps.checksumType = getCheckSumType().getValue();
     pps.aggregates = aggregates;
     pps.debugInfo = debugInfo;
     pps.messageTimestamp = lastRecordProducerTimestamp;
