@@ -43,7 +43,10 @@ public enum VeniceMetricsDimensions {
   VENICE_REQUEST_RETRY_ABORT_REASON("venice.request.retry_abort_reason"),
 
   /** {@link RepushStoreTriggerSource} */
-  REPUSH_TRIGGER_SOURCE("repush.trigger.source");
+  REPUSH_TRIGGER_SOURCE("repush.trigger.source"),
+
+  /** Instance error type for blocked, unhealthy, and overloaded instances */
+  VENICE_INSTANCE_ERROR_TYPE("venice.instance.error_type");
 
   private final String[] dimensionName = new String[VeniceOpenTelemetryMetricNamingFormat.SIZE];
 

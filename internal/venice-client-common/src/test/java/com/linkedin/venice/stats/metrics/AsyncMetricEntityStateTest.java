@@ -234,6 +234,26 @@ public class AsyncMetricEntityStateTest {
     } catch (IllegalArgumentException e) {
       assertTrue(e.getMessage().contains("should contain all the keys and same values as in baseDimensionsMap"));
     }
+
+    // case 9: baseAttributes is null. This is fine as long as emitting OTel metrics is disabled.
+    when(mockOtelRepository.emitOpenTelemetryMetrics()).thenReturn(false);
+    baseDimensionsMap.clear();
+    baseDimensionsMap.put(VENICE_REQUEST_METHOD, MULTI_GET_STREAMING.getDimensionValue());
+    try {
+      AsyncMetricEntityStateBase.create(mockMetricEntity, mockOtelRepository, baseDimensionsMap, null, () -> 0L);
+    } catch (IllegalArgumentException e) {
+      fail("baseAttributes can be null when emitting OTel metrics is disabled");
+    }
+    // Set it back to true for other tests.
+    when(mockOtelRepository.emitOpenTelemetryMetrics()).thenReturn(true);
+
+    // case 10: baseAttributes is null but emitting OTel metrics is enabled. This should throw exception.
+    try {
+      AsyncMetricEntityStateBase.create(mockMetricEntity, mockOtelRepository, baseDimensionsMap, null, () -> 0L);
+      fail();
+    } catch (IllegalArgumentException e) {
+      assertTrue(e.getMessage().contains("Base attributes cannot be null"));
+    }
   }
 
   @Test

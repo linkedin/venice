@@ -1,5 +1,6 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import com.linkedin.davinci.stats.AdaptiveThrottlingServiceStats;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.throttle.VeniceAdaptiveThrottler;
 import java.text.DecimalFormat;
@@ -22,13 +23,15 @@ public class VeniceAdaptiveIngestionThrottler extends EventThrottler implements 
   private int signalIdleCount = 0;
   private final AtomicInteger currentThrottlerIndex = new AtomicInteger();
   private final String throttlerName;
+  private final AdaptiveThrottlingServiceStats adaptiveThrottlingServiceStats;
 
   public VeniceAdaptiveIngestionThrottler(
       int signalIdleThreshold,
       long quotaPerSecond,
       List<Double> factors,
       long timeWindow,
-      String throttlerName) {
+      String throttlerName,
+      AdaptiveThrottlingServiceStats adaptiveThrottlingServiceStats) {
     this.signalIdleThreshold = signalIdleThreshold;
     this.throttlerName = throttlerName;
     DecimalFormat decimalFormat = new DecimalFormat("0.0");
@@ -52,6 +55,7 @@ public class VeniceAdaptiveIngestionThrottler extends EventThrottler implements 
           EventThrottler.BLOCK_STRATEGY);
       eventThrottlers.add(eventThrottler);
     }
+    this.adaptiveThrottlingServiceStats = adaptiveThrottlingServiceStats;
   }
 
   public String getThrottlerName() {
@@ -61,6 +65,7 @@ public class VeniceAdaptiveIngestionThrottler extends EventThrottler implements 
   @Override
   public void maybeThrottle(double eventsSeen) {
     eventThrottlers.get(currentThrottlerIndex.get()).maybeThrottle(eventsSeen);
+    adaptiveThrottlingServiceStats.recordRateForAdaptiveThrottler(this, (int) eventsSeen);
   }
 
   @Override

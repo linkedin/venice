@@ -4,7 +4,7 @@ import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.throttle.VeniceAdaptiveThrottler;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
-import io.tehuti.metrics.stats.Gauge;
+import io.tehuti.metrics.stats.Rate;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -19,13 +19,13 @@ public class AdaptiveThrottlingServiceStats extends AbstractVeniceStats {
 
   public void registerSensorForThrottler(VeniceAdaptiveThrottler throttler) {
     String throttlerName = throttler.getThrottlerName();
-    sensors.put(throttlerName, registerSensorIfAbsent(throttlerName, new Gauge()));
+    sensors.put(throttlerName, registerSensorIfAbsent(throttlerName, new Rate()));
   }
 
-  public void recordThrottleLimitForThrottler(VeniceAdaptiveThrottler throttler) {
+  public void recordRateForAdaptiveThrottler(VeniceAdaptiveThrottler throttler, int rate) {
     Sensor sensor = sensors.get(throttler.getThrottlerName());
     if (sensor != null) {
-      sensor.record(throttler.getCurrentThrottlerRate());
+      sensor.record(rate);
     }
   }
 }

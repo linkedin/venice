@@ -32,6 +32,7 @@ import com.linkedin.venice.meta.ViewConfig;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.HelixUtils;
+import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -78,6 +79,7 @@ public abstract class AbstractPushMonitor
   public static final int MAX_PUSH_TO_KEEP = 5;
 
   private static final Logger LOGGER = LogManager.getLogger(AbstractPushMonitor.class);
+  private static final RedundantExceptionFilter REDUNDANT_EXCEPTION_FILTER = new RedundantExceptionFilter();
 
   private final OfflinePushAccessor offlinePushAccessor;
   private final String clusterName;
@@ -961,10 +963,12 @@ public abstract class AbstractPushMonitor
               activeActiveRealTimeSourceKafkaURLs);
           newStatusDetails.append("kicked off buffer replay");
         } else if (!offlinePushStatus.getCurrentStatus().isTerminal()) {
-          LOGGER.info(
-              "{} is not ready to start buffer replay. Current state: {}",
-              offlinePushStatus.getKafkaTopic(),
-              offlinePushStatus.getCurrentStatus().toString());
+          if (!REDUNDANT_EXCEPTION_FILTER.isRedundantException(offlinePushStatus.getKafkaTopic())) {
+            LOGGER.info(
+                "{} is not ready to start buffer replay. Current state: {}",
+                offlinePushStatus.getKafkaTopic(),
+                offlinePushStatus.getCurrentStatus().toString());
+          }
         }
       }
 

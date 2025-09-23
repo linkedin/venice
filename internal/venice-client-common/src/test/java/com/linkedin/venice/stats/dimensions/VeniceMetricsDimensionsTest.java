@@ -52,6 +52,9 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_REQUEST_FANOUT_TYPE:
           assertEquals(dimension.getDimensionName(format), "venice.request.fanout_type");
           break;
+        case VENICE_INSTANCE_ERROR_TYPE:
+          assertEquals(dimension.getDimensionName(format), "venice.instance.error_type");
+          break;
         default:
           throw new IllegalArgumentException("Unknown dimension: " + dimension);
       }
@@ -102,6 +105,9 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_REQUEST_FANOUT_TYPE:
           assertEquals(dimension.getDimensionName(format), "venice.request.fanoutType");
           break;
+        case VENICE_INSTANCE_ERROR_TYPE:
+          assertEquals(dimension.getDimensionName(format), "venice.instance.errorType");
+          break;
         default:
           throw new IllegalArgumentException("Unknown dimension: " + dimension);
       }
@@ -151,6 +157,9 @@ public class VeniceMetricsDimensionsTest {
           break;
         case VENICE_REQUEST_FANOUT_TYPE:
           assertEquals(dimension.getDimensionName(format), "Venice.Request.FanoutType");
+          break;
+        case VENICE_INSTANCE_ERROR_TYPE:
+          assertEquals(dimension.getDimensionName(format), "Venice.Instance.ErrorType");
           break;
         default:
           throw new IllegalArgumentException("Unknown dimension: " + dimension);

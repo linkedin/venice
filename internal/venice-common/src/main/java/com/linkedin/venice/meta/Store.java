@@ -42,7 +42,7 @@ public interface Store {
 
   long DEFAULT_RT_RETENTION_TIME = TimeUnit.DAYS.toMillis(5);
 
-  int DEFAULT_BATCH_GET_LIMIT = 150;
+  int DEFAULT_BATCH_GET_LIMIT = 500;
 
   static boolean isSystemStore(String storeName) {
     return storeName.startsWith(SYSTEM_STORE_NAME_PREFIX);
