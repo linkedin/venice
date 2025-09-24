@@ -126,7 +126,6 @@ public class VersionBackend {
           daVinciPushStatusCheckIntervalInMs,
           backend.getPushStatusStoreWriter(),
           this::areAllPartitionFuturesCompletedSuccessfully);
-      this.daVinciPushStatusUpdateTask.start();
     } else {
       this.daVinciPushStatusUpdateTask = null;
     }
@@ -366,6 +365,12 @@ public class VersionBackend {
   synchronized CompletableFuture<Void> subscribe(ComplementSet<Integer> partitions) {
     Instant startTime = Instant.now();
     List<Integer> partitionList = getPartitions(partitions);
+    if (partitionList.isEmpty()) {
+      LOGGER.error("No partitions to subscribe to for {}", this);
+      return CompletableFuture.completedFuture(null);
+    }
+    this.daVinciPushStatusUpdateTask.start();
+
     LOGGER.info("Subscribing to partitions {} of {}", partitionList, this);
     int partitionCount = partitionList.size();
     List<Integer> partitionsToStartConsumption = new ArrayList<>(partitionCount);
