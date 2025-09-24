@@ -1428,7 +1428,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           if (dryRun) {
             final PubSubPosition previousUpstreamPosition =
                 lastKnownUpstreamTopicOffsetSupplier.apply(sourceKafkaUrl, upstreamTopic);
-            TopicManager topicManager = sourceKafkaUrl.isEmpty() ? null : getTopicManager(sourceKafkaUrl);
+            TopicManager topicManager = sourceKafkaUrl.isEmpty()
+                ? topicManagerRepository.getLocalTopicManager()
+                : getTopicManager(sourceKafkaUrl);
             PubSubTopicPartition pubSubTopicPartition =
                 partitionConsumptionState.getSourceTopicPartition(upstreamTopic);
             checkAndHandleUpstreamOffsetRewind(
@@ -1550,8 +1552,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       final PubSubPosition newUpstreamOffset,
       final PubSubPosition previousUpstreamOffset,
       LeaderFollowerStoreIngestionTask ingestionTask) {
-    if (topicManager == null
-        || topicManager.diffPosition(pubSubTopicPartition, newUpstreamOffset, previousUpstreamOffset) >= 0) {
+    if (topicManager.diffPosition(pubSubTopicPartition, newUpstreamOffset, previousUpstreamOffset) >= 0) {
       return; // Rewind did not happen
     }
     if (!ingestionTask.isHybridMode()) {
