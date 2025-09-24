@@ -53,7 +53,7 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
     this.clientStatsForStreamingCompute = clientConfig.getStats(RequestType.COMPUTE_STREAMING);
     this.clusterStats = clientConfig.getClusterStats();
     this.metricsRepository = clientConfig.getMetricsRepository();
-    this.clusterRouteStats = ClusterRouteStats.get();
+    this.clusterRouteStats = ClusterRouteStats.getInstance();
     this.clusterRouteStats.setStoreName(clientConfig.getStoreName());
   }
 
