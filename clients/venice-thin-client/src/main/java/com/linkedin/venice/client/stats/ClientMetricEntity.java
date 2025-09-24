@@ -87,6 +87,7 @@ public enum ClientMetricEntity implements ModuleMetricEntityInterface {
       "route.call_count", MetricType.COUNTER, MetricUnit.NUMBER,
       "Count of all requests routed to different instances in a cluster",
       setOf(
+          VENICE_STORE_NAME,
           VENICE_CLUSTER_NAME,
           VENICE_REQUEST_METHOD,
           VENICE_ROUTE_NAME,
@@ -102,6 +103,7 @@ public enum ClientMetricEntity implements ModuleMetricEntityInterface {
       "route.call_time", MetricType.HISTOGRAM, MetricUnit.MILLISECOND,
       "Time taken for requests routed to different instances in a cluster",
       setOf(
+          VENICE_STORE_NAME,
           VENICE_CLUSTER_NAME,
           VENICE_REQUEST_METHOD,
           VENICE_ROUTE_NAME,
@@ -116,7 +118,7 @@ public enum ClientMetricEntity implements ModuleMetricEntityInterface {
   ROUTE_REQUEST_PENDING_COUNT(
       "route.request.pending_count", MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS, MetricUnit.NUMBER,
       "Pending request count for requests routed to different instances in a cluster",
-      setOf(VENICE_CLUSTER_NAME, VENICE_REQUEST_METHOD, VENICE_ROUTE_NAME)
+      setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REQUEST_METHOD, VENICE_ROUTE_NAME)
   ),
 
   /**
@@ -125,7 +127,12 @@ public enum ClientMetricEntity implements ModuleMetricEntityInterface {
   ROUTE_REQUEST_REJECTION_RATIO(
       "route.request.rejection_ratio", MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS, MetricUnit.NUMBER,
       "Request rejection ratio for requests routed to different instances in a cluster",
-      setOf(VENICE_CLUSTER_NAME, VENICE_ROUTE_NAME, VENICE_REQUEST_METHOD, VENICE_REQUEST_REJECTION_REASON)
+      setOf(
+          VENICE_STORE_NAME,
+          VENICE_CLUSTER_NAME,
+          VENICE_ROUTE_NAME,
+          VENICE_REQUEST_METHOD,
+          VENICE_REQUEST_REJECTION_REASON)
   ),
 
   /**

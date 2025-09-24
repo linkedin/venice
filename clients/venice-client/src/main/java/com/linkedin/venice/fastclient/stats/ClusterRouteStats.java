@@ -8,6 +8,7 @@ import static com.linkedin.venice.stats.dimensions.HttpResponseStatusEnum.UNKNOW
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_METHOD;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_ROUTE_NAME;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
 
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.AbstractVeniceHttpStats;
@@ -49,11 +50,17 @@ public class ClusterRouteStats {
 
   private final Map<String, RouteStats> perRouteStatMap = new VeniceConcurrentHashMap<>();
 
+  private String storeName;
+
   public static ClusterRouteStats get() {
     return DEFAULT;
   }
 
   private ClusterRouteStats() {
+  }
+
+  public void setStoreName(String storeName) {
+    this.storeName = storeName;
   }
 
   public RouteStats getRouteStats(
@@ -70,7 +77,7 @@ public class ClusterRouteStats {
       } catch (MalformedURLException e) {
         LOGGER.error("Invalid instance url: {}", instanceUrl);
       }
-      return new RouteStats(metricsRepository, clusterName, instanceName, requestType);
+      return new RouteStats(metricsRepository, storeName, clusterName, instanceName, requestType);
     });
   }
 
@@ -114,6 +121,7 @@ public class ClusterRouteStats {
 
     public RouteStats(
         MetricsRepository metricsRepository,
+        String storeName,
         String clusterName,
         String instanceName,
         RequestType requestType) {
@@ -127,11 +135,13 @@ public class ClusterRouteStats {
         if (veniceMetricsConfig.emitOtelMetrics()) {
           otelRepository = veniceMetricsRepository.getOpenTelemetryMetricsRepository();
           baseDimensionsMap = new HashMap<>();
+          baseDimensionsMap.put(VENICE_STORE_NAME, storeName);
           baseDimensionsMap.put(VENICE_CLUSTER_NAME, clusterName);
           baseDimensionsMap.put(VENICE_REQUEST_METHOD, requestType.getDimensionValue());
           baseDimensionsMap.put(VENICE_ROUTE_NAME, routeName);
 
           baseAttributes = Attributes.builder()
+              .put(otelRepository.getDimensionName(VENICE_STORE_NAME), storeName)
               .put(otelRepository.getDimensionName(VENICE_CLUSTER_NAME), clusterName)
               .put(otelRepository.getDimensionName(VENICE_REQUEST_METHOD), requestType.getDimensionValue())
               .put(otelRepository.getDimensionName(VENICE_ROUTE_NAME), routeName)

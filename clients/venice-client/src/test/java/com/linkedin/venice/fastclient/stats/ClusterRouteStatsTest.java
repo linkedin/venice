@@ -17,6 +17,7 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_REJECTION_REASON;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_ROUTE_NAME;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory.FAIL;
 import static com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory.SUCCESS;
 import static com.linkedin.venice.utils.OpenTelemetryDataPointTestUtils.validateExponentialHistogramPointData;
@@ -41,6 +42,7 @@ import org.testng.annotations.Test;
 
 
 public class ClusterRouteStatsTest {
+  private static final String STORE_NAME = "test_store";
   private static final String CLUSTER_NAME = "test_cluster";
   private static final String INSTANCE_URL = "http://localhost:8080";
   private static final RequestType REQUEST_TYPE = RequestType.SINGLE_GET;
@@ -61,6 +63,7 @@ public class ClusterRouteStatsTest {
 
     // Create ClusterRouteStats instance using the singleton pattern
     clusterRouteStats = ClusterRouteStats.get();
+    clusterRouteStats.setStoreName(STORE_NAME);
   }
 
   @Test
@@ -109,6 +112,7 @@ public class ClusterRouteStatsTest {
 
   private void validateHealthyRequestOtelMetrics() {
     Attributes expectedAttributes = Attributes.builder()
+        .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), STORE_NAME)
         .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), CLUSTER_NAME)
         .put(VENICE_REQUEST_METHOD.getDimensionNameInDefaultFormat(), REQUEST_TYPE.getDimensionValue())
         .put(VENICE_ROUTE_NAME.getDimensionNameInDefaultFormat(), instanceUrl.getHost())
@@ -184,6 +188,7 @@ public class ClusterRouteStatsTest {
 
   private void validateQuotaExceededRequestOtelMetrics() {
     Attributes expectedAttributes = Attributes.builder()
+        .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), STORE_NAME)
         .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), CLUSTER_NAME)
         .put(VENICE_REQUEST_METHOD.getDimensionNameInDefaultFormat(), REQUEST_TYPE.getDimensionValue())
         .put(VENICE_ROUTE_NAME.getDimensionNameInDefaultFormat(), instanceUrl.getHost())
@@ -263,6 +268,7 @@ public class ClusterRouteStatsTest {
 
   private void validateInternalServerErrorRequestOtelMetrics() {
     Attributes expectedAttributes = Attributes.builder()
+        .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), STORE_NAME)
         .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), CLUSTER_NAME)
         .put(VENICE_REQUEST_METHOD.getDimensionNameInDefaultFormat(), REQUEST_TYPE.getDimensionValue())
         .put(VENICE_ROUTE_NAME.getDimensionNameInDefaultFormat(), instanceUrl.getHost())
@@ -340,6 +346,7 @@ public class ClusterRouteStatsTest {
 
   private void validateServiceUnavailableRequestOtelMetrics() {
     Attributes expectedAttributes = Attributes.builder()
+        .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), STORE_NAME)
         .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), CLUSTER_NAME)
         .put(VENICE_REQUEST_METHOD.getDimensionNameInDefaultFormat(), REQUEST_TYPE.getDimensionValue())
         .put(VENICE_ROUTE_NAME.getDimensionNameInDefaultFormat(), instanceUrl.getHost())
@@ -416,6 +423,7 @@ public class ClusterRouteStatsTest {
 
   private void validateLeakedRequestOtelMetrics() {
     Attributes expectedAttributes = Attributes.builder()
+        .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), STORE_NAME)
         .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), CLUSTER_NAME)
         .put(VENICE_REQUEST_METHOD.getDimensionNameInDefaultFormat(), REQUEST_TYPE.getDimensionValue())
         .put(VENICE_ROUTE_NAME.getDimensionNameInDefaultFormat(), instanceUrl.getHost())
@@ -492,6 +500,7 @@ public class ClusterRouteStatsTest {
 
   private void validateOtherErrorRequestOtelMetrics() {
     Attributes expectedAttributes = Attributes.builder()
+        .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), STORE_NAME)
         .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), CLUSTER_NAME)
         .put(VENICE_REQUEST_METHOD.getDimensionNameInDefaultFormat(), REQUEST_TYPE.getDimensionValue())
         .put(VENICE_ROUTE_NAME.getDimensionNameInDefaultFormat(), instanceUrl.getHost())
@@ -583,6 +592,7 @@ public class ClusterRouteStatsTest {
 
   private void validatePendingRequestCountOtelMetrics(int count1, int count2, int count3) {
     Attributes expectedAttributes = Attributes.builder()
+        .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), STORE_NAME)
         .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), CLUSTER_NAME)
         .put(VENICE_REQUEST_METHOD.getDimensionNameInDefaultFormat(), REQUEST_TYPE.getDimensionValue())
         .put(VENICE_ROUTE_NAME.getDimensionNameInDefaultFormat(), instanceUrl.getHost())
@@ -661,6 +671,7 @@ public class ClusterRouteStatsTest {
   private void validateRejectionRatioOtelMetrics(double ratio1, double ratio2) {
     // Test with THROTTLED_BY_LOAD_CONTROLLER reason
     Attributes expectedAttributesThrottled = Attributes.builder()
+        .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), STORE_NAME)
         .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), CLUSTER_NAME)
         .put(VENICE_REQUEST_METHOD.getDimensionNameInDefaultFormat(), REQUEST_TYPE.getDimensionValue())
         .put(VENICE_ROUTE_NAME.getDimensionNameInDefaultFormat(), instanceUrl.getHost())

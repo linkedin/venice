@@ -54,6 +54,7 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
     this.clusterStats = clientConfig.getClusterStats();
     this.metricsRepository = clientConfig.getMetricsRepository();
     this.clusterRouteStats = ClusterRouteStats.get();
+    this.clusterRouteStats.setStoreName(clientConfig.getStoreName());
   }
 
   @Override
