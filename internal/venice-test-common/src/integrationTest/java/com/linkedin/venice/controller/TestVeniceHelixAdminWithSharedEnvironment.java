@@ -2153,8 +2153,8 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     startParticipant(true, additionalNode);
     veniceAdmin.createStore(clusterName, storeName, owner, KEY_SCHEMA, VALUE_SCHEMA);
 
-    Version version = veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(),
-        oldPartitionCount, 2);
+    Version version = veniceAdmin
+        .incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), oldPartitionCount, 2);
     Assert.assertEquals(veniceAdmin.getCurrentVersion(clusterName, storeName), 0);
 
     veniceAdmin.setStoreCurrentVersion(clusterName, storeName, version.getNumber());
@@ -2166,9 +2166,12 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
         oldPartitionCount);
 
     // 2. update store as hybrid store
-    veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setHybridOffsetLagThreshold(100)
-        .setHybridRewindSeconds(100)
-        .setSeparateRealTimeTopicEnabled(true));
+    veniceAdmin.updateStore(
+        clusterName,
+        storeName,
+        new UpdateStoreQueryParams().setHybridOffsetLagThreshold(100)
+            .setHybridRewindSeconds(100)
+            .setSeparateRealTimeTopicEnabled(true));
 
     // 3. create the real-time topic
     Store store = veniceAdmin.getStore(clusterName, storeName);
@@ -2180,9 +2183,12 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
         oldPartitionCount);
 
     // 4. remove the hybrid config, to mock client might toggle hybrid store to batch-only store
-    veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setHybridOffsetLagThreshold(-1)
-        .setHybridRewindSeconds(-1)
-        .setSeparateRealTimeTopicEnabled(false));
+    veniceAdmin.updateStore(
+        clusterName,
+        storeName,
+        new UpdateStoreQueryParams().setHybridOffsetLagThreshold(-1)
+            .setHybridRewindSeconds(-1)
+            .setSeparateRealTimeTopicEnabled(false));
 
     // 5. validate partition num is not changed after hybrid config is removed
     Assert.assertEquals(
@@ -2198,9 +2204,10 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
       Assert.fail("Should not be able to change partition count of a store.");
     } catch (VeniceHttpException e) {
       // 7. Assertion
-      Assert.assertTrue(e.getMessage()
-          .contains(
-              "Cannot update partition count for batch store with an existing RT topic having a different partition count"));
+      Assert.assertTrue(
+          e.getMessage()
+              .contains(
+                  "Cannot update partition count for batch store with an existing RT topic having a different partition count"));
     }
 
     // 8. validate partition num is not changed, still oldPartitionCount

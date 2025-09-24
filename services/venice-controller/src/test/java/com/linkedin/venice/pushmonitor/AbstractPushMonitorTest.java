@@ -111,6 +111,7 @@ public abstract class AbstractPushMonitorTest {
 
   private final static int numberOfPartition = 1;
   private final static int replicationFactor = 3;
+  protected final static String TARGET_REGION_NAME = "targetRegion";
 
   protected AbstractPushMonitor getPushMonitor() {
     return getPushMonitor(mock(RealTimeTopicSwitcher.class));
@@ -141,6 +142,7 @@ public abstract class AbstractPushMonitorTest {
     when(mockControllerConfig.getDaVinciPushStatusScanIntervalInSeconds()).thenReturn(5);
     when(mockControllerConfig.getOffLineJobWaitTimeInMilliseconds()).thenReturn(120000L);
     when(mockControllerConfig.getDaVinciPushStatusScanThreadNumber()).thenReturn(4);
+    when(mockControllerConfig.getRegionName()).thenReturn(TARGET_REGION_NAME);
     when(mockVeniceWriterFactory.createVeniceWriter(any())).thenReturn(mockVeniceWriter);
     currentVersionChangeNotifier = mock(AbstractPushMonitor.CurrentVersionChangeNotifier.class);
     monitor = getPushMonitor();

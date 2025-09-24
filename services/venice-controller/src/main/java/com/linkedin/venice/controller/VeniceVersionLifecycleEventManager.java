@@ -1,9 +1,11 @@
 package com.linkedin.venice.controller;
 
 import com.linkedin.venice.meta.ReadOnlyStore;
+import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.BiFunction;
 
 
 /**
@@ -18,6 +20,31 @@ public class VeniceVersionLifecycleEventManager {
 
   public VeniceVersionLifecycleEventManager() {
     listeners = new ArrayList<>();
+  }
+
+  public static void onCurrentVersionChanged(
+      VeniceVersionLifecycleEventManager manager,
+      String clusterName,
+      Store store,
+      int newCurrentVersion,
+      int previousCurrentVersion,
+      boolean isFutureVersion,
+      boolean isMigrating,
+      BiFunction<String, String, Boolean> isSourceClusterFn) {
+    boolean isSourceCluster = true;
+    if (isMigrating) {
+      isSourceCluster = isSourceClusterFn.apply(clusterName, store.getName());
+    }
+    if (newCurrentVersion != Store.NON_EXISTING_VERSION) {
+      if (isFutureVersion) {
+        manager.notifyVersionBecomingCurrentFromFuture(store.getVersionOrThrow(newCurrentVersion), isSourceCluster);
+      } else {
+        manager.notifyVersionBecomingCurrentFromBackup(store.getVersionOrThrow(newCurrentVersion), isSourceCluster);
+      }
+    }
+    if (previousCurrentVersion != Store.NON_EXISTING_VERSION) {
+      manager.notifyVersionBecomingBackup(store.getVersionOrThrow(previousCurrentVersion), isSourceCluster);
+    }
   }
 
   public void addListener(VeniceVersionLifecycleEventListener listener) {

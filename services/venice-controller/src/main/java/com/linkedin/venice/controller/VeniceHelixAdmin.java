@@ -4735,16 +4735,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       // when we roll back from v2 -> v1, and roll forward to v2 from v1. The roll forward from v1 to v2 via this method
       // is still considered as becoming current from backup version. The definition or the semantics of this method can
       // change in the future if needed.
-      boolean isSourceCluster = true;
-      if (store.isMigrating()) {
-        isSourceCluster = resources.isSourceCluster(clusterName, storeName);
-      }
-      resources.getVeniceVersionLifecycleEventManager()
-          .notifyVersionBecomingCurrentFromBackup(store.getVersionOrThrow(versionNumber), isSourceCluster);
-      if (previousVersion != NON_EXISTING_VERSION) {
-        resources.getVeniceVersionLifecycleEventManager()
-            .notifyVersionBecomingBackup(store.getVersionOrThrow(previousVersion), isSourceCluster);
-      }
+      VeniceVersionLifecycleEventManager.onCurrentVersionChanged(
+          resources.getVeniceVersionLifecycleEventManager(),
+          clusterName,
+          store,
+          versionNumber,
+          previousVersion,
+          false,
+          store.isMigrating(),
+          resources::isSourceCluster);
       if (!isParent()) {
         // Parent controller should not transmit the version swap message
         realTimeTopicSwitcher.transmitVersionSwapMessage(store, previousVersion, versionNumber);
@@ -4821,16 +4820,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         }
       }
       store.setCurrentVersion(futureVersion);
-      boolean isSourceCluster = true;
-      if (store.isMigrating()) {
-        isSourceCluster = resources.isSourceCluster(clusterName, storeName);
-      }
-      resources.getVeniceVersionLifecycleEventManager()
-          .notifyVersionBecomingCurrentFromFuture(store.getVersionOrThrow(futureVersion), isSourceCluster);
-      if (previousVersion != NON_EXISTING_VERSION) {
-        resources.getVeniceVersionLifecycleEventManager()
-            .notifyVersionBecomingBackup(store.getVersionOrThrow(previousVersion), isSourceCluster);
-      }
+      VeniceVersionLifecycleEventManager.onCurrentVersionChanged(
+          resources.getVeniceVersionLifecycleEventManager(),
+          clusterName,
+          store,
+          futureVersion,
+          previousVersion,
+          true,
+          store.isMigrating(),
+          resources::isSourceCluster);
       if (pushedFutureVersion != Store.NON_EXISTING_VERSION) {
         store.updateVersionStatus(futureVersion, VersionStatus.ONLINE);
       }
@@ -4875,16 +4873,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       }
       int previousVersion = store.getCurrentVersion();
       store.setCurrentVersion(backupVersion);
-      boolean isSourceCluster = true;
-      if (store.isMigrating()) {
-        isSourceCluster = resources.isSourceCluster(clusterName, storeName);
-      }
-      resources.getVeniceVersionLifecycleEventManager()
-          .notifyVersionBecomingCurrentFromBackup(store.getVersionOrThrow(backupVersion), isSourceCluster);
-      if (previousVersion != NON_EXISTING_VERSION) {
-        resources.getVeniceVersionLifecycleEventManager()
-            .notifyVersionBecomingBackup(store.getVersionOrThrow(previousVersion), isSourceCluster);
-      }
+      VeniceVersionLifecycleEventManager.onCurrentVersionChanged(
+          resources.getVeniceVersionLifecycleEventManager(),
+          clusterName,
+          store,
+          backupVersion,
+          previousVersion,
+          false,
+          store.isMigrating(),
+          resources::isSourceCluster);
       LOGGER
           .info("Rolling back current version {} to version {} in store {}", previousVersion, backupVersion, storeName);
       realTimeTopicSwitcher.transmitVersionSwapMessage(store, previousVersion, backupVersion);

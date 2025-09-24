@@ -195,6 +195,62 @@ public class PartitionStatusBasedPushMonitorTest extends AbstractPushMonitorTest
   }
 
   @Test
+  public void testVersionUpdateWithTargetRegionPushAndSwap() {
+    String topic = getTopic();
+    Store store = prepareMockStore(topic, VersionStatus.STARTED, Collections.emptyMap(), null, TARGET_REGION_NAME);
+
+    List<OfflinePushStatus> statusList = new ArrayList<>();
+    OfflinePushStatus pushStatus = new OfflinePushStatus(
+        topic,
+        getNumberOfPartition(),
+        getReplicationFactor(),
+        OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
+    statusList.add(pushStatus);
+
+    doReturn(statusList).when(getMockAccessor()).loadOfflinePushStatusesAndPartitionStatuses();
+    PartitionAssignment partitionAssignment = new PartitionAssignment(topic, getNumberOfPartition());
+    doReturn(true).when(getMockRoutingDataRepo()).containsKafkaTopic(eq(topic));
+    doReturn(partitionAssignment).when(getMockRoutingDataRepo()).getPartitionAssignments(topic);
+
+    for (int i = 0; i < getNumberOfPartition(); i++) {
+      Partition partition = mock(Partition.class);
+      Map<Instance, HelixState> instanceToStateMap = new HashMap<>();
+      instanceToStateMap.put(new Instance("instance0", "host0", 1), HelixState.STANDBY);
+      instanceToStateMap.put(new Instance("instance1", "host1", 1), HelixState.STANDBY);
+      instanceToStateMap.put(new Instance("instance2", "host2", 1), HelixState.LEADER);
+      when(partition.getInstanceToHelixStateMap()).thenReturn(instanceToStateMap);
+      when(partition.getId()).thenReturn(i);
+      partitionAssignment.addPartition(partition);
+      PartitionStatus partitionStatus = mock(ReadOnlyPartitionStatus.class);
+      when(partitionStatus.getPartitionId()).thenReturn(i);
+      when(partitionStatus.getReplicaHistoricStatusList(anyString()))
+          .thenReturn(Collections.singletonList(new StatusSnapshot(COMPLETED, "")));
+      pushStatus.setPartitionStatus(partitionStatus);
+    }
+
+    when(getMockAccessor().getOfflinePushStatusAndItsPartitionStatuses(Mockito.anyString())).thenAnswer(invocation -> {
+      String kafkaTopic = invocation.getArgument(0);
+      for (OfflinePushStatus status: statusList) {
+        if (status.getKafkaTopic().equals(kafkaTopic)) {
+          return status;
+        }
+      }
+      return null;
+    });
+
+    getMonitor().loadAllPushes();
+    verify(getMockStoreRepo(), atLeastOnce()).updateStore(store);
+    verify(getMockStoreCleaner(), atLeastOnce()).retireOldStoreVersions(anyString(), anyString(), eq(false), anyInt());
+
+    // The version should be swapped since region matches targetSwapRegion and swap is not deferred any further
+    Assert.assertEquals(getMonitor().getOfflinePushOrThrow(topic).getCurrentStatus(), ExecutionStatus.COMPLETED);
+    Assert.assertEquals(store.getCurrentVersion(), 1);
+    Assert.assertEquals(store.getVersion(1).getStatus(), VersionStatus.ONLINE);
+    verify(currentVersionChangeNotifier, atLeastOnce()).onCurrentVersionChange(any(), anyString(), eq(1), anyInt());
+    Mockito.reset(getMockAccessor());
+  }
+
+  @Test
   public void testLoadRunningPushWhichIsNotUpdateToDateAndDeletionError() {
     String topic = getTopic();
     Store store = prepareMockStore(topic);

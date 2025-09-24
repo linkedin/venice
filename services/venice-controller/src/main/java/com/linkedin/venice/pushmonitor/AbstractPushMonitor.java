@@ -1234,6 +1234,7 @@ public abstract class AbstractPushMonitor
                 regionName);
             int previousVersion = store.getCurrentVersion();
             store.setCurrentVersion(versionNumber);
+            currentVersionChangeNotifier.onCurrentVersionChange(store, clusterName, versionNumber, previousVersion);
             realTimeTopicSwitcher.transmitVersionSwapMessage(store, previousVersion, versionNumber);
           } else if (isTargetRegionPushWithDeferredSwap || isNormalPush) {
             LOGGER.info(

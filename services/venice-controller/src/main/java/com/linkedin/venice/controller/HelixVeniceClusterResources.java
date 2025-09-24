@@ -1,7 +1,5 @@
 package com.linkedin.venice.controller;
 
-import static com.linkedin.venice.meta.Store.NON_EXISTING_VERSION;
-
 import com.linkedin.venice.VeniceResource;
 import com.linkedin.venice.acl.AclCreationDeletionListener;
 import com.linkedin.venice.acl.DynamicAccessController;
@@ -198,16 +196,15 @@ public class HelixVeniceClusterResources implements VeniceResource {
         admin.getDisabledPartitionStats(clusterName),
         admin.getVeniceWriterFactory(),
         (updatedStore, updatedClusterName, currentVersion, previousVersion) -> {
-          boolean isSourceCluster = true;
-          if (updatedStore.isMigrating()) {
-            isSourceCluster = isSourceCluster(updatedClusterName, updatedStore.getName());
-          }
-          this.veniceVersionLifecycleEventManager
-              .notifyVersionBecomingCurrentFromFuture(updatedStore.getVersionOrThrow(currentVersion), isSourceCluster);
-          if (previousVersion != NON_EXISTING_VERSION) {
-            this.veniceVersionLifecycleEventManager
-                .notifyVersionBecomingBackup(updatedStore.getVersionOrThrow(previousVersion), isSourceCluster);
-          }
+          VeniceVersionLifecycleEventManager.onCurrentVersionChanged(
+              this.veniceVersionLifecycleEventManager,
+              updatedClusterName,
+              updatedStore,
+              currentVersion,
+              previousVersion,
+              true,
+              updatedStore.isMigrating(),
+              this::isSourceCluster);
         });
 
     this.leakedPushStatusCleanUpService = new LeakedPushStatusCleanUpService(
