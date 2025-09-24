@@ -62,8 +62,7 @@ public class ClusterRouteStatsTest {
     otelMetricPrefix = FAST_CLIENT.getMetricsPrefix();
 
     // Create ClusterRouteStats instance using the singleton pattern
-    clusterRouteStats = ClusterRouteStats.getInstance();
-    clusterRouteStats.setStoreName(STORE_NAME);
+    clusterRouteStats = ClusterRouteStats.getInstance(STORE_NAME);
   }
 
   @Test

@@ -50,24 +50,21 @@ public class ClusterRouteStats {
 
   private final Map<String, RouteStats> perRouteStatMap = new VeniceConcurrentHashMap<>();
 
-  private volatile String storeName;
+  private final String storeName;
 
   // Singleton pattern with double-checked locking for thread safety
-  public static ClusterRouteStats getInstance() {
+  public static ClusterRouteStats getInstance(String storeName) {
     if (instance == null) { // Check if instance is not yet created
       synchronized (ClusterRouteStats.class) { // Synchronize for thread safety
         if (instance == null) { // Double-check inside synchronized block
-          instance = new ClusterRouteStats();
+          instance = new ClusterRouteStats(storeName);
         }
       }
     }
     return instance;
   }
 
-  private ClusterRouteStats() {
-  }
-
-  public void setStoreName(String storeName) {
+  private ClusterRouteStats(String storeName) {
     this.storeName = storeName;
   }
 
