@@ -13,6 +13,10 @@ import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.fastclient.GrpcClientConfig;
 import com.linkedin.venice.grpc.GrpcUtils;
+import com.linkedin.venice.protocols.CountByBucketRequest;
+import com.linkedin.venice.protocols.CountByBucketResponse;
+import com.linkedin.venice.protocols.CountByValueRequest;
+import com.linkedin.venice.protocols.CountByValueResponse;
 import com.linkedin.venice.protocols.VeniceClientRequest;
 import com.linkedin.venice.protocols.VeniceReadServiceGrpc;
 import com.linkedin.venice.protocols.VeniceServerResponse;
@@ -97,6 +101,68 @@ public class GrpcTransportClient extends InternalTransportClient {
     r2TransportClientForNonStorageOps.close();
   }
 
+  /**
+   * Performs a countByValue aggregation request using gRPC.
+   * @param serverAddress The server address to send the request to
+   * @param request The countByValue request containing keys, field name, and topK
+   * @return A future containing the aggregation response
+   */
+  public CompletableFuture<CountByValueResponse> countByValue(String serverAddress, CountByValueRequest request) {
+    CompletableFuture<CountByValueResponse> responseFuture = new CompletableFuture<>();
+    VeniceReadServiceGrpc.VeniceReadServiceStub clientStub = getOrCreateStub(serverAddress);
+
+    clientStub.countByValue(request, new StreamObserver<CountByValueResponse>() {
+      @Override
+      public void onNext(CountByValueResponse response) {
+        responseFuture.complete(response);
+      }
+
+      @Override
+      public void onError(Throwable t) {
+        LOGGER.error("Error in countByValue request", t);
+        responseFuture.completeExceptionally(t);
+      }
+
+      @Override
+      public void onCompleted() {
+        LOGGER.debug("Completed countByValue gRPC request");
+      }
+    });
+
+    return responseFuture;
+  }
+
+  /**
+   * Performs a countByBucket aggregation request using gRPC.
+   * @param serverAddress The server address to send the request to
+   * @param request The countByBucket request containing keys, field names, and bucket predicates
+   * @return A future containing the aggregation response
+   */
+  public CompletableFuture<CountByBucketResponse> countByBucket(String serverAddress, CountByBucketRequest request) {
+    CompletableFuture<CountByBucketResponse> responseFuture = new CompletableFuture<>();
+    VeniceReadServiceGrpc.VeniceReadServiceStub clientStub = getOrCreateStub(serverAddress);
+
+    clientStub.countByBucket(request, new StreamObserver<CountByBucketResponse>() {
+      @Override
+      public void onNext(CountByBucketResponse response) {
+        responseFuture.complete(response);
+      }
+
+      @Override
+      public void onError(Throwable t) {
+        LOGGER.error("Error in countByBucket request", t);
+        responseFuture.completeExceptionally(t);
+      }
+
+      @Override
+      public void onCompleted() {
+        LOGGER.debug("Completed countByBucket gRPC request");
+      }
+    });
+
+    return responseFuture;
+  }
+
   @VisibleForTesting
   VeniceClientRequest buildVeniceClientRequest(String[] requestParts, byte[] requestBody, boolean isSingleGet) {
     VeniceClientRequest.Builder requestBuilder = VeniceClientRequest.newBuilder()
@@ -135,8 +201,16 @@ public class GrpcTransportClient extends InternalTransportClient {
     Preconditions.checkState(StringUtils.isNotEmpty(serverAddress), "Server address cannot be empty ");
 
     nettyServerToGrpcAddress.computeIfAbsent(serverAddress, nettyAddress -> {
-      String[] serverAddressParts = serverAddress.split(":");
-      Preconditions.checkState(serverAddressParts.length == 2, "Invalid server address");
+      // Handle potential protocol prefixes (http://, https://)
+      String cleanAddress = nettyAddress;
+      if (cleanAddress.startsWith("http://")) {
+        cleanAddress = cleanAddress.substring(7);
+      } else if (cleanAddress.startsWith("https://")) {
+        cleanAddress = cleanAddress.substring(8);
+      }
+
+      String[] serverAddressParts = cleanAddress.split(":");
+      Preconditions.checkState(serverAddressParts.length == 2, "Invalid server address: " + serverAddress);
 
       return String.format(GRPC_ADDRESS_FORMAT, serverAddressParts[0], port);
     });
@@ -288,6 +362,15 @@ public class GrpcTransportClient extends InternalTransportClient {
       String errorMessage = response.getErrorMessage();
       Exception exception;
 
+      // Handle status code 0 (undefined/not set) as internal error
+      if (statusCode == 0) {
+        LOGGER.warn("Received undefined status code 0 from server, treating as internal error");
+        statusCode = VeniceReadResponseStatus.INTERNAL_ERROR;
+        if (errorMessage == null || errorMessage.isEmpty()) {
+          errorMessage = "Server returned undefined status code";
+        }
+      }
+
       switch (statusCode) {
         case VeniceReadResponseStatus.BAD_REQUEST:
           exception = new VeniceClientHttpException(errorMessage, statusCode);
@@ -297,6 +380,10 @@ public class GrpcTransportClient extends InternalTransportClient {
           break;
         case VeniceReadResponseStatus.KEY_NOT_FOUND:
           exception = null;
+          break;
+        case VeniceReadResponseStatus.INTERNAL_ERROR:
+          exception = new VeniceClientException(
+              String.format("Server internal error: %s", errorMessage != null ? errorMessage : "Unknown error"));
           break;
         default:
           exception = new VeniceClientException(
