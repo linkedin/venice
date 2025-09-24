@@ -428,7 +428,6 @@ public class Segment {
      */
     pps.aggregates = CollectionUtils.substituteEmptyMap(getAggregates());
     pps.debugInfo = CollectionUtils.substituteEmptyMap(getDebugInfo());
-    pps.checksumType = getCheckSumType().getValue();
     populateProducerPartitionState(pps);
     return pps;
   }
@@ -439,6 +438,7 @@ public class Segment {
      * which is expensive. We should only invoke this closure when necessary.
      */
     pps.checksumState = ByteBuffer.wrap(getCheckSumState());
+    pps.checksumType = getCheckSumType().getValue();
     pps.segmentNumber = getSegmentNumber();
     pps.messageSequenceNumber = getSequenceNumber();
     pps.messageTimestamp = getLastRecordProducerTimestamp();
