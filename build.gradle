@@ -141,7 +141,7 @@ ext.libraries = [
     slf4jSimple: 'org.slf4j:slf4j-simple:1.7.36',
     snappy: 'org.iq80.snappy:snappy:0.4',
     spark: 'com.sparkjava:spark-core:2.9.4', // Spark-Java Rest framework
-    spotbugs: 'com.github.spotbugs:spotbugs:4.5.2',
+    spotbugs: 'com.github.spotbugs:spotbugs:4.8.6',
     tehuti: 'io.tehuti:tehuti:0.12.4',
     testcontainers: 'org.testcontainers:testcontainers:1.18.0',
     testng: 'org.testng:testng:6.14.3',
