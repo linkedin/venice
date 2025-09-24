@@ -1,6 +1,7 @@
 package com.linkedin.davinci.blobtransfer.client;
 
 import com.linkedin.alpini.base.concurrency.Executors;
+import com.linkedin.alpini.base.misc.ThreadPoolExecutor;
 import com.linkedin.davinci.blobtransfer.BlobTransferUtils;
 import com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferTableFormat;
 import com.linkedin.davinci.storage.StorageMetadataService;
@@ -41,6 +42,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.SynchronousQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import org.apache.logging.log4j.LogManager;
@@ -121,8 +123,13 @@ public class NettyFileTransferClient {
         Executors.newCachedThreadPool(new DaemonThreadFactory("Venice-BlobTransfer-Host-Connect-Executor-Service"));
     this.connectTimeoutScheduler = Executors
         .newSingleThreadScheduledExecutor(new DaemonThreadFactory("Venice-BlobTransfer-Client-Timeout-Checker"));
-    this.checksumValidationExecutorService = Executors
-        .newCachedThreadPool(new DaemonThreadFactory("Venice-BlobTransfer-Checksum-Validation-Executor-Service"));
+    this.checksumValidationExecutorService = new ThreadPoolExecutor(
+        0,
+        300,
+        60L,
+        TimeUnit.SECONDS,
+        new SynchronousQueue<>(),
+        new DaemonThreadFactory("Venice-BlobTransfer-Checksum-Validation-Executor-Service"));
   }
 
   /**
