@@ -54,12 +54,21 @@ import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
@@ -856,4 +865,103 @@ public class ApacheKafkaConsumerAdapterTest {
     ByteBuffer invalidBuffer = ByteBuffer.wrap(new byte[] {}); // Too short to decode
     kafkaConsumerAdapter.decodePosition(pubSubTopicPartition, APACHE_KAFKA_OFFSET_POSITION_TYPE_ID, invalidBuffer);
   }
+
+  /**
+   * Test that concurrent subscriptions to the same partition are idempotent.
+   */
+  @Test(timeOut = 10_000)
+  public void testConcurrentSubscribeSamePartitionIsIdempotent() throws Exception {
+    Set<TopicPartition> assigned = ConcurrentHashMap.newKeySet();
+    AtomicInteger assignCalls = new AtomicInteger();
+    AtomicInteger seekCalls = new AtomicInteger();
+    when(internalKafkaConsumer.assignment()).thenAnswer(invocation -> new HashSet<>(assigned));
+    doAnswer(invocation -> {
+      Collection<TopicPartition> parts = (Collection<TopicPartition>) invocation.getArguments()[0];
+      assigned.clear();
+      assigned.addAll(parts);
+      assignCalls.incrementAndGet();
+      return null;
+    }).when(internalKafkaConsumer).assign(any());
+
+    doAnswer(invocation -> {
+      seekCalls.incrementAndGet();
+      return null;
+    }).when(internalKafkaConsumer).seek(any(TopicPartition.class), anyLong());
+
+    ApacheKafkaOffsetPosition startPosition = ApacheKafkaOffsetPosition.of(99L);
+    int threads = Runtime.getRuntime().availableProcessors() * 2;
+    ExecutorService pool = Executors.newFixedThreadPool(threads);
+    CountDownLatch ready = new CountDownLatch(threads);
+    CountDownLatch startGate = new CountDownLatch(1);
+
+    for (int i = 0; i < threads; i++) {
+      pool.submit(() -> {
+        ready.countDown();
+        try {
+          startGate.await();
+          kafkaConsumerAdapter.subscribe(pubSubTopicPartition, startPosition, false);
+        } catch (InterruptedException e) {
+          Thread.currentThread().interrupt();
+        }
+      });
+    }
+
+    ready.await();
+    startGate.countDown();
+    pool.shutdown();
+    assertTrue(pool.awaitTermination(5, TimeUnit.SECONDS));
+
+    assertTrue(kafkaConsumerAdapter.hasSubscription(pubSubTopicPartition));
+    assertEquals(kafkaConsumerAdapter.getAssignment().size(), 1);
+    assertEquals(assignCalls.get(), 1, "assign() should be called once");
+    assertEquals(seekCalls.get(), 1, "seek() should be called once");
+  }
+
+  /**
+   * Test that poll holds the lock and blocks other operations until it returns.
+   */
+  @Test(timeOut = 15_000)
+  public void testPollHoldsLockBlocksPauseUntilPollReturns() throws Exception {
+    CountDownLatch pollEntered = new CountDownLatch(1);
+    CountDownLatch pollRelease = new CountDownLatch(1);
+    CountDownLatch pauseStarted = new CountDownLatch(1);
+
+    when(apacheKafkaConsumerConfig.getConsumerPollRetryTimes()).thenReturn(1);
+    when(apacheKafkaConsumerConfig.getConsumerPollRetryBackoffMs()).thenReturn(10);
+    doAnswer(invocation -> {
+      pollEntered.countDown();
+      pollRelease.await();
+      return new ConsumerRecords<byte[], byte[]>(Collections.emptyMap());
+    }).when(internalKafkaConsumer).poll(any(Duration.class));
+    when(internalKafkaConsumer.assignment()).thenReturn(Collections.singleton(topicPartition));
+    kafkaConsumerAdapter.subscribe(pubSubTopicPartition, PubSubSymbolicPosition.EARLIEST, false);
+
+    ExecutorService pool = Executors.newFixedThreadPool(2);
+    AtomicLong pollReturnAt = new AtomicLong(0L);
+    AtomicLong pauseReturnAt = new AtomicLong(0L);
+
+    Future<?> pollFuture = pool.submit(() -> {
+      kafkaConsumerAdapter.poll(1000);
+      pollReturnAt.set(System.nanoTime());
+    });
+
+    assertTrue(pollEntered.await(5, TimeUnit.SECONDS), "poll did not enter in time");
+
+    Future<?> pauseFuture = pool.submit(() -> {
+      pauseStarted.countDown();
+      kafkaConsumerAdapter.pause(pubSubTopicPartition);
+      pauseReturnAt.set(System.nanoTime());
+    });
+
+    assertTrue(pauseStarted.await(5, TimeUnit.SECONDS), "pause thread did not start in time");
+    pollRelease.countDown();
+    pollFuture.get(5, TimeUnit.SECONDS);
+    pauseFuture.get(5, TimeUnit.SECONDS);
+    pool.shutdown();
+
+    assertTrue(
+        pauseReturnAt.get() > pollReturnAt.get(),
+        "pause should complete after poll returned, proving mutual exclusion");
+  }
+
 }
