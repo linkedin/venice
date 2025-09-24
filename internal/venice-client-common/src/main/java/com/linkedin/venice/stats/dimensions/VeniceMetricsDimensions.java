@@ -36,7 +36,10 @@ public enum VeniceMetricsDimensions {
   /** {@link com.linkedin.venice.stats.dimensions.RejectionReason} */
   VENICE_REQUEST_REJECTION_REASON("venice.request.rejection_reason"),
 
-  /** Streaming delivery progress for batch responses (e.g., first, 50pct, 90pct, etc.) */
+  /**
+   * {@link StreamProgress} Streaming delivery progress for batch responses
+   * (e.g., first, 50pct, 90pct, etc.)
+   */
   VENICE_STREAM_PROGRESS("venice.stream.progress"),
 
   /** {@link RequestRetryAbortReason} */
