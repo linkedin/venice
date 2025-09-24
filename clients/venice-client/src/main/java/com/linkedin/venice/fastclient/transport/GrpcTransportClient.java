@@ -37,6 +37,7 @@ import org.apache.logging.log4j.Logger;
 public class GrpcTransportClient extends InternalTransportClient {
   private static final Logger LOGGER = LogManager.getLogger(GrpcTransportClient.class);
   private static final String STORAGE_ACTION = "storage";
+  private static final String COMPUTE_ACTION = "compute";
   private static final String GRPC_ADDRESS_FORMAT = "%s:%s";
   private final VeniceConcurrentHashMap<String, ManagedChannel> serverGrpcChannels;
   private final Map<String, String> nettyServerToGrpcAddress;
@@ -99,10 +100,22 @@ public class GrpcTransportClient extends InternalTransportClient {
 
   @VisibleForTesting
   VeniceClientRequest buildVeniceClientRequest(String[] requestParts, byte[] requestBody, boolean isSingleGet) {
+    String queryAction = requestParts[3];
+    String methodName;
+
+    if (isSingleGet) {
+      methodName = HttpMethod.GET.name();
+    } else if (COMPUTE_ACTION.equalsIgnoreCase(queryAction)) {
+      // For compute requests, use compute method and let server determine request type from content
+      methodName = "compute";
+    } else {
+      methodName = HttpMethod.POST.name();
+    }
+
     VeniceClientRequest.Builder requestBuilder = VeniceClientRequest.newBuilder()
         .setResourceName(requestParts[4])
         .setIsBatchRequest(!isSingleGet)
-        .setMethod(isSingleGet ? HttpMethod.GET.name() : HttpMethod.POST.name());
+        .setMethod(methodName);
 
     if (isSingleGet) {
       requestBuilder.setKeyString(requestParts[6]);
@@ -178,11 +191,12 @@ public class GrpcTransportClient extends InternalTransportClient {
 
     String queryAction = requestParts[3];
     CompletableFuture<TransportClientResponse> responseFuture;
-    if (!STORAGE_ACTION.equalsIgnoreCase(queryAction)) {
+    if (STORAGE_ACTION.equalsIgnoreCase(queryAction) || COMPUTE_ACTION.equalsIgnoreCase(queryAction)) {
+      // Handle storage and compute queries through gRPC
+      responseFuture = handleStorageQueries(requestParts, requestBody, isSingleGet);
+    } else {
       LOGGER.debug("Delegating unsupported query action ({}), to R2 client", queryAction);
       responseFuture = handleNonStorageQueries(requestPath, headers, requestBody, isSingleGet);
-    } else {
-      responseFuture = handleStorageQueries(requestParts, requestBody, isSingleGet);
     }
 
     return responseFuture;
@@ -208,8 +222,13 @@ public class GrpcTransportClient extends InternalTransportClient {
     VeniceClientRequest veniceClientRequest = buildVeniceClientRequest(requestParts, requestBody, isSingleGet);
     VeniceReadServiceGrpc.VeniceReadServiceStub clientStub = getOrCreateStub(requestParts[2]);
 
+    String queryAction = requestParts[3];
+
     if (isSingleGet) {
       clientStub.get(veniceClientRequest, new VeniceGrpcStreamObserver(responseFuture));
+    } else if (COMPUTE_ACTION.equalsIgnoreCase(queryAction)) {
+      // For compute requests (including CountByValue), use the compute RPC
+      clientStub.compute(veniceClientRequest, new VeniceGrpcStreamObserver(responseFuture));
     } else {
       clientStub.batchGet(veniceClientRequest, new VeniceGrpcStreamObserver(responseFuture));
     }

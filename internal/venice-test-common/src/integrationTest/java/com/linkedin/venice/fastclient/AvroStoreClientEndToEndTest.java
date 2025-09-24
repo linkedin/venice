@@ -4,6 +4,7 @@ import static com.linkedin.venice.client.stats.BasicClientStats.CLIENT_METRIC_EN
 import static com.linkedin.venice.stats.ClientType.FAST_CLIENT;
 import static com.linkedin.venice.utils.Time.MS_PER_SECOND;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.r2.transport.common.Client;
@@ -72,6 +73,7 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
     AvroGenericStoreClient<String, Object> genericFastVsonClient = null;
     boolean batchGet = requestType == RequestType.MULTI_GET || requestType == RequestType.MULTI_GET_STREAMING;
     boolean compute = requestType == RequestType.COMPUTE || requestType == RequestType.COMPUTE_STREAMING;
+    boolean countByValue = requestType == RequestType.COUNT_BY_VALUE;
     try {
       genericFastClient =
           getGenericFastClient(clientConfigBuilder, metricsRepositoryForGenericClient, storeMetadataFetchMode);
@@ -179,6 +181,31 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
         } else {
           throw new VeniceException("unsupported multiKeyRequestKeyCount: " + multiKeyRequestKeyCount);
         }
+      } else if (countByValue) {
+        // Test FastClient native CountByValue functionality
+        // Create test keys for CountByValue test
+        Set<String> keys = new HashSet<>();
+        for (int i = 0; i < Math.min(recordCnt, 5); i++) {
+          String key = keyPrefix + i;
+          keys.add(key);
+        }
+
+        // Cast to FastClient internal type to access countByValue method
+        if (genericFastClient instanceof com.linkedin.venice.fastclient.InternalAvroStoreClient) {
+          com.linkedin.venice.fastclient.InternalAvroStoreClient<String, GenericRecord> fastClient =
+              (com.linkedin.venice.fastclient.InternalAvroStoreClient<String, GenericRecord>) genericFastClient;
+
+          // Test countByValue without TopK (get all results)
+          Map<Object, Integer> allCounts = fastClient.countByValue(keys, VALUE_FIELD_NAME).get();
+          assertNotNull(allCounts, "CountByValue should return non-null result");
+          assertTrue(allCounts.size() <= keys.size(), "Result size should not exceed key count");
+
+          // Test countByValue with TopK
+          Map<Object, Integer> topKCounts = fastClient.countByValue(keys, VALUE_FIELD_NAME, 3).get();
+          assertNotNull(topKCounts, "CountByValue with TopK should return non-null result");
+          assertTrue(topKCounts.size() <= 3, "TopK result should not exceed requested TopK");
+          assertTrue(topKCounts.size() <= allCounts.size(), "TopK result should not exceed total distinct values");
+        }
       } else {
         for (int i = 0; i < recordCnt; ++i) {
           String key = keyPrefix + i;
@@ -277,6 +304,30 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
         } else {
           throw new VeniceException("unsupported multiKeyRequestKeyCount: " + multiKeyRequestKeyCount);
         }
+      } else if (countByValue) {
+        // Test FastClient native CountByValue functionality for specific client
+        // Create test keys for CountByValue test
+        Set<String> keys = new HashSet<>();
+        for (int i = 0; i < Math.min(recordCnt, 5); i++) {
+          String key = keyPrefix + i;
+          keys.add(key);
+        }
+
+        // Cast to FastClient internal type to access countByValue method
+        if (specificFastClient instanceof com.linkedin.venice.fastclient.InternalAvroStoreClient) {
+          com.linkedin.venice.fastclient.InternalAvroStoreClient<String, TestValueSchema> fastClient =
+              (com.linkedin.venice.fastclient.InternalAvroStoreClient<String, TestValueSchema>) specificFastClient;
+
+          // Test countByValue with int_field
+          Map<Object, Integer> allCounts = fastClient.countByValue(keys, "int_field").get();
+          assertNotNull(allCounts, "CountByValue should return non-null result");
+          assertTrue(allCounts.size() <= keys.size(), "Result size should not exceed key count");
+
+          // Test countByValue with TopK
+          Map<Object, Integer> topKCounts = fastClient.countByValue(keys, "int_field", 3).get();
+          assertNotNull(topKCounts, "CountByValue with TopK should return non-null result");
+          assertTrue(topKCounts.size() <= 3, "TopK result should not exceed requested TopK");
+        }
       } else {
         for (int i = 0; i < recordCnt; ++i) {
           String key = keyPrefix + i;
@@ -302,6 +353,7 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
       StoreMetadataFetchMode storeMetadataFetchMode) throws Exception {
     boolean batchGet = requestType == RequestType.MULTI_GET || requestType == RequestType.MULTI_GET_STREAMING;
     boolean compute = requestType == RequestType.COMPUTE || requestType == RequestType.COMPUTE_STREAMING;
+    boolean countByValue = requestType == RequestType.COUNT_BY_VALUE;
 
     ClientConfig.ClientConfigBuilder clientConfigBuilder =
         new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
@@ -447,12 +499,27 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
         null,
         Optional.empty(),
         storeMetadataFetchMode);
+
+    // Test FastClient native CountByValue functionality
+    Consumer<MetricsRepository> countByValueStatsValidation = metricsRepository -> {}; // CountByValue uses compute
+                                                                                       // infrastructure, so stats may
+                                                                                       // be similar to compute
+    runTest(
+        clientConfigBuilder,
+        RequestType.COUNT_BY_VALUE,
+        recordCnt,
+        countByValueStatsValidation,
+        m -> {},
+        null,
+        Optional.empty(),
+        storeMetadataFetchMode);
   }
 
   @Test(groups = { "flaky" }, dataProvider = "FastClient-Request-Types-Small", timeOut = TIME_OUT)
   public void testFastClientWithLongTailRetry(RequestType requestType) throws Exception {
     boolean batchGet = requestType == RequestType.MULTI_GET || requestType == RequestType.MULTI_GET_STREAMING;
     boolean compute = requestType == RequestType.COMPUTE || requestType == RequestType.COMPUTE_STREAMING;
+    boolean countByValue = requestType == RequestType.COUNT_BY_VALUE;
 
     ClientConfig.ClientConfigBuilder clientConfigBuilder =
         new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName).setR2Client(r2Client);
@@ -467,6 +534,10 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
       clientConfigBuilder.setLongTailRetryEnabledForCompute(true).setLongTailRetryThresholdForComputeInMicroSeconds(1);
       fastClientStatsValidation =
           metricsRepository -> validateComputeMetrics(metricsRepository, false, recordCnt, recordCnt, true);
+    } else if (countByValue) {
+      // CountByValue uses compute infrastructure for retry
+      clientConfigBuilder.setLongTailRetryEnabledForCompute(true).setLongTailRetryThresholdForComputeInMicroSeconds(1);
+      fastClientStatsValidation = metricsRepository -> {}; // CountByValue stats validation - can be similar to compute
     } else {
       clientConfigBuilder.setLongTailRetryEnabledForSingleGet(true)
           .setLongTailRetryThresholdForSingleGetInMicroSeconds(1);
