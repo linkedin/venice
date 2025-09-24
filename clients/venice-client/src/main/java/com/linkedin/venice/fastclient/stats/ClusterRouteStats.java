@@ -46,22 +46,15 @@ import org.apache.logging.log4j.Logger;
 public class ClusterRouteStats {
   private static final Logger LOGGER = LogManager.getLogger(ClusterRouteStats.class);
 
-  private static volatile ClusterRouteStats instance;
+  private static final Map<String, ClusterRouteStats> instances = new VeniceConcurrentHashMap<>();
 
   private final Map<String, RouteStats> perRouteStatMap = new VeniceConcurrentHashMap<>();
 
   private final String storeName;
 
-  // Singleton pattern with double-checked locking for thread safety
+  // Obtaining the Singleton instance takes storeName as input.
   public static ClusterRouteStats getInstance(String storeName) {
-    if (instance == null) { // Check if instance is not yet created
-      synchronized (ClusterRouteStats.class) { // Synchronize for thread safety
-        if (instance == null) { // Double-check inside synchronized block
-          instance = new ClusterRouteStats(storeName);
-        }
-      }
-    }
-    return instance;
+    return instances.computeIfAbsent(storeName, ClusterRouteStats::new);
   }
 
   private ClusterRouteStats(String storeName) {
