@@ -9,6 +9,7 @@ import com.linkedin.venice.utils.lazy.Lazy;
 import java.util.HashMap;
 import java.util.Map;
 import org.mockito.Mockito;
+import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 
@@ -18,6 +19,12 @@ public class GrpcStoreLifecycleHookTest {
   private static final String TEST_REGION_NAME = "region1";
   private static final String TEST_REGION_NAME2 = "region2";
   private static final int TEST_VERSION_NUMBER = 1;
+
+  @BeforeMethod
+  public void setUp() {
+    // Clear static caches between tests to ensure isolation
+    GrpcStoreLifecycleHook.clearStaticCachesForTesting();
+  }
 
   @Test
   public void testMissingConfigurationReturnsProceed() {
@@ -40,13 +47,12 @@ public class GrpcStoreLifecycleHookTest {
   }
 
   @Test
-  public void testPartialConfigurationReturnsProceed() {
+  public void testValidChannelConfigurationInitiatesAsyncCall() {
     VeniceProperties defaultConfigs = new VeniceProperties(new HashMap<>());
 
-    // Only provide channel config, missing stub and method
     Map<String, String> configMap = new HashMap<>();
     configMap.put("grpc.lifecycle.hooks.configs.channel", "localhost:50051");
-    VeniceProperties partialConfig = new VeniceProperties(configMap);
+    VeniceProperties validConfig = new VeniceProperties(configMap);
 
     Lazy<JobStatusQueryResponse> mockJobStatus = Mockito.mock(Lazy.class);
 
@@ -58,20 +64,21 @@ public class GrpcStoreLifecycleHookTest {
         TEST_VERSION_NUMBER,
         TEST_REGION_NAME,
         mockJobStatus,
-        partialConfig);
+        validConfig);
 
-    assertEquals(result, StoreVersionLifecycleEventOutcome.PROCEED);
+    // Should return WAIT because the async gRPC call is initiated successfully
+    assertEquals(result, StoreVersionLifecycleEventOutcome.WAIT);
   }
 
   @Test
-  public void testMissingStubConfigurationReturnsProceed() {
+  public void testChannelConfigWithExtraPropertiesInitiatesAsyncCall() {
     VeniceProperties defaultConfigs = new VeniceProperties(new HashMap<>());
 
-    // Provide channel and method but missing stub
+    // Provide channel config with extra properties (should be ignored)
     Map<String, String> configMap = new HashMap<>();
     configMap.put("grpc.lifecycle.hooks.configs.channel", "localhost:50051");
-    configMap.put("grpc.lifecycle.hooks.configs.method", "runHook");
-    VeniceProperties partialConfig = new VeniceProperties(configMap);
+    configMap.put("grpc.lifecycle.hooks.configs.extra.property", "ignored");
+    VeniceProperties configWithExtras = new VeniceProperties(configMap);
 
     Lazy<JobStatusQueryResponse> mockJobStatus = Mockito.mock(Lazy.class);
 
@@ -83,9 +90,10 @@ public class GrpcStoreLifecycleHookTest {
         TEST_VERSION_NUMBER,
         TEST_REGION_NAME,
         mockJobStatus,
-        partialConfig);
+        configWithExtras);
 
-    assertEquals(result, StoreVersionLifecycleEventOutcome.PROCEED);
+    // Should return WAIT because the async gRPC call is initiated successfully
+    assertEquals(result, StoreVersionLifecycleEventOutcome.WAIT);
   }
 
   @Test
@@ -114,19 +122,18 @@ public class GrpcStoreLifecycleHookTest {
         mockJobStatus,
         emptyConfig);
 
+    // Both should return PROCEED because no gRPC config is provided
     assertEquals(result1, StoreVersionLifecycleEventOutcome.PROCEED);
     assertEquals(result2, StoreVersionLifecycleEventOutcome.PROCEED);
   }
 
   @Test
-  public void testInvalidStubClassNameReturnsProceed() {
+  public void testInvalidChannelTargetInitiatesAsyncCall() {
     VeniceProperties defaultConfigs = new VeniceProperties(new HashMap<>());
 
-    // Provide all required configs but with invalid stub class
+    // Provide invalid channel target
     Map<String, String> configMap = new HashMap<>();
-    configMap.put("grpc.lifecycle.hooks.configs.channel", "localhost:50051");
-    configMap.put("grpc.lifecycle.hooks.configs.stub", "com.invalid.NonExistentServiceGrpc");
-    configMap.put("grpc.lifecycle.hooks.configs.method", "runHook");
+    configMap.put("grpc.lifecycle.hooks.configs.channel", "invalid-channel-target:99999");
     VeniceProperties invalidConfig = new VeniceProperties(configMap);
 
     Lazy<JobStatusQueryResponse> mockJobStatus = Mockito.mock(Lazy.class);
@@ -141,8 +148,8 @@ public class GrpcStoreLifecycleHookTest {
         mockJobStatus,
         invalidConfig);
 
-    // Should return PROCEED as the error handling defaults to PROCEED
-    assertEquals(result, StoreVersionLifecycleEventOutcome.PROCEED);
+    // Should return WAIT because the async gRPC call is initiated (even though it will eventually fail)
+    assertEquals(result, StoreVersionLifecycleEventOutcome.WAIT);
   }
 
   @Test

@@ -1,6 +1,7 @@
 package com.linkedin.venice.hooks;
 
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
+import com.linkedin.venice.protocols.hooks.GrpcStoreLifecycleHookServiceGrpc;
 import com.linkedin.venice.protocols.hooks.GrpcStoreLifecycleHooksRequest;
 import com.linkedin.venice.protocols.hooks.GrpcStoreLifecycleHooksResponse;
 import com.linkedin.venice.protocols.hooks.StoreVersionLifecycleEventOutcomeProto;
@@ -9,11 +10,9 @@ import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.lazy.Lazy;
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
-import io.grpc.stub.AbstractAsyncStub;
 import io.grpc.stub.StreamObserver;
 import java.io.Closeable;
 import java.io.IOException;
-import java.lang.reflect.Method;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
@@ -31,14 +30,11 @@ public class GrpcStoreLifecycleHook extends StoreLifecycleHooks implements Close
   private static final Logger LOGGER = LogManager.getLogger(GrpcStoreLifecycleHook.class);
   private static final String GRPC_LIFECYCLE_HOOK_CONFIGS_PREFIX = "grpc.lifecycle.hooks.configs.";
   private static final String GRPC_LIFECYCLE_HOOK_CONFIGS_CHANNEL = "channel";
-  private static final String GRPC_LIFECYCLE_HOOK_CONFIGS_STUB = "stub";
-  private static final String GRPC_LIFECYCLE_HOOK_CONFIGS_METHOD = "method";
 
   // Static caches shared across all instances
   private static final VeniceConcurrentHashMap<String, ManagedChannel> channelCache = new VeniceConcurrentHashMap<>();
-  private static final VeniceConcurrentHashMap<String, AbstractAsyncStub<?>> stubCache =
+  private static final VeniceConcurrentHashMap<String, GrpcStoreLifecycleHookServiceGrpc.GrpcStoreLifecycleHookServiceStub> stubCache =
       new VeniceConcurrentHashMap<>();
-  private static final VeniceConcurrentHashMap<String, Class<?>> stubClassCache = new VeniceConcurrentHashMap<>();
   private static final VeniceConcurrentHashMap<String, CompletableFuture<StoreVersionLifecycleEventOutcome>> pendingCalls =
       new VeniceConcurrentHashMap<>();
 
@@ -78,7 +74,6 @@ public class GrpcStoreLifecycleHook extends StoreLifecycleHooks implements Close
     // Clear all caches
     channelCache.clear();
     stubCache.clear();
-    stubClassCache.clear();
     pendingCalls.clear();
   }
 
@@ -159,12 +154,10 @@ public class GrpcStoreLifecycleHook extends StoreLifecycleHooks implements Close
     }
 
     String channelTarget = grpcConfigs.get(GRPC_LIFECYCLE_HOOK_CONFIGS_CHANNEL);
-    String stubClassName = grpcConfigs.get(GRPC_LIFECYCLE_HOOK_CONFIGS_STUB);
-    String method = grpcConfigs.get(GRPC_LIFECYCLE_HOOK_CONFIGS_METHOD);
 
-    if (channelTarget == null || stubClassName == null || method == null) {
+    if (channelTarget == null) {
       LOGGER.error(
-          "Missing required gRPC config for store {}, region {}, version {}. Need channel, stub, and method configs.",
+          "Missing required gRPC config for store {}, region {}, version {}. Need channel config.",
           storeName,
           regionName,
           versionNumber);
@@ -173,7 +166,7 @@ public class GrpcStoreLifecycleHook extends StoreLifecycleHooks implements Close
 
     try {
       // Get or create the async stub for this service
-      AbstractAsyncStub<?> stub = getOrCreateAsyncStub(channelTarget, stubClassName);
+      GrpcStoreLifecycleHookServiceGrpc.GrpcStoreLifecycleHookServiceStub stub = getOrCreateAsyncStub(channelTarget);
 
       // Create the request
       GrpcStoreLifecycleHooksRequest request = GrpcStoreLifecycleHooksRequest.newBuilder()
@@ -184,9 +177,6 @@ public class GrpcStoreLifecycleHook extends StoreLifecycleHooks implements Close
 
       // Create a CompletableFuture to track the async call
       CompletableFuture<StoreVersionLifecycleEventOutcome> future = new CompletableFuture<>();
-
-      // Find the async RPC method using reflection
-      Method rpcMethod = stub.getClass().getMethod(method, GrpcStoreLifecycleHooksRequest.class, StreamObserver.class);
 
       // Create StreamObserver to handle the response
       StreamObserver<GrpcStoreLifecycleHooksResponse> responseObserver =
@@ -218,8 +208,8 @@ public class GrpcStoreLifecycleHook extends StoreLifecycleHooks implements Close
       // Store the future in our pending calls cache
       pendingCalls.put(callKey, future);
 
-      // Make the async call using reflection
-      rpcMethod.invoke(stub, request, responseObserver);
+      // Make the async call using the generated stub method
+      stub.postVersionSwap(request, responseObserver);
 
       LOGGER.info(
           "Initiated async gRPC call for store {}, region {}, version {}. Returning WAIT.",
@@ -269,52 +259,31 @@ public class GrpcStoreLifecycleHook extends StoreLifecycleHooks implements Close
   }
 
   /**
-   * Gets or creates an async stub for the given channel target and stub class name.
+   * Gets or creates an async stub for the given channel target.
    * Uses the cached stub if available, otherwise creates a new one.
+   * Note: No synchronization needed since DeferredVersionSwapService is single-threaded.
    */
-  private AbstractAsyncStub<?> getOrCreateAsyncStub(String channelTarget, String stubClassName) throws Exception {
-    // Use a combination of channel target and stub class name as a cache key
-    String cacheKey = channelTarget + "#" + stubClassName;
-
+  private GrpcStoreLifecycleHookServiceGrpc.GrpcStoreLifecycleHookServiceStub getOrCreateAsyncStub(
+      String channelTarget) {
     // Try to get from cache first
-    AbstractAsyncStub<?> stub = stubCache.get(cacheKey);
+    GrpcStoreLifecycleHookServiceGrpc.GrpcStoreLifecycleHookServiceStub stub = stubCache.get(channelTarget);
     if (stub != null) {
       return stub;
     }
 
-    // Create the stub if it doesn't exist in cache
-    synchronized (stubCache) {
-      // Double-check within synchronized block
-      stub = stubCache.get(cacheKey);
-      if (stub != null) {
-        return stub;
-      }
+    // Get or create the channel
+    ManagedChannel channel = channelCache.computeIfAbsent(
+        channelTarget,
+        target -> ManagedChannelBuilder.forTarget(target)
+            .usePlaintext() // For simplicity; use .useTransportSecurity() for production
+            .build());
 
-      // Get or create the channel
-      ManagedChannel channel = channelCache.computeIfAbsent(
-          channelTarget,
-          target -> ManagedChannelBuilder.forTarget(target)
-              .usePlaintext() // For simplicity; use .useTransportSecurity() for production
-              .build());
+    // Create new async stub using the generated service class
+    stub = GrpcStoreLifecycleHookServiceGrpc.newStub(channel);
 
-      // Get or load the stub class
-      Class<?> stubClass = stubClassCache.computeIfAbsent(stubClassName, className -> {
-        try {
-          return Class.forName(className);
-        } catch (ClassNotFoundException e) {
-          LOGGER.error("Failed to load stub class: {}", className, e);
-          throw new RuntimeException("Failed to load stub class: " + className, e);
-        }
-      });
-
-      // Create new async stub using reflection
-      Method newStubMethod = stubClass.getMethod("newStub", io.grpc.Channel.class);
-      stub = (AbstractAsyncStub<?>) newStubMethod.invoke(null, channel);
-
-      // Store in cache
-      stubCache.put(cacheKey, stub);
-      return stub;
-    }
+    // Store in cache
+    stubCache.put(channelTarget, stub);
+    return stub;
   }
 
   private Map<String, String> parseParamsWithPrefix(String prefix, Map<String, String> params) {
@@ -339,5 +308,17 @@ public class GrpcStoreLifecycleHook extends StoreLifecycleHooks implements Close
   @Override
   public void close() throws IOException {
     LOGGER.debug("GrpcStoreLifecycleHook instance closed.");
+  }
+
+  /**
+   * Clears all static caches. This method is intended for testing purposes only
+   * to ensure test isolation.
+   */
+  static void clearStaticCachesForTesting() {
+    // Don't shutdown channels here as it might affect other tests
+    // Just clear the caches to reset state
+    channelCache.clear();
+    stubCache.clear();
+    pendingCalls.clear();
   }
 }
