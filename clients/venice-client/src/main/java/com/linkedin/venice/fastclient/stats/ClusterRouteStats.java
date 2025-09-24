@@ -50,7 +50,7 @@ public class ClusterRouteStats {
 
   private final Map<String, RouteStats> perRouteStatMap = new VeniceConcurrentHashMap<>();
 
-  private String storeName;
+  private volatile String storeName;
 
   // Singleton pattern with double-checked locking for thread safety
   public static ClusterRouteStats getInstance() {
