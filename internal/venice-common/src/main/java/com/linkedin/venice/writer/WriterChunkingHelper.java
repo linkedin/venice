@@ -69,7 +69,7 @@ public class WriterChunkingHelper {
      * the {@link firstKeyProvider} will extract {@link ProducerMetadata} information out of the first
      * message sent, to be re-used across all chunk keys belonging to this value.
      */
-    final ChunkedKeySuffix chunkedKeySuffix = new ChunkedKeySuffix();
+    final ChunkedKeySuffix chunkedKeySuffix = new ChunkedKeySuffix(); // TODO: use this
     chunkedKeySuffix.isChunk = true;
     chunkedKeySuffix.chunkId = new ChunkId();
 
