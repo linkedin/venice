@@ -45,7 +45,7 @@ public enum ControllerMetricEntity implements ModuleMetricEntityInterface {
   STORE_COMPACTION_TRIGGERED_COUNT(
       "store.compaction.triggered_count", MetricType.COUNTER, MetricUnit.NUMBER,
       "Count of log compaction repush triggered for a store after it becomes eligible",
-      setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME)
+      setOf(VENICE_STORE_NAME, VENICE_RESPONSE_STATUS_CODE_CATEGORY, VENICE_CLUSTER_NAME)
   );
 
   private final MetricEntity metricEntity;
