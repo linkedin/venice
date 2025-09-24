@@ -206,6 +206,6 @@ public class SegmentTest {
   @Test
   public void testToProducerPartitionState_NoCheckSum() {
     Segment segment = new Segment(1, 1, 1, CheckSumType.NONE, new HashMap<>(), new HashMap<>());
-    ProducerPartitionState pps = segment.toProducerPartitionState(); // assert does not throw with checksumtype NONE
+    segment.toProducerPartitionState(); // assert that a NullPointerException is not thrown with checksumtype NONE
   }
 }
