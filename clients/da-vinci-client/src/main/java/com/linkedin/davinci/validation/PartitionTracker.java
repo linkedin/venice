@@ -245,6 +245,8 @@ public class PartitionTracker {
 
     if (state == null) {
       state = segment.toProducerPartitionState();
+    } else {
+      segment.populateProducerPartitionState(state);
     }
 
     setProducerState(offsetRecord, type, guid, state);

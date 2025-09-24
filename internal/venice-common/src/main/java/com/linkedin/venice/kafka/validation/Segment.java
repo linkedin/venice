@@ -429,6 +429,11 @@ public class Segment {
     pps.aggregates = CollectionUtils.substituteEmptyMap(getAggregates());
     pps.debugInfo = CollectionUtils.substituteEmptyMap(getDebugInfo());
     pps.checksumType = getCheckSumType().getValue();
+    populateProducerPartitionState(pps);
+    return pps;
+  }
+
+  public void populateProducerPartitionState(ProducerPartitionState pps) {
     /**
      * {@link MD5Digest#getEncodedState()} is allocating a byte array to contain the intermediate,
      * which is expensive. We should only invoke this closure when necessary.
@@ -439,8 +444,6 @@ public class Segment {
     pps.messageTimestamp = getLastRecordProducerTimestamp();
     pps.segmentStatus = getStatus().getValue();
     pps.isRegistered = isRegistered();
-
-    return pps;
   }
 
   // Only for testing.
