@@ -369,7 +369,9 @@ public class VersionBackend {
       LOGGER.error("No partitions to subscribe to for {}", this);
       return CompletableFuture.completedFuture(null);
     }
-    this.daVinciPushStatusUpdateTask.start();
+    if (daVinciPushStatusUpdateTask != null) {
+      this.daVinciPushStatusUpdateTask.start();
+    }
 
     LOGGER.info("Subscribing to partitions {} of {}", partitionList, this);
     int partitionCount = partitionList.size();
