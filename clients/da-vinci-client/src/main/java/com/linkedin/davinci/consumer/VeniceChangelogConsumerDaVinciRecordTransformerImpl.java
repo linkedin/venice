@@ -655,4 +655,14 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
 
     }
   }
+
+  @VisibleForTesting
+  public boolean isStarted() {
+    return isStarted.get();
+  }
+
+  @VisibleForTesting
+  public Set<Integer> getSubscribedPartitions() {
+    return subscribedPartitions;
+  }
 }
