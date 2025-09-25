@@ -1149,11 +1149,13 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
           if (localOffset == null) {
             localOffset = new ArrayList<>();
           }
-          List<Long> highWatermarkOffsets = versionSwap.localHighWatermarks == null
+          List<Long> highWatermarkOffsets = versionSwap.localHighWatermarkPubSubPositions == null
               ? new ArrayList<>()
-              : new ArrayList<>(versionSwap.getLocalHighWatermarks());
+              : versionSwap.getLocalHighWatermarkPubSubPositions()
+                  .stream()
+                  .map(bb -> pubSubPositionDeserializer.toPosition(bb).getNumericOffset())
+                  .collect(Collectors.toList());
           if (RmdUtils.hasOffsetAdvanced(localOffset, highWatermarkOffsets)) {
-
             currentVersionHighWatermarks
                 .putIfAbsent(pubSubTopicPartition.getPartitionNumber(), new ConcurrentHashMap<>());
             currentVersionHighWatermarks.get(pubSubTopicPartition.getPartitionNumber())
