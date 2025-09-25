@@ -43,6 +43,8 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_MAX_REC
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_KAFKA;
 import static org.testng.AssertJUnit.assertEquals;
 import static org.testng.AssertJUnit.assertFalse;
+import static org.testng.AssertJUnit.assertNotNull;
+import static org.testng.AssertJUnit.assertNull;
 import static org.testng.AssertJUnit.assertTrue;
 
 import com.linkedin.d2.balancer.D2Client;
@@ -195,7 +197,7 @@ public class BootstrappingChangelogConsumerTest {
             .setVeniceURL(clusterWrapper.getRandomRouterURL())
             .setMetricsRepository(metricsRepository))) {
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
-        Assert.assertNull(client.get(Integer.toString(deleteWithRmdKeyIndex)).get());
+        assertNull(client.get(Integer.toString(deleteWithRmdKeyIndex)).get());
       });
     }
 
@@ -219,7 +221,7 @@ public class BootstrappingChangelogConsumerTest {
           bootstrappingVeniceChangelogConsumerList);
       // 21 events for near-line events, but the 10 deletes are not returned due to compaction.
       int expectedRecordCount = DEFAULT_USER_DATA_RECORD_COUNT + 9 + consumerCount;
-      Assert.assertEquals(polledChangeEventsList.size(), expectedRecordCount);
+      assertEquals(polledChangeEventsList.size(), expectedRecordCount);
 
       verifyPut(polledChangeEventsMap, 100, 110, 1);
 
@@ -227,7 +229,7 @@ public class BootstrappingChangelogConsumerTest {
       for (int i = 110; i < 120; i++) {
         String key = Integer.toString(i);
         PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate> message = polledChangeEventsMap.get((key));
-        Assert.assertNull(message);
+        assertNull(message);
       }
     });
     polledChangeEventsList.clear();
@@ -252,7 +254,7 @@ public class BootstrappingChangelogConsumerTest {
     List<PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> changedEventList = new ArrayList<>();
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
       pollChangeEventsFromChangeCaptureConsumerToList(changedEventList, afterImageChangelogConsumer);
-      Assert.assertEquals(changedEventList.size(), 141);
+      assertEquals(changedEventList.size(), 141);
     });
 
     cleanUpStoreAndVerify(storeName);
@@ -311,7 +313,7 @@ public class BootstrappingChangelogConsumerTest {
           bootstrappingVeniceChangelogConsumerList);
       // 21 events for near-line events
       int expectedRecordCount = DEFAULT_USER_DATA_RECORD_COUNT + 21;
-      Assert.assertEquals(polledChangeEventsList.size(), expectedRecordCount);
+      assertEquals(polledChangeEventsList.size(), expectedRecordCount);
       verifyPut(polledChangeEventsMap, 100, 110, 1);
       verifyDelete(polledChangeEventsMap, 110, 120, 1);
     });
@@ -348,7 +350,7 @@ public class BootstrappingChangelogConsumerTest {
 
     clusterWrapper.useControllerClient(controllerClient -> {
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
-        Assert.assertEquals(controllerClient.getStore(storeName).getStore().getCurrentVersion(), 2);
+        assertEquals(controllerClient.getStore(storeName).getStore().getCurrentVersion(), 2);
       });
     });
 
@@ -374,7 +376,7 @@ public class BootstrappingChangelogConsumerTest {
 
     clusterWrapper.useControllerClient(controllerClient -> {
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
-        Assert.assertEquals(controllerClient.getStore(storeName).getStore().getCurrentVersion(), 3);
+        assertEquals(controllerClient.getStore(storeName).getStore().getCurrentVersion(), 3);
       });
     });
 
@@ -405,7 +407,7 @@ public class BootstrappingChangelogConsumerTest {
       // 40 near-line put events, but one of them overwrites a key from batch push.
       // Also, Deletes won't show up on restart when scanning RocksDB.
       int expectedRecordCount = DEFAULT_USER_DATA_RECORD_COUNT + 39;
-      Assert.assertEquals(polledChangeEventsList.size(), expectedRecordCount);
+      assertEquals(polledChangeEventsList.size(), expectedRecordCount);
       verifyPut(polledChangeEventsMap, 100, 110, 3);
       verifyPut(polledChangeEventsMap, 120, 130, 3);
       verifyPut(polledChangeEventsMap, 140, 150, 3);
@@ -525,7 +527,7 @@ public class BootstrappingChangelogConsumerTest {
     // Verify snapshots exists
     for (int i = 0; i < PARTITION_COUNT; i++) {
       String snapshotPath = RocksDBUtils.composeSnapshotDir(inputDirPath2 + "/rocksdb", storeName + "_v1", i);
-      Assert.assertTrue(Files.exists(Paths.get(snapshotPath)));
+      assertTrue(Files.exists(Paths.get(snapshotPath)));
     }
 
     Map<String, PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> polledChangeEventsMap = new HashMap<>();
@@ -538,7 +540,7 @@ public class BootstrappingChangelogConsumerTest {
       // 20 changes in near-line. 10 puts, 10 deletes. But one of the puts overwrites a key from batch push, and the
       // 10 deletes are against non-existant keys. So there should only be 109 events total
       int expectedRecordCount = DEFAULT_USER_DATA_RECORD_COUNT + 9;
-      Assert.assertEquals(polledChangeEventsList.size(), expectedRecordCount);
+      assertEquals(polledChangeEventsList.size(), expectedRecordCount);
       verifyPut(polledChangeEventsMap, 100, 110, 1);
     });
 
@@ -621,7 +623,7 @@ public class BootstrappingChangelogConsumerTest {
           bootstrappingVeniceChangelogConsumerList);
       // 20 events for near-line events
       int expectedRecordCount = DEFAULT_USER_DATA_RECORD_COUNT + 20;
-      Assert.assertEquals(polledChangeEventsList.size(), expectedRecordCount);
+      assertEquals(polledChangeEventsList.size(), expectedRecordCount);
       verifySpecificPut(polledChangeEventsMap, 100, 110, 1);
       verifySpecificDelete(polledChangeEventsMap, 110, 120, 1);
     });
@@ -735,7 +737,7 @@ public class BootstrappingChangelogConsumerTest {
     // Verify snapshots exists
     for (int i = 0; i < PARTITION_COUNT; i++) {
       String snapshotPath = RocksDBUtils.composeSnapshotDir(inputDirPath2 + "/rocksdb", storeName + "_v1", i);
-      Assert.assertTrue(Files.exists(Paths.get(snapshotPath)));
+      assertTrue(Files.exists(Paths.get(snapshotPath)));
     }
 
     Map<String, PubSubMessage<TestChangelogKey, ChangeEvent<TestChangelogValue>, VeniceChangeCoordinate>> polledChangeEventsMap =
@@ -750,7 +752,7 @@ public class BootstrappingChangelogConsumerTest {
       // 20 changes in near-line. 10 puts, 10 deletes. But one of the puts overwrites a key from batch push, and the
       // 10 deletes are against non-existant keys. So there should only be 109 events total
       int expectedRecordCount = DEFAULT_USER_DATA_RECORD_COUNT + 9;
-      Assert.assertEquals(polledChangeEventsList.size(), expectedRecordCount);
+      assertEquals(polledChangeEventsList.size(), expectedRecordCount);
       verifySpecificPut(polledChangeEventsMap, 100, 110, 1);
     });
 
@@ -961,7 +963,7 @@ public class BootstrappingChangelogConsumerTest {
             .setVeniceURL(clusterWrapper.getRandomRouterURL())
             .setMetricsRepository(metricsRepository))) {
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
-        Assert.assertNotNull(client.get(Integer.toString(startIndex + numPuts - 1)).get());
+        assertNotNull(client.get(Integer.toString(startIndex + numPuts - 1)).get());
       });
     }
 
@@ -971,7 +973,7 @@ public class BootstrappingChangelogConsumerTest {
           polledChangeEventsMap,
           polledChangeEventsList,
           bootstrappingVeniceChangelogConsumerList);
-      Assert.assertEquals(polledChangeEventsMap.size(), recordsToProduce);
+      assertEquals(polledChangeEventsMap.size(), recordsToProduce);
 
       verifyPut(polledChangeEventsMap, startIndex, startIndex + numPuts, version);
       verifyDelete(polledChangeEventsMap, startIndex + numPuts, startIndex + numDeletes, version);
@@ -1015,7 +1017,7 @@ public class BootstrappingChangelogConsumerTest {
         TestChangelogKey key = new TestChangelogKey();
         key.id = startIndex + numPuts - 1;
 
-        Assert.assertNotNull(client.get(key).get());
+        assertNotNull(client.get(key).get());
       });
     }
 
@@ -1025,7 +1027,7 @@ public class BootstrappingChangelogConsumerTest {
           polledChangeEventsMap,
           polledChangeEventsList,
           bootstrappingVeniceChangelogConsumerList);
-      Assert.assertEquals(polledChangeEventsMap.size(), recordsToProduce);
+      assertEquals(polledChangeEventsMap.size(), recordsToProduce);
 
       verifySpecificPut(polledChangeEventsMap, startIndex, startIndex + numPuts, version);
       verifySpecificDelete(polledChangeEventsMap, startIndex + numPuts, startIndex + numDeletes, version);
@@ -1046,10 +1048,10 @@ public class BootstrappingChangelogConsumerTest {
       PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate> message = polledChangeEventsMap.get((key));
       ChangeEvent<Utf8> changeEvent = message.getValue();
       int versionFromMessage = Version.parseVersionFromVersionTopicName(message.getTopicPartition().getTopicName());
-      Assert.assertEquals(versionFromMessage, version);
-      Assert.assertNotNull(changeEvent);
-      Assert.assertNull(changeEvent.getPreviousValue());
-      Assert.assertEquals(changeEvent.getCurrentValue().toString(), "stream_" + i);
+      assertEquals(versionFromMessage, version);
+      assertNotNull(changeEvent);
+      assertNull(changeEvent.getPreviousValue());
+      assertEquals(changeEvent.getCurrentValue().toString(), "stream_" + i);
     }
   }
 
@@ -1064,13 +1066,13 @@ public class BootstrappingChangelogConsumerTest {
           polledChangeEventsMap.get((key));
       ChangeEvent<TestChangelogValue> changeEvent = message.getValue();
       int versionFromMessage = Version.parseVersionFromVersionTopicName(message.getTopicPartition().getTopicName());
-      Assert.assertEquals(versionFromMessage, version);
-      Assert.assertNotNull(changeEvent);
-      Assert.assertNull(changeEvent.getPreviousValue());
+      assertEquals(versionFromMessage, version);
+      assertNotNull(changeEvent);
+      assertNull(changeEvent.getPreviousValue());
 
       TestChangelogValue value = changeEvent.getCurrentValue();
-      Assert.assertEquals(value.firstName.toString(), "first_name_stream_" + i);
-      Assert.assertEquals(value.lastName.toString(), "last_name_stream_" + i);
+      assertEquals(value.firstName.toString(), "first_name_stream_" + i);
+      assertEquals(value.lastName.toString(), "last_name_stream_" + i);
     }
   }
 
@@ -1084,10 +1086,10 @@ public class BootstrappingChangelogConsumerTest {
       PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate> message = polledChangeEventsMap.get((key));
       ChangeEvent<Utf8> changeEvent = message.getValue();
       int versionFromMessage = Version.parseVersionFromVersionTopicName(message.getTopicPartition().getTopicName());
-      Assert.assertEquals(versionFromMessage, version);
-      Assert.assertNotNull(changeEvent);
-      Assert.assertNull(changeEvent.getPreviousValue());
-      Assert.assertNull(changeEvent.getCurrentValue());
+      assertEquals(versionFromMessage, version);
+      assertNotNull(changeEvent);
+      assertNull(changeEvent.getPreviousValue());
+      assertNull(changeEvent.getCurrentValue());
     }
   }
 
@@ -1105,10 +1107,10 @@ public class BootstrappingChangelogConsumerTest {
 
       ChangeEvent<TestChangelogValue> changeEvent = message.getValue();
       int versionFromMessage = Version.parseVersionFromVersionTopicName(message.getTopicPartition().getTopicName());
-      Assert.assertEquals(versionFromMessage, version);
-      Assert.assertNotNull(changeEvent);
-      Assert.assertNull(changeEvent.getPreviousValue());
-      Assert.assertNull(changeEvent.getCurrentValue());
+      assertEquals(versionFromMessage, version);
+      assertNotNull(changeEvent);
+      assertNull(changeEvent.getPreviousValue());
+      assertNull(changeEvent.getCurrentValue());
     }
   }
 
@@ -1120,7 +1122,7 @@ public class BootstrappingChangelogConsumerTest {
         polledChangeEventsMap,
         polledChangeEventsList,
         bootstrappingVeniceChangelogConsumerList);
-    Assert.assertEquals(polledChangeEventsList.size(), 0);
+    assertEquals(polledChangeEventsList.size(), 0);
   }
 
   private void verifyNoSpecificRecordsProduced(
@@ -1131,7 +1133,7 @@ public class BootstrappingChangelogConsumerTest {
         polledChangeEventsMap,
         polledChangeEventsList,
         bootstrappingVeniceChangelogConsumerList);
-    Assert.assertEquals(polledChangeEventsList.size(), 0);
+    assertEquals(polledChangeEventsList.size(), 0);
   }
 
   private void cleanUpStoreAndVerify(String storeName) {
@@ -1141,8 +1143,8 @@ public class BootstrappingChangelogConsumerTest {
 
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
         MultiStoreTopicsResponse storeTopicsResponse = controllerClient.getDeletableStoreTopics();
-        Assert.assertFalse(storeTopicsResponse.isError());
-        Assert.assertEquals(storeTopicsResponse.getTopics().size(), 0);
+        assertFalse(storeTopicsResponse.isError());
+        assertEquals(storeTopicsResponse.getTopics().size(), 0);
       });
     });
   }

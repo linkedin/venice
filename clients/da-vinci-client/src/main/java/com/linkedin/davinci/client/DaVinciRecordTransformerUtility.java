@@ -148,6 +148,8 @@ public class DaVinciRecordTransformerUtility<K, O> {
       offsetRecord = new OffsetRecord(partitionStateSerializer, pubSubContext);
       offsetRecord.setRecordTransformerClassHash(classHash);
       storageEngine.putPartitionOffset(partitionId, offsetRecord);
+    } else if (!recordTransformerConfig.getStoreRecordsInDaVinci()) {
+      LOGGER.info("StoreRecordsInDaVinci is set to false. Skipping local database scan.");
     } else {
       // Bootstrap from local storage
       LOGGER.info("Bootstrapping from local storage for partition {}", partitionId);
@@ -179,7 +181,8 @@ public class DaVinciRecordTransformerUtility<K, O> {
             return outputValueDeserializer.deserialize(decompressedValueBytes);
           });
 
-          recordTransformer.processPut(lazyKey, lazyValue, partitionId);
+          // Record metadata is not available from disk
+          recordTransformer.processPut(lazyKey, lazyValue, partitionId, null);
         }
       } finally {
         // Re-open partition with defaults

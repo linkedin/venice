@@ -4,6 +4,7 @@ import static com.linkedin.venice.sql.AvroToSQL.UnsupportedTypeHandling.SKIP;
 
 import com.linkedin.davinci.client.DaVinciRecordTransformer;
 import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
+import com.linkedin.davinci.client.DaVinciRecordTransformerRecordMetadata;
 import com.linkedin.davinci.client.DaVinciRecordTransformerResult;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.sql.AvroToSQL;
@@ -104,7 +105,8 @@ public class DuckDBDaVinciRecordTransformer
   public DaVinciRecordTransformerResult<GenericRecord> transform(
       Lazy<GenericRecord> key,
       Lazy<GenericRecord> value,
-      int partitionId) {
+      int partitionId,
+      DaVinciRecordTransformerRecordMetadata recordMetadata) {
     return new DaVinciRecordTransformerResult<>(DaVinciRecordTransformerResult.Result.UNCHANGED);
   }
 
@@ -112,7 +114,11 @@ public class DuckDBDaVinciRecordTransformer
    * Stores a new/updated record in DuckDB when Venice receives a put event.
    */
   @Override
-  public void processPut(Lazy<GenericRecord> key, Lazy<GenericRecord> value, int partitionId) {
+  public void processPut(
+      Lazy<GenericRecord> key,
+      Lazy<GenericRecord> value,
+      int partitionId,
+      DaVinciRecordTransformerRecordMetadata recordMetadata) {
     this.upsertProcessor.process(key.get(), value.get(), this.upsertPreparedStatement.get());
   }
 
@@ -120,7 +126,10 @@ public class DuckDBDaVinciRecordTransformer
    * Deletes a record from DuckDB when Venice receives a delete event.
    */
   @Override
-  public void processDelete(Lazy<GenericRecord> key, int partitionId) {
+  public void processDelete(
+      Lazy<GenericRecord> key,
+      int partitionId,
+      DaVinciRecordTransformerRecordMetadata recordMetadata) {
     this.deleteProcessor.process(key.get(), null, this.deletePreparedStatement.get());
   }
 
@@ -228,7 +237,7 @@ public class DuckDBDaVinciRecordTransformer
 
   /**
    * Cleans up database connections and resources.
-   * 
+   *
    * This is called automatically when the transformer is closed.
    */
   @Override

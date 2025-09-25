@@ -22,7 +22,7 @@ import com.linkedin.davinci.client.DaVinciRecordTransformerResult;
 import com.linkedin.davinci.client.DaVinciRecordTransformerUtility;
 import com.linkedin.davinci.client.InternalDaVinciRecordTransformer;
 import com.linkedin.davinci.client.InternalDaVinciRecordTransformerConfig;
-import com.linkedin.davinci.consumer.BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl;
+import com.linkedin.davinci.consumer.VeniceChangelogConsumerDaVinciRecordTransformerImpl;
 import com.linkedin.davinci.stats.AggVersionedDaVinciRecordTransformerStats;
 import com.linkedin.davinci.store.AbstractStorageIterator;
 import com.linkedin.davinci.store.StorageEngine;
@@ -94,13 +94,13 @@ public class RecordTransformerTest {
     assertFalse(outputValueDeserializerField.get(recordTransformerUtility) instanceof AvroSpecificDeserializer);
 
     DaVinciRecordTransformerResult<String> transformerResult =
-        recordTransformer.transform(lazyKey, lazyValue, partitionId);
-    recordTransformer.processPut(lazyKey, lazyValue, partitionId);
+        recordTransformer.transform(lazyKey, lazyValue, partitionId, null);
+    recordTransformer.processPut(lazyKey, lazyValue, partitionId, null);
     assertEquals(transformerResult.getResult(), DaVinciRecordTransformerResult.Result.TRANSFORMED);
     assertEquals(transformerResult.getValue(), value + "Transformed");
-    assertNull(recordTransformer.transformAndProcessPut(lazyKey, lazyValue, partitionId));
+    assertNull(recordTransformer.transformAndProcessPut(lazyKey, lazyValue, partitionId, null));
 
-    recordTransformer.processDelete(lazyKey, partitionId);
+    recordTransformer.processDelete(lazyKey, partitionId, null);
 
     assertFalse(recordTransformer.getStoreRecordsInDaVinci());
 
@@ -299,13 +299,13 @@ public class RecordTransformerTest {
     assertEquals(internalRecordTransformer.getCountDownStartConsumptionLatchCount(), 0L);
 
     DaVinciRecordTransformerResult<String> recordTransformerResult =
-        internalRecordTransformer.transformAndProcessPut(lazyKey, lazyValue, partitionId);
-    verify(clientRecordTransformer).transform(lazyKey, lazyValue, partitionId);
-    verify(clientRecordTransformer).processPut(eq(lazyKey), any(), eq(partitionId));
+        internalRecordTransformer.transformAndProcessPut(lazyKey, lazyValue, partitionId, null);
+    verify(clientRecordTransformer).transform(eq(lazyKey), eq(lazyValue), eq(partitionId), any());
+    verify(clientRecordTransformer).processPut(eq(lazyKey), any(), eq(partitionId), any());
     assertEquals(recordTransformerResult.getValue(), value + "Transformed");
 
-    internalRecordTransformer.processDelete(lazyKey, partitionId);
-    verify(clientRecordTransformer).processDelete(lazyKey, partitionId);
+    internalRecordTransformer.processDelete(lazyKey, partitionId, null);
+    verify(clientRecordTransformer).processDelete(eq(lazyKey), eq(partitionId), any());
 
     internalRecordTransformer.onEndVersionIngestion(storeVersion);
     verify(clientRecordTransformer).onEndVersionIngestion(storeVersion);
@@ -343,9 +343,9 @@ public class RecordTransformerTest {
         dummyRecordTransformerConfig,
         mock(AggVersionedDaVinciRecordTransformerStats.class));
 
-    BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl.DaVinciRecordTransformerBootstrappingChangelogConsumer clientRecordTransformer =
+    VeniceChangelogConsumerDaVinciRecordTransformerImpl.DaVinciRecordTransformerBootstrappingChangelogConsumer clientRecordTransformer =
         mock(
-            BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl.DaVinciRecordTransformerBootstrappingChangelogConsumer.class);
+            VeniceChangelogConsumerDaVinciRecordTransformerImpl.DaVinciRecordTransformerBootstrappingChangelogConsumer.class);
     InternalDaVinciRecordTransformer<Integer, String, String> internalRecordTransformer =
         new InternalDaVinciRecordTransformer<>(
             clientRecordTransformer,
@@ -407,7 +407,7 @@ public class RecordTransformerTest {
     Lazy<TestSpecificValue> lazyValue = Lazy.of(() -> specificValue);
 
     DaVinciRecordTransformerResult<TestSpecificValue> transformerResult =
-        recordTransformer.transform(lazyKey, lazyValue, partitionId);
+        recordTransformer.transform(lazyKey, lazyValue, partitionId, null);
     assertEquals(transformerResult.getResult(), DaVinciRecordTransformerResult.Result.TRANSFORMED);
     TestSpecificValue transformedSpecificValue = transformerResult.getValue();
     assertEquals(transformedSpecificValue.firstName, firstName + id);

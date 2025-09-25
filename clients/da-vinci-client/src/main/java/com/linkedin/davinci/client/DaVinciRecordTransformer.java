@@ -24,7 +24,7 @@ import org.objectweb.asm.ClassReader;
  * Da Vinci's local cache, or to change what gets stored locally.
  *
  * One transformer instance is created per store version, and lifecycle hooks are invoked per version. During
- * startup, Da Vinci replays records persisted on disk by invoking {@link #processPut(Lazy, Lazy, int)} so
+ * startup, Da Vinci replays records persisted on disk by invoking {@link #processPut(Lazy, Lazy, int, DaVinciRecordTransformerRecordMetadata)} so
  * external systems can be rehydrated.
  *
  * Typical setup for most users: keep persisting in Da Vinci (default) and implement callbacks that forward updates to
@@ -115,20 +115,30 @@ public abstract class DaVinciRecordTransformer<K, V, O> implements Closeable {
    * @param key the key of the record to be transformed
    * @param value the value of the record to be transformed
    * @param partitionId what partition the record came from
+   * @param recordMetadata returns {@link DaVinciRecordTransformerRecordMetadata} if enabled in {@link DaVinciRecordTransformerConfig}, null otherwise
    * @return {@link DaVinciRecordTransformerResult}
    */
-  public abstract DaVinciRecordTransformerResult<O> transform(Lazy<K> key, Lazy<V> value, int partitionId);
+  public abstract DaVinciRecordTransformerResult<O> transform(
+      Lazy<K> key,
+      Lazy<V> value,
+      int partitionId,
+      DaVinciRecordTransformerRecordMetadata recordMetadata);
 
   /**
    * Callback for put/update events (for example, write to an external system). Invoked after
-   * {@link #transform(Lazy, Lazy, int)} when the result is UNCHANGED or TRANSFORMED. Also invoked during
+   * {@link #transform(Lazy, Lazy, int, DaVinciRecordTransformerRecordMetadata)} when the result is UNCHANGED or TRANSFORMED. Also invoked during
    * startup/recovery when Da Vinci replays records persisted on disk to rehydrate external systems.
    *
    * @param key the key of the record to be put
    * @param value the value of the record to be put, either the original value or the transformed value
    * @param partitionId what partition the record came from
+   * @param recordMetadata returns {@link DaVinciRecordTransformerRecordMetadata} if enabled in {@link DaVinciRecordTransformerConfig}, null otherwise. If the record came from disk, it will be null.
    */
-  public abstract void processPut(Lazy<K> key, Lazy<O> value, int partitionId);
+  public abstract void processPut(
+      Lazy<K> key,
+      Lazy<O> value,
+      int partitionId,
+      DaVinciRecordTransformerRecordMetadata recordMetadata);
 
   /**
    * Optional callback for delete events (for example, remove from an external system).
@@ -137,8 +147,9 @@ public abstract class DaVinciRecordTransformer<K, V, O> implements Closeable {
    *
    * @param key the key of the record to be deleted
    * @param partitionId what partition the record is being deleted from
+   * @param recordMetadata returns {@link DaVinciRecordTransformerRecordMetadata} if enabled in {@link DaVinciRecordTransformerConfig}, null otherwise. If the record came from disk, it will be null.
    */
-  public void processDelete(Lazy<K> key, int partitionId) {
+  public void processDelete(Lazy<K> key, int partitionId, DaVinciRecordTransformerRecordMetadata recordMetadata) {
     return;
   };
 
@@ -279,24 +290,29 @@ public abstract class DaVinciRecordTransformer<K, V, O> implements Closeable {
   }
 
   /**
-   * Runs {@link #transform(Lazy, Lazy, int)} and then invokes {@link #processPut(Lazy, Lazy, int)} when appropriate.
+   * Runs {@link #transform(Lazy, Lazy, int, DaVinciRecordTransformerRecordMetadata)} and then invokes {@link #processPut(Lazy, Lazy, int, DaVinciRecordTransformerRecordMetadata)} when appropriate.
    * Returns null when the record is skipped, unchanged-and-not-stored, or when {@link #getStoreRecordsInDaVinci()} is false.
    *
    * @param key the key of the record to be put
    * @param value the value of the record to be put
    * @param partitionId what partition the record came from
+   * @param recordMetadata the metadata for this record
    * @return the {@link DaVinciRecordTransformerResult} to be stored in Da Vinci, or null if nothing should be stored
    */
-  public final DaVinciRecordTransformerResult<O> transformAndProcessPut(Lazy<K> key, Lazy<V> value, int partitionId) {
-    DaVinciRecordTransformerResult<O> transformerResult = transform(key, value, partitionId);
+  public final DaVinciRecordTransformerResult<O> transformAndProcessPut(
+      Lazy<K> key,
+      Lazy<V> value,
+      int partitionId,
+      DaVinciRecordTransformerRecordMetadata recordMetadata) {
+    DaVinciRecordTransformerResult<O> transformerResult = transform(key, value, partitionId, recordMetadata);
     DaVinciRecordTransformerResult.Result result = transformerResult.getResult();
     if (result == DaVinciRecordTransformerResult.Result.SKIP) {
       return null;
     } else if (result == DaVinciRecordTransformerResult.Result.UNCHANGED) {
-      processPut(key, (Lazy<O>) value, partitionId);
+      processPut(key, (Lazy<O>) value, partitionId, recordMetadata);
     } else {
       O transformedRecord = transformerResult.getValue();
-      processPut(key, Lazy.of(() -> transformedRecord), partitionId);
+      processPut(key, Lazy.of(() -> transformedRecord), partitionId, recordMetadata);
     }
 
     if (!getStoreRecordsInDaVinci()) {
@@ -306,7 +322,7 @@ public abstract class DaVinciRecordTransformer<K, V, O> implements Closeable {
   }
 
   /**
-   * Used during startup/recovery to iterate over records persisted on disk and invoke {@link #processPut(Lazy, Lazy, int)}
+   * Used during startup/recovery to iterate over records persisted on disk and invoke {@link #processPut(Lazy, Lazy, int, DaVinciRecordTransformerRecordMetadata)}
    * to rehydrate external systems.
    */
   public final void onRecovery(

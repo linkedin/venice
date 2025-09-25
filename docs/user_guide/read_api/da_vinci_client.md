@@ -25,12 +25,12 @@ The Record Transformer lets you hook into Da Vinci's data ingestion process to r
 #### Step 1: Implement the Interface
 Extend [DaVinciRecordTransformer](https://github.com/linkedin/venice/blob/main/clients/da-vinci-client/src/main/java/com/linkedin/davinci/client/DaVinciRecordTransformer.java) and implement:
 
-- `transform(key, value, partitionId)` - Transform data before local persistence, returns [DaVinciRecordTransformerResult](https://github.com/linkedin/venice/blob/main/clients/da-vinci-client/src/main/java/com/linkedin/davinci/client/DaVinciRecordTransformerResult.java):
+- `transform` - Transform data before local persistence, returns [DaVinciRecordTransformerResult](https://github.com/linkedin/venice/blob/main/clients/da-vinci-client/src/main/java/com/linkedin/davinci/client/DaVinciRecordTransformerResult.java):
   - `UNCHANGED` - Keep original value
   - `TRANSFORMED` - Use new transformed value  
   - `SKIP` - Drop this record entirely
-- `processPut(key, value, partitionId)` - Handle record updates
-- `processDelete(key, partitionId)` - Handle deletions (optional)
+- `processPut` - Handle record updates
+- `processDelete` - Handle deletions (optional)
 
 #### Step 2: Configure and Register
 Build a [DaVinciRecordTransformerConfig](https://github.com/linkedin/venice/blob/main/clients/da-vinci-client/src/main/java/com/linkedin/davinci/client/DaVinciRecordTransformerConfig.java) and register it:
@@ -135,7 +135,7 @@ public void onEndVersionIngestion(int currentVersion) {
 - **Compatibility checks**: Implementation changes are automatically detected and local state is rebuilt to prevent stale data
 
 ### Featured Implementations
-- [BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl](https://github.com/linkedin/venice/blob/main/clients/da-vinci-client/src/main/java/com/linkedin/davinci/consumer/BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl.java): 
+- [VeniceChangelogConsumerDaVinciRecordTransformerImpl](https://github.com/linkedin/venice/blob/main/clients/da-vinci-client/src/main/java/com/linkedin/davinci/consumer/VeniceChangelogConsumerDaVinciRecordTransformerImpl.java): 
   - The new Venice Change Data Capture (CDC) client was built using the record transformer.
 - [DuckDBDaVinciRecordTransformer](https://github.com/linkedin/venice/blob/main/integrations/venice-duckdb/src/main/java/com/linkedin/venice/duckdb/DuckDBDaVinciRecordTransformer.java):
   - Forwards Venice data to DuckDB, allowing you to query your Venice data via SQL.
@@ -154,3 +154,4 @@ public void onEndVersionIngestion(int currentVersion) {
     you're storing records in memory without being backed by disk.
   - `setSkipCompatibilityChecks` (default: false): consider true when returning `UNCHANGED` during `transform` or
     during frequent changes to the interface without modifying the transform logic.
+  - `setRecordMetadataEnabled` (default: false): enable if you need the record metadata in DaVinciRecordTransformerRecordMetadata.

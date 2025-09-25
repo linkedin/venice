@@ -24,6 +24,7 @@ public class DaVinciRecordTransformerConfig {
   private final boolean skipCompatibilityChecks;
   private final boolean useSpecificRecordKeyDeserializer;
   private final boolean useSpecificRecordValueDeserializer;
+  private final boolean recordMetadataEnabled;
 
   public DaVinciRecordTransformerConfig(Builder builder) {
     this.recordTransformerFunction = Optional.ofNullable(builder.recordTransformerFunction)
@@ -44,6 +45,7 @@ public class DaVinciRecordTransformerConfig {
     this.storeRecordsInDaVinci = builder.storeRecordsInDaVinci;
     this.alwaysBootstrapFromVersionTopic = builder.alwaysBootstrapFromVersionTopic;
     this.skipCompatibilityChecks = builder.skipCompatibilityChecks;
+    this.recordMetadataEnabled = builder.recordMetadataEnabled;
   }
 
   /**
@@ -109,6 +111,13 @@ public class DaVinciRecordTransformerConfig {
     return skipCompatibilityChecks;
   }
 
+  /**
+   * @return {@link #recordMetadataEnabled}
+   */
+  public boolean isRecordMetadataEnabled() {
+    return recordMetadataEnabled;
+  }
+
   public static class Builder {
     private DaVinciRecordTransformerFunctionalInterface recordTransformerFunction;
     private Class keyClass;
@@ -117,6 +126,7 @@ public class DaVinciRecordTransformerConfig {
     private Boolean storeRecordsInDaVinci = true;
     private Boolean alwaysBootstrapFromVersionTopic = false;
     private Boolean skipCompatibilityChecks = false;
+    private Boolean recordMetadataEnabled = false;
 
     /**
      * Required for creating a {@link DaVinciRecordTransformer}. The function is invoked with the store version at startup.
@@ -163,9 +173,9 @@ public class DaVinciRecordTransformerConfig {
     /**
      * Control whether records are persisted into Da Vinci's local disk. Set to false to route writes only
      * to your own storage via transformer callback.
-     * 
+     *
      * It's not recommended to set this to false, as you will not be able to leverage blob transfer, impacting bootstrapping time.
-     * 
+     *
      * Default is true.
      *
      * @param storeRecordsInDaVinci whether to store records in Da Vinci
@@ -177,7 +187,7 @@ public class DaVinciRecordTransformerConfig {
 
     /**
      * Set this to true if {@link #storeRecordsInDaVinci} is false, and you're storing records in memory without being backed by disk.
-     * 
+     *
      * Default is false.
      *
      * @param alwaysBootstrapFromVersionTopic whether to always bootstrap from the Version Topic
@@ -188,16 +198,28 @@ public class DaVinciRecordTransformerConfig {
     }
 
     /**
-     * Skip transform compatibility checks. Consider true if {@link DaVinciRecordTransformer#transform(Lazy, Lazy, int)}
+     * Skip transform compatibility checks. Consider true if {@link DaVinciRecordTransformer#transform(Lazy, Lazy, int, DaVinciRecordTransformerRecordMetadata)}
      * always returns UNCHANGED, or during rapid non-functional iterations when you want to avoid wiping local data on
      * redeploy. Remember to set this back to false when stable.
-     * 
+     *
      * Default is false.
      *
      * @param skipCompatibilityChecks whether to skip compatibility checks
      */
     public Builder setSkipCompatibilityChecks(boolean skipCompatibilityChecks) {
       this.skipCompatibilityChecks = skipCompatibilityChecks;
+      return this;
+    }
+
+    /**
+     * When enabled, the fields in {@link DaVinciRecordTransformerRecordMetadata} will be populated
+     * and passed to {@link DaVinciRecordTransformer#transform(Lazy, Lazy, int, DaVinciRecordTransformerRecordMetadata)} and
+     * {@link DaVinciRecordTransformer#processPut(Lazy, Lazy, int, DaVinciRecordTransformerRecordMetadata)}.
+     *
+     * Default is false;
+     */
+    public Builder setRecordMetadataEnabled(boolean recordMetadataEnabled) {
+      this.recordMetadataEnabled = recordMetadataEnabled;
       return this;
     }
 

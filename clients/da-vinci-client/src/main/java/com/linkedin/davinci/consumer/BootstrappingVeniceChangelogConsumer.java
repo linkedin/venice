@@ -53,8 +53,14 @@ public interface BootstrappingVeniceChangelogConsumer<K, V> {
    * calls to poll will be from records from the bootstrap state, until the partitions have caught up.
    * Additionally, if the buffer hits the MAX_BUFFER_SIZE before the timeout is hit, poll will return immediately.
    *
-   * @param timeoutInMs
-   * @return
+   * If the PubSubMessage came from disk (after restart), the following fields will be set to sentinel values since
+   * record metadata information is not available to reduce disk utilization:
+   *  - PubSubMessageTime
+   *  - PayloadSize
+   *  - Position
+   *
+   * @param timeoutInMs Maximum timeout of the poll invocation
+   * @return a collection of Venice PubSubMessages
    */
   Collection<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> poll(long timeoutInMs);
 

@@ -1,6 +1,6 @@
 package com.linkedin.davinci.client;
 
-import com.linkedin.davinci.consumer.BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl;
+import com.linkedin.davinci.consumer.VeniceChangelogConsumerDaVinciRecordTransformerImpl;
 import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.venice.annotation.Experimental;
 import com.linkedin.venice.compression.VeniceCompressor;
@@ -49,18 +49,26 @@ public class InternalDaVinciRecordTransformer<K, V, O> extends DaVinciRecordTran
   }
 
   @Override
-  public DaVinciRecordTransformerResult<O> transform(Lazy<K> key, Lazy<V> value, int partitionId) {
-    return this.recordTransformer.transform(key, value, partitionId);
+  public DaVinciRecordTransformerResult<O> transform(
+      Lazy<K> key,
+      Lazy<V> value,
+      int partitionId,
+      DaVinciRecordTransformerRecordMetadata recordMetadata) {
+    return this.recordTransformer.transform(key, value, partitionId, recordMetadata);
   }
 
   @Override
-  public void processPut(Lazy<K> key, Lazy<O> value, int partitionId) {
-    this.recordTransformer.processPut(key, value, partitionId);
+  public void processPut(
+      Lazy<K> key,
+      Lazy<O> value,
+      int partitionId,
+      DaVinciRecordTransformerRecordMetadata recordMetadata) {
+    this.recordTransformer.processPut(key, value, partitionId, recordMetadata);
   }
 
   @Override
-  public void processDelete(Lazy<K> key, int partitionId) {
-    this.recordTransformer.processDelete(key, partitionId);
+  public void processDelete(Lazy<K> key, int partitionId, DaVinciRecordTransformerRecordMetadata recordMetadata) {
+    this.recordTransformer.processDelete(key, partitionId, recordMetadata);
   }
 
   @Override
@@ -83,8 +91,8 @@ public class InternalDaVinciRecordTransformer<K, V, O> extends DaVinciRecordTran
    * It is used for DVRT CDC.
    */
   public void onVersionSwap(int currentVersion, int futureVersion, int partitionId) {
-    if (this.recordTransformer instanceof BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl.DaVinciRecordTransformerBootstrappingChangelogConsumer) {
-      ((BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl.DaVinciRecordTransformerBootstrappingChangelogConsumer) this.recordTransformer)
+    if (this.recordTransformer instanceof VeniceChangelogConsumerDaVinciRecordTransformerImpl.DaVinciRecordTransformerBootstrappingChangelogConsumer) {
+      ((VeniceChangelogConsumerDaVinciRecordTransformerImpl.DaVinciRecordTransformerBootstrappingChangelogConsumer) this.recordTransformer)
           .onVersionSwap(currentVersion, futureVersion, partitionId);
     }
   }
@@ -94,8 +102,8 @@ public class InternalDaVinciRecordTransformer<K, V, O> extends DaVinciRecordTran
    * It is used for DVRT CDC to record latest heartbeat timestamps per partition.
    */
   public void onHeartbeat(int partitionId, long heartbeatTimestamp) {
-    if (this.recordTransformer instanceof BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl.DaVinciRecordTransformerBootstrappingChangelogConsumer) {
-      ((BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl.DaVinciRecordTransformerBootstrappingChangelogConsumer) this.recordTransformer)
+    if (this.recordTransformer instanceof VeniceChangelogConsumerDaVinciRecordTransformerImpl.DaVinciRecordTransformerBootstrappingChangelogConsumer) {
+      ((VeniceChangelogConsumerDaVinciRecordTransformerImpl.DaVinciRecordTransformerBootstrappingChangelogConsumer) this.recordTransformer)
           .onHeartbeat(partitionId, heartbeatTimestamp);
     }
   }

@@ -1281,6 +1281,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     try {
       this.unsubscribeAll();
       pubSubConsumer.close();
+
     } finally {
       subscriptionLock.writeLock().unlock();
     }

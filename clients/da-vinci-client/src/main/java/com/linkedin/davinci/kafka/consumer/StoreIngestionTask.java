@@ -24,6 +24,7 @@ import static java.util.concurrent.TimeUnit.SECONDS;
 
 import com.linkedin.davinci.client.DaVinciRecordTransformer;
 import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
+import com.linkedin.davinci.client.DaVinciRecordTransformerRecordMetadata;
 import com.linkedin.davinci.client.DaVinciRecordTransformerResult;
 import com.linkedin.davinci.client.InternalDaVinciRecordTransformer;
 import com.linkedin.davinci.client.InternalDaVinciRecordTransformerConfig;
@@ -3881,7 +3882,18 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
           DaVinciRecordTransformerResult transformerResult;
           try {
-            transformerResult = recordTransformer.transformAndProcessPut(lazyKey, lazyValue, producedPartition);
+            DaVinciRecordTransformerRecordMetadata recordTransformerRecordMetadata =
+                recordTransformerConfig.isRecordMetadataEnabled()
+                    ? new DaVinciRecordTransformerRecordMetadata(
+                        writerSchemaId,
+                        consumerRecord.getPubSubMessageTime(),
+                        consumerRecord.getPosition(),
+                        // Calculate payload size after chunk assembly
+                        keyLen + assembledRecord.value().limit(),
+                        put.getReplicationMetadataPayload())
+                    : null;
+            transformerResult = recordTransformer
+                .transformAndProcessPut(lazyKey, lazyValue, producedPartition, recordTransformerRecordMetadata);
           } catch (Exception e) {
             recordTransformerStats.recordPutError(storeName, versionNumber, currentTimeMs);
             String errorMessage =
@@ -3948,7 +3960,16 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
           long startTime = System.nanoTime();
           try {
-            recordTransformer.processDelete(lazyKey, producedPartition);
+            DaVinciRecordTransformerRecordMetadata recordTransformerRecordMetadata =
+                recordTransformerConfig.isRecordMetadataEnabled()
+                    ? new DaVinciRecordTransformerRecordMetadata(
+                        -1,
+                        consumerRecord.getPubSubMessageTime(),
+                        consumerRecord.getPosition(),
+                        consumerRecord.getPayloadSize(),
+                        null)
+                    : null;
+            recordTransformer.processDelete(lazyKey, producedPartition, recordTransformerRecordMetadata);
           } catch (Exception e) {
             recordTransformerStats.recordDeleteError(storeName, versionNumber, currentTimeMs);
             String errorMessage = "DaVinciRecordTransformer experienced an error when deleting key: " + lazyKey.get();

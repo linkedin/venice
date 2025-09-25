@@ -2,6 +2,7 @@ package com.linkedin.davinci.transformer;
 
 import com.linkedin.davinci.client.DaVinciRecordTransformer;
 import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
+import com.linkedin.davinci.client.DaVinciRecordTransformerRecordMetadata;
 import com.linkedin.davinci.client.DaVinciRecordTransformerResult;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.io.IOException;
@@ -25,12 +26,17 @@ public class TestRecordTransformerUsingUniformInputValueSchema
   public DaVinciRecordTransformerResult<GenericRecord> transform(
       Lazy<GenericRecord> key,
       Lazy<GenericRecord> value,
-      int partitionId) {
+      int partitionId,
+      DaVinciRecordTransformerRecordMetadata recordMetadata) {
     return new DaVinciRecordTransformerResult<>(DaVinciRecordTransformerResult.Result.UNCHANGED);
   }
 
   @Override
-  public void processPut(Lazy<GenericRecord> key, Lazy<GenericRecord> value, int partitionId) {
+  public void processPut(
+      Lazy<GenericRecord> key,
+      Lazy<GenericRecord> value,
+      int partitionId,
+      DaVinciRecordTransformerRecordMetadata recordMetadata) {
     return;
   }
 
