@@ -5727,8 +5727,8 @@ public abstract class StoreIngestionTaskTest {
     InMemoryPubSubPosition p10 = InMemoryPubSubPosition.of(MESSAGE_COUNT);
     doReturn(PubSubSymbolicPosition.LATEST).when(mockTopicManager)
         .getLatestPositionCached(PARTITION_UNABLE_TO_GET_END_POSITION);
-    doReturn(p0).when(mockTopicManager).getLatestPositionCached(EMPTY_PARTITION);
-    doReturn(p10).when(mockTopicManager).getLatestPositionCached(PARTITION_WITH_SOME_MESSAGES_IN_IT);
+    doReturn(p0).when(mockTopicManager).getLatestPositionCachedNonBlocking(EMPTY_PARTITION);
+    doReturn(p10).when(mockTopicManager).getLatestPositionCachedNonBlocking(PARTITION_WITH_SOME_MESSAGES_IN_IT);
 
     assertEquals(
         StoreIngestionTask.measureLagWithCallToPubSub(
