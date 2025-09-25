@@ -1063,12 +1063,12 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
   protected void syncConsumedUpstreamRTOffsetMapIfNeeded(
       PartitionConsumptionState pcs,
-      Map<String, PubSubPosition> upstreamStartOffsetByKafkaURL) {
+      Map<String, PubSubPosition> upstreamStartPositionByPubSubUrl) {
     // Update in-memory consumedUpstreamRTOffsetMap in case no RT record is consumed after the subscription
     final PubSubTopic leaderTopic = pcs.getOffsetRecord().getLeaderTopic(pubSubTopicRepository);
     final PubSubTopicPartition leaderTopicPartition = pcs.getSourceTopicPartition(leaderTopic);
     if (leaderTopic != null && leaderTopic.isRealTime()) {
-      upstreamStartOffsetByKafkaURL.forEach((kafkaURL, upstreamStartPosition) -> {
+      upstreamStartPositionByPubSubUrl.forEach((kafkaURL, upstreamStartPosition) -> {
         if (getTopicManager(kafkaURL).diffPosition(
             leaderTopicPartition,
             upstreamStartPosition,

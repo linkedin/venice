@@ -2304,7 +2304,6 @@ public abstract class StoreIngestionTaskTest {
       ArgumentCaptor<PubSubPosition> positionCaptor = ArgumentCaptor.forClass(PubSubPosition.class);
       verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS))
           .completed(eq(topic), eq(PARTITION_FOO), positionCaptor.capture(), eq("STANDBY"));
-      // Note: Revert back to getInternalOffset once we move reads to PubSubPosition in OffsetRecord
       assertEquals(positionCaptor.getValue(), p100);
     }, aaConfig);
     config.setBeforeStartingConsumption(
@@ -2359,7 +2358,6 @@ public abstract class StoreIngestionTaskTest {
       ArgumentCaptor<PubSubPosition> positionCaptor = ArgumentCaptor.forClass(PubSubPosition.class);
       verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS))
           .completed(eq(topic), eq(PARTITION_FOO), positionCaptor.capture(), eq("STANDBY"));
-      // Note: Revert back to getInternalOffset once we move reads to PubSubPosition in OffsetRecord
       assertEquals(positionCaptor.getValue(), p10);
     }, aaConfig);
     config.setBeforeStartingConsumption(() -> {
