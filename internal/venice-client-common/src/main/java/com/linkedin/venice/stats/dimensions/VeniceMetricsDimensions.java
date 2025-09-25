@@ -6,7 +6,7 @@ import static com.linkedin.venice.stats.VeniceOpenTelemetryMetricNamingFormat.SN
 import static com.linkedin.venice.stats.VeniceOpenTelemetryMetricNamingFormat.transformMetricName;
 import static com.linkedin.venice.stats.VeniceOpenTelemetryMetricNamingFormat.validateMetricName;
 
-import com.google.common.annotations.VisibleForTesting;
+import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.stats.VeniceOpenTelemetryMetricNamingFormat;
 
 
