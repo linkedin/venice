@@ -299,8 +299,7 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
           "Caught exception: {} in checksum validation for replica: {}",
           checksumThrowable.getMessage(),
           replicaId);
-      handleExceptionGracefully(checksumThrowable);
-      return;
+      throw new VeniceException(checksumThrowable);
     }
 
     LOGGER.info(
