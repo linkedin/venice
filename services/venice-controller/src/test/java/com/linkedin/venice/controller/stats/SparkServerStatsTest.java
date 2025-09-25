@@ -76,7 +76,7 @@ public class SparkServerStatsTest extends AbstractTestVeniceParentHelixAdmin {
             .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), TEST_CLUSTER_NAME)
             .put(
                 VENICE_CONTROLLER_ENDPOINT.getDimensionNameInDefaultFormat(),
-                ControllerRoute.valueOfPath(testPath).toString())
+                ControllerRoute.valueOfPath(testPath).toString().toLowerCase())
             .build());
   }
 
@@ -106,7 +106,7 @@ public class SparkServerStatsTest extends AbstractTestVeniceParentHelixAdmin {
             .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), TEST_CLUSTER_NAME)
             .put(
                 VENICE_CONTROLLER_ENDPOINT.getDimensionNameInDefaultFormat(),
-                ControllerRoute.valueOfPath(testPath).toString())
+                ControllerRoute.valueOfPath(testPath).toString().toLowerCase())
             .build());
 
     // Record success
@@ -120,7 +120,23 @@ public class SparkServerStatsTest extends AbstractTestVeniceParentHelixAdmin {
             .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), TEST_CLUSTER_NAME)
             .put(
                 VENICE_CONTROLLER_ENDPOINT.getDimensionNameInDefaultFormat(),
-                ControllerRoute.valueOfPath(testPath).toString())
+                ControllerRoute.valueOfPath(testPath).toString().toLowerCase())
+            .put(HTTP_RESPONSE_STATUS_CODE.getDimensionNameInDefaultFormat(), String.valueOf(testResponseCode))
+            .put(
+                HTTP_RESPONSE_STATUS_CODE_CATEGORY.getDimensionNameInDefaultFormat(),
+                HttpResponseStatusCodeCategory.SUCCESS.getDimensionValue())
+            .put(
+                VENICE_RESPONSE_STATUS_CODE_CATEGORY.getDimensionNameInDefaultFormat(),
+                VeniceResponseStatusCategory.SUCCESS.getDimensionValue())
+            .build());
+    validateLongPointFromDataFromCounter(
+        ControllerMetricEntity.IN_FLIGHT_CALL_COUNT.getMetricName(),
+        0,
+        Attributes.builder()
+            .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), TEST_CLUSTER_NAME)
+            .put(
+                VENICE_CONTROLLER_ENDPOINT.getDimensionNameInDefaultFormat(),
+                ControllerRoute.valueOfPath(testPath).toString().toLowerCase())
             .build());
   }
 
@@ -149,7 +165,7 @@ public class SparkServerStatsTest extends AbstractTestVeniceParentHelixAdmin {
             .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), TEST_CLUSTER_NAME)
             .put(
                 VENICE_CONTROLLER_ENDPOINT.getDimensionNameInDefaultFormat(),
-                ControllerRoute.valueOfPath(testPath).toString())
+                ControllerRoute.valueOfPath(testPath).toString().toLowerCase())
             .build());
 
     // Record success
@@ -163,7 +179,7 @@ public class SparkServerStatsTest extends AbstractTestVeniceParentHelixAdmin {
             .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), TEST_CLUSTER_NAME)
             .put(
                 VENICE_CONTROLLER_ENDPOINT.getDimensionNameInDefaultFormat(),
-                ControllerRoute.valueOfPath(testPath).toString())
+                ControllerRoute.valueOfPath(testPath).toString().toLowerCase())
             .put(HTTP_RESPONSE_STATUS_CODE.getDimensionNameInDefaultFormat(), String.valueOf(testResponseCode))
             .put(
                 HTTP_RESPONSE_STATUS_CODE_CATEGORY.getDimensionNameInDefaultFormat(),
@@ -179,7 +195,7 @@ public class SparkServerStatsTest extends AbstractTestVeniceParentHelixAdmin {
             .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), TEST_CLUSTER_NAME)
             .put(
                 VENICE_CONTROLLER_ENDPOINT.getDimensionNameInDefaultFormat(),
-                ControllerRoute.valueOfPath(testPath).toString())
+                ControllerRoute.valueOfPath(testPath).toString().toLowerCase())
             .build());
   }
 
