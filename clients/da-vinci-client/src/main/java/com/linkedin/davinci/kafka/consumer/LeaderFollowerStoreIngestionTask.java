@@ -1958,8 +1958,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         }
 
         PubSubPosition lastProcessedVtPos = partitionConsumptionState.getLatestProcessedVtPosition();
-        // TODO(sushantmane): Use TM::compare for PubSubPosition comparison
-        if (lastProcessedVtPos.getNumericOffset() >= record.getPosition().getNumericOffset()) {
+        if (topicManagerRepository.getLocalTopicManager()
+            .diffPosition(record.getTopicPartition(), lastProcessedVtPos, record.getPosition()) >= 0) {
           String message = partitionConsumptionState.getLeaderFollowerState() + " replica: "
               + partitionConsumptionState.getReplicaId() + " had already processed the record";
           if (!REDUNDANT_LOGGING_FILTER.isRedundantException(message)) {

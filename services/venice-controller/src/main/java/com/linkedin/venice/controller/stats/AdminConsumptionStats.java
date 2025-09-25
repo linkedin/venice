@@ -169,19 +169,6 @@ public class AdminConsumptionStats extends AbstractVeniceStats {
     this.adminConsumptionCheckpointPosition = adminConsumptionCheckpointPosition;
   }
 
-  /**
-   * Lazily register the checkpoint offset metric after knowing the latest checkpoint offset, so that restarting the
-   * controller node will not result in the metric value dipping to 0.
-   */
-  public void registerAdminConsumptionCheckpointPosition() {
-    registerSensorIfAbsent(
-        new AsyncGauge(
-            (ignored, ignored2) -> this.adminConsumptionCheckpointPosition == null
-                ? 0L
-                : this.adminConsumptionCheckpointPosition.getNumericOffset(),
-            "admin_consumption_checkpoint_offset"));
-  }
-
   public void setAdminConsumptionOffsetLag(long adminConsumptionOffsetLag) {
     this.adminConsumptionOffsetLag = adminConsumptionOffsetLag;
   }

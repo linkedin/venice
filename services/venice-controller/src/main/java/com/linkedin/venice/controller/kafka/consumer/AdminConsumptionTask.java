@@ -460,7 +460,6 @@ public class AdminConsumptionTask implements Runnable, Closeable {
       lastDelegatedExecutionId = UNASSIGNED_VALUE;
     }
     stats.setAdminConsumptionCheckpointPosition(lastPersistedPosition);
-    stats.registerAdminConsumptionCheckpointPosition();
     // Subscribe the admin topic
     consumer.subscribe(adminTopicPartition, lastDelegatedPosition, true);
     isSubscribed = true;

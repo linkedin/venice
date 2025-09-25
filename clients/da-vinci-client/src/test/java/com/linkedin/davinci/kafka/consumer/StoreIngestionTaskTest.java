@@ -2559,8 +2559,8 @@ public abstract class StoreIngestionTaskTest {
             verify(mockLogNotifier, timeout(LONG_TEST_TIMEOUT).atLeastOnce())
                 .completed(eq(topic), eq(partition), positionCaptor.capture(), eq("STANDBY"));
             // Note: Change to generic position until we move reads to PubSubPosition in OffsetRecord
-            PubSubPosition completedPosition = positionCaptor.getValue();
-            assertTrue(completedPosition.getNumericOffset() >= offset);
+            InMemoryPubSubPosition completedPosition = positionCaptor.getValue();
+            assertTrue(completedPosition.getInternalOffset() >= offset);
           });
 
       // After this, all asynchronous processing should be finished, so there's no need for time outs anymore.
