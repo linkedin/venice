@@ -36,6 +36,7 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.apache.logging.log4j.LogManager;
@@ -51,6 +52,7 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
   private static final Logger LOGGER = LogManager.getLogger(P2PFileTransferClientHandler.class);
   private static final Pattern FILENAME_PATTERN = Pattern.compile("filename=\"(.+?)\"");
   private final CompletionStage<InputStream> inputStreamFuture;
+  private final AtomicReference<Throwable> checksumExceptionHolder = new AtomicReference<>(null);
   private final BlobTransferPayload payload;
   private final ExecutorService checksumValidationExecutorService;
   private final List<CompletableFuture<Void>> checksumValidationFutureList = new ArrayList<>();
@@ -264,7 +266,7 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
 
   void handleExceptionGracefully(Throwable cause) {
     if (!inputStreamFuture.toCompletableFuture().isDone()) {
-      LOGGER.error("Exception caught in when receiving files for {} with cause {}", replicaId, cause);
+      LOGGER.error("Exception caught in when receiving files for replica: {} with cause: {}", replicaId, cause);
       cleanupResources();
       inputStreamFuture.toCompletableFuture().completeExceptionally(cause);
     }
@@ -283,10 +285,27 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
   }
 
   private void handleEndOfTransfer(ChannelHandlerContext ctx) {
-    CompletableFuture.allOf(checksumValidationFutureList.toArray(new CompletableFuture[0])).join();
     LOGGER.info(
         "All files received successfully for replica: {} took: {}ms",
-        payload.getFullResourceName(),
+        replicaId,
+        LatencyUtils.getElapsedTimeFromMsToMs(replicaTransferStartTime));
+
+    // Wait for all the checksum validation futures to complete.
+    CompletableFuture.allOf(checksumValidationFutureList.toArray(new CompletableFuture[0])).join();
+    // Check the exception holder to see if any checksum validation failed.
+    Throwable checksumThrowable = checksumExceptionHolder.get();
+    if (checksumThrowable != null) {
+      LOGGER.error(
+          "Caught exception: {} in checksum validation for replica: {}",
+          checksumThrowable.getMessage(),
+          replicaId);
+      handleExceptionGracefully(checksumThrowable);
+      return;
+    }
+
+    LOGGER.info(
+        "All files received and checksum validated successfully for replica: {} took: {}ms",
+        replicaId,
         LatencyUtils.getElapsedTimeFromMsToMs(replicaTransferStartTime));
 
     try {
@@ -379,15 +398,22 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
             "Caught exception when generating checksum for file: {} for replica: {}",
             fileNameToValidate,
             replicaId);
-        handleExceptionGracefully(throwable);
-        throw new VeniceException(throwable);
+        checksumExceptionHolder.compareAndSet(null, throwable);
+        checksumValidationFuture.complete(null);
+        return;
       }
       if (!actualChecksum.equals(expectedChecksum)) {
-        VeniceException exception = new VeniceException(
-            "File checksum mismatch for " + fileNameToValidate + ". Expected: " + expectedChecksum + ", Actual: "
-                + actualChecksum);
-        handleExceptionGracefully(exception);
-        throw exception;
+        String errorMessage = String.format(
+            "File checksum mismatch for file: %s for replica: %s. Expected: %s, actual: %s",
+            fileToValidate,
+            replicaId,
+            expectedChecksum,
+            actualChecksum);
+        LOGGER.error(errorMessage);
+        VeniceException exception = new VeniceException(errorMessage);
+        checksumExceptionHolder.compareAndSet(null, exception);
+        checksumValidationFuture.complete(null);
+        return;
       }
       checksumValidationFuture.complete(null);
 

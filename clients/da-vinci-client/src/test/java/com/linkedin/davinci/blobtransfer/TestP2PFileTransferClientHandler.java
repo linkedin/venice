@@ -175,6 +175,11 @@ public class TestP2PFileTransferClientHandler {
 
     ch.writeInbound(response);
     ch.writeInbound(chunk1);
+
+    // Write BLOB_TRANSFER_COMPLETED as exception is validated there.
+    DefaultHttpResponse endOfTransfer = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
+    endOfTransfer.headers().add(BLOB_TRANSFER_STATUS, BLOB_TRANSFER_COMPLETED);
+    ch.writeInbound(endOfTransfer);
     try {
       inputStreamFuture.toCompletableFuture().get(1, TimeUnit.MINUTES);
       Assert.fail("Expected exception not thrown");
