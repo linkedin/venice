@@ -79,10 +79,10 @@ import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.pubsub.PubSubContext;
+import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
 import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
-import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicType;
 import com.linkedin.venice.pubsub.manager.TopicManagerRepository;
@@ -151,6 +151,22 @@ import org.testng.Assert;
  * General-purpose utility functions for tests.
  */
 public class TestUtils {
+  /**
+   * **FOR UNIT TESTING PURPOSES ONLY** - Do not use in production code.
+   *
+   * A pre-configured PubSubContext instance with default test values for use in unit tests.
+   * This instance is initialized with basic default components suitable for testing scenarios
+   * where a fully configured PubSubContext is not required.
+   *
+   * Production code should propagate properly configured PubSubContext instances
+   * with appropriate TopicManagerRepository and other production-ready components.
+   *
+   */
+  public static final PubSubContext DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING =
+      new PubSubContext.Builder().setPubSubTopicRepository(new PubSubTopicRepository())
+          .setPubSubPositionDeserializer(PubSubPositionDeserializer.DEFAULT_DESERIALIZER)
+          .setPubSubPositionTypeRegistry(PubSubPositionTypeRegistry.RESERVED_POSITION_TYPE_REGISTRY)
+          .build();
   private static final Logger LOGGER = LogManager.getLogger(TestUtils.class);
 
   /** In milliseconds */
@@ -695,14 +711,11 @@ public class TestUtils {
     return participant;
   }
 
-  public static OffsetRecord getOffsetRecord(long currentOffset, boolean complete) {
-    return getOffsetRecord(
-        ApacheKafkaOffsetPosition.of(currentOffset),
-        complete ? Optional.of(ApacheKafkaOffsetPosition.of(1000L)) : Optional.of(ApacheKafkaOffsetPosition.of(0L)));
-  }
-
-  public static OffsetRecord getOffsetRecord(PubSubPosition currentPosition, Optional<PubSubPosition> endOfPushOffset) {
-    OffsetRecord offsetRecord = new OffsetRecord(partitionStateSerializer);
+  public static OffsetRecord getOffsetRecord(
+      PubSubPosition currentPosition,
+      Optional<PubSubPosition> endOfPushOffset,
+      PubSubContext pubSubContext) {
+    OffsetRecord offsetRecord = new OffsetRecord(partitionStateSerializer, pubSubContext);
     offsetRecord.checkpointLocalVtPosition(currentPosition);
     if (endOfPushOffset.isPresent()) {
       offsetRecord.endOfPushReceived();
@@ -850,7 +863,7 @@ public class TestUtils {
     OffsetRecord mockOffsetRecord = mock(OffsetRecord.class);
     doReturn(Collections.emptyMap()).when(mockOffsetRecord).getProducerPartitionStateMap();
     String versionTopic = Version.composeKafkaTopic(storeName, 1);
-    doReturn(mockOffsetRecord).when(mockStorageMetadataService).getLastOffset(eq(versionTopic), eq(0));
+    doReturn(mockOffsetRecord).when(mockStorageMetadataService).getLastOffset(eq(versionTopic), eq(0), any());
 
     int partitionCount = 1;
     VenicePartitioner partitioner = new DefaultVenicePartitioner();

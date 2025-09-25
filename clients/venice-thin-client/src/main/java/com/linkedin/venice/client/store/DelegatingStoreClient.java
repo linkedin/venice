@@ -3,6 +3,7 @@ package com.linkedin.venice.client.store;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.stats.ClientStats;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
+import com.linkedin.venice.client.store.streaming.VeniceResponseMap;
 import com.linkedin.venice.compute.ComputeRequestWrapper;
 import com.linkedin.venice.schema.SchemaReader;
 import java.util.Map;
@@ -119,5 +120,25 @@ public class DelegatingStoreClient<K, V> extends InternalAvroStoreClient<K, V> {
   @Override
   public void startWithExceptionThrownWhenFail() {
     innerStoreClient.startWithExceptionThrownWhenFail();
+  }
+
+  CompletableFuture<Map<K, V>> internalBatchGet(Set<K> keys) throws VeniceClientException {
+    CompletableFuture<Map<K, V>> resultFuture = new CompletableFuture<>();
+    CompletableFuture<VeniceResponseMap<K, V>> streamingResultFuture = streamingBatchGet(keys);
+
+    streamingResultFuture.whenComplete((response, throwable) -> {
+      if (throwable != null) {
+        resultFuture.completeExceptionally(throwable);
+      } else if (!response.isFullResponse()) {
+        resultFuture.completeExceptionally(
+            new VeniceClientException(
+                "Received partial response, returned entry count: " + response.getTotalEntryCount()
+                    + ", and key count: " + keys.size()));
+      } else {
+        resultFuture.complete(response);
+      }
+    });
+    // We intentionally use stats for batch-get streaming since blocking impl of batch-get is deprecated.
+    return resultFuture;
   }
 }

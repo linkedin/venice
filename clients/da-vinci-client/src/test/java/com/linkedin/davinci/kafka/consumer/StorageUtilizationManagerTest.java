@@ -1,6 +1,7 @@
 package com.linkedin.davinci.kafka.consumer;
 
 import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.*;
+import static com.linkedin.venice.utils.TestUtils.DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.argThat;
 import static org.mockito.Mockito.mock;
@@ -17,6 +18,7 @@ import com.linkedin.venice.pubsub.PubSubContext;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import org.apache.avro.Schema;
 import org.mockito.ArgumentMatcher;
 import org.testng.Assert;
 import org.testng.annotations.BeforeClass;
@@ -49,7 +51,7 @@ public class StorageUtilizationManagerTest {
     storageEngine = mock(StorageEngine.class);
     store = mock(Store.class);
     version = mock(Version.class);
-    pubSubContext = new PubSubContext.Builder().build();
+    pubSubContext = DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING;
   }
 
   @BeforeMethod
@@ -59,16 +61,26 @@ public class StorageUtilizationManagerTest {
     hybridPartitionConsumptionStateMap = new VeniceConcurrentHashMap<>();
 
     for (int i = 1; i <= storePartitionCount; i++) {
-      PartitionConsumptionState pcs =
-          new PartitionConsumptionState(Utils.getReplicaId(topic, i), i, mock(OffsetRecord.class), pubSubContext, true);
+      PartitionConsumptionState pcs = new PartitionConsumptionState(
+          Utils.getReplicaId(topic, i),
+          i,
+          mock(OffsetRecord.class),
+          pubSubContext,
+          true,
+          Schema.create(Schema.Type.STRING));
       partitionConsumptionStateMap.put(i, pcs);
     }
 
     OffsetRecord mockOffsetRecord = mock(OffsetRecord.class);
     when(mockOffsetRecord.getLeaderTopic()).thenReturn(realTimeTopic);
     for (int i = 1; i <= storePartitionCount; i++) {
-      PartitionConsumptionState pcs =
-          new PartitionConsumptionState(Utils.getReplicaId(realTimeTopic, i), i, mockOffsetRecord, pubSubContext, true);
+      PartitionConsumptionState pcs = new PartitionConsumptionState(
+          Utils.getReplicaId(realTimeTopic, i),
+          i,
+          mockOffsetRecord,
+          pubSubContext,
+          true,
+          Schema.create(Schema.Type.STRING));
       pcs.setLeaderFollowerState(LEADER);
       hybridPartitionConsumptionStateMap.put(i, pcs);
     }

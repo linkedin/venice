@@ -6,8 +6,10 @@ import com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferTableForm
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.venice.exceptions.VenicePeersConnectionException;
 import com.linkedin.venice.listener.VerifySslHandler;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.DaemonThreadFactory;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.channel.Channel;
@@ -290,7 +292,17 @@ public class NettyFileTransferClient {
                   partition,
                   requestedTableFormat));
       // Send a GET request
-      ch.writeAndFlush(prepareRequest(storeName, version, partition, requestedTableFormat));
+      ChannelFuture requestFuture =
+          ch.writeAndFlush(prepareRequest(storeName, version, partition, requestedTableFormat));
+
+      String replicaId = Utils.getReplicaId(Version.composeKafkaTopic(storeName, version), partition);
+      requestFuture.addListener(f -> {
+        if (f.isSuccess()) {
+          LOGGER.info("Request successfully sent to the server for replica {} to remote host {}", replicaId, host);
+        } else {
+          LOGGER.error("Failed to send request for replica {} to host {}", replicaId, host, f.cause());
+        }
+      });
 
       // Set a timeout, otherwise if the host is not responding, the future will never complete
       connectTimeoutScheduler.schedule(() -> {

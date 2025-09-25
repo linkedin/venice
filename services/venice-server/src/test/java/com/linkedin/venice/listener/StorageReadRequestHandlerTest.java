@@ -2,6 +2,7 @@ package com.linkedin.venice.listener;
 
 import static com.linkedin.venice.read.RequestType.SINGLE_GET;
 import static com.linkedin.venice.router.api.VenicePathParser.TYPE_STORAGE;
+import static com.linkedin.venice.utils.TestUtils.DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING;
 import static io.netty.handler.codec.http.HttpResponseStatus.BAD_REQUEST;
 import static io.netty.handler.codec.http.HttpResponseStatus.SERVICE_UNAVAILABLE;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -210,7 +211,7 @@ public class StorageReadRequestHandlerTest {
 
     RocksDBServerConfig rocksDBServerConfig = mock(RocksDBServerConfig.class);
     doReturn(rocksDBServerConfig).when(serverConfig).getRocksDBServerConfig();
-    pubSubContext = new PubSubContext.Builder().build();
+    pubSubContext = DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING;
   }
 
   @AfterMethod
@@ -553,9 +554,12 @@ public class StorageReadRequestHandlerTest {
     PartitionConsumptionState state = new PartitionConsumptionState(
         Utils.getReplicaId(topic, expectedPartitionId),
         expectedPartitionId,
-        new OffsetRecord(AvroProtocolDefinition.PARTITION_STATE.getSerializer()),
+        new OffsetRecord(
+            AvroProtocolDefinition.PARTITION_STATE.getSerializer(),
+            DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING),
         pubSubContext,
-        false);
+        false,
+        Schema.create(Schema.Type.STRING));
     expectedAdminResponse.addPartitionConsumptionState(state);
     doReturn(expectedAdminResponse).when(ingestionMetadataRetriever).getConsumptionSnapshots(eq(topic), any());
 

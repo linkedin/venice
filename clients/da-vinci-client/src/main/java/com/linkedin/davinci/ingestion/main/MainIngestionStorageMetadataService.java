@@ -11,6 +11,7 @@ import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.IngestionMetadataUpdateType;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.pubsub.PubSubContext;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.Time;
@@ -143,14 +144,15 @@ public class MainIngestionStorageMetadataService extends AbstractVeniceService i
   }
 
   @Override
-  public OffsetRecord getLastOffset(String topicName, int partitionId) throws VeniceException {
+  public OffsetRecord getLastOffset(String topicName, int partitionId, PubSubContext pubSubContext)
+      throws VeniceException {
     Map<Integer, OffsetRecord> partitionOffsetRecordMap = topicPartitionOffsetRecordMap.get(topicName);
     OffsetRecord offsetRecord = null;
     if (partitionOffsetRecordMap != null) {
       offsetRecord = partitionOffsetRecordMap.get(partitionId);
     }
     if (offsetRecord == null) {
-      return new OffsetRecord(partitionStateSerializer);
+      return new OffsetRecord(partitionStateSerializer, pubSubContext);
     }
     return offsetRecord;
   }

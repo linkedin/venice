@@ -43,8 +43,20 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_MESSAGE_TYPE:
           assertEquals(dimension.getDimensionName(format), "venice.message.type");
           break;
+        case VENICE_STREAM_PROGRESS:
+          assertEquals(dimension.getDimensionName(format), "venice.stream.progress");
+          break;
         case REPUSH_TRIGGER_SOURCE:
           assertEquals(dimension.getDimensionName(format), "repush.trigger.source");
+          break;
+        case VENICE_REQUEST_REJECTION_REASON:
+          assertEquals(dimension.getDimensionName(format), "venice.request.rejection_reason");
+          break;
+        case VENICE_REQUEST_FANOUT_TYPE:
+          assertEquals(dimension.getDimensionName(format), "venice.request.fanout_type");
+          break;
+        case VENICE_INSTANCE_ERROR_TYPE:
+          assertEquals(dimension.getDimensionName(format), "venice.instance.error_type");
           break;
         default:
           throw new IllegalArgumentException("Unknown dimension: " + dimension);
@@ -87,8 +99,20 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_MESSAGE_TYPE:
           assertEquals(dimension.getDimensionName(format), "venice.message.type");
           break;
+        case VENICE_STREAM_PROGRESS:
+          assertEquals(dimension.getDimensionName(format), "venice.stream.progress");
+          break;
         case REPUSH_TRIGGER_SOURCE:
           assertEquals(dimension.getDimensionName(format), "repush.trigger.source");
+          break;
+        case VENICE_REQUEST_REJECTION_REASON:
+          assertEquals(dimension.getDimensionName(format), "venice.request.rejectionReason");
+          break;
+        case VENICE_REQUEST_FANOUT_TYPE:
+          assertEquals(dimension.getDimensionName(format), "venice.request.fanoutType");
+          break;
+        case VENICE_INSTANCE_ERROR_TYPE:
+          assertEquals(dimension.getDimensionName(format), "venice.instance.errorType");
           break;
         default:
           throw new IllegalArgumentException("Unknown dimension: " + dimension);
@@ -131,8 +155,20 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_MESSAGE_TYPE:
           assertEquals(dimension.getDimensionName(format), "Venice.Message.Type");
           break;
+        case VENICE_STREAM_PROGRESS:
+          assertEquals(dimension.getDimensionName(format), "Venice.Stream.Progress");
+          break;
         case REPUSH_TRIGGER_SOURCE:
           assertEquals(dimension.getDimensionName(format), "Repush.Trigger.Source");
+          break;
+        case VENICE_REQUEST_REJECTION_REASON:
+          assertEquals(dimension.getDimensionName(format), "Venice.Request.RejectionReason");
+          break;
+        case VENICE_REQUEST_FANOUT_TYPE:
+          assertEquals(dimension.getDimensionName(format), "Venice.Request.FanoutType");
+          break;
+        case VENICE_INSTANCE_ERROR_TYPE:
+          assertEquals(dimension.getDimensionName(format), "Venice.Instance.ErrorType");
           break;
         default:
           throw new IllegalArgumentException("Unknown dimension: " + dimension);

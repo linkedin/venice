@@ -1,12 +1,9 @@
 package com.linkedin.venice;
 
 import static com.linkedin.venice.CommonConfigKeys.SSL_FACTORY_CLASS_NAME;
-import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.VeniceConstants.DEFAULT_SSL_FACTORY_CLASS_NAME;
 import static com.linkedin.venice.schema.AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation;
 import static com.linkedin.venice.serialization.avro.AvroProtocolDefinition.SERVER_ADMIN_RESPONSE;
-import static org.apache.kafka.clients.consumer.ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG;
-import static org.apache.kafka.clients.consumer.ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -18,6 +15,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.linkedin.davinci.listener.response.ReplicaIngestionResponse;
 import com.linkedin.venice.acl.VeniceComponent;
 import com.linkedin.venice.admin.protocol.response.AdminResponseRecord;
+import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
@@ -36,7 +34,6 @@ import com.linkedin.venice.controllerapi.ControllerApiConstants;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerClientFactory;
 import com.linkedin.venice.controllerapi.ControllerResponse;
-import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.MigrationPushStrategyResponse;
@@ -74,7 +71,6 @@ import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.controllerapi.VersionResponse;
 import com.linkedin.venice.controllerapi.routes.AdminCommandExecutionResponse;
-import com.linkedin.venice.d2.D2ClientFactory;
 import com.linkedin.venice.datarecovery.DataRecoveryClient;
 import com.linkedin.venice.datarecovery.EstimateDataRecoveryTimeCommand;
 import com.linkedin.venice.datarecovery.MonitorCommand;
@@ -116,10 +112,8 @@ import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.avro.SchemaCompatibility;
 import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
 import com.linkedin.venice.security.SSLFactory;
-import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
-import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.utils.ConfigCommonUtils;
@@ -209,8 +203,6 @@ public class AdminTool {
   static final PubSubTopicRepository TOPIC_REPOSITORY = new PubSubTopicRepository();
 
   public static void main(String[] args) throws Exception {
-    // Generate PubSubClientsFactory from java system properties, apache kafka adapter is the default one.
-    PubSubClientsFactory pubSubClientsFactory = new PubSubClientsFactory(new VeniceProperties(System.getProperties()));
     CommandLine cmd = getCommandLine(args);
     try {
       Command foundCommand = ensureOnlyOneCommand(cmd);
@@ -234,6 +226,10 @@ public class AdminTool {
        * Initialize SSL config if provided.
        */
       buildSslFactory(cmd);
+
+      // Generate PubSubClientsFactory from java system properties, apache kafka adapter is the default one.
+      PubSubClientsFactory pubSubClientsFactory =
+          new PubSubClientsFactory(new VeniceProperties(System.getProperties()));
 
       boolean hasUrlArg = Arrays.asList(foundCommand.getRequiredArgs()).contains(Arg.URL);
       if (hasUrlArg) {
@@ -668,14 +664,33 @@ public class AdminTool {
      * Gather all the options we have in "options"
      */
     Options options = new Options();
+
+    // Create mutually exclusive option group for starting position arguments
+    OptionGroup startingPositionGroup = new OptionGroup();
+    startingPositionGroup.setRequired(false); // Not required by default, specific commands will validate
+
+    // Add all options except the mutually exclusive ones
     for (Arg arg: Arg.values()) {
-      createOpt(arg, arg.isParameterized(), arg.getHelpText(), options);
+      if (arg == Arg.STARTING_OFFSET || arg == Arg.STARTING_POSITION) {
+        // Add mutually exclusive starting position options to the group
+        Option option = new Option(arg.first(), arg.toString(), arg.isParameterized(), arg.getHelpText());
+        startingPositionGroup.addOption(option);
+      } else {
+        createOpt(arg, arg.isParameterized(), arg.getHelpText(), options);
+      }
     }
+
+    // Add the mutually exclusive group to options
+    options.addOptionGroup(startingPositionGroup);
 
     Options parameterOptionsForHelp = new Options();
     for (Object obj: options.getOptions()) {
       Option o = (Option) obj;
       parameterOptionsForHelp.addOption(o);
+    }
+    // Add the starting position group options to help as well
+    for (Option option: startingPositionGroup.getOptions()) {
+      parameterOptionsForHelp.addOption(option);
     }
 
     options.addOptionGroup(commandGroup);
@@ -1528,15 +1543,7 @@ public class AdminTool {
     // Check SSL configs in JVM system arguments for ZK
     String zkSSLFile = getOptionalArgument(cmd, Arg.ZK_SSL_CONFIG_FILE, "");
     ZkClient zkClient = readZKConfigAndBuildZKClient(veniceZookeeperUrl, zkSSLFile);
-
-    String consumerConfigFile = getOptionalArgument(cmd, Arg.KAFKA_CONSUMER_CONFIG_FILE, "");
-    // Construct consumer to dump admin message
-    Properties consumerProperties =
-        consumerConfigFile.isEmpty() ? new Properties() : loadProperties(cmd, Arg.KAFKA_CONSUMER_CONFIG_FILE);
-    String pubSubBrokerUrl = getRequiredArgument(cmd, Arg.KAFKA_BOOTSTRAP_SERVERS, Command.RECOVER_STORE_METADATA);
-    consumerProperties = DumpAdminMessages.getPubSubConsumerProperties(pubSubBrokerUrl, consumerProperties);
-    PubSubConsumerAdapter consumer = getConsumer(consumerProperties, pubSubClientsFactory);
-
+    PubSubConsumerAdapter consumer = getConsumer(pubSubClientsFactory, createConsumerContext(cmd));
     try {
       RecoverStoreMetadata.recover(
           zkClient,
@@ -1764,9 +1771,8 @@ public class AdminTool {
   private static void deleteKafkaTopic(CommandLine cmd, PubSubClientsFactory pubSubClientsFactory) throws Exception {
     long startTime = System.currentTimeMillis();
     String kafkaBootstrapServer = getRequiredArgument(cmd, Arg.KAFKA_BOOTSTRAP_SERVERS);
-    Properties properties = loadProperties(cmd, Arg.KAFKA_CONSUMER_CONFIG_FILE);
-    properties.put(KAFKA_BOOTSTRAP_SERVERS, kafkaBootstrapServer);
-    VeniceProperties veniceProperties = new VeniceProperties(properties);
+    ConsumerContext context = createConsumerContext(cmd);
+    VeniceProperties veniceProperties = context.getVeniceProperties();
     int kafkaTimeOut = 30 * Time.MS_PER_SECOND;
     int topicDeletionStatusPollingInterval = 2 * Time.MS_PER_SECOND;
     if (cmd.hasOption(Arg.KAFKA_OPERATION_TIMEOUT.toString())) {
@@ -1803,33 +1809,11 @@ public class AdminTool {
   }
 
   private static void dumpAdminMessages(CommandLine cmd, PubSubClientsFactory pubSubClientsFactory) {
-    Properties consumerProperties = loadProperties(cmd, Arg.KAFKA_CONSUMER_CONFIG_FILE);
-    VeniceProperties veniceProperties = new VeniceProperties(consumerProperties);
-    String pubSubBrokerUrl = getRequiredArgument(cmd, Arg.KAFKA_BOOTSTRAP_SERVERS);
-    consumerProperties = DumpAdminMessages.getPubSubConsumerProperties(pubSubBrokerUrl, consumerProperties);
-    PubSubPositionTypeRegistry pubSubPositionTypeRegistry =
-        PubSubPositionTypeRegistry.fromPropertiesOrDefault(veniceProperties);
-    PubSubPositionDeserializer pubSubPositionDeserializer = new PubSubPositionDeserializer(pubSubPositionTypeRegistry);
-    String startingOffset = getOptionalArgument(cmd, Arg.STARTING_OFFSET);
-    String startingPositionArg = getOptionalArgument(cmd, Arg.STARTING_POSITION);
-    if (startingOffset == null && startingPositionArg == null) {
-      printErrAndExit(
-          "At least one of " + Arg.STARTING_OFFSET.getArgName() + " or " + Arg.STARTING_POSITION.getArgName()
-              + " is required.");
-    }
-    if (startingOffset != null && startingPositionArg != null) {
-      printErrAndExit(
-          "Only one of " + Arg.STARTING_OFFSET.getArgName() + " or " + Arg.STARTING_POSITION.getArgName()
-              + " is allowed.");
-    }
-    PubSubPosition startingPosition;
-    if (startingOffset != null) {
-      startingPosition = PubSubUtil.fromKafkaOffset(Long.parseLong(getRequiredArgument(cmd, Arg.STARTING_OFFSET)));
-    } else {
-      startingPosition = PubSubUtil.parsePositionWireFormat(startingPositionArg, pubSubPositionDeserializer);
-    }
+    ConsumerContext context = createConsumerContext(cmd);
+    PubSubPosition startingPosition = parsePositionFromArgs(cmd, context.getPositionDeserializer(), true);
+    LOGGER.info("Dump admin messages with starting position: {}", startingPosition);
     List<DumpAdminMessages.AdminOperationInfo> adminMessages = DumpAdminMessages.dumpAdminMessages(
-        getConsumer(consumerProperties, pubSubClientsFactory),
+        getConsumer(pubSubClientsFactory, context),
         getRequiredArgument(cmd, Arg.CLUSTER),
         startingPosition,
         Integer.parseInt(getRequiredArgument(cmd, Arg.MESSAGE_COUNT)));
@@ -1837,46 +1821,34 @@ public class AdminTool {
   }
 
   private static void dumpControlMessages(CommandLine cmd, PubSubClientsFactory pubSubClientsFactory) {
-    Properties consumerProps = loadProperties(cmd, Arg.KAFKA_CONSUMER_CONFIG_FILE);
-    String kafkaUrl = getRequiredArgument(cmd, Arg.KAFKA_BOOTSTRAP_SERVERS);
-
-    consumerProps.setProperty(KAFKA_BOOTSTRAP_SERVERS, kafkaUrl);
-    // This is a temporary fix for the issue described here
-    // https://stackoverflow.com/questions/37363119/kafka-producer-org-apache-kafka-common-serialization-stringserializer-could-no
-    // In our case "com.linkedin.venice.serialization.KafkaKeySerializer" class can not be found
-    // because class loader has no venice-common in class path. This can be only reproduced on JDK11
-    // Trying to avoid class loading via Kafka's ConfigDef class
-    consumerProps.put(KEY_DESERIALIZER_CLASS_CONFIG, KafkaKeySerializer.class);
-    consumerProps.put(VALUE_DESERIALIZER_CLASS_CONFIG, KafkaValueSerializer.class);
-
-    String kafkaTopic = getRequiredArgument(cmd, Arg.KAFKA_TOPIC_NAME);
+    String topic = getRequiredArgument(cmd, Arg.KAFKA_TOPIC_NAME);
     int partitionNumber = Integer.parseInt(getRequiredArgument(cmd, Arg.KAFKA_TOPIC_PARTITION));
-    // TODO: Support base64-encoded position + type, and deserialize via PubSubPositionTypeRegistry.
-    PubSubPosition startingPosition =
-        PubSubUtil.fromKafkaOffset(Long.parseLong(getRequiredArgument(cmd, Arg.STARTING_OFFSET)));
+    ConsumerContext context = createConsumerContext(cmd);
+    PubSubPosition startingPosition = parsePositionFromArgs(cmd, context.getPositionDeserializer(), true);
     int messageCount = Integer.parseInt(getRequiredArgument(cmd, Arg.MESSAGE_COUNT));
-    try (PubSubConsumerAdapter consumer = getConsumer(consumerProps, pubSubClientsFactory)) {
-      new ControlMessageDumper(consumer, kafkaTopic, partitionNumber, startingPosition, messageCount).fetch().display();
+    LOGGER.info(
+        "Dump control messages from topic-partition: {}, starting position: {}, message count: {}",
+        Utils.getReplicaId(topic, partitionNumber),
+        startingPosition,
+        messageCount);
+    try (PubSubConsumerAdapter consumer = getConsumer(pubSubClientsFactory, context)) {
+      new ControlMessageDumper(consumer, topic, partitionNumber, startingPosition, messageCount).fetch().display();
     }
   }
 
   private static void queryKafkaTopic(CommandLine cmd, PubSubClientsFactory pubSubClientsFactory)
       throws java.text.ParseException {
-    Properties consumerProps = loadProperties(cmd, Arg.KAFKA_CONSUMER_CONFIG_FILE);
-    String kafkaUrl = getRequiredArgument(cmd, Arg.KAFKA_BOOTSTRAP_SERVERS);
-    consumerProps.setProperty(KAFKA_BOOTSTRAP_SERVERS, kafkaUrl);
-
-    String kafkaTopic = getRequiredArgument(cmd, Arg.KAFKA_TOPIC_NAME);
+    String topic = getRequiredArgument(cmd, Arg.KAFKA_TOPIC_NAME);
     String startDateInPST = getRequiredArgument(cmd, Arg.START_DATE);
     String endDateInPST = getOptionalArgument(cmd, Arg.END_DATE);
     String progressInterval = getOptionalArgument(cmd, Arg.PROGRESS_INTERVAL);
     String keyString = getRequiredArgument(cmd, Arg.KEY);
-
-    try (PubSubConsumerAdapter consumer = getConsumer(consumerProps, pubSubClientsFactory)) {
+    ConsumerContext context = createConsumerContext(cmd);
+    try (PubSubConsumerAdapter consumer = getConsumer(pubSubClientsFactory, context)) {
       TopicMessageFinder.find(
           controllerClient,
           consumer,
-          kafkaTopic,
+          topic,
           keyString,
           Utils.parseDateTimeToEpoch(startDateInPST, DEFAULT_DATE_FORMAT, PST_TIME_ZONE),
           endDateInPST == null
@@ -1888,21 +1860,11 @@ public class AdminTool {
 
   private static void dumpKafkaTopic(CommandLine cmd, PubSubClientsFactory pubSubClientsFactory)
       throws java.text.ParseException {
-    Properties consumerProps = loadProperties(cmd, Arg.KAFKA_CONSUMER_CONFIG_FILE);
-    String kafkaUrl = getRequiredArgument(cmd, Arg.KAFKA_BOOTSTRAP_SERVERS);
-
-    consumerProps.setProperty(KAFKA_BOOTSTRAP_SERVERS, kafkaUrl);
-    consumerProps.put(KEY_DESERIALIZER_CLASS_CONFIG, KafkaKeySerializer.class);
-    consumerProps.put(VALUE_DESERIALIZER_CLASS_CONFIG, KafkaValueSerializer.class);
-
-    String kafkaTopic = getRequiredArgument(cmd, Arg.KAFKA_TOPIC_NAME);
+    String topic = getRequiredArgument(cmd, Arg.KAFKA_TOPIC_NAME);
     // optional arguments
     int partitionNumber = (getOptionalArgument(cmd, Arg.KAFKA_TOPIC_PARTITION) == null)
         ? -1
         : Integer.parseInt(getOptionalArgument(cmd, Arg.KAFKA_TOPIC_PARTITION));
-    // TODO: Support base64-encoded position + type, and deserialize via PubSubPositionTypeRegistry.
-    PubSubPosition startingPosition =
-        PubSubUtil.fromKafkaOffset(Long.parseLong(getOptionalArgument(cmd, Arg.STARTING_OFFSET, "-1")));
     long messageCount = (getOptionalArgument(cmd, Arg.MESSAGE_COUNT) == null)
         ? -1
         : Integer.parseInt(getOptionalArgument(cmd, Arg.MESSAGE_COUNT));
@@ -1917,10 +1879,6 @@ public class AdminTool {
     String startDatetime = getOptionalArgument(cmd, Arg.START_DATE);
     long startTimestamp =
         startDatetime == null ? -1 : Utils.parseDateTimeToEpoch(startDatetime, DEFAULT_DATE_FORMAT, PST_TIME_ZONE);
-    if (startTimestamp != -1 && !PubSubSymbolicPosition.EARLIEST.equals(startingPosition)) {
-      throw new VeniceException("Only one of start date and starting offset can be specified");
-    }
-
     String endDatetime = getOptionalArgument(cmd, Arg.END_DATE);
     long endTimestamp =
         endDatetime == null ? -1 : Utils.parseDateTimeToEpoch(endDatetime, DEFAULT_DATE_FORMAT, PST_TIME_ZONE);
@@ -1929,9 +1887,33 @@ public class AdminTool {
     boolean logDataRecord = cmd.hasOption(Arg.LOG_DATA_RECORD.toString());
     boolean logRmdRecord = cmd.hasOption(Arg.LOG_RMD_RECORD.toString());
     boolean logTsRecord = cmd.hasOption(Arg.LOG_TS_RECORD.toString());
-    try (PubSubConsumerAdapter consumer = getConsumer(consumerProps, pubSubClientsFactory)) {
+
+    ConsumerContext context = createConsumerContext(cmd);
+    PubSubPosition startingPosition = parsePositionFromArgs(cmd, context.getPositionDeserializer(), false);
+    // If no starting position provided, default to offset -1 (earliest)
+    if (startingPosition == null) {
+      startingPosition = PubSubSymbolicPosition.EARLIEST;
+    }
+    if (startTimestamp != -1 && !PubSubSymbolicPosition.EARLIEST.equals(startingPosition)) {
+      throw new VeniceException("Only one of start date and starting offset can be specified");
+    }
+    LOGGER.info(
+        "Dump topic-partition: {} with parameters messageCount: {}, "
+            + "maxConsumeAttempts: {}, startDatetime: {}, endDatetime: {}, logMetadata: {}, logDataRecord: {}, "
+            + "logRmdRecord: {}, logTsRecord: {}, startingPosition: {}",
+        Utils.getReplicaId(topic, partitionNumber),
+        messageCount,
+        maxConsumeAttempts,
+        startDatetime,
+        endDatetime,
+        logMetadata,
+        logDataRecord,
+        logRmdRecord,
+        logTsRecord,
+        startingPosition);
+    try (PubSubConsumerAdapter consumer = getConsumer(pubSubClientsFactory, context)) {
       PubSubTopicPartition topicPartition =
-          new PubSubTopicPartitionImpl(TOPIC_REPOSITORY.getTopic(kafkaTopic), partitionNumber);
+          new PubSubTopicPartitionImpl(TOPIC_REPOSITORY.getTopic(topic), partitionNumber);
       PubSubPosition startPosition =
           KafkaTopicDumper.calculateStartingPosition(consumer, topicPartition, startingPosition, startTimestamp);
       PubSubPosition endingPosition = KafkaTopicDumper.calculateEndingPosition(consumer, topicPartition, endTimestamp);
@@ -1939,7 +1921,7 @@ public class AdminTool {
         messageCount = consumer.positionDifference(topicPartition, endingPosition, startPosition);
       }
       LOGGER.info(
-          "TopicPartition: {} Start offset: {}, End offset: {}, Message count: {}",
+          "TopicPartition: {} start position: {}, end position: {}, message count: {}",
           topicPartition,
           startPosition,
           endingPosition,
@@ -2097,7 +2079,7 @@ public class AdminTool {
 
     ChildAwareResponse response = srcControllerClient.listChildControllers(srcClusterName);
 
-    if (response.getChildDataCenterControllerUrlMap() == null && response.getChildDataCenterControllerD2Map() == null) {
+    if (response.getChildDataCenterControllerUrlMap() == null) {
       // This is a controller in single datacenter setup
       printMigrationStatus(srcControllerClient, storeName, printFunction);
       printMigrationStatus(destControllerClient, storeName, printFunction);
@@ -2143,7 +2125,7 @@ public class AdminTool {
     checkPreconditionForStoreMigration(srcControllerClient, destControllerClient);
 
     ChildAwareResponse response = destControllerClient.listChildControllers(destClusterName);
-    if (response.getChildDataCenterControllerUrlMap() == null && response.getChildDataCenterControllerD2Map() == null) {
+    if (response.getChildDataCenterControllerUrlMap() == null) {
       // This is a controller in single datacenter setup
       System.out.println("WARN: fabric option is ignored on child controller.");
       if (isClonedStoreOnline(srcControllerClient, destControllerClient, storeName)) {
@@ -2277,17 +2259,6 @@ public class AdminTool {
         response.getChildDataCenterControllerUrlMap()
             .forEach(
                 (key, value) -> controllerClientMap.put(key, new ControllerClient(clusterName, value, sslFactory)));
-      }
-      if (response.getChildDataCenterControllerD2Map() != null) {
-        // TODO: D2Client
-        response.getChildDataCenterControllerD2Map()
-            .forEach(
-                (key, value) -> controllerClientMap.put(
-                    key,
-                    new D2ControllerClient(
-                        response.getD2ServiceName(),
-                        clusterName,
-                        D2ClientFactory.getD2Client(value, sslFactory))));
       }
       return controllerClientMap;
     });
@@ -3322,8 +3293,7 @@ public class AdminTool {
     String clusterName = getRequiredArgument(cmd, Arg.CLUSTER);
     try {
       ChildAwareResponse response = checkControllerResponse(controllerClient.listChildControllers(clusterName));
-      if (response.getChildDataCenterControllerUrlMap() == null
-          && response.getChildDataCenterControllerD2Map() == null) {
+      if (response.getChildDataCenterControllerUrlMap() == null) {
         throw new VeniceException("ERROR: Child controller could not run fabric buildout commands");
       }
       System.out.println("Enabling store migration from/to cluster " + clusterName);
@@ -3702,7 +3672,7 @@ public class AdminTool {
       String srcFabric,
       String destFabric) {
     ChildAwareResponse response = checkControllerResponse(controllerClient.listChildControllers(clusterName));
-    if (response.getChildDataCenterControllerUrlMap() == null && response.getChildDataCenterControllerD2Map() == null) {
+    if (response.getChildDataCenterControllerUrlMap() == null) {
       throw new VeniceException("ERROR: Child controller could not run fabric buildout commands");
     }
     Map<String, ControllerClient> childControllerClientMap = getControllerClientMap(clusterName, response);
@@ -3729,6 +3699,42 @@ public class AdminTool {
 
   private static void createOpt(Arg name, boolean hasArg, String help, Options options) {
     options.addOption(new Option(name.first(), name.toString(), hasArg, help));
+  }
+
+  /**
+   * Helper method to parse position from mutually exclusive offset/position arguments.
+   * Handles both STARTING_OFFSET/STARTING_POSITION pairs.
+   * Uses STARTING_OFFSET and STARTING_POSITION arguments internally.
+   *
+   * @param cmd CommandLine object containing parsed arguments
+   * @param pubSubPositionDeserializer Deserializer for position wire format
+   * @param required Whether at least one of the arguments is required
+   * @return PubSubPosition parsed from the provided arguments, or null if neither provided and not required
+   */
+  @VisibleForTesting
+  static PubSubPosition parsePositionFromArgs(
+      CommandLine cmd,
+      PubSubPositionDeserializer pubSubPositionDeserializer,
+      boolean required) {
+    boolean hasOffset = cmd.hasOption(Arg.STARTING_OFFSET.first());
+    boolean hasPosition = cmd.hasOption(Arg.STARTING_POSITION.first());
+
+    if (required && !hasOffset && !hasPosition) {
+      printErrAndExit(
+          "At least one of " + Arg.STARTING_OFFSET.getArgName() + " or " + Arg.STARTING_POSITION.getArgName()
+              + " is required.");
+    }
+
+    if (!hasOffset && !hasPosition) {
+      return null; // Neither provided and not required
+    }
+
+    if (hasOffset) {
+      return PubSubUtil.fromKafkaOffset(Long.parseLong(cmd.getOptionValue(Arg.STARTING_OFFSET.first())));
+    } else {
+      return PubSubUtil
+          .parsePositionWireFormat(cmd.getOptionValue(Arg.STARTING_POSITION.first()), pubSubPositionDeserializer);
+    }
   }
 
   private static void createCommandOpt(Command command, OptionGroup group) {
@@ -3800,21 +3806,67 @@ public class AdminTool {
     }
   }
 
-  private static PubSubConsumerAdapter getConsumer(
-      Properties consumerProps,
-      PubSubClientsFactory pubSubClientsFactory) {
-    VeniceProperties veniceProperties = new VeniceProperties(consumerProps);
-    PubSubPositionTypeRegistry pubSubPositionTypeRegistry =
-        PubSubPositionTypeRegistry.fromPropertiesOrDefault(veniceProperties);
+  /**
+   * Helper class to encapsulate consumer properties and related dependencies.
+   * Package-private and final to allow direct access in tests without reflection.
+   */
+  static final class ConsumerContext {
+    private final VeniceProperties veniceProperties;
+    private final PubSubPositionTypeRegistry positionTypeRegistry;
+    private final PubSubPositionDeserializer positionDeserializer;
 
+    public ConsumerContext(
+        VeniceProperties veniceProperties,
+        PubSubPositionTypeRegistry positionTypeRegistry,
+        PubSubPositionDeserializer positionDeserializer) {
+      this.veniceProperties = veniceProperties;
+      this.positionTypeRegistry = positionTypeRegistry;
+      this.positionDeserializer = positionDeserializer;
+    }
+
+    public VeniceProperties getVeniceProperties() {
+      return veniceProperties;
+    }
+
+    public PubSubPositionTypeRegistry getPositionTypeRegistry() {
+      return positionTypeRegistry;
+    }
+
+    public PubSubPositionDeserializer getPositionDeserializer() {
+      return positionDeserializer;
+    }
+  }
+
+  /**
+   * Creates a complete consumer context with all necessary dependencies.
+   * Consolidates the repeated pattern of loading consumer properties, setting bootstrap servers,
+   * and creating VeniceProperties, PubSubPositionTypeRegistry, and PubSubPositionDeserializer.
+   *
+   * @param cmd CommandLine containing the arguments
+   */
+  private static ConsumerContext createConsumerContext(CommandLine cmd) {
+    // Load consumer properties and set bootstrap servers
+    Properties consumerProps = loadProperties(cmd, Arg.KAFKA_CONSUMER_CONFIG_FILE);
+    String pubSubBrokerUrl = getRequiredArgument(cmd, Arg.KAFKA_BOOTSTRAP_SERVERS);
+    consumerProps = DumpAdminMessages.getPubSubConsumerProperties(pubSubBrokerUrl, consumerProps);
+
+    // Create all necessary dependencies
+    VeniceProperties veniceProperties = new VeniceProperties(consumerProps);
+    PubSubPositionTypeRegistry positionTypeRegistry =
+        PubSubPositionTypeRegistry.fromPropertiesOrDefault(veniceProperties);
+    PubSubPositionDeserializer positionDeserializer = new PubSubPositionDeserializer(positionTypeRegistry);
+
+    return new ConsumerContext(veniceProperties, positionTypeRegistry, positionDeserializer);
+  }
+
+  private static PubSubConsumerAdapter getConsumer(PubSubClientsFactory pubSubClientsFactory, ConsumerContext context) {
     return pubSubClientsFactory.getConsumerAdapterFactory()
         .create(
             new PubSubConsumerAdapterContext.Builder()
                 .setPubSubMessageDeserializer(PubSubMessageDeserializer.createOptimizedDeserializer())
-                .setPubSubPositionTypeRegistry(pubSubPositionTypeRegistry)
-                .setVeniceProperties(veniceProperties)
+                .setPubSubPositionTypeRegistry(context.getPositionTypeRegistry())
+                .setVeniceProperties(context.getVeniceProperties())
                 .setConsumerName("admin-tool-topic-dumper")
                 .build());
   }
-
 }

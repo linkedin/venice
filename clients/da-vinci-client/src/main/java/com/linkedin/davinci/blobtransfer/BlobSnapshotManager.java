@@ -5,6 +5,7 @@ import com.linkedin.alpini.base.concurrency.Executors;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.store.AbstractStoragePartition;
+import com.linkedin.davinci.store.DelegatingStorageEngine;
 import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.davinci.store.rocksdb.RocksDBStoragePartition;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -285,6 +286,20 @@ public class BlobSnapshotManager {
   public void createSnapshot(String kafkaVersionTopic, int partitionId) {
     StorageEngine storageEngine =
         Objects.requireNonNull(storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic));
+    if (storageEngine instanceof DelegatingStorageEngine) {
+      DelegatingStorageEngine delegatingStorageEngine = (DelegatingStorageEngine) storageEngine;
+      if (delegatingStorageEngine.isKeyUrnCompressionEnabled(partitionId)) {
+        /**
+         * TODO: add blob transfer support for key urn compression.
+         */
+        throw new VeniceException(
+            "Cannot create snapshot for replica " + Utils.getReplicaId(kafkaVersionTopic, partitionId)
+                + " because key urn compression is enabled.");
+      }
+    } else {
+      throw new VeniceException("Storage engine is not an instance of DelegatingStorageEngine");
+    }
+
     AbstractStoragePartition partition = storageEngine.getPartitionOrThrow(partitionId);
     partition.createSnapshot();
   }
@@ -327,7 +342,7 @@ public class BlobSnapshotManager {
 
     if (storageMetadataService.getStoreVersionState(blobTransferRequest.getTopicName()) == null
         || storageMetadataService
-            .getLastOffset(blobTransferRequest.getTopicName(), blobTransferRequest.getPartition()) == null) {
+            .getLastOffset(blobTransferRequest.getTopicName(), blobTransferRequest.getPartition(), null) == null) {
       throw new VeniceException("Cannot get store version state or offset record from storage metadata service.");
     }
 
@@ -337,8 +352,8 @@ public class BlobSnapshotManager {
     java.nio.ByteBuffer storeVersionStateByte =
         ByteBuffer.wrap(storeVersionStateSerializer.serialize(blobTransferRequest.getTopicName(), storeVersionState));
 
-    OffsetRecord offsetRecord =
-        storageMetadataService.getLastOffset(blobTransferRequest.getTopicName(), blobTransferRequest.getPartition());
+    OffsetRecord offsetRecord = storageMetadataService
+        .getLastOffset(blobTransferRequest.getTopicName(), blobTransferRequest.getPartition(), null);
     java.nio.ByteBuffer offsetRecordByte = ByteBuffer.wrap(offsetRecord.toBytes());
 
     return new BlobTransferPartitionMetadata(

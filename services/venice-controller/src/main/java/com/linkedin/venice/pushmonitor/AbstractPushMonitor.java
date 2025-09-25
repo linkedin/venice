@@ -32,6 +32,7 @@ import com.linkedin.venice.meta.ViewConfig;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.HelixUtils;
+import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -57,6 +58,7 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
+import org.apache.commons.lang.StringUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -77,6 +79,7 @@ public abstract class AbstractPushMonitor
   public static final int MAX_PUSH_TO_KEEP = 5;
 
   private static final Logger LOGGER = LogManager.getLogger(AbstractPushMonitor.class);
+  private static final RedundantExceptionFilter REDUNDANT_EXCEPTION_FILTER = new RedundantExceptionFilter();
 
   private final OfflinePushAccessor offlinePushAccessor;
   private final String clusterName;
@@ -101,6 +104,7 @@ public abstract class AbstractPushMonitor
   private final DisabledPartitionStats disabledPartitionStats;
   private final String regionName;
   private final VeniceWriterFactory veniceWriterFactory;
+  private String sequentialRollForwardFirstRegion = null;
 
   public AbstractPushMonitor(
       String clusterName,
@@ -151,6 +155,11 @@ public abstract class AbstractPushMonitor
     this.isOfflinePushMonitorDaVinciPushStatusEnabled = controllerConfig.isDaVinciPushStatusEnabled();
     this.regionName = controllerConfig.getRegionName();
     this.veniceWriterFactory = veniceWriterFactory;
+    if (StringUtils.isNotEmpty(controllerConfig.getDeferredVersionSwapRegionRollforwardOrder())) {
+      List<String> rolloutOrderList =
+          RegionUtils.parseRegionRolloutOrderList(controllerConfig.getDeferredVersionSwapRegionRollforwardOrder());
+      this.sequentialRollForwardFirstRegion = rolloutOrderList.get(0);
+    }
     pushStatusCollector.start();
   }
 
@@ -954,10 +963,12 @@ public abstract class AbstractPushMonitor
               activeActiveRealTimeSourceKafkaURLs);
           newStatusDetails.append("kicked off buffer replay");
         } else if (!offlinePushStatus.getCurrentStatus().isTerminal()) {
-          LOGGER.info(
-              "{} is not ready to start buffer replay. Current state: {}",
-              offlinePushStatus.getKafkaTopic(),
-              offlinePushStatus.getCurrentStatus().toString());
+          if (!REDUNDANT_EXCEPTION_FILTER.isRedundantException(offlinePushStatus.getKafkaTopic())) {
+            LOGGER.info(
+                "{} is not ready to start buffer replay. Current state: {}",
+                offlinePushStatus.getKafkaTopic(),
+                offlinePushStatus.getCurrentStatus().toString());
+          }
         }
       }
 
@@ -1192,8 +1203,9 @@ public abstract class AbstractPushMonitor
 
           /**
            * Switch to the new version if:
-           * 1.deferred version swap is not enabled and it is not a target region push w/ deferred version swap
-           * 2.target region push w/ deferred swap is enabled and the current region matches the target region
+           * 1.sequential roll forward is enabled
+           * 2.deferred version swap is not enabled and it is not a target region push w/ deferred version swap
+           * 3.target region push w/ deferred swap is enabled and the current region matches the target region
            *
            * Do not switch to the new version now if:
            * 1.deferred version swap is enabled (it will be manually swapped at a later date)
@@ -1201,11 +1213,22 @@ public abstract class AbstractPushMonitor
            *  after targetSwapRegionWaitTime passes)
            */
           Set<String> targetRegions = RegionUtils.parseRegionsFilterList(version.getTargetSwapRegion());
+          boolean isSequentialRollForward = StringUtils.isNotEmpty(sequentialRollForwardFirstRegion)
+              && sequentialRollForwardFirstRegion.equals(regionName);
           boolean isTargetRegionPushWithDeferredSwap =
               version.isVersionSwapDeferred() && targetRegions.contains(regionName);
           boolean isNormalPush = !version.isVersionSwapDeferred();
           boolean isDeferredSwap = version.isVersionSwapDeferred() && targetRegions.isEmpty();
-          if (isTargetRegionPushWithDeferredSwap || isNormalPush) {
+          if (isSequentialRollForward) {
+            LOGGER.info(
+                "Swapping to version {} for store {} in region {} during sequential roll forward",
+                versionNumber,
+                storeName,
+                regionName);
+            int previousVersion = store.getCurrentVersion();
+            store.setCurrentVersion(versionNumber);
+            realTimeTopicSwitcher.transmitVersionSwapMessage(store, previousVersion, versionNumber);
+          } else if (isTargetRegionPushWithDeferredSwap || isNormalPush) {
             LOGGER.info(
                 "Swapping to version {} for store {} in region {} during "
                     + (isNormalPush ? "normal push" : "target region push with deferred version swap"),

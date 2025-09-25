@@ -122,7 +122,7 @@ public enum Arg {
   ),
   STARTING_POSITION(
       "starting_position", "sp", true,
-      "Starting <typeId:base64EncodedPositionBytes> when dumping admin messages, inclusive"
+      "Starting <typeId:base64EncodedPositionWfBytes> when dumping admin messages, inclusive"
   ), STARTING_OFFSET("starting_offset", "so", true, "Starting offset when dumping admin messages, inclusive"),
   MESSAGE_COUNT("message_count", "mc", true, "Max message count when dumping admin messages"),
   PARENT_DIRECTORY(
@@ -330,7 +330,10 @@ public enum Arg {
       "enum-schema-evolution-allowed", "esea", true, "Allow enum schema evolution for a store"
   ), INITIAL_STEP("initial-step", "is", true, "Initial step of the auto store migration"),
   ABORT_ON_FAILURE("abort-on-failure", "aof", true, "Abort the auto store migration if any step fails"),
-  STORE_LIFECYCLE_HOOKS_LIST("store-lifecycle-hooks-list", "slhl", true, "List of store lifecycle hooks");
+  STORE_LIFECYCLE_HOOKS_LIST("store-lifecycle-hooks-list", "slhl", true, "List of store lifecycle hooks"),
+  KEY_URN_COMPRESSION_EANBLED(
+      "key-urn-compression-enabled", "kuce", true, "Enable/Disable key urn compression for a store."
+  ), KEY_URN_FIELDS("key-urn-fields", "kuf", true, "Comma separated list of key urn fields.");
 
   private final String argName;
   private final String first;

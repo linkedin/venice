@@ -74,6 +74,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.SYSTEM_SCHEMA_READE
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUSH_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUSH_LIST;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP_WAIT_TIME_MINUTES;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TEMP_DIR_PREFIX;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.UNCREATED_VERSION_NUMBER;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VALUE_FIELD_PROP;
@@ -96,6 +97,7 @@ import com.linkedin.venice.controllerapi.RepushInfo;
 import com.linkedin.venice.controllerapi.RepushInfoResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
+import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.d2.D2ClientFactory;
 import com.linkedin.venice.etl.ETLValueSchemaTransformation;
@@ -431,6 +433,9 @@ public class VenicePushJob implements AutoCloseable {
               + " at the same time");
     }
 
+    pushJobSettingToReturn.targetRegionPushWithDeferredSwapWaitTime =
+        props.getInt(TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP_WAIT_TIME_MINUTES, -1);
+
     if (props.containsKey(TARGETED_REGION_PUSH_LIST)) {
       if (pushJobSettingToReturn.isTargetedRegionPushEnabled
           || pushJobSettingToReturn.isTargetRegionPushWithDeferredSwapEnabled) {
@@ -686,13 +691,20 @@ public class VenicePushJob implements AutoCloseable {
         initKIFRepushDetails();
       }
 
+      if (pushJobSetting.targetRegionPushWithDeferredSwapWaitTime > -1) {
+        controllerClient.updateStore(
+            pushJobSetting.storeName,
+            new UpdateStoreQueryParams()
+                .setTargetRegionSwapWaitTime(pushJobSetting.targetRegionPushWithDeferredSwapWaitTime));
+      }
+
       setupJobTimeoutMonitor();
       initPushJobDetails();
       logGreeting();
       sendPushJobDetailsToController();
       HadoopUtils.createDirectoryWithPermission(sharedTmpDir, PERMISSION_777);
       HadoopUtils.createDirectoryWithPermission(jobTmpDir, PERMISSION_700);
-      validateKafkaMessageEnvelopeSchema(pushJobSetting);
+      pushJobSetting.newKmeSchemasFromController = validateAndFetchNewKafkaMessageEnvelopeSchemas(pushJobSetting);
       validateRemoteHybridSettings(pushJobSetting);
       validateStoreSettingAndPopulate(controllerClient, pushJobSetting);
       inputStorageQuotaTracker = new InputStorageQuotaTracker(pushJobSetting.storeStorageQuota);
@@ -1318,13 +1330,6 @@ public class VenicePushJob implements AutoCloseable {
     } else {
       RepushInfo repushInfo = pushJobSetting.repushInfoResponse.getRepushInfo();
       pushJobSetting.kafkaInputBrokerUrl = repushInfo.getKafkaBrokerUrl();
-      pushJobSetting.systemSchemaClusterD2ServiceName = repushInfo.getSystemSchemaClusterD2ServiceName();
-      pushJobSetting.systemSchemaClusterD2ZKHost = repushInfo.getSystemSchemaClusterD2ZkHost();
-    }
-    if (pushJobSetting.isSystemSchemaReaderEnabled
-        && (StringUtils.isEmpty(pushJobSetting.systemSchemaClusterD2ServiceName)
-            || StringUtils.isEmpty(pushJobSetting.systemSchemaClusterD2ZKHost))) {
-      throw new VeniceException("D2 service name and zk host must be provided when system schema reader is enabled");
     }
   }
 
@@ -1384,6 +1389,7 @@ public class VenicePushJob implements AutoCloseable {
     // Prepare the param builder, which can be used by different scenarios.
     KafkaInputDictTrainer.ParamBuilder paramBuilder = new KafkaInputDictTrainer.ParamBuilder()
         .setKeySchema(AvroCompatibilityHelper.toParsingForm(pushJobSetting.storeKeySchema))
+        .setNewKMESchemasFromController(pushJobSetting.newKmeSchemasFromController)
         .setSslProperties(pushJobSetting.enableSSL ? sslProperties.get() : new Properties())
         .setCompressionDictSize(
             props.getInt(
@@ -1927,19 +1933,33 @@ public class VenicePushJob implements AutoCloseable {
     }
   }
 
-  private void validateKafkaMessageEnvelopeSchema(PushJobSetting setting) {
-    SchemaResponse response = ControllerClient.retryableRequest(
+  private Map<Integer, String> validateAndFetchNewKafkaMessageEnvelopeSchemas(PushJobSetting setting) {
+    // Obtain the highest schema for KME from controller
+    int localHighestKmeSchemaId = AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getCurrentProtocolVersion();
+
+    Map<Integer, String> newKmeSchemas = new HashMap<>();
+    MultiSchemaResponse multiSchemaResponse = ControllerClient.retryableRequest(
         kmeSchemaSystemStoreControllerClient,
         setting.controllerRetries,
-        c -> c.getValueSchema(
-            AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getSystemStoreName(),
-            AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getCurrentProtocolVersion()));
+        c -> c.getAllValueSchema(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getSystemStoreName()));
+    int highestKmeSchemaIdFromController = -1;
+    for (MultiSchemaResponse.Schema schema: multiSchemaResponse.getSchemas()) {
+      if (schema.getId() > highestKmeSchemaIdFromController) {
+        highestKmeSchemaIdFromController = schema.getId();
+      }
 
-    if (response.isError()) {
-      throw new VeniceException(
-          "KME protocol is upgraded in the push job but not in the Venice backend; Please contact Venice team. Error : "
-              + response.getError());
+      if (schema.getId() > localHighestKmeSchemaId) {
+        newKmeSchemas.put(schema.getId(), schema.getSchemaStr());
+      }
     }
+
+    if (highestKmeSchemaIdFromController < localHighestKmeSchemaId) {
+      throw new VeniceException(
+          "KME protocol is upgraded in the push job but not in the Venice controller; Please contact Venice team."
+              + "Local KME protocol version: " + localHighestKmeSchemaId
+              + ", highest schema version in Venice controller: " + highestKmeSchemaIdFromController);
+    }
+    return newKmeSchemas;
   }
 
   private Schema getKeySchemaFromController(ControllerClient controllerClient, int retries, String storeName) {

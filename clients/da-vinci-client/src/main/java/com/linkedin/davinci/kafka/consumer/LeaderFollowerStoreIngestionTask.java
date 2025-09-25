@@ -71,7 +71,6 @@ import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.pubsub.ImmutablePubSubMessage;
 import com.linkedin.venice.pubsub.PubSubConstants;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
-import com.linkedin.venice.pubsub.PubSubUtil;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeader;
@@ -1416,11 +1415,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       OffsetRecord offsetRecord = partitionConsumptionState.getOffsetRecord();
       // DaVinci clients don't need to maintain leader production states
       if (!isDaVinciClient) {
-        // also update the leader topic offset using the upstream offset in ProducerMetadata
-        if (shouldUpdateUpstreamOffset(consumerRecord)) {
+        // also update the leader topic position using the upstream position in LeaderMetadata
+        PubSubPosition newUpstreamPosition = extractUpstreamPosition(consumerRecord);
+        if (!PubSubSymbolicPosition.EARLIEST.equals(newUpstreamPosition)) {
           final String sourceKafkaUrl = sourceKafkaUrlSupplier.get();
-          final PubSubPosition newUpstreamOffset =
-              PubSubUtil.fromKafkaOffset(kafkaValue.leaderMetadataFooter.upstreamOffset);
           PubSubTopic upstreamTopic = offsetRecord.getLeaderTopic(pubSubTopicRepository);
           if (upstreamTopic == null) {
             upstreamTopic = versionTopic;
@@ -1431,7 +1429,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             checkAndHandleUpstreamOffsetRewind(
                 partitionConsumptionState,
                 consumerRecord,
-                newUpstreamOffset,
+                newUpstreamPosition,
                 previousUpstreamOffset,
                 this);
           } else {
@@ -1439,7 +1437,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
              * Keep updating the upstream offset no matter whether there is a rewind or not; rewind could happen
              * to the true leader when the old leader doesn't stop producing.
              */
-            updateUpstreamTopicOffsetFunction.apply(sourceKafkaUrl, upstreamTopic, newUpstreamOffset);
+            updateUpstreamTopicOffsetFunction.apply(sourceKafkaUrl, upstreamTopic, newUpstreamPosition);
           }
         }
         if (!dryRun) {
@@ -1790,8 +1788,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
   @Override
   protected long measureHybridHeartbeatLag(PartitionConsumptionState partitionConsumptionState, boolean shouldLogLag) {
-    // Da Vinci does not have heartbeat monitoring service.
-    if (isDaVinciClient()) {
+    if (getHeartbeatMonitoringService() == null) {
       return Long.MAX_VALUE;
     }
     if (partitionConsumptionState.getLeaderFollowerState().equals(LEADER)) {
@@ -1807,8 +1804,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   protected long measureHybridHeartbeatTimestamp(
       PartitionConsumptionState partitionConsumptionState,
       boolean shouldLogLag) {
-    // Da Vinci does not have heartbeat monitoring service.
-    if (isDaVinciClient()) {
+    if (getHeartbeatMonitoringService() == null) {
       return 0;
     }
     if (partitionConsumptionState.getLeaderFollowerState().equals(LEADER)) {
@@ -1834,7 +1830,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   protected void reportIfCatchUpVersionTopicOffset(PartitionConsumptionState pcs) {
     int partition = pcs.getPartition();
 
-    if (pcs.isHybrid() && pcs.isEndOfPushReceived() && pcs.isLatchCreated() && !pcs.isLatchReleased()) {
+    if (pcs.isHybrid() && pcs.isEndOfPushReceived() && !isDaVinciClient() && pcs.isLatchCreated()
+        && !pcs.isLatchReleased()) {
       long lag = measureLagWithCallToPubSub(
           localKafkaServer,
           versionTopic,
@@ -2125,7 +2122,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           && ((System.currentTimeMillis() - pcs.getLastLeaderCompleteStateUpdateInMs()) <= getServerConfig()
               .getLeaderCompleteStateCheckInFollowerValidIntervalMs());
     }
-
     if (shouldLogLag) {
       StringBuilder leaderCompleteHeaderDetails = new StringBuilder();
       if (isHybridFollower) {
@@ -2250,7 +2246,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       // Not enabled!
       return;
     }
-
     if (partitionConsumptionState.getLeaderFollowerState().equals(LEADER)) {
       getHeartbeatMonitoringService().recordLeaderHeartbeat(
           storeName,
@@ -2264,7 +2259,11 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           storeName,
           versionNumber,
           partitionConsumptionState.getPartition(),
-          serverConfig.getKafkaClusterUrlToAliasMap().get(kafkaUrl),
+          isDaVinciClient() ? "" : serverConfig.getKafkaClusterUrlToAliasMap().get(kafkaUrl), // For Da Vinci there is
+                                                                                              // no kafkaUrl mapping
+                                                                                              // configured and the
+                                                                                              // local region is default
+                                                                                              // to empty.
           consumerRecord.getValue().producerMetadata.messageTimestamp,
           partitionConsumptionState.isComplete());
     }
@@ -3553,7 +3552,19 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           compressor.get(),
           manifestContainer);
     } catch (Exception e) {
-      LOGGER.error("Unable to retrieve the stored value bytes for topic-partition: {}", topicPartition, e);
+      LOGGER.error(
+          "Unable to retrieve the stored value bytes for key: {}, topic-partition: {}",
+          new String(keyBytes),
+          topicPartition,
+          e);
+      return null;
+    }
+
+    if (valueBytes == null) {
+      LOGGER.warn(
+          "No value found in the storage engine for key: {}, topic-partition: {}",
+          new String(keyBytes),
+          topicPartition);
       return null;
     }
 
@@ -3562,7 +3573,11 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           ByteUtils.extractByteArray(valueBytes),
           AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion());
     } catch (Exception e) {
-      LOGGER.error("Unable to deserialize stored value bytes for topic-partition: {}", topicPartition, e);
+      LOGGER.error(
+          "Unable to deserialize stored value bytes for key: {}, topic-partition: {}",
+          new String(keyBytes),
+          topicPartition,
+          e);
       return null;
     }
   }

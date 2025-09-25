@@ -125,6 +125,7 @@ public class ControllerClient implements Closeable {
 
   private static final int DEFAULT_MAX_ATTEMPTS = 10;
   private static final int QUERY_JOB_STATUS_TIMEOUT = 60 * Time.MS_PER_SECOND;
+  private static final int QUERY_HEARTBEAT_TIMEOUT = 10 * Time.MS_PER_SECOND;
   private static final int DEFAULT_REQUEST_TIMEOUT_MS = 600 * Time.MS_PER_SECOND;
   private final Optional<SSLFactory> sslFactory;
   private final String clusterName;
@@ -674,6 +675,18 @@ public class ControllerClient implements Closeable {
     return rollbackToBackupVersion(storeName, "");
   }
 
+  public ControllerResponse rollForwardToFutureVersion(String storeName, String regionFilter, int timeoutMs) {
+    QueryParams params = newParams().add(NAME, storeName).add(REGIONS_FILTER, regionFilter);
+    return request(
+        ControllerRoute.ROLL_FORWARD_TO_FUTURE_VERSION,
+        params,
+        ControllerResponse.class,
+        timeoutMs,
+        1,
+        null,
+        null);
+  }
+
   public ControllerResponse rollForwardToFutureVersion(String storeName, String regionFilter) {
     QueryParams params = newParams().add(NAME, storeName).add(REGIONS_FILTER, regionFilter);
     return request(ControllerRoute.ROLL_FORWARD_TO_FUTURE_VERSION, params, ControllerResponse.class);
@@ -1187,7 +1200,11 @@ public class ControllerClient implements Closeable {
     return request(
         ControllerRoute.GET_HEARTBEAT_TIMESTAMP_FROM_SYSTEM_STORE,
         params,
-        SystemStoreHeartbeatResponse.class);
+        SystemStoreHeartbeatResponse.class,
+        QUERY_HEARTBEAT_TIMEOUT,
+        DEFAULT_MAX_ATTEMPTS,
+        null,
+        null);
   }
 
   public ControllerResponse configureActiveActiveReplicationForCluster(

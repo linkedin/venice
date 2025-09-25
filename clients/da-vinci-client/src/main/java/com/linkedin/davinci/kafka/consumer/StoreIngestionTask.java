@@ -41,6 +41,7 @@ import com.linkedin.davinci.stats.HostLevelIngestionStats;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
+import com.linkedin.davinci.store.DelegatingStorageEngine;
 import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.davinci.store.StoragePartitionAdjustmentTrigger;
 import com.linkedin.davinci.store.StoragePartitionConfig;
@@ -75,6 +76,7 @@ import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.Delete;
 import com.linkedin.venice.kafka.protocol.EndOfIncrementalPush;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
+import com.linkedin.venice.kafka.protocol.LeaderMetadata;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.StartOfIncrementalPush;
 import com.linkedin.venice.kafka.protocol.StartOfPush;
@@ -93,8 +95,10 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.PubSubContext;
+import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.PubSubUtil;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
@@ -404,6 +408,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final String hostName;
   private boolean skipAfterBatchPushUnsubEnabled = false;
   private final List<AutoCloseable> thingsToClose = new ArrayList<>();
+  private final Version version;
 
   public StoreIngestionTask(
       StorageService storageService,
@@ -419,6 +424,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       InternalDaVinciRecordTransformerConfig internalRecordTransformerConfig,
       Queue<VeniceNotifier> notifiers,
       Lazy<ZKHelixAdmin> zkHelixAdmin) {
+    this.version = version;
     this.storeVersionConfig = storeVersionConfig;
     this.readCycleDelayMs = storeVersionConfig.getKafkaReadCycleDelayMs();
     this.emptyPollSleepMs = storeVersionConfig.getKafkaEmptyPollSleepMs();
@@ -494,6 +500,20 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         storageService.getRefCountedStorageEngine(storeVersionName);
     this.thingsToClose.add(refCountedStorageEngine);
     this.storageEngine = Objects.requireNonNull(refCountedStorageEngine.get());
+    if ((this.storageEngine instanceof DelegatingStorageEngine)) {
+      DelegatingStorageEngine delegatingStorageEngine = (DelegatingStorageEngine) this.storageEngine;
+      delegatingStorageEngine.setKeyDictCompressionFunction(p -> {
+        PartitionConsumptionState pcs = partitionConsumptionStateMap.get(p);
+        if (pcs == null) {
+          throw new VeniceException("Partition " + p + " not found in partitionConsumptionStateMap");
+        }
+        return pcs.getKeyDictCompressor();
+      });
+    } else {
+      throw new VeniceException(
+          "Unexpected storage engine type: " + this.storageEngine.getClass() + " for store version: " + storeVersionName
+              + ", expected: DelegatingStorageEngine");
+    }
 
     this.serverConfig = builder.getServerConfig();
     this.defaultReadyToServeChecker = getDefaultReadyToServeChecker();
@@ -730,7 +750,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       recordTransformerOnRecoveryThreadPool.submit(() -> {
         try {
           long startTime = System.nanoTime();
-          recordTransformer.internalOnRecovery(storageEngine, partitionNumber, partitionStateSerializer, compressor);
+          recordTransformer
+              .internalOnRecovery(storageEngine, partitionNumber, partitionStateSerializer, compressor, pubSubContext);
           LOGGER.info(
               "DaVinciRecordTransformer onRecovery took {} ms for replica: {}",
               LatencyUtils.getElapsedTimeFromNSToMS(startTime),
@@ -1063,6 +1084,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
       // Log only once a minute per partition.
       boolean shouldLogLag = !REDUNDANT_LOGGING_FILTER.isRedundantException(msg);
+
       if (serverConfig.isUseHeartbeatLagForReadyToServeCheckEnabled()) {
         // Measure heartbeat lag for ready-to-serve check.
         isLagAcceptable = checkAndLogIfLagIsAcceptableForHybridStore(
@@ -2159,7 +2181,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         subscribedCount++;
 
         // Get the last persisted Offset record from metadata service
-        OffsetRecord offsetRecord = storageMetadataService.getLastOffset(topic, partition);
+        OffsetRecord offsetRecord = storageMetadataService.getLastOffset(topic, partition, pubSubContext);
 
         // Let's try to restore the state retrieved from the OffsetManager
         PartitionConsumptionState newPartitionConsumptionState = new PartitionConsumptionState(
@@ -2167,7 +2189,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             partition,
             offsetRecord,
             pubSubContext,
-            hybridStoreConfig.isPresent());
+            hybridStoreConfig.isPresent(),
+            schemaRepository.getKeySchema(storeName).getSchema());
+
         newPartitionConsumptionState.setCurrentVersionSupplier(isCurrentVersion);
 
         boolean isFutureVersionReady = isFutureVersionReady(kafkaVersionTopic, storeRepository);
@@ -2332,9 +2356,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       PartitionConsumptionState consumptionState = new PartitionConsumptionState(
           getReplicaId(versionTopic, partition),
           partition,
-          new OffsetRecord(partitionStateSerializer),
+          new OffsetRecord(partitionStateSerializer, pubSubContext),
           pubSubContext,
-          hybridStoreConfig.isPresent());
+          hybridStoreConfig.isPresent(),
+          schemaRepository.getKeySchema(storeName).getSchema());
       consumptionState.setCurrentVersionSupplier(isCurrentVersion);
       partitionConsumptionStateMap.put(partition, consumptionState);
       storageUtilizationManager.initPartition(partition);
@@ -2744,6 +2769,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     OffsetRecord offsetRecord = pcs.getOffsetRecord();
     // Check-pointing info required by the underlying storage engine
     offsetRecord.setDatabaseInfo(dbCheckpointingInfoReference.get());
+    // Update key urn compression dictionary
+    offsetRecord.setKeyUrnCompressionDict(pcs.getKeyUrnCompressionDict());
     storageMetadataService.put(this.kafkaVersionTopic, partition, offsetRecord);
     pcs.resetProcessedRecordSizeSinceLastSync();
     String msg = "Offset synced for replica: " + pcs.getReplicaId() + " - localVtOffset: {}";
@@ -3027,6 +3054,16 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     ingestionNotificationDispatcher.reportStarted(partitionConsumptionState);
     beginBatchWrite(persistedStoreVersionState.sorted, partitionConsumptionState);
     partitionConsumptionState.setStartOfPushTimestamp(startOfPushKME.producerMetadata.messageTimestamp);
+
+    /**
+     * Check whether we should enable key urn compression or not.
+     * This should only be called when handling StartOfPush Control Message, otherwise the dictionary
+     * to be built won't cover all the keys.
+     */
+    if (isDaVinciClient() && version.isKeyUrnCompressionEnabled() && serverConfig.isKeyUrnCompressionEnabled()) {
+      List<String> urnFields = version.getKeyUrnFields();
+      partitionConsumptionState.enableKeyUrnCompressionUponStartOfPush(urnFields);
+    }
   }
 
   protected void processEndOfPush(
@@ -4621,16 +4658,21 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   /**
-   * Validate if the given consumerRecord has a valid upstream offset to update from.
-   * @param consumerRecord
-   * @return true, if the record is not null and contains a valid upstream offset, otherwise false.
+   * Extract the upstream position from the given consumer record's leader metadata.
+   * @param consumerRecord the consumer record to extract upstream position from
+   * @return the upstream position if available, otherwise PubSubSymbolicPosition.EARLIEST
    */
-  protected boolean shouldUpdateUpstreamOffset(DefaultPubSubMessage consumerRecord) {
-    if (consumerRecord == null) {
-      return false;
+  protected PubSubPosition extractUpstreamPosition(DefaultPubSubMessage consumerRecord) {
+    if (consumerRecord == null || consumerRecord.getValue() == null
+        || consumerRecord.getValue().leaderMetadataFooter == null) {
+      return PubSubSymbolicPosition.EARLIEST;
     }
-    KafkaMessageEnvelope kafkaValue = consumerRecord.getValue();
-    return kafkaValue.leaderMetadataFooter != null && kafkaValue.leaderMetadataFooter.upstreamOffset >= 0;
+    LeaderMetadata leaderMetadataFooter = consumerRecord.getValue().leaderMetadataFooter;
+    return deserializePositionWithOffsetFallback(
+        pubSubContext.getPubSubPositionDeserializer(),
+        consumerRecord.getTopicPartition(),
+        leaderMetadataFooter.upstreamPubSubPosition,
+        leaderMetadataFooter.upstreamOffset);
   }
 
   /**
@@ -4923,5 +4965,43 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   @VisibleForTesting
   PubSubContext getPubSubContext() {
     return pubSubContext;
+  }
+
+  PubSubPosition deserializePositionWithOffsetFallback(
+      PubSubPositionDeserializer pubSubPositionDeserializer,
+      PubSubTopicPartition topicPartition,
+      ByteBuffer wireFormatBytes,
+      long offset) {
+    // Fast path: nothing to deserialize
+    if (wireFormatBytes == null || !wireFormatBytes.hasRemaining()) {
+      return PubSubUtil.fromKafkaOffset(offset);
+    }
+
+    try {
+      final PubSubPosition position = pubSubPositionDeserializer.toPosition(wireFormatBytes);
+
+      // Guard against regressions: honor the caller-provided minimum offset.
+      if (position.getNumericOffset() < offset) {
+        LOGGER.info(
+            "Deserialized position: {} is behind the provided offset: {}. Using offset-based position for: {}/{}",
+            position.getNumericOffset(),
+            offset,
+            topicPartition,
+            versionTopic);
+        return PubSubUtil.fromKafkaOffset(offset);
+      }
+
+      return position;
+    } catch (RuntimeException e) {
+      LOGGER.warn(
+          "Failed to deserialize PubSubPosition for: {}/{}. Using offset-based position (offset={}, bufferRem={}, bufferCap={}).",
+          topicPartition,
+          versionTopic,
+          offset,
+          wireFormatBytes.remaining(),
+          wireFormatBytes.capacity(),
+          e);
+      return PubSubUtil.fromKafkaOffset(offset);
+    }
   }
 }

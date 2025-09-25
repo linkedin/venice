@@ -749,7 +749,7 @@ public interface Admin extends AutoCloseable, Closeable {
 
   void writeEndOfPush(String clusterName, String storeName, int versionNumber, boolean alsoWriteStartOfPush);
 
-  boolean whetherEnableBatchPushFromAdmin(String storeName);
+  boolean whetherEnableBatchPushFromAdmin(String clusterName, String storeName);
 
   /**
    * Provision a new set of ACL for a venice store and its associated kafka topic.

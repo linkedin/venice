@@ -299,6 +299,7 @@ public class TestMultiDataCenterAdminOperations {
     adminMessage.executionId = executionId;
     updateStore.storeLifecycleHooks = Collections.emptyList();
     updateStore.blobTransferInServerEnabled = ConfigCommonUtils.ActivationState.NOT_SPECIFIED.name();
+    updateStore.keyUrnFields = Collections.emptyList();
     return adminOperationSerializer
         .serialize(adminMessage, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
   }

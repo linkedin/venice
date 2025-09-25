@@ -28,7 +28,6 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_SECONDS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_START_TIMESTAMP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_ETL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_KAFKA;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.SYSTEM_SCHEMA_READER_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUSH_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUSH_LIST;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP;
@@ -67,8 +66,6 @@ import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
-import com.linkedin.venice.controllerapi.RepushInfo;
-import com.linkedin.venice.controllerapi.RepushInfoResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
@@ -90,6 +87,7 @@ import com.linkedin.venice.meta.ViewConfigImpl;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.schema.AvroSchemaParseUtils;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.spark.datawriter.jobs.DataWriterSparkJob;
 import com.linkedin.venice.status.PushJobDetailsStatus;
 import com.linkedin.venice.status.protocol.PushJobDetails;
@@ -586,6 +584,16 @@ public class VenicePushJobTest {
     schemaResponse.setSchemaStr(VALUE_SCHEMA_STR);
     doReturn(schemaResponse).when(client).getValueSchema(anyString(), anyInt());
 
+    // mock fetching KME schema
+    MultiSchemaResponse multiSchemaResponse = mock(MultiSchemaResponse.class);
+    MultiSchemaResponse.Schema valueSchema = mock(MultiSchemaResponse.Schema.class);
+    when(valueSchema.getId()).thenReturn(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getCurrentProtocolVersion());
+    when(valueSchema.getSchemaStr())
+        .thenReturn(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getCurrentProtocolVersionSchema().toString());
+    when(multiSchemaResponse.getSchemas())
+        .thenReturn(Collections.singletonList(valueSchema).toArray(new MultiSchemaResponse.Schema[0]));
+    doReturn(multiSchemaResponse).when(client).getAllValueSchema(anyString());
+
     // mock storeinfo response
     StoreResponse storeResponse1 = new StoreResponse();
     storeResponse1.setStore(getStoreInfo(storeInfo, applyFirst));
@@ -998,6 +1006,33 @@ public class VenicePushJobTest {
   }
 
   @Test
+  public void testKMEValidationFailure() throws Exception {
+    Properties props = getVpjRequiredProperties();
+    props.put(KEY_FIELD_PROP, "id");
+    props.put(VALUE_FIELD_PROP, "name");
+    ControllerClient client = getClient();
+    // mock fetching KME schema and intentionally return an older version
+    MultiSchemaResponse multiSchemaResponse = mock(MultiSchemaResponse.class);
+    MultiSchemaResponse.Schema valueSchema = mock(MultiSchemaResponse.Schema.class);
+    when(valueSchema.getId()).thenReturn(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getCurrentProtocolVersion() - 1);
+    when(valueSchema.getSchemaStr())
+        .thenReturn(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getCurrentProtocolVersionSchema().toString());
+    when(multiSchemaResponse.getSchemas())
+        .thenReturn(Collections.singletonList(valueSchema).toArray(new MultiSchemaResponse.Schema[0]));
+    doReturn(multiSchemaResponse).when(client).getAllValueSchema(anyString());
+    try (VenicePushJob pushJob = getSpyVenicePushJob(props, client)) {
+      skipVPJValidation(pushJob);
+      try {
+        pushJob.run();
+        fail("Test should fail, but doesn't.");
+      } catch (VeniceException e) {
+        assertTrue(
+            e.getMessage().contains("KME protocol is upgraded in the push job but not in the Venice controller"));
+      }
+    }
+  }
+
+  @Test
   public void testTargetedRegionPushPostValidationConsumptionForBatchStore() throws Exception {
     Properties props = getVpjRequiredProperties();
     props.put(KEY_FIELD_PROP, "id");
@@ -1082,20 +1117,6 @@ public class VenicePushJobTest {
       assertThrows(VeniceValidationException.class, pushJob::run);
       verify(pushJob, never()).postValidationConsumption(any());
     }
-  }
-
-  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = "D2 service name and zk host must be provided when system schema reader is enabled")
-  public void testEnableSchemaReaderConfigValidation() {
-    Properties props = getVpjRequiredProperties();
-    props.put(SYSTEM_SCHEMA_READER_ENABLED, true);
-    VenicePushJob pushJob = spy(new VenicePushJob(PUSH_JOB_ID, props));
-    doReturn("test_store_v1").when(pushJob).getSourceTopicNameForKafkaInput(anyString(), any());
-    RepushInfoResponse repushInfoResponse = new RepushInfoResponse();
-    RepushInfo repushInfo = new RepushInfo();
-    repushInfo.setSystemSchemaClusterD2ServiceName("cluster0");
-    repushInfoResponse.setRepushInfo(repushInfo);
-    pushJob.getPushJobSetting().repushInfoResponse = repushInfoResponse;
-    pushJob.initKIFRepushDetails();
   }
 
   @Test

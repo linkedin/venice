@@ -33,11 +33,26 @@ public enum VeniceMetricsDimensions {
   /** {@link com.linkedin.venice.stats.dimensions.MessageType} */
   VENICE_MESSAGE_TYPE("venice.message.type"),
 
+  /** Fanout type for requests {@link com.linkedin.venice.stats.dimensions.RequestFanoutType} (e.g., original vs retry) */
+  VENICE_REQUEST_FANOUT_TYPE("venice.request.fanout_type"),
+
+  /** {@link com.linkedin.venice.stats.dimensions.RejectionReason} */
+  VENICE_REQUEST_REJECTION_REASON("venice.request.rejection_reason"),
+
+  /**
+   * {@link StreamProgress} Streaming delivery progress for batch responses
+   * (e.g., first, 50pct, 90pct, etc.)
+   */
+  VENICE_STREAM_PROGRESS("venice.stream.progress"),
+
   /** {@link RequestRetryAbortReason} */
   VENICE_REQUEST_RETRY_ABORT_REASON("venice.request.retry_abort_reason"),
 
   /** {@link RepushStoreTriggerSource} */
-  REPUSH_TRIGGER_SOURCE("repush.trigger.source");
+  REPUSH_TRIGGER_SOURCE("repush.trigger.source"),
+
+  /** Instance error type for blocked, unhealthy, and overloaded instances */
+  VENICE_INSTANCE_ERROR_TYPE("venice.instance.error_type");
 
   private final String[] dimensionName = new String[VeniceOpenTelemetryMetricNamingFormat.SIZE];
 

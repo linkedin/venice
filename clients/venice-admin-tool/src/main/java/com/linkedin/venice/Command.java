@@ -75,13 +75,20 @@ import static com.linkedin.venice.Arg.KAFKA_TOPIC_PARTITION;
 import static com.linkedin.venice.Arg.KAFKA_TOPIC_RETENTION_IN_MS;
 import static com.linkedin.venice.Arg.KEY;
 import static com.linkedin.venice.Arg.KEY_SCHEMA;
+import static com.linkedin.venice.Arg.KEY_URN_COMPRESSION_EANBLED;
+import static com.linkedin.venice.Arg.KEY_URN_FIELDS;
 import static com.linkedin.venice.Arg.LAG_FILTER_ENABLED;
 import static com.linkedin.venice.Arg.LARGEST_USED_RT_VERSION_NUMBER;
 import static com.linkedin.venice.Arg.LARGEST_USED_VERSION_NUMBER;
 import static com.linkedin.venice.Arg.LATEST_SUPERSET_SCHEMA_ID;
+import static com.linkedin.venice.Arg.LOG_DATA_RECORD;
+import static com.linkedin.venice.Arg.LOG_METADATA;
+import static com.linkedin.venice.Arg.LOG_RMD_RECORD;
+import static com.linkedin.venice.Arg.LOG_TS_RECORD;
 import static com.linkedin.venice.Arg.LOOK_BACK_MS;
 import static com.linkedin.venice.Arg.MAX_COMPACTION_LAG_SECONDS;
 import static com.linkedin.venice.Arg.MAX_NEARLINE_RECORD_SIZE_BYTES;
+import static com.linkedin.venice.Arg.MAX_POLL_ATTEMPTS;
 import static com.linkedin.venice.Arg.MAX_RECORD_SIZE_BYTES;
 import static com.linkedin.venice.Arg.MESSAGE_COUNT;
 import static com.linkedin.venice.Arg.MIGRATION_PUSH_STRATEGY;
@@ -95,6 +102,7 @@ import static com.linkedin.venice.Arg.NUM_VERSIONS_TO_PRESERVE;
 import static com.linkedin.venice.Arg.OFFSET;
 import static com.linkedin.venice.Arg.OUTFILE;
 import static com.linkedin.venice.Arg.OWNER;
+import static com.linkedin.venice.Arg.PARENT_DIRECTORY;
 import static com.linkedin.venice.Arg.PARTITION;
 import static com.linkedin.venice.Arg.PARTITIONER_CLASS;
 import static com.linkedin.venice.Arg.PARTITIONER_PARAMS;
@@ -317,7 +325,7 @@ public enum Command {
           SEPARATE_REALTIME_TOPIC_ENABLED, NEARLINE_PRODUCER_COMPRESSION_ENABLED, NEARLINE_PRODUCER_COUNT_PER_WRITER,
           TARGET_SWAP_REGION, TARGET_SWAP_REGION_WAIT_TIME, DAVINCI_HEARTBEAT_REPORTED, ENABLE_STORE_MIGRATION,
           GLOBAL_RT_DIV_ENABLED, ENUM_SCHEMA_EVOLUTION_ALLOWED, STORE_LIFECYCLE_HOOKS_LIST,
-          BLOB_TRANSFER_IN_SERVER_ENABLED }
+          BLOB_TRANSFER_IN_SERVER_ENABLED, KEY_URN_COMPRESSION_EANBLED, KEY_URN_FIELDS }
   ),
   UPDATE_CLUSTER_CONFIG(
       "update-cluster-config", "Update live cluster configs", new Arg[] { URL, CLUSTER },
@@ -395,12 +403,14 @@ public enum Command {
   DUMP_CONTROL_MESSAGES(
       "dump-control-messages", "Dump control messages in a partition",
       new Arg[] { KAFKA_BOOTSTRAP_SERVERS, KAFKA_CONSUMER_CONFIG_FILE, KAFKA_TOPIC_NAME, KAFKA_TOPIC_PARTITION,
-          STARTING_OFFSET, MESSAGE_COUNT }
+          STARTING_OFFSET, STARTING_POSITION, MESSAGE_COUNT }
   ),
   DUMP_KAFKA_TOPIC(
       "dump-kafka-topic",
       "Dump a Kafka topic for a Venice cluster.  If start offset and message count are not specified, the entire partition will be dumped.  PLEASE REFRAIN FROM USING SERVER CERTIFICATES, IT IS A GDPR VIOLATION, GET ADDED TO THE STORE ACL'S OR GET FAST ACCESS TO THE KAFKA TOPIC!!",
-      new Arg[] { KAFKA_BOOTSTRAP_SERVERS, KAFKA_CONSUMER_CONFIG_FILE, KAFKA_TOPIC_NAME, CLUSTER, URL }
+      new Arg[] { KAFKA_BOOTSTRAP_SERVERS, KAFKA_CONSUMER_CONFIG_FILE, KAFKA_TOPIC_NAME, CLUSTER, URL },
+      new Arg[] { KAFKA_TOPIC_PARTITION, MESSAGE_COUNT, PARENT_DIRECTORY, MAX_POLL_ATTEMPTS, START_DATE, END_DATE,
+          LOG_METADATA, LOG_DATA_RECORD, LOG_RMD_RECORD, LOG_TS_RECORD, STARTING_OFFSET, STARTING_POSITION }
   ),
   QUERY_KAFKA_TOPIC(
       "query-kafka-topic", "Query some specific keys from the Venice Topic",

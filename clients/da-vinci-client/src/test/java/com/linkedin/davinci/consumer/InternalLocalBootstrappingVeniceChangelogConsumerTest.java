@@ -3,6 +3,7 @@ package com.linkedin.davinci.consumer;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
+import static com.linkedin.venice.utils.TestUtils.DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -23,6 +24,7 @@ import com.linkedin.davinci.storage.StorageEngineMetadataService;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
+import com.linkedin.davinci.store.DelegatingStorageEngine;
 import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.venice.client.change.capture.protocol.RecordChangeEvent;
@@ -220,11 +222,11 @@ public class InternalLocalBootstrappingVeniceChangelogConsumerTest {
     }).when(pubSubConsumer).positionDifference(any(), any(), any());
 
     StorageService mockStorageService = mock(StorageService.class);
-    StorageEngine mockStorageEngine = mock(StorageEngine.class);
+    StorageEngine mockStorageEngine = mock(DelegatingStorageEngine.class);
     when(mockStorageService.getStorageEngine(anyString())).thenReturn(mockStorageEngine);
     StorageMetadataService mockStorageMetadataService = mock(StorageMetadataService.class);
-    when(mockStorageMetadataService.getLastOffset(anyString(), anyInt()))
-        .thenReturn(new OffsetRecord(mock(InternalAvroSpecificSerializer.class)));
+    when(mockStorageMetadataService.getLastOffset(anyString(), anyInt(), any())).thenReturn(
+        new OffsetRecord(mock(InternalAvroSpecificSerializer.class), DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING));
     bootstrappingVeniceChangelogConsumer.setStorageAndMetadataService(mockStorageService, mockStorageMetadataService);
 
     when(pubSubConsumer.poll(anyLong()))
@@ -325,7 +327,7 @@ public class InternalLocalBootstrappingVeniceChangelogConsumerTest {
     PubSubTopicPartition partition = mock(PubSubTopicPartition.class);
     when(partition.getPartitionNumber()).thenReturn(TEST_PARTITION_ID_0);
     StorageService mockStorageService = mock(StorageService.class);
-    StorageEngine mockStorageEngine = mock(StorageEngine.class);
+    StorageEngine mockStorageEngine = mock(DelegatingStorageEngine.class);
     when(mockStorageService.getStorageEngine(anyString())).thenReturn(mockStorageEngine);
     bootstrappingVeniceChangelogConsumer
         .setStorageAndMetadataService(mockStorageService, mock(StorageMetadataService.class));
@@ -370,15 +372,14 @@ public class InternalLocalBootstrappingVeniceChangelogConsumerTest {
     when(partition.getPartitionNumber()).thenReturn(TEST_PARTITION_ID_0);
     StorageService storageService = mock(StorageService.class);
     StorageMetadataService storageMetadataService = mock(StorageMetadataService.class);
-    OffsetRecord lastOffsetRecord = new OffsetRecord(mock(InternalAvroSpecificSerializer.class));
-    when(storageMetadataService.getLastOffset(anyString(), anyInt())).thenReturn(lastOffsetRecord);
-    StorageEngine storageEngine = mock(StorageEngine.class);
+    OffsetRecord lastOffsetRecord =
+        new OffsetRecord(mock(InternalAvroSpecificSerializer.class), DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING);
+    when(storageMetadataService.getLastOffset(anyString(), anyInt(), any())).thenReturn(lastOffsetRecord);
+    StorageEngine storageEngine = mock(DelegatingStorageEngine.class);
     when(storageService.getStorageEngine(anyString())).thenReturn(storageEngine);
     StorageEngineRepository storageEngineRepository = mock(StorageEngineRepository.class);
     when(storageService.getStorageEngineRepository()).thenReturn(storageEngineRepository);
-    StorageEngine storageEngineReloadedFromRepo = mock(StorageEngine.class);
-    when(storageEngineReloadedFromRepo.sync(TEST_PARTITION_ID_0)).thenReturn(new HashMap());
-    when(storageEngineRepository.getLocalStorageEngine(localStateTopicName)).thenReturn(storageEngineReloadedFromRepo);
+    when(storageEngine.sync(TEST_PARTITION_ID_0)).thenReturn(new HashMap());
 
     bootstrappingVeniceChangelogConsumer.setStorageAndMetadataService(storageService, storageMetadataService);
     VeniceConcurrentHashMap<Integer, InternalLocalBootstrappingVeniceChangelogConsumer.BootstrapState> bootstrapStateMap =
@@ -403,7 +404,7 @@ public class InternalLocalBootstrappingVeniceChangelogConsumerTest {
         bootstrapStateMap.get(TEST_PARTITION_ID_0).currentChangeCoordinate.getPosition(),
         TEST_OFFSET_NEW);
     verify(storageEngine, times(1)).put(eq(TEST_PARTITION_ID_0), eq(key), any(byte[].class));
-    verify(storageEngineReloadedFromRepo, times(1)).sync(TEST_PARTITION_ID_0);
+    verify(storageEngine, times(1)).sync(TEST_PARTITION_ID_0);
     verify(storageMetadataService, times(1))
         .put(eq(localStateTopicName), eq(TEST_PARTITION_ID_0), any(OffsetRecord.class));
   }
@@ -426,14 +427,15 @@ public class InternalLocalBootstrappingVeniceChangelogConsumerTest {
     StorageEngine mockStorageEngine = mock(StorageEngine.class);
     when(mockStorageService.getStorageEngine(anyString())).thenReturn(mockStorageEngine);
     StorageMetadataService mockStorageMetadataService = mock(StorageMetadataService.class);
-    OffsetRecord lastOffsetRecord = new OffsetRecord(mock(InternalAvroSpecificSerializer.class));
+    OffsetRecord lastOffsetRecord =
+        new OffsetRecord(mock(InternalAvroSpecificSerializer.class), DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING);
     Map<String, String> databaseInfo = new HashMap<>();
     databaseInfo.put(
         CHANGE_CAPTURE_COORDINATE,
         VeniceChangeCoordinate.convertVeniceChangeCoordinateToStringAndEncode(
             new VeniceChangeCoordinate(TEST_TOPIC, TEST_OFFSET_NEW, TEST_PARTITION_ID_2)));
     lastOffsetRecord.setDatabaseInfo(databaseInfo);
-    when(mockStorageMetadataService.getLastOffset(anyString(), anyInt())).thenReturn(lastOffsetRecord);
+    when(mockStorageMetadataService.getLastOffset(anyString(), anyInt(), any())).thenReturn(lastOffsetRecord);
     bootstrappingVeniceChangelogConsumer.setStorageAndMetadataService(mockStorageService, mockStorageMetadataService);
     when(pubSubConsumer.poll(anyLong()))
         .thenReturn(prepareChangeCaptureRecordsToBePolled(TEST_KEY_1, changeCaptureTopic, TEST_PARTITION_ID_0))

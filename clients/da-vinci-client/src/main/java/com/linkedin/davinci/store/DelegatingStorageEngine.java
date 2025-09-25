@@ -1,21 +1,26 @@
 package com.linkedin.davinci.store;
 
 import com.linkedin.davinci.callback.BytesStreamingCallback;
+import com.linkedin.davinci.compression.KeyUrnCompressor;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.pubsub.PubSubContext;
+import com.linkedin.venice.utils.ByteUtils;
 import java.nio.ByteBuffer;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.function.Supplier;
 import javax.annotation.Nonnull;
 
 
 public class DelegatingStorageEngine<P extends AbstractStoragePartition> implements StorageEngine<P> {
   private volatile @Nonnull StorageEngine<P> delegate;
+  private Function<Integer, KeyUrnCompressor> keyDictCompressionFunction;
 
   public DelegatingStorageEngine(@Nonnull StorageEngine<P> delegate) {
     this.delegate = Objects.requireNonNull(delegate);
@@ -30,6 +35,46 @@ public class DelegatingStorageEngine<P extends AbstractStoragePartition> impleme
    */
   public void setDelegate(@Nonnull StorageEngine<P> delegate) {
     this.delegate = Objects.requireNonNull(delegate);
+  }
+
+  public boolean isKeyUrnCompressionEnabled(int partitionId) {
+    if (keyDictCompressionFunction == null) {
+      return false;
+    }
+    return keyDictCompressionFunction.apply(partitionId) != null;
+  }
+
+  public void setKeyDictCompressionFunction(Function<Integer, KeyUrnCompressor> keyDictCompressionFunction) {
+    this.keyDictCompressionFunction = Objects.requireNonNull(keyDictCompressionFunction);
+    if (delegate instanceof DelegatingStorageEngine) {
+      ((DelegatingStorageEngine<?>) delegate).setKeyDictCompressionFunction(keyDictCompressionFunction);
+    }
+  }
+
+  private byte[] compressKeyIfNeeded(int partitionId, byte[] key, boolean updateDictionary) {
+    if (keyDictCompressionFunction == null) {
+      throw new VeniceException("KeyUrnCompressor function is not set");
+    }
+    KeyUrnCompressor keyUrnCompressor = keyDictCompressionFunction.apply(partitionId);
+    if (keyUrnCompressor != null) {
+      byte[] compressedKey = keyUrnCompressor.compressKey(key, updateDictionary);
+      return compressedKey;
+
+    }
+
+    return key;
+  }
+
+  private ByteBuffer compressKeyIfNeeded(int partitionId, ByteBuffer key, boolean updateDictionary) {
+    if (keyDictCompressionFunction == null) {
+      throw new VeniceException("KeyUrnCompressor function is not set");
+    }
+    KeyUrnCompressor keyUrnCompressor = keyDictCompressionFunction.apply(partitionId);
+    if (keyUrnCompressor != null) {
+      return ByteBuffer.wrap(keyUrnCompressor.compressKey(ByteUtils.extractByteArray(key), updateDictionary));
+    }
+
+    return key;
   }
 
   /**
@@ -126,59 +171,71 @@ public class DelegatingStorageEngine<P extends AbstractStoragePartition> impleme
 
   @Override
   public void put(int partitionId, byte[] key, byte[] value) throws VeniceException {
-    this.delegate.put(partitionId, key, value);
+    this.delegate.put(partitionId, compressKeyIfNeeded(partitionId, key, true), value);
   }
 
   @Override
   public void put(int partitionId, byte[] key, ByteBuffer value) throws VeniceException {
-    this.delegate.put(partitionId, key, value);
+    this.delegate.put(partitionId, compressKeyIfNeeded(partitionId, key, true), value);
   }
 
   @Override
   public void putWithReplicationMetadata(int partitionId, byte[] key, ByteBuffer value, byte[] replicationMetadata)
       throws VeniceException {
-    this.delegate.putWithReplicationMetadata(partitionId, key, value, replicationMetadata);
+    this.delegate.putWithReplicationMetadata(
+        partitionId,
+        compressKeyIfNeeded(partitionId, key, true),
+        value,
+        replicationMetadata);
   }
 
   @Override
   public void putReplicationMetadata(int partitionId, byte[] key, byte[] replicationMetadata) throws VeniceException {
-    this.delegate.putReplicationMetadata(partitionId, key, replicationMetadata);
+    this.delegate.putReplicationMetadata(partitionId, compressKeyIfNeeded(partitionId, key, true), replicationMetadata);
   }
 
   @Override
   public byte[] get(int partitionId, byte[] key) throws VeniceException {
-    return this.delegate.get(partitionId, key);
+    return this.delegate.get(partitionId, compressKeyIfNeeded(partitionId, key, false));
   }
 
   @Override
   public ByteBuffer get(int partitionId, byte[] key, ByteBuffer valueToBePopulated) throws VeniceException {
-    return this.delegate.get(partitionId, key, valueToBePopulated);
+    return this.delegate.get(partitionId, compressKeyIfNeeded(partitionId, key, false), valueToBePopulated);
   }
 
   @Override
   public byte[] get(int partitionId, ByteBuffer keyBuffer) throws VeniceException {
-    return this.delegate.get(partitionId, keyBuffer);
+    return this.delegate.get(partitionId, compressKeyIfNeeded(partitionId, keyBuffer, false));
   }
 
   @Override
   public void getByKeyPrefix(int partitionId, byte[] partialKey, BytesStreamingCallback bytesStreamingCallback) {
+    if (keyDictCompressionFunction != null) {
+      KeyUrnCompressor keyUrnCompressor = keyDictCompressionFunction.apply(partitionId);
+      if (keyUrnCompressor != null) {
+        throw new VeniceException("Partial key lookup is not supported with key urn compression.");
+      }
+    }
+
     this.delegate.getByKeyPrefix(partitionId, partialKey, bytesStreamingCallback);
   }
 
   @Override
   public void delete(int partitionId, byte[] key) throws VeniceException {
-    this.delegate.delete(partitionId, key);
+    this.delegate.delete(partitionId, compressKeyIfNeeded(partitionId, key, false));
   }
 
   @Override
   public void deleteWithReplicationMetadata(int partitionId, byte[] key, byte[] replicationMetadata)
       throws VeniceException {
-    this.delegate.deleteWithReplicationMetadata(partitionId, key, replicationMetadata);
+    this.delegate
+        .deleteWithReplicationMetadata(partitionId, compressKeyIfNeeded(partitionId, key, false), replicationMetadata);
   }
 
   @Override
   public byte[] getReplicationMetadata(int partitionId, ByteBuffer key) {
-    return this.delegate.getReplicationMetadata(partitionId, key);
+    return this.delegate.getReplicationMetadata(partitionId, compressKeyIfNeeded(partitionId, key, false));
   }
 
   @Override
@@ -187,8 +244,8 @@ public class DelegatingStorageEngine<P extends AbstractStoragePartition> impleme
   }
 
   @Override
-  public Optional<OffsetRecord> getPartitionOffset(int partitionId) {
-    return this.delegate.getPartitionOffset(partitionId);
+  public Optional<OffsetRecord> getPartitionOffset(int partitionId, PubSubContext pubSubContext) {
+    return this.delegate.getPartitionOffset(partitionId, pubSubContext);
   }
 
   @Override

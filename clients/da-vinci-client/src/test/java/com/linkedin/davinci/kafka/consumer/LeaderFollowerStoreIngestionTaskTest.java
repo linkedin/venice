@@ -34,7 +34,7 @@ import com.linkedin.davinci.stats.HostLevelIngestionStats;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
-import com.linkedin.davinci.store.StorageEngine;
+import com.linkedin.davinci.store.DelegatingStorageEngine;
 import com.linkedin.davinci.store.view.MaterializedViewWriter;
 import com.linkedin.davinci.store.view.VeniceViewWriter;
 import com.linkedin.davinci.store.view.VeniceViewWriterFactory;
@@ -226,7 +226,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
     String storeName = Utils.getUniqueString("store");
     int versionNumber = 1;
     mockStorageService = mock(StorageService.class);
-    doReturn(new ReferenceCounted<>(mock(StorageEngine.class), se -> {})).when(mockStorageService)
+    doReturn(new ReferenceCounted<>(mock(DelegatingStorageEngine.class), se -> {})).when(mockStorageService)
         .getRefCountedStorageEngine(anyString());
     mockVeniceServerConfig = mock(VeniceServerConfig.class);
     doReturn(Object2IntMaps.emptyMap()).when(mockVeniceServerConfig).getKafkaClusterUrlToIdMap();
@@ -671,7 +671,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
     PubSubPosition p0 = ApacheKafkaOffsetPosition.of(0L);
     doReturn(p0).when(mockOffsetRecord).getCheckpointedLocalVtPosition();
 
-    when(mockStorageMetadataService.getLastOffset(any(), anyInt())).thenReturn(mockOffsetRecord);
+    when(mockStorageMetadataService.getLastOffset(any(), anyInt(), any())).thenReturn(mockOffsetRecord);
     when(mockConsumerAction.getTopicPartition()).thenReturn(mockTopicPartition);
     when(mockPartitionConsumptionState.getOffsetRecord()).thenReturn(mockOffsetRecord);
 

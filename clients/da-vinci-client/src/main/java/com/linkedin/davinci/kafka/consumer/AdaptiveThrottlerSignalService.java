@@ -65,6 +65,10 @@ public class AdaptiveThrottlerSignalService extends AbstractVeniceService {
     adaptiveThrottlingServiceStats.registerSensorForThrottler(adaptiveIngestionThrottler);
   }
 
+  public AdaptiveThrottlingServiceStats getAdaptiveThrottlingServiceStats() {
+    return adaptiveThrottlingServiceStats;
+  }
+
   public void refreshSignalAndThrottler() {
     // Update all the signals in one shot;
     updateReadLatencySignal();
@@ -72,7 +76,6 @@ public class AdaptiveThrottlerSignalService extends AbstractVeniceService {
     // Update all the throttler and record the current throttle limit
     for (VeniceAdaptiveThrottler throttler: throttlerList) {
       throttler.checkSignalAndAdjustThrottler();
-      adaptiveThrottlingServiceStats.recordThrottleLimitForThrottler(throttler);
     }
   }
 

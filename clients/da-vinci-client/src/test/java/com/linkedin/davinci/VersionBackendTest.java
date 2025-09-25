@@ -1,6 +1,5 @@
 package com.linkedin.davinci;
 
-import static org.apache.kafka.test.TestUtils.RANDOM;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -20,6 +19,7 @@ import com.linkedin.davinci.client.InternalDaVinciRecordTransformerConfig;
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.ingestion.IngestionBackend;
 import com.linkedin.davinci.stats.AggVersionedDaVinciRecordTransformerStats;
+import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.transformer.TestStringRecordTransformer;
 import com.linkedin.venice.ConfigKeys;
@@ -43,12 +43,15 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
 import java.util.function.Consumer;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
 public class VersionBackendTest {
+  private static final Random RANDOM = new Random();
+
   @Test
   public void testMaybeReportIncrementalPushStatus() {
     VersionBackend versionBackend = mock(VersionBackend.class);
@@ -174,6 +177,9 @@ public class VersionBackendTest {
 
     StoreBackend mockStoreBackend = mock(StoreBackend.class);
     when(mockDaVinciBackend.getStoreOrThrow(anyString())).thenReturn(mockStoreBackend);
+
+    HeartbeatMonitoringService mockHeartbeatMonitoringService = mock(HeartbeatMonitoringService.class);
+    when(mockDaVinciBackend.getHeartbeatMonitoringService()).thenReturn(mockHeartbeatMonitoringService);
 
     ZKStore store = TestUtils.populateZKStore(
         (ZKStore) TestUtils.createTestStore(
