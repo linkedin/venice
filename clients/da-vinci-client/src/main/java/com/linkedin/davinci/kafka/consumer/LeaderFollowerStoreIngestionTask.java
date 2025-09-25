@@ -1428,7 +1428,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           if (dryRun) {
             final PubSubPosition previousUpstreamPosition =
                 lastKnownUpstreamTopicOffsetSupplier.apply(sourceKafkaUrl, upstreamTopic);
-            TopicManager topicManager = sourceKafkaUrl.isEmpty()
+            TopicManager topicManager = sourceKafkaUrl.equals(NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY)
                 ? topicManagerRepository.getLocalTopicManager()
                 : getTopicManager(sourceKafkaUrl);
             PubSubTopicPartition pubSubTopicPartition =
