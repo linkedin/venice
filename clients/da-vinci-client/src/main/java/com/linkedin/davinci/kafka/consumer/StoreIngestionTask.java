@@ -4979,15 +4979,17 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     try {
       final PubSubPosition position = pubSubPositionDeserializer.toPosition(wireFormatBytes);
-
       // Guard against regressions: honor the caller-provided minimum offset.
       if (offset > 0 && position.getNumericOffset() < offset) {
-        LOGGER.info(
-            "Deserialized position: {} is behind the provided offset: {}. Using offset-based position for: {}/{}",
-            position.getNumericOffset(),
+        String message = String.format(
+            "Deserialized position: %s is behind the provided offset: %s. Using offset-based position for: %s/%s",
+            position,
             offset,
             topicPartition,
             versionTopic);
+        if (!REDUNDANT_LOGGING_FILTER.isRedundantException(message)) {
+          LOGGER.warn(message);
+        }
         return PubSubUtil.fromKafkaOffset(offset);
       }
 
