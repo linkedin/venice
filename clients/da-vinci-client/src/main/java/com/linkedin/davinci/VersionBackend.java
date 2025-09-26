@@ -83,6 +83,7 @@ public class VersionBackend {
   private Future heartbeat;
   private final int heartbeatInterval;
   private final DaVinciPushStatusUpdateTask daVinciPushStatusUpdateTask;
+  private boolean updateTaskStarted = false;
 
   VersionBackend(DaVinciBackend backend, Version version, StoreBackendStats storeBackendStats) {
     this.backend = backend;
@@ -129,7 +130,6 @@ public class VersionBackend {
     } else {
       this.daVinciPushStatusUpdateTask = null;
     }
-
     this.internalRecordTransformerConfig = backend.getInternalRecordTransformerConfig(version.getStoreName());
   }
 
@@ -369,8 +369,9 @@ public class VersionBackend {
       LOGGER.error("No partitions to subscribe to for {}", this);
       return CompletableFuture.completedFuture(null);
     }
-    if (daVinciPushStatusUpdateTask != null) {
+    if (daVinciPushStatusUpdateTask != null && !updateTaskStarted) {
       this.daVinciPushStatusUpdateTask.start();
+      this.updateTaskStarted = true;
     }
 
     LOGGER.info("Subscribing to partitions {} of {}", partitionList, this);
