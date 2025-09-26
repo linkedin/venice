@@ -110,7 +110,8 @@ public class SparkServerStatsTest extends AbstractTestVeniceParentHelixAdmin {
             .build());
 
     // Record success
-    this.sparkServerStats.recordSuccessfulRequest(request, response, 0);
+    int testCallTime = 1000;
+    this.sparkServerStats.recordSuccessfulRequest(request, response, testCallTime);
 
     // Test validation
     validateLongPointFromDataFromCounter(
@@ -137,6 +138,25 @@ public class SparkServerStatsTest extends AbstractTestVeniceParentHelixAdmin {
             .put(
                 VENICE_CONTROLLER_ENDPOINT.getDimensionNameInDefaultFormat(),
                 ControllerRoute.valueOfPath(testPath).toString().toLowerCase())
+            .build());
+    validateExponentialHistogramPointData(
+        ControllerMetricEntity.CALL_TIME.getMetricName(),
+        testCallTime,
+        testCallTime,
+        1,
+        testCallTime,
+        Attributes.builder()
+            .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), TEST_CLUSTER_NAME)
+            .put(
+                VENICE_CONTROLLER_ENDPOINT.getDimensionNameInDefaultFormat(),
+                ControllerRoute.valueOfPath(testPath).toString().toLowerCase())
+            .put(HTTP_RESPONSE_STATUS_CODE.getDimensionNameInDefaultFormat(), String.valueOf(testResponseCode))
+            .put(
+                HTTP_RESPONSE_STATUS_CODE_CATEGORY.getDimensionNameInDefaultFormat(),
+                HttpResponseStatusCodeCategory.SUCCESS.getDimensionValue())
+            .put(
+                VENICE_RESPONSE_STATUS_CODE_CATEGORY.getDimensionNameInDefaultFormat(),
+                VeniceResponseStatusCategory.SUCCESS.getDimensionValue())
             .build());
   }
 
@@ -169,7 +189,8 @@ public class SparkServerStatsTest extends AbstractTestVeniceParentHelixAdmin {
             .build());
 
     // Record success
-    this.sparkServerStats.recordFailedRequest(request, response, 0);
+    int testCallTime = 1000;
+    this.sparkServerStats.recordFailedRequest(request, response, testCallTime);
 
     // Test validation
     validateLongPointFromDataFromCounter(
@@ -197,6 +218,25 @@ public class SparkServerStatsTest extends AbstractTestVeniceParentHelixAdmin {
                 VENICE_CONTROLLER_ENDPOINT.getDimensionNameInDefaultFormat(),
                 ControllerRoute.valueOfPath(testPath).toString().toLowerCase())
             .build());
+    validateExponentialHistogramPointData(
+        ControllerMetricEntity.CALL_TIME.getMetricName(),
+        testCallTime,
+        testCallTime,
+        1,
+        testCallTime,
+        Attributes.builder()
+            .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), TEST_CLUSTER_NAME)
+            .put(
+                VENICE_CONTROLLER_ENDPOINT.getDimensionNameInDefaultFormat(),
+                ControllerRoute.valueOfPath(testPath).toString().toLowerCase())
+            .put(HTTP_RESPONSE_STATUS_CODE.getDimensionNameInDefaultFormat(), String.valueOf(testResponseCode))
+            .put(
+                HTTP_RESPONSE_STATUS_CODE_CATEGORY.getDimensionNameInDefaultFormat(),
+                HttpResponseStatusCodeCategory.SERVER_ERROR.getDimensionValue())
+            .put(
+                VENICE_RESPONSE_STATUS_CODE_CATEGORY.getDimensionNameInDefaultFormat(),
+                VeniceResponseStatusCategory.FAIL.getDimensionValue())
+            .build());
   }
 
   private void validateLongPointFromDataFromCounter(
@@ -209,5 +249,24 @@ public class SparkServerStatsTest extends AbstractTestVeniceParentHelixAdmin {
         expectedAttributes,
         metricName,
         TEST_METRIC_PREFIX);
+  }
+
+  private void validateExponentialHistogramPointData(
+      String metricName,
+      double expectedMin,
+      double expectedMax,
+      long expectedCount,
+      double expectedSum,
+      Attributes expectedAttributes) {
+    OpenTelemetryDataPointTestUtils.validateExponentialHistogramPointData(
+        inMemoryMetricReader,
+        expectedMin,
+        expectedMax,
+        expectedCount,
+        expectedSum,
+        expectedAttributes,
+        metricName,
+        TEST_METRIC_PREFIX);
+
   }
 }

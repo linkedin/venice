@@ -4,6 +4,7 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 
 import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.stats.AbstractVeniceStats;
+import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.stats.VeniceMetricsConfig;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository;
@@ -20,7 +21,6 @@ import io.tehuti.metrics.stats.Count;
 import io.tehuti.metrics.stats.OccurrenceRate;
 import io.tehuti.metrics.stats.Total;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.Map;
 import spark.Request;
 import spark.Response;
@@ -48,8 +48,7 @@ public class SparkServerStats extends AbstractVeniceStats {
       emitOpenTelemetryMetrics = veniceMetricsConfig.emitOtelMetrics();
       if (emitOpenTelemetryMetrics) {
         this.otelRepository = veniceMetricsRepository.getOpenTelemetryMetricsRepository();
-        this.baseDimensionsMap = new HashMap<>();
-        this.baseDimensionsMap.put(VENICE_CLUSTER_NAME, clusterName);
+        this.baseDimensionsMap = Collections.singletonMap(VENICE_CLUSTER_NAME, clusterName);
       } else {
         this.otelRepository = null;
         this.baseDimensionsMap = null;
@@ -81,7 +80,7 @@ public class SparkServerStats extends AbstractVeniceStats {
         otelRepository,
         this::registerSensor,
         ControllerTehutiMetricNameEnum.SUCCESSFUL_REQUEST,
-        Collections.singletonList(new OccurrenceRate()),
+        Collections.singletonList(new Count()),
         baseDimensionsMap,
         ControllerRoute.class,
         HttpResponseStatusEnum.class,
@@ -93,7 +92,7 @@ public class SparkServerStats extends AbstractVeniceStats {
         otelRepository,
         this::registerSensor,
         ControllerTehutiMetricNameEnum.FAILED_REQUEST,
-        Collections.singletonList(new OccurrenceRate()),
+        Collections.singletonList(new Count()),
         baseDimensionsMap,
         ControllerRoute.class,
         HttpResponseStatusEnum.class,
@@ -105,7 +104,7 @@ public class SparkServerStats extends AbstractVeniceStats {
         otelRepository,
         this::registerSensor,
         ControllerTehutiMetricNameEnum.SUCCESSFUL_REQUEST_LATENCY,
-        Collections.singletonList(new OccurrenceRate()),
+        Collections.singletonList(TehutiUtils.getPercentileStat(getName(), "successful_request_latency")),
         baseDimensionsMap,
         ControllerRoute.class,
         HttpResponseStatusEnum.class,
@@ -117,7 +116,7 @@ public class SparkServerStats extends AbstractVeniceStats {
         otelRepository,
         this::registerSensor,
         ControllerTehutiMetricNameEnum.FAILED_REQUEST_LATENCY,
-        Collections.singletonList(new OccurrenceRate()),
+        Collections.singletonList(TehutiUtils.getPercentileStat(getName(), "failed_request_latency")),
         baseDimensionsMap,
         ControllerRoute.class,
         HttpResponseStatusEnum.class,
