@@ -413,16 +413,37 @@ public class Segment {
 
   public ProducerPartitionState toProducerPartitionState() {
     ProducerPartitionState pps = new ProducerPartitionState();
-    pps.segmentNumber = segmentNumber;
-    pps.segmentStatus = getStatus().getValue();
-    pps.messageSequenceNumber = sequenceNumber;
-    pps.checksumState = ByteBuffer.wrap(checkSum.getEncodedState());
-    pps.checksumType = checkSum.getType().getValue();
-    pps.aggregates = aggregates;
-    pps.debugInfo = debugInfo;
-    pps.messageTimestamp = lastRecordProducerTimestamp;
-    pps.isRegistered = registered;
+    /**
+     * The aggregates and debugInfo being stored in the {@link ProducerPartitionState} will add a bit
+     * of overhead when we checkpoint this metadata to disk, so we should be careful not to add a very
+     * large number of elements to these arbitrary collections.
+     * <p>
+     * In the case of the debugInfo, it is expected (at the time of writing this comment) that all
+     * partitions produced by the same producer GUID would have the same debug values (though nothing
+     * precludes us from having per-partition debug values in the future if there is a use case for
+     * that). It is redundant that we store the same debug values once per partition. In the future,
+     * if we want to eliminate this redundancy, we could move the per-producer debug info to another
+     * data structure, though that would increase bookkeeping complexity. This is expected to be a
+     * minor overhead, and therefore it appears to be premature to optimize this now.
+     */
+    pps.aggregates = CollectionUtils.substituteEmptyMap(getAggregates());
+    pps.debugInfo = CollectionUtils.substituteEmptyMap(getDebugInfo());
+    populateProducerPartitionState(pps);
     return pps;
+  }
+
+  public void populateProducerPartitionState(ProducerPartitionState pps) {
+    /**
+     * {@link MD5Digest#getEncodedState()} is allocating a byte array to contain the intermediate,
+     * which is expensive. We should only invoke this closure when necessary.
+     */
+    pps.checksumState = ByteBuffer.wrap(getCheckSumState());
+    pps.checksumType = getCheckSumType().getValue();
+    pps.segmentNumber = getSegmentNumber();
+    pps.messageSequenceNumber = getSequenceNumber();
+    pps.messageTimestamp = getLastRecordProducerTimestamp();
+    pps.segmentStatus = getStatus().getValue();
+    pps.isRegistered = isRegistered();
   }
 
   // Only for testing.
