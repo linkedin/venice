@@ -60,6 +60,7 @@ import com.linkedin.venice.offsets.InMemoryStorageMetadataService;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.pubsub.PubSubContext;
+import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
 import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
@@ -69,6 +70,7 @@ import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.pubsub.manager.TopicManagerRepository;
+import com.linkedin.venice.pubsub.mock.InMemoryPubSubPosition;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
@@ -709,18 +711,34 @@ public class LeaderFollowerStoreIngestionTaskTest {
     setUp();
 
     // Test various scenarios with different vtPosition and endOffset combinations
-    assertFullyConsumedResult(99L, 100L, true, "Partition should be fully consumed when vtPosition + 1 >= endOffset");
     assertFullyConsumedResult(
-        50L,
+        InMemoryPubSubPosition.of(99L),
+        100L,
+        true,
+        "Partition should be fully consumed when vtPosition + 1 >= endOffset");
+    assertFullyConsumedResult(
+        InMemoryPubSubPosition.of(50L),
         100L,
         false,
         "Partition should not be fully consumed when vtPosition + 1 < endOffset");
-    assertFullyConsumedResult(49L, 50L, true, "Should be fully consumed when vtPosition + 1 equals endOffset");
-    assertFullyConsumedResult(51L, 50L, true, "Should be fully consumed when vtPosition + 1 > endOffset");
-    assertFullyConsumedResult(999999L, 1000000L, true, "Should handle large offset values correctly");
+    assertFullyConsumedResult(
+        InMemoryPubSubPosition.of(49L),
+        50L,
+        true,
+        "Should be fully consumed when vtPosition + 1 equals endOffset");
+    assertFullyConsumedResult(
+        InMemoryPubSubPosition.of(51L),
+        50L,
+        true,
+        "Should be fully consumed when vtPosition + 1 > endOffset");
+    assertFullyConsumedResult(
+        InMemoryPubSubPosition.of(999999L),
+        1000000L,
+        true,
+        "Should handle large offset values correctly");
 
     // Test LATEST end offset (unknown end) - should return false
-    PartitionConsumptionState pcs = createMockPcs(50L);
+    PartitionConsumptionState pcs = createMockPcs(InMemoryPubSubPosition.of(50L));
     doReturn(PubSubSymbolicPosition.LATEST.getNumericOffset()).when(leaderFollowerStoreIngestionTask)
         .getTopicPartitionEndOffSet(anyString(), any(PubSubTopic.class), anyInt());
     assertFalse(
@@ -733,54 +751,52 @@ public class LeaderFollowerStoreIngestionTaskTest {
     setUp();
 
     // Empty partition with EARLIEST position - should return true
-    long earliestOffset = PubSubSymbolicPosition.EARLIEST.getNumericOffset();
     assertFullyConsumedResult(
-        earliestOffset,
+        PubSubSymbolicPosition.EARLIEST,
         0L,
         true,
         "Empty partition with EARLIEST position should be considered fully consumed");
 
     // Non-empty partition with EARLIEST position - should return false
     assertFullyConsumedResult(
-        earliestOffset,
+        PubSubSymbolicPosition.EARLIEST,
         10L,
         false,
         "Non-empty partition with EARLIEST position should not be considered fully consumed");
 
     // Single message partition scenarios
     assertFullyConsumedResult(
-        0L,
+        InMemoryPubSubPosition.of(0L),
         1L,
         true,
         "Single message partition should be fully consumed when vtPosition is 0 and endOffset is 1");
     assertFullyConsumedResult(
-        earliestOffset,
+        PubSubSymbolicPosition.EARLIEST,
         1L,
         false,
         "Single message partition should not be fully consumed when at EARLIEST position");
 
     // Multiple messages - partially consumed
     assertFullyConsumedResult(
-        5L,
+        InMemoryPubSubPosition.of(5L),
         20L,
         false,
         "Partition with multiple messages should not be fully consumed when only partially processed");
   }
 
-  private PartitionConsumptionState createMockPcs(long vtPositionOffset) {
+  private PartitionConsumptionState createMockPcs(PubSubPosition vtPosition) {
     PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
-    PubSubPosition vtPosition = ApacheKafkaOffsetPosition.of(vtPositionOffset);
     when(pcs.getLatestProcessedVtPosition()).thenReturn(vtPosition);
     when(pcs.getPartition()).thenReturn(0);
     return pcs;
   }
 
   private void assertFullyConsumedResult(
-      long vtPositionOffset,
+      PubSubPosition vtPosition,
       long endOffset,
       boolean expectedResult,
       String message) {
-    PartitionConsumptionState pcs = createMockPcs(vtPositionOffset);
+    PartitionConsumptionState pcs = createMockPcs(vtPosition);
     doReturn(endOffset).when(leaderFollowerStoreIngestionTask)
         .getTopicPartitionEndOffSet(anyString(), any(PubSubTopic.class), anyInt());
 
@@ -788,5 +804,117 @@ public class LeaderFollowerStoreIngestionTaskTest {
         leaderFollowerStoreIngestionTask.isLocalVersionTopicPartitionFullyConsumed(pcs),
         expectedResult,
         message);
+  }
+
+  @Test(timeOut = 60_000)
+  public void testDeserializePositionWithOffsetFallback() throws InterruptedException {
+    setUp();
+
+    // Create mocks for the test
+    PubSubPositionDeserializer mockDeserializer = mock(PubSubPositionDeserializer.class);
+    PubSubTopicPartition mockTopicPartition = mock(PubSubTopicPartition.class);
+    when(mockTopicPartition.toString()).thenReturn("test-topic_v1-0");
+
+    // Use doCallRealMethod to test the actual implementation
+    doCallRealMethod().when(leaderFollowerStoreIngestionTask)
+        .deserializePositionWithOffsetFallback(any(), any(), any(), anyLong());
+
+    // Case 1: Null ByteBuffer - should return offset-based position
+    PubSubPosition result1 = leaderFollowerStoreIngestionTask
+        .deserializePositionWithOffsetFallback(mockDeserializer, mockTopicPartition, null, 100L);
+    assertEquals(result1.getNumericOffset(), 100L, "Null ByteBuffer should return offset-based position");
+
+    // Case 2: Empty ByteBuffer - should return offset-based position
+    ByteBuffer emptyBuffer = ByteBuffer.allocate(0);
+    PubSubPosition result2 = leaderFollowerStoreIngestionTask
+        .deserializePositionWithOffsetFallback(mockDeserializer, mockTopicPartition, emptyBuffer, 200L);
+    assertEquals(result2.getNumericOffset(), 200L, "Empty ByteBuffer should return offset-based position");
+
+    // Case 3: ByteBuffer with no remaining bytes - should return offset-based position
+    ByteBuffer noRemainingBuffer = ByteBuffer.allocate(10);
+    noRemainingBuffer.position(10); // Move position to end
+    PubSubPosition result3 = leaderFollowerStoreIngestionTask
+        .deserializePositionWithOffsetFallback(mockDeserializer, mockTopicPartition, noRemainingBuffer, 300L);
+    assertEquals(
+        result3.getNumericOffset(),
+        300L,
+        "ByteBuffer with no remaining bytes should return offset-based position");
+
+    // Case 4: Successful deserialization with valid position - should return deserialized position
+    ByteBuffer validBuffer = ByteBuffer.wrap("test-data".getBytes());
+    PubSubPosition mockDeserializedPosition = ApacheKafkaOffsetPosition.of(500L);
+    when(mockDeserializer.toPosition(validBuffer)).thenReturn(mockDeserializedPosition);
+
+    PubSubPosition result4 = leaderFollowerStoreIngestionTask
+        .deserializePositionWithOffsetFallback(mockDeserializer, mockTopicPartition, validBuffer, 400L);
+    assertEquals(result4.getNumericOffset(), 500L, "Valid deserialization should return deserialized position");
+
+    // Case 5: Deserialized position behind provided offset - should return offset-based position
+    ByteBuffer validBuffer2 = ByteBuffer.wrap("test-data-2".getBytes());
+    PubSubPosition mockLowPosition = ApacheKafkaOffsetPosition.of(50L);
+    when(mockDeserializer.toPosition(validBuffer2)).thenReturn(mockLowPosition);
+
+    PubSubPosition result5 = leaderFollowerStoreIngestionTask
+        .deserializePositionWithOffsetFallback(mockDeserializer, mockTopicPartition, validBuffer2, 100L);
+    assertEquals(
+        result5.getNumericOffset(),
+        100L,
+        "Deserialized position behind offset should return offset-based position");
+
+    // Case 6: Deserialized position equal to provided offset - should return deserialized position
+    ByteBuffer validBuffer3 = ByteBuffer.wrap("test-data-3".getBytes());
+    PubSubPosition mockEqualPosition = ApacheKafkaOffsetPosition.of(150L);
+    when(mockDeserializer.toPosition(validBuffer3)).thenReturn(mockEqualPosition);
+
+    PubSubPosition result6 = leaderFollowerStoreIngestionTask
+        .deserializePositionWithOffsetFallback(mockDeserializer, mockTopicPartition, validBuffer3, 150L);
+    assertEquals(
+        result6.getNumericOffset(),
+        150L,
+        "Deserialized position equal to offset should return deserialized position");
+
+    // Case 7: Zero offset with valid deserialized position - should return deserialized position
+    ByteBuffer validBuffer4 = ByteBuffer.wrap("test-data-4".getBytes());
+    PubSubPosition mockValidPosition = ApacheKafkaOffsetPosition.of(10L);
+    when(mockDeserializer.toPosition(validBuffer4)).thenReturn(mockValidPosition);
+
+    PubSubPosition result7 = leaderFollowerStoreIngestionTask
+        .deserializePositionWithOffsetFallback(mockDeserializer, mockTopicPartition, validBuffer4, 0L);
+    assertEquals(
+        result7.getNumericOffset(),
+        10L,
+        "Zero offset should not trigger regression guard, return deserialized position");
+
+    // Case 8: Deserialization throws RuntimeException - should return offset-based position
+    ByteBuffer invalidBuffer = ByteBuffer.wrap("invalid-data".getBytes());
+    when(mockDeserializer.toPosition(invalidBuffer)).thenThrow(new RuntimeException("Deserialization failed"));
+
+    PubSubPosition result8 = leaderFollowerStoreIngestionTask
+        .deserializePositionWithOffsetFallback(mockDeserializer, mockTopicPartition, invalidBuffer, 600L);
+    assertEquals(result8.getNumericOffset(), 600L, "Deserialization exception should return offset-based position");
+
+    // Case 9: Large offset values - should handle correctly
+    ByteBuffer validBuffer5 = ByteBuffer.wrap("test-data-5".getBytes());
+    PubSubPosition mockLargePosition = ApacheKafkaOffsetPosition.of(Long.MAX_VALUE - 1000L);
+    when(mockDeserializer.toPosition(validBuffer5)).thenReturn(mockLargePosition);
+
+    PubSubPosition result9 = leaderFollowerStoreIngestionTask.deserializePositionWithOffsetFallback(
+        mockDeserializer,
+        mockTopicPartition,
+        validBuffer5,
+        Long.MAX_VALUE - 2000L);
+    assertEquals(result9.getNumericOffset(), Long.MAX_VALUE - 1000L, "Large offset values should be handled correctly");
+
+    // Case 10: Negative offset with valid deserialized position - should return deserialized position
+    ByteBuffer validBuffer6 = ByteBuffer.wrap("test-data-6".getBytes());
+    PubSubPosition mockNegativeOffsetPosition = ApacheKafkaOffsetPosition.of(100L);
+    when(mockDeserializer.toPosition(validBuffer6)).thenReturn(mockNegativeOffsetPosition);
+
+    PubSubPosition result10 = leaderFollowerStoreIngestionTask
+        .deserializePositionWithOffsetFallback(mockDeserializer, mockTopicPartition, validBuffer6, -1L);
+    assertEquals(
+        result10.getNumericOffset(),
+        100L,
+        "Negative offset should not trigger regression guard, return deserialized position");
   }
 }

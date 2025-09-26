@@ -1124,6 +1124,8 @@ public class VeniceChangelogConsumerImplTest {
       pubSubMessageList.add(constructEndOfPushMessage(changeCaptureTopic, partition, endIdx + 1));
     }
 
+    ByteBuffer localHighWatermarkPubSubPosition = ApacheKafkaOffsetPosition.of(endIdx).toWireFormatBuffer();
+
     if (newVersionTopic != null) {
       pubSubMessageList.add(
           constructVersionSwapMessage(
@@ -1131,7 +1133,7 @@ public class VeniceChangelogConsumerImplTest {
               oldVersionTopic,
               newVersionTopic,
               partition,
-              Arrays.asList(Long.valueOf(endIdx), Long.valueOf(endIdx))));
+              Arrays.asList(localHighWatermarkPubSubPosition, localHighWatermarkPubSubPosition)));
     }
     PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(changeCaptureTopic, partition);
     pubSubMessagesMap.put(topicPartition, pubSubMessageList);
@@ -1166,12 +1168,12 @@ public class VeniceChangelogConsumerImplTest {
       PubSubTopic oldTopic,
       PubSubTopic newTopic,
       int partition,
-      List<Long> localHighWatermarks) {
+      List<ByteBuffer> localHighWatermarkPubSubPositions) {
     KafkaKey kafkaKey = new KafkaKey(MessageType.CONTROL_MESSAGE, new byte[0]);
     VersionSwap versionSwapMessage = new VersionSwap();
     versionSwapMessage.oldServingVersionTopic = oldTopic.getName();
     versionSwapMessage.newServingVersionTopic = newTopic.getName();
-    versionSwapMessage.localHighWatermarks = localHighWatermarks;
+    versionSwapMessage.localHighWatermarkPubSubPositions = localHighWatermarkPubSubPositions;
 
     KafkaMessageEnvelope kafkaMessageEnvelope = new KafkaMessageEnvelope();
     ProducerMetadata producerMetadata = new ProducerMetadata();

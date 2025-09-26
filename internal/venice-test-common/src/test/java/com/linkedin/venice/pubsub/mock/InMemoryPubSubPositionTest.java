@@ -17,7 +17,6 @@ public class InMemoryPubSubPositionTest {
   public void testCreationAndAccessors() {
     InMemoryPubSubPosition pos = InMemoryPubSubPosition.of(123L);
     assertEquals(pos.getInternalOffset(), 123L);
-    assertEquals(pos.getNumericOffset(), 123L);
 
     InMemoryPubSubPosition same = InMemoryPubSubPosition.of(123L);
     assertEquals(pos, same);

@@ -725,7 +725,7 @@ public class VeniceParentHelixAdmin implements Admin {
           PubSubProduceResult produceResult = future.get();
 
           LOGGER.info(
-              "Sent message: {} to: {}, position: {}",
+              "Sent message: {} to {}, position: {}",
               message,
               Utils.getReplicaId(produceResult.getTopic(), produceResult.getPartition()),
               produceResult.getPubSubPosition());

@@ -244,35 +244,10 @@ public class PartitionTracker {
     }
 
     if (state == null) {
-      state = new ProducerPartitionState();
-
-      /**
-       * The aggregates and debugInfo being stored in the {@link ProducerPartitionState} will add a bit
-       * of overhead when we checkpoint this metadata to disk, so we should be careful not to add a very
-       * large number of elements to these arbitrary collections.
-       * <p>
-       * In the case of the debugInfo, it is expected (at the time of writing this comment) that all
-       * partitions produced by the same producer GUID would have the same debug values (though nothing
-       * precludes us from having per-partition debug values in the future if there is a use case for
-       * that). It is redundant that we store the same debug values once per partition. In the future,
-       * if we want to eliminate this redundancy, we could move the per-producer debug info to another
-       * data structure, though that would increase bookkeeping complexity. This is expected to be a
-       * minor overhead, and therefore it appears to be premature to optimize this now.
-       */
-      state.aggregates = CollectionUtils.substituteEmptyMap(segment.getAggregates());
-      state.debugInfo = CollectionUtils.substituteEmptyMap(segment.getDebugInfo());
+      state = segment.toProducerPartitionState();
+    } else {
+      segment.populateProducerPartitionState(state);
     }
-    state.checksumType = segment.getCheckSumType().getValue();
-    /**
-     * {@link MD5Digest#getEncodedState()} is allocating a byte array to contain the intermediate state,
-     * which is expensive. We should only invoke this closure when necessary.
-     */
-    state.checksumState = ByteBuffer.wrap(segment.getCheckSumState());
-    state.segmentNumber = segment.getSegmentNumber();
-    state.messageSequenceNumber = segment.getSequenceNumber();
-    state.messageTimestamp = segment.getLastRecordProducerTimestamp();
-    state.segmentStatus = segment.getStatus().getValue();
-    state.isRegistered = segment.isRegistered();
 
     setProducerState(offsetRecord, type, guid, state);
   }
@@ -908,7 +883,7 @@ public class PartitionTracker {
           .append(")");
       if (consumerRecord.getValue().leaderMetadataFooter != null) {
         sb.append("; LeaderMetadata { upstream position: ")
-            .append(consumerRecord.getValue().leaderMetadataFooter.upstreamOffset)
+            .append(consumerRecord.getValue().leaderMetadataFooter.upstreamPubSubPosition)
             .append("; upstream pub sub cluster ID: ")
             .append(consumerRecord.getValue().leaderMetadataFooter.upstreamKafkaClusterId)
             .append("; producer host name: ")
