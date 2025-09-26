@@ -79,7 +79,7 @@ public class LogCompactionStats extends AbstractVeniceStats {
         ControllerMetricEntity.STORE_COMPACTION_TRIGGERED_COUNT.getMetricEntity(),
         otelRepository,
         this::registerSensor,
-        ControllerTehutiMetricNameEnum.REPUSH_CALL_COUNT,
+        ControllerTehutiMetricNameEnum.STORE_COMPACTION_TRIGGERED_COUNT,
         Collections.singletonList(new OccurrenceRate()),
         baseDimensionsMap);
   }
