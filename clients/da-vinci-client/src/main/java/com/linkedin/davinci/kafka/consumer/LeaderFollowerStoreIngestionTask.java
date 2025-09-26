@@ -1958,13 +1958,13 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         }
 
         PubSubPosition lastProcessedVtPos = partitionConsumptionState.getLatestProcessedVtPosition();
-        if (topicManagerRepository.getLocalTopicManager()
+        if (!PubSubSymbolicPosition.EARLIEST.equals(lastProcessedVtPos) && topicManagerRepository.getLocalTopicManager()
             .diffPosition(record.getTopicPartition(), lastProcessedVtPos, record.getPosition()) >= 0) {
           String message = partitionConsumptionState.getLeaderFollowerState() + " replica: "
               + partitionConsumptionState.getReplicaId() + " had already processed the record";
           if (!REDUNDANT_LOGGING_FILTER.isRedundantException(message)) {
             LOGGER.info(
-                "{}; LastKnownOffset: {}; OffsetOfIncomingRecord: {}",
+                "{}; LastKnownPosition: {}; PositionOfIncomingRecord: {}",
                 message,
                 lastProcessedVtPos,
                 record.getPosition());
