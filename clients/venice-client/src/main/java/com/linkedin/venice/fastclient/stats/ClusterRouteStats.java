@@ -46,7 +46,7 @@ import org.apache.logging.log4j.Logger;
 public class ClusterRouteStats {
   private static final Logger LOGGER = LogManager.getLogger(ClusterRouteStats.class);
 
-  private static final Map<String, ClusterRouteStats> instances = new VeniceConcurrentHashMap<>();
+  private static final Map<String, ClusterRouteStats> perStoreClusterRouteStats = new VeniceConcurrentHashMap<>();
 
   private final Map<String, RouteStats> perRouteStatMap = new VeniceConcurrentHashMap<>();
 
@@ -54,7 +54,7 @@ public class ClusterRouteStats {
 
   // Obtaining the Singleton instance takes storeName as input.
   public static ClusterRouteStats getInstance(String storeName) {
-    return instances.computeIfAbsent(storeName, ClusterRouteStats::new);
+    return perStoreClusterRouteStats.computeIfAbsent(storeName, ClusterRouteStats::new);
   }
 
   private ClusterRouteStats(String storeName) {

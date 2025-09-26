@@ -16,7 +16,7 @@ public enum VeniceMetricsDimensions {
   /** {@link com.linkedin.venice.read.RequestType} */
   VENICE_REQUEST_METHOD("venice.request.method"),
 
-  /** Route name for routing metrics */
+  /** Route name for routing metrics typed as String */
   VENICE_ROUTE_NAME("venice.route.name"),
 
   /** {@link HttpResponseStatusEnum} ie. 200, 400, etc */
