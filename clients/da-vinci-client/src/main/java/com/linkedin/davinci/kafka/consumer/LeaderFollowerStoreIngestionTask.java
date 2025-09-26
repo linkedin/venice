@@ -1069,10 +1069,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     final PubSubTopicPartition leaderTopicPartition = pcs.getSourceTopicPartition(leaderTopic);
     if (leaderTopic != null && leaderTopic.isRealTime()) {
       upstreamStartPositionByPubSubUrl.forEach((kafkaURL, upstreamStartPosition) -> {
-        if (getTopicManager(kafkaURL).diffPosition(
-            leaderTopicPartition,
-            upstreamStartPosition,
-            getLatestConsumedUpstreamPositionForHybridOffsetLagMeasurement(pcs, kafkaURL)) > 0) {
+        if (upstreamStartPosition
+            .getNumericOffset() > getLatestConsumedUpstreamPositionForHybridOffsetLagMeasurement(pcs, kafkaURL)
+                .getNumericOffset()) {
           updateLatestConsumedRtPositions(pcs, kafkaURL, upstreamStartPosition);
         }
       });
