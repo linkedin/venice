@@ -251,7 +251,7 @@ public class AdminSparkServer extends AbstractVeniceService {
       if (stats == null) {
         stats = nonclusterSpecificStats;
       }
-      stats.recordRequest();
+      stats.recordRequest(request);
       /**
        * If SSL is enforced, there is nothing to do in the secure admin server which has SSL enabled already;
        * but in the insecure admin server, we need to fail most of the routes except cluster/leader-controller
@@ -289,10 +289,10 @@ public class AdminSparkServer extends AbstractVeniceService {
       long latency = System.currentTimeMillis() - (long) request.attribute(REQUEST_START_TIME);
       if ((boolean) request.attribute(REQUEST_SUCCEED)) {
         LOGGER.info(audit.successString(latency));
-        stats.recordSuccessfulRequestLatency(latency);
+        stats.recordSuccessfulRequest(request, response, latency);
       } else {
         LOGGER.info(audit.failureString(response.body(), latency));
-        stats.recordFailedRequestLatency(latency);
+        stats.recordFailedRequest(request, response, latency);
       }
       LogContext.clearLogContext();
     });
