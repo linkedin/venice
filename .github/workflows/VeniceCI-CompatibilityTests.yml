@@ -32,6 +32,9 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           add-job-summary: never
+      - name: Free up disk space in the background
+        run: |
+          bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
       - name: Run Avro Compatibility Tests
         run: ./gradlew -DmaxParallelForks=2 --parallel :internal:venice-avro-compatibility-test:test --continue
       - name: Package Build Artifacts
@@ -76,6 +79,9 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           add-job-summary: never
+      - name: Free up disk space in the background
+        run: |
+          bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
       - name: Run DuckDB Integration Tests
         run: ./gradlew -DforkEvery=1 -DmaxParallelForks=1 :integrations:venice-duckdb:integrationTest --continue
       - name: Package Build Artifacts
@@ -120,6 +126,9 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           add-job-summary: never
+      - name: Free up disk space in the background
+        run: |
+          bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
       - name: Build with gradle
         run: ./gradlew assemble --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1
 
