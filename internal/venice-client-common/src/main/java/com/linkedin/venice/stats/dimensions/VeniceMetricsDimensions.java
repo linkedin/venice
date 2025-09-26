@@ -6,6 +6,7 @@ import static com.linkedin.venice.stats.VeniceOpenTelemetryMetricNamingFormat.SN
 import static com.linkedin.venice.stats.VeniceOpenTelemetryMetricNamingFormat.transformMetricName;
 import static com.linkedin.venice.stats.VeniceOpenTelemetryMetricNamingFormat.validateMetricName;
 
+import com.google.common.annotations.VisibleForTesting;
 import com.linkedin.venice.stats.VeniceOpenTelemetryMetricNamingFormat;
 
 
@@ -64,7 +65,8 @@ public enum VeniceMetricsDimensions {
     return dimensionName[format.getValue()];
   }
 
-  // visible for testing
+  // This is only for testing purpose and should never be used in production code.
+  @VisibleForTesting
   public String getDimensionNameInDefaultFormat() {
     return dimensionName[VeniceOpenTelemetryMetricNamingFormat.getDefaultFormat().getValue()];
   }
