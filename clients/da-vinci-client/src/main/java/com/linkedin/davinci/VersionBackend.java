@@ -83,6 +83,7 @@ public class VersionBackend {
   private Future heartbeat;
   private final int heartbeatInterval;
   private final DaVinciPushStatusUpdateTask daVinciPushStatusUpdateTask;
+  private boolean updateTaskStarted = false;
 
   VersionBackend(DaVinciBackend backend, Version version, StoreBackendStats storeBackendStats) {
     this.backend = backend;
@@ -126,11 +127,9 @@ public class VersionBackend {
           daVinciPushStatusCheckIntervalInMs,
           backend.getPushStatusStoreWriter(),
           this::areAllPartitionFuturesCompletedSuccessfully);
-      this.daVinciPushStatusUpdateTask.start();
     } else {
       this.daVinciPushStatusUpdateTask = null;
     }
-
     this.internalRecordTransformerConfig = backend.getInternalRecordTransformerConfig(version.getStoreName());
   }
 
@@ -366,6 +365,15 @@ public class VersionBackend {
   synchronized CompletableFuture<Void> subscribe(ComplementSet<Integer> partitions) {
     Instant startTime = Instant.now();
     List<Integer> partitionList = getPartitions(partitions);
+    if (partitionList.isEmpty()) {
+      LOGGER.error("No partitions to subscribe to for {}", this);
+      return CompletableFuture.completedFuture(null);
+    }
+    if (daVinciPushStatusUpdateTask != null && !updateTaskStarted) {
+      this.daVinciPushStatusUpdateTask.start();
+      this.updateTaskStarted = true;
+    }
+
     LOGGER.info("Subscribing to partitions {} of {}", partitionList, this);
     int partitionCount = partitionList.size();
     List<Integer> partitionsToStartConsumption = new ArrayList<>(partitionCount);
