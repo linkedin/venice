@@ -21,8 +21,8 @@ import javax.annotation.Nonnull;
 
 /**
  * An adapter for consuming messages from a Pub-Sub topic.
- * Implementations of this interface are not expected to be thread safe. However, they are expected
- * to provide the following guarantees:
+ * Implementations of this interface are expected to be thread safe to allow concurrent access
+ * from multiple threads. They are also expected to provide the following guarantees:
  * 1) Honor the timeout parameter for all methods that have one.
  * 2) Non-blocking behavior for methods that do not have an explicit timeout parameter. In other words, they should
  *  timeout after the default timeout period: {@link PubSubConstants#PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS}.

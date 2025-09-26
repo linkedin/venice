@@ -2,7 +2,7 @@ package com.linkedin.venice.pubsub.adapter.kafka.consumer;
 
 import static com.linkedin.venice.pubsub.PubSubUtil.calculateSeekOffset;
 
-import com.linkedin.venice.annotation.NotThreadsafe;
+import com.linkedin.venice.annotation.Threadsafe;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
@@ -56,10 +56,10 @@ import org.apache.logging.log4j.Logger;
 
 
 /**
- * This class is not thread safe because of the internal {@link KafkaConsumer} is not thread safe.
- * It is the responsibility of the caller to ensure that the methods are called in a thread safe manner.
+ * This class is thread safe. All operations on the internal {@link KafkaConsumer} and mutable state
+ * are synchronized to ensure thread safety across concurrent access.
  */
-@NotThreadsafe
+@Threadsafe
 public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
   private static final Logger LOGGER = LogManager.getLogger(ApacheKafkaConsumerAdapter.class);
   private final Consumer<byte[], byte[]> kafkaConsumer;
@@ -68,6 +68,7 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
   private final PubSubMessageDeserializer pubSubMessageDeserializer;
   private final PubSubPositionTypeRegistry pubSubPositionTypeRegistry;
   private final ApacheKafkaConsumerConfig config;
+  private final Object consumerLock = new Object();
 
   ApacheKafkaConsumerAdapter(ApacheKafkaConsumerConfig config) {
     this(new KafkaConsumer<>(config.getConsumerProperties()), config);
@@ -105,11 +106,22 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
   public void subscribe(
       @Nonnull PubSubTopicPartition pubSubTopicPartition,
       @Nonnull PubSubPosition lastReadPubSubPosition) {
-    subscribe(pubSubTopicPartition, lastReadPubSubPosition, false);
+    synchronized (consumerLock) {
+      subscribeInternal(pubSubTopicPartition, lastReadPubSubPosition, false);
+    }
   }
 
   @Override
   public void subscribe(
+      @Nonnull PubSubTopicPartition pubSubTopicPartition,
+      @Nonnull PubSubPosition position,
+      boolean isInclusive) {
+    synchronized (consumerLock) {
+      subscribeInternal(pubSubTopicPartition, position, isInclusive);
+    }
+  }
+
+  private void subscribeInternal(
       @Nonnull PubSubTopicPartition pubSubTopicPartition,
       @Nonnull PubSubPosition position,
       boolean isInclusive) {
@@ -217,56 +229,62 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
 
   @Override
   public void unSubscribe(PubSubTopicPartition pubSubTopicPartition) {
-    String topic = pubSubTopicPartition.getPubSubTopic().getName();
-    int partition = pubSubTopicPartition.getPartitionNumber();
-    TopicPartition topicPartition = new TopicPartition(topic, partition);
-    Set<TopicPartition> topicPartitionSet = kafkaConsumer.assignment();
-    boolean isSubscribed = topicPartitionSet.contains(topicPartition);
-    if (isSubscribed) {
-      List<TopicPartition> topicPartitionList = new ArrayList<>(topicPartitionSet);
-      if (topicPartitionList.remove(topicPartition)) {
-        kafkaConsumer.assign(topicPartitionList);
+    synchronized (consumerLock) {
+      String topic = pubSubTopicPartition.getPubSubTopic().getName();
+      int partition = pubSubTopicPartition.getPartitionNumber();
+      TopicPartition topicPartition = new TopicPartition(topic, partition);
+      Set<TopicPartition> topicPartitionSet = kafkaConsumer.assignment();
+      boolean isSubscribed = topicPartitionSet.contains(topicPartition);
+      if (isSubscribed) {
+        List<TopicPartition> topicPartitionList = new ArrayList<>(topicPartitionSet);
+        if (topicPartitionList.remove(topicPartition)) {
+          kafkaConsumer.assign(topicPartitionList);
+        }
+        assignments.remove(topicPartition);
       }
-      assignments.remove(topicPartition);
+      if (topicPartitionsOffsetsTracker != null) {
+        topicPartitionsOffsetsTracker.removeTrackedOffsets(topicPartition);
+      }
+      LOGGER.info("Topic-partition: {} {} unsubscribed", pubSubTopicPartition, isSubscribed ? "is" : "was already");
     }
-    if (topicPartitionsOffsetsTracker != null) {
-      topicPartitionsOffsetsTracker.removeTrackedOffsets(topicPartition);
-    }
-    LOGGER.info("Topic-partition: {} {} unsubscribed", pubSubTopicPartition, isSubscribed ? "is" : "was already");
   }
 
   @Override
   public void batchUnsubscribe(Set<PubSubTopicPartition> pubSubTopicPartitionsToUnsubscribe) {
-    // convert pubSubTopicPartitionsToUnsubscribe to a set of TopicPartition
-    // additionally remove them from assignments and topicPartitionsOffsetsTracker
-    Set<TopicPartition> topicPartitionsToUnsubscribe =
-        pubSubTopicPartitionsToUnsubscribe.stream().map(pubSubTopicPartition -> {
-          TopicPartition topicPartition = new TopicPartition(
-              pubSubTopicPartition.getPubSubTopic().getName(),
-              pubSubTopicPartition.getPartitionNumber());
-          assignments.remove(topicPartition);
-          if (topicPartitionsOffsetsTracker != null) {
-            topicPartitionsOffsetsTracker.removeTrackedOffsets(topicPartition);
-          }
-          return topicPartition;
-        }).collect(Collectors.toSet());
+    synchronized (consumerLock) {
+      // convert pubSubTopicPartitionsToUnsubscribe to a set of TopicPartition
+      // additionally remove them from assignments and topicPartitionsOffsetsTracker
+      Set<TopicPartition> topicPartitionsToUnsubscribe =
+          pubSubTopicPartitionsToUnsubscribe.stream().map(pubSubTopicPartition -> {
+            TopicPartition topicPartition = new TopicPartition(
+                pubSubTopicPartition.getPubSubTopic().getName(),
+                pubSubTopicPartition.getPartitionNumber());
+            assignments.remove(topicPartition);
+            if (topicPartitionsOffsetsTracker != null) {
+              topicPartitionsOffsetsTracker.removeTrackedOffsets(topicPartition);
+            }
+            return topicPartition;
+          }).collect(Collectors.toSet());
 
-    Collection<TopicPartition> currentAssignments = new HashSet<>(kafkaConsumer.assignment());
-    currentAssignments.removeAll(topicPartitionsToUnsubscribe);
-    kafkaConsumer.assign(currentAssignments);
-    LOGGER.info("Topic-partitions: {} unsubscribed", pubSubTopicPartitionsToUnsubscribe);
+      Collection<TopicPartition> currentAssignments = new HashSet<>(kafkaConsumer.assignment());
+      currentAssignments.removeAll(topicPartitionsToUnsubscribe);
+      kafkaConsumer.assign(currentAssignments);
+      LOGGER.info("Topic-partitions: {} unsubscribed", pubSubTopicPartitionsToUnsubscribe);
+    }
   }
 
   @Override
   public void resetOffset(PubSubTopicPartition pubSubTopicPartition) {
-    String topic = pubSubTopicPartition.getPubSubTopic().getName();
-    int partition = pubSubTopicPartition.getPartitionNumber();
-    if (!hasSubscription(pubSubTopicPartition)) {
-      throw new PubSubUnsubscribedTopicPartitionException(pubSubTopicPartition);
+    synchronized (consumerLock) {
+      TopicPartition topicPartition = new TopicPartition(
+          pubSubTopicPartition.getPubSubTopic().getName(),
+          pubSubTopicPartition.getPartitionNumber());
+      if (!kafkaConsumer.assignment().contains(topicPartition)) {
+        throw new PubSubUnsubscribedTopicPartitionException(pubSubTopicPartition);
+      }
+      kafkaConsumer.seekToBeginning(Collections.singletonList(topicPartition));
+      LOGGER.info("Reset offset to beginning for topic-partition: {}", pubSubTopicPartition);
     }
-    TopicPartition topicPartition = new TopicPartition(topic, partition);
-    kafkaConsumer.seekToBeginning(Collections.singletonList(topicPartition));
-    LOGGER.info("Reset offset to beginning for topic-partition: {}", pubSubTopicPartition);
   }
 
   @Override
@@ -275,21 +293,28 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
     // fetcher.retrieveOffsetsByTimes call inside kafkaConsumer times out,
     // TODO: we may want to wrap this call in our own thread to enforce the timeout...
     int attemptCount = 1;
-    ConsumerRecords<byte[], byte[]> records = ConsumerRecords.empty();
+    ConsumerRecords<byte[], byte[]> records;
     Map<PubSubTopicPartition, List<DefaultPubSubMessage>> polledPubSubMessages = Collections.emptyMap();
+
     while (attemptCount <= config.getConsumerPollRetryTimes() && !Thread.currentThread().isInterrupted()) {
       try {
-        records = kafkaConsumer.poll(Duration.ofMillis(timeoutMs));
-        polledPubSubMessages = new HashMap<>(records.partitions().size());
-        for (TopicPartition topicPartition: records.partitions()) {
-          PubSubTopicPartition pubSubTopicPartition = assignments.get(topicPartition);
-          List<ConsumerRecord<byte[], byte[]>> topicPartitionConsumerRecords = records.records(topicPartition);
-          List<DefaultPubSubMessage> topicPartitionPubSubMessages =
-              new ArrayList<>(topicPartitionConsumerRecords.size());
-          for (ConsumerRecord<byte[], byte[]> consumerRecord: topicPartitionConsumerRecords) {
-            topicPartitionPubSubMessages.add(deserialize(consumerRecord, pubSubTopicPartition));
+        synchronized (consumerLock) {
+          records = kafkaConsumer.poll(Duration.ofMillis(timeoutMs));
+          polledPubSubMessages = new HashMap<>(records.partitions().size());
+          for (TopicPartition topicPartition: records.partitions()) {
+            PubSubTopicPartition pubSubTopicPartition = assignments.get(topicPartition);
+            List<ConsumerRecord<byte[], byte[]>> topicPartitionConsumerRecords = records.records(topicPartition);
+            List<DefaultPubSubMessage> topicPartitionPubSubMessages =
+                new ArrayList<>(topicPartitionConsumerRecords.size());
+            for (ConsumerRecord<byte[], byte[]> consumerRecord: topicPartitionConsumerRecords) {
+              topicPartitionPubSubMessages.add(deserialize(consumerRecord, pubSubTopicPartition));
+            }
+            polledPubSubMessages.put(pubSubTopicPartition, topicPartitionPubSubMessages);
           }
-          polledPubSubMessages.put(pubSubTopicPartition, topicPartitionPubSubMessages);
+
+          if (topicPartitionsOffsetsTracker != null) {
+            topicPartitionsOffsetsTracker.updateEndAndCurrentOffsets(records, kafkaConsumer);
+          }
         }
         break;
       } catch (RetriableException e) {
@@ -304,39 +329,41 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
                   + config.getConsumerPollRetryTimes(),
               e);
         }
-        try {
-          if (config.getConsumerPollRetryBackoffMs() > 0) {
+        // Sleep outside the synchronized block to avoid blocking other threads
+        if (config.getConsumerPollRetryBackoffMs() > 0) {
+          try {
             Thread.sleep(config.getConsumerPollRetryBackoffMs());
+          } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
+            // Here will still throw the actual exception thrown by internal consumer to make sure the stacktrace is
+            // meaningful.
+            throw new PubSubClientException("Consumer poll retry back off sleep got interrupted", e);
           }
-        } catch (InterruptedException ie) {
-          Thread.currentThread().interrupt();
-          // Here will still throw the actual exception thrown by internal consumer to make sure the stacktrace is
-          // meaningful.
-          throw new PubSubClientException("Consumer poll retry back off sleep got interrupted", e);
         }
       } finally {
         attemptCount++;
       }
     }
 
-    if (topicPartitionsOffsetsTracker != null) {
-      topicPartitionsOffsetsTracker.updateEndAndCurrentOffsets(records, kafkaConsumer);
-    }
     return polledPubSubMessages;
   }
 
   @Override
   public boolean hasAnySubscription() {
-    return !kafkaConsumer.assignment().isEmpty();
+    synchronized (consumerLock) {
+      return !kafkaConsumer.assignment().isEmpty();
+    }
   }
 
   @Override
   public boolean hasSubscription(PubSubTopicPartition pubSubTopicPartition) {
-    Objects.requireNonNull(pubSubTopicPartition, "PubSubTopicPartition cannot be null");
-    String topic = pubSubTopicPartition.getPubSubTopic().getName();
-    int partition = pubSubTopicPartition.getPartitionNumber();
-    TopicPartition tp = new TopicPartition(topic, partition);
-    return kafkaConsumer.assignment().contains(tp);
+    synchronized (consumerLock) {
+      Objects.requireNonNull(pubSubTopicPartition, "PubSubTopicPartition cannot be null");
+      TopicPartition tp = new TopicPartition(
+          pubSubTopicPartition.getPubSubTopic().getName(),
+          pubSubTopicPartition.getPartitionNumber());
+      return kafkaConsumer.assignment().contains(tp);
+    }
   }
 
   /**
@@ -344,11 +371,13 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
    */
   @Override
   public void pause(PubSubTopicPartition pubSubTopicPartition) {
-    String topic = pubSubTopicPartition.getPubSubTopic().getName();
-    int partition = pubSubTopicPartition.getPartitionNumber();
-    TopicPartition tp = new TopicPartition(topic, partition);
-    if (kafkaConsumer.assignment().contains(tp)) {
-      kafkaConsumer.pause(Collections.singletonList(tp));
+    synchronized (consumerLock) {
+      String topic = pubSubTopicPartition.getPubSubTopic().getName();
+      int partition = pubSubTopicPartition.getPartitionNumber();
+      TopicPartition tp = new TopicPartition(topic, partition);
+      if (kafkaConsumer.assignment().contains(tp)) {
+        kafkaConsumer.pause(Collections.singletonList(tp));
+      }
     }
   }
 
@@ -357,41 +386,49 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
    */
   @Override
   public void resume(PubSubTopicPartition pubSubTopicPartition) {
-    String topic = pubSubTopicPartition.getPubSubTopic().getName();
-    int partition = pubSubTopicPartition.getPartitionNumber();
-    TopicPartition tp = new TopicPartition(topic, partition);
-    if (kafkaConsumer.assignment().contains(tp)) {
-      kafkaConsumer.resume(Collections.singletonList(tp));
+    synchronized (consumerLock) {
+      String topic = pubSubTopicPartition.getPubSubTopic().getName();
+      int partition = pubSubTopicPartition.getPartitionNumber();
+      TopicPartition tp = new TopicPartition(topic, partition);
+      if (kafkaConsumer.assignment().contains(tp)) {
+        kafkaConsumer.resume(Collections.singletonList(tp));
+      }
     }
   }
 
   @Override
   public Set<PubSubTopicPartition> getAssignment() {
-    return new HashSet<>(assignments.values());
+    synchronized (consumerLock) {
+      return new HashSet<>(assignments.values());
+    }
   }
 
   @Override
   public void close() {
-    if (topicPartitionsOffsetsTracker != null) {
-      topicPartitionsOffsetsTracker.clearAllOffsetState();
-    }
-    if (kafkaConsumer != null) {
-      try {
-        kafkaConsumer.close(Duration.ZERO);
-      } catch (Exception e) {
-        LOGGER.warn("{} threw an exception while closing.", kafkaConsumer.getClass().getSimpleName(), e);
+    synchronized (consumerLock) {
+      if (topicPartitionsOffsetsTracker != null) {
+        topicPartitionsOffsetsTracker.clearAllOffsetState();
       }
-    }
-    if (pubSubMessageDeserializer != null) {
-      pubSubMessageDeserializer.close();
+      if (kafkaConsumer != null) {
+        try {
+          kafkaConsumer.close(Duration.ZERO);
+        } catch (Exception e) {
+          LOGGER.warn("{} threw an exception while closing.", kafkaConsumer.getClass().getSimpleName(), e);
+        }
+      }
+      if (pubSubMessageDeserializer != null) {
+        pubSubMessageDeserializer.close();
+      }
     }
   }
 
   @Override
   public long getOffsetLag(PubSubTopicPartition pubSubTopicPartition) {
-    String topic = pubSubTopicPartition.getPubSubTopic().getName();
-    int partition = pubSubTopicPartition.getPartitionNumber();
-    return topicPartitionsOffsetsTracker != null ? topicPartitionsOffsetsTracker.getOffsetLag(topic, partition) : -1;
+    synchronized (consumerLock) {
+      String topic = pubSubTopicPartition.getPubSubTopic().getName();
+      int partition = pubSubTopicPartition.getPartitionNumber();
+      return topicPartitionsOffsetsTracker != null ? topicPartitionsOffsetsTracker.getOffsetLag(topic, partition) : -1;
+    }
   }
 
   /**
@@ -403,9 +440,11 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
    */
   @Override
   public long getLatestOffset(PubSubTopicPartition pubSubTopicPartition) {
-    String topic = pubSubTopicPartition.getPubSubTopic().getName();
-    int partition = pubSubTopicPartition.getPartitionNumber();
-    return topicPartitionsOffsetsTracker != null ? topicPartitionsOffsetsTracker.getEndOffset(topic, partition) : -1;
+    synchronized (consumerLock) {
+      String topic = pubSubTopicPartition.getPubSubTopic().getName();
+      int partition = pubSubTopicPartition.getPartitionNumber();
+      return topicPartitionsOffsetsTracker != null ? topicPartitionsOffsetsTracker.getEndOffset(topic, partition) : -1;
+    }
   }
 
   @Override
@@ -413,12 +452,16 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
       PubSubTopicPartition pubSubTopicPartition,
       long timestamp,
       Duration timeout) {
-    return getPositionByTimestampInternal(pubSubTopicPartition, timestamp, timeout);
+    synchronized (consumerLock) {
+      return getPositionByTimestampInternal(pubSubTopicPartition, timestamp, timeout);
+    }
   }
 
   @Override
   public PubSubPosition getPositionByTimestamp(PubSubTopicPartition pubSubTopicPartition, long timestamp) {
-    return getPositionByTimestampInternal(pubSubTopicPartition, timestamp, null);
+    synchronized (consumerLock) {
+      return getPositionByTimestampInternal(pubSubTopicPartition, timestamp, null);
+    }
   }
 
   private PubSubPosition getPositionByTimestampInternal(
@@ -459,25 +502,29 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
 
   @Override
   public PubSubPosition beginningPosition(PubSubTopicPartition pubSubTopicPartition, Duration timeout) {
-    return beginningPositions(Collections.singleton(pubSubTopicPartition), timeout).get(pubSubTopicPartition);
+    synchronized (consumerLock) {
+      return beginningPositions(Collections.singleton(pubSubTopicPartition), timeout).get(pubSubTopicPartition);
+    }
   }
 
   @Override
   public Map<PubSubTopicPartition, PubSubPosition> beginningPositions(
       Collection<PubSubTopicPartition> partitions,
       Duration timeout) {
-    Map<TopicPartition, PubSubTopicPartition> partitionMapping = toKafkaTopicPartitionMap(partitions);
-    try {
-      Map<TopicPartition, Long> startOffsets = kafkaConsumer.beginningOffsets(partitionMapping.keySet(), timeout);
-      Map<PubSubTopicPartition, PubSubPosition> offsets = new HashMap<>(startOffsets.size());
-      for (Map.Entry<TopicPartition, Long> entry: startOffsets.entrySet()) {
-        offsets.put(partitionMapping.get(entry.getKey()), new ApacheKafkaOffsetPosition(entry.getValue()));
+    synchronized (consumerLock) {
+      Map<TopicPartition, PubSubTopicPartition> partitionMapping = toKafkaTopicPartitionMap(partitions);
+      try {
+        Map<TopicPartition, Long> startOffsets = kafkaConsumer.beginningOffsets(partitionMapping.keySet(), timeout);
+        Map<PubSubTopicPartition, PubSubPosition> offsets = new HashMap<>(startOffsets.size());
+        for (Map.Entry<TopicPartition, Long> entry: startOffsets.entrySet()) {
+          offsets.put(partitionMapping.get(entry.getKey()), new ApacheKafkaOffsetPosition(entry.getValue()));
+        }
+        return offsets;
+      } catch (TimeoutException e) {
+        throw new PubSubOpTimeoutException("Timed out while fetching start offsets for " + partitions, e);
+      } catch (Exception e) {
+        throw new PubSubClientException("Failed to fetch start offsets for " + partitions, e);
       }
-      return offsets;
-    } catch (TimeoutException e) {
-      throw new PubSubOpTimeoutException("Timed out while fetching start offsets for " + partitions, e);
-    } catch (Exception e) {
-      throw new PubSubClientException("Failed to fetch start offsets for " + partitions, e);
     }
   }
 
@@ -498,44 +545,49 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
   public Map<PubSubTopicPartition, PubSubPosition> endPositions(
       Collection<PubSubTopicPartition> partitions,
       Duration timeout) {
-    Map<TopicPartition, PubSubTopicPartition> pubSubTopicPartitionMapping = toKafkaTopicPartitionMap(partitions);
-    try {
-      Map<TopicPartition, Long> topicPartitionOffsetMap =
-          this.kafkaConsumer.endOffsets(pubSubTopicPartitionMapping.keySet(), timeout);
-      Map<PubSubTopicPartition, PubSubPosition> pubSubTopicPartitionOffsetMap =
-          new HashMap<>(topicPartitionOffsetMap.size());
-      for (Map.Entry<TopicPartition, Long> entry: topicPartitionOffsetMap.entrySet()) {
-        PubSubTopicPartition pubSubTopicPartition = pubSubTopicPartitionMapping.get(entry.getKey());
-        PubSubPosition endPosition =
-            entry.getValue() != null ? new ApacheKafkaOffsetPosition(entry.getValue()) : PubSubSymbolicPosition.LATEST;
-        pubSubTopicPartitionOffsetMap.put(pubSubTopicPartition, endPosition);
+    synchronized (consumerLock) {
+      Map<TopicPartition, PubSubTopicPartition> pubSubTopicPartitionMapping = toKafkaTopicPartitionMap(partitions);
+      try {
+        Map<TopicPartition, Long> topicPartitionOffsetMap =
+            this.kafkaConsumer.endOffsets(pubSubTopicPartitionMapping.keySet(), timeout);
+        Map<PubSubTopicPartition, PubSubPosition> pubSubTopicPartitionOffsetMap =
+            new HashMap<>(topicPartitionOffsetMap.size());
+        for (Map.Entry<TopicPartition, Long> entry: topicPartitionOffsetMap.entrySet()) {
+          PubSubTopicPartition pubSubTopicPartition = pubSubTopicPartitionMapping.get(entry.getKey());
+          PubSubPosition endPosition = entry.getValue() != null
+              ? new ApacheKafkaOffsetPosition(entry.getValue())
+              : PubSubSymbolicPosition.LATEST;
+          pubSubTopicPartitionOffsetMap.put(pubSubTopicPartition, endPosition);
+        }
+        return pubSubTopicPartitionOffsetMap;
+      } catch (TimeoutException e) {
+        throw new PubSubOpTimeoutException("Timed out while fetching end offsets for " + partitions, e);
+      } catch (Exception e) {
+        throw new PubSubClientException("Failed to fetch end offsets for " + partitions, e);
       }
-      return pubSubTopicPartitionOffsetMap;
-    } catch (TimeoutException e) {
-      throw new PubSubOpTimeoutException("Timed out while fetching end offsets for " + partitions, e);
-    } catch (Exception e) {
-      throw new PubSubClientException("Failed to fetch end offsets for " + partitions, e);
     }
   }
 
   @Override
   public PubSubPosition endPosition(PubSubTopicPartition pubSubTopicPartition) {
-    try {
-      TopicPartition topicPartition = new TopicPartition(
-          pubSubTopicPartition.getPubSubTopic().getName(),
-          pubSubTopicPartition.getPartitionNumber());
-      // Note: when timeout is not specified, the default request timeout ("request.timeout.ms")
-      // is used, which is 30 seconds. For all other apis, the default request timeout is api
-      // timeout ("default.api.timeout.ms"), which is 60 seconds.
-      // To be consistent with other apis, use api timeout here.
-      Map<TopicPartition, Long> topicPartitionOffsetMap =
-          this.kafkaConsumer.endOffsets(Collections.singleton(topicPartition), config.getDefaultApiTimeout());
-      Long endOffset = topicPartitionOffsetMap.get(topicPartition);
-      return endOffset != null ? new ApacheKafkaOffsetPosition(endOffset) : PubSubSymbolicPosition.LATEST;
-    } catch (TimeoutException e) {
-      throw new PubSubOpTimeoutException("Timed out while fetching end position for " + pubSubTopicPartition, e);
-    } catch (Exception e) {
-      throw new PubSubClientException("Failed to fetch end position for " + pubSubTopicPartition, e);
+    synchronized (consumerLock) {
+      try {
+        TopicPartition topicPartition = new TopicPartition(
+            pubSubTopicPartition.getPubSubTopic().getName(),
+            pubSubTopicPartition.getPartitionNumber());
+        // Note: when timeout is not specified, the default request timeout ("request.timeout.ms")
+        // is used, which is 30 seconds. For all other apis, the default request timeout is api
+        // timeout ("default.api.timeout.ms"), which is 60 seconds.
+        // To be consistent with other apis, use api timeout here.
+        Map<TopicPartition, Long> topicPartitionOffsetMap =
+            this.kafkaConsumer.endOffsets(Collections.singleton(topicPartition), config.getDefaultApiTimeout());
+        Long endOffset = topicPartitionOffsetMap.get(topicPartition);
+        return endOffset != null ? new ApacheKafkaOffsetPosition(endOffset) : PubSubSymbolicPosition.LATEST;
+      } catch (TimeoutException e) {
+        throw new PubSubOpTimeoutException("Timed out while fetching end position for " + pubSubTopicPartition, e);
+      } catch (Exception e) {
+        throw new PubSubClientException("Failed to fetch end position for " + pubSubTopicPartition, e);
+      }
     }
   }
 
@@ -548,35 +600,40 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
    */
   @Override
   public List<PubSubTopicPartitionInfo> partitionsFor(PubSubTopic topic) {
-    List<PartitionInfo> partitionInfos;
-    try {
-      partitionInfos = this.kafkaConsumer.partitionsFor(topic.getName());
-    } catch (RetriableException e) {
-      throw new PubSubClientRetriableException(
-          "Retriable exception thrown when attempting to get partitions for topic: " + topic,
-          e);
-    } catch (AuthorizationException | AuthenticationException e) {
-      throw new PubSubTopicAuthorizationException(
-          "Authorization exception thrown when attempting to get partitions for topic: " + topic,
-          e);
-    } catch (Exception e) {
-      if (e instanceof InterruptException) {
-        Thread.currentThread().interrupt();
+    synchronized (consumerLock) {
+      List<PartitionInfo> partitionInfos;
+      try {
+        partitionInfos = this.kafkaConsumer.partitionsFor(topic.getName());
+      } catch (RetriableException e) {
+        throw new PubSubClientRetriableException(
+            "Retriable exception thrown when attempting to get partitions for topic: " + topic,
+            e);
+      } catch (AuthorizationException | AuthenticationException e) {
+        throw new PubSubTopicAuthorizationException(
+            "Authorization exception thrown when attempting to get partitions for topic: " + topic,
+            e);
+      } catch (Exception e) {
+        if (e instanceof InterruptException) {
+          Thread.currentThread().interrupt();
+        }
+        throw new PubSubClientException("Exception thrown when attempting to get partitions for topic: " + topic, e);
       }
-      throw new PubSubClientException("Exception thrown when attempting to get partitions for topic: " + topic, e);
-    }
 
-    if (partitionInfos == null) {
-      return null;
-    }
-    List<PubSubTopicPartitionInfo> pubSubTopicPartitionInfos = new ArrayList<>(partitionInfos.size());
-    for (PartitionInfo partitionInfo: partitionInfos) {
-      if (partitionInfo.topic().equals(topic.getName())) {
-        pubSubTopicPartitionInfos.add(
-            new PubSubTopicPartitionInfo(topic, partitionInfo.partition(), partitionInfo.inSyncReplicas().length > 0));
+      if (partitionInfos == null) {
+        return null;
       }
+      List<PubSubTopicPartitionInfo> pubSubTopicPartitionInfos = new ArrayList<>(partitionInfos.size());
+      for (PartitionInfo partitionInfo: partitionInfos) {
+        if (partitionInfo.topic().equals(topic.getName())) {
+          pubSubTopicPartitionInfos.add(
+              new PubSubTopicPartitionInfo(
+                  topic,
+                  partitionInfo.partition(),
+                  partitionInfo.inSyncReplicas().length > 0));
+        }
+      }
+      return pubSubTopicPartitionInfos;
     }
-    return pubSubTopicPartitionInfos;
   }
 
   /**
