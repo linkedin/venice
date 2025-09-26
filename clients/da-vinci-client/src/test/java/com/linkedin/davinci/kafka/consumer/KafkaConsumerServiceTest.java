@@ -452,4 +452,21 @@ public class KafkaConsumerServiceTest {
     // Verify that the getStackTrace method was called once for t.
     verify(t, times(1)).getStackTrace();
   }
+
+  @Test
+  public void testInactiveTopicPartitionChecker() {
+    KafkaConsumerService consumerService = mock(KafkaConsumerService.class);
+    doCallRealMethod().when(consumerService).shouldEnableInactiveTopicPartitionChecker(any(), any());
+    VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
+    for (int i = 0; i < 2; i++) {
+      boolean configEnabled = (i == 0);
+      doReturn(configEnabled).when(serverConfig).isInactiveTopicPartitionCheckerEnabled();
+      for (ConsumerPoolType poolType: ConsumerPoolType.values()) {
+        boolean expected = configEnabled && (poolType.equals(ConsumerPoolType.CURRENT_VERSION_AA_WC_LEADER_POOL)
+            || poolType.equals(ConsumerPoolType.CURRENT_VERSION_NON_AA_WC_LEADER_POOL));
+        Assert
+            .assertEquals(expected, consumerService.shouldEnableInactiveTopicPartitionChecker(serverConfig, poolType));
+      }
+    }
+  }
 }

@@ -2647,6 +2647,15 @@ public class ConfigKeys {
   public static final String SERVER_LOAD_CONTROLLER_COMPUTE_LATENCY_ACCEPT_THRESHOLD_IN_MS =
       "server.load.controller.compute.latency.accept.threshold.in.ms";
 
+  public static final String SERVER_INACTIVE_TOPIC_PARTITION_CHECKER_ENABLED =
+      "server.inactive.topic.partition.checker.enabled";
+
+  public static final String SERVER_INACTIVE_TOPIC_PARTITION_CHECKER_INTERNAL_IN_SECONDS =
+      "server.inactive.topic.partition.checker.internal.in.seconds";
+
+  public static final String SERVER_INACTIVE_TOPIC_PARTITION_CHECKER_THRESHOLD_IN_SECONDS =
+      "server.inactive.topic.partition.checker.threshold.in.seconds";
+
   /**
    * Whether to enable producer throughput optimization for realtime workload or not.
    * Two strategies:
