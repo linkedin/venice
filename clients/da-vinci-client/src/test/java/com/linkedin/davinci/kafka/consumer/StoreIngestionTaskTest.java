@@ -2558,7 +2558,6 @@ public abstract class StoreIngestionTaskTest {
                 ArgumentCaptor.forClass(InMemoryPubSubPosition.class);
             verify(mockLogNotifier, timeout(LONG_TEST_TIMEOUT).atLeastOnce())
                 .completed(eq(topic), eq(partition), positionCaptor.capture(), eq("STANDBY"));
-            // Note: Change to generic position until we move reads to PubSubPosition in OffsetRecord
             InMemoryPubSubPosition completedPosition = positionCaptor.getValue();
             assertTrue(completedPosition.getInternalOffset() >= offset);
           });

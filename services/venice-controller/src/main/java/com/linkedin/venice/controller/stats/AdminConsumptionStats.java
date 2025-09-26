@@ -56,12 +56,6 @@ public class AdminConsumptionStats extends AbstractVeniceStats {
   private double storesWithPendingAdminMessagesCountGauge;
 
   /**
-   * A gauge that represents the consumption offset checkpointed into ZK. If remote consumption is enabled, this is the
-   * checkpoint upstream offset; otherwise, it's the checkpoint local consumption offset.
-   */
-  private PubSubPosition adminConsumptionCheckpointPosition;
-
-  /**
    * adminConsumptionOffsetLag = End offset of the admin topic in the source Kafka cluster - the latest consumed offset
    */
   private long adminConsumptionOffsetLag;
@@ -163,10 +157,6 @@ public class AdminConsumptionStats extends AbstractVeniceStats {
 
   public void recordAdminMessageTotalLatency(double value) {
     adminMessageTotalLatencySensor.record(value);
-  }
-
-  public void setAdminConsumptionCheckpointPosition(PubSubPosition adminConsumptionCheckpointPosition) {
-    this.adminConsumptionCheckpointPosition = adminConsumptionCheckpointPosition;
   }
 
   public void setAdminConsumptionOffsetLag(long adminConsumptionOffsetLag) {
