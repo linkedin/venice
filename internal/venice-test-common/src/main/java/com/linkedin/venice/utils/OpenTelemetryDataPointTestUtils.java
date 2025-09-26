@@ -22,11 +22,13 @@ public abstract class OpenTelemetryDataPointTestUtils {
       String metricName,
       String prefix,
       Attributes expectedAttributes) {
-    return metricsData.stream()
+    MetricData data = metricsData.stream()
         .filter(metricData -> metricData.getName().equals(DEFAULT_METRIC_PREFIX + prefix + "." + metricName))
         .findFirst()
-        .orElse(null)
-        .getLongSumData()
+        .orElse(null);
+    assertNotNull(data, "MetricData should not be null");
+
+    return data.getLongSumData()
         .getPoints()
         .stream()
         .filter(p -> p.getAttributes().equals(expectedAttributes))

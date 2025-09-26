@@ -4,7 +4,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.SOURCE_REGION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_NAME;
 
-import com.linkedin.venice.stats.dimensions.RepushStoreTriggerSource;
+import com.linkedin.venice.stats.dimensions.StoreRepushTriggerSource;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -13,9 +13,9 @@ public class RepushJobRequest {
   private final String clusterName;
   private final String storeName;
   private final String sourceRegion;
-  private final RepushStoreTriggerSource triggerSource;
+  private final StoreRepushTriggerSource triggerSource;
 
-  public RepushJobRequest(String clusterName, String storeName, RepushStoreTriggerSource triggerSource) {
+  public RepushJobRequest(String clusterName, String storeName, StoreRepushTriggerSource triggerSource) {
     this.clusterName = clusterName;
     this.storeName = storeName;
     this.sourceRegion = null; // default to null if not specified
@@ -26,7 +26,7 @@ public class RepushJobRequest {
       String clusterName,
       String storeName,
       String sourceRegion,
-      RepushStoreTriggerSource triggerSource) {
+      StoreRepushTriggerSource triggerSource) {
     this.clusterName = clusterName;
     this.storeName = storeName;
     this.sourceRegion = sourceRegion;
@@ -45,7 +45,7 @@ public class RepushJobRequest {
     return sourceRegion;
   }
 
-  public RepushStoreTriggerSource getTriggerSource() {
+  public StoreRepushTriggerSource getTriggerSource() {
     return triggerSource;
   }
 
