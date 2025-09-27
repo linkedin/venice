@@ -67,7 +67,8 @@ public class VeniceControllerService extends AbstractVeniceService {
       Optional<SupersetSchemaGenerator> externalSupersetSchemaGenerator,
       PubSubTopicRepository pubSubTopicRepository,
       PubSubClientsFactory pubSubClientsFactory,
-      PubSubPositionTypeRegistry pubSubPositionTypeRegistry) {
+      PubSubPositionTypeRegistry pubSubPositionTypeRegistry,
+      Optional<VeniceVersionLifecycleEventListener> versionLifecycleEventListener) {
     this.multiClusterConfigs = multiClusterConfigs;
 
     DelegatingClusterLeaderInitializationRoutine initRoutineForPushJobDetailsSystemStore =
@@ -103,7 +104,8 @@ public class VeniceControllerService extends AbstractVeniceService {
         Arrays.asList(
             initRoutineForPushJobDetailsSystemStore,
             initRoutineForHeartbeatSystemStore,
-            initRoutineForParentControllerMetadataSystemStore));
+            initRoutineForParentControllerMetadataSystemStore),
+        versionLifecycleEventListener);
 
     if (multiClusterConfigs.isParent()) {
       this.admin = new VeniceParentHelixAdmin(

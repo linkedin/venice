@@ -105,6 +105,11 @@ public abstract class AbstractPushMonitor
   private final String regionName;
   private final VeniceWriterFactory veniceWriterFactory;
   private String sequentialRollForwardFirstRegion = null;
+  private final CurrentVersionChangeNotifier currentVersionChangeNotifier;
+
+  public interface CurrentVersionChangeNotifier {
+    void onCurrentVersionChange(Store store, String clusterName, int currentVersion, int previousVersion);
+  }
 
   public AbstractPushMonitor(
       String clusterName,
@@ -121,7 +126,8 @@ public abstract class AbstractPushMonitor
       VeniceControllerClusterConfig controllerConfig,
       PushStatusStoreReader pushStatusStoreReader,
       DisabledPartitionStats disabledPartitionStats,
-      VeniceWriterFactory veniceWriterFactory) {
+      VeniceWriterFactory veniceWriterFactory,
+      CurrentVersionChangeNotifier currentVersionChangeNotifier) {
     this.clusterName = clusterName;
     this.offlinePushAccessor = offlinePushAccessor;
     this.storeCleaner = storeCleaner;
@@ -160,6 +166,7 @@ public abstract class AbstractPushMonitor
           RegionUtils.parseRegionRolloutOrderList(controllerConfig.getDeferredVersionSwapRegionRollforwardOrder());
       this.sequentialRollForwardFirstRegion = rolloutOrderList.get(0);
     }
+    this.currentVersionChangeNotifier = currentVersionChangeNotifier;
     pushStatusCollector.start();
   }
 
@@ -1227,6 +1234,7 @@ public abstract class AbstractPushMonitor
                 regionName);
             int previousVersion = store.getCurrentVersion();
             store.setCurrentVersion(versionNumber);
+            currentVersionChangeNotifier.onCurrentVersionChange(store, clusterName, versionNumber, previousVersion);
             realTimeTopicSwitcher.transmitVersionSwapMessage(store, previousVersion, versionNumber);
           } else if (isTargetRegionPushWithDeferredSwap || isNormalPush) {
             LOGGER.info(
@@ -1239,6 +1247,7 @@ public abstract class AbstractPushMonitor
                 isNormalPush);
             int previousVersion = store.getCurrentVersion();
             store.setCurrentVersion(versionNumber);
+            currentVersionChangeNotifier.onCurrentVersionChange(store, clusterName, versionNumber, previousVersion);
             realTimeTopicSwitcher.transmitVersionSwapMessage(store, previousVersion, versionNumber);
           } else {
             LOGGER.info(

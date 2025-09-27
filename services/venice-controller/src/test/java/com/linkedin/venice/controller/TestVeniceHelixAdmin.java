@@ -1275,6 +1275,10 @@ public class TestVeniceHelixAdmin {
     doReturn(repo).when(mockClusterResources).getCustomizedViewRepository();
     doReturn(mockClusterResources).when(mockVeniceHelixAdmin).getHelixVeniceClusterResources(clusterName);
 
+    VeniceVersionLifecycleEventManager mockVersionLifecycleEventManager =
+        mock(VeniceVersionLifecycleEventManager.class);
+    doReturn(mockVersionLifecycleEventManager).when(mockClusterResources).getVeniceVersionLifecycleEventManager();
+
     RealTimeTopicSwitcher mockTopicSwitcher = mock(RealTimeTopicSwitcher.class);
     doReturn(mockTopicSwitcher).when(mockVeniceHelixAdmin).getRealTimeTopicSwitcher();
     doNothing().when(mockTopicSwitcher).transmitVersionSwapMessage(any(), anyInt(), anyInt());
@@ -1282,7 +1286,7 @@ public class TestVeniceHelixAdmin {
     // intercept the lambda passed to storeMetadataUpdate and run it on our mockStore
     doAnswer(inv -> {
       VeniceHelixAdmin.StoreMetadataOperation updater = inv.getArgument(2);
-      updater.update(mockStore);
+      updater.update(mockStore, mockClusterResources);
       return null;
     }).when(mockVeniceHelixAdmin).storeMetadataUpdate(eq(clusterName), eq(storeName), any());
     doCallRealMethod().when(mockVeniceHelixAdmin).rollForwardToFutureVersion(anyString(), anyString(), anyString());

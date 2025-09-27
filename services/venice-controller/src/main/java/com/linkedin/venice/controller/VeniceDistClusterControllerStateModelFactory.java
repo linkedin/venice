@@ -28,6 +28,7 @@ public class VeniceDistClusterControllerStateModelFactory extends StateModelFact
   private final RealTimeTopicSwitcher realTimeTopicSwitcher;
   private final Optional<DynamicAccessController> accessController;
   private final HelixAdminClient helixAdminClient;
+  private final Optional<VeniceVersionLifecycleEventListener> versionLifecycleEventListener;
 
   public VeniceDistClusterControllerStateModelFactory(
       ZkClient zkClient,
@@ -38,7 +39,8 @@ public class VeniceDistClusterControllerStateModelFactory extends StateModelFact
       ClusterLeaderInitializationRoutine controllerInitialization,
       RealTimeTopicSwitcher realTimeTopicSwitcher,
       Optional<DynamicAccessController> accessController,
-      HelixAdminClient helixAdminClient) {
+      HelixAdminClient helixAdminClient,
+      Optional<VeniceVersionLifecycleEventListener> versionLifecycleEventListener) {
     this.zkClient = zkClient;
     this.adapterSerializer = adapterSerializer;
     this.clusterConfigs = clusterConfigs;
@@ -48,6 +50,7 @@ public class VeniceDistClusterControllerStateModelFactory extends StateModelFact
     this.realTimeTopicSwitcher = realTimeTopicSwitcher;
     this.accessController = accessController;
     this.helixAdminClient = helixAdminClient;
+    this.versionLifecycleEventListener = versionLifecycleEventListener;
   }
 
   /**
@@ -66,7 +69,8 @@ public class VeniceDistClusterControllerStateModelFactory extends StateModelFact
         controllerInitialization,
         realTimeTopicSwitcher,
         accessController,
-        helixAdminClient);
+        helixAdminClient,
+        versionLifecycleEventListener);
     clusterToStateModelsMap.put(veniceClusterName, model);
     return model;
   }
