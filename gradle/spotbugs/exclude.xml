@@ -497,6 +497,7 @@
     <Or>
       <Package name="com.linkedin.venice.protocols"/>
       <Package name="com.linkedin.venice.protocols.controller"/>
+      <Package name="com.linkedin.venice.protocols.hooks"/>
     </Or>
   </Match>
   <Match>
