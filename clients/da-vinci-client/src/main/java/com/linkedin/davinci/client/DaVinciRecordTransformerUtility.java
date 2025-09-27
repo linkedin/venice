@@ -189,8 +189,9 @@ public class DaVinciRecordTransformerUtility<K, O> {
                   .getFastAvroSpecificDeserializer(valueSchema, recordTransformerConfig.getOutputValueClass());
             } else {
               if (recordTransformerConfig.isRecordTransformationEnabled()) {
-                outputValueDeserializer = FastSerializerDeserializerFactory
-                    .getFastAvroGenericDeserializer(valueSchema, recordTransformer.getOutputValueSchema());
+                outputValueDeserializer = FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(
+                    recordTransformer.getOutputValueSchema(),
+                    recordTransformer.getOutputValueSchema());
               } else if (recordTransformer.useUniformInputValueSchema()) {
                 outputValueDeserializer = FastSerializerDeserializerFactory
                     .getFastAvroGenericDeserializer(valueSchema, recordTransformer.getInputValueSchema());
