@@ -40,7 +40,6 @@ import org.apache.logging.log4j.Logger;
 public class DuckDBDaVinciRecordTransformer
     extends DaVinciRecordTransformer<GenericRecord, GenericRecord, GenericRecord> {
   private static final Logger LOGGER = LogManager.getLogger(DuckDBDaVinciRecordTransformer.class);
-  private static final String duckDBFilePath = "my_database.duckdb";
   private static final String createViewStatementTemplate = "CREATE OR REPLACE VIEW \"%s\" AS SELECT * FROM \"%s\";";
   private static final String dropTableStatementTemplate = "DROP TABLE \"%s\";";
   private final String versionTableName;
@@ -68,7 +67,7 @@ public class DuckDBDaVinciRecordTransformer
       Set<String> columnsToProject) {
     super(storeName, storeVersion, keySchema, inputValueSchema, outputValueSchema, recordTransformerConfig);
     this.versionTableName = buildStoreNameWithVersion(storeVersion);
-    this.duckDBUrl = "jdbc:duckdb:" + baseDir + "/" + duckDBFilePath;
+    this.duckDBUrl = "jdbc:duckdb:" + baseDir + "/" + storeName + ".duckdb";
     this.columnsToProject = columnsToProject;
     String deleteStatement = AvroToSQL.deleteStatement(versionTableName, keySchema);
     String upsertStatement = AvroToSQL.upsertStatement(versionTableName, keySchema, inputValueSchema, columnsToProject);
@@ -228,7 +227,7 @@ public class DuckDBDaVinciRecordTransformer
 
   /**
    * Cleans up database connections and resources.
-   * 
+   *
    * This is called automatically when the transformer is closed.
    */
   @Override

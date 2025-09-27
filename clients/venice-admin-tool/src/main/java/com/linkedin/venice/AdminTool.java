@@ -1,7 +1,5 @@
 package com.linkedin.venice;
 
-import static com.linkedin.venice.CommonConfigKeys.SSL_FACTORY_CLASS_NAME;
-import static com.linkedin.venice.VeniceConstants.DEFAULT_SSL_FACTORY_CLASS_NAME;
 import static com.linkedin.venice.schema.AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation;
 import static com.linkedin.venice.serialization.avro.AvroProtocolDefinition.SERVER_ADMIN_RESPONSE;
 
@@ -116,10 +114,10 @@ import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
+import com.linkedin.venice.utils.CliUtils;
 import com.linkedin.venice.utils.ConfigCommonUtils;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.RetryUtils;
-import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -166,7 +164,6 @@ import org.apache.commons.cli.CommandLineParser;
 import org.apache.commons.cli.DefaultParser;
 import org.apache.commons.cli.HelpFormatter;
 import org.apache.commons.cli.Option;
-import org.apache.commons.cli.OptionBuilder;
 import org.apache.commons.cli.OptionGroup;
 import org.apache.commons.cli.Options;
 import org.apache.commons.cli.ParseException;
@@ -225,7 +222,7 @@ public class AdminTool {
       /**
        * Initialize SSL config if provided.
        */
-      buildSslFactory(cmd);
+      sslFactory = CliUtils.buildSslFactory(cmd, Arg.SSL_CONFIG_PATH.toString());
 
       // Generate PubSubClientsFactory from java system properties, apache kafka adapter is the default one.
       PubSubClientsFactory pubSubClientsFactory =
@@ -233,17 +230,17 @@ public class AdminTool {
 
       boolean hasUrlArg = Arrays.asList(foundCommand.getRequiredArgs()).contains(Arg.URL);
       if (hasUrlArg) {
-        veniceUrl = getRequiredArgument(cmd, Arg.URL);
+        veniceUrl = CliUtils.getRequiredArgument(cmd, Arg.URL);
 
         boolean hasRequiredClusterArg = Arrays.asList(foundCommand.getRequiredArgs()).contains(Arg.CLUSTER);
         boolean hasOptionalClusterArg = Arrays.asList(foundCommand.getOptionalArgs()).contains(Arg.CLUSTER);
-        String optionalClusterArgValue = getOptionalArgument(cmd, Arg.CLUSTER);
+        String optionalClusterArgValue = CliUtils.getOptionalArgument(cmd, Arg.CLUSTER);
         if (hasRequiredClusterArg) {
-          clusterName = getRequiredArgument(cmd, Arg.CLUSTER);
+          clusterName = CliUtils.getRequiredArgument(cmd, Arg.CLUSTER);
         } else if (hasOptionalClusterArg && optionalClusterArgValue != null) {
           clusterName = optionalClusterArgValue;
         } else if (Arrays.asList(foundCommand.getRequiredArgs()).contains(Arg.STORE) && hasOptionalClusterArg) {
-          storeName = getRequiredArgument(cmd, Arg.STORE, Command.DESCRIBE_STORE);
+          storeName = CliUtils.getRequiredArgument(cmd, Arg.STORE, Command.DESCRIBE_STORE);
           D2ServiceDiscoveryResponse serviceDiscoveryResponse =
               ControllerClient.discoverCluster(veniceUrl, storeName, sslFactory, 1);
           if (serviceDiscoveryResponse.isError()) {
@@ -265,15 +262,15 @@ public class AdminTool {
       switch (foundCommand) {
         case LIST_STORES:
           storeResponse = queryStoreList(cmd);
-          printObject(storeResponse);
+          CliUtils.printObject(storeResponse);
           break;
         case CLEAN_EXECUTION_IDS:
-          String cluster = getRequiredArgument(cmd, Arg.CLUSTER);
+          String cluster = CliUtils.getRequiredArgument(cmd, Arg.CLUSTER);
           response = controllerClient.cleanExecutionIds(cluster);
-          printObject(response);
+          CliUtils.printObject(response);
           break;
         case DESCRIBE_STORE:
-          storeName = getRequiredArgument(cmd, Arg.STORE, Command.DESCRIBE_STORE);
+          storeName = CliUtils.getRequiredArgument(cmd, Arg.STORE, Command.DESCRIBE_STORE);
           for (String store: storeName.split(",")) {
             printStoreDescription(store);
           }
@@ -285,8 +282,8 @@ public class AdminTool {
           }
           break;
         case JOB_STATUS:
-          storeName = getRequiredArgument(cmd, Arg.STORE, Command.JOB_STATUS);
-          versionString = getOptionalArgument(cmd, Arg.VERSION, null);
+          storeName = CliUtils.getRequiredArgument(cmd, Arg.STORE, Command.JOB_STATUS);
+          versionString = CliUtils.getOptionalArgument(cmd, Arg.VERSION, null);
           if (versionString == null) {
             StoreInfo storeInfo = controllerClient.getStore(storeName).getStore();
             version = storeInfo.getLargestUsedVersionNumber();
@@ -295,31 +292,31 @@ public class AdminTool {
           }
           topicName = Version.composeKafkaTopic(storeName, version);
           JobStatusQueryResponse jobStatus = controllerClient.queryJobStatus(topicName);
-          printObject(jobStatus);
+          CliUtils.printObject(jobStatus);
           break;
         case KILL_JOB:
-          storeName = getRequiredArgument(cmd, Arg.STORE, Command.KILL_JOB);
-          versionString = getRequiredArgument(cmd, Arg.VERSION, Command.KILL_JOB);
+          storeName = CliUtils.getRequiredArgument(cmd, Arg.STORE, Command.KILL_JOB);
+          versionString = CliUtils.getRequiredArgument(cmd, Arg.VERSION, Command.KILL_JOB);
           version = Integer.parseInt(versionString);
           topicName = Version.composeKafkaTopic(storeName, version);
           response = controllerClient.killOfflinePushJob(topicName);
-          printObject(response);
+          CliUtils.printObject(response);
           break;
         case SKIP_ADMIN_MESSAGE:
           if (!cmd.hasOption(Arg.OFFSET.first()) && !cmd.hasOption(Arg.EXECUTION_ID.first())) {
-            printErrAndExit(
+            CliUtils.printErrAndExit(
                 "At least one of " + Arg.OFFSET.getArgName() + " or " + Arg.EXECUTION_ID.getArgName()
                     + " is required.");
           }
           if (cmd.hasOption(Arg.OFFSET.first()) && cmd.hasOption(Arg.EXECUTION_ID.first())) {
-            printErrAndExit(
+            CliUtils.printErrAndExit(
                 "Only one of " + Arg.OFFSET.getArgName() + " or " + Arg.EXECUTION_ID.getArgName() + " is allowed.");
           }
-          String offset = getOptionalArgument(cmd, Arg.OFFSET);
-          String executionId = getOptionalArgument(cmd, Arg.EXECUTION_ID);
-          boolean skipDIV = Boolean.parseBoolean(getOptionalArgument(cmd, Arg.SKIP_DIV, "false"));
+          String offset = CliUtils.getOptionalArgument(cmd, Arg.OFFSET);
+          String executionId = CliUtils.getOptionalArgument(cmd, Arg.EXECUTION_ID);
+          boolean skipDIV = Boolean.parseBoolean(CliUtils.getOptionalArgument(cmd, Arg.SKIP_DIV, "false"));
           response = controllerClient.skipAdminMessage(offset, skipDIV, executionId);
-          printObject(response);
+          CliUtils.printObject(response);
           break;
         case NEW_STORE:
           createNewStore(cmd);
@@ -645,7 +642,7 @@ public class AdminTool {
       }
       clusterControllerClientPerColoMap.forEach((key, map) -> map.values().forEach(Utils::closeQuietlyWithErrorLogged));
     } catch (Exception e) {
-      printErrAndThrow(e, e.getMessage(), null);
+      CliUtils.printErrAndThrow(e, e.getMessage(), null);
     }
   }
 
@@ -657,7 +654,7 @@ public class AdminTool {
      **/
     OptionGroup commandGroup = new OptionGroup();
     for (Command c: Command.values()) {
-      createCommandOpt(c, commandGroup);
+      CliUtils.createCommandOpt(c.toString(), c.getDesc(), commandGroup);
     }
 
     /**
@@ -729,50 +726,43 @@ public class AdminTool {
     return Command.getCommand(foundCommand, cmd);
   }
 
-  private static void buildSslFactory(CommandLine cmd) throws IOException {
-    if (cmd.hasOption(Arg.SSL_CONFIG_PATH.first())) {
-      String sslConfigPath = getOptionalArgument(cmd, Arg.SSL_CONFIG_PATH);
-      Properties sslProperties = SslUtils.loadSSLConfig(sslConfigPath);
-      String sslFactoryClassName = sslProperties.getProperty(SSL_FACTORY_CLASS_NAME, DEFAULT_SSL_FACTORY_CLASS_NAME);
-      sslFactory = Optional.of(SslUtils.getSSLFactory(sslProperties, sslFactoryClassName));
-    }
-  }
-
   private static MultiStoreResponse queryStoreList(CommandLine cmd) {
-    boolean includeSystemStores = Boolean.parseBoolean(getOptionalArgument(cmd, Arg.INCLUDE_SYSTEM_STORES));
-    Optional<String> configNameFilter = Optional.ofNullable(getOptionalArgument(cmd, Arg.STORE_CONFIG_NAME_FILTER));
-    Optional<String> configValueFilter = Optional.ofNullable(getOptionalArgument(cmd, Arg.STORE_CONFIG_VALUE_FILTER));
+    boolean includeSystemStores = Boolean.parseBoolean(CliUtils.getOptionalArgument(cmd, Arg.INCLUDE_SYSTEM_STORES));
+    Optional<String> configNameFilter =
+        Optional.ofNullable(CliUtils.getOptionalArgument(cmd, Arg.STORE_CONFIG_NAME_FILTER));
+    Optional<String> configValueFilter =
+        Optional.ofNullable(CliUtils.getOptionalArgument(cmd, Arg.STORE_CONFIG_VALUE_FILTER));
     return controllerClient.queryStoreList(includeSystemStores, configNameFilter, configValueFilter);
   }
 
   private static void queryStoreForKey(CommandLine cmd, String veniceUrl) throws Exception {
-    String store = getRequiredArgument(cmd, Arg.STORE);
-    String keyString = getRequiredArgument(cmd, Arg.KEY);
-    String sslConfigFileStr = getOptionalArgument(cmd, Arg.VENICE_CLIENT_SSL_CONFIG_FILE);
-    boolean isVsonStore = Boolean.parseBoolean(getOptionalArgument(cmd, Arg.VSON_STORE, "false"));
+    String store = CliUtils.getRequiredArgument(cmd, Arg.STORE);
+    String keyString = CliUtils.getRequiredArgument(cmd, Arg.KEY);
+    String sslConfigFileStr = CliUtils.getOptionalArgument(cmd, Arg.VENICE_CLIENT_SSL_CONFIG_FILE);
+    boolean isVsonStore = Boolean.parseBoolean(CliUtils.getOptionalArgument(cmd, Arg.VSON_STORE, "false"));
     Optional<String> sslConfigFile =
         StringUtils.isEmpty(sslConfigFileStr) ? Optional.empty() : Optional.of(sslConfigFileStr);
-    printObject(QueryTool.queryStoreForKey(store, keyString, veniceUrl, isVsonStore, sslConfigFile));
+    CliUtils.printObject(QueryTool.queryStoreForKey(store, keyString, veniceUrl, isVsonStore, sslConfigFile));
   }
 
   private static void showSchemas(CommandLine cmd) {
-    String store = getRequiredArgument(cmd, Arg.STORE);
+    String store = CliUtils.getRequiredArgument(cmd, Arg.STORE);
     SchemaResponse keySchema = controllerClient.getKeySchema(store);
-    printObject(keySchema);
+    CliUtils.printObject(keySchema);
     MultiSchemaResponse valueSchemas = controllerClient.getAllValueSchema(store);
-    printObject(valueSchemas);
+    CliUtils.printObject(valueSchemas);
   }
 
   private static void executeDataRecovery(CommandLine cmd) {
-    String recoveryCommand = getRequiredArgument(cmd, Arg.RECOVERY_COMMAND);
-    String destFabric = getRequiredArgument(cmd, Arg.DEST_FABRIC);
-    String sourceFabric = getRequiredArgument(cmd, Arg.SOURCE_FABRIC);
-    String timestamp = getRequiredArgument(cmd, Arg.DATETIME);
-    String parentUrl = getRequiredArgument(cmd, Arg.URL);
+    String recoveryCommand = CliUtils.getRequiredArgument(cmd, Arg.RECOVERY_COMMAND);
+    String destFabric = CliUtils.getRequiredArgument(cmd, Arg.DEST_FABRIC);
+    String sourceFabric = CliUtils.getRequiredArgument(cmd, Arg.SOURCE_FABRIC);
+    String timestamp = CliUtils.getRequiredArgument(cmd, Arg.DATETIME);
+    String parentUrl = CliUtils.getRequiredArgument(cmd, Arg.URL);
 
-    String extraCommandArgs = getOptionalArgument(cmd, Arg.EXTRA_COMMAND_ARGS);
-    String stores = getOptionalArgument(cmd, Arg.STORES);
-    String cluster = getOptionalArgument(cmd, Arg.CLUSTER);
+    String extraCommandArgs = CliUtils.getOptionalArgument(cmd, Arg.EXTRA_COMMAND_ARGS);
+    String stores = CliUtils.getOptionalArgument(cmd, Arg.STORES);
+    String cluster = CliUtils.getOptionalArgument(cmd, Arg.CLUSTER);
     boolean isDebuggingEnabled = cmd.hasOption(Arg.DEBUG.toString());
     boolean isNonInteractive = cmd.hasOption(Arg.NON_INTERACTIVE.toString());
 
@@ -800,11 +790,11 @@ public class AdminTool {
   }
 
   private static void estimateDataRecoveryTime(CommandLine cmd) {
-    String destFabric = getRequiredArgument(cmd, Arg.DEST_FABRIC);
-    String parentUrl = getRequiredArgument(cmd, Arg.URL);
+    String destFabric = CliUtils.getRequiredArgument(cmd, Arg.DEST_FABRIC);
+    String parentUrl = CliUtils.getRequiredArgument(cmd, Arg.URL);
 
-    String stores = getOptionalArgument(cmd, Arg.STORES);
-    String cluster = getOptionalArgument(cmd, Arg.CLUSTER);
+    String stores = CliUtils.getOptionalArgument(cmd, Arg.STORES);
+    String cluster = CliUtils.getOptionalArgument(cmd, Arg.CLUSTER);
 
     Set<String> storeSet = calculateRecoveryStoreNames(stores, cluster, parentUrl);
     DataRecoveryClient dataRecoveryClient = new DataRecoveryClient();
@@ -820,24 +810,25 @@ public class AdminTool {
     }
 
     if (total <= 0) {
-      printObject("00:00:00");
+      CliUtils.printObject("00:00:00");
     } else {
       int hours = (int) (total / 3600);
       int minutes = (int) ((total % 3600) / 60);
       int seconds = (int) (total % 60);
 
-      printObject(String.format("TOTAL RECOVERY TIME FOR ALL STORES = %02d:%02d:%02d", hours, minutes, seconds));
+      CliUtils
+          .printObject(String.format("TOTAL RECOVERY TIME FOR ALL STORES = %02d:%02d:%02d", hours, minutes, seconds));
     }
   }
 
   private static void monitorDataRecovery(CommandLine cmd) {
-    String parentUrl = getRequiredArgument(cmd, Arg.URL);
-    String destFabric = getRequiredArgument(cmd, Arg.DEST_FABRIC);
-    String dateTimeStr = getRequiredArgument(cmd, Arg.DATETIME);
+    String parentUrl = CliUtils.getRequiredArgument(cmd, Arg.URL);
+    String destFabric = CliUtils.getRequiredArgument(cmd, Arg.DEST_FABRIC);
+    String dateTimeStr = CliUtils.getRequiredArgument(cmd, Arg.DATETIME);
 
-    String intervalStr = getOptionalArgument(cmd, Arg.INTERVAL);
-    String stores = getOptionalArgument(cmd, Arg.STORES);
-    String cluster = getOptionalArgument(cmd, Arg.CLUSTER);
+    String intervalStr = CliUtils.getOptionalArgument(cmd, Arg.INTERVAL);
+    String stores = CliUtils.getOptionalArgument(cmd, Arg.STORES);
+    String cluster = CliUtils.getOptionalArgument(cmd, Arg.CLUSTER);
 
     MonitorCommand.Params.Builder builder = new MonitorCommand.Params.Builder().setTargetRegion(destFabric)
         .setParentUrl(parentUrl)
@@ -893,13 +884,14 @@ public class AdminTool {
   }
 
   private static void createNewStore(CommandLine cmd) throws Exception {
-    String store = getRequiredArgument(cmd, Arg.STORE, Command.NEW_STORE);
-    String keySchemaFile = getRequiredArgument(cmd, Arg.KEY_SCHEMA, Command.NEW_STORE);
-    String keySchema = readFile(keySchemaFile);
-    String valueSchemaFile = getRequiredArgument(cmd, Arg.VALUE_SCHEMA, Command.NEW_STORE);
-    String valueSchema = readFile(valueSchemaFile);
-    String owner = getOptionalArgument(cmd, Arg.OWNER, "");
-    boolean isVsonStore = Utils.parseBooleanOrThrow(getOptionalArgument(cmd, Arg.VSON_STORE, "false"), "isVsonStore");
+    String store = CliUtils.getRequiredArgument(cmd, Arg.STORE, Command.NEW_STORE);
+    String keySchemaFile = CliUtils.getRequiredArgument(cmd, Arg.KEY_SCHEMA, Command.NEW_STORE);
+    String keySchema = CliUtils.readFile(keySchemaFile);
+    String valueSchemaFile = CliUtils.getRequiredArgument(cmd, Arg.VALUE_SCHEMA, Command.NEW_STORE);
+    String valueSchema = CliUtils.readFile(valueSchemaFile);
+    String owner = CliUtils.getOptionalArgument(cmd, Arg.OWNER, "");
+    boolean isVsonStore =
+        Utils.parseBooleanOrThrow(CliUtils.getOptionalArgument(cmd, Arg.VSON_STORE, "false"), "isVsonStore");
     if (isVsonStore) {
       keySchema = VsonAvroSchemaAdapter.parse(keySchema).toString();
       valueSchema = VsonAvroSchemaAdapter.parse(valueSchema).toString();
@@ -908,24 +900,25 @@ public class AdminTool {
     verifyValidSchema(valueSchema);
     verifyStoreExistence(store, false);
     NewStoreResponse response = controllerClient.createNewStore(store, owner, keySchema, valueSchema);
-    printObject(response);
+    CliUtils.printObject(response);
   }
 
   private static void deleteStore(CommandLine cmd) throws IOException {
-    String store = getRequiredArgument(cmd, Arg.STORE, Command.DELETE_STORE);
+    String store = CliUtils.getRequiredArgument(cmd, Arg.STORE, Command.DELETE_STORE);
     verifyStoreExistence(store, true);
     TrackableControllerResponse response = controllerClient.deleteStore(store);
-    printObject(response);
+    CliUtils.printObject(response);
   }
 
   private static void clusterBatchTask(CommandLine cmd) {
-    String clusterName = getRequiredArgument(cmd, Arg.CLUSTER, Command.CLUSTER_BATCH_TASK);
-    String task = getRequiredArgument(cmd, Arg.TASK_NAME, Command.CLUSTER_BATCH_TASK);
-    String checkpointFile = getRequiredArgument(cmd, Arg.CHECKPOINT_FILE, Command.CLUSTER_BATCH_TASK);
-    int parallelism = Integer.parseInt(getOptionalArgument(cmd, Arg.THREAD_COUNT, "1"));
-    String storeFilterFile = getOptionalArgument(cmd, Arg.STORE_FILTER_FILE, "");
-    int kafkaTopicMinISR = Integer.parseInt(getOptionalArgument(cmd, Arg.KAFKA_TOPIC_MIN_IN_SYNC_REPLICA));
-    int kafkaTopicRtMinISR = Integer.parseInt(getOptionalArgument(cmd, Arg.KAFKA_RT_TOPICS_MIN_IN_SYNC_REPLICAS));
+    String clusterName = CliUtils.getRequiredArgument(cmd, Arg.CLUSTER, Command.CLUSTER_BATCH_TASK);
+    String task = CliUtils.getRequiredArgument(cmd, Arg.TASK_NAME, Command.CLUSTER_BATCH_TASK);
+    String checkpointFile = CliUtils.getRequiredArgument(cmd, Arg.CHECKPOINT_FILE, Command.CLUSTER_BATCH_TASK);
+    int parallelism = Integer.parseInt(CliUtils.getOptionalArgument(cmd, Arg.THREAD_COUNT, "1"));
+    String storeFilterFile = CliUtils.getOptionalArgument(cmd, Arg.STORE_FILTER_FILE, "");
+    int kafkaTopicMinISR = Integer.parseInt(CliUtils.getOptionalArgument(cmd, Arg.KAFKA_TOPIC_MIN_IN_SYNC_REPLICA));
+    int kafkaTopicRtMinISR =
+        Integer.parseInt(CliUtils.getOptionalArgument(cmd, Arg.KAFKA_RT_TOPICS_MIN_IN_SYNC_REPLICAS));
     Set<String> interestedStoresSet = new HashSet<>();
     LOGGER.info(
         "[**** Cluster Command Params ****] Cluster: {}, Task: {}, Checkpoint: {}, Parallelism: {}, Store filter: {}",
@@ -1003,11 +996,11 @@ public class AdminTool {
     // Validate task type. For now, we only has one task, if we have more task in the future, we can extend this logic.
     Supplier<Function<String, Boolean>> functionSupplier = null;
     if (SystemStorePushTask.TASK_NAME.equals(task)) {
-      String systemStoreType = getOptionalArgument(cmd, Arg.SYSTEM_STORE_TYPE);
+      String systemStoreType = CliUtils.getOptionalArgument(cmd, Arg.SYSTEM_STORE_TYPE);
       if (systemStoreType != null) {
         if (!(systemStoreType.equalsIgnoreCase(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.toString())
             || systemStoreType.equalsIgnoreCase(VeniceSystemStoreType.META_STORE.toString()))) {
-          printErrAndExit("System store type: " + systemStoreType + " is not supported.");
+          CliUtils.printErrAndExit("System store type: " + systemStoreType + " is not supported.");
         }
       }
       System.out.println(
@@ -1020,7 +1013,7 @@ public class AdminTool {
       System.out.println(
           functionSupplier = () -> new BackfillMinIsrTask(controllerClientMap, kafkaTopicMinISR, kafkaTopicRtMinISR));
     } else {
-      printErrAndExit("Undefined task: " + task);
+      CliUtils.printErrAndExit("Undefined task: " + task);
     }
 
     // Create thread pool and start parallel processing.
@@ -1044,11 +1037,11 @@ public class AdminTool {
   }
 
   private static void backfillSystemStores(CommandLine cmd) {
-    String clusterName = getRequiredArgument(cmd, Arg.CLUSTER, Command.BACKFILL_SYSTEM_STORES);
-    String systemStoreType = getRequiredArgument(cmd, Arg.SYSTEM_STORE_TYPE, Command.BACKFILL_SYSTEM_STORES);
+    String clusterName = CliUtils.getRequiredArgument(cmd, Arg.CLUSTER, Command.BACKFILL_SYSTEM_STORES);
+    String systemStoreType = CliUtils.getRequiredArgument(cmd, Arg.SYSTEM_STORE_TYPE, Command.BACKFILL_SYSTEM_STORES);
     if (!(systemStoreType.equalsIgnoreCase(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.toString())
         || systemStoreType.equalsIgnoreCase(VeniceSystemStoreType.META_STORE.toString()))) {
-      printErrAndExit("System store type: " + systemStoreType + " is not supported.");
+      CliUtils.printErrAndExit("System store type: " + systemStoreType + " is not supported.");
     }
     String[] stores = controllerClient.queryStoreList(false).getStores();
     List<String> failedToGetStoreInfoStoreList = new ArrayList<>();
@@ -1116,9 +1109,9 @@ public class AdminTool {
   }
 
   private static void emptyPush(CommandLine cmd) {
-    String store = getRequiredArgument(cmd, Arg.STORE, Command.EMPTY_PUSH);
-    String pushId = getRequiredArgument(cmd, Arg.PUSH_ID, Command.EMPTY_PUSH);
-    String storeSizeString = getRequiredArgument(cmd, Arg.STORE_SIZE, Command.EMPTY_PUSH);
+    String store = CliUtils.getRequiredArgument(cmd, Arg.STORE, Command.EMPTY_PUSH);
+    String pushId = CliUtils.getRequiredArgument(cmd, Arg.PUSH_ID, Command.EMPTY_PUSH);
+    String storeSizeString = CliUtils.getRequiredArgument(cmd, Arg.STORE_SIZE, Command.EMPTY_PUSH);
     long storeSize = Utils.parseLongFromString(storeSizeString, Arg.STORE_SIZE.name());
     executeEmptyPush(store, pushId, storeSize);
   }
@@ -1127,7 +1120,7 @@ public class AdminTool {
   private static boolean executeEmptyPush(String store, String pushId, long storeSize) {
     verifyStoreExistence(store, true);
     VersionCreationResponse versionCreationResponse = controllerClient.emptyPush(store, pushId, storeSize);
-    printObject(versionCreationResponse);
+    CliUtils.printObject(versionCreationResponse);
     if (versionCreationResponse.isError()) {
       return false;
     }
@@ -1137,7 +1130,7 @@ public class AdminTool {
     while (true) {
       JobStatusQueryResponse jobStatusQueryResponse =
           controllerClient.retryableRequest(3, controllerClient -> controllerClient.queryJobStatus(topicName));
-      printObject(jobStatusQueryResponse);
+      CliUtils.printObject(jobStatusQueryResponse);
       if (jobStatusQueryResponse.isError()) {
         return false;
       }
@@ -1151,28 +1144,29 @@ public class AdminTool {
   }
 
   private static void setEnableStoreWrites(CommandLine cmd, boolean enableWrites) {
-    String store =
-        getRequiredArgument(cmd, Arg.STORE, enableWrites ? Command.ENABLE_STORE_WRITE : Command.DISABLE_STORE_WRITE);
+    String store = CliUtils
+        .getRequiredArgument(cmd, Arg.STORE, enableWrites ? Command.ENABLE_STORE_WRITE : Command.DISABLE_STORE_WRITE);
     ControllerResponse response = controllerClient.enableStoreWrites(store, enableWrites);
-    printSuccess(response);
+    CliUtils.printSuccess(response);
   }
 
   private static void setEnableStoreReads(CommandLine cmd, boolean enableReads) {
-    String store =
-        getRequiredArgument(cmd, Arg.STORE, enableReads ? Command.ENABLE_STORE_READ : Command.DISABLE_STORE_READ);
+    String store = CliUtils
+        .getRequiredArgument(cmd, Arg.STORE, enableReads ? Command.ENABLE_STORE_READ : Command.DISABLE_STORE_READ);
     ControllerResponse response = controllerClient.enableStoreReads(store, enableReads);
-    printSuccess(response);
+    CliUtils.printSuccess(response);
   }
 
   private static void setEnableStoreReadWrites(CommandLine cmd, boolean enableReadWrites) {
-    String store = getRequiredArgument(cmd, Arg.STORE, enableReadWrites ? Command.ENABLE_STORE : Command.DISABLE_STORE);
+    String store =
+        CliUtils.getRequiredArgument(cmd, Arg.STORE, enableReadWrites ? Command.ENABLE_STORE : Command.DISABLE_STORE);
     ControllerResponse response = controllerClient.enableStoreReadWrites(store, enableReadWrites);
-    printSuccess(response);
+    CliUtils.printSuccess(response);
   }
 
   private static void applyVersionToStore(CommandLine cmd) {
-    String storeName = getRequiredArgument(cmd, Arg.STORE, Command.SET_VERSION);
-    String version = getRequiredArgument(cmd, Arg.VERSION, Command.SET_VERSION);
+    String storeName = CliUtils.getRequiredArgument(cmd, Arg.STORE, Command.SET_VERSION);
+    String version = CliUtils.getRequiredArgument(cmd, Arg.VERSION, Command.SET_VERSION);
     int intVersion = Utils.parseIntFromString(version, Arg.VERSION.name());
     boolean versionExists = false;
     StoreResponse storeResponse = controllerClient.getStore(storeName);
@@ -1192,27 +1186,27 @@ public class AdminTool {
               + Arrays.toString(versionNumbers));
     }
     VersionResponse response = controllerClient.overrideSetActiveVersion(storeName, intVersion);
-    printSuccess(response);
+    CliUtils.printSuccess(response);
   }
 
   private static void setStoreOwner(CommandLine cmd) {
-    String storeName = getRequiredArgument(cmd, Arg.STORE, Command.SET_OWNER);
-    String owner = getRequiredArgument(cmd, Arg.OWNER, Command.SET_OWNER);
+    String storeName = CliUtils.getRequiredArgument(cmd, Arg.STORE, Command.SET_OWNER);
+    String owner = CliUtils.getRequiredArgument(cmd, Arg.OWNER, Command.SET_OWNER);
     OwnerResponse response = controllerClient.setStoreOwner(storeName, owner);
-    printSuccess(response);
+    CliUtils.printSuccess(response);
   }
 
   private static void setStorePartition(CommandLine cmd) {
-    String storeName = getRequiredArgument(cmd, Arg.STORE, Command.SET_PARTITION_COUNT);
-    String partitionNum = getRequiredArgument(cmd, Arg.PARTITION_COUNT, Command.SET_PARTITION_COUNT);
+    String storeName = CliUtils.getRequiredArgument(cmd, Arg.STORE, Command.SET_PARTITION_COUNT);
+    String partitionNum = CliUtils.getRequiredArgument(cmd, Arg.PARTITION_COUNT, Command.SET_PARTITION_COUNT);
     PartitionResponse response = controllerClient.setStorePartitionCount(storeName, partitionNum);
-    printSuccess(response);
+    CliUtils.printSuccess(response);
   }
 
   private static void getPartitionIdForKey(CommandLine cmd) {
-    String storeName = getRequiredArgument(cmd, Arg.STORE, Command.GET_PARTITION_ID);
-    String key = getRequiredArgument(cmd, Arg.KEY, Command.GET_PARTITION_ID);
-    int version = Integer.parseInt(getOptionalArgument(cmd, Arg.VERSION, "-1"));
+    String storeName = CliUtils.getRequiredArgument(cmd, Arg.STORE, Command.GET_PARTITION_ID);
+    String key = CliUtils.getRequiredArgument(cmd, Arg.KEY, Command.GET_PARTITION_ID);
+    int version = Integer.parseInt(CliUtils.getOptionalArgument(cmd, Arg.VERSION, "-1"));
     String keySchemaStr = controllerClient.getKeySchema(storeName).getSchemaStr();
     TopicMessageFinder.findPartitionIdForKey(controllerClient, storeName, version, key, keySchemaStr);
   }
@@ -1250,7 +1244,7 @@ public class AdminTool {
     if (!argSet.contains(param)) {
       throw new VeniceException(" Argument does not exist in command doc: " + param);
     }
-    String paramStr = getOptionalArgument(cmd, param);
+    String paramStr = CliUtils.getOptionalArgument(cmd, param);
     if (paramStr != null) {
       setter.accept(parser.apply(paramStr));
     }
@@ -1258,35 +1252,35 @@ public class AdminTool {
 
   private static void updateStore(CommandLine cmd) {
     UpdateStoreQueryParams params = getUpdateStoreQueryParams(cmd);
-    String storeName = getRequiredArgument(cmd, Arg.STORE, Command.UPDATE_STORE);
+    String storeName = CliUtils.getRequiredArgument(cmd, Arg.STORE, Command.UPDATE_STORE);
     ControllerResponse response = controllerClient.updateStore(storeName, params);
-    printSuccess(response);
+    CliUtils.printSuccess(response);
   }
 
   private static void updateClusterConfig(CommandLine cmd) {
     UpdateClusterConfigQueryParams params = getUpdateClusterConfigQueryParams(cmd);
 
     ControllerResponse response = controllerClient.updateClusterConfig(params);
-    printSuccess(response);
+    CliUtils.printSuccess(response);
   }
 
   private static void updateDarkClusterConfig(CommandLine cmd) {
     UpdateDarkClusterConfigQueryParams params = getUpdateDarkClusterConfigQueryParams(cmd);
 
     ControllerResponse response = controllerClient.updateDarkClusterConfig(params);
-    printSuccess(response);
+    CliUtils.printSuccess(response);
   }
 
   static UpdateStoreQueryParams getConfigureStoreViewQueryParams(CommandLine cmd) {
     Set<Arg> argSet = new HashSet<>(Arrays.asList(Command.CONFIGURE_STORE_VIEW.getOptionalArgs()));
     argSet.addAll(new HashSet<>(Arrays.asList(Command.CONFIGURE_STORE_VIEW.getRequiredArgs())));
     UpdateStoreQueryParams params = new UpdateStoreQueryParams();
-    params.setViewName(getRequiredArgument(cmd, Arg.VIEW_NAME));
+    params.setViewName(CliUtils.getRequiredArgument(cmd, Arg.VIEW_NAME));
     if (cmd.hasOption(Arg.REMOVE_VIEW.toString())) {
       params.setDisableStoreView();
     } else {
       // If configuring a view, view class name is required.
-      params.setViewClassName(getRequiredArgument(cmd, Arg.VIEW_CLASS));
+      params.setViewClassName(CliUtils.getRequiredArgument(cmd, Arg.VIEW_CLASS));
     }
     stringMapParam(cmd, Arg.VIEW_PARAMS, p -> params.setViewClassParams(p), argSet);
     return params;
@@ -1398,7 +1392,7 @@ public class AdminTool {
     booleanParam(cmd, Arg.GLOBAL_RT_DIV_ENABLED, params::setGlobalRtDivEnabled, argSet);
     booleanParam(cmd, Arg.ENUM_SCHEMA_EVOLUTION_ALLOWED, params::setEnumSchemaEvolutionAllowed, argSet);
 
-    String storeLifecycleHooksStr = getOptionalArgument(cmd, Arg.STORE_LIFECYCLE_HOOKS_LIST);
+    String storeLifecycleHooksStr = CliUtils.getOptionalArgument(cmd, Arg.STORE_LIFECYCLE_HOOKS_LIST);
     List<LifecycleHooksRecord> lifecycleHooksList =
         Utils.parseStoreLifecycleHooksListFromString(storeLifecycleHooksStr, Arg.STORE_LIFECYCLE_HOOKS_LIST.toString());
     params.setStoreLifecycleHooks(lifecycleHooksList);
@@ -1429,20 +1423,20 @@ public class AdminTool {
   protected static UpdateClusterConfigQueryParams getUpdateClusterConfigQueryParams(CommandLine cmd) {
     UpdateClusterConfigQueryParams params = new UpdateClusterConfigQueryParams();
 
-    String fabric = getOptionalArgument(cmd, Arg.FABRIC);
+    String fabric = CliUtils.getOptionalArgument(cmd, Arg.FABRIC);
 
-    String quotaForFabricStr = getOptionalArgument(cmd, Arg.SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND);
+    String quotaForFabricStr = CliUtils.getOptionalArgument(cmd, Arg.SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND);
     if (quotaForFabricStr != null) {
       params.setServerKafkaFetchQuotaRecordsPerSecondForRegion(fabric, Long.parseLong(quotaForFabricStr));
     }
 
-    String storeMigrationAllowed = getOptionalArgument(cmd, Arg.ALLOW_STORE_MIGRATION);
+    String storeMigrationAllowed = CliUtils.getOptionalArgument(cmd, Arg.ALLOW_STORE_MIGRATION);
     if (storeMigrationAllowed != null) {
       params.setStoreMigrationAllowed(Boolean.parseBoolean(storeMigrationAllowed));
     }
 
     String adminTopicConsumptionEnabled =
-        getOptionalArgument(cmd, Arg.CHILD_CONTROLLER_ADMIN_TOPIC_CONSUMPTION_ENABLED);
+        CliUtils.getOptionalArgument(cmd, Arg.CHILD_CONTROLLER_ADMIN_TOPIC_CONSUMPTION_ENABLED);
     if (adminTopicConsumptionEnabled != null) {
       params.setChildControllerAdminTopicConsumptionEnabled(Boolean.parseBoolean(adminTopicConsumptionEnabled));
     }
@@ -1453,7 +1447,7 @@ public class AdminTool {
   protected static UpdateDarkClusterConfigQueryParams getUpdateDarkClusterConfigQueryParams(CommandLine cmd) {
     UpdateDarkClusterConfigQueryParams params = new UpdateDarkClusterConfigQueryParams();
 
-    String storesToReplicateStr = getOptionalArgument(cmd, Arg.STORES_TO_REPLICATE);
+    String storesToReplicateStr = CliUtils.getOptionalArgument(cmd, Arg.STORES_TO_REPLICATE);
     if (storesToReplicateStr != null) {
       List<String> storeToReplicate = Utils.parseCommaSeparatedStringToList(storesToReplicateStr);
       params.setStoresToReplicate(storeToReplicate);
@@ -1463,15 +1457,15 @@ public class AdminTool {
   }
 
   private static void applyValueSchemaToStore(CommandLine cmd) throws Exception {
-    String store = getRequiredArgument(cmd, Arg.STORE, Command.ADD_SCHEMA);
-    String valueSchemaFile = getRequiredArgument(cmd, Arg.VALUE_SCHEMA, Command.ADD_SCHEMA);
-    String valueSchema = readFile(valueSchemaFile);
+    String store = CliUtils.getRequiredArgument(cmd, Arg.STORE, Command.ADD_SCHEMA);
+    String valueSchemaFile = CliUtils.getRequiredArgument(cmd, Arg.VALUE_SCHEMA, Command.ADD_SCHEMA);
+    String valueSchema = CliUtils.readFile(valueSchemaFile);
     verifyValidSchema(valueSchema);
     SchemaResponse valueResponse = controllerClient.addValueSchema(store, valueSchema);
     if (valueResponse.isError()) {
       throw new VeniceException("Error updating store with schema: " + valueResponse.getError());
     }
-    printObject(valueResponse);
+    CliUtils.printObject(valueResponse);
   }
 
   private static ZkClient readZKConfigAndBuildZKClient(String veniceZookeeperUrl, String zkSSLFile) throws Exception {
@@ -1503,17 +1497,19 @@ public class AdminTool {
   }
 
   private static void backupStoreMetadataFromGraveyard(CommandLine cmd) throws Exception {
-    String backupFolderPath = getRequiredArgument(cmd, Arg.BACKUP_FOLDER, Command.BACKUP_STORE_METADATA_FROM_GRAVEYARD);
+    String backupFolderPath =
+        CliUtils.getRequiredArgument(cmd, Arg.BACKUP_FOLDER, Command.BACKUP_STORE_METADATA_FROM_GRAVEYARD);
     // Construct ZK client
     String veniceZookeeperUrl =
-        getRequiredArgument(cmd, Arg.VENICE_ZOOKEEPER_URL, Command.BACKUP_STORE_METADATA_FROM_GRAVEYARD);
-    String graveyardClusters = getRequiredArgument(cmd, Arg.GRAVEYARD_CLUSTERS, "").trim();
+        CliUtils.getRequiredArgument(cmd, Arg.VENICE_ZOOKEEPER_URL, Command.BACKUP_STORE_METADATA_FROM_GRAVEYARD);
+    String graveyardClusters = CliUtils.getOptionalArgument(cmd, Arg.GRAVEYARD_CLUSTERS, "").trim();
     if (graveyardClusters.isEmpty()) {
       throw new VeniceException("Graveyard clusters argument shouldn't be empty");
     }
     List<String> graveyardClusterList =
         Arrays.stream(graveyardClusters.split(",")).map(s -> s.trim()).collect(Collectors.toList());
-    String zkSSLFile = getRequiredArgument(cmd, Arg.ZK_SSL_CONFIG_FILE, Command.BACKUP_STORE_METADATA_FROM_GRAVEYARD);
+    String zkSSLFile =
+        CliUtils.getRequiredArgument(cmd, Arg.ZK_SSL_CONFIG_FILE, Command.BACKUP_STORE_METADATA_FROM_GRAVEYARD);
 
     ZkClient zkClient = readZKConfigAndBuildZKClient(veniceZookeeperUrl, zkSSLFile);
     try {
@@ -1525,23 +1521,25 @@ public class AdminTool {
 
   private static void recoverStoreMetadata(CommandLine cmd, PubSubClientsFactory pubSubClientsFactory)
       throws Exception {
-    String store = getRequiredArgument(cmd, Arg.STORE, Command.RECOVER_STORE_METADATA);
-    String url = getRequiredArgument(cmd, Arg.URL, Command.RECOVER_STORE_METADATA);
+    String store = CliUtils.getRequiredArgument(cmd, Arg.STORE, Command.RECOVER_STORE_METADATA);
+    String url = CliUtils.getRequiredArgument(cmd, Arg.URL, Command.RECOVER_STORE_METADATA);
     boolean skipLastStoreCreation =
-        Boolean.parseBoolean(getOptionalArgument(cmd, Arg.SKIP_LAST_STORE_CREATION, "false"));
-    boolean doRepair = Boolean.parseBoolean(getOptionalArgument(cmd, Arg.REPAIR, "false"));
-    String graveyardClusters = getRequiredArgument(cmd, Arg.GRAVEYARD_CLUSTERS, Command.RECOVER_STORE_METADATA).trim();
+        Boolean.parseBoolean(CliUtils.getOptionalArgument(cmd, Arg.SKIP_LAST_STORE_CREATION, "false"));
+    boolean doRepair = Boolean.parseBoolean(CliUtils.getOptionalArgument(cmd, Arg.REPAIR, "false"));
+    String graveyardClusters =
+        CliUtils.getRequiredArgument(cmd, Arg.GRAVEYARD_CLUSTERS, Command.RECOVER_STORE_METADATA).trim();
     if (graveyardClusters.isEmpty()) {
       throw new VeniceException("Graveyard clusters argument shouldn't be empty");
     }
     List<String> graveyardClusterList =
         Arrays.stream(graveyardClusters.split(",")).map(s -> s.trim()).collect(Collectors.toList());
-    String recoverCluster = getOptionalArgument(cmd, Arg.RECOVER_CLUSTER, "");
+    String recoverCluster = CliUtils.getOptionalArgument(cmd, Arg.RECOVER_CLUSTER, "");
 
     // Construct ZK client
-    String veniceZookeeperUrl = getRequiredArgument(cmd, Arg.VENICE_ZOOKEEPER_URL, Command.RECOVER_STORE_METADATA);
+    String veniceZookeeperUrl =
+        CliUtils.getRequiredArgument(cmd, Arg.VENICE_ZOOKEEPER_URL, Command.RECOVER_STORE_METADATA);
     // Check SSL configs in JVM system arguments for ZK
-    String zkSSLFile = getOptionalArgument(cmd, Arg.ZK_SSL_CONFIG_FILE, "");
+    String zkSSLFile = CliUtils.getOptionalArgument(cmd, Arg.ZK_SSL_CONFIG_FILE, "");
     ZkClient zkClient = readZKConfigAndBuildZKClient(veniceZookeeperUrl, zkSSLFile);
     PubSubConsumerAdapter consumer = getConsumer(pubSubClientsFactory, createConsumerContext(cmd));
     try {
@@ -1562,15 +1560,15 @@ public class AdminTool {
   }
 
   private static void applyValueSchemaToZK(CommandLine cmd) throws Exception {
-    String store = getRequiredArgument(cmd, Arg.STORE, Command.ADD_SCHEMA_TO_ZK);
-    String cluster = getRequiredArgument(cmd, Arg.CLUSTER, Command.ADD_SCHEMA_TO_ZK);
-    String veniceZookeeperUrl = getRequiredArgument(cmd, Arg.VENICE_ZOOKEEPER_URL, Command.ADD_SCHEMA_TO_ZK);
-    String valueSchemaFile = getRequiredArgument(cmd, Arg.VALUE_SCHEMA, Command.ADD_SCHEMA_TO_ZK);
+    String store = CliUtils.getRequiredArgument(cmd, Arg.STORE, Command.ADD_SCHEMA_TO_ZK);
+    String cluster = CliUtils.getRequiredArgument(cmd, Arg.CLUSTER, Command.ADD_SCHEMA_TO_ZK);
+    String veniceZookeeperUrl = CliUtils.getRequiredArgument(cmd, Arg.VENICE_ZOOKEEPER_URL, Command.ADD_SCHEMA_TO_ZK);
+    String valueSchemaFile = CliUtils.getRequiredArgument(cmd, Arg.VALUE_SCHEMA, Command.ADD_SCHEMA_TO_ZK);
     int valueSchemaId = Utils.parseIntFromString(
-        getRequiredArgument(cmd, Arg.VALUE_SCHEMA_ID, Command.ADD_SCHEMA_TO_ZK),
+        CliUtils.getRequiredArgument(cmd, Arg.VALUE_SCHEMA_ID, Command.ADD_SCHEMA_TO_ZK),
         Arg.VALUE_SCHEMA_ID.toString());
     // Check SSL configs in JVM system arguments for ZK
-    String zkSSLFile = getRequiredArgument(cmd, Arg.ZK_SSL_CONFIG_FILE, Command.ADD_SCHEMA_TO_ZK);
+    String zkSSLFile = CliUtils.getRequiredArgument(cmd, Arg.ZK_SSL_CONFIG_FILE, Command.ADD_SCHEMA_TO_ZK);
 
     String valueSchemaStr = readFile(valueSchemaFile);
     verifyValidSchema(valueSchemaStr);
@@ -1606,10 +1604,10 @@ public class AdminTool {
   }
 
   private static void applyDerivedSchemaToStore(CommandLine cmd) throws Exception {
-    String store = getRequiredArgument(cmd, Arg.STORE, Command.ADD_DERIVED_SCHEMA);
-    String derivedSchemaFile = getRequiredArgument(cmd, Arg.DERIVED_SCHEMA, Command.ADD_DERIVED_SCHEMA);
+    String store = CliUtils.getRequiredArgument(cmd, Arg.STORE, Command.ADD_DERIVED_SCHEMA);
+    String derivedSchemaFile = CliUtils.getRequiredArgument(cmd, Arg.DERIVED_SCHEMA, Command.ADD_DERIVED_SCHEMA);
     int valueSchemaId = Utils.parseIntFromString(
-        getRequiredArgument(cmd, Arg.VALUE_SCHEMA_ID, Command.ADD_DERIVED_SCHEMA),
+        CliUtils.getRequiredArgument(cmd, Arg.VALUE_SCHEMA_ID, Command.ADD_DERIVED_SCHEMA),
         "value schema id");
 
     String derivedSchemaStr = readFile(derivedSchemaFile);
@@ -1618,118 +1616,119 @@ public class AdminTool {
     if (valueResponse.isError()) {
       throw new VeniceException("Error updating store with schema: " + valueResponse.getError());
     }
-    printObject(valueResponse);
+    CliUtils.printObject(valueResponse);
   }
 
   private static void removeDerivedSchema(CommandLine cmd) {
-    String store = getRequiredArgument(cmd, Arg.STORE, Command.REMOVE_DERIVED_SCHEMA);
+    String store = CliUtils.getRequiredArgument(cmd, Arg.STORE, Command.REMOVE_DERIVED_SCHEMA);
     int valueSchemaId = Utils.parseIntFromString(
-        getRequiredArgument(cmd, Arg.VALUE_SCHEMA_ID, Command.REMOVE_DERIVED_SCHEMA),
+        CliUtils.getRequiredArgument(cmd, Arg.VALUE_SCHEMA_ID, Command.REMOVE_DERIVED_SCHEMA),
         "value schema id");
     int derivedSchemaId = Utils.parseIntFromString(
-        getRequiredArgument(cmd, Arg.DERIVED_SCHEMA_ID, Command.REMOVE_DERIVED_SCHEMA),
+        CliUtils.getRequiredArgument(cmd, Arg.DERIVED_SCHEMA_ID, Command.REMOVE_DERIVED_SCHEMA),
         "derived schema id");
 
     SchemaResponse derivedSchemaResponse = controllerClient.removeDerivedSchema(store, valueSchemaId, derivedSchemaId);
     if (derivedSchemaResponse.isError()) {
       throw new VeniceException("Error removing derived schema. " + derivedSchemaResponse.getError());
     }
-    printObject(derivedSchemaResponse);
+    CliUtils.printObject(derivedSchemaResponse);
   }
 
   private static void printStoreDescription(String storeName) {
     StoreResponse response = controllerClient.getStore(storeName);
-    printObject(response);
+    CliUtils.printObject(response);
   }
 
   private static void printStorageNodeList() {
     MultiNodeResponse nodeResponse = controllerClient.listStorageNodes();
-    printObject(nodeResponse);
+    CliUtils.printObject(nodeResponse);
   }
 
   private static void printInstancesStatuses(CommandLine cmd) {
-    String enableReplicas = getOptionalArgument(cmd, Arg.ENABLE_DISABLED_REPLICA, "false");
+    String enableReplicas = CliUtils.getOptionalArgument(cmd, Arg.ENABLE_DISABLED_REPLICA, "false");
     MultiNodesStatusResponse nodeResponse = controllerClient.listInstancesStatuses(enableReplicas.equals("true"));
-    printObject(nodeResponse);
+    CliUtils.printObject(nodeResponse);
   }
 
   private static void printStoresStatuses() {
     MultiStoreStatusResponse storeResponse = controllerClient.listStoresStatuses();
-    printObject(storeResponse);
+    CliUtils.printObject(storeResponse);
   }
 
   private static void printReplicaListForStoreVersion(CommandLine cmd) {
-    String store = getRequiredArgument(cmd, Arg.STORE, Command.REPLICAS_OF_STORE);
-    int version = Utils
-        .parseIntFromString(getRequiredArgument(cmd, Arg.VERSION, Command.REPLICAS_OF_STORE), Arg.VERSION.toString());
+    String store = CliUtils.getRequiredArgument(cmd, Arg.STORE, Command.REPLICAS_OF_STORE);
+    int version = Utils.parseIntFromString(
+        CliUtils.getRequiredArgument(cmd, Arg.VERSION, Command.REPLICAS_OF_STORE),
+        Arg.VERSION.toString());
     MultiReplicaResponse response = controllerClient.listReplicas(store, version);
-    printObject(response);
+    CliUtils.printObject(response);
   }
 
   private static void printReplicaListForStorageNode(CommandLine cmd) {
-    String storageNodeId = getRequiredArgument(cmd, Arg.STORAGE_NODE);
+    String storageNodeId = CliUtils.getRequiredArgument(cmd, Arg.STORAGE_NODE);
     MultiReplicaResponse response = controllerClient.listStorageNodeReplicas(storageNodeId);
-    printObject(response);
+    CliUtils.printObject(response);
   }
 
   private static void isNodeRemovable(CommandLine cmd) {
-    String storageNodeId = getRequiredArgument(cmd, Arg.STORAGE_NODE);
+    String storageNodeId = CliUtils.getRequiredArgument(cmd, Arg.STORAGE_NODE);
     NodeStatusResponse response = controllerClient.isNodeRemovable(storageNodeId);
-    printObject(response);
+    CliUtils.printObject(response);
   }
 
   private static void addNodeIntoAllowList(CommandLine cmd) {
-    String storageNodeId = getRequiredArgument(cmd, Arg.STORAGE_NODE);
+    String storageNodeId = CliUtils.getRequiredArgument(cmd, Arg.STORAGE_NODE);
     ControllerResponse response = controllerClient.addNodeIntoAllowList(storageNodeId);
-    printSuccess(response);
+    CliUtils.printSuccess(response);
   }
 
   private static void removeNodeFromAllowList(CommandLine cmd) {
-    String storageNodeId = getRequiredArgument(cmd, Arg.STORAGE_NODE);
+    String storageNodeId = CliUtils.getRequiredArgument(cmd, Arg.STORAGE_NODE);
     ControllerResponse response = controllerClient.removeNodeFromAllowList(storageNodeId);
-    printSuccess(response);
+    CliUtils.printSuccess(response);
   }
 
   private static void removeNodeFromCluster(CommandLine cmd) {
-    String storageNodeId = getRequiredArgument(cmd, Arg.STORAGE_NODE);
+    String storageNodeId = CliUtils.getRequiredArgument(cmd, Arg.STORAGE_NODE);
     ControllerResponse response = controllerClient.removeNodeFromCluster(storageNodeId);
-    printSuccess(response);
+    CliUtils.printSuccess(response);
   }
 
   private static void enableThrottling(boolean enable) {
     ControllerResponse response = controllerClient.enableThrottling(enable);
-    printSuccess(response);
+    CliUtils.printSuccess(response);
   }
 
   private static void enableMaxCapacityProtection(boolean enable) {
     ControllerResponse response = controllerClient.enableMaxCapacityProtection(enable);
-    printSuccess(response);
+    CliUtils.printSuccess(response);
   }
 
   private static void enableQuotaRebalance(CommandLine cmd, boolean enable) {
     int expectedRouterCount = 0;
     if (!enable) {
-      expectedRouterCount = Integer.parseInt(getRequiredArgument(cmd, Arg.EXPECTED_ROUTER_COUNT));
+      expectedRouterCount = Integer.parseInt(CliUtils.getRequiredArgument(cmd, Arg.EXPECTED_ROUTER_COUNT));
     }
     ControllerResponse response = controllerClient.enableQuotaRebalanced(enable, expectedRouterCount);
-    printSuccess(response);
+    CliUtils.printSuccess(response);
   }
 
   private static void getRoutersClusterConfig() {
     RoutersClusterConfigResponse response = controllerClient.getRoutersClusterConfig();
-    printObject(response);
+    CliUtils.printObject(response);
   }
 
   private static void getAllMigrationPushStrategies() {
     MigrationPushStrategyResponse response = controllerClient.getMigrationPushStrategies();
-    printObject(response);
+    CliUtils.printObject(response);
   }
 
   private static void getMigrationPushStrategy(CommandLine cmd) {
-    String voldemortStoreName = getRequiredArgument(cmd, Arg.VOLDEMORT_STORE);
+    String voldemortStoreName = CliUtils.getRequiredArgument(cmd, Arg.VOLDEMORT_STORE);
     MigrationPushStrategyResponse response = controllerClient.getMigrationPushStrategies();
     if (response.isError()) {
-      printObject(response);
+      CliUtils.printObject(response);
     } else {
       Map<String, String> resultMap = new HashMap<>();
       Map<String, String> migrationStrategies = response.getStrategies();
@@ -1739,20 +1738,20 @@ public class AdminTool {
       }
       resultMap.put("voldemortStoreName", voldemortStoreName);
       resultMap.put("pushStrategy", pushStrategy);
-      printObject(resultMap);
+      CliUtils.printObject(resultMap);
     }
   }
 
   private static void setMigrationPushStrategy(CommandLine cmd) {
-    String voldemortStoreName = getRequiredArgument(cmd, Arg.VOLDEMORT_STORE);
-    String pushStrategy = getRequiredArgument(cmd, Arg.MIGRATION_PUSH_STRATEGY);
+    String voldemortStoreName = CliUtils.getRequiredArgument(cmd, Arg.VOLDEMORT_STORE);
+    String pushStrategy = CliUtils.getRequiredArgument(cmd, Arg.MIGRATION_PUSH_STRATEGY);
     ControllerResponse response = controllerClient.setMigrationPushStrategy(voldemortStoreName, pushStrategy);
-    printSuccess(response);
+    CliUtils.printSuccess(response);
   }
 
   private static void convertVsonSchemaAndExit(CommandLine cmd) throws IOException {
-    String keySchemaStr = readFile(getRequiredArgument(cmd, Arg.KEY_SCHEMA));
-    String valueSchemaStr = readFile(getRequiredArgument(cmd, Arg.VALUE_SCHEMA));
+    String keySchemaStr = CliUtils.readFile(CliUtils.getRequiredArgument(cmd, Arg.KEY_SCHEMA));
+    String valueSchemaStr = CliUtils.readFile(CliUtils.getRequiredArgument(cmd, Arg.VALUE_SCHEMA));
 
     System.out.println(
         String.format(
@@ -1765,18 +1764,19 @@ public class AdminTool {
 
   private static void listBootstrappingVersions(CommandLine cmd) {
     MultiVersionStatusResponse response = controllerClient.listBootstrappingVersions();
-    printObject(response);
+    CliUtils.printObject(response);
   }
 
   private static void deleteKafkaTopic(CommandLine cmd, PubSubClientsFactory pubSubClientsFactory) throws Exception {
     long startTime = System.currentTimeMillis();
-    String kafkaBootstrapServer = getRequiredArgument(cmd, Arg.KAFKA_BOOTSTRAP_SERVERS);
+    String kafkaBootstrapServer = CliUtils.getRequiredArgument(cmd, Arg.KAFKA_BOOTSTRAP_SERVERS);
     ConsumerContext context = createConsumerContext(cmd);
     VeniceProperties veniceProperties = context.getVeniceProperties();
     int kafkaTimeOut = 30 * Time.MS_PER_SECOND;
     int topicDeletionStatusPollingInterval = 2 * Time.MS_PER_SECOND;
     if (cmd.hasOption(Arg.KAFKA_OPERATION_TIMEOUT.toString())) {
-      kafkaTimeOut = Integer.parseInt(getRequiredArgument(cmd, Arg.KAFKA_OPERATION_TIMEOUT)) * Time.MS_PER_SECOND;
+      kafkaTimeOut =
+          Integer.parseInt(CliUtils.getRequiredArgument(cmd, Arg.KAFKA_OPERATION_TIMEOUT)) * Time.MS_PER_SECOND;
     }
 
     TopicManagerContext topicManagerContext =
@@ -1795,15 +1795,18 @@ public class AdminTool {
 
     try (TopicManager topicManager =
         new TopicManagerRepository(topicManagerContext, kafkaBootstrapServer).getLocalTopicManager()) {
-      String topicName = getRequiredArgument(cmd, Arg.KAFKA_TOPIC_NAME);
+      String topicName = CliUtils.getRequiredArgument(cmd, Arg.KAFKA_TOPIC_NAME);
       try {
         topicManager.ensureTopicIsDeletedAndBlock(TOPIC_REPOSITORY.getTopic(topicName));
         long runTime = System.currentTimeMillis() - startTime;
-        printObject("Topic '" + topicName + "' is deleted. Run time: " + runTime + " ms.");
+        CliUtils.printObject("Topic '" + topicName + "' is deleted. Run time: " + runTime + " ms.");
       } catch (PubSubOpTimeoutException e) {
-        printErrAndThrow(e, "Topic deletion timed out for: '" + topicName + "' after " + kafkaTimeOut + " ms.", null);
+        CliUtils.printErrAndThrow(
+            e,
+            "Topic deletion timed out for: '" + topicName + "' after " + kafkaTimeOut + " ms.",
+            null);
       } catch (VeniceException e) {
-        printErrAndThrow(e, "Topic deletion failed due to ExecutionException", null);
+        CliUtils.printErrAndThrow(e, "Topic deletion failed due to ExecutionException", null);
       }
     }
   }
@@ -1814,18 +1817,18 @@ public class AdminTool {
     LOGGER.info("Dump admin messages with starting position: {}", startingPosition);
     List<DumpAdminMessages.AdminOperationInfo> adminMessages = DumpAdminMessages.dumpAdminMessages(
         getConsumer(pubSubClientsFactory, context),
-        getRequiredArgument(cmd, Arg.CLUSTER),
+        CliUtils.getRequiredArgument(cmd, Arg.CLUSTER),
         startingPosition,
-        Integer.parseInt(getRequiredArgument(cmd, Arg.MESSAGE_COUNT)));
-    printObject(adminMessages);
+        Integer.parseInt(CliUtils.getRequiredArgument(cmd, Arg.MESSAGE_COUNT)));
+    CliUtils.printObject(adminMessages);
   }
 
   private static void dumpControlMessages(CommandLine cmd, PubSubClientsFactory pubSubClientsFactory) {
-    String topic = getRequiredArgument(cmd, Arg.KAFKA_TOPIC_NAME);
-    int partitionNumber = Integer.parseInt(getRequiredArgument(cmd, Arg.KAFKA_TOPIC_PARTITION));
+    String topic = CliUtils.getRequiredArgument(cmd, Arg.KAFKA_TOPIC_NAME);
+    int partitionNumber = Integer.parseInt(CliUtils.getRequiredArgument(cmd, Arg.KAFKA_TOPIC_PARTITION));
     ConsumerContext context = createConsumerContext(cmd);
     PubSubPosition startingPosition = parsePositionFromArgs(cmd, context.getPositionDeserializer(), true);
-    int messageCount = Integer.parseInt(getRequiredArgument(cmd, Arg.MESSAGE_COUNT));
+    int messageCount = Integer.parseInt(CliUtils.getRequiredArgument(cmd, Arg.MESSAGE_COUNT));
     LOGGER.info(
         "Dump control messages from topic-partition: {}, starting position: {}, message count: {}",
         Utils.getReplicaId(topic, partitionNumber),
@@ -1838,11 +1841,11 @@ public class AdminTool {
 
   private static void queryKafkaTopic(CommandLine cmd, PubSubClientsFactory pubSubClientsFactory)
       throws java.text.ParseException {
-    String topic = getRequiredArgument(cmd, Arg.KAFKA_TOPIC_NAME);
-    String startDateInPST = getRequiredArgument(cmd, Arg.START_DATE);
-    String endDateInPST = getOptionalArgument(cmd, Arg.END_DATE);
-    String progressInterval = getOptionalArgument(cmd, Arg.PROGRESS_INTERVAL);
-    String keyString = getRequiredArgument(cmd, Arg.KEY);
+    String topic = CliUtils.getRequiredArgument(cmd, Arg.KAFKA_TOPIC_NAME);
+    String startDateInPST = CliUtils.getRequiredArgument(cmd, Arg.START_DATE);
+    String endDateInPST = CliUtils.getOptionalArgument(cmd, Arg.END_DATE);
+    String progressInterval = CliUtils.getOptionalArgument(cmd, Arg.PROGRESS_INTERVAL);
+    String keyString = CliUtils.getRequiredArgument(cmd, Arg.KEY);
     ConsumerContext context = createConsumerContext(cmd);
     try (PubSubConsumerAdapter consumer = getConsumer(pubSubClientsFactory, context)) {
       TopicMessageFinder.find(
@@ -1860,26 +1863,26 @@ public class AdminTool {
 
   private static void dumpKafkaTopic(CommandLine cmd, PubSubClientsFactory pubSubClientsFactory)
       throws java.text.ParseException {
-    String topic = getRequiredArgument(cmd, Arg.KAFKA_TOPIC_NAME);
+    String topic = CliUtils.getRequiredArgument(cmd, Arg.KAFKA_TOPIC_NAME);
     // optional arguments
-    int partitionNumber = (getOptionalArgument(cmd, Arg.KAFKA_TOPIC_PARTITION) == null)
+    int partitionNumber = (CliUtils.getOptionalArgument(cmd, Arg.KAFKA_TOPIC_PARTITION) == null)
         ? -1
-        : Integer.parseInt(getOptionalArgument(cmd, Arg.KAFKA_TOPIC_PARTITION));
-    long messageCount = (getOptionalArgument(cmd, Arg.MESSAGE_COUNT) == null)
+        : Integer.parseInt(CliUtils.getOptionalArgument(cmd, Arg.KAFKA_TOPIC_PARTITION));
+    long messageCount = (CliUtils.getOptionalArgument(cmd, Arg.MESSAGE_COUNT) == null)
         ? -1
-        : Integer.parseInt(getOptionalArgument(cmd, Arg.MESSAGE_COUNT));
+        : Integer.parseInt(CliUtils.getOptionalArgument(cmd, Arg.MESSAGE_COUNT));
     String parentDir = "./";
-    if (getOptionalArgument(cmd, Arg.PARENT_DIRECTORY) != null) {
-      parentDir = getOptionalArgument(cmd, Arg.PARENT_DIRECTORY);
+    if (CliUtils.getOptionalArgument(cmd, Arg.PARENT_DIRECTORY) != null) {
+      parentDir = CliUtils.getOptionalArgument(cmd, Arg.PARENT_DIRECTORY);
     }
     int maxConsumeAttempts = 3;
-    if (getOptionalArgument(cmd, Arg.MAX_POLL_ATTEMPTS) != null) {
-      maxConsumeAttempts = Integer.parseInt(getOptionalArgument(cmd, Arg.MAX_POLL_ATTEMPTS));
+    if (CliUtils.getOptionalArgument(cmd, Arg.MAX_POLL_ATTEMPTS) != null) {
+      maxConsumeAttempts = Integer.parseInt(CliUtils.getOptionalArgument(cmd, Arg.MAX_POLL_ATTEMPTS));
     }
-    String startDatetime = getOptionalArgument(cmd, Arg.START_DATE);
+    String startDatetime = CliUtils.getOptionalArgument(cmd, Arg.START_DATE);
     long startTimestamp =
         startDatetime == null ? -1 : Utils.parseDateTimeToEpoch(startDatetime, DEFAULT_DATE_FORMAT, PST_TIME_ZONE);
-    String endDatetime = getOptionalArgument(cmd, Arg.END_DATE);
+    String endDatetime = CliUtils.getOptionalArgument(cmd, Arg.END_DATE);
     long endTimestamp =
         endDatetime == null ? -1 : Utils.parseDateTimeToEpoch(endDatetime, DEFAULT_DATE_FORMAT, PST_TIME_ZONE);
 
@@ -1963,7 +1966,7 @@ public class AdminTool {
   private static void assertStoreNotMigrating(ControllerClient controllerClient, String storeName) {
     StoreResponse storeResponse = controllerClient.getStore(storeName);
     if (storeResponse.isError()) {
-      printObject(storeResponse);
+      CliUtils.printObject(storeResponse);
     } else {
       // Store migration should not be started already.
       if (storeResponse.getStore().isMigrating()) {
@@ -1978,10 +1981,10 @@ public class AdminTool {
   }
 
   private static void migrateStore(CommandLine cmd) {
-    String veniceUrl = getRequiredArgument(cmd, Arg.URL);
-    String storeName = getRequiredArgument(cmd, Arg.STORE);
-    String srcClusterName = getRequiredArgument(cmd, Arg.CLUSTER_SRC);
-    String destClusterName = getRequiredArgument(cmd, Arg.CLUSTER_DEST);
+    String veniceUrl = CliUtils.getRequiredArgument(cmd, Arg.URL);
+    String storeName = CliUtils.getRequiredArgument(cmd, Arg.STORE);
+    String srcClusterName = CliUtils.getRequiredArgument(cmd, Arg.CLUSTER_SRC);
+    String destClusterName = CliUtils.getRequiredArgument(cmd, Arg.CLUSTER_DEST);
     if (srcClusterName.equals(destClusterName)) {
       throw new VeniceException("Source cluster and destination cluster cannot be the same!");
     }
@@ -1992,7 +1995,7 @@ public class AdminTool {
     assertStoreNotMigrating(srcControllerClient, storeName);
 
     StoreMigrationResponse storeMigrationResponse = srcControllerClient.migrateStore(storeName, destClusterName);
-    printObject(storeMigrationResponse);
+    CliUtils.printObject(storeMigrationResponse);
 
     if (storeMigrationResponse.isError()) {
       System.err.println("ERROR: Store migration failed!");
@@ -2058,10 +2061,13 @@ public class AdminTool {
     checkMigrationStatus(
         cmd,
         printFunction,
-        new ControllerClient(getRequiredArgument(cmd, Arg.CLUSTER_SRC), getRequiredArgument(cmd, Arg.URL), sslFactory),
         new ControllerClient(
-            getRequiredArgument(cmd, Arg.CLUSTER_DEST),
-            getRequiredArgument(cmd, Arg.URL),
+            CliUtils.getRequiredArgument(cmd, Arg.CLUSTER_SRC),
+            CliUtils.getRequiredArgument(cmd, Arg.URL),
+            sslFactory),
+        new ControllerClient(
+            CliUtils.getRequiredArgument(cmd, Arg.CLUSTER_DEST),
+            CliUtils.getRequiredArgument(cmd, Arg.URL),
             sslFactory));
   }
 
@@ -2070,9 +2076,9 @@ public class AdminTool {
       PrintFunction printFunction,
       ControllerClient srcControllerClient,
       ControllerClient destControllerClient) {
-    String storeName = getRequiredArgument(cmd, Arg.STORE);
-    String srcClusterName = getRequiredArgument(cmd, Arg.CLUSTER_SRC);
-    String destClusterName = getRequiredArgument(cmd, Arg.CLUSTER_DEST);
+    String storeName = CliUtils.getRequiredArgument(cmd, Arg.STORE);
+    String srcClusterName = CliUtils.getRequiredArgument(cmd, Arg.CLUSTER_SRC);
+    String destClusterName = CliUtils.getRequiredArgument(cmd, Arg.CLUSTER_DEST);
     if (srcClusterName.equals(destClusterName)) {
       throw new VeniceException("Source cluster and destination cluster cannot be the same!");
     }
@@ -2114,11 +2120,11 @@ public class AdminTool {
   }
 
   private static void completeMigration(CommandLine cmd) {
-    String veniceUrl = getRequiredArgument(cmd, Arg.URL);
-    String storeName = getRequiredArgument(cmd, Arg.STORE);
-    String srcClusterName = getRequiredArgument(cmd, Arg.CLUSTER_SRC);
-    String destClusterName = getRequiredArgument(cmd, Arg.CLUSTER_DEST);
-    String fabric = getRequiredArgument(cmd, Arg.FABRIC);
+    String veniceUrl = CliUtils.getRequiredArgument(cmd, Arg.URL);
+    String storeName = CliUtils.getRequiredArgument(cmd, Arg.STORE);
+    String srcClusterName = CliUtils.getRequiredArgument(cmd, Arg.CLUSTER_SRC);
+    String destClusterName = CliUtils.getRequiredArgument(cmd, Arg.CLUSTER_DEST);
+    String fabric = CliUtils.getRequiredArgument(cmd, Arg.FABRIC);
 
     ControllerClient srcControllerClient = new ControllerClient(srcClusterName, veniceUrl, sslFactory);
     ControllerClient destControllerClient = new ControllerClient(destClusterName, veniceUrl, sslFactory);
@@ -2282,10 +2288,10 @@ public class AdminTool {
   }
 
   private static void abortMigration(CommandLine cmd) {
-    String veniceUrl = getRequiredArgument(cmd, Arg.URL);
-    String storeName = getRequiredArgument(cmd, Arg.STORE);
-    String srcClusterName = getRequiredArgument(cmd, Arg.CLUSTER_SRC);
-    String destClusterName = getRequiredArgument(cmd, Arg.CLUSTER_DEST);
+    String veniceUrl = CliUtils.getRequiredArgument(cmd, Arg.URL);
+    String storeName = CliUtils.getRequiredArgument(cmd, Arg.STORE);
+    String srcClusterName = CliUtils.getRequiredArgument(cmd, Arg.CLUSTER_SRC);
+    String destClusterName = CliUtils.getRequiredArgument(cmd, Arg.CLUSTER_DEST);
     boolean force = cmd.hasOption(Arg.FORCE.toString());
 
     abortMigration(veniceUrl, storeName, srcClusterName, destClusterName, force, new boolean[0]);
@@ -2359,7 +2365,7 @@ public class AdminTool {
     if (abortMigrationResponse.isError()) {
       throw new VeniceException(abortMigrationResponse.getError());
     } else {
-      printObject(abortMigrationResponse);
+      CliUtils.printObject(abortMigrationResponse);
     }
 
     // Delete cloned store
@@ -2389,7 +2395,7 @@ public class AdminTool {
       destControllerClient
           .updateStore(storeName, new UpdateStoreQueryParams().setEnableReads(false).setEnableWrites(false));
       TrackableControllerResponse deleteResponse = destControllerClient.deleteStore(storeName, true);
-      printObject(deleteResponse);
+      CliUtils.printObject(deleteResponse);
       if (deleteResponse.isError()) {
         System.err.println("ERROR: failed to delete store " + storeName + " in the dest cluster " + destClusterName);
       }
@@ -2417,10 +2423,10 @@ public class AdminTool {
   }
 
   private static void endMigration(CommandLine cmd) {
-    String veniceUrl = getRequiredArgument(cmd, Arg.URL);
-    String storeName = getRequiredArgument(cmd, Arg.STORE);
-    String srcClusterName = getRequiredArgument(cmd, Arg.CLUSTER_SRC);
-    String destClusterName = getRequiredArgument(cmd, Arg.CLUSTER_DEST);
+    String veniceUrl = CliUtils.getRequiredArgument(cmd, Arg.URL);
+    String storeName = CliUtils.getRequiredArgument(cmd, Arg.STORE);
+    String srcClusterName = CliUtils.getRequiredArgument(cmd, Arg.CLUSTER_SRC);
+    String destClusterName = CliUtils.getRequiredArgument(cmd, Arg.CLUSTER_DEST);
     if (srcClusterName.equals(destClusterName)) {
       throw new VeniceException("Source cluster and destination cluster cannot be the same!");
     }
@@ -2451,7 +2457,7 @@ public class AdminTool {
       srcControllerClient
           .updateStore(storeName, new UpdateStoreQueryParams().setEnableReads(false).setEnableWrites(false));
       TrackableControllerResponse deleteResponse = srcControllerClient.deleteStore(storeName);
-      printObject(deleteResponse);
+      CliUtils.printObject(deleteResponse);
       if (deleteResponse.isError()) {
         System.err.println("ERROR: failed to delete store " + storeName + " in the original cluster " + srcClusterName);
         return;
@@ -2480,17 +2486,18 @@ public class AdminTool {
     ControllerResponse controllerResponse = destControllerClient.updateStore(
         storeName,
         new UpdateStoreQueryParams().setStoreMigration(false).setMigrationDuplicateStore(false));
-    printObject(controllerResponse);
+    CliUtils.printObject(controllerResponse);
   }
 
   public static void autoMigrateStore(CommandLine cmd) {
-    String veniceUrl = getRequiredArgument(cmd, Arg.URL);
-    String storeName = getRequiredArgument(cmd, Arg.STORE);
-    String srcClusterName = getRequiredArgument(cmd, Arg.CLUSTER_SRC);
-    String destClusterName = getRequiredArgument(cmd, Arg.CLUSTER_DEST);
+    String veniceUrl = CliUtils.getRequiredArgument(cmd, Arg.URL);
+    String storeName = CliUtils.getRequiredArgument(cmd, Arg.STORE);
+    String srcClusterName = CliUtils.getRequiredArgument(cmd, Arg.CLUSTER_SRC);
+    String destClusterName = CliUtils.getRequiredArgument(cmd, Arg.CLUSTER_DEST);
     Optional<Boolean> abortOnFailure =
-        Optional.ofNullable(getOptionalArgument(cmd, Arg.ABORT_ON_FAILURE)).map(Boolean::parseBoolean);
-    Optional<Integer> currStep = Optional.ofNullable(getOptionalArgument(cmd, Arg.INITIAL_STEP)).map(Integer::parseInt);
+        Optional.ofNullable(CliUtils.getOptionalArgument(cmd, Arg.ABORT_ON_FAILURE)).map(Boolean::parseBoolean);
+    Optional<Integer> currStep =
+        Optional.ofNullable(CliUtils.getOptionalArgument(cmd, Arg.INITIAL_STEP)).map(Integer::parseInt);
 
     if (srcClusterName.equals(destClusterName)) {
       throw new VeniceException("Source and destination cluster cannot be the same!");
@@ -2505,7 +2512,7 @@ public class AdminTool {
 
     StoreMigrationResponse storeMigrationResponse =
         srcControllerClient.autoMigrateStore(storeName, destClusterName, currStep, abortOnFailure);
-    printObject(storeMigrationResponse);
+    CliUtils.printObject(storeMigrationResponse);
 
     if (storeMigrationResponse.isError()) {
       System.err.println("ERROR: Auto store migration failed!");
@@ -2515,8 +2522,8 @@ public class AdminTool {
   }
 
   private static void sendEndOfPush(CommandLine cmd) {
-    String storeName = getRequiredArgument(cmd, Arg.STORE);
-    String version = getRequiredArgument(cmd, Arg.VERSION);
+    String storeName = CliUtils.getRequiredArgument(cmd, Arg.STORE);
+    String version = CliUtils.getRequiredArgument(cmd, Arg.VERSION);
 
     // Check if version is a valid integer
     int intVersion;
@@ -2528,7 +2535,7 @@ public class AdminTool {
     }
 
     ControllerResponse response = controllerClient.writeEndOfPush(storeName, intVersion);
-    printObject(response);
+    CliUtils.printObject(response);
   }
 
   /* Things that are not commands */
@@ -2547,7 +2554,7 @@ public class AdminTool {
     if (foundCommand != null) {
       commands = new Command[] { foundCommand };
       commandGroup = new OptionGroup();
-      createCommandOpt(foundCommand, commandGroup);
+      CliUtils.createCommandOpt(foundCommand.toString(), foundCommand.getDesc(), commandGroup);
 
       /**
        * Gather all the options belonging to the found command.
@@ -2596,46 +2603,6 @@ public class AdminTool {
       System.out.println(command + " --" + c + " " + exampleArgs);
     }
     Utils.exit("printUsageAndExit");
-  }
-
-  private static String getRequiredArgument(CommandLine cmd, Arg arg) {
-    return getRequiredArgument(cmd, arg, "");
-  }
-
-  private static String getRequiredArgument(CommandLine cmd, Arg arg, Command command) {
-    return getRequiredArgument(cmd, arg, "when using --" + command.toString());
-  }
-
-  private static String getRequiredArgument(CommandLine cmd, Arg arg, String errorClause) {
-    if (!cmd.hasOption(arg.first())) {
-      printErrAndExit(arg.toString() + " is a required argument " + errorClause);
-    }
-    return cmd.getOptionValue(arg.first());
-  }
-
-  private static String getOptionalArgument(CommandLine cmd, Arg arg) {
-    return getOptionalArgument(cmd, arg, null);
-  }
-
-  private static String getOptionalArgument(CommandLine cmd, Arg arg, String defaultArgValue) {
-    if (!cmd.hasOption(arg.first())) {
-      return defaultArgValue;
-    } else {
-      return cmd.getOptionValue(arg.first());
-    }
-  }
-
-  public static Properties loadProperties(CommandLine cmd, Arg arg) throws VeniceException {
-    Properties properties = new Properties();
-    if (cmd.hasOption(arg.toString())) {
-      String configFilePath = getRequiredArgument(cmd, arg);
-      try (FileInputStream fis = new FileInputStream(configFilePath)) {
-        properties.load(fis);
-      } catch (IOException e) {
-        throw new VeniceException("Cannot read file: " + configFilePath + " specified by: " + arg.toString());
-      }
-    }
-    return properties;
   }
 
   private static void verifyStoreExistence(String storename, boolean desiredExistence) {
@@ -2687,38 +2654,39 @@ public class AdminTool {
     } catch (Exception e) {
       Map<String, String> errMap = new HashMap<>();
       errMap.put("schema", schema);
-      printErrAndThrow(e, "Invalid Schema: " + e.getMessage(), errMap);
+      CliUtils.printErrAndThrow(e, "Invalid Schema: " + e.getMessage(), errMap);
     }
   }
 
   private static void deleteAllVersions(CommandLine cmd) {
-    String store = getRequiredArgument(cmd, Arg.STORE, Command.DELETE_ALL_VERSIONS);
+    String store = CliUtils.getRequiredArgument(cmd, Arg.STORE, Command.DELETE_ALL_VERSIONS);
     MultiVersionResponse response = controllerClient.deleteAllVersions(store);
-    printObject(response);
+    CliUtils.printObject(response);
   }
 
   private static void deleteOldVersion(CommandLine cmd) {
-    String store = getRequiredArgument(cmd, Arg.STORE, Command.DELETE_OLD_VERSION);
-    int version = Integer.parseInt(getRequiredArgument(cmd, Arg.VERSION, Command.DELETE_OLD_VERSION));
+    String store = CliUtils.getRequiredArgument(cmd, Arg.STORE, Command.DELETE_OLD_VERSION);
+    int version = Integer.parseInt(CliUtils.getRequiredArgument(cmd, Arg.VERSION, Command.DELETE_OLD_VERSION));
     VersionResponse response = controllerClient.deleteOldVersion(store, version);
-    printObject(response);
+    CliUtils.printObject(response);
   }
 
   private static void getExecution(CommandLine cmd) {
-    long executionId = Long.parseLong(getRequiredArgument(cmd, Arg.EXECUTION, Command.GET_EXECUTION));
+    long executionId = Long.parseLong(CliUtils.getRequiredArgument(cmd, Arg.EXECUTION, Command.GET_EXECUTION));
     AdminCommandExecutionResponse response = controllerClient.getAdminCommandExecution(executionId);
-    printObject(response);
+    CliUtils.printObject(response);
   }
 
   private static void createNewStoreWithAcl(CommandLine cmd) throws Exception {
-    String store = getRequiredArgument(cmd, Arg.STORE, Command.NEW_STORE);
-    String keySchemaFile = getRequiredArgument(cmd, Arg.KEY_SCHEMA, Command.NEW_STORE);
-    String keySchema = readFile(keySchemaFile);
-    String valueSchemaFile = getRequiredArgument(cmd, Arg.VALUE_SCHEMA, Command.NEW_STORE);
-    String valueSchema = readFile(valueSchemaFile);
-    String aclPerms = getRequiredArgument(cmd, Arg.ACL_PERMS, Command.NEW_STORE);
-    String owner = getOptionalArgument(cmd, Arg.OWNER, "");
-    boolean isVsonStore = Utils.parseBooleanOrThrow(getOptionalArgument(cmd, Arg.VSON_STORE, "false"), "isVsonStore");
+    String store = CliUtils.getRequiredArgument(cmd, Arg.STORE, Command.NEW_STORE);
+    String keySchemaFile = CliUtils.getRequiredArgument(cmd, Arg.KEY_SCHEMA, Command.NEW_STORE);
+    String keySchema = CliUtils.readFile(keySchemaFile);
+    String valueSchemaFile = CliUtils.getRequiredArgument(cmd, Arg.VALUE_SCHEMA, Command.NEW_STORE);
+    String valueSchema = CliUtils.readFile(valueSchemaFile);
+    String aclPerms = CliUtils.getRequiredArgument(cmd, Arg.ACL_PERMS, Command.NEW_STORE);
+    String owner = CliUtils.getOptionalArgument(cmd, Arg.OWNER, "");
+    boolean isVsonStore =
+        Utils.parseBooleanOrThrow(CliUtils.getOptionalArgument(cmd, Arg.VSON_STORE, "false"), "isVsonStore");
     if (isVsonStore) {
       keySchema = VsonAvroSchemaAdapter.parse(keySchema).toString();
       valueSchema = VsonAvroSchemaAdapter.parse(valueSchema).toString();
@@ -2727,48 +2695,48 @@ public class AdminTool {
     verifyValidSchema(valueSchema);
     verifyStoreExistence(store, false);
     NewStoreResponse response = controllerClient.createNewStore(store, owner, keySchema, valueSchema, aclPerms);
-    printObject(response);
+    CliUtils.printObject(response);
   }
 
   private static void updateStoreWithAcl(CommandLine cmd) throws Exception {
-    String store = getRequiredArgument(cmd, Arg.STORE, Command.UPDATE_STORE_ACL);
-    String aclPerms = getRequiredArgument(cmd, Arg.ACL_PERMS, Command.UPDATE_STORE_ACL);
+    String store = CliUtils.getRequiredArgument(cmd, Arg.STORE, Command.UPDATE_STORE_ACL);
+    String aclPerms = CliUtils.getRequiredArgument(cmd, Arg.ACL_PERMS, Command.UPDATE_STORE_ACL);
     verifyStoreExistence(store, true);
     AclResponse response = controllerClient.updateAclForStore(store, aclPerms);
-    printObject(response);
+    CliUtils.printObject(response);
   }
 
   private static void getAclForStore(CommandLine cmd) throws Exception {
-    String store = getRequiredArgument(cmd, Arg.STORE, Command.UPDATE_STORE_ACL);
+    String store = CliUtils.getRequiredArgument(cmd, Arg.STORE, Command.UPDATE_STORE_ACL);
     verifyStoreExistence(store, true);
     AclResponse response = controllerClient.getAclForStore(store);
-    printObject(response);
+    CliUtils.printObject(response);
   }
 
   private static void deleteAclForStore(CommandLine cmd) throws Exception {
-    String store = getRequiredArgument(cmd, Arg.STORE, Command.DELETE_STORE_ACL);
+    String store = CliUtils.getRequiredArgument(cmd, Arg.STORE, Command.DELETE_STORE_ACL);
     verifyStoreExistence(store, true);
     AclResponse response = controllerClient.deleteAclForStore(store);
-    printObject(response);
+    CliUtils.printObject(response);
   }
 
   private static void addToStoreAcl(CommandLine cmd) throws Exception {
-    String store = getRequiredArgument(cmd, Arg.STORE, Command.DELETE_STORE_ACL);
-    String principal = getRequiredArgument(cmd, Arg.PRINCIPAL, Command.ADD_TO_STORE_ACL);
-    boolean addReadPermissions = Boolean.parseBoolean(getOptionalArgument(cmd, Arg.READABILITY, "false"));
-    boolean addWritePermissions = Boolean.parseBoolean(getOptionalArgument(cmd, Arg.WRITEABILITY, "false"));
+    String store = CliUtils.getRequiredArgument(cmd, Arg.STORE, Command.DELETE_STORE_ACL);
+    String principal = CliUtils.getRequiredArgument(cmd, Arg.PRINCIPAL, Command.ADD_TO_STORE_ACL);
+    boolean addReadPermissions = Boolean.parseBoolean(CliUtils.getOptionalArgument(cmd, Arg.READABILITY, "false"));
+    boolean addWritePermissions = Boolean.parseBoolean(CliUtils.getOptionalArgument(cmd, Arg.WRITEABILITY, "false"));
 
     if (!addReadPermissions && !addWritePermissions) {
-      printErrAndExit("Both Readabilty and Writeabilty can not be false or empty.");
+      CliUtils.printErrAndExit("Both Readabilty and Writeabilty can not be false or empty.");
     }
 
     verifyStoreExistence(store, true);
 
     AclResponse storeAclResponse = controllerClient.getAclForStore(store);
     if (storeAclResponse == null) {
-      printErrAndExit("Failed to get existing ACLs.");
+      CliUtils.printErrAndExit("Failed to get existing ACLs.");
     } else if (storeAclResponse.isError()) {
-      printErrAndExit(storeAclResponse.getError());
+      CliUtils.printErrAndExit(storeAclResponse.getError());
     } else {
       String oldAcls = storeAclResponse.getAccessPermissions();
 
@@ -2791,7 +2759,7 @@ public class AdminTool {
           writePermissions = perms.path("Write").elements();
         }
       } catch (Exception e) {
-        printErrAndThrow(e, "ACLProvisioning: invalid accessPermission schema for store:" + store, null);
+        CliUtils.printErrAndThrow(e, "ACLProvisioning: invalid accessPermission schema for store:" + store, null);
       }
 
       if (readPermissions != null) {
@@ -2829,7 +2797,7 @@ public class AdminTool {
 
         String newAcls = mapper.writeValueAsString(newRoot);
         AclResponse response = controllerClient.updateAclForStore(store, newAcls);
-        printObject(response);
+        CliUtils.printObject(response);
       } else {
         System.out.println("No change in ACLs");
       }
@@ -2837,22 +2805,22 @@ public class AdminTool {
   }
 
   private static void removeFromStoreAcl(CommandLine cmd) throws Exception {
-    String store = getRequiredArgument(cmd, Arg.STORE, Command.DELETE_STORE_ACL);
-    String principal = getRequiredArgument(cmd, Arg.PRINCIPAL, Command.ADD_TO_STORE_ACL);
-    boolean removeReadPermissions = Boolean.parseBoolean(getOptionalArgument(cmd, Arg.READABILITY, "false"));
-    boolean removeWritePermissions = Boolean.parseBoolean(getOptionalArgument(cmd, Arg.WRITEABILITY, "false"));
+    String store = CliUtils.getRequiredArgument(cmd, Arg.STORE, Command.DELETE_STORE_ACL);
+    String principal = CliUtils.getRequiredArgument(cmd, Arg.PRINCIPAL, Command.ADD_TO_STORE_ACL);
+    boolean removeReadPermissions = Boolean.parseBoolean(CliUtils.getOptionalArgument(cmd, Arg.READABILITY, "false"));
+    boolean removeWritePermissions = Boolean.parseBoolean(CliUtils.getOptionalArgument(cmd, Arg.WRITEABILITY, "false"));
 
     if (!removeReadPermissions && !removeWritePermissions) {
-      printErrAndExit("Both Readabilty and Writeabilty can not be false or empty.");
+      CliUtils.printErrAndExit("Both Readabilty and Writeabilty can not be false or empty.");
     }
 
     verifyStoreExistence(store, true);
 
     AclResponse storeAclResponse = controllerClient.getAclForStore(store);
     if (storeAclResponse == null) {
-      printErrAndExit("Failed to get existing ACLs.");
+      CliUtils.printErrAndExit("Failed to get existing ACLs.");
     } else if (storeAclResponse.isError()) {
-      printErrAndExit(storeAclResponse.getError());
+      CliUtils.printErrAndExit(storeAclResponse.getError());
     } else {
       String oldAcls = storeAclResponse.getAccessPermissions();
 
@@ -2875,7 +2843,7 @@ public class AdminTool {
           writePermissions = perms.path("Write").elements();
         }
       } catch (Exception e) {
-        printErrAndThrow(e, "ACLProvisioning: invalid accessPermission schema for store:" + store, null);
+        CliUtils.printErrAndThrow(e, "ACLProvisioning: invalid accessPermission schema for store:" + store, null);
       }
 
       boolean changed = false;
@@ -2908,7 +2876,7 @@ public class AdminTool {
 
         String newAcls = mapper.writeValueAsString(newRoot);
         AclResponse response = controllerClient.updateAclForStore(store, newAcls);
-        printObject(response);
+        CliUtils.printObject(response);
       } else {
         System.out.println("No change in ACLs");
       }
@@ -2916,58 +2884,59 @@ public class AdminTool {
   }
 
   private static void enableActiveActiveReplicationForCluster(CommandLine cmd) {
-    String storeType = getRequiredArgument(cmd, Arg.STORE_TYPE);
-    String regionsFilterParam = getOptionalArgument(cmd, Arg.REGIONS_FILTER);
+    String storeType = CliUtils.getRequiredArgument(cmd, Arg.STORE_TYPE);
+    String regionsFilterParam = CliUtils.getOptionalArgument(cmd, Arg.REGIONS_FILTER);
     Optional<String> regionsFilter =
         StringUtils.isEmpty(regionsFilterParam) ? Optional.empty() : Optional.of(regionsFilterParam);
 
     ControllerResponse response =
         controllerClient.configureActiveActiveReplicationForCluster(true, storeType, regionsFilter);
-    printObject(response);
+    CliUtils.printObject(response);
   }
 
   private static void disableActiveActiveReplicationForCluster(CommandLine cmd) {
-    String storeType = getRequiredArgument(cmd, Arg.STORE_TYPE);
-    String regionsFilterParam = getOptionalArgument(cmd, Arg.REGIONS_FILTER);
+    String storeType = CliUtils.getRequiredArgument(cmd, Arg.STORE_TYPE);
+    String regionsFilterParam = CliUtils.getOptionalArgument(cmd, Arg.REGIONS_FILTER);
     Optional<String> regionsFilter =
         StringUtils.isEmpty(regionsFilterParam) ? Optional.empty() : Optional.of(regionsFilterParam);
 
     ControllerResponse response =
         controllerClient.configureActiveActiveReplicationForCluster(false, storeType, regionsFilter);
-    printObject(response);
+    CliUtils.printObject(response);
   }
 
   private static void getDeletableStoreTopics(CommandLine cmd) {
     MultiStoreTopicsResponse response = controllerClient.getDeletableStoreTopics();
-    printObject(response);
+    CliUtils.printObject(response);
   }
 
   private static void wipeCluster(CommandLine cmd) {
-    String fabric = getRequiredArgument(cmd, Arg.FABRIC);
-    Optional<String> storeName = Optional.ofNullable(getOptionalArgument(cmd, Arg.STORE));
-    Optional<Integer> versionNum = Optional.ofNullable(getOptionalArgument(cmd, Arg.VERSION)).map(Integer::parseInt);
+    String fabric = CliUtils.getRequiredArgument(cmd, Arg.FABRIC);
+    Optional<String> storeName = Optional.ofNullable(CliUtils.getOptionalArgument(cmd, Arg.STORE));
+    Optional<Integer> versionNum =
+        Optional.ofNullable(CliUtils.getOptionalArgument(cmd, Arg.VERSION)).map(Integer::parseInt);
     ControllerResponse response = controllerClient.wipeCluster(fabric, storeName, versionNum);
-    printObject(response);
+    CliUtils.printObject(response);
   }
 
   private static void listClusterStaleStores(CommandLine cmd) {
-    String clusterParam = getRequiredArgument(cmd, Arg.CLUSTER);
-    String urlParam = getRequiredArgument(cmd, Arg.URL);
+    String clusterParam = CliUtils.getRequiredArgument(cmd, Arg.CLUSTER);
+    String urlParam = CliUtils.getRequiredArgument(cmd, Arg.URL);
     ClusterStaleDataAuditResponse response = controllerClient.getClusterStaleStores(clusterParam, urlParam);
-    printObject(response);
+    CliUtils.printObject(response);
   }
 
   private static void repushStore(CommandLine cmd) {
-    String storeName = getRequiredArgument(cmd, Arg.STORE);
+    String storeName = CliUtils.getRequiredArgument(cmd, Arg.STORE);
     RepushJobResponse response = controllerClient.repushStore(storeName);
-    printObject(response);
+    CliUtils.printObject(response);
   }
 
   private static void getDeadStores(CommandLine cmd) {
-    String clusterName = getRequiredArgument(cmd, Arg.CLUSTER);
-    Optional<String> storeName = Optional.ofNullable(getOptionalArgument(cmd, Arg.STORE));
-    String includeSystemStoresStr = getOptionalArgument(cmd, Arg.INCLUDE_SYSTEM_STORES);
-    String lookBackMSStr = getOptionalArgument(cmd, Arg.LOOK_BACK_MS);
+    String clusterName = CliUtils.getRequiredArgument(cmd, Arg.CLUSTER);
+    Optional<String> storeName = Optional.ofNullable(CliUtils.getOptionalArgument(cmd, Arg.STORE));
+    String includeSystemStoresStr = CliUtils.getOptionalArgument(cmd, Arg.INCLUDE_SYSTEM_STORES);
+    String lookBackMSStr = CliUtils.getOptionalArgument(cmd, Arg.LOOK_BACK_MS);
 
     // Build parameters map for clean, extensible API
     Map<String, String> params = new HashMap<>();
@@ -2983,42 +2952,43 @@ public class AdminTool {
     }
 
     MultiStoreInfoResponse response = controllerClient.getDeadStores(clusterName, storeName, params);
-    printObject(response);
+    CliUtils.printObject(response);
   }
 
   private static void listStorePushInfo(CommandLine cmd) {
-    String storeParam = getRequiredArgument(cmd, Arg.STORE);
-    boolean isPartitionDetailEnabled = Optional.ofNullable(getOptionalArgument(cmd, Arg.PARTITION_DETAIL_ENABLED))
-        .map(Boolean::parseBoolean)
-        .orElse(false);
+    String storeParam = CliUtils.getRequiredArgument(cmd, Arg.STORE);
+    boolean isPartitionDetailEnabled =
+        Optional.ofNullable(CliUtils.getOptionalArgument(cmd, Arg.PARTITION_DETAIL_ENABLED))
+            .map(Boolean::parseBoolean)
+            .orElse(false);
 
     StoreHealthAuditResponse response = controllerClient.listStorePushInfo(storeParam, isPartitionDetailEnabled);
-    printObject(response);
+    CliUtils.printObject(response);
   }
 
   private static void compareStore(CommandLine cmd) {
-    String storeName = getRequiredArgument(cmd, Arg.STORE);
-    String fabricA = getRequiredArgument(cmd, Arg.FABRIC_A);
-    String fabricB = getRequiredArgument(cmd, Arg.FABRIC_B);
+    String storeName = CliUtils.getRequiredArgument(cmd, Arg.STORE);
+    String fabricA = CliUtils.getRequiredArgument(cmd, Arg.FABRIC_A);
+    String fabricB = CliUtils.getRequiredArgument(cmd, Arg.FABRIC_B);
 
     StoreComparisonResponse response = controllerClient.compareStore(storeName, fabricA, fabricB);
     if (response.isError()) {
       throw new VeniceException("Error comparing store " + storeName + ". Error: " + response.getError());
     }
-    printObject(response);
+    CliUtils.printObject(response);
   }
 
   private static void copyOverStoresMetadata(CommandLine cmd) {
-    String sourceFabric = getRequiredArgument(cmd, Arg.SOURCE_FABRIC);
-    String destFabric = getRequiredArgument(cmd, Arg.DEST_FABRIC);
-    String storeName = getRequiredArgument(cmd, Arg.STORE);
+    String sourceFabric = CliUtils.getRequiredArgument(cmd, Arg.SOURCE_FABRIC);
+    String destFabric = CliUtils.getRequiredArgument(cmd, Arg.DEST_FABRIC);
+    String storeName = CliUtils.getRequiredArgument(cmd, Arg.STORE);
     StoreResponse response = controllerClient.copyOverStoreMetadata(sourceFabric, destFabric, storeName);
-    printObject(response);
+    CliUtils.printObject(response);
   }
 
   private static void getKafkaTopicConfigs(CommandLine cmd) {
-    String veniceControllerUrls = getRequiredArgument(cmd, Arg.URL);
-    String kafkaTopicName = getRequiredArgument(cmd, Arg.KAFKA_TOPIC_NAME);
+    String veniceControllerUrls = CliUtils.getRequiredArgument(cmd, Arg.URL);
+    String kafkaTopicName = CliUtils.getRequiredArgument(cmd, Arg.KAFKA_TOPIC_NAME);
     String clusterName = null;
     if (AdminTopicUtils.isAdminTopic(kafkaTopicName)) {
       clusterName = AdminTopicUtils.getClusterNameFromTopicName(kafkaTopicName);
@@ -3033,44 +3003,45 @@ public class AdminTool {
     }
     try (ControllerClient tmpControllerClient = new ControllerClient(clusterName, veniceControllerUrls, sslFactory)) {
       PubSubTopicConfigResponse response = tmpControllerClient.getKafkaTopicConfigs(kafkaTopicName);
-      printObject(response);
+      CliUtils.printObject(response);
     }
   }
 
   private static void updateKafkaTopicLogCompaction(CommandLine cmd) {
     updateKafkaTopicConfig(cmd, client -> {
-      String kafkaTopicName = getRequiredArgument(cmd, Arg.KAFKA_TOPIC_NAME);
+      String kafkaTopicName = CliUtils.getRequiredArgument(cmd, Arg.KAFKA_TOPIC_NAME);
       boolean enableKafkaLogCompaction =
-          Boolean.parseBoolean(getRequiredArgument(cmd, Arg.KAFKA_TOPIC_LOG_COMPACTION_ENABLED));
+          Boolean.parseBoolean(CliUtils.getRequiredArgument(cmd, Arg.KAFKA_TOPIC_LOG_COMPACTION_ENABLED));
       return client.updateKafkaTopicLogCompaction(kafkaTopicName, enableKafkaLogCompaction);
     });
   }
 
   private static void updateKafkaTopicRetention(CommandLine cmd) {
     updateKafkaTopicConfig(cmd, client -> {
-      String kafkaTopicName = getRequiredArgument(cmd, Arg.KAFKA_TOPIC_NAME);
-      long kafkaTopicRetentionTimeInMs = Long.parseLong(getRequiredArgument(cmd, Arg.KAFKA_TOPIC_RETENTION_IN_MS));
+      String kafkaTopicName = CliUtils.getRequiredArgument(cmd, Arg.KAFKA_TOPIC_NAME);
+      long kafkaTopicRetentionTimeInMs =
+          Long.parseLong(CliUtils.getRequiredArgument(cmd, Arg.KAFKA_TOPIC_RETENTION_IN_MS));
       return client.updateKafkaTopicRetention(kafkaTopicName, kafkaTopicRetentionTimeInMs);
     });
   }
 
   private static void updateKafkaTopicMinInSyncReplica(CommandLine cmd) {
     updateKafkaTopicConfig(cmd, client -> {
-      String kafkaTopicName = getRequiredArgument(cmd, Arg.KAFKA_TOPIC_NAME);
-      int kafkaTopicMinISR = Integer.parseInt(getRequiredArgument(cmd, Arg.KAFKA_TOPIC_MIN_IN_SYNC_REPLICA));
+      String kafkaTopicName = CliUtils.getRequiredArgument(cmd, Arg.KAFKA_TOPIC_NAME);
+      int kafkaTopicMinISR = Integer.parseInt(CliUtils.getRequiredArgument(cmd, Arg.KAFKA_TOPIC_MIN_IN_SYNC_REPLICA));
       return client.updateKafkaTopicMinInSyncReplica(kafkaTopicName, kafkaTopicMinISR);
     });
   }
 
   private static void updateKafkaTopicConfig(CommandLine cmd, UpdateTopicConfigFunction updateTopicConfigFunction) {
-    String veniceControllerUrls = getRequiredArgument(cmd, Arg.URL);
-    String kafkaTopicName = getRequiredArgument(cmd, Arg.KAFKA_TOPIC_NAME);
+    String veniceControllerUrls = CliUtils.getRequiredArgument(cmd, Arg.URL);
+    String kafkaTopicName = CliUtils.getRequiredArgument(cmd, Arg.KAFKA_TOPIC_NAME);
     /**
      * cluster name is optional; if cluster name is specified, no need to do cluster discovery; this option is helpful
      * to create a ControllerClient with a default cluster, in order to modify a Kafka topic that doesn't belong to
      * any existing Venice store resource
      */
-    String clusterName = getOptionalArgument(cmd, Arg.CLUSTER);
+    String clusterName = CliUtils.getOptionalArgument(cmd, Arg.CLUSTER);
     if (clusterName == null) {
       if (AdminTopicUtils.isAdminTopic(kafkaTopicName)) {
         clusterName = AdminTopicUtils.getClusterNameFromTopicName(kafkaTopicName);
@@ -3087,7 +3058,7 @@ public class AdminTool {
 
     try (ControllerClient tmpControllerClient = new ControllerClient(clusterName, veniceControllerUrls, sslFactory)) {
       ControllerResponse response = updateTopicConfigFunction.apply(tmpControllerClient);
-      printObject(response);
+      CliUtils.printObject(response);
     }
   }
 
@@ -3097,9 +3068,9 @@ public class AdminTool {
   }
 
   private static void startFabricBuildout(CommandLine cmd) {
-    String clusterName = getRequiredArgument(cmd, Arg.CLUSTER);
-    String srcFabric = getRequiredArgument(cmd, Arg.SOURCE_FABRIC);
-    String destFabric = getRequiredArgument(cmd, Arg.DEST_FABRIC);
+    String clusterName = CliUtils.getRequiredArgument(cmd, Arg.CLUSTER);
+    String srcFabric = CliUtils.getRequiredArgument(cmd, Arg.SOURCE_FABRIC);
+    String destFabric = CliUtils.getRequiredArgument(cmd, Arg.DEST_FABRIC);
     boolean retry = cmd.hasOption(Arg.RETRY.toString());
     String latestStep = "";
 
@@ -3235,9 +3206,9 @@ public class AdminTool {
   }
 
   private static void checkFabricBuildoutStatus(CommandLine cmd) {
-    String clusterName = getRequiredArgument(cmd, Arg.CLUSTER);
-    String srcFabric = getRequiredArgument(cmd, Arg.SOURCE_FABRIC);
-    String destFabric = getRequiredArgument(cmd, Arg.DEST_FABRIC);
+    String clusterName = CliUtils.getRequiredArgument(cmd, Arg.CLUSTER);
+    String srcFabric = CliUtils.getRequiredArgument(cmd, Arg.SOURCE_FABRIC);
+    String destFabric = CliUtils.getRequiredArgument(cmd, Arg.DEST_FABRIC);
 
     Map<String, ControllerClient> map = getAndCheckChildControllerClientMap(clusterName, srcFabric, null);
     ControllerClient srcFabricChildControllerClient = map.get(srcFabric);
@@ -3290,7 +3261,7 @@ public class AdminTool {
   }
 
   private static void endFabricBuildout(CommandLine cmd) {
-    String clusterName = getRequiredArgument(cmd, Arg.CLUSTER);
+    String clusterName = CliUtils.getRequiredArgument(cmd, Arg.CLUSTER);
     try {
       ChildAwareResponse response = checkControllerResponse(controllerClient.listChildControllers(clusterName));
       if (response.getChildDataCenterControllerUrlMap() == null) {
@@ -3306,32 +3277,33 @@ public class AdminTool {
   }
 
   private static void createNewStoragePersona(CommandLine cmd) {
-    String personaName = getRequiredArgument(cmd, Arg.STORAGE_PERSONA);
-    long quota = Utils.parseLongFromString(getRequiredArgument(cmd, Arg.STORAGE_QUOTA), Arg.STORAGE_QUOTA.name());
-    Set<String> storesToEnforce = Utils.parseCommaSeparatedStringToSet(getRequiredArgument(cmd, Arg.STORE));
-    Set<String> owners = Utils.parseCommaSeparatedStringToSet(getRequiredArgument(cmd, Arg.OWNER));
+    String personaName = CliUtils.getRequiredArgument(cmd, Arg.STORAGE_PERSONA);
+    long quota =
+        Utils.parseLongFromString(CliUtils.getRequiredArgument(cmd, Arg.STORAGE_QUOTA), Arg.STORAGE_QUOTA.name());
+    Set<String> storesToEnforce = Utils.parseCommaSeparatedStringToSet(CliUtils.getRequiredArgument(cmd, Arg.STORE));
+    Set<String> owners = Utils.parseCommaSeparatedStringToSet(CliUtils.getRequiredArgument(cmd, Arg.OWNER));
 
     ControllerResponse response = controllerClient.createStoragePersona(personaName, quota, storesToEnforce, owners);
-    printObject(response);
+    CliUtils.printObject(response);
   }
 
   private static void getStoragePersona(CommandLine cmd) {
-    String personaName = getRequiredArgument(cmd, Arg.STORAGE_PERSONA);
+    String personaName = CliUtils.getRequiredArgument(cmd, Arg.STORAGE_PERSONA);
     StoragePersonaResponse response = controllerClient.getStoragePersona(personaName);
-    printObject(response);
+    CliUtils.printObject(response);
   }
 
   private static void deleteStoragePersona(CommandLine cmd) {
-    String personaName = getRequiredArgument(cmd, Arg.STORAGE_PERSONA);
+    String personaName = CliUtils.getRequiredArgument(cmd, Arg.STORAGE_PERSONA);
     ControllerResponse response = controllerClient.deleteStoragePersona(personaName);
-    printObject(response);
+    CliUtils.printObject(response);
   }
 
   private static void updateStoragePersona(CommandLine cmd) {
-    String personaName = getRequiredArgument(cmd, Arg.STORAGE_PERSONA);
+    String personaName = CliUtils.getRequiredArgument(cmd, Arg.STORAGE_PERSONA);
     UpdateStoragePersonaQueryParams queryParams = getUpdateStoragePersonaQueryParams(cmd);
     ControllerResponse response = controllerClient.updateStoragePersona(personaName, queryParams);
-    printObject(response);
+    CliUtils.printObject(response);
   }
 
   private static UpdateStoragePersonaQueryParams getUpdateStoragePersonaQueryParams(CommandLine cmd) {
@@ -3345,25 +3317,25 @@ public class AdminTool {
   }
 
   private static void getStoragePersonaForStore(CommandLine cmd) {
-    String storeName = getRequiredArgument(cmd, Arg.STORE);
+    String storeName = CliUtils.getRequiredArgument(cmd, Arg.STORE);
     StoragePersonaResponse response = controllerClient.getStoragePersonaAssociatedWithStore(storeName);
-    printObject(response);
+    CliUtils.printObject(response);
   }
 
   private static void listClusterStoragePersonas(CommandLine cmd) {
     MultiStoragePersonaResponse response = controllerClient.getClusterStoragePersonas();
-    printObject(response);
+    CliUtils.printObject(response);
   }
 
   private static void cleanupInstanceCustomizedStates(CommandLine cmd) {
     MultiStoreTopicsResponse multiStoreTopicsResponse = controllerClient.cleanupInstanceCustomizedStates();
-    printObject(multiStoreTopicsResponse);
+    CliUtils.printObject(multiStoreTopicsResponse);
   }
 
   private static void getRequestBasedMetadata(CommandLine cmd) throws JsonProcessingException {
-    String url = getRequiredArgument(cmd, Arg.URL);
-    String serverUrl = getRequiredArgument(cmd, Arg.SERVER_URL);
-    String storeName = getRequiredArgument(cmd, Arg.STORE);
+    String url = CliUtils.getRequiredArgument(cmd, Arg.URL);
+    String serverUrl = CliUtils.getRequiredArgument(cmd, Arg.SERVER_URL);
+    String storeName = CliUtils.getRequiredArgument(cmd, Arg.STORE);
     TransportClient transportClient = null;
     try {
       transportClient = getTransportClientForServer(storeName, serverUrl);
@@ -3382,9 +3354,9 @@ public class AdminTool {
   }
 
   private static void getRequestBasedStoreProperties(CommandLine cmd) throws JsonProcessingException {
-    String url = getRequiredArgument(cmd, Arg.URL);
-    String serverUrl = getRequiredArgument(cmd, Arg.SERVER_URL);
-    String storeName = getRequiredArgument(cmd, Arg.STORE);
+    String url = CliUtils.getRequiredArgument(cmd, Arg.URL);
+    String serverUrl = CliUtils.getRequiredArgument(cmd, Arg.SERVER_URL);
+    String storeName = CliUtils.getRequiredArgument(cmd, Arg.STORE);
     TransportClient transportClient = null;
     try {
       transportClient = getTransportClientForServer(storeName, serverUrl);
@@ -3416,13 +3388,14 @@ public class AdminTool {
   private static void dumpIngestionState(CommandLine cmd) throws Exception {
     TransportClient transportClient = null;
     try {
-      transportClient =
-          getTransportClientForServer(getRequiredArgument(cmd, Arg.STORE), getRequiredArgument(cmd, Arg.SERVER_URL));
+      transportClient = getTransportClientForServer(
+          CliUtils.getRequiredArgument(cmd, Arg.STORE),
+          CliUtils.getRequiredArgument(cmd, Arg.SERVER_URL));
       dumpIngestionState(
           transportClient,
-          getRequiredArgument(cmd, Arg.STORE),
-          getRequiredArgument(cmd, Arg.VERSION),
-          getOptionalArgument(cmd, Arg.PARTITION));
+          CliUtils.getRequiredArgument(cmd, Arg.STORE),
+          CliUtils.getRequiredArgument(cmd, Arg.VERSION),
+          CliUtils.getOptionalArgument(cmd, Arg.PARTITION));
     } finally {
       Utils.closeQuietlyWithErrorLogged(transportClient);
     }
@@ -3431,14 +3404,15 @@ public class AdminTool {
   private static void dumpTopicPartitionIngestionContext(CommandLine cmd) throws Exception {
     TransportClient transportClient = null;
     try {
-      transportClient =
-          getTransportClientForServer(getRequiredArgument(cmd, Arg.STORE), getRequiredArgument(cmd, Arg.SERVER_URL));
+      transportClient = getTransportClientForServer(
+          CliUtils.getRequiredArgument(cmd, Arg.STORE),
+          CliUtils.getRequiredArgument(cmd, Arg.SERVER_URL));
       dumpTopicPartitionIngestionContext(
           transportClient,
-          getRequiredArgument(cmd, Arg.STORE),
-          getRequiredArgument(cmd, Arg.VERSION),
-          getRequiredArgument(cmd, Arg.KAFKA_TOPIC_NAME),
-          getRequiredArgument(cmd, Arg.KAFKA_TOPIC_PARTITION));
+          CliUtils.getRequiredArgument(cmd, Arg.STORE),
+          CliUtils.getRequiredArgument(cmd, Arg.VERSION),
+          CliUtils.getRequiredArgument(cmd, Arg.KAFKA_TOPIC_NAME),
+          CliUtils.getRequiredArgument(cmd, Arg.KAFKA_TOPIC_PARTITION));
     } finally {
       Utils.closeQuietlyWithErrorLogged(transportClient);
     }
@@ -3470,38 +3444,46 @@ public class AdminTool {
   private static void dumpHostHeartbeat(CommandLine cmd) throws Exception {
     TransportClient transportClient = null;
     try {
-      transportClient = getTransportClientForServer("dummy", getRequiredArgument(cmd, Arg.SERVER_URL));
+      transportClient = getTransportClientForServer("dummy", CliUtils.getRequiredArgument(cmd, Arg.SERVER_URL));
       dumpHostHeartbeatLag(
           transportClient,
-          getRequiredArgument(cmd, Arg.KAFKA_TOPIC_NAME),
-          getOptionalArgument(cmd, Arg.PARTITION),
-          getOptionalArgument(cmd, Arg.LAG_FILTER_ENABLED));
+          CliUtils.getRequiredArgument(cmd, Arg.KAFKA_TOPIC_NAME),
+          CliUtils.getOptionalArgument(cmd, Arg.PARTITION),
+          CliUtils.getOptionalArgument(cmd, Arg.LAG_FILTER_ENABLED));
     } finally {
       Utils.closeQuietlyWithErrorLogged(transportClient);
     }
   }
 
   private static void updateAdminOperationProtocolVersion(CommandLine cmd) throws Exception {
-    String clusterName = getRequiredArgument(cmd, Arg.CLUSTER, Command.UPDATE_ADMIN_OPERATION_PROTOCOL_VERSION);
-    String protocolVersionInString =
-        getRequiredArgument(cmd, Arg.ADMIN_OPERATION_PROTOCOL_VERSION, Command.UPDATE_ADMIN_OPERATION_PROTOCOL_VERSION);
+    String clusterName =
+        CliUtils.getRequiredArgument(cmd, Arg.CLUSTER, Command.UPDATE_ADMIN_OPERATION_PROTOCOL_VERSION);
+    String protocolVersionInString = CliUtils.getRequiredArgument(
+        cmd,
+        Arg.ADMIN_OPERATION_PROTOCOL_VERSION,
+        Command.UPDATE_ADMIN_OPERATION_PROTOCOL_VERSION);
     long protocolVersion =
         Utils.parseLongFromString(protocolVersionInString, Arg.ADMIN_OPERATION_PROTOCOL_VERSION.name());
     AdminTopicMetadataResponse response =
         controllerClient.updateAdminOperationProtocolVersion(clusterName, protocolVersion);
-    printObject(response);
+    CliUtils.printObject(response);
   }
 
   private static void migrateVeniceZKPaths(CommandLine cmd) throws Exception {
-    Set<String> clusterNames = Utils.parseCommaSeparatedStringToSet(getRequiredArgument(cmd, Arg.CLUSTER_LIST));
-    String srcZKUrl = getRequiredArgument(cmd, Arg.SRC_ZOOKEEPER_URL);
-    String srcZKSSLConfigs = getRequiredArgument(cmd, Arg.SRC_ZK_SSL_CONFIG_FILE);
-    String destZKUrl = getRequiredArgument(cmd, Arg.DEST_ZOOKEEPER_URL);
-    String destZKSSLConfigs = getRequiredArgument(cmd, Arg.DEST_ZK_SSL_CONFIG_FILE);
+    Set<String> clusterNames =
+        Utils.parseCommaSeparatedStringToSet(CliUtils.getRequiredArgument(cmd, Arg.CLUSTER_LIST));
+    String srcZKUrl = CliUtils.getRequiredArgument(cmd, Arg.SRC_ZOOKEEPER_URL);
+    String srcZKSSLConfigs = CliUtils.getRequiredArgument(cmd, Arg.SRC_ZK_SSL_CONFIG_FILE);
+    String destZKUrl = CliUtils.getRequiredArgument(cmd, Arg.DEST_ZOOKEEPER_URL);
+    String destZKSSLConfigs = CliUtils.getRequiredArgument(cmd, Arg.DEST_ZK_SSL_CONFIG_FILE);
     ZkClient srcZkClient = readZKConfigAndBuildZKClient(srcZKUrl, srcZKSSLConfigs);
     ZkClient destZkClient = readZKConfigAndBuildZKClient(destZKUrl, destZKSSLConfigs);
     try {
-      ZkCopier.migrateVenicePaths(srcZkClient, destZkClient, clusterNames, getRequiredArgument(cmd, Arg.BASE_PATH));
+      ZkCopier.migrateVenicePaths(
+          srcZkClient,
+          destZkClient,
+          clusterNames,
+          CliUtils.getRequiredArgument(cmd, Arg.BASE_PATH));
     } finally {
       srcZkClient.close();
       destZkClient.close();
@@ -3509,31 +3491,32 @@ public class AdminTool {
   }
 
   private static void extractVeniceZKPaths(CommandLine cmd) {
-    Set<String> clusterNames = Utils.parseCommaSeparatedStringToSet(getRequiredArgument(cmd, Arg.CLUSTER_LIST));
+    Set<String> clusterNames =
+        Utils.parseCommaSeparatedStringToSet(CliUtils.getRequiredArgument(cmd, Arg.CLUSTER_LIST));
     ZkCopier.extractVenicePaths(
-        getRequiredArgument(cmd, Arg.INFILE),
-        getRequiredArgument(cmd, Arg.OUTFILE),
+        CliUtils.getRequiredArgument(cmd, Arg.INFILE),
+        CliUtils.getRequiredArgument(cmd, Arg.OUTFILE),
         clusterNames,
-        getRequiredArgument(cmd, Arg.BASE_PATH));
+        CliUtils.getRequiredArgument(cmd, Arg.BASE_PATH));
   }
 
   private static void getAggregatedHealthStatus(CommandLine cmd) throws JsonProcessingException {
-    String clusterName = getRequiredArgument(cmd, Arg.CLUSTER);
-    String instances = getRequiredArgument(cmd, Arg.INSTANCES);
-    String toBeStoppedNodes = getRequiredArgument(cmd, Arg.TO_BE_STOPPED_NODES);
+    String clusterName = CliUtils.getRequiredArgument(cmd, Arg.CLUSTER);
+    String instances = CliUtils.getRequiredArgument(cmd, Arg.INSTANCES);
+    String toBeStoppedNodes = CliUtils.getRequiredArgument(cmd, Arg.TO_BE_STOPPED_NODES);
     ControllerResponse response = controllerClient.getAggregatedHealthStatus(
         clusterName,
         Utils.parseCommaSeparatedStringToList(instances),
         Utils.parseCommaSeparatedStringToList(toBeStoppedNodes));
-    printObject(response);
+    CliUtils.printObject(response);
 
   }
 
   private static void configureStoreView(CommandLine cmd) {
     UpdateStoreQueryParams params = getConfigureStoreViewQueryParams(cmd);
-    String storeName = getRequiredArgument(cmd, Arg.STORE, Command.CONFIGURE_STORE_VIEW);
+    String storeName = CliUtils.getRequiredArgument(cmd, Arg.STORE, Command.CONFIGURE_STORE_VIEW);
     ControllerResponse response = controllerClient.updateStore(storeName, params);
-    printObject(response);
+    CliUtils.printObject(response);
   }
 
   static void dumpIngestionState(TransportClient transportClient, String storeName, String version, String partition)
@@ -3692,11 +3675,6 @@ public class AdminTool {
     return controllerResponse;
   }
 
-  private static void printErrAndExit(String err) {
-    Map<String, String> errMap = new HashMap<>();
-    printErrAndExit(err, errMap);
-  }
-
   private static void createOpt(Arg name, boolean hasArg, String help, Options options) {
     options.addOption(new Option(name.first(), name.toString(), hasArg, help));
   }
@@ -3720,7 +3698,7 @@ public class AdminTool {
     boolean hasPosition = cmd.hasOption(Arg.STARTING_POSITION.first());
 
     if (required && !hasOffset && !hasPosition) {
-      printErrAndExit(
+      CliUtils.printErrAndExit(
           "At least one of " + Arg.STARTING_OFFSET.getArgName() + " or " + Arg.STARTING_POSITION.getArgName()
               + " is required.");
     }
@@ -3737,10 +3715,6 @@ public class AdminTool {
     }
   }
 
-  private static void createCommandOpt(Command command, OptionGroup group) {
-    group.addOption(OptionBuilder.withLongOpt(command.toString()).withDescription(command.getDesc()).create());
-  }
-
   static String readFile(String path) throws IOException {
     String fullPath = path.replace("~", System.getProperty("user.home"));
     byte[] encoded = Files.readAllBytes(Paths.get(fullPath));
@@ -3748,62 +3722,9 @@ public class AdminTool {
   }
 
   private static void printReplicasReadinessStorageNode(CommandLine cmd) {
-    String storageNodeId = getRequiredArgument(cmd, Arg.STORAGE_NODE);
+    String storageNodeId = CliUtils.getRequiredArgument(cmd, Arg.STORAGE_NODE);
     NodeReplicasReadinessResponse response = controllerClient.nodeReplicasReadiness(storageNodeId);
-    printObject(response);
-  }
-
-  ///// Print Output ////
-  private static void printObject(Object response) {
-    printObject(response, System.out::print);
-  }
-
-  protected static void printObject(Object response, Consumer<String> printFunction) {
-    try {
-      printFunction.accept(jsonWriter.writeValueAsString(response));
-      printFunction.accept("\n");
-    } catch (IOException e) {
-      printFunction.accept("{\"" + ERROR + "\":\"" + e.getMessage() + "\"}");
-      Utils.exit("printObject");
-    }
-  }
-
-  static void printSuccess(ControllerResponse response) {
-    if (response.isError()) {
-      printErrAndExit(response.getError());
-    } else {
-      System.out.println("{\"" + STATUS + "\":\"" + SUCCESS + "\"}");
-    }
-  }
-
-  private static void printErrAndExit(String errorMessage, Map<String, String> customMessages) {
-    printErr(errorMessage, customMessages);
-    Utils.exit("venice-admin-tool encountered and error, exiting now.");
-  }
-
-  private static void printErrAndThrow(Exception e, String errorMessage, Map<String, String> customMessages)
-      throws Exception {
-    printErr(errorMessage, customMessages);
-    throw e;
-  }
-
-  private static void printErr(String errorMessage, Map<String, String> customMessages) {
-    Map<String, String> errMap = new HashMap<>();
-    if (customMessages != null) {
-      for (Map.Entry<String, String> messagePair: customMessages.entrySet()) {
-        errMap.put(messagePair.getKey(), messagePair.getValue());
-      }
-    }
-    if (errMap.keySet().contains(ERROR)) {
-      errMap.put(ERROR, errMap.get(ERROR) + " " + errorMessage);
-    } else {
-      errMap.put(ERROR, errorMessage);
-    }
-    try {
-      System.out.println(jsonWriter.writeValueAsString(errMap));
-    } catch (IOException e) {
-      System.out.println("{\"" + ERROR + "\":\"" + e.getMessage() + "\"}");
-    }
+    CliUtils.printObject(response);
   }
 
   /**
@@ -3846,8 +3767,8 @@ public class AdminTool {
    */
   private static ConsumerContext createConsumerContext(CommandLine cmd) {
     // Load consumer properties and set bootstrap servers
-    Properties consumerProps = loadProperties(cmd, Arg.KAFKA_CONSUMER_CONFIG_FILE);
-    String pubSubBrokerUrl = getRequiredArgument(cmd, Arg.KAFKA_BOOTSTRAP_SERVERS);
+    Properties consumerProps = CliUtils.loadProperties(cmd, Arg.KAFKA_CONSUMER_CONFIG_FILE.first());
+    String pubSubBrokerUrl = CliUtils.getRequiredArgument(cmd, Arg.KAFKA_BOOTSTRAP_SERVERS);
     consumerProps = DumpAdminMessages.getPubSubConsumerProperties(pubSubBrokerUrl, consumerProps);
 
     // Create all necessary dependencies
