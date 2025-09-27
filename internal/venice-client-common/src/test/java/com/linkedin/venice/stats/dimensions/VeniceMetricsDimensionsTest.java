@@ -46,6 +46,9 @@ public class VeniceMetricsDimensionsTest {
         case REPUSH_TRIGGER_SOURCE:
           assertEquals(dimension.getDimensionName(format), "repush.trigger.source");
           break;
+        case VENICE_ROUTE_NAME:
+          assertEquals(dimension.getDimensionName(format), "venice.route.name");
+          break;
         case VENICE_REQUEST_REJECTION_REASON:
           assertEquals(dimension.getDimensionName(format), "venice.request.rejection_reason");
           break;
@@ -99,6 +102,9 @@ public class VeniceMetricsDimensionsTest {
         case REPUSH_TRIGGER_SOURCE:
           assertEquals(dimension.getDimensionName(format), "repush.trigger.source");
           break;
+        case VENICE_ROUTE_NAME:
+          assertEquals(dimension.getDimensionName(format), "venice.route.name");
+          break;
         case VENICE_REQUEST_REJECTION_REASON:
           assertEquals(dimension.getDimensionName(format), "venice.request.rejectionReason");
           break;
@@ -151,6 +157,9 @@ public class VeniceMetricsDimensionsTest {
           break;
         case REPUSH_TRIGGER_SOURCE:
           assertEquals(dimension.getDimensionName(format), "Repush.Trigger.Source");
+          break;
+        case VENICE_ROUTE_NAME:
+          assertEquals(dimension.getDimensionName(format), "Venice.Route.Name");
           break;
         case VENICE_REQUEST_REJECTION_REASON:
           assertEquals(dimension.getDimensionName(format), "Venice.Request.RejectionReason");
