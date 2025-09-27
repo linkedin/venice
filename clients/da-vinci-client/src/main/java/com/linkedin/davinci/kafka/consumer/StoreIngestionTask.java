@@ -4979,28 +4979,33 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     try {
       final PubSubPosition position = pubSubPositionDeserializer.toPosition(wireFormatBytes);
-
       // Guard against regressions: honor the caller-provided minimum offset.
       if (offset > 0 && position.getNumericOffset() < offset) {
-        LOGGER.info(
-            "Deserialized position: {} is behind the provided offset: {}. Using offset-based position for: {}/{}",
-            position.getNumericOffset(),
-            offset,
-            topicPartition,
-            versionTopic);
+        String context = String.format(" for: %s/%s", topicPartition, versionTopic);
+        if (!REDUNDANT_LOGGING_FILTER.isRedundantException(context)) {
+          LOGGER.warn(
+              "Deserialized position: {} is behind the provided offset: {}. Using offset-based position for: {}/{}",
+              position,
+              offset,
+              topicPartition,
+              versionTopic);
+        }
         return PubSubUtil.fromKafkaOffset(offset);
       }
 
       return position;
-    } catch (RuntimeException e) {
-      LOGGER.warn(
-          "Failed to deserialize PubSubPosition for: {}/{}. Using offset-based position (offset={}, bufferRem={}, bufferCap={}).",
-          topicPartition,
-          versionTopic,
-          offset,
-          wireFormatBytes.remaining(),
-          wireFormatBytes.capacity(),
-          e);
+    } catch (Exception e) {
+      String context = String.format("%s/%s - %s", topicPartition, versionTopic, e.getMessage());
+      if (!REDUNDANT_LOGGING_FILTER.isRedundantException(context)) {
+        LOGGER.warn(
+            "Failed to deserialize PubSubPosition for: {}/{}. Using offset-based position (offset={}, bufferRem={}, bufferCap={}).",
+            topicPartition,
+            versionTopic,
+            offset,
+            wireFormatBytes.remaining(),
+            wireFormatBytes.capacity(),
+            e);
+      }
       return PubSubUtil.fromKafkaOffset(offset);
     }
   }
