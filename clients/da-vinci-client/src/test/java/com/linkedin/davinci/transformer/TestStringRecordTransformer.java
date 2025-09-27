@@ -47,7 +47,8 @@ public class TestStringRecordTransformer extends DaVinciRecordTransformer<Intege
       Lazy<String> value,
       int partitionId,
       DaVinciRecordTransformerRecordMetadata recordMetadata) {
-    return;
+    // Running for sake of unit test
+    value.get();
   }
 
   @Override

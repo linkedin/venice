@@ -152,6 +152,5 @@ public void onEndVersionIngestion(int currentVersion) {
   - `setStoreRecordsInDaVinci` (default: true): persist into Da Vinci’s local disk.
   - `setAlwaysBootstrapFromVersionTopic` (default: false): set this to true if `storeRecordsInDaVinci` is false, and
     you're storing records in memory without being backed by disk.
-  - `setSkipCompatibilityChecks` (default: false): consider true when returning `UNCHANGED` during `transform` or
-    during frequent changes to the interface without modifying the transform logic.
+  - `setRecordTransformationEnabled` (default: true): set to false when returning `UNCHANGED` during `transform`.
   - `setRecordMetadataEnabled` (default: false): enable if you need the record metadata in DaVinciRecordTransformerRecordMetadata.

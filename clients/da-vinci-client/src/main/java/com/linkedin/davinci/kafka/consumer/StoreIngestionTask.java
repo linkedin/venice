@@ -748,8 +748,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       recordTransformerOnRecoveryThreadPool.submit(() -> {
         try {
           long startTime = System.nanoTime();
-          recordTransformer
-              .internalOnRecovery(storageEngine, partitionNumber, partitionStateSerializer, compressor, pubSubContext);
+          recordTransformer.internalOnRecovery(
+              storageEngine,
+              partitionNumber,
+              partitionStateSerializer,
+              compressor,
+              pubSubContext,
+              schemaIdToSchemaMap,
+              schemaRepository);
           LOGGER.info(
               "DaVinciRecordTransformer onRecovery took {} ms for replica: {}",
               LatencyUtils.getElapsedTimeFromNSToMS(startTime),
@@ -958,14 +964,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      * In rocksdb Plain Table mode or in non deferredWrite mode, we can't use rocksdb SSTFileWriter to verify the checksum.
      * So there is no point keep calculating the running checksum here.
      *
-     * Additionally, if {@link DaVinciRecordTransformerConfig#shouldSkipCompatibilityChecks()} returns false
-     * (compatibility checks are enabled), checksum validation is not possible here.
+     * Additionally, if {@link DaVinciRecordTransformerConfig#isRecordTransformationEnabled()}} returns true,
+     * checksum validation is not possible here.
      * This is because records are transformed during ingestion, resulting in a checksum that does not match
      * the original data and causing validation to fail.
      */
     if (serverConfig.isDatabaseChecksumVerificationEnabled() && partitionConsumptionState.isDeferredWrite()
         && !serverConfig.getRocksDBServerConfig().isRocksDBPlainTableFormatEnabled()
-        && (recordTransformerConfig == null || recordTransformerConfig.shouldSkipCompatibilityChecks())) {
+        && (recordTransformerConfig == null || !recordTransformerConfig.isRecordTransformationEnabled())) {
 
       partitionConsumptionState.initializeExpectedChecksum();
       partitionChecksumSupplier = Optional.ofNullable(() -> {

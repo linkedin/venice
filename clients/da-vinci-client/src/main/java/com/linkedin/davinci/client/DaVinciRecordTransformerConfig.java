@@ -21,7 +21,7 @@ public class DaVinciRecordTransformerConfig {
   private final Schema outputValueSchema;
   private final boolean storeRecordsInDaVinci;
   private final boolean alwaysBootstrapFromVersionTopic;
-  private final boolean skipCompatibilityChecks;
+  private final boolean recordTransformationEnabled;
   private final boolean useSpecificRecordKeyDeserializer;
   private final boolean useSpecificRecordValueDeserializer;
   private final boolean recordMetadataEnabled;
@@ -44,7 +44,7 @@ public class DaVinciRecordTransformerConfig {
 
     this.storeRecordsInDaVinci = builder.storeRecordsInDaVinci;
     this.alwaysBootstrapFromVersionTopic = builder.alwaysBootstrapFromVersionTopic;
-    this.skipCompatibilityChecks = builder.skipCompatibilityChecks;
+    this.recordTransformationEnabled = builder.recordTransformationEnabled;
     this.recordMetadataEnabled = builder.recordMetadataEnabled;
   }
 
@@ -105,10 +105,10 @@ public class DaVinciRecordTransformerConfig {
   }
 
   /**
-   * @return {@link #skipCompatibilityChecks}
+   * @return {@link #recordTransformationEnabled}
    */
-  public boolean shouldSkipCompatibilityChecks() {
-    return skipCompatibilityChecks;
+  public boolean isRecordTransformationEnabled() {
+    return recordTransformationEnabled;
   }
 
   /**
@@ -125,7 +125,7 @@ public class DaVinciRecordTransformerConfig {
     private Schema outputValueSchema;
     private Boolean storeRecordsInDaVinci = true;
     private Boolean alwaysBootstrapFromVersionTopic = false;
-    private Boolean skipCompatibilityChecks = false;
+    private Boolean recordTransformationEnabled = true;
     private Boolean recordMetadataEnabled = false;
 
     /**
@@ -198,16 +198,16 @@ public class DaVinciRecordTransformerConfig {
     }
 
     /**
-     * Skip transform compatibility checks. Consider true if {@link DaVinciRecordTransformer#transform(Lazy, Lazy, int, DaVinciRecordTransformerRecordMetadata)}
-     * always returns UNCHANGED, or during rapid non-functional iterations when you want to avoid wiping local data on
-     * redeploy. Remember to set this back to false when stable.
+     * Set this to false if you are not modifying the values of records in {@link DaVinciRecordTransformer#transform(Lazy, Lazy, int, DaVinciRecordTransformerRecordMetadata)}.
+     *
+     * If not set to false and records aren't being transformed, you will run into deserialization issues when recovery mode is running after restart if the value schema has been evolved.
      *
      * Default is false.
      *
-     * @param skipCompatibilityChecks whether to skip compatibility checks
+     * @param recordTransformationEnabled whether records are being transformed
      */
-    public Builder setSkipCompatibilityChecks(boolean skipCompatibilityChecks) {
-      this.skipCompatibilityChecks = skipCompatibilityChecks;
+    public Builder setRecordTransformationEnabled(boolean recordTransformationEnabled) {
+      this.recordTransformationEnabled = recordTransformationEnabled;
       return this;
     }
 

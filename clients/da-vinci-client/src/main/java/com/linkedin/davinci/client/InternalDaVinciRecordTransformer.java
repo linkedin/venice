@@ -5,10 +5,12 @@ import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.venice.annotation.Experimental;
 import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
+import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.pubsub.PubSubContext;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.io.IOException;
+import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import org.apache.avro.Schema;
 
@@ -120,8 +122,17 @@ public class InternalDaVinciRecordTransformer<K, V, O> extends DaVinciRecordTran
       int partitionId,
       InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer,
       Lazy<VeniceCompressor> compressor,
-      PubSubContext pubSubContext) {
-    this.recordTransformer.onRecovery(storageEngine, partitionId, partitionStateSerializer, compressor, pubSubContext);
+      PubSubContext pubSubContext,
+      Map<Integer, Schema> schemaIdToSchemaMap,
+      ReadOnlySchemaRepository schemaRepository) {
+    this.recordTransformer.onRecovery(
+        storageEngine,
+        partitionId,
+        partitionStateSerializer,
+        compressor,
+        pubSubContext,
+        schemaIdToSchemaMap,
+        schemaRepository);
   }
 
   public long getCountDownStartConsumptionLatchCount() {

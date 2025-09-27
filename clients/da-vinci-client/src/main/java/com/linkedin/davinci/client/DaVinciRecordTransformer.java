@@ -6,6 +6,7 @@ import com.linkedin.venice.annotation.Experimental;
 import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
+import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.pubsub.PubSubContext;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.utils.lazy.Lazy;
@@ -14,6 +15,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
+import java.util.Map;
 import org.apache.avro.Schema;
 import org.objectweb.asm.ClassReader;
 
@@ -330,9 +332,17 @@ public abstract class DaVinciRecordTransformer<K, V, O> implements Closeable {
       int partitionId,
       InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer,
       Lazy<VeniceCompressor> compressor,
-      PubSubContext pubSubContext) {
-    recordTransformerUtility
-        .onRecovery(storageEngine, partitionId, partitionStateSerializer, compressor, pubSubContext);
+      PubSubContext pubSubContext,
+      Map<Integer, Schema> schemaIdToSchemaMap,
+      ReadOnlySchemaRepository schemaRepository) {
+    recordTransformerUtility.onRecovery(
+        storageEngine,
+        partitionId,
+        partitionStateSerializer,
+        compressor,
+        pubSubContext,
+        schemaIdToSchemaMap,
+        schemaRepository);
   }
 
   /**

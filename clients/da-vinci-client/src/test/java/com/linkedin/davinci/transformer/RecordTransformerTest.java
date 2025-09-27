@@ -1,7 +1,10 @@
 package com.linkedin.davinci.transformer;
 
 import static com.linkedin.venice.utils.TestUtils.DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING;
+import static org.apache.avro.Schema.Type.STRING;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -27,15 +30,19 @@ import com.linkedin.davinci.stats.AggVersionedDaVinciRecordTransformerStats;
 import com.linkedin.davinci.store.AbstractStorageIterator;
 import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.davinci.store.StoragePartitionAdjustmentTrigger;
+import com.linkedin.venice.compression.NoopCompressor;
 import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
+import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.serializer.AvroGenericDeserializer;
 import com.linkedin.venice.serializer.AvroSpecificDeserializer;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.lazy.Lazy;
-import java.lang.reflect.Field;
+import java.util.Map;
 import java.util.Optional;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
@@ -52,17 +59,17 @@ public class RecordTransformerTest {
   static final String value = "SampleValue";
   static final Lazy<String> lazyValue = Lazy.of(() -> value);
   static final Schema keySchema = Schema.create(Schema.Type.INT);
-  static final Schema valueSchema = Schema.create(Schema.Type.STRING);
+  static final Schema valueSchema = Schema.create(STRING);
 
   @Test
-  public void testRecordTransformer() throws NoSuchFieldException, IllegalAccessException {
+  public void testRecordTransformer() {
     DaVinciRecordTransformerConfig dummyRecordTransformerConfig =
         new DaVinciRecordTransformerConfig.Builder().setRecordTransformerFunction(TestStringRecordTransformer::new)
             .setStoreRecordsInDaVinci(false)
             .build();
-    assertFalse(
-        dummyRecordTransformerConfig.shouldSkipCompatibilityChecks(),
-        "Default for skipCompatibilityChecks should be false");
+    assertTrue(
+        dummyRecordTransformerConfig.isRecordTransformationEnabled(),
+        "Default for RecordTransformationEnabled should be true");
     assertFalse(dummyRecordTransformerConfig.useSpecificRecordKeyDeserializer());
     assertFalse(dummyRecordTransformerConfig.useSpecificRecordValueDeserializer());
 
@@ -77,21 +84,13 @@ public class RecordTransformerTest {
     assertEquals(recordTransformer.getStoreVersion(), storeVersion);
 
     assertEquals(recordTransformer.getKeySchema().getType(), Schema.Type.INT);
-    assertEquals(recordTransformer.getOutputValueSchema().getType(), Schema.Type.STRING);
+    assertEquals(recordTransformer.getOutputValueSchema().getType(), STRING);
 
     DaVinciRecordTransformerUtility<Integer, String> recordTransformerUtility =
         recordTransformer.getRecordTransformerUtility();
 
-    Field keyDeserializerField = recordTransformerUtility.getClass().getDeclaredField("keyDeserializer");
-    keyDeserializerField.setAccessible(true);
-    assertTrue(keyDeserializerField.get(recordTransformerUtility) instanceof AvroGenericDeserializer);
-    assertFalse(keyDeserializerField.get(recordTransformerUtility) instanceof AvroSpecificDeserializer);
-
-    Field outputValueDeserializerField =
-        recordTransformerUtility.getClass().getDeclaredField("outputValueDeserializer");
-    outputValueDeserializerField.setAccessible(true);
-    assertTrue(outputValueDeserializerField.get(recordTransformerUtility) instanceof AvroGenericDeserializer);
-    assertFalse(outputValueDeserializerField.get(recordTransformerUtility) instanceof AvroSpecificDeserializer);
+    assertTrue(recordTransformerUtility.getKeyDeserializer() instanceof AvroGenericDeserializer);
+    assertFalse(recordTransformerUtility.getKeyDeserializer() instanceof AvroSpecificDeserializer);
 
     DaVinciRecordTransformerResult<String> transformerResult =
         recordTransformer.transform(lazyKey, lazyValue, partitionId, null);
@@ -112,12 +111,12 @@ public class RecordTransformerTest {
   }
 
   @Test
-  public void testCompatabilityChecks() {
+  public void testRecordTransformationDisabled() {
     DaVinciRecordTransformerConfig dummyRecordTransformerConfig =
         new DaVinciRecordTransformerConfig.Builder().setRecordTransformerFunction(TestStringRecordTransformer::new)
-            .setSkipCompatibilityChecks(true)
+            .setRecordTransformationEnabled(false)
             .build();
-    assertTrue(dummyRecordTransformerConfig.shouldSkipCompatibilityChecks());
+    assertFalse(dummyRecordTransformerConfig.isRecordMetadataEnabled());
 
     DaVinciRecordTransformer<Integer, String, String> recordTransformer = new TestStringRecordTransformer(
         storeName,
@@ -133,13 +132,15 @@ public class RecordTransformerTest {
 
     assertFalse(
         recordTransformerUtility.hasTransformerLogicChanged(classHash, offsetRecord),
-        "When skipCompatibilityChecks is set to true, hasTransformerLogicChanged should return false");
+        "When recordTransformationEnabled is set to false, hasTransformerLogicChanged should return false");
   }
 
   @Test
   public void testOnRecovery() {
-    DaVinciRecordTransformerConfig dummyRecordTransformerConfig =
+    DaVinciRecordTransformerConfig recordTransformerConfig =
         new DaVinciRecordTransformerConfig.Builder().setRecordTransformerFunction(TestStringRecordTransformer::new)
+            .setOutputValueSchema(Schema.create(STRING))
+            .setOutputValueClass(String.class)
             .build();
 
     DaVinciRecordTransformer<Integer, String, String> recordTransformer = new TestStringRecordTransformer(
@@ -148,28 +149,41 @@ public class RecordTransformerTest {
         keySchema,
         valueSchema,
         valueSchema,
-        dummyRecordTransformerConfig);
+        recordTransformerConfig);
     assertEquals(recordTransformer.getStoreVersion(), storeVersion);
 
     AbstractStorageIterator iterator = mock(AbstractStorageIterator.class);
     when(iterator.isValid()).thenReturn(true).thenReturn(false);
     when(iterator.key()).thenReturn("mockKey".getBytes());
-    when(iterator.value()).thenReturn("mockValue".getBytes());
+
+    int schemaId = 1;
+    String value = "mockValue";
+    VeniceCompressor compressor = new NoopCompressor();
+    when(iterator.value()).thenReturn(recordTransformer.prependSchemaIdToHeader(value, schemaId, compressor).array());
 
     StorageEngine storageEngine = mock(StorageEngine.class);
-    Lazy<VeniceCompressor> compressor = Lazy.of(() -> mock(VeniceCompressor.class));
+    Lazy<VeniceCompressor> lazyCompressor = Lazy.of(() -> compressor);
 
     OffsetRecord offsetRecord = new OffsetRecord(partitionStateSerializer, DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING);
     when(storageEngine.getPartitionOffset(partitionId, DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING))
         .thenReturn(Optional.of(offsetRecord));
 
+    Map<Integer, Schema> schemaIdToSchemaMap = spy(new VeniceConcurrentHashMap<>());
+    ReadOnlySchemaRepository schemaRepository = mock(ReadOnlySchemaRepository.class);
+    SchemaEntry schemaEntry = new SchemaEntry(schemaId, recordTransformer.getOutputValueSchema());
+    when(schemaRepository.getValueSchema(anyString(), anyInt())).thenReturn(schemaEntry);
+
     recordTransformer.onRecovery(
         storageEngine,
         partitionId,
         partitionStateSerializer,
-        compressor,
-        DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING);
-    verify(storageEngine, times(1)).clearPartitionOffset(partitionId);
+        lazyCompressor,
+        DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING,
+        schemaIdToSchemaMap,
+        schemaRepository);
+    verify(schemaIdToSchemaMap, never()).computeIfAbsent(any(), any());
+    verify(schemaRepository, never()).getValueSchema(any(), anyInt());
+    verify(storageEngine).clearPartitionOffset(partitionId);
 
     // Reset the mock to clear previous interactions
     reset(storageEngine);
@@ -192,10 +206,14 @@ public class RecordTransformerTest {
         storageEngine,
         partitionId,
         partitionStateSerializer,
-        compressor,
-        DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING);
+        lazyCompressor,
+        DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING,
+        schemaIdToSchemaMap,
+        schemaRepository);
     verify(storageEngine, never()).clearPartitionOffset(partitionId);
     verify(storageEngine).getIterator(partitionId);
+    verify(schemaIdToSchemaMap).computeIfAbsent(any(), any());
+    verify(schemaRepository).getValueSchema(any(), anyInt());
     verify(iterator).close();
 
     // Ensure partition is put into read-only mode before iterating, and adjusted to default settings after
@@ -233,7 +251,9 @@ public class RecordTransformerTest {
         partitionId,
         partitionStateSerializer,
         compressor,
-        DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING);
+        DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING,
+        null,
+        null);
     verify(storageEngine, times(1)).clearPartitionOffset(partitionId);
 
     // Reset the mock to clear previous interactions
@@ -251,7 +271,9 @@ public class RecordTransformerTest {
         partitionId,
         partitionStateSerializer,
         compressor,
-        DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING);
+        DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING,
+        null,
+        null);
     verify(storageEngine, times(1)).clearPartitionOffset(partitionId);
     verify(storageEngine, never()).getIterator(partitionId);
   }
@@ -293,7 +315,7 @@ public class RecordTransformerTest {
     assertEquals(internalRecordTransformer.getCountDownStartConsumptionLatchCount(), 1L);
     assertTrue(internalRecordTransformer.getStoreRecordsInDaVinci());
     assertEquals(internalRecordTransformer.getKeySchema().getType(), Schema.Type.INT);
-    assertEquals(internalRecordTransformer.getOutputValueSchema().getType(), Schema.Type.STRING);
+    assertEquals(internalRecordTransformer.getOutputValueSchema().getType(), STRING);
 
     internalRecordTransformer.countDownStartConsumptionLatch();
     assertEquals(internalRecordTransformer.getCountDownStartConsumptionLatchCount(), 0L);
@@ -321,13 +343,17 @@ public class RecordTransformerTest {
         partitionId,
         partitionStateSerializer,
         compressor,
-        DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING);
+        DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING,
+        null,
+        null);
     verify(clientRecordTransformer).onRecovery(
         storageEngine,
         partitionId,
         partitionStateSerializer,
         compressor,
-        DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING);
+        DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING,
+        null,
+        null);
   }
 
   @Test
@@ -359,7 +385,7 @@ public class RecordTransformerTest {
   }
 
   @Test
-  public void testSpecificRecordTransformer() throws NoSuchFieldException, IllegalAccessException {
+  public void testSpecificRecordTransformer() {
     Schema keySchema = TestSpecificKey.SCHEMA$;
     Schema valueSchema = TestSpecificValue.SCHEMA$;
 
@@ -385,14 +411,7 @@ public class RecordTransformerTest {
     DaVinciRecordTransformerUtility<TestSpecificKey, TestSpecificValue> recordTransformerUtility =
         recordTransformer.getRecordTransformerUtility();
 
-    Field keyDeserializerField = recordTransformerUtility.getClass().getDeclaredField("keyDeserializer");
-    keyDeserializerField.setAccessible(true);
-    assertTrue(keyDeserializerField.get(recordTransformerUtility) instanceof AvroSpecificDeserializer);
-
-    Field outputValueDeserializerField =
-        recordTransformerUtility.getClass().getDeclaredField("outputValueDeserializer");
-    outputValueDeserializerField.setAccessible(true);
-    assertTrue(outputValueDeserializerField.get(recordTransformerUtility) instanceof AvroSpecificDeserializer);
+    assertTrue(recordTransformerUtility.getKeyDeserializer() instanceof AvroSpecificDeserializer);
 
     TestSpecificKey specificKey = new TestSpecificKey();
     int id = 123;

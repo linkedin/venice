@@ -4,8 +4,10 @@ import com.linkedin.davinci.store.AbstractStorageIterator;
 import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.davinci.store.StoragePartitionAdjustmentTrigger;
 import com.linkedin.davinci.store.StoragePartitionConfig;
+import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
+import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.PubSubContext;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
@@ -15,6 +17,7 @@ import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.Map;
 import java.util.Optional;
 import org.apache.avro.Schema;
 import org.apache.logging.log4j.LogManager;
@@ -32,7 +35,6 @@ public class DaVinciRecordTransformerUtility<K, O> {
   private final DaVinciRecordTransformer recordTransformer;
   private final DaVinciRecordTransformerConfig recordTransformerConfig;
   private final RecordDeserializer<K> keyDeserializer;
-  private final RecordDeserializer<O> outputValueDeserializer;
   private final RecordSerializer<O> outputValueSerializer;
 
   public DaVinciRecordTransformerUtility(
@@ -49,16 +51,8 @@ public class DaVinciRecordTransformerUtility<K, O> {
       this.keyDeserializer = FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(keySchema, keySchema);
     }
 
-    Schema outputValueSchema = recordTransformer.getOutputValueSchema();
-    if (recordTransformerConfig.useSpecificRecordValueDeserializer()) {
-      this.outputValueDeserializer = FastSerializerDeserializerFactory
-          .getFastAvroSpecificDeserializer(outputValueSchema, recordTransformerConfig.getOutputValueClass());
-    } else {
-      this.outputValueDeserializer =
-          FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(outputValueSchema, outputValueSchema);
-    }
-
-    this.outputValueSerializer = FastSerializerDeserializerFactory.getFastAvroGenericSerializer(outputValueSchema);
+    this.outputValueSerializer =
+        FastSerializerDeserializerFactory.getFastAvroGenericSerializer(recordTransformer.getOutputValueSchema());
   }
 
   /**
@@ -104,8 +98,8 @@ public class DaVinciRecordTransformerUtility<K, O> {
    * @return true if transformer logic has changed since the last time the class was loaded
    */
   public boolean hasTransformerLogicChanged(int currentClassHash, OffsetRecord offsetRecord) {
-    if (recordTransformerConfig.shouldSkipCompatibilityChecks()) {
-      LOGGER.info("Skip compatability checks have been enabled for DaVinciRecordTransformer");
+    if (!recordTransformerConfig.isRecordTransformationEnabled()) {
+      LOGGER.info("Record transformation is disabled for DaVinciRecordTransformer. Skipping classHash comparison.");
       return false;
     }
 
@@ -130,7 +124,9 @@ public class DaVinciRecordTransformerUtility<K, O> {
       int partitionId,
       InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer,
       Lazy<VeniceCompressor> compressor,
-      PubSubContext pubSubContext) {
+      PubSubContext pubSubContext,
+      Map<Integer, Schema> schemaIdToSchemaMap,
+      ReadOnlySchemaRepository schemaRepository) {
     int classHash = recordTransformer.getClassHash();
     Optional<OffsetRecord> optionalOffsetRecord = storageEngine.getPartitionOffset(partitionId, pubSubContext);
     OffsetRecord offsetRecord =
@@ -170,13 +166,38 @@ public class DaVinciRecordTransformerUtility<K, O> {
           Lazy<K> lazyKey = Lazy.of(() -> keyDeserializer.deserialize(keyBytes));
           Lazy<O> lazyValue = Lazy.of(() -> {
             ByteBuffer valueByteBuffer = ByteBuffer.wrap(valueBytes);
-            // Skip schema id
-            valueByteBuffer.position(Integer.BYTES);
+
+            /*
+             * Use writer schema for deserialization, otherwise it will run into deserialization errors if
+             * schema evolution occurred.
+             */
+            int writerSchemaId = valueByteBuffer.getInt();
+            Schema valueSchema = schemaIdToSchemaMap.computeIfAbsent(
+                writerSchemaId,
+                i -> schemaRepository.getValueSchema(recordTransformer.getStoreName(), writerSchemaId).getSchema());
+
             ByteBuffer decompressedValueBytes;
             try {
               decompressedValueBytes = compressor.get().decompress(valueByteBuffer);
             } catch (IOException e) {
               throw new RuntimeException(e);
+            }
+
+            RecordDeserializer<O> outputValueDeserializer;
+            if (recordTransformerConfig.useSpecificRecordValueDeserializer()) {
+              outputValueDeserializer = FastSerializerDeserializerFactory
+                  .getFastAvroSpecificDeserializer(valueSchema, recordTransformerConfig.getOutputValueClass());
+            } else {
+              if (recordTransformerConfig.isRecordTransformationEnabled()) {
+                outputValueDeserializer = FastSerializerDeserializerFactory
+                    .getFastAvroGenericDeserializer(valueSchema, recordTransformer.getOutputValueSchema());
+              } else if (recordTransformer.useUniformInputValueSchema()) {
+                outputValueDeserializer = FastSerializerDeserializerFactory
+                    .getFastAvroGenericDeserializer(valueSchema, recordTransformer.getInputValueSchema());
+              } else {
+                outputValueDeserializer =
+                    FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(valueSchema, valueSchema);
+              }
             }
             return outputValueDeserializer.deserialize(decompressedValueBytes);
           });
@@ -193,5 +214,10 @@ public class DaVinciRecordTransformerUtility<K, O> {
             storagePartitionConfig);
       }
     }
+  }
+
+  @VisibleForTesting
+  public RecordDeserializer<K> getKeyDeserializer() {
+    return keyDeserializer;
   }
 }

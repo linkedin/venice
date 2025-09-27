@@ -2839,12 +2839,12 @@ public abstract class StoreIngestionTaskTest {
       });
     }, aaConfig);
 
-    config.setRecordTransformerConfig(buildRecordTransformerConfig(false));
+    config.setRecordTransformerConfig(buildRecordTransformerConfig(true));
     runTest(config);
   }
 
   @Test(dataProvider = "aaConfigProvider")
-  public void testRecordTransformerDatabaseChecksumSkipCompatabilityChecks(AAConfig aaConfig) throws Exception {
+  public void testRecordTransformerDatabaseChecksumRecordTransformationDisabled(AAConfig aaConfig) throws Exception {
     databaseChecksumVerificationEnabled = true;
     doReturn(false).when(rocksDBServerConfig).isRocksDBPlainTableFormatEnabled();
     setStoreVersionStateSupplier(true);
@@ -2879,7 +2879,7 @@ public abstract class StoreIngestionTaskTest {
       });
     }, aaConfig);
 
-    config.setRecordTransformerConfig(buildRecordTransformerConfig(true));
+    config.setRecordTransformerConfig(buildRecordTransformerConfig(false));
     runTest(config);
   }
 
@@ -5283,7 +5283,7 @@ public abstract class StoreIngestionTaskTest {
       }
     }, aaConfig);
 
-    config.setRecordTransformerConfig(buildRecordTransformerConfig(false));
+    config.setRecordTransformerConfig(buildRecordTransformerConfig(true));
     runTest(config);
 
     // Metrics that should have been recorded
@@ -6241,7 +6241,7 @@ public abstract class StoreIngestionTaskTest {
     }
   }
 
-  private DaVinciRecordTransformerConfig buildRecordTransformerConfig(boolean skipCompatabilityChecks) {
+  private DaVinciRecordTransformerConfig buildRecordTransformerConfig(boolean isRecordTransformationEnabled) {
     Schema myKeySchema = Schema.create(Schema.Type.INT);
     SchemaEntry keySchemaEntry = mock(SchemaEntry.class);
     when(keySchemaEntry.getSchema()).thenReturn(myKeySchema);
@@ -6256,7 +6256,7 @@ public abstract class StoreIngestionTaskTest {
     return new DaVinciRecordTransformerConfig.Builder().setRecordTransformerFunction(TestStringRecordTransformer::new)
         .setOutputValueClass(String.class)
         .setOutputValueSchema(Schema.create(Schema.Type.STRING))
-        .setSkipCompatibilityChecks(skipCompatabilityChecks)
+        .setRecordTransformationEnabled(isRecordTransformationEnabled)
         .build();
   }
 

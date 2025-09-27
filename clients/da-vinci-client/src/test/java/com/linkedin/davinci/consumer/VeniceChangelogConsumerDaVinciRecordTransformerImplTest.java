@@ -122,9 +122,9 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
 
     bootstrappingVeniceChangelogConsumer =
         new VeniceChangelogConsumerDaVinciRecordTransformerImpl<>(changelogClientConfig);
-    assertTrue(
-        bootstrappingVeniceChangelogConsumer.getRecordTransformerConfig().shouldSkipCompatibilityChecks(),
-        "Skip compatability checks for DVRT should be enabled.");
+    assertFalse(
+        bootstrappingVeniceChangelogConsumer.getRecordTransformerConfig().isRecordTransformationEnabled(),
+        "Record transformation should be disabled.");
 
     mockDaVinciRecordTransformerConfig = mock(DaVinciRecordTransformerConfig.class);
     recordTransformer =

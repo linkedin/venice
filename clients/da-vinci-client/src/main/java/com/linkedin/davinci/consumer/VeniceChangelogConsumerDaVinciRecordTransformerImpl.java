@@ -113,10 +113,10 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
     recordTransformerConfig = new DaVinciRecordTransformerConfig.Builder()
         .setRecordTransformerFunction(DaVinciRecordTransformerBootstrappingChangelogConsumer::new)
         /*
-         * Setting this to true since we're not transforming records and frequent changes can be made to the
-         * DVRT implmentation. This is to prevent the local state from being wiped everytime a change is deployed
+         * Setting this to false, otherwise records won't be able to be deserialized from on disk scan if
+         * schema evolution occurred.
          */
-        .setSkipCompatibilityChecks(true)
+        .setRecordTransformationEnabled(false)
         .setKeyClass(innerClientConfig.getSpecificKeyClass())
         .setOutputValueClass(innerClientConfig.getSpecificValueClass())
         .setOutputValueSchema(innerClientConfig.getSpecificValueSchema())
