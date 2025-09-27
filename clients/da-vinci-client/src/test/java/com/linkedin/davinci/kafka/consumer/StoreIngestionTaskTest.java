@@ -5919,6 +5919,7 @@ public abstract class StoreIngestionTaskTest {
    */
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testShouldSendGlobalRtDiv(boolean isGlobalRtDivEnabled) {
+    String brokerUrl = "localhost:1234";
     StoreIngestionTask storeIngestionTask = mock(StoreIngestionTask.class);
     doCallRealMethod().when(storeIngestionTask).shouldSyncOffset(any(), any(), any());
     doCallRealMethod().when(storeIngestionTask).shouldSendGlobalRtDiv(any(), any(), any());
@@ -5931,10 +5932,11 @@ public abstract class StoreIngestionTaskTest {
     PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
     doReturn(100L).when(pcs).getProcessedRecordSizeSinceLastSync(); // just needs to be greater than syncBytesInterval
     VeniceConcurrentHashMap<String, Long> lastProcessedMap = new VeniceConcurrentHashMap<>();
-    String brokerUrl = "localhost:1234";
-    lastProcessedMap.put(brokerUrl, 100L); // just needs to be greater than syncBytesInterval
     doReturn(lastProcessedMap).when(storeIngestionTask).getConsumedBytesSinceLastSync();
 
+    storeIngestionTask.shouldSendGlobalRtDiv(message, pcs, brokerUrl); // empty map should not cause divide by zero
+
+    lastProcessedMap.put(brokerUrl, 100L); // just needs to be greater than syncBytesInterval
     boolean shouldSendGlobalRtDiv = storeIngestionTask.shouldSendGlobalRtDiv(message, pcs, brokerUrl);
     boolean shouldSyncOffset = storeIngestionTask.shouldSyncOffset(pcs, message, null);
 

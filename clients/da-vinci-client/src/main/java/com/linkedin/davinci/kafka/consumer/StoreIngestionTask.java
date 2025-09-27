@@ -2676,7 +2676,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   protected boolean shouldSendGlobalRtDiv(DefaultPubSubMessage record, PartitionConsumptionState pcs, String kafkaUrl) {
-    if (!isGlobalRtDivEnabled()) {
+    if (!isGlobalRtDivEnabled() || getConsumedBytesSinceLastSync().isEmpty()) {
       return false;
     }
 
