@@ -2675,18 +2675,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     // No Op
   }
 
-  protected boolean shouldSendGlobalRtDiv(DefaultPubSubMessage record, PartitionConsumptionState pcs, String kafkaUrl) {
-    if (!isGlobalRtDivEnabled()) {
+  boolean shouldSendGlobalRtDiv(DefaultPubSubMessage record, PartitionConsumptionState pcs, String brokerUrl) {
+    if (!isGlobalRtDivEnabled() || record.getKey().isControlMessage() || getConsumedBytesSinceLastSync().isEmpty()) {
       return false;
     }
-
     // The Global RT DIV is sent on a per-broker basis, so divide the size limit by the number of brokers
     final long syncBytesInterval = getSyncBytesInterval(pcs) / getConsumedBytesSinceLastSync().size();
-    boolean shouldSync = false;
-    if (!record.getKey().isControlMessage()) {
-      shouldSync = syncBytesInterval > 0 && (getConsumedBytesSinceLastSync().get(kafkaUrl) >= syncBytesInterval);
-    }
-    return shouldSync;
+    return syncBytesInterval > 0 && (getConsumedBytesSinceLastSync().getOrDefault(brokerUrl, 0L) >= syncBytesInterval);
   }
 
   /**

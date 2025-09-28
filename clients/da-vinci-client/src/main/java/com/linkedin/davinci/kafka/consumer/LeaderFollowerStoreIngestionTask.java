@@ -1717,15 +1717,19 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     getHostLevelIngestionStats()
         .recordLeaderProduceLatency(LatencyUtils.getElapsedTimeFromNSToMS(beforeProduceTimestampNS));
 
-    if (shouldSendGlobalRtDiv(consumerRecord, partitionConsumptionState, kafkaUrl)) {
-      sendGlobalRtDivMessage(
-          consumerRecord,
-          partitionConsumptionState,
-          partition,
-          kafkaUrl,
-          beforeProcessingRecordTimestampNs,
-          leaderMetadataWrapper,
-          leaderProducedRecordContext);
+    try {
+      if (shouldSendGlobalRtDiv(consumerRecord, partitionConsumptionState, kafkaUrl)) {
+        sendGlobalRtDivMessage(
+            consumerRecord,
+            partitionConsumptionState,
+            partition,
+            kafkaUrl,
+            beforeProcessingRecordTimestampNs,
+            leaderMetadataWrapper,
+            leaderProducedRecordContext);
+      }
+    } catch (Exception e) {
+      LOGGER.error("Failed to send Global RT DIV message", e); // don't fail ingestion if sending Global RT DIV fails
     }
   }
 
