@@ -5934,7 +5934,9 @@ public abstract class StoreIngestionTaskTest {
     VeniceConcurrentHashMap<String, Long> lastProcessedMap = new VeniceConcurrentHashMap<>();
     doReturn(lastProcessedMap).when(storeIngestionTask).getConsumedBytesSinceLastSync();
 
-    storeIngestionTask.shouldSendGlobalRtDiv(message, pcs, brokerUrl); // empty map should not cause divide by zero
+    // Two sanity tests: empty map should not cause divide by zero, and host not present in map should return false
+    storeIngestionTask.shouldSendGlobalRtDiv(message, pcs, brokerUrl);
+    assertFalse(storeIngestionTask.shouldSendGlobalRtDiv(message, pcs, "fakehost:5678"));
 
     lastProcessedMap.put(brokerUrl, 100L); // just needs to be greater than syncBytesInterval
     boolean shouldSendGlobalRtDiv = storeIngestionTask.shouldSendGlobalRtDiv(message, pcs, brokerUrl);
