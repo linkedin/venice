@@ -7,7 +7,7 @@ import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.stats.VeniceMetricsConfig;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository;
-import com.linkedin.venice.stats.dimensions.RepushStoreTriggerSource;
+import com.linkedin.venice.stats.dimensions.StoreRepushTriggerSource;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
 import com.linkedin.venice.stats.metrics.MetricEntityStateGeneric;
@@ -29,6 +29,7 @@ public class LogCompactionStats extends AbstractVeniceStats {
   private final MetricEntityStateGeneric repushCallCountMetric;
   private final MetricEntityStateGeneric compactionEligibleMetric;
   private final MetricEntityStateGeneric storeNominatedForCompactionCountMetric;
+  private final MetricEntityStateGeneric storeCompactionTriggeredCountMetric;
 
   public LogCompactionStats(MetricsRepository metricsRepository, String clusterName) {
     super(metricsRepository, "LogCompactionStats");
@@ -51,7 +52,7 @@ public class LogCompactionStats extends AbstractVeniceStats {
     }
 
     repushCallCountMetric = MetricEntityStateGeneric.create(
-        ControllerMetricEntity.REPUSH_CALL_COUNT.getMetricEntity(),
+        ControllerMetricEntity.STORE_REPUSH_CALL_COUNT.getMetricEntity(),
         otelRepository,
         this::registerSensor,
         ControllerTehutiMetricNameEnum.REPUSH_CALL_COUNT,
@@ -59,7 +60,7 @@ public class LogCompactionStats extends AbstractVeniceStats {
         baseDimensionsMap);
 
     compactionEligibleMetric = MetricEntityStateGeneric.create(
-        ControllerMetricEntity.COMPACTION_ELIGIBLE_STATE.getMetricEntity(),
+        ControllerMetricEntity.STORE_COMPACTION_ELIGIBLE_STATE.getMetricEntity(),
         otelRepository,
         this::registerSensor,
         ControllerTehutiMetricNameEnum.COMPACTION_ELIGIBLE_STATE,
@@ -67,24 +68,39 @@ public class LogCompactionStats extends AbstractVeniceStats {
         baseDimensionsMap);
 
     storeNominatedForCompactionCountMetric = MetricEntityStateGeneric.create(
-        ControllerMetricEntity.STORE_NOMINATED_FOR_COMPACTION_COUNT.getMetricEntity(),
+        ControllerMetricEntity.STORE_COMPACTION_NOMINATED_COUNT.getMetricEntity(),
         otelRepository,
         this::registerSensor,
         ControllerTehutiMetricNameEnum.STORE_NOMINATED_FOR_COMPACTION_COUNT,
+        Collections.singletonList(new OccurrenceRate()),
+        baseDimensionsMap);
+
+    storeCompactionTriggeredCountMetric = MetricEntityStateGeneric.create(
+        ControllerMetricEntity.STORE_COMPACTION_TRIGGERED_COUNT.getMetricEntity(),
+        otelRepository,
+        this::registerSensor,
+        ControllerTehutiMetricNameEnum.STORE_COMPACTION_TRIGGERED_COUNT,
         Collections.singletonList(new OccurrenceRate()),
         baseDimensionsMap);
   }
 
   public void recordRepushStoreCall(
       String storeName,
-      RepushStoreTriggerSource triggerSource,
+      StoreRepushTriggerSource triggerSource,
       VeniceResponseStatusCategory executionStatus) {
     repushCallCountMetric.record(
         1,
         getDimensionsBuilder().put(VeniceMetricsDimensions.VENICE_STORE_NAME, storeName)
-            .put(VeniceMetricsDimensions.REPUSH_TRIGGER_SOURCE, triggerSource.getDimensionValue())
+            .put(VeniceMetricsDimensions.STORE_REPUSH_TRIGGER_SOURCE, triggerSource.getDimensionValue())
             .put(VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY, executionStatus.getDimensionValue())
             .build());
+    if (triggerSource == StoreRepushTriggerSource.SCHEDULED_FOR_LOG_COMPACTION) {
+      storeCompactionTriggeredCountMetric.record(
+          1,
+          getDimensionsBuilder().put(VeniceMetricsDimensions.VENICE_STORE_NAME, storeName)
+              .put(VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY, executionStatus.getDimensionValue())
+              .build());
+    }
   }
 
   public void setCompactionEligible(String storeName) {
@@ -113,12 +129,14 @@ public class LogCompactionStats extends AbstractVeniceStats {
   }
 
   enum ControllerTehutiMetricNameEnum implements TehutiMetricNameEnum {
-    /** for {@link ControllerMetricEntity#REPUSH_CALL_COUNT} */
+    /** for {@link ControllerMetricEntity#STORE_REPUSH_CALL_COUNT} */
     REPUSH_CALL_COUNT,
-    /** for {@link ControllerMetricEntity#COMPACTION_ELIGIBLE_STATE} */
+    /** for {@link ControllerMetricEntity#STORE_COMPACTION_ELIGIBLE_STATE} */
     COMPACTION_ELIGIBLE_STATE,
-    /** for {@link ControllerMetricEntity#STORE_NOMINATED_FOR_COMPACTION_COUNT} */
-    STORE_NOMINATED_FOR_COMPACTION_COUNT;
+    /** for {@link ControllerMetricEntity#STORE_COMPACTION_NOMINATED_COUNT} */
+    STORE_NOMINATED_FOR_COMPACTION_COUNT,
+    /** for {@link ControllerMetricEntity#STORE_COMPACTION_TRIGGERED_COUNT} */
+    STORE_COMPACTION_TRIGGERED_COUNT;
 
     private final String metricName;
 

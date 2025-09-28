@@ -43,8 +43,8 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_STREAM_PROGRESS:
           assertEquals(dimension.getDimensionName(format), "venice.stream.progress");
           break;
-        case REPUSH_TRIGGER_SOURCE:
-          assertEquals(dimension.getDimensionName(format), "repush.trigger.source");
+        case STORE_REPUSH_TRIGGER_SOURCE:
+          assertEquals(dimension.getDimensionName(format), "store.repush.trigger.source");
           break;
         case VENICE_ROUTE_NAME:
           assertEquals(dimension.getDimensionName(format), "venice.route.name");
@@ -99,8 +99,8 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_STREAM_PROGRESS:
           assertEquals(dimension.getDimensionName(format), "venice.stream.progress");
           break;
-        case REPUSH_TRIGGER_SOURCE:
-          assertEquals(dimension.getDimensionName(format), "repush.trigger.source");
+        case STORE_REPUSH_TRIGGER_SOURCE:
+          assertEquals(dimension.getDimensionName(format), "store.repush.trigger.source");
           break;
         case VENICE_ROUTE_NAME:
           assertEquals(dimension.getDimensionName(format), "venice.route.name");
@@ -155,8 +155,8 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_STREAM_PROGRESS:
           assertEquals(dimension.getDimensionName(format), "Venice.Stream.Progress");
           break;
-        case REPUSH_TRIGGER_SOURCE:
-          assertEquals(dimension.getDimensionName(format), "Repush.Trigger.Source");
+        case STORE_REPUSH_TRIGGER_SOURCE:
+          assertEquals(dimension.getDimensionName(format), "Store.Repush.Trigger.Source");
           break;
         case VENICE_ROUTE_NAME:
           assertEquals(dimension.getDimensionName(format), "Venice.Route.Name");
