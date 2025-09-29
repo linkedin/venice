@@ -18,7 +18,7 @@ enum StoreVersionLifecycleEventOutcomeProto {
 message GrpcStoreLifecycleHooksRequest {
   string storeName = 1;
   string region = 2;
-  string version = 3;
+  int64 version = 3;
 }
 
 message GrpcStoreLifecycleHooksResponse {
