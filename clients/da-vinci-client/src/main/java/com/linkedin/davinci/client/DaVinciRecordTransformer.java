@@ -134,7 +134,7 @@ public abstract class DaVinciRecordTransformer<K, V, O> implements Closeable {
    * @param key the key of the record to be put
    * @param value the value of the record to be put, either the original value or the transformed value
    * @param partitionId what partition the record came from
-   * @param recordMetadata returns {@link DaVinciRecordTransformerRecordMetadata} if enabled in {@link DaVinciRecordTransformerConfig}, null otherwise. If the record came from disk, it will be null.
+   * @param recordMetadata returns {@link DaVinciRecordTransformerRecordMetadata} if enabled in {@link DaVinciRecordTransformerConfig}, null otherwise.
    */
   public abstract void processPut(
       Lazy<K> key,

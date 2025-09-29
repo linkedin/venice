@@ -27,7 +27,8 @@ public class DaVinciRecordTransformerRecordMetadata {
   }
 
   /**
-   * @return the schema ID that the record was written with if it's a PUT. -1 if it's a DELETE.
+   * @return the schema ID that the record was written with if it's a PUT.
+   * If the record came from disk, or it's a DELETE, it will be -1
    */
   public int getWriterSchemaId() {
     return writerSchemaId;
@@ -35,13 +36,15 @@ public class DaVinciRecordTransformerRecordMetadata {
 
   /**
    * @return timestamp that the record was added to the version topic
+   * If the record came from disk, it will be the 0.
    */
   public long getTimestamp() {
     return timestamp;
   }
 
   /**
-   * @return the position of the record in the topic
+   * @return the position of the record in the topic.
+   * If the record came from disk, it will be the earliest position in the topic partition.
    */
   public PubSubPosition getPubSubPosition() {
     return pubSubPosition;
@@ -56,6 +59,7 @@ public class DaVinciRecordTransformerRecordMetadata {
 
   /**
    * @return the serialized replication metadata payload if it's a PUT. null if it's a DELETE.
+   * If the record came from disk, it will be null.
    */
   public java.nio.ByteBuffer getReplicationMetadataPayload() {
     return replicationMetadataPayload;
