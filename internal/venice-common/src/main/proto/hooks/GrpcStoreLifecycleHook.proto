@@ -1,0 +1,26 @@
+syntax = 'proto3';
+package com.linkedin.venice.protocols.hooks;
+
+option java_multiple_files = true;
+
+service GrpcStoreLifecycleHookService {
+  rpc postVersionSwap(GrpcStoreLifecycleHooksRequest) returns (GrpcStoreLifecycleHooksResponse) {}
+}
+
+// Proto enum mirroring the Java enum com.linkedin.venice.hooks.StoreVersionLifecycleEventOutcome
+enum StoreVersionLifecycleEventOutcomeProto {
+  PROCEED = 0;
+  ABORT = 1;
+  WAIT = 2;
+  ROLLBACK = 3;
+}
+
+message GrpcStoreLifecycleHooksRequest {
+  string storeName = 1;
+  string region = 2;
+  int64 version = 3;
+}
+
+message GrpcStoreLifecycleHooksResponse {
+  StoreVersionLifecycleEventOutcomeProto outcome = 1;
+}
