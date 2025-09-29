@@ -459,6 +459,26 @@ public class MetricEntityStateTest {
     }
   }
 
+  enum DimensionEnum4 implements VeniceDimensionInterface {
+    DIMENSION_ONE(), DIMENSION_TWO();
+
+    private final String dimensionValue;
+
+    DimensionEnum4() {
+      this.dimensionValue = "value_" + name().toLowerCase();
+    }
+
+    @Override
+    public VeniceMetricsDimensions getDimensionName() {
+      return VENICE_REQUEST_RETRY_TYPE; // Dummy dimension
+    }
+
+    @Override
+    public String getDimensionValue() {
+      return dimensionValue;
+    }
+  }
+
   enum EmptyDimensionEnum implements VeniceDimensionInterface {
     ; // Empty enum
     @Override

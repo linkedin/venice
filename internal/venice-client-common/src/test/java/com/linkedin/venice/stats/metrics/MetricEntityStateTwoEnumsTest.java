@@ -1,27 +1,20 @@
 package com.linkedin.venice.stats.metrics;
 
 import static com.linkedin.venice.read.RequestType.MULTI_GET_STREAMING;
-import static com.linkedin.venice.stats.VeniceOpenTelemetryMetricNamingFormat.getDefaultFormat;
 import static com.linkedin.venice.stats.dimensions.RequestRetryAbortReason.SLOW_ROUTE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_METHOD;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_RETRY_ABORT_REASON;
 import static com.linkedin.venice.stats.metrics.MetricEntityStateTest.DimensionEnum1.DIMENSION_ONE;
 import static com.linkedin.venice.stats.metrics.MetricType.COUNTER;
-import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.doReturn;
-import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 
-import com.linkedin.venice.stats.VeniceMetricsConfig;
-import com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository;
-import com.linkedin.venice.stats.dimensions.VeniceDimensionInterface;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import io.opentelemetry.api.common.Attributes;
-import io.opentelemetry.api.common.AttributesBuilder;
 import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -32,47 +25,28 @@ import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 
-public class MetricEntityStateTwoEnumTest {
-  private VeniceOpenTelemetryMetricsRepository mockOtelRepository;
-  private MetricEntity mockMetricEntity;
-  private Map<VeniceMetricsDimensions, String> baseDimensionsMap;
+/**
+ * Unit test for {@link MetricEntityStateTwoEnums}
+ */
+public class MetricEntityStateTwoEnumsTest extends MetricEntityStateEnumTestBase {
   private final Map<String, Attributes> attributesMap = new HashMap<>();
 
   @BeforeMethod
   public void setUp() {
-    mockOtelRepository = Mockito.mock(VeniceOpenTelemetryMetricsRepository.class);
-    when(mockOtelRepository.emitOpenTelemetryMetrics()).thenReturn(true);
-    when(mockOtelRepository.getMetricFormat()).thenReturn(getDefaultFormat());
-    when(mockOtelRepository.getDimensionName(any())).thenCallRealMethod();
-    when(mockOtelRepository.createAttributes(any(), any(), (VeniceDimensionInterface) any())).thenCallRealMethod();
-    VeniceMetricsConfig mockMetricsConfig = Mockito.mock(VeniceMetricsConfig.class);
-    when(mockMetricsConfig.getOtelCustomDimensionsMap()).thenReturn(new HashMap<>());
-    when(mockOtelRepository.getMetricsConfig()).thenReturn(mockMetricsConfig);
-    mockMetricEntity = Mockito.mock(MetricEntity.class);
-    when(mockMetricEntity.getMetricType()).thenReturn(COUNTER);
-    Set<VeniceMetricsDimensions> dimensionsSet = new HashSet<>();
-    dimensionsSet.add(VENICE_REQUEST_METHOD);
-    dimensionsSet.add(MetricEntityStateTest.DimensionEnum1.DIMENSION_ONE.getDimensionName());
-    dimensionsSet.add(MetricEntityStateTest.DimensionEnum2.DIMENSION_ONE.getDimensionName());
-    // Duplicate: ignored
-    dimensionsSet.add(MetricEntityStateTest.DimensionEnum1Duplicate.DIMENSION_ONE.getDimensionName());
-    doReturn(dimensionsSet).when(mockMetricEntity).getDimensionsList();
-    baseDimensionsMap = new HashMap<>();
-    baseDimensionsMap.put(VENICE_REQUEST_METHOD, MULTI_GET_STREAMING.getDimensionValue());
+    setUpCommonMocks();
 
-    MetricEntityStateTest.DimensionEnum1[] enum1Values = MetricEntityStateTest.DimensionEnum1.values();
-    MetricEntityStateTest.DimensionEnum2[] enum2Values = MetricEntityStateTest.DimensionEnum2.values();
+    Set<VeniceMetricsDimensions> dimensionsSet = createDimensionSet(
+        MetricEntityStateTest.DimensionEnum1.DIMENSION_ONE.getDimensionName(),
+        MetricEntityStateTest.DimensionEnum2.DIMENSION_ONE.getDimensionName(),
+        MetricEntityStateTest.DimensionEnum1Duplicate.DIMENSION_ONE.getDimensionName() // Duplicate: ignored
+    );
+    setupMockMetricEntity(dimensionsSet);
 
-    for (MetricEntityStateTest.DimensionEnum1 enum1: enum1Values) {
-      for (MetricEntityStateTest.DimensionEnum2 enum2: enum2Values) {
-        AttributesBuilder attributesBuilder = Attributes.builder();
-        for (Map.Entry<VeniceMetricsDimensions, String> entry: baseDimensionsMap.entrySet()) {
-          attributesBuilder.put(mockOtelRepository.getDimensionName(entry.getKey()), entry.getValue());
-        }
-        attributesBuilder.put(mockOtelRepository.getDimensionName(enum1.getDimensionName()), enum1.getDimensionValue());
-        attributesBuilder.put(mockOtelRepository.getDimensionName(enum2.getDimensionName()), enum2.getDimensionValue());
-        Attributes attributes = attributesBuilder.build();
-        String attributeName = String.format("attributesDimensionEnum1%sEnum2%s", enum1.name(), enum2.name());
+    // Pre-build attributes for all enum combinations
+    for (MetricEntityStateTest.DimensionEnum1 enum1: MetricEntityStateTest.DimensionEnum1.values()) {
+      for (MetricEntityStateTest.DimensionEnum2 enum2: MetricEntityStateTest.DimensionEnum2.values()) {
+        Attributes attributes = buildAttributes(enum1, enum2);
+        String attributeName = createAttributeName("attributesDimension", enum1, enum2);
         attributesMap.put(attributeName, attributes);
       }
     }

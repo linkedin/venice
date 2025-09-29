@@ -77,6 +77,7 @@ import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.Delete;
 import com.linkedin.venice.kafka.protocol.EndOfIncrementalPush;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
+import com.linkedin.venice.kafka.protocol.LeaderMetadata;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.StartOfIncrementalPush;
 import com.linkedin.venice.kafka.protocol.StartOfPush;
@@ -95,8 +96,10 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.PubSubContext;
+import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.PubSubUtil;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
@@ -2679,18 +2682,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     // No Op
   }
 
-  protected boolean shouldSendGlobalRtDiv(DefaultPubSubMessage record, PartitionConsumptionState pcs, String kafkaUrl) {
-    if (!isGlobalRtDivEnabled()) {
+  boolean shouldSendGlobalRtDiv(DefaultPubSubMessage record, PartitionConsumptionState pcs, String brokerUrl) {
+    if (!isGlobalRtDivEnabled() || record.getKey().isControlMessage() || getConsumedBytesSinceLastSync().isEmpty()) {
       return false;
     }
-
     // The Global RT DIV is sent on a per-broker basis, so divide the size limit by the number of brokers
     final long syncBytesInterval = getSyncBytesInterval(pcs) / getConsumedBytesSinceLastSync().size();
-    boolean shouldSync = false;
-    if (!record.getKey().isControlMessage()) {
-      shouldSync = syncBytesInterval > 0 && (getConsumedBytesSinceLastSync().get(kafkaUrl) >= syncBytesInterval);
-    }
-    return shouldSync;
+    return syncBytesInterval > 0 && (getConsumedBytesSinceLastSync().getOrDefault(brokerUrl, 0L) >= syncBytesInterval);
   }
 
   /**
@@ -4682,16 +4680,21 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   /**
-   * Validate if the given consumerRecord has a valid upstream offset to update from.
-   * @param consumerRecord
-   * @return true, if the record is not null and contains a valid upstream offset, otherwise false.
+   * Extract the upstream position from the given consumer record's leader metadata.
+   * @param consumerRecord the consumer record to extract upstream position from
+   * @return the upstream position if available, otherwise PubSubSymbolicPosition.EARLIEST
    */
-  protected boolean shouldUpdateUpstreamOffset(DefaultPubSubMessage consumerRecord) {
-    if (consumerRecord == null) {
-      return false;
+  protected PubSubPosition extractUpstreamPosition(DefaultPubSubMessage consumerRecord) {
+    if (consumerRecord == null || consumerRecord.getValue() == null
+        || consumerRecord.getValue().leaderMetadataFooter == null) {
+      return PubSubSymbolicPosition.EARLIEST;
     }
-    KafkaMessageEnvelope kafkaValue = consumerRecord.getValue();
-    return kafkaValue.leaderMetadataFooter != null && kafkaValue.leaderMetadataFooter.upstreamOffset >= 0;
+    LeaderMetadata leaderMetadataFooter = consumerRecord.getValue().leaderMetadataFooter;
+    return deserializePositionWithOffsetFallback(
+        pubSubContext.getPubSubPositionDeserializer(),
+        consumerRecord.getTopicPartition(),
+        leaderMetadataFooter.upstreamPubSubPosition,
+        leaderMetadataFooter.upstreamOffset);
   }
 
   /**
@@ -4984,5 +4987,48 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   @VisibleForTesting
   PubSubContext getPubSubContext() {
     return pubSubContext;
+  }
+
+  PubSubPosition deserializePositionWithOffsetFallback(
+      PubSubPositionDeserializer pubSubPositionDeserializer,
+      PubSubTopicPartition topicPartition,
+      ByteBuffer wireFormatBytes,
+      long offset) {
+    // Fast path: nothing to deserialize
+    if (wireFormatBytes == null || !wireFormatBytes.hasRemaining()) {
+      return PubSubUtil.fromKafkaOffset(offset);
+    }
+
+    try {
+      final PubSubPosition position = pubSubPositionDeserializer.toPosition(wireFormatBytes);
+      // Guard against regressions: honor the caller-provided minimum offset.
+      if (offset > 0 && position.getNumericOffset() < offset) {
+        String context = String.format(" for: %s/%s", topicPartition, versionTopic);
+        if (!REDUNDANT_LOGGING_FILTER.isRedundantException(context)) {
+          LOGGER.warn(
+              "Deserialized position: {} is behind the provided offset: {}. Using offset-based position for: {}/{}",
+              position,
+              offset,
+              topicPartition,
+              versionTopic);
+        }
+        return PubSubUtil.fromKafkaOffset(offset);
+      }
+
+      return position;
+    } catch (Exception e) {
+      String context = String.format("%s/%s - %s", topicPartition, versionTopic, e.getMessage());
+      if (!REDUNDANT_LOGGING_FILTER.isRedundantException(context)) {
+        LOGGER.warn(
+            "Failed to deserialize PubSubPosition for: {}/{}. Using offset-based position (offset={}, bufferRem={}, bufferCap={}).",
+            topicPartition,
+            versionTopic,
+            offset,
+            wireFormatBytes.remaining(),
+            wireFormatBytes.capacity(),
+            e);
+      }
+      return PubSubUtil.fromKafkaOffset(offset);
+    }
   }
 }

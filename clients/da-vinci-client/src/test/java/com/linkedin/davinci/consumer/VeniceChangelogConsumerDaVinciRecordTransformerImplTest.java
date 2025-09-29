@@ -390,7 +390,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
 
     // Buffer is full signal should be hit
     verify(bufferLock, timeout(1000).atLeastOnce()).lock();
-    verify(bufferLock, atLeastOnce()).unlock();
+    verify(bufferLock, timeout(1000L).atLeastOnce()).unlock();
     verify(bufferIsFullCondition, atLeastOnce()).signal();
 
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {

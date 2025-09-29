@@ -1,8 +1,13 @@
 package com.linkedin.venice.client.stats;
 
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE_CATEGORY;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_METHOD;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_REJECTION_REASON;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_RETRY_TYPE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_ROUTE_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STREAM_PROGRESS;
 import static com.linkedin.venice.utils.CollectionUtils.setOf;
@@ -73,6 +78,61 @@ public enum ClientMetricEntity implements ModuleMetricEntityInterface {
       "request.timeout.requested_duration", MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS, MetricUnit.MILLISECOND,
       "The timeout duration (in milliseconds) that was configured for client Future",
       setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)
+  ),
+
+  /**
+   * Count of all requests routed to different hosts.
+   */
+  ROUTE_CALL_COUNT(
+      "route.call_count", MetricType.COUNTER, MetricUnit.NUMBER,
+      "Count of all requests routed to different instances in a cluster",
+      setOf(
+          VENICE_STORE_NAME,
+          VENICE_CLUSTER_NAME,
+          VENICE_REQUEST_METHOD,
+          VENICE_ROUTE_NAME,
+          VENICE_RESPONSE_STATUS_CODE_CATEGORY,
+          HTTP_RESPONSE_STATUS_CODE_CATEGORY,
+          HTTP_RESPONSE_STATUS_CODE)
+  ),
+
+  /**
+   * Time taken for requests routed to different hosts.
+   */
+  ROUTE_CALL_TIME(
+      "route.call_time", MetricType.HISTOGRAM, MetricUnit.MILLISECOND,
+      "Time taken for requests routed to different instances in a cluster",
+      setOf(
+          VENICE_STORE_NAME,
+          VENICE_CLUSTER_NAME,
+          VENICE_REQUEST_METHOD,
+          VENICE_ROUTE_NAME,
+          VENICE_RESPONSE_STATUS_CODE_CATEGORY,
+          HTTP_RESPONSE_STATUS_CODE_CATEGORY,
+          HTTP_RESPONSE_STATUS_CODE)
+  ),
+
+  /**
+   * Pending request count for requests routed to different hosts.
+   */
+  ROUTE_REQUEST_PENDING_COUNT(
+      "route.request.pending_count", MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS, MetricUnit.NUMBER,
+      "Pending request count for requests routed to different instances in a cluster",
+      setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REQUEST_METHOD, VENICE_ROUTE_NAME)
+  ),
+
+  /**
+   * Request rejection ratio for requests routed to different hosts.
+   */
+  ROUTE_REQUEST_REJECTION_RATIO(
+      "route.request.rejection_ratio", MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS, MetricUnit.NUMBER,
+      "Request rejection ratio for requests routed to different instances in a cluster",
+      setOf(
+          VENICE_STORE_NAME,
+          VENICE_CLUSTER_NAME,
+          VENICE_ROUTE_NAME,
+          VENICE_REQUEST_METHOD,
+          VENICE_REQUEST_REJECTION_REASON)
   ),
 
   /**

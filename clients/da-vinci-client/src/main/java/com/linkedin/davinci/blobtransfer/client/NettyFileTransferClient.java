@@ -1,15 +1,19 @@
 package com.linkedin.davinci.blobtransfer.client;
 
 import com.linkedin.alpini.base.concurrency.Executors;
+import com.linkedin.alpini.base.misc.ThreadPoolExecutor;
 import com.linkedin.davinci.blobtransfer.BlobTransferUtils;
 import com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferTableFormat;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.venice.exceptions.VenicePeersConnectionException;
 import com.linkedin.venice.listener.VerifySslHandler;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.DaemonThreadFactory;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.netty.bootstrap.Bootstrap;
+import io.netty.channel.AdaptiveRecvByteBufAllocator;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelInitializer;
@@ -38,6 +42,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.SynchronousQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import org.apache.logging.log4j.LogManager;
@@ -61,6 +66,7 @@ public class NettyFileTransferClient {
   private StorageMetadataService storageMetadataService;
   private final ExecutorService hostConnectExecutorService;
   private final ScheduledExecutorService connectTimeoutScheduler;
+  private final ExecutorService checksumValidationExecutorService;
 
   // A map to contain the connectable and unconnectable hosts for saving effort on reconnection
   // format: host -> timestamp of the last connection attempt
@@ -92,6 +98,12 @@ public class NettyFileTransferClient {
     clientBootstrap.channel(NioSocketChannel.class);
     clientBootstrap.option(ChannelOption.SO_KEEPALIVE, true);
     clientBootstrap.option(ChannelOption.CONNECT_TIMEOUT_MILLIS, CONNECTION_ESTABLISHMENT_TIMEOUT_MS);
+    // Increase the receiver buffer size to 4MB.
+    clientBootstrap.option(ChannelOption.SO_RCVBUF, 4 << 20);
+    // Use adaptive receiver buffer allocator to dynamically adjust the receiver buffer size.
+    clientBootstrap.option(
+        ChannelOption.RCVBUF_ALLOCATOR,
+        new AdaptiveRecvByteBufAllocator(64 * 1024, 1024 * 1024, 4 * 1024 * 1024));
     clientBootstrap.handler(new ChannelInitializer<SocketChannel>() {
       @Override
       public void initChannel(SocketChannel ch) {
@@ -111,6 +123,13 @@ public class NettyFileTransferClient {
         Executors.newCachedThreadPool(new DaemonThreadFactory("Venice-BlobTransfer-Host-Connect-Executor-Service"));
     this.connectTimeoutScheduler = Executors
         .newSingleThreadScheduledExecutor(new DaemonThreadFactory("Venice-BlobTransfer-Client-Timeout-Checker"));
+    this.checksumValidationExecutorService = new ThreadPoolExecutor(
+        0,
+        300,
+        60L,
+        TimeUnit.SECONDS,
+        new SynchronousQueue<>(),
+        new DaemonThreadFactory("Venice-BlobTransfer-Checksum-Validation-Executor-Service"));
   }
 
   /**
@@ -280,7 +299,8 @@ public class NettyFileTransferClient {
                   storeName,
                   version,
                   partition,
-                  requestedTableFormat))
+                  requestedTableFormat,
+                  checksumValidationExecutorService))
           .addLast(
               new P2PMetadataTransferHandler(
                   storageMetadataService,
@@ -290,7 +310,17 @@ public class NettyFileTransferClient {
                   partition,
                   requestedTableFormat));
       // Send a GET request
-      ch.writeAndFlush(prepareRequest(storeName, version, partition, requestedTableFormat));
+      ChannelFuture requestFuture =
+          ch.writeAndFlush(prepareRequest(storeName, version, partition, requestedTableFormat));
+
+      String replicaId = Utils.getReplicaId(Version.composeKafkaTopic(storeName, version), partition);
+      requestFuture.addListener(f -> {
+        if (f.isSuccess()) {
+          LOGGER.info("Request successfully sent to the server for replica {} to remote host {}", replicaId, host);
+        } else {
+          LOGGER.error("Failed to send request for replica {} to host {}", replicaId, host, f.cause());
+        }
+      });
 
       // Set a timeout, otherwise if the host is not responding, the future will never complete
       connectTimeoutScheduler.schedule(() -> {
@@ -320,6 +350,7 @@ public class NettyFileTransferClient {
     workerGroup.shutdownGracefully();
     hostConnectExecutorService.shutdown();
     connectTimeoutScheduler.shutdown();
+    checksumValidationExecutorService.shutdown();
     unconnectableHostsToTimestamp.clear();
     connectedHostsToTimestamp.clear();
   }
