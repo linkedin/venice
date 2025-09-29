@@ -38,6 +38,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.REWIND_TIME_IN_SECO
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_KAFKA;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.d2.balancer.D2Client;
@@ -472,7 +473,7 @@ public class TestChangelogConsumer {
             .setVeniceURL(clusterWrapper.getRandomRouterURL())
             .setMetricsRepository(metricsRepository))) {
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
-        Assert.assertNull(client.get(Integer.toString(deleteWithRmdKeyIndex)).get());
+        assertNull(client.get(Integer.toString(deleteWithRmdKeyIndex)).get());
       });
     }
 
@@ -489,7 +490,7 @@ public class TestChangelogConsumer {
         ChangeEvent<Utf8> changeEvent = polledChangeEvents.get(key).getValue();
         Assert.assertNotNull(changeEvent);
         if (i != 100) {
-          Assert.assertNull(changeEvent.getPreviousValue());
+          assertNull(changeEvent.getPreviousValue());
         } else {
           Assert.assertTrue(changeEvent.getPreviousValue().toString().contains(key));
         }
@@ -499,8 +500,8 @@ public class TestChangelogConsumer {
         String key = Integer.toString(i);
         ChangeEvent<Utf8> changeEvent = polledChangeEvents.get(key).getValue();
         Assert.assertNotNull(changeEvent);
-        Assert.assertNull(changeEvent.getPreviousValue()); // schema id is negative, so we did not parse.
-        Assert.assertNull(changeEvent.getCurrentValue());
+        assertNull(changeEvent.getPreviousValue()); // schema id is negative, so we did not parse.
+        assertNull(changeEvent.getCurrentValue());
       }
     });
 
@@ -554,7 +555,7 @@ public class TestChangelogConsumer {
         for (int i = 110; i < 120; i++) {
           String key = Integer.toString(i);
           Utf8 value = client.get(key).get();
-          Assert.assertNull(value);
+          assertNull(value);
         }
         // test old data
         for (int i = 20; i < 100; i++) {
@@ -596,7 +597,7 @@ public class TestChangelogConsumer {
         Assert.assertNotNull(client.get(Integer.toString(deleteWithRmdKeyIndex + 1)).get());
       });
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
-        Assert.assertNull(client.get(Integer.toString(deleteWithRmdKeyIndex)).get());
+        assertNull(client.get(Integer.toString(deleteWithRmdKeyIndex)).get());
       });
     }
 
@@ -682,11 +683,11 @@ public class TestChangelogConsumer {
       // test deletes
       for (int i = 30; i < 40; i++) {
         // not matter the DELETE is TTLed or not, the value should always be null
-        Assert.assertNull(client.get(Integer.toString(i)).get());
+        assertNull(client.get(Integer.toString(i)).get());
       }
       // test old data - should be empty due to empty push
       for (int i = 40; i < 100; i++) {
-        Assert.assertNull(client.get(Integer.toString(i)).get());
+        assertNull(client.get(Integer.toString(i)).get());
       }
     }
 
@@ -1229,6 +1230,8 @@ public class TestChangelogConsumer {
       Assert.assertEquals(message.getValue().getCurrentValue().toString(), Integer.toString(version) + i);
       assertTrue(message.getPayloadSize() > 0);
       assertNotNull(message.getPosition());
+      assertTrue(message.getWriterSchemaId() > 0);
+      assertNotNull(message.getReplicationMetadataPayload());
     }
 
     // Push version 2
@@ -1258,7 +1261,6 @@ public class TestChangelogConsumer {
       PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate> message = pubSubMessagesMap.get(i);
       Assert.assertEquals(message.getValue().getCurrentValue().toString(), Integer.toString(version - 1) + i);
       assertTrue(message.getPayloadSize() > 0);
-      assertNotNull(message.getPosition());
     }
 
     // Push version 3 with deferred version swap and subscribe to the future version
@@ -1288,6 +1290,8 @@ public class TestChangelogConsumer {
       Assert.assertEquals(message.getValue().getCurrentValue().toString(), Integer.toString(version) + i);
       assertTrue(message.getPayloadSize() > 0);
       assertNotNull(message.getPosition());
+      assertTrue(message.getWriterSchemaId() > 0);
+      assertNotNull(message.getReplicationMetadataPayload());
     }
   }
 

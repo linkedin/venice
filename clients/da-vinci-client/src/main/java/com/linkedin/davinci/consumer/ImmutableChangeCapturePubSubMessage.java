@@ -14,6 +14,8 @@ public class ImmutableChangeCapturePubSubMessage<K, V> implements PubSubMessage<
   private final long timestamp;
   private final int payloadSize;
   private final boolean isEndOfBootstrap;
+  private final int writerSchemaId;
+  private final java.nio.ByteBuffer replicationMetadataPayload;
 
   public ImmutableChangeCapturePubSubMessage(
       K key,
@@ -24,6 +26,30 @@ public class ImmutableChangeCapturePubSubMessage<K, V> implements PubSubMessage<
       int payloadSize,
       boolean isEndOfBootstrap,
       long consumerSequenceId) {
+    this(
+        key,
+        value,
+        topicPartition,
+        pubSubPosition,
+        timestamp,
+        payloadSize,
+        isEndOfBootstrap,
+        consumerSequenceId,
+        -1,
+        null);
+  }
+
+  public ImmutableChangeCapturePubSubMessage(
+      K key,
+      V value,
+      PubSubTopicPartition topicPartition,
+      PubSubPosition pubSubPosition,
+      long timestamp,
+      int payloadSize,
+      boolean isEndOfBootstrap,
+      long consumerSequenceId,
+      int writerSchemaId,
+      java.nio.ByteBuffer replicationMetadataPayload) {
     this.key = key;
     this.value = value;
     this.topicPartition = Objects.requireNonNull(topicPartition);
@@ -35,6 +61,8 @@ public class ImmutableChangeCapturePubSubMessage<K, V> implements PubSubMessage<
         this.topicPartition.getPartitionNumber(),
         consumerSequenceId);
     this.isEndOfBootstrap = isEndOfBootstrap;
+    this.writerSchemaId = writerSchemaId;
+    this.replicationMetadataPayload = replicationMetadataPayload;
   }
 
   @Override
@@ -70,6 +98,15 @@ public class ImmutableChangeCapturePubSubMessage<K, V> implements PubSubMessage<
   @Override
   public boolean isEndOfBootstrap() {
     return isEndOfBootstrap;
+  }
+
+  @Override
+  public int getWriterSchemaId() {
+    return writerSchemaId;
+  }
+
+  public java.nio.ByteBuffer getReplicationMetadataPayload() {
+    return replicationMetadataPayload;
   }
 
   @Override

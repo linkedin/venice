@@ -164,6 +164,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
 
   @Override
   public synchronized CompletableFuture<Void> start(Set<Integer> partitions) {
+    // ToDo: Remove this exception to support VeniceChangelogConsumer APIs.
     if (isStarted.get()) {
       throw new VeniceException("VeniceChangelogConsumer is already started!");
     }
@@ -532,7 +533,9 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
                   recordMetadata.getTimestamp(),
                   recordMetadata.getPayloadSize(),
                   isCaughtUp(),
-                  getNextConsumerSequenceId(partitionId)));
+                  getNextConsumerSequenceId(partitionId),
+                  recordMetadata.getWriterSchemaId(),
+                  recordMetadata.getReplicationMetadataPayload()));
 
           /*
            * pubSubMessages is full, signal to a poll thread awaiting on bufferFullCondition.
