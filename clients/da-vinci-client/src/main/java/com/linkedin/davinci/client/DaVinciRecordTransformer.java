@@ -149,7 +149,7 @@ public abstract class DaVinciRecordTransformer<K, V, O> implements Closeable {
    *
    * @param key the key of the record to be deleted
    * @param partitionId what partition the record is being deleted from
-   * @param recordMetadata returns {@link DaVinciRecordTransformerRecordMetadata} if enabled in {@link DaVinciRecordTransformerConfig}, null otherwise. If the record came from disk, it will be null.
+   * @param recordMetadata returns {@link DaVinciRecordTransformerRecordMetadata} if enabled in {@link DaVinciRecordTransformerConfig}, null otherwise.
    */
   public void processDelete(Lazy<K> key, int partitionId, DaVinciRecordTransformerRecordMetadata recordMetadata) {
     return;
