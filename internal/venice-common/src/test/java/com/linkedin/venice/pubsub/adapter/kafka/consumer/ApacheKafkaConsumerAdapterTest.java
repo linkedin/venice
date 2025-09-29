@@ -109,6 +109,7 @@ public class ApacheKafkaConsumerAdapterTest {
     when(apacheKafkaConsumerConfig.getTopicPartitionsOffsetsTracker()).thenReturn(topicPartitionsOffsetsTracker);
     when(apacheKafkaConsumerConfig.getPubSubMessageDeserializer()).thenReturn(pubSubMessageDeserializer);
     when(apacheKafkaConsumerConfig.getPubSubPositionTypeRegistry()).thenReturn(pubSubPositionTypeRegistry);
+    when(apacheKafkaConsumerConfig.getDefaultApiTimeout()).thenReturn(Duration.ofSeconds(30));
     kafkaConsumerAdapter = new ApacheKafkaConsumerAdapter(internalKafkaConsumer, apacheKafkaConsumerConfig);
   }
 
