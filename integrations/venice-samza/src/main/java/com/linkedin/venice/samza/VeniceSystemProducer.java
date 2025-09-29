@@ -1,6 +1,7 @@
 package com.linkedin.venice.samza;
 
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
+import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_BROKER_ADDRESS;
 import static com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig.KAFKA_BUFFER_MEMORY;
 import static com.linkedin.venice.schema.AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation;
 import static com.linkedin.venice.schema.AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation;
@@ -421,6 +422,7 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
     Properties veniceWriterProperties = new Properties();
     veniceWriterProperties.putAll(additionalConfigs);
     veniceWriterProperties.put(KAFKA_BOOTSTRAP_SERVERS, store.getKafkaBootstrapServers());
+    veniceWriterProperties.put(PUBSUB_BROKER_ADDRESS, store.getKafkaBootstrapServers());
     return getVeniceWriter(store, veniceWriterProperties);
   }
 

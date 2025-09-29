@@ -24,6 +24,7 @@ import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.Serializable;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -118,9 +119,9 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
    */
   private final Map<SystemProducer, Pair<Boolean, Boolean>> systemProducerStatues;
 
-  private Optional<D2Client> providedPrimaryControllerColoD2Client = Optional.empty();
+  protected Optional<D2Client> providedPrimaryControllerColoD2Client = Optional.empty();
 
-  private Optional<D2Client> providedChildColoD2Client = Optional.empty();
+  protected Optional<D2Client> providedChildColoD2Client = Optional.empty();
 
   public void setProvidedD2Clients(
       Optional<D2Client> providedChildColoD2Client,
@@ -132,12 +133,13 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
   /**
    * All the required configs to build a SSL Factory
    */
-  private static final List<String> SSL_MANDATORY_CONFIGS = Arrays.asList(
-      SSL_KEYSTORE_TYPE,
-      SSL_KEYSTORE_LOCATION,
-      SSL_KEY_PASSWORD,
-      SSL_TRUSTSTORE_LOCATION,
-      SSL_TRUSTSTORE_PASSWORD);
+  protected static final List<String> SSL_MANDATORY_CONFIGS = Collections.unmodifiableList(
+      Arrays.asList(
+          SSL_KEYSTORE_TYPE,
+          SSL_KEYSTORE_LOCATION,
+          SSL_KEY_PASSWORD,
+          SSL_TRUSTSTORE_LOCATION,
+          SSL_TRUSTSTORE_PASSWORD));
 
   public VeniceSystemFactory() {
     systemProducerStatues = new VeniceConcurrentHashMap<>();
@@ -576,7 +578,7 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
   /**
    * Build SSL properties based on the Samza job config
    */
-  private Properties getSslProperties(Config samzaConfig) {
+  protected Properties getSslProperties(Config samzaConfig) {
     // Make sure all mandatory configs exist
     SSL_MANDATORY_CONFIGS.forEach(requiredConfig -> {
       if (!samzaConfig.containsKey(requiredConfig)) {
@@ -594,7 +596,7 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
     return sslProperties;
   }
 
-  private static boolean isEmpty(String input) {
+  protected static boolean isEmpty(String input) {
     return (input == null) || input.isEmpty() || input.equals("null");
   }
 }
