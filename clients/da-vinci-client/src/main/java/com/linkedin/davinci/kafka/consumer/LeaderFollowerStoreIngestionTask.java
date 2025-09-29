@@ -1066,13 +1066,11 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       Map<String, PubSubPosition> upstreamStartPositionByPubSubUrl) {
     // Update in-memory consumedUpstreamRTOffsetMap in case no RT record is consumed after the subscription
     final PubSubTopic leaderTopic = pcs.getOffsetRecord().getLeaderTopic(pubSubTopicRepository);
-    final PubSubTopicPartition leaderTopicPartition = pcs.getSourceTopicPartition(leaderTopic);
     if (leaderTopic != null && leaderTopic.isRealTime()) {
       upstreamStartPositionByPubSubUrl.forEach((kafkaURL, upstreamStartPosition) -> {
-        if (getTopicManager(kafkaURL).diffPosition(
-            leaderTopicPartition,
-            upstreamStartPosition,
-            getLatestConsumedUpstreamPositionForHybridOffsetLagMeasurement(pcs, kafkaURL)) > 0) {
+        if (upstreamStartPosition
+            .getNumericOffset() > getLatestConsumedUpstreamPositionForHybridOffsetLagMeasurement(pcs, kafkaURL)
+                .getNumericOffset()) {
           updateLatestConsumedRtPositions(pcs, kafkaURL, upstreamStartPosition);
         }
       });
@@ -1549,10 +1547,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       PubSubTopicPartition pubSubTopicPartition,
       PartitionConsumptionState partitionConsumptionState,
       DefaultPubSubMessage consumerRecord,
-      final PubSubPosition newUpstreamOffset,
-      final PubSubPosition previousUpstreamOffset,
+      final PubSubPosition newUpstreamPosition,
+      final PubSubPosition previousUpstreamPosition,
       LeaderFollowerStoreIngestionTask ingestionTask) {
-    if (topicManager.diffPosition(pubSubTopicPartition, newUpstreamOffset, previousUpstreamOffset) >= 0) {
+    if (newUpstreamPosition.getNumericOffset() >= previousUpstreamPosition.getNumericOffset()) {
       return; // Rewind did not happen
     }
     if (!ingestionTask.isHybridMode()) {
@@ -1596,8 +1594,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
               + " Multiple leaders are producing. ",
           partitionConsumptionState.getReplicaId(),
           consumerRecord.getPosition(),
-          newUpstreamOffset,
-          previousUpstreamOffset,
+          newUpstreamPosition,
+          previousUpstreamPosition,
           kafkaValue.producerMetadata.producerGUID == null
               ? "unknown"
               : GuidUtils.getHexFromGuid(kafkaValue.producerMetadata.producerGUID),
