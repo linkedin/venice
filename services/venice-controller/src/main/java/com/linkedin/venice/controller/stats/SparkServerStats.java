@@ -104,7 +104,10 @@ public class SparkServerStats extends AbstractVeniceStats {
         otelRepository,
         this::registerSensor,
         ControllerTehutiMetricNameEnum.SUCCESSFUL_REQUEST_LATENCY,
-        Collections.singletonList(TehutiUtils.getPercentileStat(getName(), "successful_request_latency")),
+        Collections.singletonList(
+            TehutiUtils.getPercentileStat(
+                getName(),
+                ControllerTehutiMetricNameEnum.SUCCESSFUL_REQUEST_LATENCY.getMetricName())),
         baseDimensionsMap,
         ControllerRoute.class,
         HttpResponseStatusEnum.class,
@@ -116,7 +119,9 @@ public class SparkServerStats extends AbstractVeniceStats {
         otelRepository,
         this::registerSensor,
         ControllerTehutiMetricNameEnum.FAILED_REQUEST_LATENCY,
-        Collections.singletonList(TehutiUtils.getPercentileStat(getName(), "failed_request_latency")),
+        Collections.singletonList(
+            TehutiUtils
+                .getPercentileStat(getName(), ControllerTehutiMetricNameEnum.FAILED_REQUEST_LATENCY.getMetricName())),
         baseDimensionsMap,
         ControllerRoute.class,
         HttpResponseStatusEnum.class,
