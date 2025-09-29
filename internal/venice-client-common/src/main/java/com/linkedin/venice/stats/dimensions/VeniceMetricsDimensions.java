@@ -6,6 +6,7 @@ import static com.linkedin.venice.stats.VeniceOpenTelemetryMetricNamingFormat.SN
 import static com.linkedin.venice.stats.VeniceOpenTelemetryMetricNamingFormat.transformMetricName;
 import static com.linkedin.venice.stats.VeniceOpenTelemetryMetricNamingFormat.validateMetricName;
 
+import com.google.common.annotations.VisibleForTesting;
 import com.linkedin.venice.stats.VeniceOpenTelemetryMetricNamingFormat;
 
 
@@ -14,6 +15,9 @@ public enum VeniceMetricsDimensions {
 
   /** {@link com.linkedin.venice.read.RequestType} */
   VENICE_REQUEST_METHOD("venice.request.method"),
+
+  /** Route name for routing metrics typed as String */
+  VENICE_ROUTE_NAME("venice.route.name"),
 
   /** {@link HttpResponseStatusEnum} ie. 200, 400, etc */
   HTTP_RESPONSE_STATUS_CODE("http.response.status_code"),
@@ -48,8 +52,8 @@ public enum VeniceMetricsDimensions {
   /** {@link RequestRetryAbortReason} */
   VENICE_REQUEST_RETRY_ABORT_REASON("venice.request.retry_abort_reason"),
 
-  /** {@link RepushStoreTriggerSource} */
-  REPUSH_TRIGGER_SOURCE("repush.trigger.source"),
+  /** {@link StoreRepushTriggerSource} */
+  STORE_REPUSH_TRIGGER_SOURCE("store.repush.trigger.source"),
 
   /** Instance error type for blocked, unhealthy, and overloaded instances */
   VENICE_INSTANCE_ERROR_TYPE("venice.instance.error_type");
@@ -67,7 +71,8 @@ public enum VeniceMetricsDimensions {
     return dimensionName[format.getValue()];
   }
 
-  // visible for testing
+  // This is only for testing purpose and should never be used in production code.
+  @VisibleForTesting
   public String getDimensionNameInDefaultFormat() {
     return dimensionName[VeniceOpenTelemetryMetricNamingFormat.getDefaultFormat().getValue()];
   }

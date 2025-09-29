@@ -5,7 +5,6 @@ import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertTrue;
 
-import com.linkedin.venice.pubsub.PubSubPositionFactory;
 import java.lang.reflect.Constructor;
 import org.testng.annotations.Test;
 
@@ -70,44 +69,5 @@ public class EarliestPositionTest {
   public void testNumericOffset() {
     EarliestPosition instance = EarliestPosition.getInstance();
     assertEquals(instance.getNumericOffset(), -1, "Numeric offset for EarliestPosition should be -1");
-  }
-
-  public static class DummyPosition implements PubSubPosition {
-    public int getHeapSize() {
-      return 0;
-    }
-
-    public int comparePosition(PubSubPosition o) {
-      return 0;
-    }
-
-    public long diff(PubSubPosition o) {
-      return 0;
-    }
-
-    public PubSubPositionWireFormat getPositionWireFormat() {
-      return null;
-    }
-
-    @Override
-    public Class<? extends PubSubPositionFactory> getFactoryClass() {
-      return null;
-    }
-
-    public String toString() {
-      return "DUMMY";
-    }
-
-    public boolean equals(Object obj) {
-      return obj instanceof DummyPosition;
-    }
-
-    public int hashCode() {
-      return 0;
-    }
-
-    public long getNumericOffset() {
-      return 0;
-    }
   }
 }

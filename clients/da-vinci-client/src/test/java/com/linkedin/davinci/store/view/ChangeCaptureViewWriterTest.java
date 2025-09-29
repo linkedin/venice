@@ -20,8 +20,10 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
+import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
+import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPositionFactory;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
@@ -75,6 +77,7 @@ public class ChangeCaptureViewWriterTest {
     highWaterMarks.put(LOR_1, ApacheKafkaOffsetPosition.of(111L));
     highWaterMarks.put(LTX_1, ApacheKafkaOffsetPosition.of(99L));
     highWaterMarks.put(LVA_1, ApacheKafkaOffsetPosition.of(22222L));
+    String positionFactoryClassName = ApacheKafkaOffsetPositionFactory.class.getName();
     PartitionConsumptionState mockLeaderPartitionConsumptionState = mock(PartitionConsumptionState.class);
     Mockito.when(mockLeaderPartitionConsumptionState.getLeaderFollowerState())
         .thenReturn(LeaderFollowerStateType.LEADER);
@@ -184,15 +187,20 @@ public class ChangeCaptureViewWriterTest {
     Assert.assertEquals(sentVersionSwapMessage.oldServingVersionTopic, Version.composeKafkaTopic(STORE_NAME, 1));
     Assert.assertEquals(sentVersionSwapMessage.newServingVersionTopic, Version.composeKafkaTopic(STORE_NAME, 2));
     Assert.assertEquals(
-        (long) sentVersionSwapMessage.localHighWatermarks.get(0),
-        highWaterMarks.get(LTX_1).getNumericOffset());
+        PubSubPositionDeserializer.deserializePubSubPosition(
+            sentVersionSwapMessage.localHighWatermarkPubSubPositions.get(0),
+            positionFactoryClassName),
+        highWaterMarks.get(LTX_1));
     Assert.assertEquals(
-        (long) sentVersionSwapMessage.localHighWatermarks.get(1),
-        highWaterMarks.get(LVA_1).getNumericOffset());
+        PubSubPositionDeserializer.deserializePubSubPosition(
+            sentVersionSwapMessage.localHighWatermarkPubSubPositions.get(1),
+            positionFactoryClassName),
+        highWaterMarks.get(LVA_1));
     Assert.assertEquals(
-        (long) sentVersionSwapMessage.localHighWatermarks.get(2),
-        highWaterMarks.get(LOR_1).getNumericOffset());
-    // TODO(sushantmane): Add assertions to verify the correctness localHighWatermarks with PubSubPosition
+        PubSubPositionDeserializer.deserializePubSubPosition(
+            sentVersionSwapMessage.localHighWatermarkPubSubPositions.get(2),
+            positionFactoryClassName),
+        highWaterMarks.get(LOR_1));
   }
 
   @Test

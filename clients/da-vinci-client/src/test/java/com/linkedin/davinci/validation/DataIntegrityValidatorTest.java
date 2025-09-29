@@ -32,6 +32,7 @@ import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
@@ -366,7 +367,7 @@ public class DataIntegrityValidatorTest {
     messageEnvelope.producerMetadata.messageSequenceNumber = sequenceNumber;
     messageEnvelope.producerMetadata.messageTimestamp = brokerTimestamp;
     messageEnvelope.leaderMetadataFooter = new LeaderMetadata();
-    messageEnvelope.leaderMetadataFooter.upstreamOffset = -1;
+    messageEnvelope.leaderMetadataFooter.upstreamPubSubPosition = PubSubSymbolicPosition.EARLIEST.toWireFormatBuffer();
     messageEnvelope.payloadUnion = payload;
 
     if (offsetRecord != null && offsetRecord.getMaxMessageTimeInMs() < brokerTimestamp) {

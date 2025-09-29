@@ -38,7 +38,7 @@ import java.util.TimeZone;
  */
 public class DumpAdminMessages {
   public static class AdminOperationInfo {
-    public long offset;
+    public PubSubPosition position;
     public int schemaId;
     public String operationType;
     public String adminOperation;
@@ -81,7 +81,7 @@ public class DumpAdminMessages {
           Put put = (Put) messageEnvelope.payloadUnion;
           AdminOperation adminMessage = deserializer.deserialize(put.putValue, put.schemaId);
           AdminOperationInfo adminOperationInfo = new AdminOperationInfo();
-          adminOperationInfo.offset = record.getPosition().getNumericOffset();
+          adminOperationInfo.position = record.getPosition();
           adminOperationInfo.schemaId = put.schemaId;
           adminOperationInfo.adminOperation = adminMessage.toString();
           adminOperationInfo.operationType = AdminMessageType.valueOf(adminMessage).name();

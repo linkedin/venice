@@ -85,6 +85,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.producer.VeniceProducer;
 import com.linkedin.venice.producer.online.OnlineProducerFactory;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
+import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.samza.SamzaExitMode;
@@ -1186,6 +1187,7 @@ public class TestHybrid {
         AvroGenericDeserializer<String> stringDeserializer =
             new AvroGenericDeserializer<>(STRING_SCHEMA, STRING_SCHEMA);
         StoreInfo storeInfo = TestUtils.assertCommand(controllerClient.getStore(storeName)).getStore();
+        ByteBuffer upstreamPosition = PubSubSymbolicPosition.EARLIEST.toWireFormatBuffer();
 
         try (VeniceWriter<byte[], byte[], byte[]> realTimeTopicWriter = TestUtils
             .getVeniceWriterFactory(
@@ -1201,7 +1203,7 @@ public class TestHybrid {
               realTimeTopicWriter.getProducerGUID(),
               100,
               1,
-              -1);
+              upstreamPosition);
           realTimeTopicWriter.put(
               record.getFirst(),
               record.getSecond(),
@@ -1217,7 +1219,7 @@ public class TestHybrid {
               realTimeTopicWriter.getProducerGUID(),
               100,
               2,
-              -1);
+              upstreamPosition);
           realTimeTopicWriter.put(
               record.getFirst(),
               record.getSecond(),
@@ -1233,7 +1235,7 @@ public class TestHybrid {
               realTimeTopicWriter.getProducerGUID(),
               100,
               1,
-              -1);
+              upstreamPosition);
           realTimeTopicWriter.put(
               record.getFirst(),
               record.getSecond(),
@@ -1249,7 +1251,7 @@ public class TestHybrid {
               realTimeTopicWriter.getProducerGUID(),
               100,
               3,
-              -1);
+              upstreamPosition);
           realTimeTopicWriter.put(
               record.getFirst(),
               record.getSecond(),
@@ -1671,7 +1673,7 @@ public class TestHybrid {
       GUID producerGUID,
       int segmentNumber,
       int sequenceNumber,
-      long upstreamOffset) {
+      ByteBuffer upstreamPosition) {
     KafkaKey kafkaKey = new KafkaKey(MessageType.PUT, keyBytes);
     Put putPayload = new Put();
     putPayload.putValue = ByteBuffer.wrap(valueBytes);
@@ -1690,7 +1692,7 @@ public class TestHybrid {
     producerMetadata.messageTimestamp = System.currentTimeMillis();
     kafkaValue.producerMetadata = producerMetadata;
     kafkaValue.leaderMetadataFooter = new LeaderMetadata();
-    kafkaValue.leaderMetadataFooter.upstreamOffset = upstreamOffset;
+    kafkaValue.leaderMetadataFooter.upstreamPubSubPosition = upstreamPosition;
     return Pair.create(kafkaKey, kafkaValue);
   }
 

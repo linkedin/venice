@@ -459,8 +459,6 @@ public class AdminConsumptionTask implements Runnable, Closeable {
       lastDelegatedPosition = PubSubSymbolicPosition.EARLIEST;
       lastDelegatedExecutionId = UNASSIGNED_VALUE;
     }
-    stats.setAdminConsumptionCheckpointPosition(lastPersistedPosition);
-    stats.registerAdminConsumptionCheckpointPosition();
     // Subscribe the admin topic
     consumer.subscribe(adminTopicPartition, lastDelegatedPosition, true);
     isSubscribed = true;
@@ -1063,7 +1061,6 @@ public class AdminConsumptionTask implements Runnable, Closeable {
       lastPersistedPosition = lastDelegatedPosition;
       lastPersistedExecutionId = lastDelegatedExecutionId;
       LOGGER.info("Updated lastPersistedPosition to {}", lastPersistedPosition);
-      stats.setAdminConsumptionCheckpointPosition(lastPersistedPosition);
     }
   }
 
