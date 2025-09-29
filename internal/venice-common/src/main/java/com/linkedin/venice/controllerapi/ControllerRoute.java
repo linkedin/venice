@@ -96,12 +96,16 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.VOLDEMORT
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.WRITE_COMPUTATION_ENABLED;
 
 import com.linkedin.venice.HttpMethod;
+import com.linkedin.venice.stats.dimensions.VeniceDimensionInterface;
+import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 
 
-public enum ControllerRoute {
+public enum ControllerRoute implements VeniceDimensionInterface {
+  // Fallback route
+  UNKNOWN_ROUTE("", HttpMethod.GET, Collections.emptyList()),
   // Request a topic that writer should produce to
   REQUEST_TOPIC("/request_topic", HttpMethod.POST, Arrays.asList(NAME, PUSH_TYPE, PUSH_JOB_ID), PUSH_IN_SORTED_ORDER),
   // Do an empty push into a new version for this store
@@ -353,7 +357,7 @@ public enum ControllerRoute {
         return route;
       }
     }
-    return null;
+    return UNKNOWN_ROUTE;
   }
 
   public boolean pathEquals(String uri) {
@@ -374,5 +378,19 @@ public enum ControllerRoute {
 
   public List<String> getOptionalParams() {
     return optionalParams;
+  }
+
+  /**
+   * All the instances of this Enum should have the same dimension name.
+   * Refer {@link VeniceDimensionInterface#getDimensionName()} for more details.
+   */
+  @Override
+  public VeniceMetricsDimensions getDimensionName() {
+    return VeniceMetricsDimensions.VENICE_CONTROLLER_ENDPOINT;
+  }
+
+  @Override
+  public String getDimensionValue() {
+    return name().toLowerCase();
   }
 }

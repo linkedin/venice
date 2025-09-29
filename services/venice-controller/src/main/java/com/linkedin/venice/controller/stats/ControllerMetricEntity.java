@@ -1,7 +1,10 @@
 package com.linkedin.venice.controller.stats;
 
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE_CATEGORY;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.STORE_REPUSH_TRIGGER_SOURCE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CONTROLLER_ENDPOINT;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
 import static com.linkedin.venice.utils.Utils.setOf;
@@ -16,6 +19,33 @@ import java.util.Set;
 
 
 public enum ControllerMetricEntity implements ModuleMetricEntityInterface {
+  /** Count of current in flight messages to AdminSparkServer */
+  IN_FLIGHT_CALL_COUNT(
+      "in.flight.call.count", MetricType.UP_DOWN_COUNTER, MetricUnit.NUMBER,
+      "Count of all current inflight calls to controller spark server",
+      setOf(VENICE_CLUSTER_NAME, VENICE_CONTROLLER_ENDPOINT)
+  ),
+  /** Count of completed calls to AdminSparkServer */
+  CALL_COUNT(
+      "call.count", MetricType.COUNTER, MetricUnit.NUMBER, "Count of all calls to controller spark server",
+      setOf(
+          VENICE_CLUSTER_NAME,
+          VENICE_CONTROLLER_ENDPOINT,
+          HTTP_RESPONSE_STATUS_CODE,
+          HTTP_RESPONSE_STATUS_CODE_CATEGORY,
+          VENICE_RESPONSE_STATUS_CODE_CATEGORY)
+  ),
+  /** Histogram of call latency to AdminSparkServer */
+  CALL_TIME(
+      "call.time", MetricType.HISTOGRAM, MetricUnit.MILLISECOND,
+      "Latency histogram of all successful calls to controller spark server",
+      setOf(
+          VENICE_CLUSTER_NAME,
+          VENICE_CONTROLLER_ENDPOINT,
+          HTTP_RESPONSE_STATUS_CODE,
+          HTTP_RESPONSE_STATUS_CODE_CATEGORY,
+          VENICE_RESPONSE_STATUS_CODE_CATEGORY)
+  ),
   /** Count of all requests to repush a store */
   STORE_REPUSH_CALL_COUNT(
       "store.repush.call_count", MetricType.COUNTER, MetricUnit.NUMBER, "Count of all requests to repush a store",
