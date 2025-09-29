@@ -56,8 +56,9 @@ public interface BootstrappingVeniceChangelogConsumer<K, V> {
    * If the PubSubMessage came from disk (after restart), the following fields will be set to sentinel values since
    * record metadata information is not available to reduce disk utilization:
    *  - PubSubMessageTime
-   *  - PayloadSize
    *  - Position
+   *  - WriterSchemaId
+   *  - ReplicationMetadataPayload
    *
    * @param timeoutInMs Maximum timeout of the poll invocation
    * @return a collection of Venice PubSubMessages

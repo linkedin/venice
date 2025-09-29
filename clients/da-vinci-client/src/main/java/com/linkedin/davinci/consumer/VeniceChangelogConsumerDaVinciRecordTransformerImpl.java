@@ -27,7 +27,6 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubTopicImpl;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
-import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.Utils;
@@ -574,11 +573,6 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
         Lazy<V> value,
         int partitionId,
         DaVinciRecordTransformerRecordMetadata recordMetadata) {
-      // Record came from disk, so metadata is not available
-      if (recordMetadata == null) {
-        recordMetadata = new DaVinciRecordTransformerRecordMetadata(-1, 0, PubSubSymbolicPosition.EARLIEST, -1, null);
-      }
-
       addMessageToBuffer(key.get(), value.get(), partitionId, recordMetadata);
     }
 

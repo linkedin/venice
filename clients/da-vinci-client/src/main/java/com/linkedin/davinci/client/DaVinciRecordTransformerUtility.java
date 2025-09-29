@@ -10,6 +10,7 @@ import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.PubSubContext;
+import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
@@ -203,8 +204,17 @@ public class DaVinciRecordTransformerUtility<K, O> {
             return outputValueDeserializer.deserialize(decompressedValueBytes);
           });
 
-          // Record metadata is not available from disk
-          recordTransformer.processPut(lazyKey, lazyValue, partitionId, null);
+          // Most of the record metadata is not available from disk
+          DaVinciRecordTransformerRecordMetadata recordTransformerRecordMetadata =
+              recordTransformerConfig.isRecordMetadataEnabled()
+                  ? new DaVinciRecordTransformerRecordMetadata(
+                      -1,
+                      0,
+                      PubSubSymbolicPosition.EARLIEST,
+                      keyBytes.length + valueBytes.length,
+                      null)
+                  : null;
+          recordTransformer.processPut(lazyKey, lazyValue, partitionId, recordTransformerRecordMetadata);
         }
       } finally {
         // Re-open partition with defaults

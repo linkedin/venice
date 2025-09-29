@@ -317,13 +317,13 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
 
     // Future version should not cause the CompletableFuture to complete
     for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
-      futureRecordTransformer.processPut(keys.get(partitionId), lazyValue, partitionId, null);
+      futureRecordTransformer.processPut(keys.get(partitionId), lazyValue, partitionId, recordMetadata);
     }
     assertFalse(startCompletableFuture.isDone());
 
     // CompletableFuture should be finished when the current version produces to the buffer
     for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
-      recordTransformer.processPut(keys.get(partitionId), lazyValue, partitionId, null);
+      recordTransformer.processPut(keys.get(partitionId), lazyValue, partitionId, recordMetadata);
     }
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
       assertTrue(startCompletableFuture.isDone());
@@ -383,7 +383,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
     List<CompletableFuture> completableFutureList = new ArrayList<>();
     for (int i = 0; i <= MAX_BUFFER_SIZE; i++) {
       completableFutureList.add(CompletableFuture.supplyAsync(() -> {
-        recordTransformer.processPut(keys.get(partitionId), lazyValue, partitionId, null);
+        recordTransformer.processPut(keys.get(partitionId), lazyValue, partitionId, recordMetadata);
         return null;
       }));
     }
@@ -448,7 +448,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
 
     for (int i = 0; i < MAX_BUFFER_SIZE; i++) {
       CompletableFuture.supplyAsync(() -> {
-        recordTransformer.processPut(keys.get(partitionId), lazyValue, partitionId, null);
+        recordTransformer.processPut(keys.get(partitionId), lazyValue, partitionId, recordMetadata);
         return null;
       });
     }
@@ -488,7 +488,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
     futureRecordTransformer.onStartVersionIngestion(false);
 
     int partitionId = 0;
-    recordTransformer.processPut(keys.get(partitionId), lazyValue, partitionId, null);
+    recordTransformer.processPut(keys.get(partitionId), lazyValue, partitionId, recordMetadata);
     recordTransformer.onHeartbeat(partitionId, 1L);
 
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
@@ -518,7 +518,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
 
     // Add records for all but 1 partition to complete the start future, but to not complete the subscribe future.
     for (int partitionId = 0; partitionId < PARTITION_COUNT - 1; partitionId++) {
-      recordTransformer.processPut(keys.get(partitionId), lazyValue, partitionId, null);
+      recordTransformer.processPut(keys.get(partitionId), lazyValue, partitionId, recordMetadata);
     }
 
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
@@ -528,7 +528,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
     assertFalse(bootstrappingVeniceChangelogConsumer.isCaughtUp());
 
     // Add record for last partition
-    recordTransformer.processPut(keys.get(PARTITION_COUNT - 1), lazyValue, PARTITION_COUNT - 1, null);
+    recordTransformer.processPut(keys.get(PARTITION_COUNT - 1), lazyValue, PARTITION_COUNT - 1, recordMetadata);
     daVinciClientSubscribeFuture.complete(null);
 
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
