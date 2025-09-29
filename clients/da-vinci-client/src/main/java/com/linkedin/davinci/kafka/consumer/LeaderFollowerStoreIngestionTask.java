@@ -1547,10 +1547,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       PubSubTopicPartition pubSubTopicPartition,
       PartitionConsumptionState partitionConsumptionState,
       DefaultPubSubMessage consumerRecord,
-      final PubSubPosition newUpstreamOffset,
-      final PubSubPosition previousUpstreamOffset,
+      final PubSubPosition newUpstreamPosition,
+      final PubSubPosition previousUpstreamPosition,
       LeaderFollowerStoreIngestionTask ingestionTask) {
-    if (topicManager.diffPosition(pubSubTopicPartition, newUpstreamOffset, previousUpstreamOffset) >= 0) {
+    if (newUpstreamPosition.getNumericOffset() >= previousUpstreamPosition.getNumericOffset()) {
       return; // Rewind did not happen
     }
     if (!ingestionTask.isHybridMode()) {
