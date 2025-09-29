@@ -335,12 +335,18 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
   public boolean startInner() {
     consumerToConsumptionTask.values().forEach(consumerExecutor::submit);
     consumerExecutor.shutdown();
+    if (inactiveTopicPartitionChecker != null) {
+      inactiveTopicPartitionChecker.start();
+    }
     LOGGER.info("KafkaConsumerService started for {}", kafkaUrl);
     return true;
   }
 
   @Override
   public void stopInner() throws Exception {
+    if (inactiveTopicPartitionChecker != null) {
+      inactiveTopicPartitionChecker.stop();
+    }
     consumerToConsumptionTask.values().forEach(ConsumptionTask::stop);
     long beginningTime = System.currentTimeMillis();
     boolean gracefulShutdownSuccess = consumerExecutor.awaitTermination(SHUTDOWN_TIMEOUT_IN_SECOND, TimeUnit.SECONDS);

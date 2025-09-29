@@ -89,7 +89,7 @@ public class InactiveTopicPartitionChecker extends AbstractVeniceService {
         this::checkInactiveTopicPartition,
         getInactiveTopicPartitionCheckIntervalInMs(),
         getInactiveTopicPartitionCheckIntervalInMs(),
-        TimeUnit.MICROSECONDS);
+        TimeUnit.MILLISECONDS);
     return true;
   }
 
@@ -156,6 +156,10 @@ public class InactiveTopicPartitionChecker extends AbstractVeniceService {
         Set<PubSubTopicPartition> assignedTopicPartitions = consumer.getAssignment();
         Set<PubSubTopicPartition> currentlyInactiveTopicPartitions = new HashSet<>();
 
+        LOGGER.info(
+            "Checking inactive topic partition for consumer task: {} with current assignments: {}",
+            task.getTaskIdStr(),
+            assignedTopicPartitions);
         // Step 1: Check all assigned topic-partitions for inactivity and collect currently inactive ones
         for (PubSubTopicPartition topicPartition: assignedTopicPartitions) {
           if (previouslyPausedTopicPartitions.contains(topicPartition)) {
