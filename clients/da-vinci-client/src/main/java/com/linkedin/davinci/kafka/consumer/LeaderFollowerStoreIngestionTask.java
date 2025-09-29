@@ -1594,8 +1594,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
               + " Multiple leaders are producing. ",
           partitionConsumptionState.getReplicaId(),
           consumerRecord.getPosition(),
-          newUpstreamOffset,
-          previousUpstreamOffset,
+          newUpstreamPosition,
+          previousUpstreamPosition,
           kafkaValue.producerMetadata.producerGUID == null
               ? "unknown"
               : GuidUtils.getHexFromGuid(kafkaValue.producerMetadata.producerGUID),
