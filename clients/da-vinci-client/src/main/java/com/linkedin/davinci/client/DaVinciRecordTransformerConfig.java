@@ -198,11 +198,12 @@ public class DaVinciRecordTransformerConfig {
     }
 
     /**
-     * Set this to false if you are not modifying the values of records in {@link DaVinciRecordTransformer#transform(Lazy, Lazy, int, DaVinciRecordTransformerRecordMetadata)}.
+     * Set this to false if you are not modifying record values in {@link DaVinciRecordTransformer#transform}.
      *
-     * If not set to false and records aren't being transformed, you will run into deserialization issues when recovery mode is running after restart if the value schema has been evolved.
+     * If records aren't being transformed but this remains true, deserialization issues may occur during
+     * recovery after restart when the value schema has evolved.
      *
-     * Default is false.
+     * Default is true.
      *
      * @param recordTransformationEnabled whether records are being transformed
      */

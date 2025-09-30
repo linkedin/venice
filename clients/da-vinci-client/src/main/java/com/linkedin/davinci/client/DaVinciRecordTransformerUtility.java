@@ -15,6 +15,7 @@ import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
+import com.linkedin.venice.serializer.VeniceSerializationException;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -216,6 +217,13 @@ public class DaVinciRecordTransformerUtility<K, O> {
                   : null;
           recordTransformer.processPut(lazyKey, lazyValue, partitionId, recordTransformerRecordMetadata);
         }
+      } catch (VeniceSerializationException exception) {
+        LOGGER.info(
+            "VeniceSerializationException encountered when DaVinciRecordTransformer was scanning disk for"
+                + " records. This occurs when the wrong schema is used to deserialize records. If you are not transforming"
+                + " your records, make sure to set recordTransformationEnabled to false in "
+                + " DaVinciRecordTransformerConfig.");
+        throw exception;
       } finally {
         // Re-open partition with defaults
         storagePartitionConfig = new StoragePartitionConfig(storageEngine.getStoreVersionName(), partitionId);
