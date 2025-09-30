@@ -14,9 +14,12 @@ import static com.linkedin.venice.stats.dimensions.HttpResponseStatusCodeCategor
 import static com.linkedin.venice.stats.dimensions.HttpResponseStatusEnum.transformIntToHttpResponseStatusEnum;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE_CATEGORY;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_METHOD;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_REJECTION_REASON;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_RETRY_TYPE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_ROUTE_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory.SUCCESS;
 import static com.linkedin.venice.utils.OpenTelemetryDataPointTestUtils.validateExponentialHistogramPointData;
@@ -509,6 +512,57 @@ public class BasicClientStatsTest {
             MetricUnit.NUMBER,
             "Count of requests that timed out on the client side",
             Utils.setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)));
+    expectedMetrics.put(
+        ClientMetricEntity.ROUTE_CALL_COUNT,
+        new MetricEntity(
+            "route.call_count",
+            MetricType.COUNTER,
+            MetricUnit.NUMBER,
+            "Count of all requests routed to different instances in a cluster",
+            Utils.setOf(
+                VENICE_STORE_NAME,
+                VENICE_CLUSTER_NAME,
+                VENICE_REQUEST_METHOD,
+                VENICE_ROUTE_NAME,
+                VENICE_RESPONSE_STATUS_CODE_CATEGORY,
+                HTTP_RESPONSE_STATUS_CODE_CATEGORY,
+                HTTP_RESPONSE_STATUS_CODE)));
+    expectedMetrics.put(
+        ClientMetricEntity.ROUTE_CALL_TIME,
+        new MetricEntity(
+            "route.call_time",
+            MetricType.HISTOGRAM,
+            MetricUnit.MILLISECOND,
+            "Time taken for requests routed to different instances in a cluster",
+            Utils.setOf(
+                VENICE_STORE_NAME,
+                VENICE_CLUSTER_NAME,
+                VENICE_REQUEST_METHOD,
+                VENICE_ROUTE_NAME,
+                VENICE_RESPONSE_STATUS_CODE_CATEGORY,
+                HTTP_RESPONSE_STATUS_CODE_CATEGORY,
+                HTTP_RESPONSE_STATUS_CODE)));
+    expectedMetrics.put(
+        ClientMetricEntity.ROUTE_REQUEST_PENDING_COUNT,
+        new MetricEntity(
+            "route.request.pending_count",
+            MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS,
+            MetricUnit.NUMBER,
+            "Pending request count for requests routed to different instances in a cluster",
+            Utils.setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REQUEST_METHOD, VENICE_ROUTE_NAME)));
+    expectedMetrics.put(
+        ClientMetricEntity.ROUTE_REQUEST_REJECTION_RATIO,
+        new MetricEntity(
+            "route.request.rejection_ratio",
+            MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS,
+            MetricUnit.NUMBER,
+            "Request rejection ratio for requests routed to different instances in a cluster",
+            Utils.setOf(
+                VENICE_STORE_NAME,
+                VENICE_CLUSTER_NAME,
+                VENICE_ROUTE_NAME,
+                VENICE_REQUEST_METHOD,
+                VENICE_REQUEST_REJECTION_REASON)));
 
     Set<String> uniqueMetricEntitiesNames = new HashSet<>();
 

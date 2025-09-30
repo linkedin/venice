@@ -61,7 +61,7 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
   private final int blobTransferMaxTimeoutInMin;
   // Max allowed global concurrent snapshot users
   private final int maxAllowedConcurrentSnapshotUsers;
-  private BlobSnapshotManager blobSnapshotManager;
+  private final BlobSnapshotManager blobSnapshotManager;
   // Global counter for all active transfer requests across all topics and partitions
   private final AtomicInteger globalConcurrentTransferRequests = new AtomicInteger(0);
   private static final AttributeKey<BlobTransferPayload> BLOB_TRANSFER_REQUEST =
@@ -144,6 +144,7 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
                     + ", wont be able to process the request for " + blobTransferRequest.getFullResourceName();
             LOGGER.error(errMessage);
             setupResponseAndFlush(HttpResponseStatus.TOO_MANY_REQUESTS, errMessage.getBytes(), false, ctx);
+            return;
           }
         }
       } catch (Exception e) {
@@ -289,13 +290,13 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
     sendFileFuture.addListener(future -> {
       if (future.isSuccess()) {
         LOGGER.info(
-            "Sent file: {} successfully for replica {} to host {}",
+            "Sent file: {} successfully for replica: {} to host: {}",
             file.getName(),
             replicaInfo,
             ctx.channel().remoteAddress());
       } else {
         LOGGER.error(
-            "Failed to send file {} for replica {} to host {}",
+            "Failed to send file: {} for replica: {} to host: {}",
             file.getName(),
             replicaInfo,
             ctx.channel().remoteAddress(),

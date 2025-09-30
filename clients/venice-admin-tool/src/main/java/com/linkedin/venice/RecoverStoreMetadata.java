@@ -111,11 +111,11 @@ public class RecoverStoreMetadata {
       }
 
       Iterator<DefaultPubSubMessage> recordsIterator = Utils.iterateOnMapOfLists(records);
-
+      long consumedRecords = 0;
       while (recordsIterator.hasNext()) {
         DefaultPubSubMessage record = recordsIterator.next();
-        if (record.getPosition().getNumericOffset() % 1000 == 0) {
-          System.out.println("Consumed " + record.getPosition() + " messages");
+        if (++consumedRecords % 1000 == 0) {
+          System.out.println("Consumed " + consumedRecords + " messages");
         }
         messageEnvelope = record.getValue();
         // check message type

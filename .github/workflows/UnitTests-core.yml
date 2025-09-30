@@ -43,6 +43,9 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           add-job-summary: never
+      - name: Free up disk space in the background
+        run: |
+          bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
       - name: Run Unit Tests with Code Coverage
         run: ./gradlew  -x :internal:venice-avro-compatibility-test:test  ${{ inputs.arg }}
       - name: Package Build Artifacts

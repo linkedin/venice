@@ -1,11 +1,11 @@
 package com.linkedin.venice.stats.dimensions;
 
-public enum RepushStoreTriggerSource implements VeniceDimensionInterface {
-  MANUAL, SCHEDULED;
+public enum StoreRepushTriggerSource implements VeniceDimensionInterface {
+  MANUAL, SCHEDULED_FOR_LOG_COMPACTION;
 
   private final String triggerSource;
 
-  RepushStoreTriggerSource() {
+  StoreRepushTriggerSource() {
     this.triggerSource = name().toLowerCase();
   }
 
@@ -15,7 +15,7 @@ public enum RepushStoreTriggerSource implements VeniceDimensionInterface {
    */
   @Override
   public VeniceMetricsDimensions getDimensionName() {
-    return VeniceMetricsDimensions.REPUSH_TRIGGER_SOURCE;
+    return VeniceMetricsDimensions.STORE_REPUSH_TRIGGER_SOURCE;
   }
 
   @Override

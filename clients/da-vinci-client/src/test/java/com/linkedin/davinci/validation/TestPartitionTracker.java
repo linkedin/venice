@@ -40,6 +40,7 @@ import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.pubsub.mock.InMemoryPubSubPosition;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -523,7 +524,7 @@ public class TestPartitionTracker {
     }
 
     DefaultPubSubMessage lastMessage = messageBatch1.get(messageBatch1.size() - 1);
-    offset = lastMessage.getPosition().getNumericOffset() + 1;
+    offset = ((InMemoryPubSubPosition) lastMessage.getPosition()).getInternalOffset() + 1;
 
     if (checkSumType == NONE) {
       this.partitionTracker.validateMessage(type, lastMessage, true, Lazy.FALSE);
@@ -651,7 +652,7 @@ public class TestPartitionTracker {
         getControlMessageKey(sosMessage),
         sosMessage,
         pubSubTopicPartition,
-        ApacheKafkaOffsetPosition.of(offset++),
+        InMemoryPubSubPosition.of(offset++),
         System.currentTimeMillis() + 1000,
         0);
     messages.add(sosConsumerRecord);
@@ -664,7 +665,7 @@ public class TestPartitionTracker {
         getPutMessageKey("first_key".getBytes()),
         putMessage,
         pubSubTopicPartition,
-        ApacheKafkaOffsetPosition.of(offset++),
+        InMemoryPubSubPosition.of(offset++),
         System.currentTimeMillis() + 1000,
         0);
     messages.add(putConsumerRecord);
@@ -677,7 +678,7 @@ public class TestPartitionTracker {
         getUpdateMessageKey("second_key".getBytes()),
         updateMessage,
         pubSubTopicPartition,
-        ApacheKafkaOffsetPosition.of(offset++),
+        InMemoryPubSubPosition.of(offset++),
         System.currentTimeMillis() + 1000,
         0);
     messages.add(updateConsumerRecord);
@@ -690,7 +691,7 @@ public class TestPartitionTracker {
         getDeleteMessageKey("third_key".getBytes()),
         deleteMessage,
         pubSubTopicPartition,
-        ApacheKafkaOffsetPosition.of(offset++),
+        InMemoryPubSubPosition.of(offset++),
         System.currentTimeMillis() + 1000,
         0);
     messages.add(deleteConsumerRecord);
@@ -703,7 +704,7 @@ public class TestPartitionTracker {
         getControlMessageKey(eosMessage),
         eosMessage,
         pubSubTopicPartition,
-        ApacheKafkaOffsetPosition.of(offset++),
+        InMemoryPubSubPosition.of(offset++),
         System.currentTimeMillis() + 1000,
         0);
     messages.add(eosConsumerRecord);

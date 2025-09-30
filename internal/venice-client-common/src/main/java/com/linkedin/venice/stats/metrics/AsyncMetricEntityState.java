@@ -196,8 +196,9 @@ public abstract class AsyncMetricEntityState {
           if (!baseAttributesAsMap.containsKey(key)
               || !Objects.equals(baseAttributesAsMap.get(key), entry.getValue())) {
             throw new IllegalArgumentException(
-                "baseAttributes: " + baseAttributes.asMap()
-                    + " should contain all the keys and same values as in baseDimensionsMap: " + baseDimensionsMap);
+                "baseAttributes: " + baseAttributes.asMap() + " should contain key: " + key.getKey()
+                    + ", and should contain all the keys and same values as in baseDimensionsMap: "
+                    + baseDimensionsMap);
           }
         }
       }

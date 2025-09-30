@@ -7,7 +7,9 @@ import static com.linkedin.venice.fastclient.stats.FastClientMetricEntity.RETRY_
 import static com.linkedin.venice.stats.ClientType.FAST_CLIENT;
 import static com.linkedin.venice.stats.dimensions.RequestRetryType.ERROR_RETRY;
 import static com.linkedin.venice.stats.dimensions.RequestRetryType.LONG_TAIL_RETRY;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
 
+import com.linkedin.venice.client.stats.ClientStats;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.stats.dimensions.RejectionReason;
@@ -29,14 +31,13 @@ import io.tehuti.metrics.stats.OccurrenceRate;
 import io.tehuti.metrics.stats.Rate;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 
-public class FastClientStats extends com.linkedin.venice.client.stats.ClientStats {
+public class FastClientStats extends ClientStats {
   private final String storeName;
 
   private final MetricEntityStateOneEnum<RejectionReason> noAvailableReplicaRequestCount;
@@ -148,11 +149,13 @@ public class FastClientStats extends com.linkedin.venice.client.stats.ClientStat
         getBaseAttributes());
 
     // METADATA_STALENESS_DURATION only requires VENICE_STORE_NAME dimension
-    Map<VeniceMetricsDimensions, String> metadataStalenessBaseDimensionsMap = new HashMap<>();
-    metadataStalenessBaseDimensionsMap.put(VeniceMetricsDimensions.VENICE_STORE_NAME, storeName);
-    Attributes metadataStalenessBaseAttributes = Attributes.builder()
-        .put(VeniceMetricsDimensions.VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), storeName)
-        .build();
+    Map<VeniceMetricsDimensions, String> metadataStalenessBaseDimensionsMap = null;
+    Attributes metadataStalenessBaseAttributes = null;
+    if (emitOpenTelemetryMetrics) {
+      metadataStalenessBaseDimensionsMap = Collections.singletonMap(VENICE_STORE_NAME, storeName);
+      metadataStalenessBaseAttributes =
+          Attributes.builder().put(otelRepository.getDimensionName(VENICE_STORE_NAME), storeName).build();
+    }
 
     this.metadataStalenessHighWatermark = AsyncMetricEntityStateBase.create(
         METADATA_STALENESS_DURATION.getMetricEntity(),

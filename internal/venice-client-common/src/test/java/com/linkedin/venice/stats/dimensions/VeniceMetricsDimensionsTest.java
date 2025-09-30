@@ -28,6 +28,9 @@ public class VeniceMetricsDimensionsTest {
         case HTTP_RESPONSE_STATUS_CODE_CATEGORY:
           assertEquals(dimension.getDimensionName(format), "http.response.status_code_category");
           break;
+        case VENICE_CONTROLLER_ENDPOINT:
+          assertEquals(dimension.getDimensionName(format), "venice.controller.endpoint");
+          break;
         case VENICE_RESPONSE_STATUS_CODE_CATEGORY:
           assertEquals(dimension.getDimensionName(format), "venice.response.status_code_category");
           break;
@@ -43,8 +46,11 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_STREAM_PROGRESS:
           assertEquals(dimension.getDimensionName(format), "venice.stream.progress");
           break;
-        case REPUSH_TRIGGER_SOURCE:
-          assertEquals(dimension.getDimensionName(format), "repush.trigger.source");
+        case STORE_REPUSH_TRIGGER_SOURCE:
+          assertEquals(dimension.getDimensionName(format), "store.repush.trigger.source");
+          break;
+        case VENICE_ROUTE_NAME:
+          assertEquals(dimension.getDimensionName(format), "venice.route.name");
           break;
         case VENICE_REQUEST_REJECTION_REASON:
           assertEquals(dimension.getDimensionName(format), "venice.request.rejection_reason");
@@ -81,6 +87,9 @@ public class VeniceMetricsDimensionsTest {
         case HTTP_RESPONSE_STATUS_CODE_CATEGORY:
           assertEquals(dimension.getDimensionName(format), "http.response.statusCodeCategory");
           break;
+        case VENICE_CONTROLLER_ENDPOINT:
+          assertEquals(dimension.getDimensionName(format), "venice.controller.endpoint");
+          break;
         case VENICE_RESPONSE_STATUS_CODE_CATEGORY:
           assertEquals(dimension.getDimensionName(format), "venice.response.statusCodeCategory");
           break;
@@ -96,8 +105,11 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_STREAM_PROGRESS:
           assertEquals(dimension.getDimensionName(format), "venice.stream.progress");
           break;
-        case REPUSH_TRIGGER_SOURCE:
-          assertEquals(dimension.getDimensionName(format), "repush.trigger.source");
+        case STORE_REPUSH_TRIGGER_SOURCE:
+          assertEquals(dimension.getDimensionName(format), "store.repush.trigger.source");
+          break;
+        case VENICE_ROUTE_NAME:
+          assertEquals(dimension.getDimensionName(format), "venice.route.name");
           break;
         case VENICE_REQUEST_REJECTION_REASON:
           assertEquals(dimension.getDimensionName(format), "venice.request.rejectionReason");
@@ -134,6 +146,9 @@ public class VeniceMetricsDimensionsTest {
         case HTTP_RESPONSE_STATUS_CODE_CATEGORY:
           assertEquals(dimension.getDimensionName(format), "Http.Response.StatusCodeCategory");
           break;
+        case VENICE_CONTROLLER_ENDPOINT:
+          assertEquals(dimension.getDimensionName(format), "Venice.Controller.Endpoint");
+          break;
         case VENICE_RESPONSE_STATUS_CODE_CATEGORY:
           assertEquals(dimension.getDimensionName(format), "Venice.Response.StatusCodeCategory");
           break;
@@ -149,8 +164,11 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_STREAM_PROGRESS:
           assertEquals(dimension.getDimensionName(format), "Venice.Stream.Progress");
           break;
-        case REPUSH_TRIGGER_SOURCE:
-          assertEquals(dimension.getDimensionName(format), "Repush.Trigger.Source");
+        case STORE_REPUSH_TRIGGER_SOURCE:
+          assertEquals(dimension.getDimensionName(format), "Store.Repush.Trigger.Source");
+          break;
+        case VENICE_ROUTE_NAME:
+          assertEquals(dimension.getDimensionName(format), "Venice.Route.Name");
           break;
         case VENICE_REQUEST_REJECTION_REASON:
           assertEquals(dimension.getDimensionName(format), "Venice.Request.RejectionReason");

@@ -130,7 +130,7 @@ public class GrpcStoreLifecycleHooks extends StoreLifecycleHooks {
       GrpcStoreLifecycleHooksRequest request = GrpcStoreLifecycleHooksRequest.newBuilder()
           .setStoreName(storeName)
           .setRegion(regionName)
-          .setVersion(String.valueOf(versionNumber))
+          .setVersion(versionNumber)
           .build();
 
       // Create a CompletableFuture to track the async call
@@ -139,6 +139,13 @@ public class GrpcStoreLifecycleHooks extends StoreLifecycleHooks {
       // Create StreamObserver to handle the response
       StreamObserver<GrpcStoreLifecycleHooksResponse> responseObserver =
           new StreamObserver<GrpcStoreLifecycleHooksResponse>() {
+            /* <<<<<<<<<<<<<<  ✨ Windsurf Command ⭐ >>>>>>>>>>>>>>>> */
+            /**
+             * Handles the response from the gRPC call and completes the future with the outcome.
+             *
+             * @param response the response from the gRPC call
+             */
+            /* <<<<<<<<<<  bef3a84b-a4ac-4a18-8599-ce0d9aaf5f03  >>>>>>>>>>> */
             @Override
             public void onNext(GrpcStoreLifecycleHooksResponse response) {
               StoreVersionLifecycleEventOutcome outcome = mapProtoToJavaEnum(response.getOutcome());

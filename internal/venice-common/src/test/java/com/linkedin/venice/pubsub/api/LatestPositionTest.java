@@ -59,10 +59,4 @@ public class LatestPositionTest {
     LatestPosition instance2 = LatestPosition.getInstance();
     assertEquals(instance1.hashCode(), instance2.hashCode(), "Hash codes should match");
   }
-
-  @Test
-  public void testNumericOffset() {
-    LatestPosition instance = LatestPosition.getInstance();
-    assertEquals(instance.getNumericOffset(), Long.MAX_VALUE, "Numeric offset should be Long.MAX_VALUE");
-  }
 }

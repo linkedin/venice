@@ -11,6 +11,7 @@ import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.meta.PersistenceType;
+import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import java.util.Properties;
@@ -45,14 +46,14 @@ public class TestRocksDBOffsetStore {
     String storeName = veniceCluster.createStore(keyCount);
     String storeTopicName = storeName + "_v1";
     StorageMetadataService storageMetadataService = serverWrapper.getVeniceServer().getStorageMetadataService();
-    Assert.assertTrue(
+    Assert.assertNotEquals(
         storageMetadataService
             .getLastOffset(
                 storeTopicName,
                 0,
                 serverWrapper.getVeniceServer().getKafkaStoreIngestionService().getPubSubContext())
-            .getCheckpointedLocalVtPosition()
-            .getNumericOffset() != -1);
+            .getCheckpointedLocalVtPosition(),
+        PubSubSymbolicPosition.EARLIEST);
     veniceCluster.stopVeniceServer(serverWrapper.getPort());
     TestUtils.waitForNonDeterministicAssertion(
         30,

@@ -2675,18 +2675,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     // No Op
   }
 
-  protected boolean shouldSendGlobalRtDiv(DefaultPubSubMessage record, PartitionConsumptionState pcs, String kafkaUrl) {
-    if (!isGlobalRtDivEnabled()) {
+  boolean shouldSendGlobalRtDiv(DefaultPubSubMessage record, PartitionConsumptionState pcs, String brokerUrl) {
+    if (!isGlobalRtDivEnabled() || record.getKey().isControlMessage() || getConsumedBytesSinceLastSync().isEmpty()) {
       return false;
     }
-
     // The Global RT DIV is sent on a per-broker basis, so divide the size limit by the number of brokers
     final long syncBytesInterval = getSyncBytesInterval(pcs) / getConsumedBytesSinceLastSync().size();
-    boolean shouldSync = false;
-    if (!record.getKey().isControlMessage()) {
-      shouldSync = syncBytesInterval > 0 && (getConsumedBytesSinceLastSync().get(kafkaUrl) >= syncBytesInterval);
-    }
-    return shouldSync;
+    return syncBytesInterval > 0 && (getConsumedBytesSinceLastSync().getOrDefault(brokerUrl, 0L) >= syncBytesInterval);
   }
 
   /**
@@ -4979,28 +4974,33 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     try {
       final PubSubPosition position = pubSubPositionDeserializer.toPosition(wireFormatBytes);
-
       // Guard against regressions: honor the caller-provided minimum offset.
-      if (position.getNumericOffset() < offset) {
-        LOGGER.info(
-            "Deserialized position: {} is behind the provided offset: {}. Using offset-based position for: {}/{}",
-            position.getNumericOffset(),
-            offset,
-            topicPartition,
-            versionTopic);
+      if (offset > 0 && position.getNumericOffset() < offset) {
+        String context = String.format(" for: %s/%s", topicPartition, versionTopic);
+        if (!REDUNDANT_LOGGING_FILTER.isRedundantException(context)) {
+          LOGGER.warn(
+              "Deserialized position: {} is behind the provided offset: {}. Using offset-based position for: {}/{}",
+              position,
+              offset,
+              topicPartition,
+              versionTopic);
+        }
         return PubSubUtil.fromKafkaOffset(offset);
       }
 
       return position;
-    } catch (RuntimeException e) {
-      LOGGER.warn(
-          "Failed to deserialize PubSubPosition for: {}/{}. Using offset-based position (offset={}, bufferRem={}, bufferCap={}).",
-          topicPartition,
-          versionTopic,
-          offset,
-          wireFormatBytes.remaining(),
-          wireFormatBytes.capacity(),
-          e);
+    } catch (Exception e) {
+      String context = String.format("%s/%s - %s", topicPartition, versionTopic, e.getMessage());
+      if (!REDUNDANT_LOGGING_FILTER.isRedundantException(context)) {
+        LOGGER.warn(
+            "Failed to deserialize PubSubPosition for: {}/{}. Using offset-based position (offset={}, bufferRem={}, bufferCap={}).",
+            topicPartition,
+            versionTopic,
+            offset,
+            wireFormatBytes.remaining(),
+            wireFormatBytes.capacity(),
+            e);
+      }
       return PubSubUtil.fromKafkaOffset(offset);
     }
   }
