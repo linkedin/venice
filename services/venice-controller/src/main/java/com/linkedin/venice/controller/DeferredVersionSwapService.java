@@ -279,13 +279,6 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
     for (String region: regions) {
       StoreResponse storeResponse = getStoreForRegion(clusterName, region, storeName);
       Version regionVersion = getVersionFromStoreInRegion(region, storeName, targetVersionNum, storeResponse);
-
-      if (storeResponse.isError()) {
-        String message = "Got error when fetching targetRegionStore: " + storeResponse.getStore();
-        logMessageIfNotRedundant(message);
-        return false;
-      }
-
       if (regionVersion == null) {
         return false;
       }

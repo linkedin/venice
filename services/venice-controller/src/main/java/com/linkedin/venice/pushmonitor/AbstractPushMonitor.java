@@ -1214,7 +1214,8 @@ public abstract class AbstractPushMonitor
            */
           Set<String> targetRegions = RegionUtils.parseRegionsFilterList(version.getTargetSwapRegion());
           boolean isSequentialRollForward = StringUtils.isNotEmpty(sequentialRollForwardFirstRegion)
-              && sequentialRollForwardFirstRegion.equals(regionName);
+              && sequentialRollForwardFirstRegion.equals(regionName) && version.isVersionSwapDeferred()
+              && StringUtils.isNotEmpty(version.getTargetSwapRegion());
           boolean isTargetRegionPushWithDeferredSwap =
               version.isVersionSwapDeferred() && targetRegions.contains(regionName);
           boolean isNormalPush = !version.isVersionSwapDeferred();
