@@ -1234,6 +1234,30 @@ public class TestChangelogConsumer {
       assertNotNull(message.getReplicationMetadataPayload());
     }
 
+    // Restart client to ensure it seeks to the beginning of the topic and all record metadata is available
+    changeLogConsumer.close();
+    pubSubMessagesMap.clear();
+    changeLogConsumer.subscribeAll().get();
+
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+      Collection<PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessagesList =
+          changeLogConsumer.poll(1000);
+      for (PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate> message: pubSubMessagesList) {
+        pubSubMessagesMap.put(message.getKey(), message);
+      }
+      assertEquals(pubSubMessagesMap.size(), numKeys);
+    });
+
+    // All data should be from version 1
+    for (int i = 1; i <= numKeys; i++) {
+      PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate> message = pubSubMessagesMap.get(i);
+      assertEquals(message.getValue().getCurrentValue().toString(), Integer.toString(version) + i);
+      assertTrue(message.getPayloadSize() > 0);
+      assertNotNull(message.getPosition());
+      assertTrue(message.getWriterSchemaId() > 0);
+      assertNotNull(message.getReplicationMetadataPayload());
+    }
+
     // Push version 2
     version++;
     TestWriteUtils.writeSimpleAvroFileWithIntToStringSchema(inputDir, Integer.toString(version), numKeys);
@@ -1261,6 +1285,9 @@ public class TestChangelogConsumer {
       PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate> message = pubSubMessagesMap.get(i);
       assertEquals(message.getValue().getCurrentValue().toString(), Integer.toString(version - 1) + i);
       assertTrue(message.getPayloadSize() > 0);
+      assertNotNull(message.getPosition());
+      assertTrue(message.getWriterSchemaId() > 0);
+      assertNotNull(message.getReplicationMetadataPayload());
     }
 
     // Push version 3 with deferred version swap and subscribe to the future version

@@ -254,6 +254,61 @@ public class RecordTransformerTest {
         DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING,
         null,
         null);
+    verify(storageEngine).clearPartitionOffset(partitionId);
+
+    // Reset the mock to clear previous interactions
+    reset(storageEngine);
+
+    offsetRecord.setRecordTransformerClassHash(recordTransformer.getClassHash());
+    assertEquals((int) offsetRecord.getRecordTransformerClassHash(), recordTransformer.getClassHash());
+
+    when(storageEngine.getPartitionOffset(partitionId, DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING))
+        .thenReturn(Optional.of(offsetRecord));
+
+    // Execute the onRecovery method again to test the case where the classHash exists
+    recordTransformer.onRecovery(
+        storageEngine,
+        partitionId,
+        partitionStateSerializer,
+        compressor,
+        DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING,
+        null,
+        null);
+    verify(storageEngine).clearPartitionOffset(partitionId);
+    verify(storageEngine, never()).getIterator(partitionId);
+  }
+
+  @Test
+  public void testOnRecoveryStoreRecordsInDaVinciDisabled() {
+    DaVinciRecordTransformerConfig dummyRecordTransformerConfig =
+        new DaVinciRecordTransformerConfig.Builder().setRecordTransformerFunction(TestStringRecordTransformer::new)
+            .setStoreRecordsInDaVinci(false)
+            .build();
+
+    DaVinciRecordTransformer<Integer, String, String> recordTransformer = new TestStringRecordTransformer(
+        storeName,
+        storeVersion,
+        keySchema,
+        valueSchema,
+        valueSchema,
+        dummyRecordTransformerConfig);
+    assertEquals(recordTransformer.getStoreVersion(), storeVersion);
+
+    StorageEngine storageEngine = mock(StorageEngine.class);
+    Lazy<VeniceCompressor> compressor = Lazy.of(() -> mock(VeniceCompressor.class));
+
+    OffsetRecord offsetRecord = new OffsetRecord(partitionStateSerializer, DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING);
+    when(storageEngine.getPartitionOffset(partitionId, DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING))
+        .thenReturn(Optional.of(offsetRecord));
+
+    recordTransformer.onRecovery(
+        storageEngine,
+        partitionId,
+        partitionStateSerializer,
+        compressor,
+        DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING,
+        null,
+        null);
     verify(storageEngine, times(1)).clearPartitionOffset(partitionId);
 
     // Reset the mock to clear previous interactions
@@ -274,7 +329,8 @@ public class RecordTransformerTest {
         DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING,
         null,
         null);
-    verify(storageEngine, times(1)).clearPartitionOffset(partitionId);
+    // It should No-Op
+    verify(storageEngine, never()).clearPartitionOffset(partitionId);
     verify(storageEngine, never()).getIterator(partitionId);
   }
 
