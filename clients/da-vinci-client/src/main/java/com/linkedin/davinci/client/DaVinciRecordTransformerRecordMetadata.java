@@ -36,7 +36,7 @@ public class DaVinciRecordTransformerRecordMetadata {
 
   /**
    * @return timestamp that the record was added to the version topic
-   * If the record came from disk, it will be the 0.
+   * If the record came from disk, it will be 0.
    */
   public long getTimestamp() {
     return timestamp;
@@ -58,8 +58,8 @@ public class DaVinciRecordTransformerRecordMetadata {
   }
 
   /**
-   * @return the serialized replication metadata payload if it's a PUT. null if it's a DELETE.
-   * If the record came from disk, it will be null.
+   * @return the serialized replication metadata payload if it's a PUT.
+   * If the record came from disk or it's a DELETE, it will be null.
    */
   public java.nio.ByteBuffer getReplicationMetadataPayload() {
     return replicationMetadataPayload;

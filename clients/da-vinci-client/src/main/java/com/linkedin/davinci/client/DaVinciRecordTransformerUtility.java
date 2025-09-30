@@ -209,6 +209,10 @@ public class DaVinciRecordTransformerUtility<K, O> {
           DaVinciRecordTransformerRecordMetadata recordTransformerRecordMetadata =
               recordTransformerConfig.isRecordMetadataEnabled()
                   ? new DaVinciRecordTransformerRecordMetadata(
+                      /*
+                       * We can technically supply the writer schema id, but that would require pulling some logic
+                       * out of lazyValue, which could add latency. Revisit if it is actually needed.
+                       */
                       -1,
                       0,
                       PubSubSymbolicPosition.EARLIEST,

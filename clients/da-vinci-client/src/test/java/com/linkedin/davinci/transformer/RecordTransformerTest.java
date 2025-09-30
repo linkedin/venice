@@ -369,9 +369,8 @@ public class RecordTransformerTest {
         dummyRecordTransformerConfig,
         mock(AggVersionedDaVinciRecordTransformerStats.class));
 
-    VeniceChangelogConsumerDaVinciRecordTransformerImpl.DaVinciRecordTransformerBootstrappingChangelogConsumer clientRecordTransformer =
-        mock(
-            VeniceChangelogConsumerDaVinciRecordTransformerImpl.DaVinciRecordTransformerBootstrappingChangelogConsumer.class);
+    VeniceChangelogConsumerDaVinciRecordTransformerImpl.DaVinciRecordTransformerChangelogConsumer clientRecordTransformer =
+        mock(VeniceChangelogConsumerDaVinciRecordTransformerImpl.DaVinciRecordTransformerChangelogConsumer.class);
     InternalDaVinciRecordTransformer<Integer, String, String> internalRecordTransformer =
         new InternalDaVinciRecordTransformer<>(
             clientRecordTransformer,

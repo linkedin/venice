@@ -110,7 +110,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
     this.isVersionSpecificClient = changelogClientConfig.getStoreVersion() != null;
 
     recordTransformerConfig = new DaVinciRecordTransformerConfig.Builder()
-        .setRecordTransformerFunction(DaVinciRecordTransformerBootstrappingChangelogConsumer::new)
+        .setRecordTransformerFunction(DaVinciRecordTransformerChangelogConsumer::new)
         /*
          * Setting this to false, otherwise records won't be able to be deserialized from on disk scan if
          * schema evolution occurred.
@@ -465,11 +465,11 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
     backgroundReporterThreadSleepIntervalSeconds = interval;
   }
 
-  public class DaVinciRecordTransformerBootstrappingChangelogConsumer extends DaVinciRecordTransformer<K, V, V> {
+  public class DaVinciRecordTransformerChangelogConsumer extends DaVinciRecordTransformer<K, V, V> {
     private final String topicName;
     private final Map<Integer, PubSubTopicPartition> pubSubTopicPartitionMap = new HashMap<>();
 
-    public DaVinciRecordTransformerBootstrappingChangelogConsumer(
+    public DaVinciRecordTransformerChangelogConsumer(
         String storeName,
         int storeVersion,
         Schema keySchema,

@@ -178,7 +178,7 @@ public interface VeniceChangelogConsumer<K, V> {
   void pause();
 
   /**
-   * Resume the client on all or subset of partitions this client is subscribed to and has paused.
+   * Resume the client on all or a subset of partitions this client is subscribed to and has paused.
    *
    * @throws VeniceException if operation failed for any of the partitions.
    */

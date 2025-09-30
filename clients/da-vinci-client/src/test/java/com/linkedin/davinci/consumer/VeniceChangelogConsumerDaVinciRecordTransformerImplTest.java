@@ -82,8 +82,8 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
   private Schema keySchema;
   private Schema valueSchema;
   private VeniceChangelogConsumerDaVinciRecordTransformerImpl<Integer, Integer> bootstrappingVeniceChangelogConsumer;
-  private VeniceChangelogConsumerDaVinciRecordTransformerImpl.DaVinciRecordTransformerBootstrappingChangelogConsumer recordTransformer;
-  private VeniceChangelogConsumerDaVinciRecordTransformerImpl.DaVinciRecordTransformerBootstrappingChangelogConsumer futureRecordTransformer;
+  private VeniceChangelogConsumerDaVinciRecordTransformerImpl.DaVinciRecordTransformerChangelogConsumer recordTransformer;
+  private VeniceChangelogConsumerDaVinciRecordTransformerImpl.DaVinciRecordTransformerChangelogConsumer futureRecordTransformer;
   private ChangelogClientConfig changelogClientConfig;
   private DaVinciRecordTransformerConfig mockDaVinciRecordTransformerConfig;
   private DaVinciClient mockDaVinciClient;
@@ -128,11 +128,10 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
 
     mockDaVinciRecordTransformerConfig = mock(DaVinciRecordTransformerConfig.class);
     recordTransformer =
-        bootstrappingVeniceChangelogConsumer.new DaVinciRecordTransformerBootstrappingChangelogConsumer(TEST_STORE_NAME,
+        bootstrappingVeniceChangelogConsumer.new DaVinciRecordTransformerChangelogConsumer(TEST_STORE_NAME,
             CURRENT_STORE_VERSION, keySchema, valueSchema, valueSchema, mockDaVinciRecordTransformerConfig);
-    futureRecordTransformer =
-        bootstrappingVeniceChangelogConsumer.new DaVinciRecordTransformerBootstrappingChangelogConsumer(TEST_STORE_NAME,
-            FUTURE_STORE_VERSION, keySchema, valueSchema, valueSchema, mockDaVinciRecordTransformerConfig);
+    futureRecordTransformer = bootstrappingVeniceChangelogConsumer.new DaVinciRecordTransformerChangelogConsumer(
+        TEST_STORE_NAME, FUTURE_STORE_VERSION, keySchema, valueSchema, valueSchema, mockDaVinciRecordTransformerConfig);
 
     // Replace daVinciClient with a mock
     mockDaVinciClient = mock(DaVinciClient.class);
@@ -355,7 +354,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
     int partitionId = 0;
     Lazy<Integer> lazyValue = Lazy.of(() -> value);
     DaVinciRecordTransformerResult.Result result =
-        recordTransformer.transform(keys.get(partitionId), lazyValue, partitionId, null).getResult();
+        recordTransformer.transform(keys.get(partitionId), lazyValue, partitionId, recordMetadata).getResult();
     assertSame(result, DaVinciRecordTransformerResult.Result.UNCHANGED);
   }
 

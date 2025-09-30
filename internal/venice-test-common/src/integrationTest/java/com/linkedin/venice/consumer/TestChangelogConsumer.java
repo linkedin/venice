@@ -1221,13 +1221,13 @@ public class TestChangelogConsumer {
       for (PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate> message: pubSubMessagesList) {
         pubSubMessagesMap.put(message.getKey(), message);
       }
-      Assert.assertEquals(pubSubMessagesMap.size(), numKeys);
+      assertEquals(pubSubMessagesMap.size(), numKeys);
     });
 
     // All data should be from version 1
     for (int i = 1; i <= numKeys; i++) {
       PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate> message = pubSubMessagesMap.get(i);
-      Assert.assertEquals(message.getValue().getCurrentValue().toString(), Integer.toString(version) + i);
+      assertEquals(message.getValue().getCurrentValue().toString(), Integer.toString(version) + i);
       assertTrue(message.getPayloadSize() > 0);
       assertNotNull(message.getPosition());
       assertTrue(message.getWriterSchemaId() > 0);
@@ -1253,13 +1253,13 @@ public class TestChangelogConsumer {
       for (PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate> message: pubSubMessagesList) {
         pubSubMessagesMap.put(message.getKey(), message);
       }
-      Assert.assertEquals(pubSubMessagesMap.size(), numKeys);
+      assertEquals(pubSubMessagesMap.size(), numKeys);
     });
 
     // All data should be from version 1
     for (int i = 1; i <= numKeys; i++) {
       PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate> message = pubSubMessagesMap.get(i);
-      Assert.assertEquals(message.getValue().getCurrentValue().toString(), Integer.toString(version - 1) + i);
+      assertEquals(message.getValue().getCurrentValue().toString(), Integer.toString(version - 1) + i);
       assertTrue(message.getPayloadSize() > 0);
     }
 
@@ -1281,13 +1281,13 @@ public class TestChangelogConsumer {
       for (PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate> message: pubSubMessagesList) {
         pubSubMessagesMap.put(message.getKey(), message);
       }
-      Assert.assertEquals(pubSubMessagesMap.size(), numKeys);
+      assertEquals(pubSubMessagesMap.size(), numKeys);
     });
 
     // All data should be from future version 3
     for (int i = 1; i <= numKeys; i++) {
       PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate> message = pubSubMessagesMap.get(i);
-      Assert.assertEquals(message.getValue().getCurrentValue().toString(), Integer.toString(version) + i);
+      assertEquals(message.getValue().getCurrentValue().toString(), Integer.toString(version) + i);
       assertTrue(message.getPayloadSize() > 0);
       assertNotNull(message.getPosition());
       assertTrue(message.getWriterSchemaId() > 0);
