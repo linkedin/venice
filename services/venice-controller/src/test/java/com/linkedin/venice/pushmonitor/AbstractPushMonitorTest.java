@@ -1253,4 +1253,80 @@ public abstract class AbstractPushMonitorTest {
   protected VeniceWriterFactory getMockVeniceWriterFactory() {
     return mockVeniceWriterFactory;
   }
+
+  /**
+   * Data provider for sequential rollforward test scenarios
+   * Each test case covers a different branch of the isSequentialRollForward boolean expression
+   */
+  @org.testng.annotations.DataProvider(name = "sequentialRollForwardTestCases")
+  public Object[][] sequentialRollForwardTestCases() {
+    return new Object[][] {
+        { "versionSwapNotDeferred", "region1,region2,region3", "region1", false, "region1,region2", true }, // condition
+                                                                                                            // 3 = false
+                                                                                                            // (normal
+                                                                                                            // push)
+        { "targetSwapRegionEmpty", "region1,region2,region3", "region1", true, "", false }, // condition 4 = false
+        { "allConditionsTrue", "region1,region2,region3", "region1", true, "region1,region2", true } // all conditions =
+                                                                                                     // true
+    };
+  }
+
+  @Test(dataProvider = "sequentialRollForwardTestCases")
+  public void testSequentialRollForwardBranches(
+      String testName,
+      String rolloutOrder,
+      String regionName,
+      boolean isVersionSwapDeferred,
+      String targetSwapRegion,
+      boolean expectVersionSwap) {
+
+    // Setup: Create a store and version
+    String storeName = "testStore_" + testName;
+    String topic = storeName + "_v2";
+    int versionNumber = 2;
+
+    Store mockStore = mock(Store.class);
+    Version mockVersion = mock(Version.class);
+    RealTimeTopicSwitcher mockRealTimeTopicSwitcher = mock(RealTimeTopicSwitcher.class);
+
+    // Mock store setup
+    when(mockStore.getName()).thenReturn(storeName);
+    when(mockStore.getCurrentVersion()).thenReturn(1);
+    when(mockStore.isEnableWrites()).thenReturn(true);
+    when(mockStore.getVersion(versionNumber)).thenReturn(mockVersion);
+
+    // Mock version setup based on test parameters
+    when(mockVersion.isVersionSwapDeferred()).thenReturn(isVersionSwapDeferred);
+    when(mockVersion.getTargetSwapRegion()).thenReturn(targetSwapRegion);
+    when(mockVersion.getStatus()).thenReturn(VersionStatus.PUSHED);
+
+    // Mock controller config based on test parameters
+    when(mockControllerConfig.getDeferredVersionSwapRegionRollforwardOrder()).thenReturn(rolloutOrder);
+    when(mockControllerConfig.getRegionName()).thenReturn(regionName);
+
+    when(mockStoreRepo.getStore(storeName)).thenReturn(mockStore);
+
+    // Create monitor with real time topic switcher
+    AbstractPushMonitor testMonitor = getPushMonitor(mockRealTimeTopicSwitcher);
+
+    // Start monitoring the push
+    testMonitor.startMonitorOfflinePush(topic, 1, 3, OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
+
+    // Trigger handleCompletedPush which calls updateStoreVersionStatus internally
+    testMonitor.handleCompletedPush(topic);
+
+    // Verify behavior based on expected results
+    if (expectVersionSwap) {
+      // Verify that version swap was executed (either sequential rollforward or normal push)
+      verify(mockStore, atLeastOnce()).setCurrentVersion(versionNumber);
+      verify(mockRealTimeTopicSwitcher, atLeastOnce()).transmitVersionSwapMessage(mockStore, 1, versionNumber);
+    } else {
+      // Verify that version swap was NOT executed (deferred swap scenario)
+      verify(mockStore, never()).setCurrentVersion(versionNumber);
+      verify(mockRealTimeTopicSwitcher, never()).transmitVersionSwapMessage(any(Store.class), anyInt(), anyInt());
+    }
+
+    // Additional verification: Check that store version status was updated
+    verify(mockStore, atLeastOnce()).updateVersionStatus(versionNumber, VersionStatus.ONLINE);
+  }
 }
