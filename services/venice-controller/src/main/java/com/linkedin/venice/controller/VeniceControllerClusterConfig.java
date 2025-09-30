@@ -150,11 +150,13 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_REPLICATION_FACTOR_RT_TOPICS;
 import static com.linkedin.venice.ConfigKeys.KME_REGISTRATION_FROM_MESSAGE_HEADER_ENABLED;
 import static com.linkedin.venice.ConfigKeys.LEAKED_PUSH_STATUS_CLEAN_UP_SERVICE_SLEEP_INTERVAL_MS;
 import static com.linkedin.venice.ConfigKeys.LEAKED_RESOURCE_ALLOWED_LINGER_TIME_MS;
+import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_DUPLICATE_KEY_THRESHOLD;
 import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_INTERVAL_MS;
 import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_SCHEDULING_ENABLED;
 import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_THREAD_COUNT;
 import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_THRESHOLD_MS;
+import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_VERSION_STALENESS_THRESHOLD_MS;
 import static com.linkedin.venice.ConfigKeys.META_STORE_WRITER_CLOSE_CONCURRENCY;
 import static com.linkedin.venice.ConfigKeys.META_STORE_WRITER_CLOSE_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.MIN_NUMBER_OF_STORE_VERSIONS_TO_PRESERVE;
@@ -184,6 +186,7 @@ import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_HEARTBEAT_EXPIRAT
 import static com.linkedin.venice.ConfigKeys.REFRESH_ATTEMPTS_FOR_ZK_RECONNECT;
 import static com.linkedin.venice.ConfigKeys.REFRESH_INTERVAL_FOR_ZK_RECONNECT_MS;
 import static com.linkedin.venice.ConfigKeys.REPLICATION_METADATA_VERSION;
+import static com.linkedin.venice.ConfigKeys.REPUSH_NOMINATION_FILTER_CLASS_NAMES;
 import static com.linkedin.venice.ConfigKeys.REPUSH_ORCHESTRATOR_CLASS_NAME;
 import static com.linkedin.venice.ConfigKeys.SERVICE_DISCOVERY_REGISTRATION_RETRY_MS;
 import static com.linkedin.venice.ConfigKeys.SKIP_DEFERRED_VERSION_SWAP_FOR_DVC_ENABLED;
@@ -608,6 +611,7 @@ public class VeniceControllerClusterConfig {
    * Configs for repush
    */
   private String repushOrchestratorClassName;
+  private List<String> repushNominationFilterClassNames;
   private final VeniceProperties repushOrchestratorConfigs;
 
   /**
@@ -617,7 +621,8 @@ public class VeniceControllerClusterConfig {
   private final boolean isLogCompactionSchedulingEnabled;
   private final int logCompactionThreadCount;
   private final long logCompactionIntervalMS;
-  private final long logCompactionThresholdMS;
+  private final long logCompactionVersionStalenessThresholdMS;
+  private final long logCompactionDuplicateKeyThreshold;
 
   /**
    * Configs for Dead Store Endpoint
@@ -1123,6 +1128,11 @@ public class VeniceControllerClusterConfig {
     if (this.isLogCompactionEnabled) {
       try {
         this.repushOrchestratorClassName = props.getString(REPUSH_ORCHESTRATOR_CLASS_NAME);
+        if (props.containsKey(REPUSH_NOMINATION_FILTER_CLASS_NAMES)) {
+          this.repushNominationFilterClassNames = props.getList(REPUSH_NOMINATION_FILTER_CLASS_NAMES);
+        } else {
+          this.repushNominationFilterClassNames = Collections.emptyList();
+        }
       } catch (Exception e) {
         throw new VeniceException(
             "Log compaction enabled but missing controller.repush.orchestrator.class.name config value. Unable to set up log compaction service",
@@ -1132,7 +1142,10 @@ public class VeniceControllerClusterConfig {
     this.repushOrchestratorConfigs = props.clipAndFilterNamespace(CONTROLLER_REPUSH_PREFIX);
     this.logCompactionThreadCount = props.getInt(LOG_COMPACTION_THREAD_COUNT, 1);
     this.logCompactionIntervalMS = props.getLong(LOG_COMPACTION_INTERVAL_MS, TimeUnit.HOURS.toMillis(1));
-    this.logCompactionThresholdMS = props.getLong(LOG_COMPACTION_THRESHOLD_MS, TimeUnit.HOURS.toMillis(24));
+    this.logCompactionVersionStalenessThresholdMS = props.getLong(
+        LOG_COMPACTION_VERSION_STALENESS_THRESHOLD_MS,
+        props.getLong(LOG_COMPACTION_THRESHOLD_MS, TimeUnit.HOURS.toMillis(24)));
+    this.logCompactionDuplicateKeyThreshold = props.getLong(LOG_COMPACTION_DUPLICATE_KEY_THRESHOLD, 0);
 
     this.isDeadStoreEndpointEnabled = props.getBoolean(ConfigKeys.CONTROLLER_DEAD_STORE_ENDPOINT_ENABLED, false);
     this.deadStoreStatsClassName = props.getString(ConfigKeys.CONTROLLER_DEAD_STORE_STATS_CLASS_NAME, "");
@@ -2172,6 +2185,10 @@ public class VeniceControllerClusterConfig {
     return repushOrchestratorClassName;
   }
 
+  public List<String> getRepushNominationFilterClassNames() {
+    return repushNominationFilterClassNames;
+  }
+
   public VeniceProperties getRepushOrchestratorConfigs() {
     return repushOrchestratorConfigs;
   }
@@ -2192,8 +2209,12 @@ public class VeniceControllerClusterConfig {
     return logCompactionIntervalMS;
   }
 
-  public long getLogCompactionThresholdMS() {
-    return logCompactionThresholdMS;
+  public long getLogCompactionVersionStalenessThresholdMS() {
+    return logCompactionVersionStalenessThresholdMS;
+  }
+
+  public long getLogCompactionDuplicateKeyThreshold() {
+    return logCompactionDuplicateKeyThreshold;
   }
 
   public boolean isDeadStoreEndpointEnabled() {

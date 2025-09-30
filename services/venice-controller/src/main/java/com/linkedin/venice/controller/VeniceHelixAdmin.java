@@ -68,6 +68,8 @@ import com.linkedin.venice.controller.kafka.protocol.admin.StoreViewConfigRecord
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
 import com.linkedin.venice.controller.logcompaction.CompactionManager;
 import com.linkedin.venice.controller.logcompaction.LogCompactionService;
+import com.linkedin.venice.controller.logcompaction.NominationFilter;
+import com.linkedin.venice.controller.logcompaction.StoreNominationFilter;
 import com.linkedin.venice.controller.multitaskscheduler.MultiTaskSchedulerService;
 import com.linkedin.venice.controller.multitaskscheduler.StoreMigrationManager;
 import com.linkedin.venice.controller.repush.RepushJobRequest;
@@ -801,8 +803,20 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
               repushOrchestratorClass,
               new Class[] { VeniceProperties.class },
               new Object[] { multiClusterConfigs.getRepushOrchestratorConfigs() });
-          this.compactionManager =
-              new CompactionManager(repushOrchestrator, multiClusterConfigs, logCompactionStatsMap);
+
+          // Add nomination filters for compaction manager
+          List<NominationFilter> nominationFilters = Arrays.asList(new StoreNominationFilter(multiClusterConfigs));
+          for (String nominationFilterClassName: multiClusterConfigs.getRepushNominationFilterClassNames()) {
+            Class<? extends NominationFilter> nominationFilterClass = ReflectUtils.loadClass(nominationFilterClassName);
+
+            NominationFilter nominationFilter = ReflectUtils.callConstructor(
+                nominationFilterClass,
+                new Class[] { VeniceControllerMultiClusterConfig.class },
+                new Object[] { multiClusterConfigs });
+
+            nominationFilters.add(nominationFilter);
+          }
+          this.compactionManager = new CompactionManager(repushOrchestrator, nominationFilters, logCompactionStatsMap);
         } catch (Exception e) {
           LOGGER.error(
               "[log-compaction] Failed to enable repush for log compaction " + CompactionManager.class.getSimpleName(),
