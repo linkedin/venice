@@ -21,7 +21,6 @@ import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
 
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.exceptions.VeniceMessageException;
 import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.ProducerMetadata;
@@ -50,6 +49,7 @@ import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
 import com.linkedin.venice.utils.DataProviderUtils;
+import com.linkedin.venice.utils.ExceptionUtils;
 import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -367,7 +367,7 @@ public class ApacheKafkaConsumerAdapterTest {
     assertEquals(messages.get(pubSubTopicPartition).get(0).getValue(), value);
   }
 
-  @Test(expectedExceptions = VeniceMessageException.class, expectedExceptionsMessageRegExp = ".*The only supported Magic Byte for this.*")
+  @Test
   public void testDeserializerFailsWhenValueFormatIsInvalid() {
     KafkaKey key = new KafkaKey(MessageType.PUT, "key".getBytes());
     KafkaKeySerializer keySerializer = new KafkaKeySerializer();
@@ -377,10 +377,11 @@ public class ApacheKafkaConsumerAdapterTest {
         Collections.singletonMap(new TopicPartition("test", 42), Collections.singletonList(record)));
     doReturn(records).when(internalKafkaConsumer).poll(any());
     doReturn(3).when(apacheKafkaConsumerConfig).getConsumerPollRetryTimes();
-    kafkaConsumerAdapter.poll(Long.MAX_VALUE);
+    Exception e = expectThrows(Exception.class, () -> kafkaConsumerAdapter.poll(Long.MAX_VALUE));
+    assertTrue(ExceptionUtils.recursiveMessageContains(e, "The only supported Magic Byte for this implementation"));
   }
 
-  @Test(expectedExceptions = IllegalStateException.class, expectedExceptionsMessageRegExp = ".*Illegal key header byte.*")
+  @Test
   public void testDeserializerFailsWhenKeyFormatIsInvalid() {
     ConsumerRecords<byte[], byte[]> consumerRecords = new ConsumerRecords<>(
         Collections.singletonMap(
@@ -388,7 +389,8 @@ public class ApacheKafkaConsumerAdapterTest {
             Collections.singletonList(new ConsumerRecord<>("test", 42, 75, "key".getBytes(), "value".getBytes()))));
     doReturn(consumerRecords).when(internalKafkaConsumer).poll(any());
     doReturn(3).when(apacheKafkaConsumerConfig).getConsumerPollRetryTimes();
-    kafkaConsumerAdapter.poll(Long.MAX_VALUE);
+    Exception e = expectThrows(Exception.class, () -> kafkaConsumerAdapter.poll(Long.MAX_VALUE));
+    assertTrue(ExceptionUtils.recursiveMessageContains(e, "Illegal key header byte"));
   }
 
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)

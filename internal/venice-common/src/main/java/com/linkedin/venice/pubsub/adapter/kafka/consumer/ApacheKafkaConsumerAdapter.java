@@ -349,34 +349,11 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
     // fetcher.retrieveOffsetsByTimes call inside kafkaConsumer times out,
     // TODO: we may want to wrap this call in our own thread to enforce the timeout...
     int attemptCount = 1;
-    ConsumerRecords<byte[], byte[]> records;
-    Map<PubSubTopicPartition, List<DefaultPubSubMessage>> polledPubSubMessages = Collections.emptyMap();
 
     while (attemptCount <= config.getConsumerPollRetryTimes() && !Thread.currentThread().isInterrupted()) {
       try {
-        acquireLockWithTimeout();
-        try {
-          records = kafkaConsumer.poll(Duration.ofMillis(timeoutMs));
-          polledPubSubMessages = new HashMap<>(records.partitions().size());
-          for (TopicPartition topicPartition: records.partitions()) {
-            PubSubTopicPartition pubSubTopicPartition = assignments.get(topicPartition);
-            List<ConsumerRecord<byte[], byte[]>> topicPartitionConsumerRecords = records.records(topicPartition);
-            List<DefaultPubSubMessage> topicPartitionPubSubMessages =
-                new ArrayList<>(topicPartitionConsumerRecords.size());
-            for (ConsumerRecord<byte[], byte[]> consumerRecord: topicPartitionConsumerRecords) {
-              topicPartitionPubSubMessages.add(deserialize(consumerRecord, pubSubTopicPartition));
-            }
-            polledPubSubMessages.put(pubSubTopicPartition, topicPartitionPubSubMessages);
-          }
-
-          if (topicPartitionsOffsetsTracker != null) {
-            topicPartitionsOffsetsTracker.updateEndAndCurrentOffsets(records, kafkaConsumer);
-          }
-        } finally {
-          releaseLock();
-        }
-        break;
-      } catch (RetriableException e) {
+        return pollInternal(timeoutMs);
+      } catch (Exception e) {
         LOGGER.warn(
             "Retriable exception thrown when attempting to consume records from kafka, attempt {}/{}",
             attemptCount,
@@ -404,7 +381,38 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
       }
     }
 
-    return polledPubSubMessages;
+    return Collections.emptyMap();
+  }
+
+  /**
+   * Internal poll method that handles the actual Kafka consumer operations under lock.
+   * This method is called by the public poll method which handles retry logic and sleep.
+   */
+  private Map<PubSubTopicPartition, List<DefaultPubSubMessage>> pollInternal(long timeoutMs) {
+    acquireLockWithTimeout();
+    try {
+      ConsumerRecords<byte[], byte[]> records = kafkaConsumer.poll(Duration.ofMillis(timeoutMs));
+      Map<PubSubTopicPartition, List<DefaultPubSubMessage>> polledPubSubMessages =
+          new HashMap<>(records.partitions().size());
+
+      for (TopicPartition topicPartition: records.partitions()) {
+        PubSubTopicPartition pubSubTopicPartition = assignments.get(topicPartition);
+        List<ConsumerRecord<byte[], byte[]>> topicPartitionConsumerRecords = records.records(topicPartition);
+        List<DefaultPubSubMessage> topicPartitionPubSubMessages = new ArrayList<>(topicPartitionConsumerRecords.size());
+        for (ConsumerRecord<byte[], byte[]> consumerRecord: topicPartitionConsumerRecords) {
+          topicPartitionPubSubMessages.add(deserialize(consumerRecord, pubSubTopicPartition));
+        }
+        polledPubSubMessages.put(pubSubTopicPartition, topicPartitionPubSubMessages);
+      }
+
+      if (topicPartitionsOffsetsTracker != null) {
+        topicPartitionsOffsetsTracker.updateEndAndCurrentOffsets(records, kafkaConsumer);
+      }
+
+      return polledPubSubMessages;
+    } finally {
+      releaseLock();
+    }
   }
 
   @Override
