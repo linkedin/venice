@@ -2894,7 +2894,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
 
     TopicManager topicManager = topicManagerProvider.apply(pubSubBrokerAddress);
-    PubSubPosition endPosition = topicManager.getLatestPositionCachedNonBlocking(pubSubTopicPartition);
+    PubSubPosition endPosition = topicManager.getLatestPositionCached(pubSubTopicPartition);
     if (PubSubSymbolicPosition.LATEST.equals(endPosition)) {
       // LATEST value means there was a problem in measuring the end position,
       // and therefore we return "infinite lag"

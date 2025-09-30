@@ -1575,7 +1575,7 @@ public abstract class StoreIngestionTaskTest {
     // Keeping this because the original test assumed lag was always 0 (reason unclear).
     // This causes the replica to flip RTS status based only on EOP.
     doReturn(InMemoryPubSubPosition.of(0)).when(mockTopicManager)
-        .getLatestPositionCachedNonBlocking(new PubSubTopicPartitionImpl(pubSubTopic, PARTITION_FOO));
+        .getLatestPositionCached(new PubSubTopicPartitionImpl(pubSubTopic, PARTITION_FOO));
 
     StoreIngestionTaskTestConfig config = new StoreIngestionTaskTestConfig(Utils.setOf(PARTITION_FOO), () -> {
       verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT_MS))
@@ -3581,7 +3581,9 @@ public abstract class StoreIngestionTaskTest {
     doReturn(mockOffsetRecordLagCaughtUp).when(mockPcsBufferReplayStartedLagCaughtUp).getOffsetRecord();
 
     doReturn(p5).when(mockTopicManager).getLatestPositionCachedNonBlocking(any(PubSubTopicPartition.class));
+    doReturn(p5).when(mockTopicManager).getLatestPositionCached(any(PubSubTopicPartition.class));
     doReturn(p5).when(mockTopicManagerRemote).getLatestPositionCachedNonBlocking(any(PubSubTopicPartition.class));
+    doReturn(p5).when(mockTopicManagerRemote).getLatestPositionCached(any(PubSubTopicPartition.class));
 
     doReturn(0).when(mockPcsBufferReplayStartedLagCaughtUp).getPartition();
     doReturn(PubSubSymbolicPosition.EARLIEST).when(mockPcsBufferReplayStartedLagCaughtUp)
@@ -3781,8 +3783,8 @@ public abstract class StoreIngestionTaskTest {
     doReturn(hybridConfig == HYBRID).when(pcs0).isHybrid();
     doReturn(topicSwitchWithMultipleSourceKafkaServersWrapper).when(pcs0).getTopicSwitch();
     doReturn(mockOffsetRecord).when(pcs0).getOffsetRecord();
-    doReturn(p5).when(mockTopicManager).getLatestPositionCachedNonBlocking(any(PubSubTopicPartition.class));
-    doReturn(p150).when(mockTopicManagerRemote).getLatestPositionCachedNonBlocking(any(PubSubTopicPartition.class));
+    doReturn(p5).when(mockTopicManager).getLatestPositionCached(any(PubSubTopicPartition.class));
+    doReturn(p150).when(mockTopicManagerRemote).getLatestPositionCached(any(PubSubTopicPartition.class));
     doReturn(0).when(pcs0).getPartition();
     PubSubTopicPartition vtP0 = new PubSubTopicPartitionImpl(storeIngestionTaskUnderTest.getVersionTopic(), 0);
     doReturn(vtP0).when(pcs0).getReplicaTopicPartition();
@@ -5739,9 +5741,9 @@ public abstract class StoreIngestionTaskTest {
     InMemoryPubSubPosition p0 = InMemoryPubSubPosition.of(0L);
     InMemoryPubSubPosition p10 = InMemoryPubSubPosition.of(MESSAGE_COUNT);
     doReturn(PubSubSymbolicPosition.LATEST).when(mockTopicManager)
-        .getLatestPositionCachedNonBlocking(PARTITION_UNABLE_TO_GET_END_POSITION);
-    doReturn(p0).when(mockTopicManager).getLatestPositionCachedNonBlocking(EMPTY_PARTITION);
-    doReturn(p10).when(mockTopicManager).getLatestPositionCachedNonBlocking(PARTITION_WITH_SOME_MESSAGES_IN_IT);
+        .getLatestPositionCached(PARTITION_UNABLE_TO_GET_END_POSITION);
+    doReturn(p0).when(mockTopicManager).getLatestPositionCached(EMPTY_PARTITION);
+    doReturn(p10).when(mockTopicManager).getLatestPositionCached(PARTITION_WITH_SOME_MESSAGES_IN_IT);
 
     assertEquals(
         StoreIngestionTask.measureLagWithCallToPubSub(

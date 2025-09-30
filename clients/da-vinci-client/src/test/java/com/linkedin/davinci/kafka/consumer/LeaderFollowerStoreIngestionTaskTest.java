@@ -696,7 +696,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
     doReturn(mockTopicManager).when(mockTopicManagerRepository).getLocalTopicManager();
     doReturn(mockTopicManager).when(mockTopicManagerRepository).getTopicManager(anyString());
     ApacheKafkaOffsetPosition p10 = ApacheKafkaOffsetPosition.of(10L);
-    doReturn(p10).when(mockTopicManager).getLatestPositionCachedNonBlocking(any(PubSubTopicPartition.class));
+    doReturn(p10).when(mockTopicManager).getLatestPositionCached(any(PubSubTopicPartition.class));
 
     // Run SIT to process the mock consumer action
     leaderFollowerStoreIngestionTask.processCommonConsumerAction(mockConsumerAction);
