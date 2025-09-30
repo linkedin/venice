@@ -27,6 +27,14 @@ public class StoreNominationFilter implements NominationFilter {
     }
   }
 
+  /**
+   * Defined to implement NominationFilter interface
+   * This function will filter out stores using cluster and store configs
+   *
+   * @param clusterName
+   * @param storeInfo
+   * @return true if store should be nominated
+   * */
   public boolean apply(String clusterName, StoreInfo storeInfo) {
 
     // Cluster level config
@@ -82,7 +90,7 @@ public class StoreNominationFilter implements NominationFilter {
    * - pushed but not yet online
    * - online
    * @param storeInfo
-   * @return
+   * @return largestVersion
    */
   private Version getLargestNonFailedVersion(StoreInfo storeInfo) {
     Version largestVersion = null;
@@ -102,7 +110,8 @@ public class StoreNominationFilter implements NominationFilter {
    * If default `-1`, use cluster config
    *
    * @param storeInfo
-   * @return
+   * @param clusterName
+   * @return compactionThresholdMs
    * */
   private long getVersionStalenessThresholdMs(StoreInfo storeInfo, String clusterName) {
     return storeInfo.getCompactionThreshold() > -1
