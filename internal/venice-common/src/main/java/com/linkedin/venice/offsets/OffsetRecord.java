@@ -524,7 +524,7 @@ public class OffsetRecord {
       final PubSubPosition position = pubSubPositionDeserializer.toPosition(wireFormatBytes);
 
       // Guard against regressions: honor the caller-provided minimum offset.
-      if (position.getNumericOffset() < offset) {
+      if (offset > 0 && position.getNumericOffset() < offset) {
         LOGGER.info(
             "Deserialized position: {} is behind the provided offset: {}. Using offset-based position.",
             position.getNumericOffset(),
