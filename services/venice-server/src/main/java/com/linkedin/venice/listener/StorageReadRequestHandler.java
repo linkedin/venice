@@ -339,7 +339,7 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
           LOGGER.error(
               "Exception thrown for {} request from: {}",
               request.getResourceName(),
-              context.channel().remoteAddress(),
+              context.channel(),
               throwable);
           HttpShortcutResponse shortcutResponse =
               new HttpShortcutResponse(throwable.getMessage(), HttpResponseStatus.INTERNAL_SERVER_ERROR);
