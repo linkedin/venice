@@ -1282,10 +1282,9 @@ public abstract class AbstractPushMonitorTest {
   @org.testng.annotations.DataProvider(name = "sequentialRollForwardTestCases")
   public Object[][] sequentialRollForwardTestCases() {
     return new Object[][] {
-        { "versionSwapNotDeferred", "region1,region2,region3", "region1", false, "region1,region2", true }, 
+        { "versionSwapNotDeferred", "region1,region2,region3", "region1", false, "region1,region2", true },
         { "targetSwapRegionEmpty", "region1,region2,region3", "region1", true, "", false },
-        { "allConditionsTrue", "region1,region2,region3", "region1", true, "region1,region2", true }
-    };
+        { "allConditionsTrue", "region1,region2,region3", "region1", true, "region1,region2", true } };
   }
 
   @Test(dataProvider = "sequentialRollForwardTestCases")
@@ -1346,7 +1345,7 @@ public abstract class AbstractPushMonitorTest {
     // Additional verification: Check that store version status was updated
     verify(mockStore, atLeastOnce()).updateVersionStatus(versionNumber, VersionStatus.ONLINE);
   }
-  
+
   protected AbstractPushMonitor.CurrentVersionChangeNotifier getCurrentVersionChangeNotifier() {
     return currentVersionChangeNotifier;
   }

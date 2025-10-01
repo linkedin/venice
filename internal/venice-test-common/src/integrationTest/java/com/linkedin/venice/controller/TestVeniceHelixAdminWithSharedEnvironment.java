@@ -2281,26 +2281,17 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     Assert.assertTrue(becomeBackupEvent.isSourceCluster);
     resetVersionLifecycleEvents();
     veniceAdmin.rollForwardToFutureVersion(clusterName, storeName, "");
-    // Expecting 2 events: 1 for version becoming current from future, 1 for current becoming backup
-    Assert.assertEquals(versionLifecycleEvents.size(), 2);
-    becomeCurrentFromFutureEvent = versionLifecycleEvents.get(0);
-    Assert.assertEquals(becomeCurrentFromFutureEvent.version.kafkaTopicName(), v2TopicName);
-    Assert.assertEquals(becomeCurrentFromFutureEvent.type, VersionLifecycleEventType.BECOMING_CURRENT_FROM_FUTURE);
-    Assert.assertTrue(becomeCurrentFromFutureEvent.isSourceCluster);
-    becomeBackupEvent = versionLifecycleEvents.get(1);
-    Assert.assertEquals(becomeBackupEvent.version.kafkaTopicName(), v1TopicName);
-    Assert.assertEquals(becomeBackupEvent.type, VersionLifecycleEventType.BECOMING_BACKUP);
-    Assert.assertTrue(becomeBackupEvent.isSourceCluster);
-    resetVersionLifecycleEvents();
-    veniceAdmin.setStoreCurrentVersion(clusterName, storeName, 1);
+    // Expecting 0 events: previously rolled back version cannot be rolled forward to anymore
+    Assert.assertEquals(versionLifecycleEvents.size(), 0);
+    veniceAdmin.setStoreCurrentVersion(clusterName, storeName, 2);
     // Expecting 2 events: 1 for version becoming current from backup, 1 for current becoming backup
     Assert.assertEquals(versionLifecycleEvents.size(), 2);
     becomeCurrentFromBackupEvent = versionLifecycleEvents.get(0);
-    Assert.assertEquals(becomeCurrentFromBackupEvent.version.kafkaTopicName(), v1TopicName);
+    Assert.assertEquals(becomeCurrentFromBackupEvent.version.kafkaTopicName(), v2TopicName);
     Assert.assertEquals(becomeCurrentFromBackupEvent.type, VersionLifecycleEventType.BECOMING_CURRENT_FROM_BACKUP);
     Assert.assertTrue(becomeCurrentFromBackupEvent.isSourceCluster);
     becomeBackupEvent = versionLifecycleEvents.get(1);
-    Assert.assertEquals(becomeBackupEvent.version.kafkaTopicName(), v2TopicName);
+    Assert.assertEquals(becomeBackupEvent.version.kafkaTopicName(), v1TopicName);
     Assert.assertEquals(becomeBackupEvent.type, VersionLifecycleEventType.BECOMING_BACKUP);
     Assert.assertTrue(becomeBackupEvent.isSourceCluster);
   }
