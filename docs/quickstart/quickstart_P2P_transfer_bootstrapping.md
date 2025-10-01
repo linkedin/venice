@@ -1,4 +1,12 @@
-# Venice Blob Transfer Architecture
+---
+layout: default
+title: Venice P2P Transfer Bootstrapping Quickstart
+parent: Quickstart
+permalink: /docs/quickstart/quickstart_P2P_transfer_bootstrapping
+---
+
+
+# Venice P2P Transfer Bootstrapping Architecture
 
 **High-Performance Peer-to-Peer Data Bootstrap**
 
@@ -12,7 +20,7 @@
 
 **Bootstrap Bottlenecks**
 - **Kafka-Only Recovery:** All nodes bootstrap exclusively from Kafka brokers
-- **Resource Intensive:** Time-consuming process during cluster recovery
+- **Resource Intensive:** Time-consuming process during cluster recovery, inefficient for consuming messages from the PubSub system under high-update workloads
 - **Scalability Limits:** Broker capacity becomes recovery bottleneck
 
 **Real-World Impact**
@@ -403,43 +411,6 @@ Global Control Architecture:
 - Idle threshold handling
 
 ---
-
-<!-- ## 💾 RocksDB Snapshot Magic
-
-### What is a RocksDB Snapshot?
-
-**Snapshot Characteristics:**
-- **Point-in-time view** of database state
-- **Immutable reference** to data at snapshot creation
-- **Consistent read** across all keys at snapshot time
-- **Non-blocking** - doesn't stop writes
-
-### Snapshot Creation Theory
-
-**How RocksDB Snapshots Work:**
-```
-┌─────────────┐   ┌─────────────┐   ┌─────────────┐   ┌─────────────┐   ┌─────────────┐
-│ Get Sequence│   │   Create    │   │  Maintain   │   │ New Writes  │   │  Snapshot   │
-│ Number from │ → │ Hard Links  │ → │ Consistent  │ → │ Get Higher  │ → │ Sees Data   │
-│   RocksDB   │   │ to SST Files│   │    View     │   │ Seq Numbers │   │  ≤ Seq #    │
-└─────────────┘   └─────────────┘   └─────────────┘   └─────────────┘   └─────────────┘
-```
-
-### Snapshot Lifecycle Management
-
-**Active Tracking**
-- **Concurrent Users:** Track active transfer count
-- **Timestamps:** Monitor snapshot freshness (30min TTL)
-- **Metadata Records:** Store offsetRecord and storeVersionState
-- **Thread Safety:** Atomic operations for all counters
-
-**Automated Cleanup**
-- **Scheduled Task:** 120-minute configurable cleanup intervals
-- **Staleness Check:** Remove outdated snapshots
-- **Active User Guard:** Block cleanup if transfers in progress
-- **Resource Recovery:** Automatic snapshot file removal
-
---- -->
 
 ## 🎛️ Configuration & Operations
 
