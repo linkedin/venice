@@ -14,6 +14,9 @@ import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.davinci.client.DaVinciConfig;
 import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
 import com.linkedin.venice.D2.D2ClientUtils;
+import com.linkedin.venice.client.store.AvroGenericStoreClient;
+import com.linkedin.venice.client.store.ClientConfig;
+import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -171,6 +174,18 @@ public class DaVinciLiveUpdateSuppressionTest {
       }
       for (int i = 0; i < KEY_COUNT; i++) {
         writerFutures[i].get();
+      }
+
+      // Wait until the RT data is in the VT
+      try (AvroGenericStoreClient thinClient = ClientFactory.getAndStartGenericAvroClient(
+          ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(cluster.getRandomRouterURL()))) {
+        for (int i = 0; i < KEY_COUNT; i++) {
+          int finalI = i;
+          TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+            int result = (int) thinClient.get(finalI).get();
+            assertEquals(result, finalI * 1000);
+          });
+        }
       }
 
       /**
