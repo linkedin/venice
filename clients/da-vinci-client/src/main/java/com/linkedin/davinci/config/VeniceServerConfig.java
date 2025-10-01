@@ -1121,8 +1121,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     this.keyUrnCompressionEnabled = serverProperties.getBoolean(KEY_URN_COMPRESSION_ENABLED, false);
     this.inactiveTopicPartitionCheckerEnabled =
         serverProperties.getBoolean(SERVER_INACTIVE_TOPIC_PARTITION_CHECKER_ENABLED, false);
+    // Default value is 100 seconds to make sure it has different frequency as the heartbeat message frequency.
     this.inactiveTopicPartitionCheckerInternalInSeconds =
-        serverProperties.getInt(SERVER_INACTIVE_TOPIC_PARTITION_CHECKER_INTERNAL_IN_SECONDS, 60);
+        serverProperties.getInt(SERVER_INACTIVE_TOPIC_PARTITION_CHECKER_INTERNAL_IN_SECONDS, 100);
     this.inactiveTopicPartitionCheckerThresholdInSeconds =
         serverProperties.getInt(SERVER_INACTIVE_TOPIC_PARTITION_CHECKER_THRESHOLD_IN_SECONDS, 5);
   }

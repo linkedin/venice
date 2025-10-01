@@ -3,6 +3,7 @@ package com.linkedin.davinci.kafka.consumer;
 import com.linkedin.davinci.utils.IndexedMap;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.service.AbstractVeniceService;
+import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -69,7 +70,8 @@ public class InactiveTopicPartitionChecker extends AbstractVeniceService {
     this.inactiveTopicPartitionCheckIntervalInMs =
         TimeUnit.SECONDS.toMillis(inactiveTopicPartitionCheckIntervalInSeconds);
     this.inactiveTopicPartitionThresholdInMs = TimeUnit.SECONDS.toMillis(inactiveTopicPartitionThresholdInSeconds);
-    this.executorService = Executors.newSingleThreadScheduledExecutor();
+    this.executorService =
+        Executors.newSingleThreadScheduledExecutor(new DaemonThreadFactory("InactiveTopicPartitionChecker"));
   }
 
   /**
@@ -146,7 +148,7 @@ public class InactiveTopicPartitionChecker extends AbstractVeniceService {
   void checkInactiveTopicPartition() {
     try {
       long currentTime = System.currentTimeMillis();
-
+      LOGGER.info("Start checking inactive topic partitions.");
       // Process each consumer: check for inactive topic-partitions, then pause/resume as needed
       for (Map.Entry<SharedKafkaConsumer, ConsumptionTask> entry: getConsumerToConsumptionTask().entrySet()) {
         SharedKafkaConsumer consumer = entry.getKey();
@@ -155,11 +157,6 @@ public class InactiveTopicPartitionChecker extends AbstractVeniceService {
             getConsumerToPausedTopicPartitionsMap().computeIfAbsent(consumer, x -> new HashSet<>());
         Set<PubSubTopicPartition> assignedTopicPartitions = consumer.getAssignment();
         Set<PubSubTopicPartition> currentlyInactiveTopicPartitions = new HashSet<>();
-
-        LOGGER.info(
-            "Checking inactive topic partition for consumer task: {} with current assignments: {}",
-            task.getTaskIdStr(),
-            assignedTopicPartitions);
         // Step 1: Check all assigned topic-partitions for inactivity and collect currently inactive ones
         for (PubSubTopicPartition topicPartition: assignedTopicPartitions) {
           if (previouslyPausedTopicPartitions.contains(topicPartition)) {
@@ -179,11 +176,13 @@ public class InactiveTopicPartitionChecker extends AbstractVeniceService {
         }
 
         // Step 2: Resume topic-partitions that are no longer inactive
+        if (!previouslyPausedTopicPartitions.isEmpty()) {
+          LOGGER.info("Resumed previously paused topic partitions: {} for consumer", previouslyPausedTopicPartitions);
+        }
         for (PubSubTopicPartition topicPartition: previouslyPausedTopicPartitions) {
           if (!currentlyInactiveTopicPartitions.contains(topicPartition)) {
             consumer.resume(topicPartition);
             previouslyPausedTopicPartitions.remove(topicPartition);
-            LOGGER.info("Resumed previously paused topic partition {} for consumer", topicPartition);
           }
         }
 
@@ -191,12 +190,14 @@ public class InactiveTopicPartitionChecker extends AbstractVeniceService {
         for (PubSubTopicPartition topicPartition: currentlyInactiveTopicPartitions) {
           if (!previouslyPausedTopicPartitions.contains(topicPartition)) {
             consumer.pause(topicPartition);
-            LOGGER.warn("Paused inactive topic partition {} for consumer", topicPartition);
           }
           previouslyPausedTopicPartitions.add(topicPartition);
         }
+        if (!previouslyPausedTopicPartitions.isEmpty()) {
+          LOGGER.warn("Paused inactive topic partitions: {} for consumer", previouslyPausedTopicPartitions);
+        }
       }
-
+      LOGGER.info("Completed checking inactive topic partitions.");
     } catch (Exception e) {
       // Log the exception to avoid breaking the scheduled execution
       LOGGER.warn("Error during inactive topic partition check: {}", e.getMessage(), e);
