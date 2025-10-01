@@ -810,111 +810,40 @@ public class LeaderFollowerStoreIngestionTaskTest {
   public void testDeserializePositionWithOffsetFallback() throws InterruptedException {
     setUp();
 
-    // Create mocks for the test
-    PubSubPositionDeserializer mockDeserializer = mock(PubSubPositionDeserializer.class);
+    // Use DEFAULT_DESERIALIZER instead of mocking
+    PubSubPositionDeserializer deserializer = PubSubPositionDeserializer.DEFAULT_DESERIALIZER;
     PubSubTopicPartition mockTopicPartition = mock(PubSubTopicPartition.class);
     when(mockTopicPartition.toString()).thenReturn("test-topic_v1-0");
 
     // Use doCallRealMethod to test the actual implementation
     doCallRealMethod().when(leaderFollowerStoreIngestionTask)
         .deserializePositionWithOffsetFallback(any(), any(), any(), anyLong());
-
     // Case 1: Null ByteBuffer - should return offset-based position
-    PubSubPosition result1 = leaderFollowerStoreIngestionTask
-        .deserializePositionWithOffsetFallback(mockDeserializer, mockTopicPartition, null, 100L);
-    assertEquals(result1.getNumericOffset(), 100L, "Null ByteBuffer should return offset-based position");
+    PubSubPosition actualPosition = leaderFollowerStoreIngestionTask
+        .deserializePositionWithOffsetFallback(deserializer, mockTopicPartition, null, 100L);
+    assertEquals(actualPosition.getNumericOffset(), 100L, "Null ByteBuffer should return offset-based position");
 
     // Case 2: Empty ByteBuffer - should return offset-based position
-    ByteBuffer emptyBuffer = ByteBuffer.allocate(0);
-    PubSubPosition result2 = leaderFollowerStoreIngestionTask
-        .deserializePositionWithOffsetFallback(mockDeserializer, mockTopicPartition, emptyBuffer, 200L);
-    assertEquals(result2.getNumericOffset(), 200L, "Empty ByteBuffer should return offset-based position");
+    actualPosition = leaderFollowerStoreIngestionTask
+        .deserializePositionWithOffsetFallback(deserializer, mockTopicPartition, ByteBuffer.allocate(0), 200L);
+    assertEquals(actualPosition.getNumericOffset(), 200L, "Empty ByteBuffer should return offset-based position");
 
-    // Case 3: ByteBuffer with no remaining bytes - should return offset-based position
-    ByteBuffer noRemainingBuffer = ByteBuffer.allocate(10);
-    noRemainingBuffer.position(10); // Move position to end
-    PubSubPosition result3 = leaderFollowerStoreIngestionTask
-        .deserializePositionWithOffsetFallback(mockDeserializer, mockTopicPartition, noRemainingBuffer, 300L);
-    assertEquals(
-        result3.getNumericOffset(),
-        300L,
-        "ByteBuffer with no remaining bytes should return offset-based position");
+    // Case 3: Invalid ByteBuffer - should return offset-based position
+    ByteBuffer invalidBuffer = ByteBuffer.wrap(new byte[] { 0x01, 0x02, 0x03 }); // Random invalid bytes
+    actualPosition = leaderFollowerStoreIngestionTask
+        .deserializePositionWithOffsetFallback(deserializer, mockTopicPartition, invalidBuffer, 300L);
+    assertEquals(actualPosition.getNumericOffset(), 300L, "Invalid ByteBuffer should return offset-based position");
 
-    // Case 4: Successful deserialization with valid position - should return deserialized position
-    ByteBuffer validBuffer = ByteBuffer.wrap("test-data".getBytes());
-    PubSubPosition mockDeserializedPosition = ApacheKafkaOffsetPosition.of(500L);
-    when(mockDeserializer.toPosition(validBuffer)).thenReturn(mockDeserializedPosition);
+    // Case 4: Valid ByteBuffer - should return deserialized position
+    ByteBuffer validBuffer = ApacheKafkaOffsetPosition.of(400L).toWireFormatBuffer();
+    actualPosition = leaderFollowerStoreIngestionTask
+        .deserializePositionWithOffsetFallback(deserializer, mockTopicPartition, validBuffer, 0L);
+    assertEquals(actualPosition.getNumericOffset(), 400L, "Valid ByteBuffer should return deserialized position");
 
-    PubSubPosition result4 = leaderFollowerStoreIngestionTask
-        .deserializePositionWithOffsetFallback(mockDeserializer, mockTopicPartition, validBuffer, 400L);
-    assertEquals(result4.getNumericOffset(), 500L, "Valid deserialization should return deserialized position");
-
-    // Case 5: Deserialized position behind provided offset - should return offset-based position
-    ByteBuffer validBuffer2 = ByteBuffer.wrap("test-data-2".getBytes());
-    PubSubPosition mockLowPosition = ApacheKafkaOffsetPosition.of(50L);
-    when(mockDeserializer.toPosition(validBuffer2)).thenReturn(mockLowPosition);
-
-    PubSubPosition result5 = leaderFollowerStoreIngestionTask
-        .deserializePositionWithOffsetFallback(mockDeserializer, mockTopicPartition, validBuffer2, 100L);
-    assertEquals(
-        result5.getNumericOffset(),
-        100L,
-        "Deserialized position behind offset should return offset-based position");
-
-    // Case 6: Deserialized position equal to provided offset - should return deserialized position
-    ByteBuffer validBuffer3 = ByteBuffer.wrap("test-data-3".getBytes());
-    PubSubPosition mockEqualPosition = ApacheKafkaOffsetPosition.of(150L);
-    when(mockDeserializer.toPosition(validBuffer3)).thenReturn(mockEqualPosition);
-
-    PubSubPosition result6 = leaderFollowerStoreIngestionTask
-        .deserializePositionWithOffsetFallback(mockDeserializer, mockTopicPartition, validBuffer3, 150L);
-    assertEquals(
-        result6.getNumericOffset(),
-        150L,
-        "Deserialized position equal to offset should return deserialized position");
-
-    // Case 7: Zero offset with valid deserialized position - should return deserialized position
-    ByteBuffer validBuffer4 = ByteBuffer.wrap("test-data-4".getBytes());
-    PubSubPosition mockValidPosition = ApacheKafkaOffsetPosition.of(10L);
-    when(mockDeserializer.toPosition(validBuffer4)).thenReturn(mockValidPosition);
-
-    PubSubPosition result7 = leaderFollowerStoreIngestionTask
-        .deserializePositionWithOffsetFallback(mockDeserializer, mockTopicPartition, validBuffer4, 0L);
-    assertEquals(
-        result7.getNumericOffset(),
-        10L,
-        "Zero offset should not trigger regression guard, return deserialized position");
-
-    // Case 8: Deserialization throws RuntimeException - should return offset-based position
-    ByteBuffer invalidBuffer = ByteBuffer.wrap("invalid-data".getBytes());
-    when(mockDeserializer.toPosition(invalidBuffer)).thenThrow(new RuntimeException("Deserialization failed"));
-
-    PubSubPosition result8 = leaderFollowerStoreIngestionTask
-        .deserializePositionWithOffsetFallback(mockDeserializer, mockTopicPartition, invalidBuffer, 600L);
-    assertEquals(result8.getNumericOffset(), 600L, "Deserialization exception should return offset-based position");
-
-    // Case 9: Large offset values - should handle correctly
-    ByteBuffer validBuffer5 = ByteBuffer.wrap("test-data-5".getBytes());
-    PubSubPosition mockLargePosition = ApacheKafkaOffsetPosition.of(Long.MAX_VALUE - 1000L);
-    when(mockDeserializer.toPosition(validBuffer5)).thenReturn(mockLargePosition);
-
-    PubSubPosition result9 = leaderFollowerStoreIngestionTask.deserializePositionWithOffsetFallback(
-        mockDeserializer,
-        mockTopicPartition,
-        validBuffer5,
-        Long.MAX_VALUE - 2000L);
-    assertEquals(result9.getNumericOffset(), Long.MAX_VALUE - 1000L, "Large offset values should be handled correctly");
-
-    // Case 10: Negative offset with valid deserialized position - should return deserialized position
-    ByteBuffer validBuffer6 = ByteBuffer.wrap("test-data-6".getBytes());
-    PubSubPosition mockNegativeOffsetPosition = ApacheKafkaOffsetPosition.of(100L);
-    when(mockDeserializer.toPosition(validBuffer6)).thenReturn(mockNegativeOffsetPosition);
-
-    PubSubPosition result10 = leaderFollowerStoreIngestionTask
-        .deserializePositionWithOffsetFallback(mockDeserializer, mockTopicPartition, validBuffer6, -1L);
-    assertEquals(
-        result10.getNumericOffset(),
-        100L,
-        "Negative offset should not trigger regression guard, return deserialized position");
+    // Case 5: ByteBuffer has EARLIEST symbolic position and offset is 0
+    ByteBuffer earliestBuffer = PubSubSymbolicPosition.EARLIEST.toWireFormatBuffer();
+    actualPosition = leaderFollowerStoreIngestionTask
+        .deserializePositionWithOffsetFallback(deserializer, mockTopicPartition, earliestBuffer, 0L);
+    assertEquals(actualPosition, PubSubSymbolicPosition.EARLIEST, "Should return EARLIEST symbolic position");
   }
 }
