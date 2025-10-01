@@ -222,11 +222,12 @@ public class DaVinciRecordTransformerUtility<K, O> {
           recordTransformer.processPut(lazyKey, lazyValue, partitionId, recordTransformerRecordMetadata);
         }
       } catch (VeniceSerializationException exception) {
-        LOGGER.info(
+        LOGGER.error(
             "VeniceSerializationException encountered when DaVinciRecordTransformer was scanning disk for"
                 + " records. This occurs when the wrong schema is used to deserialize records. If you are not transforming"
-                + " your records, make sure to set recordTransformationEnabled to false in "
-                + " DaVinciRecordTransformerConfig.");
+                + " your records, make sure to set recordTransformationEnabled to false in"
+                + " DaVinciRecordTransformerConfig.",
+            exception);
         throw exception;
       } finally {
         // Re-open partition with defaults
