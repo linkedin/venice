@@ -290,6 +290,7 @@
       <Class name="com.linkedin.venice.utils.TestMockTime"/>
       <Class name="com.linkedin.davinci.ingestion.IsolatedIngestionBackend"/>
       <Class name="com.linkedin.venice.endToEnd.TestChangelogValue"/>
+      <Class name="com.linkedin.venice.endToEnd.TestChangelogValueV2"/>
       <Class name="com.linkedin.venice.endToEnd.TestChangelogKey"/>
       <Class name="com.linkedin.davinci.transformer.TestSpecificValue"/>
       <Class name="com.linkedin.davinci.transformer.TestSpecificKey"/>
