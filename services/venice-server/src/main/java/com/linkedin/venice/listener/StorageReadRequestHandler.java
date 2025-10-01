@@ -336,7 +336,11 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
           }
           context.writeAndFlush(new HttpShortcutResponse(e.getMessage(), HttpResponseStatus.METHOD_NOT_ALLOWED));
         } else {
-          LOGGER.error("Exception thrown for {}", request.getResourceName(), throwable);
+          LOGGER.error(
+              "Exception thrown for {} request from: {}",
+              request.getResourceName(),
+              context.channel().remoteAddress(),
+              throwable);
           HttpShortcutResponse shortcutResponse =
               new HttpShortcutResponse(throwable.getMessage(), HttpResponseStatus.INTERNAL_SERVER_ERROR);
           shortcutResponse.setMisroutedStoreVersion(checkMisroutedStoreVersionRequest(request));
