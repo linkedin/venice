@@ -221,5 +221,10 @@ public class VersionBackendTest {
     verify(mockIngestionBackend).startConsumption(any(), eq(3));
     verify(mockIngestionBackend).startConsumption(any(), eq(4));
     verify(internalRecordTransformerConfig, never()).setStartConsumptionLatchCount(anyInt());
+
+    // Test empty subscription
+    versionBackend.subscribe(ComplementSet.emptySet());
+    verify(mockIngestionBackend, never()).startConsumption(any(), eq(0));
+    verify(internalRecordTransformerConfig, never()).setStartConsumptionLatchCount(anyInt());
   }
 }
