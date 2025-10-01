@@ -102,6 +102,8 @@ public abstract class AbstractPushMonitorTest {
 
   protected VeniceWriter mockVeniceWriter;
 
+  protected AbstractPushMonitor.CurrentVersionChangeNotifier currentVersionChangeNotifier;
+
   private final static String clusterName = Utils.getUniqueString("test_cluster");
   private final static String aggregateRealTimeSourceKafkaUrl = "aggregate-real-time-source-kafka-url";
   private String storeName;
@@ -109,6 +111,7 @@ public abstract class AbstractPushMonitorTest {
 
   private final static int numberOfPartition = 1;
   private final static int replicationFactor = 3;
+  protected final static String TARGET_REGION_NAME = "targetRegion";
 
   protected AbstractPushMonitor getPushMonitor() {
     return getPushMonitor(mock(RealTimeTopicSwitcher.class));
@@ -139,7 +142,9 @@ public abstract class AbstractPushMonitorTest {
     when(mockControllerConfig.getDaVinciPushStatusScanIntervalInSeconds()).thenReturn(5);
     when(mockControllerConfig.getOffLineJobWaitTimeInMilliseconds()).thenReturn(120000L);
     when(mockControllerConfig.getDaVinciPushStatusScanThreadNumber()).thenReturn(4);
+    when(mockControllerConfig.getRegionName()).thenReturn(TARGET_REGION_NAME);
     when(mockVeniceWriterFactory.createVeniceWriter(any())).thenReturn(mockVeniceWriter);
+    currentVersionChangeNotifier = mock(AbstractPushMonitor.CurrentVersionChangeNotifier.class);
     monitor = getPushMonitor();
   }
 
@@ -1161,6 +1166,22 @@ public abstract class AbstractPushMonitorTest {
     verify(mockVeniceWriter, times(1)).broadcastEndOfPush(any());
   }
 
+  @Test
+  public void testCurrentVersionChangeNotifier() {
+    String topic = getTopic();
+    Store store = prepareMockStore(topic, VersionStatus.STARTED);
+    int newCurrentVersion = Version.parseVersionFromKafkaTopicName(topic);
+    int previousVersion = store.getCurrentVersion();
+    monitor.startMonitorOfflinePush(
+        topic,
+        numberOfPartition,
+        replicationFactor,
+        OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
+    monitor.handleCompletedPush(topic);
+    verify(currentVersionChangeNotifier, times(1))
+        .onCurrentVersionChange(store, clusterName, newCurrentVersion, previousVersion);
+  }
+
   protected Store prepareMockStore(
       String topic,
       VersionStatus status,
@@ -1261,13 +1282,9 @@ public abstract class AbstractPushMonitorTest {
   @org.testng.annotations.DataProvider(name = "sequentialRollForwardTestCases")
   public Object[][] sequentialRollForwardTestCases() {
     return new Object[][] {
-        { "versionSwapNotDeferred", "region1,region2,region3", "region1", false, "region1,region2", true }, // condition
-                                                                                                            // 3 = false
-                                                                                                            // (normal
-                                                                                                            // push)
-        { "targetSwapRegionEmpty", "region1,region2,region3", "region1", true, "", false }, // condition 4 = false
-        { "allConditionsTrue", "region1,region2,region3", "region1", true, "region1,region2", true } // all conditions =
-                                                                                                     // true
+        { "versionSwapNotDeferred", "region1,region2,region3", "region1", false, "region1,region2", true }, 
+        { "targetSwapRegionEmpty", "region1,region2,region3", "region1", true, "", false },
+        { "allConditionsTrue", "region1,region2,region3", "region1", true, "region1,region2", true }
     };
   }
 
@@ -1328,5 +1345,9 @@ public abstract class AbstractPushMonitorTest {
 
     // Additional verification: Check that store version status was updated
     verify(mockStore, atLeastOnce()).updateVersionStatus(versionNumber, VersionStatus.ONLINE);
+  }
+  
+  protected AbstractPushMonitor.CurrentVersionChangeNotifier getCurrentVersionChangeNotifier() {
+    return currentVersionChangeNotifier;
   }
 }

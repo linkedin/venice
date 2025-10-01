@@ -17,6 +17,7 @@ import static com.linkedin.venice.ConfigKeys.TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEE
 import static com.linkedin.venice.ConfigKeys.UNREGISTER_METRIC_FOR_DELETED_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 
+import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controller.kafka.TopicCleanupService;
 import com.linkedin.venice.controller.stats.TopicCleanupServiceStats;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -28,6 +29,7 @@ import com.linkedin.venice.integration.utils.IntegrationTestUtils;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.stats.HelixMessageChannelStats;
 import com.linkedin.venice.utils.LogContext;
@@ -38,9 +40,11 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
@@ -85,6 +89,72 @@ class AbstractTestVeniceHelixAdmin {
   TopicCleanupService topicCleanupService;
 
   final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+  List<VersionLifecycleEvent> versionLifecycleEvents = new ArrayList<>();
+
+  enum VersionLifecycleEventType {
+    CREATED, DELETED, BECOMING_CURRENT_FROM_FUTURE, BECOMING_CURRENT_FROM_BACKUP, BECOMING_BACKUP
+  }
+
+  class VersionLifecycleEvent {
+    VersionLifecycleEventType type;
+    Version version;
+    boolean isSourceCluster;
+
+    public VersionLifecycleEvent(VersionLifecycleEventType type, Version version, boolean isSourceCluster) {
+      this.type = type;
+      this.version = version;
+      this.isSourceCluster = isSourceCluster;
+    }
+  }
+
+  // Mock version lifecycle event listener ignores all system store version events for simplifying assertions
+  VeniceVersionLifecycleEventListener mockVersionLifecycleEventListener = new VeniceVersionLifecycleEventListener() {
+    @Override
+    public void onVersionCreated(Version version, boolean isSourceCluster) {
+      if (!VeniceSystemStoreUtils.isSystemStore(version.getStoreName())) {
+        versionLifecycleEvents
+            .add(new VersionLifecycleEvent(VersionLifecycleEventType.CREATED, version, isSourceCluster));
+      }
+    }
+
+    @Override
+    public void onVersionDeleted(Version version, boolean isSourceCluster) {
+      if (!VeniceSystemStoreUtils.isSystemStore(version.getStoreName())) {
+        versionLifecycleEvents
+            .add(new VersionLifecycleEvent(VersionLifecycleEventType.DELETED, version, isSourceCluster));
+      }
+    }
+
+    @Override
+    public void onVersionBecomingCurrentFromFuture(Version version, boolean isSourceCluster) {
+      if (!VeniceSystemStoreUtils.isSystemStore(version.getStoreName())) {
+        versionLifecycleEvents.add(
+            new VersionLifecycleEvent(
+                VersionLifecycleEventType.BECOMING_CURRENT_FROM_FUTURE,
+                version,
+                isSourceCluster));
+      }
+    }
+
+    @Override
+    public void onVersionBecomingCurrentFromBackup(Version version, boolean isSourceCluster) {
+      if (!VeniceSystemStoreUtils.isSystemStore(version.getStoreName())) {
+        versionLifecycleEvents.add(
+            new VersionLifecycleEvent(
+                VersionLifecycleEventType.BECOMING_CURRENT_FROM_BACKUP,
+                version,
+                isSourceCluster));
+      }
+    }
+
+    @Override
+    public void onVersionBecomingBackup(Version version, boolean isSourceCluster) {
+      if (!VeniceSystemStoreUtils.isSystemStore(version.getStoreName())) {
+        versionLifecycleEvents
+            .add(new VersionLifecycleEvent(VersionLifecycleEventType.BECOMING_BACKUP, version, isSourceCluster));
+      }
+    }
+  };
 
   public void setupCluster(MetricsRepository metricsRepository) throws Exception {
     Utils.thisIsLocalhost();
@@ -106,7 +176,8 @@ class AbstractTestVeniceHelixAdmin {
         D2TestUtils.getAndStartD2Client(zkAddress),
         pubSubTopicRepository,
         pubSubBrokerWrapper.getPubSubClientsFactory(),
-        pubSubBrokerWrapper.getPubSubPositionTypeRegistry());
+        pubSubBrokerWrapper.getPubSubPositionTypeRegistry(),
+        Optional.of(mockVersionLifecycleEventListener));
     veniceAdmin.initStorageCluster(clusterName);
     this.topicCleanupService = new TopicCleanupService(
         veniceAdmin,
@@ -262,5 +333,9 @@ class AbstractTestVeniceHelixAdmin {
       }
     }
     throw new VeniceException("no follower found for cluster: " + cluster);
+  }
+
+  void resetVersionLifecycleEvents() {
+    versionLifecycleEvents.clear();
   }
 }

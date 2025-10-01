@@ -115,6 +115,9 @@ import static com.linkedin.venice.ConfigKeys.SERVER_HTTP2_MAX_CONCURRENT_STREAMS
 import static com.linkedin.venice.ConfigKeys.SERVER_HTTP2_MAX_FRAME_SIZE;
 import static com.linkedin.venice.ConfigKeys.SERVER_HTTP2_MAX_HEADER_LIST_SIZE;
 import static com.linkedin.venice.ConfigKeys.SERVER_IDLE_INGESTION_TASK_CLEANUP_INTERVAL_IN_SECONDS;
+import static com.linkedin.venice.ConfigKeys.SERVER_INACTIVE_TOPIC_PARTITION_CHECKER_ENABLED;
+import static com.linkedin.venice.ConfigKeys.SERVER_INACTIVE_TOPIC_PARTITION_CHECKER_INTERNAL_IN_SECONDS;
+import static com.linkedin.venice.ConfigKeys.SERVER_INACTIVE_TOPIC_PARTITION_CHECKER_THRESHOLD_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_INCREMENTAL_PUSH_STATUS_WRITE_MODE;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_CHECKPOINT_DURING_GRACEFUL_SHUTDOWN_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_HEARTBEAT_INTERVAL_MS;
@@ -656,6 +659,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final IngestionTaskReusableObjects.Strategy ingestionTaskReusableObjectsStrategy;
   private final boolean keyUrnCompressionEnabled;
 
+  private final boolean inactiveTopicPartitionCheckerEnabled;
+  private final int inactiveTopicPartitionCheckerInternalInSeconds;
+  private final int inactiveTopicPartitionCheckerThresholdInSeconds;
+
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     this(serverProperties, Collections.emptyMap());
   }
@@ -1112,6 +1119,13 @@ public class VeniceServerConfig extends VeniceClusterConfig {
             IngestionTaskReusableObjects.Strategy.THREAD_LOCAL_PER_INGESTION_TASK.name()));
     this.validateSpecificSchemaEnabled = serverProperties.getBoolean(DAVINCI_VALIDATE_SPECIFIC_SCHEMA_ENABLED, true);
     this.keyUrnCompressionEnabled = serverProperties.getBoolean(KEY_URN_COMPRESSION_ENABLED, false);
+    this.inactiveTopicPartitionCheckerEnabled =
+        serverProperties.getBoolean(SERVER_INACTIVE_TOPIC_PARTITION_CHECKER_ENABLED, false);
+    // Default value is 100 seconds to make sure it has different frequency as the heartbeat message frequency.
+    this.inactiveTopicPartitionCheckerInternalInSeconds =
+        serverProperties.getInt(SERVER_INACTIVE_TOPIC_PARTITION_CHECKER_INTERNAL_IN_SECONDS, 100);
+    this.inactiveTopicPartitionCheckerThresholdInSeconds =
+        serverProperties.getInt(SERVER_INACTIVE_TOPIC_PARTITION_CHECKER_THRESHOLD_IN_SECONDS, 5);
   }
 
   List<Double> extractThrottleLimitFactorsFor(VeniceProperties serverProperties, String configKey) {
@@ -2005,5 +2019,17 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public boolean isKeyUrnCompressionEnabled() {
     return keyUrnCompressionEnabled;
+  }
+
+  public int getInactiveTopicPartitionCheckerInternalInSeconds() {
+    return inactiveTopicPartitionCheckerInternalInSeconds;
+  }
+
+  public int getInactiveTopicPartitionCheckerThresholdInSeconds() {
+    return inactiveTopicPartitionCheckerThresholdInSeconds;
+  }
+
+  public boolean isInactiveTopicPartitionCheckerEnabled() {
+    return inactiveTopicPartitionCheckerEnabled;
   }
 }

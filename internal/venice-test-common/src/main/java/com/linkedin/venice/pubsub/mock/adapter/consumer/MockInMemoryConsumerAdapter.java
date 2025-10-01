@@ -229,7 +229,7 @@ public class MockInMemoryConsumerAdapter implements PubSubConsumerAdapter {
   }
 
   @Override
-  public Map<PubSubTopicPartition, PubSubPosition> beginningPositions(
+  public synchronized Map<PubSubTopicPartition, PubSubPosition> beginningPositions(
       Collection<PubSubTopicPartition> partitions,
       Duration timeout) {
     Map<PubSubTopicPartition, PubSubPosition> retPositions = new HashMap<>(partitions.size());
@@ -266,17 +266,26 @@ public class MockInMemoryConsumerAdapter implements PubSubConsumerAdapter {
   }
 
   @Override
-  public long comparePositions(PubSubTopicPartition partition, PubSubPosition position1, PubSubPosition position2) {
+  public synchronized long comparePositions(
+      PubSubTopicPartition partition,
+      PubSubPosition position1,
+      PubSubPosition position2) {
     return positionDifference(partition, position1, position2);
   }
 
   @Override
-  public long positionDifference(PubSubTopicPartition partition, PubSubPosition position1, PubSubPosition position2) {
+  public synchronized long positionDifference(
+      PubSubTopicPartition partition,
+      PubSubPosition position1,
+      PubSubPosition position2) {
     return PubSubUtil.computeOffsetDelta(partition, position1, position2, this);
   }
 
   @Override
-  public PubSubPosition decodePosition(PubSubTopicPartition partition, int positionTypeId, ByteBuffer buffer) {
+  public synchronized PubSubPosition decodePosition(
+      PubSubTopicPartition partition,
+      int positionTypeId,
+      ByteBuffer buffer) {
     try {
       if (buffer.remaining() < Long.BYTES) {
         throw new VeniceException("Buffer too short to decode InMemoryPubSubPosition: " + buffer);

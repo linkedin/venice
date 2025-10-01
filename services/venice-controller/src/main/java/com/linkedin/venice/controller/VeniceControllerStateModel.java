@@ -61,6 +61,7 @@ public class VeniceControllerStateModel extends StateModel {
   private HelixVeniceClusterResources clusterResources;
 
   private final ExecutorService workerService;
+  private final Optional<VeniceVersionLifecycleEventListener> versionLifecycleEventListener;
 
   public VeniceControllerStateModel(
       String clusterName,
@@ -72,7 +73,8 @@ public class VeniceControllerStateModel extends StateModel {
       ClusterLeaderInitializationRoutine controllerInitialization,
       RealTimeTopicSwitcher realTimeTopicSwitcher,
       Optional<DynamicAccessController> accessController,
-      HelixAdminClient helixAdminClient) {
+      HelixAdminClient helixAdminClient,
+      Optional<VeniceVersionLifecycleEventListener> versionLifecycleEventListener) {
     this._currentState = new StateModelParser().getInitialState(VeniceControllerStateModel.class);
     this.clusterName = clusterName;
     this.zkClient = zkClient;
@@ -86,6 +88,7 @@ public class VeniceControllerStateModel extends StateModel {
     this.helixAdminClient = helixAdminClient;
     this.workerService = Executors.newSingleThreadExecutor(
         new DaemonThreadFactory(String.format("Controller-ST-Worker-%s", clusterName), admin.getLogContext()));
+    this.versionLifecycleEventListener = versionLifecycleEventListener;
   }
 
   /**
@@ -244,6 +247,8 @@ public class VeniceControllerStateModel extends StateModel {
     if (!helixManagerInitialized()) {
       throw new VeniceException("Helix manager should have been initialized for " + clusterName);
     }
+    VeniceVersionLifecycleEventManager versionLifecycleEventManager = new VeniceVersionLifecycleEventManager();
+    versionLifecycleEventListener.ifPresent(versionLifecycleEventManager::addListener);
     clusterResources = new HelixVeniceClusterResources(
         clusterName,
         zkClient,
@@ -254,7 +259,8 @@ public class VeniceControllerStateModel extends StateModel {
         metricsRepository,
         realTimeTopicSwitcher,
         accessController,
-        helixAdminClient);
+        helixAdminClient,
+        versionLifecycleEventManager);
     clusterResources.refresh();
     clusterResources.startErrorPartitionResetTask();
     clusterResources.startDeadStoreStatsPreFetchTask();
