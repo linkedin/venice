@@ -4841,7 +4841,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       int previousVersion = store.getCurrentVersion();
       store.setCurrentVersion(backupVersion);
       LOGGER.info(
-          "Rolling back current version {} to version {} in store {}. Updating previous version {} to ERROR",
+          "Rolling back current version {} to version {} in store {}. Updating previous version {} status to ERROR",
           previousVersion,
           backupVersion,
           storeName,
