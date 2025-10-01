@@ -93,6 +93,7 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
       new RedundantExceptionFilter(8 * 1024 * 1024 * 4, TimeUnit.MINUTES.toMillis(10));
   private final VeniceServerConfig serverConfig;
   protected final ConsumerPollTracker consumerPollTracker;
+  protected final InactiveTopicPartitionChecker inactiveTopicPartitionChecker;
 
   /**
    * @param statsOverride injection of stats, for test purposes
@@ -189,6 +190,15 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
       consumerToLocks.put(pubSubConsumer, new ReentrantLock());
     }
 
+    if (shouldEnableInactiveTopicPartitionChecker(serverConfig, poolType)) {
+      this.inactiveTopicPartitionChecker = new InactiveTopicPartitionChecker(
+          getConsumerToConsumptionTask(),
+          serverConfig.getInactiveTopicPartitionCheckerInternalInSeconds(),
+          serverConfig.getInactiveTopicPartitionCheckerThresholdInSeconds());
+      LOGGER.info("Created InactiveTopicPartitionChecker for consumer pool type: {}", poolType);
+    } else {
+      this.inactiveTopicPartitionChecker = null;
+    }
     LOGGER.info("KafkaConsumerService was initialized with {} consumers.", numOfConsumersPerKafkaCluster);
   }
 
@@ -325,12 +335,18 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
   public boolean startInner() {
     consumerToConsumptionTask.values().forEach(consumerExecutor::submit);
     consumerExecutor.shutdown();
+    if (inactiveTopicPartitionChecker != null) {
+      inactiveTopicPartitionChecker.start();
+    }
     LOGGER.info("KafkaConsumerService started for {}", kafkaUrl);
     return true;
   }
 
   @Override
   public void stopInner() throws Exception {
+    if (inactiveTopicPartitionChecker != null) {
+      inactiveTopicPartitionChecker.stop();
+    }
     consumerToConsumptionTask.values().forEach(ConsumptionTask::stop);
     long beginningTime = System.currentTimeMillis();
     boolean gracefulShutdownSuccess = consumerExecutor.awaitTermination(SHUTDOWN_TIMEOUT_IN_SECOND, TimeUnit.SECONDS);
@@ -473,6 +489,14 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
   @Override
   public Map<PubSubTopicPartition, Long> getStaleTopicPartitions(long thresholdTimestamp) {
     return consumerPollTracker.getStaleTopicPartitions(thresholdTimestamp);
+  }
+
+  boolean shouldEnableInactiveTopicPartitionChecker(VeniceServerConfig serverConfig, ConsumerPoolType poolType) {
+    if (!serverConfig.isInactiveTopicPartitionCheckerEnabled()) {
+      return false;
+    }
+    return (poolType.equals(ConsumerPoolType.CURRENT_VERSION_NON_AA_WC_LEADER_POOL)
+        || poolType.equals(ConsumerPoolType.CURRENT_VERSION_AA_WC_LEADER_POOL));
   }
 
   interface KCSConstructor {
