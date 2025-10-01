@@ -4840,15 +4840,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       }
       int previousVersion = store.getCurrentVersion();
       store.setCurrentVersion(backupVersion);
-      LOGGER
-          .info("Rolling back current version {} to version {} in store {}", previousVersion, backupVersion, storeName);
-      realTimeTopicSwitcher.transmitVersionSwapMessage(store, previousVersion, backupVersion);
-
       LOGGER.info(
-          "Updating previous version {} to ERROR after rolling back to version {} for store {}",
+          "Rolling back current version {} to version {} in store {}. Updating previous version {} to ERROR",
           previousVersion,
           backupVersion,
-          storeName);
+          storeName,
+          previousVersion);
+      realTimeTopicSwitcher.transmitVersionSwapMessage(store, previousVersion, backupVersion);
       store.updateVersionStatus(previousVersion, ERROR);
 
       return store;
