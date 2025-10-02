@@ -260,7 +260,6 @@ public class VeniceChangelogConsumerClientFactory {
    *       a KME backed {@link SchemaReader} for schema evolution during message decoding.</li>
    *   <li>Otherwise, fall back to {@link PubSubMessageDeserializer#createDefaultDeserializer()}.</li>
    * </ul>
-   * </pre>
    */
   @VisibleForTesting
   static PubSubMessageDeserializer createPubSubMessageDeserializer(final ChangelogClientConfig changelogClientConfig) {

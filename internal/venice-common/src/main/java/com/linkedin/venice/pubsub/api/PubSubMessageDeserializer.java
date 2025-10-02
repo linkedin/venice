@@ -119,8 +119,8 @@ public class PubSubMessageDeserializer {
   }
 
   /**
-   * Do not use the following default deserializer in production code as they do not support schema evolution
-   * properly. They are only provided for convenience in test code.
+   * Do not use the following default deserializer in production code as it does not support schema evolution
+   * properly. It is only provided for convenience in test code.
    */
   public static PubSubMessageDeserializer createDefaultDeserializer() {
     return new PubSubMessageDeserializer(
@@ -130,8 +130,8 @@ public class PubSubMessageDeserializer {
   }
 
   /**
-   * Do not use the following default deserializer in production code as they do not support schema evolution
-   * properly. They are only provided for convenience in test code.
+   * Do not use the following default deserializer in production code as it does not support schema evolution
+   * properly. It is only provided for convenience in test code.
    */
   public static PubSubMessageDeserializer createOptimizedDeserializer() {
     return new PubSubMessageDeserializer(
