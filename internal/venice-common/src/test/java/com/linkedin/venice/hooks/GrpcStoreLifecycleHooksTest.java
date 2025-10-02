@@ -4,10 +4,12 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
 
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
+import com.linkedin.venice.protocols.hooks.StoreVersionLifecycleEventOutcomeProto;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import org.mockito.Mockito;
 import org.testng.annotations.Test;
 
@@ -182,5 +184,164 @@ public class GrpcStoreLifecycleHooksTest {
 
     assertEquals(result1, StoreVersionLifecycleEventOutcome.PROCEED);
     assertEquals(result2, StoreVersionLifecycleEventOutcome.PROCEED);
+  }
+
+  @Test
+  public void testMapProtoToJavaEnum() throws Exception {
+    GrpcStoreLifecycleHooks hook = new GrpcStoreLifecycleHooks(new VeniceProperties(new HashMap<>()));
+
+    // Test all enum mappings
+    assertEquals(
+        hook.mapProtoToJavaEnum(StoreVersionLifecycleEventOutcomeProto.PROCEED),
+        StoreVersionLifecycleEventOutcome.PROCEED);
+
+    assertEquals(
+        hook.mapProtoToJavaEnum(StoreVersionLifecycleEventOutcomeProto.ABORT),
+        StoreVersionLifecycleEventOutcome.ABORT);
+
+    assertEquals(
+        hook.mapProtoToJavaEnum(StoreVersionLifecycleEventOutcomeProto.WAIT),
+        StoreVersionLifecycleEventOutcome.WAIT);
+
+    assertEquals(
+        hook.mapProtoToJavaEnum(StoreVersionLifecycleEventOutcomeProto.ROLLBACK),
+        StoreVersionLifecycleEventOutcome.ROLLBACK);
+  }
+
+  @Test
+  public void testAsyncCallCompletionWithSuccessfulResult() throws Exception {
+    GrpcStoreLifecycleHooks hook = new GrpcStoreLifecycleHooks(new VeniceProperties(new HashMap<>()));
+    Lazy<JobStatusQueryResponse> mockJobStatus = Mockito.mock(Lazy.class);
+
+    Map<String, String> configMap = new HashMap<>();
+    configMap.put("grpc.lifecycle.hooks.configs.channel", "localhost:50051");
+    VeniceProperties validConfig = new VeniceProperties(configMap);
+
+    // First call initiates the async call
+    StoreVersionLifecycleEventOutcome result1 = hook.postStoreVersionSwap(
+        TEST_CLUSTER_NAME,
+        TEST_STORE_NAME,
+        TEST_VERSION_NUMBER,
+        TEST_REGION_NAME,
+        mockJobStatus,
+        validConfig);
+    assertEquals(result1, StoreVersionLifecycleEventOutcome.WAIT);
+
+    // Simulate the async call completing with a result
+    String callKey = generateCallKey(TEST_CLUSTER_NAME, TEST_STORE_NAME, TEST_VERSION_NUMBER, TEST_REGION_NAME);
+    CompletableFuture<StoreVersionLifecycleEventOutcome> future = hook.getPendingCalls().get(callKey);
+    ;
+    assertNotNull(future);
+    future.complete(StoreVersionLifecycleEventOutcome.ABORT); // Simulate completion with ABORT
+
+    // Second call should return the completed result and clean up
+    StoreVersionLifecycleEventOutcome result2 = hook.postStoreVersionSwap(
+        TEST_CLUSTER_NAME,
+        TEST_STORE_NAME,
+        TEST_VERSION_NUMBER,
+        TEST_REGION_NAME,
+        mockJobStatus,
+        validConfig);
+    assertEquals(result2, StoreVersionLifecycleEventOutcome.ABORT);
+
+    // Third call should initiate a new async call since the previous one was cleaned up
+    StoreVersionLifecycleEventOutcome result3 = hook.postStoreVersionSwap(
+        TEST_CLUSTER_NAME,
+        TEST_STORE_NAME,
+        TEST_VERSION_NUMBER,
+        TEST_REGION_NAME,
+        mockJobStatus,
+        validConfig);
+    assertEquals(result3, StoreVersionLifecycleEventOutcome.WAIT);
+  }
+
+  @Test
+  public void testAsyncCallCompletionWithException() throws Exception {
+    GrpcStoreLifecycleHooks hook = new GrpcStoreLifecycleHooks(new VeniceProperties(new HashMap<>()));
+    Lazy<JobStatusQueryResponse> mockJobStatus = Mockito.mock(Lazy.class);
+
+    Map<String, String> configMap = new HashMap<>();
+    configMap.put("grpc.lifecycle.hooks.configs.channel", "localhost:50051");
+    VeniceProperties validConfig = new VeniceProperties(configMap);
+
+    // First call initiates the async call
+    StoreVersionLifecycleEventOutcome result1 = hook.postStoreVersionSwap(
+        TEST_CLUSTER_NAME,
+        TEST_STORE_NAME,
+        TEST_VERSION_NUMBER,
+        TEST_REGION_NAME,
+        mockJobStatus,
+        validConfig);
+    assertEquals(result1, StoreVersionLifecycleEventOutcome.WAIT);
+
+    // Simulate the async call completing with an exception
+    String callKey = generateCallKey(TEST_CLUSTER_NAME, TEST_STORE_NAME, TEST_VERSION_NUMBER, TEST_REGION_NAME);
+    CompletableFuture<StoreVersionLifecycleEventOutcome> future = hook.getPendingCalls().get(callKey);
+    assertNotNull(future);
+    future.completeExceptionally(new RuntimeException("Test exception"));
+
+    // Second call should return PROCEED (default for errors) and clean up
+    StoreVersionLifecycleEventOutcome result2 = hook.postStoreVersionSwap(
+        TEST_CLUSTER_NAME,
+        TEST_STORE_NAME,
+        TEST_VERSION_NUMBER,
+        TEST_REGION_NAME,
+        mockJobStatus,
+        validConfig);
+    assertEquals(result2, StoreVersionLifecycleEventOutcome.PROCEED);
+
+    // Third call should initiate a new async call since the previous one was cleaned up
+    StoreVersionLifecycleEventOutcome result3 = hook.postStoreVersionSwap(
+        TEST_CLUSTER_NAME,
+        TEST_STORE_NAME,
+        TEST_VERSION_NUMBER,
+        TEST_REGION_NAME,
+        mockJobStatus,
+        validConfig);
+    assertEquals(result3, StoreVersionLifecycleEventOutcome.WAIT);
+  }
+
+  @Test
+  public void testAsyncCallInProgress() throws Exception {
+    GrpcStoreLifecycleHooks hook = new GrpcStoreLifecycleHooks(new VeniceProperties(new HashMap<>()));
+    Lazy<JobStatusQueryResponse> mockJobStatus = Mockito.mock(Lazy.class);
+
+    Map<String, String> configMap = new HashMap<>();
+    configMap.put("grpc.lifecycle.hooks.configs.channel", "localhost:50051");
+    VeniceProperties validConfig = new VeniceProperties(configMap);
+
+    // First call initiates the async call
+    StoreVersionLifecycleEventOutcome result1 = hook.postStoreVersionSwap(
+        TEST_CLUSTER_NAME,
+        TEST_STORE_NAME,
+        TEST_VERSION_NUMBER,
+        TEST_REGION_NAME,
+        mockJobStatus,
+        validConfig);
+    assertEquals(result1, StoreVersionLifecycleEventOutcome.WAIT);
+
+    // Second call should return WAIT since the call is still in progress
+    StoreVersionLifecycleEventOutcome result2 = hook.postStoreVersionSwap(
+        TEST_CLUSTER_NAME,
+        TEST_STORE_NAME,
+        TEST_VERSION_NUMBER,
+        TEST_REGION_NAME,
+        mockJobStatus,
+        validConfig);
+    assertEquals(result2, StoreVersionLifecycleEventOutcome.WAIT);
+
+    // Third call should also return WAIT
+    StoreVersionLifecycleEventOutcome result3 = hook.postStoreVersionSwap(
+        TEST_CLUSTER_NAME,
+        TEST_STORE_NAME,
+        TEST_VERSION_NUMBER,
+        TEST_REGION_NAME,
+        mockJobStatus,
+        validConfig);
+    assertEquals(result3, StoreVersionLifecycleEventOutcome.WAIT);
+  }
+
+  private String generateCallKey(String clusterName, String storeName, int versionNumber, String regionName) {
+    return String.format("%s#%s#%d#%s", clusterName, storeName, versionNumber, regionName);
   }
 }

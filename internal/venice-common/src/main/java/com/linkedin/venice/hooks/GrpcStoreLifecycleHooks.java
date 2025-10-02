@@ -202,7 +202,7 @@ public class GrpcStoreLifecycleHooks extends StoreLifecycleHooks implements Clos
   /**
    * Maps proto enum to Java enum.
    */
-  private StoreVersionLifecycleEventOutcome mapProtoToJavaEnum(StoreVersionLifecycleEventOutcomeProto outcomeProto) {
+  StoreVersionLifecycleEventOutcome mapProtoToJavaEnum(StoreVersionLifecycleEventOutcomeProto outcomeProto) {
     switch (outcomeProto) {
       case PROCEED:
         return StoreVersionLifecycleEventOutcome.PROCEED;
@@ -227,13 +227,20 @@ public class GrpcStoreLifecycleHooks extends StoreLifecycleHooks implements Clos
       String channelTarget) {
     // Try to get from cache first
     GrpcStoreLifecycleHookServiceGrpc.GrpcStoreLifecycleHookServiceStub stub = stubCache.get(channelTarget);
-    if (stub != null) {
+    if (stub != null && isChannelHealthy((ManagedChannel) stub.getChannel())) {
       return stub;
     }
 
     // Get or create the channel
     ManagedChannel channel = channelCache
         .computeIfAbsent(channelTarget, target -> ManagedChannelBuilder.forTarget(target).usePlaintext().build());
+
+    // Connection could've been closed by server, verify if the channel is still healthy
+    if (!isChannelHealthy(channel)) {
+      channelCache.remove(channelTarget, channel);
+      ManagedChannel newChannel = ManagedChannelBuilder.forTarget(channelTarget).usePlaintext().build();
+      channelCache.put(channelTarget, newChannel);
+    }
 
     // Create new async stub using the generated service class
     stub = GrpcStoreLifecycleHookServiceGrpc.newStub(channel);
@@ -258,10 +265,24 @@ public class GrpcStoreLifecycleHooks extends StoreLifecycleHooks implements Clos
     return parsedParams;
   }
 
+  private boolean isChannelHealthy(ManagedChannel channel) {
+    try {
+      return !channel.isShutdown() && !channel.isTerminated();
+    } catch (Exception e) {
+      LOGGER.warn("Error checking channel {} health", channel, e);
+      return false;
+    }
+  }
+
   @Override
   public void close() throws IOException {
     for (Map.Entry<String, ManagedChannel> entry: channelCache.entrySet()) {
       entry.getValue().shutdown();
     }
+  }
+
+  // For testing
+  VeniceConcurrentHashMap<String, CompletableFuture<StoreVersionLifecycleEventOutcome>> getPendingCalls() {
+    return pendingCalls;
   }
 }
