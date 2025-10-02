@@ -7,6 +7,7 @@ import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
@@ -42,20 +43,27 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
   private final AtomicReference<Exception> versionSwapThreadException = new AtomicReference<>();
   private final VersionSwapDataChangeListener<K, V> versionSwapListener;
 
-  public VeniceAfterImageConsumerImpl(ChangelogClientConfig changelogClientConfig, PubSubConsumerAdapter consumer) {
+  public VeniceAfterImageConsumerImpl(
+      ChangelogClientConfig changelogClientConfig,
+      PubSubConsumerAdapter consumer,
+      PubSubMessageDeserializer pubSubMessageDeserializer) {
     this(
         changelogClientConfig,
         consumer,
         Lazy.of(
-            () -> VeniceChangelogConsumerClientFactory
-                .getPubSubConsumer(changelogClientConfig, changelogClientConfig.getStoreName() + "-" + "internal")));
+            () -> VeniceChangelogConsumerClientFactory.getPubSubConsumer(
+                changelogClientConfig,
+                pubSubMessageDeserializer,
+                changelogClientConfig.getStoreName() + "-" + "internal")),
+        pubSubMessageDeserializer);
   }
 
   protected VeniceAfterImageConsumerImpl(
       ChangelogClientConfig changelogClientConfig,
       PubSubConsumerAdapter consumer,
-      Lazy<PubSubConsumerAdapter> seekConsumer) {
-    super(changelogClientConfig, consumer);
+      Lazy<PubSubConsumerAdapter> seekConsumer,
+      PubSubMessageDeserializer pubSubMessageDeserializer) {
+    super(changelogClientConfig, consumer, pubSubMessageDeserializer);
     internalSeekConsumer = seekConsumer;
     versionSwapListener = new VersionSwapDataChangeListener<K, V>(
         this,

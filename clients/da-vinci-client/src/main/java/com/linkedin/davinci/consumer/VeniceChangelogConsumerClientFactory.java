@@ -2,6 +2,7 @@ package com.linkedin.davinci.consumer;
 
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.ConfigKeys;
+import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
@@ -45,6 +46,8 @@ public class VeniceChangelogConsumerClientFactory {
 
   private PubSubConsumerAdapter consumer;
 
+  private PubSubMessageDeserializer pubSubMessageDeserializer;
+
   protected ViewClassGetter viewClassGetter;
 
   public VeniceChangelogConsumerClientFactory(
@@ -53,6 +56,7 @@ public class VeniceChangelogConsumerClientFactory {
     this.globalChangelogClientConfig = globalChangelogClientConfig;
     this.metricsRepository = metricsRepository;
     this.viewClassGetter = getDefaultViewClassGetter();
+    this.pubSubMessageDeserializer = createPubSubMessageDeserializer(globalChangelogClientConfig);
   }
 
   protected void setD2ControllerClient(D2ControllerClient d2ControllerClient) {
@@ -115,11 +119,17 @@ public class VeniceChangelogConsumerClientFactory {
         newStoreChangelogClientConfig.setIsBeforeImageView(true);
         return new VeniceChangelogConsumerImpl(
             newStoreChangelogClientConfig,
-            consumer != null ? consumer : getPubSubConsumer(newStoreChangelogClientConfig, consumerName));
+            consumer != null
+                ? consumer
+                : getPubSubConsumer(newStoreChangelogClientConfig, pubSubMessageDeserializer, consumerName),
+            pubSubMessageDeserializer);
       }
       return new VeniceAfterImageConsumerImpl(
           newStoreChangelogClientConfig,
-          consumer != null ? consumer : getPubSubConsumer(newStoreChangelogClientConfig, consumerName));
+          consumer != null
+              ? consumer
+              : getPubSubConsumer(newStoreChangelogClientConfig, pubSubMessageDeserializer, consumerName),
+          pubSubMessageDeserializer);
     });
   }
 
@@ -160,7 +170,8 @@ public class VeniceChangelogConsumerClientFactory {
             newStoreChangelogClientConfig,
             consumer != null
                 ? consumer
-                : VeniceChangelogConsumerClientFactory.getPubSubConsumer(newStoreChangelogClientConfig, consumerName),
+                : getPubSubConsumer(newStoreChangelogClientConfig, pubSubMessageDeserializer, consumerName),
+            pubSubMessageDeserializer,
             consumerId);
       }
     });
@@ -228,10 +239,11 @@ public class VeniceChangelogConsumerClientFactory {
 
   protected static PubSubConsumerAdapter getPubSubConsumer(
       ChangelogClientConfig changelogClientConfig,
+      PubSubMessageDeserializer pubSubMessageDeserializer,
       String consumerName) {
     PubSubConsumerAdapterContext context = new PubSubConsumerAdapterContext.Builder().setConsumerName(consumerName)
         .setVeniceProperties(new VeniceProperties(changelogClientConfig.getConsumerProperties()))
-        .setPubSubMessageDeserializer(getPubSubMessageDeserializer(changelogClientConfig))
+        .setPubSubMessageDeserializer(pubSubMessageDeserializer)
         .setPubSubTopicRepository(changelogClientConfig.getPubSubContext().getPubSubTopicRepository())
         .setPubSubPositionTypeRegistry(changelogClientConfig.getPubSubContext().getPubSubPositionTypeRegistry())
         .build();
@@ -250,7 +262,8 @@ public class VeniceChangelogConsumerClientFactory {
    * </ul>
    * </pre>
    */
-  static PubSubMessageDeserializer getPubSubMessageDeserializer(final ChangelogClientConfig changelogClientConfig) {
+  @VisibleForTesting
+  static PubSubMessageDeserializer createPubSubMessageDeserializer(final ChangelogClientConfig changelogClientConfig) {
     Objects.requireNonNull(changelogClientConfig, "changelogClientConfig");
     VeniceProperties properties = new VeniceProperties(changelogClientConfig.getConsumerProperties());
     D2Client d2Client = changelogClientConfig.getD2Client();

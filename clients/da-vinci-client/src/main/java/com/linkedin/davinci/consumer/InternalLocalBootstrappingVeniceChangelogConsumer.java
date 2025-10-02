@@ -38,6 +38,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
@@ -95,8 +96,9 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceAfte
   public InternalLocalBootstrappingVeniceChangelogConsumer(
       ChangelogClientConfig changelogClientConfig,
       PubSubConsumerAdapter pubSubConsumer,
+      PubSubMessageDeserializer pubSubMessageDeserializer,
       String consumerId) {
-    super(changelogClientConfig, pubSubConsumer);
+    super(changelogClientConfig, pubSubConsumer, pubSubMessageDeserializer);
     bootstrapStateMap = new VeniceConcurrentHashMap<>();
     syncBytesInterval = changelogClientConfig.getDatabaseSyncBytesInterval();
     metricsRepository = changelogClientConfig.getInnerClientConfig().getMetricsRepository();

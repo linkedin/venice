@@ -54,6 +54,7 @@ public class VeniceChangelogConsumerClientFactoryTest {
     Properties consumerProperties = new Properties();
     String localKafkaUrl = "http://www.fooAddress.linkedin.com:16337";
     consumerProperties.put(ConfigKeys.PUBSUB_BROKER_ADDRESS, localKafkaUrl);
+    consumerProperties.put(ConfigKeys.KME_SCHEMA_READER_FOR_SCHEMA_EVOLUTION_ENABLED, false);
 
     SchemaReader mockSchemaReader = Mockito.mock(SchemaReader.class);
     Mockito.when(mockSchemaReader.getKeySchema()).thenReturn(TestKeyRecord.SCHEMA$);

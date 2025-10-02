@@ -1,6 +1,5 @@
 package com.linkedin.davinci.consumer;
 
-import static com.linkedin.davinci.consumer.VeniceChangelogConsumerClientFactory.getPubSubMessageDeserializer;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES;
 import static com.linkedin.venice.ConfigKeys.CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS;
 import static com.linkedin.venice.ConfigKeys.CLIENT_USE_REQUEST_BASED_METADATA_REPOSITORY;
@@ -54,6 +53,7 @@ import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
@@ -152,6 +152,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   protected final PubSubConsumerAdapter pubSubConsumer;
   protected final PubSubTopicRepository pubSubTopicRepository;
   protected final PubSubPositionDeserializer pubSubPositionDeserializer;
+  protected final PubSubMessageDeserializer pubSubMessageDeserializer;
   protected final PubSubContext pubSubContext;
   protected final ExecutorService seekExecutorService;
 
@@ -174,19 +175,22 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
 
   public VeniceChangelogConsumerImpl(
       ChangelogClientConfig changelogClientConfig,
-      PubSubConsumerAdapter pubSubConsumer) {
-    this(changelogClientConfig, pubSubConsumer, System.nanoTime());
+      PubSubConsumerAdapter pubSubConsumer,
+      PubSubMessageDeserializer pubSubMessageDeserializer) {
+    this(changelogClientConfig, pubSubConsumer, pubSubMessageDeserializer, System.nanoTime());
   }
 
   VeniceChangelogConsumerImpl(
       ChangelogClientConfig changelogClientConfig,
       PubSubConsumerAdapter pubSubConsumer,
+      PubSubMessageDeserializer pubSubMessageDeserializer,
       long consumerSequenceIdStartingValue) {
     Objects.requireNonNull(changelogClientConfig, "ChangelogClientConfig cannot be null");
     this.pubSubConsumer = pubSubConsumer;
     this.pubSubContext = changelogClientConfig.getPubSubContext();
     this.pubSubTopicRepository = pubSubContext.getPubSubTopicRepository();
     this.pubSubPositionDeserializer = pubSubContext.getPubSubPositionDeserializer();
+    this.pubSubMessageDeserializer = pubSubMessageDeserializer;
 
     seekExecutorService = Executors.newFixedThreadPool(10);
 
@@ -385,7 +389,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
         ByteBuffer dictionary = DictionaryUtils.readDictionaryFromKafka(
             topicName,
             new VeniceProperties(changelogClientConfig.getConsumerProperties()),
-            getPubSubMessageDeserializer(changelogClientConfig));
+            pubSubMessageDeserializer);
         compressor = compressorFactory
             .createVersionSpecificCompressorIfNotExist(version.getCompressionStrategy(), topicName, dictionary.array());
       }
