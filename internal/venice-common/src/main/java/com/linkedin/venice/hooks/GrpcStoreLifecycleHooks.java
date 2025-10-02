@@ -11,6 +11,8 @@ import com.linkedin.venice.utils.lazy.Lazy;
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
 import io.grpc.stub.StreamObserver;
+import java.io.Closeable;
+import java.io.IOException;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
@@ -23,7 +25,7 @@ import org.apache.logging.log4j.Logger;
  * A hook implementation that calls a gRPC service for store lifecycle events.
  * Uses static caching to maintain state across multiple instances created through reflection.
  */
-public class GrpcStoreLifecycleHooks extends StoreLifecycleHooks {
+public class GrpcStoreLifecycleHooks extends StoreLifecycleHooks implements Closeable {
   private static final Logger LOGGER = LogManager.getLogger(GrpcStoreLifecycleHooks.class);
   private static final String GRPC_LIFECYCLE_HOOK_CONFIGS_PREFIX = "grpc.lifecycle.hooks.configs.";
   private static final String GRPC_LIFECYCLE_HOOK_CONFIGS_CHANNEL = "channel";
@@ -139,13 +141,6 @@ public class GrpcStoreLifecycleHooks extends StoreLifecycleHooks {
       // Create StreamObserver to handle the response
       StreamObserver<GrpcStoreLifecycleHooksResponse> responseObserver =
           new StreamObserver<GrpcStoreLifecycleHooksResponse>() {
-            /* <<<<<<<<<<<<<<  ✨ Windsurf Command ⭐ >>>>>>>>>>>>>>>> */
-            /**
-             * Handles the response from the gRPC call and completes the future with the outcome.
-             *
-             * @param response the response from the gRPC call
-             */
-            /* <<<<<<<<<<  bef3a84b-a4ac-4a18-8599-ce0d9aaf5f03  >>>>>>>>>>> */
             @Override
             public void onNext(GrpcStoreLifecycleHooksResponse response) {
               StoreVersionLifecycleEventOutcome outcome = mapProtoToJavaEnum(response.getOutcome());
@@ -232,16 +227,20 @@ public class GrpcStoreLifecycleHooks extends StoreLifecycleHooks {
       String channelTarget) {
     // Try to get from cache first
     GrpcStoreLifecycleHookServiceGrpc.GrpcStoreLifecycleHookServiceStub stub = stubCache.get(channelTarget);
-    if (stub != null) {
+    if (stub != null && isChannelHealthy((ManagedChannel) stub.getChannel())) {
       return stub;
     }
 
     // Get or create the channel
-    ManagedChannel channel = channelCache.computeIfAbsent(
-        channelTarget,
-        target -> ManagedChannelBuilder.forTarget(target)
-            .usePlaintext() // For simplicity; use .useTransportSecurity() for production
-            .build());
+    ManagedChannel channel = channelCache
+        .computeIfAbsent(channelTarget, target -> ManagedChannelBuilder.forTarget(target).usePlaintext().build());
+
+    // Connection could've been closed by server, verify if the channel is still healthy
+    if (!isChannelHealthy(channel)) {
+      channelCache.remove(channelTarget, channel);
+      ManagedChannel newChannel = ManagedChannelBuilder.forTarget(channelTarget).usePlaintext().build();
+      channelCache.put(channelTarget, newChannel);
+    }
 
     // Create new async stub using the generated service class
     stub = GrpcStoreLifecycleHookServiceGrpc.newStub(channel);
@@ -264,5 +263,21 @@ public class GrpcStoreLifecycleHooks extends StoreLifecycleHooks {
       }
     }
     return parsedParams;
+  }
+
+  private boolean isChannelHealthy(ManagedChannel channel) {
+    try {
+      return !channel.isShutdown() && !channel.isTerminated();
+    } catch (Exception e) {
+      LOGGER.warn("Error checking channel {} health", channel, e);
+      return false;
+    }
+  }
+
+  @Override
+  public void close() throws IOException {
+    for (Map.Entry<String, ManagedChannel> entry: channelCache.entrySet()) {
+      entry.getValue().shutdown();
+    }
   }
 }
