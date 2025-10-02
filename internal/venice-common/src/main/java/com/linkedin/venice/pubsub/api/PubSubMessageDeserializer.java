@@ -118,6 +118,10 @@ public class PubSubMessageDeserializer {
     return valueSerializer;
   }
 
+  /**
+   * Do not use the following default deserializer in production code as they do not support schema evolution
+   * properly. They are only provided for convenience in test code.
+   */
   public static PubSubMessageDeserializer createDefaultDeserializer() {
     return new PubSubMessageDeserializer(
         new KafkaValueSerializer(),
@@ -125,6 +129,10 @@ public class PubSubMessageDeserializer {
         new LandFillObjectPool<>(KafkaMessageEnvelope::new));
   }
 
+  /**
+   * Do not use the following default deserializer in production code as they do not support schema evolution
+   * properly. They are only provided for convenience in test code.
+   */
   public static PubSubMessageDeserializer createOptimizedDeserializer() {
     return new PubSubMessageDeserializer(
         new OptimizedKafkaValueSerializer(),

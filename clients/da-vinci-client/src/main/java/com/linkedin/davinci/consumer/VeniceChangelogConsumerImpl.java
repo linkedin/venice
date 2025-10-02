@@ -1,5 +1,6 @@
 package com.linkedin.davinci.consumer;
 
+import static com.linkedin.davinci.consumer.VeniceChangelogConsumerClientFactory.getPubSubMessageDeserializer;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES;
 import static com.linkedin.venice.ConfigKeys.CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS;
 import static com.linkedin.venice.ConfigKeys.CLIENT_USE_REQUEST_BASED_METADATA_REPOSITORY;
@@ -381,8 +382,10 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       compressor = compressorFactory.getVersionSpecificCompressor(topicName);
       if (compressor == null) {
         // we need to retrieve the dictionary from the kafka topic
-        ByteBuffer dictionary = DictionaryUtils
-            .readDictionaryFromKafka(topicName, new VeniceProperties(changelogClientConfig.getConsumerProperties()));
+        ByteBuffer dictionary = DictionaryUtils.readDictionaryFromKafka(
+            topicName,
+            new VeniceProperties(changelogClientConfig.getConsumerProperties()),
+            getPubSubMessageDeserializer(changelogClientConfig));
         compressor = compressorFactory
             .createVersionSpecificCompressorIfNotExist(version.getCompressionStrategy(), topicName, dictionary.array());
       }

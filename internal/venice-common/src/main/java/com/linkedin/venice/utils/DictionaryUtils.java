@@ -39,13 +39,20 @@ public class DictionaryUtils {
   }
 
   public static ByteBuffer readDictionaryFromKafka(String topicName, VeniceProperties props) {
+    return readDictionaryFromKafka(topicName, props, PubSubMessageDeserializer.createDefaultDeserializer());
+  }
+
+  public static ByteBuffer readDictionaryFromKafka(
+      String topicName,
+      VeniceProperties props,
+      PubSubMessageDeserializer pubSubMessageDeserializer) {
     PubSubConsumerAdapterFactory pubSubConsumerAdapterFactory = PubSubClientsFactory.createConsumerFactory(props);
     PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
     VeniceProperties pubSubProperties = getKafkaConsumerProps(props);
     PubSubConsumerAdapterContext context =
         new PubSubConsumerAdapterContext.Builder().setVeniceProperties(pubSubProperties)
             .setPubSubTopicRepository(pubSubTopicRepository)
-            .setPubSubMessageDeserializer(PubSubMessageDeserializer.createDefaultDeserializer())
+            .setPubSubMessageDeserializer(pubSubMessageDeserializer)
             .setPubSubPositionTypeRegistry(PubSubPositionTypeRegistry.fromPropertiesOrDefault(pubSubProperties))
             .setConsumerName("DictionaryUtilsConsumer")
             .build();
