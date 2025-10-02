@@ -1,5 +1,7 @@
 package com.linkedin.venice.listener;
 
+import static com.linkedin.venice.listener.ServerHandlerUtils.extractClientPrincipal;
+
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceServerConfig;
@@ -337,9 +339,10 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
           context.writeAndFlush(new HttpShortcutResponse(e.getMessage(), HttpResponseStatus.METHOD_NOT_ALLOWED));
         } else {
           LOGGER.error(
-              "Exception thrown for {} request from: {}",
+              "Exception thrown for {} request from: {} {}",
               request.getResourceName(),
               context.channel(),
+              extractClientPrincipal(context),
               throwable);
           HttpShortcutResponse shortcutResponse =
               new HttpShortcutResponse(throwable.getMessage(), HttpResponseStatus.INTERNAL_SERVER_ERROR);
