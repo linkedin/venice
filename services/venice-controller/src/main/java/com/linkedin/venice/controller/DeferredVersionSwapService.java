@@ -987,7 +987,6 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
             nextRegionToRollForward,
             targetVersionNum);
         veniceParentHelixAdmin.rollForwardToFutureVersion(cluster, parentStore.getName(), nextRegionToRollForward);
-        updateVersionStatus(cluster, parentStore.getName(), targetVersionNum, VersionStatus.ONLINE);
         storeWaitTimeCacheForSequentialRollout.invalidate(kafkaTopicName);
 
         if (stalledVersionSwapSet.contains(parentStore.getName())) {
