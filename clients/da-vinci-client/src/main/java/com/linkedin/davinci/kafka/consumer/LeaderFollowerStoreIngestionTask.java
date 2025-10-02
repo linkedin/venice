@@ -887,7 +887,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    */
   @VisibleForTesting
   boolean isLocalVersionTopicPartitionFullyConsumed(PartitionConsumptionState pcs) {
-    PubSubPosition latestProcessedVtPosition = pcs.getLatestProcessedVtPosition();
+    PubSubPosition latestProcessedLocalVtPosition = pcs.getLatestProcessedVtPosition();
 
     // N.B.: Uses cached end positions when available. These may be stale, so if issues arise,
     // we may switch to querying the PubSub backend directly for the latest values.
@@ -901,21 +901,21 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     TopicManager topicManager = getTopicManager(localKafkaServer);
 
     // Case: No records consumed yet --> check if the partition contains any records
-    if (PubSubSymbolicPosition.EARLIEST.equals(latestProcessedVtPosition)) {
+    if (PubSubSymbolicPosition.EARLIEST.equals(latestProcessedLocalVtPosition)) {
       // Nothing consumed and nothing available --> treat as fully consumed
       return topicManager.countRecordsUntil(pcs.getReplicaTopicPartition(), localVtEndPosition) == 0;
     }
 
     // General case: fully consumed if at most one record behind (as end position represents "last + 1")
     long diff =
-        topicManager.diffPosition(pcs.getReplicaTopicPartition(), localVtEndPosition, latestProcessedVtPosition);
+        topicManager.diffPosition(pcs.getReplicaTopicPartition(), localVtEndPosition, latestProcessedLocalVtPosition);
 
     // diff <= 0 means end position was probably stale
     // Log using redundant-exception filter to trace edge conditions
     if (diff <= 0) {
       String msg =
           "Negative diff between local VT end position: " + localVtEndPosition + " and latest processed VT position: "
-              + latestProcessedVtPosition + " for partition: " + pcs.getReplicaTopicPartition();
+              + latestProcessedLocalVtPosition + " for partition: " + pcs.getReplicaTopicPartition();
 
       if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
         LOGGER.error(msg);

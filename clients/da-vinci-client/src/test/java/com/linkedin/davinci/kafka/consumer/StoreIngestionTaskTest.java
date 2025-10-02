@@ -596,8 +596,8 @@ public abstract class StoreIngestionTaskTest {
     }).when(mockTopicManager).countRecordsUntil(any(), any());
 
     doAnswer(inv -> {
-      InMemoryPubSubPosition a = inv.getArgument(1);
-      InMemoryPubSubPosition b = inv.getArgument(2);
+      InMemoryPubSubPosition a = convertToInMemoryPosition(inv.getArgument(1));
+      InMemoryPubSubPosition b = convertToInMemoryPosition(inv.getArgument(2));
       return a.getInternalOffset() - b.getInternalOffset();
     }).when(mockTopicManager).diffPosition(any(), any(), any());
 
@@ -607,8 +607,8 @@ public abstract class StoreIngestionTaskTest {
     }).when(mockTopicManagerRemote).countRecordsUntil(any(), any());
 
     doAnswer(inv -> {
-      InMemoryPubSubPosition a = inv.getArgument(1);
-      InMemoryPubSubPosition b = inv.getArgument(2);
+      InMemoryPubSubPosition a = convertToInMemoryPosition(inv.getArgument(1));
+      InMemoryPubSubPosition b = convertToInMemoryPosition(inv.getArgument(2));
       return a.getInternalOffset() - b.getInternalOffset();
     }).when(mockTopicManagerRemote).diffPosition(any(), any(), any());
 
@@ -651,6 +651,16 @@ public abstract class StoreIngestionTaskTest {
     doNothing().when(regionStats).recordByteSizePerPoll(anyDouble());
     doNothing().when(regionStats).recordPollResultNum(anyInt());
     doReturn(regionStats).when(kafkaConsumerServiceStats).getStoreStats(anyString());
+  }
+
+  private InMemoryPubSubPosition convertToInMemoryPosition(Object position) {
+    if (position instanceof InMemoryPubSubPosition) {
+      return (InMemoryPubSubPosition) position;
+    } else if (PubSubSymbolicPosition.EARLIEST.equals(position)) {
+      return InMemoryPubSubPosition.of(-1L);
+    } else {
+      return InMemoryPubSubPosition.of(Long.MAX_VALUE);
+    }
   }
 
   private VeniceWriter getVeniceWriter(String topic, PubSubProducerAdapter producerAdapter) {
@@ -3654,7 +3664,6 @@ public abstract class StoreIngestionTaskTest {
       doCallRealMethod().when(mockPcsBufferReplayStartedRemoteLagging).isLeaderCompleted();
       doReturn(System.currentTimeMillis()).when(mockPcsBufferReplayStartedRemoteLagging)
           .getLastLeaderCompleteStateUpdateInMs();
-      System.out.println(mockPcsBufferReplayStartedRemoteLagging);
       assertTrue(storeIngestionTaskUnderTest.isReadyToServe(mockPcsBufferReplayStartedRemoteLagging));
     }
 
