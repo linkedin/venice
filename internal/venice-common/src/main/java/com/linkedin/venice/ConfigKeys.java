@@ -652,6 +652,16 @@ public class ConfigKeys {
       "kme.registration.from.message.header.enabled";
 
   /**
+   * Configuration flag to enable using the KME-based schema reader for schema evolution.
+   * <p>
+   * When set to {@code true}, and if all other prerequisites are satisfied
+   * (e.g., a valid client is available to fetch schemas from the router or controller),
+   * Venice will leverage the KME schema reader to handle schema evolution.
+   */
+  public static final String KME_SCHEMA_READER_FOR_SCHEMA_EVOLUTION_ENABLED =
+      "kme.schema.reader.for.schema.evolution.enabled";
+
+  /**
    * The following config is to control whether to turn on disabled replica enabler service.
    */
   public static final String CONTROLLER_ENABLE_DISABLED_REPLICA_ENABLED = "controller.enable.disabled.replica.enabled";

@@ -1,24 +1,39 @@
 package com.linkedin.davinci.consumer;
 
+import com.linkedin.d2.balancer.D2Client;
+import com.linkedin.venice.ConfigKeys;
+import com.linkedin.venice.annotation.VisibleForTesting;
+import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.controllerapi.D2ControllerClientFactory;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.meta.ViewConfig;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterContext;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
+import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
+import com.linkedin.venice.schema.SchemaReader;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
+import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import com.linkedin.venice.utils.pools.LandFillObjectPool;
 import com.linkedin.venice.views.ChangeCaptureView;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Map;
+import java.util.Objects;
 import org.apache.avro.Schema;
 import org.apache.avro.specific.SpecificRecord;
 import org.apache.commons.lang.StringUtils;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 public class VeniceChangelogConsumerClientFactory {
+  private static final Logger LOGGER = LogManager.getLogger(VeniceChangelogConsumerClientFactory.class);
   private final Map<String, VeniceChangelogConsumer> storeClientMap = new VeniceConcurrentHashMap<>();
   private final Map<String, BootstrappingVeniceChangelogConsumer> storeBootstrappingClientMap =
       new VeniceConcurrentHashMap<>();
@@ -31,6 +46,8 @@ public class VeniceChangelogConsumerClientFactory {
 
   private PubSubConsumerAdapter consumer;
 
+  private PubSubMessageDeserializer pubSubMessageDeserializer;
+
   protected ViewClassGetter viewClassGetter;
 
   public VeniceChangelogConsumerClientFactory(
@@ -39,6 +56,7 @@ public class VeniceChangelogConsumerClientFactory {
     this.globalChangelogClientConfig = globalChangelogClientConfig;
     this.metricsRepository = metricsRepository;
     this.viewClassGetter = getDefaultViewClassGetter();
+    this.pubSubMessageDeserializer = createPubSubMessageDeserializer(globalChangelogClientConfig);
   }
 
   protected void setD2ControllerClient(D2ControllerClient d2ControllerClient) {
@@ -101,11 +119,17 @@ public class VeniceChangelogConsumerClientFactory {
         newStoreChangelogClientConfig.setIsBeforeImageView(true);
         return new VeniceChangelogConsumerImpl(
             newStoreChangelogClientConfig,
-            consumer != null ? consumer : getPubSubConsumer(newStoreChangelogClientConfig, consumerName));
+            consumer != null
+                ? consumer
+                : getPubSubConsumer(newStoreChangelogClientConfig, pubSubMessageDeserializer, consumerName),
+            pubSubMessageDeserializer);
       }
       return new VeniceAfterImageConsumerImpl(
           newStoreChangelogClientConfig,
-          consumer != null ? consumer : getPubSubConsumer(newStoreChangelogClientConfig, consumerName));
+          consumer != null
+              ? consumer
+              : getPubSubConsumer(newStoreChangelogClientConfig, pubSubMessageDeserializer, consumerName),
+          pubSubMessageDeserializer);
     });
   }
 
@@ -146,7 +170,8 @@ public class VeniceChangelogConsumerClientFactory {
             newStoreChangelogClientConfig,
             consumer != null
                 ? consumer
-                : VeniceChangelogConsumerClientFactory.getPubSubConsumer(newStoreChangelogClientConfig, consumerName),
+                : getPubSubConsumer(newStoreChangelogClientConfig, pubSubMessageDeserializer, consumerName),
+            pubSubMessageDeserializer,
             consumerId);
       }
     });
@@ -214,14 +239,55 @@ public class VeniceChangelogConsumerClientFactory {
 
   protected static PubSubConsumerAdapter getPubSubConsumer(
       ChangelogClientConfig changelogClientConfig,
+      PubSubMessageDeserializer pubSubMessageDeserializer,
       String consumerName) {
     PubSubConsumerAdapterContext context = new PubSubConsumerAdapterContext.Builder().setConsumerName(consumerName)
         .setVeniceProperties(new VeniceProperties(changelogClientConfig.getConsumerProperties()))
-        .setPubSubMessageDeserializer(changelogClientConfig.getPubSubMessageDeserializer())
+        .setPubSubMessageDeserializer(pubSubMessageDeserializer)
         .setPubSubTopicRepository(changelogClientConfig.getPubSubContext().getPubSubTopicRepository())
         .setPubSubPositionTypeRegistry(changelogClientConfig.getPubSubContext().getPubSubPositionTypeRegistry())
         .build();
     return changelogClientConfig.getPubSubConsumerAdapterFactory().create(context);
+  }
+
+  /**
+   * Create a {@link PubSubMessageDeserializer} for changelog consumption.
+   *
+   * <p>Behavior:
+   * <ul>
+   *   <li>If {@code kme.schema.reader.for.schema.evolution.enabled} is true
+   *       and a non null D2 client is present in the config, build a deserializer that uses
+   *       a KME backed {@link SchemaReader} for schema evolution during message decoding.</li>
+   *   <li>Otherwise, fall back to {@link PubSubMessageDeserializer#createDefaultDeserializer()}.</li>
+   * </ul>
+   */
+  @VisibleForTesting
+  static PubSubMessageDeserializer createPubSubMessageDeserializer(final ChangelogClientConfig changelogClientConfig) {
+    Objects.requireNonNull(changelogClientConfig, "changelogClientConfig");
+    VeniceProperties properties = new VeniceProperties(changelogClientConfig.getConsumerProperties());
+    D2Client d2Client = changelogClientConfig.getD2Client();
+    boolean kmeEnabled = properties.getBoolean(ConfigKeys.KME_SCHEMA_READER_FOR_SCHEMA_EVOLUTION_ENABLED, true);
+
+    if (kmeEnabled && d2Client != null) {
+      LOGGER.info("Creating KME reader backed PubSubMessageDeserializer");
+      // Create a SchemaReader for the KME system store to enable schema evolution during deserialization.
+      ClientConfig innerClient = ClientConfig.cloneConfig(changelogClientConfig.getInnerClientConfig())
+          .setStoreName(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getSystemStoreName());
+      SchemaReader schemaReader = ClientFactory.getSchemaReader(innerClient, null);
+      KafkaValueSerializer kafkaValueSerializer = new OptimizedKafkaValueSerializer();
+      kafkaValueSerializer.setSchemaReader(schemaReader);
+      return new PubSubMessageDeserializer(
+          kafkaValueSerializer,
+          new LandFillObjectPool<>(KafkaMessageEnvelope::new),
+          new LandFillObjectPool<>(KafkaMessageEnvelope::new));
+    }
+
+    LOGGER.info(
+        "KME reader backed PubSubMessageDeserializer is disabled, falling back to default deserializer. kmeEnabled: {}, isD2ClientPresent: {}",
+        kmeEnabled,
+        d2Client != null);
+    // Safe default when KME is disabled or D2 is unavailable.
+    return PubSubMessageDeserializer.createDefaultDeserializer();
   }
 
   private String getViewClass(String storeName, String viewName, D2ControllerClient d2ControllerClient, int retries) {

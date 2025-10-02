@@ -53,6 +53,7 @@ import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
@@ -151,6 +152,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   protected final PubSubConsumerAdapter pubSubConsumer;
   protected final PubSubTopicRepository pubSubTopicRepository;
   protected final PubSubPositionDeserializer pubSubPositionDeserializer;
+  protected final PubSubMessageDeserializer pubSubMessageDeserializer;
   protected final PubSubContext pubSubContext;
   protected final ExecutorService seekExecutorService;
 
@@ -173,19 +175,22 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
 
   public VeniceChangelogConsumerImpl(
       ChangelogClientConfig changelogClientConfig,
-      PubSubConsumerAdapter pubSubConsumer) {
-    this(changelogClientConfig, pubSubConsumer, System.nanoTime());
+      PubSubConsumerAdapter pubSubConsumer,
+      PubSubMessageDeserializer pubSubMessageDeserializer) {
+    this(changelogClientConfig, pubSubConsumer, pubSubMessageDeserializer, System.nanoTime());
   }
 
   VeniceChangelogConsumerImpl(
       ChangelogClientConfig changelogClientConfig,
       PubSubConsumerAdapter pubSubConsumer,
+      PubSubMessageDeserializer pubSubMessageDeserializer,
       long consumerSequenceIdStartingValue) {
     Objects.requireNonNull(changelogClientConfig, "ChangelogClientConfig cannot be null");
     this.pubSubConsumer = pubSubConsumer;
     this.pubSubContext = changelogClientConfig.getPubSubContext();
     this.pubSubTopicRepository = pubSubContext.getPubSubTopicRepository();
     this.pubSubPositionDeserializer = pubSubContext.getPubSubPositionDeserializer();
+    this.pubSubMessageDeserializer = pubSubMessageDeserializer;
 
     seekExecutorService = Executors.newFixedThreadPool(10);
 
@@ -381,8 +386,10 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       compressor = compressorFactory.getVersionSpecificCompressor(topicName);
       if (compressor == null) {
         // we need to retrieve the dictionary from the kafka topic
-        ByteBuffer dictionary = DictionaryUtils
-            .readDictionaryFromKafka(topicName, new VeniceProperties(changelogClientConfig.getConsumerProperties()));
+        ByteBuffer dictionary = DictionaryUtils.readDictionaryFromKafka(
+            topicName,
+            new VeniceProperties(changelogClientConfig.getConsumerProperties()),
+            pubSubMessageDeserializer);
         compressor = compressorFactory
             .createVersionSpecificCompressorIfNotExist(version.getCompressionStrategy(), topicName, dictionary.array());
       }

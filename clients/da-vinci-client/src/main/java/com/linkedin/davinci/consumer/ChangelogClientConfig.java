@@ -68,7 +68,6 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
    * These are refreshed each time a new set of consumer properties is applied.
    */
   private PubSubConsumerAdapterFactory<? extends PubSubConsumerAdapter> pubSubConsumerAdapterFactory;
-  private PubSubMessageDeserializer pubSubMessageDeserializer;
   private PubSubContext pubSubContext;
 
   public ChangelogClientConfig(String storeName) {
@@ -378,15 +377,10 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
         .setPubSubTopicRepository(pubSubTopicRepository)
         .build();
     this.pubSubConsumerAdapterFactory = PubSubClientsFactory.createConsumerFactory(pubSubProperties);
-    this.pubSubMessageDeserializer = PubSubMessageDeserializer.createOptimizedDeserializer();
   }
 
   protected PubSubConsumerAdapterFactory<? extends PubSubConsumerAdapter> getPubSubConsumerAdapterFactory() {
     return pubSubConsumerAdapterFactory;
-  }
-
-  protected PubSubMessageDeserializer getPubSubMessageDeserializer() {
-    return pubSubMessageDeserializer;
   }
 
   protected PubSubContext getPubSubContext() {

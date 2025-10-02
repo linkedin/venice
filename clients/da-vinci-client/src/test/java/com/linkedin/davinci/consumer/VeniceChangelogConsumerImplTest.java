@@ -64,6 +64,7 @@ import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
@@ -225,8 +226,10 @@ public class VeniceChangelogConsumerImplTest {
         false);
     ChangelogClientConfig changelogClientConfig =
         getChangelogClientConfig().setViewName("changeCaptureView").setIsBeforeImageView(true);
-    VeniceChangelogConsumerImpl<String, Utf8> veniceChangelogConsumer =
-        new VeniceChangelogConsumerImpl<>(changelogClientConfig, mockPubSubConsumer);
+    VeniceChangelogConsumerImpl<String, Utf8> veniceChangelogConsumer = new VeniceChangelogConsumerImpl<>(
+        changelogClientConfig,
+        mockPubSubConsumer,
+        PubSubMessageDeserializer.createDefaultDeserializer());
 
     veniceChangelogConsumer.setStoreRepository(mockRepository);
 
@@ -290,7 +293,8 @@ public class VeniceChangelogConsumerImplTest {
     VeniceAfterImageConsumerImpl<String, Utf8> veniceChangelogConsumer = new VeniceAfterImageConsumerImpl<>(
         changelogClientConfig,
         mockPubSubConsumer,
-        Lazy.of(() -> mockInternalSeekConsumer));
+        Lazy.of(() -> mockInternalSeekConsumer),
+        PubSubMessageDeserializer.createDefaultDeserializer());
     NativeMetadataRepositoryViewAdapter mockRepository = mock(NativeMetadataRepositoryViewAdapter.class);
     Store store = mock(Store.class);
     Version mockVersion = new VersionImpl(storeName, 1, "foo");
@@ -451,8 +455,10 @@ public class VeniceChangelogConsumerImplTest {
   public void testConsumeAfterImage()
       throws ExecutionException, InterruptedException, NoSuchFieldException, IllegalAccessException {
     prepareVersionTopicRecordsToBePolled(0L, 5L, mockPubSubConsumer, oldVersionTopic, 0, true);
-    VeniceChangelogConsumerImpl<String, Utf8> veniceChangelogConsumer =
-        new VeniceAfterImageConsumerImpl<>(changelogClientConfig, mockPubSubConsumer);
+    VeniceChangelogConsumerImpl<String, Utf8> veniceChangelogConsumer = new VeniceAfterImageConsumerImpl<>(
+        changelogClientConfig,
+        mockPubSubConsumer,
+        PubSubMessageDeserializer.createDefaultDeserializer());
 
     BasicConsumerStats consumerStats = spy(veniceChangelogConsumer.getChangeCaptureStats());
     Field changeCaptureStatsField = VeniceChangelogConsumerImpl.class.getDeclaredField("changeCaptureStats");
@@ -500,8 +506,10 @@ public class VeniceChangelogConsumerImplTest {
       throws ExecutionException, InterruptedException, NoSuchFieldException, IllegalAccessException {
     prepareVersionTopicRecordsToBePolled(0L, 5L, mockPubSubConsumer, oldVersionTopic, 0, true);
     ChangelogClientConfig changelogClientConfig = getChangelogClientConfig().setShouldCompactMessages(true);
-    VeniceChangelogConsumerImpl<String, Utf8> veniceChangelogConsumer =
-        new VeniceAfterImageConsumerImpl<>(changelogClientConfig, mockPubSubConsumer);
+    VeniceChangelogConsumerImpl<String, Utf8> veniceChangelogConsumer = new VeniceAfterImageConsumerImpl<>(
+        changelogClientConfig,
+        mockPubSubConsumer,
+        PubSubMessageDeserializer.createDefaultDeserializer());
 
     BasicConsumerStats consumerStats = spy(veniceChangelogConsumer.getChangeCaptureStats());
     Field changeCaptureStatsField = VeniceChangelogConsumerImpl.class.getDeclaredField("changeCaptureStats");
@@ -546,8 +554,10 @@ public class VeniceChangelogConsumerImplTest {
   @Test
   public void testPollFailure()
       throws ExecutionException, InterruptedException, NoSuchFieldException, IllegalAccessException {
-    VeniceChangelogConsumerImpl<String, Utf8> veniceChangelogConsumer =
-        new VeniceAfterImageConsumerImpl<>(changelogClientConfig, mockPubSubConsumer);
+    VeniceChangelogConsumerImpl<String, Utf8> veniceChangelogConsumer = new VeniceAfterImageConsumerImpl<>(
+        changelogClientConfig,
+        mockPubSubConsumer,
+        PubSubMessageDeserializer.createDefaultDeserializer());
 
     BasicConsumerStats consumerStats = spy(veniceChangelogConsumer.getChangeCaptureStats());
     Field changeCaptureStatsField = VeniceChangelogConsumerImpl.class.getDeclaredField("changeCaptureStats");
@@ -606,8 +616,11 @@ public class VeniceChangelogConsumerImplTest {
 
   @Test
   public void testVersionSwapDataChangeListenerFailure() {
-    VeniceAfterImageConsumerImpl<String, Utf8> veniceChangelogConsumer =
-        spy(new VeniceAfterImageConsumerImpl<>(changelogClientConfig, mockPubSubConsumer));
+    VeniceAfterImageConsumerImpl<String, Utf8> veniceChangelogConsumer = spy(
+        new VeniceAfterImageConsumerImpl<>(
+            changelogClientConfig,
+            mockPubSubConsumer,
+            PubSubMessageDeserializer.createDefaultDeserializer()));
     when(veniceChangelogConsumer.subscribed()).thenReturn(true);
     PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(
         new TestPubSubTopic(storeName + "_v1", storeName, PubSubTopicType.VERSION_TOPIC),
@@ -744,8 +757,10 @@ public class VeniceChangelogConsumerImplTest {
   @Test
   public void testMetricReportingThread() {
     prepareVersionTopicRecordsToBePolled(0L, 5L, mockPubSubConsumer, oldVersionTopic, 0, true);
-    VeniceChangelogConsumerImpl<String, Utf8> veniceChangelogConsumer =
-        new VeniceAfterImageConsumerImpl<>(changelogClientConfig, mockPubSubConsumer);
+    VeniceChangelogConsumerImpl<String, Utf8> veniceChangelogConsumer = new VeniceAfterImageConsumerImpl<>(
+        changelogClientConfig,
+        mockPubSubConsumer,
+        PubSubMessageDeserializer.createDefaultDeserializer());
     veniceChangelogConsumer.setStoreRepository(mockRepository);
 
     Assert.assertEquals(veniceChangelogConsumer.getPartitionCount(), 2);
@@ -956,8 +971,10 @@ public class VeniceChangelogConsumerImplTest {
     doReturn(null).when(nullResponsePubSubConsumer).getPositionByTimestamp(any(), anyLong());
     PubSubPosition mockedPubSubPosition = mock(PubSubPosition.class);
     when(nullResponsePubSubConsumer.endPosition(any())).thenReturn(mockedPubSubPosition);
-    VeniceChangelogConsumerImpl<String, Utf8> veniceChangelogConsumer =
-        new VeniceAfterImageConsumerImpl<>(changelogClientConfig, nullResponsePubSubConsumer);
+    VeniceChangelogConsumerImpl<String, Utf8> veniceChangelogConsumer = new VeniceAfterImageConsumerImpl<>(
+        changelogClientConfig,
+        nullResponsePubSubConsumer,
+        PubSubMessageDeserializer.createDefaultDeserializer());
     veniceChangelogConsumer.setStoreRepository(mockRepository);
     veniceChangelogConsumer.internalSeekToTimestamps(partitionTimestampMap, "").get(10, TimeUnit.SECONDS);
     verify(nullResponsePubSubConsumer, times(1)).endPosition(any());
@@ -967,7 +984,10 @@ public class VeniceChangelogConsumerImplTest {
     PubSubConsumerAdapter mockErrorPubSubConsumer = mock(PubSubConsumerAdapter.class);
     doThrow(new NullPointerException("mock NPE")).when(mockErrorPubSubConsumer)
         .getPositionByTimestamp(any(), anyLong());
-    veniceChangelogConsumer = new VeniceAfterImageConsumerImpl<>(changelogClientConfig, mockErrorPubSubConsumer);
+    veniceChangelogConsumer = new VeniceAfterImageConsumerImpl<>(
+        changelogClientConfig,
+        mockErrorPubSubConsumer,
+        PubSubMessageDeserializer.createDefaultDeserializer());
     veniceChangelogConsumer.setStoreRepository(mockRepository);
     CompletableFuture<Void> seekFuture =
         veniceChangelogConsumer.internalSeekToTimestamps(partitionTimestampMap, "", mockLogger);
@@ -991,8 +1011,10 @@ public class VeniceChangelogConsumerImplTest {
 
   @Test
   public void testConcurrentPolls() throws ExecutionException, InterruptedException {
-    VeniceChangelogConsumerImpl<String, Utf8> veniceChangelogConsumer =
-        new VeniceAfterImageConsumerImpl<>(changelogClientConfig, mockPubSubConsumer);
+    VeniceChangelogConsumerImpl<String, Utf8> veniceChangelogConsumer = new VeniceAfterImageConsumerImpl<>(
+        changelogClientConfig,
+        mockPubSubConsumer,
+        PubSubMessageDeserializer.createDefaultDeserializer());
 
     /*
      * We make this test deterministic by making the first poll hold the lock longer than the second poll, to ensure
@@ -1059,8 +1081,11 @@ public class VeniceChangelogConsumerImplTest {
         false);
     ChangelogClientConfig changelogClientConfig =
         getChangelogClientConfig().setViewName("changeCaptureView").setIsBeforeImageView(true);
-    VeniceChangelogConsumerImpl<String, Utf8> veniceChangelogConsumer =
-        new VeniceChangelogConsumerImpl<>(changelogClientConfig, mockPubSubConsumer, sequenceIdStartingValue);
+    VeniceChangelogConsumerImpl<String, Utf8> veniceChangelogConsumer = new VeniceChangelogConsumerImpl<>(
+        changelogClientConfig,
+        mockPubSubConsumer,
+        PubSubMessageDeserializer.createDefaultDeserializer(),
+        sequenceIdStartingValue);
     veniceChangelogConsumer.setStoreRepository(mockRepository);
     Assert.assertEquals(veniceChangelogConsumer.getPartitionCount(), 2);
     veniceChangelogConsumer.subscribe(new HashSet<>(Collections.singletonList(partition))).get();
