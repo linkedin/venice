@@ -1077,8 +1077,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             && !PubSubSymbolicPosition.EARLIEST.equals(upstreamStartPosition))
             || getTopicManager(kafkaURL).diffPosition(
                 Utils.createPubSubTopicPartitionFromLeaderTopicPartition(kafkaURL, leaderTopicPartition),
-                upstreamStartPosition, // sep rt
-                latestConsumedRtPosition) > 0) { // sep rt
+                upstreamStartPosition,
+                latestConsumedRtPosition) > 0) {
           updateLatestConsumedRtPositions(pcs, kafkaURL, upstreamStartPosition);
         }
       });

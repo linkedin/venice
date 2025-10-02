@@ -23,6 +23,7 @@ import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.StoreVersionInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
+import com.linkedin.venice.pubsub.PubSubTopicImpl;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
@@ -450,11 +451,12 @@ public class UtilsTest {
     String pubSubAddressSeparateRt = pubSubAddress + Utils.SEPARATE_TOPIC_SUFFIX;
     PubSubTopic realTimeTopic = pubSubTopicRepository.getTopic(Utils.composeRealTimeTopic("store"));
     PubSubTopicPartition leaderTopicPartition = new PubSubTopicPartitionImpl(realTimeTopic, 0);
-    PubSubTopicPartition separateRtTopicPartition =
-        new PubSubTopicPartitionImpl(leaderTopicPartition.getPubSubTopic(), leaderTopicPartition.getPartitionNumber());
+    PubSubTopicPartition separateRtTopicPartition = new PubSubTopicPartitionImpl(
+        new PubSubTopicImpl(realTimeTopic.getName() + Utils.SEPARATE_TOPIC_SUFFIX),
+        leaderTopicPartition.getPartitionNumber());
     Assert.assertEquals(
         Utils.createPubSubTopicPartitionFromLeaderTopicPartition(pubSubAddress, leaderTopicPartition),
-        separateRtTopicPartition);
+        leaderTopicPartition);
     Assert.assertEquals(
         Utils.createPubSubTopicPartitionFromLeaderTopicPartition(pubSubAddressSeparateRt, leaderTopicPartition),
         separateRtTopicPartition);
