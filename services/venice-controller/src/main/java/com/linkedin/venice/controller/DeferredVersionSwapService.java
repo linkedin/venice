@@ -987,6 +987,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
             nextRegionToRollForward,
             targetVersionNum);
         veniceParentHelixAdmin.rollForwardToFutureVersion(cluster, parentStore.getName(), nextRegionToRollForward);
+        updateVersionStatus(cluster, parentStore.getName(), targetVersionNum, VersionStatus.ONLINE);
         storeWaitTimeCacheForSequentialRollout.invalidate(kafkaTopicName);
 
         if (stalledVersionSwapSet.contains(parentStore.getName())) {
@@ -1123,6 +1124,9 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
           store.getVersionStatus(targetVersionNum),
           status);
       store.updateVersionStatus(targetVersionNum, status);
+      if (status == ONLINE || status == PARTIALLY_ONLINE) {
+        store.setCurrentVersion(targetVersionNum);
+      }
       repository.updateStore(store);
     } catch (Exception e) {
       LOGGER.warn("Failed to execute updateStore for store: {} in cluster: {}", storeName, clusterName, e);
