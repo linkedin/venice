@@ -11,7 +11,6 @@ import com.linkedin.venice.utils.lazy.Lazy;
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
 import io.grpc.stub.StreamObserver;
-import java.io.Closeable;
 import java.io.IOException;
 import java.util.Collections;
 import java.util.HashMap;
@@ -25,16 +24,16 @@ import org.apache.logging.log4j.Logger;
  * A hook implementation that calls a gRPC service for store lifecycle events.
  * Uses static caching to maintain state across multiple instances created through reflection.
  */
-public class GrpcStoreLifecycleHooks extends StoreLifecycleHooks implements Closeable {
+public class GrpcStoreLifecycleHooks extends StoreLifecycleHooks {
   private static final Logger LOGGER = LogManager.getLogger(GrpcStoreLifecycleHooks.class);
   private static final String GRPC_LIFECYCLE_HOOK_CONFIGS_PREFIX = "grpc.lifecycle.hooks.configs.";
   private static final String GRPC_LIFECYCLE_HOOK_CONFIGS_CHANNEL = "channel";
 
   // Instance-level caches - package-private for testing
-  final VeniceConcurrentHashMap<String, ManagedChannel> channelCache = new VeniceConcurrentHashMap<>();
-  final VeniceConcurrentHashMap<String, GrpcStoreLifecycleHookServiceGrpc.GrpcStoreLifecycleHookServiceStub> stubCache =
+  private final VeniceConcurrentHashMap<String, ManagedChannel> channelCache = new VeniceConcurrentHashMap<>();
+  private final VeniceConcurrentHashMap<String, GrpcStoreLifecycleHookServiceGrpc.GrpcStoreLifecycleHookServiceStub> stubCache =
       new VeniceConcurrentHashMap<>();
-  final VeniceConcurrentHashMap<String, CompletableFuture<StoreVersionLifecycleEventOutcome>> pendingCalls =
+  private final VeniceConcurrentHashMap<String, CompletableFuture<StoreVersionLifecycleEventOutcome>> pendingCalls =
       new VeniceConcurrentHashMap<>();
 
   public GrpcStoreLifecycleHooks(VeniceProperties defaultConfigs) {
@@ -274,7 +273,6 @@ public class GrpcStoreLifecycleHooks extends StoreLifecycleHooks implements Clos
     }
   }
 
-  @Override
   public void close() throws IOException {
     for (Map.Entry<String, ManagedChannel> entry: channelCache.entrySet()) {
       entry.getValue().shutdown();
