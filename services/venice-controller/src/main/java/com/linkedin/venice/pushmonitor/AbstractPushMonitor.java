@@ -1220,8 +1220,13 @@ public abstract class AbstractPushMonitor
            *  after targetSwapRegionWaitTime passes)
            */
           Set<String> targetRegions = RegionUtils.parseRegionsFilterList(version.getTargetSwapRegion());
+          // For sequential roll forward, it is necessary to check for deferred version swap and target regions configs
+          // during ramp
+          // because those two configs will be used to control the percentage of stores using the feature, and it can be
+          // removed after
           boolean isSequentialRollForward = StringUtils.isNotEmpty(sequentialRollForwardFirstRegion)
-              && sequentialRollForwardFirstRegion.equals(regionName);
+              && sequentialRollForwardFirstRegion.equals(regionName) && version.isVersionSwapDeferred()
+              && StringUtils.isNotEmpty(version.getTargetSwapRegion());
           boolean isTargetRegionPushWithDeferredSwap =
               version.isVersionSwapDeferred() && targetRegions.contains(regionName);
           boolean isNormalPush = !version.isVersionSwapDeferred();

@@ -603,14 +603,14 @@ public class TestParentControllerWithMultiDataCenter {
         });
       }
 
-      // roll forward only in dc-0
+      // roll forward only in dc-0. version should still stay at 1 as v2 is marked as error
       parentControllerClient.rollForwardToFutureVersion(storeName, childDatacenters.get(0).getRegionName());
       for (ControllerClient childControllerClient: childControllerClients) {
         TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, false, true, () -> {
           StoreResponse storeResponse = childControllerClient.getStore(storeName);
           Assert.assertFalse(storeResponse.isError());
           StoreInfo storeInfo = storeResponse.getStore();
-          assertEquals(storeInfo.getCurrentVersion(), childControllerClient == dc1Client ? 1 : 2);
+          assertEquals(storeInfo.getCurrentVersion(), 1);
         });
       }
     }

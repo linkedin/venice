@@ -589,7 +589,7 @@ public class TestAdminOperationWithPreviousVersion {
           StoreResponse storeResponse = childControllerClient.getStore(storeName);
           assertFalse(storeResponse.isError());
           StoreInfo storeInfo = storeResponse.getStore();
-          assertEquals(storeInfo.getCurrentVersion(), childControllerClient == childControllerClients.get(1) ? 1 : 2);
+          assertEquals(storeInfo.getCurrentVersion(), 1);
         });
       }
     });
