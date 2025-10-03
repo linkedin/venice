@@ -500,15 +500,24 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         storageService.getRefCountedStorageEngine(storeVersionName);
     this.thingsToClose.add(refCountedStorageEngine);
     this.storageEngine = Objects.requireNonNull(refCountedStorageEngine.get());
+    this.isDaVinciClient = builder.isDaVinciClient();
+
     if ((this.storageEngine instanceof DelegatingStorageEngine)) {
       DelegatingStorageEngine delegatingStorageEngine = (DelegatingStorageEngine) this.storageEngine;
-      delegatingStorageEngine.setKeyDictCompressionFunction(p -> {
-        PartitionConsumptionState pcs = partitionConsumptionStateMap.get(p);
-        if (pcs == null) {
-          throw new VeniceException("Partition " + p + " not found in partitionConsumptionStateMap");
-        }
-        return pcs.getKeyDictCompressor();
-      });
+
+      if (isDaVinciClient) {
+        delegatingStorageEngine.setKeyDictCompressionFunction(p -> {
+          PartitionConsumptionState pcs = partitionConsumptionStateMap.get(p);
+          if (pcs == null) {
+            throw new VeniceException("Partition " + p + " not found in partitionConsumptionStateMap");
+          }
+          return pcs.getKeyDictCompressor();
+        });
+      } else {
+        // Key Compression is only enabled in Da Vinci. Venice Server for now should disable it explicitly.
+        delegatingStorageEngine.setKeyDictCompressionFunction(ignored -> null);
+      }
+
     } else {
       throw new VeniceException(
           "Unexpected storage engine type: " + this.storageEngine.getClass() + " for store version: " + storeVersionName
@@ -610,7 +619,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     this.localKafkaServer = this.kafkaProps.getProperty(KAFKA_BOOTSTRAP_SERVERS);
     this.localKafkaServerSingletonSet = Collections.singleton(localKafkaServer);
-    this.isDaVinciClient = builder.isDaVinciClient();
     this.isActiveActiveReplicationEnabled = version.isActiveActiveReplicationEnabled();
     this.offsetLagDeltaRelaxEnabled = serverConfig.getOffsetLagDeltaRelaxFactorForFastOnlineTransitionInRestart() > 0;
     this.timeLagRelaxEnabled = serverConfig.getTimeLagThresholdForFastOnlineTransitionInRestartMinutes() > 0;
