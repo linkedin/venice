@@ -503,6 +503,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     if ((this.storageEngine instanceof DelegatingStorageEngine)) {
       DelegatingStorageEngine delegatingStorageEngine = (DelegatingStorageEngine) this.storageEngine;
       delegatingStorageEngine.setKeyDictCompressionFunction(p -> {
+        // Key Compression is only enabled in Venice Server.
+        if (!isDaVinciClient()) {
+          return null;
+        }
         PartitionConsumptionState pcs = partitionConsumptionStateMap.get(p);
         if (pcs == null) {
           throw new VeniceException("Partition " + p + " not found in partitionConsumptionStateMap");

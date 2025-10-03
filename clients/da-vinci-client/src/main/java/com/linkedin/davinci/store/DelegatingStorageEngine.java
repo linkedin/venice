@@ -57,9 +57,7 @@ public class DelegatingStorageEngine<P extends AbstractStoragePartition> impleme
     }
     KeyUrnCompressor keyUrnCompressor = keyDictCompressionFunction.apply(partitionId);
     if (keyUrnCompressor != null) {
-      byte[] compressedKey = keyUrnCompressor.compressKey(key, updateDictionary);
-      return compressedKey;
-
+      return keyUrnCompressor.compressKey(key, updateDictionary);
     }
 
     return key;
