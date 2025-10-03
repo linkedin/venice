@@ -1408,7 +1408,7 @@ public class VeniceParentHelixAdmin implements Admin {
       if (onlyDeferredSwap) {
         if (version.getStatus() == STARTED || version.getStatus() == PUSHED) {
           LOGGER.error(
-              "There is already future version {} exists for store {}, please wait till the future version is made current.",
+              "Future version {} exists for store {}, please wait till the future version is made current.",
               versionNumber,
               storeName);
           return Optional.of(latestTopic.get().getName());
@@ -1554,7 +1554,7 @@ public class VeniceParentHelixAdmin implements Admin {
       for (Map.Entry entry: currentVersionsMap.entrySet()) {
         if (!entry.getValue().equals(lastVersionNum)) {
           LOGGER.error(
-              "There is already future version {} exists for store {}, but in region {} current version {}, please wait till the future version is made current.",
+              "Future version {} exists for store {}, but in region {} current version {}, please wait till the future version is made current.",
               lastVersionNum,
               storeName,
               entry.getKey(),
@@ -4309,8 +4309,8 @@ public class VeniceParentHelixAdmin implements Admin {
         repository.updateStore(parentStore);
         LOGGER.info("Updating parent store version {} status to {}", kafkaTopic, PUSHED);
       } else {
-        parentStore.updateVersionStatus(versionNum, ONLINE); // Push is complete in all regions & version is serving
-        parentStore.setCurrentVersion(versionNum);// traffic
+        parentStore.updateVersionStatus(versionNum, ONLINE); // Push is complete in all regions & is serving reads
+        parentStore.setCurrentVersion(versionNum);
         repository.updateStore(parentStore);
         LOGGER.info("Updating parent store version {} status to {}", kafkaTopic, ONLINE);
       }
