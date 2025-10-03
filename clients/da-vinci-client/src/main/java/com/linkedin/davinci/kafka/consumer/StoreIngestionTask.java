@@ -514,7 +514,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           return pcs.getKeyDictCompressor();
         });
       } else {
-        // Key Compression is only enabled in Venice Server.
+        // Key Compression is only enabled in Da Vinci. Venice Server for now should disable it explicitly.
         delegatingStorageEngine.setKeyDictCompressionFunction(ignored -> null);
       }
 
