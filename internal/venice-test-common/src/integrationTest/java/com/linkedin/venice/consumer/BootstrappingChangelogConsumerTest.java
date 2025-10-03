@@ -187,7 +187,7 @@ public class BootstrappingChangelogConsumerTest {
     try (VeniceSystemProducer veniceProducer =
         IntegrationTestPushUtils.getSamzaProducer(clusterWrapper, storeName, Version.PushType.STREAM)) {
       // Run Samza job to send PUT and DELETE requests.
-      runSamzaStreamJob(veniceProducer, storeName, null, 10, 10, 100, false);
+      runSamzaStreamJob(veniceProducer, storeName, 1, null, 10, 10, 100, false);
       // Produce a DELETE record with large timestamp
       sendStreamingDeleteRecord(veniceProducer, storeName, deleteWithRmdKeyIndex, 1000L);
     }
@@ -299,7 +299,7 @@ public class BootstrappingChangelogConsumerTest {
     try (VeniceSystemProducer veniceProducer =
         IntegrationTestPushUtils.getSamzaProducer(clusterWrapper, storeName, Version.PushType.STREAM)) {
       // Run Samza job to send PUT and DELETE requests.
-      runSamzaStreamJob(veniceProducer, storeName, null, 10, 10, 100, false);
+      runSamzaStreamJob(veniceProducer, storeName, 1, null, 10, 10, 100, false);
       // Produce a DELETE record with large timestamp
       sendStreamingDeleteRecord(veniceProducer, storeName, deleteWithRmdKeyIndex, 1000L);
     }
@@ -513,11 +513,16 @@ public class BootstrappingChangelogConsumerTest {
         Collections.singletonList(
             veniceChangelogConsumerClientFactory.getBootstrappingChangelogConsumer(storeName, Integer.toString(0)));
 
+    clusterWrapper.useControllerClient(controllerClient -> {
+      // Register new schema to verify it scan deserialize records serialized with older schemas
+      assertFalse(controllerClient.addValueSchema(storeName, TestChangelogValueV2.SCHEMA$.toString()).isError());
+    });
+
     try (VeniceSystemProducer veniceProducer =
         IntegrationTestPushUtils.getSamzaProducer(clusterWrapper, storeName, Version.PushType.STREAM)) {
       veniceProducer.start();
       // Run Samza job to send PUT and DELETE requests.
-      runSamzaStreamJob(veniceProducer, storeName, null, 10, 10, 100, false);
+      runSamzaStreamJob(veniceProducer, storeName, 1, null, 10, 10, 100, true);
     }
 
     // Spin up a DVRT CDC instance and wait for it to consume everything, then perform blob transfer
@@ -620,7 +625,7 @@ public class BootstrappingChangelogConsumerTest {
     try (VeniceSystemProducer veniceProducer =
         IntegrationTestPushUtils.getSamzaProducer(clusterWrapper, storeName, Version.PushType.STREAM)) {
       // Run Samza job to send PUT and DELETE requests.
-      runSamzaStreamJob(veniceProducer, storeName, null, 10, 10, 100, false);
+      runSamzaStreamJob(veniceProducer, storeName, 1, null, 10, 10, 100, false);
     }
 
     bootstrappingVeniceChangelogConsumerList.get(0).start().get();
@@ -731,11 +736,16 @@ public class BootstrappingChangelogConsumerTest {
                 TestChangelogValue.class,
                 TestChangelogValue.SCHEMA$));
 
+    clusterWrapper.useControllerClient(controllerClient -> {
+      // Register new schema to verify it scan deserialize records serialized with older schemas
+      assertFalse(controllerClient.addValueSchema(storeName, TestChangelogValueV2.SCHEMA$.toString()).isError());
+    });
+
     try (VeniceSystemProducer veniceProducer =
         IntegrationTestPushUtils.getSamzaProducer(clusterWrapper, storeName, Version.PushType.STREAM)) {
       veniceProducer.start();
       // Run Samza job to send PUT and DELETE requests.
-      runSamzaStreamJob(veniceProducer, storeName, null, 10, 10, 100, true);
+      runSamzaStreamJob(veniceProducer, storeName, 1, null, 10, 10, 100, true);
     }
 
     // Spin up a DVRT CDC instance and wait for it to consume everything, then perform blob transfer
@@ -751,11 +761,6 @@ public class BootstrappingChangelogConsumerTest {
         Integer.toString(DEFAULT_USER_DATA_RECORD_COUNT + 20),
         Boolean.toString(useSpecificRecord));
     Thread.sleep(30000);
-
-    clusterWrapper.useControllerClient(controllerClient -> {
-      // Register new schema to verify it scan deserialize records serialized with older schemas
-      assertFalse(controllerClient.addValueSchema(storeName, TestChangelogValueV2.SCHEMA$.toString()).isError());
-    });
 
     bootstrappingVeniceChangelogConsumerList.get(0).start().get();
     assertFalse(bootstrappingVeniceChangelogConsumerList.get(0).isCaughtUp());
@@ -854,6 +859,7 @@ public class BootstrappingChangelogConsumerTest {
   private void runSamzaStreamJob(
       SystemProducer veniceProducer,
       String storeName,
+      int version,
       Time mockedTime,
       int numPuts,
       int numDels,
@@ -870,7 +876,7 @@ public class BootstrappingChangelogConsumerTest {
         TestChangelogValueV2 value = new TestChangelogValueV2();
         value.firstName = "first_name_stream_" + i;
         value.lastName = "last_name_stream_" + i;
-        value.version = 2;
+        value.version = version;
 
         valueObject = value;
       } else {
@@ -971,7 +977,7 @@ public class BootstrappingChangelogConsumerTest {
     try (VeniceSystemProducer veniceProducer =
         IntegrationTestPushUtils.getSamzaProducer(clusterWrapper, storeName, Version.PushType.STREAM)) {
       // Run Samza job to send PUT and DELETE requests.
-      runSamzaStreamJob(veniceProducer, storeName, null, numPuts, numDeletes, startIndex, useEvolvedSchema);
+      runSamzaStreamJob(veniceProducer, storeName, version, null, numPuts, numDeletes, startIndex, useEvolvedSchema);
     }
 
     try (AvroGenericStoreClient<GenericRecord, GenericRecord> client = ClientFactory.getAndStartGenericAvroClient(
@@ -1023,7 +1029,7 @@ public class BootstrappingChangelogConsumerTest {
     try (VeniceSystemProducer veniceProducer =
         IntegrationTestPushUtils.getSamzaProducer(clusterWrapper, storeName, Version.PushType.STREAM)) {
       // Run Samza job to send PUT and DELETE requests.
-      runSamzaStreamJob(veniceProducer, storeName, null, numPuts, numDeletes, startIndex, useEvolvedSchema);
+      runSamzaStreamJob(veniceProducer, storeName, version, null, numPuts, numDeletes, startIndex, useEvolvedSchema);
     }
 
     try (AvroGenericStoreClient<TestChangelogKey, TestChangelogValue> client =
@@ -1078,7 +1084,7 @@ public class BootstrappingChangelogConsumerTest {
       assertEquals(value.get("lastName").toString(), "last_name_stream_" + i);
 
       if (useEvolvedSchema) {
-        assertEquals(value.get("version"), 2);
+        assertEquals(value.get("version"), version);
       }
     }
   }
