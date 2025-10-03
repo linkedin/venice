@@ -3221,7 +3221,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
     for (Map.Entry<String, ControllerClient> entry: controllerClients.entrySet()) {
       ControllerResponse response = new ControllerResponse();
-      doReturn(response).when(entry.getValue()).rollForwardToFutureVersion(any(), any(), anyInt());
+      doReturn(response).when(entry.getValue()).rollForwardToFutureVersion(any(), any());
     }
     adminSpy.rollForwardToFutureVersion(clusterName, storeName, "r1");
 
@@ -3246,7 +3246,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     for (Map.Entry<String, ControllerClient> entry: controllerClients.entrySet()) {
       ControllerResponse response = new ControllerResponse();
       response.setError("test error");
-      doReturn(response).when(entry.getValue()).rollForwardToFutureVersion(any(), any(), anyInt());
+      doReturn(response).when(entry.getValue()).rollForwardToFutureVersion(any(), any());
     }
     adminSpy.rollForwardToFutureVersion(clusterName, storeName, null);
   }
