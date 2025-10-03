@@ -7,7 +7,7 @@ import com.linkedin.venice.pubsub.api.PubSubPosition;
  * Per record metadata wrapper for {@link DaVinciRecordTransformer}.
  */
 public class DaVinciRecordTransformerRecordMetadata {
-  public final static int SENTINEL_WRITER_SCHEMA_ID = 1;
+  public final static int SENTINEL_WRITER_SCHEMA_ID = -1;
   private final int writerSchemaId;
   private final long timestamp;
   private final PubSubPosition pubSubPosition;
