@@ -58,7 +58,7 @@ public class TestDeferredVersionSwapService {
   private static final int versionTwo = 2;
   private static Map<String, String> childDatacenterToUrl = new HashMap<>();
   private ReadWriteStoreRepository repository;
-  private static final int controllerTimeout = 5 * Time.MS_PER_SECOND;
+  private static final int controllerTimeout = 1 * Time.MS_PER_SECOND;
 
   @BeforeMethod
   public void setUp() {

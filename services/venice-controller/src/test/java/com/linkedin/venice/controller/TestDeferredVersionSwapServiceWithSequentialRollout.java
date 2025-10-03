@@ -60,7 +60,7 @@ public class TestDeferredVersionSwapServiceWithSequentialRollout {
   private VeniceControllerClusterConfig clusterConfig;
   private VeniceHelixAdmin veniceHelixAdmin;
   private Map<String, ControllerClient> controllerClientMap;
-  private static final int controllerTimeout = 5 * Time.MS_PER_SECOND;
+  private static final int controllerTimeout = 1 * Time.MS_PER_SECOND;
 
   @BeforeMethod
   public void setUp() {
