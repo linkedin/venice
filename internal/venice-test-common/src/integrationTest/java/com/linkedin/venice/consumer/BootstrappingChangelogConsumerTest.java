@@ -187,7 +187,7 @@ public class BootstrappingChangelogConsumerTest {
     try (VeniceSystemProducer veniceProducer =
         IntegrationTestPushUtils.getSamzaProducer(clusterWrapper, storeName, Version.PushType.STREAM)) {
       // Run Samza job to send PUT and DELETE requests.
-      runSamzaStreamJob(veniceProducer, storeName, null, 10, 10, 100);
+      runSamzaStreamJob(veniceProducer, storeName, null, 10, 10, 100, false);
       // Produce a DELETE record with large timestamp
       sendStreamingDeleteRecord(veniceProducer, storeName, deleteWithRmdKeyIndex, 1000L);
     }
@@ -225,7 +225,7 @@ public class BootstrappingChangelogConsumerTest {
       int expectedRecordCount = DEFAULT_USER_DATA_RECORD_COUNT + 9 + consumerCount;
       assertEquals(polledChangeEventsList.size(), expectedRecordCount);
 
-      verifyPut(polledChangeEventsMap, 100, 110, 1);
+      verifyPut(polledChangeEventsMap, 100, 110, 1, false);
 
       // Verify the 10 deletes were compacted away
       for (int i = 110; i < 120; i++) {
@@ -245,7 +245,8 @@ public class BootstrappingChangelogConsumerTest {
         polledChangeEventsMap,
         polledChangeEventsList,
         bootstrappingVeniceChangelogConsumerList,
-        true);
+        true,
+        false);
 
     // Since nothing is produced, so no changed events generated.
     verifyNoRecordsProduced(polledChangeEventsMap, polledChangeEventsList, bootstrappingVeniceChangelogConsumerList);
@@ -298,7 +299,7 @@ public class BootstrappingChangelogConsumerTest {
     try (VeniceSystemProducer veniceProducer =
         IntegrationTestPushUtils.getSamzaProducer(clusterWrapper, storeName, Version.PushType.STREAM)) {
       // Run Samza job to send PUT and DELETE requests.
-      runSamzaStreamJob(veniceProducer, storeName, null, 10, 10, 100);
+      runSamzaStreamJob(veniceProducer, storeName, null, 10, 10, 100, false);
       // Produce a DELETE record with large timestamp
       sendStreamingDeleteRecord(veniceProducer, storeName, deleteWithRmdKeyIndex, 1000L);
     }
@@ -319,7 +320,7 @@ public class BootstrappingChangelogConsumerTest {
       // 21 events for near-line events
       int expectedRecordCount = DEFAULT_USER_DATA_RECORD_COUNT + 21;
       assertEquals(polledChangeEventsList.size(), expectedRecordCount);
-      verifyPut(polledChangeEventsMap, 100, 110, 1);
+      verifyPut(polledChangeEventsMap, 100, 110, 1, false);
       verifyDelete(polledChangeEventsMap, 110, 120, 1);
     });
 
@@ -341,6 +342,7 @@ public class BootstrappingChangelogConsumerTest {
         polledChangeEventsMap,
         polledChangeEventsList,
         bootstrappingVeniceChangelogConsumerList,
+        false,
         false);
     verifyVCCSequenceId(polledChangeEventsList, partitionSequenceIdMap, startingSequenceId);
     polledChangeEventsList.clear();
@@ -367,6 +369,7 @@ public class BootstrappingChangelogConsumerTest {
         polledChangeEventsMap,
         polledChangeEventsList,
         bootstrappingVeniceChangelogConsumerList,
+        false,
         false);
     verifyVCCSequenceId(polledChangeEventsList, partitionSequenceIdMap, startingSequenceId);
     polledChangeEventsList.clear();
@@ -383,6 +386,9 @@ public class BootstrappingChangelogConsumerTest {
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
         assertEquals(controllerClient.getStore(storeName).getStore().getCurrentVersion(), 3);
       });
+
+      // Register new schema to verify it can deserialize records serialized with older schemas
+      assertFalse(controllerClient.addValueSchema(storeName, TestChangelogValueV2.SCHEMA$.toString()).isError());
     });
 
     // Change events should be from version 3 and 20 nearline events produced before
@@ -393,7 +399,8 @@ public class BootstrappingChangelogConsumerTest {
         polledChangeEventsMap,
         polledChangeEventsList,
         bootstrappingVeniceChangelogConsumerList,
-        false);
+        false,
+        true);
     verifyVCCSequenceId(polledChangeEventsList, partitionSequenceIdMap, startingSequenceId);
     polledChangeEventsList.clear();
     polledChangeEventsMap.clear();
@@ -402,11 +409,6 @@ public class BootstrappingChangelogConsumerTest {
     polledChangeEventsList.clear();
     polledChangeEventsMap.clear();
     bootstrappingVeniceChangelogConsumerList.get(0).stop();
-
-    clusterWrapper.useControllerClient(controllerClient -> {
-      // Register new schema to verify it scan deserialize records serialized with older schemas
-      assertFalse(controllerClient.addValueSchema(storeName, TestChangelogValueV2.SCHEMA$.toString()).isError());
-    });
 
     bootstrappingVeniceChangelogConsumerList.get(0).start().get();
 
@@ -419,10 +421,10 @@ public class BootstrappingChangelogConsumerTest {
       // Also, Deletes won't show up on restart when scanning RocksDB.
       int expectedRecordCount = DEFAULT_USER_DATA_RECORD_COUNT + 39;
       assertEquals(polledChangeEventsList.size(), expectedRecordCount);
-      verifyPut(polledChangeEventsMap, 100, 110, 3);
-      verifyPut(polledChangeEventsMap, 120, 130, 3);
-      verifyPut(polledChangeEventsMap, 140, 150, 3);
-      verifyPut(polledChangeEventsMap, 160, 170, 3);
+      verifyPut(polledChangeEventsMap, 100, 110, 3, false);
+      verifyPut(polledChangeEventsMap, 120, 130, 3, false);
+      verifyPut(polledChangeEventsMap, 140, 150, 3, false);
+      verifyPut(polledChangeEventsMap, 160, 170, 3, false);
     });
     verifyVCCSequenceId(polledChangeEventsList, partitionSequenceIdMap, startingSequenceId);
 
@@ -515,7 +517,7 @@ public class BootstrappingChangelogConsumerTest {
         IntegrationTestPushUtils.getSamzaProducer(clusterWrapper, storeName, Version.PushType.STREAM)) {
       veniceProducer.start();
       // Run Samza job to send PUT and DELETE requests.
-      runSamzaStreamJob(veniceProducer, storeName, null, 10, 10, 100);
+      runSamzaStreamJob(veniceProducer, storeName, null, 10, 10, 100, false);
     }
 
     // Spin up a DVRT CDC instance and wait for it to consume everything, then perform blob transfer
@@ -554,7 +556,7 @@ public class BootstrappingChangelogConsumerTest {
       // 10 deletes are against non-existant keys. So there should only be 109 events total
       int expectedRecordCount = DEFAULT_USER_DATA_RECORD_COUNT + 9;
       assertEquals(polledChangeEventsList.size(), expectedRecordCount);
-      verifyPut(polledChangeEventsMap, 100, 110, 1);
+      verifyPut(polledChangeEventsMap, 100, 110, 1, false);
     });
 
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
@@ -574,7 +576,8 @@ public class BootstrappingChangelogConsumerTest {
         polledChangeEventsMap,
         polledChangeEventsList,
         bootstrappingVeniceChangelogConsumerList,
-        true);
+        true,
+        false);
 
     // Since nothing is produced, so no changed events generated.
     verifyNoRecordsProduced(polledChangeEventsMap, polledChangeEventsList, bootstrappingVeniceChangelogConsumerList);
@@ -617,7 +620,7 @@ public class BootstrappingChangelogConsumerTest {
     try (VeniceSystemProducer veniceProducer =
         IntegrationTestPushUtils.getSamzaProducer(clusterWrapper, storeName, Version.PushType.STREAM)) {
       // Run Samza job to send PUT and DELETE requests.
-      runSamzaStreamJob(veniceProducer, storeName, null, 10, 10, 100);
+      runSamzaStreamJob(veniceProducer, storeName, null, 10, 10, 100, false);
     }
 
     bootstrappingVeniceChangelogConsumerList.get(0).start().get();
@@ -647,13 +650,19 @@ public class BootstrappingChangelogConsumerTest {
     polledChangeEventsList.clear();
     polledChangeEventsMap.clear();
 
+    clusterWrapper.useControllerClient(controllerClient -> {
+      // Register new schema to verify it scan deserialize records serialized with older schemas
+      assertFalse(controllerClient.addValueSchema(storeName, TestChangelogValueV2.SCHEMA$.toString()).isError());
+    });
+
     runSpecificNearlineJobAndVerifyConsumption(
         120,
         storeName,
         1,
         polledChangeEventsMap,
         polledChangeEventsList,
-        bootstrappingVeniceChangelogConsumerList);
+        bootstrappingVeniceChangelogConsumerList,
+        true);
 
     // Since nothing is produced, so no changed events generated.
     verifyNoSpecificRecordsProduced(
@@ -726,7 +735,7 @@ public class BootstrappingChangelogConsumerTest {
         IntegrationTestPushUtils.getSamzaProducer(clusterWrapper, storeName, Version.PushType.STREAM)) {
       veniceProducer.start();
       // Run Samza job to send PUT and DELETE requests.
-      runSamzaStreamJob(veniceProducer, storeName, null, 10, 10, 100);
+      runSamzaStreamJob(veniceProducer, storeName, null, 10, 10, 100, true);
     }
 
     // Spin up a DVRT CDC instance and wait for it to consume everything, then perform blob transfer
@@ -792,7 +801,8 @@ public class BootstrappingChangelogConsumerTest {
         1,
         polledChangeEventsMap,
         polledChangeEventsList,
-        bootstrappingVeniceChangelogConsumerList);
+        bootstrappingVeniceChangelogConsumerList,
+        true);
 
     // Since nothing is produced, so no changed events generated.
     verifyNoSpecificRecordsProduced(
@@ -847,21 +857,35 @@ public class BootstrappingChangelogConsumerTest {
       Time mockedTime,
       int numPuts,
       int numDels,
-      int startIdx) {
+      int startIdx,
+      boolean useEvolvedSchema) {
     // Send PUT requests.
     for (int i = startIdx; i < startIdx + numPuts; i++) {
       TestChangelogKey key = new TestChangelogKey();
       key.id = i;
 
-      TestChangelogValue value = new TestChangelogValue();
-      value.firstName = "first_name_stream_" + i;
-      value.lastName = "last_name_stream_" + i;
+      Object valueObject;
+
+      if (useEvolvedSchema) {
+        TestChangelogValueV2 value = new TestChangelogValueV2();
+        value.firstName = "first_name_stream_" + i;
+        value.lastName = "last_name_stream_" + i;
+        value.version = 2;
+
+        valueObject = value;
+      } else {
+        TestChangelogValue value = new TestChangelogValue();
+        value.firstName = "first_name_stream_" + i;
+        value.lastName = "last_name_stream_" + i;
+
+        valueObject = value;
+      }
 
       sendStreamingRecord(
           veniceProducer,
           storeName,
           key,
-          value,
+          valueObject,
           mockedTime == null ? null : mockedTime.getMilliseconds());
     }
 
@@ -937,7 +961,8 @@ public class BootstrappingChangelogConsumerTest {
       Map<String, PubSubMessage<GenericRecord, ChangeEvent<GenericRecord>, VeniceChangeCoordinate>> polledChangeEventsMap,
       List<PubSubMessage<GenericRecord, ChangeEvent<GenericRecord>, VeniceChangeCoordinate>> polledChangeEventsList,
       List<BootstrappingVeniceChangelogConsumer<GenericRecord, GenericRecord>> bootstrappingVeniceChangelogConsumerList,
-      boolean clearConsumedRecords) {
+      boolean clearConsumedRecords,
+      boolean useEvolvedSchema) {
     // Half puts and half deletes
     int recordsToProduce = 20;
     int numPuts = recordsToProduce / 2;
@@ -946,7 +971,7 @@ public class BootstrappingChangelogConsumerTest {
     try (VeniceSystemProducer veniceProducer =
         IntegrationTestPushUtils.getSamzaProducer(clusterWrapper, storeName, Version.PushType.STREAM)) {
       // Run Samza job to send PUT and DELETE requests.
-      runSamzaStreamJob(veniceProducer, storeName, null, numPuts, numDeletes, startIndex);
+      runSamzaStreamJob(veniceProducer, storeName, null, numPuts, numDeletes, startIndex, useEvolvedSchema);
     }
 
     try (AvroGenericStoreClient<GenericRecord, GenericRecord> client = ClientFactory.getAndStartGenericAvroClient(
@@ -968,7 +993,7 @@ public class BootstrappingChangelogConsumerTest {
           bootstrappingVeniceChangelogConsumerList);
       assertEquals(polledChangeEventsMap.size(), recordsToProduce);
 
-      verifyPut(polledChangeEventsMap, startIndex, startIndex + numPuts, version);
+      verifyPut(polledChangeEventsMap, startIndex, startIndex + numPuts, version, useEvolvedSchema);
       verifyDelete(polledChangeEventsMap, startIndex + numPuts, startIndex + numDeletes, version);
     });
     if (clearConsumedRecords) {
@@ -988,7 +1013,8 @@ public class BootstrappingChangelogConsumerTest {
       int version,
       Map<String, PubSubMessage<TestChangelogKey, ChangeEvent<TestChangelogValue>, VeniceChangeCoordinate>> polledChangeEventsMap,
       List<PubSubMessage<TestChangelogKey, ChangeEvent<TestChangelogValue>, VeniceChangeCoordinate>> polledChangeEventsList,
-      List<BootstrappingVeniceChangelogConsumer<TestChangelogKey, TestChangelogValue>> bootstrappingVeniceChangelogConsumerList) {
+      List<BootstrappingVeniceChangelogConsumer<TestChangelogKey, TestChangelogValue>> bootstrappingVeniceChangelogConsumerList,
+      boolean useEvolvedSchema) {
     // Half puts and half deletes
     int recordsToProduce = 20;
     int numPuts = recordsToProduce / 2;
@@ -997,7 +1023,7 @@ public class BootstrappingChangelogConsumerTest {
     try (VeniceSystemProducer veniceProducer =
         IntegrationTestPushUtils.getSamzaProducer(clusterWrapper, storeName, Version.PushType.STREAM)) {
       // Run Samza job to send PUT and DELETE requests.
-      runSamzaStreamJob(veniceProducer, storeName, null, numPuts, numDeletes, startIndex);
+      runSamzaStreamJob(veniceProducer, storeName, null, numPuts, numDeletes, startIndex, useEvolvedSchema);
     }
 
     try (AvroGenericStoreClient<TestChangelogKey, TestChangelogValue> client =
@@ -1035,7 +1061,8 @@ public class BootstrappingChangelogConsumerTest {
       Map<String, PubSubMessage<GenericRecord, ChangeEvent<GenericRecord>, VeniceChangeCoordinate>> polledChangeEventsMap,
       int startIndex,
       int endIndex,
-      int version) {
+      int version,
+      boolean useEvolvedSchema) {
     for (int i = startIndex; i < endIndex; i++) {
       String key = Integer.toString(i);
       PubSubMessage<GenericRecord, ChangeEvent<GenericRecord>, VeniceChangeCoordinate> message =
@@ -1049,6 +1076,10 @@ public class BootstrappingChangelogConsumerTest {
       GenericRecord value = changeEvent.getCurrentValue();
       assertEquals(value.get("firstName").toString(), "first_name_stream_" + i);
       assertEquals(value.get("lastName").toString(), "last_name_stream_" + i);
+
+      if (useEvolvedSchema) {
+        assertEquals(value.get("version"), 2);
+      }
     }
   }
 

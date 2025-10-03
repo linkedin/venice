@@ -213,7 +213,6 @@ public class DaVinciRecordTransformerUtility<K, O> {
                        * We can technically supply the writer schema id, but that would require pulling some logic
                        * out of lazyValue, which could add latency. Revisit if it is actually needed.
                        */
-                      -1,
                       0,
                       PubSubSymbolicPosition.EARLIEST,
                       keyBytes.length + valueBytes.length,
@@ -223,10 +222,12 @@ public class DaVinciRecordTransformerUtility<K, O> {
         }
       } catch (VeniceSerializationException exception) {
         LOGGER.error(
-            "VeniceSerializationException encountered when DaVinciRecordTransformer was scanning disk for"
-                + " records. This occurs when the wrong schema is used to deserialize records. If you are not transforming"
-                + " your records, make sure to set recordTransformationEnabled to false in"
-                + " DaVinciRecordTransformerConfig.",
+            "VeniceSerializationException encountered when DaVinciRecordTransformer was scanning its local disk for"
+                + " records for store: {} and version: {}. This occurs when the wrong schema is used to deserialize"
+                + " records. If you are not transforming your records, make sure to set recordTransformationEnabled"
+                + " to false in DaVinciRecordTransformerConfig",
+            recordTransformer.getStoreName(),
+            recordTransformer.getStoreVersion(),
             exception);
         throw exception;
       } finally {

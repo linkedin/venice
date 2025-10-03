@@ -3967,7 +3967,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             DaVinciRecordTransformerRecordMetadata recordTransformerRecordMetadata =
                 recordTransformerConfig.isRecordMetadataEnabled()
                     ? new DaVinciRecordTransformerRecordMetadata(
-                        -1,
                         consumerRecord.getPubSubMessageTime(),
                         consumerRecord.getPosition(),
                         consumerRecord.getPayloadSize(),
