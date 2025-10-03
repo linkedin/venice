@@ -328,7 +328,7 @@
                       "type": "string",
                       "default": ""
                     }, {
-                      "name": "generation",
+                      "name": "generationId",
                       "doc": "A timestamp-based generation id to differentiate multiple version swaps within the same version topic",
                       "type": "long",
                       "default": -1
