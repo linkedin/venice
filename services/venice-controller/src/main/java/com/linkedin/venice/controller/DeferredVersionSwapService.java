@@ -79,7 +79,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
   private static final Set<VersionStatus> TERMINAL_PUSH_VERSION_STATUSES = Utils.setOf(ONLINE);
   private Cache<String, Long> storeWaitTimeCacheForSequentialRollout =
       Caffeine.newBuilder().expireAfterWrite(1, TimeUnit.HOURS).build();
-  private static final int CONTROLLER_CLIENT_REQUEST_TIMEOUT = 5 * Time.MS_PER_SECOND;
+  private static final int CONTROLLER_CLIENT_REQUEST_TIMEOUT = 1 * Time.MS_PER_SECOND;
   private static final int LOG_LATENCY_THRESHOLD = 5 * Time.MS_PER_SECOND;
 
   public DeferredVersionSwapService(

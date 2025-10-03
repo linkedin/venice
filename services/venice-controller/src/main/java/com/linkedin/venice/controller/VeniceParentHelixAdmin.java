@@ -2332,8 +2332,7 @@ public class VeniceParentHelixAdmin implements Admin {
         ControllerClient controllerClient = entry.getValue();
         RetryUtils.executeWithMaxAttemptAndExponentialBackoff(() -> {
           failedRegions.remove(entry.getKey());
-          ControllerResponse response =
-              controllerClient.rollForwardToFutureVersion(storeName, regionFilter, ROLL_FORWARD_REQUEST_TIMEOUT);
+          ControllerResponse response = controllerClient.rollForwardToFutureVersion(storeName, regionFilter);
           if (response.isError()) {
             LOGGER.info("Roll forward in region {} failed with error: {}", entry.getKey(), response.getError());
             failedRegions.add(entry.getKey());
