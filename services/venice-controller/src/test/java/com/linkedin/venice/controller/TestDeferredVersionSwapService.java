@@ -30,6 +30,7 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.locks.ClusterLockManager;
+import io.tehuti.metrics.MetricsRepository;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
@@ -232,8 +233,11 @@ public class TestDeferredVersionSwapService {
     doReturn(offlinePushStatusInfoWithCompletedPush).when(admin).getOffLinePushStatus(clusterName, kafkaTopicName);
     doReturn(store).when(repository).getStore(storeName);
 
-    DeferredVersionSwapService deferredVersionSwapService =
-        new DeferredVersionSwapService(admin, veniceControllerMultiClusterConfig, mock(DeferredVersionSwapStats.class));
+    DeferredVersionSwapService deferredVersionSwapService = new DeferredVersionSwapService(
+        admin,
+        veniceControllerMultiClusterConfig,
+        mock(DeferredVersionSwapStats.class),
+        mock(MetricsRepository.class));
 
     List<LifecycleHooksRecord> lifecycleHooks = new ArrayList<>();
     Map<String, String> params = new HashMap<>();
@@ -322,8 +326,11 @@ public class TestDeferredVersionSwapService {
     doReturn(offlinePushStatusInfoWithOneOngoingPush).when(admin).getOffLinePushStatus(clusterName, kafkaTopicName1);
     doReturn(true).when(admin).isLeaderControllerFor(clusterName);
 
-    DeferredVersionSwapService deferredVersionSwapService =
-        new DeferredVersionSwapService(admin, veniceControllerMultiClusterConfig, mock(DeferredVersionSwapStats.class));
+    DeferredVersionSwapService deferredVersionSwapService = new DeferredVersionSwapService(
+        admin,
+        veniceControllerMultiClusterConfig,
+        mock(DeferredVersionSwapStats.class),
+        mock(MetricsRepository.class));
 
     deferredVersionSwapService.startInner();
 
@@ -382,8 +389,11 @@ public class TestDeferredVersionSwapService {
     doReturn(offlinePushStatusInfoWithCompletedPush).when(admin).getOffLinePushStatus(clusterName, kafkaTopicName);
 
     DeferredVersionSwapStats mockDeferredVersionSwapStats = mock(DeferredVersionSwapStats.class);
-    DeferredVersionSwapService deferredVersionSwapService =
-        new DeferredVersionSwapService(admin, veniceControllerMultiClusterConfig, mockDeferredVersionSwapStats);
+    DeferredVersionSwapService deferredVersionSwapService = new DeferredVersionSwapService(
+        admin,
+        veniceControllerMultiClusterConfig,
+        mockDeferredVersionSwapStats,
+        mock(MetricsRepository.class));
 
     deferredVersionSwapService.startInner();
 
@@ -437,8 +447,11 @@ public class TestDeferredVersionSwapService {
     doReturn(offlinePushStatusInfoWithCompletedPush).when(admin).getOffLinePushStatus(clusterName, kafkaTopicName);
 
     DeferredVersionSwapStats deferredVersionSwapStats = mock(DeferredVersionSwapStats.class);
-    DeferredVersionSwapService deferredVersionSwapService =
-        new DeferredVersionSwapService(admin, veniceControllerMultiClusterConfig, deferredVersionSwapStats);
+    DeferredVersionSwapService deferredVersionSwapService = new DeferredVersionSwapService(
+        admin,
+        veniceControllerMultiClusterConfig,
+        deferredVersionSwapStats,
+        mock(MetricsRepository.class));
 
     deferredVersionSwapService.startInner();
 
@@ -494,8 +507,11 @@ public class TestDeferredVersionSwapService {
     String kafkaTopicName = Version.composeKafkaTopic(storeName, versionTwo);
     doReturn(offlinePushStatusInfoWithCompletedPush).when(admin).getOffLinePushStatus(clusterName, kafkaTopicName);
 
-    DeferredVersionSwapService deferredVersionSwapService =
-        new DeferredVersionSwapService(admin, veniceControllerMultiClusterConfig, mock(DeferredVersionSwapStats.class));
+    DeferredVersionSwapService deferredVersionSwapService = new DeferredVersionSwapService(
+        admin,
+        veniceControllerMultiClusterConfig,
+        mock(DeferredVersionSwapStats.class),
+        mock(MetricsRepository.class));
 
     VeniceException exception = new VeniceException();
     doThrow(exception).when(admin).rollForwardToFutureVersion(any(), any(), any());
@@ -551,8 +567,11 @@ public class TestDeferredVersionSwapService {
     doReturn(offlinePushStatusInfoWithCompletedPush).when(admin).getOffLinePushStatus(clusterName, kafkaTopicName);
 
     DeferredVersionSwapStats deferredVersionSwapStats = mock(DeferredVersionSwapStats.class);
-    DeferredVersionSwapService deferredVersionSwapService =
-        new DeferredVersionSwapService(admin, veniceControllerMultiClusterConfig, deferredVersionSwapStats);
+    DeferredVersionSwapService deferredVersionSwapService = new DeferredVersionSwapService(
+        admin,
+        veniceControllerMultiClusterConfig,
+        deferredVersionSwapStats,
+        mock(MetricsRepository.class));
 
     deferredVersionSwapService.startInner();
 
@@ -609,8 +628,11 @@ public class TestDeferredVersionSwapService {
     doReturn(offlinePushStatusInfoWithCompletedPush).when(admin).getOffLinePushStatus(clusterName, kafkaTopicName);
 
     DeferredVersionSwapStats deferredVersionSwapStats = mock(DeferredVersionSwapStats.class);
-    DeferredVersionSwapService deferredVersionSwapService =
-        new DeferredVersionSwapService(admin, veniceControllerMultiClusterConfig, deferredVersionSwapStats);
+    DeferredVersionSwapService deferredVersionSwapService = new DeferredVersionSwapService(
+        admin,
+        veniceControllerMultiClusterConfig,
+        deferredVersionSwapStats,
+        mock(MetricsRepository.class));
 
     deferredVersionSwapService.startInner();
 
@@ -662,8 +684,11 @@ public class TestDeferredVersionSwapService {
             System.currentTimeMillis() / 1000 - 3600)).when(admin).getOffLinePushStatus(anyString(), anyString());
 
     DeferredVersionSwapStats deferredVersionSwapStats = mock(DeferredVersionSwapStats.class);
-    DeferredVersionSwapService service =
-        new DeferredVersionSwapService(admin, veniceControllerMultiClusterConfig, deferredVersionSwapStats);
+    DeferredVersionSwapService service = new DeferredVersionSwapService(
+        admin,
+        veniceControllerMultiClusterConfig,
+        deferredVersionSwapStats,
+        mock(MetricsRepository.class));
 
     service.startInner();
 
@@ -716,8 +741,11 @@ public class TestDeferredVersionSwapService {
             System.currentTimeMillis() / 1000 - 3600)).when(admin).getOffLinePushStatus(anyString(), anyString());
 
     DeferredVersionSwapStats deferredVersionSwapStats = mock(DeferredVersionSwapStats.class);
-    DeferredVersionSwapService service =
-        new DeferredVersionSwapService(admin, veniceControllerMultiClusterConfig, deferredVersionSwapStats);
+    DeferredVersionSwapService service = new DeferredVersionSwapService(
+        admin,
+        veniceControllerMultiClusterConfig,
+        deferredVersionSwapStats,
+        mock(MetricsRepository.class));
 
     service.startInner();
 
@@ -771,8 +799,11 @@ public class TestDeferredVersionSwapService {
             System.currentTimeMillis() / 1000 - 3600)).when(admin).getOffLinePushStatus(anyString(), anyString());
 
     DeferredVersionSwapStats deferredVersionSwapStats = mock(DeferredVersionSwapStats.class);
-    DeferredVersionSwapService service =
-        new DeferredVersionSwapService(admin, veniceControllerMultiClusterConfig, deferredVersionSwapStats);
+    DeferredVersionSwapService service = new DeferredVersionSwapService(
+        admin,
+        veniceControllerMultiClusterConfig,
+        deferredVersionSwapStats,
+        mock(MetricsRepository.class));
 
     service.startInner();
 

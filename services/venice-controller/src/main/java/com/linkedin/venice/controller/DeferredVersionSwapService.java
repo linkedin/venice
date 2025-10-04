@@ -21,6 +21,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.service.AbstractVeniceService;
+import com.linkedin.venice.stats.ThreadPoolStats;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.LogContext;
@@ -31,8 +32,10 @@ import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
+import io.tehuti.metrics.MetricsRepository;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -45,6 +48,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.commons.lang.StringUtils;
@@ -84,15 +88,20 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       Caffeine.newBuilder().expireAfterWrite(1, TimeUnit.HOURS).build();
   private static final int CONTROLLER_CLIENT_REQUEST_TIMEOUT = 1 * Time.MS_PER_SECOND;
   private static final int LOG_LATENCY_THRESHOLD = 5 * Time.MS_PER_SECOND;
-  private final ConcurrentHashMap<String, ExecutorService> clusterToExecutorMap = new ConcurrentHashMap<>();
+  private final ConcurrentHashMap<String, ThreadPoolExecutor> clusterToExecutorMap = new ConcurrentHashMap<>();
+  private final Set<String> storesBeingProcessed = ConcurrentHashMap.newKeySet();
+  private final ConcurrentHashMap<String, ThreadPoolStats> clusterToThreadPoolStatsMap = new ConcurrentHashMap<>();
+  private final MetricsRepository metricsRepository;
 
   public DeferredVersionSwapService(
       VeniceParentHelixAdmin admin,
       VeniceControllerMultiClusterConfig multiClusterConfig,
-      DeferredVersionSwapStats deferredVersionSwapStats) {
+      DeferredVersionSwapStats deferredVersionSwapStats,
+      MetricsRepository metricsRepository) {
     this.veniceParentHelixAdmin = admin;
     this.veniceControllerMultiClusterConfig = multiClusterConfig;
     this.deferredVersionSwapStats = deferredVersionSwapStats;
+    this.metricsRepository = metricsRepository;
   }
 
   @Override
@@ -111,7 +120,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
     deferredVersionSwapExecutor.shutdown();
 
     // Shutdown per cluster pools
-    for (Map.Entry<String, ExecutorService> entry: clusterToExecutorMap.entrySet()) {
+    for (Map.Entry<String, ThreadPoolExecutor> entry: clusterToExecutorMap.entrySet()) {
       String cluster = entry.getKey();
       ExecutorService executor = entry.getValue();
 
@@ -130,13 +139,16 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
     }
   }
 
-  private ExecutorService getOrCreateExecutorForCluster(String cluster) {
+  private ThreadPoolExecutor getOrCreateExecutorForCluster(String cluster) {
     return clusterToExecutorMap.computeIfAbsent(cluster, c -> {
       int threadPoolSize =
           veniceControllerMultiClusterConfig.getControllerConfig(cluster).getDeferredVersionSwapThreadPoolSize();
 
       DaemonThreadFactory threadFactory = new DaemonThreadFactory(cluster + "-deferred-version-swap");
-      ExecutorService executor = Executors.newFixedThreadPool(threadPoolSize, threadFactory);
+      ThreadPoolExecutor executor = (ThreadPoolExecutor) Executors.newFixedThreadPool(threadPoolSize, threadFactory);
+      String statsName = "DeferredVersionSwap-" + cluster;
+      ThreadPoolStats threadPoolStats = new ThreadPoolStats(metricsRepository, executor, statsName);
+      clusterToThreadPoolStatsMap.put(cluster, threadPoolStats);
 
       LOGGER.info("Created thread pool for cluster {} with {} threads", cluster, threadPoolSize);
       return executor;
@@ -871,6 +883,21 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
     return false;
   }
 
+  /**
+   * Attempts to mark a store as being processed. Returns true if successful (store wasn't already being processed),
+   * false if the store is already being processed by another thread.
+   */
+  private boolean tryStartProcessingStore(String storeName) {
+    return storesBeingProcessed.add(storeName);
+  }
+
+  /**
+   * Marks a store as no longer being processed.
+   */
+  private void finishProcessingStore(String storeName) {
+    storesBeingProcessed.remove(storeName);
+  }
+
   private Runnable getRunnableForDeferredVersionSwap() {
     return () -> {
       LogContext.setLogContext(veniceControllerMultiClusterConfig.getLogContext());
@@ -899,19 +926,43 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
             break;
           }
 
-          ExecutorService clusterExecutorService = getOrCreateExecutorForCluster(cluster);
-          boolean sequentialRollForward = !StringUtils.isEmpty(rolloutOrderStr);
-          if (sequentialRollForward) {
-            for (Store parentStore: parentStores) {
-              clusterExecutorService.submit(
-                  () -> performSequentialRollForward(cluster, parentStore, childControllerClientMap, rolloutOrder));
-            }
-          } else {
-            for (Store parentStore: parentStores) {
-              clusterExecutorService
-                  .submit(() -> performParallelRollForward(cluster, parentStore, childControllerClientMap));
+          ThreadPoolExecutor clusterExecutorService = getOrCreateExecutorForCluster(cluster);
+          ThreadPoolStats clusterThreadPoolStats = clusterToThreadPoolStatsMap.get(cluster);
+
+          // Filter out stores that are already being processed to prevent duplicate processing
+          List<Store> eligibleStoresToProcess = new ArrayList<>();
+          for (Store parentStore: parentStores) {
+            if (tryStartProcessingStore(parentStore.getName())) {
+              eligibleStoresToProcess.add(parentStore);
+            } else {
+              String message = "Skipping store " + parentStore.getName() + " as it's already being processed";
+              logMessageIfNotRedundant(message);
             }
           }
+
+          boolean sequentialRollForward = !StringUtils.isEmpty(rolloutOrderStr);
+          if (sequentialRollForward) {
+            for (Store parentStore: eligibleStoresToProcess) {
+              clusterExecutorService.submit(() -> {
+                try {
+                  performSequentialRollForward(cluster, parentStore, childControllerClientMap, rolloutOrder);
+                } finally {
+                  finishProcessingStore(parentStore.getName());
+                }
+              });
+            }
+          } else {
+            for (Store parentStore: eligibleStoresToProcess) {
+              clusterExecutorService.submit(() -> {
+                try {
+                  performParallelRollForward(cluster, parentStore, childControllerClientMap);
+                } finally {
+                  finishProcessingStore(parentStore.getName());
+                }
+              });
+            }
+          }
+          clusterThreadPoolStats.recordQueuedTasksCount(clusterExecutorService.getQueue().size());
         }
       } catch (Exception e) {
         LOGGER.warn("Caught exception while performing deferred version swap", e);
