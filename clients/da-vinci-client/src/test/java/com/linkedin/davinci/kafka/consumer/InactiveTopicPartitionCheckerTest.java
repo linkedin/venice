@@ -195,14 +195,14 @@ public class InactiveTopicPartitionCheckerTest {
   @Test
   public void testPreviouslyPausedPartitionsResumed() {
     long currentTime = System.currentTimeMillis();
-    long recentPollTime = currentTime - (THRESHOLD_MS / 2); // Recent poll, should be active now
 
     // Setup: Consumer1 has one partition that was previously paused but is now active
     Set<PubSubTopicPartition> assignedPartitions = new HashSet<>();
     assignedPartitions.add(partition1);
+    assignedPartitions.add(partition2);
     when(mockConsumer1.getAssignment()).thenReturn(assignedPartitions);
     when(mockTask1.getPartitionStats(partition1)).thenReturn(mockPartitionStats1);
-    when(mockPartitionStats1.getLastSuccessfulPollTimestamp()).thenReturn(recentPollTime);
+    when(mockTask1.getPartitionStats(partition2)).thenReturn(mockPartitionStats1);
 
     // Setup: Consumer2 has no partitions
     when(mockConsumer2.getAssignment()).thenReturn(new HashSet<>());
@@ -216,12 +216,15 @@ public class InactiveTopicPartitionCheckerTest {
     when(mockPartitionStats1.getLastSuccessfulPollTimestamp()).thenReturn(currentTime - (THRESHOLD_MS * 2));
     invokeCheckMethodDirectly();
     verify(mockConsumer1, times(1)).pause(partition1);
+    verify(mockConsumer1, times(1)).pause(partition2);
 
     // Second call: make it active again to get it resumed
     invokeCheckMethodDirectly();
 
     // Verify: Previously paused partition should be resumed
     verify(mockConsumer1, times(1)).resume(partition1);
+    verify(mockConsumer1, times(1)).resume(partition2);
+
   }
 
   @Test
