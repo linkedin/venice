@@ -615,7 +615,7 @@ public class TestDeferredVersionSwapService {
     deferredVersionSwapService.startInner();
 
     TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
-      verify(admin, atLeast(1)).truncateKafkaTopic(versionTwoImpl.kafkaTopicName());
+      verify(store, atLeast(1)).updateVersionStatus(2, VersionStatus.ONLINE);
     });
   }
 }

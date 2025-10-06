@@ -3218,6 +3218,10 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
     Map<String, Integer> after = Collections.singletonMap("r1", 5);
     doReturn(after).when(adminSpy).getCurrentVersionsForMultiColos(clusterName, storeName);
+    Version version = mock(Version.class);
+    doReturn(true).when(version).isVersionSwapDeferred();
+    doReturn(version).when(store).getVersion(5);
+    doReturn(store).when(adminSpy).getStore(anyString(), anyString());
 
     for (Map.Entry<String, ControllerClient> entry: controllerClients.entrySet()) {
       ControllerResponse response = new ControllerResponse();
