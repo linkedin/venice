@@ -237,6 +237,7 @@ import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.meta.ViewConfig;
 import com.linkedin.venice.meta.ViewConfigImpl;
 import com.linkedin.venice.persona.StoragePersona;
+import com.linkedin.venice.protocols.controller.PubSubPositionGrpcWireFormat;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeader;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeaders;
@@ -4917,7 +4918,7 @@ public class VeniceParentHelixAdmin implements Admin {
    * Get AdminTopicMetadata from parent controller
    */
   @Override
-  public Map<String, Long> getAdminTopicMetadata(String clusterName, Optional<String> storeName) {
+  public AdminMetadata getAdminTopicMetadata(String clusterName, Optional<String> storeName) {
     return getVeniceHelixAdmin().getAdminTopicMetadata(clusterName, storeName);
   }
 
@@ -4929,8 +4930,8 @@ public class VeniceParentHelixAdmin implements Admin {
       String clusterName,
       long executionId,
       Optional<String> storeName,
-      Optional<Long> offset,
-      Optional<Long> upstreamOffset) {
+      Optional<PubSubPositionGrpcWireFormat> position,
+      Optional<PubSubPositionGrpcWireFormat> upstreamPosition) {
     throw new VeniceUnsupportedOperationException("updateAdminTopicMetadata");
   }
 

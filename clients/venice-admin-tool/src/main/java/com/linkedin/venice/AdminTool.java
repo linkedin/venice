@@ -3136,8 +3136,8 @@ public class AdminTool {
             destFabricChildControllerClient.updateAdminTopicMetadata(
                 response.getExecutionId(),
                 Optional.empty(),
-                Optional.of(response.getOffset()),
-                Optional.of(response.getUpstreamOffset())));
+                Optional.of(response.getPosition()),
+                Optional.of(response.getUpstreamPosition())));
       }
 
       latestStep = "step5: copying store metadata and starting data recovery for non-existent stores in dest fabric";

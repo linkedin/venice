@@ -6,18 +6,23 @@ import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controller.ZkAdminTopicMetadataAccessor;
 import com.linkedin.venice.controller.stats.AdminConsumptionStats;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.protocols.controller.PubSubPositionGrpcWireFormat;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterContext;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
+import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.PubSubUtil;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
+import com.linkedin.venice.pubsub.api.PubSubPositionWireFormat;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import io.tehuti.metrics.MetricsRepository;
+import java.nio.ByteBuffer;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.ThreadFactory;
@@ -45,6 +50,7 @@ public class AdminConsumerService extends AbstractVeniceService {
   private final String localKafkaServerUrl;
   private final PubSubMessageDeserializer pubSubMessageDeserializer;
   private final LogContext logContext;
+  PubSubPositionDeserializer pubSubPositionDeserializer;
 
   public AdminConsumerService(
       VeniceHelixAdmin admin,
@@ -70,6 +76,7 @@ public class AdminConsumerService extends AbstractVeniceService {
     }
     this.localKafkaServerUrl = admin.getKafkaBootstrapServers(admin.isSslToKafka());
     this.consumerFactory = consumerFactory;
+    this.pubSubPositionDeserializer = config.getPubSubPositionDeserializer();
     this.threadFactory = new DaemonThreadFactory("AdminConsumerService-" + config.getClusterName(), logContext);
   }
 
@@ -211,13 +218,26 @@ public class AdminConsumerService extends AbstractVeniceService {
   /**
    * Update cluster-level execution id, position, and upstream position in a child colo.
    */
-  public void updateAdminTopicMetadata(String clusterName, long executionId, long offset, long upstreamOffset) {
+  public void updateAdminTopicMetadata(
+      String clusterName,
+      long executionId,
+      PubSubPositionGrpcWireFormat position,
+      PubSubPositionGrpcWireFormat upstreamPosition) {
     if (clusterName.equals(config.getClusterName())) {
       try (AutoCloseableLock ignore =
           admin.getHelixVeniceClusterResources(clusterName).getClusterLockManager().createClusterWriteLock()) {
+
         AdminMetadata metadata = new AdminMetadata();
-        metadata.setOffset(offset);
-        metadata.setUpstreamOffset(upstreamOffset);
+        metadata.setPubSubPosition(
+            pubSubPositionDeserializer.toPosition(
+                new PubSubPositionWireFormat(
+                    position.getTypeId(),
+                    ByteBuffer.wrap(PubSubUtil.getBase64DecodedBytes(position.getBase64PositionBytes())))));
+        metadata.setUpstreamPubSubPosition(
+            pubSubPositionDeserializer.toPosition(
+                new PubSubPositionWireFormat(
+                    upstreamPosition.getTypeId(),
+                    ByteBuffer.wrap(PubSubUtil.getBase64DecodedBytes(upstreamPosition.getBase64PositionBytes())))));
         metadata.setExecutionId(executionId);
         adminTopicMetadataAccessor.updateMetadata(clusterName, metadata);
       }
