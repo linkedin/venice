@@ -109,10 +109,42 @@ public class AdminOperationSerializer {
   public static void validate(AdminOperation message, int targetSchemaId) {
     Schema targetSchema = getSchema(targetSchemaId);
     try {
-      SemanticDetector.traverseAndValidate(message, LATEST_SCHEMA, targetSchema, "AdminOperation", null);
+      if (targetSchemaId >= LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION) {
+        // Same or newer schema - validate full message
+        SemanticDetector.traverseAndValidate(message, LATEST_SCHEMA, targetSchema, "AdminOperation", null);
+      } else {
+        // Older schema - filter unknown fields first
+        GenericRecord filteredMessage = filterMessageToTargetSchema(message, targetSchema);
+        SemanticDetector.traverseAndValidate(filteredMessage, targetSchema, targetSchema, "AdminOperation", null);
+      }
     } catch (VeniceProtocolException e) {
       throw new VeniceProtocolException(
           String.format("Current schema version: %s. New semantic is being used. %s", targetSchemaId, e.getMessage()),
+          e);
+    }
+  }
+
+  /**
+   * Creates a GenericRecord containing only fields that exist in the target schema.
+   * This allows older schema versions to skip validation of fields added in newer versions.
+   */
+  private static GenericRecord filterMessageToTargetSchema(AdminOperation message, Schema targetSchema) {
+    try {
+      // First serialize with latest schema
+      GenericDatumWriter<AdminOperation> writer = new GenericDatumWriter<>(LATEST_SCHEMA);
+      ByteArrayOutputStream out = new ByteArrayOutputStream();
+      Encoder encoder = AvroCompatibilityHelper.newBinaryEncoder(out, true, null);
+      writer.write(message, encoder);
+      encoder.flush();
+
+      // Then deserialize with target schema (this automatically filters unknown fields)
+      GenericDatumReader<GenericRecord> reader = new GenericDatumReader<>(LATEST_SCHEMA, targetSchema);
+      InputStream in = new ByteArrayInputStream(out.toByteArray());
+      BinaryDecoder decoder = AvroCompatibilityHelper.newBinaryDecoder(in, true, null);
+      return reader.read(null, decoder);
+    } catch (IOException e) {
+      throw new VeniceProtocolException(
+          "Could not filter message to target schema version: " + targetSchema.getName(),
           e);
     }
   }

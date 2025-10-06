@@ -8,6 +8,7 @@ import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
+import static org.testng.Assert.fail;
 
 import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
@@ -82,7 +83,7 @@ public class AdminOperationSerializerTest {
   }
 
   @Test
-  public void testValidateAdminOperation() {
+  public void testValidateAdminOperationWithNonExistedField() {
     // Create an AdminOperation object with latest version
     UpdateStore updateStore = (UpdateStore) AdminMessageType.UPDATE_STORE.getNewInstance();
     updateStore.clusterName = "clusterName";
@@ -93,10 +94,17 @@ public class AdminOperationSerializerTest {
     updateStore.enableReads = true;
     updateStore.enableWrites = true;
     updateStore.replicateAllConfigs = true;
+
+    // Initialize fields that might be null to avoid NPE during serialization
     updateStore.updatedConfigsList = Collections.emptyList();
-    // Purposely set to true. This field doesn't exist in v74, so it should throw an exception.
+    updateStore.storeLifecycleHooks = Collections.emptyList();
+    updateStore.blobTransferInServerEnabled = "NOT_SPECIFIED";
+    updateStore.keyUrnFields = Collections.emptyList();
+
+    // Purposely set to true. This field doesn't exist in v74.
     // Default value of this field is False.
     updateStore.separateRealTimeTopicEnabled = true;
+
     AdminOperation adminMessage = new AdminOperation();
     adminMessage.operationType = AdminMessageType.UPDATE_STORE.getValue();
     adminMessage.payloadUnion = updateStore;
@@ -105,13 +113,50 @@ public class AdminOperationSerializerTest {
     doCallRealMethod().when(adminOperationSerializer).serialize(any(), anyInt());
     doCallRealMethod().when(adminOperationSerializer).deserialize(any(), anyInt());
 
-    // Serialize the AdminOperation object with writer schema id v74
+    // Validate with v74 schema - should PASS now because unknown fields [separateRealTimeTopicEnabled] are filtered
+    // The separateRealTimeTopicEnabled field will be dropped during filtering then the validation should pass
     try {
       AdminOperationSerializer.validate(adminMessage, 74);
+      assertTrue(true, "Validation should pass when unknown fields are filtered");
     } catch (VeniceProtocolException e) {
-      String expectedMessage =
-          "Current schema version: 74. New semantic is being used. Field AdminOperation.payloadUnion.UpdateStore.separateRealTimeTopicEnabled: Boolean value true is not the default value false or false";
-      assertEquals(e.getMessage(), expectedMessage);
+      // This should not happen
+      fail("Validation should not fail when unknown fields are filtered, but got: " + e.getMessage());
+    }
+  }
+
+  @Test
+  public void testValidateAdminOperationWithExistedFields() {
+    // Create an AdminOperation object with latest version
+    UpdateStore updateStore = (UpdateStore) AdminMessageType.UPDATE_STORE.getNewInstance();
+    updateStore.clusterName = "clusterName";
+    updateStore.storeName = "storeName";
+    updateStore.owner = "owner";
+    updateStore.partitionNum = 20;
+    updateStore.currentVersion = 1;
+    updateStore.enableReads = true;
+    updateStore.enableWrites = true;
+    updateStore.replicateAllConfigs = true;
+
+    // Initialize fields that might be null to avoid NPE during serialization
+    updateStore.updatedConfigsList = Collections.emptyList();
+    updateStore.storeLifecycleHooks = Collections.emptyList();
+    updateStore.blobTransferInServerEnabled = "NOT_SPECIFIED";
+    updateStore.keyUrnFields = Collections.emptyList();
+
+    AdminOperation adminMessage = new AdminOperation();
+    adminMessage.operationType = AdminMessageType.UPDATE_STORE.getValue();
+    adminMessage.payloadUnion = updateStore;
+    adminMessage.executionId = 1;
+
+    doCallRealMethod().when(adminOperationSerializer).serialize(any(), anyInt());
+    doCallRealMethod().when(adminOperationSerializer).deserialize(any(), anyInt());
+
+    // Validate with v74 schema - should PASS because all fields exist in v74
+    try {
+      AdminOperationSerializer.validate(adminMessage, 74);
+      assertTrue(true, "Validation should pass when all fields exist in target schema");
+    } catch (VeniceProtocolException e) {
+      fail("Validation should not fail when all fields exist in target schema, but got: " + e.getMessage());
     }
   }
 }
