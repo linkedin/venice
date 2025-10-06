@@ -19,9 +19,8 @@ import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.AbstractVeniceHttpStats;
 import com.linkedin.venice.stats.ClientType;
+import com.linkedin.venice.stats.OpenTelemetryMetricsSetup;
 import com.linkedin.venice.stats.TehutiUtils;
-import com.linkedin.venice.stats.VeniceMetricsConfig;
-import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository;
 import com.linkedin.venice.stats.dimensions.HttpResponseStatusCodeCategory;
 import com.linkedin.venice.stats.dimensions.HttpResponseStatusEnum;
@@ -36,7 +35,6 @@ import com.linkedin.venice.stats.metrics.MetricUnit;
 import com.linkedin.venice.stats.metrics.ModuleMetricEntityInterface;
 import com.linkedin.venice.stats.metrics.TehutiMetricNameEnum;
 import io.opentelemetry.api.common.Attributes;
-import io.opentelemetry.api.common.AttributesBuilder;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.Avg;
@@ -46,7 +44,6 @@ import io.tehuti.metrics.stats.Rate;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 import org.apache.http.HttpStatus;
@@ -83,7 +80,7 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
   private final Rate requestRate = new OccurrenceRate();
   private final Rate successRequestKeyCountRate = new Rate();
   protected final VeniceOpenTelemetryMetricsRepository otelRepository;
-  protected final boolean emitOpenTelemetryMetrics;
+  private final boolean emitOpenTelemetryMetrics;
   protected final ClientType clientType;
 
   public static BasicClientStats getClientStats(
@@ -108,31 +105,19 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
         requestType);
 
     this.clientType = clientType;
-    if (metricsRepository instanceof VeniceMetricsRepository) {
-      VeniceMetricsRepository veniceMetricsRepository = (VeniceMetricsRepository) metricsRepository;
-      VeniceMetricsConfig veniceMetricsConfig = veniceMetricsRepository.getVeniceMetricsConfig();
-      emitOpenTelemetryMetrics = veniceMetricsConfig.emitOtelMetrics() && !isTotalStats();
-      if (emitOpenTelemetryMetrics) {
-        otelRepository = veniceMetricsRepository.getOpenTelemetryMetricsRepository();
-        baseDimensionsMap = new HashMap<>();
-        baseDimensionsMap.put(VENICE_STORE_NAME, storeName);
-        baseDimensionsMap.put(VENICE_REQUEST_METHOD, requestType.getDimensionValue());
-        AttributesBuilder baseAttributesBuilder = Attributes.builder();
-        baseAttributesBuilder.put(otelRepository.getDimensionName(VENICE_STORE_NAME), storeName);
-        baseAttributesBuilder
-            .put(otelRepository.getDimensionName(VENICE_REQUEST_METHOD), requestType.getDimensionValue());
-        baseAttributes = baseAttributesBuilder.build();
-      } else {
-        otelRepository = null;
-        baseDimensionsMap = null;
-        baseAttributes = null;
-      }
-    } else {
-      emitOpenTelemetryMetrics = false;
-      otelRepository = null;
-      baseDimensionsMap = null;
-      baseAttributes = null;
-    }
+
+    OpenTelemetryMetricsSetup.OpenTelemetryMetricsSetupInfo otelData =
+        OpenTelemetryMetricsSetup.builder(metricsRepository)
+            .isTotalStats(isTotalStats())
+            // set all base dimensions for this stats class and build
+            .setStoreName(storeName)
+            .setRequestType(requestType)
+            .build();
+
+    this.emitOpenTelemetryMetrics = otelData.emitOpenTelemetryMetrics();
+    this.otelRepository = otelData.getOtelRepository();
+    this.baseDimensionsMap = otelData.getBaseDimensionsMap();
+    this.baseAttributes = otelData.getBaseAttributes();
 
     // QPS
     // requestSensor will be a derived metric in OTel
@@ -384,6 +369,10 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
 
   protected Attributes getBaseAttributes() {
     return baseAttributes;
+  }
+
+  protected boolean emitOpenTelemetryMetrics() {
+    return emitOpenTelemetryMetrics;
   }
 
   /**

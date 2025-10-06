@@ -5,17 +5,12 @@ import static com.linkedin.venice.client.stats.ClientMetricEntity.ROUTE_CALL_TIM
 import static com.linkedin.venice.client.stats.ClientMetricEntity.ROUTE_REQUEST_PENDING_COUNT;
 import static com.linkedin.venice.client.stats.ClientMetricEntity.ROUTE_REQUEST_REJECTION_RATIO;
 import static com.linkedin.venice.stats.dimensions.HttpResponseStatusEnum.UNKNOWN;
-import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
-import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_METHOD;
-import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_ROUTE_NAME;
-import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
 
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.AbstractVeniceHttpStats;
+import com.linkedin.venice.stats.OpenTelemetryMetricsSetup;
 import com.linkedin.venice.stats.StatsUtils;
 import com.linkedin.venice.stats.TehutiUtils;
-import com.linkedin.venice.stats.VeniceMetricsConfig;
-import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository;
 import com.linkedin.venice.stats.dimensions.HttpResponseStatusCodeCategory;
 import com.linkedin.venice.stats.dimensions.HttpResponseStatusEnum;
@@ -37,7 +32,6 @@ import java.net.MalformedURLException;
 import java.net.URL;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.Map;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -125,35 +119,19 @@ public class ClusterRouteStats {
         RequestType requestType) {
       super(metricsRepository, clusterName + "." + StatsUtils.convertHostnameToMetricName(instanceName), requestType);
 
-      // Initialize OpenTelemetry support
       String routeName = StatsUtils.convertHostnameToMetricName(instanceName);
-      if (metricsRepository instanceof VeniceMetricsRepository) {
-        VeniceMetricsRepository veniceMetricsRepository = (VeniceMetricsRepository) metricsRepository;
-        VeniceMetricsConfig veniceMetricsConfig = veniceMetricsRepository.getVeniceMetricsConfig();
-        if (veniceMetricsConfig.emitOtelMetrics()) {
-          otelRepository = veniceMetricsRepository.getOpenTelemetryMetricsRepository();
-          baseDimensionsMap = new HashMap<>();
-          baseDimensionsMap.put(VENICE_STORE_NAME, storeName);
-          baseDimensionsMap.put(VENICE_CLUSTER_NAME, clusterName);
-          baseDimensionsMap.put(VENICE_REQUEST_METHOD, requestType.getDimensionValue());
-          baseDimensionsMap.put(VENICE_ROUTE_NAME, routeName);
-
-          baseAttributes = Attributes.builder()
-              .put(otelRepository.getDimensionName(VENICE_STORE_NAME), storeName)
-              .put(otelRepository.getDimensionName(VENICE_CLUSTER_NAME), clusterName)
-              .put(otelRepository.getDimensionName(VENICE_REQUEST_METHOD), requestType.getDimensionValue())
-              .put(otelRepository.getDimensionName(VENICE_ROUTE_NAME), routeName)
+      OpenTelemetryMetricsSetup.OpenTelemetryMetricsSetupInfo otelData =
+          OpenTelemetryMetricsSetup.builder(metricsRepository)
+              // set all base dimensions for this stats class and build
+              .setStoreName(storeName)
+              .setClusterName(clusterName)
+              .setRequestType(requestType)
+              .setRouteName(routeName)
               .build();
-        } else {
-          otelRepository = null;
-          baseDimensionsMap = null;
-          baseAttributes = null;
-        }
-      } else {
-        otelRepository = null;
-        baseDimensionsMap = null;
-        baseAttributes = null;
-      }
+
+      this.otelRepository = otelData.getOtelRepository();
+      this.baseDimensionsMap = otelData.getBaseDimensionsMap();
+      this.baseAttributes = otelData.getBaseAttributes();
 
       // Initialize traditional Tehuti sensors
       this.requestCountSensor = registerSensor("request_count", new OccurrenceRate());
