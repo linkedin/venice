@@ -11,6 +11,7 @@ import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
@@ -25,6 +26,7 @@ import io.opentelemetry.api.metrics.LongCounter;
 import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.AsyncGauge;
 import io.tehuti.metrics.stats.Count;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -37,6 +39,9 @@ import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 
+/**
+ * Unit test for {@link AsyncMetricEntityState}.
+ */
 public class AsyncMetricEntityStateTest {
   private VeniceOpenTelemetryMetricsRepository mockOtelRepository;
   private MetricEntity mockMetricEntity;
@@ -64,6 +69,7 @@ public class AsyncMetricEntityStateTest {
   public void setUp() {
     mockOtelRepository = mock(VeniceOpenTelemetryMetricsRepository.class);
     when(mockOtelRepository.emitOpenTelemetryMetrics()).thenReturn(true);
+    when(mockOtelRepository.emitTehutiMetrics()).thenReturn(true);
     when(mockOtelRepository.getMetricFormat()).thenReturn(VeniceOpenTelemetryMetricNamingFormat.getDefaultFormat());
     when(mockOtelRepository.getDimensionName(any())).thenCallRealMethod();
     doCallRealMethod().when(mockOtelRepository).recordFailureMetric(any(), any(String.class));
@@ -325,6 +331,121 @@ public class AsyncMetricEntityStateTest {
         baseAttributes,
         () -> 0L);
     assertNotNull(metricEntityState);
+  }
+
+  @Test
+  public void testEmitTehutiMetricsEnabled() {
+    when(mockOtelRepository.emitTehutiMetrics()).thenReturn(true);
+
+    AsyncMetricEntityState metricEntityState = AsyncMetricEntityStateBase.create(
+        mockMetricEntity,
+        mockOtelRepository,
+        sensorRegistrationFunction,
+        TestTehutiMetricNameEnum.TEST_METRIC,
+        singletonList(new AsyncGauge((ignored1, ignored2) -> 0, "test")),
+        baseDimensionsMap,
+        baseAttributes,
+        () -> 0L);
+
+    assertTrue(metricEntityState.emitTehutiMetrics(), "Should emit Tehuti metrics when enabled");
+    assertNotNull(metricEntityState.getTehutiSensor(), "Tehuti sensor should be created when enabled");
+  }
+
+  @Test
+  public void testEmitTehutiMetricsDisabled() {
+    when(mockOtelRepository.emitTehutiMetrics()).thenReturn(false);
+
+    AsyncMetricEntityState metricEntityState = AsyncMetricEntityStateBase.create(
+        mockMetricEntity,
+        mockOtelRepository,
+        sensorRegistrationFunction,
+        TestTehutiMetricNameEnum.TEST_METRIC,
+        singletonList(new AsyncGauge((ignored1, ignored2) -> 0, "test")),
+        baseDimensionsMap,
+        baseAttributes,
+        () -> 0L);
+
+    assertFalse(metricEntityState.emitTehutiMetrics(), "Should not emit Tehuti metrics when disabled");
+    Assert.assertNull(metricEntityState.getTehutiSensor(), "Tehuti sensor should not be created when disabled");
+  }
+
+  @Test
+  public void testEmitTehutiMetricsWithNullRepository() {
+    // When repository is null, Tehuti metrics should be disabled
+    AsyncMetricEntityState metricEntityState = AsyncMetricEntityStateBase.create(
+        mockMetricEntity,
+        null,
+        sensorRegistrationFunction,
+        TestTehutiMetricNameEnum.TEST_METRIC,
+        singletonList(new AsyncGauge((ignored1, ignored2) -> 0, "test")),
+        baseDimensionsMap,
+        baseAttributes,
+        () -> 0L);
+
+    assertTrue(metricEntityState.emitTehutiMetrics(), "Should emit Tehuti metrics when repository is null");
+    assertNotNull(
+        metricEntityState.getTehutiSensor(),
+        "Tehuti sensor should still be created when registration function is provided");
+  }
+
+  @Test
+  public void testEmitTehutiMetricsWithNullRegistrationFunction() {
+    // When registration function is null, Tehuti metrics should be disabled
+    AsyncMetricEntityState metricEntityState = AsyncMetricEntityStateBase.create(
+        mockMetricEntity,
+        mockOtelRepository,
+        null,
+        TestTehutiMetricNameEnum.TEST_METRIC,
+        singletonList(new AsyncGauge((ignored1, ignored2) -> 0, "test")),
+        baseDimensionsMap,
+        baseAttributes,
+        () -> 0L);
+
+    assertFalse(
+        metricEntityState.emitTehutiMetrics(),
+        "Should not emit Tehuti metrics when registration function is null");
+    Assert.assertNull(
+        metricEntityState.getTehutiSensor(),
+        "Tehuti sensor should not be created when registration function is null");
+  }
+
+  @Test
+  public void testEmitTehutiMetricsWithEmptyStats() {
+    // When Tehuti stats are empty, Tehuti metrics should be disabled
+    AsyncMetricEntityState metricEntityState = AsyncMetricEntityStateBase.create(
+        mockMetricEntity,
+        mockOtelRepository,
+        sensorRegistrationFunction,
+        TestTehutiMetricNameEnum.TEST_METRIC,
+        new ArrayList<>(), // Empty stats list
+        baseDimensionsMap,
+        baseAttributes,
+        () -> 0L);
+
+    assertFalse(metricEntityState.emitTehutiMetrics(), "Should not emit Tehuti metrics when stats are empty");
+    Assert.assertNull(metricEntityState.getTehutiSensor(), "Tehuti sensor should not be created when stats are empty");
+  }
+
+  @Test
+  public void testEmitTehutiMetricsIndependentOfOtel() {
+    // Test that Tehuti metrics can be enabled independently of OTel metrics
+    when(mockOtelRepository.emitOpenTelemetryMetrics()).thenReturn(false);
+    when(mockOtelRepository.emitTehutiMetrics()).thenReturn(true);
+
+    AsyncMetricEntityState metricEntityState = AsyncMetricEntityStateBase.create(
+        mockMetricEntity,
+        mockOtelRepository,
+        sensorRegistrationFunction,
+        TestTehutiMetricNameEnum.TEST_METRIC,
+        singletonList(new AsyncGauge((ignored1, ignored2) -> 0, "test")),
+        baseDimensionsMap,
+        baseAttributes,
+        () -> 0L);
+
+    assertFalse(metricEntityState.emitOpenTelemetryMetrics(), "OTel metrics should be disabled");
+    assertTrue(metricEntityState.emitTehutiMetrics(), "Tehuti metrics should be enabled independently");
+    Assert.assertNull(metricEntityState.getOtelMetric(), "OTel metric should not be created");
+    assertNotNull(metricEntityState.getTehutiSensor(), "Tehuti sensor should be created");
   }
 
   private Attributes getBaseAttributes(Map<VeniceMetricsDimensions, String> inputMap) {
