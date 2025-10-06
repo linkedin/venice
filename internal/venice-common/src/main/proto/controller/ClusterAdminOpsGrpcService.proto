@@ -65,4 +65,11 @@ message AdminTopicGrpcMetadata {
   optional int64 offset = 4;
   optional int64 upstreamOffset = 5;
   optional int64 adminOperationProtocolVersion = 6;
+  optional PositionGrpcWireFormat position = 7;
+  optional PositionGrpcWireFormat upstreamPosition = 8;
+}
+
+message PositionGrpcWireFormat {
+  int32 type_id = 1;
+  string base64PositionBytes = 2;
 }

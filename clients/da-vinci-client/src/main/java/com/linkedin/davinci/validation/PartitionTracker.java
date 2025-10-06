@@ -882,6 +882,7 @@ public class PartitionTracker {
           .append(new Date(producerMetadata.messageTimestamp))
           .append(")");
       if (consumerRecord.getValue().leaderMetadataFooter != null) {
+        // TODO (abora): deserialize upstreamPubSubPosition
         sb.append("; LeaderMetadata { upstream position: ")
             .append(consumerRecord.getValue().leaderMetadataFooter.upstreamPubSubPosition)
             .append("; upstream pub sub cluster ID: ")

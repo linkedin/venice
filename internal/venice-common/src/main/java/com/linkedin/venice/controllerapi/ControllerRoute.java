@@ -48,7 +48,6 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.MAX_NEARL
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.MAX_RECORD_SIZE_BYTES;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NUM_VERSIONS_TO_PRESERVE;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.OFFSET;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.OFFSET_LAG_TO_GO_ONLINE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.OPERATION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.OWNER;
@@ -60,6 +59,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.PERSONA_N
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PERSONA_OWNERS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PERSONA_QUOTA;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PERSONA_STORES;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.POSITION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PUSH_IN_SORTED_ORDER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PUSH_JOB_DETAILS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PUSH_JOB_DURATION;
@@ -89,7 +89,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_TYP
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TOPIC;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TOPIC_COMPACTION_POLICY;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TO_BE_STOPPED_INSTANCES;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.UPSTREAM_OFFSET;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.UPSTREAM_POSITION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VALUE_SCHEMA;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VERSION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VOLDEMORT_STORE_NAME;
@@ -300,8 +300,8 @@ public enum ControllerRoute implements VeniceDimensionInterface {
       "/update_kafka_topic_min_in_sync_replica", HttpMethod.POST, Arrays.asList(TOPIC, KAFKA_TOPIC_MIN_IN_SYNC_REPLICA)
   ), GET_ADMIN_TOPIC_METADATA("/get_admin_topic_metadata", HttpMethod.GET, Collections.singletonList(CLUSTER), NAME),
   UPDATE_ADMIN_TOPIC_METADATA(
-      "/update_admin_topic_metadata", HttpMethod.POST, Arrays.asList(CLUSTER, EXECUTION_ID), NAME, OFFSET,
-      UPSTREAM_OFFSET
+      "/update_admin_topic_metadata", HttpMethod.POST, Arrays.asList(CLUSTER, EXECUTION_ID), NAME, POSITION,
+      UPSTREAM_POSITION
   ),
   UPDATE_ADMIN_OPERATION_PROTOCOL_VERSION(
       "/update_admin_operation_protocol_version", HttpMethod.POST,

@@ -1145,7 +1145,7 @@ public class VeniceControllerClusterConfig {
     this.isRealTimeTopicVersioningEnabled = props.getBoolean(
         ConfigKeys.CONTROLLER_ENABLE_REAL_TIME_TOPIC_VERSIONING,
         DEFAULT_CONTROLLER_ENABLE_REAL_TIME_TOPIC_VERSIONING);
-    this.useV2AdminTopicMetadata = props.getBoolean(ConfigKeys.USE_V2_ADMIN_TOPIC_METADATA, false);
+    this.useV2AdminTopicMetadata = props.getBoolean(ConfigKeys.USE_V2_ADMIN_TOPIC_METADATA, true);
     this.isHybridStorePartitionCountUpdateEnabled =
         props.getBoolean(ConfigKeys.CONTROLLER_ENABLE_HYBRID_STORE_PARTITION_COUNT_UPDATE, false);
 

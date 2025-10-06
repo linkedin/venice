@@ -7,6 +7,7 @@ import static com.linkedin.venice.ConfigKeys.PUBSUB_SECURITY_PROTOCOL;
 import static com.linkedin.venice.ConfigKeys.PUBSUB_SECURITY_PROTOCOL_LEGACY;
 import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_CLIENT_CONFIG_PREFIX;
 
+import com.linkedin.venice.protocols.controller.PositionGrpcWireFormat;
 import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
@@ -14,6 +15,7 @@ import com.linkedin.venice.pubsub.api.PubSubPositionWireFormat;
 import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.nio.ByteBuffer;
@@ -284,15 +286,7 @@ public final class PubSubUtil {
   public static PubSubPosition parsePositionWireFormat(
       String positionWireFormatString,
       PubSubPositionDeserializer pubSubPositionDeserializer) {
-    if (positionWireFormatString == null || positionWireFormatString.isEmpty()) {
-      throw new IllegalArgumentException("Position wire format string cannot be null or empty");
-    }
-
-    String[] typeIdAndBase64WfBytes = positionWireFormatString.split(":");
-    if (typeIdAndBase64WfBytes.length != 2) {
-      throw new IllegalArgumentException(
-          "Invalid position wire format string. Expected format: 'typeId:base64EncodedWfBytes'");
-    }
+    String[] typeIdAndBase64WfBytes = getTypeIdAndBase64WfBytes(positionWireFormatString);
 
     try {
       PubSubPositionWireFormat positionWireFormat = new PubSubPositionWireFormat();
@@ -306,5 +300,35 @@ public final class PubSubUtil {
     } catch (IllegalArgumentException e) {
       throw new IllegalArgumentException("Invalid base64 encoded bytes in position wire format string", e);
     }
+  }
+
+  public static PositionGrpcWireFormat parsePositionParam(String positionWireFormatString) {
+    String[] typeIdAndBase64WfBytes = getTypeIdAndBase64WfBytes(positionWireFormatString);
+    return PositionGrpcWireFormat.newBuilder()
+        .setTypeId(Integer.parseInt(typeIdAndBase64WfBytes[0]))
+        .setBase64PositionBytes(typeIdAndBase64WfBytes[1])
+        .build();
+  }
+
+  private static String[] getTypeIdAndBase64WfBytes(String positionWireFormatString) {
+    if (positionWireFormatString == null || positionWireFormatString.isEmpty()) {
+      throw new IllegalArgumentException("Position wire format string cannot be null or empty");
+    }
+
+    String[] typeIdAndBase64WfBytes = positionWireFormatString.split(":");
+    if (typeIdAndBase64WfBytes.length != 2) {
+      throw new IllegalArgumentException(
+          "Invalid position wire format string. Expected format: 'typeId:base64EncodedWfBytes'");
+    }
+
+    return typeIdAndBase64WfBytes;
+  }
+
+  public static PositionGrpcWireFormat getPositionGrpcWireFormat(PubSubPosition position) {
+    PubSubPositionWireFormat positionWireFormat = position.getPositionWireFormat();
+    return PositionGrpcWireFormat.newBuilder()
+        .setTypeId(positionWireFormat.getType())
+        .setBase64PositionBytes(getBase64EncodedString(ByteUtils.extractByteArray(positionWireFormat.getRawBytes())))
+        .build();
   }
 }

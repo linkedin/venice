@@ -14,10 +14,12 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.fail;
 
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
+import com.linkedin.venice.controller.kafka.consumer.AdminMetadata;
 import com.linkedin.venice.controller.stats.ProtocolVersionAutoDetectionStats;
 import com.linkedin.venice.controllerapi.AdminOperationProtocolVersionControllerResponse;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.pubsub.mock.InMemoryPubSubPosition;
 import com.linkedin.venice.utils.TestUtils;
 import java.util.HashMap;
 import java.util.Map;
@@ -108,9 +110,11 @@ public class TestProtocolVersionAutoDetectionService {
 
   @Test
   public void testProtocolVersionDetection() throws Exception {
-    Map<String, Long> adminTopicMetadataMap = AdminTopicMetadataAccessor
-        .generateMetadataMap(Optional.of(1L), Optional.of(-1L), Optional.of(1L), Optional.of(80L));
-    doReturn(adminTopicMetadataMap).when(admin).getAdminTopicMetadata(clusterName, Optional.empty());
+    AdminMetadata adminTopicMetadata = new AdminMetadata();
+    adminTopicMetadata.setPubSubPosition(InMemoryPubSubPosition.of(1L));
+    adminTopicMetadata.setExecutionId(1L);
+    adminTopicMetadata.setAdminOperationProtocolVersion(80L);
+    doReturn(adminTopicMetadata).when(admin).getAdminTopicMetadata(clusterName, Optional.empty());
 
     ProtocolVersionAutoDetectionService localProtocolVersionAutoDetectionService =
         new ProtocolVersionAutoDetectionService(
@@ -132,10 +136,11 @@ public class TestProtocolVersionAutoDetectionService {
   @Test
   public void testProtocolVersionDetectionWithNoUpdate() throws Exception {
     // When version is -1, no need to update
-    Map<String, Long> adminTopicMetadataMap = AdminTopicMetadataAccessor
-        .generateMetadataMap(Optional.of(1L), Optional.of(-1L), Optional.of(1L), Optional.of(-1L));
+    AdminMetadata adminMetadata = new AdminMetadata();
+    adminMetadata.setPubSubPosition(InMemoryPubSubPosition.of(1L));
+    adminMetadata.setExecutionId(1L);
 
-    doReturn(adminTopicMetadataMap).when(admin).getAdminTopicMetadata(clusterName, Optional.empty());
+    doReturn(adminMetadata).when(admin).getAdminTopicMetadata(clusterName, Optional.empty());
 
     ProtocolVersionAutoDetectionService localProtocolVersionAutoDetectionService =
         new ProtocolVersionAutoDetectionService(

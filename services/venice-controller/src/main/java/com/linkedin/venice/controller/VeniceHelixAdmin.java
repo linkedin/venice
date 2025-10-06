@@ -63,6 +63,7 @@ import com.linkedin.venice.controller.init.PerClusterInternalRTStoreInitializati
 import com.linkedin.venice.controller.init.SystemSchemaInitializationRoutine;
 import com.linkedin.venice.controller.kafka.StoreStatusDecider;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
+import com.linkedin.venice.controller.kafka.consumer.AdminMetadata;
 import com.linkedin.venice.controller.kafka.protocol.admin.HybridStoreConfigRecord;
 import com.linkedin.venice.controller.kafka.protocol.admin.StoreViewConfigRecord;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
@@ -173,6 +174,7 @@ import com.linkedin.venice.participant.protocol.ParticipantMessageKey;
 import com.linkedin.venice.participant.protocol.ParticipantMessageValue;
 import com.linkedin.venice.participant.protocol.enums.ParticipantMessageType;
 import com.linkedin.venice.persona.StoragePersona;
+import com.linkedin.venice.protocols.controller.PositionGrpcWireFormat;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.PubSubTopicConfiguration;
@@ -8079,15 +8081,14 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    * @return cluster-level execution id, offset, upstream offset, and admin operation protocol version.
    *        If store name is specified, it returns store-level execution id.
    */
-  public Map<String, Long> getAdminTopicMetadata(String clusterName, Optional<String> storeName) {
+  public AdminMetadata getAdminTopicMetadata(String clusterName, Optional<String> storeName) {
     if (storeName.isPresent()) {
       Long executionId = getExecutionIdAccessor().getLastSucceededExecutionIdMap(clusterName).get(storeName.get());
-      return executionId == null
-          ? Collections.emptyMap()
-          : AdminTopicMetadataAccessor
-              .generateMetadataMap(Optional.of(-1L), Optional.of(-1L), Optional.of(executionId), Optional.of(-1L));
+      AdminMetadata adminMetadata = new AdminMetadata();
+      adminMetadata.setExecutionId(executionId);
+      return adminMetadata;
     }
-    return getAdminConsumerService(clusterName).getAdminTopicMetadata(clusterName).toLegacyMap();
+    return getAdminConsumerService(clusterName).getAdminTopicMetadata(clusterName);
   }
 
   /**
@@ -8098,16 +8099,16 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       String clusterName,
       long executionId,
       Optional<String> storeName,
-      Optional<Long> offset,
-      Optional<Long> upstreamOffset) {
+      Optional<PositionGrpcWireFormat> position,
+      Optional<PositionGrpcWireFormat> upstreamPosition) {
     if (storeName.isPresent()) {
       getExecutionIdAccessor().updateLastSucceededExecutionIdMap(clusterName, storeName.get(), executionId);
     } else {
-      if (!offset.isPresent() || !upstreamOffset.isPresent()) {
-        throw new VeniceException("Offsets must be provided to update cluster-level admin topic metadata");
+      if (!position.isPresent() || !upstreamPosition.isPresent()) {
+        throw new VeniceException("Positions must be provided to update cluster-level admin topic metadata");
       }
       getAdminConsumerService(clusterName)
-          .updateAdminTopicMetadata(clusterName, executionId, offset.get(), upstreamOffset.get());
+          .updateAdminTopicMetadata(clusterName, executionId, position.get(), upstreamPosition.get());
     }
   }
 
