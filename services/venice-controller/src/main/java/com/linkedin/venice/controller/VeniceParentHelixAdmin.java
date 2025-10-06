@@ -2346,9 +2346,9 @@ public class VeniceParentHelixAdmin implements Admin {
 
       String kafkaTopic = Version.composeKafkaTopic(storeName, futureVersionBeforeRollForward);
       Version futureVersion = getStore(clusterName, storeName).getVersion(futureVersionBeforeRollForward);
-      boolean isFutureVersionOnlyDeferredSwap =
+      boolean onlyDeferredSwap =
           futureVersion.isVersionSwapDeferred() && StringUtils.isEmpty(futureVersion.getTargetSwapRegion());
-      if (isFutureVersionOnlyDeferredSwap) {
+      if (onlyDeferredSwap) {
         LOGGER.info(
             "Truncating topic {} after child controllers tried to roll forward to not block new versions",
             kafkaTopic);
