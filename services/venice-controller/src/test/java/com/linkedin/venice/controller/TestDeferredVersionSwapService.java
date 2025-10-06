@@ -31,6 +31,7 @@ import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.locks.ClusterLockManager;
 import io.tehuti.metrics.MetricsRepository;
+import io.tehuti.metrics.Sensor;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
@@ -60,6 +61,7 @@ public class TestDeferredVersionSwapService {
   private static Map<String, String> childDatacenterToUrl = new HashMap<>();
   private ReadWriteStoreRepository repository;
   private static final int controllerTimeout = 1 * Time.MS_PER_SECOND;
+  private MetricsRepository metricsRepository;
 
   @BeforeMethod
   public void setUp() {
@@ -79,11 +81,16 @@ public class TestDeferredVersionSwapService {
     VeniceControllerClusterConfig clusterConfig = mock(VeniceControllerClusterConfig.class);
     doReturn("").when(clusterConfig).getDeferredVersionSwapRegionRollforwardOrder();
     doReturn(clusterConfig).when(veniceControllerMultiClusterConfig).getControllerConfig(clusterName);
+    doReturn(1).when(clusterConfig).getDeferredVersionSwapThreadPoolSize();
 
     childDatacenterToUrl.put(region1, "test");
     childDatacenterToUrl.put(region2, "test");
     childDatacenterToUrl.put(region3, "test");
     doReturn(childDatacenterToUrl).when(admin).getChildDataCenterControllerUrlMap(anyString());
+
+    metricsRepository = mock(MetricsRepository.class);
+    Sensor sensor = mock(Sensor.class);
+    doReturn(sensor).when(metricsRepository).sensor(any(), any());
   }
 
   private Store mockStore(
@@ -237,7 +244,7 @@ public class TestDeferredVersionSwapService {
         admin,
         veniceControllerMultiClusterConfig,
         mock(DeferredVersionSwapStats.class),
-        mock(MetricsRepository.class));
+        metricsRepository);
 
     List<LifecycleHooksRecord> lifecycleHooks = new ArrayList<>();
     Map<String, String> params = new HashMap<>();
@@ -330,7 +337,7 @@ public class TestDeferredVersionSwapService {
         admin,
         veniceControllerMultiClusterConfig,
         mock(DeferredVersionSwapStats.class),
-        mock(MetricsRepository.class));
+        metricsRepository);
 
     deferredVersionSwapService.startInner();
 
@@ -393,7 +400,7 @@ public class TestDeferredVersionSwapService {
         admin,
         veniceControllerMultiClusterConfig,
         mockDeferredVersionSwapStats,
-        mock(MetricsRepository.class));
+        metricsRepository);
 
     deferredVersionSwapService.startInner();
 
@@ -451,7 +458,7 @@ public class TestDeferredVersionSwapService {
         admin,
         veniceControllerMultiClusterConfig,
         deferredVersionSwapStats,
-        mock(MetricsRepository.class));
+        metricsRepository);
 
     deferredVersionSwapService.startInner();
 
@@ -511,7 +518,7 @@ public class TestDeferredVersionSwapService {
         admin,
         veniceControllerMultiClusterConfig,
         mock(DeferredVersionSwapStats.class),
-        mock(MetricsRepository.class));
+        metricsRepository);
 
     VeniceException exception = new VeniceException();
     doThrow(exception).when(admin).rollForwardToFutureVersion(any(), any(), any());
@@ -571,7 +578,7 @@ public class TestDeferredVersionSwapService {
         admin,
         veniceControllerMultiClusterConfig,
         deferredVersionSwapStats,
-        mock(MetricsRepository.class));
+        metricsRepository);
 
     deferredVersionSwapService.startInner();
 
@@ -632,7 +639,7 @@ public class TestDeferredVersionSwapService {
         admin,
         veniceControllerMultiClusterConfig,
         deferredVersionSwapStats,
-        mock(MetricsRepository.class));
+        metricsRepository);
 
     deferredVersionSwapService.startInner();
 
@@ -688,7 +695,7 @@ public class TestDeferredVersionSwapService {
         admin,
         veniceControllerMultiClusterConfig,
         deferredVersionSwapStats,
-        mock(MetricsRepository.class));
+        metricsRepository);
 
     service.startInner();
 
@@ -745,7 +752,7 @@ public class TestDeferredVersionSwapService {
         admin,
         veniceControllerMultiClusterConfig,
         deferredVersionSwapStats,
-        mock(MetricsRepository.class));
+        metricsRepository);
 
     service.startInner();
 
@@ -803,7 +810,7 @@ public class TestDeferredVersionSwapService {
         admin,
         veniceControllerMultiClusterConfig,
         deferredVersionSwapStats,
-        mock(MetricsRepository.class));
+        metricsRepository);
 
     service.startInner();
 
