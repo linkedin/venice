@@ -149,9 +149,10 @@ public class BatchGetAvroStoreClientUnitTest {
   }
 
   /**
-   * Similar to {@link #testSimpleStreamingBatchGet} but enables long tail Retry for single get,
-   * so client will be an instance of {@link RetriableAvroGenericStoreClient}, but multiGet should not support retry.
-   * This test case will fail if we retry multiGet when retry for multiGet is not enabled.
+   * Similar to {@link #testSimpleStreamingBatchGet} but enables long tail Retry for single get.
+   * With the new implementation, batch get retry is always enabled with dynamic thresholds.
+   * For 1000 keys, the dynamic threshold from "501-:500" is 500ms, which is much higher than the 
+   * response time (5ms), so no retry should be triggered.
    */
   @Test(timeOut = TEST_TIMEOUT)
   public void testSimpleStreamingBatchGetAndLongTailRetryEnabledForSingleGet()
@@ -159,12 +160,12 @@ public class BatchGetAvroStoreClientUnitTest {
 
     TestClientSimulator client = new TestClientSimulator();
     client.generateKeyValues(0, 1000)
-        .setLongTailRetryEnabledForSingleGet(true) // Enable Retry for single get alone
+        .setLongTailRetryEnabledForSingleGet(true) // Enable Retry for single get
         .setLongTailRetryThresholdForSingleGetInMicroseconds(RETRY_THRESHOLD_IN_MS)
         .partitionKeys(1)
         .assignRouteToPartitions("https://host1.linkedin.com", 0)
         .expectRequestWithKeysForPartitionOnRoute(1, 1, "https://host1.linkedin.com", 0)
-        .respondToRequestWithKeyValues(5, 1)
+        .respondToRequestWithKeyValues(5, 1) // Fast response (5ms) - no retry triggered
         .simulate();
 
     callStreamingBatchGetAndVerifyResults(
@@ -172,6 +173,7 @@ public class BatchGetAvroStoreClientUnitTest {
         client.getRequestedKeyValues(),
         client.getSimulatorCompleteFuture());
 
+    // For 1000 keys with 5ms response time, no retry should be triggered (threshold is 500ms)
     validateMetrics(client, 1000, 1000, 0, 0);
   }
 

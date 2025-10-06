@@ -119,7 +119,7 @@ public class RetriableAvroGenericStoreClientTest {
         .setLongTailRetryEnabledForSingleGet(true)
         .setLongTailRetryThresholdForSingleGetInMicroSeconds(
             (int) TimeUnit.MILLISECONDS.toMicros(LONG_TAIL_RETRY_THRESHOLD_IN_MS))
-        // Batch get retry is now always enabled with dynamic thresholds based on key count
+        // Batch get retry is always enabled with dynamic thresholds based on key count
         .setLongTailRetryEnabledForCompute(true)
         .setRetryBudgetEnabled(isRetryBudgetEnabled())
         .setLongTailRetryThresholdForComputeInMicroSeconds(
@@ -561,7 +561,7 @@ public class RetriableAvroGenericStoreClientTest {
         String batchGetRetryBudgetMetricName =
             "." + RetriableAvroGenericStoreClient.MULTI_KEY_LONG_TAIL_RETRY_STATS_PREFIX + clientConfig.getStoreName()
                 + "--retry_limit_per_seconds.Gauge";
-        // With the new implementation, batch get retry manager is always initialized
+        // Batch get retry manager is always initialized now
         assertNotNull(metrics.get(batchGetRetryBudgetMetricName), "Retry limit per second metric should not be null");
       } else if (singleGet) {
         assertTrue(getRequestContext.retryContext.longTailRetryRequestTriggered);
