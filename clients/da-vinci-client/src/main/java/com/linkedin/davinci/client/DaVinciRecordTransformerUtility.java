@@ -1,7 +1,5 @@
 package com.linkedin.davinci.client;
 
-import static com.linkedin.davinci.client.DaVinciRecordTransformerRecordMetadata.SENTINEL_WRITER_SCHEMA_ID;
-
 import com.linkedin.davinci.store.AbstractStorageIterator;
 import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.davinci.store.StoragePartitionAdjustmentTrigger;
@@ -215,7 +213,7 @@ public class DaVinciRecordTransformerUtility<K, O> {
                        * We can technically supply the writer schema id, but that would require pulling some logic
                        * out of lazyValue, which could add latency. Revisit if it is actually needed.
                        */
-                      SENTINEL_WRITER_SCHEMA_ID,
+                      0,
                       PubSubSymbolicPosition.EARLIEST,
                       keyBytes.length + valueBytes.length,
                       null)
