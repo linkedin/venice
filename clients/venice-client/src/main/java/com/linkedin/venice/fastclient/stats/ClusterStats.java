@@ -6,11 +6,9 @@ import static com.linkedin.venice.fastclient.stats.ClusterMetricEntity.STORE_VER
 import static com.linkedin.venice.stats.dimensions.InstanceErrorType.BLOCKED;
 import static com.linkedin.venice.stats.dimensions.InstanceErrorType.OVERLOADED;
 import static com.linkedin.venice.stats.dimensions.InstanceErrorType.UNHEALTHY;
-import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
 
 import com.linkedin.venice.stats.AbstractVeniceStats;
-import com.linkedin.venice.stats.VeniceMetricsConfig;
-import com.linkedin.venice.stats.VeniceMetricsRepository;
+import com.linkedin.venice.stats.OpenTelemetryMetricsSetup;
 import com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository;
 import com.linkedin.venice.stats.dimensions.InstanceErrorType;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
@@ -19,7 +17,6 @@ import com.linkedin.venice.stats.metrics.MetricEntityStateBase;
 import com.linkedin.venice.stats.metrics.MetricEntityStateOneEnum;
 import com.linkedin.venice.stats.metrics.TehutiMetricNameEnum;
 import io.opentelemetry.api.common.Attributes;
-import io.opentelemetry.api.common.AttributesBuilder;
 import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.stats.AsyncGauge;
@@ -28,7 +25,6 @@ import io.tehuti.metrics.stats.Max;
 import io.tehuti.metrics.stats.OccurrenceRate;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
@@ -63,27 +59,15 @@ public class ClusterStats extends AbstractVeniceStats {
     super(metricsRepository, storeName);
     this.storeName = storeName;
 
-    // Initialize OTel support
-    if (metricsRepository instanceof VeniceMetricsRepository) {
-      VeniceMetricsRepository veniceMetricsRepository = (VeniceMetricsRepository) metricsRepository;
-      VeniceMetricsConfig veniceMetricsConfig = veniceMetricsRepository.getVeniceMetricsConfig();
-      if (veniceMetricsConfig.emitOtelMetrics()) {
-        otelRepository = veniceMetricsRepository.getOpenTelemetryMetricsRepository();
-        baseDimensionsMap = new HashMap<>();
-        baseDimensionsMap.put(VENICE_STORE_NAME, storeName);
-        AttributesBuilder baseAttributesBuilder = Attributes.builder();
-        baseAttributesBuilder.put(otelRepository.getDimensionName(VENICE_STORE_NAME), storeName);
-        baseAttributes = baseAttributesBuilder.build();
-      } else {
-        otelRepository = null;
-        baseDimensionsMap = null;
-        baseAttributes = null;
-      }
-    } else {
-      otelRepository = null;
-      baseDimensionsMap = null;
-      baseAttributes = null;
-    }
+    OpenTelemetryMetricsSetup.OpenTelemetryMetricsSetupInfo otelData =
+        OpenTelemetryMetricsSetup.builder(metricsRepository)
+            // set all base dimensions for this stats class and build
+            .setStoreName(storeName)
+            .build();
+
+    this.otelRepository = otelData.getOtelRepository();
+    this.baseDimensionsMap = otelData.getBaseDimensionsMap();
+    this.baseAttributes = otelData.getBaseAttributes();
 
     // Initialize OTel metrics
     this.versionUpdateFailureCount = MetricEntityStateBase.create(

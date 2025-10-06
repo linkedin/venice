@@ -1,11 +1,8 @@
 package com.linkedin.venice.controller.stats;
 
-import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
-
 import com.google.common.collect.ImmutableMap;
 import com.linkedin.venice.stats.AbstractVeniceStats;
-import com.linkedin.venice.stats.VeniceMetricsConfig;
-import com.linkedin.venice.stats.VeniceMetricsRepository;
+import com.linkedin.venice.stats.OpenTelemetryMetricsSetup;
 import com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository;
 import com.linkedin.venice.stats.dimensions.StoreRepushTriggerSource;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
@@ -16,10 +13,12 @@ import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.stats.Gauge;
 import io.tehuti.metrics.stats.OccurrenceRate;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.Map;
 
 
+/**
+ * This class is used to track the metrics for log compaction.
+ */
 public class LogCompactionStats extends AbstractVeniceStats {
   private final boolean emitOpenTelemetryMetrics;
   private final VeniceOpenTelemetryMetricsRepository otelRepository;
@@ -33,23 +32,16 @@ public class LogCompactionStats extends AbstractVeniceStats {
 
   public LogCompactionStats(MetricsRepository metricsRepository, String clusterName) {
     super(metricsRepository, "LogCompactionStats");
-    if (metricsRepository instanceof VeniceMetricsRepository) {
-      VeniceMetricsRepository veniceMetricsRepository = (VeniceMetricsRepository) metricsRepository;
-      VeniceMetricsConfig veniceMetricsConfig = veniceMetricsRepository.getVeniceMetricsConfig();
-      emitOpenTelemetryMetrics = veniceMetricsConfig.emitOtelMetrics();
-      if (emitOpenTelemetryMetrics) {
-        this.otelRepository = veniceMetricsRepository.getOpenTelemetryMetricsRepository();
-        this.baseDimensionsMap = new HashMap<>();
-        this.baseDimensionsMap.put(VENICE_CLUSTER_NAME, clusterName);
-      } else {
-        this.otelRepository = null;
-        this.baseDimensionsMap = null;
-      }
-    } else {
-      this.emitOpenTelemetryMetrics = false;
-      this.otelRepository = null;
-      this.baseDimensionsMap = null;
-    }
+
+    OpenTelemetryMetricsSetup.OpenTelemetryMetricsSetupInfo otelData =
+        OpenTelemetryMetricsSetup.builder(metricsRepository)
+            // set all base dimensions for this stats class and build
+            .setClusterName(clusterName)
+            .build();
+
+    this.emitOpenTelemetryMetrics = otelData.emitOpenTelemetryMetrics();
+    this.otelRepository = otelData.getOtelRepository();
+    this.baseDimensionsMap = otelData.getBaseDimensionsMap();
 
     repushCallCountMetric = MetricEntityStateGeneric.create(
         ControllerMetricEntity.STORE_REPUSH_CALL_COUNT.getMetricEntity(),
