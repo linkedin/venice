@@ -10,9 +10,11 @@ import java.util.Map;
 
 
 /**
- * Utility class to set up OpenTelemetry for different stats classes.
- * This class uses a builder pattern to provide a flexible way to configure base
- * dimensions and attributes for OpenTelemetry metrics.
+ * Utility class to set up OpenTelemetry for different stats classes:
+ * This takes in a {@link MetricsRepository} and optional base dimension values,
+ * and determines if OpenTelemetry metrics should be emitted based on the repository type
+ * and configuration. It also constructs base dimension maps and OpenTelemetry Attributes
+ * that can be reused when recording metrics.
  */
 public class OpenTelemetryMetricsSetup {
   /**
