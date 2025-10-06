@@ -53,7 +53,7 @@ public abstract class AdminTopicMetadataAccessor {
     return new Pair<>(localOffset, upstreamOffset);
   }
 
-  public Pair<PubSubPosition, PubSubPosition> getPositions(AdminMetadata metadata) {
+  public static Pair<PubSubPosition, PubSubPosition> getPositions(AdminMetadata metadata) {
     return new Pair<>(metadata.getPosition(), metadata.getUpstreamPosition());
   }
 
@@ -67,8 +67,8 @@ public abstract class AdminTopicMetadataAccessor {
   /**
    * @return the value to which the specified key is mapped to {@linkplain AdminTopicMetadataAccessor#ADMIN_OPERATION_PROTOCOL_VERSION_KEY}.
    */
-  public static long getAdminOperationProtocolVersion(Map<String, Long> metadata) {
-    return metadata.getOrDefault(ADMIN_OPERATION_PROTOCOL_VERSION_KEY, UNDEFINED_VALUE);
+  public static long getAdminOperationProtocolVersion(AdminMetadata metadata) {
+    return metadata.getAdminOperationProtocolVersion();
   }
 
   /**
