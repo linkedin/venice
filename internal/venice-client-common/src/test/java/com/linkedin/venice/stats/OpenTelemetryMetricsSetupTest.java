@@ -1,6 +1,9 @@
 package com.linkedin.venice.stats;
 
-import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.*;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_METHOD;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_ROUTE_NAME;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
@@ -129,9 +132,9 @@ public class OpenTelemetryMetricsSetupTest {
     assertNotNull(baseDimensionsMap);
     assertEquals(baseDimensionsMap.size(), 4);
     assertEquals(baseDimensionsMap.get(VENICE_STORE_NAME), storeName);
-    assertEquals(baseDimensionsMap.get(VeniceMetricsDimensions.VENICE_REQUEST_METHOD), requestType.getDimensionValue());
-    assertEquals(baseDimensionsMap.get(VeniceMetricsDimensions.VENICE_CLUSTER_NAME), clusterName);
-    assertEquals(baseDimensionsMap.get(VeniceMetricsDimensions.VENICE_ROUTE_NAME), routeName);
+    assertEquals(baseDimensionsMap.get(VENICE_REQUEST_METHOD), requestType.getDimensionValue());
+    assertEquals(baseDimensionsMap.get(VENICE_CLUSTER_NAME), clusterName);
+    assertEquals(baseDimensionsMap.get(VENICE_ROUTE_NAME), routeName);
 
     Attributes baseAttributes = result.getBaseAttributes();
     assertNotNull(baseAttributes);
@@ -173,9 +176,9 @@ public class OpenTelemetryMetricsSetupTest {
     assertNotNull(baseDimensionsMap);
     assertEquals(baseDimensionsMap.size(), 2);
     assertEquals(baseDimensionsMap.get(VENICE_STORE_NAME), storeName);
-    assertEquals(baseDimensionsMap.get(VeniceMetricsDimensions.VENICE_REQUEST_METHOD), requestType.getDimensionValue());
-    assertNull(baseDimensionsMap.get(VeniceMetricsDimensions.VENICE_CLUSTER_NAME));
-    assertNull(baseDimensionsMap.get(VeniceMetricsDimensions.VENICE_ROUTE_NAME));
+    assertEquals(baseDimensionsMap.get(VENICE_REQUEST_METHOD), requestType.getDimensionValue());
+    assertNull(baseDimensionsMap.get(VENICE_CLUSTER_NAME));
+    assertNull(baseDimensionsMap.get(VENICE_ROUTE_NAME));
 
     Attributes baseAttributes = result.getBaseAttributes();
     assertNotNull(baseAttributes);
