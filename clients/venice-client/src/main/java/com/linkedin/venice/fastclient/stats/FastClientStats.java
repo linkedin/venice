@@ -151,7 +151,7 @@ public class FastClientStats extends ClientStats {
     // METADATA_STALENESS_DURATION only requires VENICE_STORE_NAME dimension
     Map<VeniceMetricsDimensions, String> metadataStalenessBaseDimensionsMap = null;
     Attributes metadataStalenessBaseAttributes = null;
-    if (emitOpenTelemetryMetrics) {
+    if (emitOpenTelemetryMetrics()) {
       metadataStalenessBaseDimensionsMap = Collections.singletonMap(VENICE_STORE_NAME, storeName);
       metadataStalenessBaseAttributes =
           Attributes.builder().put(otelRepository.getDimensionName(VENICE_STORE_NAME), storeName).build();

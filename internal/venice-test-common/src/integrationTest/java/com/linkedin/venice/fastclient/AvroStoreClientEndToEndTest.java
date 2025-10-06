@@ -2,6 +2,7 @@ package com.linkedin.venice.fastclient;
 
 import static com.linkedin.venice.client.stats.BasicClientStats.CLIENT_METRIC_ENTITIES;
 import static com.linkedin.venice.stats.ClientType.FAST_CLIENT;
+import static com.linkedin.venice.stats.VeniceOpenTelemetryMetricNamingFormat.PASCAL_CASE;
 import static com.linkedin.venice.utils.Time.MS_PER_SECOND;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
@@ -66,6 +67,8 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
         new VeniceMetricsConfig.Builder().setServiceName(FAST_CLIENT.getName())
             .setMetricPrefix(FAST_CLIENT.getMetricsPrefix())
             .setEmitOtelMetrics(true)
+            // using a different format than default to catch any conversion issues
+            .setMetricNamingFormat(PASCAL_CASE)
             .setMetricEntities(CLIENT_METRIC_ENTITIES)
             .build());
     AvroGenericStoreClient<String, GenericRecord> genericFastClient = null;

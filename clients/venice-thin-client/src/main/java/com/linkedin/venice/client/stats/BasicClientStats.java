@@ -80,7 +80,7 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
   private final Rate requestRate = new OccurrenceRate();
   private final Rate successRequestKeyCountRate = new Rate();
   protected final VeniceOpenTelemetryMetricsRepository otelRepository;
-  protected final boolean emitOpenTelemetryMetrics;
+  private final boolean emitOpenTelemetryMetrics;
   protected final ClientType clientType;
 
   public static BasicClientStats getClientStats(
@@ -369,6 +369,10 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
 
   protected Attributes getBaseAttributes() {
     return baseAttributes;
+  }
+
+  protected boolean emitOpenTelemetryMetrics() {
+    return emitOpenTelemetryMetrics;
   }
 
   /**
