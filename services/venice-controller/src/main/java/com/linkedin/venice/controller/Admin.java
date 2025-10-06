@@ -634,7 +634,7 @@ public interface Admin extends AutoCloseable, Closeable {
    * message that cannot be processed for some reason, we will need to forcibly skip that message in order to unblock
    * the task from consuming subsequent messages.
    * @param clusterName
-   * @param offset
+   * @param typeIdAndBase64PositionBytes
    * @param skipDIV tries to skip only the DIV check for the blocking message.
    */
   void skipAdminMessage(String clusterName, String typeIdAndBase64PositionBytes, boolean skipDIV, long executionId);

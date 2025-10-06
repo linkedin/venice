@@ -45,7 +45,7 @@ public class SkipAdminRoute extends AbstractRoute {
         boolean skipDIV = Utils.parseBooleanOrThrow(request.queryParams(SKIP_DIV), SKIP_DIV);
         if (typeIdAndBase64PositionBytes != null && executionId != -1L) {
           throw new IllegalArgumentException(
-              "Only one of offset or executionId can be specified, position " + typeIdAndBase64PositionBytes
+              "Only one of position or executionId can be specified, position " + typeIdAndBase64PositionBytes
                   + ", execution id " + executionId);
         }
         admin.skipAdminMessage(responseObject.getCluster(), typeIdAndBase64PositionBytes, skipDIV, executionId);
