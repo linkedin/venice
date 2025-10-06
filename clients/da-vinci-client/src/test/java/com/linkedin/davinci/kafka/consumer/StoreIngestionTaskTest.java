@@ -1087,8 +1087,19 @@ public abstract class StoreIngestionTaskTest {
 
       AbstractStorageIterator iterator = mock(AbstractStorageIterator.class);
       when(iterator.isValid()).thenReturn(true).thenReturn(false);
-      when(iterator.key()).thenReturn("mockKey".getBytes());
-      when(iterator.value()).thenReturn("mockValue".getBytes());
+
+      RecordSerializer recordSerializer =
+          FastSerializerDeserializerFactory.getFastAvroGenericSerializer(Schema.create(Schema.Type.STRING));
+      when(iterator.key()).thenReturn(recordSerializer.serialize("mockKey"));
+
+      byte[] valueByteArray = recordSerializer.serialize("mockValue");
+      ByteBuffer valueBytes = ByteBuffer.wrap(valueByteArray);
+      ByteBuffer newValueBytes = ByteBuffer.allocate(Integer.BYTES + valueBytes.remaining());
+      newValueBytes.putInt(SCHEMA_ID);
+      newValueBytes.put(valueBytes);
+      newValueBytes.flip();
+
+      when(iterator.value()).thenReturn(newValueBytes.array());
       when(this.mockAbstractStorageEngine.getIterator(anyInt())).thenReturn(iterator);
     } else {
       this.mockDeepCopyStorageEngine = spy(new DeepCopyStorageEngine(this.mockAbstractStorageEngine));
@@ -2850,12 +2861,12 @@ public abstract class StoreIngestionTaskTest {
       });
     }, aaConfig);
 
-    config.setRecordTransformerConfig(buildRecordTransformerConfig(false));
+    config.setRecordTransformerConfig(buildRecordTransformerConfig(true));
     runTest(config);
   }
 
   @Test(dataProvider = "aaConfigProvider")
-  public void testRecordTransformerDatabaseChecksumSkipCompatabilityChecks(AAConfig aaConfig) throws Exception {
+  public void testRecordTransformerDatabaseChecksumRecordTransformationDisabled(AAConfig aaConfig) throws Exception {
     databaseChecksumVerificationEnabled = true;
     doReturn(false).when(rocksDBServerConfig).isRocksDBPlainTableFormatEnabled();
     setStoreVersionStateSupplier(true);
@@ -2881,7 +2892,7 @@ public abstract class StoreIngestionTaskTest {
       deferredWritePartitionConfig.setDeferredWrite(true);
 
       waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
-        // When DVRT is enabled with skip compatability checks enabled, checksum should be calculated
+        // When DVRT is enabled with record transformation disabled, checksum should be calculated
         verify(mockAbstractStorageEngine)
             .beginBatchWrite(eq(deferredWritePartitionConfig), any(), checksumCaptor.capture());
         Optional<Supplier<byte[]>> checksumSupplier = checksumCaptor.getValue();
@@ -2890,7 +2901,7 @@ public abstract class StoreIngestionTaskTest {
       });
     }, aaConfig);
 
-    config.setRecordTransformerConfig(buildRecordTransformerConfig(true));
+    config.setRecordTransformerConfig(buildRecordTransformerConfig(false));
     runTest(config);
   }
 
@@ -5294,7 +5305,7 @@ public abstract class StoreIngestionTaskTest {
       }
     }, aaConfig);
 
-    config.setRecordTransformerConfig(buildRecordTransformerConfig(false));
+    config.setRecordTransformerConfig(buildRecordTransformerConfig(true));
     runTest(config);
 
     // Metrics that should have been recorded
@@ -6272,22 +6283,20 @@ public abstract class StoreIngestionTaskTest {
     }
   }
 
-  private DaVinciRecordTransformerConfig buildRecordTransformerConfig(boolean skipCompatabilityChecks) {
+  private DaVinciRecordTransformerConfig buildRecordTransformerConfig(boolean isRecordTransformationEnabled) {
     Schema myKeySchema = Schema.create(Schema.Type.INT);
-    SchemaEntry keySchemaEntry = mock(SchemaEntry.class);
-    when(keySchemaEntry.getSchema()).thenReturn(myKeySchema);
+    SchemaEntry keySchemaEntry = new SchemaEntry(SCHEMA_ID, myKeySchema);
     when(mockSchemaRepo.getKeySchema(storeNameWithoutVersionInfo)).thenReturn(keySchemaEntry);
 
     Schema myValueSchema = Schema.create(Schema.Type.STRING);
-    SchemaEntry valueSchemaEntry = mock(SchemaEntry.class);
-    when(valueSchemaEntry.getSchema()).thenReturn(myValueSchema);
+    SchemaEntry valueSchemaEntry = new SchemaEntry(SCHEMA_ID, myValueSchema);
     when(mockSchemaRepo.getValueSchema(eq(storeNameWithoutVersionInfo), anyInt())).thenReturn(valueSchemaEntry);
     when(mockSchemaRepo.getSupersetOrLatestValueSchema(eq(storeNameWithoutVersionInfo))).thenReturn(valueSchemaEntry);
 
     return new DaVinciRecordTransformerConfig.Builder().setRecordTransformerFunction(TestStringRecordTransformer::new)
         .setOutputValueClass(String.class)
-        .setOutputValueSchema(Schema.create(Schema.Type.STRING))
-        .setSkipCompatibilityChecks(skipCompatabilityChecks)
+        .setOutputValueSchema(myValueSchema)
+        .setRecordTransformationEnabled(isRecordTransformationEnabled)
         .build();
   }
 

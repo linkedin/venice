@@ -21,6 +21,8 @@ import static com.linkedin.venice.ConfigKeys.DAVINCI_P2P_BLOB_TRANSFER_SERVER_PO
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_TRANSACTIONAL_MODE;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
+import static com.linkedin.venice.consumer.BootstrappingChangelogConsumerTest.pollChangeEventsFromChangeCaptureConsumer;
+import static com.linkedin.venice.consumer.BootstrappingChangelogConsumerTest.pollChangeEventsFromSpecificChangeCaptureConsumer;
 import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.D2_SERVICE_NAME;
 import static com.linkedin.venice.stats.ClientType.CHANGE_DATA_CAPTURE_CLIENT;
 import static com.linkedin.venice.stats.VeniceMetricsRepository.getVeniceMetricsRepository;
@@ -44,14 +46,14 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
-import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
-import org.apache.avro.util.Utf8;
+import org.apache.avro.generic.GenericRecord;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
@@ -152,18 +154,19 @@ public class ChangelogConsumerDaVinciRecordTransformerUserApp {
         pollChangeEventsFromSpecificChangeCaptureConsumer(
             polledChangeEventsMap,
             polledChangeEventsList,
-            bootstrappingVeniceChangelogConsumer);
+            Collections.singletonList(bootstrappingVeniceChangelogConsumer));
         Assert.assertEquals(polledChangeEventsList.size(), eventsToPoll);
       });
     } else {
-      Map<String, PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> polledChangeEventsMap =
+      Map<String, PubSubMessage<GenericRecord, ChangeEvent<GenericRecord>, VeniceChangeCoordinate>> polledChangeEventsMap =
           new HashMap<>();
-      List<PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> polledChangeEventsList = new ArrayList<>();
+      List<PubSubMessage<GenericRecord, ChangeEvent<GenericRecord>, VeniceChangeCoordinate>> polledChangeEventsList =
+          new ArrayList<>();
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
         pollChangeEventsFromChangeCaptureConsumer(
             polledChangeEventsMap,
             polledChangeEventsList,
-            bootstrappingVeniceChangelogConsumer);
+            Collections.singletonList(bootstrappingVeniceChangelogConsumer));
         Assert.assertEquals(polledChangeEventsList.size(), eventsToPoll);
       });
     }
@@ -171,29 +174,4 @@ public class ChangelogConsumerDaVinciRecordTransformerUserApp {
     LOGGER.info("DVRT CDC user app has consumed all events");
   }
 
-  private static void pollChangeEventsFromChangeCaptureConsumer(
-      Map<String, PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> keyToMessageMap,
-      List<PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> polledMessageList,
-      BootstrappingVeniceChangelogConsumer<Utf8, Utf8> bootstrappingVeniceChangelogConsumer) {
-    Collection<PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessages =
-        bootstrappingVeniceChangelogConsumer.poll(1000);
-    for (PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate> pubSubMessage: pubSubMessages) {
-      String key = pubSubMessage.getKey() == null ? null : pubSubMessage.getKey().toString();
-      keyToMessageMap.put(key, pubSubMessage);
-    }
-    polledMessageList.addAll(pubSubMessages);
-  }
-
-  private static void pollChangeEventsFromSpecificChangeCaptureConsumer(
-      Map<String, PubSubMessage<TestChangelogKey, ChangeEvent<TestChangelogValue>, VeniceChangeCoordinate>> keyToMessageMap,
-      List<PubSubMessage<TestChangelogKey, ChangeEvent<TestChangelogValue>, VeniceChangeCoordinate>> polledMessageList,
-      BootstrappingVeniceChangelogConsumer<TestChangelogKey, TestChangelogValue> bootstrappingVeniceChangelogConsumer) {
-    Collection<PubSubMessage<TestChangelogKey, ChangeEvent<TestChangelogValue>, VeniceChangeCoordinate>> pubSubMessages =
-        bootstrappingVeniceChangelogConsumer.poll(1000);
-    for (PubSubMessage<TestChangelogKey, ChangeEvent<TestChangelogValue>, VeniceChangeCoordinate> pubSubMessage: pubSubMessages) {
-      String key = pubSubMessage.getKey() == null ? null : String.valueOf(pubSubMessage.getKey().id);
-      keyToMessageMap.put(key, pubSubMessage);
-    }
-    polledMessageList.addAll(pubSubMessages);
-  }
 }

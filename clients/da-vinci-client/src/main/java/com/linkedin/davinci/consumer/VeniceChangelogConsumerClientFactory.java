@@ -35,6 +35,7 @@ import org.apache.logging.log4j.Logger;
 public class VeniceChangelogConsumerClientFactory {
   private static final Logger LOGGER = LogManager.getLogger(VeniceChangelogConsumerClientFactory.class);
   private final Map<String, VeniceChangelogConsumer> storeClientMap = new VeniceConcurrentHashMap<>();
+  private final Map<String, VeniceChangelogConsumer> versionSpecificStoreClientMap = new VeniceConcurrentHashMap<>();
   private final Map<String, BootstrappingVeniceChangelogConsumer> storeBootstrappingClientMap =
       new VeniceConcurrentHashMap<>();
 
@@ -107,9 +108,10 @@ public class VeniceChangelogConsumerClientFactory {
 
     return storeClientMap.computeIfAbsent(suffixConsumerIdToStore(storeName, adjustedConsumerId), name -> {
       ChangelogClientConfig newStoreChangelogClientConfig =
-          getNewStoreChangelogClientConfig(storeName).setSpecificValue(valueClass);
-      newStoreChangelogClientConfig.setConsumerName(name);
-      newStoreChangelogClientConfig.setViewName(viewNameOverride);
+          getNewStoreChangelogClientConfig(storeName).setSpecificValue(valueClass)
+              .setConsumerName(name)
+              .setViewName(viewNameOverride)
+              .setIsStateful(false);
       String viewClass = getViewClass(newStoreChangelogClientConfig, storeName);
       String consumerName =
           suffixConsumerIdToStore(storeName + "-" + viewClass.getClass().getSimpleName(), adjustedConsumerId);
@@ -160,11 +162,11 @@ public class VeniceChangelogConsumerClientFactory {
           getNewStoreChangelogClientConfig(storeName).setSpecificKey(keyClass)
               .setSpecificValue(valueClass)
               .setSpecificValueSchema(valueSchema)
-              .setConsumerName(consumerName);
+              .setConsumerName(consumerName)
+              .setIsStateful(true);
 
       if (globalChangelogClientConfig.isExperimentalClientEnabled()) {
-        return new BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>(
-            newStoreChangelogClientConfig);
+        return new VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>(newStoreChangelogClientConfig);
       } else {
         return new LocalBootstrappingVeniceChangelogConsumer<K, V>(
             newStoreChangelogClientConfig,
@@ -192,6 +194,25 @@ public class VeniceChangelogConsumerClientFactory {
       String storeName,
       String consumerId) {
     return getBootstrappingChangelogConsumer(storeName, consumerId, null);
+  }
+
+  /**
+   * Subscribes to a specific version of a Venice store. This is only intended for internal use.
+   */
+  public <K, V> VeniceChangelogConsumer<K, V> getVersionSpecificChangelogConsumer(
+      String storeName,
+      int storeVersion,
+      String consumerId) {
+    String consumerName = suffixConsumerIdToStore(storeName, consumerId);
+
+    return versionSpecificStoreClientMap.computeIfAbsent(consumerName + "v_" + storeVersion, name -> {
+      ChangelogClientConfig newStoreChangelogClientConfig =
+          getNewStoreChangelogClientConfig(storeName).setConsumerName(consumerName)
+              .setStoreVersion(storeVersion)
+              .setIsStateful(false);
+
+      return new VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>(newStoreChangelogClientConfig);
+    });
   }
 
   private ChangelogClientConfig getNewStoreChangelogClientConfig(String storeName) {

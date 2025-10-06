@@ -22,6 +22,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertThrows;
@@ -30,12 +31,13 @@ import static org.testng.Assert.assertTrue;
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
+import com.linkedin.davinci.client.DaVinciRecordTransformerRecordMetadata;
 import com.linkedin.davinci.client.DaVinciRecordTransformerResult;
-import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
 import com.linkedin.davinci.consumer.stats.BasicConsumerStats;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
 import com.linkedin.venice.utils.TestUtils;
@@ -53,7 +55,6 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
 import org.apache.avro.Schema;
@@ -61,7 +62,7 @@ import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 
-public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImplTest {
+public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
   private static final String TEST_STORE_NAME = "test_store";
   private static final String TEST_ZOOKEEPER_ADDRESS = "test_zookeeper";
   public static final String D2_SERVICE_NAME = "ChildController";
@@ -75,12 +76,14 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImplTes
   private static final int MAX_BUFFER_SIZE = 10;
   private static final int value = 2;
   private static final Lazy<Integer> lazyValue = Lazy.of(() -> value);
+  private static final DaVinciRecordTransformerRecordMetadata recordMetadata =
+      new DaVinciRecordTransformerRecordMetadata(-1, 0, PubSubSymbolicPosition.EARLIEST, -1, null);
 
   private Schema keySchema;
   private Schema valueSchema;
-  private BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<Integer, Integer> bootstrappingVeniceChangelogConsumer;
-  private BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl.DaVinciRecordTransformerBootstrappingChangelogConsumer recordTransformer;
-  private BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl.DaVinciRecordTransformerBootstrappingChangelogConsumer futureRecordTransformer;
+  private VeniceChangelogConsumerDaVinciRecordTransformerImpl<Integer, Integer> bootstrappingVeniceChangelogConsumer;
+  private VeniceChangelogConsumerDaVinciRecordTransformerImpl.DaVinciRecordTransformerChangelogConsumer recordTransformer;
+  private VeniceChangelogConsumerDaVinciRecordTransformerImpl.DaVinciRecordTransformerChangelogConsumer futureRecordTransformer;
   private ChangelogClientConfig changelogClientConfig;
   private DaVinciRecordTransformerConfig mockDaVinciRecordTransformerConfig;
   private DaVinciClient mockDaVinciClient;
@@ -118,18 +121,17 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImplTes
         .setMetricsRepository(getVeniceMetricsRepository(CHANGE_DATA_CAPTURE_CLIENT, CONSUMER_METRIC_ENTITIES, true));
 
     bootstrappingVeniceChangelogConsumer =
-        new BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<>(changelogClientConfig);
-    assertTrue(
-        bootstrappingVeniceChangelogConsumer.getRecordTransformerConfig().shouldSkipCompatibilityChecks(),
-        "Skip compatability checks for DVRT should be enabled.");
+        new VeniceChangelogConsumerDaVinciRecordTransformerImpl<>(changelogClientConfig);
+    assertFalse(
+        bootstrappingVeniceChangelogConsumer.getRecordTransformerConfig().isRecordTransformationEnabled(),
+        "Record transformation should be disabled.");
 
     mockDaVinciRecordTransformerConfig = mock(DaVinciRecordTransformerConfig.class);
     recordTransformer =
-        bootstrappingVeniceChangelogConsumer.new DaVinciRecordTransformerBootstrappingChangelogConsumer(TEST_STORE_NAME,
+        bootstrappingVeniceChangelogConsumer.new DaVinciRecordTransformerChangelogConsumer(TEST_STORE_NAME,
             CURRENT_STORE_VERSION, keySchema, valueSchema, valueSchema, mockDaVinciRecordTransformerConfig);
-    futureRecordTransformer =
-        bootstrappingVeniceChangelogConsumer.new DaVinciRecordTransformerBootstrappingChangelogConsumer(TEST_STORE_NAME,
-            FUTURE_STORE_VERSION, keySchema, valueSchema, valueSchema, mockDaVinciRecordTransformerConfig);
+    futureRecordTransformer = bootstrappingVeniceChangelogConsumer.new DaVinciRecordTransformerChangelogConsumer(
+        TEST_STORE_NAME, FUTURE_STORE_VERSION, keySchema, valueSchema, valueSchema, mockDaVinciRecordTransformerConfig);
 
     // Replace daVinciClient with a mock
     mockDaVinciClient = mock(DaVinciClient.class);
@@ -140,12 +142,12 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImplTes
     AccessController.doPrivileged((PrivilegedAction<Void>) () -> {
       try {
         Field daVinciClientField =
-            BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl.class.getDeclaredField("daVinciClient");
+            VeniceChangelogConsumerDaVinciRecordTransformerImpl.class.getDeclaredField("daVinciClient");
         daVinciClientField.setAccessible(true);
         daVinciClientField.set(bootstrappingVeniceChangelogConsumer, mockDaVinciClient);
 
-        Field changeCaptureStatsField = BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl.class
-            .getDeclaredField("changeCaptureStats");
+        Field changeCaptureStatsField =
+            VeniceChangelogConsumerDaVinciRecordTransformerImpl.class.getDeclaredField("changeCaptureStats");
         changeCaptureStatsField.setAccessible(true);
         changeCaptureStats =
             spy((BasicConsumerStats) changeCaptureStatsField.get(bootstrappingVeniceChangelogConsumer));
@@ -167,58 +169,31 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImplTes
   }
 
   @Test
-  public void testStartAllPartitions() throws IllegalAccessException, NoSuchFieldException {
+  public void testStartAllPartitions() {
     bootstrappingVeniceChangelogConsumer.start();
-
-    Field isStartedField =
-        BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl.class.getDeclaredField("isStarted");
-    isStartedField.setAccessible(true);
-    AtomicBoolean isStarted = (AtomicBoolean) isStartedField.get(bootstrappingVeniceChangelogConsumer);
-    assertTrue(isStarted.get(), "isStarted should be true");
+    assertTrue(bootstrappingVeniceChangelogConsumer.isStarted(), "isStarted should be true");
 
     verify(mockDaVinciClient).start();
-
-    Field subscribedPartitionsField =
-        BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl.class.getDeclaredField("subscribedPartitions");
-    subscribedPartitionsField.setAccessible(true);
-    assertEquals(subscribedPartitionsField.get(bootstrappingVeniceChangelogConsumer), partitionSet);
+    assertEquals(bootstrappingVeniceChangelogConsumer.getSubscribedPartitions(), partitionSet);
   }
 
   @Test
-  public void testStartWithEmptyPartitions() throws NoSuchFieldException, IllegalAccessException {
+  public void testStartWithEmptyPartitions() {
     bootstrappingVeniceChangelogConsumer.start(Collections.emptySet());
-
-    Field isStartedField =
-        BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl.class.getDeclaredField("isStarted");
-    isStartedField.setAccessible(true);
-    AtomicBoolean isStarted = (AtomicBoolean) isStartedField.get(bootstrappingVeniceChangelogConsumer);
-    assertTrue(isStarted.get(), "isStarted should be true");
+    assertTrue(bootstrappingVeniceChangelogConsumer.isStarted(), "isStarted should be true");
 
     verify(mockDaVinciClient).start();
-
-    Field subscribedPartitionsField =
-        BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl.class.getDeclaredField("subscribedPartitions");
-    subscribedPartitionsField.setAccessible(true);
-    assertEquals(subscribedPartitionsField.get(bootstrappingVeniceChangelogConsumer), partitionSet);
+    assertEquals(bootstrappingVeniceChangelogConsumer.getSubscribedPartitions(), partitionSet);
   }
 
   @Test
-  public void testStartSpecificPartitions() throws IllegalAccessException, NoSuchFieldException {
+  public void testStartSpecificPartitions() {
     Set<Integer> partitionSet = Collections.singleton(1);
     bootstrappingVeniceChangelogConsumer.start(partitionSet);
-
-    Field isStartedField =
-        BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl.class.getDeclaredField("isStarted");
-    isStartedField.setAccessible(true);
-    AtomicBoolean isStarted = (AtomicBoolean) isStartedField.get(bootstrappingVeniceChangelogConsumer);
-    assertTrue(isStarted.get(), "isStarted should be true");
+    assertTrue(bootstrappingVeniceChangelogConsumer.isStarted(), "isStarted should be true");
 
     verify(mockDaVinciClient).start();
-
-    Field subscribedPartitionsField =
-        BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl.class.getDeclaredField("subscribedPartitions");
-    subscribedPartitionsField.setAccessible(true);
-    assertEquals(subscribedPartitionsField.get(bootstrappingVeniceChangelogConsumer), partitionSet);
+    assertEquals(bootstrappingVeniceChangelogConsumer.getSubscribedPartitions(), partitionSet);
   }
 
   @Test
@@ -232,25 +207,13 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImplTes
 
   @Test
   public void testStop() throws Exception {
-    CachingDaVinciClientFactory daVinciClientFactoryMock = mock(CachingDaVinciClientFactory.class);
-    Field daVinciClientFactoryField =
-        BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl.class.getDeclaredField("daVinciClientFactory");
-    daVinciClientFactoryField.setAccessible(true);
-    daVinciClientFactoryField.set(bootstrappingVeniceChangelogConsumer, daVinciClientFactoryMock);
-
     bootstrappingVeniceChangelogConsumer.start();
-
-    Field isStartedField =
-        BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl.class.getDeclaredField("isStarted");
-    isStartedField.setAccessible(true);
-    AtomicBoolean isStarted = (AtomicBoolean) isStartedField.get(bootstrappingVeniceChangelogConsumer);
-    assertTrue(isStarted.get(), "isStarted should be true");
+    assertTrue(bootstrappingVeniceChangelogConsumer.isStarted(), "isStarted should be true");
 
     bootstrappingVeniceChangelogConsumer.stop();
-    isStarted = (AtomicBoolean) isStartedField.get(bootstrappingVeniceChangelogConsumer);
-    assertFalse(isStarted.get(), "isStarted should be false");
+    assertFalse(bootstrappingVeniceChangelogConsumer.isStarted(), "isStarted should be false");
 
-    verify(daVinciClientFactoryMock).close();
+    verify(mockDaVinciClient).close();
   }
 
   @Test
@@ -259,13 +222,13 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImplTes
     recordTransformer.onStartVersionIngestion(true);
 
     for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
-      recordTransformer.processPut(keys.get(partitionId), lazyValue, partitionId);
+      recordTransformer.processPut(keys.get(partitionId), lazyValue, partitionId, recordMetadata);
     }
     verifyPuts(value, false);
 
     // Verify deletes
     for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
-      recordTransformer.processDelete(keys.get(partitionId), partitionId);
+      recordTransformer.processDelete(keys.get(partitionId), partitionId, recordMetadata);
     }
     verifyDeletes();
   }
@@ -291,31 +254,34 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImplTes
 
     // Verify it only contains current version values
     for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
-      recordTransformer.processPut(keys.get(partitionId), lazyCurrentVersionValueValue, partitionId);
-      futureRecordTransformer.processPut(keys.get(partitionId), lazyFutureVersionValueValue, partitionId);
+      recordTransformer.processPut(keys.get(partitionId), lazyCurrentVersionValueValue, partitionId, recordMetadata);
+      futureRecordTransformer
+          .processPut(keys.get(partitionId), lazyFutureVersionValueValue, partitionId, recordMetadata);
     }
     verifyPuts(currentVersionValue, false);
 
     // Verify compaction
     for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
-      recordTransformer.processPut(keys.get(partitionId), lazyCurrentVersionValueValue, partitionId);
-      recordTransformer.processPut(keys.get(partitionId), lazyCurrentVersionValueValue, partitionId);
+      recordTransformer.processPut(keys.get(partitionId), lazyCurrentVersionValueValue, partitionId, recordMetadata);
+      recordTransformer.processPut(keys.get(partitionId), lazyCurrentVersionValueValue, partitionId, recordMetadata);
     }
     verifyPuts(currentVersionValue, true);
 
     // Verify only the future version is allowed to perform the version swap
     for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
       recordTransformer.onVersionSwap(CURRENT_STORE_VERSION, FUTURE_STORE_VERSION, partitionId);
-      recordTransformer.processPut(keys.get(partitionId), lazyCurrentVersionValueValue, partitionId);
-      futureRecordTransformer.processPut(keys.get(partitionId), lazyFutureVersionValueValue, partitionId);
+      recordTransformer.processPut(keys.get(partitionId), lazyCurrentVersionValueValue, partitionId, recordMetadata);
+      futureRecordTransformer
+          .processPut(keys.get(partitionId), lazyFutureVersionValueValue, partitionId, recordMetadata);
     }
     verifyPuts(currentVersionValue, false);
 
     // Perform a version swap from the future version and verify the buffer only contains FUTURE_STORE_VERSION's values
     for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
       futureRecordTransformer.onVersionSwap(CURRENT_STORE_VERSION, FUTURE_STORE_VERSION, partitionId);
-      recordTransformer.processPut(keys.get(partitionId), lazyCurrentVersionValueValue, partitionId);
-      futureRecordTransformer.processPut(keys.get(partitionId), lazyFutureVersionValueValue, partitionId);
+      recordTransformer.processPut(keys.get(partitionId), lazyCurrentVersionValueValue, partitionId, recordMetadata);
+      futureRecordTransformer
+          .processPut(keys.get(partitionId), lazyFutureVersionValueValue, partitionId, recordMetadata);
     }
 
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
@@ -328,8 +294,8 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImplTes
 
   @Test
   public void testVersionSwapFailure() throws IllegalAccessException, NoSuchFieldException {
-    Field partitionToVersionToServeField = BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl.class
-        .getDeclaredField("partitionToVersionToServe");
+    Field partitionToVersionToServeField =
+        VeniceChangelogConsumerDaVinciRecordTransformerImpl.class.getDeclaredField("partitionToVersionToServe");
     partitionToVersionToServeField.setAccessible(true);
     partitionToVersionToServeField.set(bootstrappingVeniceChangelogConsumer, null);
 
@@ -350,13 +316,13 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImplTes
 
     // Future version should not cause the CompletableFuture to complete
     for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
-      futureRecordTransformer.processPut(keys.get(partitionId), lazyValue, partitionId);
+      futureRecordTransformer.processPut(keys.get(partitionId), lazyValue, partitionId, recordMetadata);
     }
     assertFalse(startCompletableFuture.isDone());
 
     // CompletableFuture should be finished when the current version produces to the buffer
     for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
-      recordTransformer.processPut(keys.get(partitionId), lazyValue, partitionId);
+      recordTransformer.processPut(keys.get(partitionId), lazyValue, partitionId, recordMetadata);
     }
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
       assertTrue(startCompletableFuture.isDone());
@@ -388,7 +354,7 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImplTes
     int partitionId = 0;
     Lazy<Integer> lazyValue = Lazy.of(() -> value);
     DaVinciRecordTransformerResult.Result result =
-        recordTransformer.transform(keys.get(partitionId), lazyValue, partitionId).getResult();
+        recordTransformer.transform(keys.get(partitionId), lazyValue, partitionId, recordMetadata).getResult();
     assertSame(result, DaVinciRecordTransformerResult.Result.UNCHANGED);
   }
 
@@ -397,13 +363,12 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImplTes
     ReentrantLock bufferLock = spy(new ReentrantLock());
     Condition bufferIsFullCondition = spy(bufferLock.newCondition());
 
-    Field bufferLockField =
-        BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl.class.getDeclaredField("bufferLock");
+    Field bufferLockField = VeniceChangelogConsumerDaVinciRecordTransformerImpl.class.getDeclaredField("bufferLock");
     bufferLockField.setAccessible(true);
     bufferLockField.set(bootstrappingVeniceChangelogConsumer, bufferLock);
 
-    Field bufferIsFullConditionField = BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl.class
-        .getDeclaredField("bufferIsFullCondition");
+    Field bufferIsFullConditionField =
+        VeniceChangelogConsumerDaVinciRecordTransformerImpl.class.getDeclaredField("bufferIsFullCondition");
     bufferIsFullConditionField.setAccessible(true);
     bufferIsFullConditionField.set(bootstrappingVeniceChangelogConsumer, bufferIsFullCondition);
 
@@ -417,7 +382,7 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImplTes
     List<CompletableFuture> completableFutureList = new ArrayList<>();
     for (int i = 0; i <= MAX_BUFFER_SIZE; i++) {
       completableFutureList.add(CompletableFuture.supplyAsync(() -> {
-        recordTransformer.processPut(keys.get(partitionId), lazyValue, partitionId);
+        recordTransformer.processPut(keys.get(partitionId), lazyValue, partitionId, recordMetadata);
         return null;
       }));
     }
@@ -482,7 +447,7 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImplTes
 
     for (int i = 0; i < MAX_BUFFER_SIZE; i++) {
       CompletableFuture.supplyAsync(() -> {
-        recordTransformer.processPut(keys.get(partitionId), lazyValue, partitionId);
+        recordTransformer.processPut(keys.get(partitionId), lazyValue, partitionId, recordMetadata);
         return null;
       });
     }
@@ -494,11 +459,11 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImplTes
 
   @Test
   public void testPollFailure() throws NoSuchFieldException, IllegalAccessException {
-    BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl bootstrappingVeniceChangelogConsumer =
-        mock(BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl.class);
+    VeniceChangelogConsumerDaVinciRecordTransformerImpl bootstrappingVeniceChangelogConsumer =
+        mock(VeniceChangelogConsumerDaVinciRecordTransformerImpl.class);
 
     Field changeCaptureStatsField =
-        BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl.class.getDeclaredField("changeCaptureStats");
+        VeniceChangelogConsumerDaVinciRecordTransformerImpl.class.getDeclaredField("changeCaptureStats");
     changeCaptureStatsField.setAccessible(true);
     BasicConsumerStats consumerStats = mock(BasicConsumerStats.class);
     changeCaptureStatsField.set(bootstrappingVeniceChangelogConsumer, consumerStats);
@@ -522,7 +487,7 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImplTes
     futureRecordTransformer.onStartVersionIngestion(false);
 
     int partitionId = 0;
-    recordTransformer.processPut(keys.get(partitionId), lazyValue, partitionId);
+    recordTransformer.processPut(keys.get(partitionId), lazyValue, partitionId, recordMetadata);
     recordTransformer.onHeartbeat(partitionId, 1L);
 
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
@@ -552,7 +517,7 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImplTes
 
     // Add records for all but 1 partition to complete the start future, but to not complete the subscribe future.
     for (int partitionId = 0; partitionId < PARTITION_COUNT - 1; partitionId++) {
-      recordTransformer.processPut(keys.get(partitionId), lazyValue, partitionId);
+      recordTransformer.processPut(keys.get(partitionId), lazyValue, partitionId, recordMetadata);
     }
 
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
@@ -562,7 +527,7 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImplTes
     assertFalse(bootstrappingVeniceChangelogConsumer.isCaughtUp());
 
     // Add record for last partition
-    recordTransformer.processPut(keys.get(PARTITION_COUNT - 1), lazyValue, PARTITION_COUNT - 1);
+    recordTransformer.processPut(keys.get(PARTITION_COUNT - 1), lazyValue, PARTITION_COUNT - 1, recordMetadata);
     daVinciClientSubscribeFuture.complete(null);
 
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
@@ -589,6 +554,9 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImplTes
       ChangeEvent<Integer> changeEvent = message.getValue();
       assertNull(changeEvent.getPreviousValue());
       assertEquals((int) changeEvent.getCurrentValue(), value);
+      assertEquals(message.getPayloadSize(), -1);
+      assertNotNull(message.getPosition());
+      assertEquals(message.getPubSubMessageTime(), 0);
       i++;
     }
 
