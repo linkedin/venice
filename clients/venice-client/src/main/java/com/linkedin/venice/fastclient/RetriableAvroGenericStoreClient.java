@@ -6,7 +6,6 @@ import com.linkedin.venice.client.exceptions.VeniceClientRateExceededException;
 import com.linkedin.venice.client.store.ComputeGenericRecord;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
 import com.linkedin.venice.compute.ComputeRequestWrapper;
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.RetryManager;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.utils.BatchGetConfigUtils;
@@ -65,10 +64,6 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
       ClientConfig clientConfig,
       TimeoutProcessor timeoutProcessor) {
     super(delegate, clientConfig);
-    if (!(clientConfig.isLongTailRetryEnabledForSingleGet() || clientConfig.isLongTailRetryEnabledForBatchGet()
-        || clientConfig.isLongTailRetryEnabledForCompute())) {
-      throw new VeniceException("Long tail retry is not enabled");
-    }
     this.longTailRetryEnabledForSingleGet = clientConfig.isLongTailRetryEnabledForSingleGet();
     this.longTailRetryEnabledForCompute = clientConfig.isLongTailRetryEnabledForCompute();
     this.longTailRetryThresholdForSingleGetInMicroSeconds =
