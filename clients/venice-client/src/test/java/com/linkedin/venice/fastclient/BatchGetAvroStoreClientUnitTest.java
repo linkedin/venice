@@ -55,6 +55,7 @@ public class BatchGetAvroStoreClientUnitTest {
 
     TestClientSimulator client = new TestClientSimulator();
     client.generateKeyValues(0, 1000)
+        .setLongTailRetryThresholdForBatchGet("1-:10000")
         .setExpectedValueSchemaId(5)
         .partitionKeys(1)
         .assignRouteToPartitions("https://host1.linkedin.com", 0)
@@ -151,7 +152,7 @@ public class BatchGetAvroStoreClientUnitTest {
   /**
    * Similar to {@link #testSimpleStreamingBatchGet} but enables long tail Retry for single get.
    * With the new implementation, batch get retry is always enabled with dynamic thresholds.
-   * For 1000 keys, the dynamic threshold from "501-:500" is 500ms, which is much higher than the 
+   * For 1000 keys, the dynamic threshold from "501-:500" is 500ms, which is much higher than the
    * response time (5ms), so no retry should be triggered.
    */
   @Test(timeOut = TEST_TIMEOUT)
@@ -162,6 +163,7 @@ public class BatchGetAvroStoreClientUnitTest {
     client.generateKeyValues(0, 1000)
         .setLongTailRetryEnabledForSingleGet(true) // Enable Retry for single get
         .setLongTailRetryThresholdForSingleGetInMicroseconds(RETRY_THRESHOLD_IN_MS)
+        .setLongTailRetryThresholdForBatchGet("1-:10000")
         .partitionKeys(1)
         .assignRouteToPartitions("https://host1.linkedin.com", 0)
         .expectRequestWithKeysForPartitionOnRoute(1, 1, "https://host1.linkedin.com", 0)
@@ -173,7 +175,6 @@ public class BatchGetAvroStoreClientUnitTest {
         client.getRequestedKeyValues(),
         client.getSimulatorCompleteFuture());
 
-    // For 1000 keys with 5ms response time, no retry should be triggered (threshold is 500ms)
     validateMetrics(client, 1000, 1000, 0, 0);
   }
 
@@ -186,6 +187,7 @@ public class BatchGetAvroStoreClientUnitTest {
 
     TestClientSimulator client = new TestClientSimulator();
     client.generateKeyValues(0, 1000)
+        .setLongTailRetryThresholdForBatchGet("1-:10000")
         .partitionKeys(5)
         .assignRouteToPartitions("https://host1.linkedin.com", 0, 1, 2, 3, 4)
         .expectRequestWithKeysForPartitionOnRoute(1, 1, "https://host1.linkedin.com", 0, 1, 2, 3, 4)
@@ -209,6 +211,7 @@ public class BatchGetAvroStoreClientUnitTest {
 
     TestClientSimulator client = new TestClientSimulator();
     client.generateKeyValues(0, NUM_KEYS)
+        .setLongTailRetryThresholdForBatchGet("1-:10000")
         .partitionKeys(NUM_PARTITIONS)
         .assignRouteToPartitions("https://host0.linkedin.com", 0)
         .assignRouteToPartitions("https://host1.linkedin.com", 1)
@@ -240,6 +243,7 @@ public class BatchGetAvroStoreClientUnitTest {
 
     TestClientSimulator client = new TestClientSimulator();
     client.generateKeyValues(0, NUM_KEYS)
+        .setLongTailRetryThresholdForBatchGet("1-:10000")
         .partitionKeys(NUM_PARTITIONS)
         .assignRouteToPartitions("https://host0.linkedin.com", 0)
         .assignRouteToPartitions("https://host1.linkedin.com", 1)
@@ -734,8 +738,6 @@ public class BatchGetAvroStoreClientUnitTest {
   private TestClientSimulator setupLongTailRetryWithMultiplePartitions(TestClientSimulator client) {
     return client.generateKeyValues(0, NUM_KEYS) // generate NUM_KEYS keys
         .partitionKeys(NUM_PARTITIONS) // partition into NUM_PARTITIONS partitions
-        .setLongTailRetryEnabledForBatchGet(true) // enable retry
-        .setLongTailRetryThresholdForBatchGetInMicroSeconds(RETRY_THRESHOLD_IN_MS * 1000)
 
         .assignRouteToPartitions("https://host0.linkedin.com", 0, 1)
         .assignRouteToPartitions("https://host1.linkedin.com", 1, 2)
