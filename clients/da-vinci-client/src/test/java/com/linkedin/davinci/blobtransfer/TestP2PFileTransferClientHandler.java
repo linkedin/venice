@@ -79,8 +79,7 @@ public class TestP2PFileTransferClientHandler {
             TEST_STORE,
             TEST_VERSION,
             TEST_PARTITION,
-            BlobTransferUtils.BlobTransferTableFormat.BLOCK_BASED_TABLE,
-            checksumValidationExecutorService));
+            BlobTransferUtils.BlobTransferTableFormat.BLOCK_BASED_TABLE));
 
     clientMetadataHandler = Mockito.spy(
         new P2PMetadataTransferHandler(
