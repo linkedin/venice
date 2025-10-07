@@ -46,7 +46,6 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
   private final boolean longTailRetryEnabledForSingleGet;
   private final boolean longTailRetryEnabledForCompute;
   private final int longTailRetryThresholdForSingleGetInMicroSeconds;
-  private final int longTailRetryThresholdForComputeInMicroSeconds;
   private final TimeoutProcessor timeoutProcessor;
   private final String longTailBatchGetRetryThresholdConfig;
   private final ScheduledExecutorService retryManagerExecutorService =
@@ -69,8 +68,6 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
     this.longTailRetryEnabledForCompute = clientConfig.isLongTailRetryEnabledForCompute();
     this.longTailRetryThresholdForSingleGetInMicroSeconds =
         clientConfig.getLongTailRetryThresholdForSingleGetInMicroSeconds();
-    this.longTailRetryThresholdForComputeInMicroSeconds =
-        clientConfig.getLongTailRetryThresholdForComputeInMicroSeconds();
     this.timeoutProcessor = timeoutProcessor;
 
     this.singleKeyLongTailRetryManager = new RetryManager(clientConfig.getClusterStats().getMetricsRepository(),
@@ -224,15 +221,8 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
       BatchGetRequestContext<K, V> requestContext,
       Set<K> keys,
       StreamingCallback<K, V> callback) throws VeniceClientException {
-
-    Map.Entry<Integer, Integer> retryThresholdEntry = batchGetLongTailRetryThresholdMap.floorEntry(keys.size());
-    if (retryThresholdEntry == null) {
-      // This should never happen as the map always contains an entry with Integer.MAX_VALUE as the key.
-      throw new VeniceClientException(
-          "Failed to find long tail retry threshold for batch get with " + keys.size()
-              + " keys. Please check the config: " + longTailBatchGetRetryThresholdConfig);
-    }
-    int longTailRetryThresholdForBatchGetInMicroSeconds = retryThresholdEntry.getValue() * 1000;
+    int longTailRetryThresholdForBatchGetInMicroSeconds =
+        getLongTailRetryThresholdForSingleGetInMicroSeconds(keys.size());
     retryStreamingMultiKeyRequest(
         requestContext,
         keys,
@@ -250,11 +240,8 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
       Schema resultSchema,
       StreamingCallback<K, ComputeGenericRecord> callback,
       long preRequestTimeInNS) throws VeniceClientException {
-    if (!longTailRetryEnabledForCompute) {
-      // if longTailRetry is not enabled for compute, simply return
-      super.compute(requestContext, computeRequestWrapper, keys, resultSchema, callback, preRequestTimeInNS);
-      return;
-    }
+    int longTailRetryThresholdForComputeInMicroSeconds =
+        getLongTailRetryThresholdForSingleGetInMicroSeconds(keys.size());
 
     retryStreamingMultiKeyRequest(
         requestContext,
@@ -452,6 +439,17 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
 
   private boolean isExceptionCausedByTooManyRequests(Throwable e) {
     return ExceptionUtils.recursiveClassEquals(e, VeniceClientRateExceededException.class);
+  }
+
+  private int getLongTailRetryThresholdForSingleGetInMicroSeconds(int numKeys) {
+    Map.Entry<Integer, Integer> retryThresholdEntry = batchGetLongTailRetryThresholdMap.floorEntry(numKeys);
+    if (retryThresholdEntry == null) {
+      // This should never happen as the map always contains an entry with Integer.MAX_VALUE as the key.
+      throw new VeniceClientException(
+          "Failed to find long tail retry threshold for batch get with " + numKeys + " keys. Please check the config: "
+              + longTailBatchGetRetryThresholdConfig);
+    }
+    return retryThresholdEntry.getValue() * 1000;
   }
 
   interface RequestContextConstructor<K, V, R extends MultiKeyRequestContext<K, V>> {
