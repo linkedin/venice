@@ -6,6 +6,7 @@ import static com.linkedin.venice.stats.VeniceOpenTelemetryMetricNamingFormat.va
 import static java.util.Collections.singletonList;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertSame;
@@ -41,6 +42,9 @@ import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 
+/**
+ * Unit tests for {@link VeniceOpenTelemetryMetricsRepository}.
+ */
 public class VeniceOpenTelemetryMetricsRepositoryTest {
   private VeniceOpenTelemetryMetricsRepository metricsRepository;
   private static final String TEST_PREFIX = "test_prefix";
@@ -51,6 +55,7 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
   public void setUp() {
     mockMetricsConfig = Mockito.mock(VeniceMetricsConfig.class);
     when(mockMetricsConfig.emitOtelMetrics()).thenReturn(true);
+    when(mockMetricsConfig.emitTehutiMetrics()).thenReturn(true);
     when(mockMetricsConfig.getMetricNamingFormat()).thenReturn(SNAKE_CASE);
     when(mockMetricsConfig.getMetricPrefix()).thenReturn(TEST_PREFIX);
     when(mockMetricsConfig.getServiceName()).thenReturn("test_service");
@@ -76,6 +81,7 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
   @Test
   public void testConstructorWithEmitDisabled() {
     when(mockMetricsConfig.emitOtelMetrics()).thenReturn(false);
+    when(mockMetricsConfig.emitTehutiMetrics()).thenReturn(true);
     VeniceOpenTelemetryMetricsRepository metricsRepository =
         new VeniceOpenTelemetryMetricsRepository(mockMetricsConfig);
 
@@ -90,6 +96,7 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
     assertNull(
         metricsRepository
             .createInstrument(new MetricEntity("test", MetricType.COUNTER, MetricUnit.NUMBER, "desc", dimensionsSet)));
+    assertTrue(metricsRepository.emitTehutiMetrics(), "Tehuti metrics should still be enabled");
   }
 
   @Test
@@ -417,5 +424,30 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
 
     // reset
     when(mockMetricsConfig.useOpenTelemetryInitializedByApplication()).thenReturn(false);
+  }
+
+  @Test
+  public void testEmitTehutiMetrics() {
+    // Test when Tehuti metrics are enabled
+    when(mockMetricsConfig.emitTehutiMetrics()).thenReturn(true);
+    VeniceOpenTelemetryMetricsRepository repository = new VeniceOpenTelemetryMetricsRepository(mockMetricsConfig);
+    assertTrue(repository.emitTehutiMetrics(), "Should return true when Tehuti metrics are enabled");
+
+    // Test when Tehuti metrics are disabled
+    when(mockMetricsConfig.emitTehutiMetrics()).thenReturn(false);
+    repository = new VeniceOpenTelemetryMetricsRepository(mockMetricsConfig);
+    assertFalse(repository.emitTehutiMetrics(), "Should return false when Tehuti metrics are disabled");
+  }
+
+  @Test
+  public void testEmitTehutiMetricsWithOtelDisabled() {
+    // Test that Tehuti metrics can be enabled even when OTel is disabled
+    when(mockMetricsConfig.emitOtelMetrics()).thenReturn(false);
+    when(mockMetricsConfig.emitTehutiMetrics()).thenReturn(true);
+
+    VeniceOpenTelemetryMetricsRepository repository = new VeniceOpenTelemetryMetricsRepository(mockMetricsConfig);
+
+    assertFalse(repository.emitOpenTelemetryMetrics(), "OTel metrics should be disabled");
+    assertTrue(repository.emitTehutiMetrics(), "Tehuti metrics should be enabled independently");
   }
 }

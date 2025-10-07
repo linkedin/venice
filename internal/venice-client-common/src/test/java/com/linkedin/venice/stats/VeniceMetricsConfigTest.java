@@ -12,6 +12,7 @@ import static com.linkedin.venice.stats.VeniceMetricsConfig.OTEL_VENICE_METRICS_
 import static com.linkedin.venice.stats.VeniceMetricsConfig.OTEL_VENICE_METRICS_EXPORT_TO_ENDPOINT;
 import static com.linkedin.venice.stats.VeniceMetricsConfig.OTEL_VENICE_METRICS_EXPORT_TO_LOG;
 import static com.linkedin.venice.stats.VeniceMetricsConfig.OTEL_VENICE_METRICS_NAMING_FORMAT;
+import static com.linkedin.venice.stats.VeniceMetricsConfig.TEHUTI_VENICE_METRICS_ENABLED;
 import static com.linkedin.venice.stats.VeniceOpenTelemetryMetricNamingFormat.SNAKE_CASE;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
@@ -31,6 +32,9 @@ import java.util.Map;
 import org.testng.annotations.Test;
 
 
+/**
+ * Unit tests for {@link VeniceMetricsConfig}.
+ */
 public class VeniceMetricsConfigTest {
   @Test
   public void testDefaultValues() {
@@ -43,6 +47,7 @@ public class VeniceMetricsConfigTest {
     assertEquals(config.getServiceName(), "noop_service");
     assertEquals(config.getMetricPrefix(), "service");
     assertFalse(config.emitOtelMetrics());
+    assertTrue(config.emitTehutiMetrics());
     assertFalse(config.exportOtelMetricsToEndpoint());
     assertEquals(config.getExportOtelMetricsIntervalInSeconds(), 60);
     assertEquals(config.getOtelExportProtocol(), OtlpConfigUtil.PROTOCOL_HTTP_PROTOBUF);
@@ -277,5 +282,34 @@ public class VeniceMetricsConfigTest {
         .setUseOpenTelemetryInitializedByApplication(true)
         .build();
     assertTrue(config.useOpenTelemetryInitializedByApplication());
+  }
+
+  @Test
+  public void testEmitTehutiMetricsBuilder() {
+    VeniceMetricsConfig config =
+        new Builder().setServiceName("TestService").setMetricPrefix("TestPrefix").emitTehutiMetrics(false).build();
+    assertFalse(config.emitTehutiMetrics(), "Tehuti metrics should be disabled when set to false");
+
+    config = new Builder().setServiceName("TestService").setMetricPrefix("TestPrefix").emitTehutiMetrics(true).build();
+    assertTrue(config.emitTehutiMetrics(), "Tehuti metrics should be enabled when set to true");
+  }
+
+  @Test
+  public void testEmitTehutiMetricsFromConfig() {
+    Map<String, String> configs = new HashMap<>();
+    configs.put(TEHUTI_VENICE_METRICS_ENABLED, "false");
+
+    VeniceMetricsConfig config = new Builder().setServiceName("TestService")
+        .setMetricPrefix("TestPrefix")
+        .extractAndSetOtelConfigs(configs)
+        .build();
+    assertFalse(config.emitTehutiMetrics(), "Tehuti metrics should be disabled when config is false");
+
+    configs.put(TEHUTI_VENICE_METRICS_ENABLED, "true");
+    config = new Builder().setServiceName("TestService")
+        .setMetricPrefix("TestPrefix")
+        .extractAndSetOtelConfigs(configs)
+        .build();
+    assertTrue(config.emitTehutiMetrics(), "Tehuti metrics should be enabled when config is true");
   }
 }
