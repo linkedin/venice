@@ -505,7 +505,7 @@ public class TestDeferredVersionSwapServiceWithSequentialRollout {
 
   /**
    * When the last region in rollout order is ONLINE,
-   * parent version is marked as ONLINE and kafka topic is truncated
+   * parent version is marked as ONLINE
    */
   @Test
   public void testSequentialRolloutFinalRegionCompletion() throws Exception {
@@ -605,8 +605,6 @@ public class TestDeferredVersionSwapServiceWithSequentialRollout {
     TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
       // Verify that updateStore was called to mark parent version as ONLINE
       verify(store, atLeastOnce()).updateVersionStatus(versionTwo, VersionStatus.ONLINE);
-      // Verify that truncateKafkaTopic was called
-      verify(admin, atLeastOnce()).truncateKafkaTopic(kafkaTopicName);
     });
 
     // Verify error recording was not called

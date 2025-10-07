@@ -69,6 +69,7 @@ import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
+import com.linkedin.venice.etl.ETLValueSchemaTransformation;
 import com.linkedin.venice.exceptions.UndefinedPropertyException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.exceptions.VeniceValidationException;
@@ -99,6 +100,7 @@ import com.linkedin.venice.views.ChangeCaptureView;
 import com.linkedin.venice.views.MaterializedView;
 import com.linkedin.venice.views.ViewUtils;
 import com.linkedin.venice.writer.VeniceWriter;
+import java.io.File;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
@@ -157,6 +159,40 @@ public class VenicePushJobTest {
       + "      { \"name\": \"id\", \"type\": \"string\" },\n" + "      { \"name\": \"name\", \"type\": \"string\" },\n"
       + "      { \"name\": \"age\", \"type\": \"int\" },\n" + "      { \"name\": \"company\", \"type\": \"string\" }\n"
       + "    ]\n" + "  }";
+
+  @Test
+  public void testCheckLastModifiedTimestamp() throws Exception {
+    File inputDir = TestWriteUtils.getTempDataDirectory();
+    TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir);
+    String inputUri = "file://" + inputDir.getAbsolutePath();
+
+    PushJobSetting pushJobSetting = new PushJobSetting();
+    pushJobSetting.inputURI = inputUri;
+    pushJobSetting.etlValueSchemaTransformation = ETLValueSchemaTransformation.NONE;
+    pushJobSetting.isZstdDictCreationRequired = false;
+    VeniceProperties props = VeniceProperties.empty();
+
+    try (DefaultInputDataInfoProvider provider = new DefaultInputDataInfoProvider(pushJobSetting, props);
+        VenicePushJob mockJob = getSpyVenicePushJob(new Properties(), null)) {
+      InputDataInfoProvider.InputDataInfo inputDataInfo = provider.validateInputAndGetInfo(inputUri);
+
+      when(mockJob.getInputDataInfo()).thenReturn(inputDataInfo);
+      when(mockJob.getInputDataInfo()).thenReturn(inputDataInfo);
+      when(mockJob.getPushJobSetting()).thenReturn(pushJobSetting);
+      when(mockJob.getPushJobSetting()).thenReturn(pushJobSetting);
+      when(mockJob.getInputDataInfoProvider()).thenReturn(provider);
+      when(mockJob.getInputDataInfoProvider()).thenReturn(provider);
+
+      // No modifications to input and no interactions expected with mockJob
+      mockJob.checkLastModificationTimeAndLog();
+      verify(mockJob, never()).updatePushJobDetailsWithCheckpoint(any(PushJobCheckpoints.class));
+
+      // Write a new file to the input directory
+      TestWriteUtils.writeSimpleAvroFileWithStringToStringWithExtraSchema(inputDir);
+      mockJob.checkLastModificationTimeAndLog();
+      verify(mockJob, times(1)).updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.DATASET_CHANGED);
+    }
+  }
 
   @Test
   public void testVPJCheckInputUpdateSchema() {

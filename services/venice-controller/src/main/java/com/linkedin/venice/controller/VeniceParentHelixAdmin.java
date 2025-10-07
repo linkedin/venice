@@ -2345,10 +2345,16 @@ public class VeniceParentHelixAdmin implements Admin {
       }
 
       String kafkaTopic = Version.composeKafkaTopic(storeName, futureVersionBeforeRollForward);
-      LOGGER.info(
-          "Truncating topic {} after child controllers tried to roll forward to not block new versions",
-          kafkaTopic);
-      truncateKafkaTopic(kafkaTopic);
+      Version futureVersion = getStore(clusterName, storeName).getVersion(futureVersionBeforeRollForward);
+      boolean onlyDeferredSwap =
+          futureVersion.isVersionSwapDeferred() && StringUtils.isEmpty(futureVersion.getTargetSwapRegion());
+      if (onlyDeferredSwap) {
+        LOGGER.info(
+            "Truncating topic {} after child controllers tried to roll forward to not block new versions",
+            kafkaTopic);
+        truncateKafkaTopic(kafkaTopic);
+      }
+
       HelixVeniceClusterResources resources = getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName);
       try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
         ReadWriteStoreRepository repository = resources.getStoreMetadataRepository();
@@ -4113,6 +4119,24 @@ public class VeniceParentHelixAdmin implements Admin {
               currentReturnStatus,
               currentReturnStatusDetails,
               repository);
+        }
+
+        if (isTargetRegionPushWithDeferredSwap) {
+          boolean isVersionTerminal = ONLINE.equals(version.getStatus()) || ERROR.equals(version.getStatus())
+              || KILLED.equals(version.getStatus());
+          if (isVersionTerminal) {
+            LOGGER.info(
+                "Truncating parent VT {} after push status {} and version status {}",
+                kafkaTopic,
+                currentReturnStatus.getRootStatus(),
+                version.getStatus());
+            truncateTopicsOptionally(
+                clusterName,
+                kafkaTopic,
+                incrementalPushVersion,
+                currentReturnStatus,
+                currentReturnStatusDetails);
+          }
         }
       } else {
         // If the aggregate status is not terminal, but the parent version status is marked as KILLED, we should mark

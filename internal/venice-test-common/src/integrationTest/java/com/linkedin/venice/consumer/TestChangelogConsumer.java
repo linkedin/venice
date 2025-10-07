@@ -26,14 +26,19 @@ import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V6_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V7_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V8_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V9_SCHEMA;
+import static com.linkedin.venice.utils.TestWriteUtils.STRING_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFER_VERSION_SWAP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_BROKER_URL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_MAX_RECORDS_PER_MAPPER;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_ENABLE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REWIND_TIME_IN_SECONDS_OVERRIDE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_KAFKA;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.d2.balancer.D2Client;
@@ -88,6 +93,7 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -467,7 +473,7 @@ public class TestChangelogConsumer {
             .setVeniceURL(clusterWrapper.getRandomRouterURL())
             .setMetricsRepository(metricsRepository))) {
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
-        Assert.assertNull(client.get(Integer.toString(deleteWithRmdKeyIndex)).get());
+        assertNull(client.get(Integer.toString(deleteWithRmdKeyIndex)).get());
       });
     }
 
@@ -484,7 +490,7 @@ public class TestChangelogConsumer {
         ChangeEvent<Utf8> changeEvent = polledChangeEvents.get(key).getValue();
         Assert.assertNotNull(changeEvent);
         if (i != 100) {
-          Assert.assertNull(changeEvent.getPreviousValue());
+          assertNull(changeEvent.getPreviousValue());
         } else {
           Assert.assertTrue(changeEvent.getPreviousValue().toString().contains(key));
         }
@@ -494,8 +500,8 @@ public class TestChangelogConsumer {
         String key = Integer.toString(i);
         ChangeEvent<Utf8> changeEvent = polledChangeEvents.get(key).getValue();
         Assert.assertNotNull(changeEvent);
-        Assert.assertNull(changeEvent.getPreviousValue()); // schema id is negative, so we did not parse.
-        Assert.assertNull(changeEvent.getCurrentValue());
+        assertNull(changeEvent.getPreviousValue()); // schema id is negative, so we did not parse.
+        assertNull(changeEvent.getCurrentValue());
       }
     });
 
@@ -549,7 +555,7 @@ public class TestChangelogConsumer {
         for (int i = 110; i < 120; i++) {
           String key = Integer.toString(i);
           Utf8 value = client.get(key).get();
-          Assert.assertNull(value);
+          assertNull(value);
         }
         // test old data
         for (int i = 20; i < 100; i++) {
@@ -591,7 +597,7 @@ public class TestChangelogConsumer {
         Assert.assertNotNull(client.get(Integer.toString(deleteWithRmdKeyIndex + 1)).get());
       });
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
-        Assert.assertNull(client.get(Integer.toString(deleteWithRmdKeyIndex)).get());
+        assertNull(client.get(Integer.toString(deleteWithRmdKeyIndex)).get());
       });
     }
 
@@ -677,11 +683,11 @@ public class TestChangelogConsumer {
       // test deletes
       for (int i = 30; i < 40; i++) {
         // not matter the DELETE is TTLed or not, the value should always be null
-        Assert.assertNull(client.get(Integer.toString(i)).get());
+        assertNull(client.get(Integer.toString(i)).get());
       }
       // test old data - should be empty due to empty push
       for (int i = 40; i < 100; i++) {
-        Assert.assertNull(client.get(Integer.toString(i)).get());
+        assertNull(client.get(Integer.toString(i)).get());
       }
     }
 
@@ -1156,6 +1162,164 @@ public class TestChangelogConsumer {
       partitionSequenceIdMap.put(partition, expectedSequenceId + 1);
     }
     Assert.assertEquals(partitionSequenceIdMap.size(), 3);
+  }
+
+  @Test(timeOut = TEST_TIMEOUT, priority = 3)
+  public void testVersionSpecificChangeLogConsumer() throws IOException, ExecutionException, InterruptedException {
+    File inputDir = getTempDataDirectory();
+    int version = 1;
+    int numKeys = 100;
+    Schema recordSchema =
+        TestWriteUtils.writeSimpleAvroFileWithIntToStringSchema(inputDir, Integer.toString(version), numKeys);
+    String inputDirPath = "file://" + inputDir.getAbsolutePath();
+    String storeName = Utils.getUniqueString("store");
+    Properties props = TestWriteUtils.defaultVPJProps(
+        parentControllers.get(0).getControllerUrl(),
+        inputDirPath,
+        storeName,
+        clusterWrapper.getPubSubClientProperties());
+    String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
+    String valueSchemaStr = STRING_SCHEMA.toString();
+    UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true)
+        .setHybridRewindSeconds(500)
+        .setHybridOffsetLagThreshold(8)
+        .setChunkingEnabled(true)
+        .setNativeReplicationEnabled(true)
+        .setPartitionCount(3);
+    MetricsRepository metricsRepository =
+        getVeniceMetricsRepository(CHANGE_DATA_CAPTURE_CLIENT, CONSUMER_METRIC_ENTITIES, true);
+    createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms);
+    IntegrationTestPushUtils.runVPJ(props);
+    ZkServerWrapper localZkServer = multiRegionMultiClusterWrapper.getChildRegions().get(0).getZkServerWrapper();
+    PubSubBrokerWrapper localKafka = multiRegionMultiClusterWrapper.getChildRegions().get(0).getPubSubBrokerWrapper();
+    Properties consumerProperties = new Properties();
+    consumerProperties.putAll(multiRegionMultiClusterWrapper.getPubSubClientProperties());
+    String localKafkaUrl = localKafka.getAddress();
+    consumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, localKafkaUrl);
+    consumerProperties.put(CLUSTER_NAME, clusterName);
+    consumerProperties.put(ZOOKEEPER_ADDRESS, localZkServer.getAddress());
+    ChangelogClientConfig globalChangelogClientConfig =
+        new ChangelogClientConfig().setConsumerProperties(consumerProperties)
+            .setControllerD2ServiceName(D2_SERVICE_NAME)
+            .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
+            .setLocalD2ZkHosts(localZkServer.getAddress())
+            .setControllerRequestRetryCount(3)
+            .setVersionSwapDetectionIntervalTimeInSeconds(3)
+            .setUseRequestBasedMetadataRepository(true)
+            .setD2Client(d2Client)
+            .setBootstrapFileSystemPath(Utils.getUniqueString(inputDirPath));
+    VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =
+        new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig, metricsRepository);
+    VeniceChangelogConsumer<Integer, Utf8> changeLogConsumer =
+        veniceChangelogConsumerClientFactory.getVersionSpecificChangelogConsumer(storeName, 1, "0");
+
+    changeLogConsumer.subscribeAll().get();
+    Map<Integer, PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessagesMap = new HashMap();
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+      Collection<PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessagesList =
+          changeLogConsumer.poll(1000);
+      for (PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate> message: pubSubMessagesList) {
+        pubSubMessagesMap.put(message.getKey(), message);
+      }
+      assertEquals(pubSubMessagesMap.size(), numKeys);
+    });
+
+    // All data should be from version 1
+    for (int i = 1; i <= numKeys; i++) {
+      PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate> message = pubSubMessagesMap.get(i);
+      assertEquals(message.getValue().getCurrentValue().toString(), Integer.toString(version) + i);
+      assertTrue(message.getPayloadSize() > 0);
+      assertNotNull(message.getPosition());
+      assertTrue(message.getWriterSchemaId() > 0);
+      assertNotNull(message.getReplicationMetadataPayload());
+    }
+
+    // Restart client to ensure it seeks to the beginning of the topic and all record metadata is available
+    changeLogConsumer.close();
+    pubSubMessagesMap.clear();
+    changeLogConsumer.subscribeAll().get();
+
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+      Collection<PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessagesList =
+          changeLogConsumer.poll(1000);
+      for (PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate> message: pubSubMessagesList) {
+        pubSubMessagesMap.put(message.getKey(), message);
+      }
+      assertEquals(pubSubMessagesMap.size(), numKeys);
+    });
+
+    // All data should be from version 1
+    for (int i = 1; i <= numKeys; i++) {
+      PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate> message = pubSubMessagesMap.get(i);
+      assertEquals(message.getValue().getCurrentValue().toString(), Integer.toString(version) + i);
+      assertTrue(message.getPayloadSize() > 0);
+      assertNotNull(message.getPosition());
+      assertTrue(message.getWriterSchemaId() > 0);
+      assertNotNull(message.getReplicationMetadataPayload());
+    }
+
+    // Push version 2
+    version++;
+    TestWriteUtils.writeSimpleAvroFileWithIntToStringSchema(inputDir, Integer.toString(version), numKeys);
+    IntegrationTestPushUtils.runVPJ(props);
+
+    // Client shouldn't be able to poll anything, since it's still on version 1
+    assertEquals(changeLogConsumer.poll(1000).size(), 0);
+
+    // Restart client
+    changeLogConsumer.close();
+    pubSubMessagesMap.clear();
+    changeLogConsumer.subscribeAll().get();
+
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+      Collection<PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessagesList =
+          changeLogConsumer.poll(1000);
+      for (PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate> message: pubSubMessagesList) {
+        pubSubMessagesMap.put(message.getKey(), message);
+      }
+      assertEquals(pubSubMessagesMap.size(), numKeys);
+    });
+
+    // All data should be from version 1
+    for (int i = 1; i <= numKeys; i++) {
+      PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate> message = pubSubMessagesMap.get(i);
+      assertEquals(message.getValue().getCurrentValue().toString(), Integer.toString(version - 1) + i);
+      assertTrue(message.getPayloadSize() > 0);
+      assertNotNull(message.getPosition());
+      assertTrue(message.getWriterSchemaId() > 0);
+      assertNotNull(message.getReplicationMetadataPayload());
+    }
+
+    // Push version 3 with deferred version swap and subscribe to the future version
+    changeLogConsumer.close();
+    pubSubMessagesMap.clear();
+    version++;
+    TestWriteUtils.writeSimpleAvroFileWithIntToStringSchema(inputDir, Integer.toString(version), numKeys);
+    props.put(DEFER_VERSION_SWAP, true);
+    IntegrationTestPushUtils.runVPJ(props);
+
+    VeniceChangelogConsumer<Integer, Utf8> changeLogConsumer3 =
+        veniceChangelogConsumerClientFactory.getVersionSpecificChangelogConsumer(storeName, version, "0");
+    changeLogConsumer3.subscribeAll().get();
+
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+      Collection<PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessagesList =
+          changeLogConsumer3.poll(1000);
+      for (PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate> message: pubSubMessagesList) {
+        pubSubMessagesMap.put(message.getKey(), message);
+      }
+      assertEquals(pubSubMessagesMap.size(), numKeys);
+    });
+
+    // All data should be from future version 3
+    for (int i = 1; i <= numKeys; i++) {
+      PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate> message = pubSubMessagesMap.get(i);
+      assertEquals(message.getValue().getCurrentValue().toString(), Integer.toString(version) + i);
+      assertTrue(message.getPayloadSize() > 0);
+      assertNotNull(message.getPosition());
+      assertTrue(message.getWriterSchemaId() > 0);
+      assertNotNull(message.getReplicationMetadataPayload());
+    }
   }
 
   private void runSamzaStreamJob(

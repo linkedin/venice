@@ -1,12 +1,9 @@
 package com.linkedin.venice.controller.stats;
 
-import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
-
 import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.stats.AbstractVeniceStats;
+import com.linkedin.venice.stats.OpenTelemetryMetricsSetup;
 import com.linkedin.venice.stats.TehutiUtils;
-import com.linkedin.venice.stats.VeniceMetricsConfig;
-import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository;
 import com.linkedin.venice.stats.dimensions.HttpResponseStatusCodeCategory;
 import com.linkedin.venice.stats.dimensions.HttpResponseStatusEnum;
@@ -27,7 +24,6 @@ import spark.Response;
 
 
 public class SparkServerStats extends AbstractVeniceStats {
-  private final boolean emitOpenTelemetryMetrics;
   private final VeniceOpenTelemetryMetricsRepository otelRepository;
   private final Map<VeniceMetricsDimensions, String> baseDimensionsMap;
 
@@ -42,22 +38,15 @@ public class SparkServerStats extends AbstractVeniceStats {
 
   public SparkServerStats(MetricsRepository metricsRepository, String clusterName) {
     super(metricsRepository, clusterName);
-    if (metricsRepository instanceof VeniceMetricsRepository) {
-      VeniceMetricsRepository veniceMetricsRepository = (VeniceMetricsRepository) metricsRepository;
-      VeniceMetricsConfig veniceMetricsConfig = veniceMetricsRepository.getVeniceMetricsConfig();
-      emitOpenTelemetryMetrics = veniceMetricsConfig.emitOtelMetrics();
-      if (emitOpenTelemetryMetrics) {
-        this.otelRepository = veniceMetricsRepository.getOpenTelemetryMetricsRepository();
-        this.baseDimensionsMap = Collections.singletonMap(VENICE_CLUSTER_NAME, clusterName);
-      } else {
-        this.otelRepository = null;
-        this.baseDimensionsMap = null;
-      }
-    } else {
-      this.emitOpenTelemetryMetrics = false;
-      this.otelRepository = null;
-      this.baseDimensionsMap = null;
-    }
+
+    OpenTelemetryMetricsSetup.OpenTelemetryMetricsSetupInfo otelData =
+        OpenTelemetryMetricsSetup.builder(metricsRepository)
+            // set all base dimensions for this stats class and build
+            .setClusterName(clusterName)
+            .build();
+
+    this.otelRepository = otelData.getOtelRepository();
+    this.baseDimensionsMap = otelData.getBaseDimensionsMap();
 
     requests =
         registerSensor(ControllerTehutiMetricNameEnum.REQUEST.getMetricName(), new Count(), new OccurrenceRate());

@@ -1214,11 +1214,6 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
           status);
       store.updateVersionStatus(targetVersionNum, status);
       repository.updateStore(store);
-
-      // TODO cleanup the code below after parent VT is deprecated
-      String kafkaTopic = Version.composeKafkaTopic(store.getName(), targetVersionNum);
-      LOGGER.info("Truncating kafka topic: {}", kafkaTopic);
-      veniceParentHelixAdmin.truncateKafkaTopic(kafkaTopic);
     } catch (Exception e) {
       LOGGER.warn("Failed to execute updateStore for store: {} in cluster: {}", storeName, clusterName, e);
     }

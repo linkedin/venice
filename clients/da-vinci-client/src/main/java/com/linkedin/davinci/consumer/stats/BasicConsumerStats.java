@@ -9,8 +9,7 @@ import static com.linkedin.venice.utils.CollectionUtils.setOf;
 
 import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.stats.AbstractVeniceStats;
-import com.linkedin.venice.stats.VeniceMetricsConfig;
-import com.linkedin.venice.stats.VeniceMetricsRepository;
+import com.linkedin.venice.stats.OpenTelemetryMetricsSetup;
 import com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
@@ -22,7 +21,6 @@ import com.linkedin.venice.stats.metrics.MetricUnit;
 import com.linkedin.venice.stats.metrics.ModuleMetricEntityInterface;
 import com.linkedin.venice.stats.metrics.TehutiMetricNameEnum;
 import io.opentelemetry.api.common.Attributes;
-import io.opentelemetry.api.common.AttributesBuilder;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.stats.Avg;
 import io.tehuti.metrics.stats.Gauge;
@@ -32,7 +30,6 @@ import io.tehuti.metrics.stats.Total;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 
@@ -60,31 +57,15 @@ public class BasicConsumerStats extends AbstractVeniceStats {
   public BasicConsumerStats(MetricsRepository metricsRepository, String consumerName, String storeName) {
     super(metricsRepository, consumerName);
 
-    boolean emitOpenTelemetryMetrics;
-    VeniceOpenTelemetryMetricsRepository otelRepository;
-    Map<VeniceMetricsDimensions, String> baseDimensionsMap;
+    OpenTelemetryMetricsSetup.OpenTelemetryMetricsSetupInfo otelData =
+        OpenTelemetryMetricsSetup.builder(metricsRepository)
+            // set all base dimensions for this stats class and build
+            .setStoreName(storeName)
+            .build();
 
-    if (metricsRepository instanceof VeniceMetricsRepository) {
-      VeniceMetricsRepository veniceMetricsRepository = (VeniceMetricsRepository) metricsRepository;
-      VeniceMetricsConfig veniceMetricsConfig = veniceMetricsRepository.getVeniceMetricsConfig();
-      emitOpenTelemetryMetrics = veniceMetricsConfig.emitOtelMetrics();
-      if (emitOpenTelemetryMetrics) {
-        otelRepository = veniceMetricsRepository.getOpenTelemetryMetricsRepository();
-        baseDimensionsMap = new HashMap<>();
-        baseDimensionsMap.put(VENICE_STORE_NAME, storeName);
-        AttributesBuilder baseAttributesBuilder = Attributes.builder();
-        baseAttributesBuilder.put(otelRepository.getDimensionName(VENICE_STORE_NAME), storeName);
-        baseAttributes = baseAttributesBuilder.build();
-      } else {
-        otelRepository = null;
-        baseDimensionsMap = null;
-        baseAttributes = null;
-      }
-    } else {
-      otelRepository = null;
-      baseDimensionsMap = null;
-      baseAttributes = null;
-    }
+    VeniceOpenTelemetryMetricsRepository otelRepository = otelData.getOtelRepository();
+    Map<VeniceMetricsDimensions, String> baseDimensionsMap = otelData.getBaseDimensionsMap();
+    this.baseAttributes = otelData.getBaseAttributes();
 
     heartBeatDelayMetric = MetricEntityStateBase.create(
         BasicConsumerMetricEntity.HEART_BEAT_DELAY.getMetricEntity(),

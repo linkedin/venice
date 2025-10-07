@@ -2,6 +2,7 @@ package com.linkedin.venice.endToEnd;
 
 import com.linkedin.davinci.client.DaVinciRecordTransformer;
 import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
+import com.linkedin.davinci.client.DaVinciRecordTransformerRecordMetadata;
 import com.linkedin.davinci.client.DaVinciRecordTransformerResult;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.io.IOException;
@@ -20,12 +21,20 @@ public class TestUnchangedResultRecordTransformer extends DaVinciRecordTransform
   }
 
   @Override
-  public DaVinciRecordTransformerResult<String> transform(Lazy<Integer> key, Lazy<String> value, int partitionId) {
+  public DaVinciRecordTransformerResult<String> transform(
+      Lazy<Integer> key,
+      Lazy<String> value,
+      int partitionId,
+      DaVinciRecordTransformerRecordMetadata recordMetadata) {
     return new DaVinciRecordTransformerResult<>(DaVinciRecordTransformerResult.Result.UNCHANGED);
   }
 
   @Override
-  public void processPut(Lazy<Integer> key, Lazy<String> value, int partitionId) {
+  public void processPut(
+      Lazy<Integer> key,
+      Lazy<String> value,
+      int partitionId,
+      DaVinciRecordTransformerRecordMetadata recordMetadata) {
     return;
   }
 

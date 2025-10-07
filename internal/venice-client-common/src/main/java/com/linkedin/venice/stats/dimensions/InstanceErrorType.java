@@ -1,6 +1,6 @@
 package com.linkedin.venice.stats.dimensions;
 
-import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.*;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_INSTANCE_ERROR_TYPE;
 
 
 public enum InstanceErrorType implements VeniceDimensionInterface {

@@ -304,6 +304,7 @@ public class DaVinciClientRecordTransformerTest {
         Object valueObj = clientWithRecordTransformer.get(k).get();
         String expectedValue = k + "Transformed";
         assertEquals(valueObj.toString(), expectedValue);
+        assertEquals(recordTransformer.get(k), expectedValue);
       }
 
       /*
@@ -321,6 +322,7 @@ public class DaVinciClientRecordTransformerTest {
         Object valueObj = clientWithRecordTransformer.get(k).get();
         String expectedValue = k + "Transformed";
         assertEquals(valueObj.toString(), expectedValue);
+        assertEquals(recordTransformer.get(k), expectedValue);
       }
 
       clientWithRecordTransformer.unsubscribeAll();

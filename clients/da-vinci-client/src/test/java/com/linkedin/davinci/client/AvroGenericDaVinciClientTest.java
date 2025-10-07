@@ -61,7 +61,7 @@ public class AvroGenericDaVinciClientTest {
   public AvroGenericDaVinciClient setUpClientWithRecordTransformer(
       ClientConfig clientConfig,
       DaVinciConfig daVinciConfig) throws NoSuchFieldException, IllegalAccessException {
-    return setUpClientWithRecordTransformer(clientConfig, daVinciConfig, false, false, false);
+    return setUpClientWithRecordTransformer(clientConfig, daVinciConfig, true, false, false);
   }
 
   public AvroGenericDaVinciClient setUpSpecificClient(ClientConfig clientConfig, boolean validateSpecificSchema)
@@ -126,7 +126,7 @@ public class AvroGenericDaVinciClientTest {
   public AvroGenericDaVinciClient setUpClientWithRecordTransformer(
       ClientConfig clientConfig,
       DaVinciConfig daVinciConfig,
-      boolean skipCompatabilityChecks,
+      boolean isRecordTransformationEnabled,
       boolean enableDatabaseChecksumVerification,
       boolean subscribeOnDiskPartitionsAutomatically) throws IllegalAccessException, NoSuchFieldException {
 
@@ -138,7 +138,7 @@ public class AvroGenericDaVinciClientTest {
         new DaVinciRecordTransformerConfig.Builder().setRecordTransformerFunction(TestStringRecordTransformer::new)
             .setOutputValueClass(String.class)
             .setOutputValueSchema(Schema.create(Schema.Type.STRING))
-            .setSkipCompatibilityChecks(skipCompatabilityChecks)
+            .setRecordTransformationEnabled(isRecordTransformationEnabled)
             .build();
     daVinciConfig.setRecordTransformerConfig(recordTransformerConfig);
 
@@ -192,14 +192,13 @@ public class AvroGenericDaVinciClientTest {
   }
 
   @Test
-  public void testRecordTransformerClientAutomaticSubscriptionException()
-      throws NoSuchFieldException, IllegalAccessException {
+  public void testRecordTransformerClientAutomaticSubscriptionException() {
     ClientConfig clientConfig = ClientConfig.defaultGenericClientConfig(storeName);
     clientConfig.setSpecificValueClass(String.class);
 
     assertThrows(
         VeniceClientException.class,
-        () -> setUpClientWithRecordTransformer(clientConfig, null, false, false, true));
+        () -> setUpClientWithRecordTransformer(clientConfig, null, true, false, true));
   }
 
   @Test
@@ -234,7 +233,7 @@ public class AvroGenericDaVinciClientTest {
       throws NoSuchFieldException, IllegalAccessException {
     ClientConfig clientConfig = ClientConfig.defaultGenericClientConfig(storeName);
 
-    AvroGenericDaVinciClient dvcClient = setUpClientWithRecordTransformer(clientConfig, null, true, true, false);
+    AvroGenericDaVinciClient dvcClient = setUpClientWithRecordTransformer(clientConfig, null, false, true, false);
     dvcClient.start();
   }
 
@@ -244,7 +243,7 @@ public class AvroGenericDaVinciClientTest {
     ClientConfig clientConfig = ClientConfig.defaultGenericClientConfig(storeName);
 
     // DaVinciRecordTransformer should gracefully handle config incompatibility for checksum validation
-    AvroGenericDaVinciClient dvcClient = setUpClientWithRecordTransformer(clientConfig, null, false, true, false);
+    AvroGenericDaVinciClient dvcClient = setUpClientWithRecordTransformer(clientConfig, null, true, true, false);
     dvcClient.start();
   }
 

@@ -35,6 +35,11 @@ public class VeniceMetricsConfig {
   public static final String OTEL_VENICE_METRICS_ENABLED = "otel.venice.metrics.enabled";
 
   /**
+   * Config to enable Tehuti metrics
+   */
+  public static final String TEHUTI_VENICE_METRICS_ENABLED = "tehuti.venice.metrics.enabled";
+
+  /**
    * Configuration to reuse the {@link io.opentelemetry.api.OpenTelemetry} instance
    * already initialized by the application or other libraries and registered as
    * {@link io.opentelemetry.api.GlobalOpenTelemetry}, instead of creating a new one.
@@ -181,6 +186,9 @@ public class VeniceMetricsConfig {
   /** Feature flag to use OpenTelemetry instrumentation for metrics or not */
   private final boolean emitOTelMetrics;
 
+  /** Feature flag to emit Tehuti metrics or not */
+  private final boolean emitTehutiMetrics;
+
   /**
    * Feature flag to use OpenTelemetry initialized by the application or not.
    * If true, it will use the GlobalOpenTelemetry instance. It could be initialized
@@ -241,6 +249,7 @@ public class VeniceMetricsConfig {
     this.metricPrefix = builder.metricPrefix;
     this.metricEntities = builder.metricEntities;
     this.emitOTelMetrics = builder.emitOtelMetrics;
+    this.emitTehutiMetrics = builder.emitTehutiMetrics;
     this.useOpenTelemetryInitializedByApplication = builder.useOpenTelemetryInitializedByApplication;
     this.otelCustomDescriptionForHistogramMetrics = builder.otelCustomDescriptionForHistogramMetrics;
     this.exportOtelMetricsToEndpoint = builder.exportOtelMetricsToEndpoint;
@@ -265,6 +274,7 @@ public class VeniceMetricsConfig {
     private String metricPrefix = null;
     private Collection<MetricEntity> metricEntities = new ArrayList<>();
     private boolean emitOtelMetrics = false;
+    private boolean emitTehutiMetrics = true;
     private boolean useOpenTelemetryInitializedByApplication = false;
     private String otelCustomDescriptionForHistogramMetrics = null;
     private boolean exportOtelMetricsToEndpoint = false;
@@ -301,6 +311,11 @@ public class VeniceMetricsConfig {
 
     public Builder setEmitOtelMetrics(boolean emitOtelMetrics) {
       this.emitOtelMetrics = emitOtelMetrics;
+      return this;
+    }
+
+    public Builder emitTehutiMetrics(boolean emitTehutiMetrics) {
+      this.emitTehutiMetrics = emitTehutiMetrics;
       return this;
     }
 
@@ -393,6 +408,10 @@ public class VeniceMetricsConfig {
       String configValue;
       if ((configValue = configs.get(OTEL_VENICE_METRICS_ENABLED)) != null) {
         setEmitOtelMetrics(Boolean.parseBoolean(configValue));
+      }
+
+      if ((configValue = configs.get(TEHUTI_VENICE_METRICS_ENABLED)) != null) {
+        emitTehutiMetrics = Boolean.parseBoolean(configValue);
       }
 
       if (!emitOtelMetrics) {
@@ -566,6 +585,10 @@ public class VeniceMetricsConfig {
     return emitOTelMetrics;
   }
 
+  public boolean emitTehutiMetrics() {
+    return emitTehutiMetrics;
+  }
+
   public boolean useOpenTelemetryInitializedByApplication() {
     return useOpenTelemetryInitializedByApplication;
   }
@@ -637,15 +660,19 @@ public class VeniceMetricsConfig {
   @Override
   public String toString() {
     return "VeniceMetricsConfig{" + "serviceName='" + serviceName + '\'' + ", metricPrefix='" + metricPrefix + '\''
-        + ", metricEntities=" + metricEntities + ", emitOTelMetrics=" + emitOTelMetrics
+        + ", emitOTelMetrics=" + emitOTelMetrics + ", emitTehutiMetrics=" + emitTehutiMetrics
+        + ", useOpenTelemetryInitializedByApplication=" + useOpenTelemetryInitializedByApplication
+        + ", otelCustomDescriptionForHistogramMetrics='" + otelCustomDescriptionForHistogramMetrics + '\''
         + ", exportOtelMetricsToEndpoint=" + exportOtelMetricsToEndpoint + ", exportOtelMetricsIntervalInSeconds="
         + exportOtelMetricsIntervalInSeconds + ", otelCustomDimensionsMap=" + otelCustomDimensionsMap
         + ", otelExportProtocol='" + otelExportProtocol + '\'' + ", otelEndpoint='" + otelEndpoint + '\''
-        + ", otelHeaders=" + otelHeaders + ", metricNamingFormat=" + metricNamingFormat
-        + ", otelAggregationTemporalitySelector=" + otelAggregationTemporalitySelector
-        + ", useOtelExponentialHistogram=" + useOtelExponentialHistogram + ", otelExponentialHistogramMaxScale="
-        + otelExponentialHistogramMaxScale + ", otelExponentialHistogramMaxBuckets="
-        + otelExponentialHistogramMaxBuckets + ", tehutiMetricConfig=" + tehutiMetricConfig + '}';
+        + ", otelHeaders=" + otelHeaders + ", exportOtelMetricsToLog=" + exportOtelMetricsToLog
+        + ", metricNamingFormat=" + metricNamingFormat + ", exportLastRecordedValueForSynchronousGauge="
+        + exportLastRecordedValueForSynchronousGauge + ", otelAggregationTemporalitySelector="
+        + otelAggregationTemporalitySelector + ", useOtelExponentialHistogram=" + useOtelExponentialHistogram
+        + ", otelExponentialHistogramMaxScale=" + otelExponentialHistogramMaxScale
+        + ", otelExponentialHistogramMaxBuckets=" + otelExponentialHistogramMaxBuckets + ", tehutiMetricConfig="
+        + tehutiMetricConfig + '}';
   }
 
   /**

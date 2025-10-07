@@ -1,14 +1,16 @@
 package com.linkedin.davinci.client;
 
-import com.linkedin.davinci.consumer.BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl;
+import com.linkedin.davinci.consumer.VeniceChangelogConsumerDaVinciRecordTransformerImpl;
 import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.venice.annotation.Experimental;
 import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
+import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.pubsub.PubSubContext;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.io.IOException;
+import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import org.apache.avro.Schema;
 
@@ -49,18 +51,26 @@ public class InternalDaVinciRecordTransformer<K, V, O> extends DaVinciRecordTran
   }
 
   @Override
-  public DaVinciRecordTransformerResult<O> transform(Lazy<K> key, Lazy<V> value, int partitionId) {
-    return this.recordTransformer.transform(key, value, partitionId);
+  public DaVinciRecordTransformerResult<O> transform(
+      Lazy<K> key,
+      Lazy<V> value,
+      int partitionId,
+      DaVinciRecordTransformerRecordMetadata recordMetadata) {
+    return this.recordTransformer.transform(key, value, partitionId, recordMetadata);
   }
 
   @Override
-  public void processPut(Lazy<K> key, Lazy<O> value, int partitionId) {
-    this.recordTransformer.processPut(key, value, partitionId);
+  public void processPut(
+      Lazy<K> key,
+      Lazy<O> value,
+      int partitionId,
+      DaVinciRecordTransformerRecordMetadata recordMetadata) {
+    this.recordTransformer.processPut(key, value, partitionId, recordMetadata);
   }
 
   @Override
-  public void processDelete(Lazy<K> key, int partitionId) {
-    this.recordTransformer.processDelete(key, partitionId);
+  public void processDelete(Lazy<K> key, int partitionId, DaVinciRecordTransformerRecordMetadata recordMetadata) {
+    this.recordTransformer.processDelete(key, partitionId, recordMetadata);
   }
 
   @Override
@@ -83,8 +93,8 @@ public class InternalDaVinciRecordTransformer<K, V, O> extends DaVinciRecordTran
    * It is used for DVRT CDC.
    */
   public void onVersionSwap(int currentVersion, int futureVersion, int partitionId) {
-    if (this.recordTransformer instanceof BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl.DaVinciRecordTransformerBootstrappingChangelogConsumer) {
-      ((BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl.DaVinciRecordTransformerBootstrappingChangelogConsumer) this.recordTransformer)
+    if (this.recordTransformer instanceof VeniceChangelogConsumerDaVinciRecordTransformerImpl.DaVinciRecordTransformerChangelogConsumer) {
+      ((VeniceChangelogConsumerDaVinciRecordTransformerImpl.DaVinciRecordTransformerChangelogConsumer) this.recordTransformer)
           .onVersionSwap(currentVersion, futureVersion, partitionId);
     }
   }
@@ -94,8 +104,8 @@ public class InternalDaVinciRecordTransformer<K, V, O> extends DaVinciRecordTran
    * It is used for DVRT CDC to record latest heartbeat timestamps per partition.
    */
   public void onHeartbeat(int partitionId, long heartbeatTimestamp) {
-    if (this.recordTransformer instanceof BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl.DaVinciRecordTransformerBootstrappingChangelogConsumer) {
-      ((BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl.DaVinciRecordTransformerBootstrappingChangelogConsumer) this.recordTransformer)
+    if (this.recordTransformer instanceof VeniceChangelogConsumerDaVinciRecordTransformerImpl.DaVinciRecordTransformerChangelogConsumer) {
+      ((VeniceChangelogConsumerDaVinciRecordTransformerImpl.DaVinciRecordTransformerChangelogConsumer) this.recordTransformer)
           .onHeartbeat(partitionId, heartbeatTimestamp);
     }
   }
@@ -112,8 +122,17 @@ public class InternalDaVinciRecordTransformer<K, V, O> extends DaVinciRecordTran
       int partitionId,
       InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer,
       Lazy<VeniceCompressor> compressor,
-      PubSubContext pubSubContext) {
-    this.recordTransformer.onRecovery(storageEngine, partitionId, partitionStateSerializer, compressor, pubSubContext);
+      PubSubContext pubSubContext,
+      Map<Integer, Schema> schemaIdToSchemaMap,
+      ReadOnlySchemaRepository schemaRepository) {
+    this.recordTransformer.onRecovery(
+        storageEngine,
+        partitionId,
+        partitionStateSerializer,
+        compressor,
+        pubSubContext,
+        schemaIdToSchemaMap,
+        schemaRepository);
   }
 
   public long getCountDownStartConsumptionLatchCount() {

@@ -24,6 +24,7 @@ import static java.util.concurrent.TimeUnit.SECONDS;
 
 import com.linkedin.davinci.client.DaVinciRecordTransformer;
 import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
+import com.linkedin.davinci.client.DaVinciRecordTransformerRecordMetadata;
 import com.linkedin.davinci.client.DaVinciRecordTransformerResult;
 import com.linkedin.davinci.client.InternalDaVinciRecordTransformer;
 import com.linkedin.davinci.client.InternalDaVinciRecordTransformerConfig;
@@ -500,15 +501,24 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         storageService.getRefCountedStorageEngine(storeVersionName);
     this.thingsToClose.add(refCountedStorageEngine);
     this.storageEngine = Objects.requireNonNull(refCountedStorageEngine.get());
+    this.isDaVinciClient = builder.isDaVinciClient();
+
     if ((this.storageEngine instanceof DelegatingStorageEngine)) {
       DelegatingStorageEngine delegatingStorageEngine = (DelegatingStorageEngine) this.storageEngine;
-      delegatingStorageEngine.setKeyDictCompressionFunction(p -> {
-        PartitionConsumptionState pcs = partitionConsumptionStateMap.get(p);
-        if (pcs == null) {
-          throw new VeniceException("Partition " + p + " not found in partitionConsumptionStateMap");
-        }
-        return pcs.getKeyDictCompressor();
-      });
+
+      if (isDaVinciClient) {
+        delegatingStorageEngine.setKeyDictCompressionFunction(p -> {
+          PartitionConsumptionState pcs = partitionConsumptionStateMap.get(p);
+          if (pcs == null) {
+            throw new VeniceException("Partition " + p + " not found in partitionConsumptionStateMap");
+          }
+          return pcs.getKeyDictCompressor();
+        });
+      } else {
+        // Key Compression is only enabled in Da Vinci. Venice Server for now should disable it explicitly.
+        delegatingStorageEngine.setKeyDictCompressionFunction(ignored -> null);
+      }
+
     } else {
       throw new VeniceException(
           "Unexpected storage engine type: " + this.storageEngine.getClass() + " for store version: " + storeVersionName
@@ -610,7 +620,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     this.localKafkaServer = this.kafkaProps.getProperty(KAFKA_BOOTSTRAP_SERVERS);
     this.localKafkaServerSingletonSet = Collections.singleton(localKafkaServer);
-    this.isDaVinciClient = builder.isDaVinciClient();
     this.isActiveActiveReplicationEnabled = version.isActiveActiveReplicationEnabled();
     this.offsetLagDeltaRelaxEnabled = serverConfig.getOffsetLagDeltaRelaxFactorForFastOnlineTransitionInRestart() > 0;
     this.timeLagRelaxEnabled = serverConfig.getTimeLagThresholdForFastOnlineTransitionInRestartMinutes() > 0;
@@ -750,8 +759,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       recordTransformerOnRecoveryThreadPool.submit(() -> {
         try {
           long startTime = System.nanoTime();
-          recordTransformer
-              .internalOnRecovery(storageEngine, partitionNumber, partitionStateSerializer, compressor, pubSubContext);
+          recordTransformer.internalOnRecovery(
+              storageEngine,
+              partitionNumber,
+              partitionStateSerializer,
+              compressor,
+              pubSubContext,
+              schemaIdToSchemaMap,
+              schemaRepository);
           LOGGER.info(
               "DaVinciRecordTransformer onRecovery took {} ms for replica: {}",
               LatencyUtils.getElapsedTimeFromNSToMS(startTime),
@@ -960,14 +975,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      * In rocksdb Plain Table mode or in non deferredWrite mode, we can't use rocksdb SSTFileWriter to verify the checksum.
      * So there is no point keep calculating the running checksum here.
      *
-     * Additionally, if {@link DaVinciRecordTransformerConfig#shouldSkipCompatibilityChecks()} returns false
-     * (compatibility checks are enabled), checksum validation is not possible here.
+     * Additionally, if {@link DaVinciRecordTransformerConfig#isRecordTransformationEnabled()}} returns true,
+     * checksum validation is not possible here.
      * This is because records are transformed during ingestion, resulting in a checksum that does not match
      * the original data and causing validation to fail.
      */
     if (serverConfig.isDatabaseChecksumVerificationEnabled() && partitionConsumptionState.isDeferredWrite()
         && !serverConfig.getRocksDBServerConfig().isRocksDBPlainTableFormatEnabled()
-        && (recordTransformerConfig == null || recordTransformerConfig.shouldSkipCompatibilityChecks())) {
+        && (recordTransformerConfig == null || !recordTransformerConfig.isRecordTransformationEnabled())) {
 
       partitionConsumptionState.initializeExpectedChecksum();
       partitionChecksumSupplier = Optional.ofNullable(() -> {
@@ -3879,7 +3894,18 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
           DaVinciRecordTransformerResult transformerResult;
           try {
-            transformerResult = recordTransformer.transformAndProcessPut(lazyKey, lazyValue, producedPartition);
+            DaVinciRecordTransformerRecordMetadata recordTransformerRecordMetadata =
+                recordTransformerConfig.isRecordMetadataEnabled()
+                    ? new DaVinciRecordTransformerRecordMetadata(
+                        writerSchemaId,
+                        consumerRecord.getPubSubMessageTime(),
+                        consumerRecord.getPosition(),
+                        // Calculate payload size after chunk assembly
+                        keyLen + assembledRecord.value().limit(),
+                        put.getReplicationMetadataPayload())
+                    : null;
+            transformerResult = recordTransformer
+                .transformAndProcessPut(lazyKey, lazyValue, producedPartition, recordTransformerRecordMetadata);
           } catch (Exception e) {
             recordTransformerStats.recordPutError(storeName, versionNumber, currentTimeMs);
             String errorMessage =
@@ -3946,7 +3972,15 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
           long startTime = System.nanoTime();
           try {
-            recordTransformer.processDelete(lazyKey, producedPartition);
+            DaVinciRecordTransformerRecordMetadata recordTransformerRecordMetadata =
+                recordTransformerConfig.isRecordMetadataEnabled()
+                    ? new DaVinciRecordTransformerRecordMetadata(
+                        consumerRecord.getPubSubMessageTime(),
+                        consumerRecord.getPosition(),
+                        consumerRecord.getPayloadSize(),
+                        null)
+                    : null;
+            recordTransformer.processDelete(lazyKey, producedPartition, recordTransformerRecordMetadata);
           } catch (Exception e) {
             recordTransformerStats.recordDeleteError(storeName, versionNumber, currentTimeMs);
             String errorMessage = "DaVinciRecordTransformer experienced an error when deleting key: " + lazyKey.get();
