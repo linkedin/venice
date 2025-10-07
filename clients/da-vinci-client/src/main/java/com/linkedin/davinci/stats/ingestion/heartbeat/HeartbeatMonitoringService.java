@@ -620,6 +620,10 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
 
   protected void checkAndMaybeLogHeartbeatDelayMap(
       Map<String, Map<Integer, Map<Integer, Map<String, HeartbeatTimeStampEntry>>>> heartbeatTimestamps) {
+    if (kafkaStoreIngestionService == null) {
+      // Service not initialized yet, skip logging
+      return;
+    }
     long currentTimestamp = System.currentTimeMillis();
     boolean isLeader = heartbeatTimestamps == leaderHeartbeatTimeStamps;
     for (Map.Entry<String, Map<Integer, Map<Integer, Map<String, HeartbeatTimeStampEntry>>>> storeName: heartbeatTimestamps
@@ -756,7 +760,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
         .entrySet()) {
       Store store = metadataRepository.getStore(storeName.getKey());
       if (store == null) {
-        LOGGER.warn("Store: {} not found in repository", storeName.getKey());
+        LOGGER.debug("Store: {} not found in repository", storeName.getKey());
         continue;
       }
       int currentVersion = store.getCurrentVersion();
