@@ -37,17 +37,18 @@ import org.apache.logging.log4j.Logger;
  * 2. Leverage some smart logic to avoid useless retry, such as retry triggered by heavy GC.
  */
 public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient<K, V> {
+  private static final Logger LOGGER = LogManager.getLogger(RetriableAvroGenericStoreClient.class);
+
   public static final String SINGLE_KEY_LONG_TAIL_RETRY_STATS_PREFIX = "single-key-long-tail-retry-manager-";
   public static final String MULTI_KEY_LONG_TAIL_RETRY_STATS_PREFIX = "multi-key-long-tail-retry-manager-";
-  public static final String LONG_TAIL_RETRY_THRESHOLD_FOR_BATCH_GET = "1-5:15,6-20:30,21-150:50,151-500:100,501-:500";
   private static final String FAST_CLIENT_RETRY_MANAGER_THREAD_PREFIX = "Fast-client-retry-manager-thread";
-  private static final Logger LOGGER = LogManager.getLogger(RetriableAvroGenericStoreClient.class);
 
   private final boolean longTailRetryEnabledForSingleGet;
   private final boolean longTailRetryEnabledForCompute;
   private final int longTailRetryThresholdForSingleGetInMicroSeconds;
   private final int longTailRetryThresholdForComputeInMicroSeconds;
   private final TimeoutProcessor timeoutProcessor;
+  private final String longTailBatchGetRetryThresholdConfig;
   private final ScheduledExecutorService retryManagerExecutorService =
       Executors.newScheduledThreadPool(1, new DaemonThreadFactory(FAST_CLIENT_RETRY_MANAGER_THREAD_PREFIX));
   /**
@@ -85,8 +86,9 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
         retryManagerExecutorService,
         clientConfig.getStoreName(),
         RequestType.MULTI_GET);
+    this.longTailBatchGetRetryThresholdConfig = clientConfig.getLongTailRetryThresholdForBatchGet();
     batchGetLongTailRetryThresholdMap =
-        BatchGetConfigUtils.parseRetryThresholdForBatchGet(LONG_TAIL_RETRY_THRESHOLD_FOR_BATCH_GET);
+        BatchGetConfigUtils.parseRetryThresholdForBatchGet(longTailBatchGetRetryThresholdConfig);
   }
 
   enum RetryType {
@@ -228,7 +230,7 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
       // This should never happen as the map always contains an entry with Integer.MAX_VALUE as the key.
       throw new VeniceClientException(
           "Failed to find long tail retry threshold for batch get with " + keys.size()
-              + " keys. Please check the config: " + LONG_TAIL_RETRY_THRESHOLD_FOR_BATCH_GET);
+              + " keys. Please check the config: " + longTailBatchGetRetryThresholdConfig);
     }
     int longTailRetryThresholdForBatchGetInMicroSeconds = retryThresholdEntry.getValue() * 1000;
     retryStreamingMultiKeyRequest(

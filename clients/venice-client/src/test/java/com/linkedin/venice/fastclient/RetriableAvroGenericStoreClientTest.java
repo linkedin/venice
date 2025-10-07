@@ -119,7 +119,8 @@ public class RetriableAvroGenericStoreClientTest {
         .setLongTailRetryEnabledForSingleGet(true)
         .setLongTailRetryThresholdForSingleGetInMicroSeconds(
             (int) TimeUnit.MILLISECONDS.toMicros(LONG_TAIL_RETRY_THRESHOLD_IN_MS))
-        // Batch get retry is always enabled with dynamic thresholds based on key count
+        // Configure batch-get long tail retry thresholds explicitly (2 keys -> 15ms)
+        .setLongTailRetryThresholdForBatchGet("1-5:15,6-20:30,21-150:50,151-500:100,501-:500")
         .setLongTailRetryEnabledForCompute(true)
         .setRetryBudgetEnabled(isRetryBudgetEnabled())
         .setLongTailRetryThresholdForComputeInMicroSeconds(
