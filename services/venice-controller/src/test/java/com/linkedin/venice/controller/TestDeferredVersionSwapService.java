@@ -58,7 +58,7 @@ public class TestDeferredVersionSwapService {
   private static final int versionTwo = 2;
   private static Map<String, String> childDatacenterToUrl = new HashMap<>();
   private ReadWriteStoreRepository repository;
-  private static final int controllerTimeout = 5 * Time.MS_PER_SECOND;
+  private static final int controllerTimeout = 1 * Time.MS_PER_SECOND;
 
   @BeforeMethod
   public void setUp() {
@@ -615,7 +615,7 @@ public class TestDeferredVersionSwapService {
     deferredVersionSwapService.startInner();
 
     TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
-      verify(admin, atLeast(1)).truncateKafkaTopic(versionTwoImpl.kafkaTopicName());
+      verify(store, atLeast(1)).updateVersionStatus(2, VersionStatus.ONLINE);
     });
   }
 }
