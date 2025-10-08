@@ -541,6 +541,9 @@ public class LeaderFollowerStoreIngestionTaskTest {
         .getKafkaMessageEnvelope(any(), anyBoolean(), anyInt(), anyBoolean(), any(), anyLong());
     String brokerUrl = "localhost:1234";
     byte[] keyBytes = LeaderFollowerStoreIngestionTask.getGlobalRtDivKeyName(brokerUrl).getBytes();
+    CompletableFuture<PubSubProduceResult> future = new CompletableFuture<>();
+    doReturn(future).when(mockWriter)
+        .put(any(), any(), anyInt(), anyInt(), any(), any(), anyLong(), any(), any(), any(), anyBoolean());
 
     leaderFollowerStoreIngestionTask
         .sendGlobalRtDivMessage(mockMessage, mockPartitionConsumptionState, partition, brokerUrl, 0L, null, context);
@@ -571,7 +574,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
         serializer.deserialize(valueBytes, AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion());
     assertNotNull(globalRtDiv);
 
-    // Verify the callback has DivSnapshot (VT + RT DIV)
+    // Verify the callback has been populated
     LeaderProducerCallback callback = callbackArgumentCaptor.getValue();
     DefaultPubSubMessage callbackPayload = callback.getSourceConsumerRecord();
     assertEquals(callbackPayload.getKey().getKey(), keyBytes);
@@ -582,10 +585,13 @@ public class LeaderFollowerStoreIngestionTaskTest {
     Put put = (Put) callbackPayload.getValue().payloadUnion;
     assertEquals(put.getSchemaId(), AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion());
     assertNotNull(put.getPutValue());
+
+    // Verify that completing the future from put() causes execSyncOffsetFromSnapshotAsync to be called
+    verify(mockStoreBufferService, never()).execSyncOffsetFromSnapshotAsync(any(), any(), any());
     PubSubProduceResult produceResult = mock(PubSubProduceResult.class);
     when(produceResult.getPubSubPosition()).thenReturn(mock(PubSubPosition.class));
     when(produceResult.getSerializedSize()).thenReturn(keyBytes.length + put.putValue.remaining());
-    callback.onCompletion(produceResult, null);
+    future.complete(produceResult);
     verify(mockStoreBufferService, times(1)).execSyncOffsetFromSnapshotAsync(any(), any(), any());
   }
 

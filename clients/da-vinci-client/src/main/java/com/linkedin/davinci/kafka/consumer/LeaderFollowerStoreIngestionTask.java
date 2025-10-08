@@ -3448,7 +3448,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     // Create GlobalRtDivState (RT DIV + latest RT position) and serialize into a byte array. Try compression.
     final byte[] valueBytes = createGlobalRtDivValueBytes(previousMessage, brokerUrl, rtDivPartitionStates);
 
-    // The callback onCompletionFunction sends the VT DIV + LCVP to the drainer after producing to VT successfully
     final LeaderProducerCallback divCallback = createGlobalRtDivCallback(
         previousMessage,
         pcs,
@@ -3479,6 +3478,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
     // Produce to local VT for the Global RT DIV + latest RT position (GlobalRtDivState)
     // Internally, VeniceWriter.put() will schedule DELETEs for the old chunks in the old manifest after the new PUTs
+    // After producing RT DIV to local VT and obtaining its position, send VT DIV to the drainer to sync to OffsetRecord
     getVeniceWriter(pcs).get()
         .put(
             keyBytes,
@@ -3491,7 +3491,15 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             null,
             valueManifestContainer.getManifest(),
             null,
-            false);
+            false)
+        .thenAccept(produceResult -> {
+          vtDiv.updateLatestConsumedVtPosition(produceResult.getPubSubPosition()); // produced position in local VT
+          try {
+            storeBufferService.execSyncOffsetFromSnapshotAsync(topicPartition, vtDiv, this);
+          } catch (InterruptedException e) {
+            LOGGER.error("Failed to sync VT DIV to OffsetRecord for replica: {}", topicPartition, e);
+          }
+        });
 
     consumedBytesSinceLastSync.put(brokerUrl, 0L); // reset the timer for the next sync, since RT DIV was just synced
   }
@@ -3557,15 +3565,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         partition,
         brokerUrl,
         beforeProcessingRecordTimestampNs);
-
-    // After producing RT DIV to local VT, the VT DIV should be sent to the drainer to sync to the OffsetRecord
-    divCallback.setOnCompletionFunction(() -> {
-      try {
-        storeBufferService.execSyncOffsetFromSnapshotAsync(topicPartition, vtDiv, this);
-      } catch (InterruptedException e) {
-        LOGGER.error("Failed to sync VT DIV to OffsetRecord for replica: {}", topicPartition, e);
-      }
-    });
 
     return divCallback;
   }
