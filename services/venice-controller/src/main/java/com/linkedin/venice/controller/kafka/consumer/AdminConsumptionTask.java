@@ -1,5 +1,7 @@
 package com.linkedin.venice.controller.kafka.consumer;
 
+import static java.lang.Math.*;
+
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controller.AdminTopicMetadataAccessor;
 import com.linkedin.venice.controller.ExecutionIdAccessor;
@@ -367,6 +369,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
         // Only poll the kafka channel if there are no more undelegated records due to exceptions.
         if (undelegatedRecords.isEmpty()) {
           Map<PubSubTopicPartition, List<DefaultPubSubMessage>> messages = consumer.poll(READ_CYCLE_DELAY_MS);
+          long messagePollingTimeStamp = System.currentTimeMillis();
           if (messages == null || messages.isEmpty()) {
             LOGGER.debug("Received null or no messages");
           } else {
@@ -377,6 +380,13 @@ public class AdminConsumptionTask implements Runnable, Closeable {
               DefaultPubSubMessage newRecord = recordsIterator.next();
               lastConsumedPosition = newRecord.getPosition();
               undelegatedRecords.add(newRecord);
+
+              // record the polling latency for admin message
+              if (!newRecord.getKey().isControlMessage()) {
+                KafkaMessageEnvelope kafkaValue = newRecord.getValue();
+                long producerTimestamp = kafkaValue.producerMetadata.messageTimestamp;
+                stats.recordAdminMessagePollingLatency(max(0, messagePollingTimeStamp - producerTimestamp));
+              }
             }
           }
         } else {
@@ -859,13 +869,9 @@ public class AdminConsumptionTask implements Runnable, Closeable {
             System.currentTimeMillis());
         operationQueue.add(adminOperationWrapper);
         stats.recordAdminMessageMMLatency(
-            Math.max(
-                0,
-                adminOperationWrapper.getLocalBrokerTimestamp() - adminOperationWrapper.getProducerTimestamp()));
+            max(0, adminOperationWrapper.getLocalBrokerTimestamp() - adminOperationWrapper.getProducerTimestamp()));
         stats.recordAdminMessageDelegateLatency(
-            Math.max(
-                0,
-                adminOperationWrapper.getDelegateTimestamp() - adminOperationWrapper.getLocalBrokerTimestamp()));
+            max(0, adminOperationWrapper.getDelegateTimestamp() - adminOperationWrapper.getLocalBrokerTimestamp()));
       }
     } else {
       long producerTimestamp = kafkaValue.producerMetadata.messageTimestamp;
@@ -878,9 +884,9 @@ public class AdminConsumptionTask implements Runnable, Closeable {
           brokerTimestamp,
           System.currentTimeMillis());
       stats.recordAdminMessageMMLatency(
-          Math.max(0, adminOperationWrapper.getLocalBrokerTimestamp() - adminOperationWrapper.getProducerTimestamp()));
+          max(0, adminOperationWrapper.getLocalBrokerTimestamp() - adminOperationWrapper.getProducerTimestamp()));
       stats.recordAdminMessageDelegateLatency(
-          Math.max(0, adminOperationWrapper.getDelegateTimestamp() - adminOperationWrapper.getLocalBrokerTimestamp()));
+          max(0, adminOperationWrapper.getDelegateTimestamp() - adminOperationWrapper.getLocalBrokerTimestamp()));
       String storeName = extractStoreName(adminOperation);
       adminOperationsByStore.putIfAbsent(storeName, new LinkedList<>());
       adminOperationsByStore.get(storeName).add(adminOperationWrapper);

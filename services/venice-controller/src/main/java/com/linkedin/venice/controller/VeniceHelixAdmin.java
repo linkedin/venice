@@ -436,7 +436,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   private final Map<String, DisabledPartitionStats> disabledPartitionStatMap = new HashMap<>();
   private final Map<String, PushJobStatusStats> pushJobStatusStatsMap = new HashMap<>();
   private final Map<String, AddVersionLatencyStats> addVersionLatencyStatsMap = new HashMap<>();
-
   private static final String PUSH_JOB_DETAILS_WRITER = "PUSH_JOB_DETAILS_WRITER";
   private final Map<String, VeniceWriter> jobTrackingVeniceWriterMap = new VeniceConcurrentHashMap<>();
 
@@ -1635,14 +1634,26 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
     try (VeniceWriter veniceWriter = factory.createVeniceWriter(vwOptionsBuilder.build())) {
       if (alsoWriteStartOfPush) {
+
+        long startOfPushStartTime = System.currentTimeMillis();
         veniceWriter.broadcastStartOfPush(
             false,
             version.isChunkingEnabled(),
             version.getCompressionStrategy(),
             new HashMap<>());
+        getHelixVeniceClusterResources(clusterName).getVeniceAdminStats()
+            .recordStartOfPushLatency(startOfPushStartTime);
       }
+
+      long endOfPushStartTime = System.currentTimeMillis();
       veniceWriter.broadcastEndOfPush(new HashMap<>());
+      getHelixVeniceClusterResources(clusterName).getVeniceAdminStats()
+          .recordEndOfPushLatency(endOfPushStartTime);
+
+      long flushStartTime = System.currentTimeMillis();
       veniceWriter.flush();
+      getHelixVeniceClusterResources(clusterName).getVeniceAdminStats()
+          .recordProducerFlushLatency(flushStartTime);
     }
   }
 

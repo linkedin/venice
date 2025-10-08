@@ -61,6 +61,12 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_INSTANCE_ERROR_TYPE:
           assertEquals(dimension.getDimensionName(format), "venice.instance.error_type");
           break;
+        case VENICE_PARENT_ADMIN_METHOD:
+          assertEquals(dimension.getDimensionName(format), "venice.parent.admin.method");
+          break;
+        case VENICE_PARENT_ADMIN_METHOD_STEP:
+          assertEquals(dimension.getDimensionName(format), "venice.parent.admin.method.step");
+          break;
         default:
           throw new IllegalArgumentException("Unknown dimension: " + dimension);
       }

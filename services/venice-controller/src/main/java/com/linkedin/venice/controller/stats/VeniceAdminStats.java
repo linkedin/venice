@@ -1,9 +1,12 @@
 package com.linkedin.venice.controller.stats;
 
 import com.linkedin.venice.stats.AbstractVeniceStats;
+import com.linkedin.venice.stats.TehutiUtils;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
+import io.tehuti.metrics.stats.Avg;
 import io.tehuti.metrics.stats.Count;
+import io.tehuti.metrics.stats.Max;
 
 
 public class VeniceAdminStats extends AbstractVeniceStats {
@@ -33,6 +36,15 @@ public class VeniceAdminStats extends AbstractVeniceStats {
    */
   private final Sensor failedSerializingAdminOperationMessageCount;
 
+  /** Measure latency when sending the start-of-push signal.*/
+  private final Sensor startOfPushLatencySensor;
+
+  /** Measure latency when sending the end-of-push signal to the queue*/
+  private final Sensor endOfPushLatencySensor;
+
+  /** Tracks latency for producer flush operation.*/
+  private final Sensor producerFlushLatencySensor;
+
   public VeniceAdminStats(MetricsRepository metricsRepository, String name) {
     super(metricsRepository, name);
 
@@ -44,6 +56,27 @@ public class VeniceAdminStats extends AbstractVeniceStats {
         registerSensorIfAbsent("successful_started_user_incremental_push_parent_admin_count", new Count());
     failedSerializingAdminOperationMessageCount =
         registerSensorIfAbsent("failed_serializing_admin_operation_message_count", new Count());
+
+    String startOfPushLatencySensorName = "start_of_push_latency";
+    startOfPushLatencySensor = registerSensorIfAbsent(
+        startOfPushLatencySensorName,
+        new Avg(),
+        new Max(),
+        TehutiUtils.getPercentileStat(getName() + AbstractVeniceStats.DELIMITER + startOfPushLatencySensorName));
+    String endOfPushLatencySensorName = "end_of_push_latency";
+    endOfPushLatencySensor = registerSensor(
+        endOfPushLatencySensorName,
+        new Avg(),
+        new Max(),
+        TehutiUtils.getPercentileStat(getName() + AbstractVeniceStats.DELIMITER + endOfPushLatencySensorName));
+
+    String producerFlushLatencySensorName = "producer_flush_latency";
+    producerFlushLatencySensor = registerSensorIfAbsent(
+        producerFlushLatencySensorName,
+        new Avg(),
+        new Max(),
+        TehutiUtils.getPercentileStat(getName() + AbstractVeniceStats.DELIMITER + producerFlushLatencySensorName));
+
   }
 
   public void recordUnexpectedTopicAbsenceCount() {
@@ -61,4 +94,17 @@ public class VeniceAdminStats extends AbstractVeniceStats {
   public void recordFailedSerializingAdminOperationMessageCount() {
     failedSerializingAdminOperationMessageCount.record();
   }
+
+  public void recordStartOfPushLatency(long startTime) {
+    startOfPushLatencySensor.record(System.currentTimeMillis() - startTime);
+  }
+
+  public void recordEndOfPushLatency(long startTime) {
+    endOfPushLatencySensor.record(System.currentTimeMillis() - startTime);
+  }
+
+  public void recordProducerFlushLatency(long startTime) {
+    producerFlushLatencySensor.record(System.currentTimeMillis() - startTime);
+  }
+
 }

@@ -16,6 +16,7 @@ public class AdminConsumptionStats extends AbstractVeniceStats {
   final private Sensor adminConsumeFailRetriableMessageCountSensor;
   final private Sensor adminTopicDIVErrorReportCountSensor;
   final private Sensor adminConsumptionCycleDurationMsSensor;
+  final private Sensor adminMessagePollingLatencySensor;
   /**
    * The time it took MM to copy the message from parent to child controller's admin topic.
    */
@@ -88,6 +89,9 @@ public class AdminConsumptionStats extends AbstractVeniceStats {
         new AsyncGauge(
             (ignored, ignored2) -> storesWithPendingAdminMessagesCountGauge,
             "stores_with_pending_admin_messages_count"));
+
+    adminMessagePollingLatencySensor = registerSensor("admin_polling_latency_ms", new Avg(), new Max());
+
     adminMessageMMLatencySensor = registerSensor("admin_message_mm_latency_ms", new Avg(), new Max());
     adminMessageDelegateLatencySensor = registerSensor("admin_message_delegate_latency_ms", new Avg(), new Max());
     adminMessageStartProcessingLatencySensor =
@@ -137,6 +141,10 @@ public class AdminConsumptionStats extends AbstractVeniceStats {
 
   public void recordAdminMessageMMLatency(double value) {
     adminMessageMMLatencySensor.record(value);
+  }
+
+  public void recordAdminMessagePollingLatency(double value) {
+    adminMessagePollingLatencySensor.record(value);
   }
 
   public void recordAdminMessageDelegateLatency(double value) {
