@@ -43,6 +43,7 @@ import com.linkedin.davinci.validation.DataIntegrityValidator;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
+import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.ProducerMetadata;
 import com.linkedin.venice.kafka.protocol.Put;
@@ -517,6 +518,35 @@ public class LeaderFollowerStoreIngestionTaskTest {
     doReturn(ControlMessageType.START_OF_SEGMENT.getValue()).when(controlMessage).getControlMessageType();
     doReturn(ApacheKafkaOffsetPosition.of(seqNumber)).when(pubSubMessage).getPosition();
     return pubSubMessageProcessedResultWrapper;
+  }
+
+  @Test(timeOut = 60_000)
+  public void testIsRecordSelfProduced() throws InterruptedException {
+    setUp();
+
+    GUID guid1 = new GUID("wabbit_season".getBytes());
+    GUID guid2 = new GUID("duck_season".getBytes());
+
+    VeniceWriter mockWriter = mock(VeniceWriter.class);
+    Lazy<VeniceWriter<byte[], byte[], byte[]>> lazyMockWriter = mock(Lazy.class);
+    doReturn(true).when(lazyMockWriter).isPresent();
+    doReturn(mockWriter).when(lazyMockWriter).get();
+    doReturn(lazyMockWriter).when(mockPartitionConsumptionState).getVeniceWriterLazyRef();
+
+    KafkaMessageEnvelope kme = mock(KafkaMessageEnvelope.class);
+    DefaultPubSubMessage consumerRecord = mock(DefaultPubSubMessage.class);
+    ProducerMetadata producerMetadata = mock(ProducerMetadata.class);
+    when(kme.getProducerMetadata()).thenReturn(producerMetadata);
+    when(consumerRecord.getValue()).thenReturn(kme);
+
+    // Case 1: VeniceWriter is present but producer GUID doesn't match
+    when(mockWriter.getProducerGUID()).thenReturn(guid1);
+    when(producerMetadata.getProducerGUID()).thenReturn(guid2); // Different GUID
+    assertFalse(leaderFollowerStoreIngestionTask.isRecordSelfProduced(consumerRecord, mockPartitionConsumptionState));
+
+    // Case 2: VeniceWriter is present and producer GUID matches
+    when(producerMetadata.getProducerGUID()).thenReturn(guid1); // Same GUID as the writer
+    assertTrue(leaderFollowerStoreIngestionTask.isRecordSelfProduced(consumerRecord, mockPartitionConsumptionState));
   }
 
   @Test

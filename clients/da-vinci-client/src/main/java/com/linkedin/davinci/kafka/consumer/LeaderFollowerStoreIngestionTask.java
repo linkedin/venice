@@ -3410,6 +3410,15 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
   }
 
+  protected boolean isRecordSelfProduced(DefaultPubSubMessage consumerRecord, PartitionConsumptionState pcs) {
+    Lazy<VeniceWriter<byte[], byte[], byte[]>> lazyVeniceWriter = getVeniceWriter(pcs);
+    if (!lazyVeniceWriter.isPresent()) {
+      return false;
+    }
+    return lazyVeniceWriter.get()
+        .getProducerGUID() == consumerRecord.getValue().getProducerMetadata().getProducerGUID();
+  }
+
   /**
    * The Global RT DIV is produced on a per-broker basis, so the name includes the broker URL for differentiation.
    */
