@@ -328,7 +328,7 @@ public class AbstractVeniceStatsTest {
     // Before creating AbstractVeniceStats, tehutiDisabledSensor shouldn't exist
     assertNull(veniceMetricsRepository.getSensor("tehutiDisabledSensor"));
 
-    AbstractVeniceStats stats = new AbstractVeniceStats(veniceMetricsRepository, "testStore");
+    new AbstractVeniceStats(veniceMetricsRepository, "testStore");
 
     // After creating AbstractVeniceStats, tehutiDisabledSensor should exist
     Sensor tehutiDisabledSensor = veniceMetricsRepository.getSensor("tehutiDisabledSensor");
@@ -342,7 +342,7 @@ public class AbstractVeniceStatsTest {
     VeniceMetricsConfig config = new VeniceMetricsConfig.Builder().emitTehutiMetrics(true).build();
     VeniceMetricsRepository veniceMetricsRepository = new VeniceMetricsRepository(config);
 
-    AbstractVeniceStats stats = new AbstractVeniceStats(veniceMetricsRepository, "testStore");
+    new AbstractVeniceStats(veniceMetricsRepository, "testStore");
 
     // tehutiDisabledSensor should not be created when Tehuti is enabled
     assertNull(veniceMetricsRepository.getSensor("tehutiDisabledSensor"));
