@@ -30,7 +30,6 @@ import com.linkedin.venice.protocols.controller.UpdateAdminOperationProtocolVers
 import com.linkedin.venice.protocols.controller.UpdateAdminTopicMetadataGrpcRequest;
 import com.linkedin.venice.pubsub.PubSubUtil;
 import com.linkedin.venice.pubsub.mock.InMemoryPubSubPosition;
-import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import java.security.cert.X509Certificate;
 import java.util.HashMap;
@@ -100,15 +99,13 @@ public class AdminTopicMetadataRoutesTest {
         InMemoryPubSubPosition.INMEMORY_PUBSUB_POSITION_TYPE_ID);
     assertEquals(
         responseObject.getPosition().getBase64PositionBytes(),
-        PubSubUtil.getBase64EncodedString(
-            ByteUtils.extractByteArray(InMemoryPubSubPosition.of(100L).getPositionWireFormat().getRawBytes())));
+        InMemoryPubSubPosition.of(100L).getBase64EncodedStringFromRawBytes());
     assertEquals(
         responseObject.getUpstreamPosition().getTypeId().intValue(),
         InMemoryPubSubPosition.INMEMORY_PUBSUB_POSITION_TYPE_ID);
     assertEquals(
         responseObject.getUpstreamPosition().getBase64PositionBytes(),
-        PubSubUtil.getBase64EncodedString(
-            ByteUtils.extractByteArray(InMemoryPubSubPosition.of(200L).getPositionWireFormat().getRawBytes())));
+        InMemoryPubSubPosition.of(200L).getBase64EncodedStringFromRawBytes());
 
     assertNull(responseObject.getError());
 

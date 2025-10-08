@@ -3,6 +3,7 @@ package com.linkedin.venice.controllerapi;
 import static com.linkedin.venice.pubsub.PubSubUtil.getBase64EncodedString;
 
 import com.linkedin.venice.protocols.controller.PositionGrpcWireFormat;
+import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubPositionWireFormat;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
@@ -18,9 +19,8 @@ public class PubSubPositionJsonWireFormat {
   private Integer typeId;
   private String base64PositionBytes; // Base64 encoded bytes
   public static final PubSubPositionJsonWireFormat EARLIEST = new PubSubPositionJsonWireFormat(
-      PubSubSymbolicPosition.EARLIEST.getPositionWireFormat().getType(),
-      getBase64EncodedString(
-          ByteUtils.extractByteArray(PubSubSymbolicPosition.EARLIEST.getPositionWireFormat().getRawBytes())));
+      PubSubPositionTypeRegistry.EARLIEST_POSITION_RESERVED_TYPE_ID,
+      PubSubSymbolicPosition.EARLIEST.getBase64EncodedStringFromRawBytes());
 
   public PubSubPositionJsonWireFormat() {
     // required by Jackson

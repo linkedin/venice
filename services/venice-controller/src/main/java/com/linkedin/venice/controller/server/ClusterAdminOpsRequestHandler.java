@@ -1,7 +1,5 @@
 package com.linkedin.venice.controller.server;
 
-import static com.linkedin.venice.pubsub.PubSubUtil.getBase64EncodedString;
-
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.AdminCommandExecutionTracker;
 import com.linkedin.venice.controller.AdminTopicMetadataAccessor;
@@ -22,7 +20,6 @@ import com.linkedin.venice.protocols.controller.UpdateAdminOperationProtocolVers
 import com.linkedin.venice.protocols.controller.UpdateAdminTopicMetadataGrpcRequest;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubPositionWireFormat;
-import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.Pair;
 import java.util.Map;
 import java.util.Optional;
@@ -108,11 +105,10 @@ public class ClusterAdminOpsRequestHandler {
     if (storeName == null) {
       Pair<PubSubPosition, PubSubPosition> positions = AdminTopicMetadataAccessor.getPositions(metadata);
       PubSubPositionWireFormat positionWireFormat = positions.getFirst().getPositionWireFormat();
-      String positionBase64String =
-          getBase64EncodedString(ByteUtils.extractByteArray(positionWireFormat.getRawBytes()));
+      String positionBase64String = positions.getFirst().getBase64EncodedStringFromRawBytes();
       PubSubPositionWireFormat upstreamPositionWireFormat = positions.getSecond().getPositionWireFormat();
-      String upstreamPositionBase64String =
-          getBase64EncodedString(ByteUtils.extractByteArray(upstreamPositionWireFormat.getRawBytes()));
+      String upstreamPositionBase64String = positions.getSecond().getBase64EncodedStringFromRawBytes();
+
       adminMetadataBuilder.setPosition(
           PositionGrpcWireFormat.newBuilder()
               .setTypeId(positionWireFormat.getType())

@@ -3,8 +3,10 @@ package com.linkedin.venice.pubsub.api;
 import com.linkedin.venice.annotation.RestrictedApi;
 import com.linkedin.venice.memory.Measurable;
 import com.linkedin.venice.pubsub.PubSubPositionFactory;
+import com.linkedin.venice.pubsub.PubSubUtil;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
+import com.linkedin.venice.utils.ByteUtils;
 import java.nio.ByteBuffer;
 
 
@@ -51,6 +53,10 @@ public interface PubSubPosition extends Measurable {
    */
   default byte[] toWireFormatBytes() {
     return PUBSUB_POSITION_WIRE_FORMAT_SERIALIZER.serialize(null, getPositionWireFormat());
+  }
+
+  default String getBase64EncodedStringFromRawBytes() {
+    return PubSubUtil.getBase64EncodedString(ByteUtils.extractByteArray(getPositionWireFormat().getRawBytes()));
   }
 
   /**

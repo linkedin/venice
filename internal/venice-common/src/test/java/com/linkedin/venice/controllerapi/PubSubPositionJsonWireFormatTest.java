@@ -7,11 +7,9 @@ import static org.testng.Assert.assertNotEquals;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.protocols.controller.PositionGrpcWireFormat;
-import com.linkedin.venice.pubsub.PubSubUtil;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubPositionWireFormat;
 import com.linkedin.venice.pubsub.mock.InMemoryPubSubPosition;
-import com.linkedin.venice.utils.ByteUtils;
 import java.nio.ByteBuffer;
 import org.testng.annotations.Test;
 
@@ -19,7 +17,7 @@ import org.testng.annotations.Test;
 public class PubSubPositionJsonWireFormatTest {
   PubSubPosition position = InMemoryPubSubPosition.of(123L);
   ByteBuffer positionBytes = position.getPositionWireFormat().getRawBytes();
-  String base64PositionBytes = PubSubUtil.getBase64EncodedString(ByteUtils.extractByteArray(positionBytes));
+  String base64PositionBytes = position.getBase64EncodedStringFromRawBytes();
 
   @Test
   void testConstructorAndGetters() {

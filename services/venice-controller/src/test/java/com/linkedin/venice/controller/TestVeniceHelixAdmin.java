@@ -2,7 +2,6 @@ package com.linkedin.venice.controller;
 
 import static com.linkedin.venice.meta.Version.PushType.INCREMENTAL;
 import static com.linkedin.venice.meta.Version.PushType.STREAM;
-import static com.linkedin.venice.pubsub.PubSubUtil.getBase64EncodedString;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -66,7 +65,7 @@ import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.protocols.controller.PositionGrpcWireFormat;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
-import com.linkedin.venice.pubsub.api.PubSubPositionWireFormat;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.pubsub.mock.InMemoryPubSubPosition;
@@ -75,7 +74,6 @@ import com.linkedin.venice.pushstatushelper.PushStatusStoreWriter;
 import com.linkedin.venice.stats.dimensions.StoreRepushTriggerSource;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
 import com.linkedin.venice.system.store.MetaStoreWriter;
-import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.RegionUtils;
@@ -1006,15 +1004,15 @@ public class TestVeniceHelixAdmin {
   @Test
   public void testUpdateAdminTopicMetadata() {
     long executionId = 10L;
-    PubSubPositionWireFormat position = InMemoryPubSubPosition.of(10L).getPositionWireFormat();
+    PubSubPosition position = InMemoryPubSubPosition.of(10L);
     PositionGrpcWireFormat positionGrpcWireFormat = PositionGrpcWireFormat.newBuilder()
-        .setTypeId(position.getType())
-        .setBase64PositionBytes(getBase64EncodedString(ByteUtils.extractByteArray(position.getRawBytes())))
+        .setTypeId(InMemoryPubSubPosition.INMEMORY_PUBSUB_POSITION_TYPE_ID)
+        .setBase64PositionBytes(position.getBase64EncodedStringFromRawBytes())
         .build();
-    PubSubPositionWireFormat upstreamPosition = InMemoryPubSubPosition.of(1L).getPositionWireFormat();
+    PubSubPosition upstreamPosition = InMemoryPubSubPosition.of(1L);
     PositionGrpcWireFormat upstreamPositionGrpcWireFormat = PositionGrpcWireFormat.newBuilder()
-        .setTypeId(upstreamPosition.getType())
-        .setBase64PositionBytes(getBase64EncodedString(ByteUtils.extractByteArray(upstreamPosition.getRawBytes())))
+        .setTypeId(InMemoryPubSubPosition.INMEMORY_PUBSUB_POSITION_TYPE_ID)
+        .setBase64PositionBytes(upstreamPosition.getBase64EncodedStringFromRawBytes())
         .build();
     VeniceHelixAdmin veniceHelixAdmin = mock(VeniceHelixAdmin.class);
     doCallRealMethod().when(veniceHelixAdmin)

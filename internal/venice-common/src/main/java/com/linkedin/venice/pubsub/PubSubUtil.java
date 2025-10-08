@@ -15,7 +15,6 @@ import com.linkedin.venice.pubsub.api.PubSubPositionWireFormat;
 import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.nio.ByteBuffer;
@@ -328,7 +327,7 @@ public final class PubSubUtil {
     PubSubPositionWireFormat positionWireFormat = position.getPositionWireFormat();
     return PositionGrpcWireFormat.newBuilder()
         .setTypeId(positionWireFormat.getType())
-        .setBase64PositionBytes(getBase64EncodedString(ByteUtils.extractByteArray(positionWireFormat.getRawBytes())))
+        .setBase64PositionBytes(position.getBase64EncodedStringFromRawBytes())
         .build();
   }
 }
