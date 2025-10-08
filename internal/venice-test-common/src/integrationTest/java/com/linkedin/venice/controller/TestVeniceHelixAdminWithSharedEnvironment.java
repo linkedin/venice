@@ -44,6 +44,7 @@ import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreConfig;
+import com.linkedin.venice.meta.VeniceETLStrategy;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.VersionStatus;
@@ -2294,5 +2295,26 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     Assert.assertEquals(becomeBackupEvent.version.kafkaTopicName(), v1TopicName);
     Assert.assertEquals(becomeBackupEvent.type, VersionLifecycleEventType.BECOMING_BACKUP);
     Assert.assertTrue(becomeBackupEvent.isSourceCluster);
+  }
+
+  @Test
+  public void testETLStoreConfig() {
+    String storeName = Utils.getUniqueString("test_version_lifecycle_events");
+    veniceAdmin.createStore(clusterName, storeName, storeOwner, KEY_SCHEMA, VALUE_SCHEMA);
+    // Verify update ETLStoreConfig is backward compatible without providing the newly added config(s)
+    veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setRegularVersionETLEnabled(true));
+    Store store = veniceAdmin.getStore(clusterName, storeName);
+    Assert.assertTrue(store.getEtlStoreConfig().isRegularVersionETLEnabled());
+    Assert.assertFalse(store.getEtlStoreConfig().isFutureVersionETLEnabled());
+    Assert.assertEquals(store.getEtlStoreConfig().getETLStrategy(), VeniceETLStrategy.EXTERNAL_SERVICE);
+    // Verify update ETLStoreConfig works with new config(s)
+    veniceAdmin.updateStore(
+        clusterName,
+        storeName,
+        new UpdateStoreQueryParams().setFutureVersionETLEnabled(true)
+            .setETLStrategy(VeniceETLStrategy.EXTERNAL_WITH_VENICE_TRIGGER));
+    store = veniceAdmin.getStore(clusterName, storeName);
+    Assert.assertTrue(store.getEtlStoreConfig().isFutureVersionETLEnabled());
+    Assert.assertEquals(store.getEtlStoreConfig().getETLStrategy(), VeniceETLStrategy.EXTERNAL_WITH_VENICE_TRIGGER);
   }
 }

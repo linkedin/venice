@@ -52,6 +52,7 @@ import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.LifecycleHooksRecord;
 import com.linkedin.venice.meta.LifecycleHooksRecordImpl;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.VeniceETLStrategy;
 import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.schema.SchemaEntry;
@@ -538,7 +539,8 @@ public class AdminExecutionTask implements Callable<Void> {
     if (message.ETLStoreConfig != null) {
       params.setRegularVersionETLEnabled(message.ETLStoreConfig.regularVersionETLEnabled)
           .setFutureVersionETLEnabled(message.ETLStoreConfig.futureVersionETLEnabled)
-          .setEtledProxyUserAccount(message.ETLStoreConfig.etledUserProxyAccount.toString());
+          .setEtledProxyUserAccount(message.ETLStoreConfig.etledUserProxyAccount.toString())
+          .setETLStrategy(VeniceETLStrategy.getVeniceETLStrategyFromInt(message.ETLStoreConfig.etlStrategy));
     }
 
     if (message.views != null) {

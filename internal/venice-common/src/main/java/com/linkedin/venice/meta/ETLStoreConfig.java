@@ -22,5 +22,9 @@ public interface ETLStoreConfig extends DataModelBackedStructure<StoreETLConfig>
 
   void setFutureVersionETLEnabled(boolean futureVersionETLEnabled);
 
+  VeniceETLStrategy getETLStrategy();
+
+  void setETLStrategy(VeniceETLStrategy etlStrategy);
+
   ETLStoreConfig clone();
 }

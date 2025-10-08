@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller;
 
+import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 
 
@@ -13,13 +14,13 @@ import com.linkedin.venice.meta.Version;
  * time and guarantees the order of events.
  */
 public interface VeniceVersionLifecycleEventListener {
-  void onVersionCreated(Version version, boolean isSourceCluster);
+  void onVersionCreated(Store store, Version version, boolean isSourceCluster);
 
-  void onVersionDeleted(Version version, boolean isSourceCluster);
+  void onVersionDeleted(Store store, Version version, boolean isSourceCluster);
 
-  void onVersionBecomingCurrentFromFuture(Version version, boolean isSourceCluster);
+  void onVersionBecomingCurrentFromFuture(Store store, Version version, boolean isSourceCluster);
 
-  void onVersionBecomingCurrentFromBackup(Version version, boolean isSourceCluster);
+  void onVersionBecomingCurrentFromBackup(Store store, Version version, boolean isSourceCluster);
 
-  void onVersionBecomingBackup(Version version, boolean isSourceCluster);
+  void onVersionBecomingBackup(Store store, Version version, boolean isSourceCluster);
 }
