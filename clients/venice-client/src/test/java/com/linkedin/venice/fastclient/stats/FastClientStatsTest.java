@@ -13,8 +13,8 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_METHOD;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_REJECTION_REASON;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
-import static com.linkedin.venice.utils.OpenTelemetryDataPointTestUtils.validateHistogramPointData;
-import static com.linkedin.venice.utils.OpenTelemetryDataPointTestUtils.validateLongPointDataFromCounter;
+import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateHistogramPointData;
+import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateLongPointDataFromCounter;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
 

@@ -7,6 +7,9 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotEquals;
+import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertNull;
+import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.client.stats.BasicClientStats;
@@ -33,6 +36,9 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
+/**
+ * Unit test for {@link AbstractVeniceStats} class.
+ */
 public class AbstractVeniceStatsTest {
   static class StatsTestImpl extends AbstractVeniceStats {
     public StatsTestImpl(MetricsRepository metricsRepository, String name) {
@@ -245,5 +251,117 @@ public class AbstractVeniceStatsTest {
     // 2) total stats is null, so created a new one
     Sensor newTotalSensor = stats.registerOnlyTotalSensor("testSensor", null, () -> totalSensor, new OccurrenceRate());
     assertNotEquals(newTotalSensor, totalSensor);
+  }
+
+  @Test
+  public void testTehutiMetricsEnabledWithVeniceMetricsRepository() {
+    // Test when VeniceMetricsRepository has Tehuti metrics enabled
+    VeniceMetricsConfig config = new VeniceMetricsConfig.Builder().emitTehutiMetrics(true).build();
+    VeniceMetricsRepository veniceMetricsRepository = new VeniceMetricsRepository(config);
+
+    AbstractVeniceStats stats = new AbstractVeniceStats(veniceMetricsRepository, "testStore");
+
+    // Should create sensors normally when Tehuti is enabled
+    stats.registerSensor(new AsyncGauge((ignored, ignored2) -> 1.0, "testGauge"));
+    assertEquals(veniceMetricsRepository.metrics().size(), 1);
+    assertNotNull(veniceMetricsRepository.getMetric(".testStore--testGauge.Gauge"));
+
+    // registerSensorAttributeGauge should work normally
+    stats.registerSensorAttributeGauge("foo", "bar", new AsyncGauge((ignored, ignored2) -> 2.0, "foo"));
+    assertEquals(veniceMetricsRepository.metrics().size(), 2);
+    assertNotNull(veniceMetricsRepository.getMetric(".testStore--foo.bar"));
+  }
+
+  @Test
+  public void testTehutiMetricsDisabledWithVeniceMetricsRepository() {
+    // Test when VeniceMetricsRepository has Tehuti metrics disabled
+    VeniceMetricsConfig config = new VeniceMetricsConfig.Builder().emitTehutiMetrics(false).build();
+    VeniceMetricsRepository veniceMetricsRepository = new VeniceMetricsRepository(config);
+
+    AbstractVeniceStats stats = new AbstractVeniceStats(veniceMetricsRepository, "testStore");
+
+    // Should create tehutiDisabledSensor
+    assertNotNull(veniceMetricsRepository.getSensor("tehutiDisabledSensor"));
+
+    // registerSensor should return tehutiDisabledSensor instead of creating new sensors
+    Sensor sensor1 = stats.registerSensor(new AsyncGauge((ignored, ignored2) -> 1.0, "testGauge"));
+    Sensor sensor2 = stats.registerSensor("anotherSensor", new Count());
+
+    assertSame(sensor1, sensor2); // Both should return the same tehutiDisabledSensor
+    assertEquals(sensor1.name(), "tehutiDisabledSensor");
+
+    // No metrics should be created for the actual sensors
+    assertNull(veniceMetricsRepository.getMetric(".testStore--testGauge.Gauge"));
+    assertNull(veniceMetricsRepository.getMetric(".testStore--anotherSensor.Count"));
+
+    // registerSensorAttributeGauge should return early and not create metrics
+    int initialMetricsCount = veniceMetricsRepository.metrics().size();
+    stats.registerSensorAttributeGauge("foo", "bar", new AsyncGauge((ignored, ignored2) -> 2.0, "foo"));
+    assertEquals(veniceMetricsRepository.metrics().size(), initialMetricsCount); // No new metrics
+    assertNull(veniceMetricsRepository.getMetric(".testStore--foo.bar"));
+  }
+
+  @Test
+  public void testTehutiMetricsEnabledWithNonVeniceMetricsRepository() {
+    // Test with regular MetricsRepository (non-Venice) - should default to Tehuti enabled
+    MetricsRepository regularRepository = new MetricsRepository();
+
+    AbstractVeniceStats stats = new AbstractVeniceStats(regularRepository, "testStore");
+
+    // Should work normally since non-Venice repositories default to Tehuti enabled
+    stats.registerSensor(new AsyncGauge((ignored, ignored2) -> 1.0, "testGauge"));
+    assertEquals(regularRepository.metrics().size(), 1);
+    assertNotNull(regularRepository.getMetric(".testStore--testGauge.Gauge"));
+
+    // registerSensorAttributeGauge should work normally
+    stats.registerSensorAttributeGauge("foo", "bar", new AsyncGauge((ignored, ignored2) -> 2.0, "foo"));
+    assertEquals(regularRepository.metrics().size(), 2);
+    assertNotNull(regularRepository.getMetric(".testStore--foo.bar"));
+  }
+
+  @Test
+  public void testTehutiDisabledSensorCreation() {
+    // Test that tehutiDisabledSensor is created when Tehuti is disabled
+    VeniceMetricsConfig config = new VeniceMetricsConfig.Builder().emitTehutiMetrics(false).build();
+    VeniceMetricsRepository veniceMetricsRepository = new VeniceMetricsRepository(config);
+
+    // Before creating AbstractVeniceStats, tehutiDisabledSensor shouldn't exist
+    assertNull(veniceMetricsRepository.getSensor("tehutiDisabledSensor"));
+
+    AbstractVeniceStats stats = new AbstractVeniceStats(veniceMetricsRepository, "testStore");
+
+    // After creating AbstractVeniceStats, tehutiDisabledSensor should exist
+    Sensor tehutiDisabledSensor = veniceMetricsRepository.getSensor("tehutiDisabledSensor");
+    assertNotNull(tehutiDisabledSensor);
+    assertEquals(tehutiDisabledSensor.name(), "tehutiDisabledSensor");
+  }
+
+  @Test
+  public void testTehutiDisabledSensorNotCreatedWhenEnabled() {
+    // Test that tehutiDisabledSensor is not created when Tehuti is enabled
+    VeniceMetricsConfig config = new VeniceMetricsConfig.Builder().emitTehutiMetrics(true).build();
+    VeniceMetricsRepository veniceMetricsRepository = new VeniceMetricsRepository(config);
+
+    AbstractVeniceStats stats = new AbstractVeniceStats(veniceMetricsRepository, "testStore");
+
+    // tehutiDisabledSensor should not be created when Tehuti is enabled
+    assertNull(veniceMetricsRepository.getSensor("tehutiDisabledSensor"));
+  }
+
+  @Test
+  public void testMultipleAbstractVeniceStatsInstancesWithTehutiDisabled() {
+    // Test that multiple AbstractVeniceStats instances share the same tehutiDisabledSensor
+    VeniceMetricsConfig config = new VeniceMetricsConfig.Builder().emitTehutiMetrics(false).build();
+    VeniceMetricsRepository veniceMetricsRepository = new VeniceMetricsRepository(config);
+
+    AbstractVeniceStats stats1 = new AbstractVeniceStats(veniceMetricsRepository, "store1");
+    AbstractVeniceStats stats2 = new AbstractVeniceStats(veniceMetricsRepository, "store2");
+
+    Sensor sensor1 = stats1.registerSensor("sensor1", new Count());
+    Sensor sensor2 = stats2.registerSensor("sensor2", new Count());
+
+    // Both should return the same tehutiDisabledSensor
+    assertSame(sensor1, sensor2);
+    assertEquals(sensor1.name(), "tehutiDisabledSensor");
   }
 }

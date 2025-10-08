@@ -20,6 +20,7 @@ import com.linkedin.venice.fastclient.utils.AbstractClientEndToEndSetup;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.router.exception.VeniceKeyCountLimitException;
+import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.utils.TestUtils;
 import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
@@ -139,7 +140,7 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
           .setLongTailRetryThresholdForBatchGetInMicroSeconds(TIME_OUT * MS_PER_SECOND);
     }
 
-    MetricsRepository metricsRepository = new MetricsRepository();
+    VeniceMetricsRepository metricsRepository = createVeniceMetricsRepository(true);
     AvroGenericStoreClient<String, GenericRecord> genericFastClient =
         getGenericFastClient(clientConfigBuilder, metricsRepository, storeMetadataFetchMode);
 
@@ -156,7 +157,7 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
       assertEquals(value.get(VALUE_FIELD_NAME), i);
     }
 
-    validateBatchGetMetrics(metricsRepository, false, recordCnt + 1, recordCnt, false);
+    validateBatchGetMetrics(metricsRepository, false, recordCnt + 1, recordCnt, false, true);
 
     FastClientStats stats = clientConfig.getStats(RequestType.MULTI_GET);
     LOGGER.info("STATS: {}", stats.buildSensorStatSummary("multiget_healthy_request_latency"));
@@ -170,7 +171,7 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
             .setR2Client(r2Client)
             .setDualReadEnabled(false);
 
-    MetricsRepository metricsRepository = new MetricsRepository();
+    VeniceMetricsRepository metricsRepository = createVeniceMetricsRepository(true);
     AvroSpecificStoreClient<String, TestValueSchema> specificFastClient =
         getSpecificFastClient(clientConfigBuilder, metricsRepository, TestValueSchema.class, storeMetadataFetchMode);
 
@@ -186,7 +187,7 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
       assertEquals(value.get(VALUE_FIELD_NAME), i);
     }
 
-    validateBatchGetMetrics(metricsRepository, false, recordCnt, recordCnt, false);
+    validateBatchGetMetrics(metricsRepository, false, recordCnt, recordCnt, false, true);
 
     specificFastClient.close();
     printAllStats();
@@ -207,7 +208,7 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
           .setLongTailRetryThresholdForBatchGetInMicroSeconds(TIME_OUT * MS_PER_SECOND);
     }
 
-    MetricsRepository metricsRepository = new MetricsRepository();
+    VeniceMetricsRepository metricsRepository = createVeniceMetricsRepository(true);
     AvroGenericStoreClient<String, GenericRecord> genericFastClient =
         getGenericFastClient(clientConfigBuilder, metricsRepository, storeMetadataFetchMode);
 
@@ -245,7 +246,7 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
         1,
         "Incorrect non existing key size . Expected  1 got " + veniceResponseMap.getNonExistingKeys().size());
 
-    validateBatchGetMetrics(metricsRepository, true, recordCnt + 1, recordCnt, false);
+    validateBatchGetMetrics(metricsRepository, true, recordCnt + 1, recordCnt, false, true);
   }
 
   @Test(timeOut = TIME_OUT)
@@ -258,7 +259,7 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
             .setR2Client(r2Client)
             .setDualReadEnabled(false);
 
-    MetricsRepository metricsRepository = new MetricsRepository();
+    VeniceMetricsRepository metricsRepository = createVeniceMetricsRepository(true);
     AvroGenericStoreClient<String, GenericRecord> genericFastClient =
         getGenericFastClient(clientConfigBuilder, metricsRepository, StoreMetadataFetchMode.SERVER_BASED_METADATA);
 
@@ -309,7 +310,7 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
           .setLongTailRetryThresholdForBatchGetInMicroSeconds(TIME_OUT * MS_PER_SECOND);
     }
 
-    MetricsRepository metricsRepository = new MetricsRepository();
+    VeniceMetricsRepository metricsRepository = createVeniceMetricsRepository(true);
     AvroGenericStoreClient<String, GenericRecord> genericFastClient =
         getGenericFastClient(clientConfigBuilder, metricsRepository, storeMetadataFetchMode);
     Set<String> keys = new HashSet<>();
@@ -373,7 +374,7 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
         "STATS: latency -> {}",
         stats.buildSensorStatSummary("multiget_healthy_request_latency", "99thPercentile"));
 
-    validateBatchGetMetrics(metricsRepository, true, recordCnt + 1, recordCnt, false);
+    validateBatchGetMetrics(metricsRepository, true, recordCnt + 1, recordCnt, false, true);
     printAllStats();
   }
 }
