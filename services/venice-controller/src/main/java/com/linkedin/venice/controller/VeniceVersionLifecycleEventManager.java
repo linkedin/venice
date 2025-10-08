@@ -37,13 +37,15 @@ public class VeniceVersionLifecycleEventManager {
     }
     if (newCurrentVersion != Store.NON_EXISTING_VERSION) {
       if (isFutureVersion) {
-        manager.notifyVersionBecomingCurrentFromFuture(store.getVersionOrThrow(newCurrentVersion), isSourceCluster);
+        manager
+            .notifyVersionBecomingCurrentFromFuture(store, store.getVersionOrThrow(newCurrentVersion), isSourceCluster);
       } else {
-        manager.notifyVersionBecomingCurrentFromBackup(store.getVersionOrThrow(newCurrentVersion), isSourceCluster);
+        manager
+            .notifyVersionBecomingCurrentFromBackup(store, store.getVersionOrThrow(newCurrentVersion), isSourceCluster);
       }
     }
     if (previousCurrentVersion != Store.NON_EXISTING_VERSION) {
-      manager.notifyVersionBecomingBackup(store.getVersionOrThrow(previousCurrentVersion), isSourceCluster);
+      manager.notifyVersionBecomingBackup(store, store.getVersionOrThrow(previousCurrentVersion), isSourceCluster);
     }
   }
 
@@ -51,38 +53,38 @@ public class VeniceVersionLifecycleEventManager {
     listeners.add(listener);
   }
 
-  void notifyVersionCreated(Version version, boolean isSourceCluster) {
+  void notifyVersionCreated(Store store, Version version, boolean isSourceCluster) {
     Version readOnlyVersion = new ReadOnlyStore.ReadOnlyVersion(version);
     for (VeniceVersionLifecycleEventListener listener: listeners) {
-      listener.onVersionCreated(readOnlyVersion, isSourceCluster);
+      listener.onVersionCreated(store, readOnlyVersion, isSourceCluster);
     }
   }
 
-  void notifyVersionDeleted(Version version, boolean isSourceCluster) {
+  void notifyVersionDeleted(Store store, Version version, boolean isSourceCluster) {
     Version readOnlyVersion = new ReadOnlyStore.ReadOnlyVersion(version);
     for (VeniceVersionLifecycleEventListener listener: listeners) {
-      listener.onVersionDeleted(readOnlyVersion, isSourceCluster);
+      listener.onVersionDeleted(store, readOnlyVersion, isSourceCluster);
     }
   }
 
-  void notifyVersionBecomingCurrentFromFuture(Version version, boolean isSourceCluster) {
+  void notifyVersionBecomingCurrentFromFuture(Store store, Version version, boolean isSourceCluster) {
     Version readOnlyVersion = new ReadOnlyStore.ReadOnlyVersion(version);
     for (VeniceVersionLifecycleEventListener listener: listeners) {
-      listener.onVersionBecomingCurrentFromFuture(readOnlyVersion, isSourceCluster);
+      listener.onVersionBecomingCurrentFromFuture(store, readOnlyVersion, isSourceCluster);
     }
   }
 
-  void notifyVersionBecomingCurrentFromBackup(Version version, boolean isSourceCluster) {
+  void notifyVersionBecomingCurrentFromBackup(Store store, Version version, boolean isSourceCluster) {
     Version readOnlyVersion = new ReadOnlyStore.ReadOnlyVersion(version);
     for (VeniceVersionLifecycleEventListener listener: listeners) {
-      listener.onVersionBecomingCurrentFromBackup(readOnlyVersion, isSourceCluster);
+      listener.onVersionBecomingCurrentFromBackup(store, readOnlyVersion, isSourceCluster);
     }
   }
 
-  void notifyVersionBecomingBackup(Version version, boolean isSourceCluster) {
+  void notifyVersionBecomingBackup(Store store, Version version, boolean isSourceCluster) {
     Version readOnlyVersion = new ReadOnlyStore.ReadOnlyVersion(version);
     for (VeniceVersionLifecycleEventListener listener: listeners) {
-      listener.onVersionBecomingBackup(readOnlyVersion, isSourceCluster);
+      listener.onVersionBecomingBackup(store, readOnlyVersion, isSourceCluster);
     }
   }
 }

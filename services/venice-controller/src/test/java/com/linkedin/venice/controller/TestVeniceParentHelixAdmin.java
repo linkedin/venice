@@ -35,6 +35,7 @@ import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteStore;
 import com.linkedin.venice.controller.kafka.protocol.admin.DerivedSchemaCreation;
 import com.linkedin.venice.controller.kafka.protocol.admin.DisableStoreRead;
+import com.linkedin.venice.controller.kafka.protocol.admin.ETLStoreConfigRecord;
 import com.linkedin.venice.controller.kafka.protocol.admin.EnableStoreRead;
 import com.linkedin.venice.controller.kafka.protocol.admin.KillOfflinePushJob;
 import com.linkedin.venice.controller.kafka.protocol.admin.PauseStore;
@@ -74,6 +75,7 @@ import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.StoreVersionInfo;
+import com.linkedin.venice.meta.VeniceETLStrategy;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.VersionStatus;
@@ -3280,6 +3282,82 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     adminSpy.rollForwardToFutureVersion(clusterName, storeName, null);
   }
 
+<<<<<<< HEAD
+=======
+  @Test
+  public void testDeleteStoreAdminMessageTimeout() {
+    VeniceParentHelixAdmin adminSpy = spy(parentAdmin);
+
+    String storeName = "testStore";
+    String owner = "testOwner";
+    Store store = TestUtils.createTestStore(storeName, owner, System.currentTimeMillis());
+    doReturn(store).when(internalAdmin).getStore(eq(clusterName), eq(storeName));
+    doReturn(store).when(internalAdmin).checkPreConditionForDeletion(eq(clusterName), eq(storeName));
+
+    AdminMessageConsumptionTimeoutException expectedException =
+        new AdminMessageConsumptionTimeoutException("timed out!", new Exception());
+    doThrow(expectedException).when(adminSpy).sendAdminMessageAndWaitForConsumed(any(), any(), any());
+    try {
+      adminSpy.deleteStore(clusterName, storeName, false, 0, true);
+      Assert.fail("Delete store should time out");
+    } catch (AdminMessageConsumptionTimeoutException e) {
+      Assert.assertEquals(e, expectedException);
+      verify(adminSpy, times(1)).deleteAclsForStore(store, storeName);
+    }
+  }
+
+  @Test
+  public void testUpdateStoreETLConfig() {
+    String storeName = Utils.getUniqueString("testUpdatedStoreETLConfigs");
+    Store store = TestUtils.createTestStore(storeName, "test", System.currentTimeMillis());
+    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
+
+    when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(null)
+        .thenReturn(
+            AdminTopicMetadataAccessor.generateMetadataMap(
+                Optional.of(1L),
+                Optional.of(-1L),
+                Optional.of(1L),
+                Optional.of(LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION)));
+    String etlUserProxyAccount = "test";
+    parentAdmin.updateStore(
+        clusterName,
+        storeName,
+        new UpdateStoreQueryParams().setRegularVersionETLEnabled(true).setEtledProxyUserAccount(etlUserProxyAccount));
+    ArgumentCaptor<byte[]> keyCaptor = ArgumentCaptor.forClass(byte[].class);
+    ArgumentCaptor<byte[]> valueCaptor = ArgumentCaptor.forClass(byte[].class);
+    ArgumentCaptor<Integer> schemaCaptor = ArgumentCaptor.forClass(Integer.class);
+    verify(veniceWriter).put(
+        keyCaptor.capture(),
+        valueCaptor.capture(),
+        schemaCaptor.capture(),
+        any(),
+        any(),
+        anyLong(),
+        any(),
+        any(),
+        any(),
+        any());
+
+    byte[] keyBytes = keyCaptor.getValue();
+    byte[] valueBytes = valueCaptor.getValue();
+    int schemaId = schemaCaptor.getValue();
+    assertEquals(schemaId, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+    assertEquals(keyBytes.length, 0);
+
+    AdminOperation adminMessage = adminOperationSerializer.deserialize(ByteBuffer.wrap(valueBytes), schemaId);
+    assertEquals(adminMessage.operationType, AdminMessageType.UPDATE_STORE.getValue());
+
+    UpdateStore updateStore = (UpdateStore) adminMessage.payloadUnion;
+    ETLStoreConfigRecord etlStoreConfigRecord = updateStore.getETLStoreConfig();
+    Assert.assertNotNull(etlStoreConfigRecord);
+    Assert.assertTrue(etlStoreConfigRecord.regularVersionETLEnabled);
+    Assert.assertEquals(etlStoreConfigRecord.etledUserProxyAccount.toString(), etlUserProxyAccount);
+    Assert.assertFalse(etlStoreConfigRecord.futureVersionETLEnabled);
+    Assert.assertEquals(etlStoreConfigRecord.etlStrategy, VeniceETLStrategy.EXTERNAL_SERVICE.getValue());
+  }
+
+>>>>>>> cdfde864a ([common][controller] Add new update store API to update ETLStoreConfig)
   private Store setupForStoreViewConfigUpdateTest(String storeName) {
     Store store = TestUtils.createTestStore(storeName, "test", System.currentTimeMillis());
     store.setActiveActiveReplicationEnabled(true);

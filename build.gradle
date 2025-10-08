@@ -326,10 +326,7 @@ subprojects {
       // Protocol changes should pin the current version via this override and remove the override in a follow-up PR
       // when actually using the new protocol. Example to pin KME to v12 when introducing v13:
       // project(':internal:venice-common').file('src/main/resources/avro/KafkaMessageEnvelope/v12', PathValidation.DIRECTORY)
-      def versionOverrides = [
-          project(':internal:venice-common').file('src/main/resources/avro/StoreMetaValue/v36', PathValidation.DIRECTORY),
-          project(':services:venice-controller').file('src/main/resources/avro/AdminOperation/v91', PathValidation.DIRECTORY),
-      ]
+      def versionOverrides = []
 
       def schemaDirs = [sourceDir]
       sourceDir.eachDir { typeDir ->

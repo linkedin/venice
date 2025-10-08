@@ -150,6 +150,7 @@ public class ReadOnlyStoreTest {
     assertEquals(actual.getEtledUserProxyAccount(), expected.getEtledUserProxyAccount());
     assertEquals(actual.getFutureVersionETLEnabled(), expected.isFutureVersionETLEnabled());
     assertEquals(actual.getRegularVersionETLEnabled(), expected.isFutureVersionETLEnabled());
+    assertEquals(actual.getEtlStrategy(), expected.getETLStrategy().getValue());
   }
 
   private void assertEqualsPartitionerConfig(StorePartitionerConfig actual, PartitionerConfig expected) {
