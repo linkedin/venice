@@ -3,13 +3,11 @@ package com.linkedin.davinci.blobtransfer.client;
 import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_COMPLETED;
 import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_STATUS;
 
-import com.linkedin.alpini.base.misc.ThreadPoolExecutor;
 import com.linkedin.davinci.blobtransfer.BlobTransferPayload;
 import com.linkedin.davinci.blobtransfer.BlobTransferUtils;
 import com.linkedin.venice.exceptions.VeniceBlobTransferFileNotFoundException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.store.rocksdb.RocksDBUtils;
-import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Utils;
 import io.netty.buffer.ByteBuf;
@@ -38,8 +36,6 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -76,18 +72,12 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
       String storeName,
       int version,
       int partition,
-      BlobTransferUtils.BlobTransferTableFormat tableFormat) {
+      BlobTransferUtils.BlobTransferTableFormat tableFormat,
+      ExecutorService checksumValidationExecutorService) {
     this.inputStreamFuture = inputStreamFuture;
     this.payload = new BlobTransferPayload(baseDir, storeName, version, partition, tableFormat);
     this.replicaId = Utils.getReplicaId(payload.getTopicName(), payload.getPartition());
-    this.checksumValidationExecutorService = new ThreadPoolExecutor(
-        4,
-        8,
-        60L,
-        TimeUnit.SECONDS,
-        new LinkedBlockingQueue<>(40),
-        new DaemonThreadFactory("Venice-BlobTransfer-Checksum-Validation-Executor-Service-" + replicaId),
-        new ThreadPoolExecutor.CallerRunsPolicy());
+    this.checksumValidationExecutorService = checksumValidationExecutorService;
     this.replicaTransferStartTime = System.currentTimeMillis();
   }
 
@@ -278,9 +268,9 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
     if (!inputStreamFuture.toCompletableFuture().isDone()) {
       LOGGER.error("Exception caught in when receiving files for replica: {} with cause: {}", replicaId, cause);
       cleanupResources();
-      shutdownExecutorService();
       inputStreamFuture.toCompletableFuture().completeExceptionally(cause);
     }
+
   }
 
   private String getFileNameFromHeader(HttpResponse response) {
@@ -334,7 +324,6 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
       // that reset was done.
       inputStreamFuture.toCompletableFuture().completeExceptionally(e);
     } finally {
-      shutdownExecutorService();
       ctx.close();
     }
   }
@@ -344,10 +333,8 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
     // 1. Close file channel safely by ensuring data is flushed to disk.
     if (outputFileChannel != null) {
       try {
-        if (outputFileChannel.isOpen()) {
-          outputFileChannel.force(true);
-          outputFileChannel.close();
-        }
+        outputFileChannel.force(true);
+        outputFileChannel.close();
       } catch (Exception e) {
         LOGGER.warn("Failed to close file channel for {}", replicaId, e);
       }
@@ -449,18 +436,7 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
 
       LOGGER.error(errorMessage);
       cleanupResources();
-      shutdownExecutorService();
       inputStreamFuture.toCompletableFuture().completeExceptionally(new VeniceException(errorMessage));
-    }
-  }
-
-  /**
-   * Shuts down the per-channel executor service gracefully.
-   * This should be called when the transfer is successful or when an error occurs.
-   */
-  private void shutdownExecutorService() {
-    if (checksumValidationExecutorService != null && !checksumValidationExecutorService.isShutdown()) {
-      checksumValidationExecutorService.shutdown();
     }
   }
 }
