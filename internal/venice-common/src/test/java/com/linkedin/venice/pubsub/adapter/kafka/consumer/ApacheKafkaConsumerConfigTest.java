@@ -50,7 +50,7 @@ public class ApacheKafkaConsumerConfigTest {
     props.put(SSL_KAFKA_BOOTSTRAP_SERVERS, "ssl.kafka.broker.com:8182");
     props.put("kafka.sasl.jaas.config", SASL_JAAS_CONFIG);
     props.put("kafka.sasl.mechanism", SASL_MECHANISM);
-    props.put("kafka.security.protocol", "SASL_SSL");
+    props.put("pubsub.security.protocol", "SASL_SSL");
     props.put("ssl.keystore.location", "/etc/kafka/secrets/kafka.keystore.jks");
     props.put("ssl.keystore.password", "keystore-pass");
     props.put("ssl.keystore.type", "JKS");

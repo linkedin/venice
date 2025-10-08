@@ -43,7 +43,7 @@ public class ApacheKafkaAdminConfigTest {
     properties.put("kafka.bootstrap.servers", "localhost:9092");
     properties.put("kafka.sasl.jaas.config", SASL_JAAS_CONFIG);
     properties.put("kafka.sasl.mechanism", SASL_MECHANISM);
-    properties.put("kafka.security.protocol", securityProtocol.name());
+    properties.put("pubsub.security.protocol", securityProtocol.name());
     if (securityProtocol.name().contains("SSL")) {
       properties.put("kafka.ssl.keystore.location", "/etc/kafka/secrets/kafka.keystore.jks");
       properties.put("kafka.ssl.keystore.password", "keystore-pass");

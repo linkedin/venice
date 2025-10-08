@@ -37,7 +37,7 @@ public class VenicePulsarSinkConfigTest {
     assertEquals(props.get("ssl.enabled"), "false");
     assertEquals(props.get("kafka.sasl.jaas.config"), "test-sasl");
     assertEquals(props.get("kafka.sasl.mechanism"), "PLAIN");
-    assertEquals(props.get("kafka.security.protocol"), "SASL_PLAINTEXT");
+    assertEquals(props.get("pubsub.security.protocol"), "SASL_PLAINTEXT");
     assertTrue(props.get("deployment.id").startsWith("venice-push-id-pulsar-sink_"));
 
     assertEquals(props.get("venice.discover.urls"), "http://test-controller:5555");
@@ -75,7 +75,7 @@ public class VenicePulsarSinkConfigTest {
     assertEquals(props.get("ssl.enabled"), "false");
     assertEquals(props.get("kafka.sasl.jaas.config"), "test-sasl");
     assertEquals(props.get("kafka.sasl.mechanism"), "PLAIN");
-    assertEquals(props.get("kafka.security.protocol"), "SASL_PLAINTEXT");
+    assertEquals(props.get("pubsub.security.protocol"), "SASL_PLAINTEXT");
     assertTrue(props.get("deployment.id").startsWith("venice-push-id-pulsar-sink_"));
 
     assertEquals(props.get("venice.discover.urls"), "http://test-controller:5555");

@@ -1,10 +1,8 @@
 package com.linkedin.venice.pubsub;
 
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
-import static com.linkedin.venice.ConfigKeys.KAFKA_SECURITY_PROTOCOL_LEGACY;
 import static com.linkedin.venice.ConfigKeys.PUBSUB_BROKER_ADDRESS;
 import static com.linkedin.venice.ConfigKeys.PUBSUB_SECURITY_PROTOCOL;
-import static com.linkedin.venice.ConfigKeys.PUBSUB_SECURITY_PROTOCOL_LEGACY;
 import static com.linkedin.venice.pubsub.PubSubPositionTypeRegistry.APACHE_KAFKA_OFFSET_POSITION_TYPE_ID;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -139,7 +137,7 @@ public class PubSubUtilTest {
     assertEquals(PubSubUtil.getPubSubSecurityProtocolOrDefault(veniceProps), PubSubSecurityProtocol.SSL);
 
     props.clear();
-    props.setProperty(KAFKA_SECURITY_PROTOCOL_LEGACY, "SASL_SSL");
+    props.setProperty(PUBSUB_SECURITY_PROTOCOL, "SASL_SSL");
     veniceProps = new VeniceProperties(props);
     assertEquals(PubSubUtil.getPubSubSecurityProtocolOrDefault(veniceProps), PubSubSecurityProtocol.SASL_SSL);
 
@@ -159,26 +157,6 @@ public class PubSubUtilTest {
     assertFalse(PubSubUtil.isPubSubSslProtocol(PubSubSecurityProtocol.PLAINTEXT));
     assertTrue(PubSubUtil.isPubSubSslProtocol(PubSubSecurityProtocol.SASL_SSL));
     assertFalse(PubSubUtil.isPubSubSslProtocol(PubSubSecurityProtocol.SASL_PLAINTEXT));
-  }
-
-  @Test
-  public void testResolveProtocolFromKafkaLegacyKey() {
-    Properties props = new Properties();
-    props.setProperty(KAFKA_SECURITY_PROTOCOL_LEGACY, "SSL");
-    VeniceProperties veniceProps = new VeniceProperties(props);
-
-    assertEquals(PubSubUtil.getPubSubSecurityProtocolOrDefault(veniceProps), PubSubSecurityProtocol.SSL);
-    assertEquals(PubSubUtil.getPubSubSecurityProtocolOrDefault(props), PubSubSecurityProtocol.SSL);
-  }
-
-  @Test
-  public void testResolveProtocolFromPubSubLegacyKey() {
-    Properties props = new Properties();
-    props.setProperty(PUBSUB_SECURITY_PROTOCOL_LEGACY, "SASL_SSL");
-    VeniceProperties veniceProps = new VeniceProperties(props);
-
-    assertEquals(PubSubUtil.getPubSubSecurityProtocolOrDefault(veniceProps), PubSubSecurityProtocol.SASL_SSL);
-    assertEquals(PubSubUtil.getPubSubSecurityProtocolOrDefault(props), PubSubSecurityProtocol.SASL_SSL);
   }
 
   @Test

@@ -1,10 +1,8 @@
 package com.linkedin.venice.pubsub;
 
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
-import static com.linkedin.venice.ConfigKeys.KAFKA_SECURITY_PROTOCOL_LEGACY;
 import static com.linkedin.venice.ConfigKeys.PUBSUB_BROKER_ADDRESS;
 import static com.linkedin.venice.ConfigKeys.PUBSUB_SECURITY_PROTOCOL;
-import static com.linkedin.venice.ConfigKeys.PUBSUB_SECURITY_PROTOCOL_LEGACY;
 import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_CLIENT_CONFIG_PREFIX;
 
 import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
@@ -132,11 +130,7 @@ public final class PubSubUtil {
    * @return the resolved PubSubSecurityProtocol
    */
   public static PubSubSecurityProtocol getPubSubSecurityProtocolOrDefault(VeniceProperties properties) {
-    String securityProtocol =
-        properties.getStringWithAlternative(KAFKA_SECURITY_PROTOCOL_LEGACY, PUBSUB_SECURITY_PROTOCOL_LEGACY, null);
-    if (securityProtocol == null) {
-      securityProtocol = properties.getString(PUBSUB_SECURITY_PROTOCOL, PubSubSecurityProtocol.PLAINTEXT.name());
-    }
+    String securityProtocol = properties.getString(PUBSUB_SECURITY_PROTOCOL, PubSubSecurityProtocol.PLAINTEXT.name());
     return PubSubSecurityProtocol.forName(securityProtocol);
   }
 
@@ -148,13 +142,7 @@ public final class PubSubUtil {
    * @return the resolved {@link PubSubSecurityProtocol}, or PLAINTEXT if not specified
    */
   public static PubSubSecurityProtocol getPubSubSecurityProtocolOrDefault(Properties properties) {
-    String securityProtocol = properties.getProperty(KAFKA_SECURITY_PROTOCOL_LEGACY);
-    if (securityProtocol == null) {
-      securityProtocol = properties.getProperty(PUBSUB_SECURITY_PROTOCOL_LEGACY);
-    }
-    if (securityProtocol == null) {
-      securityProtocol = properties.getProperty(PUBSUB_SECURITY_PROTOCOL, PubSubSecurityProtocol.PLAINTEXT.name());
-    }
+    String securityProtocol = properties.getProperty(PUBSUB_SECURITY_PROTOCOL, PubSubSecurityProtocol.PLAINTEXT.name());
     return PubSubSecurityProtocol.forName(securityProtocol);
   }
 

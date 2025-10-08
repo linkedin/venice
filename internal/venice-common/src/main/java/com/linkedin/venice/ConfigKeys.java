@@ -230,29 +230,10 @@ public class ConfigKeys {
       "kafka.fetch.quota.unordered.records.per.second";
 
   /**
-   * @deprecated This legacy config key was used to specify the security protocol for PubSub clients.
-   * As part of an ongoing effort to namespace all PubSub client configs, this key is being replaced
-   * with a "pubsub."-prefixed version to reduce ambiguity with unrelated configurations.
-   * Use {@link #PUBSUB_SECURITY_PROTOCOL} instead.
-   */
-  @Deprecated
-  public static final String PUBSUB_SECURITY_PROTOCOL_LEGACY = "security.protocol";
-
-  /**
    * New config key for specifying the PubSub client security protocol.
    * This is part of a broader effort to namespace all PubSub configs under the "pubsub." prefix.
    */
-  public static final String PUBSUB_SECURITY_PROTOCOL = PUBSUB_CLIENT_CONFIG_PREFIX + PUBSUB_SECURITY_PROTOCOL_LEGACY;
-
-  /**
-   * @deprecated This legacy config key was used to specify the Kafka security protocol using a "kafka." prefix.
-   * As part of the ongoing effort to unify and namespace all PubSub client configurations under the "pubsub." prefix,
-   * this key is being phased out in favor of {@link #PUBSUB_SECURITY_PROTOCOL}.
-   *
-   * Use {@code pubsub.security.protocol} instead to avoid ambiguity and ensure consistency across client configs.
-   */
-  @Deprecated
-  public static final String KAFKA_SECURITY_PROTOCOL_LEGACY = KAFKA_CONFIG_PREFIX + PUBSUB_SECURITY_PROTOCOL_LEGACY;
+  public static final String PUBSUB_SECURITY_PROTOCOL = PUBSUB_CLIENT_CONFIG_PREFIX + "security.protocol";
 
   /**
    * Number of PubSub consumer clients to be used per topic manager for fetching metadata.

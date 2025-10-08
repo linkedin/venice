@@ -10,7 +10,7 @@ import static com.linkedin.venice.ConfigKeys.DEFAULT_PARTITION_SIZE;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.LOCAL_REGION_NAME;
 import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_FABRIC_ALLOWLIST;
-import static com.linkedin.venice.ConfigKeys.PUBSUB_SECURITY_PROTOCOL_LEGACY;
+import static com.linkedin.venice.ConfigKeys.PUBSUB_SECURITY_PROTOCOL;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -139,7 +139,7 @@ public class TestAdminConsumerService {
         .put(CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + region, "blah")
         .put(CHILD_CLUSTER_ALLOWLIST, clusterName)
         .put(LOCAL_REGION_NAME, region)
-        .put(PUBSUB_SECURITY_PROTOCOL_LEGACY, PubSubSecurityProtocol.PLAINTEXT.name())
+        .put(PUBSUB_SECURITY_PROTOCOL, PubSubSecurityProtocol.PLAINTEXT.name())
         .put(SslUtils.getVeniceLocalSslProperties())
         .build();
     VeniceControllerClusterConfig controllerConfig = new VeniceControllerClusterConfig(props);

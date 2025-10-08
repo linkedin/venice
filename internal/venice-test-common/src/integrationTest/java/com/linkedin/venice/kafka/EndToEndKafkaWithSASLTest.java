@@ -83,7 +83,7 @@ public class EndToEndKafkaWithSASLTest {
     if (securityProtocol == PubSubSecurityProtocol.SASL_SSL) {
       additionalBrokerConfigs.put("listeners", "SASL_SSL://$HOSTNAME:$PORT");
       SslUtils.VeniceTlsConfiguration tlsConfig = SslUtils.getTlsConfiguration();
-      extraProperties.put("kafka.security.protocol", "SASL_SSL");
+      extraProperties.put("pubsub.security.protocol", "SASL_SSL");
       extraProperties.put("kafka." + SslConfigs.SSL_KEYSTORE_LOCATION_CONFIG, tlsConfig.getKeyStorePath());
       extraProperties.put("kafka." + SslConfigs.SSL_KEYSTORE_PASSWORD_CONFIG, tlsConfig.getKeyStorePassword());
       extraProperties.put("kafka." + SslConfigs.SSL_KEYSTORE_TYPE_CONFIG, tlsConfig.getKeyStoreType());
@@ -98,7 +98,7 @@ public class EndToEndKafkaWithSASLTest {
           .put("kafka." + SslConfigs.SSL_SECURE_RANDOM_IMPLEMENTATION_CONFIG, tlsConfig.getSecureRandomAlgorithm());
     } else {
       additionalBrokerConfigs.put("listeners", "SASL_PLAINTEXT://$HOSTNAME:$PORT");
-      extraProperties.put("kafka.security.protocol", "SASL_PLAINTEXT");
+      extraProperties.put("pubsub.security.protocol", "SASL_PLAINTEXT");
     }
 
     extraProperties.put("kafka.sasl.mechanism", "PLAIN");

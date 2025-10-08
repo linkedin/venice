@@ -246,7 +246,7 @@ public class VenicePulsarSink implements Sink<GenericObject> {
       config.put("kafka.sasl.jaas.config", veniceCfg.getKafkaSaslConfig());
     }
     config.put("kafka.sasl.mechanism", veniceCfg.getKafkaSaslMechanism());
-    config.put("kafka.security.protocol", veniceCfg.getKafkaSecurityProtocol());
+    config.put("pubsub.security.protocol", veniceCfg.getKafkaSecurityProtocol());
 
     if (veniceCfg.getWriterConfig() != null && !veniceCfg.getWriterConfig().isEmpty()) {
       LOGGER.info("Additional WriterConfig: {}", veniceCfg.getWriterConfig());
