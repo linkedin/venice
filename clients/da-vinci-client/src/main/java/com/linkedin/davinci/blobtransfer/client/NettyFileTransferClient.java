@@ -41,8 +41,8 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.SynchronousQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import org.apache.logging.log4j.LogManager;
@@ -128,7 +128,7 @@ public class NettyFileTransferClient {
         300,
         60L,
         TimeUnit.SECONDS,
-        new SynchronousQueue<>(),
+        new LinkedBlockingQueue<>(),
         new DaemonThreadFactory("Venice-BlobTransfer-Checksum-Validation-Executor-Service"));
   }
 
