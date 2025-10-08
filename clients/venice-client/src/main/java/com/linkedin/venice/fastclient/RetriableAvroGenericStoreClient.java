@@ -443,7 +443,7 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
   private int getLongTailRetryThresholdForSingleGetInMicroSeconds(int numKeys) {
     Map.Entry<Integer, Integer> retryThresholdEntry = batchGetLongTailRetryThresholdMap.floorEntry(numKeys);
     if (retryThresholdEntry == null) {
-      // This should never happen as the map always contains an entry with Integer.MAX_VALUE as the key.
+      // This should never happen as the configuration will always have a continuous range starting from 1 to 500
       throw new VeniceClientException(
           "Failed to find long tail retry threshold for batch get with " + numKeys + " keys. Please check the config: "
               + longTailBatchGetRangeBasedRetryThresholdInMilliSeconds);
