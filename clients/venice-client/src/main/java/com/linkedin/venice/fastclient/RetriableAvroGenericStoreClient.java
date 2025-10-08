@@ -44,10 +44,9 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
   private static final String FAST_CLIENT_RETRY_MANAGER_THREAD_PREFIX = "Fast-client-retry-manager-thread";
 
   private final boolean longTailRetryEnabledForSingleGet;
-  private final boolean longTailRetryEnabledForCompute;
   private final int longTailRetryThresholdForSingleGetInMicroSeconds;
   private final TimeoutProcessor timeoutProcessor;
-  private final String longTailBatchGetRetryThresholdConfig;
+  private final String longTailBatchGetRangeBasedRetryThresholdInMilliSeconds;
   private final ScheduledExecutorService retryManagerExecutorService =
       Executors.newScheduledThreadPool(1, new DaemonThreadFactory(FAST_CLIENT_RETRY_MANAGER_THREAD_PREFIX));
   /**
@@ -65,7 +64,6 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
       TimeoutProcessor timeoutProcessor) {
     super(delegate, clientConfig);
     this.longTailRetryEnabledForSingleGet = clientConfig.isLongTailRetryEnabledForSingleGet();
-    this.longTailRetryEnabledForCompute = clientConfig.isLongTailRetryEnabledForCompute();
     this.longTailRetryThresholdForSingleGetInMicroSeconds =
         clientConfig.getLongTailRetryThresholdForSingleGetInMicroSeconds();
     this.timeoutProcessor = timeoutProcessor;
@@ -83,9 +81,10 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
         retryManagerExecutorService,
         clientConfig.getStoreName(),
         RequestType.MULTI_GET);
-    this.longTailBatchGetRetryThresholdConfig = clientConfig.getLongTailRetryThresholdForBatchGet();
+    this.longTailBatchGetRangeBasedRetryThresholdInMilliSeconds =
+        clientConfig.getLongTailRangeBasedRetryThresholdForBatchGetInMilliSeconds();
     batchGetLongTailRetryThresholdMap =
-        BatchGetConfigUtils.parseRetryThresholdForBatchGet(longTailBatchGetRetryThresholdConfig);
+        BatchGetConfigUtils.parseRetryThresholdForBatchGet(longTailBatchGetRangeBasedRetryThresholdInMilliSeconds);
   }
 
   enum RetryType {
@@ -447,7 +446,7 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
       // This should never happen as the map always contains an entry with Integer.MAX_VALUE as the key.
       throw new VeniceClientException(
           "Failed to find long tail retry threshold for batch get with " + numKeys + " keys. Please check the config: "
-              + longTailBatchGetRetryThresholdConfig);
+              + longTailBatchGetRangeBasedRetryThresholdInMilliSeconds);
     }
     return retryThresholdEntry.getValue() * 1000;
   }

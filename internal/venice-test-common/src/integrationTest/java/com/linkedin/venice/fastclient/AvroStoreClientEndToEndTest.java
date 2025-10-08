@@ -321,7 +321,7 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
       clientConfigBuilder.setLongTailRetryEnabledForSingleGet(true)
           .setLongTailRetryThresholdForSingleGetInMicroSeconds(TIME_OUT * MS_PER_SECOND)
           // Use explicit batch-get thresholds string to avoid dynamic surprises
-          .setLongTailRetryThresholdForBatchGet("1-:10000")
+          .setLongTailRangeBasedRetryThresholdForBatchGetInMilliSeconds("1-:10000")
           .setLongTailRetryEnabledForCompute(true)
           .setLongTailRetryThresholdForComputeInMicroSeconds(TIME_OUT * MS_PER_SECOND);
     }
