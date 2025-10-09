@@ -280,15 +280,15 @@ public class AbstractVeniceStatsTest {
 
     AbstractVeniceStats stats = new AbstractVeniceStats(veniceMetricsRepository, "testStore");
 
-    // Should create tehutiDisabledSensor
-    assertNotNull(veniceMetricsRepository.getSensor("tehutiDisabledSensor"));
+    // Should create defaultTehutiSensor
+    assertNotNull(veniceMetricsRepository.getSensor("defaultTehutiSensor"));
 
-    // registerSensor should return tehutiDisabledSensor instead of creating new sensors
+    // registerSensor should return defaultTehutiSensor instead of creating new sensors
     Sensor sensor1 = stats.registerSensor(new AsyncGauge((ignored, ignored2) -> 1.0, "testGauge"));
     Sensor sensor2 = stats.registerSensor("anotherSensor", new Count());
 
-    assertSame(sensor1, sensor2); // Both should return the same tehutiDisabledSensor
-    assertEquals(sensor1.name(), "tehutiDisabledSensor");
+    assertSame(sensor1, sensor2); // Both should return the same defaultTehutiSensor
+    assertEquals(sensor1.name(), "defaultTehutiSensor");
 
     // No metrics should be created for the actual sensors
     assertNull(veniceMetricsRepository.getMetric(".testStore--testGauge.Gauge"));
@@ -320,37 +320,37 @@ public class AbstractVeniceStatsTest {
   }
 
   @Test
-  public void testTehutiDisabledSensorCreation() {
-    // Test that tehutiDisabledSensor is created when Tehuti is disabled
+  public void testdefaultTehutiSensorCreation() {
+    // Test that defaultTehutiSensor is created when Tehuti is disabled
     VeniceMetricsConfig config = new VeniceMetricsConfig.Builder().emitTehutiMetrics(false).build();
     VeniceMetricsRepository veniceMetricsRepository = new VeniceMetricsRepository(config);
 
-    // Before creating AbstractVeniceStats, tehutiDisabledSensor shouldn't exist
-    assertNull(veniceMetricsRepository.getSensor("tehutiDisabledSensor"));
+    // Before creating AbstractVeniceStats, defaultTehutiSensor shouldn't exist
+    assertNull(veniceMetricsRepository.getSensor("defaultTehutiSensor"));
 
     new AbstractVeniceStats(veniceMetricsRepository, "testStore");
 
-    // After creating AbstractVeniceStats, tehutiDisabledSensor should exist
-    Sensor tehutiDisabledSensor = veniceMetricsRepository.getSensor("tehutiDisabledSensor");
-    assertNotNull(tehutiDisabledSensor);
-    assertEquals(tehutiDisabledSensor.name(), "tehutiDisabledSensor");
+    // After creating AbstractVeniceStats, defaultTehutiSensor should exist
+    Sensor defaultTehutiSensor = veniceMetricsRepository.getSensor("defaultTehutiSensor");
+    assertNotNull(defaultTehutiSensor);
+    assertEquals(defaultTehutiSensor.name(), "defaultTehutiSensor");
   }
 
   @Test
-  public void testTehutiDisabledSensorNotCreatedWhenEnabled() {
-    // Test that tehutiDisabledSensor is not created when Tehuti is enabled
+  public void testdefaultTehutiSensorNotCreatedWhenEnabled() {
+    // Test that defaultTehutiSensor is not created when Tehuti is enabled
     VeniceMetricsConfig config = new VeniceMetricsConfig.Builder().emitTehutiMetrics(true).build();
     VeniceMetricsRepository veniceMetricsRepository = new VeniceMetricsRepository(config);
 
     new AbstractVeniceStats(veniceMetricsRepository, "testStore");
 
-    // tehutiDisabledSensor should not be created when Tehuti is enabled
-    assertNull(veniceMetricsRepository.getSensor("tehutiDisabledSensor"));
+    // defaultTehutiSensor should not be created when Tehuti is enabled
+    assertNull(veniceMetricsRepository.getSensor("defaultTehutiSensor"));
   }
 
   @Test
   public void testMultipleAbstractVeniceStatsInstancesWithTehutiDisabled() {
-    // Test that multiple AbstractVeniceStats instances share the same tehutiDisabledSensor
+    // Test that multiple AbstractVeniceStats instances share the same defaultTehutiSensor
     VeniceMetricsConfig config = new VeniceMetricsConfig.Builder().emitTehutiMetrics(false).build();
     VeniceMetricsRepository veniceMetricsRepository = new VeniceMetricsRepository(config);
 
@@ -360,8 +360,8 @@ public class AbstractVeniceStatsTest {
     Sensor sensor1 = stats1.registerSensor("sensor1", new Count());
     Sensor sensor2 = stats2.registerSensor("sensor2", new Count());
 
-    // Both should return the same tehutiDisabledSensor
+    // Both should return the same defaultTehutiSensor
     assertSame(sensor1, sensor2);
-    assertEquals(sensor1.name(), "tehutiDisabledSensor");
+    assertEquals(sensor1.name(), "defaultTehutiSensor");
   }
 }
