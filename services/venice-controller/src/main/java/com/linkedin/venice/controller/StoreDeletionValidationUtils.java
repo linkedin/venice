@@ -16,7 +16,7 @@ import org.apache.logging.log4j.Logger;
 /**
  * Utility class for Venice store deletion validation operations.
  * Contains methods to validate store deletion and other store-related validation logic.
- * 
+ *
  * This class provides a clean separation of store validation logic from the main
  * VeniceHelixAdmin class, making it easier to test and maintain.
  */
@@ -81,6 +81,9 @@ public class StoreDeletionValidationUtils {
       if (checkForAnyExistingTopicResources(admin, result, clusterName, storeName, pubSubTopics)) {
         return result;
       }
+
+      // 5. Check ACLs
+      String storeAcls = admin.getAclForStore(clusterName, storeName);
 
       // If we reach here, all validations passed
       return result;
@@ -241,9 +244,9 @@ public class StoreDeletionValidationUtils {
    * Determines if a PubSub topic is related to the specified store.
    * This includes version topics, real-time topics, view topics, and system store topics.
    * Uses PubSubTopic's built-in store name validation for better accuracy.
-   * 
+   *
    * @param topic the PubSub topic to check
-   * @param storeName the name of the store 
+   * @param storeName the name of the store
    * @return true if the topic is related to the store, false otherwise
    */
   public static boolean isStoreRelatedTopic(PubSubTopic topic, String storeName) {
