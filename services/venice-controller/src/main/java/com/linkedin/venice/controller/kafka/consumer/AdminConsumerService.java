@@ -1,5 +1,7 @@
 package com.linkedin.venice.controller.kafka.consumer;
 
+import static com.linkedin.venice.pubsub.PubSubUtil.getPubSubPositionWireFormat;
+
 import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.controller.VeniceControllerClusterConfig;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
@@ -11,18 +13,15 @@ import com.linkedin.venice.pubsub.PubSubConsumerAdapterContext;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
-import com.linkedin.venice.pubsub.PubSubUtil;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
-import com.linkedin.venice.pubsub.api.PubSubPositionWireFormat;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import io.tehuti.metrics.MetricsRepository;
-import java.nio.ByteBuffer;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.ThreadFactory;
@@ -50,7 +49,7 @@ public class AdminConsumerService extends AbstractVeniceService {
   private final String localKafkaServerUrl;
   private final PubSubMessageDeserializer pubSubMessageDeserializer;
   private final LogContext logContext;
-  PubSubPositionDeserializer pubSubPositionDeserializer;
+  private final PubSubPositionDeserializer pubSubPositionDeserializer;
 
   public AdminConsumerService(
       VeniceHelixAdmin admin,
@@ -228,16 +227,9 @@ public class AdminConsumerService extends AbstractVeniceService {
           admin.getHelixVeniceClusterResources(clusterName).getClusterLockManager().createClusterWriteLock()) {
 
         AdminMetadata metadata = new AdminMetadata();
-        metadata.setPubSubPosition(
-            pubSubPositionDeserializer.toPosition(
-                new PubSubPositionWireFormat(
-                    position.getTypeId(),
-                    ByteBuffer.wrap(PubSubUtil.getBase64DecodedBytes(position.getBase64PositionBytes())))));
+        metadata.setPubSubPosition(pubSubPositionDeserializer.toPosition(getPubSubPositionWireFormat(position)));
         metadata.setUpstreamPubSubPosition(
-            pubSubPositionDeserializer.toPosition(
-                new PubSubPositionWireFormat(
-                    upstreamPosition.getTypeId(),
-                    ByteBuffer.wrap(PubSubUtil.getBase64DecodedBytes(upstreamPosition.getBase64PositionBytes())))));
+            pubSubPositionDeserializer.toPosition(getPubSubPositionWireFormat(upstreamPosition)));
         metadata.setExecutionId(executionId);
         adminTopicMetadataAccessor.updateMetadata(clusterName, metadata);
       }
