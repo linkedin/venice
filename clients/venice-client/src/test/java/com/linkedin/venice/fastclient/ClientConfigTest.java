@@ -9,11 +9,6 @@ import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import org.testng.annotations.Test;
 
 
-/**
- * TODO:
- *  Add tests for options like setMaxAllowedKeyCntInBatchGetReq
- */
-
 public class ClientConfigTest {
   private ClientConfig.ClientConfigBuilder getClientConfigWithMinimumRequiredInputs() {
     return new ClientConfig.ClientConfigBuilder<>().setStoreName("test_store")

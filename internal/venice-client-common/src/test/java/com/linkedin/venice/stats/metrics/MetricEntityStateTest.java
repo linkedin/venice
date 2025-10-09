@@ -149,7 +149,8 @@ public class MetricEntityStateTest {
       Assert.assertTrue(e.getMessage().contains("Base attributes cannot be null for MetricEntityStateBase"));
     }
 
-    // with tehuti sensor
+    // with tehuti enabled and provided sensor details
+    when(mockOtelRepository.emitTehutiMetrics()).thenReturn(true);
     metricEntityState = MetricEntityStateBase.create(
         mockMetricEntity,
         mockOtelRepository,
@@ -162,6 +163,22 @@ public class MetricEntityStateTest {
     Assert.assertNotNull(metricEntityState.getOtelMetric());
     Assert.assertNotNull(metricEntityState.getTehutiSensor());
     Assert.assertEquals(((MetricEntityStateBase) metricEntityState).getAttributes(), baseAttributes);
+
+    // with tehuti disabled and provided sensor details
+    when(mockOtelRepository.emitTehutiMetrics()).thenReturn(false);
+    metricEntityState = MetricEntityStateBase.create(
+        mockMetricEntity,
+        mockOtelRepository,
+        sensorRegistrationFunction,
+        TestTehutiMetricNameEnum.TEST_METRIC,
+        singletonList(new Count()),
+        baseDimensionsMap,
+        baseAttributes);
+    Assert.assertNotNull(metricEntityState);
+    Assert.assertNotNull(metricEntityState.getOtelMetric());
+    Assert.assertNull(metricEntityState.getTehutiSensor());
+    Assert.assertEquals(((MetricEntityStateBase) metricEntityState).getAttributes(), baseAttributes);
+
   }
 
   @Test

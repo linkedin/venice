@@ -333,8 +333,10 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
     // 1. Close file channel safely by ensuring data is flushed to disk.
     if (outputFileChannel != null) {
       try {
-        outputFileChannel.force(true);
-        outputFileChannel.close();
+        if (outputFileChannel.isOpen()) {
+          outputFileChannel.force(true);
+          outputFileChannel.close();
+        }
       } catch (Exception e) {
         LOGGER.warn("Failed to close file channel for {}", replicaId, e);
       }

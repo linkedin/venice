@@ -65,6 +65,7 @@ public class VeniceOpenTelemetryMetricsRepository {
   private SdkMeterProvider sdkMeterProvider = null;
   private final OpenTelemetry openTelemetry;
   private final boolean emitOpenTelemetryMetrics;
+  private final boolean emitTehutiMetrics;
   private final VeniceOpenTelemetryMetricNamingFormat metricFormat;
   private Meter meter;
   private String metricPrefix;
@@ -78,6 +79,7 @@ public class VeniceOpenTelemetryMetricsRepository {
   public VeniceOpenTelemetryMetricsRepository(VeniceMetricsConfig metricsConfig) {
     this.metricsConfig = metricsConfig;
     emitOpenTelemetryMetrics = metricsConfig.emitOtelMetrics();
+    emitTehutiMetrics = metricsConfig.emitTehutiMetrics();
     metricFormat = metricsConfig.getMetricNamingFormat();
     if (!emitOpenTelemetryMetrics) {
       LOGGER.info("OpenTelemetry metrics are disabled");
@@ -503,6 +505,10 @@ public class VeniceOpenTelemetryMetricsRepository {
 
   public boolean emitOpenTelemetryMetrics() {
     return emitOpenTelemetryMetrics;
+  }
+
+  public boolean emitTehutiMetrics() {
+    return emitTehutiMetrics;
   }
 
   public VeniceMetricsConfig getMetricsConfig() {

@@ -37,6 +37,7 @@ import java.util.function.LongSupplier;
  */
 public abstract class AsyncMetricEntityState {
   private final boolean emitOpenTelemetryMetrics;
+  private final boolean emitTehutiMetrics;
   protected final VeniceOpenTelemetryMetricsRepository otelRepository;
   private final Map<VeniceMetricsDimensions, String> baseDimensionsMap;
   protected final MetricEntity metricEntity;
@@ -57,9 +58,25 @@ public abstract class AsyncMetricEntityState {
       Attributes asyncAttributes) {
     this.metricEntity = metricEntity;
     this.emitOpenTelemetryMetrics = otelRepository != null && otelRepository.emitOpenTelemetryMetrics();
+    this.emitTehutiMetrics =
+        shouldEmitTehutiMetrics(otelRepository, registerTehutiSensorFn, tehutiMetricNameEnum, tehutiMetricStats);
     this.otelRepository = otelRepository;
     this.baseDimensionsMap = baseDimensionsMap;
     createMetric(tehutiMetricNameEnum, tehutiMetricStats, registerTehutiSensorFn, asyncCallback, asyncAttributes);
+  }
+
+  /**
+   * emit Tehuti metrics only when
+   * 1. registerTehutiSensorFn, tehutiMetricNameEnum and tehutiMetricStats are provided
+   * 2. otelRepository is null (otel is not enabled) or otelRepository.emitTehutiMetrics() is true
+   */
+  private boolean shouldEmitTehutiMetrics(
+      VeniceOpenTelemetryMetricsRepository otelRepository,
+      TehutiSensorRegistrationFunction registerTehutiSensorFn,
+      TehutiMetricNameEnum tehutiMetricNameEnum,
+      List<MeasurableStat> tehutiMetricStats) {
+    return registerTehutiSensorFn != null && tehutiMetricNameEnum != null && tehutiMetricStats != null
+        && !tehutiMetricStats.isEmpty() && (otelRepository == null || otelRepository.emitTehutiMetrics());
   }
 
   public void setOtelMetric(Object otelMetric) {
@@ -119,7 +136,7 @@ public abstract class AsyncMetricEntityState {
     }
   }
 
-  public void createMetric(
+  private void createMetric(
       TehutiMetricNameEnum tehutiMetricNameEnum,
       List<MeasurableStat> tehutiMetricStats,
       TehutiSensorRegistrationFunction registerTehutiSensorFn,
@@ -127,11 +144,9 @@ public abstract class AsyncMetricEntityState {
       Attributes asyncAttributes) {
     validateMetric(tehutiMetricStats, asyncCallback);
     if (emitOpenTelemetryMetrics()) {
-      Object otelMetric = otelRepository.createInstrument(this.metricEntity, asyncCallback, asyncAttributes);
-      setOtelMetric(otelMetric);
+      setOtelMetric(otelRepository.createInstrument(this.metricEntity, asyncCallback, asyncAttributes));
     }
-    // tehuti metric
-    if (tehutiMetricStats != null && !tehutiMetricStats.isEmpty()) {
+    if (emitTehutiMetrics()) {
       setTehutiSensor(
           registerTehutiSensorFn
               .register(tehutiMetricNameEnum.getMetricName(), tehutiMetricStats.toArray(new MeasurableStat[0])));
@@ -271,6 +286,10 @@ public abstract class AsyncMetricEntityState {
 
   final boolean emitOpenTelemetryMetrics() {
     return emitOpenTelemetryMetrics;
+  }
+
+  final boolean emitTehutiMetrics() {
+    return emitTehutiMetrics;
   }
 
   MetricEntity getMetricEntity() {
