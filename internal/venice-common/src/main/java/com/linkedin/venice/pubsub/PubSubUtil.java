@@ -310,6 +310,12 @@ public final class PubSubUtil {
         .build();
   }
 
+  public static PubSubPositionWireFormat getPubSubPositionWireFormat(PubSubPositionGrpcWireFormat position) {
+    return new PubSubPositionWireFormat(
+        position.getTypeId(),
+        ByteBuffer.wrap(PubSubUtil.getBase64DecodedBytes(position.getBase64PositionBytes())));
+  }
+
   private static String[] getTypeIdAndBase64WfBytes(String positionWireFormatString) {
     if (positionWireFormatString == null || positionWireFormatString.isEmpty()) {
       throw new IllegalArgumentException("Position wire format string cannot be null or empty");

@@ -68,6 +68,7 @@ public class AdminTopicMetadataRoutesTest {
 
   @Test
   public void testGetAdminTopicMetadataSuccess() throws Exception {
+    PubSubPositionJsonWireFormat earliestPositionJsonWireFormat = PubSubSymbolicPosition.EARLIEST.toJsonWireFormat();
     PubSubPosition position = InMemoryPubSubPosition.of(100L);
     PubSubPosition upstreamPosition = InMemoryPubSubPosition.of(200L);
     PubSubPositionJsonWireFormat positionJsonWireFormat = position.toJsonWireFormat();
@@ -126,8 +127,8 @@ public class AdminTopicMetadataRoutesTest {
     assertEquals(responseObject.getCluster(), TEST_CLUSTER);
     assertEquals(responseObject.getName(), TEST_STORE);
     assertEquals(responseObject.getExecutionId(), TEST_EXECUTION_ID);
-    assertEquals(responseObject.getPosition(), PubSubSymbolicPosition.EARLIEST.toJsonWireFormat());
-    assertEquals(responseObject.getUpstreamPosition(), PubSubSymbolicPosition.EARLIEST.toJsonWireFormat());
+    assertEquals(responseObject.getPosition(), earliestPositionJsonWireFormat);
+    assertEquals(responseObject.getUpstreamPosition(), earliestPositionJsonWireFormat);
     assertNull(responseObject.getError());
   }
 
