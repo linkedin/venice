@@ -2,6 +2,7 @@ package com.linkedin.venice.controller;
 
 import static com.linkedin.venice.meta.Version.PushType.INCREMENTAL;
 import static com.linkedin.venice.meta.Version.PushType.STREAM;
+import static com.linkedin.venice.pubsub.PubSubUtil.getPubSubPositionGrpcWireFormat;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -1008,15 +1009,9 @@ public class TestVeniceHelixAdmin {
   public void testUpdateAdminTopicMetadata() {
     long executionId = 10L;
     PubSubPosition position = InMemoryPubSubPosition.of(10L);
-    PubSubPositionGrpcWireFormat PubSubPositionGrpcWireFormat = PubSubPositionGrpcWireFormat.newBuilder()
-        .setTypeId(InMemoryPubSubPosition.INMEMORY_PUBSUB_POSITION_TYPE_ID)
-        .setBase64PositionBytes(position.getBase64EncodedStringFromRawBytes())
-        .build();
+    PubSubPositionGrpcWireFormat pubSubPositionGrpcWireFormat = getPubSubPositionGrpcWireFormat(position);
     PubSubPosition upstreamPosition = InMemoryPubSubPosition.of(1L);
-    PubSubPositionGrpcWireFormat upstreamPubSubPositionGrpcWireFormat = PubSubPositionGrpcWireFormat.newBuilder()
-        .setTypeId(InMemoryPubSubPosition.INMEMORY_PUBSUB_POSITION_TYPE_ID)
-        .setBase64PositionBytes(upstreamPosition.getBase64EncodedStringFromRawBytes())
-        .build();
+    PubSubPositionGrpcWireFormat upstreamPositionGrpcWireFormat = getPubSubPositionGrpcWireFormat(upstreamPosition);
     VeniceHelixAdmin veniceHelixAdmin = mock(VeniceHelixAdmin.class);
     doCallRealMethod().when(veniceHelixAdmin)
         .updateAdminTopicMetadata(clusterName, executionId, Optional.of(storeName), Optional.empty(), Optional.empty());
@@ -1025,8 +1020,8 @@ public class TestVeniceHelixAdmin {
             clusterName,
             executionId,
             Optional.empty(),
-            Optional.of(PubSubPositionGrpcWireFormat),
-            Optional.of(upstreamPubSubPositionGrpcWireFormat));
+            Optional.of(pubSubPositionGrpcWireFormat),
+            Optional.of(upstreamPositionGrpcWireFormat));
 
     // Case 1: Store name is provided
     ExecutionIdAccessor executionIdAccessor = mock(ExecutionIdAccessor.class);
@@ -1043,14 +1038,14 @@ public class TestVeniceHelixAdmin {
         clusterName,
         executionId,
         Optional.empty(),
-        Optional.of(PubSubPositionGrpcWireFormat),
-        Optional.of(upstreamPubSubPositionGrpcWireFormat));
+        Optional.of(pubSubPositionGrpcWireFormat),
+        Optional.of(upstreamPositionGrpcWireFormat));
     verify(executionIdAccessor, never()).updateLastSucceededExecutionId(anyString(), anyLong());
     verify(adminConsumerService, times(1)).updateAdminTopicMetadata(
         clusterName,
         executionId,
-        PubSubPositionGrpcWireFormat,
-        upstreamPubSubPositionGrpcWireFormat);
+        pubSubPositionGrpcWireFormat,
+        upstreamPositionGrpcWireFormat);
   }
 
   @Test

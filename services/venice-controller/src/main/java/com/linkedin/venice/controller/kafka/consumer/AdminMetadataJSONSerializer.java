@@ -36,10 +36,8 @@ public class AdminMetadataJSONSerializer implements VeniceSerializer<AdminMetada
     adminMetadataJSON.offset = adminMetadata.getOffset();
     adminMetadataJSON.upstreamOffset = adminMetadata.getUpstreamOffset();
     adminMetadataJSON.adminOperationProtocolVersion = adminMetadata.getAdminOperationProtocolVersion();
-    adminMetadataJSON.pubSubPositionJsonWireFormat =
-        PubSubPositionJsonWireFormat.fromPubSubPosition(adminMetadata.getPosition());
-    adminMetadataJSON.pubSubUpstreamPositionJsonWireFormat =
-        PubSubPositionJsonWireFormat.fromPubSubPosition(adminMetadata.getUpstreamPosition());
+    adminMetadataJSON.pubSubPositionJsonWireFormat = adminMetadata.getPosition().toJsonWireFormat();
+    adminMetadataJSON.pubSubUpstreamPositionJsonWireFormat = adminMetadata.getUpstreamPosition().toJsonWireFormat();
 
     return adminMetadataJSON;
   }

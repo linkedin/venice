@@ -211,11 +211,6 @@ public class PubSubUtilTest {
 
   @Test
   public void testGetBase64EncodedString() {
-    assertEquals(
-        new ApacheKafkaOffsetPosition(12345L).getBase64EncodedStringFromRawBytes(),
-        "8sAB",
-        "Should encode byte array to Base64 string");
-
     // Test with normal byte array
     byte[] testBytes =
         ByteUtils.extractByteArray(new ApacheKafkaOffsetPosition(12345L).getPositionWireFormat().getRawBytes());

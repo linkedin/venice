@@ -7,6 +7,7 @@ import static com.linkedin.venice.ConfigKeys.PUBSUB_SECURITY_PROTOCOL;
 import static com.linkedin.venice.ConfigKeys.PUBSUB_SECURITY_PROTOCOL_LEGACY;
 import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_CLIENT_CONFIG_PREFIX;
 
+import com.linkedin.venice.controllerapi.PubSubPositionJsonWireFormat;
 import com.linkedin.venice.protocols.controller.PubSubPositionGrpcWireFormat;
 import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
@@ -331,10 +332,10 @@ public final class PubSubUtil {
   }
 
   public static PubSubPositionGrpcWireFormat getPubSubPositionGrpcWireFormat(PubSubPosition position) {
-    PubSubPositionWireFormat positionWireFormat = position.getPositionWireFormat();
+    PubSubPositionJsonWireFormat positionJsonWireFormat = position.toJsonWireFormat();
     return PubSubPositionGrpcWireFormat.newBuilder()
-        .setTypeId(positionWireFormat.getType())
-        .setBase64PositionBytes(position.getBase64EncodedStringFromRawBytes())
+        .setTypeId(positionJsonWireFormat.getTypeId())
+        .setBase64PositionBytes(positionJsonWireFormat.getBase64PositionBytes())
         .build();
   }
 }

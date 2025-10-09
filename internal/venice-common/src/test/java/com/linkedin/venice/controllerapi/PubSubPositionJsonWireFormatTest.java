@@ -7,6 +7,7 @@ import static org.testng.Assert.assertNotEquals;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.protocols.controller.PubSubPositionGrpcWireFormat;
+import com.linkedin.venice.pubsub.PubSubUtil;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubPositionWireFormat;
 import com.linkedin.venice.pubsub.mock.InMemoryPubSubPosition;
@@ -17,7 +18,7 @@ import org.testng.annotations.Test;
 public class PubSubPositionJsonWireFormatTest {
   PubSubPosition position = InMemoryPubSubPosition.of(123L);
   ByteBuffer positionBytes = position.getPositionWireFormat().getRawBytes();
-  String base64PositionBytes = position.getBase64EncodedStringFromRawBytes();
+  String base64PositionBytes = position.toJsonWireFormat().getBase64PositionBytes();
 
   @Test
   void testConstructorAndGetters() {
@@ -47,26 +48,13 @@ public class PubSubPositionJsonWireFormatTest {
   }
 
   @Test
-  void testFromPubSubPosition() {
-    PubSubPositionWireFormat wireFormat = mock(PubSubPositionWireFormat.class);
-    when(wireFormat.getType()).thenReturn(4);
-    when(wireFormat.getRawBytes()).thenReturn(positionBytes);
-    PubSubPosition pubSubPosition = mock(PubSubPosition.class);
-    when(pubSubPosition.getPositionWireFormat()).thenReturn(wireFormat);
-    PubSubPositionJsonWireFormat format = PubSubPositionJsonWireFormat.fromPubSubPosition(pubSubPosition);
-    assertEquals(format.getTypeId().intValue(), 4);
-    assertEquals(format.getBase64PositionBytes(), base64PositionBytes);
-  }
-
-  @Test
   void testFromGrpcWireFormat() {
-    PubSubPositionGrpcWireFormat grpcWireFormat = PubSubPositionGrpcWireFormat.newBuilder()
+    PubSubPositionGrpcWireFormat actualGrpcWireFormat = PubSubUtil.getPubSubPositionGrpcWireFormat(position);
+    PubSubPositionGrpcWireFormat expectedGrpcWireFormat = PubSubPositionGrpcWireFormat.newBuilder()
         .setTypeId(InMemoryPubSubPosition.INMEMORY_PUBSUB_POSITION_TYPE_ID)
         .setBase64PositionBytes(base64PositionBytes)
         .build();
-    PubSubPositionJsonWireFormat format = PubSubPositionJsonWireFormat.fromGrpcWireFormat(grpcWireFormat);
-    assertEquals(format.getTypeId().intValue(), InMemoryPubSubPosition.INMEMORY_PUBSUB_POSITION_TYPE_ID);
-    assertEquals(format.getBase64PositionBytes(), base64PositionBytes);
+    assertEquals(actualGrpcWireFormat, expectedGrpcWireFormat);
   }
 
   @Test

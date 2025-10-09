@@ -5,7 +5,6 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.ADMIN_OPE
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.EXECUTION_ID;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_NAME;
-import static com.linkedin.venice.pubsub.PubSubPositionTypeRegistry.EARLIEST_POSITION_RESERVED_TYPE_ID;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
@@ -22,6 +21,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.AdminTopicMetadataResponse;
+import com.linkedin.venice.controllerapi.PubSubPositionJsonWireFormat;
 import com.linkedin.venice.protocols.controller.AdminTopicGrpcMetadata;
 import com.linkedin.venice.protocols.controller.AdminTopicMetadataGrpcRequest;
 import com.linkedin.venice.protocols.controller.AdminTopicMetadataGrpcResponse;
@@ -29,6 +29,8 @@ import com.linkedin.venice.protocols.controller.PubSubPositionGrpcWireFormat;
 import com.linkedin.venice.protocols.controller.UpdateAdminOperationProtocolVersionGrpcRequest;
 import com.linkedin.venice.protocols.controller.UpdateAdminTopicMetadataGrpcRequest;
 import com.linkedin.venice.pubsub.PubSubUtil;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
+import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.mock.InMemoryPubSubPosition;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import java.security.cert.X509Certificate;
@@ -66,9 +68,13 @@ public class AdminTopicMetadataRoutesTest {
 
   @Test
   public void testGetAdminTopicMetadataSuccess() throws Exception {
-    PubSubPositionGrpcWireFormat position = PubSubUtil.getPubSubPositionGrpcWireFormat(InMemoryPubSubPosition.of(100L));
-    PubSubPositionGrpcWireFormat upstreamPosition =
-        PubSubUtil.getPubSubPositionGrpcWireFormat(InMemoryPubSubPosition.of(200L));
+    PubSubPosition position = InMemoryPubSubPosition.of(100L);
+    PubSubPosition upstreamPosition = InMemoryPubSubPosition.of(200L);
+    PubSubPositionJsonWireFormat positionJsonWireFormat = position.toJsonWireFormat();
+    PubSubPositionJsonWireFormat upstreamPositionJsonWireFormat = upstreamPosition.toJsonWireFormat();
+    PubSubPositionGrpcWireFormat grpcPosition = PubSubUtil.getPubSubPositionGrpcWireFormat(position);
+    PubSubPositionGrpcWireFormat grpcUpstreamPosition = PubSubUtil.getPubSubPositionGrpcWireFormat(upstreamPosition);
+
     QueryParamsMap paramsMap = mock(QueryParamsMap.class);
     doReturn(new HashMap<>()).when(paramsMap).toMap();
     doReturn(paramsMap).when(request).queryMap();
@@ -81,8 +87,8 @@ public class AdminTopicMetadataRoutesTest {
             AdminTopicGrpcMetadata.newBuilder()
                 .setClusterName(TEST_CLUSTER)
                 .setExecutionId(TEST_EXECUTION_ID)
-                .setPosition(position)
-                .setUpstreamPosition(upstreamPosition))
+                .setPosition(grpcPosition)
+                .setUpstreamPosition(grpcUpstreamPosition))
         .build();
 
     when(requestHandler.getAdminTopicMetadata(any(AdminTopicMetadataGrpcRequest.class))).thenReturn(grpcResponse);
@@ -95,19 +101,8 @@ public class AdminTopicMetadataRoutesTest {
     verify(requestHandler, times(1)).getAdminTopicMetadata(any(AdminTopicMetadataGrpcRequest.class));
     assertEquals(responseObject.getCluster(), TEST_CLUSTER);
     assertEquals(responseObject.getExecutionId(), TEST_EXECUTION_ID);
-    assertEquals(
-        responseObject.getPosition().getTypeId().intValue(),
-        InMemoryPubSubPosition.INMEMORY_PUBSUB_POSITION_TYPE_ID);
-    assertEquals(
-        responseObject.getPosition().getBase64PositionBytes(),
-        InMemoryPubSubPosition.of(100L).getBase64EncodedStringFromRawBytes());
-    assertEquals(
-        responseObject.getUpstreamPosition().getTypeId().intValue(),
-        InMemoryPubSubPosition.INMEMORY_PUBSUB_POSITION_TYPE_ID);
-    assertEquals(
-        responseObject.getUpstreamPosition().getBase64PositionBytes(),
-        InMemoryPubSubPosition.of(200L).getBase64EncodedStringFromRawBytes());
-
+    assertEquals(responseObject.getPosition(), positionJsonWireFormat);
+    assertEquals(responseObject.getUpstreamPosition(), upstreamPositionJsonWireFormat);
     assertNull(responseObject.getError());
 
     // non-null store name
@@ -118,8 +113,8 @@ public class AdminTopicMetadataRoutesTest {
                 .setClusterName(TEST_CLUSTER)
                 .setStoreName(TEST_STORE)
                 .setExecutionId(TEST_EXECUTION_ID)
-                .setPosition(position)
-                .setUpstreamPosition(upstreamPosition))
+                .setPosition(grpcPosition)
+                .setUpstreamPosition(grpcUpstreamPosition))
         .build();
 
     when(requestHandler.getAdminTopicMetadata(any(AdminTopicMetadataGrpcRequest.class))).thenReturn(grpcResponse);
@@ -131,8 +126,8 @@ public class AdminTopicMetadataRoutesTest {
     assertEquals(responseObject.getCluster(), TEST_CLUSTER);
     assertEquals(responseObject.getName(), TEST_STORE);
     assertEquals(responseObject.getExecutionId(), TEST_EXECUTION_ID);
-    assertEquals(responseObject.getPosition().getTypeId().intValue(), EARLIEST_POSITION_RESERVED_TYPE_ID);
-    assertEquals(responseObject.getUpstreamPosition().getTypeId().intValue(), EARLIEST_POSITION_RESERVED_TYPE_ID);
+    assertEquals(responseObject.getPosition(), PubSubSymbolicPosition.EARLIEST.toJsonWireFormat());
+    assertEquals(responseObject.getUpstreamPosition(), PubSubSymbolicPosition.EARLIEST.toJsonWireFormat());
     assertNull(responseObject.getError());
   }
 
