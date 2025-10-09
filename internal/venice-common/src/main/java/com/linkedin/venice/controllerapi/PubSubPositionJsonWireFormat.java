@@ -4,7 +4,6 @@ import static com.linkedin.venice.pubsub.PubSubUtil.getBase64EncodedString;
 
 import com.linkedin.venice.protocols.controller.PubSubPositionGrpcWireFormat;
 import com.linkedin.venice.pubsub.api.PubSubPositionWireFormat;
-import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.utils.ByteUtils;
 import java.util.Objects;
 
@@ -16,7 +15,6 @@ public class PubSubPositionJsonWireFormat {
    */
   private Integer typeId;
   private String base64PositionBytes; // Base64 encoded bytes
-  public static final PubSubPositionJsonWireFormat EARLIEST = PubSubSymbolicPosition.EARLIEST.toJsonWireFormat();
 
   public PubSubPositionJsonWireFormat() {
     // required by Jackson
