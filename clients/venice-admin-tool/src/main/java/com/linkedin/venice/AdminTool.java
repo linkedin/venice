@@ -1935,7 +1935,8 @@ public class AdminTool {
           logMetadata,
           logDataRecord,
           logRmdRecord,
-          logTsRecord)) {
+          logTsRecord,
+          context.getPositionDeserializer())) {
         ktd.fetchAndProcess(startPosition, endingPosition, messageCount);
       } catch (Exception e) {
         System.err.println("Something went wrong during topic dump");

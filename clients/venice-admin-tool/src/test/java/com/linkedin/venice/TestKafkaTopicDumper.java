@@ -32,6 +32,7 @@ import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.ImmutablePubSubMessage;
+import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.PubSubUtil;
@@ -114,7 +115,8 @@ public class TestKafkaTopicDumper {
         true,
         false,
         false,
-        false);
+        false,
+        PubSubPositionDeserializer.DEFAULT_DESERIALIZER);
 
     int numChunks = 3;
     String metadataFormat = " ChunkMd=(type:%s, FirstChunkMd=(guid:00000000000000000000000000000000,seg:1,seq:1))";
@@ -219,7 +221,8 @@ public class TestKafkaTopicDumper {
         true,
         true,
         false,
-        false);
+        false,
+        PubSubPositionDeserializer.DEFAULT_DESERIALIZER);
 
     // Test different message type.
     GenericRecord valueRecord = new GenericData.Record(valueSchema);
@@ -296,7 +299,8 @@ public class TestKafkaTopicDumper {
         0,
         null);
 
-    String actualLog = KafkaTopicDumper.constructTopicSwitchLog(message);
+    String actualLog =
+        KafkaTopicDumper.constructTopicSwitchLog(message, PubSubPositionDeserializer.DEFAULT_DESERIALIZER);
     assertNotNull(actualLog);
     assertTrue(actualLog.contains("[source1, source2]"));
     assertTrue(actualLog.contains("test_topic_rt"));
@@ -316,7 +320,11 @@ public class TestKafkaTopicDumper {
         0,
         0,
         null);
-    KafkaTopicDumper.logIfTopicSwitchMessage(nonTsCtrlMsg); // Should not throw any exception
+    KafkaTopicDumper.logIfTopicSwitchMessage(nonTsCtrlMsg, PubSubPositionDeserializer.DEFAULT_DESERIALIZER); // Should
+                                                                                                             // not
+                                                                                                             // throw
+                                                                                                             // any
+                                                                                                             // exception
 
     // Case 3: Non-control message
     KafkaKey regularMsgKey = new KafkaKey(MessageType.PUT, Utils.getUniqueString("key-").getBytes());
@@ -328,7 +336,11 @@ public class TestKafkaTopicDumper {
         0,
         0,
         null);
-    KafkaTopicDumper.logIfTopicSwitchMessage(regularMessage); // Should not throw any exception
+    KafkaTopicDumper.logIfTopicSwitchMessage(regularMessage, PubSubPositionDeserializer.DEFAULT_DESERIALIZER); // Should
+                                                                                                               // not
+                                                                                                               // throw
+                                                                                                               // any
+                                                                                                               // exception
   }
 
   @Test

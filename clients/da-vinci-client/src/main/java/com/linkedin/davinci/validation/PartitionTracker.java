@@ -23,6 +23,7 @@ import com.linkedin.venice.kafka.protocol.state.ProducerPartitionState;
 import com.linkedin.venice.kafka.validation.Segment;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
@@ -97,11 +98,13 @@ public class PartitionTracker {
    */
   private final VeniceConcurrentHashMap<String, VeniceConcurrentHashMap<GUID, Segment>> rtSegments =
       new VeniceConcurrentHashMap<>();
+  PubSubPositionDeserializer pubSubPositionDeserializer;
 
-  public PartitionTracker(String topicName, int partition) {
+  public PartitionTracker(String topicName, int partition, PubSubPositionDeserializer pubSubPositionDeserializer) {
     this.topicName = topicName;
     this.partition = partition;
     this.logger = LogManager.getLogger(this.toString());
+    this.pubSubPositionDeserializer = pubSubPositionDeserializer;
   }
 
   public int getPartition() {
@@ -335,10 +338,10 @@ public class PartitionTracker {
       if (tolerateMissingMsgs.get()) {
         return initializeNewSegment(type, consumerRecord, endOfPushReceived, true);
       }
-      throw DataFaultType.MISSING.getNewException(previousSegment, consumerRecord);
+      throw DataFaultType.MISSING.getNewException(previousSegment, consumerRecord, pubSubPositionDeserializer);
     }
     // incomingSegmentNumber < previousSegmentNumber
-    throw DataFaultType.DUPLICATE.getNewException(previousSegment, consumerRecord);
+    throw DataFaultType.DUPLICATE.getNewException(previousSegment, consumerRecord, pubSubPositionDeserializer);
   }
 
   /**
@@ -411,7 +414,8 @@ public class PartitionTracker {
     if (!endOfPushReceived || !tolerateAnyMessageType) {
       String extraInfo = "Cannot " + scenario + ", endOfPushReceived=" + endOfPushReceived + ", tolerateAnyMessageType="
           + tolerateAnyMessageType;
-      throw DataFaultType.UNREGISTERED_PRODUCER.getNewException(null, consumerRecord, extraInfo);
+      throw DataFaultType.UNREGISTERED_PRODUCER
+          .getNewException(null, consumerRecord, extraInfo, pubSubPositionDeserializer);
     }
   }
 
@@ -448,7 +452,7 @@ public class PartitionTracker {
 
     if (incomingSequenceNumber == previousSequenceNumber) {
       if (!segment.isNewSegment()) {
-        throw DataFaultType.DUPLICATE.getNewException(segment, consumerRecord);
+        throw DataFaultType.DUPLICATE.getNewException(segment, consumerRecord, pubSubPositionDeserializer);
       }
       segment.setLastRecordProducerTimestamp(recordMetadata.getMessageTimestamp());
       /**
@@ -481,7 +485,7 @@ public class PartitionTracker {
       // 1. We want to short-circuit data validation, because the running checksum depends on exactly-once guarantees.
       // 2. The upstream caller can choose to avoid writing duplicate data, as an optimization.
       // 3. We don't want to re-calculate checksum for duplicated msgs. It's an incorrect behavior.
-      throw DataFaultType.DUPLICATE.getNewException(segment, consumerRecord);
+      throw DataFaultType.DUPLICATE.getNewException(segment, consumerRecord, pubSubPositionDeserializer);
     }
 
     if (incomingSequenceNumber > previousSequenceNumber + 1) {
@@ -503,7 +507,7 @@ public class PartitionTracker {
         return;
       }
 
-      throw DataFaultType.MISSING.getNewException(segment, consumerRecord);
+      throw DataFaultType.MISSING.getNewException(segment, consumerRecord, pubSubPositionDeserializer);
     }
 
     // Defensive coding, to prevent regressions in the above code from causing silent failures
@@ -582,7 +586,7 @@ public class PartitionTracker {
              */
             segment.end(incomingEndOfSegment.finalSegment);
           }
-          throw DataFaultType.CORRUPT.getNewException(segment, consumerRecord);
+          throw DataFaultType.CORRUPT.getNewException(segment, consumerRecord, pubSubPositionDeserializer);
         }
       }
     }
@@ -638,7 +642,8 @@ public class PartitionTracker {
       long lastRecordTimestamp = segment.getLastRecordTimestamp();
       if (logCompactionDelayInMs > 0
           && LatencyUtils.getElapsedTimeFromMsToMs(lastRecordTimestamp) < logCompactionDelayInMs) {
-        DataValidationException dataMissingException = DataFaultType.MISSING.getNewException(segment, consumerRecord);
+        DataValidationException dataMissingException =
+            DataFaultType.MISSING.getNewException(segment, consumerRecord, pubSubPositionDeserializer);
         logger.error(
             "Encountered missing data message within the log compaction time window. Error msg: {}",
             dataMissingException.getMessage());
@@ -803,23 +808,34 @@ public class PartitionTracker {
       this.exceptionSupplier = exceptionSupplier;
     }
 
-    DataValidationException getNewException(Segment segment, DefaultPubSubMessage consumerRecord) {
-      return getNewException(segment, consumerRecord, null);
+    DataValidationException getNewException(
+        Segment segment,
+        DefaultPubSubMessage consumerRecord,
+        PubSubPositionDeserializer pubSubPositionDeserializer) {
+      return getNewException(segment, consumerRecord, null, pubSubPositionDeserializer);
     }
 
-    DataValidationException getNewException(Segment segment, DefaultPubSubMessage consumerRecord, String extraInfo) {
+    DataValidationException getNewException(
+        Segment segment,
+        DefaultPubSubMessage consumerRecord,
+        String extraInfo,
+        PubSubPositionDeserializer pubSubPositionDeserializer) {
       if (this == DUPLICATE) {
         // We don't care about getting details for duplicate data, and we don't even want to allocate a stacktrace.
         return SINGLETON_DUPLICATE_DATA_EXCEPTION;
       }
 
-      return exceptionSupplier.apply(Lazy.of(() -> generateMessage(segment, consumerRecord, extraInfo)));
+      return exceptionSupplier
+          .apply(Lazy.of(() -> generateMessage(segment, consumerRecord, extraInfo, pubSubPositionDeserializer)));
     }
 
     /** N.B.: This is an expensive function, so we only want to invoke it lazily */
-    private String generateMessage(Segment segment, DefaultPubSubMessage consumerRecord, String extraInfo) {
+    private String generateMessage(
+        Segment segment,
+        DefaultPubSubMessage consumerRecord,
+        String extraInfo,
+        PubSubPositionDeserializer pubSubPositionDeserializer) {
       boolean isCorruptException = this == CORRUPT;
-
       ProducerMetadata producerMetadata = consumerRecord.getValue().producerMetadata;
       MessageType messageType = MessageType.valueOf(consumerRecord.getValue());
       String previousSegment, previousSequenceNumber;
@@ -883,7 +899,9 @@ public class PartitionTracker {
           .append(")");
       if (consumerRecord.getValue().leaderMetadataFooter != null) {
         sb.append("; LeaderMetadata { upstream position: ")
-            .append(consumerRecord.getValue().leaderMetadataFooter.upstreamPubSubPosition)
+            .append(
+                pubSubPositionDeserializer
+                    .toPosition(consumerRecord.getValue().leaderMetadataFooter.upstreamPubSubPosition))
             .append("; upstream pub sub cluster ID: ")
             .append(consumerRecord.getValue().leaderMetadataFooter.upstreamKafkaClusterId)
             .append("; producer host name: ")
