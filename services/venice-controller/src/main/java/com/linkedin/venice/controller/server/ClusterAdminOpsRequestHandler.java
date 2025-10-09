@@ -1,5 +1,7 @@
 package com.linkedin.venice.controller.server;
 
+import static com.linkedin.venice.pubsub.PubSubUtil.getPubSubPositionGrpcWireFormat;
+
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.AdminCommandExecutionTracker;
 import com.linkedin.venice.controller.AdminTopicMetadataAccessor;
@@ -19,7 +21,6 @@ import com.linkedin.venice.protocols.controller.PubSubPositionGrpcWireFormat;
 import com.linkedin.venice.protocols.controller.UpdateAdminOperationProtocolVersionGrpcRequest;
 import com.linkedin.venice.protocols.controller.UpdateAdminTopicMetadataGrpcRequest;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
-import com.linkedin.venice.pubsub.api.PubSubPositionWireFormat;
 import com.linkedin.venice.utils.Pair;
 import java.util.Map;
 import java.util.Optional;
@@ -104,19 +105,12 @@ public class ClusterAdminOpsRequestHandler {
     adminMetadataBuilder.setExecutionId(AdminTopicMetadataAccessor.getExecutionId(metadata));
     if (storeName == null) {
       Pair<PubSubPosition, PubSubPosition> positions = AdminTopicMetadataAccessor.getPositions(metadata);
-      PubSubPositionWireFormat positionWireFormat = positions.getFirst().getPositionWireFormat();
-      String positionBase64String = positions.getFirst().getBase64EncodedStringFromRawBytes();
-      PubSubPositionWireFormat upstreamPositionWireFormat = positions.getSecond().getPositionWireFormat();
-      String upstreamPositionBase64String = positions.getSecond().getBase64EncodedStringFromRawBytes();
+      PubSubPositionGrpcWireFormat positionGrpcWireFormat = getPubSubPositionGrpcWireFormat(positions.getFirst());
+      PubSubPositionGrpcWireFormat upstreamPositionGrpcWireFormat =
+          getPubSubPositionGrpcWireFormat(positions.getSecond());
 
-      adminMetadataBuilder.setPosition(
-          PubSubPositionGrpcWireFormat.newBuilder()
-              .setTypeId(positionWireFormat.getType())
-              .setBase64PositionBytes(positionBase64String));
-      adminMetadataBuilder.setUpstreamPosition(
-          PubSubPositionGrpcWireFormat.newBuilder()
-              .setTypeId(upstreamPositionWireFormat.getType())
-              .setBase64PositionBytes(upstreamPositionBase64String));
+      adminMetadataBuilder.setPosition(positionGrpcWireFormat);
+      adminMetadataBuilder.setUpstreamPosition(upstreamPositionGrpcWireFormat);
       adminMetadataBuilder
           .setAdminOperationProtocolVersion(AdminTopicMetadataAccessor.getAdminOperationProtocolVersion(metadata));
     } else {

@@ -3,8 +3,6 @@ package com.linkedin.venice.controllerapi;
 import static com.linkedin.venice.pubsub.PubSubUtil.getBase64EncodedString;
 
 import com.linkedin.venice.protocols.controller.PubSubPositionGrpcWireFormat;
-import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
-import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubPositionWireFormat;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.utils.ByteUtils;
@@ -18,9 +16,7 @@ public class PubSubPositionJsonWireFormat {
    */
   private Integer typeId;
   private String base64PositionBytes; // Base64 encoded bytes
-  public static final PubSubPositionJsonWireFormat EARLIEST = new PubSubPositionJsonWireFormat(
-      PubSubPositionTypeRegistry.EARLIEST_POSITION_RESERVED_TYPE_ID,
-      PubSubSymbolicPosition.EARLIEST.getBase64EncodedStringFromRawBytes());
+  public static final PubSubPositionJsonWireFormat EARLIEST = PubSubSymbolicPosition.EARLIEST.toJsonWireFormat();
 
   public PubSubPositionJsonWireFormat() {
     // required by Jackson
@@ -29,10 +25,6 @@ public class PubSubPositionJsonWireFormat {
   public PubSubPositionJsonWireFormat(Integer typeId, String base64PositionBytes) {
     this.typeId = typeId;
     this.base64PositionBytes = base64PositionBytes;
-  }
-
-  public static PubSubPositionJsonWireFormat fromPubSubPosition(PubSubPosition pubSubPosition) {
-    return fromWireFormatByteBuffer(pubSubPosition.getPositionWireFormat());
   }
 
   public static PubSubPositionJsonWireFormat fromWireFormatByteBuffer(PubSubPositionWireFormat wireFormat) {

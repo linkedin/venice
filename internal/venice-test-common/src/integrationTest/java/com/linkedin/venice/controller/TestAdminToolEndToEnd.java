@@ -306,8 +306,7 @@ public class TestAdminToolEndToEnd {
   @Test(timeOut = 4 * TEST_TIMEOUT)
   public void testUpdateAdminOperationVersion() throws Exception {
     Long newVersion = 80L;
-    PubSubPositionJsonWireFormat defaultPosition =
-        PubSubPositionJsonWireFormat.fromPubSubPosition(PubSubSymbolicPosition.EARLIEST);
+    PubSubPositionJsonWireFormat defaultPosition = PubSubSymbolicPosition.EARLIEST.toJsonWireFormat();
     String storeName = Utils.getUniqueString("test-store");
     try (VeniceTwoLayerMultiRegionMultiClusterWrapper venice =
         ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
