@@ -1,5 +1,8 @@
 package com.linkedin.venice.controllerapi;
 
+import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
+
+
 public class AdminTopicMetadataResponse extends ControllerResponse {
   /**
    * The last persisted admin message's execution id, which could be store-level or cluster-level. Store-level
@@ -11,13 +14,13 @@ public class AdminTopicMetadataResponse extends ControllerResponse {
    * The last persisted position in local admin topic, which is cluster-level and stored in
    * /venice/<clusterName>/adminTopicMetadata znode
    */
-  private PubSubPositionJsonWireFormat position = PubSubPositionJsonWireFormat.EARLIEST;
+  private PubSubPositionJsonWireFormat position = PubSubSymbolicPosition.EARLIEST.toJsonWireFormat();
 
   /**
    * The last persisted position in source admin topic, which is cluster-level and stored in
    * /venice/<clusterName>/adminTopicMetadata znode
    */
-  private PubSubPositionJsonWireFormat upstreamPosition = PubSubPositionJsonWireFormat.EARLIEST;
+  private PubSubPositionJsonWireFormat upstreamPosition = PubSubSymbolicPosition.EARLIEST.toJsonWireFormat();
 
   /**
    * The current admin operation protocol version, which is cluster-level and be SOT for serialize/deserialize admin operation message
