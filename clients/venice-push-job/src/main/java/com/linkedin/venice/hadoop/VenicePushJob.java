@@ -1881,30 +1881,38 @@ public class VenicePushJob implements AutoCloseable {
 
   private void logGreeting() {
     LOGGER.info(
-        "Running VenicePushJob: " + jobId + Utils.NEW_LINE_CHAR + "  _    _           _                   "
-            + Utils.NEW_LINE_CHAR + " | |  | |         | |                  " + Utils.NEW_LINE_CHAR
-            + " | |__| | __ _  __| | ___   ___  _ __  " + Utils.NEW_LINE_CHAR
-            + " |  __  |/ _` |/ _` |/ _ \\ / _ \\| '_ \\ " + Utils.NEW_LINE_CHAR
-            + " | |  | | (_| | (_| | (_) | (_) | |_) |   " + Utils.NEW_LINE_CHAR
-            + " |_|  |_|\\__,_|\\__,_|\\___/ \\___/| .__/" + Utils.NEW_LINE_CHAR
-            + "                _______         | |     " + Utils.NEW_LINE_CHAR
-            + "               |__   __|        |_|     " + Utils.NEW_LINE_CHAR
-            + "                  | | ___               " + Utils.NEW_LINE_CHAR
-            + "                  | |/ _ \\             " + Utils.NEW_LINE_CHAR
-            + "     __      __   | | (_) |             " + Utils.NEW_LINE_CHAR
-            + "     \\ \\    / /   |_|\\___/           " + Utils.NEW_LINE_CHAR
-            + "      \\ \\  / /__ _ __  _  ___ ___     " + Utils.NEW_LINE_CHAR
-            + "       \\ \\/ / _ | '_ \\| |/ __/ _ \\  " + Utils.NEW_LINE_CHAR
-            + "        \\  |  __| | | | | (_|  __/     " + Utils.NEW_LINE_CHAR
-            + "         \\/ \\___|_| |_|_|\\___\\___|  " + Utils.NEW_LINE_CHAR
-            + "      ___        _     _                " + Utils.NEW_LINE_CHAR
-            + "     |  _ \\     (_)   | |              " + Utils.NEW_LINE_CHAR
-            + "     | |_) |_ __ _  __| | __ _  ___     " + Utils.NEW_LINE_CHAR
-            + "     |  _ <| '__| |/ _` |/ _` |/ _ \\   " + Utils.NEW_LINE_CHAR
-            + "     | |_) | |  | | (_| | (_| |  __/    " + Utils.NEW_LINE_CHAR
-            + "     |____/|_|  |_|\\__,_|\\__, |\\___| " + Utils.NEW_LINE_CHAR
-            + "                          __/ |         " + Utils.NEW_LINE_CHAR
-            + "                         |___/          " + Utils.NEW_LINE_CHAR);
+        "Running VenicePushJob: " + jobId + Utils.NEW_LINE_CHAR
+            + "  /$$    /$$                    /$$                     " + Utils.NEW_LINE_CHAR
+            + " | $$   | $$                   |__/                     " + Utils.NEW_LINE_CHAR
+            + " | $$   | $$ /$$$$$$  /$$$$$$$  /$$  /$$$$$$$  /$$$$$$  " + Utils.NEW_LINE_CHAR
+            + " |  $$ / $$//$$__  $$| $$__  $$| $$ /$$_____/ /$$__  $$ " + Utils.NEW_LINE_CHAR
+            + "  \\  $$ $$/| $$$$$$$$| $$  \\ $$| $$| $$      | $$$$$$$$ " + Utils.NEW_LINE_CHAR
+            + "   \\  $$$/ | $$_____/| $$  | $$| $$| $$      | $$_____/ " + Utils.NEW_LINE_CHAR
+            + "    \\  $/  |  $$$$$$$| $$  | $$| $$|  $$$$$$$|  $$$$$$$ " + Utils.NEW_LINE_CHAR
+            + "     \\_/    \\_______/|__/  |__/|__/ \\_______/ \\_______/ " + Utils.NEW_LINE_CHAR
+            + "                                                        " + Utils.NEW_LINE_CHAR
+            + "                                                        " + Utils.NEW_LINE_CHAR
+            + "                                                        " + Utils.NEW_LINE_CHAR
+            + "        /$$$$$$$                      /$$               " + Utils.NEW_LINE_CHAR
+            + "       | $$__  $$                    | $$               " + Utils.NEW_LINE_CHAR
+            + "       | $$  \\ $$ /$$   /$$  /$$$$$$$| $$$$$$$          " + Utils.NEW_LINE_CHAR
+            + "       | $$$$$$$/| $$  | $$ /$$_____/| $$__  $$         " + Utils.NEW_LINE_CHAR
+            + "       | $$____/ | $$  | $$|  $$$$$$ | $$  \\ $$         " + Utils.NEW_LINE_CHAR
+            + "       | $$      | $$  | $$ \\____  $$| $$  | $$         " + Utils.NEW_LINE_CHAR
+            + "       | $$      |  $$$$$$/ /$$$$$$$/| $$  | $$         " + Utils.NEW_LINE_CHAR
+            + "       |__/       \\______/ |_______/ |__/  |__/         " + Utils.NEW_LINE_CHAR
+            + "                                                        " + Utils.NEW_LINE_CHAR
+            + "                                                        " + Utils.NEW_LINE_CHAR
+            + "                                                        " + Utils.NEW_LINE_CHAR
+            + "                /$$$$$           /$$                    " + Utils.NEW_LINE_CHAR
+            + "               |__  $$          | $$                    " + Utils.NEW_LINE_CHAR
+            + "                  | $$  /$$$$$$ | $$$$$$$               " + Utils.NEW_LINE_CHAR
+            + "                  | $$ /$$__  $$| $$__  $$              " + Utils.NEW_LINE_CHAR
+            + "             /$$  | $$| $$  \\ $$| $$  \\ $$              " + Utils.NEW_LINE_CHAR
+            + "            | $$  | $$| $$  | $$| $$  | $$              " + Utils.NEW_LINE_CHAR
+            + "            |  $$$$$$/|  $$$$$$/| $$$$$$$/              " + Utils.NEW_LINE_CHAR
+            + "             \\______/  \\______/ |_______/               " + Utils.NEW_LINE_CHAR
+            + "                                                        " + Utils.NEW_LINE_CHAR);
   }
 
   /**
@@ -1916,13 +1924,11 @@ public class VenicePushJob implements AutoCloseable {
     String canonicalizedServerSchema = AvroCompatibilityHelper.toParsingForm(serverSchema);
     String canonicalizedClientSchema = AvroCompatibilityHelper.toParsingForm(clientSchema);
     if (!canonicalizedServerSchema.equals(canonicalizedClientSchema)) {
-      String briefErrorMessage = "Key schema mis-match for store " + setting.storeName;
-      LOGGER.error(
-          "{}\n\t\tschema defined in HDFS: \t{}\n\t\tschema defined in Venice: \t{}",
-          briefErrorMessage,
-          pushJobSetting.keySchemaString,
-          serverSchema.toString());
-      throw new VeniceException(briefErrorMessage);
+      String errorMessageFormat = "Key schema mis-match for store %s" + "\n\t\tSchema defined in HDFS: \t%s"
+          + "\n\t\tSchema defined in Venice: \t%s";
+      String errorMessage =
+          String.format(errorMessageFormat, setting.storeName, pushJobSetting.keySchemaString, serverSchema.toString());
+      throw new VeniceException(errorMessage);
     }
   }
 
