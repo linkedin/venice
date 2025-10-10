@@ -66,6 +66,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
   private final int longTailRetryThresholdForSingleGetInMicroSeconds;
   private final int longTailRetryThresholdForBatchGetInMicroSeconds;
   private final int longTailRetryThresholdForComputeInMicroSeconds;
+  private final String longTailRangeBasedRetryThresholdForBatchGetInMilliSeconds;
   private final ClusterStats clusterStats;
   private final boolean isVsonStore;
   private final StoreMetadataFetchMode storeMetadataFetchMode;
@@ -227,6 +228,8 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
         builder.storeLoadControllerRejectionRatioUpdateIntervalInSec;
     this.storeLoadControllerMaxRejectionRatio = builder.storeLoadControllerMaxRejectionRatio;
     this.storeLoadControllerAcceptMultiplier = builder.storeLoadControllerAcceptMultiplier;
+    this.longTailRangeBasedRetryThresholdForBatchGetInMilliSeconds =
+        builder.longTailRangeBasedRetryThresholdForBatchGetInMilliSeconds;
   }
 
   public String getStoreName() {
@@ -395,6 +398,10 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     return storeLoadControllerAcceptMultiplier;
   }
 
+  public String getLongTailRangeBasedRetryThresholdForBatchGetInMilliSeconds() {
+    return longTailRangeBasedRetryThresholdForBatchGetInMilliSeconds;
+  }
+
   public static class ClientConfigBuilder<K, V, T extends SpecificRecord> {
     private MetricsRepository metricsRepository;
     private String statsPrefix = "";
@@ -420,6 +427,8 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
 
     private boolean longTailRetryEnabledForBatchGet = false;
     private int longTailRetryThresholdForBatchGetInMicroSeconds = 10000; // 10ms.
+    private String longTailRangeBasedRetryThresholdForBatchGetInMilliSeconds =
+        "1-5:15,6-20:30,21-150:50,151-500:100,501-:500";
 
     private boolean longTailRetryEnabledForCompute = false;
     private int longTailRetryThresholdForComputeInMicroSeconds = 10000; // 10ms.
@@ -663,6 +672,13 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       return this;
     }
 
+    public ClientConfigBuilder<K, V, T> setLongTailRangeBasedRetryThresholdForBatchGetInMilliSeconds(
+        String longTailRangeBasedRetryThresholdForBatchGetInMilliSeconds) {
+      this.longTailRangeBasedRetryThresholdForBatchGetInMilliSeconds =
+          longTailRangeBasedRetryThresholdForBatchGetInMilliSeconds;
+      return this;
+    }
+
     public ClientConfigBuilder<K, V, T> clone() {
       return new ClientConfigBuilder().setStoreName(storeName)
           .setR2Client(r2Client)
@@ -703,6 +719,8 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           .setStoreLoadControllerWindowSizeInSec(storeLoadControllerWindowSizeInSec)
           .setStoreLoadControllerRejectionRatioUpdateIntervalInSec(storeLoadControllerRejectionRatioUpdateIntervalInSec)
           .setStoreLoadControllerMaxRejectionRatio(storeLoadControllerMaxRejectionRatio)
+          .setLongTailRangeBasedRetryThresholdForBatchGetInMilliSeconds(
+              longTailRangeBasedRetryThresholdForBatchGetInMilliSeconds)
           .setStoreLoadControllerAcceptMultiplier(storeLoadControllerAcceptMultiplier);
     }
 
