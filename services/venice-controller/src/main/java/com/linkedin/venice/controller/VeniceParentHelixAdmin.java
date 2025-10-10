@@ -84,6 +84,7 @@ import static com.linkedin.venice.meta.VersionStatus.CREATED;
 import static com.linkedin.venice.meta.VersionStatus.ERROR;
 import static com.linkedin.venice.meta.VersionStatus.KILLED;
 import static com.linkedin.venice.meta.VersionStatus.ONLINE;
+import static com.linkedin.venice.meta.VersionStatus.PARTIALLY_ONLINE;
 import static com.linkedin.venice.meta.VersionStatus.PUSHED;
 import static com.linkedin.venice.meta.VersionStatus.STARTED;
 import static com.linkedin.venice.serialization.avro.AvroProtocolDefinition.BATCH_JOB_HEARTBEAT;
