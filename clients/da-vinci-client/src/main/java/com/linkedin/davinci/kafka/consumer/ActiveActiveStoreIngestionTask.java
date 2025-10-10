@@ -1428,7 +1428,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         // Restore the original header so this function is eventually idempotent as the original KME ByteBuffer
         // will be recovered after producing the message to Kafka or if the production failing.
         ((ActiveActiveProducerCallback) callback).setOnCompletionFunction(
-            () -> ByteUtils.prependIntHeaderToByteBuffer(
+            unused -> ByteUtils.prependIntHeaderToByteBuffer(
                 updatedValueBytes,
                 ByteUtils.getIntHeaderFromByteBuffer(updatedValueBytes),
                 true));

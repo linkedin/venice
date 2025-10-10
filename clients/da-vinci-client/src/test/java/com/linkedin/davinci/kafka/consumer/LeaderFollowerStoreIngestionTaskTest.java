@@ -40,6 +40,7 @@ import com.linkedin.davinci.store.view.MaterializedViewWriter;
 import com.linkedin.davinci.store.view.VeniceViewWriter;
 import com.linkedin.davinci.store.view.VeniceViewWriterFactory;
 import com.linkedin.davinci.validation.DataIntegrityValidator;
+import com.linkedin.davinci.validation.PartitionTracker;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
@@ -567,9 +568,6 @@ public class LeaderFollowerStoreIngestionTaskTest {
         .getKafkaMessageEnvelope(any(), anyBoolean(), anyInt(), anyBoolean(), any(), anyLong());
     String brokerUrl = "localhost:1234";
     byte[] keyBytes = LeaderFollowerStoreIngestionTask.getGlobalRtDivKeyName(brokerUrl).getBytes();
-    CompletableFuture<PubSubProduceResult> future = new CompletableFuture<>();
-    doReturn(future).when(mockWriter)
-        .put(any(), any(), anyInt(), anyInt(), any(), any(), anyLong(), any(), any(), any(), anyBoolean());
 
     leaderFollowerStoreIngestionTask
         .sendGlobalRtDivMessage(mockMessage, mockPartitionConsumptionState, partition, brokerUrl, 0L, null, context);
@@ -600,7 +598,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
         serializer.deserialize(valueBytes, AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion());
     assertNotNull(globalRtDiv);
 
-    // Verify the callback has been populated
+    // Verify the callback has DivSnapshot (VT + RT DIV)
     LeaderProducerCallback callback = callbackArgumentCaptor.getValue();
     DefaultPubSubMessage callbackPayload = callback.getSourceConsumerRecord();
     assertEquals(callbackPayload.getKey().getKey(), keyBytes);
@@ -613,12 +611,16 @@ public class LeaderFollowerStoreIngestionTaskTest {
     assertNotNull(put.getPutValue());
 
     // Verify that completing the future from put() causes execSyncOffsetFromSnapshotAsync to be called
+    // and that produceResult should override the LCVP of the VT DIV sent to the drainer
     verify(mockStoreBufferService, never()).execSyncOffsetFromSnapshotAsync(any(), any(), any());
     PubSubProduceResult produceResult = mock(PubSubProduceResult.class);
-    when(produceResult.getPubSubPosition()).thenReturn(mock(PubSubPosition.class));
+    PubSubPosition specificPosition = InMemoryPubSubPosition.of(11L);
+    when(produceResult.getPubSubPosition()).thenReturn(specificPosition);
     when(produceResult.getSerializedSize()).thenReturn(keyBytes.length + put.putValue.remaining());
-    future.complete(produceResult);
-    verify(mockStoreBufferService, times(1)).execSyncOffsetFromSnapshotAsync(any(), any(), any());
+    callback.onCompletion(produceResult, null);
+    ArgumentCaptor<PartitionTracker> vtDivCaptor = ArgumentCaptor.forClass(PartitionTracker.class);
+    verify(mockStoreBufferService, times(1)).execSyncOffsetFromSnapshotAsync(any(), vtDivCaptor.capture(), any());
+    assertEquals(vtDivCaptor.getValue().getLatestConsumedVtPosition(), specificPosition);
   }
 
   @Test

@@ -841,6 +841,7 @@ public class PartitionConsumptionState {
    *
    * @return the current version topic position
    */
+  // TODO: revisit where LCVP needs to be replacing this
   public PubSubPosition getLatestProcessedVtPosition() {
     return this.latestProcessedVtPosition;
   }
