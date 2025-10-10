@@ -405,15 +405,13 @@ public class OffsetRecord {
 
   @Override
   public String toString() {
-    return "OffsetRecord{" + "localVtPosition=" + getCheckpointedLocalVtPosition() + ", rtPositions="
-        + getPartitionUpstreamOffsetString() + ", leaderTopic=" + getLeaderTopic() + ", offsetLag=" + getOffsetLag()
-        + ", eventTimeEpochMs=" + getMaxMessageTimeInMs() + ", latestProducerProcessingTimeInMs="
-        + getLatestProducerProcessingTimeInMs() + ", isEndOfPushReceived=" + isEndOfPushReceived() + ", databaseInfo="
-        + getDatabaseInfo() + ", realTimeProducerState=" + getRealTimeProducerState() + ", recordTransformerClassHash="
-        + getRecordTransformerClassHash() + ", lastProcessedVtPosition="
-        + partitionState.getLastProcessedVersionTopicPubSubPosition() + ", lastConsumedVtPosition="
-        + partitionState.getLastConsumedVersionTopicPubSubPosition() + ", remoteVtPosition="
-        + partitionState.getUpstreamVersionTopicPubSubPosition() + "}";
+    return "OffsetRecord{" + "localVtPosition=" + getCheckpointedLocalVtPosition() + ", remoteVtPosition="
+        + getCheckpointedRemoteVtPosition() + ", rtPositions=" + getPartitionUpstreamPositionString() + ", leaderTopic="
+        + getLeaderTopic() + ", offsetLag=" + getOffsetLag() + ", eventTimeEpochMs=" + getMaxMessageTimeInMs()
+        + ", latestProducerProcessingTimeInMs=" + getLatestProducerProcessingTimeInMs() + ", isEndOfPushReceived="
+        + isEndOfPushReceived() + ", databaseInfo=" + getDatabaseInfo() + ", realTimeProducerState="
+        + getRealTimeProducerState() + ", recordTransformerClassHash=" + getRecordTransformerClassHash()
+        + ", lastConsumedVtPosition=" + getLatestConsumedVtPosition() + '}';
   }
 
   /**
@@ -423,12 +421,18 @@ public class OffsetRecord {
   public String toSimplifiedString() {
     return "OffsetRecord{" + "localVersionTopicOffset=" + getCheckpointedLocalVtPosition()
         + ", latestProducerProcessingTimeInMs=" + getLatestProducerProcessingTimeInMs() + ", isEndOfPushReceived="
-        + isEndOfPushReceived() + ", upstreamOffset=" + getPartitionUpstreamOffsetString() + ", leaderTopic="
+        + isEndOfPushReceived() + ", upstreamOffset=" + getPartitionUpstreamPositionString() + ", leaderTopic="
         + getLeaderTopic() + '}';
   }
 
-  private String getPartitionUpstreamOffsetString() {
-    return this.partitionState.upstreamOffsetMap.toString();
+  private String getPartitionUpstreamPositionString() {
+    StringBuilder sb = new StringBuilder();
+    for (Map.Entry<String, ByteBuffer> entry: this.partitionState.upstreamRealTimeTopicPubSubPositionMap.entrySet()) {
+      String pubSubBrokerAddress = entry.getKey();
+      PubSubPosition position = getCheckpointedRtPosition(pubSubBrokerAddress);
+      sb.append("[").append(pubSubBrokerAddress).append(": ").append(position).append("] ");
+    }
+    return sb.toString();
   }
 
   /**

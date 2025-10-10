@@ -701,6 +701,17 @@ public class ConfigKeys {
   public static final String SERVER_MAX_REQUEST_SIZE = "server.max.request.size";
   public static final String SERVER_SOURCE_TOPIC_OFFSET_CHECK_INTERVAL_MS =
       "server.source.topic.offset.check.interval.ms";
+  /**
+   * Controls whether replica lag computation should use offsets/positions obtained
+   * from consumer metrics.
+   *
+   * Default: false, since we are moving away from metrics-based lag computation.
+   * Set this to true only as a fallback in cases where PubSub broker metadata
+   * queries cause performance issues or excessive load.
+   */
+  public static final String SERVER_USE_METRICS_BASED_POSITION_IN_LAG_COMPUTATION =
+      "server.use.metrics.based.position.in.lag.computation";
+
   public static final String SERVER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS =
       "server.netty.graceful.shutdown.period.seconds";
   public static final String SERVER_NETTY_WORKER_THREADS = "server.netty.worker.threads";
