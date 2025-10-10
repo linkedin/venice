@@ -46,10 +46,10 @@ public class DelegatingStorageEngine<P extends AbstractStoragePartition> impleme
   }
 
   public boolean isKeyUrnCompressionEnabled(int partitionId) {
-    if (keyDictCompressionFunction == null) {
+    if (getKeyDictCompressionFunction() == null) {
       return false;
     }
-    return keyDictCompressionFunction.apply(partitionId) != null;
+    return getKeyDictCompressionFunction().apply(partitionId) != null;
   }
 
   public void setKeyDictCompressionFunction(Function<Integer, KeyUrnCompressor> keyDictCompressionFunction) {
@@ -60,10 +60,10 @@ public class DelegatingStorageEngine<P extends AbstractStoragePartition> impleme
   }
 
   private byte[] compressKeyIfNeeded(int partitionId, byte[] key, boolean updateDictionary) {
-    if (keyDictCompressionFunction == null) {
+    if (getKeyDictCompressionFunction() == null) {
       throw new VeniceException("KeyUrnCompressor function is not set");
     }
-    KeyUrnCompressor keyUrnCompressor = keyDictCompressionFunction.apply(partitionId);
+    KeyUrnCompressor keyUrnCompressor = getKeyDictCompressionFunction().apply(partitionId);
     if (keyUrnCompressor != null) {
       return keyUrnCompressor.compressKey(key, updateDictionary);
     }
@@ -72,10 +72,10 @@ public class DelegatingStorageEngine<P extends AbstractStoragePartition> impleme
   }
 
   private ByteBuffer compressKeyIfNeeded(int partitionId, ByteBuffer key, boolean updateDictionary) {
-    if (keyDictCompressionFunction == null) {
+    if (getKeyDictCompressionFunction() == null) {
       throw new VeniceException("KeyUrnCompressor function is not set");
     }
-    KeyUrnCompressor keyUrnCompressor = keyDictCompressionFunction.apply(partitionId);
+    KeyUrnCompressor keyUrnCompressor = getKeyDictCompressionFunction().apply(partitionId);
     if (keyUrnCompressor != null) {
       return ByteBuffer.wrap(keyUrnCompressor.compressKey(ByteUtils.extractByteArray(key), updateDictionary));
     }
@@ -217,8 +217,8 @@ public class DelegatingStorageEngine<P extends AbstractStoragePartition> impleme
 
   @Override
   public void getByKeyPrefix(int partitionId, byte[] partialKey, BytesStreamingCallback bytesStreamingCallback) {
-    if (keyDictCompressionFunction != null) {
-      KeyUrnCompressor keyUrnCompressor = keyDictCompressionFunction.apply(partitionId);
+    if (getKeyDictCompressionFunction() != null) {
+      KeyUrnCompressor keyUrnCompressor = getKeyDictCompressionFunction().apply(partitionId);
       if (keyUrnCompressor != null) {
         throw new VeniceException("Partial key lookup is not supported with key urn compression.");
       }
@@ -323,5 +323,9 @@ public class DelegatingStorageEngine<P extends AbstractStoragePartition> impleme
       Map<String, String> checkpointedInfo,
       StoragePartitionConfig storagePartitionConfig) {
     return this.delegate.checkDatabaseIntegrity(partitionId, checkpointedInfo, storagePartitionConfig);
+  }
+
+  Function<Integer, KeyUrnCompressor> getKeyDictCompressionFunction() {
+    return keyDictCompressionFunction;
   }
 }
