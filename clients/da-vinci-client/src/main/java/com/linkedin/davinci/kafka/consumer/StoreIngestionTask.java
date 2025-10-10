@@ -3516,11 +3516,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     if (leaderMetadata == null) {
       return false;
     }
-    CharSequence recordHostName = leaderMetadata.getHostName();
-    if (recordHostName == null) {
-      return false;
-    }
-    return recordHostName.toString().split(":")[0].startsWith(Utils.getHostName());
+    return leaderMetadata.getHostName().toString().split(":")[0].startsWith(Utils.getHostName());
   }
 
   /**

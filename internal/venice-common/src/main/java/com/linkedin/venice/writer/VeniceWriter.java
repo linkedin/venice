@@ -2189,6 +2189,10 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         callback);
   }
 
+  public void setDefaultLeaderMetadataHostName(String newHostName) {
+    this.defaultLeaderMetadata.hostName = newHostName; // for unit tests
+  }
+
   /**
    * The Key part of the {@link KafkaKey} needs to be unique in order to avoid clobbering each other during
    * Kafka's Log Compaction. Since there is no key per se associated with control messages, we generate one

@@ -2302,6 +2302,11 @@ public abstract class StoreIngestionTaskTest {
   public void testCorruptMessagesFailFast(AAConfig aaConfig) throws Exception {
     VeniceWriter veniceWriterForData = getCorruptedVeniceWriter(putValueToCorrupt, inMemoryLocalKafkaBroker);
 
+    // Messages produced by the same host will be skipped for validation, so the host name needs to be changed
+    String otherHost = "otherHost";
+    localVeniceWriter.setDefaultLeaderMetadataHostName(otherHost);
+    veniceWriterForData.setDefaultLeaderMetadataHostName(otherHost);
+
     localVeniceWriter.broadcastStartOfPush(new HashMap<>());
     InMemoryPubSubPosition fooLastPosition = getPosition(veniceWriterForData.put(putKeyFoo, putValue, SCHEMA_ID));
     getPosition(veniceWriterForData.put(putKeyBar, putValueToCorrupt, SCHEMA_ID));
