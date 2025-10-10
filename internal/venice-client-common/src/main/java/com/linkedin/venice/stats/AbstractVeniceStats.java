@@ -30,7 +30,7 @@ public class AbstractVeniceStats {
   private final boolean isTotalStats;
   private final boolean isTehutiMetricsEnabled;
   /** A dummy sensor to return when Tehuti metrics are disabled */
-  private final Sensor defaultTehutiSensor;
+  private final Sensor noopSensor;
 
   public AbstractVeniceStats(MetricsRepository metricsRepository, String name) {
     this.metricsRepository = metricsRepository;
@@ -49,7 +49,7 @@ public class AbstractVeniceStats {
     } else {
       this.isTehutiMetricsEnabled = true;
     }
-    this.defaultTehutiSensor = isTehutiMetricsEnabled ? null : metricsRepository.sensor("defaultTehutiSensor");
+    this.noopSensor = isTehutiMetricsEnabled ? null : metricsRepository.getNoopSensor("noopSensor");
   }
 
   public MetricsRepository getMetricsRepository() {
@@ -127,7 +127,7 @@ public class AbstractVeniceStats {
       Sensor[] parents,
       MeasurableStat... stats) {
     if (!isTehutiMetricsEnabled) {
-      return defaultTehutiSensor;
+      return noopSensor;
     }
     checkCompatibility(stats);
     return sensors.computeIfAbsent(sensorFullName, key -> {
