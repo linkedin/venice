@@ -401,6 +401,9 @@ public class VeniceParentHelixAdmin implements Admin {
   private final Map<String, Map<String, ControllerClient>> newFabricControllerClientMap =
       new VeniceConcurrentHashMap<>();
 
+  private static final Set<VersionStatus> TERMINAL_VERSION_SWAP_STATUSES =
+      Utils.setOf(ONLINE, PARTIALLY_ONLINE, KILLED, ERROR);
+
   // Visible for testing
   public VeniceParentHelixAdmin(
       VeniceHelixAdmin veniceHelixAdmin,
@@ -4122,8 +4125,7 @@ public class VeniceParentHelixAdmin implements Admin {
         }
 
         if (isTargetRegionPushWithDeferredSwap) {
-          boolean isVersionTerminal = ONLINE.equals(version.getStatus()) || ERROR.equals(version.getStatus())
-              || KILLED.equals(version.getStatus()) || PARTIALLY_ONLINE.equals(version.getStatus());
+          boolean isVersionTerminal = TERMINAL_VERSION_SWAP_STATUSES.contains(version.getStatus());
           if (isVersionTerminal) {
             LOGGER.info(
                 "Truncating parent VT {} after push status {} and version status {}",
