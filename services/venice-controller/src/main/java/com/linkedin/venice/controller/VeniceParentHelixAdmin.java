@@ -4123,7 +4123,7 @@ public class VeniceParentHelixAdmin implements Admin {
 
         if (isTargetRegionPushWithDeferredSwap) {
           boolean isVersionTerminal = ONLINE.equals(version.getStatus()) || ERROR.equals(version.getStatus())
-              || KILLED.equals(version.getStatus());
+              || KILLED.equals(version.getStatus()) || PARTIALLY_ONLINE.equals(version.getStatus());
           if (isVersionTerminal) {
             LOGGER.info(
                 "Truncating parent VT {} after push status {} and version status {}",
