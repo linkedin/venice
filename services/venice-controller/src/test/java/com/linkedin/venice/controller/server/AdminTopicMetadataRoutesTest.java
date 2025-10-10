@@ -21,11 +21,17 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.AdminTopicMetadataResponse;
+import com.linkedin.venice.controllerapi.PubSubPositionJsonWireFormat;
 import com.linkedin.venice.protocols.controller.AdminTopicGrpcMetadata;
 import com.linkedin.venice.protocols.controller.AdminTopicMetadataGrpcRequest;
 import com.linkedin.venice.protocols.controller.AdminTopicMetadataGrpcResponse;
+import com.linkedin.venice.protocols.controller.PubSubPositionGrpcWireFormat;
 import com.linkedin.venice.protocols.controller.UpdateAdminOperationProtocolVersionGrpcRequest;
 import com.linkedin.venice.protocols.controller.UpdateAdminTopicMetadataGrpcRequest;
+import com.linkedin.venice.pubsub.PubSubUtil;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
+import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
+import com.linkedin.venice.pubsub.mock.InMemoryPubSubPosition;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import java.security.cert.X509Certificate;
 import java.util.HashMap;
@@ -62,6 +68,14 @@ public class AdminTopicMetadataRoutesTest {
 
   @Test
   public void testGetAdminTopicMetadataSuccess() throws Exception {
+    PubSubPositionJsonWireFormat earliestPositionJsonWireFormat = PubSubSymbolicPosition.EARLIEST.toJsonWireFormat();
+    PubSubPosition position = InMemoryPubSubPosition.of(100L);
+    PubSubPosition upstreamPosition = InMemoryPubSubPosition.of(200L);
+    PubSubPositionJsonWireFormat positionJsonWireFormat = position.toJsonWireFormat();
+    PubSubPositionJsonWireFormat upstreamPositionJsonWireFormat = upstreamPosition.toJsonWireFormat();
+    PubSubPositionGrpcWireFormat grpcPosition = PubSubUtil.getPubSubPositionGrpcWireFormat(position);
+    PubSubPositionGrpcWireFormat grpcUpstreamPosition = PubSubUtil.getPubSubPositionGrpcWireFormat(upstreamPosition);
+
     QueryParamsMap paramsMap = mock(QueryParamsMap.class);
     doReturn(new HashMap<>()).when(paramsMap).toMap();
     doReturn(paramsMap).when(request).queryMap();
@@ -74,8 +88,8 @@ public class AdminTopicMetadataRoutesTest {
             AdminTopicGrpcMetadata.newBuilder()
                 .setClusterName(TEST_CLUSTER)
                 .setExecutionId(TEST_EXECUTION_ID)
-                .setOffset(100)
-                .setUpstreamOffset(200))
+                .setPosition(grpcPosition)
+                .setUpstreamPosition(grpcUpstreamPosition))
         .build();
 
     when(requestHandler.getAdminTopicMetadata(any(AdminTopicMetadataGrpcRequest.class))).thenReturn(grpcResponse);
@@ -88,8 +102,8 @@ public class AdminTopicMetadataRoutesTest {
     verify(requestHandler, times(1)).getAdminTopicMetadata(any(AdminTopicMetadataGrpcRequest.class));
     assertEquals(responseObject.getCluster(), TEST_CLUSTER);
     assertEquals(responseObject.getExecutionId(), TEST_EXECUTION_ID);
-    assertEquals(responseObject.getOffset(), 100L);
-    assertEquals(responseObject.getUpstreamOffset(), 200L);
+    assertEquals(responseObject.getPosition(), positionJsonWireFormat);
+    assertEquals(responseObject.getUpstreamPosition(), upstreamPositionJsonWireFormat);
     assertNull(responseObject.getError());
 
     // non-null store name
@@ -100,8 +114,8 @@ public class AdminTopicMetadataRoutesTest {
                 .setClusterName(TEST_CLUSTER)
                 .setStoreName(TEST_STORE)
                 .setExecutionId(TEST_EXECUTION_ID)
-                .setOffset(100)
-                .setUpstreamOffset(200))
+                .setPosition(grpcPosition)
+                .setUpstreamPosition(grpcUpstreamPosition))
         .build();
 
     when(requestHandler.getAdminTopicMetadata(any(AdminTopicMetadataGrpcRequest.class))).thenReturn(grpcResponse);
@@ -113,8 +127,8 @@ public class AdminTopicMetadataRoutesTest {
     assertEquals(responseObject.getCluster(), TEST_CLUSTER);
     assertEquals(responseObject.getName(), TEST_STORE);
     assertEquals(responseObject.getExecutionId(), TEST_EXECUTION_ID);
-    assertEquals(responseObject.getOffset(), -1L);
-    assertEquals(responseObject.getUpstreamOffset(), -1L);
+    assertEquals(responseObject.getPosition(), earliestPositionJsonWireFormat);
+    assertEquals(responseObject.getUpstreamPosition(), earliestPositionJsonWireFormat);
     assertNull(responseObject.getError());
   }
 

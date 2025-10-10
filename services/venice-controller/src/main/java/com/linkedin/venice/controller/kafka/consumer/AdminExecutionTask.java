@@ -149,9 +149,9 @@ public class AdminExecutionTask implements Callable<Void> {
       // Retry of the admin operation is handled automatically by keeping the failed admin operation inside the queue.
       // The queue with the problematic operation will be delegated and retried by the worker thread in the next cycle.
       AdminOperationWrapper adminOperationWrapper = internalTopic.peek();
-      String logMessage =
-          "when processing admin message for store " + storeName + " with offset " + adminOperationWrapper.getPosition()
-              + " and execution id " + adminOperationWrapper.getAdminOperation().executionId;
+      String logMessage = "when processing admin message for store " + storeName + " with position "
+          + adminOperationWrapper.getPosition() + " and execution id "
+          + adminOperationWrapper.getAdminOperation().executionId;
       if (e instanceof VeniceRetriableException) {
         // These retriable exceptions are expected, therefore logging at the info level should be sufficient.
         stats.recordFailedRetriableAdminConsumption();
