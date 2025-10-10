@@ -20,7 +20,15 @@ import javax.annotation.Nonnull;
 
 public class DelegatingStorageEngine<P extends AbstractStoragePartition> implements StorageEngine<P> {
   private volatile @Nonnull StorageEngine<P> delegate;
-  private Function<Integer, KeyUrnCompressor> keyDictCompressionFunction;
+  /**
+   * Default to no compression before {@link com.linkedin.davinci.kafka.consumer.StoreIngestionTask} instantiate the
+   * keyUrnCompressor either from the persisted {@link OffsetRecord} or create a new one based on config.
+   * This is a tactical fix that prevents the error requests in server when storage engine is restored but ingestion
+   * service is not there. Da Vinci with live-update-suppression feature should not use key urn compression. For other
+   * Da Vinci use cases, it won't serve traffic until ingestion is completed and partition is ready to serve.
+   * For a proper long term fix, we need more investigation on how to handle all the cases properly.
+   */
+  private Function<Integer, KeyUrnCompressor> keyDictCompressionFunction = ignored -> null;
 
   public DelegatingStorageEngine(@Nonnull StorageEngine<P> delegate) {
     this.delegate = Objects.requireNonNull(delegate);
