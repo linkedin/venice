@@ -56,7 +56,7 @@ public class SparkServerStats extends AbstractVeniceStats {
         new OccurrenceRate());
 
     inFlightRequestTotalCountMetric = MetricEntityStateOneEnum.create(
-        ControllerMetricEntity.IN_FLIGHT_CALL_COUNT.getMetricEntity(),
+        ControllerMetricEntity.INFLIGHT_CALL_COUNT.getMetricEntity(),
         otelRepository,
         this::registerSensor,
         ControllerTehutiMetricNameEnum.CURRENT_IN_FLIGHT_REQUEST,

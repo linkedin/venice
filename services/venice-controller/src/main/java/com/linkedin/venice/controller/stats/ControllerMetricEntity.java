@@ -20,7 +20,7 @@ import java.util.Set;
 
 public enum ControllerMetricEntity implements ModuleMetricEntityInterface {
   /** Count of current in flight messages to AdminSparkServer */
-  IN_FLIGHT_CALL_COUNT(
+  INFLIGHT_CALL_COUNT(
       MetricType.UP_DOWN_COUNTER, MetricUnit.NUMBER, "Count of all current inflight calls to controller spark server",
       setOf(VENICE_CLUSTER_NAME, VENICE_CONTROLLER_ENDPOINT)
   ),
