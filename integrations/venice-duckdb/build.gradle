@@ -10,9 +10,11 @@ dependencies {
 
   api project(':clients:da-vinci-client')
   api project(':internal:venice-client-common')
+  api project(':clients:venice-thin-client')
 
   api project(':internal:venice-common')
 
+  implementation libraries.commonsCli
   testImplementation project(':internal:venice-common')
 
   integrationTestImplementation project(path: ':internal:venice-test-common', configuration: 'integrationTestUtils')

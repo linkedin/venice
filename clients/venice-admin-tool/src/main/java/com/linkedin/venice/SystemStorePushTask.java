@@ -1,7 +1,5 @@
 package com.linkedin.venice;
 
-import static com.linkedin.venice.AdminTool.printObject;
-
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
@@ -12,6 +10,7 @@ import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.controllerapi.VersionResponse;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
+import com.linkedin.venice.utils.CliUtils;
 import com.linkedin.venice.utils.Utils;
 import java.util.Arrays;
 import java.util.Collections;
@@ -136,7 +135,7 @@ public class SystemStorePushTask implements Function<String, Boolean> {
       while (true) {
         JobStatusQueryResponse jobStatusQueryResponse =
             parentControllerClient.retryableRequest(3, controllerClient -> controllerClient.queryJobStatus(topicName));
-        printObject(jobStatusQueryResponse, System.out::print);
+        CliUtils.printObject(jobStatusQueryResponse, System.out::print);
         if (jobStatusQueryResponse.isError()) {
           return false;
         }
