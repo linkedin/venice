@@ -27,8 +27,10 @@ import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptio
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.BufferReplayPolicy;
+import com.linkedin.venice.meta.ETLStoreConfig;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
+import com.linkedin.venice.meta.VeniceETLStrategy;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
@@ -906,6 +908,85 @@ public class TestParentControllerWithMultiDataCenter {
         }
       }
     }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testETLStoreConfig() {
+    String clusterName = CLUSTER_NAMES[0];
+    String storeName = Utils.getUniqueString("test-etl-store-config");
+    String parentControllerURLs = multiRegionMultiClusterWrapper.getControllerConnectString();
+    try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerURLs)) {
+      NewStoreResponse newStoreResponse =
+          parentControllerClient.retryableRequest(5, c -> c.createNewStore(storeName, "", "\"string\"", "\"string\""));
+      Assert.assertFalse(
+          newStoreResponse.isError(),
+          "The NewStoreResponse returned an error: " + newStoreResponse.getError());
+      String etlUserProxyAccount = "etl-user-test";
+      Assert.assertFalse(
+          parentControllerClient
+              .updateStore(
+                  storeName,
+                  new UpdateStoreQueryParams().setRegularVersionETLEnabled(true)
+                      .setEtledProxyUserAccount(etlUserProxyAccount))
+              .isError());
+      StoreResponse storeResponse = parentControllerClient.getStore(storeName);
+      Assert.assertFalse(storeResponse.isError());
+      ETLStoreConfig etlStoreConfig = storeResponse.getStore().getEtlStoreConfig();
+      verifyETLStoreConfig(etlStoreConfig, true, false, etlUserProxyAccount, VeniceETLStrategy.EXTERNAL_SERVICE);
+      for (VeniceMultiClusterWrapper veniceMultiClusterWrapper: multiRegionMultiClusterWrapper.getChildRegions()) {
+        try (ControllerClient childControllerClient =
+            new ControllerClient(clusterName, veniceMultiClusterWrapper.getControllerConnectString())) {
+          TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+            StoreResponse childStoreResponse = childControllerClient.getStore(storeName);
+            Assert.assertFalse(childStoreResponse.isError());
+            verifyETLStoreConfig(
+                childStoreResponse.getStore().getEtlStoreConfig(),
+                true,
+                false,
+                etlUserProxyAccount,
+                VeniceETLStrategy.EXTERNAL_SERVICE);
+          });
+        }
+      }
+      parentControllerClient.updateStore(
+          storeName,
+          new UpdateStoreQueryParams().setETLStrategy(VeniceETLStrategy.EXTERNAL_WITH_VENICE_TRIGGER));
+      storeResponse = parentControllerClient.getStore(storeName);
+      Assert.assertFalse(storeResponse.isError());
+      verifyETLStoreConfig(
+          storeResponse.getStore().getEtlStoreConfig(),
+          true,
+          false,
+          etlUserProxyAccount,
+          VeniceETLStrategy.EXTERNAL_WITH_VENICE_TRIGGER);
+      for (VeniceMultiClusterWrapper veniceMultiClusterWrapper: multiRegionMultiClusterWrapper.getChildRegions()) {
+        try (ControllerClient childControllerClient =
+            new ControllerClient(clusterName, veniceMultiClusterWrapper.getControllerConnectString())) {
+          TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+            StoreResponse childStoreResponse = childControllerClient.getStore(storeName);
+            Assert.assertFalse(childStoreResponse.isError());
+            verifyETLStoreConfig(
+                childStoreResponse.getStore().getEtlStoreConfig(),
+                true,
+                false,
+                etlUserProxyAccount,
+                VeniceETLStrategy.EXTERNAL_WITH_VENICE_TRIGGER);
+          });
+        }
+      }
+    }
+  }
+
+  private void verifyETLStoreConfig(
+      ETLStoreConfig etlStoreConfig,
+      boolean regularVersionETLEnabled,
+      boolean futureVersionETLEnabled,
+      String etlUserProxyAccount,
+      VeniceETLStrategy veniceETLStrategy) {
+    Assert.assertEquals(etlStoreConfig.isRegularVersionETLEnabled(), regularVersionETLEnabled);
+    Assert.assertEquals(etlStoreConfig.isFutureVersionETLEnabled(), futureVersionETLEnabled);
+    Assert.assertEquals(etlStoreConfig.getEtledUserProxyAccount(), etlUserProxyAccount);
+    Assert.assertEquals(etlStoreConfig.getETLStrategy(), veniceETLStrategy);
   }
 
   private void getAndAssertTTLRepushEnabledFlag(
