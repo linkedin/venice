@@ -6166,7 +6166,7 @@ public abstract class StoreIngestionTaskTest {
         aaEnabled ? mock(ActiveActiveStoreIngestionTask.class) : mock(LeaderFollowerStoreIngestionTask.class);
     doCallRealMethod().when(ingestionTask).resubscribeAsLeader(any());
     doCallRealMethod().when(ingestionTask)
-        .preparePositionCheckpointAndStartRtConsumptionAsLeader(any(), any(), anyBoolean());
+        .preparePositionCheckpointAndStartConsumptionAsLeader(any(), any(), anyBoolean());
     PubSubTopicRepository topicRepository = new PubSubTopicRepository();
     when(ingestionTask.getPubSubTopicRepository()).thenReturn(topicRepository);
     OffsetRecord offsetRecord = mock(OffsetRecord.class);
@@ -6228,7 +6228,7 @@ public abstract class StoreIngestionTaskTest {
     LeaderFollowerStoreIngestionTask ingestionTask =
         aaEnabled ? mock(ActiveActiveStoreIngestionTask.class) : mock(LeaderFollowerStoreIngestionTask.class);
     doCallRealMethod().when(ingestionTask)
-        .preparePositionCheckpointAndStartRtConsumptionAsLeader(any(), any(), anyBoolean());
+        .preparePositionCheckpointAndStartConsumptionAsLeader(any(), any(), anyBoolean());
     PubSubTopicRepository topicRepository = new PubSubTopicRepository();
     when(ingestionTask.getPubSubTopicRepository()).thenReturn(topicRepository);
     InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer =
@@ -6254,7 +6254,7 @@ public abstract class StoreIngestionTaskTest {
     PubSubPosition p100 = InMemoryPubSubPosition.of(100L);
     when(pcs.getLatestProcessedRemoteVtPosition()).thenReturn(p100);
     when(pcs.consumeRemotely()).thenReturn(true);
-    ingestionTask.preparePositionCheckpointAndStartRtConsumptionAsLeader(pubSubTopic, pcs, false);
+    ingestionTask.preparePositionCheckpointAndStartConsumptionAsLeader(pubSubTopic, pcs, false);
 
     if (aaEnabled) {
       Assert.assertEquals(offsetRecord.getCheckpointedRtPosition("dc-1"), PubSubSymbolicPosition.EARLIEST);

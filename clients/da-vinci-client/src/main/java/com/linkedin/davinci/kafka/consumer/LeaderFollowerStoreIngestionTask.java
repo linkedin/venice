@@ -1002,7 +1002,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
     partitionConsumptionState.setLeaderFollowerState(LEADER);
     final PubSubTopic leaderTopic = offsetRecord.getLeaderTopic(pubSubTopicRepository);
-    preparePositionCheckpointAndStartRtConsumptionAsLeader(leaderTopic, partitionConsumptionState, true);
+    preparePositionCheckpointAndStartConsumptionAsLeader(leaderTopic, partitionConsumptionState, true);
   }
 
   private boolean switchAwayFromStreamReprocessingTopic(PubSubTopic currentLeaderTopic, PubSubTopic topicSwitchTopic) {
@@ -1049,7 +1049,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
     partitionConsumptionState.getOffsetRecord().setLeaderTopic(newSourceTopic);
 
-    preparePositionCheckpointAndStartRtConsumptionAsLeader(newSourceTopic, partitionConsumptionState, false);
+    preparePositionCheckpointAndStartConsumptionAsLeader(newSourceTopic, partitionConsumptionState, false);
   }
 
   /**
@@ -1058,7 +1058,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    * (2) Subscribe to all the Kafka upstream.
    * (3) Potentially sync offset to PartitionConsumptionState map if needed.
    */
-  void preparePositionCheckpointAndStartRtConsumptionAsLeader(
+  void preparePositionCheckpointAndStartConsumptionAsLeader(
       PubSubTopic leaderTopic,
       PartitionConsumptionState pcs,
       boolean isTransition) {
@@ -4136,7 +4136,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     LOGGER.info(
         "Leader replica: {} unsubscribe finished for future resubscribe.",
         partitionConsumptionState.getReplicaId());
-    preparePositionCheckpointAndStartRtConsumptionAsLeader(leaderTopic, partitionConsumptionState, false);
+    preparePositionCheckpointAndStartConsumptionAsLeader(leaderTopic, partitionConsumptionState, false);
   }
 
   protected void queueUpVersionTopicWritesWithViewWriters(

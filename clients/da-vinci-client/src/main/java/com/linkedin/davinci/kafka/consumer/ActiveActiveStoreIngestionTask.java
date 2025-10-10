@@ -1098,7 +1098,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           .info("{} enabled remote consumption from topic {} partition {}", ingestionTaskName, leaderTopic, partition);
     }
     partitionConsumptionState.setLeaderFollowerState(LEADER);
-    preparePositionCheckpointAndStartRtConsumptionAsLeader(leaderTopic, partitionConsumptionState, true);
+    preparePositionCheckpointAndStartConsumptionAsLeader(leaderTopic, partitionConsumptionState, true);
   }
 
   /**
@@ -1165,7 +1165,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     // Update leader topic.
     partitionConsumptionState.getOffsetRecord().setLeaderTopic(newSourceTopic);
     // Calculate leader offset and start consumption
-    preparePositionCheckpointAndStartRtConsumptionAsLeader(newSourceTopic, partitionConsumptionState, false);
+    preparePositionCheckpointAndStartConsumptionAsLeader(newSourceTopic, partitionConsumptionState, false);
   }
 
   /**
@@ -1474,7 +1474,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
    * @param isTransition true if this is a leader transition, false for initial setup
    */
   @Override
-  void preparePositionCheckpointAndStartRtConsumptionAsLeader(
+  void preparePositionCheckpointAndStartConsumptionAsLeader(
       PubSubTopic leaderTopic,
       PartitionConsumptionState pcs,
       boolean isTransition) {

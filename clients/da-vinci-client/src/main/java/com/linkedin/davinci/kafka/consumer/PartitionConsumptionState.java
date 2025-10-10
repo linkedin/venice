@@ -275,7 +275,7 @@ public class PartitionConsumptionState {
       PubSubContext pubSubContext,
       boolean hybrid,
       Schema keySchema) {
-    LOGGER.debug("Creating PCS for replica: {}", partitionReplica);
+    LOGGER.info("Creating PCS for replica: {}", partitionReplica);
 
     this.partitionReplica = Objects.requireNonNull(partitionReplica, "TopicPartition cannot be null when creating PCS");
     if (!Version.isATopicThatIsVersioned(partitionReplica.getTopicName())) {
