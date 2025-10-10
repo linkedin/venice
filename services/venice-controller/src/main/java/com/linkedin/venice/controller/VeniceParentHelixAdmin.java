@@ -1527,11 +1527,12 @@ public class VeniceParentHelixAdmin implements Admin {
       return Optional.empty();
     }
     int lastVersionNum = store.getLargestUsedVersionNumber();
-    if (lastVersionNum == NON_EXISTING_VERSION) {
+    Version lastVersion = store.getVersion(lastVersionNum);
+
+    if (lastVersionNum == NON_EXISTING_VERSION || lastVersion == null) {
       LOGGER.info("Store {} does not have any version", storeName);
       return Optional.empty();
     }
-    Version lastVersion = store.getVersion(lastVersionNum);
     LOGGER.info(
         "Found latest version status: {} for store: {}, version: {}",
         lastVersion.getStatus(),
