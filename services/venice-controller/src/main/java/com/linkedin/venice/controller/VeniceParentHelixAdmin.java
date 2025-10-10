@@ -1414,17 +1414,9 @@ public class VeniceParentHelixAdmin implements Admin {
           return Optional.of(latestTopic.get().getName());
         } else if (version.getStatus() == ONLINE) {
           // for only deferred swap, users need to rollforward to mark it current for online status
-          Map<String, Integer> currentVersionsMap = getCurrentVersionsForMultiColos(clusterName, storeName);
-          for (Map.Entry entry: currentVersionsMap.entrySet()) {
-            if (!entry.getValue().equals(versionNumber)) {
-              LOGGER.error(
-                  "There is already future version {} exists for store {}, but in region {} current version {}, please wait till the future version is made current.",
-                  versionNumber,
-                  storeName,
-                  entry.getKey(),
-                  entry.getValue());
-              return Optional.of(latestTopic.get().getName());
-            }
+          boolean validatedChildVersion = validateChildCurrentVersions(clusterName, storeName, versionNumber);
+          if (!validatedChildVersion) {
+            return Optional.of(latestTopic.get().getName());
           }
         }
       }
@@ -1551,17 +1543,9 @@ public class VeniceParentHelixAdmin implements Admin {
       return latestTopic;
     } else if (onlyDeferredSwap && lastVersion.getStatus() == ONLINE) {
       // for only deferred swap, users need to rollforward to mark it current for online status
-      Map<String, Integer> currentVersionsMap = getCurrentVersionsForMultiColos(clusterName, storeName);
-      for (Map.Entry entry: currentVersionsMap.entrySet()) {
-        if (!entry.getValue().equals(lastVersionNum)) {
-          LOGGER.error(
-              "Future version {} exists for store {}, but in region {} current version {}, please wait till the future version is made current.",
-              lastVersionNum,
-              storeName,
-              entry.getKey(),
-              entry.getValue());
-          return latestTopic;
-        }
+      boolean validateChildCurrentVersions = validateChildCurrentVersions(clusterName, storeName, lastVersionNum);
+      if (!validateChildCurrentVersions) {
+        return latestTopic;
       }
     }
 
@@ -1594,6 +1578,22 @@ public class VeniceParentHelixAdmin implements Admin {
       return latestTopic;
     }
     return Optional.empty();
+  }
+
+  private boolean validateChildCurrentVersions(String clusterName, String storeName, int lastVersionNum) {
+    Map<String, Integer> currentVersionsMap = getCurrentVersionsForMultiColos(clusterName, storeName);
+    for (Map.Entry entry: currentVersionsMap.entrySet()) {
+      if (!entry.getValue().equals(lastVersionNum)) {
+        LOGGER.error(
+            "Future version {} exists for store {}, but in region {} current version {}, please wait till the future version is made current.",
+            lastVersionNum,
+            storeName,
+            entry.getKey(),
+            entry.getValue());
+        return false;
+      }
+    }
+    return true;
   }
 
   /**
