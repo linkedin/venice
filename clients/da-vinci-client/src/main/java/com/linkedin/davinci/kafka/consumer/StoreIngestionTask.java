@@ -506,11 +506,16 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.thingsToClose.add(refCountedStorageEngine);
     this.storageEngine = Objects.requireNonNull(refCountedStorageEngine.get());
     this.isDaVinciClient = builder.isDaVinciClient();
+    this.serverConfig = builder.getServerConfig();
+    this.suppressLiveUpdates = serverConfig.freezeIngestionIfReadyToServeOrLocalDataExists();
 
     if ((this.storageEngine instanceof DelegatingStorageEngine)) {
       DelegatingStorageEngine delegatingStorageEngine = (DelegatingStorageEngine) this.storageEngine;
 
-      if (isDaVinciClient) {
+      // TODO: Key dictionary compression is incompatible with live update suppression in Da Vinci.
+      // When suppressLiveUpdates is enabled, PartitionConsumptionState (PCS) objects are dropped, which breaks
+      // the read path's dependency on PCS for key decompression. Key compression must be disabled in this case.
+      if (isDaVinciClient && !suppressLiveUpdates) {
         delegatingStorageEngine.setKeyDictCompressionFunction(p -> {
           PartitionConsumptionState pcs = partitionConsumptionStateMap.get(p);
           if (pcs == null) {
@@ -529,7 +534,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
               + ", expected: DelegatingStorageEngine");
     }
 
-    this.serverConfig = builder.getServerConfig();
     this.defaultReadyToServeChecker = getDefaultReadyToServeChecker();
 
     this.aggKafkaConsumerService = Objects.requireNonNull(builder.getAggKafkaConsumerService());
@@ -539,8 +543,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.isWriteComputationEnabled = store.isWriteComputationEnabled();
 
     this.partitionStateSerializer = builder.getPartitionStateSerializer();
-
-    this.suppressLiveUpdates = serverConfig.freezeIngestionIfReadyToServeOrLocalDataExists();
 
     this.storeVersionPartitionCount = version.getPartitionCount();
 
