@@ -1123,6 +1123,9 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
           store.getVersionStatus(targetVersionNum),
           status);
       store.updateVersionStatus(targetVersionNum, status);
+      if (status == ONLINE || status == PARTIALLY_ONLINE) {
+        store.setCurrentVersion(targetVersionNum);
+      }
       repository.updateStore(store);
     } catch (Exception e) {
       LOGGER.warn("Failed to execute updateStore for store: {} in cluster: {}", storeName, clusterName, e);
