@@ -43,8 +43,8 @@ import com.linkedin.davinci.validation.DataIntegrityValidator;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
-import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
+import com.linkedin.venice.kafka.protocol.LeaderMetadata;
 import com.linkedin.venice.kafka.protocol.ProducerMetadata;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
@@ -523,30 +523,26 @@ public class LeaderFollowerStoreIngestionTaskTest {
   @Test(timeOut = 60_000)
   public void testIsRecordSelfProduced() throws InterruptedException {
     setUp();
-
-    GUID guid1 = new GUID("wabbit_season".getBytes());
-    GUID guid2 = new GUID("duck_season".getBytes());
-
-    VeniceWriter mockWriter = mock(VeniceWriter.class);
-    Lazy<VeniceWriter<byte[], byte[], byte[]>> lazyMockWriter = mock(Lazy.class);
-    doReturn(true).when(lazyMockWriter).isPresent();
-    doReturn(mockWriter).when(lazyMockWriter).get();
-    doReturn(lazyMockWriter).when(mockPartitionConsumptionState).getVeniceWriterLazyRef();
-
+    String sameHostName = Utils.getHostName();
+    String sameHostWithPort = Utils.getHostName() + ":12345";
+    String differentHostName = "notlocalhost";
     KafkaMessageEnvelope kme = mock(KafkaMessageEnvelope.class);
     DefaultPubSubMessage consumerRecord = mock(DefaultPubSubMessage.class);
-    ProducerMetadata producerMetadata = mock(ProducerMetadata.class);
-    when(kme.getProducerMetadata()).thenReturn(producerMetadata);
+    LeaderMetadata leaderMetadata = mock(LeaderMetadata.class);
+    when(kme.getLeaderMetadataFooter()).thenReturn(leaderMetadata);
     when(consumerRecord.getValue()).thenReturn(kme);
 
-    // Case 1: VeniceWriter is present but producer GUID doesn't match
-    when(mockWriter.getProducerGUID()).thenReturn(guid1);
-    when(producerMetadata.getProducerGUID()).thenReturn(guid2); // Different GUID
-    assertFalse(leaderFollowerStoreIngestionTask.isRecordSelfProduced(consumerRecord, mockPartitionConsumptionState));
+    // Case 1: HostName is the same
+    when(leaderMetadata.getHostName()).thenReturn(sameHostName);
+    assertTrue(leaderFollowerStoreIngestionTask.isRecordSelfProduced(consumerRecord));
 
-    // Case 2: VeniceWriter is present and producer GUID matches
-    when(producerMetadata.getProducerGUID()).thenReturn(guid1); // Same GUID as the writer
-    assertTrue(leaderFollowerStoreIngestionTask.isRecordSelfProduced(consumerRecord, mockPartitionConsumptionState));
+    // Case 2: HostName is same and there is a port
+    when(leaderMetadata.getHostName()).thenReturn(sameHostWithPort);
+    assertTrue(leaderFollowerStoreIngestionTask.isRecordSelfProduced(consumerRecord));
+
+    // Case 3: HostName is different
+    when(leaderMetadata.getHostName()).thenReturn(differentHostName);
+    assertFalse(leaderFollowerStoreIngestionTask.isRecordSelfProduced(consumerRecord));
   }
 
   @Test
