@@ -374,8 +374,6 @@ public class VeniceSystemProducerTest {
     when(config.get(VENICE_PARTITIONERS)).thenReturn(null);
 
     // Test case 1: Both D2 clients are provided (first branch)
-    factory.setProvidedD2Clients(Optional.of(mockChildD2Client), Optional.of(mockPrimaryD2Client));
-
     // Mock the createSystemProducer method to verify which overload is called
     VeniceSystemProducer mockProducer1 = mock(VeniceSystemProducer.class);
 
@@ -393,14 +391,19 @@ public class VeniceSystemProducerTest {
             any(Optional.class),
             any(Optional.class));
 
-    SystemProducer result1 = factory.getProducer("testSystem", "testStore", false, "STREAM", config);
+    SystemProducer result1 = factory.getProducer(
+        "testSystem",
+        "testStore",
+        false,
+        "STREAM",
+        config,
+        Optional.of(mockChildD2Client),
+        Optional.of(mockPrimaryD2Client));
 
     assertNotNull(result1);
     assertEquals(result1, mockProducer1);
 
     // Test case 2: No D2 clients are provided (second branch)
-    factory.setProvidedD2Clients(Optional.empty(), Optional.empty());
-
     VeniceSystemProducer mockProducer2 = mock(VeniceSystemProducer.class);
     doReturn(mockProducer2).when(factory)
         .createSystemProducer(
