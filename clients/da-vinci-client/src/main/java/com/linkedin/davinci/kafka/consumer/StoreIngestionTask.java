@@ -4712,11 +4712,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       return PubSubSymbolicPosition.EARLIEST;
     }
     LeaderMetadata leaderMetadataFooter = consumerRecord.getValue().leaderMetadataFooter;
-    return deserializePositionWithOffsetFallback(
-        pubSubContext.getPubSubPositionDeserializer(),
-        consumerRecord.getTopicPartition(),
-        leaderMetadataFooter.upstreamPubSubPosition,
-        leaderMetadataFooter.upstreamOffset);
+    return PubSubUtil.fromKafkaOffset(leaderMetadataFooter.upstreamOffset);
+
+    // return deserializePositionWithOffsetFallback(
+    // pubSubContext.getPubSubPositionDeserializer(),
+    // consumerRecord.getTopicPartition(),
+    // leaderMetadataFooter.upstreamPubSubPosition,
+    // leaderMetadataFooter.upstreamOffset);
   }
 
   /**
