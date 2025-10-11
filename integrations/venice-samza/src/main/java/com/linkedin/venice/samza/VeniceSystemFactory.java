@@ -119,17 +119,6 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
    */
   private final Map<SystemProducer, Pair<Boolean, Boolean>> systemProducerStatues;
 
-  protected Optional<D2Client> providedPrimaryControllerColoD2Client = Optional.empty();
-
-  protected Optional<D2Client> providedChildColoD2Client = Optional.empty();
-
-  public void setProvidedD2Clients(
-      Optional<D2Client> providedChildColoD2Client,
-      Optional<D2Client> providedPrimaryControllerColoD2Client) {
-    this.providedChildColoD2Client = providedChildColoD2Client;
-    this.providedPrimaryControllerColoD2Client = providedPrimaryControllerColoD2Client;
-  }
-
   /**
    * All the required configs to build a SSL Factory
    */
@@ -336,16 +325,35 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
         partitioners);
   }
 
-  /**
-   * Samza table writer would directly call this function to create venice system producer instead of calling the general
-   * {@link VeniceSystemFactory#getProducer(String, Config, MetricsRegistry)} function.
-   */
   public SystemProducer getProducer(
       String systemName,
       String storeName,
       boolean veniceAggregate,
       String pushTypeString,
       Config config) {
+    return this.getProducer(
+        systemName,
+        storeName,
+        veniceAggregate,
+        pushTypeString,
+        config,
+        Optional.empty(),
+        Optional.empty());
+  }
+
+  /**
+   * Samza table writer would directly call this function to create venice system producer instead of
+   * calling the general {@link VeniceSystemFactory#getProducer(String, Config, MetricsRegistry)} function.
+   * Customized D2 clients can be optionally provided for specific purpose.
+   */
+  public SystemProducer getProducer(
+      String systemName,
+      String storeName,
+      boolean veniceAggregate,
+      String pushTypeString,
+      Config config,
+      Optional<D2Client> providedChildColoD2Client,
+      Optional<D2Client> providedPrimaryControllerColoD2Client) {
     if (isEmpty(storeName)) {
       throw new SamzaException(VENICE_STORE + " should not be null for system " + systemName);
     }
