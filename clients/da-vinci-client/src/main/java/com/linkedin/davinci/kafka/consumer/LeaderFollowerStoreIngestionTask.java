@@ -1099,9 +1099,11 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     final PubSubTopic leaderTopic = pcs.getOffsetRecord().getLeaderTopic(pubSubTopicRepository);
     if (leaderTopic != null && leaderTopic.isRealTime()) {
       upstreamStartPositionByPubSubUrl.forEach((kafkaURL, upstreamStartPosition) -> {
-        if (upstreamStartPosition
-            .getNumericOffset() > getLatestConsumedUpstreamPositionForHybridOffsetLagMeasurement(pcs, kafkaURL)
-                .getNumericOffset()) {
+        PubSubPosition latestConsumedRtPosition =
+            getLatestConsumedUpstreamPositionForHybridOffsetLagMeasurement(pcs, kafkaURL);
+        // update latest consumed RT position if incoming upstream start position is greater
+        // than the latest consumed RT position
+        if (upstreamStartPosition.getNumericOffset() > latestConsumedRtPosition.getNumericOffset()) {
           updateLatestConsumedRtPositions(pcs, kafkaURL, upstreamStartPosition);
         }
       });
@@ -1985,8 +1987,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         }
 
         PubSubPosition lastProcessedVtPos = partitionConsumptionState.getLatestProcessedVtPosition();
-        if (!PubSubSymbolicPosition.EARLIEST.equals(lastProcessedVtPos) && topicManagerRepository.getLocalTopicManager()
-            .diffPosition(record.getTopicPartition(), lastProcessedVtPos, record.getPosition()) >= 0) {
+        if (lastProcessedVtPos.getNumericOffset() >= record.getPosition().getNumericOffset()) {
           String message = partitionConsumptionState.getLeaderFollowerState() + " replica: "
               + partitionConsumptionState.getReplicaId() + " had already processed the record";
           if (!REDUNDANT_LOGGING_FILTER.isRedundantException(message)) {

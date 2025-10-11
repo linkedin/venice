@@ -1,7 +1,6 @@
 package com.linkedin.venice.utils;
 
 import static com.linkedin.venice.HttpConstants.LOCALHOST;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
 import static com.linkedin.venice.meta.Version.REAL_TIME_TOPIC_SUFFIX;
 
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -29,6 +28,7 @@ import com.linkedin.venice.meta.StoreVersionInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.pubsub.PubSubTopicImpl;
+import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
@@ -1212,6 +1212,16 @@ public class Utils {
       return pubSubTopicRepository.getTopic(getRealTimeTopicNameFromSeparateRealTimeTopic(pubSubTopic.getName()));
     }
     return pubSubTopic;
+  }
+
+  public static PubSubTopicPartition createPubSubTopicPartitionFromLeaderTopicPartition(
+      String pubSubAddress,
+      PubSubTopicPartition leaderTopicPartition) {
+    return pubSubAddress.endsWith(Utils.SEPARATE_TOPIC_SUFFIX)
+        ? new PubSubTopicPartitionImpl(
+            new PubSubTopicImpl(leaderTopicPartition.getTopicName() + Utils.SEPARATE_TOPIC_SUFFIX),
+            leaderTopicPartition.getPartitionNumber())
+        : leaderTopicPartition;
   }
 
   /**
