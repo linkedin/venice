@@ -331,14 +331,7 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
       boolean veniceAggregate,
       String pushTypeString,
       Config config) {
-    return this.getProducer(
-        systemName,
-        storeName,
-        veniceAggregate,
-        pushTypeString,
-        config,
-        Optional.empty(),
-        Optional.empty());
+    return this.getProducer(systemName, storeName, veniceAggregate, pushTypeString, config, null, null);
   }
 
   /**
@@ -352,8 +345,8 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
       boolean veniceAggregate,
       String pushTypeString,
       Config config,
-      Optional<D2Client> providedChildColoD2Client,
-      Optional<D2Client> providedPrimaryControllerColoD2Client) {
+      D2Client providedChildColoD2Client,
+      D2Client providedPrimaryControllerColoD2Client) {
     if (isEmpty(storeName)) {
       throw new SamzaException(VENICE_STORE + " should not be null for system " + systemName);
     }
@@ -479,11 +472,11 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
         primaryControllerD2Service);
 
     VeniceSystemProducer systemProducer;
-    if (providedChildColoD2Client.isPresent() && providedPrimaryControllerColoD2Client.isPresent()) {
+    if (providedChildColoD2Client != null && providedPrimaryControllerColoD2Client != null) {
       LOGGER.info("Using provided D2 clients for child and primary controller colo");
       systemProducer = createSystemProducer(
-          providedChildColoD2Client.get(),
-          providedPrimaryControllerColoD2Client.get(),
+          providedChildColoD2Client,
+          providedPrimaryControllerColoD2Client,
           primaryControllerD2Service,
           storeName,
           venicePushType,

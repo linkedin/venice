@@ -391,14 +391,8 @@ public class VeniceSystemProducerTest {
             any(Optional.class),
             any(Optional.class));
 
-    SystemProducer result1 = factory.getProducer(
-        "testSystem",
-        "testStore",
-        false,
-        "STREAM",
-        config,
-        Optional.of(mockChildD2Client),
-        Optional.of(mockPrimaryD2Client));
+    SystemProducer result1 =
+        factory.getProducer("testSystem", "testStore", false, "STREAM", config, mockChildD2Client, mockPrimaryD2Client);
 
     assertNotNull(result1);
     assertEquals(result1, mockProducer1);
