@@ -1,6 +1,7 @@
 package com.linkedin.venice;
 
 import static com.linkedin.venice.chunking.ChunkKeyValueTransformer.KeyType.WITH_VALUE_CHUNK;
+import static com.linkedin.venice.pubsub.PubSubUtil.getPubSubPositionString;
 
 import com.github.luben.zstd.Zstd;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
@@ -505,7 +506,9 @@ public class KafkaTopicDumper implements AutoCloseable {
           producerMetadata.messageTimestamp,
           producerMetadata.logicalTimestamp,
           leaderMetadata == null ? "-" : leaderMetadata.hostName,
-          leaderMetadata == null ? "-" : pubSubPositionDeserializer.toPosition(leaderMetadata.upstreamPubSubPosition),
+          leaderMetadata == null
+              ? "-"
+              : getPubSubPositionString(pubSubPositionDeserializer, leaderMetadata.upstreamPubSubPosition),
           leaderMetadata == null ? "-" : leaderMetadata.upstreamKafkaClusterId,
           chunkMetadata);
     } catch (Exception e) {
@@ -656,7 +659,9 @@ public class KafkaTopicDumper implements AutoCloseable {
         producerMetadata.messageTimestamp,
         producerMetadata.logicalTimestamp,
         leaderMetadata == null ? "-" : leaderMetadata.hostName,
-        leaderMetadata == null ? "-" : pubSubPositionDeserializer.toPosition(leaderMetadata.upstreamPubSubPosition),
+        leaderMetadata == null
+            ? "-"
+            : getPubSubPositionString(pubSubPositionDeserializer, leaderMetadata.upstreamPubSubPosition),
         leaderMetadata == null ? "-" : leaderMetadata.upstreamKafkaClusterId);
   }
 

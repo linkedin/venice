@@ -2343,7 +2343,7 @@ public abstract class StoreIngestionTaskTest {
       ArgumentCaptor<PubSubPosition> positionCaptor = ArgumentCaptor.forClass(PubSubPosition.class);
       verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS))
           .completed(eq(topic), eq(PARTITION_FOO), positionCaptor.capture(), eq("STANDBY"));
-      assertEquals(positionCaptor.getValue(), p100);
+      assertEquals(positionCaptor.getValue().getNumericOffset(), p100.getNumericOffset());
     }, aaConfig);
     config.setBeforeStartingConsumption(
         () -> doReturn(getOffsetRecord(p100, true, pubSubContext)).when(mockStorageMetadataService)
@@ -2364,7 +2364,7 @@ public abstract class StoreIngestionTaskTest {
       ArgumentCaptor<PubSubPosition> positionCaptor = ArgumentCaptor.forClass(PubSubPosition.class);
       verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS))
           .completed(eq(topic), eq(PARTITION_FOO), positionCaptor.capture(), eq("STANDBY"));
-      assertEquals(positionCaptor.getValue(), p100);
+      assertEquals(positionCaptor.getValue().getNumericOffset(), p100.getNumericOffset());
       verify(aggKafkaConsumerService, timeout(TEST_TIMEOUT_MS))
           .batchUnsubscribeConsumerFor(pubSubTopic, Collections.singleton(fooTopicPartition));
       verify(aggKafkaConsumerService, never()).unsubscribeConsumerFor(pubSubTopic, barTopicPartition);
@@ -2397,7 +2397,7 @@ public abstract class StoreIngestionTaskTest {
       ArgumentCaptor<PubSubPosition> positionCaptor = ArgumentCaptor.forClass(PubSubPosition.class);
       verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS))
           .completed(eq(topic), eq(PARTITION_FOO), positionCaptor.capture(), eq("STANDBY"));
-      assertEquals(positionCaptor.getValue(), p10);
+      assertEquals(positionCaptor.getValue().getNumericOffset(), p10.getNumericOffset());
     }, aaConfig);
     config.setBeforeStartingConsumption(() -> {
       Store mockStore = mock(Store.class);
@@ -2593,12 +2593,11 @@ public abstract class StoreIngestionTaskTest {
             long offset = entry.getValue().getInternalOffset();
             LOGGER.info("Verifying completed was called for partition {} and offset {} or greater.", partition, offset);
 
-            ArgumentCaptor<InMemoryPubSubPosition> positionCaptor =
-                ArgumentCaptor.forClass(InMemoryPubSubPosition.class);
+            ArgumentCaptor<PubSubPosition> positionCaptor = ArgumentCaptor.forClass(PubSubPosition.class);
             verify(mockLogNotifier, timeout(LONG_TEST_TIMEOUT).atLeastOnce())
                 .completed(eq(topic), eq(partition), positionCaptor.capture(), eq("STANDBY"));
-            InMemoryPubSubPosition completedPosition = positionCaptor.getValue();
-            assertTrue(completedPosition.getInternalOffset() >= offset);
+            PubSubPosition completedPosition = positionCaptor.getValue();
+            assertTrue(completedPosition.getNumericOffset() >= offset);
           });
 
       // After this, all asynchronous processing should be finished, so there's no need for time outs anymore.
@@ -4705,14 +4704,14 @@ public abstract class StoreIngestionTaskTest {
       } else {
         // If the pcs is non-null, then we perform additional checks to ensure that it was not synced
         Assert.assertEquals(
-            pcs.getLatestProcessedVtPosition(),
-            p0,
+            pcs.getLatestProcessedVtPosition().getNumericOffset(),
+            p0.getNumericOffset(),
             "pcs.getLatestProcessedLocalVersionTopicOffset() for PARTITION_FOO is expected to be zero!");
         OffsetRecord offsetRecord = pcs.getOffsetRecord();
         assertNotNull(offsetRecord);
         Assert.assertEquals(
-            offsetRecord.getCheckpointedLocalVtPosition(),
-            p0,
+            offsetRecord.getCheckpointedLocalVtPosition().getNumericOffset(),
+            p0.getNumericOffset(),
             "offsetRecord.getCheckpointedLocalVtPosition() for PARTITION_FOO is expected to be zero!");
       }
 
@@ -4724,14 +4723,14 @@ public abstract class StoreIngestionTaskTest {
       assertNotNull(offsetRecord);
       Assert.assertEquals(pcs.getLatestProcessedVtPosition(), p2); // PCS updated
       // offsetRecord hasn't been updated yet
-      Assert.assertEquals(offsetRecord.getCheckpointedLocalVtPosition(), p0);
+      Assert.assertEquals(offsetRecord.getCheckpointedLocalVtPosition().getNumericOffset(), p0.getNumericOffset());
       storeIngestionTaskUnderTest.close();
 
       // Verify the OffsetRecord is synced up with pcs and get persisted only once during shutdown
       verify(mockStorageMetadataService, timeout(TEST_TIMEOUT_MS).times(1)).put(eq(topic), eq(PARTITION_FOO), any());
       Assert.assertEquals(
-          offsetRecord.getCheckpointedLocalVtPosition(),
-          p2,
+          offsetRecord.getCheckpointedLocalVtPosition().getNumericOffset(),
+          p2.getNumericOffset(),
           "offsetRecord.getCheckpointedLocalVtPosition() for PARTITION_FOO is expected to be 2!");
 
       // Verify that the underlying storage engine sync function is invoked.
