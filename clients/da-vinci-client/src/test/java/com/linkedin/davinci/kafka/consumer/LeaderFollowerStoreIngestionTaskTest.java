@@ -536,17 +536,21 @@ public class LeaderFollowerStoreIngestionTaskTest {
     LeaderMetadata leaderMetadata = mock(LeaderMetadata.class);
     when(kme.getLeaderMetadataFooter()).thenReturn(leaderMetadata);
 
-    // Case 1: HostName is the same
-    when(leaderMetadata.getHostName()).thenReturn(Utils.getHostName());
-    assertTrue(leaderFollowerStoreIngestionTask.isRecordSelfProduced(consumerRecord));
-
-    // Case 2: HostName is same and there is a port
-    when(leaderMetadata.getHostName()).thenReturn(Utils.getHostName() + ":12345");
-    assertTrue(leaderFollowerStoreIngestionTask.isRecordSelfProduced(consumerRecord));
-
-    // Case 3: HostName is different
+    // Case 1: HostName is different
     when(leaderMetadata.getHostName()).thenReturn("notlocalhost");
     assertFalse(leaderFollowerStoreIngestionTask.isRecordSelfProduced(consumerRecord));
+
+    // Case 2: HostName is the same
+    when(leaderMetadata.getHostName()).thenReturn(Utils.getHostName());
+    assertFalse(leaderFollowerStoreIngestionTask.isRecordSelfProduced(consumerRecord));
+
+    // Case 3: HostName is same and there is a port
+    when(leaderMetadata.getHostName()).thenReturn(Utils.getHostName() + ":12345");
+    assertFalse(leaderFollowerStoreIngestionTask.isRecordSelfProduced(consumerRecord));
+
+    // Case 4: HostName and port is the same (listener port is 0)
+    when(leaderMetadata.getHostName()).thenReturn(Utils.getHostName() + ":0");
+    assertTrue(leaderFollowerStoreIngestionTask.isRecordSelfProduced(consumerRecord));
   }
 
   @Test
