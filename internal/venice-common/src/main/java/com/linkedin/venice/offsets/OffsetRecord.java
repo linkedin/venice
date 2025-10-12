@@ -300,7 +300,6 @@ public class OffsetRecord {
    */
   public PubSubPosition getCheckpointedRtPosition(String pubSubBrokerAddress) {
     Long offset = partitionState.upstreamOffsetMap.get(pubSubBrokerAddress);
-    ByteBuffer wfBuffer = partitionState.upstreamRealTimeTopicPubSubPositionMap.get(pubSubBrokerAddress);
     if (offset == null) {
       // If the offset is not set, return EARLIEST symbolic position.
       return PubSubSymbolicPosition.EARLIEST;
