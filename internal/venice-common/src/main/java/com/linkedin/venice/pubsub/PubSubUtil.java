@@ -339,9 +339,15 @@ public final class PubSubUtil {
 
   public static PubSubPositionGrpcWireFormat getPubSubPositionGrpcWireFormat(PubSubPosition position) {
     PubSubPositionJsonWireFormat positionJsonWireFormat = position.toJsonWireFormat();
-    return PubSubPositionGrpcWireFormat.newBuilder()
-        .setTypeId(positionJsonWireFormat.getTypeId())
-        .setBase64PositionBytes(positionJsonWireFormat.getBase64PositionBytes())
-        .build();
+    return PubSubPositionGrpcWireFormat.newBuilder().setTypeId(positionJsonWireFormat.getTypeId())
+        .setBase64PositionBytes(positionJsonWireFormat.getBase64PositionBytes()).build();
+  }
+
+  public static String getPubSubPositionString(
+      PubSubPositionDeserializer pubSubPositionDeserializer,
+      ByteBuffer pubSubPosition) {
+    return (pubSubPosition == null || !pubSubPosition.hasRemaining())
+        ? "<EMPTY>"
+        : pubSubPositionDeserializer.toPosition(pubSubPosition).toString();
   }
 }
