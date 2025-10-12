@@ -525,25 +525,27 @@ public class LeaderFollowerStoreIngestionTaskTest {
   @Test(timeOut = 60_000)
   public void testIsRecordSelfProduced() throws InterruptedException {
     setUp();
-    String sameHostName = Utils.getHostName();
-    String sameHostWithPort = Utils.getHostName() + ":12345";
-    String differentHostName = "notlocalhost";
-    KafkaMessageEnvelope kme = mock(KafkaMessageEnvelope.class);
     DefaultPubSubMessage consumerRecord = mock(DefaultPubSubMessage.class);
-    LeaderMetadata leaderMetadata = mock(LeaderMetadata.class);
-    when(kme.getLeaderMetadataFooter()).thenReturn(leaderMetadata);
+    KafkaMessageEnvelope kme = mock(KafkaMessageEnvelope.class);
     when(consumerRecord.getValue()).thenReturn(kme);
 
+    // Case 0: Function does not throw when LeaderMetadata is null
+    when(kme.getLeaderMetadataFooter()).thenReturn(null);
+    assertFalse(leaderFollowerStoreIngestionTask.isRecordSelfProduced(consumerRecord));
+
+    LeaderMetadata leaderMetadata = mock(LeaderMetadata.class);
+    when(kme.getLeaderMetadataFooter()).thenReturn(leaderMetadata);
+
     // Case 1: HostName is the same
-    when(leaderMetadata.getHostName()).thenReturn(sameHostName);
+    when(leaderMetadata.getHostName()).thenReturn(Utils.getHostName());
     assertTrue(leaderFollowerStoreIngestionTask.isRecordSelfProduced(consumerRecord));
 
     // Case 2: HostName is same and there is a port
-    when(leaderMetadata.getHostName()).thenReturn(sameHostWithPort);
+    when(leaderMetadata.getHostName()).thenReturn(Utils.getHostName() + ":12345");
     assertTrue(leaderFollowerStoreIngestionTask.isRecordSelfProduced(consumerRecord));
 
     // Case 3: HostName is different
-    when(leaderMetadata.getHostName()).thenReturn(differentHostName);
+    when(leaderMetadata.getHostName()).thenReturn("notlocalhost");
     assertFalse(leaderFollowerStoreIngestionTask.isRecordSelfProduced(consumerRecord));
   }
 
