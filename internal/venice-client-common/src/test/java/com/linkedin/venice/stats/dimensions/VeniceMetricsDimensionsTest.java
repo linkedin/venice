@@ -61,6 +61,9 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_INSTANCE_ERROR_TYPE:
           assertEquals(dimension.getDimensionName(format), "venice.instance.error_type");
           break;
+        case VENICE_HELIX_GROUP_ID:
+          assertEquals(dimension.getDimensionName(format), "venice.helix_group.id");
+          break;
         default:
           throw new IllegalArgumentException("Unknown dimension: " + dimension);
       }
@@ -120,6 +123,9 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_INSTANCE_ERROR_TYPE:
           assertEquals(dimension.getDimensionName(format), "venice.instance.errorType");
           break;
+        case VENICE_HELIX_GROUP_ID:
+          assertEquals(dimension.getDimensionName(format), "venice.helixGroup.id");
+          break;
         default:
           throw new IllegalArgumentException("Unknown dimension: " + dimension);
       }
@@ -178,6 +184,9 @@ public class VeniceMetricsDimensionsTest {
           break;
         case VENICE_INSTANCE_ERROR_TYPE:
           assertEquals(dimension.getDimensionName(format), "Venice.Instance.ErrorType");
+          break;
+        case VENICE_HELIX_GROUP_ID:
+          assertEquals(dimension.getDimensionName(format), "Venice.HelixGroup.Id");
           break;
         default:
           throw new IllegalArgumentException("Unknown dimension: " + dimension);
