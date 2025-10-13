@@ -119,11 +119,11 @@ public class OffsetRecord {
     return serializer.deserialize(PARTITION_STATE_STRING, bytes);
   }
 
-  public void setPreviousStatusesEntry(String key, String value) {
+  public void setPreviousStatusesEntry(CharSequence key, String value) {
     partitionState.getPreviousStatuses().put(key, value);
   }
 
-  public String getPreviousStatusesEntry(String key) {
+  public String getPreviousStatusesEntry(CharSequence key) {
     return partitionState.getPreviousStatuses().getOrDefault(key, NULL_STRING).toString();
   }
 
