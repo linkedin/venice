@@ -1,7 +1,5 @@
 package com.linkedin.venice.controller.kafka.consumer;
 
-import static java.lang.Math.*;
-
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controller.AdminTopicMetadataAccessor;
 import com.linkedin.venice.controller.ExecutionIdAccessor;
@@ -385,7 +383,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
               if (!newRecord.getKey().isControlMessage()) {
                 KafkaMessageEnvelope kafkaValue = newRecord.getValue();
                 long producerTimestamp = kafkaValue.producerMetadata.messageTimestamp;
-                stats.recordAdminMessagePollingLatency(max(0, messagePollingTimeStamp - producerTimestamp));
+                stats.recordAdminMessagePollingLatency(Math.max(0, messagePollingTimeStamp - producerTimestamp));
               }
             }
           }
@@ -869,9 +867,13 @@ public class AdminConsumptionTask implements Runnable, Closeable {
             System.currentTimeMillis());
         operationQueue.add(adminOperationWrapper);
         stats.recordAdminMessageMMLatency(
-            max(0, adminOperationWrapper.getLocalBrokerTimestamp() - adminOperationWrapper.getProducerTimestamp()));
+            Math.max(
+                0,
+                adminOperationWrapper.getLocalBrokerTimestamp() - adminOperationWrapper.getProducerTimestamp()));
         stats.recordAdminMessageDelegateLatency(
-            max(0, adminOperationWrapper.getDelegateTimestamp() - adminOperationWrapper.getLocalBrokerTimestamp()));
+            Math.max(
+                0,
+                adminOperationWrapper.getDelegateTimestamp() - adminOperationWrapper.getLocalBrokerTimestamp()));
       }
     } else {
       long producerTimestamp = kafkaValue.producerMetadata.messageTimestamp;
@@ -884,9 +886,9 @@ public class AdminConsumptionTask implements Runnable, Closeable {
           brokerTimestamp,
           System.currentTimeMillis());
       stats.recordAdminMessageMMLatency(
-          max(0, adminOperationWrapper.getLocalBrokerTimestamp() - adminOperationWrapper.getProducerTimestamp()));
+          Math.max(0, adminOperationWrapper.getLocalBrokerTimestamp() - adminOperationWrapper.getProducerTimestamp()));
       stats.recordAdminMessageDelegateLatency(
-          max(0, adminOperationWrapper.getDelegateTimestamp() - adminOperationWrapper.getLocalBrokerTimestamp()));
+          Math.max(0, adminOperationWrapper.getDelegateTimestamp() - adminOperationWrapper.getLocalBrokerTimestamp()));
       String storeName = extractStoreName(adminOperation);
       adminOperationsByStore.putIfAbsent(storeName, new LinkedList<>());
       adminOperationsByStore.get(storeName).add(adminOperationWrapper);

@@ -10,7 +10,7 @@ import java.util.Map;
 
 
 /**
- * This class contains metrics for parent admin methods.
+ * This class contains metrics for {@link com.linkedin.venice.controller.VeniceParentHelixAdmin} methods.
  */
 public class VeniceAdminMethodStats extends AbstractVeniceStats {
   private final VeniceOpenTelemetryMetricsRepository otelRepository;
@@ -29,6 +29,10 @@ public class VeniceAdminMethodStats extends AbstractVeniceStats {
     this.otelRepository = otelData.getOtelRepository();
     this.baseDimensionsMap = otelData.getBaseDimensionsMap();
 
+    /**
+     * The metrics will track two dimensions: The method in the {@link com.linkedin.venice.controller.VeniceHelixAdmin}
+     * and the step in the method. This helps find the bottleneck in a method for latency.
+     */
     parentAdminMethodLatencyMetrics = MetricEntityStateTwoEnums.create(
         AdminBaseMetricEntity.PARENT_ADMIN_CALL_TIME.getMetricEntity(),
         otelRepository,

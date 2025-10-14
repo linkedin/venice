@@ -36,13 +36,16 @@ public class VeniceAdminStats extends AbstractVeniceStats {
    */
   private final Sensor failedSerializingAdminOperationMessageCount;
 
-  /** Measure latency when sending the start-of-push signal.*/
+  /** Measure latency when sending the start-of-push signal
+   * for {@link com.linkedin.venice.controller.VeniceHelixAdmin#writeEndOfPush(String, String, int, boolean)}.*/
   private final Sensor startOfPushLatencySensor;
 
-  /** Measure latency when sending the end-of-push signal to the queue*/
+  /** Measure latency when sending the end-of-push signal to the queue
+   * for {@link com.linkedin.venice.controller.VeniceHelixAdmin#writeEndOfPush(String, String, int, boolean)}.*/
   private final Sensor endOfPushLatencySensor;
 
-  /** Tracks latency for producer flush operation.*/
+  /** Tracks latency for producer flush operation
+   * for {@link com.linkedin.venice.controller.VeniceHelixAdmin#writeEndOfPush(String, String, int, boolean)}.*/
   private final Sensor producerFlushLatencySensor;
 
   public VeniceAdminStats(MetricsRepository metricsRepository, String name) {
