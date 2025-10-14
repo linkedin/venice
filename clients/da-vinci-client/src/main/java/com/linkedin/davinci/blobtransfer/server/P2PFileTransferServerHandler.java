@@ -16,6 +16,7 @@ import com.linkedin.davinci.blobtransfer.BlobTransferPartitionMetadata;
 import com.linkedin.davinci.blobtransfer.BlobTransferPayload;
 import com.linkedin.davinci.blobtransfer.BlobTransferUtils;
 import com.linkedin.venice.request.RequestHelper;
+import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.Utils;
 import io.netty.buffer.Unpooled;
@@ -271,7 +272,15 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
     RandomAccessFile raf = new RandomAccessFile(file, "r");
     ChannelFuture sendFileFuture;
     long length = raf.length();
+    long checksumComputationStartTime = System.currentTimeMillis();
     String fileChecksum = BlobTransferUtils.generateFileChecksum(file.toPath());
+    LOGGER.info(
+        "Computed file: {} MD5 checksum: {} for replica: {} to host: {} in {}ms.",
+        file.getName(),
+        fileChecksum,
+        replicaInfo,
+        ctx.channel().remoteAddress(),
+        LatencyUtils.getElapsedTimeFromMsToMs(checksumComputationStartTime));
 
     HttpResponse response = new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
     response.headers().set(HttpHeaderNames.CONTENT_LENGTH, length);
