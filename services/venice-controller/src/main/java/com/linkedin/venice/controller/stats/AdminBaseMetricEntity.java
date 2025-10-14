@@ -18,7 +18,7 @@ import java.util.Set;
 public enum AdminBaseMetricEntity implements ModuleMetricEntityInterface {
   PARENT_ADMIN_CALL_TIME(
       "call.time", MetricType.HISTOGRAM, MetricUnit.MILLISECOND, "latency histogram of the calls to parent admin",
-      setOf(VENICE_CLUSTER_NAME, VENICE_PARENT_ADMIN_METHOD)
+      setOf(VENICE_CLUSTER_NAME, VENICE_PARENT_ADMIN_METHOD, VENICE_PARENT_ADMIN_METHOD_STEP)
   );
 
   private final MetricEntity metricEntity;

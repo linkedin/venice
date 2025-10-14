@@ -1647,13 +1647,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
       long endOfPushStartTime = System.currentTimeMillis();
       veniceWriter.broadcastEndOfPush(new HashMap<>());
-      getHelixVeniceClusterResources(clusterName).getVeniceAdminStats()
-          .recordEndOfPushLatency(endOfPushStartTime);
+      getHelixVeniceClusterResources(clusterName).getVeniceAdminStats().recordEndOfPushLatency(endOfPushStartTime);
 
       long flushStartTime = System.currentTimeMillis();
       veniceWriter.flush();
-      getHelixVeniceClusterResources(clusterName).getVeniceAdminStats()
-          .recordProducerFlushLatency(flushStartTime);
+      getHelixVeniceClusterResources(clusterName).getVeniceAdminStats().recordProducerFlushLatency(flushStartTime);
     }
   }
 

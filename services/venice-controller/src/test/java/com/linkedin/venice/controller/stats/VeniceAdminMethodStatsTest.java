@@ -21,7 +21,6 @@ public class VeniceAdminMethodStatsTest extends AbstractTestVeniceParentHelixAdm
   private static final String TEST_METRIC_PREFIX = "venice_admin_method";
   private static final String TEST_CLUSTER_NAME = AbstractTestVeniceParentHelixAdmin.clusterName;
   private InMemoryMetricReader inMemoryMetricReader;
-
   private VeniceAdminMethodStats veniceAdminMethodStats;
 
   @BeforeMethod
@@ -46,15 +45,7 @@ public class VeniceAdminMethodStatsTest extends AbstractTestVeniceParentHelixAdm
 
   @Test
   public void testRecordMethodLatency() {
-
-    // Record request
-    this.veniceAdminMethodStats.recordParentAdminMethodStepLatency(
-        VeniceAdminMethod.INCREMENT_VERSION_IDEMPOTENT,
-        VeniceAdminMethodStep.ADD_VERSION_AND_TOPIC_ONLY,
-        0L);
-
-    // Record success
-    int testCallTime = 1000;
+    long testCallTime = 1000L;
     this.veniceAdminMethodStats.recordParentAdminMethodStepLatency(
         VeniceAdminMethod.INCREMENT_VERSION_IDEMPOTENT,
         VeniceAdminMethodStep.ADD_VERSION_AND_TOPIC_ONLY,

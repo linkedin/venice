@@ -38,8 +38,8 @@ public class VeniceAdminMethodStats extends AbstractVeniceStats {
 
   }
 
-  public void recordParentAdminMethodStepLatency(VeniceAdminMethod method, VeniceAdminMethodStep step, long startTime) {
-    parentAdminMethodLatencyMetrics.record(System.currentTimeMillis() - startTime, method, step);
+  public void recordParentAdminMethodStepLatency(VeniceAdminMethod method, VeniceAdminMethodStep step, long latency) {
+    parentAdminMethodLatencyMetrics.record(latency, method, step);
   }
 
 }
