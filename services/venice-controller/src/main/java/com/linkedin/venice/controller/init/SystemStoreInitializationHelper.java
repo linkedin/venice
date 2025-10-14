@@ -43,6 +43,27 @@ public final class SystemStoreInitializationHelper {
   private SystemStoreInitializationHelper() {
   }
 
+  public static void setupSystemStore(
+      String clusterName,
+      String systemStoreName,
+      AvroProtocolDefinition protocolDefinition,
+      Schema keySchema,
+      Function<Store, Boolean> updateStoreCheckSupplier,
+      UpdateStoreQueryParams updateStoreQueryParams,
+      Admin admin,
+      VeniceControllerMultiClusterConfig multiClusterConfigs) {
+    setupSystemStore(
+        clusterName,
+        systemStoreName,
+        protocolDefinition,
+        keySchema,
+        updateStoreCheckSupplier,
+        updateStoreQueryParams,
+        admin,
+        multiClusterConfigs,
+        protocolDefinition.getCurrentProtocolVersionSchema());
+  }
+
   /**
    * The main function that initializes and configures shared system stores
    * @param clusterName The cluster where the system store exists
@@ -63,9 +84,10 @@ public final class SystemStoreInitializationHelper {
       Function<Store, Boolean> updateStoreCheckSupplier,
       UpdateStoreQueryParams updateStoreQueryParams,
       Admin admin,
-      VeniceControllerMultiClusterConfig multiClusterConfigs) {
+      VeniceControllerMultiClusterConfig multiClusterConfigs,
+      Schema compiledSchema) {
     LOGGER.info("Setting up system store: {} in cluster: {}", systemStoreName, clusterName);
-    Map<Integer, Schema> protocolSchemaMap = Utils.getAllSchemasFromResources(protocolDefinition);
+    Map<Integer, Schema> protocolSchemaMap = Utils.getAllSchemasFromResources(protocolDefinition, compiledSchema);
     Store store = admin.getStore(clusterName, systemStoreName);
     String keySchemaString = keySchema != null ? keySchema.toString() : DEFAULT_KEY_SCHEMA_STR;
     if (store == null) {

@@ -1,16 +1,18 @@
 package com.linkedin.venice.controller.kafka.protocol.serializer;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
+import com.linkedin.venice.annotation.VisibleForTesting;
+import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
 import com.linkedin.venice.exceptions.VeniceProtocolException;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
-import java.util.HashMap;
 import java.util.Map;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericDatumReader;
@@ -18,7 +20,6 @@ import org.apache.avro.generic.GenericDatumWriter;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.BinaryDecoder;
 import org.apache.avro.io.Decoder;
-import org.apache.avro.io.DecoderFactory;
 import org.apache.avro.io.Encoder;
 import org.apache.avro.specific.SpecificDatumReader;
 
@@ -30,10 +31,7 @@ public class AdminOperationSerializer {
 
   private static final Schema LATEST_SCHEMA = AdminOperation.getClassSchema();
 
-  /** Used to generate decoders. */
-  private static final DecoderFactory DECODER_FACTORY = new DecoderFactory();
-
-  private static final Map<Integer, Schema> PROTOCOL_MAP = initProtocolMap();
+  private final Map<Integer, Schema> PROTOCOL_MAP = initProtocolMap();
 
   /**
    * Serialize AdminOperation object to bytes[] with the writer schema
@@ -106,7 +104,7 @@ public class AdminOperationSerializer {
    * Validate the AdminOperation message against the target schema.
    * @throws VeniceProtocolException if the message does not conform to the target schema.
    */
-  public static void validate(AdminOperation message, int targetSchemaId) {
+  public void validate(AdminOperation message, int targetSchemaId) {
     Schema targetSchema = getSchema(targetSchemaId);
     try {
       SemanticDetector.traverseAndValidate(message, LATEST_SCHEMA, targetSchema, "AdminOperation", null);
@@ -119,7 +117,7 @@ public class AdminOperationSerializer {
 
   public static Map<Integer, Schema> initProtocolMap() {
     try {
-      Map<Integer, Schema> protocolSchemaMap = new HashMap<>();
+      Map<Integer, Schema> protocolSchemaMap = new VeniceConcurrentHashMap<>();
       for (int i = 1; i <= LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION; i++) {
         protocolSchemaMap.put(i, Utils.getSchemaFromResource("avro/AdminOperation/v" + i + "/AdminOperation.avsc"));
       }
@@ -129,11 +127,30 @@ public class AdminOperationSerializer {
     }
   }
 
-  public static Schema getSchema(int schemaId) {
+  public Schema getSchema(int schemaId) {
     if (!PROTOCOL_MAP.containsKey(schemaId)) {
       throw new VeniceProtocolException("Admin operation schema version: " + schemaId + " doesn't exist");
     }
     return PROTOCOL_MAP.get(schemaId);
+  }
+
+  /**
+   * Download schema from system store schema repository and add it to the protocol map if not already present.
+   * @throws VeniceProtocolException if the schema could not be found in the system store schema repository.
+   */
+  public void fetchAndStoreSchemaIfAbsent(VeniceHelixAdmin admin, int schemaId) {
+    // No need to download if the schema is already available.
+    if (PROTOCOL_MAP.containsKey(schemaId)) {
+      return;
+    }
+    String adminOperationSchemaStoreName = AvroProtocolDefinition.ADMIN_OPERATION.getSystemStoreName();
+    Schema schema =
+        admin.getReadOnlyZKSharedSchemaRepository().getValueSchema(adminOperationSchemaStoreName, schemaId).getSchema();
+    if (schema == null) {
+      throw new VeniceProtocolException(
+          "Could not find AdminOperation schema for schema id: " + schemaId + " in system store schema repository");
+    }
+    PROTOCOL_MAP.put(schemaId, schema);
   }
 
   /**
@@ -153,5 +170,15 @@ public class AdminOperationSerializer {
               + writerSchemaId,
           e);
     }
+  }
+
+  @VisibleForTesting
+  public void addSchema(int schemaId, Schema schema) {
+    PROTOCOL_MAP.put(schemaId, schema);
+  }
+
+  @VisibleForTesting
+  public void removeSchema(int schemaId) {
+    PROTOCOL_MAP.remove(schemaId);
   }
 }

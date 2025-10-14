@@ -303,7 +303,7 @@ public enum AvroProtocolDefinition {
     if (magicByte.isPresent() || protocolVersionStoredInHeader) {
       return new InternalAvroSpecificSerializer<>(this);
     }
-    return new InternalAvroSpecificSerializer<>(this, 0);
+    return new InternalAvroSpecificSerializer<>(this, 0, this.getCurrentProtocolVersionSchema());
   }
 
   public int getCurrentProtocolVersion() {
