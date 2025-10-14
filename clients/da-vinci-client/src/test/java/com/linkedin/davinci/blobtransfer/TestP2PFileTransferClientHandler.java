@@ -41,7 +41,6 @@ import java.util.Comparator;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import org.mockito.Mockito;
@@ -59,7 +58,6 @@ public class TestP2PFileTransferClientHandler {
   int TEST_PARTITION = 0;
   CompletionStage<InputStream> inputStreamFuture;
   StorageMetadataService storageMetadataService;
-  ExecutorService checksumValidationExecutorService;
 
   P2PFileTransferClientHandler clientFileHandler;
   P2PMetadataTransferHandler clientMetadataHandler;
