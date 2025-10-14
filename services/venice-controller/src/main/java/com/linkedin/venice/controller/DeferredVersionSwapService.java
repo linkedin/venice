@@ -886,8 +886,8 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
    * Attempts to mark a store as being processed. Returns true if successful (store wasn't already being processed),
    * false if the store is already being processed by another thread.
    */
-  private boolean tryStartProcessingStore(String storeName) {
-    return storesBeingProcessed.add(storeName);
+  private boolean tryStartProcessingStore(String kafkaTopicName) {
+    return storesBeingProcessed.add(kafkaTopicName);
   }
 
   /**
@@ -931,7 +931,9 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
           // Filter out stores that are already being processed to prevent duplicate processing
           List<Store> eligibleStoresToProcess = new ArrayList<>();
           for (Store parentStore: parentStores) {
-            if (tryStartProcessingStore(parentStore.getName())) {
+            String kafkaTopicName =
+                Version.composeKafkaTopic(parentStore.getName(), parentStore.getLargestUsedVersionNumber());
+            if (tryStartProcessingStore(kafkaTopicName)) {
               eligibleStoresToProcess.add(parentStore);
             } else {
               String message = "Skipping store " + parentStore.getName() + " as it's already being processed";
@@ -940,26 +942,18 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
           }
 
           boolean sequentialRollForward = !StringUtils.isEmpty(rolloutOrderStr);
-          if (sequentialRollForward) {
-            for (Store parentStore: eligibleStoresToProcess) {
-              clusterExecutorService.submit(() -> {
-                try {
+          for (Store parentStore: eligibleStoresToProcess) {
+            clusterExecutorService.submit(() -> {
+              try {
+                if (sequentialRollForward) {
                   performSequentialRollForward(cluster, parentStore, childControllerClientMap, rolloutOrder);
-                } finally {
-                  finishProcessingStore(parentStore.getName());
-                }
-              });
-            }
-          } else {
-            for (Store parentStore: eligibleStoresToProcess) {
-              clusterExecutorService.submit(() -> {
-                try {
+                } else {
                   performParallelRollForward(cluster, parentStore, childControllerClientMap);
-                } finally {
-                  finishProcessingStore(parentStore.getName());
                 }
-              });
-            }
+              } finally {
+                finishProcessingStore(parentStore.getName());
+              }
+            });
           }
           clusterThreadPoolStats.recordQueuedTasksCount(clusterExecutorService.getQueue().size());
         }
