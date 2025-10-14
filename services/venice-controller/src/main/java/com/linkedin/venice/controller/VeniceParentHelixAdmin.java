@@ -2776,7 +2776,7 @@ public class VeniceParentHelixAdmin implements Admin {
             storeLifecycleHook = ReflectUtils.callConstructor(
                 ReflectUtils.loadClass(record.getStoreLifecycleHooksClassName()),
                 new Class<?>[] { VeniceProperties.class },
-                new Object[] {});
+                new Object[] { VeniceProperties.empty() });
           } catch (Exception e) {
             throw new VeniceException("Failed to load class: " + record.getStoreLifecycleHooksClassName(), e);
           }
