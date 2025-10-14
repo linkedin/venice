@@ -77,9 +77,9 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
   private static final int MAX_FETCH_STORE_FETCH_RETRY_LIMIT = 5;
   private Cache<String, Map<String, Long>> storePushCompletionTimeCache =
       Caffeine.newBuilder().expireAfterWrite(2, TimeUnit.HOURS).build();
-  private ConcurrentHashMap<String, Integer> fetchNonTargetRegionStoreRetryCountMap = new ConcurrentHashMap<>();
+  private Map<String, Integer> fetchNonTargetRegionStoreRetryCountMap = new ConcurrentHashMap<>();
   private Set<String> stalledVersionSwapSet = new ConcurrentHashMap<>().newKeySet();
-  private ConcurrentHashMap<String, Integer> failedRollforwardRetryCountMap = new ConcurrentHashMap<>();
+  private Map<String, Integer> failedRollforwardRetryCountMap = new ConcurrentHashMap<>();
   private static final int MAX_ROLL_FORWARD_RETRY_LIMIT = 5;
   private static final Set<VersionStatus> VERSION_SWAP_COMPLETION_STATUSES =
       Utils.setOf(ONLINE, PARTIALLY_ONLINE, ERROR);
@@ -88,9 +88,9 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       Caffeine.newBuilder().expireAfterWrite(1, TimeUnit.HOURS).build();
   private static final int CONTROLLER_CLIENT_REQUEST_TIMEOUT = 1 * Time.MS_PER_SECOND;
   private static final int LOG_LATENCY_THRESHOLD = 5 * Time.MS_PER_SECOND;
-  private final ConcurrentHashMap<String, ThreadPoolExecutor> clusterToExecutorMap = new ConcurrentHashMap<>();
+  private final Map<String, ThreadPoolExecutor> clusterToExecutorMap = new ConcurrentHashMap<>();
   private final Set<String> storesBeingProcessed = ConcurrentHashMap.newKeySet();
-  private final ConcurrentHashMap<String, ThreadPoolStats> clusterToThreadPoolStatsMap = new ConcurrentHashMap<>();
+  private final Map<String, ThreadPoolStats> clusterToThreadPoolStatsMap = new ConcurrentHashMap<>();
   private final MetricsRepository metricsRepository;
 
   public DeferredVersionSwapService(
@@ -119,8 +119,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
     stop.set(true);
     deferredVersionSwapExecutor.shutdown();
 
-    // Shutdown per cluster pools
-    for (Map.Entry<String, ThreadPoolExecutor> entry: clusterToExecutorMap.entrySet()) {
+    clusterToExecutorMap.entrySet().parallelStream().forEach(entry -> {
       String cluster = entry.getKey();
       ExecutorService executor = entry.getValue();
 
@@ -136,7 +135,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
         executor.shutdownNow();
         Thread.currentThread().interrupt();
       }
-    }
+    });
   }
 
   private ThreadPoolExecutor getOrCreateExecutorForCluster(String cluster) {
