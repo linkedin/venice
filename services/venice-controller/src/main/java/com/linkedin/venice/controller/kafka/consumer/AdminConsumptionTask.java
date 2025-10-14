@@ -602,8 +602,12 @@ public class AdminConsumptionTask implements Runnable, Closeable {
         for (int i = 0; i < results.size(); i++) {
           String storeName = stores.get(i);
           Future<Void> result = results.get(i);
+          long resultGetStartTime = System.currentTimeMillis();
           try {
             result.get();
+            if (!result.isCancelled()) {
+              stats.recordAdminExecutionTaskResultLatency(System.currentTimeMillis() - resultGetStartTime);
+            }
             problematicStores.remove(storeName);
             if (internalQueuesEmptied) {
               Queue<AdminOperationWrapper> storeQueue = adminOperationsByStore.get(storeName);
@@ -668,6 +672,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
                 problematicStores.put(storeName, errorInfo);
               }
             } else if (e instanceof CancellationException) {
+              stats.recordAdminExecutionCancelledTaskResultLatency(System.currentTimeMillis() - resultGetStartTime);
               long lastSucceededId = lastSucceededExecutionIdMap.getOrDefault(storeName, UNASSIGNED_VALUE);
               long newLastSucceededId = newLastSucceededExecutionIdMap.getOrDefault(storeName, UNASSIGNED_VALUE);
 
@@ -684,6 +689,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
                 problematicStores.put(storeName, errorInfo);
                 LOGGER.warn(errorInfo.exception.getMessage());
               }
+
             } else {
               errorInfo.exception = e;
               errorInfo.position = getNextOperationPositionIfAvailable(storeName);
@@ -697,7 +703,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
             }
 
             LOGGER.error(
-                "Unexpected exception thrown while processing admin message for store {} at position {}",
+                "Unexpected exception thrown while processing admin message for store {} at position {} due to {}",
                 storeName,
                 errorMsgPosition,
                 e);

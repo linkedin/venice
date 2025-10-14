@@ -164,10 +164,10 @@ public class AdminExecutionTask implements Callable<Void> {
       if (e instanceof VeniceRetriableException) {
         // These retriable exceptions are expected, therefore logging at the info level should be sufficient.
         stats.recordFailedRetriableAdminConsumption();
-        LOGGER.info("Retriable exception thrown {}", logMessage, e);
+        LOGGER.info("Retriable exception thrown {} due to {}", logMessage, e);
       } else {
         stats.recordFailedAdminConsumption();
-        LOGGER.error("Error {}", logMessage, e);
+        LOGGER.error("Error {} due to {}", logMessage, e);
       }
       throw e;
     }

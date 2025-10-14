@@ -53,6 +53,12 @@ public class AdminConsumptionStats extends AbstractVeniceStats {
    * Similar to {@code adminMessageProcessLatencySensor} but specifically for replication metadata schema creation admin messages.
    */
   final private Sensor adminMessageReplicationMetadataSchemaCreationProcessLatencySensor;
+
+  /** Latency for admin execution task get if the task is canceled */
+  final private Sensor adminExecutionCancelledTaskResultLatency;
+
+  /** Latency for admin execution task if task is not canceled */
+  final private Sensor adminExecutionTaskResultLatency;
   /**
    * Total end to end latency from the time when the message was first generated in the parent controller to when it's
    * fully processed in the child controller.
@@ -119,6 +125,11 @@ public class AdminConsumptionStats extends AbstractVeniceStats {
         registerSensor("admin_message_value_schema_creation_process_latency_ms", new Avg(), new Max());
     adminMessageReplicationMetadataSchemaCreationProcessLatencySensor =
         registerSensor("admin_message_replication_metadata_schema_creation_process_latency_ms", new Avg(), new Max());
+
+    adminExecutionCancelledTaskResultLatency =
+        registerSensor("admin_execution_cancelled_task_result_latency_ms", new Avg(), new Max());
+
+    adminExecutionTaskResultLatency = registerSensor("admin_execution_task_result_latency_ms", new Avg(), new Max());
 
     adminMessageTotalLatencySensor = registerSensor("admin_message_total_latency_ms", new Avg(), new Max());
     registerSensor(
@@ -194,6 +205,14 @@ public class AdminConsumptionStats extends AbstractVeniceStats {
 
   public void recordReplicationMetadataSchemaCreationProcessLatency(double value) {
     adminMessageReplicationMetadataSchemaCreationProcessLatencySensor.record(value);
+  }
+
+  public void recordAdminExecutionCancelledTaskResultLatency(double value) {
+    adminExecutionCancelledTaskResultLatency.record(value);
+  }
+
+  public void recordAdminExecutionTaskResultLatency(double value) {
+    adminExecutionTaskResultLatency.record(value);
   }
 
   public void recordAdminMessageTotalLatency(double value) {
