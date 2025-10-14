@@ -23,7 +23,6 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.pubsub.PubSubAdminAdapterContext;
 import com.linkedin.venice.pubsub.PubSubConstants;
 import com.linkedin.venice.pubsub.PubSubTopicConfiguration;
-import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.PubSubUtil;
@@ -771,10 +770,58 @@ public class TopicManager implements Closeable {
         Collections.singletonList(Exception.class));
   }
 
-  // get the number of records in a topic for a specific partition
+  /**
+   * Returns the total number of records currently available in the given topic-partition.
+   *
+   * <p>This counts from {@link PubSubSymbolicPosition#EARLIEST} up to the latest available position.
+   *
+   * @param pubSubTopicPartition the topic-partition
+   * @return the number of records in the partition
+   */
   public long getNumRecordsInPartition(PubSubTopicPartition pubSubTopicPartition) {
-    return topicMetadataFetcher
-        .diffPosition(pubSubTopicPartition, PubSubSymbolicPosition.LATEST, PubSubSymbolicPosition.EARLIEST);
+    return countRecordsBetween(pubSubTopicPartition, PubSubSymbolicPosition.LATEST, PubSubSymbolicPosition.EARLIEST);
+  }
+
+  /**
+   * Returns the number of records in the given topic-partition from the earliest available position
+   * up to the specified end position.
+   *
+   * <p>Semantics follow {@code diffPosition(start, end)} of the underlying fetcher. In most
+   * implementations, {@code endPosition} represents "last + 1", so the count is effectively
+   * from EARLIEST inclusive to endPosition exclusive.
+   *
+   * @param pubSubTopicPartition the topic-partition
+   * @param endPosition the position up to which records are counted
+   * @return the number of records from EARLIEST to {@code endPosition}
+   */
+  public long countRecordsUntil(PubSubTopicPartition pubSubTopicPartition, PubSubPosition endPosition) {
+    return countRecordsBetween(pubSubTopicPartition, endPosition, PubSubSymbolicPosition.EARLIEST);
+  }
+
+  /**
+   * Returns the number of records in the given topic-partition between {@code startPosition} and
+   * {@code endPosition}.
+   *
+   * <p>Callers are responsible for providing valid positions for the chosen PubSub implementation.
+   * In typical usage, {@code endPosition} is "last + 1", so the range is
+   * {@code [startPosition, endPosition)}.
+   *
+   * @param pubSubTopicPartition the topic-partition
+   * @param endPosition the upper bound of the range
+   * @param startPosition the lower bound of the range
+   * @return the number of records between {@code startPosition} and {@code endPosition}
+   * @throws NullPointerException if any argument is null
+   */
+  private long countRecordsBetween(
+      PubSubTopicPartition pubSubTopicPartition,
+      PubSubPosition endPosition,
+      PubSubPosition startPosition) {
+
+    Objects.requireNonNull(pubSubTopicPartition, "pubSubTopicPartition");
+    Objects.requireNonNull(endPosition, "endPosition");
+    Objects.requireNonNull(startPosition, "startPosition");
+
+    return topicMetadataFetcher.diffPosition(pubSubTopicPartition, endPosition, startPosition);
   }
 
   /**
@@ -807,13 +854,12 @@ public class TopicManager implements Closeable {
     return topicMetadataFetcher.getLatestPositionWithRetries(pubSubTopicPartition, retries);
   }
 
-  public PubSubPosition getLatestPositionCached(PubSubTopic pubSubTopic, int partitionId) {
-    return topicMetadataFetcher.getLatestPositionCached(new PubSubTopicPartitionImpl(pubSubTopic, partitionId));
+  public PubSubPosition getLatestPositionCached(PubSubTopicPartition topicPartition) {
+    return topicMetadataFetcher.getLatestPositionCached(topicPartition);
   }
 
-  public PubSubPosition getLatestPositionCachedNonBlocking(PubSubTopic pubSubTopic, int partitionId) {
-    return topicMetadataFetcher
-        .getLatestPositionCachedNonBlocking(new PubSubTopicPartitionImpl(pubSubTopic, partitionId));
+  public PubSubPosition getLatestPositionCachedNonBlocking(PubSubTopicPartition topicPartition) {
+    return topicMetadataFetcher.getLatestPositionCachedNonBlocking(topicPartition);
   }
 
   /**

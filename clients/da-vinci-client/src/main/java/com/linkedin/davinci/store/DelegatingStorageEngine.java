@@ -20,7 +20,15 @@ import javax.annotation.Nonnull;
 
 public class DelegatingStorageEngine<P extends AbstractStoragePartition> implements StorageEngine<P> {
   private volatile @Nonnull StorageEngine<P> delegate;
-  private Function<Integer, KeyUrnCompressor> keyDictCompressionFunction;
+  /**
+   * Default to no compression before {@link com.linkedin.davinci.kafka.consumer.StoreIngestionTask} instantiate the
+   * keyUrnCompressor either from the persisted {@link OffsetRecord} or create a new one based on config.
+   * This is a tactical fix that prevents the error requests in server when storage engine is restored but ingestion
+   * service is not there. Da Vinci with live-update-suppression feature should not use key urn compression. For other
+   * Da Vinci use cases, it won't serve traffic until ingestion is completed and partition is ready to serve.
+   * For a proper long term fix, we need more investigation on how to handle all the cases properly.
+   */
+  private Function<Integer, KeyUrnCompressor> keyDictCompressionFunction = ignored -> null;
 
   public DelegatingStorageEngine(@Nonnull StorageEngine<P> delegate) {
     this.delegate = Objects.requireNonNull(delegate);
@@ -38,10 +46,10 @@ public class DelegatingStorageEngine<P extends AbstractStoragePartition> impleme
   }
 
   public boolean isKeyUrnCompressionEnabled(int partitionId) {
-    if (keyDictCompressionFunction == null) {
+    if (getKeyDictCompressionFunction() == null) {
       return false;
     }
-    return keyDictCompressionFunction.apply(partitionId) != null;
+    return getKeyDictCompressionFunction().apply(partitionId) != null;
   }
 
   public void setKeyDictCompressionFunction(Function<Integer, KeyUrnCompressor> keyDictCompressionFunction) {
@@ -52,10 +60,10 @@ public class DelegatingStorageEngine<P extends AbstractStoragePartition> impleme
   }
 
   private byte[] compressKeyIfNeeded(int partitionId, byte[] key, boolean updateDictionary) {
-    if (keyDictCompressionFunction == null) {
+    if (getKeyDictCompressionFunction() == null) {
       throw new VeniceException("KeyUrnCompressor function is not set");
     }
-    KeyUrnCompressor keyUrnCompressor = keyDictCompressionFunction.apply(partitionId);
+    KeyUrnCompressor keyUrnCompressor = getKeyDictCompressionFunction().apply(partitionId);
     if (keyUrnCompressor != null) {
       return keyUrnCompressor.compressKey(key, updateDictionary);
     }
@@ -64,10 +72,10 @@ public class DelegatingStorageEngine<P extends AbstractStoragePartition> impleme
   }
 
   private ByteBuffer compressKeyIfNeeded(int partitionId, ByteBuffer key, boolean updateDictionary) {
-    if (keyDictCompressionFunction == null) {
+    if (getKeyDictCompressionFunction() == null) {
       throw new VeniceException("KeyUrnCompressor function is not set");
     }
-    KeyUrnCompressor keyUrnCompressor = keyDictCompressionFunction.apply(partitionId);
+    KeyUrnCompressor keyUrnCompressor = getKeyDictCompressionFunction().apply(partitionId);
     if (keyUrnCompressor != null) {
       return ByteBuffer.wrap(keyUrnCompressor.compressKey(ByteUtils.extractByteArray(key), updateDictionary));
     }
@@ -209,8 +217,8 @@ public class DelegatingStorageEngine<P extends AbstractStoragePartition> impleme
 
   @Override
   public void getByKeyPrefix(int partitionId, byte[] partialKey, BytesStreamingCallback bytesStreamingCallback) {
-    if (keyDictCompressionFunction != null) {
-      KeyUrnCompressor keyUrnCompressor = keyDictCompressionFunction.apply(partitionId);
+    if (getKeyDictCompressionFunction() != null) {
+      KeyUrnCompressor keyUrnCompressor = getKeyDictCompressionFunction().apply(partitionId);
       if (keyUrnCompressor != null) {
         throw new VeniceException("Partial key lookup is not supported with key urn compression.");
       }
@@ -315,5 +323,9 @@ public class DelegatingStorageEngine<P extends AbstractStoragePartition> impleme
       Map<String, String> checkpointedInfo,
       StoragePartitionConfig storagePartitionConfig) {
     return this.delegate.checkDatabaseIntegrity(partitionId, checkpointedInfo, storagePartitionConfig);
+  }
+
+  Function<Integer, KeyUrnCompressor> getKeyDictCompressionFunction() {
+    return keyDictCompressionFunction;
   }
 }

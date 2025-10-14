@@ -8,6 +8,7 @@ import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.state.ProducerPartitionState;
 import com.linkedin.venice.kafka.validation.Segment;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.utils.SparseConcurrentList;
@@ -40,8 +41,8 @@ public class DataIntegrityValidator {
   protected final SparseConcurrentList<PartitionTracker> partitionTrackers = new SparseConcurrentList<>();
   protected final IntFunction<PartitionTracker> partitionTrackerCreator;
 
-  public DataIntegrityValidator(String topicName) {
-    this(topicName, DISABLED, DISABLED);
+  public DataIntegrityValidator(String topicName, PubSubPositionDeserializer pubSubPositionDeserializer) {
+    this(topicName, pubSubPositionDeserializer, DISABLED, DISABLED);
   }
 
   /**
@@ -49,14 +50,21 @@ public class DataIntegrityValidator {
    *
    * TODO: Open source the ETL or make it stop depending on an exotic open source API
    */
-  public DataIntegrityValidator(String topicName, long logCompactionDelayInMs) {
-    this(topicName, logCompactionDelayInMs, DISABLED);
+  public DataIntegrityValidator(
+      String topicName,
+      PubSubPositionDeserializer pubSubPositionDeserializer,
+      long logCompactionDelayInMs) {
+    this(topicName, pubSubPositionDeserializer, logCompactionDelayInMs, DISABLED);
   }
 
-  public DataIntegrityValidator(String topicName, long logCompactionDelayInMs, long maxAgeInMs) {
+  public DataIntegrityValidator(
+      String topicName,
+      PubSubPositionDeserializer pubSubPositionDeserializer,
+      long logCompactionDelayInMs,
+      long maxAgeInMs) {
     this.logCompactionDelayInMs = logCompactionDelayInMs;
     this.maxAgeInMs = maxAgeInMs;
-    this.partitionTrackerCreator = p -> new PartitionTracker(topicName, p);
+    this.partitionTrackerCreator = p -> new PartitionTracker(topicName, p, pubSubPositionDeserializer);
     LOGGER.info(
         "Initialized DataIntegrityValidator with topicName: {}, maxAgeInMs: {}, logCompactionDelayInMs: {}",
         topicName,

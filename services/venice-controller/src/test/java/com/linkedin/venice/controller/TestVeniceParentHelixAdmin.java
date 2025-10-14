@@ -2562,8 +2562,9 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         ReadStrategy.ANY_OF_ONLINE,
         OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION,
         1);
-
-    store.addVersion(new VersionImpl(storeName, 1, "test_push_id"));
+    VersionImpl version = new VersionImpl(storeName, 1, "test_push_id");
+    version.setStatus(VersionStatus.ONLINE);
+    store.addVersion(version);
     doReturn(store).when(mockParentAdmin).getStore(clusterName, storeName);
     StoreResponse response = mock(StoreResponse.class);
     StoreInfo info = mock(StoreInfo.class);

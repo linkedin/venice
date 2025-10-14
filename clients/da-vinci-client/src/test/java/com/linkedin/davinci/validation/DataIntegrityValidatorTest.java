@@ -28,6 +28,7 @@ import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.ImmutablePubSubMessage;
+import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
@@ -62,8 +63,11 @@ public class DataIntegrityValidatorTest {
     final long maxAgeInMs = 1000;
     Time time = new TestMockTime();
     String topicName = Utils.getUniqueString("TestStore") + "_v1";
-    DataIntegrityValidator validator =
-        new DataIntegrityValidator(topicName, DataIntegrityValidator.DISABLED, maxAgeInMs);
+    DataIntegrityValidator validator = new DataIntegrityValidator(
+        topicName,
+        PubSubPositionDeserializer.DEFAULT_DESERIALIZER,
+        DataIntegrityValidator.DISABLED,
+        maxAgeInMs);
     PubSubTopicPartition topicPartition0 = new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topicName), 0);
     PubSubTopicPartition topicPartition1 = new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topicName), 1);
     long offsetForPartition0 = 0;
@@ -176,7 +180,8 @@ public class DataIntegrityValidatorTest {
   public void testStatelessDIV() {
     String topicName = Utils.getUniqueString("TestStore") + "_v1";
     long logCompactionLagInMs = TimeUnit.HOURS.toMillis(24); // 24 hours
-    DataIntegrityValidator statelessDiv = new DataIntegrityValidator(topicName, logCompactionLagInMs);
+    DataIntegrityValidator statelessDiv =
+        new DataIntegrityValidator(topicName, PubSubPositionDeserializer.DEFAULT_DESERIALIZER, logCompactionLagInMs);
     PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topicName), 1);
 
     /**
@@ -259,7 +264,10 @@ public class DataIntegrityValidatorTest {
   public void testHasGlobalRtDivState() {
     int partition = 1;
     String topicName = Utils.getUniqueString("TestStore") + "_v1";
-    DataIntegrityValidator validator = new DataIntegrityValidator(topicName, DataIntegrityValidator.DISABLED);
+    DataIntegrityValidator validator = new DataIntegrityValidator(
+        topicName,
+        PubSubPositionDeserializer.DEFAULT_DESERIALIZER,
+        DataIntegrityValidator.DISABLED);
     PubSubTopic topic = pubSubTopicRepository.getTopic(topicName);
     PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(topic, partition);
 

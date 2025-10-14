@@ -213,8 +213,9 @@ public class TopicManagerE2ETest {
     };
 
     // get latest offset cached for a non-existent topic
-    Runnable t10 =
-        () -> assertEquals(topicManager.getLatestPositionCached(nonExistentTopic, 0), PubSubSymbolicPosition.LATEST);
+    Runnable t10 = () -> assertEquals(
+        topicManager.getLatestPositionCached(nonExistentTopicPartition),
+        PubSubSymbolicPosition.LATEST);
 
     // get offset by time for an existing topic
     Runnable t15 = () -> assertEquals(
@@ -271,15 +272,16 @@ public class TopicManagerE2ETest {
     assertNotNull(nonExistentTopicLatestOffsets);
     assertEquals(nonExistentTopicLatestOffsets.size(), 0);
     assertThrows(PubSubTopicDoesNotExistException.class, () -> topicManager.getPartitionCount(nonExistentTopic));
-    PubSubTopicPartitionImpl nonExistentTopicPartition = new PubSubTopicPartitionImpl(nonExistentTopic, 0);
+    PubSubTopicPartitionImpl nonExistentTopicPartition0 = new PubSubTopicPartitionImpl(nonExistentTopic, 0);
+    PubSubTopicPartitionImpl nonExistentTopicPartition1 = new PubSubTopicPartitionImpl(nonExistentTopic, 1);
     assertThrows(
         PubSubTopicDoesNotExistException.class,
-        () -> topicManager.getPositionByTime(nonExistentTopicPartition, System.currentTimeMillis()));
+        () -> topicManager.getPositionByTime(nonExistentTopicPartition0, System.currentTimeMillis()));
     topicManager.invalidateCache(nonExistentTopic).get(1, TimeUnit.MINUTES); // should not throw an exception
     assertThrows(
         PubSubTopicDoesNotExistException.class,
-        () -> topicManager.getLatestPositionWithRetries(new PubSubTopicPartitionImpl(nonExistentTopic, 0), 1));
-    assertEquals(topicManager.getLatestPositionCached(nonExistentTopic, 1), PubSubSymbolicPosition.LATEST);
+        () -> topicManager.getLatestPositionWithRetries(nonExistentTopicPartition0, 1));
+    assertEquals(topicManager.getLatestPositionCached(nonExistentTopicPartition1), PubSubSymbolicPosition.LATEST);
   }
 
   @Test(timeOut = 3 * Time.MS_PER_MINUTE)
@@ -368,7 +370,7 @@ public class TopicManagerE2ETest {
         p0Messages.size(),
         "End position should be " + p0Messages.size() + " positions away from EARLIEST");
 
-    PubSubPosition p0EndPositionCached = topicManager.getLatestPositionCached(p0.getPubSubTopic(), 0);
+    PubSubPosition p0EndPositionCached = topicManager.getLatestPositionCached(p0);
     long deltaCached = topicManager.diffPosition(p0, p0EndPositionCached, PubSubSymbolicPosition.EARLIEST);
     assertEquals(
         deltaCached,
@@ -389,7 +391,7 @@ public class TopicManagerE2ETest {
         p1Messages.size(),
         "End position should be " + p1Messages.size() + " positions away from EARLIEST");
 
-    PubSubPosition p1EndPositionCached = topicManager.getLatestPositionCached(p1.getPubSubTopic(), 1);
+    PubSubPosition p1EndPositionCached = topicManager.getLatestPositionCached(p1);
     long delta1Cached = topicManager.diffPosition(p1, p1EndPositionCached, PubSubSymbolicPosition.EARLIEST);
     assertEquals(
         delta1Cached,
@@ -409,7 +411,7 @@ public class TopicManagerE2ETest {
         delta2,
         p2Messages.size(),
         "End position should be " + p2Messages.size() + " positions away from EARLIEST");
-    PubSubPosition p2EndPositionCached = topicManager.getLatestPositionCached(p2.getPubSubTopic(), 2);
+    PubSubPosition p2EndPositionCached = topicManager.getLatestPositionCached(p2);
     long delta2Cached = topicManager.diffPosition(p2, p2EndPositionCached, PubSubSymbolicPosition.EARLIEST);
     assertEquals(
         delta2Cached,
@@ -432,7 +434,8 @@ public class TopicManagerE2ETest {
           0L,
           "End position for partition " + partition + " should be equal to EARLIEST. Actual: " + endPosition);
       // the cached latest position should also
-      PubSubPosition cachedEndPosition = topicManager.getLatestPositionCached(existingTopic, i);
+      PubSubPosition cachedEndPosition =
+          topicManager.getLatestPositionCached(new PubSubTopicPartitionImpl(existingTopic, i));
       long cachedDiff = topicManager.diffPosition(partition, PubSubSymbolicPosition.EARLIEST, cachedEndPosition);
       assertEquals(
           cachedDiff,
@@ -476,7 +479,7 @@ public class TopicManagerE2ETest {
     CountDownLatch latch = new CountDownLatch(1);
     Runnable[] tasks = { () -> {
       latch.countDown();
-      topicManager.getLatestPositionCached(nonExistentTopic, 1);
+      topicManager.getLatestPositionCached(new PubSubTopicPartitionImpl(nonExistentTopic, 1));
     }, () -> {
       latch.countDown();
       topicManager.getLatestPositionWithRetries(new PubSubTopicPartitionImpl(nonExistentTopic, 0), 1);

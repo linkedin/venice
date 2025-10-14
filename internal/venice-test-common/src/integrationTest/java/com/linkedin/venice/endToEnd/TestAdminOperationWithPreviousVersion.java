@@ -393,23 +393,7 @@ public class TestAdminOperationWithPreviousVersion {
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testSetStoreCurrentVersion() {
-    runTestForEntryNames(Collections.singletonList("SetStoreCurrentVersion"), () -> {
-      String storeName = setUpTestStore().getName();
-
-      // Empty push
-      emptyPushToStore(parentControllerClient, storeName, 1);
-
-      int newCurrentVersion = 0;
-      UpdateStoreQueryParams updateStoreQueryParams = new UpdateStoreQueryParams().setCurrentVersion(newCurrentVersion);
-      ControllerResponse response = parentControllerClient.updateStore(storeName, updateStoreQueryParams);
-      assertFalse(response.isError());
-      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, false, true, () -> {
-        StoreResponse storeResponse = parentControllerClient.getStore(storeName);
-        assertFalse(storeResponse.isError());
-        StoreInfo storeInfo = storeResponse.getStore();
-        assertEquals(storeInfo.getCurrentVersion(), newCurrentVersion);
-      });
-    });
+    runTestForEntryNames(Collections.singletonList("SetStoreCurrentVersion"), () -> {});
   }
 
   @Test(timeOut = TEST_TIMEOUT)

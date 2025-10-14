@@ -37,7 +37,7 @@ public class SparkServerStatsTest extends AbstractTestVeniceParentHelixAdmin {
   public void setUp() throws Exception {
     // add all the metrics that are used in the test
     Collection<MetricEntity> metricEntities = Arrays.asList(
-        ControllerMetricEntity.IN_FLIGHT_CALL_COUNT.getMetricEntity(),
+        ControllerMetricEntity.INFLIGHT_CALL_COUNT.getMetricEntity(),
         ControllerMetricEntity.CALL_COUNT.getMetricEntity(),
         ControllerMetricEntity.CALL_TIME.getMetricEntity());
 
@@ -70,7 +70,7 @@ public class SparkServerStatsTest extends AbstractTestVeniceParentHelixAdmin {
 
     // test validation
     validateLongPointFromDataFromCounter(
-        ControllerMetricEntity.IN_FLIGHT_CALL_COUNT.getMetricName(),
+        ControllerMetricEntity.INFLIGHT_CALL_COUNT.getMetricName(),
         1,
         Attributes.builder()
             .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), TEST_CLUSTER_NAME)
@@ -100,7 +100,7 @@ public class SparkServerStatsTest extends AbstractTestVeniceParentHelixAdmin {
 
     // Test validation
     validateLongPointFromDataFromCounter(
-        ControllerMetricEntity.IN_FLIGHT_CALL_COUNT.getMetricName(),
+        ControllerMetricEntity.INFLIGHT_CALL_COUNT.getMetricName(),
         1,
         Attributes.builder()
             .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), TEST_CLUSTER_NAME)
@@ -131,7 +131,7 @@ public class SparkServerStatsTest extends AbstractTestVeniceParentHelixAdmin {
                 VeniceResponseStatusCategory.SUCCESS.getDimensionValue())
             .build());
     validateLongPointFromDataFromCounter(
-        ControllerMetricEntity.IN_FLIGHT_CALL_COUNT.getMetricName(),
+        ControllerMetricEntity.INFLIGHT_CALL_COUNT.getMetricName(),
         0,
         Attributes.builder()
             .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), TEST_CLUSTER_NAME)
@@ -179,7 +179,7 @@ public class SparkServerStatsTest extends AbstractTestVeniceParentHelixAdmin {
 
     // Test validation
     validateLongPointFromDataFromCounter(
-        ControllerMetricEntity.IN_FLIGHT_CALL_COUNT.getMetricName(),
+        ControllerMetricEntity.INFLIGHT_CALL_COUNT.getMetricName(),
         1,
         Attributes.builder()
             .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), TEST_CLUSTER_NAME)
@@ -210,7 +210,7 @@ public class SparkServerStatsTest extends AbstractTestVeniceParentHelixAdmin {
                 VeniceResponseStatusCategory.FAIL.getDimensionValue())
             .build());
     validateLongPointFromDataFromCounter(
-        ControllerMetricEntity.IN_FLIGHT_CALL_COUNT.getMetricName(),
+        ControllerMetricEntity.INFLIGHT_CALL_COUNT.getMetricName(),
         0,
         Attributes.builder()
             .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), TEST_CLUSTER_NAME)
