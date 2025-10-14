@@ -932,10 +932,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     return executionIdAccessor;
   }
 
-  public SharedHelixReadOnlyZKSharedSchemaRepository getZKSharedSchemaRepository() {
-    return zkSharedSchemaRepository;
-  }
-
   public HelixAdapterSerializer getAdapterSerializer() {
     return adapterSerializer;
   }

@@ -1,19 +1,21 @@
 package com.linkedin.venice.controller.kafka.protocol.admin;
 
-import static org.mockito.Mockito.any;
-import static org.mockito.Mockito.anyInt;
-import static org.mockito.Mockito.doCallRealMethod;
+import static org.mockito.Mockito.*;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
 
+import com.linkedin.venice.controller.VeniceHelixAdmin;
+import com.linkedin.venice.controller.helix.SharedHelixReadOnlyZKSharedSchemaRepository;
 import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
 import com.linkedin.venice.exceptions.VeniceProtocolException;
+import com.linkedin.venice.schema.SchemaEntry;
 import java.nio.ByteBuffer;
 import java.util.Collections;
+import org.apache.avro.Schema;
 import org.mockito.Mockito;
 import org.testng.annotations.Test;
 
@@ -113,5 +115,24 @@ public class AdminOperationSerializerTest {
           "Current schema version: 74. New semantic is being used. Field AdminOperation.payloadUnion.UpdateStore.separateRealTimeTopicEnabled: Boolean value true is not the default value false or false";
       assertEquals(e.getMessage(), expectedMessage);
     }
+  }
+
+  @Test
+  public void testDownloadAndSchemaIfNecessary() {
+    VeniceHelixAdmin mockAdmin = Mockito.mock(VeniceHelixAdmin.class);
+    Schema mockSchema = Mockito.mock(Schema.class);
+    SchemaEntry mockSchemaEntry = Mockito.mock(SchemaEntry.class);
+    when(mockSchemaEntry.getSchema()).thenReturn(mockSchema);
+    SharedHelixReadOnlyZKSharedSchemaRepository mockSchemaRepo =
+        Mockito.mock(SharedHelixReadOnlyZKSharedSchemaRepository.class);
+    when(mockAdmin.getZKSharedSchemaRepository()).thenReturn(mockSchemaRepo);
+    when(mockSchemaRepo.getValueSchema(anyString(), anyInt())).thenReturn(mockSchemaEntry);
+
+    int nonExistSchemaId = AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION + 1;
+    doCallRealMethod().when(adminOperationSerializer).downloadAndAddSchemaIfNecessary(any(), anyInt());
+
+    adminOperationSerializer.downloadAndAddSchemaIfNecessary(mockAdmin, nonExistSchemaId);
+    // Verify schema is downloaded and added to the protocol map
+    assertEquals(AdminOperationSerializer.getSchema(nonExistSchemaId), mockSchema);
   }
 }

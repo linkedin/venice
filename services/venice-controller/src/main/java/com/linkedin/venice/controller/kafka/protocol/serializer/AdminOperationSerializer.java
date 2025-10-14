@@ -141,14 +141,14 @@ public class AdminOperationSerializer {
   /**
    * Download schema from system store schema repository and add it to the protocol map if not already present.
    */
-  public static void downloadAndAddSchemaIfNecessary(VeniceHelixAdmin admin, int schemaId) {
+  public void downloadAndAddSchemaIfNecessary(VeniceHelixAdmin admin, int schemaId) {
     // No need to download if the schema is already available.
     if (PROTOCOL_MAP.containsKey(schemaId)) {
       return;
     }
     String adminOperationSchemaStoreName = AvroProtocolDefinition.ADMIN_OPERATION.getSystemStoreName();
     SchemaEntry schemaEntry =
-        admin.getZKSharedSchemaRepository().getValueSchema(adminOperationSchemaStoreName, schemaId);
+        admin.getReadOnlyZKSharedSchemaRepository().getValueSchema(adminOperationSchemaStoreName, schemaId);
     PROTOCOL_MAP.put(schemaId, schemaEntry.getSchema());
   }
 
