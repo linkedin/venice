@@ -138,6 +138,15 @@ public class AdminExecutionTask implements Callable<Void> {
         long processLatency = Math.max(0, completionTimestamp - adminOperationWrapper.getStartProcessingTimestamp());
         if (AdminMessageType.valueOf(adminOperationWrapper.getAdminOperation()) == AdminMessageType.ADD_VERSION) {
           stats.recordAdminMessageAddVersionProcessLatency(processLatency);
+        } else if (AdminMessageType
+            .valueOf(adminOperationWrapper.getAdminOperation()) == AdminMessageType.UPDATE_STORE) {
+          stats.recordAdminMessageUpdateStoreProcessLatency(processLatency);
+        } else if (AdminMessageType
+            .valueOf(adminOperationWrapper.getAdminOperation()) == AdminMessageType.VALUE_SCHEMA_CREATION) {
+          stats.recordAdminValueSchemaCreationProcessLatency(processLatency);
+        } else if (AdminMessageType.valueOf(
+            adminOperationWrapper.getAdminOperation()) == AdminMessageType.REPLICATION_METADATA_SCHEMA_CREATION) {
+          stats.recordReplicationMetadataSchemaCreationProcessLatency(processLatency);
         } else {
           stats.recordAdminMessageProcessLatency(processLatency);
         }

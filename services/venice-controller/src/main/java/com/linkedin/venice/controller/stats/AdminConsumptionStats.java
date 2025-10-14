@@ -32,13 +32,27 @@ public class AdminConsumptionStats extends AbstractVeniceStats {
   final private Sensor adminMessageStartProcessingLatencySensor;
   /**
    * The time difference between the first attempt to process the message and when the message is fully processed. This
-   * includes the latency caused by failures/retries. This metric does not include process time for add version admin messages.
+   * includes the latency caused by failures/retries. This metric does not include process time for admin messages:
+   * ADD_VERSION, UPDATE_STORE, VALUE_SCHEMA_CREATION, REPLICATION_METADATA_SCHEMA_CREATION.
    */
   final private Sensor adminMessageProcessLatencySensor;
   /**
    * Similar to {@code adminMessageProcessLatencySensor} but specifically for add version admin messages.
    */
   final private Sensor adminMessageAddVersionProcessLatencySensor;
+  /**
+   * Similar to {@code adminMessageProcessLatencySensor} but specifically for update store admin messages.
+   */
+  final private Sensor adminMessageUpdateStoreProcessLatencySensor;
+
+  /**
+   * Similar to {@code adminMessageProcessLatencySensor} but specifically for value schema creation admin messages.
+   */
+  final private Sensor adminMessageValueSchemaCreationProcessLatencySensor;
+  /**
+   * Similar to {@code adminMessageProcessLatencySensor} but specifically for replication metadata schema creation admin messages.
+   */
+  final private Sensor adminMessageReplicationMetadataSchemaCreationProcessLatencySensor;
   /**
    * Total end to end latency from the time when the message was first generated in the parent controller to when it's
    * fully processed in the child controller.
@@ -99,6 +113,13 @@ public class AdminConsumptionStats extends AbstractVeniceStats {
     adminMessageProcessLatencySensor = registerSensor("admin_message_process_latency_ms", new Avg(), new Max());
     adminMessageAddVersionProcessLatencySensor =
         registerSensor("admin_message_add_version_process_latency_ms", new Avg(), new Max());
+    adminMessageUpdateStoreProcessLatencySensor =
+        registerSensor("admin_message_update_store_process_latency_ms", new Avg(), new Max());
+    adminMessageValueSchemaCreationProcessLatencySensor =
+        registerSensor("admin_message_value_schema_creation_process_latency_ms", new Avg(), new Max());
+    adminMessageReplicationMetadataSchemaCreationProcessLatencySensor =
+        registerSensor("admin_message_replication_metadata_schema_creation_process_latency_ms", new Avg(), new Max());
+
     adminMessageTotalLatencySensor = registerSensor("admin_message_total_latency_ms", new Avg(), new Max());
     registerSensor(
         new AsyncGauge((ignored, ignored2) -> this.adminConsumptionOffsetLag, "admin_consumption_offset_lag"));
@@ -161,6 +182,18 @@ public class AdminConsumptionStats extends AbstractVeniceStats {
 
   public void recordAdminMessageAddVersionProcessLatency(double value) {
     adminMessageAddVersionProcessLatencySensor.record(value);
+  }
+
+  public void recordAdminMessageUpdateStoreProcessLatency(double value) {
+    adminMessageUpdateStoreProcessLatencySensor.record(value);
+  }
+
+  public void recordAdminValueSchemaCreationProcessLatency(double value) {
+    adminMessageValueSchemaCreationProcessLatencySensor.record(value);
+  }
+
+  public void recordReplicationMetadataSchemaCreationProcessLatency(double value) {
+    adminMessageReplicationMetadataSchemaCreationProcessLatencySensor.record(value);
   }
 
   public void recordAdminMessageTotalLatency(double value) {
