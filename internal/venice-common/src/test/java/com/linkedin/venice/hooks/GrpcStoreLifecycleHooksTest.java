@@ -341,6 +341,48 @@ public class GrpcStoreLifecycleHooksTest {
     assertEquals(result3, StoreVersionLifecycleEventOutcome.WAIT);
   }
 
+  @Test
+  public void testValidateHookParamsWithNullParams() {
+    VeniceProperties defaultConfigs = new VeniceProperties(new HashMap<>());
+    GrpcStoreLifecycleHooks hook = new GrpcStoreLifecycleHooks(defaultConfigs);
+
+    StoreLifecycleEventOutcome result = hook.validateHookParams(TEST_CLUSTER_NAME, TEST_STORE_NAME, null);
+    assertEquals(result, StoreLifecycleEventOutcome.ABORT);
+  }
+
+  @Test
+  public void testValidateHookParamsWithEmptyParams() {
+    VeniceProperties defaultConfigs = new VeniceProperties(new HashMap<>());
+    GrpcStoreLifecycleHooks hook = new GrpcStoreLifecycleHooks(defaultConfigs);
+
+    Map<String, String> emptyParams = new HashMap<>();
+    StoreLifecycleEventOutcome result = hook.validateHookParams(TEST_CLUSTER_NAME, TEST_STORE_NAME, emptyParams);
+    assertEquals(result, StoreLifecycleEventOutcome.ABORT);
+  }
+
+  @Test
+  public void testValidateHookParamsWithMissingChannelConfig() {
+    VeniceProperties defaultConfigs = new VeniceProperties(new HashMap<>());
+    GrpcStoreLifecycleHooks hook = new GrpcStoreLifecycleHooks(defaultConfigs);
+
+    Map<String, String> paramsWithoutChannel = new HashMap<>();
+    paramsWithoutChannel.put("grpc.lifecycle.hooks.configs.other", "value");
+    StoreLifecycleEventOutcome result =
+        hook.validateHookParams(TEST_CLUSTER_NAME, TEST_STORE_NAME, paramsWithoutChannel);
+    assertEquals(result, StoreLifecycleEventOutcome.ABORT);
+  }
+
+  @Test
+  public void testValidateHookParamsWithValidConfig() {
+    VeniceProperties defaultConfigs = new VeniceProperties(new HashMap<>());
+    GrpcStoreLifecycleHooks hook = new GrpcStoreLifecycleHooks(defaultConfigs);
+
+    Map<String, String> validParams = new HashMap<>();
+    validParams.put("grpc.lifecycle.hooks.configs.channel", "localhost:50051");
+    StoreLifecycleEventOutcome result = hook.validateHookParams(TEST_CLUSTER_NAME, TEST_STORE_NAME, validParams);
+    assertEquals(result, StoreLifecycleEventOutcome.PROCEED);
+  }
+
   private String generateCallKey(String clusterName, String storeName, int versionNumber, String regionName) {
     return String.format("%s#%s#%d#%s", clusterName, storeName, versionNumber, regionName);
   }

@@ -43,6 +43,30 @@ public class GrpcStoreLifecycleHooks extends StoreLifecycleHooks implements Clos
   }
 
   @Override
+  public StoreLifecycleEventOutcome validateHookParams(
+      String clusterName,
+      String storeName,
+      Map<String, String> hookParams) {
+    if (hookParams == null) {
+      LOGGER.error("Hook params cannot be null for store {}", storeName);
+      return StoreLifecycleEventOutcome.ABORT;
+    }
+
+    // Parse all gRPC-related configs with prefix
+    Map<String, String> grpcConfigs = parseParamsWithPrefix(GRPC_LIFECYCLE_HOOK_CONFIGS_PREFIX, hookParams);
+
+    if (grpcConfigs.isEmpty() || !grpcConfigs.containsKey(GRPC_LIFECYCLE_HOOK_CONFIGS_CHANNEL)) {
+      LOGGER.error(
+          "Missing required gRPC config for store {}, need channel config with prefix {}",
+          storeName,
+          GRPC_LIFECYCLE_HOOK_CONFIGS_PREFIX);
+      return StoreLifecycleEventOutcome.ABORT;
+    }
+    LOGGER.info("Successfully validated gRPC hook params for store {}", storeName);
+    return StoreLifecycleEventOutcome.PROCEED;
+  }
+
+  @Override
   public StoreVersionLifecycleEventOutcome postStoreVersionSwap(
       String clusterName,
       String storeName,

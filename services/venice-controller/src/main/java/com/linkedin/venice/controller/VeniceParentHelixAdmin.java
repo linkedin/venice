@@ -208,6 +208,8 @@ import com.linkedin.venice.helix.ParentHelixOfflinePushAccessor;
 import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.helix.StoragePersonaRepository;
 import com.linkedin.venice.helix.ZkStoreConfigAccessor;
+import com.linkedin.venice.hooks.StoreLifecycleEventOutcome;
+import com.linkedin.venice.hooks.StoreLifecycleHooks;
 import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.ConcurrentPushDetectionStrategy;
@@ -2769,6 +2771,21 @@ public class VeniceParentHelixAdmin implements Admin {
       } else {
         List<StoreLifecycleHooksRecord> convertedLifecycleHooks = new ArrayList<>();
         for (LifecycleHooksRecord record: newLifecycleHooks) {
+          StoreLifecycleHooks storeLifecycleHook;
+          try {
+            storeLifecycleHook = ReflectUtils.callConstructor(
+                ReflectUtils.loadClass(record.getStoreLifecycleHooksClassName()),
+                new Class<?>[] { VeniceProperties.class },
+                new Object[] {});
+          } catch (Exception e) {
+            throw new VeniceException("Failed to load class: " + record.getStoreLifecycleHooksClassName(), e);
+          }
+          if (storeLifecycleHook.validateHookParams(
+              clusterName,
+              storeName,
+              record.getStoreLifecycleHooksParams()) != StoreLifecycleEventOutcome.PROCEED) {
+            throw new VeniceException("Params for store lifecycle hooks is invalid");
+          }
           convertedLifecycleHooks.add(
               new StoreLifecycleHooksRecord(
                   record.getStoreLifecycleHooksClassName(),
