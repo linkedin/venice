@@ -20,6 +20,8 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import org.apache.avro.Schema;
+import org.apache.avro.specific.SpecificData;
+import org.apache.avro.specific.SpecificRecord;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -29,6 +31,7 @@ public class SystemSchemaInitializationRoutine implements ClusterLeaderInitializ
   private static final String DEFAULT_KEY_SCHEMA_STR = "\"int\"";
 
   private final AvroProtocolDefinition protocolDefinition;
+  private final Schema protocolSchema;
   private final VeniceControllerMultiClusterConfig multiClusterConfigs;
   private final VeniceHelixAdmin admin;
   private final Optional<Schema> keySchema;
@@ -39,7 +42,7 @@ public class SystemSchemaInitializationRoutine implements ClusterLeaderInitializ
       AvroProtocolDefinition protocolDefinition,
       VeniceControllerMultiClusterConfig multiClusterConfigs,
       VeniceHelixAdmin admin) {
-    this(protocolDefinition, multiClusterConfigs, admin, Optional.empty(), Optional.empty(), false);
+    this(protocolDefinition, multiClusterConfigs, admin, Optional.empty(), Optional.empty(), false, null);
   }
 
   public SystemSchemaInitializationRoutine(
@@ -49,7 +52,28 @@ public class SystemSchemaInitializationRoutine implements ClusterLeaderInitializ
       Optional<Schema> keySchema,
       Optional<UpdateStoreQueryParams> storeMetadataUpdate,
       boolean autoRegisterDerivedComputeSchema) {
+    this(
+        protocolDefinition,
+        multiClusterConfigs,
+        admin,
+        keySchema,
+        storeMetadataUpdate,
+        autoRegisterDerivedComputeSchema,
+        null);
+  }
+
+  public SystemSchemaInitializationRoutine(
+      AvroProtocolDefinition protocolDefinition,
+      VeniceControllerMultiClusterConfig multiClusterConfigs,
+      VeniceHelixAdmin admin,
+      Optional<Schema> keySchema,
+      Optional<UpdateStoreQueryParams> storeMetadataUpdate,
+      boolean autoRegisterDerivedComputeSchema,
+      Class<? extends SpecificRecord> specificRecordClass) {
     this.protocolDefinition = protocolDefinition;
+    this.protocolSchema = specificRecordClass != null
+        ? SpecificData.get().getSchema(specificRecordClass)
+        : protocolDefinition.getCurrentProtocolVersionSchema();
     this.multiClusterConfigs = multiClusterConfigs;
     this.admin = admin;
     this.keySchema = keySchema;
@@ -65,7 +89,7 @@ public class SystemSchemaInitializationRoutine implements ClusterLeaderInitializ
     String intendedCluster = multiClusterConfigs.getSystemSchemaClusterName();
     if (intendedCluster.equals(clusterToInit)) {
       String systemStoreName = protocolDefinition.getSystemStoreName();
-      Map<Integer, Schema> protocolSchemaMap = Utils.getAllSchemasFromResources(protocolDefinition);
+      Map<Integer, Schema> protocolSchemaMap = Utils.getAllSchemasFromResources(protocolDefinition, protocolSchema);
 
       // Sanity check to make sure the store is not already created in another cluster.
       try {

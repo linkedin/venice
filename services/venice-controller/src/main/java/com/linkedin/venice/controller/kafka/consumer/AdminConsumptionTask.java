@@ -902,6 +902,9 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     if (MessageType.PUT == messageType) {
       Put put = (Put) kafkaValue.payloadUnion;
       try {
+        if (admin.isAdminOperationSystemStoreEnabled()) {
+          deserializer.fetchAndStoreSchemaIfAbsent(admin, put.schemaId);
+        }
         adminOperation = deserializer.deserialize(put.putValue, put.schemaId);
         executionIdFromPayload = adminOperation.executionId;
       } catch (Exception e) {
@@ -1265,5 +1268,10 @@ public class AdminConsumptionTask implements Runnable, Closeable {
   // Visible for testing
   long getConsumptionLagUpdateIntervalInMs() {
     return CONSUMPTION_LAG_UPDATE_INTERVAL_IN_MS;
+  }
+
+  // Visible for testing
+  AdminOperationSerializer getDeserializer() {
+    return deserializer;
   }
 }

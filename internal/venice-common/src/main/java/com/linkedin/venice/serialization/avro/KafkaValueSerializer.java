@@ -20,6 +20,6 @@ public class KafkaValueSerializer extends InternalAvroSpecificSerializer<KafkaMe
   }
 
   public KafkaValueSerializer(BiConsumer<Integer, Schema> newSchemaEncountered) {
-    super(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE, null, newSchemaEncountered);
+    super(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE, null, newSchemaEncountered, null);
   }
 }
