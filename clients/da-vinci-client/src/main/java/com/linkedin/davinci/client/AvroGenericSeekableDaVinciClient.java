@@ -1,10 +1,10 @@
 package com.linkedin.davinci.client;
 
+import com.linkedin.davinci.consumer.VeniceChangeCoordinate;
 import com.linkedin.davinci.storage.chunking.GenericChunkingAdapter;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.utils.VeniceProperties;
-import com.linkedin.venice.views.ChangeCaptureView;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -44,7 +44,12 @@ public class AvroGenericSeekableDaVinciClient<K, V> extends AvroGenericDaVinciCl
   }
 
   @Override
-  public CompletableFuture<Void> seekToCheckpoint(Set<ChangeCaptureView> checkpoints) {
+  public CompletableFuture<Void> seekToBeginningOfPush(Set<Integer> partitions) {
+    return null;
+  }
+
+  @Override
+  public CompletableFuture<Void> seekToCheckpoint(Set<VeniceChangeCoordinate> checkpoints) {
     return null;
   }
 
