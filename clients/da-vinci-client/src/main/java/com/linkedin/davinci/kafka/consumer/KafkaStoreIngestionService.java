@@ -255,7 +255,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     this.compressorFactory = compressorFactory;
     this.zkHelixAdmin = zkHelixAdmin;
     this.heartbeatMonitoringService = heartbeatMonitoringService;
-    this.heartbeatMonitoringService.setKafkaStoreIngestionService(this);
     // Each topic that has any partition ingested by this class has its own lock.
     this.topicLockManager = new ResourceAutoClosableLockManager<>(ReentrantLock::new);
     this.serverConfig = veniceConfigLoader.getVeniceServerConfig();
