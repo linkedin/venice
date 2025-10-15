@@ -37,8 +37,8 @@ public class VeniceAdminStats extends AbstractVeniceStats {
    */
   private final Sensor failedSerializingAdminOperationMessageCount;
 
-  /** Measure latency when sending the start-of-push signal
-   * for {@link com.linkedin.venice.controller.VeniceHelixAdmin#writeEndOfPush(String, String, int, boolean)}.*/
+  /** Measure latency for broadcasting the start-of-push signal (i.e., the broadcastStartOfPush operation)
+   * within {@link com.linkedin.venice.controller.VeniceHelixAdmin#writeEndOfPush(String, String, int, boolean)}.*/
   private final Sensor startOfPushLatencySensor;
 
   /** Measure latency when sending the end-of-push signal to the queue
