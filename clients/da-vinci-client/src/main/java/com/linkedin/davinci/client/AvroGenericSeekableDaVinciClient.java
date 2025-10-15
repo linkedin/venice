@@ -45,7 +45,7 @@ public class AvroGenericSeekableDaVinciClient<K, V> extends AvroGenericDaVinciCl
 
   @Override
   public CompletableFuture<Void> seekToBeginningOfPush(Set<Integer> partitions) {
-    return null;
+    return super.subscribe(partitions);
   }
 
   @Override
