@@ -12,7 +12,6 @@ import com.linkedin.venice.kafka.protocol.state.ProducerPartitionState;
 import com.linkedin.venice.pubsub.PubSubContext;
 import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
-import com.linkedin.venice.pubsub.PubSubUtil;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
@@ -129,7 +128,9 @@ public class OffsetRecord {
   }
 
   public PubSubPosition getCheckpointedLocalVtPosition() {
-    return PubSubUtil.fromKafkaOffset(this.partitionState.offset);
+    return deserializePositionWithOffsetFallback(
+        this.partitionState.lastProcessedVersionTopicPubSubPosition,
+        this.partitionState.offset);
   }
 
   public void checkpointLocalVtPosition(PubSubPosition vtPosition) {
@@ -142,7 +143,9 @@ public class OffsetRecord {
   }
 
   public PubSubPosition getCheckpointedRemoteVtPosition() {
-    return PubSubUtil.fromKafkaOffset(this.partitionState.upstreamVersionTopicOffset);
+    return deserializePositionWithOffsetFallback(
+        this.partitionState.upstreamVersionTopicPubSubPosition,
+        this.partitionState.upstreamVersionTopicOffset);
   }
 
   public void checkpointRemoteVtPosition(PubSubPosition remoteVtPosition) {
@@ -301,11 +304,12 @@ public class OffsetRecord {
    */
   public PubSubPosition getCheckpointedRtPosition(String pubSubBrokerAddress) {
     Long offset = partitionState.upstreamOffsetMap.get(pubSubBrokerAddress);
+    ByteBuffer wfBuffer = partitionState.upstreamRealTimeTopicPubSubPositionMap.get(pubSubBrokerAddress);
     if (offset == null) {
       // If the offset is not set, return EARLIEST symbolic position.
       return PubSubSymbolicPosition.EARLIEST;
     }
-    return PubSubUtil.fromKafkaOffset(offset);
+    return deserializePositionWithOffsetFallback(wfBuffer, offset);
   }
 
   public void checkpointRtPosition(String pubSubBrokerAddress, PubSubPosition leaderPosition) {
@@ -334,8 +338,9 @@ public class OffsetRecord {
       checkpointUpstreamPositionsReceiver.clear();
       for (Map.Entry<String, Long> offsetEntry: partitionState.upstreamOffsetMap.entrySet()) {
         String pubSubBrokerAddress = offsetEntry.getKey();
+        ByteBuffer wfBuffer = partitionState.upstreamRealTimeTopicPubSubPositionMap.get(pubSubBrokerAddress);
         checkpointUpstreamPositionsReceiver
-            .put(pubSubBrokerAddress, PubSubUtil.fromKafkaOffset(offsetEntry.getValue()));
+            .put(pubSubBrokerAddress, deserializePositionWithOffsetFallback(wfBuffer, offsetEntry.getValue()));
       }
     }
   }
@@ -522,7 +527,7 @@ public class OffsetRecord {
       final PubSubPosition position = pubSubPositionDeserializer.toPosition(wireFormatBytes);
 
       // Guard against regressions: honor the caller-provided minimum offset.
-      if (offset > 0 && position.getNumericOffset() < offset) {
+      if (position.getNumericOffset() < offset) {
         LOGGER.info(
             "Deserialized position: {} is behind the provided offset: {}. Using offset-based position.",
             position.getNumericOffset(),
