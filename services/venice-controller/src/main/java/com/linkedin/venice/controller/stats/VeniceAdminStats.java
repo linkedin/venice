@@ -68,7 +68,7 @@ public class VeniceAdminStats extends AbstractVeniceStats {
         new Max(),
         TehutiUtils.getPercentileStat(getName() + AbstractVeniceStats.DELIMITER + startOfPushLatencySensorName));
     String endOfPushLatencySensorName = "end_of_push_latency";
-    endOfPushLatencySensor = registerSensor(
+    endOfPushLatencySensor = registerSensorIfAbsent(
         endOfPushLatencySensorName,
         new Avg(),
         new Max(),
