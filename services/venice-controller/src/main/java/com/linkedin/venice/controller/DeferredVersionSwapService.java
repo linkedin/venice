@@ -875,10 +875,24 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
     }
   }
 
-  private boolean isTargetRegionPushWithDeferredSwapEnabled(Version targetVersion) {
+  private boolean isTargetRegionPushWithDeferredSwapEnabled(Store parentStore) {
+    int targetVersionNum = parentStore.getLargestUsedVersionNumber();
+    if (targetVersionNum < 1) {
+      return false;
+    }
+
+    Version targetVersion = parentStore.getVersion(targetVersionNum);
+    if (targetVersion == null) {
+      String message =
+          "Parent version is null for store " + parentStore.getName() + " for target version " + targetVersionNum;
+      logMessageIfNotRedundant(message);
+      return false;
+    }
+
     if (targetVersion.isVersionSwapDeferred() && StringUtils.isNotEmpty(targetVersion.getTargetSwapRegion())) {
       return true;
     }
+
     return false;
   }
 
@@ -893,8 +907,8 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
   /**
    * Marks a store as no longer being processed.
    */
-  private void finishProcessingStore(String storeName) {
-    storesBeingProcessed.remove(storeName);
+  private void finishProcessingStore(String kafkaTopicName) {
+    storesBeingProcessed.remove(kafkaTopicName);
   }
 
   private Runnable getRunnableForDeferredVersionSwap() {
@@ -933,7 +947,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
           for (Store parentStore: parentStores) {
             String kafkaTopicName =
                 Version.composeKafkaTopic(parentStore.getName(), parentStore.getLargestUsedVersionNumber());
-            if (tryStartProcessingStore(kafkaTopicName)) {
+            if (tryStartProcessingStore(kafkaTopicName) && isTargetRegionPushWithDeferredSwapEnabled(parentStore)) {
               eligibleStoresToProcess.add(parentStore);
             } else {
               String message = "Skipping store " + parentStore.getName() + " as it's already being processed";
@@ -943,15 +957,21 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
 
           boolean sequentialRollForward = !StringUtils.isEmpty(rolloutOrderStr);
           for (Store parentStore: eligibleStoresToProcess) {
+            Version targetVersion = parentStore.getVersion(parentStore.getLargestUsedVersionNumber());
             clusterExecutorService.submit(() -> {
               try {
                 if (sequentialRollForward) {
-                  performSequentialRollForward(cluster, parentStore, childControllerClientMap, rolloutOrder);
+                  performSequentialRollForward(
+                      cluster,
+                      parentStore,
+                      childControllerClientMap,
+                      rolloutOrder,
+                      targetVersion);
                 } else {
-                  performParallelRollForward(cluster, parentStore, childControllerClientMap);
+                  performParallelRollForward(cluster, parentStore, childControllerClientMap, targetVersion);
                 }
               } finally {
-                finishProcessingStore(parentStore.getName());
+                finishProcessingStore(Version.composeKafkaTopic(parentStore.getName(), targetVersion.getNumber()));
               }
             });
           }
@@ -971,24 +991,9 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       String cluster,
       Store parentStore,
       Map<String, ControllerClient> childControllerClientMap,
-      List<String> rolloutOrder) {
-    int targetVersionNum = parentStore.getLargestUsedVersionNumber();
-    if (targetVersionNum < 1) {
-      return;
-    }
-
-    Version targetVersion = parentStore.getVersion(targetVersionNum);
-    if (targetVersion == null) {
-      String message =
-          "Parent version is null for store " + parentStore.getName() + " for target version " + targetVersionNum;
-      logMessageIfNotRedundant(message);
-      return;
-    }
-
-    if (!isTargetRegionPushWithDeferredSwapEnabled(targetVersion)) {
-      return;
-    }
-
+      List<String> rolloutOrder,
+      Version targetVersion) {
+    int targetVersionNum = targetVersion.getNumber();
     String storeName = parentStore.getName();
     String targetRegion = rolloutOrder.get(0);
     Set<String> remainingRegions = getRegionsForVersionSwap(childControllerClientMap, targetRegion);
@@ -1097,24 +1102,9 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
   private void performParallelRollForward(
       String cluster,
       Store parentStore,
-      Map<String, ControllerClient> childControllerClientMap) {
-    int targetVersionNum = parentStore.getLargestUsedVersionNumber();
-    if (targetVersionNum < 1) {
-      return;
-    }
-
-    Version targetVersion = parentStore.getVersion(targetVersionNum);
-    if (targetVersion == null) {
-      String message =
-          "Parent version is null for store " + parentStore.getName() + " for target version " + targetVersionNum;
-      logMessageIfNotRedundant(message);
-      return;
-    }
-
-    if (!isTargetRegionPushWithDeferredSwapEnabled(targetVersion)) {
-      return;
-    }
-
+      Map<String, ControllerClient> childControllerClientMap,
+      Version targetVersion) {
+    int targetVersionNum = targetVersion.getNumber();
     String storeName = parentStore.getName();
     String targetRegion = RegionUtils.parseRegionRolloutOrderList(targetVersion.getTargetSwapRegion()).get(0);
     Set<String> remainingRegions = getRegionsForVersionSwap(childControllerClientMap, targetRegion);
