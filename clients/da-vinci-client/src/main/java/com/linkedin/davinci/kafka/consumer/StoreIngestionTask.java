@@ -4713,17 +4713,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
     LeaderMetadata leaderMetadataFooter = consumerRecord.getValue().leaderMetadataFooter;
 
-    if (leaderMetadataFooter.upstreamPubSubPosition != null
-        && leaderMetadataFooter.upstreamPubSubPosition.hasRemaining()) {
-      PubSubPosition upstreamPubSubPosition =
-          pubSubContext.getPubSubPositionDeserializer().toPosition(leaderMetadataFooter.upstreamPubSubPosition);
-      if (upstreamPubSubPosition.getNumericOffset() > leaderMetadataFooter.upstreamOffset) {
-        LOGGER.warn(
-            "upstreamPubSubPosition has higher offset than upstreamOffset for leaderMetadataFooter: "
-                + leaderMetadataFooter);
-      }
-    }
-
     // always return upstreamOffset instead of upstreamPubSubPosition
     // till we fix all the issues in offset to pubsubPosition migration
     return PubSubUtil.fromKafkaOffset(leaderMetadataFooter.upstreamOffset);

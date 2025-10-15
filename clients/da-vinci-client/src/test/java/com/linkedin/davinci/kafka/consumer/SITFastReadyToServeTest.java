@@ -10,16 +10,56 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 import com.linkedin.davinci.config.VeniceServerConfig;
+import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.pubsub.PubSubContext;
+import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
+import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
 public class SITFastReadyToServeTest {
+  @Test
+  public void testReadyToServeSerialization() {
+    // Create test data
+    PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+    PubSubTopicPartitionImpl topicPartition =
+        new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic("test_v1"), 0);
+    PubSubContext pubSubContext = new PubSubContext.Builder().setPubSubTopicRepository(pubSubTopicRepository).build();
+    OffsetRecord offsetRecord = new OffsetRecord(AvroProtocolDefinition.PARTITION_STATE.getSerializer(), pubSubContext);
+
+    // Create PartitionConsumptionState
+    PartitionConsumptionState pcs =
+        new PartitionConsumptionState(topicPartition, offsetRecord, pubSubContext, false, null);
+
+    // Verify initial state
+    Assert.assertFalse(pcs.getReadyToServeInOffsetRecord(), "Should not be ready to serve initially");
+    // Set ready to serve
+    pcs.recordReadyToServeInOffsetRecord();
+    // Verify after setting
+    Assert.assertTrue(pcs.getReadyToServeInOffsetRecord(), "Should be ready to serve after setting");
+
+    // Serialize and deserialize the offset record
+    InternalAvroSpecificSerializer<PartitionState> serializer = AvroProtocolDefinition.PARTITION_STATE.getSerializer();
+    byte[] serialized = offsetRecord.toBytes();
+    OffsetRecord deserialized = new OffsetRecord(serialized, serializer, null);
+
+    // Create a new PCS with the deserialized offset record
+    PartitionConsumptionState newPcs =
+        new PartitionConsumptionState(topicPartition, deserialized, pubSubContext, false, null);
+
+    // Verify after deserialization
+    Assert.assertTrue(newPcs.getReadyToServeInOffsetRecord(), "Should still be ready to serve after deserialization");
+  }
+
   @Test
   public void testReadyToServeWithMessageTimeLag() {
     StoreIngestionTask storeIngestionTask = mock(StoreIngestionTask.class);

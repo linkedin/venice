@@ -40,6 +40,7 @@ import java.util.function.BooleanSupplier;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
+import org.apache.avro.util.Utf8;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -64,7 +65,7 @@ public class PartitionConsumptionState {
   private static final Logger LOGGER = LogManager.getLogger(PartitionConsumptionState.class);
   private static final int MAX_INCREMENTAL_PUSH_ENTRY_NUM = 50;
   private static final long DEFAULT_HEARTBEAT_LAG_THRESHOLD_MS = MINUTES.toMillis(2); // Default is 2 minutes.
-  private static final String PREVIOUSLY_READY_TO_SERVE = "previouslyReadyToServe";
+  private static final CharSequence PREVIOUSLY_READY_TO_SERVE = new Utf8("previouslyReadyToServe");
   private static final String TRUE = "true";
 
   private final PubSubTopicPartition partitionReplica;
