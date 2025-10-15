@@ -28,10 +28,10 @@ public enum VeniceMetricsDimensions {
   /** {@link ControllerRoute } */
   VENICE_CONTROLLER_ENDPOINT("venice.controller.endpoint"),
 
-  /** {@link VeniceAdminMethod} */
+  /** {@link com.linkedin.venice.controller.stats.VeniceAdminMethod} */
   VENICE_PARENT_ADMIN_METHOD("venice.parent.admin.method"),
 
-  /** {@link VeniceAdminMethodStep} */
+  /** {@link com.linkedin.venice.controller.stats.VeniceAdminMethodStep} */
   VENICE_PARENT_ADMIN_METHOD_STEP("venice.parent.admin.method.step"),
 
   /** {@link VeniceResponseStatusCategory} */
