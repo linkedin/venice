@@ -687,7 +687,6 @@ public class AdminConsumptionTask implements Runnable, Closeable {
                 problematicStores.put(storeName, errorInfo);
                 LOGGER.warn(errorInfo.exception.getMessage());
               }
-
             } else {
               errorInfo.exception = e;
               errorInfo.position = getNextOperationPositionIfAvailable(storeName);
