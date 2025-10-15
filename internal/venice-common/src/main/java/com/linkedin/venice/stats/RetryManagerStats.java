@@ -40,7 +40,7 @@ public class RetryManagerStats extends AbstractVeniceStats {
     super(metricsRepository, name);
     this.storeName = storeName;
 
-    // We use requestType to indicate if RetryManagerStats is created for Router or FastClient.
+    // We use requestType == null indicates Router usage; non-null indicates FastClient usage.
     if (requestType == null) {
       this.otelRepository = null;
       this.baseDimensionsMap = null;
