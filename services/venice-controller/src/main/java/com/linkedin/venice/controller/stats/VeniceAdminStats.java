@@ -2,6 +2,7 @@ package com.linkedin.venice.controller.stats;
 
 import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.stats.TehutiUtils;
+import com.linkedin.venice.utils.LatencyUtils;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.Avg;
@@ -99,15 +100,15 @@ public class VeniceAdminStats extends AbstractVeniceStats {
   }
 
   public void recordStartOfPushLatency(long startTime) {
-    startOfPushLatencySensor.record(System.currentTimeMillis() - startTime);
+    startOfPushLatencySensor.record(LatencyUtils.getElapsedTimeFromMsToMs(startTime));
   }
 
   public void recordEndOfPushLatency(long startTime) {
-    endOfPushLatencySensor.record(System.currentTimeMillis() - startTime);
+    endOfPushLatencySensor.record(LatencyUtils.getElapsedTimeFromMsToMs(startTime));
   }
 
   public void recordProducerFlushLatency(long startTime) {
-    producerFlushLatencySensor.record(System.currentTimeMillis() - startTime);
+    producerFlushLatencySensor.record(LatencyUtils.getElapsedTimeFromMsToMs(startTime));
   }
 
 }

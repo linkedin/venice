@@ -366,8 +366,8 @@ public class AdminConsumptionTask implements Runnable, Closeable {
         Iterator<DefaultPubSubMessage> recordsIterator;
         // Only poll the kafka channel if there are no more undelegated records due to exceptions.
         if (undelegatedRecords.isEmpty()) {
-          Map<PubSubTopicPartition, List<DefaultPubSubMessage>> messages = consumer.poll(READ_CYCLE_DELAY_MS);
           long messagePollingTimeStamp = System.currentTimeMillis();
+          Map<PubSubTopicPartition, List<DefaultPubSubMessage>> messages = consumer.poll(READ_CYCLE_DELAY_MS);
           if (messages == null || messages.isEmpty()) {
             LOGGER.debug("Received null or no messages");
           } else {
@@ -605,9 +605,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
           long resultGetStartTime = System.currentTimeMillis();
           try {
             result.get();
-            if (!result.isCancelled()) {
-              stats.recordAdminExecutionTaskResultLatency(System.currentTimeMillis() - resultGetStartTime);
-            }
+            stats.recordAdminExecutionTaskResultLatency(System.currentTimeMillis() - resultGetStartTime);
             problematicStores.remove(storeName);
             if (internalQueuesEmptied) {
               Queue<AdminOperationWrapper> storeQueue = adminOperationsByStore.get(storeName);
@@ -703,7 +701,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
             }
 
             LOGGER.error(
-                "Unexpected exception thrown while processing admin message for store {} at position {} due to {}",
+                "Unexpected exception thrown while processing admin message for store {} at position {}",
                 storeName,
                 errorMsgPosition,
                 e);
