@@ -33,7 +33,8 @@ public class AdminConsumptionStats extends AbstractVeniceStats {
   /**
    * The time difference between the first attempt to process the message and when the message is fully processed. This
    * includes the latency caused by failures/retries. This metric does not include process time for admin messages:
-   * ADD_VERSION, UPDATE_STORE, VALUE_SCHEMA_CREATION, REPLICATION_METADATA_SCHEMA_CREATION.
+   * {@link com.linkedin.venice.controller.AdminMessageType#ADD_VERSION}, {@link com.linkedin.venice.controller.AdminMessageType#UPDATE_STORE},
+   * {@link com.linkedin.venice.controller.AdminMessageType#VALUE_SCHEMA_CREATION}, {@link com.linkedin.venice.controller.AdminMessageType#REPLICATION_METADATA_SCHEMA_CREATION}.
    */
   final private Sensor adminMessageProcessLatencySensor;
   /**
