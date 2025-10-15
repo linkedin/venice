@@ -418,9 +418,9 @@ public class ConfigKeys {
   public static final String REPUSH_ORCHESTRATOR_CLASS_NAME = "controller.repush.orchestrator.class.name";
 
   /**
-   * Class names of the implementation of interface {@link com.linkedin.venice.controller.logcompaction.NominationFilter} in {@link com.linkedin.venice.controller.logcompaction.CompactionManager}
+   * Class names of the implementation of interface {@link com.linkedin.venice.controller.logcompaction.CandidateFilter} in {@link com.linkedin.venice.controller.logcompaction.CompactionManager}
    */
-  public static final String REPUSH_NOMINATION_FILTER_CLASS_NAMES = "controller.repush.nomination.filter.class.names";
+  public static final String REPUSH_CANDIDATE_FILTER_CLASS_NAMES = "controller.repush.candidate.filter.class.names";
 
   /**
    * Prefix of configs to configure RepushOrchestrator

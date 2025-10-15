@@ -66,10 +66,10 @@ import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.controller.kafka.protocol.admin.HybridStoreConfigRecord;
 import com.linkedin.venice.controller.kafka.protocol.admin.StoreViewConfigRecord;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
+import com.linkedin.venice.controller.logcompaction.CandidateFilter;
 import com.linkedin.venice.controller.logcompaction.CompactionManager;
 import com.linkedin.venice.controller.logcompaction.LogCompactionService;
-import com.linkedin.venice.controller.logcompaction.NominationFilter;
-import com.linkedin.venice.controller.logcompaction.StoreNominationFilter;
+import com.linkedin.venice.controller.logcompaction.StoreCandidateFilter;
 import com.linkedin.venice.controller.multitaskscheduler.MultiTaskSchedulerService;
 import com.linkedin.venice.controller.multitaskscheduler.StoreMigrationManager;
 import com.linkedin.venice.controller.repush.RepushJobRequest;
@@ -804,19 +804,20 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
               new Class[] { VeniceProperties.class },
               new Object[] { multiClusterConfigs.getRepushOrchestratorConfigs() });
 
-          // Add nomination filters for compaction manager
-          List<NominationFilter> nominationFilters = Arrays.asList(new StoreNominationFilter(multiClusterConfigs));
-          for (String nominationFilterClassName: multiClusterConfigs.getRepushNominationFilterClassNames()) {
-            Class<? extends NominationFilter> nominationFilterClass = ReflectUtils.loadClass(nominationFilterClassName);
+          // Add candidate filters for compaction manager
+          Set<CandidateFilter> candidateFilters =
+              new HashSet<>(Collections.singletonList(new StoreCandidateFilter(multiClusterConfigs)));
+          for (String candidateFilterClassName: multiClusterConfigs.getRepushCandidateFilterClassNames(clusterName)) {
+            Class<? extends CandidateFilter> candidateFilterClass = ReflectUtils.loadClass(candidateFilterClassName);
 
-            NominationFilter nominationFilter = ReflectUtils.callConstructor(
-                nominationFilterClass,
+            CandidateFilter candidateFilter = ReflectUtils.callConstructor(
+                candidateFilterClass,
                 new Class[] { VeniceControllerMultiClusterConfig.class },
                 new Object[] { multiClusterConfigs });
 
-            nominationFilters.add(nominationFilter);
+            candidateFilters.add(candidateFilter);
           }
-          this.compactionManager = new CompactionManager(repushOrchestrator, nominationFilters, logCompactionStatsMap);
+          this.compactionManager = new CompactionManager(repushOrchestrator, candidateFilters, logCompactionStatsMap);
         } catch (Exception e) {
           LOGGER.error(
               "[log-compaction] Failed to enable repush for log compaction " + CompactionManager.class.getSimpleName(),

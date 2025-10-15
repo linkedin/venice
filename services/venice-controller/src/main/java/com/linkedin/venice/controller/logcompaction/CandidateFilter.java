@@ -3,7 +3,7 @@ package com.linkedin.venice.controller.logcompaction;
 import com.linkedin.venice.meta.StoreInfo;
 
 
-public interface NominationFilter {
+public interface CandidateFilter {
   /**
    * Takes store info and cluster name and decides whether to filter a store for compaction
    * returns true if store should be compacted

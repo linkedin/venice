@@ -28,6 +28,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import org.mockito.Mockito;
 import org.testng.annotations.BeforeMethod;
@@ -72,9 +73,10 @@ public class CompactionManagerTest {
     when(multiClusterConfig.getControllerConfig(TEST_CLUSTER_NAME_2)).thenReturn(cluster2Config);
     when(multiClusterConfig.getControllerConfig(TEST_CLUSTER_NAME_3)).thenReturn(cluster3Config);
 
-    List<NominationFilter> nominationFilters = Collections.singletonList(new StoreNominationFilter(multiClusterConfig));
+    Set<CandidateFilter> candidateFilters =
+        new HashSet<>(Collections.singletonList(new StoreCandidateFilter(multiClusterConfig)));
 
-    testCompactionManager = new CompactionManager(mockRepushOrchestrator, nominationFilters, statsMap);
+    testCompactionManager = new CompactionManager(mockRepushOrchestrator, candidateFilters, statsMap);
   }
 
   @Test

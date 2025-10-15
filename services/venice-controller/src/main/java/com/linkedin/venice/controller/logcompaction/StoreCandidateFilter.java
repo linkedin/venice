@@ -12,13 +12,13 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 
-public class StoreNominationFilter implements NominationFilter {
-  private static final Logger LOGGER = LogManager.getLogger(StoreNominationFilter.class);
+public class StoreCandidateFilter implements CandidateFilter {
+  private static final Logger LOGGER = LogManager.getLogger(StoreCandidateFilter.class);
 
   private final Map<String, Boolean> isCompactionEnabledByCluster = new HashMap<>();
   private final Map<String, Long> versionStalenessThresholdsByCluster = new HashMap<>();
 
-  public StoreNominationFilter(VeniceControllerMultiClusterConfig multiClusterConfig) {
+  public StoreCandidateFilter(VeniceControllerMultiClusterConfig multiClusterConfig) {
 
     for (String clusterName: multiClusterConfig.getClusters()) {
       VeniceControllerClusterConfig config = multiClusterConfig.getControllerConfig(clusterName);
@@ -28,7 +28,7 @@ public class StoreNominationFilter implements NominationFilter {
   }
 
   /**
-   * Defined to implement NominationFilter interface
+   * Defined to implement CandidateFilter interface
    * This function will filter out stores using cluster and store configs
    *
    * @param clusterName
@@ -72,7 +72,7 @@ public class StoreNominationFilter implements NominationFilter {
      */
     Version mostRecentPushedVersion = getLargestNonFailedVersion(storeInfo);
     if (mostRecentPushedVersion == null) {
-      LOGGER.warn("Store {} has never had an active version, skipping compaction nomination", storeInfo.getName());
+      LOGGER.warn("Store {} has never had an active version, skipping", storeInfo.getName());
       return false;
     }
 

@@ -359,8 +359,8 @@ public class VeniceControllerMultiClusterConfig {
     return getCommonConfig().getRepushOrchestratorClassName();
   }
 
-  public List<String> getRepushNominationFilterClassNames() {
-    return getCommonConfig().getRepushNominationFilterClassNames();
+  public List<String> getRepushCandidateFilterClassNames(String clusterName) {
+    return getControllerConfig(clusterName).getRepushCandidateFilterClassNames();
   }
 
   public VeniceProperties getRepushOrchestratorConfigs() {

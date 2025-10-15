@@ -13,6 +13,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -27,15 +28,15 @@ public class CompactionManager {
   private static final Logger LOGGER = LogManager.getLogger(CompactionManager.class);
 
   private final RepushOrchestrator repushOrchestrator;
-  private final List<NominationFilter> nominationFilters;
+  private final Set<CandidateFilter> candidateFilters;
   private final Map<String, LogCompactionStats> statsMap;
 
   public CompactionManager(
       RepushOrchestrator repushOrchestrator,
-      List<NominationFilter> nominationFilters,
+      Set<CandidateFilter> candidateFilters,
       Map<String, LogCompactionStats> statsMap) {
     this.repushOrchestrator = repushOrchestrator;
-    this.nominationFilters = nominationFilters;
+    this.candidateFilters = candidateFilters;
     this.statsMap = statsMap;
   }
 
@@ -85,8 +86,8 @@ public class CompactionManager {
   //
   public boolean filterStore(StoreInfo storeInfo, String clusterName) {
 
-    for (NominationFilter nominationFilter: nominationFilters) {
-      if (!nominationFilter.apply(clusterName, storeInfo)) {
+    for (CandidateFilter candidateFilter: candidateFilters) {
+      if (!candidateFilter.apply(clusterName, storeInfo)) {
         return false;
       }
     }

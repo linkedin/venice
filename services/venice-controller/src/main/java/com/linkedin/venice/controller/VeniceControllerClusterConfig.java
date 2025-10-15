@@ -186,7 +186,7 @@ import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_HEARTBEAT_EXPIRAT
 import static com.linkedin.venice.ConfigKeys.REFRESH_ATTEMPTS_FOR_ZK_RECONNECT;
 import static com.linkedin.venice.ConfigKeys.REFRESH_INTERVAL_FOR_ZK_RECONNECT_MS;
 import static com.linkedin.venice.ConfigKeys.REPLICATION_METADATA_VERSION;
-import static com.linkedin.venice.ConfigKeys.REPUSH_NOMINATION_FILTER_CLASS_NAMES;
+import static com.linkedin.venice.ConfigKeys.REPUSH_CANDIDATE_FILTER_CLASS_NAMES;
 import static com.linkedin.venice.ConfigKeys.REPUSH_ORCHESTRATOR_CLASS_NAME;
 import static com.linkedin.venice.ConfigKeys.SERVICE_DISCOVERY_REGISTRATION_RETRY_MS;
 import static com.linkedin.venice.ConfigKeys.SKIP_DEFERRED_VERSION_SWAP_FOR_DVC_ENABLED;
@@ -611,7 +611,7 @@ public class VeniceControllerClusterConfig {
    * Configs for repush
    */
   private String repushOrchestratorClassName;
-  private List<String> repushNominationFilterClassNames;
+  private List<String> repushCandidateFilterClassNames;
   private final VeniceProperties repushOrchestratorConfigs;
 
   /**
@@ -1128,10 +1128,10 @@ public class VeniceControllerClusterConfig {
     if (this.isLogCompactionEnabled) {
       try {
         this.repushOrchestratorClassName = props.getString(REPUSH_ORCHESTRATOR_CLASS_NAME);
-        if (props.containsKey(REPUSH_NOMINATION_FILTER_CLASS_NAMES)) {
-          this.repushNominationFilterClassNames = props.getList(REPUSH_NOMINATION_FILTER_CLASS_NAMES);
+        if (props.containsKey(REPUSH_CANDIDATE_FILTER_CLASS_NAMES)) {
+          this.repushCandidateFilterClassNames = props.getList(REPUSH_CANDIDATE_FILTER_CLASS_NAMES);
         } else {
-          this.repushNominationFilterClassNames = Collections.emptyList();
+          this.repushCandidateFilterClassNames = Collections.emptyList();
         }
       } catch (Exception e) {
         throw new VeniceException(
@@ -2185,8 +2185,8 @@ public class VeniceControllerClusterConfig {
     return repushOrchestratorClassName;
   }
 
-  public List<String> getRepushNominationFilterClassNames() {
-    return repushNominationFilterClassNames;
+  public List<String> getRepushCandidateFilterClassNames() {
+    return repushCandidateFilterClassNames;
   }
 
   public VeniceProperties getRepushOrchestratorConfigs() {
