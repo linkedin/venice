@@ -56,6 +56,7 @@ import com.linkedin.venice.utils.ComplementSet;
 import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
@@ -285,7 +286,7 @@ public class DaVinciBackendTest {
       ComplementSet<Integer> partitions = invocation.getArgument(0);
       mockStoreBackend.getSubscription().addAll(partitions);
       return null;
-    }).when(mockStoreBackend).subscribe(any(), any());
+    }).when(mockStoreBackend).subscribe(any(), any(), Collections.emptyMap(), null);
 
     Version mockVersion = mock(Version.class);
     when(mockVersion.kafkaTopicName()).thenReturn(resourceName);

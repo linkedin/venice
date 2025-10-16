@@ -12,7 +12,9 @@ import com.linkedin.venice.utils.ComplementSet;
 import com.linkedin.venice.utils.ConcurrentRef;
 import com.linkedin.venice.utils.ReferenceCounted;
 import com.linkedin.venice.utils.RegionUtils;
+import java.util.Collections;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -131,7 +133,15 @@ public class StoreBackend {
   }
 
   public CompletableFuture<Void> subscribe(ComplementSet<Integer> partitions) {
-    return subscribe(partitions, Optional.empty());
+    return subscribe(partitions, Optional.empty(), Collections.emptyMap(), null);
+  }
+
+  public CompletableFuture<Void> seekToTimestamps(Long allPartitionTimestamp) {
+    return subscribe(ComplementSet.universalSet(), Optional.empty(), Collections.emptyMap(), allPartitionTimestamp);
+  }
+
+  public CompletableFuture<Void> seekToTimestamps(Map<Integer, Long> timestamps) {
+    return subscribe(ComplementSet.wrap(timestamps.keySet()), Optional.empty(), timestamps, null);
   }
 
   private Version getCurrentVersion() {
@@ -144,7 +154,9 @@ public class StoreBackend {
 
   public synchronized CompletableFuture<Void> subscribe(
       ComplementSet<Integer> partitions,
-      Optional<Version> bootstrapVersion) {
+      Optional<Version> bootstrapVersion,
+      Map<Integer, Long> timestamps,
+      Long allPartitionsTimestamp) {
     if (daVinciCurrentVersion == null) {
       setDaVinciCurrentVersion(new VersionBackend(backend, bootstrapVersion.orElseGet(() -> {
         Version version = getCurrentVersion();
@@ -180,12 +192,13 @@ public class StoreBackend {
       if (daVinciFutureVersion == null) {
         trySubscribeDaVinciFutureVersion();
       } else {
-        daVinciFutureVersion.subscribe(partitions).whenComplete((v, e) -> trySwapDaVinciCurrentVersion(e));
+        daVinciFutureVersion.subscribe(partitions, timestamps, allPartitionsTimestamp)
+            .whenComplete((v, e) -> trySwapDaVinciCurrentVersion(e));
       }
     }
 
     VersionBackend savedVersion = daVinciCurrentVersion;
-    return daVinciCurrentVersion.subscribe(partitions).exceptionally(e -> {
+    return daVinciCurrentVersion.subscribe(partitions, timestamps, null).exceptionally(e -> {
       synchronized (this) {
         addFaultyVersion(savedVersion, e);
         // Don't propagate failure to subscribe() caller, if future version has become current and is ready to serve.
@@ -270,7 +283,8 @@ public class StoreBackend {
     if (targetRegions.contains(currentRegion) || startIngestionInNonTargetRegion || !isTargetRegionEnabled) {
       LOGGER.info("Subscribing to future version {}", targetVersion.kafkaTopicName());
       setDaVinciFutureVersion(new VersionBackend(backend, targetVersion, stats));
-      daVinciFutureVersion.subscribe(subscription).whenComplete((v, e) -> trySwapDaVinciCurrentVersion(e));
+      daVinciFutureVersion.subscribe(subscription, Collections.emptyMap(), null)
+          .whenComplete((v, e) -> trySwapDaVinciCurrentVersion(e));
     } else {
       LOGGER.info(
           "Skipping subscribe to future version: {} in region: {} because the target version status is: {} and the target regions are: {}",
