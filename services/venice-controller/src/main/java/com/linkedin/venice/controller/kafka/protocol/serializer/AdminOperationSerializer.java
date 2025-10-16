@@ -1,8 +1,10 @@
 package com.linkedin.venice.controller.kafka.protocol.serializer;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
+import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
 import com.linkedin.venice.exceptions.VeniceProtocolException;
+import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.Utils;
 import java.io.ByteArrayInputStream;
@@ -33,7 +35,7 @@ public class AdminOperationSerializer {
   /** Used to generate decoders. */
   private static final DecoderFactory DECODER_FACTORY = new DecoderFactory();
 
-  private static final Map<Integer, Schema> PROTOCOL_MAP = initProtocolMap();
+  private static Map<Integer, Schema> PROTOCOL_MAP = initProtocolMap();
 
   /**
    * Serialize AdminOperation object to bytes[] with the writer schema
@@ -134,6 +136,20 @@ public class AdminOperationSerializer {
       throw new VeniceProtocolException("Admin operation schema version: " + schemaId + " doesn't exist");
     }
     return PROTOCOL_MAP.get(schemaId);
+  }
+
+  /**
+   * Download schema from system store schema repository and add it to the protocol map if not already present.
+   */
+  public static void downloadAndAddSchemaIfNecessary(VeniceHelixAdmin admin, int schemaId) {
+    // No need to download if the schema is already available.
+    if (PROTOCOL_MAP.containsKey(schemaId)) {
+      return;
+    }
+    String adminOperationSchemaStoreName = AvroProtocolDefinition.ADMIN_OPERATION.getSystemStoreName();
+    SchemaEntry schemaEntry =
+        admin.getZKSharedSchemaRepository().getValueSchema(adminOperationSchemaStoreName, schemaId);
+    PROTOCOL_MAP.put(schemaId, schemaEntry.getSchema());
   }
 
   /**
