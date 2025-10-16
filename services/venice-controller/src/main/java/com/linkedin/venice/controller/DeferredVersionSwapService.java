@@ -788,7 +788,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
           veniceProperties);
       String outcomeMessage = "Validation outcome for store " + parentStore.getName() + " on version "
           + targetVersionNum + " in region" + targetRegion + "with hook "
-          + lifecycleHooksRecord.getStoreLifecycleHooksClassName() + " is proceed: " + proceed;
+          + lifecycleHooksRecord.getStoreLifecycleHooksClassName() + " is: " + proceed;
       logMessageIfNotRedundant(outcomeMessage);
 
       if (StoreVersionLifecycleEventOutcome.WAIT.equals(outcome)) {
