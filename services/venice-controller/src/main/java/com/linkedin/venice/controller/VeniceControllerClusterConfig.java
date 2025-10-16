@@ -245,6 +245,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -611,7 +612,7 @@ public class VeniceControllerClusterConfig {
    * Configs for repush
    */
   private String repushOrchestratorClassName;
-  private List<String> repushCandidateFilterClassNames;
+  private Set<String> repushCandidateFilterClassNames;
   private final VeniceProperties repushOrchestratorConfigs;
 
   /**
@@ -1129,9 +1130,9 @@ public class VeniceControllerClusterConfig {
       try {
         this.repushOrchestratorClassName = props.getString(REPUSH_ORCHESTRATOR_CLASS_NAME);
         if (props.containsKey(REPUSH_CANDIDATE_FILTER_CLASS_NAMES)) {
-          this.repushCandidateFilterClassNames = props.getList(REPUSH_CANDIDATE_FILTER_CLASS_NAMES);
+          this.repushCandidateFilterClassNames = new HashSet<>(props.getList(REPUSH_CANDIDATE_FILTER_CLASS_NAMES));
         } else {
-          this.repushCandidateFilterClassNames = Collections.emptyList();
+          this.repushCandidateFilterClassNames = Collections.emptySet();
         }
       } catch (Exception e) {
         throw new VeniceException(
@@ -2205,7 +2206,7 @@ public class VeniceControllerClusterConfig {
     return repushOrchestratorClassName;
   }
 
-  public List<String> getRepushCandidateFilterClassNames() {
+  public Set<String> getRepushCandidateFilterClassNames() {
     return repushCandidateFilterClassNames;
   }
 
