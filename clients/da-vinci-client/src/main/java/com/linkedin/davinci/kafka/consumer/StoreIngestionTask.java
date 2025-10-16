@@ -4718,6 +4718,16 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return PubSubUtil.fromKafkaOffset(leaderMetadataFooter.upstreamOffset);
   }
 
+  // extract the upstream cluster id from the given consumer record's leader metadata.
+  protected int extractUpstreamClusterId(DefaultPubSubMessage consumerRecord) {
+    if (consumerRecord == null || consumerRecord.getValue() == null
+        || consumerRecord.getValue().leaderMetadataFooter == null) {
+      return -1;
+    }
+    LeaderMetadata leaderMetadataFooter = consumerRecord.getValue().leaderMetadataFooter;
+    return leaderMetadataFooter.upstreamKafkaClusterId;
+  }
+
   /**
    * For L/F hybrid stores, the leader periodically writes a special SOS message to the RT topic.
    * Check {@link LeaderFollowerStoreIngestionTask#maybeSendIngestionHeartbeat()} for more details.
