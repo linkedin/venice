@@ -334,7 +334,7 @@ public enum Arg {
   STORE_LIFECYCLE_HOOKS_LIST("store-lifecycle-hooks-list", "slhl", true, "List of store lifecycle hooks"),
   KEY_URN_COMPRESSION_EANBLED(
       "key-urn-compression-enabled", "kuce", true, "Enable/Disable key urn compression for a store."
-  ), KEY_URN_FIELDS("key-urn-fields", "kuf", true, "Comma separated list of key urn fields."),;
+  ), KEY_URN_FIELDS("key-urn-fields", "kuf", true, "Comma separated list of key urn fields.");
 
   private final String argName;
   private final String first;

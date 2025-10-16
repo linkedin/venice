@@ -1,6 +1,7 @@
 package com.linkedin.venice.controller.multitaskscheduler;
 
 import static com.linkedin.venice.controller.multitaskscheduler.MigrationRecord.Step;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.never;
@@ -310,6 +311,18 @@ public class StoreMigrationTaskTest {
     srcStoreResponse.setStore(srcStoreInfo);
     when(mocksrcControllerClient.getStore(storeName)).thenReturn(srcStoreResponse);
 
+    ControllerResponse updateStoreControllerResponse = new ControllerResponse();
+    when(
+        mocksrcControllerClient.updateStore(
+            eq(storeName),
+            argThat(
+                p -> Boolean.FALSE.equals(p.getEnableReads().get())
+                    && Boolean.FALSE.equals(p.getEnableWrites().get())))).thenAnswer(invocation -> {
+                      srcStoreInfo.setEnableStoreReads(false);
+                      srcStoreInfo.setEnableStoreWrites(false);
+                      return updateStoreControllerResponse;
+                    });
+
     TrackableControllerResponse srcDeleteResponse = new TrackableControllerResponse();
     when(mocksrcControllerClient.deleteStore(storeName, true)).thenReturn(srcDeleteResponse);
 
@@ -341,7 +354,8 @@ public class StoreMigrationTaskTest {
 
   @Test
   public void testRun_ExceptionHandling_Retry() {
-    when(mockRecord.getCurrentStepEnum()).thenThrow(new RuntimeException("Test exception"));
+    when(mockRecord.getCurrentStepEnum()).thenThrow(new RuntimeException("Test exception"))
+        .thenReturn(Step.UPDATE_CLUSTER_DISCOVERY);
     when(mockRecord.getAttempts()).thenReturn(0);
     when(mockManager.getMaxRetryAttempts()).thenReturn(3);
 

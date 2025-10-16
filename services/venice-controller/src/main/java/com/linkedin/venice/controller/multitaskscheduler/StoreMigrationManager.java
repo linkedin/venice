@@ -185,6 +185,7 @@ public class StoreMigrationManager extends ScheduledTaskManager {
     MigrationRecord rec = migrationRecords.get(storeName);
     if (rec != null) {
       resumeMigration(storeName, rec.getCurrentStep());
+      return;
     } else {
       LOGGER.warn("No migration record found for store: {}", storeName);
     }

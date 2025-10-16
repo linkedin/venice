@@ -2,7 +2,6 @@ package com.linkedin.venice.controller.multitaskscheduler;
 
 import static com.linkedin.venice.controller.multitaskscheduler.MigrationRecord.Step;
 import static com.linkedin.venice.controller.multitaskscheduler.StoreMigrationUtils.applyPauseIfNeeded;
-import static com.linkedin.venice.controller.multitaskscheduler.StoreMigrationUtils.checkRetryLimit;
 import static com.linkedin.venice.controller.multitaskscheduler.StoreMigrationUtils.isClonedStoreOnline;
 
 import com.linkedin.venice.controllerapi.ChildAwareResponse;
@@ -37,6 +36,9 @@ class StoreMigrationTask implements Runnable {
   Map<String, ControllerClient> destChildControllerClientMap;
   private final Map<String, Boolean> fabricReadyMap = new HashMap<>();
   boolean statusVerified = false;
+  private int counter = -1;
+  private static final int LOG_INTERVAL = 30; // interval for logging status in verifyMigrationStatus step
+  private boolean srcStoreReadWriteEnabled = true;
 
   public StoreMigrationTask(
       MigrationRecord record,
@@ -126,9 +128,6 @@ class StoreMigrationTask implements Runnable {
       manager.migrationTasks.put(record.getStoreName(), this);
       return;
     }
-    // Add this check to prevent rescheduling the migration if handleMigrationFailure() has already been invoked during
-    // the parent controller’s failover scenario
-    checkRetryLimit(record, manager.getMaxRetryAttempts());
     LOGGER.info("Submit migration request of store {}...", record.getStoreName());
     // Implement pre-check
     StoreInfo srcStoreInfo = srcControllerClient.getStore(record.getStoreName()).getStore();
@@ -158,6 +157,7 @@ class StoreMigrationTask implements Runnable {
       return;
     }
     LOGGER.info("Verifying migration status for migration of store {}...", record.getStoreName());
+    counter++;
     if (Instant.ofEpochMilli(-1).equals(record.getStoreMigrationStartTime())) {
       // If the migration start time is not set yet, set it to the current time
       record.setStoreMigrationStartTime(Instant.now());
@@ -173,11 +173,15 @@ class StoreMigrationTask implements Runnable {
             record.getStoreName(),
             record.getDestinationCluster());
       } else {
-        LOGGER.debug(
-            "Store {} is not ready in the destination cluster: {}",
-            record.getStoreName(),
-            record.getDestinationCluster());
+        // Log every 30 checks
+        if (counter % LOG_INTERVAL == 0) {
+          LOGGER.info(
+              "Store {} is not ready in the destination cluster: {}, will retry later.",
+              record.getStoreName(),
+              record.getDestinationCluster());
+        }
       }
+
     } else {
       List<String> notReadyFabrics = findNotReadyFabrics();
       for (String fabric: notReadyFabrics) {
@@ -233,6 +237,7 @@ class StoreMigrationTask implements Runnable {
     }
 
     // The fabricReadyMap acts as a safeguard to prevent completing migration in any non-ready region.
+    // It is guaranteed to include all regions specified in the STORE_MIGRATION_FABRIC_LIST configuration.
     List<String> readyFabrics = fabricReadyMap.entrySet()
         .stream()
         .filter(e -> Boolean.TRUE.equals(e.getValue())) // keep entries with false
@@ -240,8 +245,8 @@ class StoreMigrationTask implements Runnable {
         .collect(Collectors.toList());
     ChildAwareResponse response = destControllerClient.listChildControllers(record.getDestinationCluster());
     boolean isSingleDC = false;
-    if (readyFabrics.isEmpty() && response.getChildDataCenterControllerUrlMap() == null
-        && response.getChildDataCenterControllerD2Map() == null) {
+    if (readyFabrics.isEmpty() && response.getChildDataCenterControllerUrlMap().isEmpty()
+        && response.getChildDataCenterControllerD2Map().isEmpty()) {
       // This is a controller in single datacenter setup
       isSingleDC = true;
       srcControllerClient.completeMigration(record.getStoreName(), record.getDestinationCluster());
@@ -392,10 +397,14 @@ class StoreMigrationTask implements Runnable {
     }
 
     if (srcStoreResponse.getErrorType() != ErrorType.STORE_NOT_FOUND) {
-      // Delete original store
-      srcControllerClient.updateStore(
-          record.getStoreName(),
-          new UpdateStoreQueryParams().setEnableReads(false).setEnableWrites(false));
+      boolean readsEnabled = srcStoreResponse.getStore().isEnableStoreReads();
+      boolean writesEnabled = srcStoreResponse.getStore().isEnableStoreWrites();
+      if ((readsEnabled || writesEnabled) && !updateSrcStoreReadWriteStatus(false, false)) {
+        throw new VeniceException(
+            "Failed to disable reads and writes for store " + record.getStoreName() + " in original cluster "
+                + record.getSourceCluster() + " on step " + record.getCurrentStepEnum() + ". Please try again later.");
+      }
+      // Now original store safe to delete
       TrackableControllerResponse deleteResponse = srcControllerClient.deleteStore(record.getStoreName(), true);
       if (deleteResponse.isError()) {
         LOGGER.error(
@@ -592,10 +601,60 @@ class StoreMigrationTask implements Runnable {
   }
 
   private List<String> findNotReadyFabrics() {
+    if (fabricReadyMap.isEmpty()) {
+      throw new IllegalArgumentException("fabricReadyMap must not be empty for non-single datacenter setup.");
+    }
     return fabricReadyMap.entrySet()
         .stream()
         .filter(e -> Boolean.FALSE.equals(e.getValue())) // keep entries with false
         .map(Map.Entry::getKey) // take the key
         .collect(Collectors.toList());
+  }
+
+  private boolean updateSrcStoreReadWriteStatus(boolean enableReads, boolean enableWrites) {
+    if (srcStoreReadWriteEnabled == (enableReads && enableWrites)) {
+      // No need to update
+      return true;
+    }
+    ControllerResponse updateStoreControllerResponse = srcControllerClient.updateStore(
+        record.getStoreName(),
+        new UpdateStoreQueryParams().setEnableReads(enableReads).setEnableWrites(enableWrites));
+
+    if (updateStoreControllerResponse.isError()) {
+      LOGGER.error(
+          "Failed to {} reads and {} writes for store {} in original cluster {} on step {} due to error: {}",
+          enableReads ? "enable" : "disable",
+          enableWrites ? "enable" : "disable",
+          record.getStoreName(),
+          record.getSourceCluster(),
+          record.getCurrentStepEnum(),
+          updateStoreControllerResponse.getError());
+      return false;
+    }
+    boolean updated = false;
+    int maxRetries = 10;
+    for (int i = 0; i < maxRetries; i++) {
+      StoreInfo srcStoreInfo = srcControllerClient.getStore(record.getStoreName()).getStore();
+      if (srcStoreInfo.isEnableStoreReads() == enableReads && srcStoreInfo.isEnableStoreWrites() == enableWrites) {
+        updated = true;
+        srcStoreReadWriteEnabled = enableReads && enableWrites;
+        break;
+      }
+      try {
+        Thread.sleep(manager.getDelayInSeconds() * 1000 / 3); // give time for the update to propagate, default 20s
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+        throw new RuntimeException(e);
+      }
+    }
+    if (!updated) {
+      LOGGER.error(
+          "Timed out waiting for store reads/writes to {} after updating store {} in original cluster {} on step {}.",
+          enableReads ? "enable" : "disable",
+          record.getStoreName(),
+          record.getSourceCluster(),
+          record.getCurrentStepEnum());
+    }
+    return updated;
   }
 }
