@@ -17,6 +17,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -256,13 +257,18 @@ public class GrpcStoreLifecycleHooks extends StoreLifecycleHooks implements Clos
     }
 
     // Get or create the channel
-    ManagedChannel channel = channelCache
-        .computeIfAbsent(channelTarget, target -> ManagedChannelBuilder.forTarget(target).usePlaintext().build());
+    ManagedChannel channel = channelCache.computeIfAbsent(
+        channelTarget,
+        target -> ManagedChannelBuilder.forTarget(target).usePlaintext().keepAliveTime(2, TimeUnit.HOURS).build());
 
     // Connection could've been closed by server, verify if the channel is still healthy
     if (!isChannelHealthy(channel)) {
       channelCache.remove(channelTarget, channel);
-      ManagedChannel newChannel = ManagedChannelBuilder.forTarget(channelTarget).usePlaintext().build();
+      if (channel != null) {
+        channel.shutdown();
+      }
+      ManagedChannel newChannel =
+          ManagedChannelBuilder.forTarget(channelTarget).usePlaintext().keepAliveTime(2, TimeUnit.HOURS).build();
       channelCache.put(channelTarget, newChannel);
     }
 
