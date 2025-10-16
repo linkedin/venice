@@ -392,7 +392,6 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       ExecutionStatus status) {
     int regionsWithStatus = 0;
     for (String region: regions) {
-      LOGGER.info("Checking push status for region: {}", region);
       String executionStatus = pushStatusInfo.getExtraInfo().get(region);
       if (executionStatus.equals(status.toString())) {
         regionsWithStatus += 1;
