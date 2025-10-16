@@ -1232,6 +1232,26 @@ public class VeniceControllerClusterConfig {
     this.storeMigrationMaxRetryAttempts = props.getInt(ConfigKeys.STORE_MIGRATION_MAX_RETRY_ATTEMPTS, 3);
     this.backupVersionReplicaReductionEnabled =
         props.getBoolean(CONTROLLER_BACKUP_VERSION_REPLICA_REDUCTION_ENABLED, false);
+
+    this.logClusterConfig();
+  }
+
+  private void logClusterConfig() {
+
+    // Header
+    LOGGER.info("VeniceControllerClusterConfig[{}]:", clusterName);
+
+    // Repush
+    LOGGER.info("\trepushOrchestratorClassName: {}", repushOrchestratorClassName);
+    LOGGER.info("\trepushCandidateFilterClassNames: {}", repushCandidateFilterClassNames);
+
+    // Log compaction
+    LOGGER.info("\tisLogCompactionEnabled: {}", isLogCompactionEnabled);
+    LOGGER.info("\tisLogCompactionSchedulingEnabled: {}", isLogCompactionSchedulingEnabled);
+    LOGGER.info("\tlogCompactionThreadCount: {}", logCompactionThreadCount);
+    LOGGER.info("\tlogCompactionIntervalMS: {}", logCompactionIntervalMS);
+    LOGGER.info("\tlogCompactionVersionStalenessThresholdMS: {}", logCompactionVersionStalenessThresholdMS);
+    LOGGER.info("\tlogCompactionDuplicateKeyThreshold: {}", logCompactionDuplicateKeyThreshold);
   }
 
   public VeniceProperties getProps() {
