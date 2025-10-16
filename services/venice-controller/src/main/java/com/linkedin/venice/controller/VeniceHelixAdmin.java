@@ -804,7 +804,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
               repushOrchestratorClass,
               new Class[] { VeniceProperties.class },
               new Object[] { multiClusterConfigs.getRepushOrchestratorConfigs() });
-
+          LOGGER.info(
+              "Successfully loaded repush orchestrator class: {} ",
+              multiClusterConfigs.getRepushOrchestratorClassName());
         } catch (Exception e) {
           throw new VeniceException(
               "Failed to load repush orchestrator class through reflect: "
@@ -814,7 +816,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
         // Add candidate filters for compaction manager
         Set<RepushCandidateFilter> candidateFilters =
-            getRepushCandidateFiltersFromControllerConfig(multiClusterConfigs, clusterName);
+            getRepushCandidateFiltersFromControllerConfig(multiClusterConfigs);
 
         this.compactionManager = new CompactionManager(repushOrchestrator, candidateFilters, logCompactionStatsMap);
       }
@@ -827,12 +829,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   private Set<RepushCandidateFilter> getRepushCandidateFiltersFromControllerConfig(
-      VeniceControllerMultiClusterConfig multiClusterConfigs,
-      String clusterName) {
+      VeniceControllerMultiClusterConfig multiClusterConfigs) {
     // Add candidate filters for compaction manager
     Set<RepushCandidateFilter> candidateFilters =
         new HashSet<>(Collections.singletonList(new StoreRepushCandidateFilter(multiClusterConfigs)));
-    for (String candidateFilterClassName: multiClusterConfigs.getRepushCandidateFilterClassNames(clusterName)) {
+    for (String candidateFilterClassName: multiClusterConfigs.getRepushCandidateFilterClassNames()) {
       try {
         Class<? extends RepushCandidateFilter> candidateFilterClass = ReflectUtils.loadClass(candidateFilterClassName);
 
@@ -842,6 +843,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             new Object[] { multiClusterConfigs });
 
         candidateFilters.add(candidateFilter);
+        LOGGER.info("Successfully loaded repush candidate filter class: {}", candidateFilterClassName);
       } catch (Exception e) {
         throw new VeniceException(
             "Failed to load repush candidate filter class through reflect: " + candidateFilterClassName,
