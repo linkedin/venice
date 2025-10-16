@@ -7,6 +7,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.ComplementSet;
 import com.linkedin.venice.utils.VeniceProperties;
+import java.util.Collections;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -63,6 +64,6 @@ public class VersionSpecificAvroGenericDaVinciClient<K, V> extends AvroGenericDa
     }
 
     addPartitionsToSubscription(partitions);
-    return getStoreBackend().subscribe(partitions, Optional.of(version));
+    return getStoreBackend().subscribe(partitions, Optional.of(version), Collections.emptyMap(), null);
   }
 }

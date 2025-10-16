@@ -35,12 +35,12 @@ public class AvroGenericSeekableDaVinciClient<K, V> extends AvroGenericDaVinciCl
 
   @Override
   public CompletableFuture<Void> seekToTimestamps(Map<Integer, Long> timestamps) {
-    return null;
+    return super.seekToTimestamps(timestamps);
   }
 
   @Override
   public CompletableFuture<Void> seekToTimestamp(Long timestamp) {
-    return null;
+    return super.seekToTimestamps(timestamp);
   }
 
   @Override

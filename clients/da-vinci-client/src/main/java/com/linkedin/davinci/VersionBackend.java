@@ -362,7 +362,10 @@ public class VersionBackend {
     return getPartitions(partitions).stream().allMatch(this::isPartitionReadyToServe);
   }
 
-  synchronized CompletableFuture<Void> subscribe(ComplementSet<Integer> partitions) {
+  synchronized CompletableFuture<Void> subscribe(
+      ComplementSet<Integer> partitions,
+      Map<Integer, Long> timestamps,
+      Long allPartitionTimestamp) {
     Instant startTime = Instant.now();
     List<Integer> partitionList = getPartitions(partitions);
     if (partitionList.isEmpty()) {
@@ -404,7 +407,11 @@ public class VersionBackend {
       backend.getHeartbeatMonitoringService()
           .updateLagMonitor(version.kafkaTopicName(), partition, HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR);
       // AtomicReference of storage engine will be updated internally.
-      backend.getIngestionBackend().startConsumption(config, partition);
+      backend.getIngestionBackend()
+          .startConsumption(
+              config,
+              partition,
+              allPartitionTimestamp == null ? timestamps.get(partition) : allPartitionTimestamp);
       tryStartHeartbeat();
     }
 

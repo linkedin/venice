@@ -737,10 +737,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
   }
 
-  public synchronized void subscribePartition(PubSubTopicPartition topicPartition) {
+  public synchronized void subscribePartition(
+      PubSubTopicPartition topicPartition,
+      Optional<PubSubPosition> pubSubPosition) {
     activeReplicaCount.incrementAndGet();
     LOGGER.info("Bootstrap replica: {}. Active replica count in SIT: {}", topicPartition, activeReplicaCount.get());
-    subscribePartition(topicPartition, true);
+    subscribePartition(topicPartition, true, pubSubPosition);
   }
 
   void resubscribeForAllPartitions() throws InterruptedException {
@@ -753,7 +755,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   /**
    * Adds an asynchronous partition subscription request for the task.
    */
-  public synchronized void subscribePartition(PubSubTopicPartition topicPartition, boolean isHelixTriggeredAction) {
+  public synchronized void subscribePartition(
+      PubSubTopicPartition topicPartition,
+      boolean isHelixTriggeredAction,
+      Optional<PubSubPosition> pubSubPosition) {
     throwIfNotRunning();
     int partitionNumber = topicPartition.getPartitionNumber();
 
@@ -779,7 +784,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
               getReplicaId(topicPartition));
 
           recordTransformer.countDownStartConsumptionLatch();
-          consumerActionsQueue.add(new ConsumerAction(SUBSCRIBE, topicPartition, nextSeqNum(), isHelixTriggeredAction));
+          ConsumerAction consumerAction =
+              new ConsumerAction(SUBSCRIBE, topicPartition, nextSeqNum(), isHelixTriggeredAction);
+          pubSubPosition.ifPresent(consumerAction::setPubSubPosition);
+          consumerActionsQueue.add(consumerAction);
         } catch (Exception e) {
           LOGGER.error("DaVinciRecordTransformer onRecovery failed for replica: {}", getReplicaId(topicPartition), e);
           setLastStoreIngestionException(e);
@@ -2245,16 +2253,21 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         updateLeaderTopicOnFollower(newPartitionConsumptionState);
 
         // Subscribe to local version topic.
-        PubSubPosition localVtSubscribePosition = getLocalVtSubscribePosition(newPartitionConsumptionState);
+        PubSubPosition subscribePosition;
+        if (consumerAction.getPubSubPosition() != null) {
+          subscribePosition = consumerAction.getPubSubPosition();
+        } else {
+          subscribePosition = getLocalVtSubscribePosition(newPartitionConsumptionState);
+        }
         consumerSubscribe(
             topicPartition.getPubSubTopic(),
             newPartitionConsumptionState,
-            localVtSubscribePosition,
+            subscribePosition,
             localKafkaServer);
-        LOGGER.info("Subscribed to: {} position: {}", topicPartition, localVtSubscribePosition);
+        LOGGER.info("Subscribed to: {} position: {}", topicPartition, subscribePosition);
         if (isGlobalRtDivEnabled()) {
           // TODO: remove. this is a temporary log for debugging while the feature is in its infancy
-          LOGGER.info("event=globalRtDiv Subscribed to: {} position: {}", topicPartition, localVtSubscribePosition);
+          LOGGER.info("event=globalRtDiv Subscribed to: {} position: {}", topicPartition, subscribePosition);
         }
         storageUtilizationManager.initPartition(partition);
         break;
