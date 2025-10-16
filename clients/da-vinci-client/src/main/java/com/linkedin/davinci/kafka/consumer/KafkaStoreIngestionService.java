@@ -1446,6 +1446,9 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     try {
       PubSubTopic versionTopic = pubSubTopicRepository.getTopic(Version.composeKafkaTopic(storeName, version));
       StoreIngestionTask storeIngestionTask = getStoreIngestionTask(versionTopic.getName());
+      if (storeIngestionTask == null) {
+        return "StoreIngestionTask is not available.";
+      }
       PartitionConsumptionState partitionConsumptionState = storeIngestionTask.getPartitionConsumptionState(partition);
       if (partitionConsumptionState == null) {
         return "PartitionConsumptionState is not available.";

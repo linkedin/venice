@@ -27,6 +27,7 @@ import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import io.tehuti.metrics.MetricsRepository;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -439,12 +440,15 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
   }
 
   public static String convertTopicPartitionIngestionInfoMapToStr(
-      // Convert Map of ingestion info for this consumer to String for logging with each partition line by line
       Map<PubSubTopicPartition, TopicPartitionIngestionInfo> topicPartitionIngestionInfoMap) {
+    // Convert Map of ingestion info for this consumer to String for logging with each partition line by line.
+    // Empty map could be caused by too frequent logging for a specific consumer.
     StringBuilder sb = new StringBuilder();
-    for (Map.Entry<PubSubTopicPartition, TopicPartitionIngestionInfo> entry: topicPartitionIngestionInfoMap
-        .entrySet()) {
-      sb.append(entry.getKey().toString()).append(": ").append(entry.getValue().toString()).append("\n");
+    if (topicPartitionIngestionInfoMap != null && !topicPartitionIngestionInfoMap.isEmpty()) {
+      for (Map.Entry<PubSubTopicPartition, TopicPartitionIngestionInfo> entry: topicPartitionIngestionInfoMap
+          .entrySet()) {
+        sb.append(entry.getKey().toString()).append(": ").append(entry.getValue().toString()).append("\n");
+      }
     }
     return sb.toString();
   }
@@ -577,6 +581,10 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
     if (consumer != null) {
       ConsumptionTask consumptionTask = consumerToConsumptionTask.get(consumer);
       String consumerIdStr = consumptionTask.getTaskIdStr();
+      // Shortcut to avoid generating consumer info string if it is logged recently.
+      if (REDUNDANT_LOGGING_FILTER.isRedundantException(consumerIdStr)) {
+        return Collections.emptyMap();
+      }
       for (PubSubTopicPartition topicPartition: consumer.getAssignment()) {
         long offsetLag = consumer.getOffsetLag(topicPartition);
         long latestOffset = consumer.getLatestOffset(topicPartition);
