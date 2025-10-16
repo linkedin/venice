@@ -12,13 +12,13 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 
-public class StoreCandidateFilter implements CandidateFilter {
-  private static final Logger LOGGER = LogManager.getLogger(StoreCandidateFilter.class);
+public class StoreRepushCandidateFilter implements RepushCandidateFilter {
+  private static final Logger LOGGER = LogManager.getLogger(StoreRepushCandidateFilter.class);
 
   private final Map<String, Boolean> isCompactionEnabledByCluster = new HashMap<>();
   private final Map<String, Long> versionStalenessThresholdsByCluster = new HashMap<>();
 
-  public StoreCandidateFilter(VeniceControllerMultiClusterConfig multiClusterConfig) {
+  public StoreRepushCandidateFilter(VeniceControllerMultiClusterConfig multiClusterConfig) {
 
     for (String clusterName: multiClusterConfig.getClusters()) {
       VeniceControllerClusterConfig config = multiClusterConfig.getControllerConfig(clusterName);
@@ -28,7 +28,7 @@ public class StoreCandidateFilter implements CandidateFilter {
   }
 
   /**
-   * Defined to implement CandidateFilter interface
+   * Defined to implement RepushCandidateFilter interface
    * This function will filter out stores using cluster and store configs
    *
    * @param clusterName

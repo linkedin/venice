@@ -28,12 +28,12 @@ public class CompactionManager {
   private static final Logger LOGGER = LogManager.getLogger(CompactionManager.class);
 
   private final RepushOrchestrator repushOrchestrator;
-  private final Set<CandidateFilter> candidateFilters;
+  private final Set<RepushCandidateFilter> candidateFilters;
   private final Map<String, LogCompactionStats> statsMap;
 
   public CompactionManager(
       RepushOrchestrator repushOrchestrator,
-      Set<CandidateFilter> candidateFilters,
+      Set<RepushCandidateFilter> candidateFilters,
       Map<String, LogCompactionStats> statsMap) {
     this.repushOrchestrator = repushOrchestrator;
     this.candidateFilters = candidateFilters;
@@ -86,7 +86,7 @@ public class CompactionManager {
   //
   public boolean filterStore(StoreInfo storeInfo, String clusterName) {
 
-    for (CandidateFilter candidateFilter: candidateFilters) {
+    for (RepushCandidateFilter candidateFilter: candidateFilters) {
       if (!candidateFilter.apply(clusterName, storeInfo)) {
         return false;
       }
