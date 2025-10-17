@@ -423,7 +423,7 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
         Thread slowestThread = threadFactory.getThread(slowestTaskId);
         SharedKafkaConsumer consumer = consumerToConsumptionTask.getByIndex(slowestTaskId).getKey();
         Map<PubSubTopicPartition, TopicPartitionIngestionInfo> topicPartitionIngestionInfoMap =
-            getIngestionInfoFromConsumer(consumer);
+            getIngestionInfoFromConsumer(true, consumer);
         String consumerIngestionInfoStr = convertTopicPartitionIngestionInfoMapToStr(topicPartitionIngestionInfoMap);
         // log the slowest consumer id if it couldn't make any progress in a minute!
         LOGGER.warn(
@@ -568,21 +568,23 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
 
   public Map<PubSubTopicPartition, TopicPartitionIngestionInfo> getIngestionInfoFor(
       PubSubTopic versionTopic,
-      PubSubTopicPartition pubSubTopicPartition) {
+      PubSubTopicPartition pubSubTopicPartition,
+      boolean respectRedundantLoggingFilter) {
     SharedKafkaConsumer consumer = getConsumerAssignedToVersionTopicPartition(versionTopic, pubSubTopicPartition);
     Map<PubSubTopicPartition, TopicPartitionIngestionInfo> topicPartitionIngestionInfoMap =
-        getIngestionInfoFromConsumer(consumer);
+        getIngestionInfoFromConsumer(respectRedundantLoggingFilter, consumer);
     return topicPartitionIngestionInfoMap;
   }
 
   private Map<PubSubTopicPartition, TopicPartitionIngestionInfo> getIngestionInfoFromConsumer(
+      boolean respectRedundantLoggingFilter,
       SharedKafkaConsumer consumer) {
     Map<PubSubTopicPartition, TopicPartitionIngestionInfo> topicPartitionIngestionInfoMap = new HashMap<>();
     if (consumer != null) {
       ConsumptionTask consumptionTask = consumerToConsumptionTask.get(consumer);
       String consumerIdStr = consumptionTask.getTaskIdStr();
       // Shortcut to avoid generating consumer info string if it is logged recently.
-      if (REDUNDANT_LOGGING_FILTER.isRedundantException(consumerIdStr)) {
+      if (respectRedundantLoggingFilter && REDUNDANT_LOGGING_FILTER.isRedundantException(consumerIdStr)) {
         return Collections.emptyMap();
       }
       for (PubSubTopicPartition topicPartition: consumer.getAssignment()) {
