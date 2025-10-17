@@ -71,31 +71,18 @@ public class KafkaConsumerServiceDelegator extends AbstractKafkaConsumerService 
     this.isAAWCStoreFunc = vt -> storeVersionAAWCFlagMap.computeIfAbsent(vt, ignored -> isAAWCStoreFunc.apply(vt));
     ConsumerPoolStrategyType consumerPoolStrategyType = serverConfig.getConsumerPoolStrategyType();
 
-    // For backward compatibility, if the dedicated consumer pool for AA/WC leader is enabled, we will use it.
-    // TODO: Remove this boolean check after new pooling strategy is verified in production environment.
-    if (serverConfig.isDedicatedConsumerPoolForAAWCLeaderEnabled()) {
-      this.consumerPoolStrategy = new AAOrWCLeaderConsumerPoolStrategy();
-      LOGGER.info(
-          "Initializing Consumer Service Delegator with Consumer pool strategy: "
-              + ConsumerPoolStrategyType.AA_OR_WC_LEADER_DEDICATED);
-    } else {
-      switch (consumerPoolStrategyType) {
-        case AA_OR_WC_LEADER_DEDICATED:
-          consumerPoolStrategy = new AAOrWCLeaderConsumerPoolStrategy();
-          break;
-        case CURRENT_VERSION_PRIORITIZATION:
-          if (serverConfig.isResubscriptionTriggeredByVersionIngestionContextChangeEnabled()) {
-            consumerPoolStrategy = new CurrentVersionConsumerPoolStrategy();
-          } else {
-            throw new VeniceException(
-                "Resubscription should be enabled with consumer pool strategy: " + consumerPoolStrategyType);
-          }
-          break;
-        default:
-          consumerPoolStrategy = new DefaultConsumerPoolStrategy();
+    if (consumerPoolStrategyType == ConsumerPoolStrategyType.CURRENT_VERSION_PRIORITIZATION) {
+      if (serverConfig.isResubscriptionTriggeredByVersionIngestionContextChangeEnabled()) {
+        consumerPoolStrategy = new CurrentVersionConsumerPoolStrategy();
+      } else {
+        throw new VeniceException(
+            "Resubscription should be enabled with consumer pool strategy: " + consumerPoolStrategyType);
       }
-      LOGGER.info("Initializing Consumer Service Delegator with Consumer pool strategy: " + consumerPoolStrategyType);
+    } else {
+      consumerPoolStrategy = new DefaultConsumerPoolStrategy();
     }
+    LOGGER.info("Initializing Consumer Service Delegator with Consumer pool strategy: " + consumerPoolStrategyType);
+
     this.consumerServices = consumerPoolStrategy.getConsumerServices();
   }
 
