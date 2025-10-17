@@ -47,6 +47,7 @@ import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
 import java.util.ArrayList;
@@ -187,16 +188,20 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
           D2TestUtils.setupD2Config(zkAddress, https, CLUSTER_DISCOVERY_D2_SERVICE_NAME);
       d2Servers.addAll(D2TestUtils.getD2Servers(zkAddress, clusterDiscoveryD2ClusterName, httpURI, httpsURI));
 
+      InMemoryMetricReader inMemoryMetricReader = InMemoryMetricReader.create();
+      VeniceMetricsRepository veniceMetricsRepository = VeniceMetricsRepository.getVeniceMetricsRepository(
+          ROUTER_SERVICE_NAME,
+          ROUTER_SERVICE_METRIC_PREFIX,
+          ROUTER_SERVICE_METRIC_ENTITIES,
+          routerProperties.getAsMap());
+      veniceMetricsRepository.getVeniceMetricsConfig().setOtelAdditionalMetricsReader(inMemoryMetricReader);
+
       RouterServer router = new RouterServer(
           routerProperties,
           d2Servers,
           Optional.empty(),
           Optional.of(SslUtils.getVeniceLocalSslFactory()),
-          VeniceMetricsRepository.getVeniceMetricsRepository(
-              ROUTER_SERVICE_NAME,
-              ROUTER_SERVICE_METRIC_PREFIX,
-              ROUTER_SERVICE_METRIC_ENTITIES,
-              routerProperties.getAsMap()),
+          veniceMetricsRepository,
           D2TestUtils.getAndStartD2Client(zkAddress),
           CLUSTER_DISCOVERY_D2_SERVICE_NAME);
       return new VeniceRouterWrapper(
