@@ -1408,6 +1408,8 @@ public class VeniceParentHelixAdmin implements Admin {
       Store store = getStore(clusterName, storeName);
       Version version = store.getVersion(versionNumber);
       boolean onlyDeferredSwap = version.isVersionSwapDeferred() && StringUtils.isEmpty(version.getTargetSwapRegion());
+      boolean isTargetRegionPushWithDeferredSwap =
+          version != null && version.isVersionSwapDeferred() && StringUtils.isNotEmpty(version.getTargetSwapRegion());
 
       if (onlyDeferredSwap) {
         if (version.getStatus() == STARTED || version.getStatus() == PUSHED) {
@@ -1423,6 +1425,12 @@ public class VeniceParentHelixAdmin implements Admin {
             return Optional.of(latestTopic.get().getName());
           }
         }
+      } else if (isTargetRegionPushWithDeferredSwap) {
+        LOGGER.error(
+            "Future version {} exists for store {}, please wait till the future version is made current.",
+            versionNumber,
+            storeName);
+        return Optional.of(latestTopic.get().getName());
       }
 
       if (!isTopicTruncated(latestTopicName)) {
