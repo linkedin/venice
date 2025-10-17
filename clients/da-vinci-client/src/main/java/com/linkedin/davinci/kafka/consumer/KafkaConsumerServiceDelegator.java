@@ -215,10 +215,12 @@ public class KafkaConsumerServiceDelegator extends AbstractKafkaConsumerService 
   @Override
   public Map<PubSubTopicPartition, TopicPartitionIngestionInfo> getIngestionInfoFor(
       PubSubTopic versionTopic,
-      PubSubTopicPartition pubSubTopicPartition) {
+      PubSubTopicPartition pubSubTopicPartition,
+      boolean respectRedundantLoggingFilter) {
     KafkaConsumerService kafkaConsumerService = getKafkaConsumerService(versionTopic, pubSubTopicPartition);
     if (kafkaConsumerService != null) {
-      return kafkaConsumerService.getIngestionInfoFor(versionTopic, pubSubTopicPartition);
+      return kafkaConsumerService
+          .getIngestionInfoFor(versionTopic, pubSubTopicPartition, respectRedundantLoggingFilter);
     } else {
       LOGGER.warn(
           "No consumer service found for version topic {} and partition {} when fetching ingestion info"

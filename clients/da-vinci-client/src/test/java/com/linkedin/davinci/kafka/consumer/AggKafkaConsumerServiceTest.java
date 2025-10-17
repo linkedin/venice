@@ -356,7 +356,7 @@ public class AggKafkaConsumerServiceTest {
         new TopicPartitionIngestionInfo(1000L, 50L, 10.5, 1024.0, "consumer-1", 100L, 200L, topic.getName());
     Map<PubSubTopicPartition, TopicPartitionIngestionInfo> mockIngestionInfoMap = new HashMap<>();
     mockIngestionInfoMap.put(topicPartition, mockIngestionInfo);
-    when(mockConsumerService.getIngestionInfoFor(topic, topicPartition)).thenReturn(mockIngestionInfoMap);
+    when(mockConsumerService.getIngestionInfoFor(topic, topicPartition, true)).thenReturn(mockIngestionInfoMap);
 
     String result = serviceSpy.getIngestionInfoFor(topic, topicPartition, regionName);
 
@@ -367,7 +367,7 @@ public class AggKafkaConsumerServiceTest {
     Assert.assertTrue(result.contains("msgRate:10.5"));
     Assert.assertTrue(result.contains("consumer-1"));
 
-    verify(mockConsumerService).getIngestionInfoFor(topic, topicPartition);
+    verify(mockConsumerService).getIngestionInfoFor(topic, topicPartition, true);
   }
 
   @Test
@@ -420,14 +420,14 @@ public class AggKafkaConsumerServiceTest {
     AbstractKafkaConsumerService mockConsumerService = mock(AbstractKafkaConsumerService.class);
     doReturn(mockConsumerService).when(serviceSpy).getKafkaConsumerService(kafkaUrl);
 
-    when(mockConsumerService.getIngestionInfoFor(topic, topicPartition)).thenReturn(new HashMap<>());
+    when(mockConsumerService.getIngestionInfoFor(topic, topicPartition, true)).thenReturn(new HashMap<>());
 
     String result = serviceSpy.getIngestionInfoFor(topic, topicPartition, regionName);
 
     Assert.assertNotNull(result);
     Assert.assertEquals(result, "");
 
-    verify(mockConsumerService).getIngestionInfoFor(topic, topicPartition);
+    verify(mockConsumerService).getIngestionInfoFor(topic, topicPartition, true);
   }
 
   private AggKafkaConsumerService createTestService() {
