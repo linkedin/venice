@@ -6317,6 +6317,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         }
       }
       Utils.sleep(HELIX_RESOURCE_ASSIGNMENT_RETRY_INTERVAL_MS);
+      elapsedTime += HELIX_RESOURCE_ASSIGNMENT_RETRY_INTERVAL_MS;
     }
 
     // Time out, after waiting maxWaitTimeMs, there are not enough nodes assigned.
