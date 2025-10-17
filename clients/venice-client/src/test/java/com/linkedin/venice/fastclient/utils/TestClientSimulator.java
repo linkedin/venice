@@ -108,8 +108,7 @@ public class TestClientSimulator implements Client {
   private Map<Integer, List<String>> partitionToReplicas = new HashMap<>();
   private boolean longTailRetryEnabledForSingleGet = false;
   private int longTailRetryThresholdForSingleGetInMicroseconds = 0;
-  private boolean longTailRetryEnabledForBatchGet = false;
-  private int longTailRetryThresholdForBatchGetInMicroSeconds = 0;
+  private String longTailRangeBasedRetryThresholdForBatchGetInMilliSeconds = null;
 
   private int expectedValueSchemaId = 1;
 
@@ -283,11 +282,6 @@ public class TestClientSimulator implements Client {
 
   }
 
-  /*public TestClientSimulator setKeysToPartitions(Map<String, Integer> keysToPartitions) {
-    this.keysToPartitions = keysToPartitions;
-    return this;
-  }*/
-
   public TestClientSimulator assignRouteToPartitions(String route, int... partitions) {
     Set<Integer> partitionSet = this.routeToPartitions.computeIfAbsent(route, r -> new HashSet<>());
     for (int partition: partitions) {
@@ -295,11 +289,6 @@ public class TestClientSimulator implements Client {
     }
     return this;
   }
-
-  /*public TestClientSimulator setRouteToPartitions(Map<String, Set<Integer>> routeToPartitions) {
-    this.routeToPartitions = routeToPartitions;
-    return this;
-  }*/
 
   public Map<String, String> getKeyValues() {
     return keyValues;
@@ -508,14 +497,9 @@ public class TestClientSimulator implements Client {
     return this;
   }
 
-  public TestClientSimulator setLongTailRetryEnabledForBatchGet(boolean longTailRetryEnabledForBatchGet) {
-    this.longTailRetryEnabledForBatchGet = longTailRetryEnabledForBatchGet;
-    return this;
-  }
-
-  public TestClientSimulator setLongTailRetryThresholdForBatchGetInMicroSeconds(
-      int longTailRetryThresholdForBatchGetInMicroSeconds) {
-    this.longTailRetryThresholdForBatchGetInMicroSeconds = longTailRetryThresholdForBatchGetInMicroSeconds;
+  public TestClientSimulator setLongTailRangeBasedRetryThresholdForBatchGetInMilliSeconds(
+      String longTailRetryThresholdForBatchGetConfig) {
+    this.longTailRangeBasedRetryThresholdForBatchGetInMilliSeconds = longTailRetryThresholdForBatchGetConfig;
     return this;
   }
 
@@ -526,15 +510,15 @@ public class TestClientSimulator implements Client {
     clientConfigBuilder.setStoreName(UNIT_TEST_STORE_NAME);
     clientConfigBuilder.setR2Client(this);
     clientConfigBuilder.setMetricsRepository(new MetricsRepository());
-    if (longTailRetryEnabledForBatchGet) {
-      clientConfigBuilder.setLongTailRetryEnabledForBatchGet(true);
-      clientConfigBuilder
-          .setLongTailRetryThresholdForBatchGetInMicroSeconds(longTailRetryThresholdForBatchGetInMicroSeconds);
-    }
     if (longTailRetryEnabledForSingleGet) {
       clientConfigBuilder.setLongTailRetryEnabledForSingleGet(true);
       clientConfigBuilder
           .setLongTailRetryThresholdForSingleGetInMicroSeconds(longTailRetryThresholdForSingleGetInMicroseconds);
+    }
+
+    if (longTailRangeBasedRetryThresholdForBatchGetInMilliSeconds != null) {
+      clientConfigBuilder.setLongTailRangeBasedRetryThresholdForBatchGetInMilliSeconds(
+          longTailRangeBasedRetryThresholdForBatchGetInMilliSeconds);
     }
 
     // TODO: need to add tests for simulating dual read

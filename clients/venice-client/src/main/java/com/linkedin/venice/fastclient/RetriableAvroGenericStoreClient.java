@@ -6,14 +6,16 @@ import com.linkedin.venice.client.exceptions.VeniceClientRateExceededException;
 import com.linkedin.venice.client.store.ComputeGenericRecord;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
 import com.linkedin.venice.compute.ComputeRequestWrapper;
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.RetryManager;
+import com.linkedin.venice.utils.BatchGetConfigUtils;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Collections;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -34,14 +36,16 @@ import org.apache.logging.log4j.Logger;
  * 2. Leverage some smart logic to avoid useless retry, such as retry triggered by heavy GC.
  */
 public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient<K, V> {
+  private static final Logger LOGGER = LogManager.getLogger(RetriableAvroGenericStoreClient.class);
+
+  public static final String SINGLE_KEY_LONG_TAIL_RETRY_STATS_PREFIX = "single-key-long-tail-retry-manager-";
+  public static final String MULTI_KEY_LONG_TAIL_RETRY_STATS_PREFIX = "multi-key-long-tail-retry-manager-";
   private static final String FAST_CLIENT_RETRY_MANAGER_THREAD_PREFIX = "Fast-client-retry-manager-thread";
+
   private final boolean longTailRetryEnabledForSingleGet;
-  private final boolean longTailRetryEnabledForBatchGet;
-  private final boolean longTailRetryEnabledForCompute;
   private final int longTailRetryThresholdForSingleGetInMicroSeconds;
-  private final int longTailRetryThresholdForBatchGetInMicroSeconds;
-  private final int longTailRetryThresholdForComputeInMicroSeconds;
   private final TimeoutProcessor timeoutProcessor;
+  private final String longTailBatchGetRangeBasedRetryThresholdInMilliSeconds;
   private final ScheduledExecutorService retryManagerExecutorService =
       Executors.newScheduledThreadPool(1, new DaemonThreadFactory(FAST_CLIENT_RETRY_MANAGER_THREAD_PREFIX));
   /**
@@ -50,31 +54,19 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
    * then the retry task will do nothing and the request will either complete eventually (original future) or time out.
    */
   private RetryManager singleKeyLongTailRetryManager = null;
-  private RetryManager multiKeyLongTailRetryManager = null;
-  private static final Logger LOGGER = LogManager.getLogger(RetriableAvroGenericStoreClient.class);
-  public static final String SINGLE_KEY_LONG_TAIL_RETRY_STATS_PREFIX = "single-key-long-tail-retry-manager-";
-  public static final String MULTI_KEY_LONG_TAIL_RETRY_STATS_PREFIX = "multi-key-long-tail-retry-manager-";
+  private final RetryManager multiKeyLongTailRetryManager;
+  private final TreeMap<Integer, Integer> batchGetLongTailRetryThresholdMap;
 
   public RetriableAvroGenericStoreClient(
       InternalAvroStoreClient<K, V> delegate,
       ClientConfig clientConfig,
       TimeoutProcessor timeoutProcessor) {
     super(delegate, clientConfig);
-    if (!(clientConfig.isLongTailRetryEnabledForSingleGet() || clientConfig.isLongTailRetryEnabledForBatchGet()
-        || clientConfig.isLongTailRetryEnabledForCompute())) {
-      throw new VeniceException("Long tail retry is not enabled");
-    }
     this.longTailRetryEnabledForSingleGet = clientConfig.isLongTailRetryEnabledForSingleGet();
-    this.longTailRetryEnabledForBatchGet = clientConfig.isLongTailRetryEnabledForBatchGet();
-    this.longTailRetryEnabledForCompute = clientConfig.isLongTailRetryEnabledForCompute();
     this.longTailRetryThresholdForSingleGetInMicroSeconds =
         clientConfig.getLongTailRetryThresholdForSingleGetInMicroSeconds();
-    this.longTailRetryThresholdForBatchGetInMicroSeconds =
-        clientConfig.getLongTailRetryThresholdForBatchGetInMicroSeconds();
-    this.longTailRetryThresholdForComputeInMicroSeconds =
-        clientConfig.getLongTailRetryThresholdForComputeInMicroSeconds();
     this.timeoutProcessor = timeoutProcessor;
-    if (longTailRetryEnabledForSingleGet && clientConfig.isRetryBudgetEnabled()) {
+    if (longTailRetryEnabledForSingleGet) {
       this.singleKeyLongTailRetryManager = new RetryManager(
           clientConfig.getClusterStats().getMetricsRepository(),
           SINGLE_KEY_LONG_TAIL_RETRY_STATS_PREFIX + clientConfig.getStoreName(),
@@ -82,14 +74,16 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
           clientConfig.getRetryBudgetPercentage(),
           retryManagerExecutorService);
     }
-    if (longTailRetryEnabledForBatchGet && clientConfig.isRetryBudgetEnabled()) {
-      this.multiKeyLongTailRetryManager = new RetryManager(
-          clientConfig.getClusterStats().getMetricsRepository(),
-          MULTI_KEY_LONG_TAIL_RETRY_STATS_PREFIX + clientConfig.getStoreName(),
-          clientConfig.getLongTailRetryBudgetEnforcementWindowInMs(),
-          clientConfig.getRetryBudgetPercentage(),
-          retryManagerExecutorService);
-    }
+    this.multiKeyLongTailRetryManager = new RetryManager(
+        clientConfig.getClusterStats().getMetricsRepository(),
+        MULTI_KEY_LONG_TAIL_RETRY_STATS_PREFIX + clientConfig.getStoreName(),
+        clientConfig.getLongTailRetryBudgetEnforcementWindowInMs(),
+        clientConfig.getRetryBudgetPercentage(),
+        retryManagerExecutorService);
+    this.longTailBatchGetRangeBasedRetryThresholdInMilliSeconds =
+        clientConfig.getLongTailRangeBasedRetryThresholdForBatchGetInMilliSeconds();
+    batchGetLongTailRetryThresholdMap =
+        BatchGetConfigUtils.parseRetryThresholdForBatchGet(longTailBatchGetRangeBasedRetryThresholdInMilliSeconds);
   }
 
   enum RetryType {
@@ -225,18 +219,14 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
       BatchGetRequestContext<K, V> requestContext,
       Set<K> keys,
       StreamingCallback<K, V> callback) throws VeniceClientException {
-    if (!longTailRetryEnabledForBatchGet) {
-      // if longTailRetry is not enabled for batch get, simply return
-      super.streamingBatchGet(requestContext, keys, callback);
-      return;
-    }
-
+    int longTailRetryThresholdForBatchGetInMicroSeconds =
+        getLongTailRetryThresholdForSingleGetInMicroSeconds(keys.size());
     retryStreamingMultiKeyRequest(
         requestContext,
         keys,
         callback,
         longTailRetryThresholdForBatchGetInMicroSeconds,
-        (numKeysInRequest) -> requestContext.createRetryRequestContext(numKeysInRequest),
+        requestContext::createRetryRequestContext,
         super::streamingBatchGet);
   }
 
@@ -248,11 +238,8 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
       Schema resultSchema,
       StreamingCallback<K, ComputeGenericRecord> callback,
       long preRequestTimeInNS) throws VeniceClientException {
-    if (!longTailRetryEnabledForCompute) {
-      // if longTailRetry is not enabled for compute, simply return
-      super.compute(requestContext, computeRequestWrapper, keys, resultSchema, callback, preRequestTimeInNS);
-      return;
-    }
+    int longTailRetryThresholdForComputeInMicroSeconds =
+        getLongTailRetryThresholdForSingleGetInMicroSeconds(keys.size());
 
     retryStreamingMultiKeyRequest(
         requestContext,
@@ -450,6 +437,17 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
 
   private boolean isExceptionCausedByTooManyRequests(Throwable e) {
     return ExceptionUtils.recursiveClassEquals(e, VeniceClientRateExceededException.class);
+  }
+
+  private int getLongTailRetryThresholdForSingleGetInMicroSeconds(int numKeys) {
+    Map.Entry<Integer, Integer> retryThresholdEntry = batchGetLongTailRetryThresholdMap.floorEntry(numKeys);
+    if (retryThresholdEntry == null) {
+      // This should never happen as the configuration will always have a continuous range starting from 1 to 500
+      throw new VeniceClientException(
+          "Failed to find long tail retry threshold for batch get with " + numKeys + " keys. Please check the config: "
+              + longTailBatchGetRangeBasedRetryThresholdInMilliSeconds);
+    }
+    return retryThresholdEntry.getValue() * 1000;
   }
 
   interface RequestContextConstructor<K, V, R extends MultiKeyRequestContext<K, V>> {
