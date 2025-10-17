@@ -40,6 +40,7 @@ import com.linkedin.davinci.store.view.MaterializedViewWriter;
 import com.linkedin.davinci.store.view.VeniceViewWriter;
 import com.linkedin.davinci.store.view.VeniceViewWriterFactory;
 import com.linkedin.davinci.validation.DataIntegrityValidator;
+import com.linkedin.davinci.validation.PartitionTracker;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
@@ -74,6 +75,7 @@ import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.pubsub.manager.TopicManagerRepository;
+import com.linkedin.venice.pubsub.mock.InMemoryPubSubPosition;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
@@ -520,6 +522,37 @@ public class LeaderFollowerStoreIngestionTaskTest {
     return pubSubMessageProcessedResultWrapper;
   }
 
+  @Test(timeOut = 60_000)
+  public void testIsRecordSelfProduced() throws InterruptedException {
+    setUp();
+    DefaultPubSubMessage consumerRecord = mock(DefaultPubSubMessage.class);
+    KafkaMessageEnvelope kme = mock(KafkaMessageEnvelope.class);
+    when(consumerRecord.getValue()).thenReturn(kme);
+
+    // Case 0: Function does not throw when LeaderMetadata is null
+    when(kme.getLeaderMetadataFooter()).thenReturn(null);
+    assertFalse(leaderFollowerStoreIngestionTask.isRecordSelfProduced(consumerRecord));
+
+    LeaderMetadata leaderMetadata = mock(LeaderMetadata.class);
+    when(kme.getLeaderMetadataFooter()).thenReturn(leaderMetadata);
+
+    // Case 1: HostName is different
+    when(leaderMetadata.getHostName()).thenReturn("notlocalhost");
+    assertFalse(leaderFollowerStoreIngestionTask.isRecordSelfProduced(consumerRecord));
+
+    // Case 2: HostName is the same
+    when(leaderMetadata.getHostName()).thenReturn(Utils.getHostName());
+    assertFalse(leaderFollowerStoreIngestionTask.isRecordSelfProduced(consumerRecord));
+
+    // Case 3: HostName is same and there is a port
+    when(leaderMetadata.getHostName()).thenReturn(Utils.getHostName() + ":12345");
+    assertFalse(leaderFollowerStoreIngestionTask.isRecordSelfProduced(consumerRecord));
+
+    // Case 4: HostName and port is the same (listener port is 0)
+    when(leaderMetadata.getHostName()).thenReturn(Utils.getHostName() + ":0");
+    assertTrue(leaderFollowerStoreIngestionTask.isRecordSelfProduced(consumerRecord));
+  }
+
   @Test
   public void testSendGlobalRtDivMessage() throws InterruptedException, IOException {
     setUp();
@@ -583,11 +616,18 @@ public class LeaderFollowerStoreIngestionTaskTest {
     Put put = (Put) callbackPayload.getValue().payloadUnion;
     assertEquals(put.getSchemaId(), AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion());
     assertNotNull(put.getPutValue());
+
+    // Verify that completing the future from put() causes execSyncOffsetFromSnapshotAsync to be called
+    // and that produceResult should override the LCVP of the VT DIV sent to the drainer
+    verify(mockStoreBufferService, never()).execSyncOffsetFromSnapshotAsync(any(), any(), any());
     PubSubProduceResult produceResult = mock(PubSubProduceResult.class);
-    when(produceResult.getPubSubPosition()).thenReturn(mock(PubSubPosition.class));
+    PubSubPosition specificPosition = InMemoryPubSubPosition.of(11L);
+    when(produceResult.getPubSubPosition()).thenReturn(specificPosition);
     when(produceResult.getSerializedSize()).thenReturn(keyBytes.length + put.putValue.remaining());
     callback.onCompletion(produceResult, null);
-    verify(mockStoreBufferService, times(1)).execSyncOffsetFromSnapshotAsync(any(), any(), any());
+    ArgumentCaptor<PartitionTracker> vtDivCaptor = ArgumentCaptor.forClass(PartitionTracker.class);
+    verify(mockStoreBufferService, times(1)).execSyncOffsetFromSnapshotAsync(any(), vtDivCaptor.capture(), any());
+    assertEquals(vtDivCaptor.getValue().getLatestConsumedVtPosition(), specificPosition);
   }
 
   @Test
