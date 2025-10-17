@@ -223,7 +223,9 @@ public class VenicePathParser implements ExtendedResourcePathParser<VenicePath, 
                 SINGLE_KEY_RETRY_MANAGER_STATS_PREFIX + storeName,
                 routerConfig.getLongTailRetryBudgetEnforcementWindowInMs(),
                 routerConfig.getSingleKeyLongTailRetryBudgetPercentDecimal(),
-                retryManagerScheduler));
+                retryManagerScheduler,
+                null,
+                null));
         // single-get request
         path = new VeniceSingleGetPath(
             storeVersionName,
@@ -242,7 +244,9 @@ public class VenicePathParser implements ExtendedResourcePathParser<VenicePath, 
                 MULTI_KEY_RETRY_MANAGER_STATS_PREFIX + storeName,
                 routerConfig.getLongTailRetryBudgetEnforcementWindowInMs(),
                 routerConfig.getMultiKeyLongTailRetryBudgetPercentDecimal(),
-                retryManagerScheduler));
+                retryManagerScheduler,
+                null,
+                null));
         boolean isReadComputationEnabled = storeRepository.isReadComputationEnabled(storeName);
         if (resourceType == RouterResourceType.TYPE_STORAGE) {
           // multi-get request

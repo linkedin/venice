@@ -50,6 +50,7 @@ dependencies {
   // It's necessary to pull in the most recent version of zkclient explicitly, otherwise Helix won't have it...
   implementation libraries.zkclient
   implementation libraries.zookeeper // TODO: Get rid of ZK dependency in venice-common
+  testImplementation libraries.openTelemetryTestSdk
 
   // Test dependencies are allowed to be bulkier.
   testImplementation libraries.kafkaClientsTest // TODO: Get rid of Kafka dependency in venice-common (used by TopicCreator)
