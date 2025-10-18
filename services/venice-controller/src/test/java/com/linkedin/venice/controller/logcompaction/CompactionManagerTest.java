@@ -74,7 +74,7 @@ public class CompactionManagerTest {
     when(multiClusterConfig.getControllerConfig(TEST_CLUSTER_NAME_3)).thenReturn(cluster3Config);
 
     Set<RepushCandidateFilter> candidateFilters =
-        new HashSet<>(Collections.singletonList(new StoreRepushCandidateFilter(multiClusterConfig)));
+        Collections.singleton(new StoreRepushCandidateFilter(multiClusterConfig));
 
     testCompactionManager = new CompactionManager(mockRepushOrchestrator, candidateFilters, statsMap);
   }

@@ -830,9 +830,14 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   private Set<RepushCandidateFilter> getRepushCandidateFiltersFromControllerConfig(
       VeniceControllerMultiClusterConfig multiClusterConfigs) {
+
     // Add candidate filters for compaction manager
-    Set<RepushCandidateFilter> candidateFilters =
-        new HashSet<>(Collections.singletonList(new StoreRepushCandidateFilter(multiClusterConfigs)));
+    Set<RepushCandidateFilter> candidateFilters = new HashSet<>();
+
+    // Default filter
+    candidateFilters.add(new StoreRepushCandidateFilter(multiClusterConfigs));
+
+    // Additional filters from config
     for (String candidateFilterClassName: multiClusterConfigs.getRepushCandidateFilterClassNames()) {
       try {
         Class<? extends RepushCandidateFilter> candidateFilterClass = ReflectUtils.loadClass(candidateFilterClassName);
