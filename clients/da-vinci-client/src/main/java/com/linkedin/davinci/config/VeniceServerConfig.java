@@ -992,7 +992,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     consumerPoolStrategyType = KafkaConsumerServiceDelegator.ConsumerPoolStrategyType.valueOf(
         serverProperties.getString(
             SERVER_CONSUMER_POOL_ALLOCATION_STRATEGY,
-            KafkaConsumerServiceDelegator.ConsumerPoolStrategyType.CURRENT_VERSION_PRIORITIZATION.name()));
+            KafkaConsumerServiceDelegator.ConsumerPoolStrategyType.DEFAULT.name()));
     consumerPoolSizeForCurrentVersionAAWCLeader =
         serverProperties.getInt(SERVER_CONSUMER_POOL_SIZE_FOR_CURRENT_VERSION_AA_WC_LEADER, 10);
 
@@ -1783,10 +1783,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public int getNonExistingTopicCheckRetryIntervalSecond() {
     return nonExistingTopicCheckRetryIntervalSecond;
-  }
-
-  public boolean isDedicatedConsumerPoolForAAWCLeaderEnabled() {
-    return dedicatedConsumerPoolForAAWCLeaderEnabled;
   }
 
   public int getDedicatedConsumerPoolSizeForAAWCLeader() {
