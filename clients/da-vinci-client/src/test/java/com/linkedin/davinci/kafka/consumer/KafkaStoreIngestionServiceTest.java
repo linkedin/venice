@@ -172,6 +172,13 @@ public abstract class KafkaStoreIngestionServiceTest {
     doReturn(-1L).when(mockVeniceServerConfig).getKafkaFetchQuotaRecordPerSecond();
     doReturn(-1L).when(mockVeniceServerConfig).getKafkaFetchQuotaUnorderedBytesPerSecond();
     doReturn(-1L).when(mockVeniceServerConfig).getKafkaFetchQuotaUnorderedRecordPerSecond();
+    doReturn(-1).when(mockVeniceServerConfig).getSepRTLeaderQuotaRecordsPerSecond();
+    doReturn(-1).when(mockVeniceServerConfig).getCurrentVersionAAWCLeaderQuotaRecordsPerSecond();
+    doReturn(-1).when(mockVeniceServerConfig).getNonCurrentVersionAAWCLeaderQuotaRecordsPerSecond();
+    doReturn(-1).when(mockVeniceServerConfig).getCurrentVersionSepRTLeaderQuotaRecordsPerSecond();
+    doReturn(-1).when(mockVeniceServerConfig).getCurrentVersionNonAAWCLeaderQuotaRecordsPerSecond();
+    doReturn(-1).when(mockVeniceServerConfig).getNonCurrentVersionNonAAWCLeaderQuotaRecordsPerSecond();
+
     doReturn("").when(mockVeniceServerConfig).getDataBasePath();
     doReturn(0.9d).when(mockVeniceServerConfig).getDiskFullThreshold();
     doReturn(Int2ObjectMaps.emptyMap()).when(mockVeniceServerConfig).getKafkaClusterIdToAliasMap();
