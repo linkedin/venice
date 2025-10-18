@@ -194,19 +194,18 @@ public class EventThrottlerTest {
   @Test
   public void testZeroQuotaWillRejectRequests() {
     long timeWindowMS = 1000L;
-    EventThrottler throttler = new EventThrottler(
-        testTime,
-        0,
-        timeWindowMS,
-        "testRejectUnexpectedRequests",
-        true,
-        EventThrottler.REJECT_STRATEGY);
-
-    // Quota exceeds.
     try {
+      EventThrottler throttler = new EventThrottler(
+          testTime,
+          0,
+          timeWindowMS,
+          "testRejectUnexpectedRequests",
+          true,
+          EventThrottler.REJECT_STRATEGY);
+
       sendRequests(1, throttler);
       fail("Number of request exceed quota, throttler should reject them.");
-    } catch (QuotaExceededException e) {
+    } catch (IllegalArgumentException e) {
       // expected.
     }
   }
