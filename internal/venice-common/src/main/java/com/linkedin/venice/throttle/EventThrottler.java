@@ -168,6 +168,9 @@ public class EventThrottler implements VeniceRateLimiter {
     Validate.notNull(time);
     Validate.notNull(throttlingStrategy);
     this.time = time;
+    if (maxRatePerSecondProvider.getAsLong() == 0) {
+      throw new IllegalArgumentException("Can not create throttler with 0 quotaPerSecond");
+    }
     this.maxRatePerSecondProvider = maxRatePerSecondProvider;
     this.throttlingStrategy = throttlingStrategy;
     this.enforcementIntervalMs = intervalMs;
