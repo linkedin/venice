@@ -32,8 +32,8 @@ public class VeniceAdaptiveIngestionThrottler extends EventThrottler implements 
       long timeWindow,
       String throttlerName,
       AdaptiveThrottlingServiceStats adaptiveThrottlingServiceStats) {
-    if (quotaPerSecond <= 0) {
-      throw new IllegalArgumentException("Can not create throttler with quotaPerSecond " + quotaPerSecond);
+    if (quotaPerSecond == 0) {
+      throw new IllegalArgumentException("Can not create throttler with 0 quotaPerSecond");
     }
 
     this.signalIdleThreshold = signalIdleThreshold;
