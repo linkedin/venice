@@ -380,6 +380,6 @@ public class KafkaConsumerServiceDelegator extends AbstractKafkaConsumerService 
   }
 
   public enum ConsumerPoolStrategyType {
-    DEFAULT, AA_OR_WC_LEADER_DEDICATED, CURRENT_VERSION_PRIORITIZATION
+    DEFAULT, CURRENT_VERSION_PRIORITIZATION
   }
 }
