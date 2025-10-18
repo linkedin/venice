@@ -33,8 +33,6 @@ import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -62,36 +60,6 @@ public class KafkaConsumerServiceDelegatorTest {
   public static Object[][] methodList() {
     return new Object[][] { { "getConsumerAssignedToVersionTopicPartition" }, { "assignConsumerFor" },
         { "unSubscribe" }, { "getLatestOffsetBasedOnMetrics" } };
-  }
-
-  private void invokeAndVerify(
-      KafkaConsumerServiceDelegator delegator,
-      KafkaConsumerService invokedConsumerService,
-      KafkaConsumerService unusedConsumerService,
-      PubSubTopic versionTopic,
-      PubSubTopicPartition topicPartition,
-      String methodName) throws NoSuchMethodException, InvocationTargetException, IllegalAccessException {
-    boolean includeLongParam = methodName.equals("unSubscribe");
-    if (includeLongParam) {
-      Method testMethod = KafkaConsumerServiceDelegator.class
-          .getMethod(methodName, PubSubTopic.class, PubSubTopicPartition.class, long.class);
-      Method verifyMethod =
-          KafkaConsumerService.class.getMethod(methodName, PubSubTopic.class, PubSubTopicPartition.class, long.class);
-      testMethod.invoke(delegator, versionTopic, topicPartition, 0L);
-      verifyMethod.invoke(verify(invokedConsumerService), versionTopic, topicPartition, 0L);
-      verifyMethod.invoke(verify(unusedConsumerService, never()), versionTopic, topicPartition, 0L);
-    } else {
-      Method testMethod =
-          KafkaConsumerServiceDelegator.class.getMethod(methodName, PubSubTopic.class, PubSubTopicPartition.class);
-      Method verifyMethod =
-          KafkaConsumerService.class.getMethod(methodName, PubSubTopic.class, PubSubTopicPartition.class);
-      testMethod.invoke(delegator, versionTopic, topicPartition);
-      verifyMethod.invoke(verify(invokedConsumerService), versionTopic, topicPartition);
-      verifyMethod.invoke(verify(unusedConsumerService, never()), versionTopic, topicPartition);
-    }
-
-    reset(invokedConsumerService);
-    reset(unusedConsumerService);
   }
 
   @Test
@@ -173,36 +141,19 @@ public class KafkaConsumerServiceDelegatorTest {
 
   @Test
   public void startConsumptionIntoDataReceiverTest() {
-    KafkaConsumerService mockDefaultConsumerService = mock(KafkaConsumerService.class);
-    KafkaConsumerService mockDedicatedConsumerService = mock(KafkaConsumerService.class);
     VeniceServerConfig mockConfig = mock(VeniceServerConfig.class);
 
-    Function<String, Boolean> isAAWCStoreFunc = vt -> true;
-    KafkaConsumerServiceDelegator.KafkaConsumerServiceBuilder consumerServiceBuilder =
-        (ignored, poolType) -> poolType.equals(ConsumerPoolType.REGULAR_POOL)
-            ? mockDefaultConsumerService
-            : mockDedicatedConsumerService;
+    Function<String, Boolean> isAAWCStoreFunc;
+    KafkaConsumerServiceDelegator.KafkaConsumerServiceBuilder consumerServiceBuilder;
 
-    KafkaConsumerServiceDelegator delegator =
-        new KafkaConsumerServiceDelegator(mockConfig, consumerServiceBuilder, isAAWCStoreFunc);
+    KafkaConsumerServiceDelegator delegator;
     PubSubTopic versionTopic = TOPIC_REPOSITORY.getTopic(VERSION_TOPIC_NAME);
     PubSubTopic rtTopic = TOPIC_REPOSITORY.getTopic(RT_TOPIC_NAME);
-    PartitionReplicaIngestionContext topicPartitionForVT = new PartitionReplicaIngestionContext(
-        versionTopic,
-        new PubSubTopicPartitionImpl(versionTopic, PARTITION_ID),
-        PartitionReplicaIngestionContext.VersionRole.CURRENT,
-        PartitionReplicaIngestionContext.WorkloadType.NON_AA_OR_WRITE_COMPUTE);
-    PartitionReplicaIngestionContext topicPartitionForRT = new PartitionReplicaIngestionContext(
-        versionTopic,
-        new PubSubTopicPartitionImpl(rtTopic, PARTITION_ID),
-        PartitionReplicaIngestionContext.VersionRole.CURRENT,
-        PartitionReplicaIngestionContext.WorkloadType.NON_AA_OR_WRITE_COMPUTE);
 
     ConsumedDataReceiver dataReceiver = mock(ConsumedDataReceiver.class);
 
     // Test non-AA/WC cases
     isAAWCStoreFunc = vt -> false;
-    delegator = new KafkaConsumerServiceDelegator(mockConfig, consumerServiceBuilder, isAAWCStoreFunc);
 
     // Test current version prioritization strategy
     PartitionReplicaIngestionContext tpForCurrentAAWCLeader = new PartitionReplicaIngestionContext(
