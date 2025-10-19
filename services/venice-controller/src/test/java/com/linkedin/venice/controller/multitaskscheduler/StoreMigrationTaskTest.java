@@ -393,7 +393,7 @@ public class StoreMigrationTaskTest {
     VeniceException exp = expectThrows(VeniceException.class, () -> task.run());
     assertEquals(
         exp.getMessage(),
-        "Migration for store testExpHandlingAbortStore on step END_MIGRATION. Cannot abort migration on or after end migration.");
+        "Cannot abort migration for store " + storeName + " at step END_MIGRATION - too late to abort");
   }
 
   @Test
@@ -415,7 +415,7 @@ public class StoreMigrationTaskTest {
     VeniceException exp = expectThrows(VeniceException.class, () -> task.run());
     assertEquals(
         exp.getMessage(),
-        "Store testExpHandlingAbortStore is not in migration state on source cluster srcCluster on step VERIFY_MIGRATION_STATUS. Cannot abort migration.");
+        "Store " + storeName + " not in migrating state, cannot abort at step VERIFY_MIGRATION_STATUS");
   }
 
   @Test
@@ -437,14 +437,15 @@ public class StoreMigrationTaskTest {
     when(mocksrcControllerClient.getStore(storeName)).thenReturn(srcStoreResponse);
 
     D2ServiceDiscoveryResponse discoveryResponse = new D2ServiceDiscoveryResponse();
-    discoveryResponse.setCluster("NotSrcCluster");
+    String discoveredCluster = "SomeOtherCluster";
+    discoveryResponse.setCluster(discoveredCluster);
     when(mocksrcControllerClient.discoverCluster(storeName)).thenReturn(discoveryResponse);
 
     VeniceException exp = expectThrows(VeniceException.class, () -> task.run());
     assertEquals(
         exp.getMessage(),
-        "Store " + storeName + " discovered on cluster NotSrcCluster instead of source cluster srcCluster. "
-            + "Either store migration has completed, or the internal states are messed up.");
+        "Store " + storeName + " discovered in cluster " + discoveredCluster + " instead of source srcCluster. "
+            + "Either migration has completed, or internal states are messed up.");
   }
 
   @Test
