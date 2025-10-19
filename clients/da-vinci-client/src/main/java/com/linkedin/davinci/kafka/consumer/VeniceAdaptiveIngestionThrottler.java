@@ -51,8 +51,13 @@ public class VeniceAdaptiveIngestionThrottler extends EventThrottler implements 
     }
 
     for (Double factor: factors) {
+      long maxQuota = (long) (quotaPerSecond * factor);
+      if (quotaPerSecond == -1L) {
+        maxQuota = -1;
+        LOGGER.warn("Quota per second is not set (-1), setting max quota per throttler to -1");
+      }
       EventThrottler eventThrottler = new EventThrottler(
-          (long) (quotaPerSecond * factor),
+          maxQuota,
           timeWindow,
           throttlerName + decimalFormat.format(factor),
           false,
