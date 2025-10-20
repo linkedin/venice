@@ -54,37 +54,42 @@ public class VeniceVersionLifecycleEventManager {
   }
 
   void notifyVersionCreated(Store store, Version version, boolean isSourceCluster) {
+    Store readOnlyStore = new ReadOnlyStore(store);
     Version readOnlyVersion = new ReadOnlyStore.ReadOnlyVersion(version);
     for (VeniceVersionLifecycleEventListener listener: listeners) {
-      listener.onVersionCreated(store, readOnlyVersion, isSourceCluster);
+      listener.onVersionCreated(readOnlyStore, readOnlyVersion, isSourceCluster);
     }
   }
 
   void notifyVersionDeleted(Store store, Version version, boolean isSourceCluster) {
+    Store readOnlyStore = new ReadOnlyStore(store);
     Version readOnlyVersion = new ReadOnlyStore.ReadOnlyVersion(version);
     for (VeniceVersionLifecycleEventListener listener: listeners) {
-      listener.onVersionDeleted(store, readOnlyVersion, isSourceCluster);
+      listener.onVersionDeleted(readOnlyStore, readOnlyVersion, isSourceCluster);
     }
   }
 
   void notifyVersionBecomingCurrentFromFuture(Store store, Version version, boolean isSourceCluster) {
+    Store readOnlyStore = new ReadOnlyStore(store);
     Version readOnlyVersion = new ReadOnlyStore.ReadOnlyVersion(version);
     for (VeniceVersionLifecycleEventListener listener: listeners) {
-      listener.onVersionBecomingCurrentFromFuture(store, readOnlyVersion, isSourceCluster);
+      listener.onVersionBecomingCurrentFromFuture(readOnlyStore, readOnlyVersion, isSourceCluster);
     }
   }
 
   void notifyVersionBecomingCurrentFromBackup(Store store, Version version, boolean isSourceCluster) {
+    Store readOnlyStore = new ReadOnlyStore(store);
     Version readOnlyVersion = new ReadOnlyStore.ReadOnlyVersion(version);
     for (VeniceVersionLifecycleEventListener listener: listeners) {
-      listener.onVersionBecomingCurrentFromBackup(store, readOnlyVersion, isSourceCluster);
+      listener.onVersionBecomingCurrentFromBackup(readOnlyStore, readOnlyVersion, isSourceCluster);
     }
   }
 
   void notifyVersionBecomingBackup(Store store, Version version, boolean isSourceCluster) {
+    Store readOnlyStore = new ReadOnlyStore(store);
     Version readOnlyVersion = new ReadOnlyStore.ReadOnlyVersion(version);
     for (VeniceVersionLifecycleEventListener listener: listeners) {
-      listener.onVersionBecomingBackup(store, readOnlyVersion, isSourceCluster);
+      listener.onVersionBecomingBackup(readOnlyStore, readOnlyVersion, isSourceCluster);
     }
   }
 }

@@ -3282,30 +3282,6 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     adminSpy.rollForwardToFutureVersion(clusterName, storeName, null);
   }
 
-<<<<<<< HEAD
-=======
-  @Test
-  public void testDeleteStoreAdminMessageTimeout() {
-    VeniceParentHelixAdmin adminSpy = spy(parentAdmin);
-
-    String storeName = "testStore";
-    String owner = "testOwner";
-    Store store = TestUtils.createTestStore(storeName, owner, System.currentTimeMillis());
-    doReturn(store).when(internalAdmin).getStore(eq(clusterName), eq(storeName));
-    doReturn(store).when(internalAdmin).checkPreConditionForDeletion(eq(clusterName), eq(storeName));
-
-    AdminMessageConsumptionTimeoutException expectedException =
-        new AdminMessageConsumptionTimeoutException("timed out!", new Exception());
-    doThrow(expectedException).when(adminSpy).sendAdminMessageAndWaitForConsumed(any(), any(), any());
-    try {
-      adminSpy.deleteStore(clusterName, storeName, false, 0, true);
-      Assert.fail("Delete store should time out");
-    } catch (AdminMessageConsumptionTimeoutException e) {
-      Assert.assertEquals(e, expectedException);
-      verify(adminSpy, times(1)).deleteAclsForStore(store, storeName);
-    }
-  }
-
   @Test
   public void testUpdateStoreETLConfig() {
     String storeName = Utils.getUniqueString("testUpdatedStoreETLConfigs");
@@ -3357,7 +3333,6 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     Assert.assertEquals(etlStoreConfigRecord.etlStrategy, VeniceETLStrategy.EXTERNAL_SERVICE.getValue());
   }
 
->>>>>>> cdfde864a ([common][controller] Add new update store API to update ETLStoreConfig)
   private Store setupForStoreViewConfigUpdateTest(String storeName) {
     Store store = TestUtils.createTestStore(storeName, "test", System.currentTimeMillis());
     store.setActiveActiveReplicationEnabled(true);
