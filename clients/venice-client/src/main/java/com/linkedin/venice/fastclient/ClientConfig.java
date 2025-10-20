@@ -428,7 +428,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     private boolean longTailRetryEnabledForBatchGet = false;
     private int longTailRetryThresholdForBatchGetInMicroSeconds = 10000; // 10ms.
     private String longTailRangeBasedRetryThresholdForBatchGetInMilliSeconds =
-        "1-5:15,6-20:30,21-150:50,151-500:100,501-:500";
+        "1-5:18,6-20:15,21-150:25,151-500:50,501-:250";
 
     private boolean longTailRetryEnabledForCompute = false;
     private int longTailRetryThresholdForComputeInMicroSeconds = 10000; // 10ms.
