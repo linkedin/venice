@@ -179,7 +179,6 @@ public class HeartbeatMonitoringServiceTest {
     Assert.assertEquals(lag, Long.MAX_VALUE);
     timestamp = heartbeatMonitoringService.getReplicaFollowerHeartbeatTimestamp(pcs, store, 2, true);
     Assert.assertEquals(timestamp, HeartbeatMonitoringService.INVALID_MESSAGE_TIMESTAMP);
-
   }
 
   @Test
@@ -275,7 +274,9 @@ public class HeartbeatMonitoringServiceTest {
                 false)
             .size(),
         1);
+    doCallRealMethod().when(heartbeatMonitoringService).checkAndMaybeLogHeartbeatDelayMap(anyMap());
 
+    heartbeatMonitoringService.checkAndMaybeLogHeartbeatDelayMap(leaderMap);
   }
 
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
@@ -518,8 +519,6 @@ public class HeartbeatMonitoringServiceTest {
             .get(TEST_STORE)
             .get(futureVersion.getNumber())
             .get(1));
-
-    heartbeatMonitoringService.record();
   }
 
   @Test
