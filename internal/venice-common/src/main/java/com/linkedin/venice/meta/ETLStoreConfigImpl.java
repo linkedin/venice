@@ -21,15 +21,17 @@ public class ETLStoreConfigImpl implements ETLStoreConfig {
   public ETLStoreConfigImpl(
       @JsonProperty("etledUserProxyAccount") String etledUserProxyAccount,
       @JsonProperty("regularVersionETLEnabled") boolean regularVersionETLEnabled,
-      @JsonProperty("futureVersionETLEnabled") boolean futureVersionETLEnabled) {
+      @JsonProperty("futureVersionETLEnabled") boolean futureVersionETLEnabled,
+      @JsonProperty("etlStrategy") int etlStrategy) {
     this.etlConfig = new StoreETLConfig();
     this.etlConfig.etledUserProxyAccount = etledUserProxyAccount;
     this.etlConfig.regularVersionETLEnabled = regularVersionETLEnabled;
     this.etlConfig.futureVersionETLEnabled = futureVersionETLEnabled;
+    this.etlConfig.etlStrategy = etlStrategy == 0 ? VeniceETLStrategy.EXTERNAL_SERVICE.getValue() : etlStrategy;
   }
 
   public ETLStoreConfigImpl() {
-    this("", false, false);
+    this("", false, false, VeniceETLStrategy.EXTERNAL_SERVICE.getValue());
   }
 
   ETLStoreConfigImpl(StoreETLConfig config) {
@@ -67,6 +69,16 @@ public class ETLStoreConfigImpl implements ETLStoreConfig {
   }
 
   @Override
+  public VeniceETLStrategy getETLStrategy() {
+    return VeniceETLStrategy.getVeniceETLStrategyFromInt(etlConfig.etlStrategy);
+  }
+
+  @Override
+  public void setETLStrategy(VeniceETLStrategy etlStrategy) {
+    this.etlConfig.etlStrategy = etlStrategy.getValue();
+  }
+
+  @Override
   public StoreETLConfig dataModel() {
     return this.etlConfig;
   }
@@ -93,6 +105,7 @@ public class ETLStoreConfigImpl implements ETLStoreConfig {
     return new ETLStoreConfigImpl(
         getEtledUserProxyAccount(),
         isRegularVersionETLEnabled(),
-        isFutureVersionETLEnabled());
+        isFutureVersionETLEnabled(),
+        getETLStrategy().getValue());
   }
 }
