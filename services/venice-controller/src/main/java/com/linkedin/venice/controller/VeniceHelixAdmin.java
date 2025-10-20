@@ -77,6 +77,7 @@ import com.linkedin.venice.controller.stats.DeadStoreStats;
 import com.linkedin.venice.controller.stats.DisabledPartitionStats;
 import com.linkedin.venice.controller.stats.LogCompactionStats;
 import com.linkedin.venice.controller.stats.PushJobStatusStats;
+import com.linkedin.venice.controller.stats.VeniceAdminStats;
 import com.linkedin.venice.controllerapi.AdminOperationProtocolVersionControllerResponse;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
@@ -1633,6 +1634,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       vwOptionsBuilder.setBrokerAddress(version.getPushStreamSourceAddress());
     }
     try (VeniceWriter veniceWriter = factory.createVeniceWriter(vwOptionsBuilder.build())) {
+      VeniceAdminStats stats = getHelixVeniceClusterResources(clusterName).getVeniceAdminStats();
       if (alsoWriteStartOfPush) {
 
         long startOfPushStartTime = System.currentTimeMillis();
@@ -1641,17 +1643,16 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             version.isChunkingEnabled(),
             version.getCompressionStrategy(),
             new HashMap<>());
-        getHelixVeniceClusterResources(clusterName).getVeniceAdminStats()
-            .recordStartOfPushLatency(startOfPushStartTime);
+        stats.recordStartOfPushLatency(startOfPushStartTime);
       }
 
       long endOfPushStartTime = System.currentTimeMillis();
       veniceWriter.broadcastEndOfPush(new HashMap<>());
-      getHelixVeniceClusterResources(clusterName).getVeniceAdminStats().recordEndOfPushLatency(endOfPushStartTime);
+      stats.recordEndOfPushLatency(endOfPushStartTime);
 
       long flushStartTime = System.currentTimeMillis();
       veniceWriter.flush();
-      getHelixVeniceClusterResources(clusterName).getVeniceAdminStats().recordProducerFlushLatency(flushStartTime);
+      stats.recordProducerFlushLatency(flushStartTime);
     }
   }
 

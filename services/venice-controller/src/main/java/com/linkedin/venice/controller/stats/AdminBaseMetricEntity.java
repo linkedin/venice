@@ -1,7 +1,9 @@
 package com.linkedin.venice.controller.stats;
 
-import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.*;
-import static com.linkedin.venice.utils.Utils.*;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_PARENT_ADMIN_METHOD;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_PARENT_ADMIN_METHOD_STEP;
+import static com.linkedin.venice.utils.Utils.setOf;
 
 import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;

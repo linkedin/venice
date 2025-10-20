@@ -267,6 +267,7 @@ import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
 import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
 import com.linkedin.venice.utils.AvroSchemaUtils;
 import com.linkedin.venice.utils.CollectionUtils;
+import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.Pair;
@@ -1895,7 +1896,7 @@ public class VeniceParentHelixAdmin implements Admin {
       getVeniceAdminMethodStatsByCluster(clusterName).recordParentAdminMethodStepLatency(
           VeniceAdminMethod.INCREMENT_VERSION_IDEMPOTENT,
           VeniceAdminMethodStep.ADD_VERSION_AND_TOPIC_ONLY,
-          System.currentTimeMillis() - addVersionAndTopicOnlyStartTime);
+          LatencyUtils.getElapsedTimeFromMsToMs(addVersionAndTopicOnlyStartTime));
     }
 
     if (VeniceSystemStoreType.getSystemStoreType(storeName) == null) {
@@ -2408,7 +2409,7 @@ public class VeniceParentHelixAdmin implements Admin {
         getVeniceAdminMethodStatsByCluster(clusterName).recordParentAdminMethodStepLatency(
             VeniceAdminMethod.ROLL_FORWARD_TO_FUTURE_VERSION,
             VeniceAdminMethodStep.TRUNCATE_KAFKA_TOPIC,
-            System.currentTimeMillis() - truncateKafkaTopicStartTime);
+            LatencyUtils.getElapsedTimeFromMsToMs(truncateKafkaTopicStartTime));
       }
 
       HelixVeniceClusterResources resources = getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName);
@@ -2431,7 +2432,7 @@ public class VeniceParentHelixAdmin implements Admin {
           getVeniceAdminMethodStatsByCluster(clusterName).recordParentAdminMethodStepLatency(
               VeniceAdminMethod.ROLL_FORWARD_TO_FUTURE_VERSION,
               VeniceAdminMethodStep.REPOSITORY_STORE_STATUS_UPDATE,
-              System.currentTimeMillis() - repositoryUpdateStoreStartTime);
+              LatencyUtils.getElapsedTimeFromMsToMs(repositoryUpdateStoreStartTime));
           LOGGER.info(
               "Updating parent store {} version {} status to {} after roll-forward",
               parentStore.getName(),
@@ -2442,7 +2443,7 @@ public class VeniceParentHelixAdmin implements Admin {
       getVeniceAdminMethodStatsByCluster(clusterName).recordParentAdminMethodStepLatency(
           VeniceAdminMethod.ROLL_FORWARD_TO_FUTURE_VERSION,
           VeniceAdminMethodStep.STORE_STATUS_UPDATE_TOTAL,
-          System.currentTimeMillis() - storeStatusUpdateStartTime);
+          LatencyUtils.getElapsedTimeFromMsToMs(storeStatusUpdateStartTime));
       LOGGER.info(
           "Roll forward to future version {} is successful in all regions for store {}",
           futureVersionBeforeRollForward,
@@ -4843,7 +4844,7 @@ public class VeniceParentHelixAdmin implements Admin {
       getVeniceAdminMethodStatsByCluster(clusterName).recordParentAdminMethodStepLatency(
           VeniceAdminMethod.KILL_OFFLINE_PUSH,
           VeniceAdminMethodStep.KILL_OFFLINE_PUSH,
-          System.currentTimeMillis() - killOfflinePushStartTime);
+          LatencyUtils.getElapsedTimeFromMsToMs(killOfflinePushStartTime));
     }
   }
 
