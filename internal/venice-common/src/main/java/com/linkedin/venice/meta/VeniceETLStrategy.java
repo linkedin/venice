@@ -2,9 +2,6 @@ package com.linkedin.venice.meta;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.VeniceEnumValue;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.Map;
 
 
 public enum VeniceETLStrategy implements VeniceEnumValue {
@@ -23,25 +20,21 @@ public enum VeniceETLStrategy implements VeniceEnumValue {
     this.value = value;
   }
 
-  private static final Map<Integer, VeniceETLStrategy> idMapping = new HashMap<>();
-
   @Override
   public int getValue() {
     return value;
   }
 
-  static {
-    Arrays.stream(values()).forEach(s -> idMapping.put(s.value, s));
-  }
-
   public static VeniceETLStrategy getVeniceETLStrategyFromInt(int value) {
-    VeniceETLStrategy etlStrategy = idMapping.get(value);
-    if (etlStrategy == null) {
-      if (value == 0) {
-        return EXTERNAL_SERVICE;
-      }
-      throw new VeniceException("Invalid VeniceETLStrategy id: " + value);
+    if (value == 0) {
+      // Normalize legacy/default value to canonical default
+      return EXTERNAL_SERVICE;
     }
-    return etlStrategy;
+    for (VeniceETLStrategy strategy: VeniceETLStrategy.values()) {
+      if (strategy.getValue() == value) {
+        return strategy;
+      }
+    }
+    throw new VeniceException("Invalid VeniceETLStrategy id: " + value);
   }
 }
