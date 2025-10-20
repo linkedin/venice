@@ -24,14 +24,12 @@ import io.netty.handler.timeout.IdleState;
 import io.netty.handler.timeout.IdleStateEvent;
 import io.netty.util.ReferenceCountUtil;
 import java.io.InputStream;
-import java.nio.ByteBuffer;
-import java.nio.channels.Channels;
-import java.nio.channels.FileChannel;
-import java.nio.channels.ReadableByteChannel;
+import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
+import java.security.DigestOutputStream;
 import java.security.MessageDigest;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.atomic.AtomicReference;
@@ -53,7 +51,8 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
   private final AtomicReference<Throwable> checksumExceptionHolder = new AtomicReference<>(null);
   private final BlobTransferPayload payload;
   // mutable states for a single file transfer. It will be updated for each file transfer.
-  private FileChannel outputFileChannel;
+  private DigestOutputStream digestOutputStream;
+  private OutputStream fileOutputStream;
   private String fileName;
   private String fileChecksum;
   private Path file;
@@ -62,6 +61,7 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
   private long fileTransferStartTime;
   private final long replicaTransferStartTime;
   private MessageDigest actualFileCheckSum;
+  private long actualBytesWritten = 0;
   private long fileStreamingChecksumTimeInMs = 0;
 
   public P2PFileTransferClientHandler(
@@ -133,7 +133,9 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
 
       this.file = Files.createFile(tempPartitionDir.resolve(fileName));
 
-      outputFileChannel = FileChannel.open(file, StandardOpenOption.WRITE, StandardOpenOption.APPEND);
+      // Create output stream with digest wrapper for checksum computation during write
+      fileOutputStream = Files.newOutputStream(file, StandardOpenOption.WRITE, StandardOpenOption.APPEND);
+      digestOutputStream = new DigestOutputStream(fileOutputStream, actualFileCheckSum);
 
     } else if (msg instanceof HttpContent) {
       HttpContent content = (HttpContent) msg;
@@ -142,35 +144,34 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
         return;
       }
       // defensive check
-      if (outputFileChannel == null) {
+      if (digestOutputStream == null) {
         throw new VeniceException("No file opened to write for " + payload.getFullResourceName());
       }
 
-      // Append content to the given file
-      // TODO: need to do perf test to see if this NIO implementation is really faster than regular I/O libs
-      long count = 0L;
-      long position = outputFileChannel.size();
-      long totalBytesToTransfer = byteBuf.readableBytes();
+      // Write content to file, checksum is computed automatically during write
       long startTime = System.currentTimeMillis();
-      for (ByteBuffer byteBuffer: byteBuf.nioBuffers()) {
-        actualFileCheckSum.update(byteBuffer);
-      }
-      fileStreamingChecksumTimeInMs += LatencyUtils.getElapsedTimeFromMsToMs(startTime);
-
       try (ByteBufInputStream byteBufInputStream = new ByteBufInputStream(byteBuf)) {
-        ReadableByteChannel inputChannel = Channels.newChannel(byteBufInputStream);
-        while (count < totalBytesToTransfer) {
-          long bytesToTransfer = totalBytesToTransfer - count;
-          long transferred = outputFileChannel.transferFrom(inputChannel, position, bytesToTransfer);
-          if (transferred == 0) {
-            break;
-          }
-          position += transferred;
-          count += transferred;
+        byte[] buffer = new byte[8192];
+        int bytesRead;
+        while ((bytesRead = byteBufInputStream.read(buffer)) != -1) {
+          // This will write to disk AND update the checksum
+          digestOutputStream.write(buffer, 0, bytesRead);
+          actualBytesWritten += bytesRead;
         }
       }
 
+      fileStreamingChecksumTimeInMs += LatencyUtils.getElapsedTimeFromMsToMs(startTime);
+
       if (content instanceof DefaultLastHttpContent) {
+        // Flush all data to disk before getting checksum
+        digestOutputStream.flush();
+
+        // Force sync to ensure data is physically written to disk
+        if (fileOutputStream instanceof java.io.FileOutputStream) {
+          ((java.io.FileOutputStream) fileOutputStream).getFD().sync();
+        }
+
+        // Get the checksum, this reflects what's actually on disk
         byte[] digest = actualFileCheckSum.digest();
         StringBuilder hexString = new StringBuilder();
         for (byte b: digest) {
@@ -188,27 +189,26 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
             fileStreamingChecksumTimeInMs,
             fileChecksum);
 
-        outputFileChannel.force(true);
-
         // Size validation
-        if (outputFileChannel.size() != fileContentLength) {
+        if (actualBytesWritten != fileContentLength) {
           throw new VeniceException(
               "File size mismatch for " + fileName + ". Expected: " + fileContentLength + ", Actual: "
-                  + outputFileChannel.size());
+                  + actualBytesWritten);
         }
-        // Close the file channel
+
+        // Close the output streams
         try {
-          outputFileChannel.close();
-          LOGGER.info("Closed file channel for: {} for replica: {}", fileName, replicaId);
+          digestOutputStream.close();
+          LOGGER.info("Closed file output stream for: {} for replica: {}", fileName, replicaId);
         } catch (Exception e) {
           LOGGER.warn(
-              "Failed to close file channel for file {} for replica {} with error: {}",
+              "Failed to close file output stream for file {} for replica {} with error: {}",
               fileName,
               replicaId,
               e.getMessage());
         }
 
-        // Perform checksum validation asynchronously to avoid blocking the Netty event loop
+        // Perform checksum validation
         if (!md5Hex.equals(fileChecksum)) {
           String errorMessage = String.format(
               "File checksum mismatch for file: %s for replica: %s. Expected: %s, actual: %s",
@@ -335,16 +335,21 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
   }
 
   private void cleanupResources() {
-
-    // 1. Close file channel safely by ensuring data is flushed to disk.
-    if (outputFileChannel != null) {
+    // 1. Close digest output stream safely by ensuring data is flushed to disk.
+    if (digestOutputStream != null) {
       try {
-        if (outputFileChannel.isOpen()) {
-          outputFileChannel.force(true);
-          outputFileChannel.close();
-        }
+        digestOutputStream.flush();
+        digestOutputStream.close();
       } catch (Exception e) {
-        LOGGER.warn("Failed to close file channel for {}", replicaId, e);
+        LOGGER.warn("Failed to close digest output stream for {}", replicaId, e);
+      }
+    }
+
+    if (fileOutputStream != null) {
+      try {
+        fileOutputStream.close();
+      } catch (Exception e) {
+        LOGGER.warn("Failed to close file output stream for {}", replicaId, e);
       }
     }
     // 2. clean up partial transferred file if exists,
@@ -367,12 +372,14 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
    * It sets all the instance variables to their initial values, effectively resetting the state of the handler.
    */
   private void resetState() {
-    outputFileChannel = null;
+    digestOutputStream = null;
+    fileOutputStream = null;
     fileName = null;
     fileContentLength = 0;
     file = null;
     fileChecksum = null;
     actualFileCheckSum = null;
+    actualBytesWritten = 0;
     fileStreamingChecksumTimeInMs = 0;
   }
 
