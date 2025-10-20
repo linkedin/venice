@@ -41,8 +41,6 @@ import java.util.Comparator;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import org.mockito.Mockito;
@@ -60,7 +58,6 @@ public class TestP2PFileTransferClientHandler {
   int TEST_PARTITION = 0;
   CompletionStage<InputStream> inputStreamFuture;
   StorageMetadataService storageMetadataService;
-  ExecutorService checksumValidationExecutorService;
 
   P2PFileTransferClientHandler clientFileHandler;
   P2PMetadataTransferHandler clientMetadataHandler;
@@ -70,7 +67,6 @@ public class TestP2PFileTransferClientHandler {
     baseDir = Files.createTempDirectory("tmp");
     inputStreamFuture = new CompletableFuture<>();
     storageMetadataService = Mockito.mock(StorageMetadataService.class);
-    checksumValidationExecutorService = Executors.newSingleThreadExecutor();
 
     clientFileHandler = Mockito.spy(
         new P2PFileTransferClientHandler(
@@ -79,8 +75,7 @@ public class TestP2PFileTransferClientHandler {
             TEST_STORE,
             TEST_VERSION,
             TEST_PARTITION,
-            BlobTransferUtils.BlobTransferTableFormat.BLOCK_BASED_TABLE,
-            checksumValidationExecutorService));
+            BlobTransferUtils.BlobTransferTableFormat.BLOCK_BASED_TABLE));
 
     clientMetadataHandler = Mockito.spy(
         new P2PMetadataTransferHandler(
@@ -175,11 +170,6 @@ public class TestP2PFileTransferClientHandler {
 
     ch.writeInbound(response);
     ch.writeInbound(chunk1);
-
-    // Write BLOB_TRANSFER_COMPLETED as exception is validated there.
-    DefaultHttpResponse endOfTransfer = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
-    endOfTransfer.headers().add(BLOB_TRANSFER_STATUS, BLOB_TRANSFER_COMPLETED);
-    ch.writeInbound(endOfTransfer);
     try {
       inputStreamFuture.toCompletableFuture().get(1, TimeUnit.MINUTES);
       Assert.fail("Expected exception not thrown");

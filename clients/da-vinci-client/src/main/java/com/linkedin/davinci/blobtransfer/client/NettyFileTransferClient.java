@@ -1,7 +1,6 @@
 package com.linkedin.davinci.blobtransfer.client;
 
 import com.linkedin.alpini.base.concurrency.Executors;
-import com.linkedin.alpini.base.misc.ThreadPoolExecutor;
 import com.linkedin.davinci.blobtransfer.BlobTransferUtils;
 import com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferTableFormat;
 import com.linkedin.davinci.storage.StorageMetadataService;
@@ -41,7 +40,6 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -61,17 +59,15 @@ public class NettyFileTransferClient {
   private final int serverPort;
   private final int blobReceiveTimeoutInMin; // the timeout for receiving the blob file in minutes
   private final int blobReceiveReaderIdleTimeInSeconds; // the reader idle timeout while receiving the blob file in
-                                                        // seconds
+  // seconds
   private final int peersConnectivityFreshnessInSeconds; // the freshness of the peers connectivity records
-  private StorageMetadataService storageMetadataService;
+  private final StorageMetadataService storageMetadataService;
   private final ExecutorService hostConnectExecutorService;
   private final ScheduledExecutorService connectTimeoutScheduler;
-  private final ExecutorService checksumValidationExecutorService;
-
   // A map to contain the connectable and unconnectable hosts for saving effort on reconnection
   // format: host -> timestamp of the last connection attempt
-  private VeniceConcurrentHashMap<String, Long> unconnectableHostsToTimestamp = new VeniceConcurrentHashMap<>();
-  private VeniceConcurrentHashMap<String, Long> connectedHostsToTimestamp = new VeniceConcurrentHashMap<>();
+  private final VeniceConcurrentHashMap<String, Long> unconnectableHostsToTimestamp = new VeniceConcurrentHashMap<>();
+  private final VeniceConcurrentHashMap<String, Long> connectedHostsToTimestamp = new VeniceConcurrentHashMap<>();
 
   private final VerifySslHandler verifySsl = new VerifySslHandler();
 
@@ -123,13 +119,6 @@ public class NettyFileTransferClient {
         Executors.newCachedThreadPool(new DaemonThreadFactory("Venice-BlobTransfer-Host-Connect-Executor-Service"));
     this.connectTimeoutScheduler = Executors
         .newSingleThreadScheduledExecutor(new DaemonThreadFactory("Venice-BlobTransfer-Client-Timeout-Checker"));
-    this.checksumValidationExecutorService = new ThreadPoolExecutor(
-        0,
-        300,
-        60L,
-        TimeUnit.SECONDS,
-        new LinkedBlockingQueue<>(),
-        new DaemonThreadFactory("Venice-BlobTransfer-Checksum-Validation-Executor-Service"));
   }
 
   /**
@@ -299,8 +288,7 @@ public class NettyFileTransferClient {
                   storeName,
                   version,
                   partition,
-                  requestedTableFormat,
-                  checksumValidationExecutorService))
+                  requestedTableFormat))
           .addLast(
               new P2PMetadataTransferHandler(
                   storageMetadataService,
@@ -350,7 +338,6 @@ public class NettyFileTransferClient {
     workerGroup.shutdownGracefully();
     hostConnectExecutorService.shutdown();
     connectTimeoutScheduler.shutdown();
-    checksumValidationExecutorService.shutdown();
     unconnectableHostsToTimestamp.clear();
     connectedHostsToTimestamp.clear();
   }

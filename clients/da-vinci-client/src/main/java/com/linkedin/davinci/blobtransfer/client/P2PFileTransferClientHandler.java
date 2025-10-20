@@ -24,6 +24,7 @@ import io.netty.handler.timeout.IdleState;
 import io.netty.handler.timeout.IdleStateEvent;
 import io.netty.util.ReferenceCountUtil;
 import java.io.InputStream;
+import java.nio.ByteBuffer;
 import java.nio.channels.Channels;
 import java.nio.channels.FileChannel;
 import java.nio.channels.ReadableByteChannel;
@@ -31,11 +32,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.concurrent.CompletableFuture;
+import java.security.MessageDigest;
 import java.util.concurrent.CompletionStage;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -54,8 +52,6 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
   private final CompletionStage<InputStream> inputStreamFuture;
   private final AtomicReference<Throwable> checksumExceptionHolder = new AtomicReference<>(null);
   private final BlobTransferPayload payload;
-  private final ExecutorService checksumValidationExecutorService;
-  private final List<CompletableFuture<Void>> checksumValidationFutureList = new ArrayList<>();
   // mutable states for a single file transfer. It will be updated for each file transfer.
   private FileChannel outputFileChannel;
   private String fileName;
@@ -65,6 +61,8 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
   private final String replicaId;
   private long fileTransferStartTime;
   private final long replicaTransferStartTime;
+  private MessageDigest actualFileCheckSum;
+  private long fileStreamingChecksumTimeInMs = 0;
 
   public P2PFileTransferClientHandler(
       String baseDir,
@@ -72,12 +70,10 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
       String storeName,
       int version,
       int partition,
-      BlobTransferUtils.BlobTransferTableFormat tableFormat,
-      ExecutorService checksumValidationExecutorService) {
+      BlobTransferUtils.BlobTransferTableFormat tableFormat) {
     this.inputStreamFuture = inputStreamFuture;
     this.payload = new BlobTransferPayload(baseDir, storeName, version, partition, tableFormat);
     this.replicaId = Utils.getReplicaId(payload.getTopicName(), payload.getPartition());
-    this.checksumValidationExecutorService = checksumValidationExecutorService;
     this.replicaTransferStartTime = System.currentTimeMillis();
   }
 
@@ -120,6 +116,7 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
 
       LOGGER.info("Starting blob file receiving for file: {} for {}", fileName, replicaId);
       this.fileTransferStartTime = System.currentTimeMillis();
+      this.actualFileCheckSum = MessageDigest.getInstance("MD5");
       this.fileContentLength = Long.parseLong(response.headers().get(HttpHeaderNames.CONTENT_LENGTH));
 
       // Create a temp directory
@@ -154,6 +151,12 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
       long count = 0L;
       long position = outputFileChannel.size();
       long totalBytesToTransfer = byteBuf.readableBytes();
+      long startTime = System.currentTimeMillis();
+      for (ByteBuffer byteBuffer: byteBuf.nioBuffers()) {
+        actualFileCheckSum.update(byteBuffer);
+      }
+      fileStreamingChecksumTimeInMs += LatencyUtils.getElapsedTimeFromMsToMs(startTime);
+
       try (ByteBufInputStream byteBufInputStream = new ByteBufInputStream(byteBuf)) {
         ReadableByteChannel inputChannel = Channels.newChannel(byteBufInputStream);
         while (count < totalBytesToTransfer) {
@@ -168,12 +171,23 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
       }
 
       if (content instanceof DefaultLastHttpContent) {
+        byte[] digest = actualFileCheckSum.digest();
+        StringBuilder hexString = new StringBuilder();
+        for (byte b: digest) {
+          hexString.append(String.format("%02x", b));
+        }
+        String md5Hex = hexString.toString();
+
         // End of a single file transfer
         LOGGER.info(
-            "A file: {} received successfully for replica: {} took: {}ms",
+            "A file: {} received successfully for replica: {} took: {}ms; Streaming MD5 checksum result: {} computed in {} ms, expected checksum: {}",
             fileName,
             replicaId,
-            LatencyUtils.getElapsedTimeFromMsToMs(fileTransferStartTime));
+            LatencyUtils.getElapsedTimeFromMsToMs(fileTransferStartTime),
+            md5Hex,
+            fileStreamingChecksumTimeInMs,
+            fileChecksum);
+
         outputFileChannel.force(true);
 
         // Size validation
@@ -195,10 +209,15 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
         }
 
         // Perform checksum validation asynchronously to avoid blocking the Netty event loop
-        CompletableFuture<Void> checksumFuture = new CompletableFuture<>();
-        checksumValidationFutureList.add(checksumFuture);
-        performAsyncChecksumValidation(checksumFuture, this.file, this.fileChecksum, this.fileName);
-
+        if (!md5Hex.equals(fileChecksum)) {
+          String errorMessage = String.format(
+              "File checksum mismatch for file: %s for replica: %s. Expected: %s, actual: %s",
+              file,
+              replicaId,
+              fileChecksum,
+              md5Hex);
+          throw new VeniceException(errorMessage);
+        }
         // Reset state for the next file transfer
         resetState();
 
@@ -266,11 +285,10 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
 
   void handleExceptionGracefully(Throwable cause) {
     if (!inputStreamFuture.toCompletableFuture().isDone()) {
-      LOGGER.error("Exception caught in when receiving files for replica: {} with cause: {}", replicaId, cause);
+      LOGGER.error("Exception caught in when receiving files for replica: {}", replicaId, cause);
       cleanupResources();
       inputStreamFuture.toCompletableFuture().completeExceptionally(cause);
     }
-
   }
 
   private String getFileNameFromHeader(HttpResponse response) {
@@ -289,18 +307,6 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
         "All files received successfully for replica: {} took: {}ms",
         replicaId,
         LatencyUtils.getElapsedTimeFromMsToMs(replicaTransferStartTime));
-
-    // Wait for all the checksum validation futures to complete.
-    CompletableFuture.allOf(checksumValidationFutureList.toArray(new CompletableFuture[0])).join();
-    // Check the exception holder to see if any checksum validation failed.
-    Throwable checksumThrowable = checksumExceptionHolder.get();
-    if (checksumThrowable != null) {
-      LOGGER.error(
-          "Caught exception: {} in checksum validation for replica: {}",
-          checksumThrowable.getMessage(),
-          replicaId);
-      throw new VeniceException(checksumThrowable);
-    }
 
     LOGGER.info(
         "All files received and checksum validated successfully for replica: {} took: {}ms",
@@ -366,65 +372,8 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
     fileContentLength = 0;
     file = null;
     fileChecksum = null;
-  }
-
-  /**
-   * Performs checksum validation asynchronously to avoid blocking the Netty event loop thread.
-   * This method offloads the CPU-intensive checksum computation to a separate thread pool.
-   */
-  private void performAsyncChecksumValidation(
-      CompletableFuture<Void> checksumValidationFuture,
-      Path fileToValidate,
-      String expectedChecksum,
-      String fileNameToValidate) {
-    // Capture current state variables before async execution
-    long startTime = System.currentTimeMillis();
-    CompletableFuture.supplyAsync(() -> {
-      try {
-        // Perform the CPU-intensive checksum computation in the background thread
-        long checksumGenerationStartTime = System.currentTimeMillis();
-        String checksum = BlobTransferUtils.generateFileChecksum(fileToValidate);
-        LOGGER.info(
-            "Checksum generation for file: {} for replica: {} took: {}ms",
-            fileNameToValidate,
-            replicaId,
-            LatencyUtils.getElapsedTimeFromMsToMs(checksumGenerationStartTime));
-        return checksum;
-      } catch (Exception e) {
-        throw new RuntimeException("Failed to generate checksum for file: " + fileNameToValidate, e);
-      }
-    }, checksumValidationExecutorService).whenComplete((actualChecksum, throwable) -> {
-      if (throwable != null) {
-        LOGGER.error(
-            "Caught exception when generating checksum for file: {} for replica: {}",
-            fileNameToValidate,
-            replicaId);
-        checksumExceptionHolder.compareAndSet(null, throwable);
-        checksumValidationFuture.complete(null);
-        return;
-      }
-      if (!actualChecksum.equals(expectedChecksum)) {
-        String errorMessage = String.format(
-            "File checksum mismatch for file: %s for replica: %s. Expected: %s, actual: %s",
-            fileToValidate,
-            replicaId,
-            expectedChecksum,
-            actualChecksum);
-        LOGGER.error(errorMessage);
-        VeniceException exception = new VeniceException(errorMessage);
-        checksumExceptionHolder.compareAndSet(null, exception);
-        checksumValidationFuture.complete(null);
-        return;
-      }
-      checksumValidationFuture.complete(null);
-
-      // Checksum validation passed, complete the file transfer
-      LOGGER.info(
-          "Checksum validation passed for file {}: for replica: {} took: {}ms",
-          fileNameToValidate,
-          replicaId,
-          LatencyUtils.getElapsedTimeFromMsToMs(startTime));
-    });
+    actualFileCheckSum = null;
+    fileStreamingChecksumTimeInMs = 0;
   }
 
   private void fastFailoverIncompleteTransfer(String causeForFailPendingTransfer, ChannelHandlerContext ctx) {
