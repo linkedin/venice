@@ -44,6 +44,7 @@ import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
+import com.linkedin.venice.kafka.protocol.LeaderMetadata;
 import com.linkedin.venice.kafka.protocol.ProducerMetadata;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
@@ -853,5 +854,75 @@ public class LeaderFollowerStoreIngestionTaskTest {
     actualPosition = leaderFollowerStoreIngestionTask
         .deserializePositionWithOffsetFallback(deserializer, mockTopicPartition, earliestBuffer, 0L);
     assertEquals(actualPosition, PubSubSymbolicPosition.EARLIEST, "Should return EARLIEST symbolic position");
+  }
+
+  @Test(timeOut = 60_000)
+  public void testExtractUpstreamClusterId() throws InterruptedException {
+    setUp();
+
+    // Case 1: Normal case with valid LeaderMetadata and upstreamKafkaClusterId
+    DefaultPubSubMessage consumerRecord1 = mock(DefaultPubSubMessage.class);
+    KafkaMessageEnvelope envelope1 = mock(KafkaMessageEnvelope.class);
+    LeaderMetadata leaderMetadata1 = new LeaderMetadata();
+    leaderMetadata1.upstreamKafkaClusterId = 42;
+    envelope1.leaderMetadataFooter = leaderMetadata1;
+    when(consumerRecord1.getValue()).thenReturn(envelope1);
+    doCallRealMethod().when(leaderFollowerStoreIngestionTask).extractUpstreamClusterId(consumerRecord1);
+    int clusterId1 = leaderFollowerStoreIngestionTask.extractUpstreamClusterId(consumerRecord1);
+    assertEquals(clusterId1, 42, "Should extract correct upstream cluster ID");
+
+    // Case 2: Null consumerRecord
+    doCallRealMethod().when(leaderFollowerStoreIngestionTask).extractUpstreamClusterId(null);
+    int clusterId2 = leaderFollowerStoreIngestionTask.extractUpstreamClusterId(null);
+    assertEquals(clusterId2, -1, "Should return -1 for null consumerRecord");
+
+    // Case 3: ConsumerRecord with null value (envelope)
+    DefaultPubSubMessage consumerRecord3 = mock(DefaultPubSubMessage.class);
+    when(consumerRecord3.getValue()).thenReturn(null);
+    doCallRealMethod().when(leaderFollowerStoreIngestionTask).extractUpstreamClusterId(consumerRecord3);
+    int clusterId3 = leaderFollowerStoreIngestionTask.extractUpstreamClusterId(consumerRecord3);
+    assertEquals(clusterId3, -1, "Should return -1 for null envelope");
+
+    // Case 4: Envelope with null leaderMetadataFooter
+    DefaultPubSubMessage consumerRecord4 = mock(DefaultPubSubMessage.class);
+    KafkaMessageEnvelope envelope4 = mock(KafkaMessageEnvelope.class);
+    envelope4.leaderMetadataFooter = null;
+    when(consumerRecord4.getValue()).thenReturn(envelope4);
+    doCallRealMethod().when(leaderFollowerStoreIngestionTask).extractUpstreamClusterId(consumerRecord4);
+    int clusterId4 = leaderFollowerStoreIngestionTask.extractUpstreamClusterId(consumerRecord4);
+    assertEquals(clusterId4, -1, "Should return -1 for null leaderMetadataFooter");
+
+    // Case 5: Zero upstream cluster ID (valid edge case)
+    DefaultPubSubMessage consumerRecord5 = mock(DefaultPubSubMessage.class);
+    KafkaMessageEnvelope envelope5 = mock(KafkaMessageEnvelope.class);
+    LeaderMetadata leaderMetadata5 = new LeaderMetadata();
+    leaderMetadata5.upstreamKafkaClusterId = 0;
+    envelope5.leaderMetadataFooter = leaderMetadata5;
+    when(consumerRecord5.getValue()).thenReturn(envelope5);
+    doCallRealMethod().when(leaderFollowerStoreIngestionTask).extractUpstreamClusterId(consumerRecord5);
+    int clusterId5 = leaderFollowerStoreIngestionTask.extractUpstreamClusterId(consumerRecord5);
+    assertEquals(clusterId5, 0, "Should extract zero cluster ID correctly");
+
+    // Case 6: Negative upstream cluster ID (edge case)
+    DefaultPubSubMessage consumerRecord6 = mock(DefaultPubSubMessage.class);
+    KafkaMessageEnvelope envelope6 = mock(KafkaMessageEnvelope.class);
+    LeaderMetadata leaderMetadata6 = new LeaderMetadata();
+    leaderMetadata6.upstreamKafkaClusterId = -5;
+    envelope6.leaderMetadataFooter = leaderMetadata6;
+    when(consumerRecord6.getValue()).thenReturn(envelope6);
+    doCallRealMethod().when(leaderFollowerStoreIngestionTask).extractUpstreamClusterId(consumerRecord6);
+    int clusterId6 = leaderFollowerStoreIngestionTask.extractUpstreamClusterId(consumerRecord6);
+    assertEquals(clusterId6, -5, "Should extract negative cluster ID correctly");
+
+    // Case 7: Large upstream cluster ID value
+    DefaultPubSubMessage consumerRecord7 = mock(DefaultPubSubMessage.class);
+    KafkaMessageEnvelope envelope7 = mock(KafkaMessageEnvelope.class);
+    LeaderMetadata leaderMetadata7 = new LeaderMetadata();
+    leaderMetadata7.upstreamKafkaClusterId = Integer.MAX_VALUE;
+    envelope7.leaderMetadataFooter = leaderMetadata7;
+    when(consumerRecord7.getValue()).thenReturn(envelope7);
+    doCallRealMethod().when(leaderFollowerStoreIngestionTask).extractUpstreamClusterId(consumerRecord7);
+    int clusterId7 = leaderFollowerStoreIngestionTask.extractUpstreamClusterId(consumerRecord7);
+    assertEquals(clusterId7, Integer.MAX_VALUE, "Should extract large cluster ID correctly");
   }
 }

@@ -55,6 +55,8 @@ public class NettyFileTransferClient {
   private static final int CONNECTION_TIMEOUT_IN_MINUTES = 1;
   // Maximum time that Netty will wait to establish the initial connection before failing.
   private static final int CONNECTION_ESTABLISHMENT_TIMEOUT_MS = 30 * 1000;
+  // The default checksum threadpool size is the number of available processors.
+  private static final int DEFAULT_CHECKSUM_VALIDATION_THREAD_POOL_SIZE = Runtime.getRuntime().availableProcessors();
   EventLoopGroup workerGroup;
   Bootstrap clientBootstrap;
   private final String baseDir;
@@ -63,15 +65,15 @@ public class NettyFileTransferClient {
   private final int blobReceiveReaderIdleTimeInSeconds; // the reader idle timeout while receiving the blob file in
                                                         // seconds
   private final int peersConnectivityFreshnessInSeconds; // the freshness of the peers connectivity records
-  private StorageMetadataService storageMetadataService;
+  private final StorageMetadataService storageMetadataService;
   private final ExecutorService hostConnectExecutorService;
   private final ScheduledExecutorService connectTimeoutScheduler;
   private final ExecutorService checksumValidationExecutorService;
 
   // A map to contain the connectable and unconnectable hosts for saving effort on reconnection
   // format: host -> timestamp of the last connection attempt
-  private VeniceConcurrentHashMap<String, Long> unconnectableHostsToTimestamp = new VeniceConcurrentHashMap<>();
-  private VeniceConcurrentHashMap<String, Long> connectedHostsToTimestamp = new VeniceConcurrentHashMap<>();
+  private final VeniceConcurrentHashMap<String, Long> unconnectableHostsToTimestamp = new VeniceConcurrentHashMap<>();
+  private final VeniceConcurrentHashMap<String, Long> connectedHostsToTimestamp = new VeniceConcurrentHashMap<>();
 
   private final VerifySslHandler verifySsl = new VerifySslHandler();
 
@@ -124,8 +126,8 @@ public class NettyFileTransferClient {
     this.connectTimeoutScheduler = Executors
         .newSingleThreadScheduledExecutor(new DaemonThreadFactory("Venice-BlobTransfer-Client-Timeout-Checker"));
     this.checksumValidationExecutorService = new ThreadPoolExecutor(
-        0,
-        300,
+        DEFAULT_CHECKSUM_VALIDATION_THREAD_POOL_SIZE,
+        DEFAULT_CHECKSUM_VALIDATION_THREAD_POOL_SIZE,
         60L,
         TimeUnit.SECONDS,
         new LinkedBlockingQueue<>(),

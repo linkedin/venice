@@ -1449,7 +1449,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       if (!isDaVinciClient) {
         // also update the leader topic position using the upstream position in LeaderMetadata
         PubSubPosition newUpstreamPosition = extractUpstreamPosition(consumerRecord);
-        if (!PubSubSymbolicPosition.EARLIEST.equals(newUpstreamPosition)) {
+        if (!PubSubSymbolicPosition.EARLIEST.equals(newUpstreamPosition)
+            && extractUpstreamClusterId(consumerRecord) != -1) {
           final String sourceKafkaUrl = sourceKafkaUrlSupplier.get();
           PubSubTopic upstreamTopic = offsetRecord.getLeaderTopic(pubSubTopicRepository);
           if (upstreamTopic == null) {
