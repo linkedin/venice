@@ -230,7 +230,7 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
   public void channelInactive(ChannelHandlerContext ctx) throws Exception {
     super.channelInactive(ctx);
     fastFailoverIncompleteTransfer(
-        "Channel close before completing transfer, might due to server graceful shutdown.",
+        "Channel close before completing transfer, might due to server graceful shutdown or timeout.",
         ctx);
   }
 

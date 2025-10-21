@@ -44,7 +44,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -333,9 +332,8 @@ public class NettyFileTransferClient {
               requestedTableFormat,
               host,
               blobReceiveTimeoutInMin);
-          inputStream.toCompletableFuture().completeExceptionally(new TimeoutException(errorMsg));
-
-          ch.close(); // Close the channel if the request times out
+          LOGGER.error(errorMsg);
+          ch.close();
         }
       }, blobReceiveTimeoutInMin, TimeUnit.MINUTES);
     } catch (Exception e) {
