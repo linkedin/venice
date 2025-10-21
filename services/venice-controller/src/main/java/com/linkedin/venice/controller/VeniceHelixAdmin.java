@@ -181,6 +181,7 @@ import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.PubSubTopicConfiguration;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.PubSubUtil;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
@@ -8125,13 +8126,21 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   /**
-   * @see Admin#skipAdminMessage(String, long, boolean, long)
+   * @see Admin#skipAdminMessage(String, String, boolean, long)
    */
   @Override
-  public void skipAdminMessage(String clusterName, long offset, boolean skipDIV, long executionId) {
+  public void skipAdminMessage(
+      String clusterName,
+      String typeIdAndBase64PositionBytes,
+      boolean skipDIV,
+      long executionId) {
+    PubSubPosition pubSubPosition = typeIdAndBase64PositionBytes != null
+        ? PubSubUtil
+            .parsePositionWireFormat(typeIdAndBase64PositionBytes, multiClusterConfigs.getPubSubPositionDeserializer())
+        : null;
     if (adminConsumerServices.containsKey(clusterName)) {
-      if (offset > -1) {
-        adminConsumerServices.get(clusterName).setOffsetToSkip(clusterName, offset, skipDIV);
+      if (pubSubPosition != null) {
+        adminConsumerServices.get(clusterName).setPositionToSkip(clusterName, pubSubPosition, skipDIV);
       }
       if (executionId > -1) {
         adminConsumerServices.get(clusterName).setExecutionIdToSkip(clusterName, executionId, skipDIV);

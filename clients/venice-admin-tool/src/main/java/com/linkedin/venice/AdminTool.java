@@ -307,19 +307,20 @@ public class AdminTool {
           printObject(response);
           break;
         case SKIP_ADMIN_MESSAGE:
-          if (!cmd.hasOption(Arg.OFFSET.first()) && !cmd.hasOption(Arg.EXECUTION_ID.first())) {
+          if (!cmd.hasOption(Arg.POSITION.first()) && !cmd.hasOption(Arg.EXECUTION_ID.first())) {
             printErrAndExit(
-                "At least one of " + Arg.OFFSET.getArgName() + " or " + Arg.EXECUTION_ID.getArgName()
+                "At least one of " + Arg.POSITION.getArgName() + " or " + Arg.EXECUTION_ID.getArgName()
                     + " is required.");
           }
-          if (cmd.hasOption(Arg.OFFSET.first()) && cmd.hasOption(Arg.EXECUTION_ID.first())) {
+          if (cmd.hasOption(Arg.POSITION.first()) && cmd.hasOption(Arg.EXECUTION_ID.first())) {
             printErrAndExit(
-                "Only one of " + Arg.OFFSET.getArgName() + " or " + Arg.EXECUTION_ID.getArgName() + " is allowed.");
+                "Only one of " + Arg.POSITION.getArgName() + " or " + Arg.EXECUTION_ID.getArgName() + " is allowed.");
           }
-          String offset = getOptionalArgument(cmd, Arg.OFFSET);
+          String typeIdAndBase64PositionBytes = getOptionalArgument(cmd, Arg.POSITION);
+
           String executionId = getOptionalArgument(cmd, Arg.EXECUTION_ID);
           boolean skipDIV = Boolean.parseBoolean(getOptionalArgument(cmd, Arg.SKIP_DIV, "false"));
-          response = controllerClient.skipAdminMessage(offset, skipDIV, executionId);
+          response = controllerClient.skipAdminMessage(typeIdAndBase64PositionBytes, skipDIV, executionId);
           printObject(response);
           break;
         case NEW_STORE:

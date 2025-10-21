@@ -159,8 +159,10 @@ public class AdminConsumptionTask implements Runnable, Closeable {
   private boolean isSubscribed;
   private final PubSubConsumerAdapter consumer;
   private volatile long offsetToSkip = UNASSIGNED_VALUE;
+  private volatile PubSubPosition positionToSkip = PubSubSymbolicPosition.EARLIEST;
   private volatile long executionIdToSkip = UNASSIGNED_VALUE;
   private volatile long offsetToSkipDIV = UNASSIGNED_VALUE;
+  private volatile PubSubPosition positionToSkipDIV = PubSubSymbolicPosition.EARLIEST;
   private volatile long executionIdToSkipDIV = UNASSIGNED_VALUE;
   /**
   * The smallest or first failing position.
@@ -1064,13 +1066,12 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     }
   }
 
-  void skipMessageWithOffset(long offset) {
-    if (offset == failingPosition.getNumericOffset()) {
-      offsetToSkip = offset;
+  void skipMessageWithPosition(PubSubPosition position) {
+    if (failingPosition.equals(position)) {
+      positionToSkip = position;
     } else {
       throw new VeniceException(
-          "Cannot skip an offset that isn't the first one failing.  Last failed offset is: "
-              + failingPosition.getNumericOffset());
+          "Cannot skip a position that isn't the first one failing. Last failed position is: " + failingPosition);
     }
   }
 
@@ -1084,12 +1085,12 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     }
   }
 
-  void skipMessageDIVWithOffset(long offset) {
-    if (offset == failingPosition.getNumericOffset()) {
-      offsetToSkipDIV = offset;
+  void skipMessageDIVWithPosition(PubSubPosition position) {
+    if (failingPosition.equals(position)) {
+      positionToSkipDIV = position;
     } else {
       throw new VeniceException(
-          "Cannot skip an offset that isn't the first one failing.  Last failed offset is: "
+          "Cannot skip a position that isn't the first one failing. Last failed position is: "
               + failingPosition.getNumericOffset());
     }
   }
