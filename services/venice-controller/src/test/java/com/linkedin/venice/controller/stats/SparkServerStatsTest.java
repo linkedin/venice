@@ -52,7 +52,7 @@ public class SparkServerStatsTest extends AbstractTestVeniceParentHelixAdmin {
 
     setupInternalMocks();
 
-    this.sparkServerStats = new SparkServerStats(metricsRepository, TEST_CLUSTER_NAME);
+    this.sparkServerStats = new SparkServerStats(metricsRepository, TEST_METRIC_PREFIX, TEST_CLUSTER_NAME);
   }
 
   @Test
