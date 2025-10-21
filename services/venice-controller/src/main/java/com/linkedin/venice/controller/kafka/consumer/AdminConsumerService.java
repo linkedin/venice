@@ -118,17 +118,17 @@ public class AdminConsumerService extends AbstractVeniceService {
   /**
    * Skip admin message with specified offset for the given cluster.
    */
-  public void setOffsetToSkip(String clusterName, long offset, boolean skipDIV) {
+  public void setPositionToSkip(String clusterName, PubSubPosition position, boolean skipDIV) {
     if (clusterName.equals(config.getClusterName())) {
       if (skipDIV) {
-        consumerTask.skipMessageDIVWithOffset(offset);
+        consumerTask.skipMessageDIVWithPosition(position);
       } else {
-        consumerTask.skipMessageWithOffset(offset);
+        consumerTask.skipMessageWithPosition(position);
       }
     } else {
       throw new VeniceException(
           "This AdminConsumptionService is for cluster " + config.getClusterName()
-              + ".  Cannot skip admin message with offset " + offset + " for cluster " + clusterName);
+              + ". Cannot skip admin message with position " + position + " for cluster " + clusterName);
     }
   }
 
