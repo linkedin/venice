@@ -83,6 +83,11 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
 
   @Override
   protected void channelRead0(ChannelHandlerContext ctx, HttpObject msg) throws Exception {
+    // Early return if the transfer is already completed or failed.
+    if (inputStreamFuture.toCompletableFuture().isDone()) {
+      return;
+    }
+
     if (msg instanceof HttpResponse) {
       HttpResponse response = (HttpResponse) msg;
 
