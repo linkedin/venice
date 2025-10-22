@@ -65,8 +65,8 @@ public abstract class AbstractAvroComputeRequestBuilder<K> implements ComputeReq
       Schema.createUnion(Arrays.asList(Schema.create(Schema.Type.NULL), Schema.create(Schema.Type.FLOAT)));
 
   protected final AvroGenericReadComputeStoreClient storeClient;
-  protected final int latestValueSchemaId;
-  protected final Schema latestValueSchema;
+  protected int latestValueSchemaId;
+  protected Schema latestValueSchema;
   protected final String resultSchemaName;
 
   private boolean executed = false;
@@ -78,8 +78,10 @@ public abstract class AbstractAvroComputeRequestBuilder<K> implements ComputeReq
   private List<DotProduct> dotProducts = new LinkedList<>();
   private List<CosineSimilarity> cosineSimilarities = new LinkedList<>();
   private List<HadamardProduct> hadamardProducts = new LinkedList<>();
+  private SchemaReader schemaReader;
 
   public AbstractAvroComputeRequestBuilder(AvroGenericReadComputeStoreClient storeClient, SchemaReader schemaReader) {
+    this.schemaReader = schemaReader;
     this.latestValueSchemaId = schemaReader.getLatestValueSchemaId();
     if (latestValueSchemaId == SchemaData.INVALID_VALUE_SCHEMA_ID) {
       throw new VeniceClientException("Invalid value schema ID: " + latestValueSchemaId);
@@ -379,7 +381,18 @@ public abstract class AbstractAvroComputeRequestBuilder<K> implements ComputeReq
     executed = true;
 
     long preRequestTimeInNS = time.nanoseconds();
-    SchemaAndToString resultSchema = getResultSchema();
+    SchemaAndToString resultSchema;
+    try {
+      resultSchema = getResultSchema();
+    } catch (VeniceClientException e) {
+      // If the schema is invalid, we need to refresh the schema
+      this.latestValueSchemaId = schemaReader.getLatestValueSchemaId();
+      if (latestValueSchemaId == SchemaData.INVALID_VALUE_SCHEMA_ID) {
+        throw new VeniceClientException("Invalid value schema ID: " + latestValueSchemaId);
+      }
+      this.latestValueSchema = schemaReader.getValueSchema(latestValueSchemaId);
+      resultSchema = getResultSchema();
+    }
     // Generate ComputeRequest object
     ComputeRequestWrapper computeRequestWrapper = generateComputeRequest(resultSchema, originallyStreaming);
     storeClient.compute(computeRequestWrapper, keys, resultSchema.getSchema(), callback, preRequestTimeInNS);
