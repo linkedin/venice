@@ -21,6 +21,7 @@ import com.linkedin.venice.compute.protocol.request.CosineSimilarity;
 import com.linkedin.venice.compute.protocol.request.DotProduct;
 import com.linkedin.venice.compute.protocol.request.HadamardProduct;
 import com.linkedin.venice.compute.protocol.request.enums.ComputeOperationType;
+import com.linkedin.venice.exceptions.InvalidVeniceSchemaException;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.utils.Pair;
@@ -52,7 +53,6 @@ import org.apache.avro.Schema;
 public abstract class AbstractAvroComputeRequestBuilder<K> implements ComputeRequestBuilder<K> {
   protected static final Map<Map<String, Object>, SchemaAndToString> RESULT_SCHEMA_CACHE =
       new VeniceConcurrentHashMap<>();
-  private static final int SCHEMA_REFRESH_LIMIT = 5;
   protected static final String PROJECTION_SPEC = "projection_spec";
   protected static final String DOT_PRODUCT_SPEC = "dotProduct_spec";
   protected static final String COSINE_SIMILARITY_SPEC = "cosineSimilarity_spec";
@@ -80,7 +80,6 @@ public abstract class AbstractAvroComputeRequestBuilder<K> implements ComputeReq
   private List<CosineSimilarity> cosineSimilarities = new LinkedList<>();
   private List<HadamardProduct> hadamardProducts = new LinkedList<>();
   private SchemaReader schemaReader;
-  private static int refreshSchemaCount = 0;
 
   public AbstractAvroComputeRequestBuilder(AvroGenericReadComputeStoreClient storeClient, SchemaReader schemaReader) {
     this.schemaReader = schemaReader;
@@ -191,7 +190,7 @@ public abstract class AbstractAvroComputeRequestBuilder<K> implements ComputeReq
     if (projectionFieldValidation) {
       projectFields.forEach(projectField -> {
         if (latestValueSchema.getField(projectField) == null) {
-          throw new VeniceClientException("Unknown project field: " + projectField);
+          throw new InvalidVeniceSchemaException("Unknown project field: " + projectField);
         }
       });
     }
@@ -386,19 +385,20 @@ public abstract class AbstractAvroComputeRequestBuilder<K> implements ComputeReq
     SchemaAndToString resultSchema;
     try {
       resultSchema = getResultSchema();
-    } catch (VeniceClientException e) {
+    } catch (InvalidVeniceSchemaException e) {
       // If the schema is invalid, we need to refresh the schema
-      if (refreshSchemaCount < SCHEMA_REFRESH_LIMIT) {
-        this.latestValueSchemaId = schemaReader.getLatestValueSchemaId();
-        if (latestValueSchemaId == SchemaData.INVALID_VALUE_SCHEMA_ID) {
-          throw new VeniceClientException("Invalid value schema ID: " + latestValueSchemaId);
-        }
-        this.latestValueSchema = schemaReader.getValueSchema(latestValueSchemaId);
-        resultSchema = getResultSchema();
-        refreshSchemaCount++;
-      } else {
-        throw e;
+      int previousLatestValueSchemaId = this.latestValueSchemaId;
+      latestValueSchemaId = schemaReader.getLatestValueSchemaId();
+      if (latestValueSchemaId == SchemaData.INVALID_VALUE_SCHEMA_ID) {
+        throw new VeniceClientException("Invalid latest value schema ID: " + latestValueSchemaId);
       }
+      if (latestValueSchemaId == previousLatestValueSchemaId) {
+        throw new VeniceClientException(
+            "Invalid compute schema even after refresh to latest schema ID: " + latestValueSchemaId,
+            e);
+      }
+      this.latestValueSchema = schemaReader.getValueSchema(latestValueSchemaId);
+      resultSchema = getResultSchema();
     }
     // Generate ComputeRequest object
     ComputeRequestWrapper computeRequestWrapper = generateComputeRequest(resultSchema, originallyStreaming);
@@ -412,38 +412,40 @@ public abstract class AbstractAvroComputeRequestBuilder<K> implements ComputeReq
       ComputeOperationType computeType) {
     final Schema.Field fieldSchema = latestValueSchema.getField(computeFieldName);
     if (fieldSchema == null) {
-      throw new VeniceClientException("Unknown " + computeType + " field: " + computeFieldName);
+      throw new InvalidVeniceSchemaException("Unknown " + computeType + " field: " + computeFieldName);
     }
 
     final Schema.Type fieldType = fieldSchema.schema().getType();
     if (computeType == COUNT) {
       if (fieldType != Schema.Type.ARRAY && fieldType != Schema.Type.MAP) {
-        throw new VeniceClientException(computeType + " field: " + computeFieldName + " isn't 'ARRAY' or 'MAP' type");
+        throw new InvalidVeniceSchemaException(
+            computeType + " field: " + computeFieldName + " isn't 'ARRAY' or 'MAP' type");
       }
     } else {
       if (fieldType == Schema.Type.ARRAY) {
         // TODO: is it necessary to be 'FLOAT' only?
         Schema elementSchema = fieldSchema.schema().getElementType();
         if (elementSchema.getType() != Schema.Type.FLOAT) {
-          throw new VeniceClientException(computeType + " field: " + computeFieldName + " isn't an 'ARRAY' of 'FLOAT'");
+          throw new InvalidVeniceSchemaException(
+              computeType + " field: " + computeFieldName + " isn't an 'ARRAY' of 'FLOAT'");
         }
       } else if (!isFieldNullableList(fieldSchema)) {
-        throw new VeniceClientException(
+        throw new InvalidVeniceSchemaException(
             computeType + " field: " + computeFieldName + " isn't an 'ARRAY' type. Got: "
                 + fieldSchema.schema().getType());
       }
     }
 
     if (resultFieldsSet.contains(resultFieldName)) {
-      throw new VeniceClientException(
+      throw new InvalidVeniceSchemaException(
           computeType + " result field: " + resultFieldName + " has been specified more than once");
     }
     if (latestValueSchema.getField(resultFieldName) != null) {
-      throw new VeniceClientException(
+      throw new InvalidVeniceSchemaException(
           computeType + " result field: " + resultFieldName + " collides with the fields defined in value schema");
     }
     if (VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME.equals(resultFieldName)) {
-      throw new VeniceClientException(
+      throw new InvalidVeniceSchemaException(
           "Field name: " + resultFieldName
               + " is reserved, please choose a different name to store the computed result");
     }
