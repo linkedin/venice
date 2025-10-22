@@ -47,7 +47,10 @@ public class DeadStoreStatsPreFetchTask implements Runnable, Closeable {
         if (System.currentTimeMillis() > deadline) {
           throw new VeniceException("Timed out waiting for controller to become leader for cluster: " + clusterName);
         }
-        Utils.sleep(10_000); // sleep for 10 seconds
+        if (!Utils.sleep(10_000)) {
+          logger.info("Sleep was interrupted, stopping dead store stats prefetch task for cluster: {}", clusterName);
+          break;
+        }
       }
 
       logger.debug("Initial fetch of dead store stats for cluster: {}", clusterName);
