@@ -43,7 +43,7 @@ public abstract class AbstractKafkaConsumerService extends AbstractVeniceService
 
   /**
    * This is for providing ingestion related information for a specific topic partition from the implementation of this class.
-   * @param respectRedundantLoggingFilter here is to guide if we need to prepare the info map, Set to true when calling from
+   * @param respectRedundantLoggingFilter here is to guide if we need to prepare the info map, set to true when calling from
    *                                      heartbeat monitoring to enable rate-limiting; set to false for admin commands
    *                                      or tests where all info is needed.
    */

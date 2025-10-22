@@ -63,6 +63,7 @@ public class KafkaConsumerServiceTest {
     mockVeniceServerConfig = mock(VeniceServerConfig.class);
     doReturn(PubSubPositionTypeRegistry.RESERVED_POSITION_TYPE_REGISTRY).when(mockVeniceServerConfig)
         .getPubSubPositionTypeRegistry();
+    doReturn(20).when(mockVeniceServerConfig).getServerIngestionInfoLogLineLimit();
   }
 
   @Test
