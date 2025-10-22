@@ -323,7 +323,7 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
           // Use explicit batch-get thresholds string to avoid dynamic surprises
           .setLongTailRangeBasedRetryThresholdForBatchGetInMilliSeconds("1-:10000")
           .setLongTailRetryEnabledForCompute(true)
-          .setLongTailRetryThresholdForComputeInMicroSeconds(TIME_OUT * MS_PER_SECOND);
+          .setLongTailRangeBasedRetryThresholdForComputeInMilliSeconds("1-:10000");
     }
 
     // dualRead needs thinClient
@@ -465,7 +465,8 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
       fastClientStatsValidation =
           metricsRepository -> validateBatchGetMetrics(metricsRepository, false, recordCnt, recordCnt, true);
     } else if (compute) {
-      clientConfigBuilder.setLongTailRetryEnabledForCompute(true).setLongTailRetryThresholdForComputeInMicroSeconds(1);
+      clientConfigBuilder.setLongTailRetryEnabledForCompute(true)
+          .setLongTailRangeBasedRetryThresholdForComputeInMilliSeconds("1-:1");
       fastClientStatsValidation =
           metricsRepository -> validateComputeMetrics(metricsRepository, false, recordCnt, recordCnt, true);
     } else {

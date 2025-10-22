@@ -123,8 +123,7 @@ public class RetriableAvroGenericStoreClientTest {
         .setLongTailRangeBasedRetryThresholdForBatchGetInMilliSeconds("1-5:15,6-20:30,21-150:50,151-500:100,501-:500")
         .setLongTailRetryEnabledForCompute(true)
         .setRetryBudgetEnabled(isRetryBudgetEnabled())
-        .setLongTailRetryThresholdForComputeInMicroSeconds(
-            (int) TimeUnit.MILLISECONDS.toMicros(LONG_TAIL_RETRY_THRESHOLD_IN_MS));
+        .setLongTailRangeBasedRetryThresholdForComputeInMilliSeconds("1-5:15,6-20:30,21-150:50,151-500:100,501-:500");
     BATCH_GET_KEYS.add("test_key_1");
     BATCH_GET_KEYS.add("test_key_2");
     GenericRecord value1 = (GenericRecord) rrg.randomGeneric(STORE_VALUE_SCHEMA);
