@@ -917,6 +917,7 @@ public class VenicePushJob implements AutoCloseable {
       if (pushJobSetting.rmdSchemaDir != null) {
         HadoopUtils.cleanUpHDFSPath(pushJobSetting.rmdSchemaDir, true);
       }
+      timeoutExecutor.shutdownNow();
     }
   }
 
@@ -2712,6 +2713,7 @@ public class VenicePushJob implements AutoCloseable {
 
       // Only send the push job details after all error checks have passed and job is not completed yet.
       sendPushJobDetailsToController();
+      timeoutExecutor.shutdownNow();
     }
   }
 
