@@ -124,14 +124,16 @@ public class VeniceChangelogConsumerClientFactory {
             consumer != null
                 ? consumer
                 : getPubSubConsumer(newStoreChangelogClientConfig, pubSubMessageDeserializer, consumerName),
-            pubSubMessageDeserializer);
+            pubSubMessageDeserializer,
+            this);
       }
       return new VeniceAfterImageConsumerImpl(
           newStoreChangelogClientConfig,
           consumer != null
               ? consumer
               : getPubSubConsumer(newStoreChangelogClientConfig, pubSubMessageDeserializer, consumerName),
-          pubSubMessageDeserializer);
+          pubSubMessageDeserializer,
+          this);
     });
   }
 
@@ -340,5 +342,14 @@ public class VeniceChangelogConsumerClientFactory {
   @FunctionalInterface
   public interface ViewClassGetter {
     String apply(String storeName, String viewName, D2ControllerClient d2ControllerClient, int retries);
+  }
+
+  /**
+   * Removes client from the map, so it be cleaned up by Garbage Collection
+   */
+  public void deregisterClient(String consumerName) {
+    storeClientMap.remove(consumerName);
+    versionSpecificStoreClientMap.remove(consumerName);
+    storeBootstrappingClientMap.remove(consumerName);
   }
 }

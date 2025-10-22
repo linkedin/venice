@@ -92,14 +92,18 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   private final VeniceConcurrentHashMap<Integer, AtomicLong> consumerSequenceIdGeneratorMap;
   private final long consumerSequenceIdStartingValue;
   private final boolean isVersionSpecificClient;
+  private final VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory;
 
-  public VeniceChangelogConsumerDaVinciRecordTransformerImpl(ChangelogClientConfig changelogClientConfig) {
-    this(changelogClientConfig, System.nanoTime());
+  public VeniceChangelogConsumerDaVinciRecordTransformerImpl(
+      ChangelogClientConfig changelogClientConfig,
+      VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory) {
+    this(changelogClientConfig, System.nanoTime(), veniceChangelogConsumerClientFactory);
   }
 
   VeniceChangelogConsumerDaVinciRecordTransformerImpl(
       ChangelogClientConfig changelogClientConfig,
-      long consumerSequenceIdStartingValue) {
+      long consumerSequenceIdStartingValue,
+      VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory) {
     this.changelogClientConfig = changelogClientConfig;
     this.storeName = changelogClientConfig.getStoreName();
     DaVinciConfig daVinciConfig = new DaVinciConfig();
@@ -108,6 +112,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
     this.pubSubMessages = new ArrayBlockingQueue<>(changelogClientConfig.getMaxBufferSize());
     this.partitionToVersionToServe = new ConcurrentHashMap<>();
     this.isVersionSpecificClient = changelogClientConfig.getStoreVersion() != null;
+    this.veniceChangelogConsumerClientFactory = veniceChangelogConsumerClientFactory;
 
     recordTransformerConfig = new DaVinciRecordTransformerConfig.Builder()
         .setRecordTransformerFunction(DaVinciRecordTransformerChangelogConsumer::new)
@@ -238,6 +243,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
     }
     daVinciClient.close();
     isStarted.set(false);
+    veniceChangelogConsumerClientFactory.deregisterClient(changelogClientConfig.getConsumerName());
   }
 
   // VeniceChangelogConsumer methods below
@@ -326,7 +332,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
     try {
       this.stop();
     } catch (Exception e) {
-      LOGGER.error("Close failed for VeniceChangelogConsumer");
+      LOGGER.error("Close failed for VeniceChangelogConsumer", e);
       throw new RuntimeException(e);
     }
   }
@@ -381,7 +387,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
         changeCaptureStats.emitPollCountMetrics(FAIL);
       }
 
-      LOGGER.error("Encountered an exception when polling records for store: {}", storeName);
+      LOGGER.error("Encountered an exception when polling records for store: {}", storeName, exception);
       throw exception;
     }
   }
@@ -633,7 +639,8 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
             "Encountered an exception when processing Version Swap from version: {} to version: {} for replica: {}",
             currentVersion,
             futureVersion,
-            replicaId);
+            replicaId,
+            exception);
         throw exception;
       }
     }

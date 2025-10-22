@@ -172,20 +172,29 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   protected final VeniceConcurrentHashMap<Integer, AtomicLong> consumerSequenceIdGeneratorMap;
   protected final long consumerSequenceIdStartingValue;
   private final RocksDBStorageEngineFactory rocksDBStorageEngineFactory;
+  private final VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory;
 
   public VeniceChangelogConsumerImpl(
       ChangelogClientConfig changelogClientConfig,
       PubSubConsumerAdapter pubSubConsumer,
-      PubSubMessageDeserializer pubSubMessageDeserializer) {
-    this(changelogClientConfig, pubSubConsumer, pubSubMessageDeserializer, System.nanoTime());
+      PubSubMessageDeserializer pubSubMessageDeserializer,
+      VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory) {
+    this(
+        changelogClientConfig,
+        pubSubConsumer,
+        pubSubMessageDeserializer,
+        System.nanoTime(),
+        veniceChangelogConsumerClientFactory);
   }
 
   VeniceChangelogConsumerImpl(
       ChangelogClientConfig changelogClientConfig,
       PubSubConsumerAdapter pubSubConsumer,
       PubSubMessageDeserializer pubSubMessageDeserializer,
-      long consumerSequenceIdStartingValue) {
+      long consumerSequenceIdStartingValue,
+      VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory) {
     Objects.requireNonNull(changelogClientConfig, "ChangelogClientConfig cannot be null");
+    this.veniceChangelogConsumerClientFactory = veniceChangelogConsumerClientFactory;
     this.pubSubConsumer = pubSubConsumer;
     this.pubSubContext = changelogClientConfig.getPubSubContext();
     this.pubSubTopicRepository = pubSubContext.getPubSubTopicRepository();
@@ -261,7 +270,8 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     this.consumerSequenceIdGeneratorMap = new VeniceConcurrentHashMap<>();
     this.consumerSequenceIdStartingValue = consumerSequenceIdStartingValue;
     LOGGER.info(
-        "VeniceChangelogConsumer created at timestamp: {} with consumer sequence id starting at: {}",
+        "VeniceChangelogConsumer with consumer name: {} created at timestamp: {} with consumer sequence id starting at: {}",
+        changelogClientConfig.getConsumerName(),
         startTimestamp,
         consumerSequenceIdStartingValue);
 
@@ -289,7 +299,6 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       this.storeDeserializerCache = new AvroStoreDeserializerCache<>(storeRepository, storeName, true);
       this.specificValueClass = null;
       LOGGER.info("Using generic value deserializer");
-
     }
 
     LOGGER.info("Start a change log consumer client for store: {}", storeName);
@@ -825,7 +834,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
         changeCaptureStats.emitPollCountMetrics(FAIL);
       }
 
-      LOGGER.error("Encountered an exception when polling records for store: {}", storeName);
+      LOGGER.error("Encountered an exception when polling records for store: {}", storeName, exception);
       throw exception;
     }
   }
@@ -995,7 +1004,8 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
 
         LOGGER.error(
             "Encountered an exception when processing a record in ChunkAssembler for replica: {}",
-            Utils.getReplicaId(pubSubTopicPartition));
+            Utils.getReplicaId(pubSubTopicPartition),
+            exception);
         throw exception;
       }
 
@@ -1184,7 +1194,11 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
               changeCaptureStats.emitVersionSwapCountMetrics(FAIL);
             }
 
-            LOGGER.error("Version Swap failed when switching to replica: {} after {} attempts", replicaId, attempt);
+            LOGGER.error(
+                "Version Swap failed when switching to replica: {} after {} attempts",
+                replicaId,
+                attempt,
+                error);
             throw error;
           } else {
             LOGGER.error(
@@ -1290,7 +1304,15 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     try {
       this.unsubscribeAll();
       pubSubConsumer.close();
+      heartbeatReporterThread.interrupt();
+      seekExecutorService.shutdown();
+      compressorFactory.close();
 
+      if (rocksDBStorageEngineFactory != null) {
+        rocksDBStorageEngineFactory.close();
+      }
+
+      veniceChangelogConsumerClientFactory.deregisterClient(changelogClientConfig.getConsumerName());
     } finally {
       subscriptionLock.writeLock().unlock();
     }
