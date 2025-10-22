@@ -92,7 +92,7 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
   // 4MB bitset size, 2 bitmaps for active and old bitset
   private static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER =
       new RedundantExceptionFilter(8 * 1024 * 1024 * 4, TimeUnit.MINUTES.toMillis(10));
-  private final VeniceServerConfig serverConfig;
+  private final int serverIngestionInfoLogLineLimit;
   protected final ConsumerPollTracker consumerPollTracker;
   protected final InactiveTopicPartitionChecker inactiveTopicPartitionChecker;
 
@@ -124,7 +124,6 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
     this.LOGGER = LogManager.getLogger(
         KafkaConsumerService.class.getSimpleName() + " [" + kafkaUrlForLogger + "-" + poolType.getStatSuffix() + "]");
     this.poolType = poolType;
-    this.serverConfig = serverConfig;
 
     // Initialize consumers and consumerExecutor
     String consumerNamePrefix = "venice-shared-consumer-for-" + kafkaUrl + '-' + poolType.getStatSuffix();
@@ -200,6 +199,7 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
     } else {
       this.inactiveTopicPartitionChecker = null;
     }
+    serverIngestionInfoLogLineLimit = serverConfig.getServerIngestionInfoLogLineLimit();
     LOGGER.info("KafkaConsumerService was initialized with {} consumers.", numOfConsumersPerKafkaCluster);
   }
 
@@ -583,7 +583,11 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
     if (consumer != null) {
       ConsumptionTask consumptionTask = consumerToConsumptionTask.get(consumer);
       String consumerIdStr = consumptionTask.getTaskIdStr();
-      // Shortcut to avoid generating consumer info string if it is logged recently.
+      Set<PubSubTopicPartition> assignments = consumer.getAssignment();
+      // Shortcut to avoid generating consumer info string if: 1) too many partitions 2) logging too frequently.
+      if (assignments.size() > serverIngestionInfoLogLineLimit) {
+        return Collections.emptyMap();
+      }
       if (respectRedundantLoggingFilter && REDUNDANT_LOGGING_FILTER.isRedundantException(consumerIdStr)) {
         return Collections.emptyMap();
       }
