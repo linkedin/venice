@@ -2713,7 +2713,6 @@ public class VenicePushJob implements AutoCloseable {
 
       // Only send the push job details after all error checks have passed and job is not completed yet.
       sendPushJobDetailsToController();
-      timeoutExecutor.shutdownNow();
     }
   }
 
