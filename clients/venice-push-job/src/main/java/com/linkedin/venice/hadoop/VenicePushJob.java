@@ -2972,8 +2972,9 @@ public class VenicePushJob implements AutoCloseable {
   }
 
   private void shutdownTimeoutExecutor() {
+    LOGGER.info("Started shutdown for timeoutExecutor");
     timeoutExecutor.shutdownNow();
-    LOGGER.info("Shutdown timeoutExecutor");
+    LOGGER.info("Completed shutdown for timeoutExecutor");
   }
 
   @Override
