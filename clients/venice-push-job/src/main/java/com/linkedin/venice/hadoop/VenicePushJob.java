@@ -917,7 +917,7 @@ public class VenicePushJob implements AutoCloseable {
       if (pushJobSetting.rmdSchemaDir != null) {
         HadoopUtils.cleanUpHDFSPath(pushJobSetting.rmdSchemaDir, true);
       }
-      timeoutExecutor.shutdownNow();
+      shutdownTimeoutExecutor();
     }
   }
 
@@ -953,10 +953,7 @@ public class VenicePushJob implements AutoCloseable {
       return;
     }
 
-    LOGGER.info(
-        "Scheduling timeout executor for store: {} with timeout: {}ms",
-        pushJobSetting.storeName,
-        TimeUnit.MILLISECONDS);
+    LOGGER.info("Scheduling timeout executor for store: {} with timeout: {}ms", pushJobSetting.storeName, timeoutMs);
     timeoutExecutor.schedule(() -> {
       cancel();
       throw new VeniceTimeoutException(
@@ -2974,9 +2971,14 @@ public class VenicePushJob implements AutoCloseable {
     return path;
   }
 
+  private void shutdownTimeoutExecutor() {
+    timeoutExecutor.shutdownNow();
+    LOGGER.info("Shutdown timeoutExecutor");
+  }
+
   @Override
   public void close() {
-    timeoutExecutor.shutdownNow();
+    shutdownTimeoutExecutor();
     closeVeniceWriter();
     Utils.closeQuietlyWithErrorLogged(dataWriterComputeJob);
     Utils.closeQuietlyWithErrorLogged(controllerClient);
