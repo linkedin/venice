@@ -917,7 +917,9 @@ public class VenicePushJob implements AutoCloseable {
       if (pushJobSetting.rmdSchemaDir != null) {
         HadoopUtils.cleanUpHDFSPath(pushJobSetting.rmdSchemaDir, true);
       }
-      shutdownTimeoutExecutor();
+      LOGGER.info("Started shutdown for timeoutExecutor");
+      timeoutExecutor.shutdownNow();
+      LOGGER.info("Completed shutdown for timeoutExecutor");
     }
   }
 
@@ -2971,15 +2973,8 @@ public class VenicePushJob implements AutoCloseable {
     return path;
   }
 
-  private void shutdownTimeoutExecutor() {
-    LOGGER.info("Started shutdown for timeoutExecutor");
-    timeoutExecutor.shutdownNow();
-    LOGGER.info("Completed shutdown for timeoutExecutor");
-  }
-
   @Override
   public void close() {
-    shutdownTimeoutExecutor();
     closeVeniceWriter();
     Utils.closeQuietlyWithErrorLogged(dataWriterComputeJob);
     Utils.closeQuietlyWithErrorLogged(controllerClient);
