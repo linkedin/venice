@@ -952,6 +952,10 @@ public class VenicePushJob implements AutoCloseable {
       return;
     }
 
+    LOGGER.info(
+        "Scheduling timeout executor for store: {} with timeout: {}ms",
+        pushJobSetting.storeName,
+        TimeUnit.MILLISECONDS);
     timeoutExecutor.schedule(() -> {
       cancel();
       throw new VeniceTimeoutException(
