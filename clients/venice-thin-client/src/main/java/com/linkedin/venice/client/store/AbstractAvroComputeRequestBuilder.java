@@ -52,6 +52,7 @@ import org.apache.avro.Schema;
 public abstract class AbstractAvroComputeRequestBuilder<K> implements ComputeRequestBuilder<K> {
   protected static final Map<Map<String, Object>, SchemaAndToString> RESULT_SCHEMA_CACHE =
       new VeniceConcurrentHashMap<>();
+  private static final int SCHEMA_REFRESH_LIMIT = 5;
   protected static final String PROJECTION_SPEC = "projection_spec";
   protected static final String DOT_PRODUCT_SPEC = "dotProduct_spec";
   protected static final String COSINE_SIMILARITY_SPEC = "cosineSimilarity_spec";
@@ -79,6 +80,7 @@ public abstract class AbstractAvroComputeRequestBuilder<K> implements ComputeReq
   private List<CosineSimilarity> cosineSimilarities = new LinkedList<>();
   private List<HadamardProduct> hadamardProducts = new LinkedList<>();
   private SchemaReader schemaReader;
+  private static int refreshSchemaCount = 0;
 
   public AbstractAvroComputeRequestBuilder(AvroGenericReadComputeStoreClient storeClient, SchemaReader schemaReader) {
     this.schemaReader = schemaReader;
@@ -386,12 +388,17 @@ public abstract class AbstractAvroComputeRequestBuilder<K> implements ComputeReq
       resultSchema = getResultSchema();
     } catch (VeniceClientException e) {
       // If the schema is invalid, we need to refresh the schema
-      this.latestValueSchemaId = schemaReader.getLatestValueSchemaId();
-      if (latestValueSchemaId == SchemaData.INVALID_VALUE_SCHEMA_ID) {
-        throw new VeniceClientException("Invalid value schema ID: " + latestValueSchemaId);
+      if (refreshSchemaCount < SCHEMA_REFRESH_LIMIT) {
+        this.latestValueSchemaId = schemaReader.getLatestValueSchemaId();
+        if (latestValueSchemaId == SchemaData.INVALID_VALUE_SCHEMA_ID) {
+          throw new VeniceClientException("Invalid value schema ID: " + latestValueSchemaId);
+        }
+        this.latestValueSchema = schemaReader.getValueSchema(latestValueSchemaId);
+        resultSchema = getResultSchema();
+        refreshSchemaCount++;
+      } else {
+        throw e;
       }
-      this.latestValueSchema = schemaReader.getValueSchema(latestValueSchemaId);
-      resultSchema = getResultSchema();
     }
     // Generate ComputeRequest object
     ComputeRequestWrapper computeRequestWrapper = generateComputeRequest(resultSchema, originallyStreaming);
