@@ -59,12 +59,6 @@ public class DeadStoreStatsPreFetchTask implements Runnable, Closeable {
     while (isRunning.get()) {
       try {
         Utils.sleep(refreshIntervalMs);
-
-        // Check if controller is still the leader before fetching stats
-        if (!admin.isLeaderControllerFor(clusterName)) {
-          continue;
-        }
-
         long startTime = System.currentTimeMillis();
         logger.debug("Fetching dead store stats for cluster: {}", clusterName);
         admin.preFetchDeadStoreStats(clusterName, getStoresInCluster());
