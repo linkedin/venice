@@ -58,7 +58,11 @@ public class DeadStoreStatsPreFetchTask implements Runnable, Closeable {
 
     while (isRunning.get()) {
       try {
-        Utils.sleep(refreshIntervalMs);
+        // Check return value of sleep to detect thread interruption for graceful shutdown
+        if (!Utils.sleep(refreshIntervalMs)) {
+          logger.info("Sleep was interrupted, stopping dead store stats prefetch task for cluster: {}", clusterName);
+          break;
+        }
         long startTime = System.currentTimeMillis();
         logger.debug("Fetching dead store stats for cluster: {}", clusterName);
         admin.preFetchDeadStoreStats(clusterName, getStoresInCluster());
