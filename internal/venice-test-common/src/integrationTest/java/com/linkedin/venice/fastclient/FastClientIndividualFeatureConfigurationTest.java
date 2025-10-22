@@ -511,6 +511,7 @@ public class FastClientIndividualFeatureConfigurationTest extends AbstractClient
         new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
             .setR2Client(r2Client)
             .setLongTailRetryEnabledForBatchGet(true)
+            .setLongTailRetryThresholdForBatchGetInMicroSeconds(10000)
             .setInstanceHealthMonitor(
                 new InstanceHealthMonitor(
                     InstanceHealthMonitorConfig.builder()
@@ -519,7 +520,6 @@ public class FastClientIndividualFeatureConfigurationTest extends AbstractClient
                         .build()));
     MetricsRepository clientMetric = new MetricsRepository();
     String metricPrefix = ClientTestUtils.getMetricPrefix(storeName, RequestType.MULTI_GET_STREAMING);
-    ;
     String fanoutSizeAverageMetricName = metricPrefix + "fanout_size.Avg";
     String fanoutSizeMaxMetricName = metricPrefix + "fanout_size.Max";
     AvroGenericStoreClient<String, GenericRecord> genericFastClient =

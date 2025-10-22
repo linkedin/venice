@@ -171,14 +171,6 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       }
     }
 
-    if (this.longTailRetryEnabledForBatchGet) {
-      if (this.longTailRetryThresholdForBatchGetInMicroSeconds <= 0) {
-        throw new VeniceClientException(
-            "longTailRetryThresholdForBatchGetInMicroSeconds must be positive, but got: "
-                + this.longTailRetryThresholdForBatchGetInMicroSeconds);
-      }
-    }
-
     if (this.longTailRetryEnabledForCompute) {
       if (this.longTailRetryThresholdForComputeInMicroSeconds <= 0) {
         throw new VeniceClientException(
@@ -426,9 +418,10 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     private int longTailRetryThresholdForSingleGetInMicroSeconds = 1000; // 1ms.
 
     private boolean longTailRetryEnabledForBatchGet = false;
-    private int longTailRetryThresholdForBatchGetInMicroSeconds = 10000; // 10ms.
+    private int longTailRetryThresholdForBatchGetInMicroSeconds = 0; // TODO: Delete this config after fast client
+                                                                     // rollout.
     private String longTailRangeBasedRetryThresholdForBatchGetInMilliSeconds =
-        "1-5:18,6-20:15,21-150:25,151-500:50,501-:250";
+        "1-12:8,13-20:30,21-150:50,151-500:100,501-:500";
 
     private boolean longTailRetryEnabledForCompute = false;
     private int longTailRetryThresholdForComputeInMicroSeconds = 10000; // 10ms.
@@ -614,7 +607,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
 
     public ClientConfigBuilder<K, V, T> setLongTailRetryBudgetEnforcementWindowInMs(
         long longTailRetryBudgetEnforcementWindowInMs) {
-      this.longTailRetryBudgetEnforcementWindowInMs = longTailRetryThresholdForBatchGetInMicroSeconds;
+      this.longTailRetryBudgetEnforcementWindowInMs = longTailRetryBudgetEnforcementWindowInMs;
       return this;
     }
 

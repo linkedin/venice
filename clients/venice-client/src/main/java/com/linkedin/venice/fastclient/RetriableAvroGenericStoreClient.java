@@ -45,6 +45,7 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
 
   private final int longTailRetryThresholdForSingleGetInMicroSeconds;
   private final TimeoutProcessor timeoutProcessor;
+  private final int longTailRetryThresholdForBatchGetInMicroSeconds;
   private final String longTailBatchGetRangeBasedRetryThresholdInMilliSeconds;
   private final ScheduledExecutorService retryManagerExecutorService =
       Executors.newScheduledThreadPool(1, new DaemonThreadFactory(FAST_CLIENT_RETRY_MANAGER_THREAD_PREFIX));
@@ -79,10 +80,23 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
         retryManagerExecutorService,
         clientConfig.getStoreName(),
         RequestType.MULTI_GET);
+
+    // Store the fixed threshold for batch get
+    this.longTailRetryThresholdForBatchGetInMicroSeconds =
+        clientConfig.getLongTailRetryThresholdForBatchGetInMicroSeconds();
     this.longTailBatchGetRangeBasedRetryThresholdInMilliSeconds =
         clientConfig.getLongTailRangeBasedRetryThresholdForBatchGetInMilliSeconds();
-    batchGetLongTailRetryThresholdMap =
-        BatchGetConfigUtils.parseRetryThresholdForBatchGet(longTailBatchGetRangeBasedRetryThresholdInMilliSeconds);
+
+    // Priority 1: If fixed threshold is set (> 0), use it and don't parse range-based config
+    // Priority 2: Otherwise (== 0), use range-based config
+    if (this.longTailRetryThresholdForBatchGetInMicroSeconds > 0) {
+      // Fixed threshold is set, don't parse range-based config
+      batchGetLongTailRetryThresholdMap = new TreeMap<>();
+    } else {
+      // Use range-based config
+      batchGetLongTailRetryThresholdMap =
+          BatchGetConfigUtils.parseRetryThresholdForBatchGet(longTailBatchGetRangeBasedRetryThresholdInMilliSeconds);
+    }
   }
 
   enum RetryType {
@@ -435,14 +449,20 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
   }
 
   private int getLongTailRetryThresholdForBatchGetInMicroSeconds(int numKeys) {
-    Map.Entry<Integer, Integer> retryThresholdEntry = batchGetLongTailRetryThresholdMap.floorEntry(numKeys);
-    if (retryThresholdEntry == null) {
-      // This should never happen as the configuration will always have a continuous range starting from 1 to 500
-      throw new VeniceClientException(
-          "Failed to find long tail retry threshold for batch get with " + numKeys + " keys. Please check the config: "
-              + longTailBatchGetRangeBasedRetryThresholdInMilliSeconds);
+    // Priority 1: Use fixed threshold if set (> 0)
+    if (longTailRetryThresholdForBatchGetInMicroSeconds > 0) {
+      return longTailRetryThresholdForBatchGetInMicroSeconds;
+    } else {
+      // Priority 2: Fall back to range-based config
+      Map.Entry<Integer, Integer> retryThresholdEntry = batchGetLongTailRetryThresholdMap.floorEntry(numKeys);
+      if (retryThresholdEntry == null) {
+        // This should never happen as the configuration will always have a continuous range starting from 1 to 500
+        throw new VeniceClientException(
+            "Failed to find long tail retry threshold for batch get with " + numKeys
+                + " keys. Please check the config: " + longTailBatchGetRangeBasedRetryThresholdInMilliSeconds);
+      }
+      return retryThresholdEntry.getValue() * 1000;
     }
-    return retryThresholdEntry.getValue() * 1000;
   }
 
   interface RequestContextConstructor<K, V, R extends MultiKeyRequestContext<K, V>> {

@@ -60,14 +60,6 @@ public class ClientConfigTest {
     clientConfigBuilder.build();
   }
 
-  @Test(expectedExceptions = VeniceClientException.class, expectedExceptionsMessageRegExp = "longTailRetryThresholdForBatchGetInMicroSeconds must be positive.*")
-  public void testClientWithInvalidLongTailRetryThresholdForBatchGet() {
-    ClientConfig.ClientConfigBuilder clientConfigBuilder = getClientConfigWithMinimumRequiredInputs();
-    clientConfigBuilder.setLongTailRetryEnabledForBatchGet(true);
-    clientConfigBuilder.setLongTailRetryThresholdForBatchGetInMicroSeconds(0);
-    clientConfigBuilder.build();
-  }
-
   @Test
   public void testLongTailRetryWithDualRead() {
     ClientConfig.ClientConfigBuilder clientConfigBuilder = getClientConfigWithMinimumRequiredInputs();
