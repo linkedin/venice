@@ -1101,7 +1101,10 @@ public class VenicePushJobTest {
       }
       mockVersionCreationResponse.setKafkaSourceRegion("dc-0");
       verify(pushJob, times(1)).postPushValidation();
+    }
 
+    try (VenicePushJob pushJob = getSpyVenicePushJob(props, client)) {
+      skipVPJValidation(pushJob);
       ControllerResponse badDataRecoveryResponse = new ControllerResponse();
       badDataRecoveryResponse.setError("error");
       doReturn(badDataRecoveryResponse).when(client)
@@ -1112,6 +1115,10 @@ public class VenicePushJobTest {
       } catch (VeniceException e) {
         assertTrue(e.getMessage().contains("Can't push data for region"));
       }
+    }
+
+    try (VenicePushJob pushJob = getSpyVenicePushJob(props, client)) {
+      skipVPJValidation(pushJob);
 
       ControllerResponse goodDataRecoveryResponse = new ControllerResponse();
       doReturn(goodDataRecoveryResponse).when(client)
