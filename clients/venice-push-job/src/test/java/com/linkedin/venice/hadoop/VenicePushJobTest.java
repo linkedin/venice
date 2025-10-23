@@ -1029,7 +1029,14 @@ public class VenicePushJobTest {
       } catch (VeniceException e) {
         assertTrue(e.getMessage().contains("Push job error"));
       }
+    }
 
+    try (VenicePushJob pushJob = getSpyVenicePushJob(props, client)) {
+      skipVPJValidation(pushJob);
+
+      JobStatusQueryResponse response = mockJobStatusQuery();
+      Map<String, String> extraInfo = response.getExtraInfo();
+      doReturn(response).when(client).queryOverallJobStatus(anyString(), any(), anyString(), anyBoolean());
       extraInfo.put("dc-0", ExecutionStatus.COMPLETED.toString());
       extraInfo.put("dc-1", ExecutionStatus.COMPLETED.toString());
       // both regions completed, so should succeed
