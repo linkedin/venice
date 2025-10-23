@@ -209,7 +209,6 @@ import com.linkedin.venice.helix.HelixReadOnlyZKSharedSystemStoreRepository;
 import com.linkedin.venice.helix.ParentHelixOfflinePushAccessor;
 import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.helix.StoragePersonaRepository;
-import com.linkedin.venice.helix.ZkRoutersClusterManager;
 import com.linkedin.venice.helix.ZkStoreConfigAccessor;
 import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.BufferReplayPolicy;
@@ -2825,21 +2824,8 @@ public class VeniceParentHelixAdmin implements Admin {
       setStore.enableWrites = writeability.map(addToUpdatedConfigList(updatedConfigsList, ENABLE_WRITES))
           .orElseGet(currStore::isEnableWrites);
 
-      if (readQuotaInCU.isPresent()) {
-        HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
-        ZkRoutersClusterManager routersClusterManager = resources.getRoutersClusterManager();
-        int routerCount = routersClusterManager.getLiveRoutersCount();
-        VeniceControllerClusterConfig clusterConfig = getHelixVeniceClusterResources(clusterName).getConfig();
-        int defaultReadQuotaPerRouter = clusterConfig.getDefaultReadQuotaPerRouter();
-        long maxReadCapacityCu = clusterConfig.getMaxReadCapacityCu();
-        if (Math.max(defaultReadQuotaPerRouter, maxReadCapacityCu) * routerCount < readQuotaInCU.get()) {
-          throw new VeniceException(
-              "Cannot update read quota for store " + storeName + " in cluster " + clusterName + ". Read quota "
-                  + readQuotaInCU.get() + " requested is more than the cluster quota.");
-        }
-        setStore.readQuotaInCU = readQuotaInCU.get();
-        updatedConfigsList.add(READ_QUOTA_IN_CU);
-      }
+      setStore.readQuotaInCU = readQuotaInCU.map(addToUpdatedConfigList(updatedConfigsList, READ_QUOTA_IN_CU))
+          .orElseGet(currStore::getReadQuotaInCU);
 
       // We need to be careful when handling currentVersion.
       // Since it is not synced between parent and local controller,
