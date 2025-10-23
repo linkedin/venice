@@ -104,6 +104,22 @@ public abstract class StoreLifecycleHooks {
   }
 
   /**
+   * Invoked prior to updating a store's config with a given list of params. If the hook implementation recognizes the
+   * params, then it will return {@link StoreLifecycleEventOutcome#PROCEED}, otherwise it should return
+   * * {@link StoreLifecycleEventOutcome#ABORT} if any params are missing or invalid.<br>
+   * @param clusterName
+   * @param storeName
+   * @param hookParams
+   * @return
+   */
+  public StoreLifecycleEventOutcome validateHookParams(
+      String clusterName,
+      String storeName,
+      Map<String, String> hookParams) {
+    return StoreLifecycleEventOutcome.PROCEED;
+  }
+
+  /**
    * Invoked prior to starting a new job. The hook has the option of aborting the job.<br>
    * <br>
    * N.B.: this hook returns a {@link StoreLifecycleEventOutcome}, and not a {@link StoreVersionLifecycleEventOutcome},

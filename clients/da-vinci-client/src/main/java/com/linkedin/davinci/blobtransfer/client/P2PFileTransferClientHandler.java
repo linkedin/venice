@@ -83,6 +83,11 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
 
   @Override
   protected void channelRead0(ChannelHandlerContext ctx, HttpObject msg) throws Exception {
+    // Early return if the transfer is already completed or failed.
+    if (inputStreamFuture.toCompletableFuture().isDone()) {
+      return;
+    }
+
     if (msg instanceof HttpResponse) {
       HttpResponse response = (HttpResponse) msg;
 
@@ -225,7 +230,7 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
   public void channelInactive(ChannelHandlerContext ctx) throws Exception {
     super.channelInactive(ctx);
     fastFailoverIncompleteTransfer(
-        "Channel close before completing transfer, might due to server graceful shutdown.",
+        "Channel close before completing transfer, might due to server graceful shutdown or timeout.",
         ctx);
   }
 

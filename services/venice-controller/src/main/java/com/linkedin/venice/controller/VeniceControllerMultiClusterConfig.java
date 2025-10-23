@@ -359,6 +359,10 @@ public class VeniceControllerMultiClusterConfig {
     return getCommonConfig().getRepushOrchestratorClassName();
   }
 
+  public Set<String> getRepushCandidateFilterClassNames() {
+    return getCommonConfig().getRepushCandidateFilterClassNames();
+  }
+
   public VeniceProperties getRepushOrchestratorConfigs() {
     return getCommonConfig().getRepushOrchestratorConfigs();
   }
@@ -380,7 +384,7 @@ public class VeniceControllerMultiClusterConfig {
   }
 
   public long getLogCompactionThresholdMS() {
-    return getCommonConfig().getLogCompactionThresholdMS();
+    return getCommonConfig().getLogCompactionVersionStalenessThresholdMS();
   }
 
   public boolean isRealTimeTopicVersioningEnabled() {
