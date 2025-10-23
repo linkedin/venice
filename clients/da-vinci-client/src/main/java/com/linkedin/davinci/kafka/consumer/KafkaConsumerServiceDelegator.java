@@ -282,36 +282,6 @@ public class KafkaConsumerServiceDelegator extends AbstractKafkaConsumerService 
     }
   }
 
-  public class AAOrWCLeaderConsumerPoolStrategy extends DefaultConsumerPoolStrategy {
-    private final KafkaConsumerService dedicatedConsumerServiceForAAWCLeader;
-    private final KafkaConsumerService dedicatedConsumerServiceForSepRT;
-
-    public AAOrWCLeaderConsumerPoolStrategy() {
-      super();
-      dedicatedConsumerServiceForAAWCLeader = consumerServiceConstructor
-          .apply(serverConfig.getDedicatedConsumerPoolSizeForAAWCLeader(), ConsumerPoolType.AA_WC_LEADER_POOL);
-      dedicatedConsumerServiceForSepRT = consumerServiceConstructor
-          .apply(serverConfig.getDedicatedConsumerPoolSizeForSepRTLeader(), ConsumerPoolType.SEP_RT_LEADER_POOL);
-      consumerServices.add(dedicatedConsumerServiceForAAWCLeader);
-      consumerServices.add(dedicatedConsumerServiceForSepRT);
-    }
-
-    @Override
-    public KafkaConsumerService delegateKafkaConsumerServiceFor(
-        PartitionReplicaIngestionContext topicPartitionReplicaRole) {
-      PubSubTopicPartition topicPartition = topicPartitionReplicaRole.getPubSubTopicPartition();
-      PubSubTopic versionTopic = topicPartitionReplicaRole.getVersionTopic();
-      if (isAAWCStoreFunc.apply(versionTopic.getName()) && topicPartition.getPubSubTopic().isRealTime()) {
-        if (topicPartition.getPubSubTopic().isSeparateRealTimeTopic()) {
-          return dedicatedConsumerServiceForSepRT;
-        } else {
-          return dedicatedConsumerServiceForAAWCLeader;
-        }
-      }
-      return defaultConsumerService;
-    }
-  }
-
   public class CurrentVersionConsumerPoolStrategy extends ConsumerPoolStrategy {
     private final KafkaConsumerService consumerServiceForCurrentVersionAAWCLeader;
     private final KafkaConsumerService consumerServiceForCurrentVersionSepRTLeader;

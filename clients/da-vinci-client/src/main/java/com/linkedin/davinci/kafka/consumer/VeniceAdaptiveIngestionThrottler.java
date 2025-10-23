@@ -14,6 +14,7 @@ import org.apache.logging.log4j.Logger;
 
 public class VeniceAdaptiveIngestionThrottler extends EventThrottler implements VeniceAdaptiveThrottler {
   private static final Logger LOGGER = LogManager.getLogger(VeniceAdaptiveIngestionThrottler.class);
+  private static long DEFAULT_UNLIMITED_QUOTA_VALUE = -1L;
   private final List<BooleanSupplier> limiterSuppliers = new ArrayList<>();
   private final List<BooleanSupplier> boosterSuppliers = new ArrayList<>();
 
@@ -52,8 +53,8 @@ public class VeniceAdaptiveIngestionThrottler extends EventThrottler implements 
 
     for (Double factor: factors) {
       long maxQuota = (long) (quotaPerSecond * factor);
-      if (quotaPerSecond == -1L) {
-        maxQuota = -1;
+      if (quotaPerSecond == DEFAULT_UNLIMITED_QUOTA_VALUE) {
+        maxQuota = DEFAULT_UNLIMITED_QUOTA_VALUE;
         LOGGER.warn("Quota per second is not set (-1), setting max quota per throttler to -1");
       }
       EventThrottler eventThrottler = new EventThrottler(
