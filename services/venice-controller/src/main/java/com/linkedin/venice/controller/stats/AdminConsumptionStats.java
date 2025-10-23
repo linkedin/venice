@@ -16,6 +16,7 @@ public class AdminConsumptionStats extends AbstractVeniceStats {
   final private Sensor adminConsumeFailRetriableMessageCountSensor;
   final private Sensor adminTopicDIVErrorReportCountSensor;
   final private Sensor adminConsumptionCycleDurationMsSensor;
+  final private Sensor adminMessagePollingLatencySensor;
   /**
    * The time it took MM to copy the message from parent to child controller's admin topic.
    */
@@ -31,13 +32,34 @@ public class AdminConsumptionStats extends AbstractVeniceStats {
   final private Sensor adminMessageStartProcessingLatencySensor;
   /**
    * The time difference between the first attempt to process the message and when the message is fully processed. This
-   * includes the latency caused by failures/retries. This metric does not include process time for add version admin messages.
+   * includes the latency caused by failures/retries. This metric does not include process time for admin messages:
+   * {@link com.linkedin.venice.controller.AdminMessageType#ADD_VERSION}, {@link com.linkedin.venice.controller.AdminMessageType#UPDATE_STORE},
+   * {@link com.linkedin.venice.controller.AdminMessageType#VALUE_SCHEMA_CREATION}, {@link com.linkedin.venice.controller.AdminMessageType#REPLICATION_METADATA_SCHEMA_CREATION}.
    */
   final private Sensor adminMessageProcessLatencySensor;
   /**
    * Similar to {@code adminMessageProcessLatencySensor} but specifically for add version admin messages.
    */
   final private Sensor adminMessageAddVersionProcessLatencySensor;
+  /**
+   * Similar to {@code adminMessageProcessLatencySensor} but specifically for update store admin messages.
+   */
+  final private Sensor adminMessageUpdateStoreProcessLatencySensor;
+
+  /**
+   * Similar to {@code adminMessageProcessLatencySensor} but specifically for value schema creation admin messages.
+   */
+  final private Sensor adminMessageValueSchemaCreationProcessLatencySensor;
+  /**
+   * Similar to {@code adminMessageProcessLatencySensor} but specifically for replication metadata schema creation admin messages.
+   */
+  final private Sensor adminMessageReplicationMetadataSchemaCreationProcessLatencySensor;
+
+  /** Latency for admin execution task get if the task is canceled */
+  final private Sensor adminExecutionCancelledTaskResultLatency;
+
+  /** Latency for admin execution task if task is not canceled */
+  final private Sensor adminExecutionTaskResultLatency;
   /**
    * Total end to end latency from the time when the message was first generated in the parent controller to when it's
    * fully processed in the child controller.
@@ -88,6 +110,9 @@ public class AdminConsumptionStats extends AbstractVeniceStats {
         new AsyncGauge(
             (ignored, ignored2) -> storesWithPendingAdminMessagesCountGauge,
             "stores_with_pending_admin_messages_count"));
+
+    adminMessagePollingLatencySensor = registerSensor("admin_polling_latency_ms", new Avg(), new Max());
+
     adminMessageMMLatencySensor = registerSensor("admin_message_mm_latency_ms", new Avg(), new Max());
     adminMessageDelegateLatencySensor = registerSensor("admin_message_delegate_latency_ms", new Avg(), new Max());
     adminMessageStartProcessingLatencySensor =
@@ -95,6 +120,18 @@ public class AdminConsumptionStats extends AbstractVeniceStats {
     adminMessageProcessLatencySensor = registerSensor("admin_message_process_latency_ms", new Avg(), new Max());
     adminMessageAddVersionProcessLatencySensor =
         registerSensor("admin_message_add_version_process_latency_ms", new Avg(), new Max());
+    adminMessageUpdateStoreProcessLatencySensor =
+        registerSensor("admin_message_update_store_process_latency_ms", new Avg(), new Max());
+    adminMessageValueSchemaCreationProcessLatencySensor =
+        registerSensor("admin_message_value_schema_creation_process_latency_ms", new Avg(), new Max());
+    adminMessageReplicationMetadataSchemaCreationProcessLatencySensor =
+        registerSensor("admin_message_replication_metadata_schema_creation_process_latency_ms", new Avg(), new Max());
+
+    adminExecutionCancelledTaskResultLatency =
+        registerSensor("admin_execution_cancelled_task_result_latency_ms", new Avg(), new Max());
+
+    adminExecutionTaskResultLatency = registerSensor("admin_execution_task_result_latency_ms", new Avg(), new Max());
+
     adminMessageTotalLatencySensor = registerSensor("admin_message_total_latency_ms", new Avg(), new Max());
     registerSensor(
         new AsyncGauge((ignored, ignored2) -> this.adminConsumptionOffsetLag, "admin_consumption_offset_lag"));
@@ -139,6 +176,10 @@ public class AdminConsumptionStats extends AbstractVeniceStats {
     adminMessageMMLatencySensor.record(value);
   }
 
+  public void recordAdminMessagePollingLatency(double value) {
+    adminMessagePollingLatencySensor.record(value);
+  }
+
   public void recordAdminMessageDelegateLatency(double value) {
     adminMessageDelegateLatencySensor.record(value);
   }
@@ -153,6 +194,26 @@ public class AdminConsumptionStats extends AbstractVeniceStats {
 
   public void recordAdminMessageAddVersionProcessLatency(double value) {
     adminMessageAddVersionProcessLatencySensor.record(value);
+  }
+
+  public void recordAdminMessageUpdateStoreProcessLatency(double value) {
+    adminMessageUpdateStoreProcessLatencySensor.record(value);
+  }
+
+  public void recordAdminValueSchemaCreationProcessLatency(double value) {
+    adminMessageValueSchemaCreationProcessLatencySensor.record(value);
+  }
+
+  public void recordReplicationMetadataSchemaCreationProcessLatency(double value) {
+    adminMessageReplicationMetadataSchemaCreationProcessLatencySensor.record(value);
+  }
+
+  public void recordAdminExecutionCancelledTaskResultLatency(double value) {
+    adminExecutionCancelledTaskResultLatency.record(value);
+  }
+
+  public void recordAdminExecutionTaskResultLatency(double value) {
+    adminExecutionTaskResultLatency.record(value);
   }
 
   public void recordAdminMessageTotalLatency(double value) {

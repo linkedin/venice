@@ -45,6 +45,7 @@ import com.linkedin.venice.controller.kafka.protocol.admin.ValueSchemaCreation;
 import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
 import com.linkedin.venice.controller.lingeringjob.LingeringStoreVersionChecker;
+import com.linkedin.venice.controller.stats.VeniceAdminMethodStats;
 import com.linkedin.venice.controller.stats.VeniceAdminStats;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
@@ -1323,6 +1324,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     doReturn(new VeniceControllerMultiClusterConfig(configMap)).when(mockParentAdmin).getMultiClusterConfigs();
     doReturn(Optional.of(version.kafkaTopicName())).when(mockParentAdmin)
         .getTopicForCurrentPushJob(eq(clusterName), eq(storeName), anyBoolean(), anyBoolean());
+    doReturn(mock(VeniceAdminMethodStats.class)).when(mockParentAdmin).getVeniceAdminMethodStatsByCluster(clusterName);
 
     String incomingPushId = "TEST_BATCH_PUSH";
     doCallRealMethod().when(mockParentAdmin)

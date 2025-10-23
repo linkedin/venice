@@ -167,6 +167,9 @@ import com.linkedin.venice.controller.lingeringjob.LingeringStoreVersionChecker;
 import com.linkedin.venice.controller.logcompaction.CompactionManager;
 import com.linkedin.venice.controller.migration.MigrationPushStrategyZKAccessor;
 import com.linkedin.venice.controller.repush.RepushJobRequest;
+import com.linkedin.venice.controller.stats.VeniceAdminMethod;
+import com.linkedin.venice.controller.stats.VeniceAdminMethodStats;
+import com.linkedin.venice.controller.stats.VeniceAdminMethodStep;
 import com.linkedin.venice.controller.supersetschema.DefaultSupersetSchemaGenerator;
 import com.linkedin.venice.controller.supersetschema.SupersetSchemaGenerator;
 import com.linkedin.venice.controller.util.ParentControllerConfigUpdateUtils;
@@ -266,6 +269,7 @@ import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
 import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
 import com.linkedin.venice.utils.AvroSchemaUtils;
 import com.linkedin.venice.utils.CollectionUtils;
+import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.Pair;
@@ -361,6 +365,8 @@ public class VeniceParentHelixAdmin implements Admin {
   private final SystemStoreAclSynchronizationTask systemStoreAclSynchronizationTask;
   private final UserSystemStoreLifeCycleHelper systemStoreLifeCycleHelper;
   private final WriteComputeSchemaConverter writeComputeSchemaConverter;
+
+  private final Map<String, VeniceAdminMethodStats> veniceParentAdminStatsMap = new HashMap<>();
 
   private Time timer = new SystemTime();
   private Optional<SSLFactory> sslFactory = Optional.empty();
@@ -517,6 +523,8 @@ public class VeniceParentHelixAdmin implements Admin {
               this.veniceHelixAdmin.getControllerClientMap(config.getClusterName())));
       perStoreAdminLocks.put(cluster, new ConcurrentHashMap<>());
       perClusterAdminLocks.put(cluster, new ReentrantLock());
+      veniceParentAdminStatsMap
+          .put(config.getClusterName(), new VeniceAdminMethodStats(metricsRepository, config.getClusterName()));
     }
     this.pushStrategyZKAccessor = new MigrationPushStrategyZKAccessor(
         this.veniceHelixAdmin.getZkClient(),
@@ -1875,7 +1883,7 @@ public class VeniceParentHelixAdmin implements Admin {
       newVersion = getVeniceHelixAdmin().getIncrementalPushVersion(clusterName, storeName, pushJobId);
     } else {
       validateTargetedRegions(targetedRegions, clusterName);
-
+      long addVersionAndTopicOnlyStartTime = System.currentTimeMillis();
       newVersion = addVersionAndTopicOnly(
           clusterName,
           storeName,
@@ -1894,7 +1902,13 @@ public class VeniceParentHelixAdmin implements Admin {
           targetedRegions,
           repushSourceVersion,
           store.getLargestUsedRTVersionNumber());
+
+      getVeniceAdminMethodStatsByCluster(clusterName).recordParentAdminMethodStepLatency(
+          VeniceAdminMethod.INCREMENT_VERSION_IDEMPOTENT,
+          VeniceAdminMethodStep.ADD_VERSION_AND_TOPIC_ONLY,
+          LatencyUtils.getElapsedTimeFromMsToMs(addVersionAndTopicOnlyStartTime));
     }
+
     if (VeniceSystemStoreType.getSystemStoreType(storeName) == null) {
       if (pushType.isBatch()) {
         getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName)
@@ -2222,6 +2236,11 @@ public class VeniceParentHelixAdmin implements Admin {
     return NON_EXISTING_VERSION;
   }
 
+  @VisibleForTesting
+  public VeniceAdminMethodStats getVeniceAdminMethodStatsByCluster(String clusterName) {
+    return veniceParentAdminStatsMap.get(clusterName);
+  }
+
   Map<String, Integer> getCurrentVersionForMultiRegions(
       String clusterName,
       String storeName,
@@ -2395,10 +2414,16 @@ public class VeniceParentHelixAdmin implements Admin {
         LOGGER.info(
             "Truncating topic {} after child controllers tried to roll forward to not block new versions",
             kafkaTopic);
+        long truncateKafkaTopicStartTime = System.currentTimeMillis();
         truncateKafkaTopic(kafkaTopic);
+        getVeniceAdminMethodStatsByCluster(clusterName).recordParentAdminMethodStepLatency(
+            VeniceAdminMethod.ROLL_FORWARD_TO_FUTURE_VERSION,
+            VeniceAdminMethodStep.TRUNCATE_KAFKA_TOPIC,
+            LatencyUtils.getElapsedTimeFromMsToMs(truncateKafkaTopicStartTime));
       }
 
       HelixVeniceClusterResources resources = getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName);
+      long storeStatusUpdateStartTime = System.currentTimeMillis();
       try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
         ReadWriteStoreRepository repository = resources.getStoreMetadataRepository();
         Store parentStore = repository.getStore(storeName);
@@ -2413,7 +2438,12 @@ public class VeniceParentHelixAdmin implements Admin {
           int version = Version.parseVersionFromKafkaTopicName(kafkaTopic);
           parentStore.updateVersionStatus(version, ONLINE);
           parentStore.setCurrentVersion(version);
+          long repositoryUpdateStoreStartTime = System.currentTimeMillis();
           repository.updateStore(parentStore);
+          getVeniceAdminMethodStatsByCluster(clusterName).recordParentAdminMethodStepLatency(
+              VeniceAdminMethod.ROLL_FORWARD_TO_FUTURE_VERSION,
+              VeniceAdminMethodStep.REPOSITORY_STORE_STATUS_UPDATE,
+              LatencyUtils.getElapsedTimeFromMsToMs(repositoryUpdateStoreStartTime));
           LOGGER.info(
               "Updating parent store {} version {} status to {} after roll-forward",
               parentStore.getName(),
@@ -2421,6 +2451,10 @@ public class VeniceParentHelixAdmin implements Admin {
               ONLINE);
         }
       }
+      getVeniceAdminMethodStatsByCluster(clusterName).recordParentAdminMethodStepLatency(
+          VeniceAdminMethod.ROLL_FORWARD_TO_FUTURE_VERSION,
+          VeniceAdminMethodStep.STORE_STATUS_UPDATE_TOTAL,
+          LatencyUtils.getElapsedTimeFromMsToMs(storeStatusUpdateStartTime));
       LOGGER.info(
           "Roll forward to future version {} is successful in all regions for store {}",
           futureVersionBeforeRollForward,
@@ -4791,6 +4825,7 @@ public class VeniceParentHelixAdmin implements Admin {
     if (getStore(clusterName, storeName) == null) {
       throw new VeniceNoStoreException(storeName, clusterName);
     }
+    long killOfflinePushStartTime = System.currentTimeMillis();
     acquireAdminMessageLock(clusterName, storeName);
     try {
       getVeniceHelixAdmin().checkPreConditionForKillOfflinePush(clusterName, kafkaTopic);
@@ -4832,6 +4867,10 @@ public class VeniceParentHelixAdmin implements Admin {
       sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
     } finally {
       releaseAdminMessageLock(clusterName, storeName);
+      getVeniceAdminMethodStatsByCluster(clusterName).recordParentAdminMethodStepLatency(
+          VeniceAdminMethod.KILL_OFFLINE_PUSH,
+          VeniceAdminMethodStep.KILL_OFFLINE_PUSH,
+          LatencyUtils.getElapsedTimeFromMsToMs(killOfflinePushStartTime));
     }
   }
 

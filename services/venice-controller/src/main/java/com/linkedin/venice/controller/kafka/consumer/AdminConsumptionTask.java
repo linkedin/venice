@@ -366,6 +366,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
         Iterator<DefaultPubSubMessage> recordsIterator;
         // Only poll the kafka channel if there are no more undelegated records due to exceptions.
         if (undelegatedRecords.isEmpty()) {
+          long messagePollingTimeStamp = System.currentTimeMillis();
           Map<PubSubTopicPartition, List<DefaultPubSubMessage>> messages = consumer.poll(READ_CYCLE_DELAY_MS);
           if (messages == null || messages.isEmpty()) {
             LOGGER.debug("Received null or no messages");
@@ -377,6 +378,13 @@ public class AdminConsumptionTask implements Runnable, Closeable {
               DefaultPubSubMessage newRecord = recordsIterator.next();
               lastConsumedPosition = newRecord.getPosition();
               undelegatedRecords.add(newRecord);
+
+              // record the polling latency for admin message
+              if (!newRecord.getKey().isControlMessage()) {
+                KafkaMessageEnvelope kafkaValue = newRecord.getValue();
+                long producerTimestamp = kafkaValue.producerMetadata.messageTimestamp;
+                stats.recordAdminMessagePollingLatency(Math.max(0, messagePollingTimeStamp - producerTimestamp));
+              }
             }
           }
         } else {
@@ -594,8 +602,10 @@ public class AdminConsumptionTask implements Runnable, Closeable {
         for (int i = 0; i < results.size(); i++) {
           String storeName = stores.get(i);
           Future<Void> result = results.get(i);
+          long resultGetStartTime = System.currentTimeMillis();
           try {
             result.get();
+            stats.recordAdminExecutionTaskResultLatency(System.currentTimeMillis() - resultGetStartTime);
             problematicStores.remove(storeName);
             if (internalQueuesEmptied) {
               Queue<AdminOperationWrapper> storeQueue = adminOperationsByStore.get(storeName);
@@ -660,6 +670,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
                 problematicStores.put(storeName, errorInfo);
               }
             } else if (e instanceof CancellationException) {
+              stats.recordAdminExecutionCancelledTaskResultLatency(System.currentTimeMillis() - resultGetStartTime);
               long lastSucceededId = lastSucceededExecutionIdMap.getOrDefault(storeName, UNASSIGNED_VALUE);
               long newLastSucceededId = newLastSucceededExecutionIdMap.getOrDefault(storeName, UNASSIGNED_VALUE);
 
