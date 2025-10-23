@@ -389,12 +389,12 @@ public abstract class AbstractAvroComputeRequestBuilder<K> implements ComputeReq
       // If the schema is invalid, we need to refresh the schema
       int previousLatestValueSchemaId = this.latestValueSchemaId;
       latestValueSchemaId = schemaReader.getLatestValueSchemaId(true);
-      if (latestValueSchemaId == SchemaData.INVALID_VALUE_SCHEMA_ID) {
+      if (latestValueSchemaId <= SchemaData.UNKNOWN_SCHEMA_ID) {
         throw new VeniceClientException("Invalid latest value schema ID: " + latestValueSchemaId);
       }
       if (latestValueSchemaId == previousLatestValueSchemaId) {
         throw new VeniceClientException(
-            "Invalid compute schema even after refresh to latest schema ID: " + latestValueSchemaId,
+            e.getMessage() + ". Invalid compute schema even after refresh to latest schema ID: " + latestValueSchemaId,
             e);
       }
       this.latestValueSchema = schemaReader.getValueSchema(latestValueSchemaId);
