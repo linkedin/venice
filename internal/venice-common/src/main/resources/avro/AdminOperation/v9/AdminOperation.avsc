@@ -1,0 +1,300 @@
+{
+  "name": "AdminOperation",
+  "namespace": "com.linkedin.venice.controller.kafka.protocol.admin",
+  "type": "record",
+  "fields": [
+    {
+      "name": "operationType",
+      "doc": "0 => StoreCreation, 1 => ValueSchemaCreation, 2 => PauseStore, 3 => ResumeStore, 4 => KillOfflinePushJob, 5 => DisableStoreRead, 6 => EnableStoreRead, 7=> DeleteAllVersions, 8=> SetStoreOwner, 9=> SetStorePartitionCount, 10=> SetStoreCurrentVersion, 11=> UpdateStore, 12=> DeleteStore",
+      "type": "int"
+    }, {
+      "name": "executionId",
+      "doc": "ID of a command execution which is used to query the status of this command.",
+      "type": "long",
+      "default": 0
+    }, {
+      "name": "payloadUnion",
+      "doc": "This contains the main payload of the admin operation",
+      "type": [
+        {
+          "name": "StoreCreation",
+          "type": "record",
+          "fields": [
+            {
+              "name": "clusterName",
+              "type": "string"
+            },
+            {
+              "name": "storeName",
+              "type": "string"
+            },
+            {
+              "name": "owner",
+              "type": "string"
+            },
+            {
+              "name": "keySchema",
+              "type": {
+                "type": "record",
+                "name": "SchemaMeta",
+                "fields": [
+                  {"name": "schemaType", "type": "int", "doc": "0 => Avro-1.4, and we can add more if necessary"},
+                  {"name": "definition", "type": "string"}
+                ]
+              }
+            },
+            {
+              "name": "valueSchema",
+              "type": "SchemaMeta"
+            }
+          ]
+        },
+        {
+          "name": "ValueSchemaCreation",
+          "type": "record",
+          "fields": [
+            {
+              "name": "clusterName",
+              "type": "string"
+            },
+            {
+              "name": "storeName",
+              "type": "string"
+            },
+            {
+              "name": "schema",
+              "type": "SchemaMeta"
+            },
+            {
+              "name": "schemaId",
+              "type": "int"
+            }
+          ]
+        },
+        {
+          "name": "PauseStore",
+          "type": "record",
+          "fields": [
+            {
+              "name": "clusterName",
+              "type": "string"
+            },
+            {
+              "name": "storeName",
+              "type": "string"
+            }
+          ]
+        },
+        {
+          "name": "ResumeStore",
+          "type": "record",
+          "fields": [
+            {
+              "name": "clusterName",
+              "type": "string"
+            },
+            {
+              "name": "storeName",
+              "type": "string"
+            }
+          ]
+        },
+        {
+          "name": "KillOfflinePushJob",
+          "type": "record",
+          "fields": [
+            {
+              "name": "clusterName",
+              "type": "string"
+            },
+            {
+              "name": "kafkaTopic",
+              "type": "string"
+            }
+          ]
+        },
+        {
+          "name": "DisableStoreRead",
+          "type": "record",
+          "fields": [
+            {
+              "name": "clusterName",
+              "type": "string"
+            },
+            {
+              "name": "storeName",
+              "type": "string"
+            }
+          ]
+        },
+        {
+          "name": "EnableStoreRead",
+          "type": "record",
+          "fields": [
+            {
+              "name": "clusterName",
+              "type": "string"
+            },
+            {
+              "name": "storeName",
+              "type": "string"
+            }
+          ]
+        },
+        {
+          "name": "DeleteAllVersions",
+          "type": "record",
+          "fields": [
+            {
+              "name": "clusterName",
+              "type": "string"
+            },
+            {
+              "name": "storeName",
+              "type": "string"
+            }
+          ]
+        },
+        {
+          "name": "SetStoreOwner",
+          "type": "record",
+          "fields": [
+            {
+              "name": "clusterName",
+              "type": "string"
+            },
+            {
+              "name": "storeName",
+              "type": "string"
+            },
+            {
+              "name": "owner",
+              "type": "string"
+            }
+          ]
+        },
+        {
+          "name": "SetStorePartitionCount",
+          "type": "record",
+          "fields": [
+            {
+              "name": "clusterName",
+              "type": "string"
+            },
+            {
+              "name": "storeName",
+              "type": "string"
+            },
+            {
+              "name": "partitionNum",
+              "type": "int"
+            }
+          ]
+        },
+        {
+          "name": "SetStoreCurrentVersion",
+          "type": "record",
+          "fields": [
+            {
+              "name": "clusterName",
+              "type": "string"
+            },
+            {
+              "name": "storeName",
+              "type": "string"
+            },
+            {
+              "name": "currentVersion",
+              "type": "int"
+            }
+          ]
+        },
+        {
+          "name": "UpdateStore",
+          "type": "record",
+          "fields": [
+            {
+              "name": "clusterName",
+              "type": "string"
+            },
+            {
+              "name": "storeName",
+              "type": "string"
+            },
+            {
+              "name": "owner",
+              "type": "string"
+            },
+            {
+              "name": "partitionNum",
+              "type": "int"
+            },
+            {
+              "name": "currentVersion",
+              "type": "int"
+            },
+            {
+              "name": "enableReads",
+              "type": "boolean"
+            },
+            {
+              "name": "enableWrites",
+              "type": "boolean"
+            },
+            {
+              "name": "storageQuotaInByte",
+              "type": "long"
+            },
+            {
+              "name": "readQuotaInCU",
+              "type": "long"
+            },
+            {
+              "name": "hybridStoreConfig",
+              "type": [
+                "null",
+                {
+                  "name": "HybridStoreConfigRecord",
+                  "type": "record",
+                  "fields": [
+                    {
+                      "name": "rewindTimeInSeconds",
+                      "type": "long"
+                    },
+                    {
+                      "name": "offsetLagThresholdToGoOnline",
+                      "type": "long"
+                    }
+                  ]
+                }
+              ],
+              "default": null
+            },
+            {
+              "name": "accessControlled",
+              "type": "boolean"
+            }
+          ]
+        },
+        {
+          "name": "DeleteStore",
+          "type": "record",
+          "fields": [
+            {
+              "name": "clusterName",
+              "type": "string"
+            },
+            {
+              "name": "storeName",
+              "type": "string"
+            },
+            {
+              "name": "largestUsedVersionNumber",
+              "type": "int"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
