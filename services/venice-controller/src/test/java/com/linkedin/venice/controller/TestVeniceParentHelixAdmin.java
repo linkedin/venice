@@ -62,6 +62,8 @@ import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.exceptions.VeniceStoreAlreadyExistsException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.helix.HelixReadWriteStoreRepository;
+import com.linkedin.venice.helix.StoragePersonaRepository;
+import com.linkedin.venice.helix.ZkRoutersClusterManager;
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.ConcurrentPushDetectionStrategy;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
@@ -123,6 +125,7 @@ import org.mockito.ArgumentCaptor;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -1920,6 +1923,57 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     Admin.OfflinePushStatusInfo offlineJobStatus =
         parentAdmin.getOffLineJobStatus("IGNORED", "topic1_v1", notCreatedMap);
     assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.ERROR);
+  }
+
+  @DataProvider(name = "readQuotaTestCases")
+  public Object[][] readQuotaTestCases() {
+    return new Object[][] { { 100, 0, 10L, true }, // Default quota is enough
+        { 0, 100L, 10L, true }, // Default quota not enough but max router capacity is enough
+        { 0, 0, 10L, false } // Neither default quota nor max capacity is enough - should throw exception
+    };
+  }
+
+  @Test(dataProvider = "readQuotaTestCases")
+  public void testUpdateReadQuota(int defaultQuota, long maxCapacity, long requestedQuota, boolean shouldSucceed) {
+    String storeName = Utils.getUniqueString("testUpdateStore");
+    Store store = TestUtils.createTestStore(storeName, "test", System.currentTimeMillis());
+    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
+    mockResources(config, clusterName);
+    doReturn(internalAdmin.getHelixVeniceClusterResources(clusterName)).when(internalAdmin)
+        .getHelixVeniceClusterResources(clusterName);
+    when(internalAdmin.getHelixVeniceClusterResources(clusterName).getConfig()).thenReturn(config);
+    ZkRoutersClusterManager routersClusterManager = mock(ZkRoutersClusterManager.class);
+    when(internalAdmin.getHelixVeniceClusterResources(clusterName).getRoutersClusterManager())
+        .thenReturn(routersClusterManager);
+    when(routersClusterManager.getLiveRoutersCount()).thenReturn(1);
+    StoragePersonaRepository storagePersonaRepository = mock(StoragePersonaRepository.class);
+    when(internalAdmin.getHelixVeniceClusterResources(clusterName).getStoragePersonaRepository())
+        .thenReturn(storagePersonaRepository);
+
+    when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(null)
+        .thenReturn(
+            AdminTopicMetadataAccessor.generateMetadataMap(
+                Optional.of(1L),
+                Optional.of(-1L),
+                Optional.of(1L),
+                Optional.of(LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION)));
+
+    UpdateStoreQueryParams updateStoreQueryParams = new UpdateStoreQueryParams().setReadQuotaInCU(requestedQuota);
+    parentAdmin.initStorageCluster(clusterName);
+
+    when(config.getDefaultReadQuotaPerRouter()).thenReturn(defaultQuota);
+    when(config.getMaxReadCapacityCu()).thenReturn(maxCapacity);
+
+    if (shouldSucceed) {
+      parentAdmin.updateStore(clusterName, storeName, updateStoreQueryParams);
+      AdminOperation adminMessage = verifyAndGetSingleAdminOperation();
+      UpdateStore updateStore = (UpdateStore) adminMessage.payloadUnion;
+      Assert.assertEquals(updateStore.getReadQuotaInCU(), requestedQuota);
+    } else {
+      Assert.assertThrows(
+          VeniceException.class,
+          () -> parentAdmin.updateStore(clusterName, storeName, updateStoreQueryParams));
+    }
   }
 
   @Test
