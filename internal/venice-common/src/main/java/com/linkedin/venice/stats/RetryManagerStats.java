@@ -61,7 +61,7 @@ public class RetryManagerStats extends AbstractVeniceStats {
     this.retryLimitPerSecond = AsyncMetricEntityStateBase.create(
         RETRY_RATE_LIMIT_TARGET_TOKENS.getMetricEntity(),
         otelRepository,
-        this::registerSensor,
+        this::registerSensorIfAbsent,
         RetryManagerTehutiMetricName.RETRY_LIMIT_PER_SECONDS,
         Collections.singletonList(new AsyncGauge((ignored, ignored2) -> {
           TokenBucket bucket = retryManager.getRetryTokenBucket();
@@ -77,7 +77,7 @@ public class RetryManagerStats extends AbstractVeniceStats {
     this.retriesRemaining = AsyncMetricEntityStateBase.create(
         RETRY_RATE_LIMIT_REMAINING_TOKENS.getMetricEntity(),
         otelRepository,
-        this::registerSensor,
+        this::registerSensorIfAbsent,
         RetryManagerTehutiMetricName.RETRIES_REMAINING,
         Collections.singletonList(new AsyncGauge((ignored, ignored2) -> {
           TokenBucket bucket = retryManager.getRetryTokenBucket();
@@ -93,7 +93,7 @@ public class RetryManagerStats extends AbstractVeniceStats {
     this.rejectedRetry = MetricEntityStateBase.create(
         RETRY_RATE_LIMIT_REJECTION_COUNT.getMetricEntity(),
         otelRepository,
-        this::registerSensor,
+        this::registerSensorIfAbsent,
         RetryManagerTehutiMetricName.REJECTED_RETRY,
         Collections.singletonList(new OccurrenceRate()),
         baseDimensionsMap,
