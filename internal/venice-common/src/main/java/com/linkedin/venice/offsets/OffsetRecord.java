@@ -11,6 +11,7 @@ import com.linkedin.venice.kafka.protocol.state.ProducerPartitionState;
 import com.linkedin.venice.pubsub.PubSubContext;
 import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.PubSubUtil;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
@@ -118,18 +119,16 @@ public class OffsetRecord {
     return serializer.deserialize(PARTITION_STATE_STRING, bytes);
   }
 
-  public void setPreviousStatusesEntry(String key, String value) {
+  public void setPreviousStatusesEntry(CharSequence key, String value) {
     partitionState.getPreviousStatuses().put(key, value);
   }
 
-  public String getPreviousStatusesEntry(String key) {
+  public String getPreviousStatusesEntry(CharSequence key) {
     return partitionState.getPreviousStatuses().getOrDefault(key, NULL_STRING).toString();
   }
 
   public PubSubPosition getCheckpointedLocalVtPosition() {
-    return deserializePositionWithOffsetFallback(
-        this.partitionState.lastProcessedVersionTopicPubSubPosition,
-        this.partitionState.offset);
+    return PubSubUtil.fromKafkaOffset(this.partitionState.offset);
   }
 
   public void checkpointLocalVtPosition(PubSubPosition vtPosition) {
@@ -142,9 +141,7 @@ public class OffsetRecord {
   }
 
   public PubSubPosition getCheckpointedRemoteVtPosition() {
-    return deserializePositionWithOffsetFallback(
-        this.partitionState.upstreamVersionTopicPubSubPosition,
-        this.partitionState.upstreamVersionTopicOffset);
+    return PubSubUtil.fromKafkaOffset(this.partitionState.upstreamVersionTopicOffset);
   }
 
   public void checkpointRemoteVtPosition(PubSubPosition remoteVtPosition) {
@@ -303,12 +300,11 @@ public class OffsetRecord {
    */
   public PubSubPosition getCheckpointedRtPosition(String pubSubBrokerAddress) {
     Long offset = partitionState.upstreamOffsetMap.get(pubSubBrokerAddress);
-    ByteBuffer wfBuffer = partitionState.upstreamRealTimeTopicPubSubPositionMap.get(pubSubBrokerAddress);
     if (offset == null) {
       // If the offset is not set, return EARLIEST symbolic position.
       return PubSubSymbolicPosition.EARLIEST;
     }
-    return deserializePositionWithOffsetFallback(wfBuffer, offset);
+    return PubSubUtil.fromKafkaOffset(offset);
   }
 
   public void checkpointRtPosition(String pubSubBrokerAddress, PubSubPosition leaderPosition) {
@@ -337,9 +333,8 @@ public class OffsetRecord {
       checkpointUpstreamPositionsReceiver.clear();
       for (Map.Entry<String, Long> offsetEntry: partitionState.upstreamOffsetMap.entrySet()) {
         String pubSubBrokerAddress = offsetEntry.getKey();
-        ByteBuffer wfBuffer = partitionState.upstreamRealTimeTopicPubSubPositionMap.get(pubSubBrokerAddress);
         checkpointUpstreamPositionsReceiver
-            .put(pubSubBrokerAddress, deserializePositionWithOffsetFallback(wfBuffer, offsetEntry.getValue()));
+            .put(pubSubBrokerAddress, PubSubUtil.fromKafkaOffset(offsetEntry.getValue()));
       }
     }
   }
@@ -405,15 +400,13 @@ public class OffsetRecord {
 
   @Override
   public String toString() {
-    return "OffsetRecord{" + "localVtPosition=" + getCheckpointedLocalVtPosition() + ", rtPositions="
-        + getPartitionUpstreamOffsetString() + ", leaderTopic=" + getLeaderTopic() + ", offsetLag=" + getOffsetLag()
-        + ", eventTimeEpochMs=" + getMaxMessageTimeInMs() + ", latestProducerProcessingTimeInMs="
-        + getLatestProducerProcessingTimeInMs() + ", isEndOfPushReceived=" + isEndOfPushReceived() + ", databaseInfo="
-        + getDatabaseInfo() + ", realTimeProducerState=" + getRealTimeProducerState() + ", recordTransformerClassHash="
-        + getRecordTransformerClassHash() + ", lastProcessedVtPosition="
-        + partitionState.getLastProcessedVersionTopicPubSubPosition() + ", lastConsumedVtPosition="
-        + partitionState.getLastConsumedVersionTopicPubSubPosition() + ", remoteVtPosition="
-        + partitionState.getUpstreamVersionTopicPubSubPosition() + "}";
+    return "OffsetRecord{" + "localVtPosition=" + getCheckpointedLocalVtPosition() + ", remoteVtPosition="
+        + getCheckpointedRemoteVtPosition() + ", rtPositions=" + getPartitionUpstreamPositionString() + ", leaderTopic="
+        + getLeaderTopic() + ", offsetLag=" + getOffsetLag() + ", eventTimeEpochMs=" + getMaxMessageTimeInMs()
+        + ", latestProducerProcessingTimeInMs=" + getLatestProducerProcessingTimeInMs() + ", isEndOfPushReceived="
+        + isEndOfPushReceived() + ", databaseInfo=" + getDatabaseInfo() + ", realTimeProducerState="
+        + getRealTimeProducerState() + ", recordTransformerClassHash=" + getRecordTransformerClassHash()
+        + ", lastConsumedVtPosition=" + getLatestConsumedVtPosition() + '}';
   }
 
   /**
@@ -423,12 +416,18 @@ public class OffsetRecord {
   public String toSimplifiedString() {
     return "OffsetRecord{" + "localVersionTopicOffset=" + getCheckpointedLocalVtPosition()
         + ", latestProducerProcessingTimeInMs=" + getLatestProducerProcessingTimeInMs() + ", isEndOfPushReceived="
-        + isEndOfPushReceived() + ", upstreamOffset=" + getPartitionUpstreamOffsetString() + ", leaderTopic="
+        + isEndOfPushReceived() + ", upstreamOffset=" + getPartitionUpstreamPositionString() + ", leaderTopic="
         + getLeaderTopic() + '}';
   }
 
-  private String getPartitionUpstreamOffsetString() {
-    return this.partitionState.upstreamOffsetMap.toString();
+  private String getPartitionUpstreamPositionString() {
+    StringBuilder sb = new StringBuilder();
+    for (Map.Entry<String, ByteBuffer> entry: this.partitionState.upstreamRealTimeTopicPubSubPositionMap.entrySet()) {
+      String pubSubBrokerAddress = entry.getKey();
+      PubSubPosition position = getCheckpointedRtPosition(pubSubBrokerAddress);
+      sb.append("[").append(pubSubBrokerAddress).append(": ").append(position).append("] ");
+    }
+    return sb.toString();
   }
 
   /**

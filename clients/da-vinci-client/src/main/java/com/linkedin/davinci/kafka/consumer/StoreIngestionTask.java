@@ -475,9 +475,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           Math.max(producerStateMaxAgeMs, version.getHybridStoreConfig().getRewindTimeInSeconds() * Time.MS_PER_SECOND);
     }
     // Could be accessed from multiple threads since there are multiple worker threads.
-    this.drainerDiv = new DataIntegrityValidator(this.kafkaVersionTopic, DISABLED, producerStateMaxAgeMs);
+    this.drainerDiv = new DataIntegrityValidator(
+        this.kafkaVersionTopic,
+        pubSubContext.getPubSubPositionDeserializer(),
+        DISABLED,
+        producerStateMaxAgeMs);
     // Could be accessed from multiple threads since there are multiple worker threads.
-    this.consumerDiv = new DataIntegrityValidator(kafkaVersionTopic);
+    this.consumerDiv = new DataIntegrityValidator(kafkaVersionTopic, pubSubContext.getPubSubPositionDeserializer());
     this.consumedBytesSinceLastSync = new VeniceConcurrentHashMap<>();
     this.ingestionTaskName = String.format(CONSUMER_TASK_ID_FORMAT, kafkaVersionTopic);
     this.readOnlyForBatchOnlyStoreEnabled = storeVersionConfig.isReadOnlyForBatchOnlyStoreEnabled();
@@ -502,11 +506,16 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.thingsToClose.add(refCountedStorageEngine);
     this.storageEngine = Objects.requireNonNull(refCountedStorageEngine.get());
     this.isDaVinciClient = builder.isDaVinciClient();
+    this.serverConfig = builder.getServerConfig();
+    this.suppressLiveUpdates = serverConfig.freezeIngestionIfReadyToServeOrLocalDataExists();
 
     if ((this.storageEngine instanceof DelegatingStorageEngine)) {
       DelegatingStorageEngine delegatingStorageEngine = (DelegatingStorageEngine) this.storageEngine;
 
-      if (isDaVinciClient) {
+      // TODO: Key dictionary compression is incompatible with live update suppression in Da Vinci.
+      // When suppressLiveUpdates is enabled, PartitionConsumptionState (PCS) objects are dropped, which breaks
+      // the read path's dependency on PCS for key decompression. Key compression must be disabled in this case.
+      if (isDaVinciClient && !suppressLiveUpdates) {
         delegatingStorageEngine.setKeyDictCompressionFunction(p -> {
           PartitionConsumptionState pcs = partitionConsumptionStateMap.get(p);
           if (pcs == null) {
@@ -525,7 +534,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
               + ", expected: DelegatingStorageEngine");
     }
 
-    this.serverConfig = builder.getServerConfig();
     this.defaultReadyToServeChecker = getDefaultReadyToServeChecker();
 
     this.aggKafkaConsumerService = Objects.requireNonNull(builder.getAggKafkaConsumerService());
@@ -535,8 +543,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.isWriteComputationEnabled = store.isWriteComputationEnabled();
 
     this.partitionStateSerializer = builder.getPartitionStateSerializer();
-
-    this.suppressLiveUpdates = serverConfig.freezeIngestionIfReadyToServeOrLocalDataExists();
 
     this.storeVersionPartitionCount = version.getPartitionCount();
 
@@ -2200,13 +2206,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
         // Let's try to restore the state retrieved from the OffsetManager
         PartitionConsumptionState newPartitionConsumptionState = new PartitionConsumptionState(
-            getReplicaId(versionTopic, partition),
-            partition,
+            topicPartition,
             offsetRecord,
             pubSubContext,
             hybridStoreConfig.isPresent(),
             schemaRepository.getKeySchema(storeName).getSchema());
-
         newPartitionConsumptionState.setCurrentVersionSupplier(isCurrentVersion);
 
         boolean isFutureVersionReady = isFutureVersionReady(kafkaVersionTopic, storeRepository);
@@ -2369,8 +2373,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             partitionConsumptionState.getReplicaId());
       }
       PartitionConsumptionState consumptionState = new PartitionConsumptionState(
-          getReplicaId(versionTopic, partition),
-          partition,
+          new PubSubTopicPartitionImpl(versionTopic, partition),
           new OffsetRecord(partitionStateSerializer, pubSubContext),
           pubSubContext,
           hybridStoreConfig.isPresent(),
@@ -2398,20 +2401,26 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * N.B.: The returned end position is the last successfully replicated message plus one. If the partition has never been
    * written to, the end position is equal to the start position.
    */
-  protected long getTopicPartitionEndOffSet(String kafkaUrl, PubSubTopic pubSubTopic, int partition) {
-    PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(pubSubTopic, partition);
-    long offsetFromConsumer =
-        aggKafkaConsumerService.getLatestOffsetBasedOnMetrics(kafkaUrl, versionTopic, topicPartition);
-    if (offsetFromConsumer >= 0) {
-      return offsetFromConsumer;
+  protected PubSubPosition getTopicPartitionEndPosition(
+      String pubSubBrokerAddress,
+      PubSubTopicPartition topicPartition) {
+    // Use metrics-based position only if enabled by config
+    if (serverConfig.isUseMetricsBasedPositionInLagComputationEnabled()) {
+      long offsetFromConsumer =
+          aggKafkaConsumerService.getLatestOffsetBasedOnMetrics(pubSubBrokerAddress, versionTopic, topicPartition);
+      if (offsetFromConsumer >= 0) {
+        // Wrap numeric offset as PubSubPosition (via ApacheKafkaOffsetPosition) for API compatibility
+        return PubSubUtil.fromKafkaOffset(offsetFromConsumer);
+      }
     }
     try {
       return RetryUtils.executeWithMaxAttemptAndExponentialBackoffNoLog(() -> {
-        PubSubPosition position = getTopicManager(kafkaUrl).getLatestPositionCachedNonBlocking(pubSubTopic, partition);
+        PubSubPosition position =
+            getTopicManager(pubSubBrokerAddress).getLatestPositionCachedNonBlocking(topicPartition);
         if (PubSubSymbolicPosition.LATEST.equals(position)) {
           throw new VeniceException("Latest position is unknown. Check if the tp: " + topicPartition + " exists.");
         }
-        return position.getNumericOffset();
+        return position;
       },
           MAX_OFFSET_FETCH_ATTEMPTS,
           Duration.ofMillis(10),
@@ -2422,10 +2431,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       LOGGER.error(
           "Failed to get end position for topic-partition: {} with pubsub url {} even after {} retries",
           topicPartition,
-          kafkaUrl,
+          pubSubBrokerAddress,
           MAX_OFFSET_FETCH_ATTEMPTS,
           e);
-      return PubSubSymbolicPosition.LATEST.getNumericOffset();
+      return PubSubSymbolicPosition.LATEST;
     }
   }
 
@@ -2608,10 +2617,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           beforeProcessingRecordTimestampNs);
     } catch (FatalDataValidationException e) {
       int faultyPartition = record.getTopicPartition().getPartitionNumber();
-      String replicaId = getReplicaId(versionTopic, faultyPartition);
-      String errorMessage;
-      errorMessage = FATAL_DATA_VALIDATION_ERROR + " for replica: " + replicaId + ". Incoming record topic-partition: "
-          + record.getTopicPartition() + " offset: " + record.getPosition();
+      String errorMessage = FATAL_DATA_VALIDATION_ERROR + " for replica: " + partitionConsumptionState.getReplicaId()
+          + ". Incoming record topic-partition: " + record.getTopicPartition() + " position: " + record.getPosition();
       // TODO need a way to safeguard DIV errors from backup version that have once been current (but not anymore)
       // during re-balancing
       boolean needToUnsub = !(isCurrentVersion.getAsBoolean() || partitionConsumptionState.isEndOfPushReceived());
@@ -2864,37 +2871,46 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   /**
    * @param pubSubServerName Pub Sub deployment to interrogate
-   * @param topic topic to measure
-   * @param partition for which to measure lag
+   * @param pubSubTopicPartition the topic partition to measure lag for
    * @return the lag, or {@value Long#MAX_VALUE} if it failed to measure it
    *
    * N.B.: Note that the returned lag can be negative since the end offset used in the calculation is cached.
    */
   protected long measureLagWithCallToPubSub(
       String pubSubServerName,
-      PubSubTopic topic,
-      int partition,
-      long currentOffset) {
-    return measureLagWithCallToPubSub(pubSubServerName, topic, partition, currentOffset, this::getTopicManager);
+      PubSubTopicPartition pubSubTopicPartition,
+      PubSubPosition currentPosition) {
+    return measureLagWithCallToPubSub(pubSubServerName, pubSubTopicPartition, currentPosition, this::getTopicManager);
   }
 
   protected static long measureLagWithCallToPubSub(
-      String pubSubServerName,
-      PubSubTopic topic,
-      int partition,
-      long currentOffset,
+      String pubSubBrokerAddress,
+      PubSubTopicPartition pubSubTopicPartition,
+      PubSubPosition currentPosition,
       Function<String, TopicManager> topicManagerProvider) {
-    if (currentOffset < OffsetRecord.LOWEST_OFFSET) {
-      // EARLIEST is a valid offset, which means that nothing was consumed yet, but anything below that is invalid.
+    // Ideally, currentPosition should never be null, but if it is, we return "infinite lag"
+    if (currentPosition == null) {
       return Long.MAX_VALUE;
     }
-    TopicManager tm = topicManagerProvider.apply(pubSubServerName);
-    PubSubPosition endPosition = tm.getLatestPositionCached(topic, partition);
+
+    TopicManager topicManager = topicManagerProvider.apply(pubSubBrokerAddress);
+    PubSubPosition endPosition = topicManager.getLatestPositionCached(pubSubTopicPartition);
     if (PubSubSymbolicPosition.LATEST.equals(endPosition)) {
-      // A negative value means there was a problem in measuring the end position, and therefore we return "infinite
-      // lag"
+      // LATEST value means there was a problem in measuring the end position,
+      // and therefore we return "infinite lag"
       return Long.MAX_VALUE;
-    } else if (endPosition.getNumericOffset() == 0) {
+    }
+
+    if (PubSubSymbolicPosition.EARLIEST.equals(currentPosition)) {
+      /**
+       * If the consumer is at EARLIEST, it means it has not yet started consuming, and therefore the lag is equal to
+       * the number of messages in the topic.
+       */
+      return topicManager.countRecordsUntil(pubSubTopicPartition, endPosition);
+    }
+
+    long diff = topicManager.diffPosition(pubSubTopicPartition, endPosition, currentPosition);
+    if (diff == 0) {
       /**
        * Topics which were never produced to have an end position of zero. Such topics are empty and therefore, by
        * definition, there cannot be any lag.
@@ -2904,14 +2920,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
        */
       return 0;
     }
-
     /**
      * A topic with an end position of zero is empty. A topic with a single message in it will have an end position of
      * 1, while that single message will have position 0. In such single message topic, a consumer which fully scans the
      * topic would have a current position of 0, while the topic has an end position of 1, and therefore we need to subtract
      * 1 from the end position in order to arrive at the correct lag of 0.
      */
-    return endPosition.getNumericOffset() - 1 - currentOffset;
+    return diff - 1;
   }
 
   public abstract int getWriteComputeErrorCode();
@@ -4697,11 +4712,20 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       return PubSubSymbolicPosition.EARLIEST;
     }
     LeaderMetadata leaderMetadataFooter = consumerRecord.getValue().leaderMetadataFooter;
-    return deserializePositionWithOffsetFallback(
-        pubSubContext.getPubSubPositionDeserializer(),
-        consumerRecord.getTopicPartition(),
-        leaderMetadataFooter.upstreamPubSubPosition,
-        leaderMetadataFooter.upstreamOffset);
+
+    // always return upstreamOffset instead of upstreamPubSubPosition
+    // till we fix all the issues in offset to pubsubPosition migration
+    return PubSubUtil.fromKafkaOffset(leaderMetadataFooter.upstreamOffset);
+  }
+
+  // extract the upstream cluster id from the given consumer record's leader metadata.
+  protected int extractUpstreamClusterId(DefaultPubSubMessage consumerRecord) {
+    if (consumerRecord == null || consumerRecord.getValue() == null
+        || consumerRecord.getValue().leaderMetadataFooter == null) {
+      return -1;
+    }
+    LeaderMetadata leaderMetadataFooter = consumerRecord.getValue().leaderMetadataFooter;
+    return leaderMetadataFooter.upstreamKafkaClusterId;
   }
 
   /**
@@ -4784,7 +4808,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     LOGGER.info(
         "Resolved topic-partition: {} for: {} from pubSubAddress: {}",
         pubSubTopicPartition,
-        partitionConsumptionState.getReplicaId(),
+        partitionConsumptionState.getReplicaTopicPartition(),
         pubSubBrokerAddress);
     return pubSubTopicPartition;
   }

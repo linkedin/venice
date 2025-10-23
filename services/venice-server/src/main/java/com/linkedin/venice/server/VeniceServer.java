@@ -388,7 +388,6 @@ public class VeniceServer {
         serverConfig,
         heartbeatMonitoringServiceStats,
         customizedViewFuture);
-    services.add(heartbeatMonitoringService);
 
     this.zkHelixAdmin = Lazy.of(() -> new ZKHelixAdmin(serverConfig.getZookeeperAddress()));
     this.adaptiveThrottlerSignalService = null;
@@ -570,6 +569,8 @@ public class VeniceServer {
     // Add kafka consumer service last so when shutdown the server, it will be stopped first to avoid the case
     // that helix is disconnected but consumption service try to send message by helix.
     services.add(kafkaStoreIngestionService);
+    // Add HB monitoring service after Kafka consumer service so that it will be started after Kafka consumer service
+    services.add(heartbeatMonitoringService);
 
     /**
      * Resource cleanup service

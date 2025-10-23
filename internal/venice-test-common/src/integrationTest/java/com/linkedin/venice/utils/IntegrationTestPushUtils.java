@@ -291,19 +291,6 @@ public class IntegrationTestPushUtils {
     return samzaConfig;
   }
 
-  private static void setD2ClientsForSystemProducerFactory(
-      VeniceSystemFactory factory,
-      Map<String, String> samzaConfig) {
-    if (!samzaConfig.containsKey(VENICE_CHILD_D2_ZK_HOSTS) || !samzaConfig.containsKey(VENICE_PARENT_D2_ZK_HOSTS)) {
-      throw new VeniceException("Missing D2 ZK hosts in Samza config: " + samzaConfig);
-    }
-    D2Client childD2Client = getD2Client(samzaConfig.get(VENICE_CHILD_D2_ZK_HOSTS));
-    D2Client parentD2Client = samzaConfig.get(VENICE_PARENT_D2_ZK_HOSTS).equals(INVALID_PARENT_D2_ZK_HOST)
-        ? childD2Client
-        : getD2Client(samzaConfig.get(VENICE_PARENT_D2_ZK_HOSTS));
-    factory.setProvidedD2Clients(Optional.of(childD2Client), Optional.of(parentD2Client));
-  }
-
   /**
    * Create Samza Producer in Single-Region setup with optional configs.
    */
@@ -318,7 +305,6 @@ public class IntegrationTestPushUtils {
       samzaConfig.put(config.getFirst(), config.getSecond());
     }
     VeniceSystemFactory factory = new VeniceSystemFactory();
-    setD2ClientsForSystemProducerFactory(factory, samzaConfig);
     VeniceSystemProducer veniceProducer = factory.getClosableProducer("venice", new MapConfig(samzaConfig), null);
     veniceProducer.start();
     return veniceProducer;
@@ -332,7 +318,6 @@ public class IntegrationTestPushUtils {
       String storeName) {
     Map<String, String> samzaConfig = getSamzaProducerConfigForBatch(venice, storeName);
     VeniceSystemFactory factory = new VeniceSystemFactory();
-    setD2ClientsForSystemProducerFactory(factory, samzaConfig);
     VeniceSystemProducer veniceProducer = factory.getClosableProducer("venice", new MapConfig(samzaConfig), null);
     veniceProducer.start();
     return veniceProducer;
@@ -352,7 +337,6 @@ public class IntegrationTestPushUtils {
       samzaConfig.put(config.getFirst(), config.getSecond());
     }
     VeniceSystemFactory factory = new VeniceSystemFactory();
-    setD2ClientsForSystemProducerFactory(factory, samzaConfig);
     VeniceSystemProducer veniceProducer = factory.getClosableProducer("venice", new MapConfig(samzaConfig), null);
     veniceProducer.start();
     return veniceProducer;

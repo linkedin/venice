@@ -116,8 +116,9 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
 
     this.sslFactory = sslFactory;
     this.sslHandshakeExecutor = sslHandshakeExecutor;
-    this.sslHandshakesThreadPoolStats =
-        new ThreadPoolStats(metricsRepository, sslHandshakeExecutor, "ssl_handshake_thread_pool");
+    this.sslHandshakesThreadPoolStats = sslHandshakeExecutor != null
+        ? new ThreadPoolStats(metricsRepository, sslHandshakeExecutor, "ssl_handshake_thread_pool")
+        : null;
 
     Class<IdentityParser> identityParserClass = ReflectUtils.loadClass(serverConfig.getIdentityParserClassName());
     this.identityParser = ReflectUtils.callConstructor(identityParserClass, new Class[0], new Object[0]);

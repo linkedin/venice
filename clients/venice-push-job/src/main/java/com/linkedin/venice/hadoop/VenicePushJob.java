@@ -144,6 +144,7 @@ import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.status.protocol.PushJobDetailsStatusTuple;
 import com.linkedin.venice.utils.AvroSupersetSchemaUtils;
 import com.linkedin.venice.utils.ByteUtils;
+import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.DictionaryUtils;
 import com.linkedin.venice.utils.EncodingUtils;
 import com.linkedin.venice.utils.LatencyUtils;
@@ -267,7 +268,8 @@ public class VenicePushJob implements AutoCloseable {
   public VenicePushJob(String jobId, Properties vanillaProps) {
     this.jobId = jobId;
     this.props = getVenicePropsFromVanillaProps(Objects.requireNonNull(vanillaProps, "VPJ props cannot be null"));
-    this.timeoutExecutor = Executors.newSingleThreadScheduledExecutor();
+    this.timeoutExecutor = Executors
+        .newSingleThreadScheduledExecutor(new DaemonThreadFactory(this.getClass().getName() + "-VPJTimeoutExecutor"));
     LOGGER.info("Constructing {}: {}", VenicePushJob.class.getSimpleName(), props.toString(true));
     this.sslProperties = Lazy.of(() -> {
       try {
@@ -915,6 +917,9 @@ public class VenicePushJob implements AutoCloseable {
       if (pushJobSetting.rmdSchemaDir != null) {
         HadoopUtils.cleanUpHDFSPath(pushJobSetting.rmdSchemaDir, true);
       }
+      LOGGER.info("Started shutdown for timeoutExecutor");
+      timeoutExecutor.shutdownNow();
+      LOGGER.info("Completed shutdown for timeoutExecutor");
     }
   }
 
@@ -950,6 +955,7 @@ public class VenicePushJob implements AutoCloseable {
       return;
     }
 
+    LOGGER.info("Scheduling timeout executor for store: {} with timeout: {}ms", pushJobSetting.storeName, timeoutMs);
     timeoutExecutor.schedule(() -> {
       cancel();
       throw new VeniceTimeoutException(
@@ -1881,30 +1887,38 @@ public class VenicePushJob implements AutoCloseable {
 
   private void logGreeting() {
     LOGGER.info(
-        "Running VenicePushJob: " + jobId + Utils.NEW_LINE_CHAR + "  _    _           _                   "
-            + Utils.NEW_LINE_CHAR + " | |  | |         | |                  " + Utils.NEW_LINE_CHAR
-            + " | |__| | __ _  __| | ___   ___  _ __  " + Utils.NEW_LINE_CHAR
-            + " |  __  |/ _` |/ _` |/ _ \\ / _ \\| '_ \\ " + Utils.NEW_LINE_CHAR
-            + " | |  | | (_| | (_| | (_) | (_) | |_) |   " + Utils.NEW_LINE_CHAR
-            + " |_|  |_|\\__,_|\\__,_|\\___/ \\___/| .__/" + Utils.NEW_LINE_CHAR
-            + "                _______         | |     " + Utils.NEW_LINE_CHAR
-            + "               |__   __|        |_|     " + Utils.NEW_LINE_CHAR
-            + "                  | | ___               " + Utils.NEW_LINE_CHAR
-            + "                  | |/ _ \\             " + Utils.NEW_LINE_CHAR
-            + "     __      __   | | (_) |             " + Utils.NEW_LINE_CHAR
-            + "     \\ \\    / /   |_|\\___/           " + Utils.NEW_LINE_CHAR
-            + "      \\ \\  / /__ _ __  _  ___ ___     " + Utils.NEW_LINE_CHAR
-            + "       \\ \\/ / _ | '_ \\| |/ __/ _ \\  " + Utils.NEW_LINE_CHAR
-            + "        \\  |  __| | | | | (_|  __/     " + Utils.NEW_LINE_CHAR
-            + "         \\/ \\___|_| |_|_|\\___\\___|  " + Utils.NEW_LINE_CHAR
-            + "      ___        _     _                " + Utils.NEW_LINE_CHAR
-            + "     |  _ \\     (_)   | |              " + Utils.NEW_LINE_CHAR
-            + "     | |_) |_ __ _  __| | __ _  ___     " + Utils.NEW_LINE_CHAR
-            + "     |  _ <| '__| |/ _` |/ _` |/ _ \\   " + Utils.NEW_LINE_CHAR
-            + "     | |_) | |  | | (_| | (_| |  __/    " + Utils.NEW_LINE_CHAR
-            + "     |____/|_|  |_|\\__,_|\\__, |\\___| " + Utils.NEW_LINE_CHAR
-            + "                          __/ |         " + Utils.NEW_LINE_CHAR
-            + "                         |___/          " + Utils.NEW_LINE_CHAR);
+        "Running VenicePushJob: " + jobId + Utils.NEW_LINE_CHAR
+            + "  /$$    /$$                    /$$                     " + Utils.NEW_LINE_CHAR
+            + " | $$   | $$                   |__/                     " + Utils.NEW_LINE_CHAR
+            + " | $$   | $$ /$$$$$$  /$$$$$$$  /$$  /$$$$$$$  /$$$$$$  " + Utils.NEW_LINE_CHAR
+            + " |  $$ / $$//$$__  $$| $$__  $$| $$ /$$_____/ /$$__  $$ " + Utils.NEW_LINE_CHAR
+            + "  \\  $$ $$/| $$$$$$$$| $$  \\ $$| $$| $$      | $$$$$$$$ " + Utils.NEW_LINE_CHAR
+            + "   \\  $$$/ | $$_____/| $$  | $$| $$| $$      | $$_____/ " + Utils.NEW_LINE_CHAR
+            + "    \\  $/  |  $$$$$$$| $$  | $$| $$|  $$$$$$$|  $$$$$$$ " + Utils.NEW_LINE_CHAR
+            + "     \\_/    \\_______/|__/  |__/|__/ \\_______/ \\_______/ " + Utils.NEW_LINE_CHAR
+            + "                                                        " + Utils.NEW_LINE_CHAR
+            + "                                                        " + Utils.NEW_LINE_CHAR
+            + "                                                        " + Utils.NEW_LINE_CHAR
+            + "        /$$$$$$$                      /$$               " + Utils.NEW_LINE_CHAR
+            + "       | $$__  $$                    | $$               " + Utils.NEW_LINE_CHAR
+            + "       | $$  \\ $$ /$$   /$$  /$$$$$$$| $$$$$$$          " + Utils.NEW_LINE_CHAR
+            + "       | $$$$$$$/| $$  | $$ /$$_____/| $$__  $$         " + Utils.NEW_LINE_CHAR
+            + "       | $$____/ | $$  | $$|  $$$$$$ | $$  \\ $$         " + Utils.NEW_LINE_CHAR
+            + "       | $$      | $$  | $$ \\____  $$| $$  | $$         " + Utils.NEW_LINE_CHAR
+            + "       | $$      |  $$$$$$/ /$$$$$$$/| $$  | $$         " + Utils.NEW_LINE_CHAR
+            + "       |__/       \\______/ |_______/ |__/  |__/         " + Utils.NEW_LINE_CHAR
+            + "                                                        " + Utils.NEW_LINE_CHAR
+            + "                                                        " + Utils.NEW_LINE_CHAR
+            + "                                                        " + Utils.NEW_LINE_CHAR
+            + "                /$$$$$           /$$                    " + Utils.NEW_LINE_CHAR
+            + "               |__  $$          | $$                    " + Utils.NEW_LINE_CHAR
+            + "                  | $$  /$$$$$$ | $$$$$$$               " + Utils.NEW_LINE_CHAR
+            + "                  | $$ /$$__  $$| $$__  $$              " + Utils.NEW_LINE_CHAR
+            + "             /$$  | $$| $$  \\ $$| $$  \\ $$              " + Utils.NEW_LINE_CHAR
+            + "            | $$  | $$| $$  | $$| $$  | $$              " + Utils.NEW_LINE_CHAR
+            + "            |  $$$$$$/|  $$$$$$/| $$$$$$$/              " + Utils.NEW_LINE_CHAR
+            + "             \\______/  \\______/ |_______/               " + Utils.NEW_LINE_CHAR
+            + "                                                        " + Utils.NEW_LINE_CHAR);
   }
 
   /**
@@ -1916,13 +1930,11 @@ public class VenicePushJob implements AutoCloseable {
     String canonicalizedServerSchema = AvroCompatibilityHelper.toParsingForm(serverSchema);
     String canonicalizedClientSchema = AvroCompatibilityHelper.toParsingForm(clientSchema);
     if (!canonicalizedServerSchema.equals(canonicalizedClientSchema)) {
-      String briefErrorMessage = "Key schema mis-match for store " + setting.storeName;
-      LOGGER.error(
-          "{}\n\t\tschema defined in HDFS: \t{}\n\t\tschema defined in Venice: \t{}",
-          briefErrorMessage,
-          pushJobSetting.keySchemaString,
-          serverSchema.toString());
-      throw new VeniceException(briefErrorMessage);
+      String errorMessageFormat = "Key schema mis-match for store %s" + "\n\t\tSchema defined in HDFS: \t%s"
+          + "\n\t\tSchema defined in Venice: \t%s";
+      String errorMessage =
+          String.format(errorMessageFormat, setting.storeName, pushJobSetting.keySchemaString, serverSchema.toString());
+      throw new VeniceException(errorMessage);
     }
   }
 
@@ -2963,7 +2975,6 @@ public class VenicePushJob implements AutoCloseable {
 
   @Override
   public void close() {
-    timeoutExecutor.shutdownNow();
     closeVeniceWriter();
     Utils.closeQuietlyWithErrorLogged(dataWriterComputeJob);
     Utils.closeQuietlyWithErrorLogged(controllerClient);

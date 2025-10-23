@@ -12,9 +12,13 @@ import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.util.Comparator;
 import java.util.stream.Stream;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 public class RocksDBUtils {
+  private static final Logger LOGGER = LogManager.getLogger(RocksDBUtils.class);
+
   /**
    * With level_compaction_dynamic_level_bytes to be false, the stable LSM structure is not guaranteed,
    * so the maximum overhead could be around 2.111 for hybrid stores.
@@ -203,7 +207,7 @@ public class RocksDBUtils {
       try {
         RocksDBUtils.deleteDirectory(partitionDir);
       } catch (Exception e) {
-        throw new VeniceException("Cannot clean up partition directory ", e);
+        throw new VeniceException("Cannot clean up partition directory " + partitionDir, e);
       }
     }
 
@@ -211,9 +215,17 @@ public class RocksDBUtils {
     File tempPartitionDirFile = new File(tempPartitionDir);
     if (tempPartitionDirFile.exists()) {
       try {
+        LOGGER.info(
+            "Starting cleanup of temp directory: {} for replica {}",
+            tempPartitionDir,
+            Utils.getReplicaId(kafkaTopic, partitionId));
         RocksDBUtils.deleteDirectory(tempPartitionDir);
+        LOGGER.info(
+            "Completed cleanup of temp directory: {}, tempPartition existence {}",
+            tempPartitionDir,
+            tempPartitionDirFile.exists());
       } catch (Exception e) {
-        throw new VeniceException("Cannot clean up temp directory ", e);
+        throw new VeniceException("Cannot clean up temp directory " + tempPartitionDir, e);
       }
     }
 
