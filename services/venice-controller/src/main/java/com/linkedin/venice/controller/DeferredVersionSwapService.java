@@ -240,8 +240,8 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
     // Update parent version status after roll forward, so we don't check this store version again
     // If push was successful (version status is PUSHED), the parent version is marked as ONLINE
     // if push was successful in some regions (version status is KILLED), the parent version is marked PARTIALLY_ONLINE
-    long totalVersionSwapTimeInSeconds =
-        TimeUnit.MILLISECONDS.toSeconds(LatencyUtils.getElapsedTimeFromMsToMs(targetVersion.getCreatedTime()));
+    long totalVersionSwapTimeInMinutes =
+        TimeUnit.MILLISECONDS.toMinutes(LatencyUtils.getElapsedTimeFromMsToMs(targetVersion.getCreatedTime()));
     if (targetVersion.getStatus() == VersionStatus.KILLED) {
       updateStore(cluster, storeName, PARTIALLY_ONLINE, targetVersionNum);
       LOGGER.info(
@@ -249,15 +249,15 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
               + "Version swap took {} minutes from push completion to version swap",
           targetVersionNum,
           storeName,
-          totalVersionSwapTimeInSeconds);
+          totalVersionSwapTimeInMinutes);
     } else {
       updateStore(cluster, storeName, ONLINE, targetVersionNum);
       LOGGER.info(
-          "Updated parent version status to ONLINE for version: {} in store: {} for version created in: {}."
+          "Updated parent version status to ONLINE for version: {} in store: {}."
               + "Version swap took {} minutes from push completion to version swap",
           targetVersionNum,
           storeName,
-          totalVersionSwapTimeInSeconds);
+          totalVersionSwapTimeInMinutes);
     }
   }
 
@@ -988,6 +988,15 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
             targetVersionNum);
         veniceParentHelixAdmin.rollForwardToFutureVersion(cluster, parentStore.getName(), nextRegionToRollForward);
         storeWaitTimeCacheForSequentialRollout.invalidate(kafkaTopicName);
+
+        long totalVersionSwapTimeInMinutes =
+            TimeUnit.MILLISECONDS.toMinutes(LatencyUtils.getElapsedTimeFromMsToMs(targetVersion.getCreatedTime()));
+        LOGGER.info(
+            "Version swap took {} minutes from push completion to version swap for {} on version {} in region {}",
+            totalVersionSwapTimeInMinutes,
+            storeName,
+            targetVersionNum,
+            nextRegionToRollForward);
 
         if (stalledVersionSwapSet.contains(parentStore.getName())) {
           stalledVersionSwapSet.remove(parentStore.getName());
