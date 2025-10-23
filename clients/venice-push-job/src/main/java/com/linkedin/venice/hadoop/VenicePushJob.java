@@ -144,6 +144,7 @@ import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.status.protocol.PushJobDetailsStatusTuple;
 import com.linkedin.venice.utils.AvroSupersetSchemaUtils;
 import com.linkedin.venice.utils.ByteUtils;
+import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.DictionaryUtils;
 import com.linkedin.venice.utils.EncodingUtils;
 import com.linkedin.venice.utils.LatencyUtils;
@@ -267,7 +268,8 @@ public class VenicePushJob implements AutoCloseable {
   public VenicePushJob(String jobId, Properties vanillaProps) {
     this.jobId = jobId;
     this.props = getVenicePropsFromVanillaProps(Objects.requireNonNull(vanillaProps, "VPJ props cannot be null"));
-    this.timeoutExecutor = Executors.newSingleThreadScheduledExecutor();
+    this.timeoutExecutor = Executors
+        .newSingleThreadScheduledExecutor(new DaemonThreadFactory(this.getClass().getName() + "-VPJTimeoutExecutor"));
     LOGGER.info("Constructing {}: {}", VenicePushJob.class.getSimpleName(), props.toString(true));
     this.sslProperties = Lazy.of(() -> {
       try {
@@ -915,6 +917,9 @@ public class VenicePushJob implements AutoCloseable {
       if (pushJobSetting.rmdSchemaDir != null) {
         HadoopUtils.cleanUpHDFSPath(pushJobSetting.rmdSchemaDir, true);
       }
+      LOGGER.info("Started shutdown for timeoutExecutor");
+      timeoutExecutor.shutdownNow();
+      LOGGER.info("Completed shutdown for timeoutExecutor");
     }
   }
 
@@ -950,6 +955,7 @@ public class VenicePushJob implements AutoCloseable {
       return;
     }
 
+    LOGGER.info("Scheduling timeout executor for store: {} with timeout: {}ms", pushJobSetting.storeName, timeoutMs);
     timeoutExecutor.schedule(() -> {
       cancel();
       throw new VeniceTimeoutException(
@@ -2969,7 +2975,6 @@ public class VenicePushJob implements AutoCloseable {
 
   @Override
   public void close() {
-    timeoutExecutor.shutdownNow();
     closeVeniceWriter();
     Utils.closeQuietlyWithErrorLogged(dataWriterComputeJob);
     Utils.closeQuietlyWithErrorLogged(controllerClient);
