@@ -30,6 +30,12 @@ import org.apache.logging.log4j.Logger;
 
 public class ClientConfig<K, V, T extends SpecificRecord> {
   private static final Logger LOGGER = LogManager.getLogger(ClientConfig.class);
+  public static final String LONG_TAIL_RANGE_BASED_RETRY_THRESHOLD_FOR_BATCH_GET_IN_MILLI_SECONDS =
+      "1-12:8,13-20:30,21-150:50,151-500:100,501-:500";
+
+  public static final String LONG_TAIL_RANGE_BASED_RETRY_THRESHOLD_FOR_COMPUTE_IN_MILLI_SECONDS =
+      "1-12:8,13-20:30,21-150:50,151-500:100,501-:500";
+
   private final Client r2Client;
   private final String statsPrefix;
   private final Class<T> specificValueClass;
@@ -411,14 +417,14 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     private int longTailRetryThresholdForSingleGetInMicroSeconds = 1000; // 1ms.
 
     private boolean longTailRetryEnabledForBatchGet = false;
-    private int longTailRetryThresholdForBatchGetInMicroSeconds = 0; // TODO: Delete this config after fast client
-                                                                     // rollout.
+    private int longTailRetryThresholdForBatchGetInMicroSeconds = 0;
+
     private String longTailRangeBasedRetryThresholdForBatchGetInMilliSeconds =
-        "1-12:8,13-20:30,21-150:50,151-500:100,501-:500";
+        LONG_TAIL_RANGE_BASED_RETRY_THRESHOLD_FOR_BATCH_GET_IN_MILLI_SECONDS;
 
     private boolean longTailRetryEnabledForCompute = false;
     private String longTailRangeBasedRetryThresholdForComputeInMilliSeconds =
-        "1-12:8,13-20:30,21-150:50,151-500:100,501-:500";
+        LONG_TAIL_RANGE_BASED_RETRY_THRESHOLD_FOR_COMPUTE_IN_MILLI_SECONDS;
 
     private boolean isVsonStore = false;
     private StoreMetadataFetchMode storeMetadataFetchMode = StoreMetadataFetchMode.SERVER_BASED_METADATA;

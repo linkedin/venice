@@ -69,10 +69,14 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
         clientConfig.getLongTailRetryThresholdForSingleGetInMicroSeconds();
     this.timeoutProcessor = timeoutProcessor;
 
-    this.singleKeyLongTailRetryManager = new RetryManager(clientConfig.getClusterStats().getMetricsRepository(),
+    this.singleKeyLongTailRetryManager = new RetryManager(
+        clientConfig.getClusterStats().getMetricsRepository(),
         SINGLE_KEY_LONG_TAIL_RETRY_STATS_PREFIX + clientConfig.getStoreName(),
-        clientConfig.getLongTailRetryBudgetEnforcementWindowInMs(), clientConfig.getRetryBudgetPercentage(),
-        retryManagerExecutorService, clientConfig.getStoreName(), RequestType.SINGLE_GET);
+        clientConfig.getLongTailRetryBudgetEnforcementWindowInMs(),
+        clientConfig.getRetryBudgetPercentage(),
+        retryManagerExecutorService,
+        clientConfig.getStoreName(),
+        RequestType.SINGLE_GET);
 
     this.multiKeyLongTailRetryManager = new RetryManager(
         clientConfig.getClusterStats().getMetricsRepository(),
