@@ -17,8 +17,8 @@ public enum RetryManagerMetricEntity implements ModuleMetricEntityInterface {
   /**
    * Rate limit for retry operations (tokens per second)
    */
-  RETRY_RATE_LIMIT(
-      "retry.rate.limit", MetricType.ASYNC_GAUGE, MetricUnit.NUMBER,
+  RETRY_RATE_LIMIT_TARGET_TOKENS(
+      "retry.rate_limit.target_tokens", MetricType.ASYNC_GAUGE, MetricUnit.NUMBER,
       "Rate limit for retry operations (tokens per second)",
       setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD, VENICE_REQUEST_RETRY_TYPE)
   ),
@@ -26,8 +26,8 @@ public enum RetryManagerMetricEntity implements ModuleMetricEntityInterface {
   /**
    * Number of remaining retry operations in the current time window.
    */
-  RETRY_BUDGET_REMAINING(
-      "retry.budget.remaining", MetricType.ASYNC_GAUGE, MetricUnit.NUMBER,
+  RETRY_RATE_LIMIT_REMAINING_TOKENS(
+      "retry.rate_limit.remaining_tokens", MetricType.ASYNC_GAUGE, MetricUnit.NUMBER,
       "Number of remaining retry operations in the current time window",
       setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD, VENICE_REQUEST_RETRY_TYPE)
   ),
@@ -35,8 +35,8 @@ public enum RetryManagerMetricEntity implements ModuleMetricEntityInterface {
   /**
    * Number of rejected retry operations.
    */
-  RETRY_REJECTED_COUNT(
-      "retry.rejected.count", MetricType.COUNTER, MetricUnit.NUMBER, "Number of rejected retry operations",
+  RETRY_RATE_LIMIT_REJECTION_COUNT(
+      "retry.rate_limit.rejection_count", MetricType.COUNTER, MetricUnit.NUMBER, "Number of rejected retry operations",
       setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD, VENICE_REQUEST_RETRY_TYPE)
   );
 

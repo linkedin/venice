@@ -1,9 +1,9 @@
 package com.linkedin.venice.meta;
 
 import static com.linkedin.venice.read.RequestType.SINGLE_GET;
-import static com.linkedin.venice.stats.RetryManagerMetricEntity.RETRY_BUDGET_REMAINING;
-import static com.linkedin.venice.stats.RetryManagerMetricEntity.RETRY_RATE_LIMIT;
-import static com.linkedin.venice.stats.RetryManagerMetricEntity.RETRY_REJECTED_COUNT;
+import static com.linkedin.venice.stats.RetryManagerMetricEntity.RETRY_RATE_LIMIT_REJECTION_COUNT;
+import static com.linkedin.venice.stats.RetryManagerMetricEntity.RETRY_RATE_LIMIT_REMAINING_TOKENS;
+import static com.linkedin.venice.stats.RetryManagerMetricEntity.RETRY_RATE_LIMIT_TARGET_TOKENS;
 import static com.linkedin.venice.stats.VeniceMetricsRepository.getVeniceMetricsRepository;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_METHOD;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_RETRY_TYPE;
@@ -141,9 +141,9 @@ public class RetryManagerTest {
     VeniceMetricsRepository metricsRepository = getVeniceMetricsRepository(
         ClientType.FAST_CLIENT,
         Arrays.asList(
-            RETRY_BUDGET_REMAINING.getMetricEntity(),
-            RETRY_RATE_LIMIT.getMetricEntity(),
-            RETRY_REJECTED_COUNT.getMetricEntity()),
+            RETRY_RATE_LIMIT_REMAINING_TOKENS.getMetricEntity(),
+            RETRY_RATE_LIMIT_TARGET_TOKENS.getMetricEntity(),
+            RETRY_RATE_LIMIT_REJECTION_COUNT.getMetricEntity()),
         true,
         inMemoryMetricReader);
 
@@ -183,7 +183,7 @@ public class RetryManagerTest {
         inMemoryMetricReader,
         5L,
         expectedAttributes,
-        RETRY_RATE_LIMIT.getMetricEntity().getMetricName(),
+        RETRY_RATE_LIMIT_TARGET_TOKENS.getMetricEntity().getMetricName(),
         ClientType.FAST_CLIENT.getMetricsPrefix());
 
     // Test retriesRemainingOtel - should be 5 * 5 = 25 (capacity multiple)
@@ -191,7 +191,7 @@ public class RetryManagerTest {
         inMemoryMetricReader,
         25L,
         expectedAttributes,
-        RETRY_BUDGET_REMAINING.getMetricEntity().getMetricName(),
+        RETRY_RATE_LIMIT_REMAINING_TOKENS.getMetricEntity().getMetricName(),
         ClientType.FAST_CLIENT.getMetricsPrefix());
 
     // Consume all retries to trigger rejections
@@ -211,7 +211,7 @@ public class RetryManagerTest {
         inMemoryMetricReader,
         3L,
         expectedAttributes,
-        RETRY_REJECTED_COUNT.getMetricEntity().getMetricName(),
+        RETRY_RATE_LIMIT_REJECTION_COUNT.getMetricEntity().getMetricName(),
         ClientType.FAST_CLIENT.getMetricsPrefix());
 
     // Verify retries remaining is now 0
@@ -219,7 +219,7 @@ public class RetryManagerTest {
         inMemoryMetricReader,
         0L,
         expectedAttributes,
-        RETRY_BUDGET_REMAINING.getMetricEntity().getMetricName(),
+        RETRY_RATE_LIMIT_REMAINING_TOKENS.getMetricEntity().getMetricName(),
         ClientType.FAST_CLIENT.getMetricsPrefix());
   }
 }

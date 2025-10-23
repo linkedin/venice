@@ -1,8 +1,8 @@
 package com.linkedin.venice.stats;
 
-import static com.linkedin.venice.stats.RetryManagerMetricEntity.RETRY_BUDGET_REMAINING;
-import static com.linkedin.venice.stats.RetryManagerMetricEntity.RETRY_RATE_LIMIT;
-import static com.linkedin.venice.stats.RetryManagerMetricEntity.RETRY_REJECTED_COUNT;
+import static com.linkedin.venice.stats.RetryManagerMetricEntity.RETRY_RATE_LIMIT_REJECTION_COUNT;
+import static com.linkedin.venice.stats.RetryManagerMetricEntity.RETRY_RATE_LIMIT_REMAINING_TOKENS;
+import static com.linkedin.venice.stats.RetryManagerMetricEntity.RETRY_RATE_LIMIT_TARGET_TOKENS;
 
 import com.linkedin.venice.meta.RetryManager;
 import com.linkedin.venice.read.RequestType;
@@ -22,9 +22,9 @@ import java.util.Map;
 
 public class RetryManagerStats extends AbstractVeniceStats {
   private final String storeName;
-  private final AsyncMetricEntityStateBase retryLimitPerSecondOtel;
-  private final AsyncMetricEntityStateBase retriesRemainingOtel;
-  private final MetricEntityStateBase rejectedRetrySensorOtel;
+  private final AsyncMetricEntityStateBase retryLimitPerSecond;
+  private final AsyncMetricEntityStateBase retriesRemaining;
+  private final MetricEntityStateBase rejectedRetry;
 
   // OTel support
   private final VeniceOpenTelemetryMetricsRepository otelRepository;
@@ -58,8 +58,8 @@ public class RetryManagerStats extends AbstractVeniceStats {
       this.baseAttributes = otelData.getBaseAttributes();
     }
 
-    this.retryLimitPerSecondOtel = AsyncMetricEntityStateBase.create(
-        RETRY_RATE_LIMIT.getMetricEntity(),
+    this.retryLimitPerSecond = AsyncMetricEntityStateBase.create(
+        RETRY_RATE_LIMIT_TARGET_TOKENS.getMetricEntity(),
         otelRepository,
         this::registerSensor,
         RetryManagerTehutiMetricName.RETRY_LIMIT_PER_SECONDS,
@@ -74,8 +74,8 @@ public class RetryManagerStats extends AbstractVeniceStats {
           return bucket == null ? -1 : (long) bucket.getAmortizedRefillPerSecond();
         });
 
-    this.retriesRemainingOtel = AsyncMetricEntityStateBase.create(
-        RETRY_BUDGET_REMAINING.getMetricEntity(),
+    this.retriesRemaining = AsyncMetricEntityStateBase.create(
+        RETRY_RATE_LIMIT_REMAINING_TOKENS.getMetricEntity(),
         otelRepository,
         this::registerSensor,
         RetryManagerTehutiMetricName.RETRIES_REMAINING,
@@ -90,8 +90,8 @@ public class RetryManagerStats extends AbstractVeniceStats {
           return bucket == null ? -1 : bucket.getStaleTokenCount();
         });
 
-    this.rejectedRetrySensorOtel = MetricEntityStateBase.create(
-        RETRY_REJECTED_COUNT.getMetricEntity(),
+    this.rejectedRetry = MetricEntityStateBase.create(
+        RETRY_RATE_LIMIT_REJECTION_COUNT.getMetricEntity(),
         otelRepository,
         this::registerSensor,
         RetryManagerTehutiMetricName.REJECTED_RETRY,
@@ -101,7 +101,7 @@ public class RetryManagerStats extends AbstractVeniceStats {
   }
 
   public void recordRejectedRetry(int count) {
-    rejectedRetrySensorOtel.record(count);
+    rejectedRetry.record(count);
   }
 
   public enum RetryManagerTehutiMetricName implements TehutiMetricNameEnum {
