@@ -117,6 +117,7 @@ import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.utils.ConfigCommonUtils;
+import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.RetryUtils;
 import com.linkedin.venice.utils.SslUtils;
@@ -1024,7 +1025,7 @@ public class AdminTool {
     }
 
     // Create thread pool and start parallel processing.
-    ExecutorService executorService = Executors.newFixedThreadPool(parallelism);
+    ExecutorService executorService = Executors.newFixedThreadPool(parallelism, new DaemonThreadFactory("AdminTool"));
     List<Future> futureList = new ArrayList<>();
     for (int i = 0; i < parallelism; i++) {
       BatchMaintenanceTaskRunner batchMaintenanceTaskRunner =

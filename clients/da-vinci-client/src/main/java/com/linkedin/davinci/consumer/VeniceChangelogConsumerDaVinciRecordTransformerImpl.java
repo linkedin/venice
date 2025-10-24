@@ -28,6 +28,7 @@ import com.linkedin.venice.pubsub.PubSubTopicImpl;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -79,7 +80,8 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   private final CountDownLatch startLatch = new CountDownLatch(1);
   // Using a dedicated thread pool for CompletableFutures created by this class to avoid potential thread starvation
   // issues in the default ForkJoinPool
-  private final ExecutorService completableFutureThreadPool = Executors.newFixedThreadPool(1);
+  private final ExecutorService completableFutureThreadPool =
+      Executors.newFixedThreadPool(1, new DaemonThreadFactory("VeniceChangelogConsumerDaVinciRecordTransformerImpl"));
 
   private final Set<Integer> subscribedPartitions = new HashSet<>();
   private final ReentrantLock bufferLock = new ReentrantLock();
