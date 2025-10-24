@@ -616,7 +616,7 @@ public class ActiveActiveStoreIngestionTaskTest {
     when(serverConfig.getKafkaClusterIdToUrlMap()).thenReturn(clusterIdToUrlMap);
     when(serverConfig.getDedicatedConsumerPoolSizeForSepRTLeader()).thenReturn(3);
     when(serverConfig.getDedicatedConsumerPoolSizeForAAWCLeader()).thenReturn(5);
-    assertEquals(ActiveActiveStoreIngestionTask.getKeyLevelLockMaxPoolSizeBasedOnServerConfig(serverConfig, 10), 31);
+    assertEquals(AggKafkaConsumerService.getKeyLevelLockMaxPoolSizeBasedOnServerConfig(serverConfig, 10), 31);
     // Test when current version prioritization strategy is enabled.
     when(serverConfig.getConsumerPoolStrategyType())
         .thenReturn(KafkaConsumerServiceDelegator.ConsumerPoolStrategyType.CURRENT_VERSION_PRIORITIZATION);
@@ -625,12 +625,12 @@ public class ActiveActiveStoreIngestionTaskTest {
     when(serverConfig.getConsumerPoolSizeForNonCurrentVersionAAWCLeader()).thenReturn(20);
     when(serverConfig.getConsumerPoolSizeForCurrentVersionNonAAWCLeader()).thenReturn(30);
     when(serverConfig.getConsumerPoolSizeForNonCurrentVersionNonAAWCLeader()).thenReturn(40);
-    assertEquals(ActiveActiveStoreIngestionTask.getKeyLevelLockMaxPoolSizeBasedOnServerConfig(serverConfig, 1000), 121);
+    assertEquals(AggKafkaConsumerService.getKeyLevelLockMaxPoolSizeBasedOnServerConfig(serverConfig, 1000), 121);
 
     // Test with parallel compute is enabled
     when(serverConfig.getAAWCWorkloadParallelProcessingThreadPoolSize()).thenReturn(8);
     when(serverConfig.isAAWCWorkloadParallelProcessingEnabled()).thenReturn(true);
-    assertEquals(ActiveActiveStoreIngestionTask.getKeyLevelLockMaxPoolSizeBasedOnServerConfig(serverConfig, 1000), 961);
+    assertEquals(AggKafkaConsumerService.getKeyLevelLockMaxPoolSizeBasedOnServerConfig(serverConfig, 1000), 961);
   }
 
   @Test
