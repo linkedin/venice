@@ -49,6 +49,7 @@ import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.stats.AbstractVeniceStats;
+import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.ReflectUtils;
@@ -107,12 +108,14 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
   private final ServerBootstrap bootstrap;
   private final EventLoopGroup bossGroup;
   private final EventLoopGroup workerGroup;
-  private final ExecutorService ingestionExecutor = Executors.newFixedThreadPool(10);
+  private final ExecutorService ingestionExecutor =
+      Executors.newFixedThreadPool(10, new DaemonThreadFactory("IsolatedIngestionServer"));
   private final ScheduledExecutorService heartbeatCheckScheduler = Executors.newScheduledThreadPool(1);
   private final ScheduledExecutorService metricsCollectionScheduler = Executors.newScheduledThreadPool(1);
   private final AtomicBoolean isShuttingDown = new AtomicBoolean(false);
   private final int servicePort;
-  private final ExecutorService longRunningTaskExecutor = Executors.newFixedThreadPool(10);
+  private final ExecutorService longRunningTaskExecutor =
+      Executors.newFixedThreadPool(10, new DaemonThreadFactory("IsolatedIngestionServer-LongRunning"));
   private final ExecutorService statusReportingExecutor = Executors.newSingleThreadExecutor();
   /**
    * This map data structure keeps track of a specific topic-partition (resource) is being ingested in the isolated process.

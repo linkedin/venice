@@ -126,7 +126,8 @@ public class DaVinciBackend implements Closeable {
   private final RocksDBMemoryStats rocksDBMemoryStats;
   private StorageService storageService;
   private final KafkaStoreIngestionService ingestionService;
-  private final ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor();
+  private final ScheduledExecutorService executor =
+      Executors.newSingleThreadScheduledExecutor(new DaemonThreadFactory("DaVinciBackend"));
   private final Map<String, StoreBackend> storeByNameMap = new VeniceConcurrentHashMap<>();
   private final Map<String, VersionBackend> versionByTopicMap = new VeniceConcurrentHashMap<>();
   private final StorageMetadataService storageMetadataService;

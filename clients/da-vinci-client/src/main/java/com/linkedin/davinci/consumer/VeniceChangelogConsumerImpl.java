@@ -69,6 +69,7 @@ import com.linkedin.venice.serialization.avro.AvroSpecificStoreDeserializerCache
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.store.rocksdb.RocksDBUtils;
+import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.DictionaryUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -192,7 +193,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     this.pubSubPositionDeserializer = pubSubContext.getPubSubPositionDeserializer();
     this.pubSubMessageDeserializer = pubSubMessageDeserializer;
 
-    seekExecutorService = Executors.newFixedThreadPool(10);
+    seekExecutorService = Executors.newFixedThreadPool(10, new DaemonThreadFactory(getClass().getSimpleName()));
 
     // TODO: putting the change capture case here is a little bit weird. The view abstraction should probably
     // accommodate

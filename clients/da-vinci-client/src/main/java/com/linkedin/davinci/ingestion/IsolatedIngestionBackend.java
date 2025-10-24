@@ -22,6 +22,7 @@ import com.linkedin.venice.ingestion.protocol.enums.IngestionCommandType;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionComponentType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
+import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
@@ -54,7 +55,8 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend implements
   private final MainIngestionRequestClient mainIngestionRequestClient;
   private final MainIngestionMonitorService mainIngestionMonitorService;
   private final VeniceConfigLoader configLoader;
-  private final ExecutorService completionReportHandlingExecutor = Executors.newFixedThreadPool(10);
+  private final ExecutorService completionReportHandlingExecutor =
+      Executors.newFixedThreadPool(10, new DaemonThreadFactory("IsolatedIngestionBackend"));
   private final Function<String, Integer> currentVersionSupplier;
   private Process isolatedIngestionServiceProcess;
 
