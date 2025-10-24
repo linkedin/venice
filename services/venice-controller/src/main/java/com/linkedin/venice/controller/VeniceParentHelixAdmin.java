@@ -340,7 +340,7 @@ public class VeniceParentHelixAdmin implements Admin {
 
   private static final long TOPIC_DELETION_DELAY_MS = 5 * Time.MS_PER_MINUTE;
   public static final List<Class<? extends Throwable>> RETRY_FAILURE_TYPES = Collections.singletonList(Exception.class);
-  private static final int ROLL_FORWARD_REQUEST_TIMEOUT = 5 * Time.MS_PER_SECOND;
+  private static final int ROLL_FORWARD_REQUEST_TIMEOUT = 60 * Time.MS_PER_SECOND;
 
   final Map<String, Boolean> asyncSetupEnabledMap;
   private final VeniceHelixAdmin veniceHelixAdmin;
