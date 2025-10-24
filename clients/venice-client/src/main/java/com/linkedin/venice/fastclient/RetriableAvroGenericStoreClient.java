@@ -8,6 +8,7 @@ import com.linkedin.venice.client.store.streaming.StreamingCallback;
 import com.linkedin.venice.compute.ComputeRequestWrapper;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.RetryManager;
+import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -80,7 +81,9 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
           SINGLE_KEY_LONG_TAIL_RETRY_STATS_PREFIX + clientConfig.getStoreName(),
           clientConfig.getLongTailRetryBudgetEnforcementWindowInMs(),
           clientConfig.getRetryBudgetPercentage(),
-          retryManagerExecutorService);
+          retryManagerExecutorService,
+          clientConfig.getStoreName(),
+          RequestType.SINGLE_GET);
     }
     if (longTailRetryEnabledForBatchGet && clientConfig.isRetryBudgetEnabled()) {
       this.multiKeyLongTailRetryManager = new RetryManager(
@@ -88,7 +91,9 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
           MULTI_KEY_LONG_TAIL_RETRY_STATS_PREFIX + clientConfig.getStoreName(),
           clientConfig.getLongTailRetryBudgetEnforcementWindowInMs(),
           clientConfig.getRetryBudgetPercentage(),
-          retryManagerExecutorService);
+          retryManagerExecutorService,
+          clientConfig.getStoreName(),
+          RequestType.MULTI_GET);
     }
   }
 

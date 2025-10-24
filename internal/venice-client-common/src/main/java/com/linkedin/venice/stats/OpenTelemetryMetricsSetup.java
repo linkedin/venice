@@ -1,6 +1,7 @@
 package com.linkedin.venice.stats;
 
 import com.linkedin.venice.read.RequestType;
+import com.linkedin.venice.stats.dimensions.RequestRetryType;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.common.AttributesBuilder;
@@ -61,6 +62,7 @@ public class OpenTelemetryMetricsSetup {
     private Boolean isTotalStats;
     private String clusterName;
     private String routeName;
+    private RequestRetryType requestRetryType;
 
     public Builder(MetricsRepository metricsRepository) {
       this.metricsRepository = metricsRepository;
@@ -103,6 +105,14 @@ public class OpenTelemetryMetricsSetup {
      */
     public Builder setRouteName(String routeName) {
       this.routeName = routeName;
+      return this;
+    }
+
+    /**
+     * Set the request retry type dimension.
+     */
+    public Builder setRequestRetryType(RequestRetryType requestRetryType) {
+      this.requestRetryType = requestRetryType;
       return this;
     }
 
@@ -159,6 +169,14 @@ public class OpenTelemetryMetricsSetup {
         baseDimensionsMap.put(VeniceMetricsDimensions.VENICE_ROUTE_NAME, routeName);
         baseAttributesBuilder
             .put(otelRepository.getDimensionName(VeniceMetricsDimensions.VENICE_ROUTE_NAME), routeName);
+      }
+
+      // Add request retry type if provided
+      if (requestRetryType != null) {
+        baseDimensionsMap.put(VeniceMetricsDimensions.VENICE_REQUEST_RETRY_TYPE, requestRetryType.getDimensionValue());
+        baseAttributesBuilder.put(
+            otelRepository.getDimensionName(VeniceMetricsDimensions.VENICE_REQUEST_RETRY_TYPE),
+            requestRetryType.getDimensionValue());
       }
 
       Attributes baseAttributes = baseAttributesBuilder.build();
