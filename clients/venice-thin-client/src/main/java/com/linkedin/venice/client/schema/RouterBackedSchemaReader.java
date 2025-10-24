@@ -440,10 +440,8 @@ public class RouterBackedSchemaReader implements SchemaReader {
 
   private SchemaEntry maybeFetchLatestValueSchemaEntry(boolean refresh) {
     SchemaEntry latest = latestValueSchemaEntry.get();
-    if (refresh) {
-      shouldRefreshLatestValueSchemaEntry.set(true);
-    }
-    if (latest == null || shouldRefreshLatestValueSchemaEntry.get()) {
+
+    if (refresh || latest == null || shouldRefreshLatestValueSchemaEntry.get()) {
       /**
        * Every time it sees latestValueSchemaEntry is null or the flag to update latest schema entry is set to true,
        * it will try to update it once.
@@ -451,6 +449,9 @@ public class RouterBackedSchemaReader implements SchemaReader {
        * one active value schema.
        */
       synchronized (this) {
+        if (refresh) {
+          shouldRefreshLatestValueSchemaEntry.set(true);
+        }
         if (latest != null && (!shouldRefreshLatestValueSchemaEntry.get() && isValidSchemaEntry(latest)
             || !latest.equals(latestValueSchemaEntry.get()))) {
           return latest;
