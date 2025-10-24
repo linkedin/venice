@@ -2868,6 +2868,9 @@ public class ConfigKeys {
   public static final String SERVER_USE_HEARTBEAT_LAG_FOR_READY_TO_SERVE_CHECK_ENABLED =
       "server.use.heartbeat.lag.for.ready.to.serve.check.enabled";
 
+  public static final String SERVER_RECORD_DATA_MESSAGE_TIMESTAMP_FOR_LAG_CHECK_ENABLED =
+      "server.record.data.message.timestamp.for.lag.check.enabled";
+
   /**
    * The amount of threads to perform recovery in the DaVinciRecordTransformer, such as scanning local RocksDB.
    */

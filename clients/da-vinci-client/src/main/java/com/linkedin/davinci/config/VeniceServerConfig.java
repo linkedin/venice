@@ -164,6 +164,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_PUBSUB_CONSUMER_POLL_RETRY_T
 import static com.linkedin.venice.ConfigKeys.SERVER_QUOTA_ENFORCEMENT_CAPACITY_MULTIPLE;
 import static com.linkedin.venice.ConfigKeys.SERVER_QUOTA_ENFORCEMENT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_QUOTA_ENFORCEMENT_INTERVAL_IN_MILLIS;
+import static com.linkedin.venice.ConfigKeys.SERVER_RECORD_DATA_MESSAGE_TIMESTAMP_FOR_LAG_CHECK_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_RECORD_LEVEL_METRICS_WHEN_BOOTSTRAPPING_CURRENT_VERSION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_REMOTE_CONSUMER_CONFIG_PREFIX;
 import static com.linkedin.venice.ConfigKeys.SERVER_REMOTE_INGESTION_REPAIR_SLEEP_INTERVAL_SECONDS;
@@ -639,6 +640,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final int aaWCIngestionStorageLookupThreadPoolSize;
   private final int idleIngestionTaskCleanupIntervalInSeconds;
   private final boolean useHeartbeatLagForReadyToServeCheckEnabled;
+  private final boolean recordDataMessageTimestampForLagCheckEnabled;
   private final boolean loadControllerEnabled;
   private final int loadControllerWindowSizeInSec;
   private final double loadControllerAcceptMultiplier;
@@ -1099,6 +1101,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
         serverProperties.getInt(SERVER_IDLE_INGESTION_TASK_CLEANUP_INTERVAL_IN_SECONDS, -1);
     useHeartbeatLagForReadyToServeCheckEnabled =
         serverProperties.getBoolean(SERVER_USE_HEARTBEAT_LAG_FOR_READY_TO_SERVE_CHECK_ENABLED, false);
+    recordDataMessageTimestampForLagCheckEnabled =
+        serverProperties.getBoolean(SERVER_RECORD_DATA_MESSAGE_TIMESTAMP_FOR_LAG_CHECK_ENABLED, false);
     loadControllerEnabled = serverProperties.getBoolean(SERVER_LOAD_CONTROLLER_ENABLED, false);
     loadControllerWindowSizeInSec = serverProperties.getInt(SERVER_LOAD_CONTROLLER_WINDOW_SIZE_IN_SECONDS, 60);
     loadControllerAcceptMultiplier = serverProperties.getDouble(SERVER_LOAD_CONTROLLER_ACCEPT_MULTIPLIER, 2.0);
@@ -1967,6 +1971,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public boolean isUseHeartbeatLagForReadyToServeCheckEnabled() {
     return useHeartbeatLagForReadyToServeCheckEnabled;
+  }
+
+  public boolean isRecordDataMessageTimestampForLagCheckEnabled() {
+    return recordDataMessageTimestampForLagCheckEnabled;
   }
 
   public boolean isLoadControllerEnabled() {
