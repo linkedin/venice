@@ -47,6 +47,7 @@ public class ControllerApiConstants {
   public static final String DERIVED_SCHEMA_ID = "derived_schema_id";
   public static final String TOPIC = "topic";
   public static final String OFFSET = "offset";
+  public static final String POSITION = "position";
   public static final String OPERATION = "operation";
   public static final String READ_OPERATION = "read";
   public static final String WRITE_OPERATION = "write";
