@@ -21,6 +21,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.service.AbstractVeniceService;
+import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
@@ -62,7 +63,8 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
   private final AtomicBoolean stop = new AtomicBoolean(false);
   private final VeniceControllerMultiClusterConfig veniceControllerMultiClusterConfig;
   private final VeniceParentHelixAdmin veniceParentHelixAdmin;
-  private final ScheduledExecutorService deferredVersionSwapExecutor = Executors.newSingleThreadScheduledExecutor();
+  private final ScheduledExecutorService deferredVersionSwapExecutor =
+      Executors.newSingleThreadScheduledExecutor(new DaemonThreadFactory(getClass().getSimpleName()));
   private final DeferredVersionSwapStats deferredVersionSwapStats;
   private static final RedundantExceptionFilter REDUNDANT_EXCEPTION_FILTER =
       new RedundantExceptionFilter(RedundantExceptionFilter.DEFAULT_BITSET_SIZE, TimeUnit.MINUTES.toMillis(10));

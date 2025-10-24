@@ -8,6 +8,7 @@ import com.linkedin.davinci.stats.ingestion.heartbeat.AggregatedHeartbeatLagEntr
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.throttle.VeniceAdaptiveThrottler;
+import com.linkedin.venice.utils.DaemonThreadFactory;
 import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
@@ -37,7 +38,7 @@ public class AdaptiveThrottlerSignalService extends AbstractVeniceService {
   private final MetricsRepository metricsRepository;
   private final HeartbeatMonitoringService heartbeatMonitoringService;
   private final List<VeniceAdaptiveThrottler> throttlerList = new ArrayList<>();
-  private final ScheduledExecutorService updateService = Executors.newSingleThreadScheduledExecutor();
+  private final ScheduledExecutorService updateService;
   private boolean singleGetLatencySignal = false;
   private boolean multiGetLatencySignal = false;
   private boolean readComputeLatencySignal = false;
@@ -56,6 +57,8 @@ public class AdaptiveThrottlerSignalService extends AbstractVeniceService {
     this.multiGetLatencyP99Threshold = veniceServerConfig.getAdaptiveThrottlerMultiGetLatencyThreshold();
     this.readComputeLatencyP99Threshold = veniceServerConfig.getAdaptiveThrottlerReadComputeLatencyThreshold();
     this.metricsRepository = metricsRepository;
+    this.updateService =
+        Executors.newSingleThreadScheduledExecutor(new DaemonThreadFactory("AdaptiveThrottlerSignalService"));
     this.heartbeatMonitoringService = heartbeatMonitoringService;
     this.adaptiveThrottlingServiceStats = new AdaptiveThrottlingServiceStats(metricsRepository);
   }
