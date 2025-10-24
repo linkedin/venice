@@ -251,6 +251,18 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
     return subscribe(ComplementSet.wrap(partitions));
   }
 
+  protected CompletableFuture<Void> seekToTimestamps(Map<Integer, Long> timestamps) {
+    throwIfNotReady();
+    addPartitionsToSubscription(ComplementSet.wrap(timestamps.keySet()));
+    return storeBackend.seekToTimestamps(timestamps);
+  }
+
+  protected CompletableFuture<Void> seekToTimestamps(Long timestamps) {
+    throwIfNotReady();
+    addPartitionsToSubscription(ComplementSet.universalSet());
+    return storeBackend.seekToTimestamps(timestamps);
+  }
+
   protected CompletableFuture<Void> subscribe(ComplementSet<Integer> partitions) {
     throwIfNotReady();
     addPartitionsToSubscription(partitions);

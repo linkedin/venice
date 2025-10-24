@@ -2,6 +2,7 @@ package com.linkedin.davinci.kafka.consumer;
 
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import io.tehuti.utils.Utils;
@@ -18,6 +19,7 @@ public class ConsumerAction implements Comparable<ConsumerAction> {
   private final ConsumerActionType type;
   private final PubSubTopicPartition topicPartition;
   private final int sequenceNumber;
+  private PubSubPosition pubSubPosition;
   private final LeaderFollowerPartitionStateModel.LeaderSessionIdChecker checker;
 
   private int attempts = 0;
@@ -46,6 +48,14 @@ public class ConsumerAction implements Comparable<ConsumerAction> {
     this.sequenceNumber = sequenceNumber;
     this.checker = checker;
     this.isHelixTriggeredAction = isHelixTriggeredAction;
+  }
+
+  public void setPubSubPosition(PubSubPosition pubSubPosition) {
+    this.pubSubPosition = pubSubPosition;
+  }
+
+  public PubSubPosition getPubSubPosition() {
+    return this.pubSubPosition;
   }
 
   public ConsumerActionType getType() {

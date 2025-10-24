@@ -2,6 +2,7 @@ package com.linkedin.davinci;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.clearInvocations;
@@ -205,26 +206,26 @@ public class VersionBackendTest {
     Collection<Integer> partitionList = Arrays.asList(0, 1, 2);
     ComplementSet<Integer> complementSet = ComplementSet.newSet(partitionList);
 
-    versionBackend.subscribe(complementSet);
+    versionBackend.subscribe(complementSet, Collections.emptyMap(), null);
     verify(internalRecordTransformerConfig).setStartConsumptionLatchCount(3);
-    verify(mockIngestionBackend).startConsumption(any(), eq(0));
-    verify(mockIngestionBackend).startConsumption(any(), eq(1));
-    verify(mockIngestionBackend).startConsumption(any(), eq(2));
+    verify(mockIngestionBackend).startConsumption(any(), eq(0), anyLong());
+    verify(mockIngestionBackend).startConsumption(any(), eq(1), anyLong());
+    verify(mockIngestionBackend).startConsumption(any(), eq(2), anyLong());
 
     clearInvocations(internalRecordTransformerConfig);
     clearInvocations(mockIngestionBackend);
     partitionList = Arrays.asList(2, 3, 4);
     complementSet = ComplementSet.newSet(partitionList);
-    versionBackend.subscribe(complementSet);
+    versionBackend.subscribe(complementSet, Collections.emptyMap(), null);
     // Shouldn't try to start consumption on already subscribed partitions
-    verify(mockIngestionBackend, never()).startConsumption(any(), eq(2));
-    verify(mockIngestionBackend).startConsumption(any(), eq(3));
-    verify(mockIngestionBackend).startConsumption(any(), eq(4));
+    verify(mockIngestionBackend, never()).startConsumption(any(), eq(2), anyLong());
+    verify(mockIngestionBackend).startConsumption(any(), eq(3), anyLong());
+    verify(mockIngestionBackend).startConsumption(any(), eq(4), anyLong());
     verify(internalRecordTransformerConfig, never()).setStartConsumptionLatchCount(anyInt());
 
     // Test empty subscription
-    versionBackend.subscribe(ComplementSet.emptySet());
-    verify(mockIngestionBackend, never()).startConsumption(any(), eq(0));
+    versionBackend.subscribe(ComplementSet.emptySet(), Collections.emptyMap(), null);
+    verify(mockIngestionBackend, never()).startConsumption(any(), eq(0), anyLong());
     verify(internalRecordTransformerConfig, never()).setStartConsumptionLatchCount(anyInt());
   }
 }
