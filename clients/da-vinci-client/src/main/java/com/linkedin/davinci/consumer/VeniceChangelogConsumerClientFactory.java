@@ -168,7 +168,7 @@ public class VeniceChangelogConsumerClientFactory {
               .setIsStateful(true);
 
       if (globalChangelogClientConfig.isExperimentalClientEnabled()) {
-        return new VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>(newStoreChangelogClientConfig);
+        return new VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>(newStoreChangelogClientConfig, this);
       } else {
         return new LocalBootstrappingVeniceChangelogConsumer<K, V>(
             newStoreChangelogClientConfig,
@@ -176,7 +176,8 @@ public class VeniceChangelogConsumerClientFactory {
                 ? consumer
                 : getPubSubConsumer(newStoreChangelogClientConfig, pubSubMessageDeserializer, consumerName),
             pubSubMessageDeserializer,
-            consumerId);
+            consumerId,
+            this);
       }
     });
   }
@@ -213,7 +214,7 @@ public class VeniceChangelogConsumerClientFactory {
               .setStoreVersion(storeVersion)
               .setIsStateful(false);
 
-      return new VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>(newStoreChangelogClientConfig);
+      return new VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>(newStoreChangelogClientConfig, this);
     });
   }
 
