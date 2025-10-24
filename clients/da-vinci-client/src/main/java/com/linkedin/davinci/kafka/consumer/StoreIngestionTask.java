@@ -2690,9 +2690,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         : databaseSyncBytesIntervalForTransactionalMode;
   }
 
-  protected void recordHeartbeatReceived(
+  protected void recordMessageTimestampReceived(
       PartitionConsumptionState partitionConsumptionState,
       DefaultPubSubMessage consumerRecord,
+      boolean isHeartbeatMessage,
       String kafkaUrl) {
     // No Op
   }
@@ -3353,7 +3354,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         try {
           if (controlMessage.controlMessageType == START_OF_SEGMENT.getValue()
               && Arrays.equals(consumerRecord.getKey().getKey(), KafkaKey.HEART_BEAT.getKey())) {
-            recordHeartbeatReceived(partitionConsumptionState, consumerRecord, kafkaUrl);
+            recordMessageTimestampReceived(partitionConsumptionState, consumerRecord, true, kafkaUrl);
             if (recordTransformer != null) {
               recordTransformer.onHeartbeat(
                   consumerRecord.getTopicPartition().getPartitionNumber(),
@@ -3383,6 +3384,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
               kafkaValue,
               leaderProducedRecordContext);
         }
+        if (getServerConfig().isRecordDataMessageTimestampForLagCheckEnabled()) {
+          recordMessageTimestampReceived(partitionConsumptionState, consumerRecord, false, kafkaUrl);
+        }
+
       }
       if (recordLevelMetricEnabled.get()) {
         versionedIngestionStats.recordConsumedRecordEndToEndProcessingLatency(

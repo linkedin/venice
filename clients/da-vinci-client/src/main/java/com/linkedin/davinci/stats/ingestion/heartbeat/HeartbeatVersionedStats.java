@@ -10,16 +10,16 @@ import java.util.function.Supplier;
 
 
 public class HeartbeatVersionedStats extends AbstractVeniceAggVersionedStats<HeartbeatStat, HeartbeatStatReporter> {
-  private final Map<String, Map<Integer, Map<Integer, Map<String, HeartbeatTimeStampEntry>>>> leaderMonitors;
-  private final Map<String, Map<Integer, Map<Integer, Map<String, HeartbeatTimeStampEntry>>>> followerMonitors;
+  private final Map<String, Map<Integer, Map<Integer, Map<String, TimestampEntry>>>> leaderMonitors;
+  private final Map<String, Map<Integer, Map<Integer, Map<String, TimestampEntry>>>> followerMonitors;
 
   public HeartbeatVersionedStats(
       MetricsRepository metricsRepository,
       ReadOnlyStoreRepository metadataRepository,
       Supplier<HeartbeatStat> statsInitiator,
       StatsSupplier<HeartbeatStatReporter> reporterSupplier,
-      Map<String, Map<Integer, Map<Integer, Map<String, HeartbeatTimeStampEntry>>>> leaderMonitors,
-      Map<String, Map<Integer, Map<Integer, Map<String, HeartbeatTimeStampEntry>>>> followerMonitors) {
+      Map<String, Map<Integer, Map<Integer, Map<String, TimestampEntry>>>> leaderMonitors,
+      Map<String, Map<Integer, Map<Integer, Map<String, TimestampEntry>>>> followerMonitors) {
     super(metricsRepository, metadataRepository, statsInitiator, reporterSupplier, true);
     this.leaderMonitors = leaderMonitors;
     this.followerMonitors = followerMonitors;

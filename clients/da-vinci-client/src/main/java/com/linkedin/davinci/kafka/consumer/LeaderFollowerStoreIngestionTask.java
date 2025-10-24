@@ -2228,11 +2228,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   }
 
   /**
-   * Leaders propagate HB SOS message from RT to local VT (to all subpartitions in case if amplification
-   * Factor is configured to be more than 1) with updated LeaderCompleteState header:
+   * Leaders propagate HB SOS message from RT to local VT with updated LeaderCompleteState header:
    * Adding the headers during this phase instead of adding it to RT directly simplifies the logic
    * of how to identify the HB SOS from the correct version or whether the HB SOS is from the local
-   * colo or remote colo, as the header inherited from an incorrect version or remote colos might
+   * colo or remote colo, as the header inherited from an incorrect version or remote regions might
    * provide incorrect information about the leader state.
    */
   private void propagateHeartbeatFromUpstreamTopicToLocalVersionTopic(
@@ -2278,33 +2277,36 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   }
 
   @Override
-  protected void recordHeartbeatReceived(
+  protected void recordMessageTimestampReceived(
       PartitionConsumptionState partitionConsumptionState,
       DefaultPubSubMessage consumerRecord,
+      boolean isHeartbeatMessage,
       String kafkaUrl) {
     if (getHeartbeatMonitoringService() == null) {
       // Not enabled!
       return;
     }
     if (partitionConsumptionState.getLeaderFollowerState().equals(LEADER)) {
-      getHeartbeatMonitoringService().recordLeaderHeartbeat(
+      getHeartbeatMonitoringService().recordLeaderMessageTimestamp(
           storeName,
           versionNumber,
           partitionConsumptionState.getPartition(),
           serverConfig.getKafkaClusterUrlToAliasMap().get(kafkaUrl),
           consumerRecord.getValue().producerMetadata.messageTimestamp,
+          isHeartbeatMessage,
           partitionConsumptionState.isComplete());
     } else {
-      getHeartbeatMonitoringService().recordFollowerHeartbeat(
+      /*
+        For Da Vinci there is no kafkaUrl mapping configured and the
+        local region is default to empty.
+       */
+      getHeartbeatMonitoringService().recordFollowerMessageTimestamp(
           storeName,
           versionNumber,
           partitionConsumptionState.getPartition(),
-          isDaVinciClient() ? "" : serverConfig.getKafkaClusterUrlToAliasMap().get(kafkaUrl), // For Da Vinci there is
-                                                                                              // no kafkaUrl mapping
-                                                                                              // configured and the
-                                                                                              // local region is default
-                                                                                              // to empty.
+          isDaVinciClient() ? "" : serverConfig.getKafkaClusterUrlToAliasMap().get(kafkaUrl),
           consumerRecord.getValue().producerMetadata.messageTimestamp,
+          isHeartbeatMessage,
           partitionConsumptionState.isComplete());
     }
   }
