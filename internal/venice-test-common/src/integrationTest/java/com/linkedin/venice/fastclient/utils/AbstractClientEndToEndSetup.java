@@ -2,16 +2,21 @@ package com.linkedin.venice.fastclient.utils;
 
 import static com.linkedin.venice.ConfigKeys.SERVER_HTTP2_INBOUND_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_QUOTA_ENFORCEMENT_ENABLED;
+import static com.linkedin.venice.client.stats.BasicClientStats.BasicClientMetricEntity.CALL_COUNT;
+import static com.linkedin.venice.client.stats.BasicClientStats.BasicClientMetricEntity.CALL_TIME;
+import static com.linkedin.venice.client.stats.BasicClientStats.CLIENT_METRIC_ENTITIES;
 import static com.linkedin.venice.fastclient.meta.StoreMetadataFetchMode.SERVER_BASED_METADATA;
 import static com.linkedin.venice.fastclient.utils.ClientTestUtils.FASTCLIENT_HTTP_VARIANTS;
 import static com.linkedin.venice.fastclient.utils.ClientTestUtils.REQUEST_TYPES_SMALL;
 import static com.linkedin.venice.fastclient.utils.ClientTestUtils.STORE_METADATA_FETCH_MODES;
+import static com.linkedin.venice.stats.ClientType.FAST_CLIENT;
+import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateExponentialHistogramPointDataForLatency;
+import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateLongPointDataFromCounter;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
 
-import com.google.common.collect.ImmutableList;
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.r2.transport.common.Client;
 import com.linkedin.venice.D2.D2ClientUtils;
@@ -40,14 +45,21 @@ import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
+import com.linkedin.venice.stats.VeniceMetricsConfig;
+import com.linkedin.venice.stats.VeniceMetricsRepository;
+import com.linkedin.venice.stats.dimensions.HttpResponseStatusEnum;
+import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
+import com.linkedin.venice.utils.OpenTelemetryDataTestUtils;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterOptions;
+import io.opentelemetry.api.common.Attributes;
+import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
@@ -103,34 +115,13 @@ public abstract class AbstractClientEndToEndSetup {
   protected static final String keyPrefix = "key_";
   protected static final int recordCnt = 100;
 
-  /**
-   * two sizes: default 2 (initial FC batch get implementation size) and max of recordCnt
-   *
-   * TODO
-   * 1: figure out where this count is checked and limited to a global or store based max value
-   * 2: Current implementation of batchGet() using single get() in a loop quickly fails due
-   * to routingPendingRequestCounterInstanceBlockThreshold set to 50 by default and the loop
-   * is faster than the counter decrement following a successful get, so some get() calls will
-   * not be sent due to blocked instances. Setting this variable to be 100 from the tests for now.
-   * This needs to be discussed further.
-   */
-  protected static final ImmutableList<Object> BATCH_GET_KEY_SIZE = ImmutableList.of(2, recordCnt);
-
   @DataProvider(name = "FastClient-Test-Permutations")
   public Object[][] fastClientTestPermutations() {
     return DataProviderUtils.allPermutationGenerator((permutation) -> {
       boolean dualRead = (boolean) permutation[0];
       boolean retryEnabled = (boolean) permutation[2];
-      int batchGetKeySize = (int) permutation[3];
-      RequestType requestType = (RequestType) permutation[4];
-      StoreMetadataFetchMode storeMetadataFetchMode = (StoreMetadataFetchMode) permutation[5];
-      if (requestType != RequestType.MULTI_GET && requestType != RequestType.MULTI_GET_STREAMING) {
-        if (batchGetKeySize != (int) BATCH_GET_KEY_SIZE.get(0)) {
-          // these parameters are related only to batchGet, so just allowing 1 set
-          // to avoid duplicate tests
-          return false;
-        }
-      }
+      RequestType requestType = (RequestType) permutation[3];
+      StoreMetadataFetchMode storeMetadataFetchMode = (StoreMetadataFetchMode) permutation[4];
       if (storeMetadataFetchMode != SERVER_BASED_METADATA) {
         if (retryEnabled) {
           return false;
@@ -145,9 +136,9 @@ public abstract class AbstractClientEndToEndSetup {
         DataProviderUtils.BOOLEAN, // dualRead
         DataProviderUtils.BOOLEAN, // enableGrpc
         DataProviderUtils.BOOLEAN, // retryEnabled
-        BATCH_GET_KEY_SIZE.toArray(), // batchGetKeySize
         REQUEST_TYPES_SMALL, // requestType
-        STORE_METADATA_FETCH_MODES); // storeMetadataFetchMode
+        STORE_METADATA_FETCH_MODES, // storeMetadataFetchMode
+        DataProviderUtils.BOOLEAN); // emitTehutiMetrics
   }
 
   @DataProvider(name = "fastClientHTTPVariantsAndStoreMetadataFetchModes")
@@ -402,8 +393,11 @@ public abstract class AbstractClientEndToEndSetup {
             .setSslFactory(SslUtils.getVeniceLocalSslFactory()));
   }
 
-  protected void validateSingleGetMetrics(MetricsRepository metricsRepository, boolean retryEnabled) {
-    validateMetrics(metricsRepository, RequestType.SINGLE_GET, 0, 0, retryEnabled);
+  protected void validateSingleGetMetrics(
+      MetricsRepository metricsRepository,
+      boolean retryEnabled,
+      boolean emitTehutiMetrics) {
+    validateMetrics(metricsRepository, RequestType.SINGLE_GET, 0, 0, retryEnabled, emitTehutiMetrics);
   }
 
   protected void validateBatchGetMetrics(
@@ -411,13 +405,15 @@ public abstract class AbstractClientEndToEndSetup {
       boolean streamingBatchGetApi,
       int expectedMultiKeySizeMetricsCount,
       int expectedMultiKeySizeSuccessMetricsCount,
-      boolean retryEnabled) {
+      boolean retryEnabled,
+      boolean emitTehutiMetrics) {
     validateMetrics(
         metricsRepository,
         streamingBatchGetApi ? RequestType.MULTI_GET_STREAMING : RequestType.MULTI_GET,
         expectedMultiKeySizeMetricsCount,
         expectedMultiKeySizeSuccessMetricsCount,
-        retryEnabled);
+        retryEnabled,
+        emitTehutiMetrics);
   }
 
   protected void validateComputeMetrics(
@@ -425,13 +421,15 @@ public abstract class AbstractClientEndToEndSetup {
       boolean streamingComputeApi,
       int expectedBatchGetKeySizeMetricsCount,
       int expectedBatchGetKeySizeSuccessMetricsCount,
-      boolean retryEnabled) {
+      boolean retryEnabled,
+      boolean emitTehutiMetrics) {
     validateMetrics(
         metricsRepository,
         streamingComputeApi ? RequestType.COMPUTE_STREAMING : RequestType.COMPUTE,
         expectedBatchGetKeySizeMetricsCount,
         expectedBatchGetKeySizeSuccessMetricsCount,
-        retryEnabled);
+        retryEnabled,
+        emitTehutiMetrics);
   }
 
   private void validateMetrics(
@@ -439,56 +437,101 @@ public abstract class AbstractClientEndToEndSetup {
       RequestType requestType,
       int expectedMultiKeySizeMetricsCount,
       int expectedMultiKeySizeSuccessMetricsCount,
-      boolean retryEnabled) {
-    final String metricPrefix = ClientTestUtils.getMetricPrefix(storeName, requestType);
+      boolean retryEnabled,
+      boolean emitTehutiMetrics) {
 
-    double keyCount = expectedMultiKeySizeMetricsCount;
-    double successKeyCount = expectedMultiKeySizeSuccessMetricsCount;
-    Map<String, ? extends Metric> metrics = metricsRepository.metrics();
+    if (emitTehutiMetrics) {
+      final String metricPrefix = ClientTestUtils.getMetricPrefix(storeName, requestType);
+      double keyCount = expectedMultiKeySizeMetricsCount;
+      double successKeyCount = expectedMultiKeySizeSuccessMetricsCount;
+      Map<String, ? extends Metric> metrics = metricsRepository.metrics();
 
+      // counters are incremented in an async manner, so adding non-deterministic wait
+      TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+        // tehuti metrics
+        assertTrue(metrics.get(metricPrefix + "request.OccurrenceRate").value() > 0);
+        assertTrue(metrics.get(metricPrefix + "healthy_request.OccurrenceRate").value() > 0);
+        assertTrue(metrics.get(metricPrefix + "healthy_request_latency.Avg").value() > 0);
+        assertFalse(metrics.get(metricPrefix + "unhealthy_request.OccurrenceRate").value() > 0);
+        assertFalse(metrics.get(metricPrefix + "unhealthy_request_latency.Avg").value() > 0);
+        assertTrue(
+            metrics.get(metricPrefix + "request_key_count.Rate").value() > 0,
+            "Respective request_key_count should have been incremented");
+        assertTrue(
+            metrics.get(metricPrefix + "request_key_count.Max").value() >= keyCount,
+            "Respective request_key_count should have been incremented");
+        assertTrue(
+            metrics.get(metricPrefix + "success_request_key_count.Rate").value() > 0,
+            "Respective success_request_key_count should have been incremented");
+        assertTrue(
+            metrics.get(metricPrefix + "success_request_key_count.Max").value() >= successKeyCount,
+            "Respective success_request_key_count should have been incremented");
+
+        Set<String> allMetricPrefixes = ClientTestUtils.getAllMetricPrefixes(storeName);
+        Set<String> allIncorrectMetricPrefixes = new HashSet<>(allMetricPrefixes);
+        allIncorrectMetricPrefixes.remove(metricPrefix);
+
+        for (String incorrectMetricPrefix: allIncorrectMetricPrefixes) {
+          // incorrect metric should not be incremented
+          assertFalse(
+              metrics.get(incorrectMetricPrefix + "request_key_count.Rate").value() > 0,
+              "Incorrect request_key_count should not be incremented");
+        }
+
+        if (retryEnabled) {
+          assertTrue(
+              metrics.get(metricPrefix + "long_tail_retry_request.OccurrenceRate").value() > 0,
+              "Long tail retry should be triggered");
+        } else {
+          metrics.forEach((mName, metric) -> {
+            if (mName.contains("long_tail_retry_request")) {
+              assertTrue(metric.value() == 0, "Long tail retry should not be triggered");
+            }
+          });
+        }
+      });
+    }
+
+    // Otel metrics
+    int numRequests = requestType == RequestType.SINGLE_GET ? recordCnt : 1;
+    InMemoryMetricReader inMemoryMetricReader =
+        (InMemoryMetricReader) ((VeniceMetricsRepository) metricsRepository).getVeniceMetricsConfig()
+            .getOtelAdditionalMetricsReader();
+    RequestType updatedRequestType = requestType == RequestType.MULTI_GET
+        ? RequestType.MULTI_GET_STREAMING
+        : requestType == RequestType.COMPUTE ? RequestType.COMPUTE_STREAMING : requestType;
+    Attributes requestExpectedAttributes =
+        new OpenTelemetryDataTestUtils.OpenTelemetryAttributesBuilder().setStoreName(storeName)
+            .setRequestType(updatedRequestType)
+            .setHttpStatus(HttpResponseStatusEnum.OK)
+            .setVeniceStatusCategory(VeniceResponseStatusCategory.SUCCESS)
+            .build();
     // counters are incremented in an async manner, so adding non-deterministic wait
     TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
-      assertTrue(metrics.get(metricPrefix + "request.OccurrenceRate").value() > 0);
-      assertTrue(metrics.get(metricPrefix + "healthy_request.OccurrenceRate").value() > 0);
-      assertTrue(metrics.get(metricPrefix + "healthy_request_latency.Avg").value() > 0);
-      assertFalse(metrics.get(metricPrefix + "unhealthy_request.OccurrenceRate").value() > 0);
-      assertFalse(metrics.get(metricPrefix + "unhealthy_request_latency.Avg").value() > 0);
-      assertTrue(
-          metrics.get(metricPrefix + "request_key_count.Rate").value() > 0,
-          "Respective request_key_count should have been incremented");
-      assertTrue(
-          metrics.get(metricPrefix + "request_key_count.Max").value() >= keyCount,
-          "Respective request_key_count should have been incremented");
-      assertTrue(
-          metrics.get(metricPrefix + "success_request_key_count.Rate").value() > 0,
-          "Respective success_request_key_count should have been incremented");
-      assertTrue(
-          metrics.get(metricPrefix + "success_request_key_count.Max").value() >= successKeyCount,
-          "Respective success_request_key_count should have been incremented");
-
-      Set<String> allMetricPrefixes = ClientTestUtils.getAllMetricPrefixes(storeName);
-      Set<String> allIncorrectMetricPrefixes = new HashSet<>(allMetricPrefixes);
-      allIncorrectMetricPrefixes.remove(metricPrefix);
-
-      for (String incorrectMetricPrefix: allIncorrectMetricPrefixes) {
-        // incorrect metric should not be incremented
-        assertFalse(
-            metrics.get(incorrectMetricPrefix + "request_key_count.Rate").value() > 0,
-            "Incorrect request_key_count should not be incremented");
-      }
-
-      if (retryEnabled) {
-        assertTrue(
-            metrics.get(metricPrefix + "long_tail_retry_request.OccurrenceRate").value() > 0,
-            "Long tail retry should be triggered");
-      } else {
-        metrics.forEach((mName, metric) -> {
-          if (mName.contains("long_tail_retry_request")) {
-            assertTrue(metric.value() == 0, "Long tail retry should not be triggered");
-          }
-        });
-      }
+      validateLongPointDataFromCounter(
+          inMemoryMetricReader,
+          numRequests,
+          requestExpectedAttributes,
+          CALL_COUNT.getMetricEntity().getMetricName(),
+          FAST_CLIENT.getMetricsPrefix());
+      validateExponentialHistogramPointDataForLatency(
+          inMemoryMetricReader,
+          numRequests,
+          requestExpectedAttributes,
+          CALL_TIME.getMetricEntity().getMetricName(),
+          FAST_CLIENT.getMetricsPrefix());
     });
+  }
+
+  public VeniceMetricsRepository createVeniceMetricsRepository(boolean emitTehutiMetrics) {
+    return new VeniceMetricsRepository(
+        new VeniceMetricsConfig.Builder().setServiceName(FAST_CLIENT.getName())
+            .setMetricPrefix(FAST_CLIENT.getMetricsPrefix())
+            .setEmitOtelMetrics(true)
+            .emitTehutiMetrics(emitTehutiMetrics)
+            .setMetricEntities(CLIENT_METRIC_ENTITIES)
+            .setOtelAdditionalMetricsReader(InMemoryMetricReader.create())
+            .build());
   }
 
   @AfterClass(alwaysRun = true)

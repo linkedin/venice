@@ -11,7 +11,6 @@ import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.fastclient.meta.StoreMetadataFetchMode;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
-import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.utils.DataProviderUtils;
 import java.nio.ByteBuffer;
@@ -36,16 +35,7 @@ public class AvroStoreClientZstdEndToEndTest extends AvroStoreClientEndToEndTest
       if (retryEnabled) {
         return false;
       }
-      int batchGetKeySize = (int) permutation[3];
-      RequestType requestType = (RequestType) permutation[4];
-      StoreMetadataFetchMode storeMetadataFetchMode = (StoreMetadataFetchMode) permutation[5];
-      if (requestType != RequestType.MULTI_GET && requestType != RequestType.MULTI_GET_STREAMING) {
-        if (batchGetKeySize != (int) BATCH_GET_KEY_SIZE.get(0)) {
-          // these parameters are related only to batchGet, so just allowing 1 set
-          // to avoid duplicate tests
-          return false;
-        }
-      }
+      StoreMetadataFetchMode storeMetadataFetchMode = (StoreMetadataFetchMode) permutation[4];
 
       if (storeMetadataFetchMode != StoreMetadataFetchMode.SERVER_BASED_METADATA) {
         return false;
@@ -55,9 +45,9 @@ public class AvroStoreClientZstdEndToEndTest extends AvroStoreClientEndToEndTest
         DataProviderUtils.BOOLEAN_FALSE, // dualRead
         DataProviderUtils.BOOLEAN, // enableGrpc
         DataProviderUtils.BOOLEAN, // retryEnabled
-        BATCH_GET_KEY_SIZE.toArray(), // batchGetKeySize
         REQUEST_TYPES_SMALL, // requestType
-        STORE_METADATA_FETCH_MODES); // storeMetadataFetchMode
+        STORE_METADATA_FETCH_MODES, // storeMetadataFetchMode
+        DataProviderUtils.BOOLEAN); // emitTehutiMetrics
   }
 
   @Override

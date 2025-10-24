@@ -14,7 +14,7 @@ import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.stats.dimensions.StoreRepushTriggerSource;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
 import com.linkedin.venice.utils.DataProviderUtils;
-import com.linkedin.venice.utils.OpenTelemetryDataPointTestUtils;
+import com.linkedin.venice.utils.OpenTelemetryDataTestUtils;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import org.testng.annotations.BeforeMethod;
@@ -204,7 +204,7 @@ public class LogCompactionStatsTest extends AbstractTestVeniceParentHelixAdmin {
       String metricName,
       int expectedMetricValue,
       Attributes expectedAttributes) {
-    OpenTelemetryDataPointTestUtils.validateLongPointDataFromCounter(
+    OpenTelemetryDataTestUtils.validateLongPointDataFromCounter(
         inMemoryMetricReader,
         expectedMetricValue,
         expectedAttributes,
@@ -216,7 +216,7 @@ public class LogCompactionStatsTest extends AbstractTestVeniceParentHelixAdmin {
       String metricName,
       long expectedMetricValue,
       Attributes expectedAttributes) {
-    OpenTelemetryDataPointTestUtils.validateLongPointDataFromGauge(
+    OpenTelemetryDataTestUtils.validateLongPointDataFromGauge(
         inMemoryMetricReader,
         expectedMetricValue,
         expectedAttributes,
