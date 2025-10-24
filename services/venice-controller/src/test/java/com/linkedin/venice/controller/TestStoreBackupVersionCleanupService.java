@@ -30,6 +30,7 @@ import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -117,6 +118,22 @@ public class TestStoreBackupVersionCleanupService {
     }
     doReturn(versionList.get(versionList.size() - 1)).when(store).getVersionOrThrow(currentVersion);
     return store;
+  }
+
+  @Test
+  public void testCleanupBackupVersionRepushAllRepush() {
+    // Version 1 is repushed from Version 2 until Version 10
+    int minRepushedVersion = 2;
+    int maxRepushedVersion = 10;
+
+    Store repushedStore = createStoreWithRepushes(minRepushedVersion, maxRepushedVersion);
+    doReturn(System.currentTimeMillis()).when(repushedStore).getLatestVersionPromoteToCurrentTimestamp();
+    doReturn(Duration.ofDays(7).toMillis()).when(admin).getBackupVersionDefaultRetentionMs();
+    Assert.assertTrue(service.cleanupBackupVersion(repushedStore, CLUSTER_NAME));
+    // Verify that versions 1 through 8 are deleted
+    for (int v = 1; v < 9; v++) {
+      verify(admin).deleteOldVersionInStore(CLUSTER_NAME, repushedStore.getName(), v);
+    }
   }
 
   @Test
