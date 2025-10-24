@@ -17,6 +17,7 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.ChunkAwareCallback;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.nio.ByteBuffer;
+import java.util.function.Consumer;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -25,8 +26,8 @@ public class LeaderProducerCallback implements ChunkAwareCallback {
   private static final Logger LOGGER = LogManager.getLogger(LeaderProducerCallback.class);
   private static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER =
       RedundantExceptionFilter.getRedundantExceptionFilter();
-  private static final Runnable NO_OP = () -> {};
-  private Runnable onCompletionFunction = NO_OP;
+  private static final Consumer<PubSubProduceResult> NO_OP = produceResult -> {};
+  private Consumer<PubSubProduceResult> onCompletionFunction = NO_OP;
 
   protected static final ChunkedValueManifestSerializer CHUNKED_VALUE_MANIFEST_SERIALIZER =
       new ChunkedValueManifestSerializer(false);
@@ -75,7 +76,7 @@ public class LeaderProducerCallback implements ChunkAwareCallback {
 
   @Override
   public void onCompletion(PubSubProduceResult produceResult, Exception e) {
-    this.onCompletionFunction.run();
+    this.onCompletionFunction.accept(produceResult);
     if (e != null) {
       ingestionTask.getVersionedDIVStats()
           .recordLeaderProducerFailure(ingestionTask.getStoreName(), ingestionTask.versionNumber);
@@ -352,7 +353,7 @@ public class LeaderProducerCallback implements ChunkAwareCallback {
     }
   }
 
-  public void setOnCompletionFunction(Runnable onCompletionFunction) {
+  public void setOnCompletionFunction(Consumer<PubSubProduceResult> onCompletionFunction) {
     this.onCompletionFunction = onCompletionFunction;
   }
 
