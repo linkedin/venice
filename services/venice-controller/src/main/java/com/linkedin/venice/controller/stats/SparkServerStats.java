@@ -36,14 +36,24 @@ public class SparkServerStats extends AbstractVeniceStats {
   private final MetricEntityStateFourEnums<ControllerRoute, HttpResponseStatusEnum, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory> successfulRequestLatencyHistogramMetric;
   private final MetricEntityStateFourEnums<ControllerRoute, HttpResponseStatusEnum, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory> failedRequestLatencyHistogramMetric;
 
-  public SparkServerStats(MetricsRepository metricsRepository, String clusterName) {
-    super(metricsRepository, clusterName);
+  public SparkServerStats(MetricsRepository metricsRepository, String statsPrefix) {
+    // Constructor for cluster generic stats
+    this(metricsRepository, OpenTelemetryMetricsSetup.builder(metricsRepository).build(), statsPrefix);
+  }
 
-    OpenTelemetryMetricsSetup.OpenTelemetryMetricsSetupInfo otelData =
-        OpenTelemetryMetricsSetup.builder(metricsRepository)
-            // set all base dimensions for this stats class and build
-            .setClusterName(clusterName)
-            .build();
+  public SparkServerStats(MetricsRepository metricsRepository, String statsPrefix, String clusterName) {
+    // Constructor for cluster specific stats
+    this(
+        metricsRepository,
+        OpenTelemetryMetricsSetup.builder(metricsRepository).setClusterName(clusterName).build(),
+        clusterName + "." + statsPrefix);
+  }
+
+  public SparkServerStats(
+      MetricsRepository metricsRepository,
+      OpenTelemetryMetricsSetup.OpenTelemetryMetricsSetupInfo otelData,
+      String name) {
+    super(metricsRepository, name);
 
     this.otelRepository = otelData.getOtelRepository();
     this.baseDimensionsMap = otelData.getBaseDimensionsMap();

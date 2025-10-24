@@ -212,9 +212,7 @@ public class AdminSparkServer extends AbstractVeniceService {
     statsMap = new HashMap<>(clusters.size());
     String statsPrefix = sslEnabled ? "secure_" : "";
     for (String cluster: clusters) {
-      statsMap.put(
-          cluster,
-          new SparkServerStats(metricsRepository, cluster + "." + statsPrefix + "controller_spark_server"));
+      statsMap.put(cluster, new SparkServerStats(metricsRepository, statsPrefix + "controller_spark_server", cluster));
     }
     nonclusterSpecificStats = new SparkServerStats(metricsRepository, "." + statsPrefix + "controller_spark_server");
     EmbeddedServers.add(EmbeddedServers.Identifiers.JETTY, new VeniceSparkServerFactory(jettyConfigOverrides));
