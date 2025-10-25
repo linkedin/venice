@@ -3258,6 +3258,16 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         break;
       case TOPIC_SWITCH:
         TopicSwitch topicSwitch = (TopicSwitch) controlMessage.controlMessageUnion;
+        if (!partitionConsumptionState.isEndOfPushReceived()) {
+          LOGGER.error(
+              "{} received TOPIC_SWITCH control message before receiving END_OF_PUSH. Position: {}",
+              partitionConsumptionState.getReplicaId(),
+              offset);
+          throw new VeniceException(
+              "Received TOPIC_SWITCH control message before receiving END_OF_PUSH for replica: "
+                  + partitionConsumptionState.getReplicaId());
+        }
+
         LOGGER.info(
             "Received {} control message. Replica: {}, Offset: {} NewSource: {}",
             type.name(),

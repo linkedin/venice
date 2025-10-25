@@ -2672,6 +2672,16 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                 beforeProcessingPerRecordTimestampNs);
             break;
           case TOPIC_SWITCH:
+            if (!partitionConsumptionState.isEndOfPushReceived()) {
+              LOGGER.error(
+                  "{} received TOPIC_SWITCH control message before receiving END_OF_PUSH. Position: {}",
+                  partitionConsumptionState.getReplicaId(),
+                  consumerRecord.getPosition());
+              throw new VeniceMessageException(
+                  partitionConsumptionState.getReplicaId()
+                      + " - Received TOPIC_SWITCH message before END_OF_PUSH. TopicPartition: "
+                      + partitionConsumptionState.getReplicaId() + " Offset " + consumerRecord.getPosition());
+            }
             /**
              * For TOPIC_SWITCH message we should use -1 as consumedOffset. This will ensure that it does not update the
              * checkpointRtPosition in:
