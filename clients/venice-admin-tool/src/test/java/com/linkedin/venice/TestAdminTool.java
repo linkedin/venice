@@ -46,6 +46,7 @@ import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordSerializer;
+import com.linkedin.venice.utils.CliUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.views.ChangeCaptureView;
 import java.io.IOException;
@@ -73,7 +74,7 @@ public class TestAdminTool {
     Consumer<String> printCapture = (String s) -> output.add(s);
 
     MultiReplicaResponse multiReplicaResponse = new MultiReplicaResponse();
-    AdminTool.printObject(multiReplicaResponse, printCapture);
+    CliUtils.printObject(multiReplicaResponse, printCapture);
 
     Assert.assertFalse(
         output.get(output.size() - 1).contains("topic"),
