@@ -27,6 +27,7 @@ import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import io.tehuti.metrics.MetricsRepository;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -91,7 +92,7 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
   // 4MB bitset size, 2 bitmaps for active and old bitset
   private static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER =
       new RedundantExceptionFilter(8 * 1024 * 1024 * 4, TimeUnit.MINUTES.toMillis(10));
-  private final VeniceServerConfig serverConfig;
+  private final int serverIngestionInfoLogLineLimit;
   protected final ConsumerPollTracker consumerPollTracker;
   protected final InactiveTopicPartitionChecker inactiveTopicPartitionChecker;
 
@@ -123,7 +124,6 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
     this.LOGGER = LogManager.getLogger(
         KafkaConsumerService.class.getSimpleName() + " [" + kafkaUrlForLogger + "-" + poolType.getStatSuffix() + "]");
     this.poolType = poolType;
-    this.serverConfig = serverConfig;
 
     // Initialize consumers and consumerExecutor
     String consumerNamePrefix = "venice-shared-consumer-for-" + kafkaUrl + '-' + poolType.getStatSuffix();
@@ -199,6 +199,7 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
     } else {
       this.inactiveTopicPartitionChecker = null;
     }
+    serverIngestionInfoLogLineLimit = serverConfig.getServerIngestionInfoLogLineLimit();
     LOGGER.info("KafkaConsumerService was initialized with {} consumers.", numOfConsumersPerKafkaCluster);
   }
 
@@ -422,7 +423,7 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
         Thread slowestThread = threadFactory.getThread(slowestTaskId);
         SharedKafkaConsumer consumer = consumerToConsumptionTask.getByIndex(slowestTaskId).getKey();
         Map<PubSubTopicPartition, TopicPartitionIngestionInfo> topicPartitionIngestionInfoMap =
-            getIngestionInfoFromConsumer(consumer);
+            getIngestionInfoFromConsumer(true, consumer);
         String consumerIngestionInfoStr = convertTopicPartitionIngestionInfoMapToStr(topicPartitionIngestionInfoMap);
         // log the slowest consumer id if it couldn't make any progress in a minute!
         LOGGER.warn(
@@ -439,12 +440,15 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
   }
 
   public static String convertTopicPartitionIngestionInfoMapToStr(
-      // Convert Map of ingestion info for this consumer to String for logging with each partition line by line
       Map<PubSubTopicPartition, TopicPartitionIngestionInfo> topicPartitionIngestionInfoMap) {
+    // Convert Map of ingestion info for this consumer to String for logging with each partition line by line.
+    // Empty map could be caused by too frequent logging for a specific consumer.
     StringBuilder sb = new StringBuilder();
-    for (Map.Entry<PubSubTopicPartition, TopicPartitionIngestionInfo> entry: topicPartitionIngestionInfoMap
-        .entrySet()) {
-      sb.append(entry.getKey().toString()).append(": ").append(entry.getValue().toString()).append("\n");
+    if (topicPartitionIngestionInfoMap != null && !topicPartitionIngestionInfoMap.isEmpty()) {
+      for (Map.Entry<PubSubTopicPartition, TopicPartitionIngestionInfo> entry: topicPartitionIngestionInfoMap
+          .entrySet()) {
+        sb.append(entry.getKey().toString()).append(": ").append(entry.getValue().toString()).append("\n");
+      }
     }
     return sb.toString();
   }
@@ -564,19 +568,29 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
 
   public Map<PubSubTopicPartition, TopicPartitionIngestionInfo> getIngestionInfoFor(
       PubSubTopic versionTopic,
-      PubSubTopicPartition pubSubTopicPartition) {
+      PubSubTopicPartition pubSubTopicPartition,
+      boolean respectRedundantLoggingFilter) {
     SharedKafkaConsumer consumer = getConsumerAssignedToVersionTopicPartition(versionTopic, pubSubTopicPartition);
     Map<PubSubTopicPartition, TopicPartitionIngestionInfo> topicPartitionIngestionInfoMap =
-        getIngestionInfoFromConsumer(consumer);
+        getIngestionInfoFromConsumer(respectRedundantLoggingFilter, consumer);
     return topicPartitionIngestionInfoMap;
   }
 
   private Map<PubSubTopicPartition, TopicPartitionIngestionInfo> getIngestionInfoFromConsumer(
+      boolean respectRedundantLoggingFilter,
       SharedKafkaConsumer consumer) {
     Map<PubSubTopicPartition, TopicPartitionIngestionInfo> topicPartitionIngestionInfoMap = new HashMap<>();
     if (consumer != null) {
       ConsumptionTask consumptionTask = consumerToConsumptionTask.get(consumer);
       String consumerIdStr = consumptionTask.getTaskIdStr();
+      Set<PubSubTopicPartition> assignments = consumer.getAssignment();
+      // Shortcut to avoid generating consumer info string if: 1) too many partitions 2) logging too frequently.
+      if (assignments.size() > serverIngestionInfoLogLineLimit) {
+        return Collections.emptyMap();
+      }
+      if (respectRedundantLoggingFilter && REDUNDANT_LOGGING_FILTER.isRedundantException(consumerIdStr)) {
+        return Collections.emptyMap();
+      }
       for (PubSubTopicPartition topicPartition: consumer.getAssignment()) {
         long offsetLag = consumer.getOffsetLag(topicPartition);
         long latestOffset = consumer.getLatestOffset(topicPartition);

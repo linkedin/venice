@@ -635,18 +635,20 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
             long lag = currentTimestamp - heartbeatTs;
             if (lag > DEFAULT_STALE_HEARTBEAT_LOG_THRESHOLD_MILLIS && region.getValue().readyToServe) {
               String replicaId = getReplicaId(storeName, version, partition);
-              String ingestionInfoForReplica = kafkaStoreIngestionService
-                  .prepareIngestionInfoFor(storeName.getKey(), version.getKey(), partition.getKey(), region.getKey());
               String leaderOrFollower = isLeader ? "leader" : "follower";
               LOGGER.warn(
-                  "Replica: {}, region: {} is having {} heartbeat lag: {}, latest heartbeat: {}, current timestamp: {}, ingestion info: {}",
+                  "Replica: {}, region: {} is having {} heartbeat lag: {}, latest heartbeat: {}, current timestamp: {}",
                   replicaId,
                   region.getKey(),
                   leaderOrFollower,
                   lag,
                   heartbeatTs,
-                  currentTimestamp,
-                  ingestionInfoForReplica);
+                  currentTimestamp);
+              kafkaStoreIngestionService.attemptToPrintIngestionInfoFor(
+                  storeName.getKey(),
+                  version.getKey(),
+                  partition.getKey(),
+                  region.getKey());
             }
           }
         }
