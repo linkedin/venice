@@ -5082,9 +5082,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           partitionConsumptionState.getReplicaId(),
           position);
       LOGGER.error(errorMessage);
-      throw new VeniceMessageException(
-          partitionConsumptionState.getReplicaId() + " received TOPIC_SWITCH message before END_OF_PUSH. Position: "
-              + position);
+      throw new VeniceMessageException(errorMessage);
     }
   }
 }
