@@ -11,6 +11,7 @@ import static com.linkedin.venice.pushmonitor.ExecutionStatus.ERROR;
 import static com.linkedin.venice.utils.DataProviderUtils.BOOLEAN;
 import static com.linkedin.venice.utils.DataProviderUtils.allPermutationGenerator;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.mock;
@@ -34,6 +35,7 @@ import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.exceptions.DiskLimitExhaustedException;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.helix.ZkClientFactory;
 import com.linkedin.venice.meta.ClusterInfoProvider;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.SubscriptionBasedReadOnlyStoreRepository;
@@ -43,6 +45,7 @@ import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.serialization.avro.SchemaPresenceChecker;
 import com.linkedin.venice.service.ICProvider;
+import com.linkedin.venice.stats.ZkClientStatusStats;
 import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Optional;
@@ -50,9 +53,11 @@ import java.util.Properties;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.mockito.MockedConstruction;
 import org.mockito.MockedStatic;
 import org.testng.annotations.AfterMethod;
+import org.testng.annotations.BeforeClass;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
@@ -66,6 +71,14 @@ public class DaVinciBackendTest {
   private MockedStatic<ClientFactory> mockClientFactory;
   private MockedConstruction<VeniceMetadataRepositoryBuilder> mockMetadataBuilder;
   private MockedConstruction<SchemaPresenceChecker> mockSchemaPresenceChecker;
+
+  @BeforeClass
+  public void init() {
+    MockedStatic<ZkClientFactory> mockZkFactory = mockStatic(ZkClientFactory.class);
+    ZkClient mockZkClient = mock(ZkClient.class);
+    mockZkFactory.when(() -> ZkClientFactory.newZkClient(anyString())).thenReturn(mockZkClient);
+    doNothing().when(mockZkClient).subscribeStateChanges(any(ZkClientStatusStats.class));
+  }
 
   @BeforeMethod
   public void setUp() throws Exception {

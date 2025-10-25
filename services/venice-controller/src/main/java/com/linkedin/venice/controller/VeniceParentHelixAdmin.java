@@ -231,6 +231,7 @@ import com.linkedin.venice.meta.StoreDataAudit;
 import com.linkedin.venice.meta.StoreGraveyard;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.StoreVersionInfo;
+import com.linkedin.venice.meta.SystemStore;
 import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
@@ -1884,7 +1885,10 @@ public class VeniceParentHelixAdmin implements Admin {
       newVersion = getVeniceHelixAdmin().getIncrementalPushVersion(clusterName, storeName, pushJobId);
     } else {
       validateTargetedRegions(targetedRegions, clusterName);
-
+      int largestUsedRTVersionNumber =
+          store.isSystemStore() && VeniceSystemStoreType.getSystemStoreType(store.getName()) != null
+              ? ((SystemStore) store).getVeniceStore().getLargestUsedRTVersionNumber()
+              : store.getLargestUsedRTVersionNumber();
       newVersion = addVersionAndTopicOnly(
           clusterName,
           storeName,
@@ -1902,7 +1906,7 @@ public class VeniceParentHelixAdmin implements Admin {
           versionSwapDeferred,
           targetedRegions,
           repushSourceVersion,
-          store.getLargestUsedRTVersionNumber());
+          largestUsedRTVersionNumber);
     }
     if (VeniceSystemStoreType.getSystemStoreType(storeName) == null) {
       if (pushType.isBatch()) {
@@ -2094,7 +2098,7 @@ public class VeniceParentHelixAdmin implements Admin {
       throw new VeniceException("Cannot start incremental push since batch push is on going." + " store: " + storeName);
     }
 
-    String incrementalPushTopic = Utils.composeRealTimeTopic(storeName);
+    String incrementalPushTopic = Utils.getRealTimeTopicName(incrementalPushVersion);
     if (status.isError() || getVeniceHelixAdmin().isTopicTruncated(incrementalPushTopic)) {
       throw new VeniceException(
           "Cannot start incremental push since previous batch push has failed. Please run another bash job."
@@ -4874,7 +4878,7 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   /**
-   * @see Admin#skipAdminMessage(String, long, boolean, long)
+   * @see Admin#skipAdminMessage(String, String, boolean, long)
    */
   @Override
   public void skipAdminMessage(
@@ -5649,6 +5653,19 @@ public class VeniceParentHelixAdmin implements Admin {
       }
     }
     return aggregatedLargestUsedVersionNumber;
+  }
+
+  @Override
+  public int getLargestUsedRTVersion(String clusterName, String storeName) {
+    Map<String, ControllerClient> childControllers = getVeniceHelixAdmin().getControllerClientMap(clusterName);
+    int aggregatedLargestUsedRTVersionNumber = getVeniceHelixAdmin().getLargestUsedRTVersion(clusterName, storeName);
+    for (Map.Entry<String, ControllerClient> controller: childControllers.entrySet()) {
+      VersionResponse response = controller.getValue().getStoreLargestUsedVersion(clusterName, storeName);
+      if (response.getVersion() > aggregatedLargestUsedRTVersionNumber) {
+        aggregatedLargestUsedRTVersionNumber = response.getVersion();
+      }
+    }
+    return aggregatedLargestUsedRTVersionNumber;
   }
 
   /**
