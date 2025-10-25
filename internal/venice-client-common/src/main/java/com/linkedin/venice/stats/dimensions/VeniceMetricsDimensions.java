@@ -56,7 +56,10 @@ public enum VeniceMetricsDimensions {
   STORE_REPUSH_TRIGGER_SOURCE("store.repush.trigger.source"),
 
   /** Instance error type for blocked, unhealthy, and overloaded instances */
-  VENICE_INSTANCE_ERROR_TYPE("venice.instance.error_type");
+  VENICE_INSTANCE_ERROR_TYPE("venice.instance.error_type"),
+
+  /** Helix group id number */
+  VENICE_HELIX_GROUP_ID("venice.helix_group.id");
 
   private final String[] dimensionName = new String[VeniceOpenTelemetryMetricNamingFormat.SIZE];
 

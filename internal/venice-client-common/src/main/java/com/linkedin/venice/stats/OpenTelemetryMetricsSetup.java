@@ -56,6 +56,8 @@ public class OpenTelemetryMetricsSetup {
   }
 
   public static class Builder {
+    private static final int UNASSIGNED_HELIX_GROUP_ID = -1;
+
     private final MetricsRepository metricsRepository;
     private String storeName;
     private RequestType requestType;
@@ -63,6 +65,7 @@ public class OpenTelemetryMetricsSetup {
     private String clusterName;
     private String routeName;
     private RequestRetryType requestRetryType;
+    private int helixGroupId = UNASSIGNED_HELIX_GROUP_ID;
 
     public Builder(MetricsRepository metricsRepository) {
       this.metricsRepository = metricsRepository;
@@ -113,6 +116,14 @@ public class OpenTelemetryMetricsSetup {
      */
     public Builder setRequestRetryType(RequestRetryType requestRetryType) {
       this.requestRetryType = requestRetryType;
+      return this;
+    }
+
+    /**
+     * Set the Helix group ID dimension.
+     */
+    public Builder setHelixGroupId(int helixGroupId) {
+      this.helixGroupId = helixGroupId;
       return this;
     }
 
@@ -177,6 +188,14 @@ public class OpenTelemetryMetricsSetup {
         baseAttributesBuilder.put(
             otelRepository.getDimensionName(VeniceMetricsDimensions.VENICE_REQUEST_RETRY_TYPE),
             requestRetryType.getDimensionValue());
+      }
+
+      // Add helix group ID if provided
+      if (helixGroupId != UNASSIGNED_HELIX_GROUP_ID) {
+        String helixGroupIdStr = Integer.toString(helixGroupId);
+        baseDimensionsMap.put(VeniceMetricsDimensions.VENICE_HELIX_GROUP_ID, helixGroupIdStr);
+        baseAttributesBuilder
+            .put(otelRepository.getDimensionName(VeniceMetricsDimensions.VENICE_HELIX_GROUP_ID), helixGroupIdStr);
       }
 
       Attributes baseAttributes = baseAttributesBuilder.build();

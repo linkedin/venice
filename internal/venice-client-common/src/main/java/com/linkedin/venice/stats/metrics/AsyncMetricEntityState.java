@@ -304,8 +304,7 @@ public abstract class AsyncMetricEntityState {
     return baseDimensionsMap;
   }
 
-  /** used only for testing */
-  Sensor getTehutiSensor() {
+  public Sensor getTehutiSensor() {
     return tehutiSensor;
   }
 
