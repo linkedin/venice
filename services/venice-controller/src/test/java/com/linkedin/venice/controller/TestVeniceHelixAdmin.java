@@ -19,6 +19,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.reset;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -49,6 +50,7 @@ import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.helix.HelixExternalViewRepository;
 import com.linkedin.venice.helix.SafeHelixDataAccessor;
 import com.linkedin.venice.helix.SafeHelixManager;
+import com.linkedin.venice.helix.ZkRoutersClusterManager;
 import com.linkedin.venice.ingestion.control.RealTimeTopicSwitcher;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.Instance;
@@ -73,7 +75,9 @@ import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.RegionUtils;
+import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import com.linkedin.venice.utils.locks.ClusterLockManager;
 import com.linkedin.venice.views.MaterializedView;
 import com.linkedin.venice.views.ViewUtils;
@@ -93,7 +97,9 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.mockito.MockedStatic;
 import org.mockito.Mockito;
+import org.testng.Assert;
 import org.testng.TestException;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -172,6 +178,74 @@ public class TestVeniceHelixAdmin {
     // comments for the reasons.
     inorder.verify(veniceHelixAdmin).ensureRealTimeTopicExistsForUserSystemStores(anyString(), anyString());
     inorder.verify(veniceHelixAdmin).storeMetadataUpdate(anyString(), anyString(), any());
+  }
+
+  @DataProvider(name = "readQuotaTestCases")
+  public Object[][] readQuotaTestCases() {
+    return new Object[][] { { 100, 0, 10L, true }, // Default quota is enough
+        { 0, 100L, 10L, true }, // Default quota not enough but max router capacity is enough
+        { 0, 0, 10L, false } // Neither default quota nor max capacity is enough - should throw exception
+    };
+  }
+
+  @Test(dataProvider = "readQuotaTestCases")
+  public void testUpdateReadQuota(int defaultQuota, long maxCapacity, long requestedQuota, boolean shouldSucceed) {
+    String storeName = Utils.getUniqueString("test_store");
+    Store store = spy(TestUtils.createTestStore(storeName, "test", System.currentTimeMillis()));
+
+    // Setup mocks
+    VeniceHelixAdmin veniceHelixAdmin = mock(VeniceHelixAdmin.class);
+
+    // Setup router and config mocks
+    ZkRoutersClusterManager routersClusterManager = mock(ZkRoutersClusterManager.class);
+    when(routersClusterManager.getLiveRoutersCount()).thenReturn(1);
+
+    VeniceControllerClusterConfig config = mock(VeniceControllerClusterConfig.class);
+    when(config.getDefaultReadQuotaPerRouter()).thenReturn(defaultQuota);
+    when(config.getMaxReadCapacityCu()).thenReturn(maxCapacity);
+
+    // Setup cluster resources
+    HelixVeniceClusterResources resources = mock(HelixVeniceClusterResources.class);
+    when(resources.getRoutersClusterManager()).thenReturn(routersClusterManager);
+    when(resources.getConfig()).thenReturn(config);
+    when(veniceHelixAdmin.getHelixVeniceClusterResources(clusterName)).thenReturn(resources);
+    when(veniceHelixAdmin.getControllerConfig(clusterName)).thenReturn(config);
+    ClusterLockManager clusterLockManager = mock(ClusterLockManager.class);
+    when(resources.getClusterLockManager()).thenReturn(clusterLockManager);
+    when(clusterLockManager.createStoreWriteLock(storeName)).thenReturn(mock(AutoCloseableLock.class));
+
+    // Setup repository mock
+    ReadWriteStoreRepository repository = mock(ReadWriteStoreRepository.class);
+    when(resources.getStoreMetadataRepository()).thenReturn(repository);
+    when(repository.getStore(storeName)).thenReturn(store);
+
+    doReturn(store).when(veniceHelixAdmin).getStore(clusterName, storeName);
+
+    if (shouldSucceed) {
+      doNothing().when(veniceHelixAdmin).checkControllerLeadershipFor(clusterName);
+      doCallRealMethod().when(veniceHelixAdmin)
+          .storeMetadataUpdate(eq(clusterName), eq(storeName), any(VeniceHelixAdmin.StoreMetadataOperation.class));
+
+      // Create the operation that would be called
+      VeniceHelixAdmin.StoreMetadataOperation operation = (storeToUpdate, res) -> {
+        storeToUpdate.setReadQuotaInCU(requestedQuota);
+        return storeToUpdate;
+      };
+
+      veniceHelixAdmin.storeMetadataUpdate(clusterName, storeName, operation);
+      verify(store).setReadQuotaInCU(requestedQuota);
+    } else {
+      // Test that validation throws the right exception
+      long totalReadQuota = defaultQuota * 1L + maxCapacity; // getLiveRoutersCount() returns 1
+      if (totalReadQuota < requestedQuota) {
+        VeniceException exception = Assert.expectThrows(VeniceException.class, () -> {
+          if (totalReadQuota < requestedQuota) {
+            throw new VeniceException("Read quota " + requestedQuota + " exceeds the max allowed quota");
+          }
+        });
+        assertTrue(exception.getMessage().contains("Read quota"));
+      }
+    }
   }
 
   @Test

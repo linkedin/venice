@@ -157,6 +157,7 @@ import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_SCHEDULING_ENABLED;
 import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_THREAD_COUNT;
 import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_THRESHOLD_MS;
 import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_VERSION_STALENESS_THRESHOLD_MS;
+import static com.linkedin.venice.ConfigKeys.MAX_READ_CAPACITY;
 import static com.linkedin.venice.ConfigKeys.META_STORE_WRITER_CLOSE_CONCURRENCY;
 import static com.linkedin.venice.ConfigKeys.META_STORE_WRITER_CLOSE_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.MIN_NUMBER_OF_STORE_VERSIONS_TO_PRESERVE;
@@ -582,6 +583,7 @@ public class VeniceControllerClusterConfig {
   private final boolean disableParentRequestTopicForStreamPushes;
 
   private final int defaultReadQuotaPerRouter;
+  private final long maxReadCapacityCu;
 
   private final int defaultMaxRecordSizeBytes; // default value for VeniceWriter.maxRecordSizeBytes
   private final int replicationMetadataVersion;
@@ -766,6 +768,7 @@ public class VeniceControllerClusterConfig {
         props.getBoolean(CONTROLLER_DISABLE_PARENT_REQUEST_TOPIC_FOR_STREAM_PUSHES, false);
     this.defaultReadQuotaPerRouter =
         props.getInt(CONTROLLER_DEFAULT_READ_QUOTA_PER_ROUTER, DEFAULT_PER_ROUTER_READ_QUOTA);
+    this.maxReadCapacityCu = props.getLong(MAX_READ_CAPACITY, 100000);
     this.defaultMaxRecordSizeBytes =
         props.getInt(DEFAULT_MAX_RECORD_SIZE_BYTES, DEFAULT_MAX_RECORD_SIZE_BYTES_BACKFILL);
     if (defaultMaxRecordSizeBytes < BYTES_PER_MB) {
@@ -1280,6 +1283,10 @@ public class VeniceControllerClusterConfig {
 
   public int getDefaultReadQuotaPerRouter() {
     return defaultReadQuotaPerRouter;
+  }
+
+  public long getMaxReadCapacityCu() {
+    return maxReadCapacityCu;
   }
 
   public int getDefaultMaxRecordSizeBytes() {
