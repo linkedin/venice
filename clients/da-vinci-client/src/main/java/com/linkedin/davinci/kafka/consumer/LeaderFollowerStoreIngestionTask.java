@@ -2672,6 +2672,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                 beforeProcessingPerRecordTimestampNs);
             break;
           case TOPIC_SWITCH:
+            validateEndOfPushReceivedBeforeTopicSwitch(partitionConsumptionState, consumerRecord.getPosition());
             /**
              * For TOPIC_SWITCH message we should use -1 as consumedOffset. This will ensure that it does not update the
              * checkpointRtPosition in:
