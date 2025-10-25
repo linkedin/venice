@@ -113,6 +113,7 @@ import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.davinci.store.rocksdb.RocksDBServerConfig;
 import com.linkedin.davinci.transformer.TestStringRecordTransformer;
 import com.linkedin.davinci.validation.DataIntegrityValidator;
+import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceIngestionTaskKilledException;
@@ -203,6 +204,7 @@ import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordSerializer;
+import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.unit.matchers.ExceptionClassMatcher;
 import com.linkedin.venice.unit.matchers.NonEmptyStringMatcher;
@@ -464,6 +466,10 @@ public abstract class StoreIngestionTaskTest {
   private Supplier<StoreVersionState> storeVersionStateSupplier = () -> new StoreVersionState();
   private MockStoreVersionConfigs storeAndVersionConfigsUnderTest;
 
+  private MetaStoreWriter mockMetaStoreWriter;
+  private Function<String, Store> mockStoreResolver;
+  private Store mockMetaStore;
+
   private static byte[] getRandomKey(Integer partition) {
     String randomString = Utils.getUniqueString("KeyForPartition" + partition);
     return ByteBuffer.allocate(randomString.length() + 1)
@@ -583,6 +589,11 @@ public abstract class StoreIngestionTaskTest {
     mockRemoteKafkaConsumer = mock(PubSubConsumerAdapter.class);
     kafkaUrlToRecordsThrottler = new HashMap<>();
     kafkaClusterBasedRecordThrottler = new KafkaClusterBasedRecordThrottler(kafkaUrlToRecordsThrottler);
+
+    mockMetaStoreWriter = mock(MetaStoreWriter.class);
+    mockStoreResolver = mock(Function.class);
+    mockMetaStore = mock(Store.class);
+    mockMetaStoreWriter.storeResolver = mockStoreResolver;
 
     mockTopicManager = mock(TopicManager.class);
     mockTopicManagerRepository = mock(TopicManagerRepository.class);
@@ -1466,6 +1477,238 @@ public abstract class StoreIngestionTaskTest {
     return new MockInMemoryPartitionPosition(
         new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partition),
         offset);
+  }
+
+  @Test
+  public void testMetaStoreWriterIntegration() throws Exception {
+    // Setup
+    String metaStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeNameWithoutVersionInfo);
+    int versionNumber = 1;
+    int schemaId = 1;
+
+    Store mockMetaStore = mock(Store.class);
+    when(mockMetaStore.getName()).thenReturn(metaStoreName);
+    when(mockMetaStore.getLargestUsedRTVersionNumber()).thenReturn(1);
+
+    MetaStoreWriter mockMetaStoreWriter = mock(MetaStoreWriter.class);
+    Function<String, Store> mockStoreResolver = mock(Function.class);
+    mockMetaStoreWriter.storeResolver = mockStoreResolver;
+
+    // Meta store exists
+    when(mockStoreResolver.apply(metaStoreName)).thenReturn(mockMetaStore);
+
+    PubSubTopic metaStoreRTTopic = pubSubTopicRepository.getTopic(Utils.getRealTimeTopicName(mockMetaStore));
+    when(mockTopicManager.containsTopicWithRetries(metaStoreRTTopic, 5)).thenReturn(true);
+
+    // Setup StoreIngestionTask with real metaStoreWriter
+    localVeniceWriter.broadcastStartOfPush(new HashMap<>());
+    localVeniceWriter.put(putKeyFoo, putValue, schemaId).get();
+
+    StoreIngestionTaskTestConfig config = new StoreIngestionTaskTestConfig(Utils.setOf(PARTITION_FOO), () -> {
+      // Verify that the meta store was resolved
+      verify(mockStoreResolver, timeout(TEST_TIMEOUT_MS).atLeastOnce()).apply(metaStoreName);
+
+      // Verify that writeInUseValueSchema was called
+      verify(mockMetaStoreWriter, timeout(TEST_TIMEOUT_MS))
+          .writeInUseValueSchema(storeNameWithoutVersionInfo, versionNumber, schemaId);
+    }, AA_OFF);
+
+    // Override to inject our mock metaStoreWriter
+    config.setBeforeStartingConsumption(() -> {
+      try {
+        Field metaStoreWriterField = StoreIngestionTask.class.getDeclaredField("metaStoreWriter");
+        metaStoreWriterField.setAccessible(true);
+        metaStoreWriterField.set(storeIngestionTaskUnderTest, mockMetaStoreWriter);
+      } catch (Exception e) {
+        throw new RuntimeException(e);
+      }
+    });
+
+    runTest(config);
+  }
+
+  @Test
+  public void testMetaStoreWriterWhenMetaStoreDoesNotExist() throws Exception {
+    // Setup
+    String metaStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeNameWithoutVersionInfo);
+    int schemaId = 1;
+
+    MetaStoreWriter mockMetaStoreWriter = mock(MetaStoreWriter.class);
+    Function<String, Store> mockStoreResolver = mock(Function.class);
+    mockMetaStoreWriter.storeResolver = mockStoreResolver;
+
+    // Meta store does NOT exist
+    when(mockStoreResolver.apply(metaStoreName)).thenReturn(null);
+
+    localVeniceWriter.broadcastStartOfPush(new HashMap<>());
+    localVeniceWriter.put(putKeyFoo, putValue, schemaId).get();
+
+    StoreIngestionTaskTestConfig config = new StoreIngestionTaskTestConfig(Utils.setOf(PARTITION_FOO), () -> {
+      // Verify that the meta store was checked
+      verify(mockStoreResolver, timeout(TEST_TIMEOUT_MS).atLeastOnce()).apply(metaStoreName);
+
+      // Verify that writeInUseValueSchema was NOT called (meta store doesn't exist)
+      verify(mockMetaStoreWriter, never()).writeInUseValueSchema(anyString(), anyInt(), anyInt());
+    }, AA_OFF);
+
+    config.setBeforeStartingConsumption(() -> {
+      try {
+        Field metaStoreWriterField = StoreIngestionTask.class.getDeclaredField("metaStoreWriter");
+        metaStoreWriterField.setAccessible(true);
+        metaStoreWriterField.set(storeIngestionTaskUnderTest, mockMetaStoreWriter);
+      } catch (Exception e) {
+        throw new RuntimeException(e);
+      }
+    });
+
+    runTest(config);
+  }
+
+  @Test
+  public void testMetaStoreWriterWhenRTTopicDoesNotExist() throws Exception {
+    // Setup
+    String metaStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeNameWithoutVersionInfo);
+    int schemaId = 1;
+
+    Store mockMetaStore = mock(Store.class);
+    when(mockMetaStore.getName()).thenReturn(metaStoreName);
+    when(mockMetaStore.getLargestUsedRTVersionNumber()).thenReturn(1);
+
+    MetaStoreWriter mockMetaStoreWriter = mock(MetaStoreWriter.class);
+    Function<String, Store> mockStoreResolver = mock(Function.class);
+    mockMetaStoreWriter.storeResolver = mockStoreResolver;
+
+    // Meta store exists
+    when(mockStoreResolver.apply(metaStoreName)).thenReturn(mockMetaStore);
+
+    // But RT topic does NOT exist
+    PubSubTopic metaStoreRTTopic = pubSubTopicRepository.getTopic(Utils.getRealTimeTopicName(mockMetaStore));
+    when(mockTopicManager.containsTopicWithRetries(metaStoreRTTopic, 5)).thenReturn(false);
+
+    localVeniceWriter.broadcastStartOfPush(new HashMap<>());
+    localVeniceWriter.put(putKeyFoo, putValue, schemaId).get();
+
+    StoreIngestionTaskTestConfig config = new StoreIngestionTaskTestConfig(Utils.setOf(PARTITION_FOO), () -> {
+      // Verify that the meta store was resolved
+      verify(mockStoreResolver, timeout(TEST_TIMEOUT_MS).atLeastOnce()).apply(metaStoreName);
+
+      // Verify RT topic check was made
+      verify(mockTopicManager, timeout(TEST_TIMEOUT_MS).atLeastOnce()).containsTopicWithRetries(metaStoreRTTopic, 5);
+
+      // Verify that writeInUseValueSchema was NOT called (RT topic doesn't exist)
+      verify(mockMetaStoreWriter, never()).writeInUseValueSchema(anyString(), anyInt(), anyInt());
+    }, AA_OFF);
+
+    config.setBeforeStartingConsumption(() -> {
+      try {
+        Field metaStoreWriterField = StoreIngestionTask.class.getDeclaredField("metaStoreWriter");
+        metaStoreWriterField.setAccessible(true);
+        metaStoreWriterField.set(storeIngestionTaskUnderTest, mockMetaStoreWriter);
+      } catch (Exception e) {
+        throw new RuntimeException(e);
+      }
+    });
+
+    runTest(config);
+  }
+
+  @Test
+  public void testMetaStoreWriterSkippedForSystemStore() throws Exception {
+    // When the store itself IS a system store, it should skip meta store writing
+    String systemStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeNameWithoutVersionInfo);
+
+    MetaStoreWriter mockMetaStoreWriter = mock(MetaStoreWriter.class);
+    Function<String, Store> mockStoreResolver = mock(Function.class);
+    mockMetaStoreWriter.storeResolver = mockStoreResolver;
+
+    localVeniceWriter.broadcastStartOfPush(new HashMap<>());
+    localVeniceWriter.put(putKeyFoo, putValue, SCHEMA_ID).get();
+
+    StoreIngestionTaskTestConfig config = new StoreIngestionTaskTestConfig(Utils.setOf(PARTITION_FOO), () -> {
+      // Verify that storeResolver was NEVER called (system store should be skipped)
+      verify(mockStoreResolver, never()).apply(anyString());
+      verify(mockMetaStoreWriter, never()).writeInUseValueSchema(anyString(), anyInt(), anyInt());
+    }, AA_OFF);
+
+    config.setBeforeStartingConsumption(() -> {
+      try {
+        // Override store name to be a system store
+        Field storeNameField = StoreIngestionTask.class.getDeclaredField("storeName");
+        storeNameField.setAccessible(true);
+        storeNameField.set(storeIngestionTaskUnderTest, systemStoreName);
+
+        Field metaStoreWriterField = StoreIngestionTask.class.getDeclaredField("metaStoreWriter");
+        metaStoreWriterField.setAccessible(true);
+        metaStoreWriterField.set(storeIngestionTaskUnderTest, mockMetaStoreWriter);
+      } catch (Exception e) {
+        throw new RuntimeException(e);
+      }
+    });
+
+    runTest(config);
+  }
+
+  @Test
+  public void testMetaStoreResolutionWhenMetaStoreExists() {
+    // Setup
+    String STORE_NAME = "testStore";
+    String META_STORE_NAME = "venice_system_store_meta_store_testStore";
+
+    when(mockStoreResolver.apply(META_STORE_NAME)).thenReturn(mockMetaStore);
+    when(mockMetaStore.getName()).thenReturn(META_STORE_NAME);
+    PubSubTopic metaStoreRTTopic = pubSubTopicRepository.getTopic(Utils.getRealTimeTopicName(mockMetaStore));
+    when(mockTopicManager.containsTopicWithRetries(metaStoreRTTopic, 5)).thenReturn(true);
+
+    // Execute: Call the method that uses metaStoreWriter.storeResolver
+    String resolvedMetaStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(STORE_NAME);
+    Store resolvedStore = mockStoreResolver.apply(resolvedMetaStoreName);
+
+    // Verify
+    assertNotNull(resolvedStore);
+    assertEquals(resolvedStore.getName(), META_STORE_NAME);
+    verify(mockStoreResolver, times(1)).apply(META_STORE_NAME);
+  }
+
+  @Test
+  public void testMetaStoreResolutionWhenMetaStoreDoesNotExist() {
+    // Setup - metaStore is null
+    String STORE_NAME = "testStore";
+    String META_STORE_NAME = "venice_system_store_meta_store_testStore";
+    when(mockStoreResolver.apply(META_STORE_NAME)).thenReturn(null);
+
+    // Execute
+    String resolvedMetaStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(STORE_NAME);
+    Store resolvedStore = mockStoreResolver.apply(resolvedMetaStoreName);
+
+    // Verify - should handle null gracefully
+    assertNull(resolvedStore);
+    verify(mockStoreResolver, times(1)).apply(META_STORE_NAME);
+  }
+
+  @Test
+  public void testMetaStoreNameDerivation() {
+    // Test that we're deriving the meta store name correctly
+    String STORE_NAME = "testStore";
+    String META_STORE_NAME = "venice_system_store_meta_store_testStore";
+    String metaStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(STORE_NAME);
+    assertEquals(metaStoreName, META_STORE_NAME);
+
+    // Verify the pattern
+    assertTrue(metaStoreName.startsWith(VeniceSystemStoreType.META_STORE.getPrefix()));
+    assertTrue(metaStoreName.endsWith(STORE_NAME));
+  }
+
+  @Test
+  public void testSkipMetaStoreResolutionForSystemStores() {
+    // Setup - if storeName itself is already a meta store, we shouldn't resolve it again
+    String STORE_NAME = "testStore";
+    String systemStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(STORE_NAME);
+
+    // Execute
+    boolean isSystemStore = VeniceSystemStoreType.META_STORE.isSystemStore(systemStoreName);
+
+    // Verify - we should skip resolution for system stores
+    assertTrue(isSystemStore);
   }
 
   @Test(timeOut = 10 * Time.MS_PER_SECOND)

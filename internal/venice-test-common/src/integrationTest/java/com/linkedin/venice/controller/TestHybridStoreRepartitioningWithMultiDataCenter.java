@@ -133,8 +133,16 @@ public class TestHybridStoreRepartitioningWithMultiDataCenter {
     String realTimeTopicInVersion = Utils.getRealTimeTopicName(currentVersion);
     String realTimeTopicInBackupVersion = Utils.getRealTimeTopicName(backupVersion);
 
-    Assert.assertEquals(realTimeTopicNameInVersionConfig, expectedRealTimeTopicNameInVersionConfig);
-    Assert.assertEquals(realTimeTopicNameInBackupVersionConfig, expectedRealTimeTopicNameInBackupVersionConfig);
+    Assert.assertEquals(
+        realTimeTopicNameInVersionConfig,
+        expectedRealTimeTopicNameInVersionConfig.isEmpty()
+            ? oldStyleRealTimeTopicName
+            : expectedRealTimeTopicNameInVersionConfig);
+    Assert.assertEquals(
+        realTimeTopicNameInBackupVersionConfig,
+        expectedRealTimeTopicNameInBackupVersionConfig.isEmpty()
+            ? oldStyleRealTimeTopicName
+            : expectedRealTimeTopicNameInBackupVersionConfig);
     Assert.assertEquals(
         realTimeTopicInVersion,
         expectedRealTimeTopicNameInVersionConfig.isEmpty()

@@ -1,12 +1,11 @@
 package com.linkedin.venice.utils;
 
 import static com.linkedin.venice.HttpConstants.LOCALHOST;
-import static com.linkedin.venice.meta.Version.REAL_TIME_TOPIC_SUFFIX;
+import static com.linkedin.venice.meta.Version.DEFAULT_RT_VERSION_NUMBER;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
-import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.ErrorType;
@@ -25,6 +24,8 @@ import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.StoreVersionInfo;
+import com.linkedin.venice.meta.SystemStore;
+import com.linkedin.venice.meta.SystemStoreAttributes;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.pubsub.PubSubTopicImpl;
@@ -614,29 +615,41 @@ public class Utils {
     }
   }
 
-  /** This method should only be used for system stores.
+  /** This method should only be used to create old style rt topics.
    * For other stores, use {@link Utils#getRealTimeTopicName(Store)}, {@link Utils#getRealTimeTopicName(StoreInfo)} or
    * {@link Utils#getRealTimeTopicName(Version)} in source code.
    * For tests, use {@link Utils#composeRealTimeTopic(String, int)}
    */
   public static String composeRealTimeTopic(String storeName) {
-    return storeName + REAL_TIME_TOPIC_SUFFIX;
+    return storeName + Version.REAL_TIME_TOPIC_SUFFIX;
   }
 
   public static String composeRealTimeTopic(String storeName, int versionNumber) {
-    return String.format(Version.REAL_TIME_TOPIC_TEMPLATE, storeName, versionNumber);
+    if (versionNumber == DEFAULT_RT_VERSION_NUMBER) {
+      return composeRealTimeTopic(storeName);
+    } else {
+      return String.format(Version.REAL_TIME_TOPIC_TEMPLATE, storeName, versionNumber);
+    }
   }
 
   /**
    * It follows the following order to search for real time topic name,
    * i) current store-version config, ii) store config, iii) other store-version configs, iv) default name
    */
-  public static String getRealTimeTopicName(Store store) {
+  public static String getRealTimeTopicName(Store store, int rtVersionNumber) {
     return getRealTimeTopicName(
         store.getName(),
         store.getVersions(),
         store.getCurrentVersion(),
-        store.getHybridStoreConfig());
+        store.getHybridStoreConfig(),
+        rtVersionNumber);
+  }
+
+  public static String getRealTimeTopicName(Store store) {
+    if (store instanceof SystemStore) {
+      return getRealTimeTopicName(store, ((SystemStore) store).getVeniceStore().getLargestUsedRTVersionNumber());
+    }
+    return getRealTimeTopicName(store, DEFAULT_RT_VERSION_NUMBER);
   }
 
   public static String getRealTimeTopicName(StoreInfo storeInfo) {
@@ -644,26 +657,27 @@ public class Utils {
         storeInfo.getName(),
         storeInfo.getVersions(),
         storeInfo.getCurrentVersion(),
-        storeInfo.getHybridStoreConfig());
+        storeInfo.getHybridStoreConfig(),
+        DEFAULT_RT_VERSION_NUMBER);
   }
 
-  public static boolean isRTVersioningApplicable(String storeName) {
-    return !(VeniceSystemStoreUtils.isSystemStore(storeName) || VeniceSystemStoreUtils.isUserSystemStore(storeName)
-        || VeniceSystemStoreUtils.isParticipantStore(storeName));
+  public static String getRealTimeTopicName(SystemStoreAttributes systemStoreAttributes) {
+    return getRealTimeTopicName(
+        null,
+        systemStoreAttributes.getVersions(),
+        systemStoreAttributes.getCurrentVersion(),
+        null,
+        DEFAULT_RT_VERSION_NUMBER);
   }
 
   public static String getRealTimeTopicName(Version version) {
-    if (!isRTVersioningApplicable(version.getStoreName())) {
-      return composeRealTimeTopic(version.getStoreName());
-    }
-
     if (version.isHybrid()) {
       String realTimeTopicName = version.getHybridStoreConfig().getRealTimeTopicName();
-      return getRealTimeTopicNameIfEmpty(realTimeTopicName, version.getStoreName());
+      return getRealTimeTopicNameIfEmpty(realTimeTopicName, version.getStoreName(), DEFAULT_RT_VERSION_NUMBER);
     } else {
       // if the version is not hybrid, caller should not ask for the real time topic,
       // but unfortunately that happens, so instead of throwing exception, we just return a default name.
-      return composeRealTimeTopic(version.getStoreName());
+      return composeRealTimeTopic(version.getStoreName(), DEFAULT_RT_VERSION_NUMBER);
     }
   }
 
@@ -671,17 +685,13 @@ public class Utils {
     return store.getVersions().stream().map(Utils::getRealTimeTopicName).collect(Collectors.toSet());
   }
 
-  static String getRealTimeTopicName(
+  public static String getRealTimeTopicName(
       String storeName,
       List<Version> versions,
       int currentVersionNumber,
-      HybridStoreConfig hybridStoreConfig) {
-    if (!isRTVersioningApplicable(storeName)) {
-      return composeRealTimeTopic(storeName);
-    }
-
+      HybridStoreConfig hybridStoreConfig,
+      int rtVersionNumber) {
     Set<String> realTimeTopicNames = new HashSet<>();
-
     for (Version version: versions) {
       if (version.isHybrid()) {
         String realTimeTopicName = version.getHybridStoreConfig().getRealTimeTopicName();
@@ -710,14 +720,16 @@ public class Utils {
 
     if (hybridStoreConfig != null) {
       String realTimeTopicName = hybridStoreConfig.getRealTimeTopicName();
-      return getRealTimeTopicNameIfEmpty(realTimeTopicName, storeName);
+      return getRealTimeTopicNameIfEmpty(realTimeTopicName, storeName, rtVersionNumber);
     }
 
-    return composeRealTimeTopic(storeName);
+    return composeRealTimeTopic(storeName, rtVersionNumber);
   }
 
-  private static String getRealTimeTopicNameIfEmpty(String realTimeTopicName, String storeName) {
-    return StringUtils.isBlank(realTimeTopicName) ? composeRealTimeTopic(storeName) : realTimeTopicName;
+  private static String getRealTimeTopicNameIfEmpty(String realTimeTopicName, String storeName, int rtVersionNumber) {
+    return StringUtils.isBlank(realTimeTopicName)
+        ? composeRealTimeTopic(storeName, rtVersionNumber)
+        : realTimeTopicName;
   }
 
   public static String getRealTimeTopicNameFromSeparateRealTimeTopic(String separateRealTimeTopicName) {

@@ -333,15 +333,18 @@ public class UtilsTest {
     HybridStoreConfig mockHybridConfig = mock(HybridStoreConfig.class);
 
     when(mockHybridConfig.getRealTimeTopicName()).thenReturn("RealTimeTopic");
-    String result = Utils.getRealTimeTopicName("TestStore", Collections.EMPTY_LIST, 1, mockHybridConfig);
+    String result = Utils.getRealTimeTopicName("TestStore", Collections.EMPTY_LIST, 1, mockHybridConfig, 1);
 
     assertEquals(result, "RealTimeTopic");
   }
 
   @Test
   void testGetRealTimeTopicNameWithoutHybridConfig() {
-    String result = Utils.getRealTimeTopicName(STORE_NAME, Collections.EMPTY_LIST, 0, null);
+    String result = Utils.getRealTimeTopicName(STORE_NAME, Collections.EMPTY_LIST, 0, null, 0);
     assertEquals(result, STORE_NAME + Version.REAL_TIME_TOPIC_SUFFIX);
+
+    result = Utils.getRealTimeTopicName(STORE_NAME, Collections.EMPTY_LIST, 0, null, 1);
+    assertEquals(result, STORE_NAME + Version.REAL_TIME_TOPIC_SUFFIX + "_v1");
   }
 
   @Test
@@ -358,7 +361,7 @@ public class UtilsTest {
     when(mockConfig1.getRealTimeTopicName()).thenReturn("RealTimeTopic1");
     when(mockConfig2.getRealTimeTopicName()).thenReturn("RealTimeTopic2");
 
-    String result = Utils.getRealTimeTopicName(STORE_NAME, Lists.newArrayList(mockVersion1, mockVersion2), 1, null);
+    String result = Utils.getRealTimeTopicName(STORE_NAME, Lists.newArrayList(mockVersion1, mockVersion2), 1, null, 1);
     assertTrue(result.equals("RealTimeTopic1") || result.equals("RealTimeTopic2"));
   }
 

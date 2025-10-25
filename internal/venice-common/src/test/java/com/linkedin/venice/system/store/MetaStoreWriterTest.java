@@ -16,7 +16,10 @@ import static org.testng.AssertJUnit.assertTrue;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixReadOnlyZKSharedSchemaRepository;
+import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.SystemStore;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.schema.GeneratedSchemaID;
 import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
@@ -35,15 +38,168 @@ import java.util.concurrent.locks.ReentrantLock;
 import org.apache.avro.Schema;
 import org.mockito.ArgumentCaptor;
 import org.testng.Assert;
+import org.testng.annotations.BeforeClass;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
 public class MetaStoreWriterTest {
+  Store metaStore = mock(Store.class);
+  String metaStoreName = "testStore";
+
+  @BeforeClass
+  public void setUp() {
+    doReturn(metaStoreName).when(metaStore).getName();
+  }
+
+  @Test
+  public void testGetOrCreateMetaStoreWriterWithSystemStore() {
+    // Setup mocks
+    TopicManager topicManager = mock(TopicManager.class);
+    VeniceWriterFactory writerFactory = mock(VeniceWriterFactory.class);
+    HelixReadOnlyZKSharedSchemaRepository schemaRepo = mock(HelixReadOnlyZKSharedSchemaRepository.class);
+    PubSubTopicRepository pubSubTopicRepository = mock(PubSubTopicRepository.class);
+    Schema derivedComputeSchema = mock(Schema.class);
+
+    // Mock SystemStore and its components
+    SystemStore systemStore = mock(SystemStore.class);
+    Store veniceStore = mock(Store.class);
+    String systemStoreName = "venice_system_store_davinci_push_status_store_testStore";
+    int expectedRTVersion = 5;
+
+    when(systemStore.getName()).thenReturn(systemStoreName);
+    when(systemStore.isSystemStore()).thenReturn(true);
+    when(systemStore.getVeniceStore()).thenReturn(veniceStore);
+    when(veniceStore.getLargestUsedRTVersionNumber()).thenReturn(expectedRTVersion);
+
+    // Mock the PubSubTopic and TopicManager
+    PubSubTopic mockTopic = mock(PubSubTopic.class);
+    when(mockTopic.getName()).thenReturn(systemStoreName + "_rt_v" + expectedRTVersion);
+    when(pubSubTopicRepository.getTopic(anyString())).thenReturn(mockTopic);
+    when(topicManager.containsTopicAndAllPartitionsAreOnline(any())).thenReturn(true);
+
+    // Mock VeniceWriter
+    VeniceWriter mockWriter = mock(VeniceWriter.class);
+    when(writerFactory.createVeniceWriter(any())).thenReturn(mockWriter);
+
+    // Create MetaStoreWriter
+    MetaStoreWriter metaStoreWriter = new MetaStoreWriter(
+        topicManager,
+        writerFactory,
+        schemaRepo,
+        derivedComputeSchema,
+        pubSubTopicRepository,
+        5000L,
+        2,
+        storeName -> systemStore);
+
+    // Execute
+    VeniceWriter result = metaStoreWriter.getOrCreateMetaStoreWriter(systemStoreName);
+
+    // Verify
+    Assert.assertNotNull(result);
+    verify(veniceStore, times(1)).getLargestUsedRTVersionNumber();
+    verify(systemStore, times(1)).getVeniceStore();
+  }
+
+  @Test
+  public void testGetOrCreateMetaStoreWriterWithRegularStore() {
+    // Setup mocks
+    TopicManager topicManager = mock(TopicManager.class);
+    VeniceWriterFactory writerFactory = mock(VeniceWriterFactory.class);
+    HelixReadOnlyZKSharedSchemaRepository schemaRepo = mock(HelixReadOnlyZKSharedSchemaRepository.class);
+    PubSubTopicRepository pubSubTopicRepository = mock(PubSubTopicRepository.class);
+    Schema derivedComputeSchema = mock(Schema.class);
+
+    // Mock regular Store
+    Store regularStore = mock(Store.class);
+    String storeName = "regularStore";
+    int expectedRTVersion = 3;
+
+    when(regularStore.getName()).thenReturn(storeName);
+    when(regularStore.isSystemStore()).thenReturn(false);
+    when(regularStore.getLargestUsedRTVersionNumber()).thenReturn(expectedRTVersion);
+
+    // Mock the PubSubTopic and TopicManager
+    PubSubTopic mockTopic = mock(PubSubTopic.class);
+    when(mockTopic.getName()).thenReturn(storeName + "_rt_v" + expectedRTVersion);
+    when(pubSubTopicRepository.getTopic(anyString())).thenReturn(mockTopic);
+    when(topicManager.containsTopicAndAllPartitionsAreOnline(any())).thenReturn(true);
+
+    // Mock VeniceWriter
+    VeniceWriter mockWriter = mock(VeniceWriter.class);
+    when(writerFactory.createVeniceWriter(any())).thenReturn(mockWriter);
+
+    // Create MetaStoreWriter
+    MetaStoreWriter metaStoreWriter = new MetaStoreWriter(
+        topicManager,
+        writerFactory,
+        schemaRepo,
+        derivedComputeSchema,
+        pubSubTopicRepository,
+        5000L,
+        2,
+        storeName1 -> regularStore);
+
+    // Execute
+    VeniceWriter result = metaStoreWriter.getOrCreateMetaStoreWriter(storeName);
+
+    // Verify
+    Assert.assertNotNull(result);
+    verify(regularStore, times(1)).getLargestUsedRTVersionNumber();
+    // verify(regularStore, never()).getVeniceStore; // Should not call getVeniceStore() for regular stores
+  }
+
+  @Test
+  public void testGetOrCreateMetaStoreWriterWithNonSystemStoreType() {
+    // Setup mocks
+    TopicManager topicManager = mock(TopicManager.class);
+    VeniceWriterFactory writerFactory = mock(VeniceWriterFactory.class);
+    HelixReadOnlyZKSharedSchemaRepository schemaRepo = mock(HelixReadOnlyZKSharedSchemaRepository.class);
+    PubSubTopicRepository pubSubTopicRepository = mock(PubSubTopicRepository.class);
+    Schema derivedComputeSchema = mock(Schema.class);
+
+    // Mock a store that returns null for VeniceSystemStoreType but is a system store
+    Store store = mock(Store.class);
+    String storeName = "someSystemStore";
+    int expectedRTVersion = 2;
+
+    when(store.getName()).thenReturn(storeName);
+    when(store.isSystemStore()).thenReturn(false); // type is null, so condition fails
+    when(store.getLargestUsedRTVersionNumber()).thenReturn(expectedRTVersion);
+
+    // Mock the PubSubTopic and TopicManager
+    PubSubTopic mockTopic = mock(PubSubTopic.class);
+    when(mockTopic.getName()).thenReturn(storeName + "_rt");
+    when(pubSubTopicRepository.getTopic(anyString())).thenReturn(mockTopic);
+    when(topicManager.containsTopicAndAllPartitionsAreOnline(any())).thenReturn(true);
+
+    // Mock VeniceWriter
+    VeniceWriter mockWriter = mock(VeniceWriter.class);
+    when(writerFactory.createVeniceWriter(any())).thenReturn(mockWriter);
+
+    // Create MetaStoreWriter
+    MetaStoreWriter metaStoreWriter = new MetaStoreWriter(
+        topicManager,
+        writerFactory,
+        schemaRepo,
+        derivedComputeSchema,
+        pubSubTopicRepository,
+        5000L,
+        2,
+        storeName1 -> store);
+
+    // Execute
+    VeniceWriter result = metaStoreWriter.getOrCreateMetaStoreWriter(storeName);
+
+    // Verify - should use else branch
+    Assert.assertNotNull(result);
+    verify(store, times(1)).getLargestUsedRTVersionNumber();
+  }
+
   @Test
   public void testMetaStoreWriterWillRestartUponProduceFailure() {
     MetaStoreWriter metaStoreWriter = mock(MetaStoreWriter.class);
-    String metaStoreName = "testStore";
     HelixReadOnlyZKSharedSchemaRepository schemaRepo = mock(HelixReadOnlyZKSharedSchemaRepository.class);
     GeneratedSchemaID generatedSchemaID = mock(GeneratedSchemaID.class);
     doReturn(true).when(generatedSchemaID).isValid();
@@ -111,7 +267,8 @@ public class MetaStoreWriterTest {
         derivedComputeSchema,
         pubSubTopicRepository,
         closeTimeoutMs,
-        numOfConcurrentVwCloseOps);
+        numOfConcurrentVwCloseOps,
+        storeName -> metaStore);
     Map<String, VeniceWriter> metaStoreWriters = metaStoreWriter.getMetaStoreWriterMap();
 
     List<CompletableFuture<VeniceResourceCloseResult>> completedFutures = new ArrayList<>(20);

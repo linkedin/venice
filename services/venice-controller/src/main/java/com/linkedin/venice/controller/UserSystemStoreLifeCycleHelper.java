@@ -2,7 +2,6 @@ package com.linkedin.venice.controller;
 
 import static com.linkedin.venice.common.VeniceSystemStoreType.BATCH_JOB_HEARTBEAT_STORE;
 import static com.linkedin.venice.common.VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE;
-import static com.linkedin.venice.meta.Version.DEFAULT_RT_VERSION_NUMBER;
 
 import com.linkedin.venice.authorization.AuthorizerService;
 import com.linkedin.venice.authorization.Resource;
@@ -86,9 +85,11 @@ public class UserSystemStoreLifeCycleHelper {
     int partitionCount = parentAdmin.calculateNumberOfPartitions(clusterName, systemStoreName);
     int replicationFactor = parentAdmin.getReplicationFactor(clusterName, systemStoreName);
     final int systemStoreLargestUsedVersionNumber = parentAdmin.getLargestUsedVersion(clusterName, systemStoreName);
+    final int systemStoreLargestUsedRTVersionNumber = parentAdmin.getLargestUsedRTVersion(clusterName, systemStoreName);
     LOGGER.info(
-        "Get largest used version: {} for system store: {} in cluster: {}",
+        "Get largest used version: {} and largest used rt version: {} for system store: {} in cluster: {}",
         systemStoreLargestUsedVersionNumber,
+        systemStoreLargestUsedRTVersionNumber,
         systemStoreName,
         clusterName);
     if (systemStoreLargestUsedVersionNumber == Store.NON_EXISTING_VERSION) {
@@ -112,7 +113,7 @@ public class UserSystemStoreLifeCycleHelper {
           false,
           null,
           -1,
-          DEFAULT_RT_VERSION_NUMBER);
+          systemStoreLargestUsedRTVersionNumber);
     }
     parentAdmin.writeEndOfPush(clusterName, systemStoreName, version.getNumber(), true);
     return version;
@@ -139,6 +140,7 @@ public class UserSystemStoreLifeCycleHelper {
     LOGGER.info("Start deleting system store: {}", systemStoreName);
     admin.deleteAllVersionsInStore(clusterName, systemStoreName);
     pushMonitor.cleanupStoreStatus(systemStoreName);
+    Store systemStore = storeRepository.getStore(systemStoreName);
     if (!isStoreMigrating) {
       VeniceSystemStoreType storeType = VeniceSystemStoreType.getSystemStoreType(systemStoreName);
       if (storeType == null) {
@@ -164,12 +166,11 @@ public class UserSystemStoreLifeCycleHelper {
       }
       // skip truncating system store RT topics if it's parent fabric as it's not created for parent fabric
       if (!admin.isParent()) {
-        admin.truncateKafkaTopic(Utils.composeRealTimeTopic(systemStoreName));
+        admin.truncateKafkaTopic(Utils.getRealTimeTopicName(systemStore));
       }
     } else {
       LOGGER.info("The RT topic for: {} will not be deleted since the user store is migrating", systemStoreName);
     }
-    Store systemStore = storeRepository.getStore(systemStoreName);
     if (systemStore != null) {
       admin.truncateOldTopics(clusterName, systemStore, true);
     }

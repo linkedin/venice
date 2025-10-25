@@ -80,6 +80,7 @@ import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_HYBRID_TIME
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_REAL_TIME_TOPIC_NAME;
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_REWIND_TIME_IN_SECONDS;
 import static com.linkedin.venice.meta.Store.NON_EXISTING_VERSION;
+import com.linkedin.venice.meta.SystemStore;
 import static com.linkedin.venice.meta.Version.VERSION_SEPARATOR;
 import static com.linkedin.venice.meta.VersionStatus.CREATED;
 import static com.linkedin.venice.meta.VersionStatus.ERROR;
@@ -1872,7 +1873,10 @@ public class VeniceParentHelixAdmin implements Admin {
       newVersion = getVeniceHelixAdmin().getIncrementalPushVersion(clusterName, storeName, pushJobId);
     } else {
       validateTargetedRegions(targetedRegions, clusterName);
-
+      int largestUsedRTVersionNumber =
+          store.isSystemStore() && VeniceSystemStoreType.getSystemStoreType(store.getName()) != null
+              ? ((SystemStore) store).getVeniceStore().getLargestUsedRTVersionNumber()
+              : store.getLargestUsedRTVersionNumber();
       newVersion = addVersionAndTopicOnly(
           clusterName,
           storeName,
@@ -1890,7 +1894,7 @@ public class VeniceParentHelixAdmin implements Admin {
           versionSwapDeferred,
           targetedRegions,
           repushSourceVersion,
-          store.getLargestUsedRTVersionNumber());
+          largestUsedRTVersionNumber);
     }
     if (VeniceSystemStoreType.getSystemStoreType(storeName) == null) {
       if (pushType.isBatch()) {
@@ -2082,7 +2086,7 @@ public class VeniceParentHelixAdmin implements Admin {
       throw new VeniceException("Cannot start incremental push since batch push is on going." + " store: " + storeName);
     }
 
-    String incrementalPushTopic = Utils.composeRealTimeTopic(storeName);
+    String incrementalPushTopic = Utils.getRealTimeTopicName(incrementalPushVersion);
     if (status.isError() || getVeniceHelixAdmin().isTopicTruncated(incrementalPushTopic)) {
       throw new VeniceException(
           "Cannot start incremental push since previous batch push has failed. Please run another bash job."
@@ -5607,6 +5611,19 @@ public class VeniceParentHelixAdmin implements Admin {
       }
     }
     return aggregatedLargestUsedVersionNumber;
+  }
+
+  @Override
+  public int getLargestUsedRTVersion(String clusterName, String storeName) {
+    Map<String, ControllerClient> childControllers = getVeniceHelixAdmin().getControllerClientMap(clusterName);
+    int aggregatedLargestUsedRTVersionNumber = getVeniceHelixAdmin().getLargestUsedRTVersion(clusterName, storeName);
+    for (Map.Entry<String, ControllerClient> controller: childControllers.entrySet()) {
+      VersionResponse response = controller.getValue().getStoreLargestUsedVersion(clusterName, storeName);
+      if (response.getVersion() > aggregatedLargestUsedRTVersionNumber) {
+        aggregatedLargestUsedRTVersionNumber = response.getVersion();
+      }
+    }
+    return aggregatedLargestUsedRTVersionNumber;
   }
 
   /**

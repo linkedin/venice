@@ -4357,9 +4357,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         // cluster these metastore writes could be spiky
         if (metaStoreWriter != null && !VeniceSystemStoreType.META_STORE.isSystemStore(storeName)) {
           String metaStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName);
-          PubSubTopic metaStoreRT = pubSubTopicRepository.getTopic(Utils.composeRealTimeTopic(metaStoreName));
-          if (getTopicManager(localKafkaServer).containsTopicWithRetries(metaStoreRT, 5)) {
-            metaStoreWriter.writeInUseValueSchema(storeName, versionNumber, schemaId);
+          Store metaStore = metaStoreWriter.storeResolver.apply(metaStoreName);
+          if (metaStore != null) {
+            PubSubTopic metaStoreRT = pubSubTopicRepository.getTopic(Utils.getRealTimeTopicName(metaStore));
+            if (getTopicManager(localKafkaServer).containsTopicWithRetries(metaStoreRT, 5)) {
+              metaStoreWriter.writeInUseValueSchema(storeName, versionNumber, schemaId);
+            }
           }
         }
         return;

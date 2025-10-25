@@ -17,6 +17,7 @@ import java.util.Collections;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.Future;
+import java.util.function.Function;
 import org.apache.avro.Schema;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -54,12 +55,14 @@ public class PushStatusStoreWriter implements AutoCloseable {
       VeniceWriterFactory writerFactory,
       String instanceName,
       SchemaEntry valueSchemaEntry,
-      DerivedSchemaEntry updateSchemaEntry) {
+      DerivedSchemaEntry updateSchemaEntry,
+      Function<String, Object> storeResolver) {
     this(
         new PushStatusStoreVeniceWriterCache(
             writerFactory,
             valueSchemaEntry.getSchema(),
-            updateSchemaEntry.getSchema()),
+            updateSchemaEntry.getSchema(),
+            storeResolver),
         instanceName,
         updateSchemaEntry.getValueSchemaID(),
         updateSchemaEntry.getId(),
