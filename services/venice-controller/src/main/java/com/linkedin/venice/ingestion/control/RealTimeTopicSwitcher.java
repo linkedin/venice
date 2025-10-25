@@ -248,7 +248,7 @@ public class RealTimeTopicSwitcher {
         broadcastVersionSwap(previousStoreVersion, nextStoreVersion, rtForNextVersion);
       }
     } else {
-      LOGGER.info("RT doesn't exist for store: {}. Skipping broadcast for Version Swap message.");
+      LOGGER.info("RT doesn't exist for store: {}. Skipping broadcast for Version Swap message.", storeName);
     }
   }
 
