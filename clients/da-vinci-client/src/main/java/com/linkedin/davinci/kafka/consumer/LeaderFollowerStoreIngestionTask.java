@@ -3460,15 +3460,13 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     readGlobalRtDivState(keyBytes, schemaId, topicPartition, valueManifestContainer);
 
     // TODO: remove. this is a temporary log for debugging while the feature is in its infancy
-    rtDivPartitionStates.forEach((producer, pps) -> {
-      LOGGER.info(
-          "event=globalRtDiv Sending Global RT DIV message for topic-partition: {} broker: {} producer: {}, valueSize: {} pps: {}",
-          topicPartition,
-          brokerUrl,
-          producer,
-          valueBytes.length,
-          pps);
-    });
+    LOGGER.info(
+        "event=globalRtDiv Sending Global RT DIV message for topic-partition: {} broker: {} producerCount: {} producers: {}, valueSize: {} pps: {}",
+        topicPartition,
+        brokerUrl,
+        rtDivPartitionStates.size(),
+        rtDivPartitionStates.keySet(),
+        valueBytes.length);
 
     // Produce to local VT for the Global RT DIV + latest RT position (GlobalRtDivState)
     // Internally, VeniceWriter.put() will schedule DELETEs for the old chunks in the old manifest after the new PUTs
@@ -3552,8 +3550,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         beforeProcessingRecordTimestampNs);
 
     // After producing RT DIV to local VT, the VT DIV should be sent to the drainer to sync to the OffsetRecord
-    divCallback.setOnCompletionFunction(() -> {
+    divCallback.setOnCompletionFunction(produceResult -> {
       try {
+        vtDiv.updateLatestConsumedVtPosition(produceResult.getPubSubPosition()); // LCVP = produced position in local VT
         storeBufferService.execSyncOffsetFromSnapshotAsync(topicPartition, vtDiv, this);
       } catch (InterruptedException e) {
         LOGGER.error("Failed to sync VT DIV to OffsetRecord for replica: {}", topicPartition, e);
