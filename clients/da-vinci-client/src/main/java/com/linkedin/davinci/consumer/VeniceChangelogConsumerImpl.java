@@ -1299,7 +1299,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
 
   @Override
   public void close() {
-    LOGGER.info("Closing Changelog Consumer with name: " + changelogClientConfig.getConsumerName());
+    LOGGER.info("Closing Changelog Consumer with name: {}", changelogClientConfig.getConsumerName());
     subscriptionLock.writeLock().lock();
     try {
       this.unsubscribeAll();
@@ -1313,7 +1313,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       }
 
       veniceChangelogConsumerClientFactory.deregisterClient(changelogClientConfig.getConsumerName());
-      LOGGER.info("Closed Changelog Consumer with name: " + changelogClientConfig.getConsumerName());
+      LOGGER.info("Closed Changelog Consumer with name: {}", changelogClientConfig.getConsumerName());
     } finally {
       subscriptionLock.writeLock().unlock();
     }
