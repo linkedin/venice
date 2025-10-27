@@ -953,7 +953,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
           // Filter out stores that aren't doing a target region push w/ deferred swap
           List<Store> eligibleStoresToProcess = new ArrayList<>();
           for (Store parentStore: parentStores) {
-            if (isTargetRegionPushWithDeferredSwapEnabled(parentStore)) {
+            if (!isTargetRegionPushWithDeferredSwapEnabled(parentStore)) {
               continue;
             }
             eligibleStoresToProcess.add(parentStore);
@@ -1099,15 +1099,15 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
           targetVersionNum);
       veniceParentHelixAdmin.rollForwardToFutureVersion(cluster, parentStore.getName(), nextRegionToRollForward);
       storeWaitTimeCacheForSequentialRollout.invalidate(kafkaTopicName);
-      
+
       long totalVersionSwapTimeInMinutes =
-            TimeUnit.MILLISECONDS.toMinutes(LatencyUtils.getElapsedTimeFromMsToMs(targetVersion.getCreatedTime()));
-        LOGGER.info(
-            "Version swap took {} minutes from push completion to version swap for {} on version {} in region {}",
-            totalVersionSwapTimeInMinutes,
-            storeName,
-            targetVersionNum,
-            nextRegionToRollForward);
+          TimeUnit.MILLISECONDS.toMinutes(LatencyUtils.getElapsedTimeFromMsToMs(targetVersion.getCreatedTime()));
+      LOGGER.info(
+          "Version swap took {} minutes from push completion to version swap for {} on version {} in region {}",
+          totalVersionSwapTimeInMinutes,
+          storeName,
+          targetVersionNum,
+          nextRegionToRollForward);
 
       if (stalledVersionSwapSet.contains(parentStore.getName())) {
         stalledVersionSwapSet.remove(parentStore.getName());
