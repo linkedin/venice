@@ -247,6 +247,44 @@ public class RouterBackedSchemaReaderTest {
   }
 
   @Test
+  public void testRefreshValueSchema() throws IOException, ExecutionException, InterruptedException {
+    AbstractAvroStoreClient storeClient = getMockStoreClient(true);
+
+    try (SchemaReader schemaReader =
+        new RouterBackedSchemaReader(() -> storeClient, Optional.empty(), Optional.empty(), Duration.ofSeconds(10))) {
+      // Initial state should have schemas 1 and 2
+      Assert.assertEquals(schemaReader.getLatestValueSchemaId().intValue(), 2);
+
+      // Configure mocks to return schemas 1, 2, 3, and 4 with schema 3 as superset
+      configureSchemaResponseMocks(
+          storeClient,
+          Arrays.asList(VALUE_SCHEMA_1, VALUE_SCHEMA_2, VALUE_SCHEMA_3, VALUE_SCHEMA_4),
+          3, // superset schema ID
+          Arrays.asList(UPDATE_SCHEMA_1, UPDATE_SCHEMA_2, UPDATE_SCHEMA_3, UPDATE_SCHEMA_4),
+          true,
+          0);
+
+      // Without force refresh, should still see the old latest schema (2) due to 10s refresh interval
+      Assert.assertEquals(schemaReader.getLatestValueSchemaId(false).intValue(), 2);
+      Assert.assertEquals(schemaReader.getLatestValueSchema(), VALUE_SCHEMA_2);
+
+      // With force refresh, should get the superset schema (3)
+      Assert.assertEquals(schemaReader.getLatestValueSchemaId(true).intValue(), 3);
+      Assert.assertEquals(schemaReader.getLatestValueSchema(), VALUE_SCHEMA_3);
+
+      // Verify that subsequent calls without force refresh still return the updated schema
+      Assert.assertEquals(schemaReader.getLatestValueSchemaId().intValue(), 3);
+      Assert.assertEquals(schemaReader.getLatestValueSchema(), VALUE_SCHEMA_3);
+
+      // Verify individual schema access
+      Assert.assertEquals(schemaReader.getValueSchema(1), VALUE_SCHEMA_1);
+      Assert.assertEquals(schemaReader.getValueSchema(2), VALUE_SCHEMA_2);
+      Assert.assertEquals(schemaReader.getValueSchema(3), VALUE_SCHEMA_3);
+      Assert.assertEquals(schemaReader.getValueSchema(4), VALUE_SCHEMA_4);
+    }
+  }
+
+  @Test
   public void testRefreshValueAndUpdateSchemas() throws IOException, ExecutionException, InterruptedException {
     AbstractAvroStoreClient storeClient = getMockStoreClient(true);
 
