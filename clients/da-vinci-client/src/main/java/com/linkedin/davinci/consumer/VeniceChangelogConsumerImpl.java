@@ -1313,6 +1313,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       }
 
       veniceChangelogConsumerClientFactory.deregisterClient(changelogClientConfig.getConsumerName());
+      LOGGER.info("Closed Changelog Consumer with name: " + changelogClientConfig.getConsumerName());
     } finally {
       subscriptionLock.writeLock().unlock();
     }

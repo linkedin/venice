@@ -238,12 +238,16 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
 
   @Override
   public void stop() throws Exception {
+    LOGGER.info("Closing Changelog Consumer with name: " + changelogClientConfig.getConsumerName());
+
     if (backgroundReporterThread != null) {
       backgroundReporterThread.interrupt();
     }
     daVinciClient.close();
     isStarted.set(false);
     veniceChangelogConsumerClientFactory.deregisterClient(changelogClientConfig.getConsumerName());
+
+    LOGGER.info("Closed Changelog Consumer with name: " + changelogClientConfig.getConsumerName());
   }
 
   // VeniceChangelogConsumer methods below
