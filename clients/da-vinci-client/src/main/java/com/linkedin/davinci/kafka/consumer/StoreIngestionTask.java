@@ -3259,6 +3259,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         break;
       case TOPIC_SWITCH:
         TopicSwitch topicSwitch = (TopicSwitch) controlMessage.controlMessageUnion;
+        validateEndOfPushReceivedBeforeTopicSwitch(partitionConsumptionState, offset);
+
         LOGGER.info(
             "Received {} control message. Replica: {}, Offset: {} NewSource: {}",
             type.name(),
@@ -5073,6 +5075,27 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             e);
       }
       return PubSubUtil.fromKafkaOffset(offset);
+    }
+  }
+
+  /**
+   * Validates that END_OF_PUSH has been received before processing TOPIC_SWITCH.
+   *
+   * @param partitionConsumptionState The partition consumption state to validate
+   * @param position The position/offset for error reporting
+   * @throws VeniceException if END_OF_PUSH has not been received
+   */
+  protected static void validateEndOfPushReceivedBeforeTopicSwitch(
+      PartitionConsumptionState partitionConsumptionState,
+      PubSubPosition position) {
+    Objects.requireNonNull(partitionConsumptionState, "PCS cannot be null");
+    if (!partitionConsumptionState.isEndOfPushReceived()) {
+      String errorMessage = String.format(
+          "%s received TOPIC_SWITCH control message before receiving END_OF_PUSH. Position: %s",
+          partitionConsumptionState.getReplicaId(),
+          position);
+      LOGGER.error(errorMessage);
+      throw new VeniceMessageException(errorMessage);
     }
   }
 }
