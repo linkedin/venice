@@ -243,7 +243,7 @@ public class VeniceChangeCoordinate implements Externalizable {
     return topic;
   }
 
-  protected PubSubPosition getPosition() {
+  public PubSubPosition getPosition() {
     return pubSubPosition;
   }
 

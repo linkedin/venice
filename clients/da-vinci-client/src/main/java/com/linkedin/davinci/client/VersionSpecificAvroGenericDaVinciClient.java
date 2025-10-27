@@ -64,6 +64,7 @@ public class VersionSpecificAvroGenericDaVinciClient<K, V> extends AvroGenericDa
     }
 
     addPartitionsToSubscription(partitions);
-    return getStoreBackend().subscribe(partitions, Optional.of(version), Collections.emptyMap(), null);
+    return getStoreBackend()
+        .subscribe(partitions, Optional.of(version), Collections.emptyMap(), null, Collections.emptyMap());
   }
 }

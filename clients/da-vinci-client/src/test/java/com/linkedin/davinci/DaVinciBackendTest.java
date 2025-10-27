@@ -286,7 +286,7 @@ public class DaVinciBackendTest {
       ComplementSet<Integer> partitions = invocation.getArgument(0);
       mockStoreBackend.getSubscription().addAll(partitions);
       return null;
-    }).when(mockStoreBackend).subscribe(any(), any(), Collections.emptyMap(), null);
+    }).when(mockStoreBackend).subscribe(any(), any(), Collections.emptyMap(), null, Collections.emptyMap());
 
     Version mockVersion = mock(Version.class);
     when(mockVersion.kafkaTopicName()).thenReturn(resourceName);

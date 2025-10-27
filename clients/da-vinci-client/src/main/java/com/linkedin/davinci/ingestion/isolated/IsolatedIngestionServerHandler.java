@@ -177,7 +177,7 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
             }
             LOGGER.info("Start ingesting replica: {}", replicaId);
             isolatedIngestionServer.setResourceToBeSubscribed(topicName, partitionId);
-            isolatedIngestionServer.getIngestionBackend().startConsumption(storeConfig, partitionId, null);
+            isolatedIngestionServer.getIngestionBackend().startConsumption(storeConfig, partitionId, null, null);
           });
           break;
         case STOP_CONSUMPTION:

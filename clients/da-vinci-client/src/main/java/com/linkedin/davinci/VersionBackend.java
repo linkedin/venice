@@ -20,6 +20,7 @@ import com.linkedin.venice.meta.IngestionMode;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.VenicePartitioner;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.serialization.AvroStoreDeserializerCache;
 import com.linkedin.venice.serialization.StoreDeserializerCache;
@@ -365,7 +366,8 @@ public class VersionBackend {
   synchronized CompletableFuture<Void> subscribe(
       ComplementSet<Integer> partitions,
       Map<Integer, Long> timestamps,
-      Long allPartitionTimestamp) {
+      Long allPartitionTimestamp,
+      Map<Integer, PubSubPosition> positionMap) {
     Instant startTime = Instant.now();
     List<Integer> partitionList = getPartitions(partitions);
     if (partitionList.isEmpty()) {
@@ -392,6 +394,9 @@ public class VersionBackend {
       } else {
         partitionFutures.computeIfAbsent(partition, k -> new CompletableFuture<>());
         partitionsToStartConsumption.add(partition);
+        if (allPartitionTimestamp != null) {
+          timestamps.put(partition, allPartitionTimestamp);
+        }
       }
       partitionToBatchReportEOIPEnabled.put(partition, batchReportEOIPStatusEnabled);
       futures.add(partitionFutures.get(partition));
@@ -407,11 +412,11 @@ public class VersionBackend {
       backend.getHeartbeatMonitoringService()
           .updateLagMonitor(version.kafkaTopicName(), partition, HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR);
       // AtomicReference of storage engine will be updated internally.
-      backend.getIngestionBackend()
-          .startConsumption(
-              config,
-              partition,
-              allPartitionTimestamp == null ? timestamps.get(partition) : allPartitionTimestamp);
+      if (positionMap != null) {
+        backend.getIngestionBackend().startConsumption(config, partition, null, positionMap.get(partition));
+      } else {
+        backend.getIngestionBackend().startConsumption(config, partition, timestamps.get(partition), null);
+      }
       tryStartHeartbeat();
     }
 

@@ -50,7 +50,7 @@ public class AvroGenericSeekableDaVinciClient<K, V> extends AvroGenericDaVinciCl
 
   @Override
   public CompletableFuture<Void> seekToCheckpoint(Set<VeniceChangeCoordinate> checkpoints) {
-    return null;
+    return super.seekToCheckpoint(checkpoints);
   }
 
   @Override

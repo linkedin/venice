@@ -254,7 +254,7 @@ public abstract class AbstractPartitionStateModel extends StateModel {
       }
     };
     try (Timer t = Timer.run(setupTimeLogging)) {
-      ingestionBackend.startConsumption(storeAndServerConfigs, partition, null);
+      ingestionBackend.startConsumption(storeAndServerConfigs, partition, null, null);
     }
   }
 
