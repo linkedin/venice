@@ -949,22 +949,34 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
           ThreadPoolExecutor clusterExecutorService = getOrCreateExecutorForCluster(cluster);
           ThreadPoolStats clusterThreadPoolStats = clusterToThreadPoolStatsMap.get(cluster);
 
-          // Filter out stores that are already being processed to prevent duplicate processing
+          // Filter out stores that aren't doing a target region push w/ deferred swap
           List<Store> eligibleStoresToProcess = new ArrayList<>();
           for (Store parentStore: parentStores) {
-            String kafkaTopicName =
-                Version.composeKafkaTopic(parentStore.getName(), parentStore.getLargestUsedVersionNumber());
-            if (tryStartProcessingStore(kafkaTopicName) && isTargetRegionPushWithDeferredSwapEnabled(parentStore)) {
-              eligibleStoresToProcess.add(parentStore);
-            } else {
-              String message = "Skipping store " + parentStore.getName() + " as it's already being processed";
-              logMessageIfNotRedundant(message);
+            if (isTargetRegionPushWithDeferredSwapEnabled(parentStore)) {
+              continue;
             }
+            eligibleStoresToProcess.add(parentStore);
           }
 
           boolean sequentialRollForward = !StringUtils.isEmpty(rolloutOrderStr);
           for (Store parentStore: eligibleStoresToProcess) {
             Version targetVersion = parentStore.getVersion(parentStore.getLargestUsedVersionNumber());
+            if (targetVersion == null) {
+              String message = "Parent version is null for store " + parentStore.getName() + " for target version "
+                  + parentStore.getLargestUsedVersionNumber();
+              logMessageIfNotRedundant(message);
+              continue;
+            }
+
+            // Check if store is already being processed
+            String kafkaTopicName =
+                Version.composeKafkaTopic(parentStore.getName(), parentStore.getLargestUsedVersionNumber());
+            if (!tryStartProcessingStore(kafkaTopicName)) {
+              String message = "Skipping store " + parentStore.getName() + " as it's already being processed";
+              logMessageIfNotRedundant(message);
+              continue;
+            }
+
             clusterExecutorService.submit(() -> {
               try {
                 if (sequentialRollForward) {
