@@ -274,6 +274,7 @@ public class HelixVeniceClusterResources implements VeniceResource {
     veniceAdminStats = new VeniceAdminStats(metricsRepository, "venice-admin-" + clusterName);
     this.storagePersonaRepository =
         new StoragePersonaRepository(clusterName, this.storeMetadataRepository, adapterSerializer, zkClient);
+    this.storeMetadataRepository.registerStoreDataChangedListener(admin.getStoreChangeNotifier());
   }
 
   /**

@@ -16,8 +16,10 @@ import static org.mockito.Mockito.when;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.stats.StuckConsumerRepairStats;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
+import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterContext;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
+import com.linkedin.venice.pubsub.PubSubContext;
 import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
@@ -99,18 +101,25 @@ public class AggKafkaConsumerServiceTest {
     when(metricsRepository.sensor(anyString(), any())).thenReturn(dummySensor);
     PubSubConsumerAdapter adapter = mock(PubSubConsumerAdapter.class);
     when(consumerFactory.create(any(PubSubConsumerAdapterContext.class))).thenReturn(adapter);
+
+    PubSubClientsFactory mockPubSubClientsFactory = mock(PubSubClientsFactory.class);
+    when(mockPubSubClientsFactory.getConsumerAdapterFactory()).thenReturn(consumerFactory);
+
+    PubSubContext mockPubSubContext = mock(PubSubContext.class);
+    when(mockPubSubContext.getPubSubMessageDeserializer()).thenReturn(pubSubDeserializer);
+    when(mockPubSubContext.getPubSubClientsFactory()).thenReturn(mockPubSubClientsFactory);
+
     aggKafkaConsumerService = new AggKafkaConsumerService(
-        consumerFactory,
         pubSubPropertiesSupplier,
         serverConfig,
         ingestionThrottler,
         kafkaClusterBasedRecordThrottler,
         metricsRepository,
         staleTopicChecker,
-        pubSubDeserializer,
         killIngestionTaskRunnable,
         t -> false,
-        metadataRepository);
+        metadataRepository,
+        mockPubSubContext);
   }
 
   // test subscribeConsumerFor
@@ -431,17 +440,23 @@ public class AggKafkaConsumerServiceTest {
   }
 
   private AggKafkaConsumerService createTestService() {
+    PubSubClientsFactory mockPubSubClientsFactory = mock(PubSubClientsFactory.class);
+    when(mockPubSubClientsFactory.getConsumerAdapterFactory()).thenReturn(consumerFactory);
+
+    PubSubContext mockPubSubContext = mock(PubSubContext.class);
+    when(mockPubSubContext.getPubSubMessageDeserializer()).thenReturn(pubSubDeserializer);
+    when(mockPubSubContext.getPubSubClientsFactory()).thenReturn(mockPubSubClientsFactory);
+
     return new AggKafkaConsumerService(
-        consumerFactory,
         pubSubPropertiesSupplier,
         serverConfig,
         ingestionThrottler,
         kafkaClusterBasedRecordThrottler,
         metricsRepository,
         staleTopicChecker,
-        pubSubDeserializer,
         killIngestionTaskRunnable,
         t -> false,
-        metadataRepository);
+        metadataRepository,
+        mockPubSubContext);
   }
 }

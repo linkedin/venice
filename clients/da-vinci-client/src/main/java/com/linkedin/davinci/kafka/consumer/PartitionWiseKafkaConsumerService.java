@@ -4,9 +4,8 @@ import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.stats.AggKafkaConsumerServiceStats;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
-import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
+import com.linkedin.venice.pubsub.PubSubContext;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
-import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.Time;
@@ -42,7 +41,6 @@ public class PartitionWiseKafkaConsumerService extends KafkaConsumerService {
 
   PartitionWiseKafkaConsumerService(
       final ConsumerPoolType poolType,
-      final PubSubConsumerAdapterFactory consumerFactory,
       final Properties consumerProperties,
       final long readCycleDelayMs,
       final int numOfConsumersPerKafkaCluster,
@@ -53,16 +51,15 @@ public class PartitionWiseKafkaConsumerService extends KafkaConsumerService {
       final long sharedConsumerNonExistingTopicCleanupDelayMS,
       final StaleTopicChecker staleTopicChecker,
       final boolean liveConfigBasedKafkaThrottlingEnabled,
-      final PubSubMessageDeserializer pubSubDeserializer,
       final Time time,
       final AggKafkaConsumerServiceStats stats,
       final boolean isKafkaConsumerOffsetCollectionEnabled,
       final ReadOnlyStoreRepository metadataRepository,
       final boolean isUnregisterMetricForDeletedStoreEnabled,
-      VeniceServerConfig veniceServerConfig) {
+      final VeniceServerConfig veniceServerConfig,
+      final PubSubContext pubSubContext) {
     this(
         poolType,
-        consumerFactory,
         consumerProperties,
         readCycleDelayMs,
         numOfConsumersPerKafkaCluster,
@@ -73,19 +70,18 @@ public class PartitionWiseKafkaConsumerService extends KafkaConsumerService {
         sharedConsumerNonExistingTopicCleanupDelayMS,
         staleTopicChecker,
         liveConfigBasedKafkaThrottlingEnabled,
-        pubSubDeserializer,
         time,
         stats,
         isKafkaConsumerOffsetCollectionEnabled,
         metadataRepository,
         isUnregisterMetricForDeletedStoreEnabled,
         PartitionWiseKafkaConsumerService.class.toString(),
-        veniceServerConfig);
+        veniceServerConfig,
+        pubSubContext);
   }
 
   PartitionWiseKafkaConsumerService(
       final ConsumerPoolType poolType,
-      final PubSubConsumerAdapterFactory consumerFactory,
       final Properties consumerProperties,
       final long readCycleDelayMs,
       final int numOfConsumersPerKafkaCluster,
@@ -96,17 +92,16 @@ public class PartitionWiseKafkaConsumerService extends KafkaConsumerService {
       final long sharedConsumerNonExistingTopicCleanupDelayMS,
       final StaleTopicChecker staleTopicChecker,
       final boolean liveConfigBasedKafkaThrottlingEnabled,
-      final PubSubMessageDeserializer pubSubDeserializer,
       final Time time,
       final AggKafkaConsumerServiceStats stats,
       final boolean isKafkaConsumerOffsetCollectionEnabled,
       final ReadOnlyStoreRepository metadataRepository,
       final boolean isUnregisterMetricForDeletedStoreEnabled,
       final String loggerNamePrefix,
-      VeniceServerConfig veniceServerConfig) {
+      final VeniceServerConfig veniceServerConfig,
+      final PubSubContext pubSubContext) {
     super(
         poolType,
-        consumerFactory,
         consumerProperties,
         readCycleDelayMs,
         numOfConsumersPerKafkaCluster,
@@ -117,13 +112,13 @@ public class PartitionWiseKafkaConsumerService extends KafkaConsumerService {
         sharedConsumerNonExistingTopicCleanupDelayMS,
         staleTopicChecker,
         liveConfigBasedKafkaThrottlingEnabled,
-        pubSubDeserializer,
         time,
         stats,
         isKafkaConsumerOffsetCollectionEnabled,
         metadataRepository,
         isUnregisterMetricForDeletedStoreEnabled,
-        veniceServerConfig);
+        veniceServerConfig,
+        pubSubContext);
     this.LOGGER = LogManager.getLogger(loggerNamePrefix + " [" + kafkaUrlForLogger + "]");
   }
 

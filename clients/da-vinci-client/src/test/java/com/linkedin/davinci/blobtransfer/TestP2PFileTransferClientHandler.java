@@ -111,7 +111,7 @@ public class TestP2PFileTransferClientHandler {
   }
 
   @AfterMethod
-  public void teardown() throws IOException {
+  public void tearDown() throws IOException {
     ch.close();
     Files.walk(baseDir).sorted(Comparator.reverseOrder()).forEach(path -> {
       try {

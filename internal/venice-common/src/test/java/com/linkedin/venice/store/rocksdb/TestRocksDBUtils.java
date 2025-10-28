@@ -25,7 +25,7 @@ public class TestRocksDBUtils {
   }
 
   @AfterMethod
-  public void teardown() throws IOException {
+  public void tearDown() throws IOException {
     if (baseDir != null && Files.exists(baseDir)) {
       Files.walk(baseDir).sorted(Comparator.reverseOrder()).map(Path::toFile).forEach(File::delete);
 

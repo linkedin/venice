@@ -1,6 +1,7 @@
 package com.linkedin.venice.pubsub;
 
 import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
+import com.linkedin.venice.pubsub.listener.StoreChangeNotifier;
 import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
 
@@ -13,6 +14,7 @@ public class PubSubAdminAdapterContext {
   private final PubSubPositionTypeRegistry pubSubPositionTypeRegistry;
   private final PubSubSecurityProtocol pubSubSecurityProtocol;
   private final MetricsRepository metricsRepository;
+  private final StoreChangeNotifier storeChangeNotifier;
 
   private PubSubAdminAdapterContext(Builder builder) {
     this.pubSubBrokerAddress = builder.pubSubBrokerAddress;
@@ -22,6 +24,7 @@ public class PubSubAdminAdapterContext {
     this.pubSubSecurityProtocol = builder.pubSubSecurityProtocol;
     this.metricsRepository = builder.metricsRepository;
     this.pubSubPositionTypeRegistry = builder.pubSubPositionTypeRegistry;
+    this.storeChangeNotifier = builder.storeChangeNotifier;
   }
 
   public String getPubSubBrokerAddress() {
@@ -52,6 +55,10 @@ public class PubSubAdminAdapterContext {
     return pubSubPositionTypeRegistry;
   }
 
+  public StoreChangeNotifier getStoreChangeNotifier() {
+    return storeChangeNotifier;
+  }
+
   public static class Builder {
     private String pubSubBrokerAddress;
     private String adminClientName;
@@ -60,6 +67,7 @@ public class PubSubAdminAdapterContext {
     private PubSubTopicRepository pubSubTopicRepository;
     private PubSubPositionTypeRegistry pubSubPositionTypeRegistry;
     private MetricsRepository metricsRepository;
+    private StoreChangeNotifier storeChangeNotifier;
 
     public Builder setPubSubBrokerAddress(String pubSubBrokerAddress) {
       this.pubSubBrokerAddress = pubSubBrokerAddress;
@@ -93,6 +101,11 @@ public class PubSubAdminAdapterContext {
 
     public Builder setPubSubPositionTypeRegistry(PubSubPositionTypeRegistry pubSubPositionTypeRegistry) {
       this.pubSubPositionTypeRegistry = pubSubPositionTypeRegistry;
+      return this;
+    }
+
+    public Builder setStoreChangeNotifier(StoreChangeNotifier storeChangeNotifier) {
+      this.storeChangeNotifier = storeChangeNotifier;
       return this;
     }
 

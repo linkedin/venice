@@ -3006,4 +3006,10 @@ public class ConfigKeys {
    */
   public static final String CONTROLLER_USE_MULTI_REGION_REAL_TIME_TOPIC_SWITCHER_ENABLED =
       "controller.use.multi.region.real.time.topic.switcher.enabled";
+
+  /**
+   * Thread pool size for the StoreChangeNotifier service that handles store metadata change events.
+   * Default is 1.
+   */
+  public static final String STORE_CHANGE_NOTIFIER_THREAD_POOL_SIZE = "store.change.notifier.thread.pool.size";
 }
