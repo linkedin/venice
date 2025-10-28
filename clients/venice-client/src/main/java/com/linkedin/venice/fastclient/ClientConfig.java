@@ -20,6 +20,7 @@ import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Collections;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ScheduledExecutorService;
@@ -106,6 +107,18 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
   private final int storeLoadControllerRejectionRatioUpdateIntervalInSec;
   private final double storeLoadControllerMaxRejectionRatio;
   private final double storeLoadControllerAcceptMultiplier;
+
+  /**
+   * Optional factory for creating custom key serializers (e.g., for Protocol Buffers).
+   * If not provided, the default Avro serializer will be used.
+   */
+  private final Optional<SerializerFactory<K>> keySerializerFactory;
+
+  /**
+   * Optional factory for creating custom value deserializers (e.g., for Protocol Buffers).
+   * If not provided, the default Avro deserializer will be used.
+   */
+  private final Optional<DeserializerFactory<V>> valueDeserializerFactory;
 
   private ClientConfig(ClientConfigBuilder builder) {
     if (builder.storeName == null || builder.storeName.isEmpty()) {
@@ -221,6 +234,8 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
         builder.longTailRangeBasedRetryThresholdForBatchGetInMilliSeconds;
     this.longTailRangeBasedRetryThresholdForComputeInMilliSeconds =
         builder.longTailRangeBasedRetryThresholdForComputeInMilliSeconds;
+    this.keySerializerFactory = Optional.ofNullable(builder.keySerializerFactory);
+    this.valueDeserializerFactory = Optional.ofNullable(builder.valueDeserializerFactory);
   }
 
   public String getStoreName() {
@@ -393,6 +408,14 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     return longTailRangeBasedRetryThresholdForComputeInMilliSeconds;
   }
 
+  public Optional<SerializerFactory<K>> getKeySerializerFactory() {
+    return keySerializerFactory;
+  }
+
+  public Optional<DeserializerFactory<V>> getValueDeserializerFactory() {
+    return valueDeserializerFactory;
+  }
+
   public static class ClientConfigBuilder<K, V, T extends SpecificRecord> {
     private MetricsRepository metricsRepository;
     private String statsPrefix = "";
@@ -452,6 +475,9 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     private int storeLoadControllerRejectionRatioUpdateIntervalInSec = 3;
     private double storeLoadControllerMaxRejectionRatio = 0.9;
     private double storeLoadControllerAcceptMultiplier = 2.0;
+
+    private SerializerFactory<K> keySerializerFactory = null;
+    private DeserializerFactory<V> valueDeserializerFactory = null;
 
     public ClientConfigBuilder<K, V, T> setStoreName(String storeName) {
       this.storeName = storeName;
@@ -673,6 +699,30 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       return this;
     }
 
+    /**
+     * Set a custom key serializer factory.
+     * This allows using custom serialization formats (e.g., Protocol Buffers) instead of Avro.
+     *
+     * @param keySerializerFactory the factory to create key serializers, or null to use default Avro serializers
+     * @return this builder
+     */
+    public ClientConfigBuilder<K, V, T> setKeySerializerFactory(SerializerFactory<K> keySerializerFactory) {
+      this.keySerializerFactory = keySerializerFactory;
+      return this;
+    }
+
+    /**
+     * Set a custom value deserializer factory.
+     * This allows using custom deserialization formats (e.g., Protocol Buffers) instead of Avro.
+     *
+     * @param valueDeserializerFactory the factory to create value deserializers, or null to use default Avro deserializers
+     * @return this builder
+     */
+    public ClientConfigBuilder<K, V, T> setValueDeserializerFactory(DeserializerFactory<V> valueDeserializerFactory) {
+      this.valueDeserializerFactory = valueDeserializerFactory;
+      return this;
+    }
+
     public ClientConfigBuilder<K, V, T> clone() {
       return new ClientConfigBuilder().setStoreName(storeName)
           .setR2Client(r2Client)
@@ -716,7 +766,9 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
               longTailRangeBasedRetryThresholdForBatchGetInMilliSeconds)
           .setLongTailRangeBasedRetryThresholdForComputeInMilliSeconds(
               longTailRangeBasedRetryThresholdForComputeInMilliSeconds)
-          .setStoreLoadControllerAcceptMultiplier(storeLoadControllerAcceptMultiplier);
+          .setStoreLoadControllerAcceptMultiplier(storeLoadControllerAcceptMultiplier)
+          .setKeySerializerFactory(keySerializerFactory)
+          .setValueDeserializerFactory(valueDeserializerFactory);
     }
 
     public ClientConfig<K, V, T> build() {
