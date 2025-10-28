@@ -765,6 +765,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     partitionToPendingConsumerActionCountMap.computeIfAbsent(partitionNumber, x -> new AtomicInteger(0))
         .incrementAndGet();
     pendingSubscriptionActionCount.incrementAndGet();
+    ConsumerAction consumerAction = new ConsumerAction(SUBSCRIBE, topicPartition, nextSeqNum(), isHelixTriggeredAction);
+    pubSubPosition.ifPresent(consumerAction::setPubSubPosition);
 
     if (recordTransformer != null) {
       recordTransformerOnRecoveryThreadPool.submit(() -> {
@@ -784,9 +786,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
               getReplicaId(topicPartition));
 
           recordTransformer.countDownStartConsumptionLatch();
-          ConsumerAction consumerAction =
-              new ConsumerAction(SUBSCRIBE, topicPartition, nextSeqNum(), isHelixTriggeredAction);
-          pubSubPosition.ifPresent(consumerAction::setPubSubPosition);
           consumerActionsQueue.add(consumerAction);
         } catch (Exception e) {
           LOGGER.error("DaVinciRecordTransformer onRecovery failed for replica: {}", getReplicaId(topicPartition), e);
@@ -794,7 +793,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         }
       });
     } else {
-      consumerActionsQueue.add(new ConsumerAction(SUBSCRIBE, topicPartition, nextSeqNum(), isHelixTriggeredAction));
+      consumerActionsQueue.add(consumerAction);
     }
   }
 

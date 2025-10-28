@@ -251,7 +251,7 @@ public class VeniceChangeCoordinate implements Externalizable {
     this.pubSubPositionDeserializer = pubSubPositionDeserializer;
   }
 
-  protected VeniceChangeCoordinate(String topic, PubSubPosition pubSubPosition, Integer partition) {
+  public VeniceChangeCoordinate(String topic, PubSubPosition pubSubPosition, Integer partition) {
     this(topic, pubSubPosition, partition, VeniceChangeCoordinate.UNDEFINED_CONSUMER_SEQUENCE_ID);
   }
 
