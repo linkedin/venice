@@ -2790,6 +2790,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     offsetRecord.setKeyUrnCompressionDict(pcs.getKeyUrnCompressionDict());
     storageMetadataService.put(this.kafkaVersionTopic, partition, offsetRecord);
     pcs.resetProcessedRecordSizeSinceLastSync();
+    // TODO: update
     String msg = "Offset synced for replica: " + pcs.getReplicaId() + " - localVtOffset: {}";
     if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
       LOGGER.info(msg, offsetRecord.getCheckpointedLocalVtPosition());
@@ -3258,6 +3259,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         break;
       case TOPIC_SWITCH:
         TopicSwitch topicSwitch = (TopicSwitch) controlMessage.controlMessageUnion;
+        validateEndOfPushReceivedBeforeTopicSwitch(partitionConsumptionState, offset);
+
         LOGGER.info(
             "Received {} control message. Replica: {}, Offset: {} NewSource: {}",
             type.name(),
@@ -3510,6 +3513,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       long brokerConsumerLatencyMs,
       PartitionConsumptionState partitionConsumptionState);
 
+  boolean isRecordSelfProduced(DefaultPubSubMessage consumerRecord) {
+    LeaderMetadata leaderMetadata = consumerRecord.getValue().getLeaderMetadataFooter();
+    if (leaderMetadata == null) {
+      return false;
+    }
+    return leaderMetadata.getHostName().toString().replace(":", "_").equals(hostName);
+  }
+
   /**
    * Message validation using DIV. Leaders should pass in the validator instance from {@link LeaderFollowerStoreIngestionTask};
    * and drainers should pass in the validator instance from {@link StoreIngestionTask}
@@ -3528,6 +3539,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     KafkaKey key = consumerRecord.getKey();
     if (key.isControlMessage() && Arrays.equals(KafkaKey.HEART_BEAT.getKey(), key.getKey())) {
       return; // Skip validation for ingestion heartbeat records.
+    } else if (isGlobalRtDivEnabled() && isRecordSelfProduced(consumerRecord)) {
+      // Skip validation for self-produced records. If there were any issues, the followers would've reported it already
+      // e.g. Leader->Follower, resubscribe to local VT, consume messages produced by itself (when it was leader)
+      return;
     }
     // Global RT DIV messages are not skipped. See validateAndFilterOutDuplicateMessagesFromLeaderTopic()
 
@@ -5060,6 +5075,27 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             e);
       }
       return PubSubUtil.fromKafkaOffset(offset);
+    }
+  }
+
+  /**
+   * Validates that END_OF_PUSH has been received before processing TOPIC_SWITCH.
+   *
+   * @param partitionConsumptionState The partition consumption state to validate
+   * @param position The position/offset for error reporting
+   * @throws VeniceException if END_OF_PUSH has not been received
+   */
+  protected static void validateEndOfPushReceivedBeforeTopicSwitch(
+      PartitionConsumptionState partitionConsumptionState,
+      PubSubPosition position) {
+    Objects.requireNonNull(partitionConsumptionState, "PCS cannot be null");
+    if (!partitionConsumptionState.isEndOfPushReceived()) {
+      String errorMessage = String.format(
+          "%s received TOPIC_SWITCH control message before receiving END_OF_PUSH. Position: %s",
+          partitionConsumptionState.getReplicaId(),
+          position);
+      LOGGER.error(errorMessage);
+      throw new VeniceMessageException(errorMessage);
     }
   }
 }

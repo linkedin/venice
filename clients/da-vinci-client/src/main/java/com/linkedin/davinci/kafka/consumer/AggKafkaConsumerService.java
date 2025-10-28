@@ -558,4 +558,22 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
     return null;
   }
 
+  public static int getKeyLevelLockMaxPoolSizeBasedOnServerConfig(VeniceServerConfig serverConfig, int partitionCount) {
+    int consumerPoolSizeForLeaderConsumption = 0;
+    if (serverConfig.getConsumerPoolStrategyType()
+        .equals(KafkaConsumerServiceDelegator.ConsumerPoolStrategyType.CURRENT_VERSION_PRIORITIZATION)) {
+      consumerPoolSizeForLeaderConsumption = serverConfig.getConsumerPoolSizeForCurrentVersionAAWCLeader()
+          + serverConfig.getConsumerPoolSizeForCurrentVersionSepRTLeader()
+          + serverConfig.getConsumerPoolSizeForNonCurrentVersionAAWCLeader();
+    } else {
+      consumerPoolSizeForLeaderConsumption = serverConfig.getConsumerPoolSizePerKafkaCluster();
+    }
+    int multiplier = 1;
+    if (serverConfig.isAAWCWorkloadParallelProcessingEnabled()) {
+      multiplier = serverConfig.getAAWCWorkloadParallelProcessingThreadPoolSize();
+    }
+    return Math.min(partitionCount, consumerPoolSizeForLeaderConsumption)
+        * serverConfig.getKafkaClusterIdToUrlMap().size() * multiplier + 1;
+  }
+
 }

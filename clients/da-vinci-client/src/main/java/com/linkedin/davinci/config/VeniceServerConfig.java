@@ -1785,10 +1785,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     return nonExistingTopicCheckRetryIntervalSecond;
   }
 
-  public boolean isDedicatedConsumerPoolForAAWCLeaderEnabled() {
-    return dedicatedConsumerPoolForAAWCLeaderEnabled;
-  }
-
   public int getDedicatedConsumerPoolSizeForAAWCLeader() {
     return dedicatedConsumerPoolSizeForAAWCLeader;
   }
