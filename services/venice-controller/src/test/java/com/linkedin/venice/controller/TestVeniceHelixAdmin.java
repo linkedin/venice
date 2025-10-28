@@ -202,7 +202,7 @@ public class TestVeniceHelixAdmin {
 
     VeniceControllerClusterConfig config = mock(VeniceControllerClusterConfig.class);
     when(config.getDefaultReadQuotaPerRouter()).thenReturn(defaultQuota);
-    when(config.getMaxReadCapacityCu()).thenReturn(maxCapacity);
+    when(config.getMaxRouterReadCapacityCu()).thenReturn(maxCapacity);
 
     // Setup cluster resources
     HelixVeniceClusterResources resources = mock(HelixVeniceClusterResources.class);
