@@ -962,12 +962,6 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
           boolean sequentialRollForward = !StringUtils.isEmpty(rolloutOrderStr);
           for (Store parentStore: eligibleStoresToProcess) {
             Version targetVersion = parentStore.getVersion(parentStore.getLargestUsedVersionNumber());
-            if (targetVersion == null) {
-              String message = "Parent version is null for store " + parentStore.getName() + " for target version "
-                  + parentStore.getLargestUsedVersionNumber();
-              logMessageIfNotRedundant(message);
-              continue;
-            }
 
             // Check if store is already being processed
             String kafkaTopicName =
