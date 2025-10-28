@@ -5049,7 +5049,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     try {
       final PubSubPosition position = pubSubPositionDeserializer.toPosition(wireFormatBytes);
       // Guard against regressions: honor the caller-provided minimum offset.
-      if (offset > 0 && position.getNumericOffset() < offset) {
+      if (position.getNumericOffset() < offset) {
         String context = String.format(" for: %s/%s", topicPartition, versionTopic);
         if (!REDUNDANT_LOGGING_FILTER.isRedundantException(context)) {
           LOGGER.warn(
