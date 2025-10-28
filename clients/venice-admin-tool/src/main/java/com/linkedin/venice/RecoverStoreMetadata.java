@@ -231,6 +231,7 @@ public class RecoverStoreMetadata {
           updateParams.setEtledProxyUserAccount(deletedStore.getEtlStoreConfig().getEtledUserProxyAccount());
           updateParams.setRegularVersionETLEnabled(deletedStore.getEtlStoreConfig().isRegularVersionETLEnabled());
           updateParams.setFutureVersionETLEnabled(deletedStore.getEtlStoreConfig().isFutureVersionETLEnabled());
+          updateParams.setETLStrategy(deletedStore.getEtlStoreConfig().getETLStrategy());
         }
         updateParams.setCompressionStrategy(deletedStore.getCompressionStrategy())
             .setClientDecompressionEnabled(deletedStore.getClientDecompressionEnabled())
