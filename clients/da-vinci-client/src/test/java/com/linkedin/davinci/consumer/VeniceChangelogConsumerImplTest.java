@@ -807,12 +807,8 @@ public class VeniceChangelogConsumerImplTest {
     changelogClientConfigField.setAccessible(true);
     changelogClientConfigField.set(veniceChangelogConsumer, changelogClientConfig);
 
-    HashMap<Integer, VeniceCompressor> compressorMap = mock(HashMap.class);
     VeniceCompressor compressor = mock(VeniceCompressor.class);
-    when(compressorMap.get(anyInt())).thenReturn(compressor);
-    Field compressorMapField = VeniceChangelogConsumerImpl.class.getDeclaredField("compressorMap");
-    compressorMapField.setAccessible(true);
-    compressorMapField.set(veniceChangelogConsumer, compressorMap);
+    when(veniceChangelogConsumer.getVersionCompressor(any(PubSubTopic.class))).thenReturn(compressor);
 
     ChunkAssembler chunkAssembler = mock(ChunkAssembler.class);
     Field chunkAssemblerField = VeniceChangelogConsumerImpl.class.getDeclaredField("chunkAssembler");
