@@ -19,6 +19,8 @@ public class VeniceConstants {
    */
   public static final int DEFAULT_PER_ROUTER_READ_QUOTA = 20_000_000;
 
+  public static final int MAX_ROUTER_READ_CAPACITY_CU = 100000;
+
   /**
    * Compute request version 2.
    */

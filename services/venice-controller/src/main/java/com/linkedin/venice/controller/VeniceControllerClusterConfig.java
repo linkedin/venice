@@ -207,6 +207,7 @@ import static com.linkedin.venice.PushJobCheckpoints.DEFAULT_PUSH_JOB_USER_ERROR
 import static com.linkedin.venice.SSLConfig.DEFAULT_CONTROLLER_SSL_ENABLED;
 import static com.linkedin.venice.VeniceConstants.DEFAULT_PER_ROUTER_READ_QUOTA;
 import static com.linkedin.venice.VeniceConstants.DEFAULT_SSL_FACTORY_CLASS_NAME;
+import static com.linkedin.venice.VeniceConstants.MAX_ROUTER_READ_CAPACITY_CU;
 import static com.linkedin.venice.controller.ParentControllerRegionState.ACTIVE;
 import static com.linkedin.venice.pubsub.PubSubConstants.DEFAULT_KAFKA_REPLICATION_FACTOR;
 import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_TOPIC_MANAGER_METADATA_FETCHER_CONSUMER_POOL_SIZE_DEFAULT_VALUE;
@@ -582,8 +583,15 @@ public class VeniceControllerClusterConfig {
    */
   private final boolean disableParentRequestTopicForStreamPushes;
 
+  /**
+   * Configs to specify the default and max per router quota. This is used in {@link VeniceHelixAdmin} to determine whether
+   * a quota change should be approved or denied.
+   * 1. defaultReadQuotaPerRouter - This value represents the default per router capacity from the controller's perspective
+   * 2. maxRouterReadCapacityCu - This value represents the maximum per router capacity from the router's perspective. This value is also
+   * used to throttle requests in the router
+   */
   private final int defaultReadQuotaPerRouter;
-  private final long maxReadCapacityCu;
+  private final long maxRouterReadCapacityCu;
 
   private final int defaultMaxRecordSizeBytes; // default value for VeniceWriter.maxRecordSizeBytes
   private final int replicationMetadataVersion;
@@ -768,7 +776,7 @@ public class VeniceControllerClusterConfig {
         props.getBoolean(CONTROLLER_DISABLE_PARENT_REQUEST_TOPIC_FOR_STREAM_PUSHES, false);
     this.defaultReadQuotaPerRouter =
         props.getInt(CONTROLLER_DEFAULT_READ_QUOTA_PER_ROUTER, DEFAULT_PER_ROUTER_READ_QUOTA);
-    this.maxReadCapacityCu = props.getLong(MAX_READ_CAPACITY, 100000);
+    this.maxRouterReadCapacityCu = props.getLong(MAX_READ_CAPACITY, MAX_ROUTER_READ_CAPACITY_CU);
     this.defaultMaxRecordSizeBytes =
         props.getInt(DEFAULT_MAX_RECORD_SIZE_BYTES, DEFAULT_MAX_RECORD_SIZE_BYTES_BACKFILL);
     if (defaultMaxRecordSizeBytes < BYTES_PER_MB) {
@@ -1285,8 +1293,8 @@ public class VeniceControllerClusterConfig {
     return defaultReadQuotaPerRouter;
   }
 
-  public long getMaxReadCapacityCu() {
-    return maxReadCapacityCu;
+  public long getMaxRouterReadCapacityCu() {
+    return maxRouterReadCapacityCu;
   }
 
   public int getDefaultMaxRecordSizeBytes() {

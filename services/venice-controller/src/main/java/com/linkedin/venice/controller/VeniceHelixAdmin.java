@@ -5715,8 +5715,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
         VeniceControllerClusterConfig clusterConfig = getHelixVeniceClusterResources(clusterName).getConfig();
         int defaultReadQuotaPerRouter = clusterConfig.getDefaultReadQuotaPerRouter();
-        long maxReadCapacityCu = clusterConfig.getMaxReadCapacityCu();
-        long maxPerRouterCapacity = Math.max(defaultReadQuotaPerRouter, maxReadCapacityCu);
+        long maxRouterReadCapacityCu = clusterConfig.getMaxRouterReadCapacityCu();
+        long maxPerRouterCapacity = Math.max(defaultReadQuotaPerRouter, maxRouterReadCapacityCu);
         long totalClusterCapacity = maxPerRouterCapacity * routerCount;
         if (Math.max(totalClusterCapacity, maxPerRouterCapacity) < readQuotaInCU.get()) {
           throw new VeniceException(
