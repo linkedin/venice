@@ -11,6 +11,7 @@ import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubAdminAdapter;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
+import com.linkedin.venice.pubsub.listener.StoreChangeNotifier;
 import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
@@ -34,6 +35,7 @@ public class TopicManagerContext {
   private final int topicMetadataFetcherThreadPoolSize;
   private final VeniceComponent veniceComponent;
   private final LogContext logContext;
+  private final StoreChangeNotifier storeChangeNotifier;
 
   private TopicManagerContext(Builder builder) {
     this.pubSubOperationTimeoutMs = builder.pubSubOperationTimeoutMs;
@@ -50,6 +52,7 @@ public class TopicManagerContext {
     this.topicMetadataFetcherThreadPoolSize = builder.topicMetadataFetcherThreadPoolSize;
     this.veniceComponent = builder.veniceComponent;
     this.logContext = builder.logContext;
+    this.storeChangeNotifier = builder.storeChangeNotifier;
   }
 
   public long getPubSubOperationTimeoutMs() {
@@ -116,6 +119,10 @@ public class TopicManagerContext {
     return pubSubPositionTypeRegistry;
   }
 
+  public StoreChangeNotifier getStoreChangeNotifier() {
+    return storeChangeNotifier;
+  }
+
   @Override
   public String toString() {
     return "TopicManagerContext{veniceComponent=" + veniceComponent + ", pubSubOperationTimeoutMs="
@@ -136,6 +143,7 @@ public class TopicManagerContext {
     private PubSubPropertiesSupplier pubSubPropertiesSupplier;
     private VeniceComponent veniceComponent = VeniceComponent.UNSPECIFIED; // Default component
     private LogContext logContext;
+    private StoreChangeNotifier storeChangeNotifier;
     private long pubSubOperationTimeoutMs = PUBSUB_OPERATION_TIMEOUT_MS_DEFAULT_VALUE;
     private long topicDeletionStatusPollIntervalMs = PUBSUB_TOPIC_DELETION_STATUS_POLL_INTERVAL_MS_DEFAULT_VALUE;
     private long topicMinLogCompactionLagMs = DEFAULT_KAFKA_MIN_LOG_COMPACTION_LAG_MS;
@@ -212,6 +220,11 @@ public class TopicManagerContext {
 
     public Builder setLogContext(LogContext logContext) {
       this.logContext = logContext;
+      return this;
+    }
+
+    public Builder setStoreChangeNotifier(StoreChangeNotifier storeChangeNotifier) {
+      this.storeChangeNotifier = storeChangeNotifier;
       return this;
     }
 

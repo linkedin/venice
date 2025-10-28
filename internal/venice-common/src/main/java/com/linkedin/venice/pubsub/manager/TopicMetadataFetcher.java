@@ -111,7 +111,8 @@ class TopicMetadataFetcher implements Closeable {
             .setPubSubMessageDeserializer(pubSubMessageDeserializer)
             .setPubSubPositionTypeRegistry(topicManagerContext.getPubSubPositionTypeRegistry())
             .setPubSubTopicRepository(topicManagerContext.getPubSubTopicRepository())
-            .setMetricsRepository(topicManagerContext.getMetricsRepository());
+            .setMetricsRepository(topicManagerContext.getMetricsRepository())
+            .setStoreChangeNotifier(topicManagerContext.getStoreChangeNotifier());
     for (int i = 0; i < topicManagerContext.getTopicMetadataFetcherConsumerPoolSize(); i++) {
       pubSubConsumerContextBuilder.setConsumerName("TopicManager-" + i);
       PubSubConsumerAdapter pubSubConsumerAdapter = pubSubConsumerFactory.create(pubSubConsumerContextBuilder.build());

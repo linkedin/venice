@@ -70,6 +70,7 @@ import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.pubsub.listener.StoreChangeNotifier;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.pubsub.manager.TopicManagerContext;
 import com.linkedin.venice.pubsub.manager.TopicManagerRepository;
@@ -184,7 +185,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
   private ExecutorService ingestionExecutorService;
 
-  private ParticipantStoreConsumptionTask participantStoreConsumptionTask;
+  private final ParticipantStoreConsumptionTask participantStoreConsumptionTask;
 
   // TODO: This could be a composite storage engine which keeps secondary storage engines updated in lockstep with a
   // primary
@@ -204,6 +205,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
   private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
   private final PubSubContext pubSubContext;
+  private final StoreChangeNotifier storeChangeNotifier;
   private final KafkaValueSerializer kafkaValueSerializer;
   private final IngestionThrottler ingestionThrottler;
   private final ExecutorService aaWCWorkLoadProcessingThreadPool;
@@ -304,6 +306,55 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     KafkaClusterBasedRecordThrottler kafkaClusterBasedRecordThrottler =
         new KafkaClusterBasedRecordThrottler(kafkaUrlToRecordsThrottler);
 
+    VeniceComponent component =
+        serverConfig.isDaVinciClient() ? VeniceComponent.DAVINCI_CLIENT : VeniceComponent.SERVER;
+    this.storeChangeNotifier = new StoreChangeNotifier(
+        serverConfig.getStoreChangeNotifierThreadPoolSize(),
+        serverConfig.getLogContext(),
+        component);
+    this.metadataRepo.registerStoreDataChangedListener(storeChangeNotifier);
+
+    /**
+     * Register a callback function to handle the case when a new KME value schema is encountered when the server
+     * consumes messages from Kafka.
+     */
+    BiConsumer<Integer, Schema> newSchemaEncountered = (schemaId, schema) -> {
+      LOGGER.info("Encountered a new KME value schema (id = {}), proceed to register", schemaId);
+      try (ControllerClientBackedSystemSchemaInitializer schemaInitializer =
+          new ControllerClientBackedSystemSchemaInitializer(
+              AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE,
+              serverConfig.getSystemSchemaClusterName(),
+              null,
+              null,
+              false,
+              sslFactory,
+              serverConfig.getLocalControllerUrl(),
+              serverConfig.getLocalControllerD2ServiceName(),
+              d2Client,
+              serverConfig.getLocalD2ZkHost(),
+              false)) {
+        schemaInitializer.execute(Collections.singletonMap(schemaId, schema));
+      } catch (VeniceException e) {
+        LOGGER.error(
+            "Exception in registering '{}' schema version '{}'",
+            AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.name(),
+            schemaId,
+            e);
+        throw e;
+      }
+    };
+
+    // Don't apply newSchemaEncountered callbacks for da vinci client.
+    kafkaValueSerializer = (!isDaVinciClient && serverConfig.isKMERegistrationFromMessageHeaderEnabled())
+        ? new OptimizedKafkaValueSerializer(newSchemaEncountered)
+        : new OptimizedKafkaValueSerializer();
+
+    kafkaMessageEnvelopeSchemaReader.ifPresent(kafkaValueSerializer::setSchemaReader);
+    PubSubMessageDeserializer pubSubDeserializer = new PubSubMessageDeserializer(
+        kafkaValueSerializer,
+        new LandFillObjectPool<>(KafkaMessageEnvelope::new),
+        new LandFillObjectPool<>(KafkaMessageEnvelope::new));
+
     TopicManagerContext topicManagerContext =
         new TopicManagerContext.Builder().setPubSubTopicRepository(pubSubTopicRepository)
             .setMetricsRepository(metricsRepository)
@@ -314,7 +365,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
             .setPubSubConsumerAdapterFactory(pubSubClientsFactory.getConsumerAdapterFactory())
             .setTopicMetadataFetcherThreadPoolSize(serverConfig.getTopicManagerMetadataFetcherThreadPoolSize())
             .setTopicMetadataFetcherConsumerPoolSize(serverConfig.getTopicManagerMetadataFetcherConsumerPoolSize())
-            .setVeniceComponent(VeniceComponent.SERVER)
+            .setVeniceComponent(component)
+            .setStoreChangeNotifier(storeChangeNotifier)
             .build();
     this.topicManagerRepository =
         new TopicManagerRepository(topicManagerContext, serverConfig.getKafkaBootstrapServers());
@@ -322,6 +374,9 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         .setPubSubPositionTypeRegistry(serverConfig.getPubSubPositionTypeRegistry())
         .setPubSubPositionDeserializer(new PubSubPositionDeserializer(serverConfig.getPubSubPositionTypeRegistry()))
         .setPubSubTopicRepository(pubSubTopicRepository)
+        .setStoreChangeNotifier(storeChangeNotifier)
+        .setPubSubMessageDeserializer(pubSubDeserializer)
+        .setPubSubClientsFactory(pubSubClientsFactory)
         .build();
 
     VeniceNotifier notifier = new LogNotifier();
@@ -386,56 +441,13 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         metricsRepository,
         icProvider);
 
-    /**
-     * Register a callback function to handle the case when a new KME value schema is encountered when the server
-     * consumes messages from Kafka.
-     */
-    BiConsumer<Integer, Schema> newSchemaEncountered = (schemaId, schema) -> {
-      LOGGER.info("Encountered a new KME value schema (id = {}), proceed to register", schemaId);
-      try (ControllerClientBackedSystemSchemaInitializer schemaInitializer =
-          new ControllerClientBackedSystemSchemaInitializer(
-              AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE,
-              serverConfig.getSystemSchemaClusterName(),
-              null,
-              null,
-              false,
-              sslFactory,
-              serverConfig.getLocalControllerUrl(),
-              serverConfig.getLocalControllerD2ServiceName(),
-              d2Client,
-              serverConfig.getLocalD2ZkHost(),
-              false)) {
-        schemaInitializer.execute(Collections.singletonMap(schemaId, schema));
-      } catch (VeniceException e) {
-        LOGGER.error(
-            "Exception in registering '{}' schema version '{}'",
-            AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.name(),
-            schemaId,
-            e);
-        throw e;
-      }
-    };
-
-    // Don't apply newSchemaEncountered callbacks for da vinci client.
-    kafkaValueSerializer = (!isDaVinciClient && serverConfig.isKMERegistrationFromMessageHeaderEnabled())
-        ? new OptimizedKafkaValueSerializer(newSchemaEncountered)
-        : new OptimizedKafkaValueSerializer();
-
-    kafkaMessageEnvelopeSchemaReader.ifPresent(kafkaValueSerializer::setSchemaReader);
-    PubSubMessageDeserializer pubSubDeserializer = new PubSubMessageDeserializer(
-        kafkaValueSerializer,
-        new LandFillObjectPool<>(KafkaMessageEnvelope::new),
-        new LandFillObjectPool<>(KafkaMessageEnvelope::new));
-
     aggKafkaConsumerService = new AggKafkaConsumerService(
-        pubSubClientsFactory.getConsumerAdapterFactory(),
         this::getPubSubSSLPropertiesFromServerConfig,
         serverConfig,
         ingestionThrottler,
         kafkaClusterBasedRecordThrottler,
         metricsRepository,
         new MetadataRepoBasedStaleTopicCheckerImpl(this.getMetadataRepo()),
-        pubSubDeserializer,
         (topicName) -> this.killConsumptionTask(topicName),
         vt -> {
           String storeName = Version.parseStoreFromKafkaTopicName(vt);
@@ -450,7 +462,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
           }
           return version.isActiveActiveReplicationEnabled() || store.isWriteComputationEnabled();
         },
-        metadataRepo);
+        metadataRepo,
+        pubSubContext);
     /**
      * After initializing a {@link AggKafkaConsumerService} service, it doesn't contain KafkaConsumerService yet until
      * a new Kafka cluster is registered; here we explicitly create KafkaConsumerService for the local Kafka cluster.

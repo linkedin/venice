@@ -2,6 +2,7 @@ package com.linkedin.venice.pubsub;
 
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
+import com.linkedin.venice.pubsub.listener.StoreChangeNotifier;
 import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Objects;
@@ -27,6 +28,7 @@ public class PubSubConsumerAdapterContext {
   private final PubSubMessageDeserializer pubSubMessageDeserializer;
   private final PubSubPositionTypeRegistry pubSubPositionTypeRegistry;
   private final boolean isOffsetCollectionEnabled;
+  private final StoreChangeNotifier storeChangeNotifier;
 
   private PubSubConsumerAdapterContext(Builder builder) {
     this.consumerName = builder.consumerName;
@@ -38,6 +40,7 @@ public class PubSubConsumerAdapterContext {
     this.isOffsetCollectionEnabled = builder.isOffsetCollectionEnabled;
     this.pubSubMessageDeserializer = builder.pubSubMessageDeserializer;
     this.pubSubPositionTypeRegistry = builder.pubSubPositionTypeRegistry;
+    this.storeChangeNotifier = builder.storeChangeNotifier;
   }
 
   public String getConsumerName() {
@@ -76,6 +79,10 @@ public class PubSubConsumerAdapterContext {
     return pubSubPositionTypeRegistry;
   }
 
+  public StoreChangeNotifier getStoreChangeNotifier() {
+    return storeChangeNotifier;
+  }
+
   public static class Builder {
     private String consumerName;
     private String pubSubBrokerAddress;
@@ -86,6 +93,7 @@ public class PubSubConsumerAdapterContext {
     private PubSubPositionTypeRegistry pubSubPositionTypeRegistry;
     private MetricsRepository metricsRepository;
     private boolean isOffsetCollectionEnabled;
+    private StoreChangeNotifier storeChangeNotifier;
 
     public Builder setConsumerName(String consumerName) {
       this.consumerName = consumerName;
@@ -129,6 +137,11 @@ public class PubSubConsumerAdapterContext {
 
     public Builder setPubSubPositionTypeRegistry(PubSubPositionTypeRegistry pubSubPositionTypeRegistry) {
       this.pubSubPositionTypeRegistry = Objects.requireNonNull(pubSubPositionTypeRegistry);
+      return this;
+    }
+
+    public Builder setStoreChangeNotifier(StoreChangeNotifier storeChangeNotifier) {
+      this.storeChangeNotifier = storeChangeNotifier;
       return this;
     }
 

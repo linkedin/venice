@@ -24,7 +24,7 @@ public class ControllerClientFactoryTest {
   }
 
   @AfterClass
-  public void teardown() {
+  public void tearDown() {
     ControllerClientFactory.resetUnitTestMode();
   }
 

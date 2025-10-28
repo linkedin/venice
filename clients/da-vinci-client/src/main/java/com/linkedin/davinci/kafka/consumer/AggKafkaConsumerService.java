@@ -10,9 +10,9 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.VeniceJsonSerializer;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
+import com.linkedin.venice.pubsub.PubSubContext;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
-import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
@@ -69,9 +69,9 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
       new VeniceConcurrentHashMap<>();
   private final Map<String, String> kafkaClusterUrlToAliasMap;
   private final Object2IntMap<String> kafkaClusterUrlToIdMap;
-  private final PubSubMessageDeserializer pubSubDeserializer;
   private final Function<String, String> kafkaClusterUrlResolver;
   private final PubSubPropertiesSupplier pubSubPropertiesSupplier;
+  private final PubSubContext pubSubContext;
 
   private final Map<String, StoreIngestionTask> versionTopicStoreIngestionTaskMapping = new VeniceConcurrentHashMap<>();
   private ScheduledExecutorService stuckConsumerRepairExecutorService;
@@ -90,19 +90,18 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
       });
 
   public AggKafkaConsumerService(
-      final PubSubConsumerAdapterFactory consumerFactory,
       final PubSubPropertiesSupplier pubSubPropertiesSupplier,
       final VeniceServerConfig serverConfig,
       final IngestionThrottler ingestionThrottler,
       KafkaClusterBasedRecordThrottler kafkaClusterBasedRecordThrottler,
       final MetricsRepository metricsRepository,
       StaleTopicChecker staleTopicChecker,
-      final PubSubMessageDeserializer pubSubDeserializer,
       Consumer<String> killIngestionTaskRunnable,
       Function<String, Boolean> isAAOrWCEnabledFunc,
-      ReadOnlyStoreRepository metadataRepository) {
+      ReadOnlyStoreRepository metadataRepository,
+      PubSubContext pubSubContext) {
     this.serverConfig = serverConfig;
-    this.consumerFactory = consumerFactory;
+    this.consumerFactory = pubSubContext.getPubSubClientsFactory().getConsumerAdapterFactory();
     this.readCycleDelayMs = serverConfig.getKafkaReadCycleDelayMs();
     this.sharedConsumerNonExistingTopicCleanupDelayMS = serverConfig.getSharedConsumerNonExistingTopicCleanupDelayMS();
     this.ingestionThrottler = ingestionThrottler;
@@ -114,7 +113,6 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
     this.kafkaClusterUrlToAliasMap = serverConfig.getKafkaClusterUrlToAliasMap();
     this.kafkaClusterUrlToIdMap = serverConfig.getKafkaClusterUrlToIdMap();
     this.isKafkaConsumerOffsetCollectionEnabled = serverConfig.isKafkaConsumerOffsetCollectionEnabled();
-    this.pubSubDeserializer = pubSubDeserializer;
     this.kafkaClusterUrlResolver = serverConfig.getKafkaClusterUrlResolver();
     this.metadataRepository = metadataRepository;
     if (serverConfig.isStuckConsumerRepairEnabled()) {
@@ -144,6 +142,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
     }
     this.isAAOrWCEnabledFunc = isAAOrWCEnabledFunc;
     this.pubSubPropertiesSupplier = pubSubPropertiesSupplier;
+    this.pubSubContext = pubSubContext;
     LOGGER.info("Successfully initialized AggKafkaConsumerService");
   }
 
@@ -342,7 +341,6 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
             serverConfig,
             (poolSize, poolType) -> sharedConsumerAssignmentStrategy.constructor.construct(
                 poolType,
-                consumerFactory,
                 consumerProperties,
                 readCycleDelayMs,
                 poolSize,
@@ -353,13 +351,13 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
                 sharedConsumerNonExistingTopicCleanupDelayMS,
                 staleTopicChecker,
                 liveConfigBasedKafkaThrottlingEnabled,
-                pubSubDeserializer,
                 SystemTime.INSTANCE,
                 null,
                 isKafkaConsumerOffsetCollectionEnabled,
                 metadataRepository,
                 serverConfig.isUnregisterMetricForDeletedStoreEnabled(),
-                serverConfig),
+                serverConfig,
+                pubSubContext),
             isAAOrWCEnabledFunc));
 
     if (!consumerService.isRunning()) {
