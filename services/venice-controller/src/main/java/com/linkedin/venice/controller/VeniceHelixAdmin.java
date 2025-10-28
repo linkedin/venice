@@ -2218,6 +2218,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       throwStoreAlreadyExists(clusterName, storeName);
     }
 
+    // Check if store exists in graveyard and enforce recreation time window
+    checkStoreGraveyardForRecreation(clusterName, storeName);
     if (!skipLingeringResourceCheck) {
       checkResourceCleanupBeforeStoreCreation(clusterName, storeName, !multiClusterConfigs.isParent());
     }
@@ -2225,6 +2227,54 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     // Check whether the schema is valid or not
     new SchemaEntry(SchemaData.INVALID_VALUE_SCHEMA_ID, keySchema);
     new SchemaEntry(SchemaData.INVALID_VALUE_SCHEMA_ID, valueSchema);
+  }
+
+  void checkStoreGraveyardForRecreation(String clusterName, String storeName) {
+    HelixVeniceClusterResources clusterResources = getHelixVeniceClusterResources(clusterName);
+
+    StoreGraveyard storeGraveyard = getStoreGraveyard();
+    VeniceControllerClusterConfig config = clusterResources.getConfig();
+
+    // Get the creation time of the store in the graveyard (when it was deleted)
+    long deletedTime = storeGraveyard.getStoreGraveyardCreationTime(clusterName, storeName);
+
+    // If store exists in graveyard, check the time window
+    if (deletedTime != HelixStoreGraveyard.STORE_NOT_IN_GRAVEYARD) {
+      long currentTime = System.currentTimeMillis();
+
+      long timeWindowMs = (long) config.getStoreRecreationAfterDeletionTimeWindowSeconds() * Time.MS_PER_SECOND; // Convert
+                                                                                                                 // seconds
+                                                                                                                 // to
+                                                                                                                 // milliseconds
+      long timeSinceDeletion = currentTime - deletedTime;
+
+      if (timeSinceDeletion < timeWindowMs) {
+        long remainingTimeSeconds = (timeWindowMs - timeSinceDeletion) / Time.MS_PER_SECOND;
+        long timeSinceDeletionSeconds = timeSinceDeletion / Time.MS_PER_SECOND;
+        String errorMsg = String.format(
+            "Store '%s' was recently deleted and cannot be recreated yet. "
+                + "Time since deletion: %d %s. Required waiting period: %d %s. " + "Remaining time: %d %s.",
+            storeName,
+            timeSinceDeletionSeconds,
+            timeSinceDeletionSeconds == 1 ? "second" : "seconds",
+            config.getStoreRecreationAfterDeletionTimeWindowSeconds(),
+            config.getStoreRecreationAfterDeletionTimeWindowSeconds() == 1 ? "second" : "seconds",
+            remainingTimeSeconds,
+            remainingTimeSeconds == 1 ? "second" : "seconds");
+        LOGGER.warn(errorMsg);
+        throw new VeniceException(errorMsg);
+      } else {
+        long secondsAgo = timeSinceDeletion / Time.MS_PER_SECOND;
+        int requiredSeconds = config.getStoreRecreationAfterDeletionTimeWindowSeconds();
+        LOGGER.info(
+            "Store '{}' was deleted {} {} ago, which exceeds the required waiting period of {} {}. Recreation is allowed.",
+            storeName,
+            secondsAgo,
+            secondsAgo == 1 ? "second" : "seconds",
+            requiredSeconds,
+            requiredSeconds == 1 ? "second" : "seconds");
+      }
+    }
   }
 
   private void checkStoreNameConflict(String storeName, boolean allowSystemStore) {

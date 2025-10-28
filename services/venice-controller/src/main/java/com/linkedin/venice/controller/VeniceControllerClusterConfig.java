@@ -93,6 +93,7 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_STORAGE_CLUSTER_HELIX_CL
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_STORE_GRAVEYARD_CLEANUP_DELAY_MINUTES;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_STORE_GRAVEYARD_CLEANUP_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_STORE_GRAVEYARD_CLEANUP_SLEEP_INTERVAL_BETWEEN_LIST_FETCH_MINUTES;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_STORE_RECREATION_AFTER_DELETION_TIME_WINDOW_SECONDS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_SYSTEM_SCHEMA_CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_SYSTEM_STORE_ACL_SYNCHRONIZATION_DELAY_MS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_UNUSED_SCHEMA_CLEANUP_INTERVAL_SECONDS;
@@ -442,6 +443,8 @@ public class VeniceControllerClusterConfig {
   private final int storeGraveyardCleanupDelayMinutes;
 
   private final int storeGraveyardCleanupSleepIntervalBetweenListFetchMinutes;
+
+  private final int storeRecreationAfterDeletionTimeWindowSeconds;
 
   private final boolean parentSystemStoreRepairServiceEnabled;
 
@@ -1091,6 +1094,9 @@ public class VeniceControllerClusterConfig {
     this.storeGraveyardCleanupDelayMinutes = props.getInt(CONTROLLER_STORE_GRAVEYARD_CLEANUP_DELAY_MINUTES, 0);
     this.storeGraveyardCleanupSleepIntervalBetweenListFetchMinutes =
         props.getInt(CONTROLLER_STORE_GRAVEYARD_CLEANUP_SLEEP_INTERVAL_BETWEEN_LIST_FETCH_MINUTES, 15);
+    this.storeRecreationAfterDeletionTimeWindowSeconds =
+        props.getInt(CONTROLLER_STORE_RECREATION_AFTER_DELETION_TIME_WINDOW_SECONDS, 21600); // Default 6 hours in
+                                                                                             // seconds
     this.parentSystemStoreRepairServiceEnabled =
         props.getBoolean(CONTROLLER_PARENT_SYSTEM_STORE_REPAIR_SERVICE_ENABLED, false);
     this.parentSystemStoreRepairCheckIntervalSeconds =
@@ -1990,6 +1996,10 @@ public class VeniceControllerClusterConfig {
 
   public int getStoreGraveyardCleanupSleepIntervalBetweenListFetchMinutes() {
     return storeGraveyardCleanupSleepIntervalBetweenListFetchMinutes;
+  }
+
+  public int getStoreRecreationAfterDeletionTimeWindowSeconds() {
+    return storeRecreationAfterDeletionTimeWindowSeconds;
   }
 
   public boolean isParentSystemStoreRepairServiceEnabled() {

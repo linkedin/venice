@@ -47,6 +47,7 @@ import com.linkedin.venice.controllerapi.RepushJobResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.helix.HelixExternalViewRepository;
+import com.linkedin.venice.helix.HelixStoreGraveyard;
 import com.linkedin.venice.helix.SafeHelixDataAccessor;
 import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.ingestion.control.RealTimeTopicSwitcher;
@@ -56,6 +57,7 @@ import com.linkedin.venice.meta.MaterializedViewParameters;
 import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.StoreGraveyard;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.Version.PushType;
 import com.linkedin.venice.meta.VersionStatus;
@@ -73,6 +75,7 @@ import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.RegionUtils;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.locks.ClusterLockManager;
 import com.linkedin.venice.views.MaterializedView;
@@ -1429,4 +1432,61 @@ public class TestVeniceHelixAdmin {
       verify(mockMetaWriter).writeHeartbeat(eq(userStore), eq(timestamp));
     }
   }
+
+  @Test
+  public void testCheckStoreGraveyardForRecreation() {
+    VeniceHelixAdmin admin = mock(VeniceHelixAdmin.class);
+    HelixVeniceClusterResources clusterResources = mock(HelixVeniceClusterResources.class);
+    StoreGraveyard storeGraveyard = mock(StoreGraveyard.class);
+    VeniceControllerClusterConfig config = mock(VeniceControllerClusterConfig.class);
+
+    // Common setup
+    doReturn(clusterResources).when(admin).getHelixVeniceClusterResources(clusterName);
+    doReturn(storeGraveyard).when(admin).getStoreGraveyard();
+    doReturn(config).when(clusterResources).getConfig();
+    doCallRealMethod().when(admin).checkStoreGraveyardForRecreation(clusterName, storeName);
+
+    // Test Case 1: Store does not exist in graveyard - should pass
+    doReturn(HelixStoreGraveyard.STORE_NOT_IN_GRAVEYARD).when(storeGraveyard)
+        .getStoreGraveyardCreationTime(clusterName, storeName);
+    admin.checkStoreGraveyardForRecreation(clusterName, storeName); // Should not throw
+
+    // Test Case 2: Store deleted within time window - should throw exception
+    long currentTime = System.currentTimeMillis();
+    long deletedTime = currentTime - (2 * Time.MS_PER_HOUR); // 2 hours ago (7200 seconds)
+    int timeWindowSeconds = 21600; // 6-hour window in seconds
+
+    doReturn(deletedTime).when(storeGraveyard).getStoreGraveyardCreationTime(clusterName, storeName);
+    doReturn(timeWindowSeconds).when(config).getStoreRecreationAfterDeletionTimeWindowSeconds();
+
+    VeniceException exception =
+        expectThrows(VeniceException.class, () -> admin.checkStoreGraveyardForRecreation(clusterName, storeName));
+
+    assertTrue(exception.getMessage().contains("was recently deleted and cannot be recreated yet"));
+    assertTrue(exception.getMessage().contains("Time since deletion: 7200 seconds"));
+    assertTrue(exception.getMessage().contains("Required waiting period: 21600 seconds"));
+
+    // Test Case 3: Store deleted outside time window - should pass
+    long oldDeletedTime = currentTime - (8 * Time.MS_PER_HOUR); // 8 hours ago (28800 seconds)
+    doReturn(oldDeletedTime).when(storeGraveyard).getStoreGraveyardCreationTime(clusterName, storeName);
+    admin.checkStoreGraveyardForRecreation(clusterName, storeName); // Should not throw
+
+    // Test Case 4: Store deleted exactly at time window boundary - should pass
+    long boundaryDeletedTime = currentTime - (timeWindowSeconds * Time.MS_PER_SECOND); // Exactly 21600 seconds ago
+    doReturn(boundaryDeletedTime).when(storeGraveyard).getStoreGraveyardCreationTime(clusterName, storeName);
+    admin.checkStoreGraveyardForRecreation(clusterName, storeName); // Should not throw
+
+    // Test Case 5: Custom time window configuration
+    long recentDeletedTime = currentTime - (30 * 60 * 1000L); // 30 minutes ago (1800 seconds)
+    int customTimeWindowSeconds = 3600; // 1-hour window in seconds
+
+    doReturn(recentDeletedTime).when(storeGraveyard).getStoreGraveyardCreationTime(clusterName, storeName);
+    doReturn(customTimeWindowSeconds).when(config).getStoreRecreationAfterDeletionTimeWindowSeconds();
+
+    VeniceException customException =
+        expectThrows(VeniceException.class, () -> admin.checkStoreGraveyardForRecreation(clusterName, storeName));
+
+    assertTrue(customException.getMessage().contains("Required waiting period: 3600 seconds"));
+  }
+
 }

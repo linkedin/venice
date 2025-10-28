@@ -43,4 +43,14 @@ public interface StoreGraveyard {
    * List store names from graveyard in the specified cluster.
    */
   List<String> listStoreNamesFromGraveyard(String clusterName);
+
+  /**
+   * Get the creation time of a store in the graveyard.
+   * This returns the time when the store was put into the graveyard.
+   * 
+   * @param clusterName the cluster name
+   * @param storeName the store name
+   * @return the creation time in milliseconds since epoch, or a negative value if the store doesn't exist in graveyard
+   */
+  long getStoreGraveyardCreationTime(String clusterName, String storeName);
 }
