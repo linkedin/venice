@@ -46,7 +46,8 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
   public VeniceAfterImageConsumerImpl(
       ChangelogClientConfig changelogClientConfig,
       PubSubConsumerAdapter consumer,
-      PubSubMessageDeserializer pubSubMessageDeserializer) {
+      PubSubMessageDeserializer pubSubMessageDeserializer,
+      VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory) {
     this(
         changelogClientConfig,
         consumer,
@@ -55,15 +56,17 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
                 changelogClientConfig,
                 pubSubMessageDeserializer,
                 changelogClientConfig.getStoreName() + "-" + "internal")),
-        pubSubMessageDeserializer);
+        pubSubMessageDeserializer,
+        veniceChangelogConsumerClientFactory);
   }
 
   protected VeniceAfterImageConsumerImpl(
       ChangelogClientConfig changelogClientConfig,
       PubSubConsumerAdapter consumer,
       Lazy<PubSubConsumerAdapter> seekConsumer,
-      PubSubMessageDeserializer pubSubMessageDeserializer) {
-    super(changelogClientConfig, consumer, pubSubMessageDeserializer);
+      PubSubMessageDeserializer pubSubMessageDeserializer,
+      VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory) {
+    super(changelogClientConfig, consumer, pubSubMessageDeserializer, veniceChangelogConsumerClientFactory);
     internalSeekConsumer = seekConsumer;
     versionSwapListener = new VersionSwapDataChangeListener<K, V>(
         this,
@@ -300,6 +303,15 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
   public void setStoreRepository(NativeMetadataRepositoryViewAdapter repository) {
     super.setStoreRepository(repository);
     versionSwapListener.setStoreRepository(repository);
+  }
+
+  @Override
+  public void close() {
+    super.close();
+    if (internalSeekConsumer.isPresent()) {
+      internalSeekConsumer.get().close();
+    }
+    storeRepository.unregisterStoreDataChangedListener(versionSwapListener);
   }
 
   /**

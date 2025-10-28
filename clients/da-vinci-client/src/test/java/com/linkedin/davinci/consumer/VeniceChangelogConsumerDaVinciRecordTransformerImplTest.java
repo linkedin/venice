@@ -91,6 +91,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
   private List<Lazy<Integer>> keys;
   private BasicConsumerStats changeCaptureStats;
   private Set<Integer> partitionSet;
+  private VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory;
 
   @BeforeMethod
   public void setUp() throws NoSuchFieldException, IllegalAccessException {
@@ -120,8 +121,10 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
     changelogClientConfig.getInnerClientConfig()
         .setMetricsRepository(getVeniceMetricsRepository(CHANGE_DATA_CAPTURE_CLIENT, CONSUMER_METRIC_ENTITIES, true));
 
-    bootstrappingVeniceChangelogConsumer =
-        new VeniceChangelogConsumerDaVinciRecordTransformerImpl<>(changelogClientConfig);
+    veniceChangelogConsumerClientFactory = spy(new VeniceChangelogConsumerClientFactory(changelogClientConfig, null));
+    bootstrappingVeniceChangelogConsumer = new VeniceChangelogConsumerDaVinciRecordTransformerImpl<>(
+        changelogClientConfig,
+        veniceChangelogConsumerClientFactory);
     assertFalse(
         bootstrappingVeniceChangelogConsumer.getRecordTransformerConfig().isRecordTransformationEnabled(),
         "Record transformation should be disabled.");
@@ -214,6 +217,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
     assertFalse(bootstrappingVeniceChangelogConsumer.isStarted(), "isStarted should be false");
 
     verify(mockDaVinciClient).close();
+    verify(veniceChangelogConsumerClientFactory).deregisterClient(changelogClientConfig.getConsumerName());
   }
 
   @Test
