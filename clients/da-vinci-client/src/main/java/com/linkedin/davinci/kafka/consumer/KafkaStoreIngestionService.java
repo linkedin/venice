@@ -702,15 +702,22 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   }
 
   @Override
-  public void startConsumption(VeniceStoreVersionConfig veniceStore, int partitionId, Long timestamp) {
-    final String topic = veniceStore.getStoreVersionName();
-    PubSubTopicPartition partition = new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partitionId);
-
-    Optional<PubSubPosition> pubSubPosition = Optional.empty();
-    if (timestamp != null) {
-      pubSubPosition = Optional.of(getPubSubContext().getTopicManager(topic).getPositionByTime(partition, timestamp));
+  public Optional<PubSubPosition> getPubSubPosition(
+      VeniceStoreVersionConfig veniceStore,
+      int partitionId,
+      Long timestamp,
+      PubSubPosition pubSubPosition) {
+    if (pubSubPosition != null) {
+      return Optional.of(pubSubPosition);
     }
-    startConsumption(veniceStore, partitionId, pubSubPosition);
+    final String topic = veniceStore.getStoreVersionName();
+
+    Optional<PubSubPosition> position = Optional.empty();
+    if (timestamp != null) {
+      PubSubTopicPartition partition = new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partitionId);
+      position = Optional.of(getPubSubContext().getTopicManager(topic).getPositionByTime(partition, timestamp));
+    }
+    return position;
   }
 
   /**

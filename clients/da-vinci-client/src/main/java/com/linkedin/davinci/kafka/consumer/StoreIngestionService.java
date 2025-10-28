@@ -25,8 +25,6 @@ public interface StoreIngestionService {
    */
   void startConsumption(VeniceStoreVersionConfig veniceStore, int partitionId, Optional<PubSubPosition> pubSubPosition);
 
-  void startConsumption(VeniceStoreVersionConfig veniceStore, int partitionId, Long timestamp);
-
   /**
    * Stops consuming messages from Kafka Partition corresponding to Venice Partition.
    * @param veniceStore Venice Store for the partition.
@@ -110,4 +108,10 @@ public interface StoreIngestionService {
   VeniceConfigLoader getVeniceConfigLoader();
 
   VeniceWriterFactory getVeniceWriterFactory();
+
+  Optional<PubSubPosition> getPubSubPosition(
+      VeniceStoreVersionConfig veniceStore,
+      int partitionId,
+      Long timestamp,
+      PubSubPosition pubSubPosition);
 }

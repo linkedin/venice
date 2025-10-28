@@ -27,6 +27,7 @@ import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -103,15 +104,14 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend implements
   public void startConsumption(
       VeniceStoreVersionConfig storeConfig,
       int partition,
-      Long timestamp,
-      PubSubPosition pubSubPosition) {
+      Optional<PubSubPosition> pubSubPosition) {
     String topicName = storeConfig.getStoreVersionName();
     executeCommandWithRetry(
         topicName,
         partition,
         START_CONSUMPTION,
         () -> mainIngestionRequestClient.startConsumption(storeConfig.getStoreVersionName(), partition),
-        () -> super.startConsumption(storeConfig, partition, timestamp, pubSubPosition));
+        () -> super.startConsumption(storeConfig, partition, pubSubPosition));
   }
 
   @Override
@@ -281,7 +281,7 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend implements
   }
 
   void startConsumptionLocally(VeniceStoreVersionConfig storeVersionConfig, int partition) {
-    super.startConsumption(storeVersionConfig, partition, null, null);
+    super.startConsumption(storeVersionConfig, partition, Optional.empty());
   }
 
   VeniceNotifier getIsolatedIngestionNotifier(VeniceNotifier notifier) {

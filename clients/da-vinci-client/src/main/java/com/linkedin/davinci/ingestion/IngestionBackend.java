@@ -6,16 +6,18 @@ import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import java.io.Closeable;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicReference;
 
 
 public interface IngestionBackend extends Closeable {
-  void startConsumption(
+  /* void startConsumption(
       VeniceStoreVersionConfig storeConfig,
       int partition,
       Long timestamp,
-      PubSubPosition pubSubPosition);
+      PubSubPosition pubSubPosition);*/
+  void startConsumption(VeniceStoreVersionConfig storeConfig, int partition, Optional<PubSubPosition> pubSubPosition);
 
   CompletableFuture<Void> stopConsumption(VeniceStoreVersionConfig storeConfig, int partition);
 

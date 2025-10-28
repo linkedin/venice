@@ -695,7 +695,7 @@ public class DaVinciBackend implements Closeable {
     }
   }
 
-  protected final boolean isIsolatedIngestion() {
+  public final boolean isIsolatedIngestion() {
     return configLoader.getVeniceServerConfig().getIngestionMode().equals(IngestionMode.ISOLATED);
   }
 

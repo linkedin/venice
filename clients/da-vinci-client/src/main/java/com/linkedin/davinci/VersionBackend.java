@@ -412,11 +412,9 @@ public class VersionBackend {
       backend.getHeartbeatMonitoringService()
           .updateLagMonitor(version.kafkaTopicName(), partition, HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR);
       // AtomicReference of storage engine will be updated internally.
-      if (positionMap != null) {
-        backend.getIngestionBackend().startConsumption(config, partition, null, positionMap.get(partition));
-      } else {
-        backend.getIngestionBackend().startConsumption(config, partition, timestamps.get(partition), null);
-      }
+      Optional<PubSubPosition> pubSubPosition = backend.getIngestionService()
+          .getPubSubPosition(config, partition, timestamps.get(partition), positionMap.get(partition));
+      backend.getIngestionBackend().startConsumption(config, partition, pubSubPosition);
       tryStartHeartbeat();
     }
 

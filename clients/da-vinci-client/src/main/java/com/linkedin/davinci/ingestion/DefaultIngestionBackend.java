@@ -64,8 +64,7 @@ public class DefaultIngestionBackend implements IngestionBackend {
   public void startConsumption(
       VeniceStoreVersionConfig storeConfig,
       int partition,
-      Long timestamp,
-      PubSubPosition pubSubPosition) {
+      Optional<PubSubPosition> pubSubPosition) {
     String storeVersion = storeConfig.getStoreVersionName();
     LOGGER.info("Retrieving storage engine for store {} partition {}", storeVersion, partition);
     StoreVersionInfo storeAndVersion =
@@ -85,11 +84,7 @@ public class DefaultIngestionBackend implements IngestionBackend {
           "Retrieved storage engine for store {} partition {}. Starting consumption in ingestion service",
           storeVersion,
           partition);
-      if (pubSubPosition != null) {
-        getStoreIngestionService().startConsumption(storeConfig, partition, Optional.of(pubSubPosition));
-      } else {
-        getStoreIngestionService().startConsumption(storeConfig, partition, timestamp);
-      }
+      getStoreIngestionService().startConsumption(storeConfig, partition, pubSubPosition);
       LOGGER.info(
           "Completed starting consumption in ingestion service for store {} partition {}",
           storeVersion,

@@ -14,6 +14,7 @@ import com.linkedin.venice.utils.ConcurrentRef;
 import com.linkedin.venice.utils.ReferenceCounted;
 import com.linkedin.venice.utils.RegionUtils;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Optional;
@@ -141,7 +142,7 @@ public class StoreBackend {
     return subscribe(
         ComplementSet.universalSet(),
         Optional.empty(),
-        Collections.emptyMap(),
+        new HashMap<>(),
         allPartitionTimestamp,
         Collections.emptyMap());
   }
