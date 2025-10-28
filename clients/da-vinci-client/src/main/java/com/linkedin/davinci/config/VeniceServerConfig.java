@@ -121,6 +121,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_INACTIVE_TOPIC_PARTITION_CHE
 import static com.linkedin.venice.ConfigKeys.SERVER_INCREMENTAL_PUSH_STATUS_WRITE_MODE;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_CHECKPOINT_DURING_GRACEFUL_SHUTDOWN_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_HEARTBEAT_INTERVAL_MS;
+import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_INFO_LOG_LINE_LIMIT;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_APPLICATION_PORT;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_SERVICE_PORT;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_MODE;
@@ -664,6 +665,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final boolean inactiveTopicPartitionCheckerEnabled;
   private final int inactiveTopicPartitionCheckerInternalInSeconds;
   private final int inactiveTopicPartitionCheckerThresholdInSeconds;
+  private final int serverIngestionInfoLogLineLimit;
 
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     this(serverProperties, Collections.emptyMap());
@@ -1130,6 +1132,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
         serverProperties.getInt(SERVER_INACTIVE_TOPIC_PARTITION_CHECKER_THRESHOLD_IN_SECONDS, 5);
     this.useMetricsBasedPositionInLagComputation =
         serverProperties.getBoolean(SERVER_USE_METRICS_BASED_POSITION_IN_LAG_COMPUTATION, false);
+    this.serverIngestionInfoLogLineLimit = serverProperties.getInt(SERVER_INGESTION_INFO_LOG_LINE_LIMIT, 20);
   }
 
   List<Double> extractThrottleLimitFactorsFor(VeniceProperties serverProperties, String configKey) {
@@ -2035,5 +2038,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public boolean isUseMetricsBasedPositionInLagComputationEnabled() {
     return this.useMetricsBasedPositionInLagComputation;
+  }
+
+  public int getServerIngestionInfoLogLineLimit() {
+    return this.serverIngestionInfoLogLineLimit;
   }
 }

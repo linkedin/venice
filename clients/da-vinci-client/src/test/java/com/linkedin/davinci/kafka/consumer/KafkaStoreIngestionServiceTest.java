@@ -464,7 +464,7 @@ public abstract class KafkaStoreIngestionServiceTest {
     AbstractKafkaConsumerService kafkaConsumerService =
         spy(storeIngestionTask.aggKafkaConsumerService.createKafkaConsumerService(consumerProperties));
     kafkaStoreIngestionService.getTopicPartitionIngestionContext(topicName, topicName, 0);
-    verify(kafkaConsumerService, atMostOnce()).getIngestionInfoFor(pubSubTopic, pubSubTopicPartition);
+    verify(kafkaConsumerService, atMostOnce()).getIngestionInfoFor(pubSubTopic, pubSubTopicPartition, false);
     kafkaStoreIngestionService.close();
   }
 

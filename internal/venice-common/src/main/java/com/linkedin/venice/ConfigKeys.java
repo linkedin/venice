@@ -2925,4 +2925,10 @@ public class ConfigKeys {
 
   public static final String SERVER_INGESTION_ISOLATION_D2_CLIENT_ENABLED =
       "server.ingestion.isolation.d2.client.enabled";
+
+  /**
+   * When dumping topic partition info for each consumer, there will be one line for each partition. This limit will
+   * prevent generating log lines for this consumer, if this consumer taking higher partition number than this limit.
+   */
+  public static final String SERVER_INGESTION_INFO_LOG_LINE_LIMIT = "server.ingestion.info.log.line.limit";
 }
