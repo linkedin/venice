@@ -390,7 +390,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       return NO_OP_COMPRESSOR;
     }
 
-    return pubSubTopicNameToCompressorMap.computeIfAbsent(topicName, v -> {
+    return pubSubTopicNameToCompressorMap.computeIfAbsent(topicName, ignore -> {
       Store store = storeRepository.getStore(storeName);
       int storeVersion = Version.parseVersionFromKafkaTopicName(topicName);
       Version version = store.getVersionOrThrow(storeVersion);
@@ -549,6 +549,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
           Collections.singleton(coordinate.getPartition()),
           topic,
           foo -> pubSubConsumerSeek(pubSubTopicPartition, coordinate.getPosition()));
+      pubSubTopicNameToCompressorMap.remove(topic.getName());
     }
   }
 
