@@ -1,8 +1,8 @@
 package com.linkedin.venice.stats.routing;
 
+import static com.linkedin.venice.stats.routing.RoutingMetricEntity.HELIX_GROUP_CALL_COUNT;
 import static com.linkedin.venice.stats.routing.RoutingMetricEntity.HELIX_GROUP_CALL_TIME;
 import static com.linkedin.venice.stats.routing.RoutingMetricEntity.HELIX_GROUP_COUNT;
-import static com.linkedin.venice.stats.routing.RoutingMetricEntity.HELIX_GROUP_REQUEST_CALL_COUNT;
 import static com.linkedin.venice.stats.routing.RoutingMetricEntity.HELIX_GROUP_REQUEST_PENDING_REQUESTS;
 
 import com.linkedin.venice.stats.AbstractVeniceStats;
@@ -84,7 +84,7 @@ public class HelixGroupStats extends AbstractVeniceStats {
   private MetricEntityStateBase buildHelixGroupCallCount(int groupId) {
     OtelSetupData otelSetup = buildOtelSetupForGroup(groupId);
     return MetricEntityStateBase.create(
-        HELIX_GROUP_REQUEST_CALL_COUNT.getMetricEntity(),
+        HELIX_GROUP_CALL_COUNT.getMetricEntity(),
         otelSetup.otelRepository,
         this::registerSensor,
         HelixGroupTehutiMetricDynamicName.of(HelixGroupTehutiMetricName.GROUP_REQUEST, groupId),
@@ -94,9 +94,7 @@ public class HelixGroupStats extends AbstractVeniceStats {
   }
 
   public void recordGroupRequest(int groupId) {
-    MetricEntityStateBase groupCallCount =
-        groupRequestCountMap.computeIfAbsent(groupId, id -> buildHelixGroupCallCount(groupId));
-    groupCallCount.record(1);
+    groupRequestCountMap.computeIfAbsent(groupId, id -> buildHelixGroupCallCount(groupId)).record(1);
   }
 
   private MetricEntityStateBase buildHelixGroupPendingRequest(int groupId) {

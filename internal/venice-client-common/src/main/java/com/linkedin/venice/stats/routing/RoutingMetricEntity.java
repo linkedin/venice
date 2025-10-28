@@ -27,9 +27,9 @@ public enum RoutingMetricEntity implements ModuleMetricEntityInterface {
   /**
    * Count of requests routed to each Helix group.
    */
-  HELIX_GROUP_REQUEST_CALL_COUNT(
-      "helix_group.request.call_count", MetricType.COUNTER, MetricUnit.NUMBER,
-      "Count of requests routed to each Helix group", setOf(VENICE_STORE_NAME, VENICE_HELIX_GROUP_ID)
+  HELIX_GROUP_CALL_COUNT(
+      "helix_group.call_count", MetricType.COUNTER, MetricUnit.NUMBER, "Count of requests routed to each Helix group",
+      setOf(VENICE_STORE_NAME, VENICE_HELIX_GROUP_ID)
   ),
   /**
    * Pending requests for each Helix group.

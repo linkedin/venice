@@ -148,7 +148,7 @@ public class HelixGroupStatsTest {
         inMemoryMetricReader,
         5, // count
         expectedAttributesGroup0,
-        RoutingMetricEntity.HELIX_GROUP_REQUEST_CALL_COUNT.getMetricEntity().getMetricName(),
+        RoutingMetricEntity.HELIX_GROUP_CALL_COUNT.getMetricEntity().getMetricName(),
         otelMetricPrefix);
 
     // Group 1: 3 requests
@@ -161,7 +161,7 @@ public class HelixGroupStatsTest {
         inMemoryMetricReader,
         3, // count
         expectedAttributesGroup1,
-        RoutingMetricEntity.HELIX_GROUP_REQUEST_CALL_COUNT.getMetricEntity().getMetricName(),
+        RoutingMetricEntity.HELIX_GROUP_CALL_COUNT.getMetricEntity().getMetricName(),
         otelMetricPrefix);
 
     // Group 2: 7 requests
@@ -174,7 +174,7 @@ public class HelixGroupStatsTest {
         inMemoryMetricReader,
         7, // count
         expectedAttributesGroup2,
-        RoutingMetricEntity.HELIX_GROUP_REQUEST_CALL_COUNT.getMetricEntity().getMetricName(),
+        RoutingMetricEntity.HELIX_GROUP_CALL_COUNT.getMetricEntity().getMetricName(),
         otelMetricPrefix);
   }
 
