@@ -56,6 +56,12 @@ public class OpenTelemetryMetricsSetup {
   }
 
   public static class Builder {
+    /**
+     * Sentinel value indicating that the Helix group ID is unassigned.
+     * -1 is chosen because valid group IDs are non-negative integers.
+     * Negative group IDs, including -1, do not have any special meaning in the system
+     * other than representing an unassigned state.
+     */
     private static final int UNASSIGNED_HELIX_GROUP_ID = -1;
 
     private final MetricsRepository metricsRepository;
