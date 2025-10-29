@@ -172,6 +172,7 @@ public class AdminSparkServer extends AbstractVeniceService {
 
   private static String REQUEST_START_TIME = "startTime";
   private static String REQUEST_SUCCEED = "succeed";
+  private static String NON_CLUSTER_SPECIFIC_STAT_CLUSTER_NAME = "cluster_generic";
 
   // In order to build multiple controller in a single JVM, we create a new http service instance for each of
   // AdminSparkServer instance.
@@ -214,7 +215,10 @@ public class AdminSparkServer extends AbstractVeniceService {
     for (String cluster: clusters) {
       statsMap.put(cluster, new SparkServerStats(metricsRepository, statsPrefix + "controller_spark_server", cluster));
     }
-    nonclusterSpecificStats = new SparkServerStats(metricsRepository, "." + statsPrefix + "controller_spark_server");
+    nonclusterSpecificStats = new SparkServerStats(
+        metricsRepository,
+        "." + statsPrefix + "controller_spark_server",
+        NON_CLUSTER_SPECIFIC_STAT_CLUSTER_NAME);
     EmbeddedServers.add(EmbeddedServers.Identifiers.JETTY, new VeniceSparkServerFactory(jettyConfigOverrides));
 
     httpService = Service.ignite();
