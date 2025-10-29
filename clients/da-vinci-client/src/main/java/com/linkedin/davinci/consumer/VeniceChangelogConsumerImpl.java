@@ -357,9 +357,6 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
           }
         }
 
-        // Populate the compressor cache
-        getVersionCompressor(topicToSubscribe);
-
         List<PubSubTopicPartition> topicPartitionListToSeek =
             getPartitionListToSubscribe(partitions, Collections.EMPTY_SET, topicToSubscribe);
         for (PubSubTopicPartition topicPartition: topicPartitionListToSeek) {
@@ -673,8 +670,6 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
 
       List<PubSubTopicPartition> topicPartitionListToSeek =
           getPartitionListToSubscribe(partitions, Collections.EMPTY_SET, targetTopic);
-      // Populate compressor cache
-      getVersionCompressor(targetTopic);
 
       for (PubSubTopicPartition topicPartition: topicPartitionListToSeek) {
         seekAction.apply(topicPartition);
