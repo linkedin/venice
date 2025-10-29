@@ -24,6 +24,8 @@ import spark.Response;
 
 
 public class SparkServerStats extends AbstractVeniceStats {
+  public static String NON_CLUSTER_SPECIFIC_STAT_CLUSTER_NAME = "cluster_generic";
+
   private final VeniceOpenTelemetryMetricsRepository otelRepository;
   private final Map<VeniceMetricsDimensions, String> baseDimensionsMap;
 
@@ -37,7 +39,9 @@ public class SparkServerStats extends AbstractVeniceStats {
   private final MetricEntityStateFourEnums<ControllerRoute, HttpResponseStatusEnum, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory> failedRequestLatencyHistogramMetric;
 
   public SparkServerStats(MetricsRepository metricsRepository, String statsPrefix, String clusterName) {
-    super(metricsRepository, clusterName + "." + statsPrefix);
+    super(
+        metricsRepository,
+        (clusterName.equals(NON_CLUSTER_SPECIFIC_STAT_CLUSTER_NAME)) ? statsPrefix : clusterName + "." + statsPrefix);
 
     OpenTelemetryMetricsSetup.OpenTelemetryMetricsSetupInfo otelData =
         OpenTelemetryMetricsSetup.builder(metricsRepository).setClusterName(clusterName).build();

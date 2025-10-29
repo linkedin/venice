@@ -167,12 +167,11 @@ public class AdminSparkServer extends AbstractVeniceService {
   private final Optional<DynamicAccessController> accessController;
 
   protected static final ObjectMapper OBJECT_MAPPER = ObjectMapperFactory.getInstance();
-  final private Map<String, SparkServerStats> statsMap;
-  final private SparkServerStats nonclusterSpecificStats;
+  private final Map<String, SparkServerStats> statsMap;
+  private final SparkServerStats nonclusterSpecificStats;
 
   private static String REQUEST_START_TIME = "startTime";
   private static String REQUEST_SUCCEED = "succeed";
-  private static String NON_CLUSTER_SPECIFIC_STAT_CLUSTER_NAME = "cluster_generic";
 
   // In order to build multiple controller in a single JVM, we create a new http service instance for each of
   // AdminSparkServer instance.
@@ -218,7 +217,7 @@ public class AdminSparkServer extends AbstractVeniceService {
     nonclusterSpecificStats = new SparkServerStats(
         metricsRepository,
         "." + statsPrefix + "controller_spark_server",
-        NON_CLUSTER_SPECIFIC_STAT_CLUSTER_NAME);
+        SparkServerStats.NON_CLUSTER_SPECIFIC_STAT_CLUSTER_NAME);
     EmbeddedServers.add(EmbeddedServers.Identifiers.JETTY, new VeniceSparkServerFactory(jettyConfigOverrides));
 
     httpService = Service.ignite();
