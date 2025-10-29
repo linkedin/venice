@@ -307,12 +307,4 @@ public final class PubSubUtil {
       throw new IllegalArgumentException("Invalid base64 encoded bytes in position wire format string", e);
     }
   }
-
-  public static String getPubSubPositionString(
-      PubSubPositionDeserializer pubSubPositionDeserializer,
-      ByteBuffer pubSubPosition) {
-    return (pubSubPosition == null || !pubSubPosition.hasRemaining())
-        ? "<EMPTY>"
-        : pubSubPositionDeserializer.toPosition(pubSubPosition).toString();
-  }
 }
