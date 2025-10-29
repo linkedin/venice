@@ -70,6 +70,7 @@ import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.pubsub.manager.TopicManagerContext;
 import com.linkedin.venice.pubsub.manager.TopicManagerRepository;
 import com.linkedin.venice.schema.SchemaReader;
@@ -715,7 +716,9 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     Optional<PubSubPosition> position = Optional.empty();
     if (timestamp != null) {
       PubSubTopicPartition partition = new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partitionId);
-      position = Optional.of(getPubSubContext().getTopicManager(topic).getPositionByTime(partition, timestamp));
+      TopicManager topicManager =
+          getPubSubContext().getTopicManagerRepository().getTopicManager(serverConfig.getKafkaBootstrapServers());
+      position = Optional.of(topicManager.getPositionByTime(partition, timestamp));
     }
     return position;
   }

@@ -152,7 +152,8 @@ public class SeekableDaVinciClientTest {
           pubSubMessage.getPartition());
 
       // Seek to the checkpoint of the 5th message
-      client.seekToCheckpoint(Collections.singleton(changeCoordinate)).get(50, TimeUnit.SECONDS);
+      // client.seekToCheckpoint(Collections.singleton(changeCoordinate)).get();
+      client.seekToTimestamp(pubSubMessage.getValue().getProducerMetadata().getMessageTimestamp()).get();
       // client.subscribeAll().get();
       TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
         for (Integer i = 0; i < KEY_COUNT; i++) {
