@@ -1373,11 +1373,8 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     Validate.notEmpty(oldServingVersionTopic);
     Validate.notEmpty(newServingVersionTopic);
     ControlMessage controlMessage = getEmptyControlMessage(ControlMessageType.VERSION_SWAP);
-    VersionSwap versionSwap = new VersionSwap();
-    versionSwap.oldServingVersionTopic = oldServingVersionTopic;
-    versionSwap.newServingVersionTopic = newServingVersionTopic;
-    versionSwap.localHighWatermarkPubSubPositions = Collections.emptyList();
-    controlMessage.controlMessageUnion = versionSwap;
+    controlMessage.controlMessageUnion =
+        generateVersionSwapMessage(oldServingVersionTopic, newServingVersionTopic, "", "", 0);
     broadcastControlMessage(controlMessage, debugInfo);
     producerAdapter.flush();
   }
@@ -1405,6 +1402,22 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     Validate.notEmpty(sourceRegion);
     Validate.notEmpty(destinationRegion);
     ControlMessage controlMessage = getEmptyControlMessage(ControlMessageType.VERSION_SWAP);
+    controlMessage.controlMessageUnion = generateVersionSwapMessage(
+        oldServingVersionTopic,
+        newServingVersionTopic,
+        sourceRegion,
+        destinationRegion,
+        generationId);
+    broadcastControlMessage(controlMessage, debugInfo);
+    producerAdapter.flush();
+  }
+
+  private VersionSwap generateVersionSwapMessage(
+      @Nonnull String oldServingVersionTopic,
+      @Nonnull String newServingVersionTopic,
+      @Nonnull String sourceRegion,
+      @Nonnull String destinationRegion,
+      long generationId) {
     VersionSwap versionSwap = new VersionSwap();
     versionSwap.oldServingVersionTopic = oldServingVersionTopic;
     versionSwap.newServingVersionTopic = newServingVersionTopic;
@@ -1412,9 +1425,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     versionSwap.sourceRegion = sourceRegion;
     versionSwap.destinationRegion = destinationRegion;
     versionSwap.generationId = generationId;
-    controlMessage.controlMessageUnion = versionSwap;
-    broadcastControlMessage(controlMessage, debugInfo);
-    producerAdapter.flush();
+    return versionSwap;
   }
 
   public void broadcastStartOfIncrementalPush(String version, Map<String, String> debugInfo) {
