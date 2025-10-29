@@ -162,7 +162,7 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
     // regardless of retention, if there are more than 2 versions, we should clean up
     // except for the case where there are 3 versions and the second version is the current version indicating ongoing
     // push
-    if (versions.size() > 2 && !(versions.size() == 3 && versions.get(1).getNumber() == currentVersion)) {
+    if (versions.stream().filter(v -> v.getNumber() < currentVersion).count() > 1) {
       return true;
     }
     long backupVersionRetentionMs = store.getBackupVersionRetentionMs();
