@@ -1,6 +1,6 @@
 package com.linkedin.venice.router;
 
-import static com.linkedin.venice.VeniceConstants.DEFAULT_PER_ROUTER_READ_QUOTA;
+import static com.linkedin.venice.VeniceConstants.MAX_ROUTER_READ_CAPACITY_CU;
 import static com.linkedin.venice.router.httpclient.StorageNodeClientType.APACHE_HTTP_ASYNC_CLIENT;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
@@ -138,7 +138,7 @@ public class TestStreaming {
     VersionCreationResponse creationResponse = veniceCluster.getNewVersion(storeName, false);
 
     storeVersionName = creationResponse.getKafkaTopic();
-    veniceCluster.updateStore(storeName, new UpdateStoreQueryParams().setReadQuotaInCU(DEFAULT_PER_ROUTER_READ_QUOTA));
+    veniceCluster.updateStore(storeName, new UpdateStoreQueryParams().setReadQuotaInCU(MAX_ROUTER_READ_CAPACITY_CU));
 
     valueSchemaId = HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID;
 

@@ -3,7 +3,7 @@ package com.linkedin.venice.utils;
 import static com.linkedin.venice.CommonConfigKeys.SSL_ENABLED;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.MULTI_REGION;
-import static com.linkedin.venice.VeniceConstants.DEFAULT_PER_ROUTER_READ_QUOTA;
+import static com.linkedin.venice.VeniceConstants.MAX_ROUTER_READ_CAPACITY_CU;
 import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.D2_SERVICE_NAME;
 import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.PARENT_D2_SERVICE_NAME;
 import static com.linkedin.venice.samza.VeniceSystemFactory.DEPLOYMENT_ID;
@@ -382,7 +382,7 @@ public class IntegrationTestPushUtils {
         new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
             .setCompressionStrategy(compressionStrategy)
             .setBatchGetLimit(2000)
-            .setReadQuotaInCU(DEFAULT_PER_ROUTER_READ_QUOTA)
+            .setReadQuotaInCU(MAX_ROUTER_READ_CAPACITY_CU)
             .setChunkingEnabled(chunkingEnabled)
             .setIncrementalPushEnabled(incrementalPushEnabled);
 
