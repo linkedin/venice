@@ -117,6 +117,7 @@ import static com.linkedin.venice.ConfigKeys.DEFAULT_REPLICA_FACTOR;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_ROUTING_STRATEGY;
 import static com.linkedin.venice.ConfigKeys.DEFERRED_VERSION_SWAP_BUFFER_TIME;
 import static com.linkedin.venice.ConfigKeys.DEFERRED_VERSION_SWAP_REGION_ROLL_FORWARD_ORDER;
+import static com.linkedin.venice.ConfigKeys.DEFERRED_VERSION_SWAP_THREAD_POOL_SIZE;
 import static com.linkedin.venice.ConfigKeys.DELAY_TO_REBALANCE_MS;
 import static com.linkedin.venice.ConfigKeys.DEPRECATED_TOPIC_MAX_RETENTION_MS;
 import static com.linkedin.venice.ConfigKeys.DEPRECATED_TOPIC_RETENTION_MS;
@@ -604,6 +605,7 @@ public class VeniceControllerClusterConfig {
   private final boolean skipDeferredVersionSwapForDVCEnabled;
   private final double deferredVersionSwapBufferTime;
   private final String deferredVersionSwapRegionRollforwardOrder;
+  private final int deferredVersionSwapThreadPoolSize;
 
   private final Map<ClusterConfig.GlobalRebalancePreferenceKey, Integer> helixGlobalRebalancePreference;
   private final HelixCapacityConfig helixCapacityConfig;
@@ -1227,6 +1229,7 @@ public class VeniceControllerClusterConfig {
     this.deferredVersionSwapBufferTime = props.getDouble(DEFERRED_VERSION_SWAP_BUFFER_TIME, 1.1);
     this.deferredVersionSwapRegionRollforwardOrder =
         props.getString(DEFERRED_VERSION_SWAP_REGION_ROLL_FORWARD_ORDER, "");
+    this.deferredVersionSwapThreadPoolSize = props.getInt(DEFERRED_VERSION_SWAP_THREAD_POOL_SIZE, 1);
 
     this.isMultiTaskSchedulerServiceEnabled = props.getBoolean(ConfigKeys.MULTITASK_SCHEDULER_SERVICE_ENABLED, false);
     this.storeMigrationThreadPoolSize = props.getInt(ConfigKeys.STORE_MIGRATION_THREAD_POOL_SIZE, 1);
@@ -1789,6 +1792,10 @@ public class VeniceControllerClusterConfig {
 
   public String getDeferredVersionSwapRegionRollforwardOrder() {
     return deferredVersionSwapRegionRollforwardOrder;
+  }
+
+  public int getDeferredVersionSwapThreadPoolSize() {
+    return deferredVersionSwapThreadPoolSize;
   }
 
   public boolean isSkipDeferredVersionSwapForDVCEnabled() {
