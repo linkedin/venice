@@ -28,6 +28,9 @@ public class AbstractVeniceStats {
   private final String name;
   private final Map<String, Sensor> sensors;
   private final boolean isTotalStats;
+  private final boolean isTehutiMetricsEnabled;
+  /** A dummy sensor to return when Tehuti metrics are disabled */
+  private final Sensor noopSensor;
 
   public AbstractVeniceStats(MetricsRepository metricsRepository, String name) {
     this.metricsRepository = metricsRepository;
@@ -38,6 +41,15 @@ public class AbstractVeniceStats {
     // the name of total stats is usually "total" but for kafka consumer service, it is
     // "total_kafka_consumer_service_for_<region>"
     this.isTotalStats = name.equals(STORE_NAME_FOR_TOTAL_STAT) || name.startsWith(STORE_NAME_FOR_TOTAL_STAT + "_");
+
+    if (metricsRepository instanceof VeniceMetricsRepository) {
+      VeniceMetricsRepository veniceMetricsRepository = (VeniceMetricsRepository) metricsRepository;
+      VeniceMetricsConfig veniceMetricsConfig = veniceMetricsRepository.getVeniceMetricsConfig();
+      this.isTehutiMetricsEnabled = veniceMetricsConfig.emitTehutiMetrics();
+    } else {
+      this.isTehutiMetricsEnabled = true;
+    }
+    this.noopSensor = isTehutiMetricsEnabled ? null : metricsRepository.getNoopSensor("noopSensor");
   }
 
   public MetricsRepository getMetricsRepository() {
@@ -66,6 +78,9 @@ public class AbstractVeniceStats {
   }
 
   protected void registerSensorAttributeGauge(String sensorName, String attributeName, AsyncGauge stat) {
+    if (!isTehutiMetricsEnabled) {
+      return;
+    }
     String sensorFullName = getSensorFullName(getName(), sensorName);
     Sensor sensor = sensors.computeIfAbsent(sensorFullName, key -> metricsRepository.sensor(sensorFullName));
     String metricName = sensorFullName + "." + attributeName;
@@ -111,6 +126,9 @@ public class AbstractVeniceStats {
       MetricConfig config,
       Sensor[] parents,
       MeasurableStat... stats) {
+    if (!isTehutiMetricsEnabled) {
+      return noopSensor;
+    }
     checkCompatibility(stats);
     return sensors.computeIfAbsent(sensorFullName, key -> {
       /**

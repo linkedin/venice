@@ -1,11 +1,25 @@
 package com.linkedin.venice.utils;
 
 import static com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository.DEFAULT_METRIC_PREFIX;
+import static com.linkedin.venice.stats.dimensions.HttpResponseStatusCodeCategory.getVeniceHttpResponseStatusCodeCategory;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE_CATEGORY;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_METHOD;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_RETRY_TYPE;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertTrue;
 import static org.testng.AssertJUnit.assertFalse;
 
+import com.linkedin.venice.read.RequestType;
+import com.linkedin.venice.stats.dimensions.HttpResponseStatusEnum;
+import com.linkedin.venice.stats.dimensions.RequestRetryType;
+import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
+import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
 import io.opentelemetry.api.common.Attributes;
+import io.opentelemetry.api.common.AttributesBuilder;
 import io.opentelemetry.sdk.metrics.data.ExponentialHistogramPointData;
 import io.opentelemetry.sdk.metrics.data.HistogramPointData;
 import io.opentelemetry.sdk.metrics.data.LongPointData;
@@ -16,7 +30,124 @@ import org.testng.annotations.Test;
 
 
 @Test
-public abstract class OpenTelemetryDataPointTestUtils {
+public abstract class OpenTelemetryDataTestUtils {
+  public static class OpenTelemetryAttributesBuilder {
+    private String storeName;
+    private RequestType requestType;
+    private String clusterName;
+    private String routeName;
+    private HttpResponseStatusEnum httpStatus;
+    private VeniceResponseStatusCategory veniceStatusCategory;
+    private RequestRetryType retryType;
+
+    /**
+     * Set the store name dimension.
+     */
+    public OpenTelemetryAttributesBuilder setStoreName(String storeName) {
+      this.storeName = storeName;
+      return this;
+    }
+
+    /**
+     * Set the request type dimension.
+     */
+    public OpenTelemetryAttributesBuilder setRequestType(RequestType requestType) {
+      this.requestType = requestType;
+      return this;
+    }
+
+    /**
+     * Set the cluster name dimension.
+     */
+    public OpenTelemetryAttributesBuilder setClusterName(String clusterName) {
+      this.clusterName = clusterName;
+      return this;
+    }
+
+    /**
+     * Set the route name dimension.
+     */
+    public OpenTelemetryAttributesBuilder setRouteName(String routeName) {
+      this.routeName = routeName;
+      return this;
+    }
+
+    /**
+     * Set the http status dimension.
+     */
+    public OpenTelemetryAttributesBuilder setHttpStatus(HttpResponseStatusEnum httpStatus) {
+      this.httpStatus = httpStatus;
+      return this;
+    }
+
+    /**
+     * Set the Venice response status category dimension.
+     */
+    public OpenTelemetryAttributesBuilder setVeniceStatusCategory(VeniceResponseStatusCategory veniceStatusCategory) {
+      this.veniceStatusCategory = veniceStatusCategory;
+      return this;
+    }
+
+    /**
+     * Set the request retry type dimension.
+     */
+    public OpenTelemetryAttributesBuilder setRetryType(RequestRetryType retryType) {
+      this.retryType = retryType;
+      return this;
+    }
+
+    /**
+     * Build: setup base dimensions and attributes, and determine if OTel metrics should be emitted.
+     * @return OpenTelemetryMetricsSetupInfo containing this information
+     */
+    public Attributes build() {
+      AttributesBuilder builder = Attributes.builder();
+
+      // Add store name if provided
+      if (storeName != null) {
+        builder.put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), storeName);
+      }
+
+      // Add request type if provided
+      if (requestType != null) {
+        builder.put(VENICE_REQUEST_METHOD.getDimensionNameInDefaultFormat(), requestType.getDimensionValue());
+      }
+
+      // Add cluster name if provided
+      if (clusterName != null) {
+        builder.put(VeniceMetricsDimensions.VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), clusterName);
+      }
+
+      // Add route name if provided
+      if (routeName != null) {
+        builder.put(VeniceMetricsDimensions.VENICE_ROUTE_NAME.getDimensionNameInDefaultFormat(), routeName);
+      }
+
+      // Add http status if provided
+      if (httpStatus != null) {
+        builder.put(HTTP_RESPONSE_STATUS_CODE.getDimensionNameInDefaultFormat(), httpStatus.getDimensionValue());
+        builder.put(
+            HTTP_RESPONSE_STATUS_CODE_CATEGORY.getDimensionNameInDefaultFormat(),
+            getVeniceHttpResponseStatusCodeCategory(Integer.parseInt(httpStatus.getDimensionValue()))
+                .getDimensionValue());
+      }
+
+      // Add venice status category if provided
+      if (veniceStatusCategory != null) {
+        builder.put(
+            VENICE_RESPONSE_STATUS_CODE_CATEGORY.getDimensionNameInDefaultFormat(),
+            veniceStatusCategory.getDimensionValue());
+      }
+
+      // Add retry type if provided
+      if (retryType != null) {
+        builder.put(VENICE_REQUEST_RETRY_TYPE.getDimensionNameInDefaultFormat(), retryType.getDimensionValue());
+      }
+
+      return builder.build();
+    }
+  }
+
   public static LongPointData getLongPointDataFromSum(
       Collection<MetricData> metricsData,
       String metricName,
@@ -136,6 +267,32 @@ public abstract class OpenTelemetryDataPointTestUtils {
     assertEquals(histogramPointData.getMax(), expectedMax, "Histogram max value should be " + expectedMax);
     assertEquals(histogramPointData.getCount(), expectedCount, "Histogram count should be " + expectedCount);
     assertEquals(histogramPointData.getSum(), expectedSum, "Histogram sum should be " + expectedSum);
+    assertEquals(
+        histogramPointData.getPositiveBuckets().getTotalCount(),
+        expectedCount,
+        "Histogram positive buckets total count should be " + expectedCount);
+    assertEquals(histogramPointData.getAttributes(), expectedAttributes, "Histogram attributes should match");
+  }
+
+  /**
+   * Validate ExponentialHistogramPointData for latency metrics where min, max, and sum are not known but are > 0.
+   */
+  public static void validateExponentialHistogramPointDataForLatency(
+      InMemoryMetricReader inMemoryMetricReader,
+      long expectedCount,
+      Attributes expectedAttributes,
+      String metricName,
+      String metricPrefix) {
+    Collection<MetricData> metricsData = inMemoryMetricReader.collectAllMetrics();
+    assertFalse(metricsData.isEmpty());
+    ExponentialHistogramPointData histogramPointData =
+        getExponentialHistogramPointData(metricsData, metricName, metricPrefix, expectedAttributes);
+
+    assertNotNull(histogramPointData, "ExponentialHistogramPointData should not be null");
+    assertTrue(histogramPointData.getMin() > 0, "Histogram min value should be > 0");
+    assertTrue(histogramPointData.getMax() > 0, "Histogram max value should be > 0");
+    assertEquals(histogramPointData.getCount(), expectedCount, "Histogram count should be " + expectedCount);
+    assertTrue(histogramPointData.getSum() > 0, "Histogram sum should be > 0");
     assertEquals(
         histogramPointData.getPositiveBuckets().getTotalCount(),
         expectedCount,

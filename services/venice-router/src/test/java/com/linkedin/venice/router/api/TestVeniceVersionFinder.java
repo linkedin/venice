@@ -31,6 +31,7 @@ import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.router.stats.StaleVersionStats;
+import com.linkedin.venice.stats.VeniceMetricsConfig;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
@@ -208,6 +209,9 @@ public class TestVeniceVersionFinder {
     VeniceMetricsRepository mockMetricsRepository = mock(VeniceMetricsRepository.class);
     final Sensor mockSensor = mock(Sensor.class);
     doReturn(mockSensor).when(mockMetricsRepository).sensor(anyString(), any());
+    VeniceMetricsConfig mocksMetricsConfig = mock(VeniceMetricsConfig.class);
+    doReturn(mocksMetricsConfig).when(mockMetricsRepository).getVeniceMetricsConfig();
+    doReturn(true).when(mocksMetricsConfig).emitTehutiMetrics();
 
     // Object under test
     VeniceVersionFinder versionFinder = new VeniceVersionFinder(
@@ -444,6 +448,9 @@ public class TestVeniceVersionFinder {
     VeniceMetricsRepository mockMetricsRepository = mock(VeniceMetricsRepository.class);
     final Sensor mockSensor = mock(Sensor.class);
     doReturn(mockSensor).when(mockMetricsRepository).sensor(anyString(), any());
+    VeniceMetricsConfig mocksMetricsConfig = mock(VeniceMetricsConfig.class);
+    doReturn(mocksMetricsConfig).when(mockMetricsRepository).getVeniceMetricsConfig();
+    doReturn(true).when(mocksMetricsConfig).emitTehutiMetrics();
 
     try (CompressorFactory compressorFactory = new CompressorFactory()) {
       // Object under test
@@ -495,6 +502,10 @@ public class TestVeniceVersionFinder {
     VeniceMetricsRepository mockMetricsRepository = mock(VeniceMetricsRepository.class);
     final Sensor mockSensor = mock(Sensor.class);
     doReturn(mockSensor).when(mockMetricsRepository).sensor(anyString(), any());
+    VeniceMetricsConfig mocksMetricsConfig = mock(VeniceMetricsConfig.class);
+    doReturn(mocksMetricsConfig).when(mockMetricsRepository).getVeniceMetricsConfig();
+    doReturn(true).when(mocksMetricsConfig).emitTehutiMetrics();
+
     VeniceVersionFinder versionFinder = spy(
         new VeniceVersionFinder(
             storeRepository,
