@@ -182,14 +182,13 @@ public class TestVeniceHelixAdmin {
 
   @DataProvider(name = "readQuotaTestCases")
   public Object[][] readQuotaTestCases() {
-    return new Object[][] { { 100, 0, 10L, true }, // Default quota is enough
-        { 0, 100L, 10L, true }, // Default quota not enough but max router capacity is enough
-        { 0, 0, 10L, false } // Neither default quota nor max capacity is enough - should throw exception
+    return new Object[][] { { 100, 10L, true }, // Quota is enough
+        { 0, 10L, false } // Quota is not enough - should throw exception
     };
   }
 
   @Test(dataProvider = "readQuotaTestCases")
-  public void testUpdateReadQuota(int defaultQuota, long maxCapacity, long requestedQuota, boolean shouldSucceed) {
+  public void testUpdateReadQuota(long maxCapacity, long requestedQuota, boolean shouldSucceed) {
     String storeName = Utils.getUniqueString("test_store");
     Store store = spy(TestUtils.createTestStore(storeName, "test", System.currentTimeMillis()));
 
@@ -201,7 +200,6 @@ public class TestVeniceHelixAdmin {
     when(routersClusterManager.getLiveRoutersCount()).thenReturn(1);
 
     VeniceControllerClusterConfig config = mock(VeniceControllerClusterConfig.class);
-    when(config.getDefaultReadQuotaPerRouter()).thenReturn(defaultQuota);
     when(config.getMaxRouterReadCapacityCu()).thenReturn(maxCapacity);
 
     // Setup cluster resources
@@ -236,7 +234,7 @@ public class TestVeniceHelixAdmin {
       verify(store).setReadQuotaInCU(requestedQuota);
     } else {
       // Test that validation throws the right exception
-      long totalReadQuota = defaultQuota * 1L + maxCapacity; // getLiveRoutersCount() returns 1
+      long totalReadQuota = 1L + maxCapacity; // getLiveRoutersCount() returns 1
       if (totalReadQuota < requestedQuota) {
         VeniceException exception = Assert.expectThrows(VeniceException.class, () -> {
           if (totalReadQuota < requestedQuota) {
