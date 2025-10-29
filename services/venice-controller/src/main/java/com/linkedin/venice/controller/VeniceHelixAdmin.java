@@ -128,6 +128,7 @@ import com.linkedin.venice.helix.ZkAllowlistAccessor;
 import com.linkedin.venice.helix.ZkClientFactory;
 import com.linkedin.venice.helix.ZkRoutersClusterManager;
 import com.linkedin.venice.helix.ZkStoreConfigAccessor;
+import com.linkedin.venice.ingestion.control.MultiRegionRealTimeTopicSwitcher;
 import com.linkedin.venice.ingestion.control.RealTimeTopicSwitcher;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.meta.BackupStrategy;
@@ -600,11 +601,43 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         pubSubClientsFactory.getProducerAdapterFactory(),
         metricsRepository,
         pubSubPositionTypeRegistry);
-    this.realTimeTopicSwitcher = new RealTimeTopicSwitcher(
-        topicManagerRepository.getLocalTopicManager(),
-        veniceWriterFactory,
-        commonConfig.getProps(),
-        pubSubTopicRepository);
+    if (!isParent() && commonConfig.isUseMultiRegionRealTimeTopicSwitcherEnabled()) {
+      Map<String, String> childDataCenterKafkaUrlMap = multiClusterConfigs.getChildDataCenterKafkaUrlMap();
+      String localRegionName = multiClusterConfigs.getRegionName();
+      if (!childDataCenterKafkaUrlMap.containsKey(localRegionName)) {
+        throw new VeniceException(
+            "Child data center kafka url map doesn't contain the local region: " + localRegionName);
+      }
+      Map<String, VeniceWriterFactory> remoteDataCenterWriterFactoryMap = new HashMap<>();
+      Set<String> activeActiveRealTimeSourceFabrics = commonConfig.getActiveActiveRealTimeSourceFabrics();
+      for (Map.Entry<String, String> entry: childDataCenterKafkaUrlMap.entrySet()) {
+        String regionName = entry.getKey();
+        if (regionName.equals(localRegionName) || !activeActiveRealTimeSourceFabrics.contains(regionName)) {
+          continue;
+        }
+        String kafkaUrl = entry.getValue();
+        remoteDataCenterWriterFactoryMap.put(
+            regionName,
+            new VeniceWriterFactory(
+                VeniceWriterFactory.cloneAndUpdateBrokerAddress(commonConfig.getProps(), kafkaUrl),
+                pubSubClientsFactory.getProducerAdapterFactory(),
+                metricsRepository,
+                pubSubPositionTypeRegistry));
+      }
+      this.realTimeTopicSwitcher = new MultiRegionRealTimeTopicSwitcher(
+          topicManagerRepository.getLocalTopicManager(),
+          veniceWriterFactory,
+          commonConfig.getProps(),
+          pubSubTopicRepository,
+          remoteDataCenterWriterFactoryMap,
+          localRegionName);
+    } else {
+      this.realTimeTopicSwitcher = new RealTimeTopicSwitcher(
+          topicManagerRepository.getLocalTopicManager(),
+          veniceWriterFactory,
+          commonConfig.getProps(),
+          pubSubTopicRepository);
+    }
     this.participantMessageStoreRTTMap = new VeniceConcurrentHashMap<>();
     isControllerClusterHAAS = commonConfig.isControllerClusterLeaderHAAS();
     coloLeaderClusterName = commonConfig.getClusterName();

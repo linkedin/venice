@@ -656,6 +656,8 @@ public class VeniceControllerClusterConfig {
   private final int storeMigrationMaxRetryAttempts;
 
   private final boolean backupVersionReplicaReductionEnabled;
+  private final boolean useMultiRegionRealTimeTopicSwitcher;
+  private final Set<String> activeActiveRealTimeSourceFabrics;
 
   public VeniceControllerClusterConfig(VeniceProperties props) {
     this.props = props;
@@ -871,17 +873,18 @@ public class VeniceControllerClusterConfig {
       }
     }
 
-    Set<String> activeActiveRealTimeSourceFabrics = Utils
+    Set<String> tmpActiveActiveRealTimeSourceFabrics = Utils
         .parseCommaSeparatedStringToSet(props.getString(ACTIVE_ACTIVE_REAL_TIME_SOURCE_FABRIC_LIST, (String) null));
 
-    if (activeActiveRealTimeSourceFabrics.isEmpty()) {
+    if (tmpActiveActiveRealTimeSourceFabrics.isEmpty()) {
       LOGGER.info(
           "'{}' not configured explicitly. Using '{}' from '{}'",
           ACTIVE_ACTIVE_REAL_TIME_SOURCE_FABRIC_LIST,
           nativeReplicationSourceFabricAllowlist,
           NATIVE_REPLICATION_FABRIC_ALLOWLIST);
-      activeActiveRealTimeSourceFabrics = nativeReplicationSourceFabricAllowlist;
+      tmpActiveActiveRealTimeSourceFabrics = nativeReplicationSourceFabricAllowlist;
     }
+    this.activeActiveRealTimeSourceFabrics = tmpActiveActiveRealTimeSourceFabrics;
 
     for (String aaSourceFabric: activeActiveRealTimeSourceFabrics) {
       if (!childDataCenterKafkaUrlMap.containsKey(aaSourceFabric)) {
@@ -1236,6 +1239,8 @@ public class VeniceControllerClusterConfig {
     this.storeMigrationMaxRetryAttempts = props.getInt(ConfigKeys.STORE_MIGRATION_MAX_RETRY_ATTEMPTS, 3);
     this.backupVersionReplicaReductionEnabled =
         props.getBoolean(CONTROLLER_BACKUP_VERSION_REPLICA_REDUCTION_ENABLED, false);
+    this.useMultiRegionRealTimeTopicSwitcher =
+        props.getBoolean(ConfigKeys.CONTROLLER_USE_MULTI_REGION_REAL_TIME_TOPIC_SWITCHER_ENABLED, false);
 
     this.logClusterConfig();
   }
@@ -2271,6 +2276,14 @@ public class VeniceControllerClusterConfig {
 
   public HelixCapacityConfig getHelixCapacityConfig() {
     return helixCapacityConfig;
+  }
+
+  public boolean isUseMultiRegionRealTimeTopicSwitcherEnabled() {
+    return useMultiRegionRealTimeTopicSwitcher;
+  }
+
+  public Set<String> getActiveActiveRealTimeSourceFabrics() {
+    return activeActiveRealTimeSourceFabrics;
   }
 
   private void validateHelixRebalancePreferences(

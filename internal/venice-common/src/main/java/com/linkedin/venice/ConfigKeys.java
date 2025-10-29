@@ -2936,4 +2936,12 @@ public class ConfigKeys {
    * prevent generating log lines for this consumer, if this consumer taking higher partition number than this limit.
    */
   public static final String SERVER_INGESTION_INFO_LOG_LINE_LIMIT = "server.ingestion.info.log.line.limit";
+
+  /**
+   * Whether the child controller in each data center will use the MultiRegionRealTimeTopicSwitcher to send version swap
+   * messages to the RT topics in remote data centers.
+   * Default is false (i.e. use the RealTimeTopicSwitcher to only write to local RT topic).
+   */
+  public static final String CONTROLLER_USE_MULTI_REGION_REAL_TIME_TOPIC_SWITCHER_ENABLED =
+      "controller.use.multi.region.real.time.topic.switcher.enabled";
 }

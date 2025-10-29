@@ -175,4 +175,16 @@ public class VeniceWriterFactory {
           "Invalid properties for Kafka producer factory. Required property: " + key + " is missing.");
     }
   }
+
+  public static Properties cloneAndUpdateBrokerAddress(VeniceProperties veniceProperties, String brokerAddress) {
+    Properties clonedProperties = (Properties) veniceProperties.toProperties().clone();
+    if (veniceProperties.containsKey(ConfigKeys.PUBSUB_BROKER_ADDRESS)) {
+      clonedProperties.setProperty(ConfigKeys.PUBSUB_BROKER_ADDRESS, brokerAddress);
+    }
+    if (Boolean.parseBoolean(veniceProperties.getStringWithAlternative(SSL_TO_KAFKA_LEGACY, KAFKA_OVER_SSL, "false"))) {
+      clonedProperties.setProperty(SSL_KAFKA_BOOTSTRAP_SERVERS, brokerAddress);
+    }
+    clonedProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, brokerAddress);
+    return clonedProperties;
+  }
 }

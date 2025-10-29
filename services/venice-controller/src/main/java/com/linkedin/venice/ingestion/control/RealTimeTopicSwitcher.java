@@ -252,7 +252,7 @@ public class RealTimeTopicSwitcher {
     }
   }
 
-  private void broadcastVersionSwap(Version previousStoreVersion, Version nextStoreVersion, String topicName) {
+  protected void broadcastVersionSwap(Version previousStoreVersion, Version nextStoreVersion, String topicName) {
     String storeName = previousStoreVersion.getStoreName();
     int partitionCount;
 

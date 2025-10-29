@@ -1382,6 +1382,41 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     producerAdapter.flush();
   }
 
+  /**
+   * Similar to {@link #broadcastVersionSwap(String, String, Map)} but with region info intended to guide Venice change
+   * capture consumer to perform version swap correctly in a true A/A setup (with unique writers in each region).
+   *
+   * @param oldServingVersionTopic the version topic change capture consumer should switch from.
+   * @param newServingVersionTopic the version topic change capture consumer should switch to.
+   * @param sourceRegion where the version swap event occurred.
+   * @param destinationRegion of the RT topic where the original version swap message is being sent to.
+   * @param generationId to identify this version switch event when there are multiple version switch events.
+   * @param debugInfo arbitrary key/value pairs of information that will be propagated alongside the control message.
+   */
+  public void broadcastVersionSwapWithRegionInfo(
+      @Nonnull String oldServingVersionTopic,
+      @Nonnull String newServingVersionTopic,
+      @Nonnull String sourceRegion,
+      @Nonnull String destinationRegion,
+      long generationId,
+      Map<String, String> debugInfo) {
+    Validate.notEmpty(oldServingVersionTopic);
+    Validate.notEmpty(newServingVersionTopic);
+    Validate.notEmpty(sourceRegion);
+    Validate.notEmpty(destinationRegion);
+    ControlMessage controlMessage = getEmptyControlMessage(ControlMessageType.VERSION_SWAP);
+    VersionSwap versionSwap = new VersionSwap();
+    versionSwap.oldServingVersionTopic = oldServingVersionTopic;
+    versionSwap.newServingVersionTopic = newServingVersionTopic;
+    versionSwap.localHighWatermarkPubSubPositions = Collections.emptyList();
+    versionSwap.sourceRegion = sourceRegion;
+    versionSwap.destinationRegion = destinationRegion;
+    versionSwap.generationId = generationId;
+    controlMessage.controlMessageUnion = versionSwap;
+    broadcastControlMessage(controlMessage, debugInfo);
+    producerAdapter.flush();
+  }
+
   public void broadcastStartOfIncrementalPush(String version, Map<String, String> debugInfo) {
     ControlMessage controlMessage = getEmptyControlMessage(ControlMessageType.START_OF_INCREMENTAL_PUSH);
     StartOfIncrementalPush startOfIncrementalPush = new StartOfIncrementalPush();
