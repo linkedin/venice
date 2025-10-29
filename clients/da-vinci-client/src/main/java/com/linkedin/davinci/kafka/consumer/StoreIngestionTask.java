@@ -410,6 +410,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private boolean skipAfterBatchPushUnsubEnabled = false;
   private final List<AutoCloseable> thingsToClose = new ArrayList<>();
   private final Version version;
+  protected boolean ignoreFatalDIVError = true;
 
   public StoreIngestionTask(
       StorageService storageService,
@@ -1082,6 +1083,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * @return true if EOP was received and (for hybrid stores) if lag <= threshold
    */
   protected boolean isReadyToServe(PartitionConsumptionState partitionConsumptionState) {
+    LOGGER.info("isReadyToServe: {}", partitionConsumptionState);
     // Check various short-circuit conditions first.
     if (!partitionConsumptionState.isEndOfPushReceived()) {
       // If the EOP has not been received yet, then for sure we aren't ready
@@ -2255,8 +2257,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         PubSubPosition subscribePosition;
         if (consumerAction.getPubSubPosition() != null) {
           subscribePosition = consumerAction.getPubSubPosition();
+          LOGGER.info("Subscribed to user provided position: {} offset: {}", topicPartition, subscribePosition);
+
         } else {
           subscribePosition = getLocalVtSubscribePosition(newPartitionConsumptionState);
+          LOGGER.info("Subscribed to local: {} position: {}", topicPartition, subscribePosition);
+
         }
         consumerSubscribe(
             topicPartition.getPubSubTopic(),
@@ -2635,16 +2641,17 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       // TODO need a way to safeguard DIV errors from backup version that have once been current (but not anymore)
       // during re-balancing
       boolean needToUnsub = !(isCurrentVersion.getAsBoolean() || partitionConsumptionState.isEndOfPushReceived());
-      if (needToUnsub) {
+      if (needToUnsub && ignoreFatalDIVError) {
         errorMessage += ". Consumption will be halted.";
         ingestionNotificationDispatcher
             .reportError(Collections.singletonList(partitionConsumptionState), errorMessage, e);
         unSubscribePartition(new PubSubTopicPartitionImpl(versionTopic, faultyPartition), false);
       } else {
-        LOGGER.warn(
-            "{}. Consumption will continue because it is either a current version replica or EOP has already been received. {}",
-            errorMessage,
-            e.getMessage());
+        String message = ignoreFatalDIVError
+            ? "{} Ignoring FATAL DIV first time for user provided position subscription. {}"
+            : "{}. Consumption will continue because it is either a current version replica or EOP has already been received. {}";
+        LOGGER.warn(message, errorMessage, e.getMessage());
+        ignoreFatalDIVError = false;
       }
     } catch (VeniceMessageException | UnsupportedOperationException e) {
       throw new VeniceException(
