@@ -15,6 +15,9 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.PubSubContext;
+import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -32,9 +35,11 @@ public class StorageUtilizationManagerTest {
   private final static long newStoreQuotaInBytes = 200L;
   private final static int storePartitionCount = 10;
   private final static String storeName = "TestTopic";
-  private final static String topic = Version.composeKafkaTopic(storeName, 1);
-  private final String realTimeTopic = Utils.composeRealTimeTopic(storeName) + Utils.SEPARATE_TOPIC_SUFFIX;
-  private final static int storeVersion = Version.parseVersionFromKafkaTopicName(topic);
+  private final static PubSubTopicRepository TOPIC_REPOSITORY = new PubSubTopicRepository();
+  private final static PubSubTopic VERSION_TOPIC = TOPIC_REPOSITORY.getTopic(Version.composeKafkaTopic(storeName, 1));
+  private final static PubSubTopic REAL_TIME_TOPIC =
+      TOPIC_REPOSITORY.getTopic(Utils.composeRealTimeTopic(storeName) + Utils.SEPARATE_TOPIC_SUFFIX);
+  private final static int STORE_VERSION = Version.parseVersionFromKafkaTopicName(VERSION_TOPIC.getName());
 
   private ConcurrentMap<Integer, PartitionConsumptionState> partitionConsumptionStateMap;
   private ConcurrentMap<Integer, PartitionConsumptionState> hybridPartitionConsumptionStateMap;
@@ -62,8 +67,7 @@ public class StorageUtilizationManagerTest {
 
     for (int i = 1; i <= storePartitionCount; i++) {
       PartitionConsumptionState pcs = new PartitionConsumptionState(
-          Utils.getReplicaId(topic, i),
-          i,
+          new PubSubTopicPartitionImpl(VERSION_TOPIC, i),
           mock(OffsetRecord.class),
           pubSubContext,
           true,
@@ -72,11 +76,10 @@ public class StorageUtilizationManagerTest {
     }
 
     OffsetRecord mockOffsetRecord = mock(OffsetRecord.class);
-    when(mockOffsetRecord.getLeaderTopic()).thenReturn(realTimeTopic);
+    when(mockOffsetRecord.getLeaderTopic()).thenReturn(REAL_TIME_TOPIC.getName());
     for (int i = 1; i <= storePartitionCount; i++) {
       PartitionConsumptionState pcs = new PartitionConsumptionState(
-          Utils.getReplicaId(realTimeTopic, i),
-          i,
+          new PubSubTopicPartitionImpl(VERSION_TOPIC, i),
           mockOffsetRecord,
           pubSubContext,
           true,
@@ -88,14 +91,14 @@ public class StorageUtilizationManagerTest {
     when(store.getName()).thenReturn(storeName);
     when(store.getStorageQuotaInByte()).thenReturn(storeQuotaInBytes);
     when(store.getPartitionCount()).thenReturn(storePartitionCount);
-    when(store.getVersion(storeVersion)).thenReturn(version);
+    when(store.getVersion(STORE_VERSION)).thenReturn(version);
     when(store.isHybridStoreDiskQuotaEnabled()).thenReturn(true);
     when(version.getStatus()).thenReturn(VersionStatus.STARTED);
 
     quotaEnforcer = new StorageUtilizationManager(
         storageEngine,
         store,
-        topic,
+        VERSION_TOPIC.getName(),
         storePartitionCount,
         partitionConsumptionStateMap,
         true,
@@ -108,7 +111,7 @@ public class StorageUtilizationManagerTest {
     hybridQuotaEnforcer = new StorageUtilizationManager(
         storageEngine,
         store,
-        topic,
+        VERSION_TOPIC.getName(),
         storePartitionCount,
         hybridPartitionConsumptionStateMap,
         true,

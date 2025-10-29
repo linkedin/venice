@@ -418,6 +418,11 @@ public class ConfigKeys {
   public static final String REPUSH_ORCHESTRATOR_CLASS_NAME = "controller.repush.orchestrator.class.name";
 
   /**
+   * Class names of the implementation of interface {@link com.linkedin.venice.controller.logcompaction.CandidateFilter} in {@link com.linkedin.venice.controller.logcompaction.CompactionManager}
+   */
+  public static final String REPUSH_CANDIDATE_FILTER_CLASS_NAMES = "controller.repush.candidate.filter.class.names";
+
+  /**
    * Prefix of configs to configure RepushOrchestrator
    */
   public static final String CONTROLLER_REPUSH_PREFIX = "controller.repush.";
@@ -445,6 +450,17 @@ public class ConfigKeys {
    * Time since last log compaction before a store is considered for log compaction
    */
   public static final String LOG_COMPACTION_THRESHOLD_MS = "log.compaction.threshold.ms";
+
+  /**
+   * Version staleness threshold to decide when a store should be nominated for compaction
+   */
+  public static final String LOG_COMPACTION_VERSION_STALENESS_THRESHOLD_MS =
+      "log.compaction.version.staleness.threshold.ms";
+
+  /**
+   * Duplicate key threshold to decide when a store should be nominated for compaction
+   */
+  public static final String LOG_COMPACTION_DUPLICATE_KEY_THRESHOLD = "log.compaction.duplicate.key.threshold";
 
   /**
    * This config is to indicate the max retention policy we have setup for deprecated jobs currently and in the past.
@@ -701,6 +717,17 @@ public class ConfigKeys {
   public static final String SERVER_MAX_REQUEST_SIZE = "server.max.request.size";
   public static final String SERVER_SOURCE_TOPIC_OFFSET_CHECK_INTERVAL_MS =
       "server.source.topic.offset.check.interval.ms";
+  /**
+   * Controls whether replica lag computation should use offsets/positions obtained
+   * from consumer metrics.
+   *
+   * Default: false, since we are moving away from metrics-based lag computation.
+   * Set this to true only as a fallback in cases where PubSub broker metadata
+   * queries cause performance issues or excessive load.
+   */
+  public static final String SERVER_USE_METRICS_BASED_POSITION_IN_LAG_COMPUTATION =
+      "server.use.metrics.based.position.in.lag.computation";
+
   public static final String SERVER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS =
       "server.netty.graceful.shutdown.period.seconds";
   public static final String SERVER_NETTY_WORKER_THREADS = "server.netty.worker.threads";
@@ -2755,6 +2782,11 @@ public class ConfigKeys {
       "deferred.version.swap.region.roll.forward.order";
 
   /**
+   * Specifies the number of threads for DeferredVersionSwapService
+   */
+  public static final String DEFERRED_VERSION_SWAP_THREAD_POOL_SIZE = "deferred.version.swap.thread.pool.size";
+
+  /**
    * Enables / disables allowing dvc clients to perform a target region push with deferred swap. When enabled, dvc clients
    * will be skipped and target regions will not be set and the deferred version swap service will skip checking stores with
    * isDavinciHeartbeatReported set to true. This is a temporary config until delayed ingestion for dvc is complete. Default value is enabled
@@ -2898,4 +2930,10 @@ public class ConfigKeys {
 
   public static final String SERVER_INGESTION_ISOLATION_D2_CLIENT_ENABLED =
       "server.ingestion.isolation.d2.client.enabled";
+
+  /**
+   * When dumping topic partition info for each consumer, there will be one line for each partition. This limit will
+   * prevent generating log lines for this consumer, if this consumer taking higher partition number than this limit.
+   */
+  public static final String SERVER_INGESTION_INFO_LOG_LINE_LIMIT = "server.ingestion.info.log.line.limit";
 }

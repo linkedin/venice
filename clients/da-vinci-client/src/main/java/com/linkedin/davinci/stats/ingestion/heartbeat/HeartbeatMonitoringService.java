@@ -256,8 +256,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
             if (filterLagReplica && lag < DEFAULT_STALE_HEARTBEAT_LOG_THRESHOLD_MILLIS) {
               continue;
             }
-            String replicaId =
-                Utils.getReplicaId(Version.composeKafkaTopic(storeName.getKey(), version.getKey()), partition.getKey());
+            String replicaId = getReplicaId(storeName, version, partition);
             ReplicaHeartbeatInfo replicaHeartbeatInfo = new ReplicaHeartbeatInfo(
                 replicaId,
                 region.getKey(),
@@ -620,6 +619,10 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
 
   protected void checkAndMaybeLogHeartbeatDelayMap(
       Map<String, Map<Integer, Map<Integer, Map<String, HeartbeatTimeStampEntry>>>> heartbeatTimestamps) {
+    if (kafkaStoreIngestionService == null) {
+      // Service not initialized yet, skip logging
+      return;
+    }
     long currentTimestamp = System.currentTimeMillis();
     boolean isLeader = heartbeatTimestamps == leaderHeartbeatTimeStamps;
     for (Map.Entry<String, Map<Integer, Map<Integer, Map<String, HeartbeatTimeStampEntry>>>> storeName: heartbeatTimestamps
@@ -631,25 +634,35 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
             long heartbeatTs = region.getValue().timestamp;
             long lag = currentTimestamp - heartbeatTs;
             if (lag > DEFAULT_STALE_HEARTBEAT_LOG_THRESHOLD_MILLIS && region.getValue().readyToServe) {
-              String replicaId = Utils
-                  .getReplicaId(Version.composeKafkaTopic(storeName.getKey(), version.getKey()), partition.getKey());
-              String ingestionInfoForReplica = kafkaStoreIngestionService
-                  .prepareIngestionInfoFor(storeName.getKey(), version.getKey(), partition.getKey(), region.getKey());
+              String replicaId = getReplicaId(storeName, version, partition);
               String leaderOrFollower = isLeader ? "leader" : "follower";
               LOGGER.warn(
-                  "Replica: {}, region: {} is having {} heartbeat lag: {}, latest heartbeat: {}, current timestamp: {}, ingestion info: {}",
+                  "Replica: {}, region: {} is having {} heartbeat lag: {}, latest heartbeat: {}, current timestamp: {}",
                   replicaId,
                   region.getKey(),
                   leaderOrFollower,
                   lag,
                   heartbeatTs,
-                  currentTimestamp,
-                  ingestionInfoForReplica);
+                  currentTimestamp);
+              kafkaStoreIngestionService.attemptToPrintIngestionInfoFor(
+                  storeName.getKey(),
+                  version.getKey(),
+                  partition.getKey(),
+                  region.getKey());
             }
           }
         }
       }
     }
+  }
+
+  static String getReplicaId(
+      Map.Entry<String, Map<Integer, Map<Integer, Map<String, HeartbeatTimeStampEntry>>>> storeName,
+      Map.Entry<Integer, Map<Integer, Map<String, HeartbeatTimeStampEntry>>> version,
+      Map.Entry<Integer, Map<String, HeartbeatTimeStampEntry>> partition) {
+    String replicaId =
+        Utils.getReplicaId(Version.composeKafkaTopic(storeName.getKey(), version.getKey()), partition.getKey());
+    return replicaId;
   }
 
   protected void checkAndMaybeLogHeartbeatDelay() {
@@ -704,8 +717,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
         }
         for (Map.Entry<Integer, Map<String, HeartbeatTimeStampEntry>> partition: version.getValue().entrySet()) {
           boolean lingerReplica = isResourceDeleted;
-          String replicaId =
-              Utils.getReplicaId(Version.composeKafkaTopic(storeName.getKey(), version.getKey()), partition.getKey());
+          String replicaId = getReplicaId(storeName, version, partition);
           if (!isResourceDeleted) {
             Set<String> instanceIdSet = partitionAssignment.getPartition(partition.getKey())
                 .getAllInstancesSet()
@@ -756,7 +768,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
         .entrySet()) {
       Store store = metadataRepository.getStore(storeName.getKey());
       if (store == null) {
-        LOGGER.warn("Store: {} not found in repository", storeName.getKey());
+        LOGGER.debug("Store: {} not found in repository", storeName.getKey());
         continue;
       }
       int currentVersion = store.getCurrentVersion();

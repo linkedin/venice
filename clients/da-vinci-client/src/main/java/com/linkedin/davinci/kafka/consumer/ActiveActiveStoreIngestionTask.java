@@ -1,5 +1,6 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import static com.linkedin.davinci.kafka.consumer.AggKafkaConsumerService.getKeyLevelLockMaxPoolSizeBasedOnServerConfig;
 import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.LEADER;
 import static com.linkedin.venice.VeniceConstants.REWIND_TIME_DECIDED_BY_SERVER;
 import static com.linkedin.venice.writer.VeniceWriter.APP_DEFAULT_LOGICAL_TS;
@@ -166,27 +167,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           aggVersionedIngestionStats,
           getHostLevelIngestionStats());
     });
-  }
-
-  public static int getKeyLevelLockMaxPoolSizeBasedOnServerConfig(VeniceServerConfig serverConfig, int partitionCount) {
-    int consumerPoolSizeForLeaderConsumption = 0;
-    if (serverConfig.isDedicatedConsumerPoolForAAWCLeaderEnabled()) {
-      consumerPoolSizeForLeaderConsumption = serverConfig.getDedicatedConsumerPoolSizeForAAWCLeader()
-          + serverConfig.getDedicatedConsumerPoolSizeForSepRTLeader();
-    } else if (serverConfig.getConsumerPoolStrategyType()
-        .equals(KafkaConsumerServiceDelegator.ConsumerPoolStrategyType.CURRENT_VERSION_PRIORITIZATION)) {
-      consumerPoolSizeForLeaderConsumption = serverConfig.getConsumerPoolSizeForCurrentVersionAAWCLeader()
-          + serverConfig.getConsumerPoolSizeForCurrentVersionSepRTLeader()
-          + serverConfig.getConsumerPoolSizeForNonCurrentVersionAAWCLeader();
-    } else {
-      consumerPoolSizeForLeaderConsumption = serverConfig.getConsumerPoolSizePerKafkaCluster();
-    }
-    int multiplier = 1;
-    if (serverConfig.isAAWCWorkloadParallelProcessingEnabled()) {
-      multiplier = serverConfig.getAAWCWorkloadParallelProcessingThreadPoolSize();
-    }
-    return Math.min(partitionCount, consumerPoolSizeForLeaderConsumption)
-        * serverConfig.getKafkaClusterIdToUrlMap().size() * multiplier + 1;
   }
 
   @Override
@@ -1098,7 +1078,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           .info("{} enabled remote consumption from topic {} partition {}", ingestionTaskName, leaderTopic, partition);
     }
     partitionConsumptionState.setLeaderFollowerState(LEADER);
-    preparePositionCheckpointAndStartRtConsumptionAsLeader(leaderTopic, partitionConsumptionState, true);
+    preparePositionCheckpointAndStartConsumptionAsLeader(leaderTopic, partitionConsumptionState, true);
   }
 
   /**
@@ -1165,7 +1145,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     // Update leader topic.
     partitionConsumptionState.getOffsetRecord().setLeaderTopic(newSourceTopic);
     // Calculate leader offset and start consumption
-    preparePositionCheckpointAndStartRtConsumptionAsLeader(newSourceTopic, partitionConsumptionState, false);
+    preparePositionCheckpointAndStartConsumptionAsLeader(newSourceTopic, partitionConsumptionState, false);
   }
 
   /**
@@ -1274,7 +1254,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
    * used in conjunction with lag from other regions to determine ready-to-serve status.
    */
   @Override
-  protected PubSubPosition getLatestPersistedUpstreamOffsetForHybridOffsetLagMeasurement(
+  protected PubSubPosition getLatestPersistedRtPositionForLagMeasurement(
       PartitionConsumptionState pcs,
       String upstreamKafkaUrl) {
     return pcs.getLatestProcessedRtPosition(upstreamKafkaUrl);
@@ -1350,36 +1330,33 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
    * source fabric is unreachable.
    *
    * @param sourceRealTimeTopicKafkaURLs
-   * @param partitionConsumptionState
+   * @param pcs
    * @param shouldLogLag
    * @return
    */
   @Override
-  protected long measureRTOffsetLagForMultiRegions(
+  protected long measureRtLagForMultiRegions(
       Set<String> sourceRealTimeTopicKafkaURLs,
-      PartitionConsumptionState partitionConsumptionState,
+      PartitionConsumptionState pcs,
       boolean shouldLogLag) {
     long maxLag = Long.MIN_VALUE;
     int numberOfUnreachableRegions = 0;
     for (String sourceRealTimeTopicKafkaURL: sourceRealTimeTopicKafkaURLs) {
       try {
-        long lag =
-            measureRTOffsetLagForSingleRegion(sourceRealTimeTopicKafkaURL, partitionConsumptionState, shouldLogLag);
+        long lag = measureRtLagForSingleRegion(sourceRealTimeTopicKafkaURL, pcs, shouldLogLag);
         maxLag = Math.max(lag, maxLag);
       } catch (Exception e) {
         LOGGER.error(
             "Failed to measure RT offset lag for replica: {} in {}/{}",
-            partitionConsumptionState.getReplicaId(),
-            Utils.getReplicaId(
-                partitionConsumptionState.getOffsetRecord().getLeaderTopic(pubSubTopicRepository),
-                partitionConsumptionState.getPartition()),
+            pcs.getReplicaId(),
+            Utils.getReplicaId(pcs.getOffsetRecord().getLeaderTopic(pubSubTopicRepository), pcs.getPartition()),
             sourceRealTimeTopicKafkaURL,
             e);
         if (++numberOfUnreachableRegions > 1) {
           LOGGER.error(
               "More than one regions are unreachable. Returning lag: {} as replica: {} may not be ready-to-serve.",
               Long.MAX_VALUE,
-              partitionConsumptionState.getReplicaId());
+              pcs.getReplicaId());
           return Long.MAX_VALUE;
         }
       }
@@ -1431,7 +1408,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         // Restore the original header so this function is eventually idempotent as the original KME ByteBuffer
         // will be recovered after producing the message to Kafka or if the production failing.
         ((ActiveActiveProducerCallback) callback).setOnCompletionFunction(
-            () -> ByteUtils.prependIntHeaderToByteBuffer(
+            unused -> ByteUtils.prependIntHeaderToByteBuffer(
                 updatedValueBytes,
                 ByteUtils.getIntHeaderFromByteBuffer(updatedValueBytes),
                 true));
@@ -1477,7 +1454,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
    * @param isTransition true if this is a leader transition, false for initial setup
    */
   @Override
-  void preparePositionCheckpointAndStartRtConsumptionAsLeader(
+  void preparePositionCheckpointAndStartConsumptionAsLeader(
       PubSubTopic leaderTopic,
       PartitionConsumptionState pcs,
       boolean isTransition) {

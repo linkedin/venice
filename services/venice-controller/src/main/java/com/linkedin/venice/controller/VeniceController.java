@@ -311,7 +311,8 @@ public class VeniceController {
           new DeferredVersionSwapService(
               (VeniceParentHelixAdmin) admin,
               multiClusterConfigs,
-              new DeferredVersionSwapStats(metricsRepository)));
+              new DeferredVersionSwapStats(metricsRepository),
+              metricsRepository));
     }
     return Optional.empty();
   }

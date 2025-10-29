@@ -41,9 +41,16 @@ public abstract class AbstractKafkaConsumerService extends AbstractVeniceService
       PubSubTopic versionTopic,
       PubSubTopicPartition pubSubTopicPartition);
 
+  /**
+   * This is for providing ingestion related information for a specific topic partition from the implementation of this class.
+   * @param respectRedundantLoggingFilter here is to guide if we need to prepare the info map, set to true when calling from
+   *                                      heartbeat monitoring to enable rate-limiting; set to false for admin commands
+   *                                      or tests where all info is needed.
+   */
   public abstract Map<PubSubTopicPartition, TopicPartitionIngestionInfo> getIngestionInfoFor(
       PubSubTopic versionTopic,
-      PubSubTopicPartition pubSubTopicPartition);
+      PubSubTopicPartition pubSubTopicPartition,
+      boolean respectRedundantLoggingFilter);
 
   public abstract Map<PubSubTopicPartition, Long> getStaleTopicPartitions(long thresholdTimestamp);
 }

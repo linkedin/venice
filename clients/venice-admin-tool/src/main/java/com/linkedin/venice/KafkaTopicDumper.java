@@ -1,6 +1,7 @@
 package com.linkedin.venice;
 
 import static com.linkedin.venice.chunking.ChunkKeyValueTransformer.KeyType.WITH_VALUE_CHUNK;
+import static com.linkedin.venice.pubsub.PubSubUtil.getPubSubPositionString;
 
 import com.github.luben.zstd.Zstd;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
@@ -30,6 +31,7 @@ import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
@@ -120,6 +122,7 @@ public class KafkaTopicDumper implements AutoCloseable {
   private DecoderFactory decoderFactory = new DecoderFactory();
   private Schema outputSchema;
   private PubSubTopicPartition topicPartition;
+  private PubSubPositionDeserializer pubSubPositionDeserializer;
 
   public KafkaTopicDumper(
       ControllerClient controllerClient,
@@ -130,10 +133,12 @@ public class KafkaTopicDumper implements AutoCloseable {
       boolean logMetadata,
       boolean logDataRecord,
       boolean logRmdRecord,
-      boolean logTsRecord) {
+      boolean logTsRecord,
+      PubSubPositionDeserializer pubSubPositionDeserializer) {
     this.topicPartition = topicPartition;
     this.consumer = consumer;
     this.maxConsumeAttempts = maxConsumeAttempts;
+    this.pubSubPositionDeserializer = pubSubPositionDeserializer;
 
     String storeName = Version.parseStoreFromKafkaTopicName(topicPartition.getTopicName());
     StoreResponse storeResponse = controllerClient.getStore(storeName);
@@ -501,7 +506,9 @@ public class KafkaTopicDumper implements AutoCloseable {
           producerMetadata.messageTimestamp,
           producerMetadata.logicalTimestamp,
           leaderMetadata == null ? "-" : leaderMetadata.hostName,
-          leaderMetadata == null ? "-" : leaderMetadata.upstreamPubSubPosition,
+          leaderMetadata == null
+              ? "-"
+              : getPubSubPositionString(pubSubPositionDeserializer, leaderMetadata.upstreamPubSubPosition),
           leaderMetadata == null ? "-" : leaderMetadata.upstreamKafkaClusterId,
           chunkMetadata);
     } catch (Exception e) {
@@ -594,7 +601,7 @@ public class KafkaTopicDumper implements AutoCloseable {
 
   void processRecord(DefaultPubSubMessage record) {
     if (logTsRecord) {
-      logIfTopicSwitchMessage(record);
+      logIfTopicSwitchMessage(record, pubSubPositionDeserializer);
     } else if (logDataRecord) {
       logDataRecord(record, logMetadata, logRmdRecord);
     } else if (logMetadata) {
@@ -605,7 +612,9 @@ public class KafkaTopicDumper implements AutoCloseable {
     }
   }
 
-  static void logIfTopicSwitchMessage(DefaultPubSubMessage record) {
+  static void logIfTopicSwitchMessage(
+      DefaultPubSubMessage record,
+      PubSubPositionDeserializer pubSubPositionDeserializer) {
     KafkaKey kafkaKey = record.getKey();
     if (!kafkaKey.isControlMessage()) {
       // TS message is a control message, so we only care about control messages.
@@ -617,7 +626,7 @@ public class KafkaTopicDumper implements AutoCloseable {
       return;
     }
 
-    String logMessage = constructTopicSwitchLog(record);
+    String logMessage = constructTopicSwitchLog(record, pubSubPositionDeserializer);
     LOGGER.info(logMessage);
   }
 
@@ -627,7 +636,9 @@ public class KafkaTopicDumper implements AutoCloseable {
    * @param record The PubSubMessage containing the TopicSwitch message.
    * @return A formatted string representing the log message.
    */
-  static String constructTopicSwitchLog(DefaultPubSubMessage record) {
+  static String constructTopicSwitchLog(
+      DefaultPubSubMessage record,
+      PubSubPositionDeserializer pubSubPositionDeserializer) {
     KafkaMessageEnvelope kafkaMessageEnvelope = record.getValue();
     ProducerMetadata producerMetadata = kafkaMessageEnvelope.producerMetadata;
     LeaderMetadata leaderMetadata = kafkaMessageEnvelope.leaderMetadataFooter;
@@ -648,7 +659,9 @@ public class KafkaTopicDumper implements AutoCloseable {
         producerMetadata.messageTimestamp,
         producerMetadata.logicalTimestamp,
         leaderMetadata == null ? "-" : leaderMetadata.hostName,
-        leaderMetadata == null ? "-" : leaderMetadata.upstreamPubSubPosition,
+        leaderMetadata == null
+            ? "-"
+            : getPubSubPositionString(pubSubPositionDeserializer, leaderMetadata.upstreamPubSubPosition),
         leaderMetadata == null ? "-" : leaderMetadata.upstreamKafkaClusterId);
   }
 

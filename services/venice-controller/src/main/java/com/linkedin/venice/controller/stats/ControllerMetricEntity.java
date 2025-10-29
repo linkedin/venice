@@ -20,14 +20,13 @@ import java.util.Set;
 
 public enum ControllerMetricEntity implements ModuleMetricEntityInterface {
   /** Count of current in flight messages to AdminSparkServer */
-  IN_FLIGHT_CALL_COUNT(
-      "in.flight.call.count", MetricType.UP_DOWN_COUNTER, MetricUnit.NUMBER,
-      "Count of all current inflight calls to controller spark server",
+  INFLIGHT_CALL_COUNT(
+      MetricType.UP_DOWN_COUNTER, MetricUnit.NUMBER, "Count of all current inflight calls to controller spark server",
       setOf(VENICE_CLUSTER_NAME, VENICE_CONTROLLER_ENDPOINT)
   ),
   /** Count of completed calls to AdminSparkServer */
   CALL_COUNT(
-      "call.count", MetricType.COUNTER, MetricUnit.NUMBER, "Count of all calls to controller spark server",
+      MetricType.COUNTER, MetricUnit.NUMBER, "Count of all calls to controller spark server",
       setOf(
           VENICE_CLUSTER_NAME,
           VENICE_CONTROLLER_ENDPOINT,
@@ -37,7 +36,7 @@ public enum ControllerMetricEntity implements ModuleMetricEntityInterface {
   ),
   /** Histogram of call latency to AdminSparkServer */
   CALL_TIME(
-      "call.time", MetricType.HISTOGRAM, MetricUnit.MILLISECOND,
+      MetricType.HISTOGRAM, MetricUnit.MILLISECOND,
       "Latency histogram of all successful calls to controller spark server",
       setOf(
           VENICE_CLUSTER_NAME,
@@ -80,6 +79,15 @@ public enum ControllerMetricEntity implements ModuleMetricEntityInterface {
 
   private final MetricEntity metricEntity;
   private final String metricName;
+
+  ControllerMetricEntity(
+      MetricType metricType,
+      MetricUnit unit,
+      String description,
+      Set<VeniceMetricsDimensions> dimensionsList) {
+    this.metricName = this.name().toLowerCase();
+    this.metricEntity = new MetricEntity(metricName, metricType, unit, description, dimensionsList);
+  }
 
   ControllerMetricEntity(
       String metricName,

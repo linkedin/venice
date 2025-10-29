@@ -34,6 +34,7 @@ import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.ImmutablePubSubMessage;
+import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
@@ -79,7 +80,8 @@ public class TestPartitionTracker {
     this.versionTopic = this.pubSubTopicRepository.getTopic(topicNamePrefix + "_v1");
 
     /** N.B.: {@link PartitionTracker} instances are always constructed with version topics. */
-    this.partitionTracker = new PartitionTracker(versionTopic.getName(), partitionId);
+    this.partitionTracker =
+        new PartitionTracker(versionTopic.getName(), partitionId, PubSubPositionDeserializer.DEFAULT_DESERIALIZER);
   }
 
   @DataProvider(name = "TopicType-Checksum")

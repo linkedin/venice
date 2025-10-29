@@ -121,6 +121,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_INACTIVE_TOPIC_PARTITION_CHE
 import static com.linkedin.venice.ConfigKeys.SERVER_INCREMENTAL_PUSH_STATUS_WRITE_MODE;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_CHECKPOINT_DURING_GRACEFUL_SHUTDOWN_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_HEARTBEAT_INTERVAL_MS;
+import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_INFO_LOG_LINE_LIMIT;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_APPLICATION_PORT;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_SERVICE_PORT;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_MODE;
@@ -198,6 +199,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_THROTTLER_FACTORS_FOR_NON_CU
 import static com.linkedin.venice.ConfigKeys.SERVER_THROTTLER_FACTORS_FOR_SEP_RT_LEADER;
 import static com.linkedin.venice.ConfigKeys.SERVER_UNSUB_AFTER_BATCHPUSH;
 import static com.linkedin.venice.ConfigKeys.SERVER_USE_HEARTBEAT_LAG_FOR_READY_TO_SERVE_CHECK_ENABLED;
+import static com.linkedin.venice.ConfigKeys.SERVER_USE_METRICS_BASED_POSITION_IN_LAG_COMPUTATION;
 import static com.linkedin.venice.ConfigKeys.SERVER_ZSTD_DICT_COMPRESSION_LEVEL;
 import static com.linkedin.venice.ConfigKeys.SEVER_CALCULATE_QUOTA_USAGE_BASED_ON_PARTITIONS_ASSIGNMENT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SORTED_INPUT_DRAINER_SIZE;
@@ -655,6 +657,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final int daVinciRecordTransformerOnRecoveryThreadPoolSize;
 
   private final boolean validateSpecificSchemaEnabled;
+  private final boolean useMetricsBasedPositionInLagComputation;
   private final LogContext logContext;
   private final IngestionTaskReusableObjects.Strategy ingestionTaskReusableObjectsStrategy;
   private final boolean keyUrnCompressionEnabled;
@@ -662,6 +665,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final boolean inactiveTopicPartitionCheckerEnabled;
   private final int inactiveTopicPartitionCheckerInternalInSeconds;
   private final int inactiveTopicPartitionCheckerThresholdInSeconds;
+  private final int serverIngestionInfoLogLineLimit;
 
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     this(serverProperties, Collections.emptyMap());
@@ -1126,6 +1130,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
         serverProperties.getInt(SERVER_INACTIVE_TOPIC_PARTITION_CHECKER_INTERNAL_IN_SECONDS, 100);
     this.inactiveTopicPartitionCheckerThresholdInSeconds =
         serverProperties.getInt(SERVER_INACTIVE_TOPIC_PARTITION_CHECKER_THRESHOLD_IN_SECONDS, 5);
+    this.useMetricsBasedPositionInLagComputation =
+        serverProperties.getBoolean(SERVER_USE_METRICS_BASED_POSITION_IN_LAG_COMPUTATION, false);
+    this.serverIngestionInfoLogLineLimit = serverProperties.getInt(SERVER_INGESTION_INFO_LOG_LINE_LIMIT, 20);
   }
 
   List<Double> extractThrottleLimitFactorsFor(VeniceProperties serverProperties, String configKey) {
@@ -1781,10 +1788,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     return nonExistingTopicCheckRetryIntervalSecond;
   }
 
-  public boolean isDedicatedConsumerPoolForAAWCLeaderEnabled() {
-    return dedicatedConsumerPoolForAAWCLeaderEnabled;
-  }
-
   public int getDedicatedConsumerPoolSizeForAAWCLeader() {
     return dedicatedConsumerPoolSizeForAAWCLeader;
   }
@@ -2031,5 +2034,13 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public boolean isInactiveTopicPartitionCheckerEnabled() {
     return inactiveTopicPartitionCheckerEnabled;
+  }
+
+  public boolean isUseMetricsBasedPositionInLagComputationEnabled() {
+    return this.useMetricsBasedPositionInLagComputation;
+  }
+
+  public int getServerIngestionInfoLogLineLimit() {
+    return this.serverIngestionInfoLogLineLimit;
   }
 }

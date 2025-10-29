@@ -116,8 +116,14 @@ public class TestVenicePath {
   public void setUp() {
     metricsRepository = new VeniceMetricsRepository();
     // retry manager is disabled by default
-    disabledRetryManager =
-        new RetryManager(metricsRepository, "disabled-test-retry-manager", 0, 0, retryManagerScheduler);
+    disabledRetryManager = new RetryManager(
+        metricsRepository,
+        "disabled-test-retry-manager",
+        0,
+        0,
+        retryManagerScheduler,
+        "test-store",
+        null);
   }
 
   @AfterClass
@@ -218,8 +224,15 @@ public class TestVenicePath {
     long start = System.currentTimeMillis();
     time.setTime(start);
     doReturn(start).when(mockClock).millis();
-    RetryManager retryManager =
-        new RetryManager(metricsRepository, "test-retry-manager", 1000, 0.1, mockClock, retryManagerScheduler);
+    RetryManager retryManager = new RetryManager(
+        metricsRepository,
+        "test-retry-manager",
+        "test-store",
+        null,
+        1000,
+        0.1,
+        mockClock,
+        retryManagerScheduler);
     retryManager.recordRequest();
     doReturn(start + 1000).when(mockClock).millis();
     // The retry budget should be set to: ceiling(1*0.1) = 1 and the token bucket capacity should be

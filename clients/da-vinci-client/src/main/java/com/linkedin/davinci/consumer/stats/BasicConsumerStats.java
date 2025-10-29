@@ -170,9 +170,6 @@ public class BasicConsumerStats extends AbstractVeniceStats {
     maximumConsumingVersionMetric.record(maxVersion);
   }
 
-  /**
-   * This won't be emitted by DVRT CDC, since it doesn't have context into heartbeat delay.
-   */
   public void emitHeartBeatDelayMetrics(long heartBeatDelay) {
     heartBeatDelayMetric.record(heartBeatDelay);
   }

@@ -78,7 +78,9 @@ import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_HYBRID_OFFS
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD;
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_REAL_TIME_TOPIC_NAME;
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_REWIND_TIME_IN_SECONDS;
+import static com.linkedin.venice.meta.Store.NON_EXISTING_VERSION;
 import static com.linkedin.venice.meta.Version.VERSION_SEPARATOR;
+import static com.linkedin.venice.meta.VersionStatus.CREATED;
 import static com.linkedin.venice.meta.VersionStatus.ERROR;
 import static com.linkedin.venice.meta.VersionStatus.KILLED;
 import static com.linkedin.venice.meta.VersionStatus.ONLINE;
@@ -208,6 +210,8 @@ import com.linkedin.venice.helix.ParentHelixOfflinePushAccessor;
 import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.helix.StoragePersonaRepository;
 import com.linkedin.venice.helix.ZkStoreConfigAccessor;
+import com.linkedin.venice.hooks.StoreLifecycleEventOutcome;
+import com.linkedin.venice.hooks.StoreLifecycleHooks;
 import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.ConcurrentPushDetectionStrategy;
@@ -336,7 +340,7 @@ public class VeniceParentHelixAdmin implements Admin {
 
   private static final long TOPIC_DELETION_DELAY_MS = 5 * Time.MS_PER_MINUTE;
   public static final List<Class<? extends Throwable>> RETRY_FAILURE_TYPES = Collections.singletonList(Exception.class);
-  private static final int ROLL_FORWARD_REQUEST_TIMEOUT = 5 * Time.MS_PER_SECOND;
+  private static final int ROLL_FORWARD_REQUEST_TIMEOUT = 60 * Time.MS_PER_SECOND;
 
   final Map<String, Boolean> asyncSetupEnabledMap;
   private final VeniceHelixAdmin veniceHelixAdmin;
@@ -400,6 +404,9 @@ public class VeniceParentHelixAdmin implements Admin {
   // New fabric controller client map per cluster per fabric
   private final Map<String, Map<String, ControllerClient>> newFabricControllerClientMap =
       new VeniceConcurrentHashMap<>();
+
+  private static final Set<VersionStatus> TERMINAL_VERSION_SWAP_STATUSES =
+      Utils.setOf(ONLINE, PARTIALLY_ONLINE, KILLED, ERROR);
 
   // Visible for testing
   public VeniceParentHelixAdmin(
@@ -1402,9 +1409,27 @@ public class VeniceParentHelixAdmin implements Admin {
       int versionNumber = Version.parseVersionFromKafkaTopicName(latestTopicName);
       Store store = getStore(clusterName, storeName);
       Version version = store.getVersion(versionNumber);
-      if (version != null && version.isVersionSwapDeferred()) {
+      boolean onlyDeferredSwap = version.isVersionSwapDeferred() && StringUtils.isEmpty(version.getTargetSwapRegion());
+      boolean isTargetRegionPushWithDeferredSwap =
+          version != null && version.isVersionSwapDeferred() && StringUtils.isNotEmpty(version.getTargetSwapRegion());
+
+      if (onlyDeferredSwap) {
+        if (version.getStatus() == STARTED || version.getStatus() == PUSHED) {
+          LOGGER.error(
+              "Future version {} exists for store {}, please wait till the future version is made current.",
+              versionNumber,
+              storeName);
+          return Optional.of(latestTopic.get().getName());
+        } else if (version.getStatus() == ONLINE) {
+          // for only deferred swap, users need to rollforward to mark it current for online status
+          boolean validatedChildVersion = validateChildCurrentVersions(clusterName, storeName, versionNumber);
+          if (!validatedChildVersion) {
+            return Optional.of(latestTopic.get().getName());
+          }
+        }
+      } else if (isTargetRegionPushWithDeferredSwap) {
         LOGGER.error(
-            "There is already future version {} exists for store {}, please wait till the future version is made current.",
+            "Future version {} exists for store {}, please wait till the future version is made current.",
             versionNumber,
             storeName);
         return Optional.of(latestTopic.get().getName());
@@ -1508,63 +1533,81 @@ public class VeniceParentHelixAdmin implements Admin {
       return Optional.empty();
     }
     int lastVersionNum = store.getLargestUsedVersionNumber();
-    Version lastVersion = lastVersionNum > 0 ? store.getVersion(lastVersionNum) : null;
-    Optional<String> latestTopic = Optional.empty();
-    if (lastVersion != null) {
-      LOGGER.info(
-          "Found latest version status: {} for store: {}, version: {}",
-          lastVersion.getStatus(),
-          storeName,
-          lastVersionNum);
-    }
-    if (lastVersion != null && lastVersion.getStatus() != ERROR && lastVersion.getStatus() != KILLED
-        && lastVersion.getStatus() != ONLINE && lastVersion.getStatus() != PARTIALLY_ONLINE) {
-      latestTopic = Optional.of(Version.composeKafkaTopic(storeName, lastVersionNum));
-    }
+    Version lastVersion = store.getVersion(lastVersionNum);
 
-    if (latestTopic.isPresent()) {
-      final String latestTopicName = latestTopic.get();
-      int versionNumber = Version.parseVersionFromKafkaTopicName(latestTopicName);
-      Version version = store.getVersion(versionNumber);
-      if (version != null && version.isVersionSwapDeferred()
-          && (version.getStatus() == STARTED || version.getStatus() == PUSHED)) {
-        LOGGER.error(
-            "There is already future version {} exists for store {}, please wait till the future version is made current.",
-            versionNumber,
-            storeName);
+    if (lastVersionNum == NON_EXISTING_VERSION || lastVersion == null) {
+      LOGGER.info("Store {} does not have any version", storeName);
+      return Optional.empty();
+    }
+    LOGGER.info(
+        "Found latest version status: {} for store: {}, version: {}",
+        lastVersion.getStatus(),
+        storeName,
+        lastVersionNum);
+    Optional<String> latestTopic = Optional.of(Version.composeKafkaTopic(storeName, lastVersionNum));
+    boolean onlyDeferredSwap =
+        lastVersion.isVersionSwapDeferred() && StringUtils.isEmpty(lastVersion.getTargetSwapRegion());
+
+    if (!onlyDeferredSwap && (lastVersion.getStatus() == STARTED || lastVersion.getStatus() == PUSHED
+        || lastVersion.getStatus() == CREATED)) {
+      LOGGER.error(
+          "The push for version {} of store {} is not completed, please wait till the push is completed.",
+          lastVersionNum,
+          storeName);
+      return latestTopic;
+    } else if (onlyDeferredSwap && lastVersion.getStatus() == ONLINE) {
+      // for only deferred swap, users need to rollforward to mark it current for online status
+      boolean validateChildCurrentVersions = validateChildCurrentVersions(clusterName, storeName, lastVersionNum);
+      if (!validateChildCurrentVersions) {
         return latestTopic;
       }
+    }
 
-      /**
-       * If the job is still running, Parent Controller will block current push.
-       */
-      final long SLEEP_MS_BETWEEN_RETRY = TimeUnit.SECONDS.toMillis(10);
-      ExecutionStatus jobStatus = ExecutionStatus.PROGRESS;
-      Map<String, String> extraInfo = new HashMap<>();
+    /**
+     * If the job is still running, Parent Controller will block current push.
+     */
+    final long SLEEP_MS_BETWEEN_RETRY = TimeUnit.SECONDS.toMillis(10);
+    ExecutionStatus jobStatus = ExecutionStatus.PROGRESS;
+    Map<String, String> extraInfo = new HashMap<>();
 
-      int retryTimes = 5;
-      int current = 0;
-      while (current++ < retryTimes) {
-        OfflinePushStatusInfo offlineJobStatus = getOffLinePushStatus(clusterName, latestTopicName);
-        jobStatus = offlineJobStatus.getExecutionStatus();
-        extraInfo = offlineJobStatus.getExtraInfo();
-        if (!extraInfo.containsValue(ExecutionStatus.UNKNOWN.toString())) {
-          break;
-        }
-        // Retry since there is a connection failure when querying job status against each datacenter
-        try {
-          timer.sleep(SLEEP_MS_BETWEEN_RETRY);
-        } catch (InterruptedException e) {
-          currentThread().interrupt();
-          throw new VeniceException("Received InterruptedException during sleep between 'getOffLinePushStatus' calls");
-        }
+    int retryTimes = 5;
+    int current = 0;
+    while (current++ < retryTimes) {
+      OfflinePushStatusInfo offlineJobStatus = getOffLinePushStatus(clusterName, latestTopic.get());
+      jobStatus = offlineJobStatus.getExecutionStatus();
+      extraInfo = offlineJobStatus.getExtraInfo();
+      if (!extraInfo.containsValue(ExecutionStatus.UNKNOWN.toString())) {
+        break;
       }
-      if (!jobStatus.isTerminal()) {
-        LOGGER.info("Job status: {} for {} is not terminal, extra info: {}", jobStatus, latestTopicName, extraInfo);
-        return latestTopic;
+      // Retry since there is a connection failure when querying job status against each datacenter
+      try {
+        timer.sleep(SLEEP_MS_BETWEEN_RETRY);
+      } catch (InterruptedException e) {
+        currentThread().interrupt();
+        throw new VeniceException("Received InterruptedException during sleep between 'getOffLinePushStatus' calls");
       }
+    }
+    if (!jobStatus.isTerminal()) {
+      LOGGER.info("Job status: {} for {} is not terminal, extra info: {}", jobStatus, latestTopic.get(), extraInfo);
+      return latestTopic;
     }
     return Optional.empty();
+  }
+
+  private boolean validateChildCurrentVersions(String clusterName, String storeName, int lastVersionNum) {
+    Map<String, Integer> currentVersionsMap = getCurrentVersionsForMultiColos(clusterName, storeName);
+    for (Map.Entry entry: currentVersionsMap.entrySet()) {
+      if (!entry.getValue().equals(lastVersionNum)) {
+        LOGGER.error(
+            "Future version {} exists for store {}, but in region {} current version {}, please wait till the future version is made current.",
+            lastVersionNum,
+            storeName,
+            entry.getKey(),
+            entry.getValue());
+        return false;
+      }
+    }
+    return true;
   }
 
   /**
@@ -2171,12 +2214,12 @@ public class VeniceParentHelixAdmin implements Admin {
    */
   @Override
   public int getFutureVersion(String clusterName, String storeName) {
-    return Store.NON_EXISTING_VERSION;
+    return NON_EXISTING_VERSION;
   }
 
   @Override
   public int getBackupVersion(String clusterName, String storeName) {
-    return Store.NON_EXISTING_VERSION;
+    return NON_EXISTING_VERSION;
   }
 
   Map<String, Integer> getCurrentVersionForMultiRegions(
@@ -2365,9 +2408,11 @@ public class VeniceParentHelixAdmin implements Admin {
         // Otherwise, it will be handled by DeferredVersionSwapService since it will handle marking the parent ONLINE
         // and tracking when version swap is complete
         Version parentVersion = parentStore.getVersion(futureVersionBeforeRollForward);
-        if (StringUtils.isEmpty(parentStore.getTargetSwapRegion()) && parentVersion.isVersionSwapDeferred()) {
+        if (parentVersion != null && StringUtils.isEmpty(parentVersion.getTargetSwapRegion())
+            && parentVersion.isVersionSwapDeferred()) {
           int version = Version.parseVersionFromKafkaTopicName(kafkaTopic);
           parentStore.updateVersionStatus(version, ONLINE);
+          parentStore.setCurrentVersion(version);
           repository.updateStore(parentStore);
           LOGGER.info(
               "Updating parent store {} version {} status to {} after roll-forward",
@@ -2775,6 +2820,21 @@ public class VeniceParentHelixAdmin implements Admin {
       } else {
         List<StoreLifecycleHooksRecord> convertedLifecycleHooks = new ArrayList<>();
         for (LifecycleHooksRecord record: newLifecycleHooks) {
+          StoreLifecycleHooks storeLifecycleHook;
+          try {
+            storeLifecycleHook = ReflectUtils.callConstructor(
+                ReflectUtils.loadClass(record.getStoreLifecycleHooksClassName()),
+                new Class<?>[] { VeniceProperties.class },
+                new Object[] { VeniceProperties.empty() });
+          } catch (Exception e) {
+            throw new VeniceException("Failed to load class: " + record.getStoreLifecycleHooksClassName(), e);
+          }
+          if (storeLifecycleHook.validateHookParams(
+              clusterName,
+              storeName,
+              record.getStoreLifecycleHooksParams()) != StoreLifecycleEventOutcome.PROCEED) {
+            throw new VeniceException("Params for store lifecycle hooks is invalid");
+          }
           convertedLifecycleHooks.add(
               new StoreLifecycleHooksRecord(
                   record.getStoreLifecycleHooksClassName(),
@@ -4122,8 +4182,7 @@ public class VeniceParentHelixAdmin implements Admin {
         }
 
         if (isTargetRegionPushWithDeferredSwap) {
-          boolean isVersionTerminal = ONLINE.equals(version.getStatus()) || ERROR.equals(version.getStatus())
-              || KILLED.equals(version.getStatus());
+          boolean isVersionTerminal = TERMINAL_VERSION_SWAP_STATUSES.contains(version.getStatus());
           if (isVersionTerminal) {
             LOGGER.info(
                 "Truncating parent VT {} after push status {} and version status {}",
@@ -4280,8 +4339,8 @@ public class VeniceParentHelixAdmin implements Admin {
         repository.updateStore(parentStore);
         LOGGER.info("Updating parent store version {} status to {}", kafkaTopic, PUSHED);
       } else {
-        parentStore.updateVersionStatus(versionNum, ONLINE); // Push is complete in all regions & version is serving
-                                                             // traffic
+        parentStore.updateVersionStatus(versionNum, ONLINE); // Push is complete in all regions & is serving reads
+        parentStore.setCurrentVersion(versionNum);
         repository.updateStore(parentStore);
         LOGGER.info("Updating parent store version {} status to {}", kafkaTopic, ONLINE);
       }

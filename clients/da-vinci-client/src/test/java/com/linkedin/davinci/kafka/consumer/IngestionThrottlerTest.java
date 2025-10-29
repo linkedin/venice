@@ -26,6 +26,7 @@ public class IngestionThrottlerTest {
     doReturn(true).when(serverConfig).isDaVinciCurrentVersionBootstrappingSpeedupEnabled();
     doReturn(500l).when(serverConfig).getDaVinciCurrentVersionBootstrappingQuotaRecordsPerSecond();
     doReturn(10240l).when(serverConfig).getDaVinciCurrentVersionBootstrappingQuotaBytesPerSecond();
+    mockThottlerRate(serverConfig);
 
     StoreIngestionTask nonCurrentVersionTask = mock(StoreIngestionTask.class);
     doReturn(false).when(nonCurrentVersionTask).isCurrentVersion();
@@ -83,12 +84,22 @@ public class IngestionThrottlerTest {
     throttlerForNonDaVinciClient.close();
   }
 
+  private static void mockThottlerRate(VeniceServerConfig serverConfig) {
+    doReturn(-1).when(serverConfig).getSepRTLeaderQuotaRecordsPerSecond();
+    doReturn(-1).when(serverConfig).getCurrentVersionAAWCLeaderQuotaRecordsPerSecond();
+    doReturn(-1).when(serverConfig).getCurrentVersionSepRTLeaderQuotaRecordsPerSecond();
+    doReturn(-1).when(serverConfig).getCurrentVersionNonAAWCLeaderQuotaRecordsPerSecond();
+    doReturn(-1).when(serverConfig).getNonCurrentVersionAAWCLeaderQuotaRecordsPerSecond();
+    doReturn(-1).when(serverConfig).getNonCurrentVersionNonAAWCLeaderQuotaRecordsPerSecond();
+  }
+
   @Test
   public void testDifferentThrottler() {
     VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
     doReturn(100L).when(serverConfig).getKafkaFetchQuotaRecordPerSecond();
     doReturn(60L).when(serverConfig).getKafkaFetchQuotaTimeWindow();
     doReturn(1024L).when(serverConfig).getKafkaFetchQuotaBytesPerSecond();
+    mockThottlerRate(serverConfig);
     IngestionThrottler ingestionThrottler =
         new IngestionThrottler(true, serverConfig, () -> Collections.emptyMap(), 10, TimeUnit.MILLISECONDS, null);
     EventThrottler throttlerForAAWCLeader = mock(EventThrottler.class);

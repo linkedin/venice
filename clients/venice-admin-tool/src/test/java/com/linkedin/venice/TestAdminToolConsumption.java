@@ -30,6 +30,7 @@ import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.pubsub.ImmutablePubSubMessage;
+import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.PubSubUtil;
@@ -260,7 +261,8 @@ public class TestAdminToolConsumption {
         true,
         false,
         false,
-        false);
+        false,
+        PubSubPositionDeserializer.DEFAULT_DESERIALIZER);
     ApacheKafkaOffsetPosition p0 = ApacheKafkaOffsetPosition.of(0);
     ApacheKafkaOffsetPosition p1 = ApacheKafkaOffsetPosition.of(1);
     Assert.assertEquals(kafkaTopicDumper.fetchAndProcess(p0, p1, 2), consumedMessageCount - 1);

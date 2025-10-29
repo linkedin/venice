@@ -28,6 +28,7 @@ import com.linkedin.venice.pubsub.PubSubTopicImpl;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -79,7 +80,8 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   private final CountDownLatch startLatch = new CountDownLatch(1);
   // Using a dedicated thread pool for CompletableFutures created by this class to avoid potential thread starvation
   // issues in the default ForkJoinPool
-  private final ExecutorService completableFutureThreadPool = Executors.newFixedThreadPool(1);
+  private final ExecutorService completableFutureThreadPool =
+      Executors.newFixedThreadPool(1, new DaemonThreadFactory("VeniceChangelogConsumerDaVinciRecordTransformerImpl"));
 
   private final Set<Integer> subscribedPartitions = new HashSet<>();
   private final ReentrantLock bufferLock = new ReentrantLock();
@@ -92,14 +94,18 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   private final VeniceConcurrentHashMap<Integer, AtomicLong> consumerSequenceIdGeneratorMap;
   private final long consumerSequenceIdStartingValue;
   private final boolean isVersionSpecificClient;
+  private final VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory;
 
-  public VeniceChangelogConsumerDaVinciRecordTransformerImpl(ChangelogClientConfig changelogClientConfig) {
-    this(changelogClientConfig, System.nanoTime());
+  public VeniceChangelogConsumerDaVinciRecordTransformerImpl(
+      ChangelogClientConfig changelogClientConfig,
+      VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory) {
+    this(changelogClientConfig, System.nanoTime(), veniceChangelogConsumerClientFactory);
   }
 
   VeniceChangelogConsumerDaVinciRecordTransformerImpl(
       ChangelogClientConfig changelogClientConfig,
-      long consumerSequenceIdStartingValue) {
+      long consumerSequenceIdStartingValue,
+      VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory) {
     this.changelogClientConfig = changelogClientConfig;
     this.storeName = changelogClientConfig.getStoreName();
     DaVinciConfig daVinciConfig = new DaVinciConfig();
@@ -108,6 +114,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
     this.pubSubMessages = new ArrayBlockingQueue<>(changelogClientConfig.getMaxBufferSize());
     this.partitionToVersionToServe = new ConcurrentHashMap<>();
     this.isVersionSpecificClient = changelogClientConfig.getStoreVersion() != null;
+    this.veniceChangelogConsumerClientFactory = veniceChangelogConsumerClientFactory;
 
     recordTransformerConfig = new DaVinciRecordTransformerConfig.Builder()
         .setRecordTransformerFunction(DaVinciRecordTransformerChangelogConsumer::new)
@@ -233,11 +240,16 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
 
   @Override
   public void stop() throws Exception {
+    LOGGER.info("Closing Changelog Consumer with name: {}", changelogClientConfig.getConsumerName());
+
     if (backgroundReporterThread != null) {
       backgroundReporterThread.interrupt();
     }
     daVinciClient.close();
     isStarted.set(false);
+    veniceChangelogConsumerClientFactory.deregisterClient(changelogClientConfig.getConsumerName());
+
+    LOGGER.info("Closed Changelog Consumer with name: {}", changelogClientConfig.getConsumerName());
   }
 
   // VeniceChangelogConsumer methods below
@@ -326,7 +338,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
     try {
       this.stop();
     } catch (Exception e) {
-      LOGGER.error("Close failed for VeniceChangelogConsumer");
+      LOGGER.error("Close failed for VeniceChangelogConsumer", e);
       throw new RuntimeException(e);
     }
   }
@@ -381,7 +393,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
         changeCaptureStats.emitPollCountMetrics(FAIL);
       }
 
-      LOGGER.error("Encountered an exception when polling records for store: {}", storeName);
+      LOGGER.error("Encountered an exception when polling records for store: {}", storeName, exception);
       throw exception;
     }
   }
@@ -633,7 +645,8 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
             "Encountered an exception when processing Version Swap from version: {} to version: {} for replica: {}",
             currentVersion,
             futureVersion,
-            replicaId);
+            replicaId,
+            exception);
         throw exception;
       }
     }
