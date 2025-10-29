@@ -46,6 +46,11 @@ public class D2ControllerClient extends ControllerClient {
     this.externalD2Client = false;
     this.d2ZkHosts = Collections.singletonList(d2ZkHost);
     this.sslFactory = sslFactory;
+    LOGGER.info(
+        "Created D2ControllerClient with D2Client constructed with d2 zk host: {}  cluster: {}, d2 service name: {}",
+        d2ZkHost,
+        clusterName,
+        d2ServiceName);
   }
 
   public D2ControllerClient(String d2ServiceName, String clusterName, D2Client d2Client) {
@@ -63,6 +68,10 @@ public class D2ControllerClient extends ControllerClient {
     this.externalD2Client = true;
     this.d2ZkHosts = null;
     this.sslFactory = sslFactory;
+    LOGGER.info(
+        "Created D2ControllerClient with external D2Client for cluster: {}, d2 service name: {}",
+        clusterName,
+        d2ServiceName);
   }
 
   public D2ControllerClient(
