@@ -95,8 +95,7 @@ public class DefaultIngestionBackendTest {
 
     when(storeConfig.getStoreVersionName()).thenReturn(STORE_VERSION);
     when(storeIngestionService.getMetadataRepo()).thenReturn(metadataRepo);
-    doNothing().when(storeIngestionService)
-        .startConsumption(any(VeniceStoreVersionConfig.class), anyInt(), Optional.empty());
+    doNothing().when(storeIngestionService).startConsumption(any(VeniceStoreVersionConfig.class), anyInt(), any());
     when(metadataRepo.waitVersion(anyString(), anyInt(), any(Duration.class))).thenReturn(storeAndVersion);
     when(storageMetadataService.getStoreVersionState(STORE_VERSION)).thenReturn(storeVersionState);
     when(storageService.openStoreForNewPartition(eq(storeConfig), eq(PARTITION), any())).thenReturn(storageEngine);

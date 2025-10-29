@@ -109,8 +109,8 @@ public class SeekableDaVinciClientTest {
     Utils.closeQuietlyWithErrorLogged(cluster);
   }
 
-  @Test(timeOut = TEST_TIMEOUT * 10)
-  public void testIncrementalPushSeeking() throws Exception {
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testDVCSeeking() throws Exception {
     final int partition = 0;
     final int partitionCount = 1;
     String storeName = Utils.getUniqueString("store");
