@@ -7053,7 +7053,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     List<OfflinePushStatusInfo> list = new ArrayList<>();
     // for incremental for push status. check all the incremental enabled versions of the store
     for (Version version: store.getVersions()) {
-      if (!version.isIncrementalPushEnabled() || version.getStatus() == ERROR) {
+      if (!version.isIncrementalPushEnabled() || version.getStatus() == ERROR || version.getStatus() == KILLED) {
         continue;
       }
       try {
