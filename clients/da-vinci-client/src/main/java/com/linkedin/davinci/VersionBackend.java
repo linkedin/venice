@@ -369,6 +369,19 @@ public class VersionBackend {
       Long allPartitionTimestamp,
       Map<Integer, PubSubPosition> positionMap) {
     Instant startTime = Instant.now();
+    int validCheckPointCount = 0;
+    if (!timestamps.isEmpty()) {
+      validCheckPointCount++;
+    }
+    if (!positionMap.isEmpty()) {
+      validCheckPointCount++;
+    }
+    if (allPartitionTimestamp != null) {
+      validCheckPointCount++;
+    }
+    if (validCheckPointCount > 1) {
+      throw new VeniceException("Multiple checkpoint types are not supported");
+    }
     List<Integer> partitionList = getPartitions(partitions);
     if (partitionList.isEmpty()) {
       LOGGER.error("No partitions to subscribe to for {}", this);

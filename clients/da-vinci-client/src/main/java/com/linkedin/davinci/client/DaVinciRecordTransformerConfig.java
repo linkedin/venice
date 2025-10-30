@@ -25,7 +25,6 @@ public class DaVinciRecordTransformerConfig {
   private final boolean useSpecificRecordKeyDeserializer;
   private final boolean useSpecificRecordValueDeserializer;
   private final boolean recordMetadataEnabled;
-  private final boolean ignoreFatalDIVError;
 
   public DaVinciRecordTransformerConfig(Builder builder) {
     this.recordTransformerFunction = Optional.ofNullable(builder.recordTransformerFunction)
@@ -47,7 +46,6 @@ public class DaVinciRecordTransformerConfig {
     this.alwaysBootstrapFromVersionTopic = builder.alwaysBootstrapFromVersionTopic;
     this.recordTransformationEnabled = builder.recordTransformationEnabled;
     this.recordMetadataEnabled = builder.recordMetadataEnabled;
-    this.ignoreFatalDIVError = builder.ignoreFatalDivError;
   }
 
   /**
@@ -120,10 +118,6 @@ public class DaVinciRecordTransformerConfig {
     return recordMetadataEnabled;
   }
 
-  public boolean getIgnoreFatalDivError() {
-    return ignoreFatalDIVError;
-  }
-
   public static class Builder {
     private DaVinciRecordTransformerFunctionalInterface recordTransformerFunction;
     private Class keyClass;
@@ -133,7 +127,6 @@ public class DaVinciRecordTransformerConfig {
     private Boolean alwaysBootstrapFromVersionTopic = false;
     private Boolean recordTransformationEnabled = true;
     private Boolean recordMetadataEnabled = false;
-    private Boolean ignoreFatalDivError = false;
 
     /**
      * Required for creating a {@link DaVinciRecordTransformer}. The function is invoked with the store version at startup.
@@ -228,11 +221,6 @@ public class DaVinciRecordTransformerConfig {
      */
     public Builder setRecordMetadataEnabled(boolean recordMetadataEnabled) {
       this.recordMetadataEnabled = recordMetadataEnabled;
-      return this;
-    }
-
-    public Builder setIgnoreFatalDivError(boolean ignoreFatalDivError) {
-      this.ignoreFatalDivError = ignoreFatalDivError;
       return this;
     }
 

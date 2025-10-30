@@ -1085,6 +1085,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    */
   protected boolean isReadyToServe(PartitionConsumptionState partitionConsumptionState) {
     // For da-vinci client with ignoreFatalDivError enabled, we don't need to check for lag.
+    // TODO: Implement proper way to check ready to serve for seekable da-vinci client
     if (ignoreFatalDivError && isDaVinciClient()) {
       partitionConsumptionState.lagHasCaughtUp();
       return true;

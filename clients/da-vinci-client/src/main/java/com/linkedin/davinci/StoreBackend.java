@@ -308,6 +308,7 @@ public class StoreBackend {
     if (targetRegions.contains(currentRegion) || startIngestionInNonTargetRegion || !isTargetRegionEnabled) {
       LOGGER.info("Subscribing to future version {}", targetVersion.kafkaTopicName());
       setDaVinciFutureVersion(new VersionBackend(backend, targetVersion, stats));
+      // For future version subscription, we don't need to pass any timestamps or position map
       daVinciFutureVersion.subscribe(subscription, Collections.emptyMap(), null, Collections.emptyMap())
           .whenComplete((v, e) -> trySwapDaVinciCurrentVersion(e));
     } else {

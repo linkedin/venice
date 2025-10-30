@@ -12,11 +12,6 @@ import java.util.concurrent.atomic.AtomicReference;
 
 
 public interface IngestionBackend extends Closeable {
-  /* void startConsumption(
-      VeniceStoreVersionConfig storeConfig,
-      int partition,
-      Long timestamp,
-      PubSubPosition pubSubPosition);*/
   void startConsumption(VeniceStoreVersionConfig storeConfig, int partition, Optional<PubSubPosition> pubSubPosition);
 
   CompletableFuture<Void> stopConsumption(VeniceStoreVersionConfig storeConfig, int partition);
