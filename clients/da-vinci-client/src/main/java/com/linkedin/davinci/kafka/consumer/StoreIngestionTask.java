@@ -1720,7 +1720,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       ExecutorService shutdownExecutor =
           enableParallelShutdown ? Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors() * 2) : null;
 
-      // If the ingestion task is stopped gracefully (server stops), persist processed offset to disk
       for (Map.Entry<Integer, PartitionConsumptionState> entry: partitionConsumptionStateMap.entrySet()) {
         /**
          * Now, there are two threads, which could potentially trigger {@link #syncOffset(String, PartitionConsumptionState)}:
@@ -1734,28 +1733,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
          * offset and checksum, since the checksum could change in another thread, but the corresponding offset change
          * hasn't been applied yet, when checkpointing happens in current thread.
          */
-
-        Runnable shutdownRunnable = () -> {
-          PartitionConsumptionState partitionConsumptionState = entry.getValue();
-          consumerUnSubscribeAllTopics(partitionConsumptionState);
-
-          if (ingestionCheckpointDuringGracefulShutdownEnabled) {
-            try {
-              PubSubTopicPartition topicPartition = partitionConsumptionState.getReplicaTopicPartition();
-              CompletableFuture<Void> cmdFuture = storeBufferService.execSyncOffsetCommandAsync(topicPartition, this);
-              waitForSyncOffsetCmd(cmdFuture, topicPartition);
-              waitForAllMessageToBeProcessedFromTopicPartition(topicPartition, partitionConsumptionState);
-            } catch (InterruptedException e) {
-              throw new VeniceException(e);
-            }
-          }
-        };
-
-        if (enableParallelShutdown) {
-          shutdownFutures.add(CompletableFuture.runAsync(shutdownRunnable, shutdownExecutor));
-        } else {
-          shutdownRunnable.run();
-        }
+        executeShutdownRunnable(entry.getValue(), shutdownFutures, shutdownExecutor);
       }
       if (enableParallelShutdown) {
         /**
@@ -1812,6 +1790,31 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       handleIngestionThrowable(t);
     } finally {
       internalClose(doFlush);
+    }
+  }
+
+  void executeShutdownRunnable(
+      PartitionConsumptionState partitionConsumptionState,
+      List<CompletableFuture<Void>> shutdownFutures,
+      ExecutorService shutdownExecutor) {
+    Runnable shutdownRunnable = () -> {
+      consumerUnSubscribeAllTopics(partitionConsumptionState);
+      // If the ingestion task is stopped gracefully (server stops), persist processed offset to disk.
+      if (getServerConfig().isServerIngestionCheckpointDuringGracefulShutdownEnabled()) {
+        try {
+          PubSubTopicPartition topicPartition = partitionConsumptionState.getReplicaTopicPartition();
+          CompletableFuture<Void> cmdFuture = getStoreBufferService().execSyncOffsetCommandAsync(topicPartition, this);
+          waitForSyncOffsetCmd(cmdFuture, topicPartition);
+          waitForAllMessageToBeProcessedFromTopicPartition(topicPartition, partitionConsumptionState);
+        } catch (InterruptedException e) {
+          throw new VeniceException(e);
+        }
+      }
+    };
+    if (shutdownExecutor != null) {
+      shutdownFutures.add(CompletableFuture.runAsync(shutdownRunnable, shutdownExecutor));
+    } else {
+      shutdownRunnable.run();
     }
   }
 
@@ -5099,5 +5102,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       LOGGER.error(errorMessage);
       throw new VeniceMessageException(errorMessage);
     }
+  }
+
+  AbstractStoreBufferService getStoreBufferService() {
+    return storeBufferService;
   }
 }
