@@ -11,7 +11,6 @@ import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.STANDB
 import static com.linkedin.davinci.validation.DataIntegrityValidator.DISABLED;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.LogMessages.KILLED_JOB_MESSAGE;
-import static com.linkedin.venice.compression.CompressionStrategy.NO_OP;
 import static com.linkedin.venice.kafka.protocol.enums.ControlMessageType.START_OF_SEGMENT;
 import static com.linkedin.venice.utils.Utils.FATAL_DATA_VALIDATION_ERROR;
 import static com.linkedin.venice.utils.Utils.closeQuietlyWithErrorLogged;
@@ -104,6 +103,7 @@ import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.PubSubUtil;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
@@ -123,6 +123,7 @@ import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.ComplementSet;
 import com.linkedin.venice.utils.DaemonThreadFactory;
+import com.linkedin.venice.utils.DictionaryUtils;
 import com.linkedin.venice.utils.DiskUsage;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.HelixUtils;
@@ -1083,7 +1084,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * @return true if EOP was received and (for hybrid stores) if lag <= threshold
    */
   protected boolean isReadyToServe(PartitionConsumptionState partitionConsumptionState) {
-    LOGGER.info("isReadyToServe: {}", partitionConsumptionState);
     // For da-vinci client with ignoreFatalDivError enabled, we don't need to check for lag.
     if (ignoreFatalDivError && isDaVinciClient()) {
       partitionConsumptionState.lagHasCaughtUp();
@@ -2646,7 +2646,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       // TODO need a way to safeguard DIV errors from backup version that have once been current (but not anymore)
       // during re-balancing
       boolean needToUnsub = !(isCurrentVersion.getAsBoolean() || partitionConsumptionState.isEndOfPushReceived());
-      if (needToUnsub && ignoreFatalDivError) {
+      if (needToUnsub && !ignoreFatalDivError) {
         errorMessage += ". Consumption will be halted.";
         ingestionNotificationDispatcher
             .reportError(Collections.singletonList(partitionConsumptionState), errorMessage, e);
@@ -3106,13 +3106,20 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     StoreVersionState newStoreVersionState = new StoreVersionState();
     newStoreVersionState.sorted = sorted;
     newStoreVersionState.chunked = startOfPush != null ? startOfPush.chunked : isChunked;
-    newStoreVersionState.compressionStrategy = startOfPush != null ? startOfPush.compressionStrategy : NO_OP.getValue();
+    newStoreVersionState.compressionStrategy =
+        startOfPush != null ? startOfPush.compressionStrategy : compressionStrategy.getValue();
     newStoreVersionState.compressionDictionary = startOfPush != null ? startOfPush.compressionDictionary : null;
     if (startOfPush != null && startOfPush.compressionStrategy == CompressionStrategy.ZSTD_WITH_DICT.getValue()) {
       if (startOfPush.compressionDictionary == null) {
         throw new VeniceException(
             "compression Dictionary should not be empty if CompressionStrategy is ZSTD_WITH_DICT");
       }
+    } else if (newStoreVersionState.compressionStrategy == CompressionStrategy.ZSTD_WITH_DICT.getValue()) {
+      // we need to retrieve the dictionary from the kafka topic
+      newStoreVersionState.compressionDictionary = DictionaryUtils.readDictionaryFromKafka(
+          storeName,
+          serverConfig.getKafkaConsumerConfigsForLocalConsumption(),
+          PubSubMessageDeserializer.createDefaultDeserializer());
     }
     newStoreVersionState.batchConflictResolutionPolicy = startOfPush != null ? startOfPush.timestampPolicy : 1;
     newStoreVersionState.startOfPushTimestamp = KME.producerMetadata.messageTimestamp;
