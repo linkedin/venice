@@ -1132,12 +1132,9 @@ public class VeniceChangelogConsumerImplTest {
     when(store.getVersion(Mockito.anyInt())).thenReturn(mockVersion);
 
     CountDownLatch subscribeStarted = new CountDownLatch(1);
-    CountDownLatch pollAttempted = new CountDownLatch(1);
 
     doAnswer(invocation -> {
       subscribeStarted.countDown();
-      // Wait for poll to be attempted
-      pollAttempted.await(5, TimeUnit.SECONDS);
       // Hold the lock longer than poll timeout
       Thread.sleep(pollTimeoutMs * 2);
       return null;
@@ -1160,7 +1157,6 @@ public class VeniceChangelogConsumerImplTest {
     // Attempt to poll while subscribe is holding the lock - should return empty
     Collection<PubSubMessage<String, ChangeEvent<Utf8>, VeniceChangeCoordinate>> firstPollResult =
         veniceChangelogConsumer.poll(pollTimeoutMs / 2);
-    pollAttempted.countDown();
     assertTrue(firstPollResult.isEmpty(), "Poll should return empty when subscribe holds the lock");
 
     // Wait for subscribe to complete
