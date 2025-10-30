@@ -1736,13 +1736,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
          */
 
         Runnable shutdownRunnable = () -> {
-          int partition = entry.getKey();
           PartitionConsumptionState partitionConsumptionState = entry.getValue();
           consumerUnSubscribeAllTopics(partitionConsumptionState);
 
           if (ingestionCheckpointDuringGracefulShutdownEnabled) {
             try {
-              PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(versionTopic, partition);
+              PubSubTopicPartition topicPartition = partitionConsumptionState.getReplicaTopicPartition();
               CompletableFuture<Void> cmdFuture = storeBufferService.execSyncOffsetCommandAsync(topicPartition, this);
               waitForSyncOffsetCmd(cmdFuture, topicPartition);
               waitForAllMessageToBeProcessedFromTopicPartition(topicPartition, partitionConsumptionState);
@@ -3721,8 +3720,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   public boolean consumerHasSubscription(PubSubTopic topic, PartitionConsumptionState partitionConsumptionState) {
     int partitionId = partitionConsumptionState.getPartition();
-    return aggKafkaConsumerService
-        .hasConsumerAssignedFor(versionTopic, new PubSubTopicPartitionImpl(topic, partitionId));
+    PubSubTopicPartition pubSubTopicPartition;
+    if (topic.isVersionTopic()) {
+      pubSubTopicPartition = partitionConsumptionState.getReplicaTopicPartition();
+    } else {
+      pubSubTopicPartition = new PubSubTopicPartitionImpl(topic, partitionId);
+    }
+    return aggKafkaConsumerService.hasConsumerAssignedFor(versionTopic, pubSubTopicPartition);
   }
 
   /**
