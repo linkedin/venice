@@ -239,11 +239,8 @@ public class DefaultIngestionBackendTest {
 
   @Test
   public void testStartConsumptionWithBlobTransferValidatePartitionStatus() {
-    StorageEngine storageEngine = Mockito.mock(StorageEngine.class);
-    when(storageEngine.containsPartition(PARTITION)).thenReturn(true);
-    doNothing().when(storageEngine).dropPartition(PARTITION, false);
-
-    String kafkaTopic = Version.composeKafkaTopic(STORE_NAME, VERSION_NUMBER);
+    when(storageService.getStorageEngine(Version.composeKafkaTopic(STORE_NAME, VERSION_NUMBER)))
+        .thenReturn(storageEngine);
     when(store.isBlobTransferEnabled()).thenReturn(true);
     when(storeIngestionService.isDaVinciClient()).thenReturn(true);
     when(store.isHybrid()).thenReturn(true);
