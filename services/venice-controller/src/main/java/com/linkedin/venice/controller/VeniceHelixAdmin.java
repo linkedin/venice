@@ -2002,18 +2002,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                   entry.getKey(),
                   ControllerClient.constructClusterControllerClient(clusterName, entry.getValue(), sslFactory)));
 
-      controllerConfig.getChildDataCenterControllerD2Map()
-          .entrySet()
-          .forEach(
-              entry -> controllerClients.put(
-                  entry.getKey(),
-                  new D2ControllerClient(
-                      controllerConfig.getD2ServiceName(),
-                      clusterName,
-                      entry.getValue(),
-                      sslFactory)));
-
-      // Respect d2Clients from controller constructor
+      // Respect d2Clients from controller constructor, if not provided, create d2 clients by zk d2 service urls
+      // (mainly for testing purpose)
       if (d2Clients != null) {
         controllerConfig.getChildDataCenterControllerD2Map()
             .entrySet()
@@ -2024,6 +2014,17 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                         controllerConfig.getD2ServiceName(),
                         clusterName,
                         d2Clients.get(entry.getKey()),
+                        sslFactory)));
+      } else {
+        controllerConfig.getChildDataCenterControllerD2Map()
+            .entrySet()
+            .forEach(
+                entry -> controllerClients.put(
+                    entry.getKey(),
+                    new D2ControllerClient(
+                        controllerConfig.getD2ServiceName(),
+                        clusterName,
+                        entry.getValue(),
                         sslFactory)));
       }
 
