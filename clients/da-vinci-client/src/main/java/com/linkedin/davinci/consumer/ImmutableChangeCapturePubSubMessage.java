@@ -100,7 +100,6 @@ public class ImmutableChangeCapturePubSubMessage<K, V> implements PubSubMessage<
     return isEndOfBootstrap;
   }
 
-  @Override
   public int getWriterSchemaId() {
     return writerSchemaId;
   }

@@ -18,7 +18,13 @@ public class LocalBootstrappingVeniceChangelogConsumer<K, V>
       ChangelogClientConfig changelogClientConfig,
       PubSubConsumerAdapter pubSubConsumer,
       PubSubMessageDeserializer pubSubMessageDeserializer,
-      String consumerId) {
-    super(changelogClientConfig, pubSubConsumer, pubSubMessageDeserializer, consumerId);
+      String consumerId,
+      VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory) {
+    super(
+        changelogClientConfig,
+        pubSubConsumer,
+        pubSubMessageDeserializer,
+        consumerId,
+        veniceChangelogConsumerClientFactory);
   }
 }

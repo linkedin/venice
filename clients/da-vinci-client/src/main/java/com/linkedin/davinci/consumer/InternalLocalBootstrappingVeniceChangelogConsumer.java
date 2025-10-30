@@ -97,8 +97,9 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceAfte
       ChangelogClientConfig changelogClientConfig,
       PubSubConsumerAdapter pubSubConsumer,
       PubSubMessageDeserializer pubSubMessageDeserializer,
-      String consumerId) {
-    super(changelogClientConfig, pubSubConsumer, pubSubMessageDeserializer);
+      String consumerId,
+      VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory) {
+    super(changelogClientConfig, pubSubConsumer, pubSubMessageDeserializer, veniceChangelogConsumerClientFactory);
     bootstrapStateMap = new VeniceConcurrentHashMap<>();
     syncBytesInterval = changelogClientConfig.getDatabaseSyncBytesInterval();
     metricsRepository = changelogClientConfig.getInnerClientConfig().getMetricsRepository();

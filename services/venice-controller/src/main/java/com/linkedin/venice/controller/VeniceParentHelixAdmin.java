@@ -210,6 +210,8 @@ import com.linkedin.venice.helix.ParentHelixOfflinePushAccessor;
 import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.helix.StoragePersonaRepository;
 import com.linkedin.venice.helix.ZkStoreConfigAccessor;
+import com.linkedin.venice.hooks.StoreLifecycleEventOutcome;
+import com.linkedin.venice.hooks.StoreLifecycleHooks;
 import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.ConcurrentPushDetectionStrategy;
@@ -338,7 +340,7 @@ public class VeniceParentHelixAdmin implements Admin {
 
   private static final long TOPIC_DELETION_DELAY_MS = 5 * Time.MS_PER_MINUTE;
   public static final List<Class<? extends Throwable>> RETRY_FAILURE_TYPES = Collections.singletonList(Exception.class);
-  private static final int ROLL_FORWARD_REQUEST_TIMEOUT = 5 * Time.MS_PER_SECOND;
+  private static final int ROLL_FORWARD_REQUEST_TIMEOUT = 60 * Time.MS_PER_SECOND;
 
   final Map<String, Boolean> asyncSetupEnabledMap;
   private final VeniceHelixAdmin veniceHelixAdmin;
@@ -1408,6 +1410,8 @@ public class VeniceParentHelixAdmin implements Admin {
       Store store = getStore(clusterName, storeName);
       Version version = store.getVersion(versionNumber);
       boolean onlyDeferredSwap = version.isVersionSwapDeferred() && StringUtils.isEmpty(version.getTargetSwapRegion());
+      boolean isTargetRegionPushWithDeferredSwap =
+          version != null && version.isVersionSwapDeferred() && StringUtils.isNotEmpty(version.getTargetSwapRegion());
 
       if (onlyDeferredSwap) {
         if (version.getStatus() == STARTED || version.getStatus() == PUSHED) {
@@ -1423,6 +1427,12 @@ public class VeniceParentHelixAdmin implements Admin {
             return Optional.of(latestTopic.get().getName());
           }
         }
+      } else if (isTargetRegionPushWithDeferredSwap) {
+        LOGGER.error(
+            "Future version {} exists for store {}, please wait till the future version is made current.",
+            versionNumber,
+            storeName);
+        return Optional.of(latestTopic.get().getName());
       }
 
       if (!isTopicTruncated(latestTopicName)) {
@@ -2810,6 +2820,21 @@ public class VeniceParentHelixAdmin implements Admin {
       } else {
         List<StoreLifecycleHooksRecord> convertedLifecycleHooks = new ArrayList<>();
         for (LifecycleHooksRecord record: newLifecycleHooks) {
+          StoreLifecycleHooks storeLifecycleHook;
+          try {
+            storeLifecycleHook = ReflectUtils.callConstructor(
+                ReflectUtils.loadClass(record.getStoreLifecycleHooksClassName()),
+                new Class<?>[] { VeniceProperties.class },
+                new Object[] { VeniceProperties.empty() });
+          } catch (Exception e) {
+            throw new VeniceException("Failed to load class: " + record.getStoreLifecycleHooksClassName(), e);
+          }
+          if (storeLifecycleHook.validateHookParams(
+              clusterName,
+              storeName,
+              record.getStoreLifecycleHooksParams()) != StoreLifecycleEventOutcome.PROCEED) {
+            throw new VeniceException("Params for store lifecycle hooks is invalid");
+          }
           convertedLifecycleHooks.add(
               new StoreLifecycleHooksRecord(
                   record.getStoreLifecycleHooksClassName(),

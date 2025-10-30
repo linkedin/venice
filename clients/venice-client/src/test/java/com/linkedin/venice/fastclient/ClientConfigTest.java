@@ -1,6 +1,7 @@
 package com.linkedin.venice.fastclient;
 
 import static org.mockito.Mockito.mock;
+import static org.testng.Assert.*;
 
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.r2.transport.common.Client;
@@ -60,14 +61,6 @@ public class ClientConfigTest {
     clientConfigBuilder.build();
   }
 
-  @Test(expectedExceptions = VeniceClientException.class, expectedExceptionsMessageRegExp = "longTailRetryThresholdForBatchGetInMicroSeconds must be positive.*")
-  public void testClientWithInvalidLongTailRetryThresholdForBatchGet() {
-    ClientConfig.ClientConfigBuilder clientConfigBuilder = getClientConfigWithMinimumRequiredInputs();
-    clientConfigBuilder.setLongTailRetryEnabledForBatchGet(true);
-    clientConfigBuilder.setLongTailRetryThresholdForBatchGetInMicroSeconds(0);
-    clientConfigBuilder.build();
-  }
-
   @Test
   public void testLongTailRetryWithDualRead() {
     ClientConfig.ClientConfigBuilder clientConfigBuilder = getClientConfigWithMinimumRequiredInputs();
@@ -76,5 +69,23 @@ public class ClientConfigTest {
         .setLongTailRetryEnabledForSingleGet(true)
         .setLongTailRetryThresholdForSingleGetInMicroSeconds(1000)
         .build();
+  }
+
+  @Test
+  public void testDefaultBatchGetRetryThresholds() {
+    ClientConfig.ClientConfigBuilder clientConfigBuilder = getClientConfigWithMinimumRequiredInputs();
+    ClientConfig clientConfig = clientConfigBuilder.build();
+    assertEquals(
+        clientConfig.getLongTailRangeBasedRetryThresholdForBatchGetInMilliSeconds(),
+        "1-12:8,13-20:30,21-150:50,151-500:100,501-:500");
+  }
+
+  @Test
+  public void testDefaulComputeRetryThresholds() {
+    ClientConfig.ClientConfigBuilder clientConfigBuilder = getClientConfigWithMinimumRequiredInputs();
+    ClientConfig clientConfig = clientConfigBuilder.build();
+    assertEquals(
+        clientConfig.getLongTailRangeBasedRetryThresholdForComputeInMilliSeconds(),
+        "1-12:8,13-20:30,21-150:50,151-500:100,501-:500");
   }
 }

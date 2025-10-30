@@ -520,7 +520,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
     for (String kafkaUrl: kafkaServerToConsumerServiceMap.keySet()) {
       AbstractKafkaConsumerService consumerService = getKafkaConsumerService(kafkaUrl);
       Map<PubSubTopicPartition, TopicPartitionIngestionInfo> topicPartitionIngestionInfoMap =
-          consumerService.getIngestionInfoFor(versionTopic, pubSubTopicPartition);
+          consumerService.getIngestionInfoFor(versionTopic, pubSubTopicPartition, false);
       for (Map.Entry<PubSubTopicPartition, TopicPartitionIngestionInfo> entry: topicPartitionIngestionInfoMap
           .entrySet()) {
         PubSubTopicPartition topicPartition = entry.getKey();
@@ -545,7 +545,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
       return "Kafka consumer service is not found for kafkaUrl: " + kafkaUrl + ", region: " + regionName;
     }
     Map<PubSubTopicPartition, TopicPartitionIngestionInfo> topicPartitionIngestionInfoMap =
-        consumerService.getIngestionInfoFor(versionTopic, pubSubTopicPartition);
+        consumerService.getIngestionInfoFor(versionTopic, pubSubTopicPartition, true);
     return KafkaConsumerService.convertTopicPartitionIngestionInfoMapToStr(topicPartitionIngestionInfoMap);
   }
 
@@ -556,6 +556,24 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
       }
     }
     return null;
+  }
+
+  public static int getKeyLevelLockMaxPoolSizeBasedOnServerConfig(VeniceServerConfig serverConfig, int partitionCount) {
+    int consumerPoolSizeForLeaderConsumption = 0;
+    if (serverConfig.getConsumerPoolStrategyType()
+        .equals(KafkaConsumerServiceDelegator.ConsumerPoolStrategyType.CURRENT_VERSION_PRIORITIZATION)) {
+      consumerPoolSizeForLeaderConsumption = serverConfig.getConsumerPoolSizeForCurrentVersionAAWCLeader()
+          + serverConfig.getConsumerPoolSizeForCurrentVersionSepRTLeader()
+          + serverConfig.getConsumerPoolSizeForNonCurrentVersionAAWCLeader();
+    } else {
+      consumerPoolSizeForLeaderConsumption = serverConfig.getConsumerPoolSizePerKafkaCluster();
+    }
+    int multiplier = 1;
+    if (serverConfig.isAAWCWorkloadParallelProcessingEnabled()) {
+      multiplier = serverConfig.getAAWCWorkloadParallelProcessingThreadPoolSize();
+    }
+    return Math.min(partitionCount, consumerPoolSizeForLeaderConsumption)
+        * serverConfig.getKafkaClusterIdToUrlMap().size() * multiplier + 1;
   }
 
 }

@@ -46,6 +46,7 @@ import com.linkedin.d2.balancer.D2ClientBuilder;
 import com.linkedin.davinci.consumer.BootstrappingVeniceChangelogConsumer;
 import com.linkedin.davinci.consumer.ChangeEvent;
 import com.linkedin.davinci.consumer.ChangelogClientConfig;
+import com.linkedin.davinci.consumer.ImmutableChangeCapturePubSubMessage;
 import com.linkedin.davinci.consumer.VeniceAfterImageConsumerImpl;
 import com.linkedin.davinci.consumer.VeniceChangeCoordinate;
 import com.linkedin.davinci.consumer.VeniceChangelogConsumer;
@@ -1226,7 +1227,8 @@ public class TestChangelogConsumer {
 
     // All data should be from version 1
     for (int i = 1; i <= numKeys; i++) {
-      PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate> message = pubSubMessagesMap.get(i);
+      ImmutableChangeCapturePubSubMessage<Integer, ChangeEvent<Utf8>> message =
+          (ImmutableChangeCapturePubSubMessage<Integer, ChangeEvent<Utf8>>) pubSubMessagesMap.get(i);
       assertEquals(message.getValue().getCurrentValue().toString(), Integer.toString(version) + i);
       assertTrue(message.getPayloadSize() > 0);
       assertNotNull(message.getPosition());
@@ -1250,7 +1252,8 @@ public class TestChangelogConsumer {
 
     // All data should be from version 1
     for (int i = 1; i <= numKeys; i++) {
-      PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate> message = pubSubMessagesMap.get(i);
+      ImmutableChangeCapturePubSubMessage<Integer, ChangeEvent<Utf8>> message =
+          (ImmutableChangeCapturePubSubMessage<Integer, ChangeEvent<Utf8>>) pubSubMessagesMap.get(i);
       assertEquals(message.getValue().getCurrentValue().toString(), Integer.toString(version) + i);
       assertTrue(message.getPayloadSize() > 0);
       assertNotNull(message.getPosition());
@@ -1282,7 +1285,8 @@ public class TestChangelogConsumer {
 
     // All data should be from version 1
     for (int i = 1; i <= numKeys; i++) {
-      PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate> message = pubSubMessagesMap.get(i);
+      ImmutableChangeCapturePubSubMessage<Integer, ChangeEvent<Utf8>> message =
+          (ImmutableChangeCapturePubSubMessage<Integer, ChangeEvent<Utf8>>) pubSubMessagesMap.get(i);
       assertEquals(message.getValue().getCurrentValue().toString(), Integer.toString(version - 1) + i);
       assertTrue(message.getPayloadSize() > 0);
       assertNotNull(message.getPosition());
@@ -1313,7 +1317,8 @@ public class TestChangelogConsumer {
 
     // All data should be from future version 3
     for (int i = 1; i <= numKeys; i++) {
-      PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate> message = pubSubMessagesMap.get(i);
+      ImmutableChangeCapturePubSubMessage<Integer, ChangeEvent<Utf8>> message =
+          (ImmutableChangeCapturePubSubMessage<Integer, ChangeEvent<Utf8>>) pubSubMessagesMap.get(i);
       assertEquals(message.getValue().getCurrentValue().toString(), Integer.toString(version) + i);
       assertTrue(message.getPayloadSize() > 0);
       assertNotNull(message.getPosition());

@@ -40,7 +40,7 @@ import org.testng.annotations.Test;
 
 public class TestVeniceMultiGetPath {
   private final RetryManager disabledRetryManager =
-      new RetryManager(new VeniceMetricsRepository(), "disabled-test-retry-manager", 0, 0, null);
+      new RetryManager(new VeniceMetricsRepository(), "disabled-test-retry-manager", 0, 0, null, "test-store", null);
 
   private final NameRepository nameRepository = new NameRepository();
 

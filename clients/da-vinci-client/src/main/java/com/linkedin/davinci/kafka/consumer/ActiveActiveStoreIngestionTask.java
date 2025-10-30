@@ -1,5 +1,6 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import static com.linkedin.davinci.kafka.consumer.AggKafkaConsumerService.getKeyLevelLockMaxPoolSizeBasedOnServerConfig;
 import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.LEADER;
 import static com.linkedin.venice.VeniceConstants.REWIND_TIME_DECIDED_BY_SERVER;
 import static com.linkedin.venice.writer.VeniceWriter.APP_DEFAULT_LOGICAL_TS;
@@ -166,27 +167,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           aggVersionedIngestionStats,
           getHostLevelIngestionStats());
     });
-  }
-
-  public static int getKeyLevelLockMaxPoolSizeBasedOnServerConfig(VeniceServerConfig serverConfig, int partitionCount) {
-    int consumerPoolSizeForLeaderConsumption = 0;
-    if (serverConfig.isDedicatedConsumerPoolForAAWCLeaderEnabled()) {
-      consumerPoolSizeForLeaderConsumption = serverConfig.getDedicatedConsumerPoolSizeForAAWCLeader()
-          + serverConfig.getDedicatedConsumerPoolSizeForSepRTLeader();
-    } else if (serverConfig.getConsumerPoolStrategyType()
-        .equals(KafkaConsumerServiceDelegator.ConsumerPoolStrategyType.CURRENT_VERSION_PRIORITIZATION)) {
-      consumerPoolSizeForLeaderConsumption = serverConfig.getConsumerPoolSizeForCurrentVersionAAWCLeader()
-          + serverConfig.getConsumerPoolSizeForCurrentVersionSepRTLeader()
-          + serverConfig.getConsumerPoolSizeForNonCurrentVersionAAWCLeader();
-    } else {
-      consumerPoolSizeForLeaderConsumption = serverConfig.getConsumerPoolSizePerKafkaCluster();
-    }
-    int multiplier = 1;
-    if (serverConfig.isAAWCWorkloadParallelProcessingEnabled()) {
-      multiplier = serverConfig.getAAWCWorkloadParallelProcessingThreadPoolSize();
-    }
-    return Math.min(partitionCount, consumerPoolSizeForLeaderConsumption)
-        * serverConfig.getKafkaClusterIdToUrlMap().size() * multiplier + 1;
   }
 
   @Override
@@ -1428,7 +1408,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         // Restore the original header so this function is eventually idempotent as the original KME ByteBuffer
         // will be recovered after producing the message to Kafka or if the production failing.
         ((ActiveActiveProducerCallback) callback).setOnCompletionFunction(
-            () -> ByteUtils.prependIntHeaderToByteBuffer(
+            unused -> ByteUtils.prependIntHeaderToByteBuffer(
                 updatedValueBytes,
                 ByteUtils.getIntHeaderFromByteBuffer(updatedValueBytes),
                 true));

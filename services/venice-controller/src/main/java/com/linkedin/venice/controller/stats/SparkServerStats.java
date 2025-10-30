@@ -24,7 +24,7 @@ import spark.Response;
 
 
 public class SparkServerStats extends AbstractVeniceStats {
-  public static String NON_CLUSTER_SPECIFIC_STAT_CLUSTER_NAME = "cluster_generic";
+  public static final String NON_CLUSTER_SPECIFIC_STAT_CLUSTER_NAME = "cluster_generic";
 
   private final VeniceOpenTelemetryMetricsRepository otelRepository;
   private final Map<VeniceMetricsDimensions, String> baseDimensionsMap;

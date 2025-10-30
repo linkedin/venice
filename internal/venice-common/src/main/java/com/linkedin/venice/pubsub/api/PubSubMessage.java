@@ -1,6 +1,5 @@
 package com.linkedin.venice.pubsub.api;
 
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.memory.Measurable;
 
 
@@ -39,20 +38,6 @@ public interface PubSubMessage<K, V, POSITION> extends Measurable {
    * @return the size in bytes of the key + value.
    */
   int getPayloadSize();
-
-  /**
-   * @return the schema id that the record was written with
-   */
-  default int getWriterSchemaId() {
-    throw new VeniceException("WriterSchemaId is not available from the source this message was created");
-  };
-
-  /**
-   * @return The serialized value of the replication metadata payload.
-   */
-  default java.nio.ByteBuffer getReplicationMetadataPayload() {
-    throw new VeniceException("ReplicationMetadataPayload is not available from the source this message was created");
-  }
 
   default String getTopicName() {
     return getTopicPartition().getPubSubTopic().getName();

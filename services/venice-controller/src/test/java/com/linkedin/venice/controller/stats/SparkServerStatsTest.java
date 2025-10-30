@@ -16,7 +16,7 @@ import com.linkedin.venice.stats.dimensions.HttpResponseStatusCodeCategory;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
 import com.linkedin.venice.stats.metrics.MetricEntity;
 import com.linkedin.venice.utils.DataProviderUtils;
-import com.linkedin.venice.utils.OpenTelemetryDataPointTestUtils;
+import com.linkedin.venice.utils.OpenTelemetryDataTestUtils;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import java.util.Arrays;
@@ -270,7 +270,7 @@ public class SparkServerStatsTest extends AbstractTestVeniceParentHelixAdmin {
       String metricName,
       int expectedMetricValue,
       Attributes expectedAttributes) {
-    OpenTelemetryDataPointTestUtils.validateLongPointDataFromCounter(
+    OpenTelemetryDataTestUtils.validateLongPointDataFromCounter(
         inMemoryMetricReader,
         expectedMetricValue,
         expectedAttributes,
@@ -285,7 +285,7 @@ public class SparkServerStatsTest extends AbstractTestVeniceParentHelixAdmin {
       long expectedCount,
       double expectedSum,
       Attributes expectedAttributes) {
-    OpenTelemetryDataPointTestUtils.validateExponentialHistogramPointData(
+    OpenTelemetryDataTestUtils.validateExponentialHistogramPointData(
         inMemoryMetricReader,
         expectedMin,
         expectedMax,

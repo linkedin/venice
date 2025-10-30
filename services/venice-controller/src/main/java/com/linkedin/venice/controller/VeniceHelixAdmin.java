@@ -68,6 +68,8 @@ import com.linkedin.venice.controller.kafka.protocol.admin.StoreViewConfigRecord
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
 import com.linkedin.venice.controller.logcompaction.CompactionManager;
 import com.linkedin.venice.controller.logcompaction.LogCompactionService;
+import com.linkedin.venice.controller.logcompaction.RepushCandidateFilter;
+import com.linkedin.venice.controller.logcompaction.StoreRepushCandidateFilter;
 import com.linkedin.venice.controller.multitaskscheduler.MultiTaskSchedulerService;
 import com.linkedin.venice.controller.multitaskscheduler.StoreMigrationManager;
 import com.linkedin.venice.controller.repush.RepushJobRequest;
@@ -798,21 +800,29 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
       if (multiClusterConfigs.getControllerConfig(clusterName).isLogCompactionEnabled()
           && this.compactionManager == null) {
-        Class<? extends RepushOrchestrator> repushOrchestratorClass =
-            ReflectUtils.loadClass(multiClusterConfigs.getRepushOrchestratorClassName());
+        RepushOrchestrator repushOrchestrator;
         try {
-          RepushOrchestrator repushOrchestrator = ReflectUtils.callConstructor(
+          Class<? extends RepushOrchestrator> repushOrchestratorClass =
+              ReflectUtils.loadClass(multiClusterConfigs.getRepushOrchestratorClassName());
+          repushOrchestrator = ReflectUtils.callConstructor(
               repushOrchestratorClass,
               new Class[] { VeniceProperties.class },
               new Object[] { multiClusterConfigs.getRepushOrchestratorConfigs() });
-          this.compactionManager =
-              new CompactionManager(repushOrchestrator, multiClusterConfigs, logCompactionStatsMap);
+          LOGGER.info(
+              "Successfully loaded repush orchestrator class: {} ",
+              multiClusterConfigs.getRepushOrchestratorClassName());
         } catch (Exception e) {
-          LOGGER.error(
-              "[log-compaction] Failed to enable repush for log compaction " + CompactionManager.class.getSimpleName(),
+          throw new VeniceException(
+              "Failed to load repush orchestrator class through reflect: "
+                  + multiClusterConfigs.getRepushOrchestratorClassName(),
               e);
-          throw new VeniceException(e);
         }
+
+        // Add candidate filters for compaction manager
+        Set<RepushCandidateFilter> candidateFilters =
+            getRepushCandidateFiltersFromControllerConfig(multiClusterConfigs);
+
+        this.compactionManager = new CompactionManager(repushOrchestrator, candidateFilters, logCompactionStatsMap);
       }
     }
 
@@ -820,6 +830,37 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         Lazy.of(() -> ByteBuffer.wrap(ZstdWithDictCompressor.buildDictionaryOnSyntheticAvroData()));
 
     pushJobUserErrorCheckpoints = commonConfig.getPushJobUserErrorCheckpoints();
+  }
+
+  private Set<RepushCandidateFilter> getRepushCandidateFiltersFromControllerConfig(
+      VeniceControllerMultiClusterConfig multiClusterConfigs) {
+
+    // Add candidate filters for compaction manager
+    Set<RepushCandidateFilter> candidateFilters = new HashSet<>();
+
+    // Default filter
+    candidateFilters.add(new StoreRepushCandidateFilter(multiClusterConfigs));
+
+    // Additional filters from config
+    for (String candidateFilterClassName: multiClusterConfigs.getRepushCandidateFilterClassNames()) {
+      try {
+        Class<? extends RepushCandidateFilter> candidateFilterClass = ReflectUtils.loadClass(candidateFilterClassName);
+
+        RepushCandidateFilter candidateFilter = ReflectUtils.callConstructor(
+            candidateFilterClass,
+            new Class[] { VeniceControllerMultiClusterConfig.class },
+            new Object[] { multiClusterConfigs });
+
+        candidateFilters.add(candidateFilter);
+        LOGGER.info("Successfully loaded repush candidate filter class: {}", candidateFilterClassName);
+      } catch (Exception e) {
+        throw new VeniceException(
+            "Failed to load repush candidate filter class through reflect: " + candidateFilterClassName,
+            e);
+      }
+    }
+
+    return candidateFilters;
   }
 
   private VeniceProperties getPubSubSSLPropertiesFromControllerConfig(String pubSubBootstrapServers) {
@@ -6279,7 +6320,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     Optional<String> notReadyReason = Optional.of("unknown");
     long startTime = System.currentTimeMillis();
     long logTime = 0;
-    for (long elapsedTime = 0; elapsedTime <= maxWaitTimeMs; elapsedTime = System.currentTimeMillis() - startTime) {
+
+    while (System.currentTimeMillis() - startTime <= maxWaitTimeMs) {
       try (AutoCloseableLock ignore = clusterResources.getClusterLockManager().createClusterReadLock()) {
         if (!isLeaderControllerFor(clusterName)) {
           LOGGER.warn(
@@ -6295,6 +6337,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         ResourceAssignment resourceAssignment = routingDataRepository.getResourceAssignment();
         notReadyReason =
             statusDecider.hasEnoughNodesToStartPush(topic, replicationFactor, resourceAssignment, notReadyReason);
+        long elapsedTime = System.currentTimeMillis() - startTime;
         if (!notReadyReason.isPresent()) {
           LOGGER.info("After waiting for {}ms, resource allocation is completed for: {}.", elapsedTime, topic);
           pushMonitor

@@ -1,6 +1,7 @@
 package com.linkedin.venice.stats;
 
 import com.linkedin.venice.read.RequestType;
+import com.linkedin.venice.stats.dimensions.RequestRetryType;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.common.AttributesBuilder;
@@ -55,12 +56,22 @@ public class OpenTelemetryMetricsSetup {
   }
 
   public static class Builder {
+    /**
+     * Sentinel value indicating that the Helix group ID is unassigned.
+     * -1 is chosen because valid group IDs are non-negative integers.
+     * Negative group IDs, including -1, do not have any special meaning in the system
+     * other than representing an unassigned state.
+     */
+    private static final int UNASSIGNED_HELIX_GROUP_ID = -1;
+
     private final MetricsRepository metricsRepository;
     private String storeName;
     private RequestType requestType;
     private Boolean isTotalStats;
     private String clusterName;
     private String routeName;
+    private RequestRetryType requestRetryType;
+    private int helixGroupId = UNASSIGNED_HELIX_GROUP_ID;
 
     public Builder(MetricsRepository metricsRepository) {
       this.metricsRepository = metricsRepository;
@@ -103,6 +114,22 @@ public class OpenTelemetryMetricsSetup {
      */
     public Builder setRouteName(String routeName) {
       this.routeName = routeName;
+      return this;
+    }
+
+    /**
+     * Set the request retry type dimension.
+     */
+    public Builder setRequestRetryType(RequestRetryType requestRetryType) {
+      this.requestRetryType = requestRetryType;
+      return this;
+    }
+
+    /**
+     * Set the Helix group ID dimension.
+     */
+    public Builder setHelixGroupId(int helixGroupId) {
+      this.helixGroupId = helixGroupId;
       return this;
     }
 
@@ -159,6 +186,22 @@ public class OpenTelemetryMetricsSetup {
         baseDimensionsMap.put(VeniceMetricsDimensions.VENICE_ROUTE_NAME, routeName);
         baseAttributesBuilder
             .put(otelRepository.getDimensionName(VeniceMetricsDimensions.VENICE_ROUTE_NAME), routeName);
+      }
+
+      // Add request retry type if provided
+      if (requestRetryType != null) {
+        baseDimensionsMap.put(VeniceMetricsDimensions.VENICE_REQUEST_RETRY_TYPE, requestRetryType.getDimensionValue());
+        baseAttributesBuilder.put(
+            otelRepository.getDimensionName(VeniceMetricsDimensions.VENICE_REQUEST_RETRY_TYPE),
+            requestRetryType.getDimensionValue());
+      }
+
+      // Add helix group ID if provided
+      if (helixGroupId != UNASSIGNED_HELIX_GROUP_ID) {
+        String helixGroupIdStr = Integer.toString(helixGroupId);
+        baseDimensionsMap.put(VeniceMetricsDimensions.VENICE_HELIX_GROUP_ID, helixGroupIdStr);
+        baseAttributesBuilder
+            .put(otelRepository.getDimensionName(VeniceMetricsDimensions.VENICE_HELIX_GROUP_ID), helixGroupIdStr);
       }
 
       Attributes baseAttributes = baseAttributesBuilder.build();

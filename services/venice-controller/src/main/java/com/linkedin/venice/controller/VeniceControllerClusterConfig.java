@@ -117,6 +117,7 @@ import static com.linkedin.venice.ConfigKeys.DEFAULT_REPLICA_FACTOR;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_ROUTING_STRATEGY;
 import static com.linkedin.venice.ConfigKeys.DEFERRED_VERSION_SWAP_BUFFER_TIME;
 import static com.linkedin.venice.ConfigKeys.DEFERRED_VERSION_SWAP_REGION_ROLL_FORWARD_ORDER;
+import static com.linkedin.venice.ConfigKeys.DEFERRED_VERSION_SWAP_THREAD_POOL_SIZE;
 import static com.linkedin.venice.ConfigKeys.DELAY_TO_REBALANCE_MS;
 import static com.linkedin.venice.ConfigKeys.DEPRECATED_TOPIC_MAX_RETENTION_MS;
 import static com.linkedin.venice.ConfigKeys.DEPRECATED_TOPIC_RETENTION_MS;
@@ -150,11 +151,13 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_REPLICATION_FACTOR_RT_TOPICS;
 import static com.linkedin.venice.ConfigKeys.KME_REGISTRATION_FROM_MESSAGE_HEADER_ENABLED;
 import static com.linkedin.venice.ConfigKeys.LEAKED_PUSH_STATUS_CLEAN_UP_SERVICE_SLEEP_INTERVAL_MS;
 import static com.linkedin.venice.ConfigKeys.LEAKED_RESOURCE_ALLOWED_LINGER_TIME_MS;
+import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_DUPLICATE_KEY_THRESHOLD;
 import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_INTERVAL_MS;
 import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_SCHEDULING_ENABLED;
 import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_THREAD_COUNT;
 import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_THRESHOLD_MS;
+import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_VERSION_STALENESS_THRESHOLD_MS;
 import static com.linkedin.venice.ConfigKeys.META_STORE_WRITER_CLOSE_CONCURRENCY;
 import static com.linkedin.venice.ConfigKeys.META_STORE_WRITER_CLOSE_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.MIN_NUMBER_OF_STORE_VERSIONS_TO_PRESERVE;
@@ -184,6 +187,7 @@ import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_HEARTBEAT_EXPIRAT
 import static com.linkedin.venice.ConfigKeys.REFRESH_ATTEMPTS_FOR_ZK_RECONNECT;
 import static com.linkedin.venice.ConfigKeys.REFRESH_INTERVAL_FOR_ZK_RECONNECT_MS;
 import static com.linkedin.venice.ConfigKeys.REPLICATION_METADATA_VERSION;
+import static com.linkedin.venice.ConfigKeys.REPUSH_CANDIDATE_FILTER_CLASS_NAMES;
 import static com.linkedin.venice.ConfigKeys.REPUSH_ORCHESTRATOR_CLASS_NAME;
 import static com.linkedin.venice.ConfigKeys.SERVICE_DISCOVERY_REGISTRATION_RETRY_MS;
 import static com.linkedin.venice.ConfigKeys.SKIP_DEFERRED_VERSION_SWAP_FOR_DVC_ENABLED;
@@ -242,6 +246,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -600,6 +605,7 @@ public class VeniceControllerClusterConfig {
   private final boolean skipDeferredVersionSwapForDVCEnabled;
   private final double deferredVersionSwapBufferTime;
   private final String deferredVersionSwapRegionRollforwardOrder;
+  private final int deferredVersionSwapThreadPoolSize;
 
   private final Map<ClusterConfig.GlobalRebalancePreferenceKey, Integer> helixGlobalRebalancePreference;
   private final HelixCapacityConfig helixCapacityConfig;
@@ -608,6 +614,7 @@ public class VeniceControllerClusterConfig {
    * Configs for repush
    */
   private String repushOrchestratorClassName;
+  private Set<String> repushCandidateFilterClassNames;
   private final VeniceProperties repushOrchestratorConfigs;
 
   /**
@@ -617,7 +624,8 @@ public class VeniceControllerClusterConfig {
   private final boolean isLogCompactionSchedulingEnabled;
   private final int logCompactionThreadCount;
   private final long logCompactionIntervalMS;
-  private final long logCompactionThresholdMS;
+  private final long logCompactionVersionStalenessThresholdMS;
+  private final long logCompactionDuplicateKeyThreshold;
 
   /**
    * Configs for Dead Store Endpoint
@@ -1123,6 +1131,11 @@ public class VeniceControllerClusterConfig {
     if (this.isLogCompactionEnabled) {
       try {
         this.repushOrchestratorClassName = props.getString(REPUSH_ORCHESTRATOR_CLASS_NAME);
+        if (props.containsKey(REPUSH_CANDIDATE_FILTER_CLASS_NAMES)) {
+          this.repushCandidateFilterClassNames = new HashSet<>(props.getList(REPUSH_CANDIDATE_FILTER_CLASS_NAMES));
+        } else {
+          this.repushCandidateFilterClassNames = Collections.emptySet();
+        }
       } catch (Exception e) {
         throw new VeniceException(
             "Log compaction enabled but missing controller.repush.orchestrator.class.name config value. Unable to set up log compaction service",
@@ -1132,7 +1145,10 @@ public class VeniceControllerClusterConfig {
     this.repushOrchestratorConfigs = props.clipAndFilterNamespace(CONTROLLER_REPUSH_PREFIX);
     this.logCompactionThreadCount = props.getInt(LOG_COMPACTION_THREAD_COUNT, 1);
     this.logCompactionIntervalMS = props.getLong(LOG_COMPACTION_INTERVAL_MS, TimeUnit.HOURS.toMillis(1));
-    this.logCompactionThresholdMS = props.getLong(LOG_COMPACTION_THRESHOLD_MS, TimeUnit.HOURS.toMillis(24));
+    this.logCompactionVersionStalenessThresholdMS = props.getLong(
+        LOG_COMPACTION_VERSION_STALENESS_THRESHOLD_MS,
+        props.getLong(LOG_COMPACTION_THRESHOLD_MS, TimeUnit.HOURS.toMillis(24)));
+    this.logCompactionDuplicateKeyThreshold = props.getLong(LOG_COMPACTION_DUPLICATE_KEY_THRESHOLD, 0);
 
     this.isDeadStoreEndpointEnabled = props.getBoolean(ConfigKeys.CONTROLLER_DEAD_STORE_ENDPOINT_ENABLED, false);
     this.deadStoreStatsClassName = props.getString(ConfigKeys.CONTROLLER_DEAD_STORE_STATS_CLASS_NAME, "");
@@ -1213,12 +1229,33 @@ public class VeniceControllerClusterConfig {
     this.deferredVersionSwapBufferTime = props.getDouble(DEFERRED_VERSION_SWAP_BUFFER_TIME, 1.1);
     this.deferredVersionSwapRegionRollforwardOrder =
         props.getString(DEFERRED_VERSION_SWAP_REGION_ROLL_FORWARD_ORDER, "");
+    this.deferredVersionSwapThreadPoolSize = props.getInt(DEFERRED_VERSION_SWAP_THREAD_POOL_SIZE, 1);
 
     this.isMultiTaskSchedulerServiceEnabled = props.getBoolean(ConfigKeys.MULTITASK_SCHEDULER_SERVICE_ENABLED, false);
     this.storeMigrationThreadPoolSize = props.getInt(ConfigKeys.STORE_MIGRATION_THREAD_POOL_SIZE, 1);
     this.storeMigrationMaxRetryAttempts = props.getInt(ConfigKeys.STORE_MIGRATION_MAX_RETRY_ATTEMPTS, 3);
     this.backupVersionReplicaReductionEnabled =
         props.getBoolean(CONTROLLER_BACKUP_VERSION_REPLICA_REDUCTION_ENABLED, false);
+
+    this.logClusterConfig();
+  }
+
+  private void logClusterConfig() {
+
+    // Header
+    LOGGER.info("VeniceControllerClusterConfig[{}]:", clusterName);
+
+    // Repush
+    LOGGER.info("\trepushOrchestratorClassName: {}", repushOrchestratorClassName);
+    LOGGER.info("\trepushCandidateFilterClassNames: {}", repushCandidateFilterClassNames);
+
+    // Log compaction
+    LOGGER.info("\tisLogCompactionEnabled: {}", isLogCompactionEnabled);
+    LOGGER.info("\tisLogCompactionSchedulingEnabled: {}", isLogCompactionSchedulingEnabled);
+    LOGGER.info("\tlogCompactionThreadCount: {}", logCompactionThreadCount);
+    LOGGER.info("\tlogCompactionIntervalMS: {}", logCompactionIntervalMS);
+    LOGGER.info("\tlogCompactionVersionStalenessThresholdMS: {}", logCompactionVersionStalenessThresholdMS);
+    LOGGER.info("\tlogCompactionDuplicateKeyThreshold: {}", logCompactionDuplicateKeyThreshold);
   }
 
   public VeniceProperties getProps() {
@@ -1757,6 +1794,10 @@ public class VeniceControllerClusterConfig {
     return deferredVersionSwapRegionRollforwardOrder;
   }
 
+  public int getDeferredVersionSwapThreadPoolSize() {
+    return deferredVersionSwapThreadPoolSize;
+  }
+
   public boolean isSkipDeferredVersionSwapForDVCEnabled() {
     return skipDeferredVersionSwapForDVCEnabled;
   }
@@ -2172,6 +2213,10 @@ public class VeniceControllerClusterConfig {
     return repushOrchestratorClassName;
   }
 
+  public Set<String> getRepushCandidateFilterClassNames() {
+    return repushCandidateFilterClassNames;
+  }
+
   public VeniceProperties getRepushOrchestratorConfigs() {
     return repushOrchestratorConfigs;
   }
@@ -2192,8 +2237,12 @@ public class VeniceControllerClusterConfig {
     return logCompactionIntervalMS;
   }
 
-  public long getLogCompactionThresholdMS() {
-    return logCompactionThresholdMS;
+  public long getLogCompactionVersionStalenessThresholdMS() {
+    return logCompactionVersionStalenessThresholdMS;
+  }
+
+  public long getLogCompactionDuplicateKeyThreshold() {
+    return logCompactionDuplicateKeyThreshold;
   }
 
   public boolean isDeadStoreEndpointEnabled() {

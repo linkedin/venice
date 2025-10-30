@@ -138,6 +138,9 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   private static final String GROUP_ID_FORMAT = "%s_%s";
 
   private static final Logger LOGGER = LogManager.getLogger(KafkaStoreIngestionService.class);
+  // Extra logger dedicated for ingestion info for slow partition.
+  private static final Logger INGESTION_DEBUGGER_LOGGER = LogManager.getLogger(TopicPartitionIngestionInfo.class);
+
   private final StorageService storageService;
 
   private final VeniceConfigLoader veniceConfigLoader;
@@ -1383,7 +1386,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
    */
   public void syncTopicPartitionOffset(String topicName, int partition) {
     StoreIngestionTask storeIngestionTask = getStoreIngestionTask(topicName);
-    storeIngestionTask.updateOffsetMetadataAndSync(topicName, partition);
+    storeIngestionTask.updateOffsetMetadataAndSync(partition);
   }
 
   public final ReadOnlyStoreRepository getMetadataRepo() {
@@ -1442,13 +1445,23 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     return storeNameToInternalRecordTransformerConfig.get(storeName);
   }
 
-  public String prepareIngestionInfoFor(String storeName, Integer version, Integer partition, String regionName) {
+  public void attemptToPrintIngestionInfoFor(String storeName, Integer version, Integer partition, String regionName) {
     try {
       PubSubTopic versionTopic = pubSubTopicRepository.getTopic(Version.composeKafkaTopic(storeName, version));
       StoreIngestionTask storeIngestionTask = getStoreIngestionTask(versionTopic.getName());
+      if (storeIngestionTask == null) {
+        INGESTION_DEBUGGER_LOGGER.error(
+            "StoreIngestionTask is not available for version topic: {} when preparing ingestion info",
+            versionTopic);
+        return;
+      }
       PartitionConsumptionState partitionConsumptionState = storeIngestionTask.getPartitionConsumptionState(partition);
       if (partitionConsumptionState == null) {
-        return "PartitionConsumptionState is not available.";
+        INGESTION_DEBUGGER_LOGGER.error(
+            "PartitionConsumptionState is not available for version topic: {}, partition {} when preparing ingestion info",
+            versionTopic,
+            partition);
+        return;
       }
       PubSubTopic ingestingTopic = versionTopic;
       String infoPrefix = "isCurrentVersion: " + (storeIngestionTask.isCurrentVersion()) + "\n";
@@ -1457,16 +1470,24 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         ingestingTopic = pubSubTopicRepository.getTopic(Utils.composeRealTimeTopic(storeName));
       }
       PubSubTopicPartition ingestingTopicPartition = new PubSubTopicPartitionImpl(ingestingTopic, partition);
-      return infoPrefix
-          + aggKafkaConsumerService.getIngestionInfoFor(versionTopic, ingestingTopicPartition, regionName);
+
+      String consumerServiceIngestionInfo =
+          aggKafkaConsumerService.getIngestionInfoFor(versionTopic, ingestingTopicPartition, regionName);
+      // Skip logging if no info is available, mainly due to printing too frequently for that consumer
+      if (consumerServiceIngestionInfo == null || consumerServiceIngestionInfo.isEmpty()) {
+        return;
+      }
+      INGESTION_DEBUGGER_LOGGER.warn(
+          "Ingestion info for topic partition: {}, {}",
+          Utils.getReplicaId(ingestingTopic.getName(), partition),
+          infoPrefix + consumerServiceIngestionInfo);
     } catch (Exception e) {
-      LOGGER.error(
+      INGESTION_DEBUGGER_LOGGER.error(
           "Error on preparing ingestion info for store: {}, version: {}, partition: {}",
           storeName,
           version,
           partition,
           e);
-      return "Error on preparing ingestion info: " + e.getMessage();
     }
   }
 

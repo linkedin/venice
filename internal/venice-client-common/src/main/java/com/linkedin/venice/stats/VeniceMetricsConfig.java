@@ -3,6 +3,7 @@ package com.linkedin.venice.stats;
 import static com.linkedin.venice.stats.VeniceOpenTelemetryMetricNamingFormat.SNAKE_CASE;
 import static io.opentelemetry.sdk.metrics.InstrumentType.GAUGE;
 
+import com.google.common.annotations.VisibleForTesting;
 import com.linkedin.venice.stats.metrics.MetricEntity;
 import io.opentelemetry.exporter.otlp.internal.OtlpConfigUtil;
 import io.opentelemetry.sdk.metrics.data.AggregationTemporality;
@@ -242,7 +243,7 @@ public class VeniceMetricsConfig {
   private final int otelExponentialHistogramMaxBuckets;
 
   /** Additional MetricsReader to be used for OpenTelemetry metrics */
-  private final MetricReader otelAdditionalMetricsReader;
+  private MetricReader otelAdditionalMetricsReader;
 
   private VeniceMetricsConfig(Builder builder) {
     this.serviceName = builder.serviceName;
@@ -411,7 +412,7 @@ public class VeniceMetricsConfig {
       }
 
       if ((configValue = configs.get(TEHUTI_VENICE_METRICS_ENABLED)) != null) {
-        emitTehutiMetrics = Boolean.parseBoolean(configValue);
+        emitTehutiMetrics(Boolean.parseBoolean(configValue));
       }
 
       if (!emitOtelMetrics) {
@@ -692,5 +693,10 @@ public class VeniceMetricsConfig {
       }
       return configuredTemporalitySelector.getAggregationTemporality(instrumentType);
     };
+  }
+
+  @VisibleForTesting
+  public void setOtelAdditionalMetricsReader(MetricReader otelAdditionalMetricsReader) {
+    this.otelAdditionalMetricsReader = otelAdditionalMetricsReader;
   }
 }

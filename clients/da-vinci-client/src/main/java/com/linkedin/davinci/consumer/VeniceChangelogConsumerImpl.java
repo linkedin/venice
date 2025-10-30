@@ -69,6 +69,7 @@ import com.linkedin.venice.serialization.avro.AvroSpecificStoreDeserializerCache
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.store.rocksdb.RocksDBUtils;
+import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.DictionaryUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -122,7 +123,8 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
 
   protected final CompressorFactory compressorFactory = new CompressorFactory();
 
-  protected final HashMap<Integer, VeniceCompressor> compressorMap = new HashMap<>();
+  protected final VeniceConcurrentHashMap<String, VeniceCompressor> pubSubTopicNameToCompressorMap =
+      new VeniceConcurrentHashMap<>();
   protected StoreDeserializerCache<V> storeDeserializerCache;
   protected StoreDeserializerCache<GenericRecord> rmdDeserializerCache;
   protected Class specificValueClass;
@@ -172,27 +174,36 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   protected final VeniceConcurrentHashMap<Integer, AtomicLong> consumerSequenceIdGeneratorMap;
   protected final long consumerSequenceIdStartingValue;
   private final RocksDBStorageEngineFactory rocksDBStorageEngineFactory;
+  private final VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory;
 
   public VeniceChangelogConsumerImpl(
       ChangelogClientConfig changelogClientConfig,
       PubSubConsumerAdapter pubSubConsumer,
-      PubSubMessageDeserializer pubSubMessageDeserializer) {
-    this(changelogClientConfig, pubSubConsumer, pubSubMessageDeserializer, System.nanoTime());
+      PubSubMessageDeserializer pubSubMessageDeserializer,
+      VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory) {
+    this(
+        changelogClientConfig,
+        pubSubConsumer,
+        pubSubMessageDeserializer,
+        System.nanoTime(),
+        veniceChangelogConsumerClientFactory);
   }
 
   VeniceChangelogConsumerImpl(
       ChangelogClientConfig changelogClientConfig,
       PubSubConsumerAdapter pubSubConsumer,
       PubSubMessageDeserializer pubSubMessageDeserializer,
-      long consumerSequenceIdStartingValue) {
+      long consumerSequenceIdStartingValue,
+      VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory) {
     Objects.requireNonNull(changelogClientConfig, "ChangelogClientConfig cannot be null");
+    this.veniceChangelogConsumerClientFactory = veniceChangelogConsumerClientFactory;
     this.pubSubConsumer = pubSubConsumer;
     this.pubSubContext = changelogClientConfig.getPubSubContext();
     this.pubSubTopicRepository = pubSubContext.getPubSubTopicRepository();
     this.pubSubPositionDeserializer = pubSubContext.getPubSubPositionDeserializer();
     this.pubSubMessageDeserializer = pubSubMessageDeserializer;
 
-    seekExecutorService = Executors.newFixedThreadPool(10);
+    seekExecutorService = Executors.newFixedThreadPool(10, new DaemonThreadFactory(getClass().getSimpleName()));
 
     // TODO: putting the change capture case here is a little bit weird. The view abstraction should probably
     // accommodate
@@ -261,7 +272,8 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     this.consumerSequenceIdGeneratorMap = new VeniceConcurrentHashMap<>();
     this.consumerSequenceIdStartingValue = consumerSequenceIdStartingValue;
     LOGGER.info(
-        "VeniceChangelogConsumer created at timestamp: {} with consumer sequence id starting at: {}",
+        "VeniceChangelogConsumer with consumer name: {} created at timestamp: {} with consumer sequence id starting at: {}",
+        changelogClientConfig.getConsumerName(),
         startTimestamp,
         consumerSequenceIdStartingValue);
 
@@ -289,7 +301,6 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       this.storeDeserializerCache = new AvroStoreDeserializerCache<>(storeRepository, storeName, true);
       this.specificValueClass = null;
       LOGGER.info("Using generic value deserializer");
-
     }
 
     LOGGER.info("Start a change log consumer client for store: {}", storeName);
@@ -346,20 +357,8 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
           }
         }
 
-        List<PubSubTopicPartition> topicPartitionList =
-            getPartitionListToSubscribe(partitions, topicPartitionSet, topicToSubscribe);
         List<PubSubTopicPartition> topicPartitionListToSeek =
             getPartitionListToSubscribe(partitions, Collections.EMPTY_SET, topicToSubscribe);
-
-        for (PubSubTopicPartition topicPartition: topicPartitionList) {
-          // TODO: we do this because we don't populate the compressor into the change capture view topic, so we
-          // take this opportunity to populate it. This could be worth revisiting by either populating the compressor
-          // into view topics and consuming, or, expanding the interface to this function to have a compressor provider
-          // (and thereby let other view implementations figure out what would be right).
-          if (!topicPartition.getPubSubTopic().getName().endsWith(ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX)) {
-            compressorMap.put(topicPartition.getPartitionNumber(), getVersionCompressor(topicPartition));
-          }
-        }
         for (PubSubTopicPartition topicPartition: topicPartitionListToSeek) {
           pubSubConsumer.subscribe(topicPartition, PubSubSymbolicPosition.EARLIEST);
           currentVersionLastHeartbeat.put(topicPartition.getPartitionNumber(), System.currentTimeMillis());
@@ -377,26 +376,41 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     }, seekExecutorService);
   }
 
-  protected VeniceCompressor getVersionCompressor(PubSubTopicPartition topicPartition) {
-    Store store = storeRepository.getStore(storeName);
-    String topicName = topicPartition.getPubSubTopic().getName();
-    Version version = store.getVersionOrThrow(Version.parseVersionFromKafkaTopicName(topicName));
-    VeniceCompressor compressor;
-    if (CompressionStrategy.ZSTD_WITH_DICT.equals(version.getCompressionStrategy())) {
-      compressor = compressorFactory.getVersionSpecificCompressor(topicName);
-      if (compressor == null) {
-        // we need to retrieve the dictionary from the kafka topic
-        ByteBuffer dictionary = DictionaryUtils.readDictionaryFromKafka(
-            topicName,
-            new VeniceProperties(changelogClientConfig.getConsumerProperties()),
-            pubSubMessageDeserializer);
-        compressor = compressorFactory
-            .createVersionSpecificCompressorIfNotExist(version.getCompressionStrategy(), topicName, dictionary.array());
-      }
-    } else {
-      compressor = compressorFactory.getCompressor(version.getCompressionStrategy());
+  protected VeniceCompressor getVersionCompressor(PubSubTopic pubSubTopic) {
+    String topicName = pubSubTopic.getName();
+
+    // TODO: we do this because we don't populate the compressor into the change capture view topic, so we
+    // take this opportunity to populate it. This could be worth revisiting by either populating the compressor
+    // into view topics and consuming, or, expanding the interface to this function to have a compressor provider
+    // (and thereby let other view implementations figure out what would be right).
+    if (topicName.endsWith(ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX)) {
+      return NO_OP_COMPRESSOR;
     }
-    return compressor;
+
+    return pubSubTopicNameToCompressorMap.computeIfAbsent(topicName, ignore -> {
+      Store store = storeRepository.getStore(storeName);
+      int storeVersion = Version.parseVersionFromKafkaTopicName(topicName);
+      Version version = store.getVersionOrThrow(storeVersion);
+      VeniceCompressor compressor;
+
+      if (CompressionStrategy.ZSTD_WITH_DICT.equals(version.getCompressionStrategy())) {
+        compressor = compressorFactory.getVersionSpecificCompressor(topicName);
+        if (compressor == null) {
+          // we need to retrieve the dictionary from the kafka topic
+          ByteBuffer dictionary = DictionaryUtils.readDictionaryFromKafka(
+              topicName,
+              new VeniceProperties(changelogClientConfig.getConsumerProperties()),
+              pubSubMessageDeserializer);
+          compressor = compressorFactory.createVersionSpecificCompressorIfNotExist(
+              version.getCompressionStrategy(),
+              topicName,
+              dictionary.array());
+        }
+      } else {
+        compressor = compressorFactory.getCompressor(version.getCompressionStrategy());
+      }
+      return compressor;
+    });
   }
 
   @Override
@@ -532,6 +546,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
           Collections.singleton(coordinate.getPartition()),
           topic,
           foo -> pubSubConsumerSeek(pubSubTopicPartition, coordinate.getPosition()));
+      pubSubTopicNameToCompressorMap.remove(topic.getName());
     }
   }
 
@@ -655,10 +670,8 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
 
       List<PubSubTopicPartition> topicPartitionListToSeek =
           getPartitionListToSubscribe(partitions, Collections.EMPTY_SET, targetTopic);
+
       for (PubSubTopicPartition topicPartition: topicPartitionListToSeek) {
-        if (!topicPartition.getPubSubTopic().getName().endsWith(ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX)) {
-          compressorMap.put(topicPartition.getPartitionNumber(), getVersionCompressor(topicPartition));
-        }
         seekAction.apply(topicPartition);
       }
     } finally {
@@ -825,7 +838,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
         changeCaptureStats.emitPollCountMetrics(FAIL);
       }
 
-      LOGGER.error("Encountered an exception when polling records for store: {}", storeName);
+      LOGGER.error("Encountered an exception when polling records for store: {}", storeName, exception);
       throw exception;
     }
   }
@@ -958,15 +971,13 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       // Select appropriate reader schema and compressors
       RecordDeserializer deserializer = null;
       int readerSchemaId;
-      VeniceCompressor compressor;
+      VeniceCompressor compressor = getVersionCompressor(pubSubTopicPartition.getPubSubTopic());
       if (pubSubTopicPartition.getPubSubTopic().isViewTopic() && changelogClientConfig.isBeforeImageView()) {
         deserializer = recordChangeDeserializer;
         readerSchemaId = this.schemaReader.getLatestValueSchemaId();
-        compressor = NO_OP_COMPRESSOR;
       } else {
         // Use writer schema as the reader schema
         readerSchemaId = put.schemaId;
-        compressor = compressorMap.get(pubSubTopicPartition.getPartitionNumber());
       }
 
       ByteBufferValueRecord<ByteBuffer> assembledRecord;
@@ -995,7 +1006,8 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
 
         LOGGER.error(
             "Encountered an exception when processing a record in ChunkAssembler for replica: {}",
-            Utils.getReplicaId(pubSubTopicPartition));
+            Utils.getReplicaId(pubSubTopicPartition),
+            exception);
         throw exception;
       }
 
@@ -1184,7 +1196,11 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
               changeCaptureStats.emitVersionSwapCountMetrics(FAIL);
             }
 
-            LOGGER.error("Version Swap failed when switching to replica: {} after {} attempts", replicaId, attempt);
+            LOGGER.error(
+                "Version Swap failed when switching to replica: {} after {} attempts",
+                replicaId,
+                attempt,
+                error);
             throw error;
           } else {
             LOGGER.error(
@@ -1285,12 +1301,21 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
 
   @Override
   public void close() {
-    LOGGER.info("Closing Changelog Consumer with name: " + changelogClientConfig.getConsumerName());
+    LOGGER.info("Closing Changelog Consumer with name: {}", changelogClientConfig.getConsumerName());
     subscriptionLock.writeLock().lock();
     try {
       this.unsubscribeAll();
       pubSubConsumer.close();
+      heartbeatReporterThread.interrupt();
+      seekExecutorService.shutdown();
+      compressorFactory.close();
 
+      if (rocksDBStorageEngineFactory != null) {
+        rocksDBStorageEngineFactory.close();
+      }
+
+      veniceChangelogConsumerClientFactory.deregisterClient(changelogClientConfig.getConsumerName());
+      LOGGER.info("Closed Changelog Consumer with name: {}", changelogClientConfig.getConsumerName());
     } finally {
       subscriptionLock.writeLock().unlock();
     }
