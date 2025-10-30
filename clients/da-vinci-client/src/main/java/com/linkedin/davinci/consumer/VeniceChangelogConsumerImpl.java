@@ -123,7 +123,8 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
 
   protected final CompressorFactory compressorFactory = new CompressorFactory();
 
-  protected final HashMap<Integer, VeniceCompressor> compressorMap = new HashMap<>();
+  protected final VeniceConcurrentHashMap<String, VeniceCompressor> pubSubTopicNameToCompressorMap =
+      new VeniceConcurrentHashMap<>();
   protected StoreDeserializerCache<V> storeDeserializerCache;
   protected StoreDeserializerCache<GenericRecord> rmdDeserializerCache;
   protected Class specificValueClass;
@@ -356,20 +357,8 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
           }
         }
 
-        List<PubSubTopicPartition> topicPartitionList =
-            getPartitionListToSubscribe(partitions, topicPartitionSet, topicToSubscribe);
         List<PubSubTopicPartition> topicPartitionListToSeek =
             getPartitionListToSubscribe(partitions, Collections.EMPTY_SET, topicToSubscribe);
-
-        for (PubSubTopicPartition topicPartition: topicPartitionList) {
-          // TODO: we do this because we don't populate the compressor into the change capture view topic, so we
-          // take this opportunity to populate it. This could be worth revisiting by either populating the compressor
-          // into view topics and consuming, or, expanding the interface to this function to have a compressor provider
-          // (and thereby let other view implementations figure out what would be right).
-          if (!topicPartition.getPubSubTopic().getName().endsWith(ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX)) {
-            compressorMap.put(topicPartition.getPartitionNumber(), getVersionCompressor(topicPartition));
-          }
-        }
         for (PubSubTopicPartition topicPartition: topicPartitionListToSeek) {
           pubSubConsumer.subscribe(topicPartition, PubSubSymbolicPosition.EARLIEST);
           currentVersionLastHeartbeat.put(topicPartition.getPartitionNumber(), System.currentTimeMillis());
@@ -387,26 +376,41 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     }, seekExecutorService);
   }
 
-  protected VeniceCompressor getVersionCompressor(PubSubTopicPartition topicPartition) {
-    Store store = storeRepository.getStore(storeName);
-    String topicName = topicPartition.getPubSubTopic().getName();
-    Version version = store.getVersionOrThrow(Version.parseVersionFromKafkaTopicName(topicName));
-    VeniceCompressor compressor;
-    if (CompressionStrategy.ZSTD_WITH_DICT.equals(version.getCompressionStrategy())) {
-      compressor = compressorFactory.getVersionSpecificCompressor(topicName);
-      if (compressor == null) {
-        // we need to retrieve the dictionary from the kafka topic
-        ByteBuffer dictionary = DictionaryUtils.readDictionaryFromKafka(
-            topicName,
-            new VeniceProperties(changelogClientConfig.getConsumerProperties()),
-            pubSubMessageDeserializer);
-        compressor = compressorFactory
-            .createVersionSpecificCompressorIfNotExist(version.getCompressionStrategy(), topicName, dictionary.array());
-      }
-    } else {
-      compressor = compressorFactory.getCompressor(version.getCompressionStrategy());
+  protected VeniceCompressor getVersionCompressor(PubSubTopic pubSubTopic) {
+    String topicName = pubSubTopic.getName();
+
+    // TODO: we do this because we don't populate the compressor into the change capture view topic, so we
+    // take this opportunity to populate it. This could be worth revisiting by either populating the compressor
+    // into view topics and consuming, or, expanding the interface to this function to have a compressor provider
+    // (and thereby let other view implementations figure out what would be right).
+    if (topicName.endsWith(ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX)) {
+      return NO_OP_COMPRESSOR;
     }
-    return compressor;
+
+    return pubSubTopicNameToCompressorMap.computeIfAbsent(topicName, ignore -> {
+      Store store = storeRepository.getStore(storeName);
+      int storeVersion = Version.parseVersionFromKafkaTopicName(topicName);
+      Version version = store.getVersionOrThrow(storeVersion);
+      VeniceCompressor compressor;
+
+      if (CompressionStrategy.ZSTD_WITH_DICT.equals(version.getCompressionStrategy())) {
+        compressor = compressorFactory.getVersionSpecificCompressor(topicName);
+        if (compressor == null) {
+          // we need to retrieve the dictionary from the kafka topic
+          ByteBuffer dictionary = DictionaryUtils.readDictionaryFromKafka(
+              topicName,
+              new VeniceProperties(changelogClientConfig.getConsumerProperties()),
+              pubSubMessageDeserializer);
+          compressor = compressorFactory.createVersionSpecificCompressorIfNotExist(
+              version.getCompressionStrategy(),
+              topicName,
+              dictionary.array());
+        }
+      } else {
+        compressor = compressorFactory.getCompressor(version.getCompressionStrategy());
+      }
+      return compressor;
+    });
   }
 
   @Override
@@ -542,6 +546,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
           Collections.singleton(coordinate.getPartition()),
           topic,
           foo -> pubSubConsumerSeek(pubSubTopicPartition, coordinate.getPosition()));
+      pubSubTopicNameToCompressorMap.remove(topic.getName());
     }
   }
 
@@ -665,10 +670,8 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
 
       List<PubSubTopicPartition> topicPartitionListToSeek =
           getPartitionListToSubscribe(partitions, Collections.EMPTY_SET, targetTopic);
+
       for (PubSubTopicPartition topicPartition: topicPartitionListToSeek) {
-        if (!topicPartition.getPubSubTopic().getName().endsWith(ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX)) {
-          compressorMap.put(topicPartition.getPartitionNumber(), getVersionCompressor(topicPartition));
-        }
         seekAction.apply(topicPartition);
       }
     } finally {
@@ -968,15 +971,13 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       // Select appropriate reader schema and compressors
       RecordDeserializer deserializer = null;
       int readerSchemaId;
-      VeniceCompressor compressor;
+      VeniceCompressor compressor = getVersionCompressor(pubSubTopicPartition.getPubSubTopic());
       if (pubSubTopicPartition.getPubSubTopic().isViewTopic() && changelogClientConfig.isBeforeImageView()) {
         deserializer = recordChangeDeserializer;
         readerSchemaId = this.schemaReader.getLatestValueSchemaId();
-        compressor = NO_OP_COMPRESSOR;
       } else {
         // Use writer schema as the reader schema
         readerSchemaId = put.schemaId;
-        compressor = compressorMap.get(pubSubTopicPartition.getPartitionNumber());
       }
 
       ByteBufferValueRecord<ByteBuffer> assembledRecord;
