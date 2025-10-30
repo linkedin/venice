@@ -1386,7 +1386,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
    */
   public void syncTopicPartitionOffset(String topicName, int partition) {
     StoreIngestionTask storeIngestionTask = getStoreIngestionTask(topicName);
-    storeIngestionTask.updateOffsetMetadataAndSync(topicName, partition);
+    storeIngestionTask.updateOffsetMetadataAndSync(partition);
   }
 
   public final ReadOnlyStoreRepository getMetadataRepo() {

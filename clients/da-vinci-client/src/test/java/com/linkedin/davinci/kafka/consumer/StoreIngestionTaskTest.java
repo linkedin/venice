@@ -158,6 +158,7 @@ import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubContext;
 import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
 import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
+import com.linkedin.venice.pubsub.PubSubTopicImpl;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
@@ -6265,6 +6266,60 @@ public abstract class StoreIngestionTaskTest {
           PubSubSymbolicPosition.EARLIEST);
     }
 
+  }
+
+  @Test
+  public void testParallelShutdown() throws InterruptedException {
+    // Setup test data
+    StoreIngestionTask storeIngestionTask = mock(StoreIngestionTask.class);
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    List<CompletableFuture<Void>> shutdownFutures = new ArrayList<>();
+    ExecutorService shutdownExecutor = Executors.newSingleThreadExecutor();
+
+    // Mock server config to enable checkpointing during shutdown
+    VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
+    when(serverConfig.isServerIngestionCheckpointDuringGracefulShutdownEnabled()).thenReturn(true);
+    when(storeIngestionTask.getServerConfig()).thenReturn(serverConfig);
+
+    // Mock store buffer service
+    StoreBufferService storeBufferService = mock(StoreBufferService.class);
+    when(storeIngestionTask.getStoreBufferService()).thenReturn(storeBufferService);
+    when(storeBufferService.execSyncOffsetCommandAsync(any(), any()))
+        .thenReturn(CompletableFuture.completedFuture(null));
+
+    doCallRealMethod().when(storeIngestionTask).executeShutdownRunnable(any(), anyList(), any());
+
+    // Set up test data
+    PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(new PubSubTopicImpl("test_topic_v1"), 0);
+    when(pcs.getReplicaTopicPartition()).thenReturn(topicPartition);
+
+    // Call the method under test
+    storeIngestionTask.executeShutdownRunnable(pcs, shutdownFutures, shutdownExecutor);
+
+    // Wait for async operation to complete
+    Assert.assertEquals(shutdownFutures.size(), 1);
+    shutdownFutures.forEach(CompletableFuture::join);
+
+    // Verify behavior
+    verify(storeIngestionTask).consumerUnSubscribeAllTopics(pcs);
+    verify(storeBufferService).execSyncOffsetCommandAsync(topicPartition, storeIngestionTask);
+    verify(storeIngestionTask).waitForAllMessageToBeProcessedFromTopicPartition(topicPartition, pcs);
+
+    // Test with null executor (synchronous execution)
+    shutdownFutures.clear();
+    storeIngestionTask.executeShutdownRunnable(pcs, shutdownFutures, null);
+    assertTrue(shutdownFutures.isEmpty(), "No futures should be added when executor is null");
+    verify(storeIngestionTask, times(2)).consumerUnSubscribeAllTopics(pcs);
+
+    // Test when checkpointing is disabled
+    when(serverConfig.isServerIngestionCheckpointDuringGracefulShutdownEnabled()).thenReturn(false);
+    storeIngestionTask.executeShutdownRunnable(pcs, shutdownFutures, shutdownExecutor);
+    Assert.assertEquals(shutdownFutures.size(), 1);
+    shutdownFutures.forEach(CompletableFuture::join);
+    verify(storeIngestionTask, times(3)).consumerUnSubscribeAllTopics(pcs);
+
+    // Clean up
+    shutdownExecutor.shutdown();
   }
 
   private VeniceStoreVersionConfig getDefaultMockVeniceStoreVersionConfig(
