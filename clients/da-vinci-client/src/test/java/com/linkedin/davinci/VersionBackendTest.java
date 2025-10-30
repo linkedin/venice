@@ -211,7 +211,7 @@ public class VersionBackendTest {
     // First subscription
     Map<Integer, Long> emptyTimestamps = new HashMap<>();
     Map<Integer, PubSubPosition> emptyPositionMap = new HashMap<>();
-    versionBackend.subscribe(complementSet, emptyTimestamps, 0L, emptyPositionMap);
+    versionBackend.subscribe(complementSet, emptyTimestamps, null, emptyPositionMap);
 
     // Verify the latch count is set to 3 (number of partitions)
     verify(internalRecordTransformerConfig).setStartConsumptionLatchCount(3);
@@ -239,7 +239,7 @@ public class VersionBackendTest {
     verify(internalRecordTransformerConfig, never()).setStartConsumptionLatchCount(anyInt());
 
     // Test empty subscription
-    versionBackend.subscribe(ComplementSet.emptySet(), emptyTimestamps, 0L, emptyPositionMap);
+    versionBackend.subscribe(ComplementSet.emptySet(), emptyTimestamps, null, emptyPositionMap);
     verify(mockIngestionBackend, never()).startConsumption(any(), eq(0), any());
     verify(internalRecordTransformerConfig, never()).setStartConsumptionLatchCount(anyInt());
   }
