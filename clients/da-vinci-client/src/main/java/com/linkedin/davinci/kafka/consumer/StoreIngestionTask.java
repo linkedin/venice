@@ -11,6 +11,7 @@ import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.STANDB
 import static com.linkedin.davinci.validation.DataIntegrityValidator.DISABLED;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.LogMessages.KILLED_JOB_MESSAGE;
+import static com.linkedin.venice.compression.CompressionStrategy.NO_OP;
 import static com.linkedin.venice.kafka.protocol.enums.ControlMessageType.START_OF_SEGMENT;
 import static com.linkedin.venice.utils.Utils.FATAL_DATA_VALIDATION_ERROR;
 import static com.linkedin.venice.utils.Utils.closeQuietlyWithErrorLogged;
@@ -76,6 +77,7 @@ import com.linkedin.venice.exceptions.validation.UnsupportedMessageTypeException
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.Delete;
 import com.linkedin.venice.kafka.protocol.EndOfIncrementalPush;
+import com.linkedin.venice.kafka.protocol.EndOfPush;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.LeaderMetadata;
 import com.linkedin.venice.kafka.protocol.Put;
@@ -410,7 +412,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private boolean skipAfterBatchPushUnsubEnabled = false;
   private final List<AutoCloseable> thingsToClose = new ArrayList<>();
   private final Version version;
-  protected boolean ignoreFatalDIVError = true;
+  private boolean ignoreFatalDivError = false;
 
   public StoreIngestionTask(
       StorageService storageService,
@@ -577,7 +579,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         this.recordTransformerKeyDeserializer =
             FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(keySchema, keySchema);
       }
-
       this.recordTransformerInputValueSchema = schemaRepository.getSupersetOrLatestValueSchema(storeName).getSchema();
       Schema outputValueSchema = recordTransformerConfig.getOutputValueSchema();
 
@@ -767,7 +768,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         .incrementAndGet();
     pendingSubscriptionActionCount.incrementAndGet();
     ConsumerAction consumerAction = new ConsumerAction(SUBSCRIBE, topicPartition, nextSeqNum(), isHelixTriggeredAction);
-    pubSubPosition.ifPresent(consumerAction::setPubSubPosition);
 
     if (recordTransformer != null) {
       recordTransformerOnRecoveryThreadPool.submit(() -> {
@@ -785,7 +785,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
               "DaVinciRecordTransformer onRecovery took {} ms for replica: {}",
               LatencyUtils.getElapsedTimeFromNSToMS(startTime),
               getReplicaId(topicPartition));
-
+          pubSubPosition.ifPresent(consumerAction::setPubSubPosition);
           recordTransformer.countDownStartConsumptionLatch();
           consumerActionsQueue.add(consumerAction);
         } catch (Exception e) {
@@ -1084,6 +1084,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    */
   protected boolean isReadyToServe(PartitionConsumptionState partitionConsumptionState) {
     LOGGER.info("isReadyToServe: {}", partitionConsumptionState);
+    // For da-vinci client with ignoreFatalDivError enabled, we don't need to check for lag.
+    if (ignoreFatalDivError && isDaVinciClient()) {
+      partitionConsumptionState.lagHasCaughtUp();
+      return true;
+    }
     // Check various short-circuit conditions first.
     if (!partitionConsumptionState.isEndOfPushReceived()) {
       // If the EOP has not been received yet, then for sure we aren't ready
@@ -2256,13 +2261,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         // Subscribe to local version topic.
         PubSubPosition subscribePosition;
         if (consumerAction.getPubSubPosition() != null) {
+          ignoreFatalDivError = true;
           subscribePosition = consumerAction.getPubSubPosition();
           LOGGER.info("Subscribed to user provided position: {} offset: {}", topicPartition, subscribePosition);
 
         } else {
           subscribePosition = getLocalVtSubscribePosition(newPartitionConsumptionState);
           LOGGER.info("Subscribed to local: {} position: {}", topicPartition, subscribePosition);
-
         }
         consumerSubscribe(
             topicPartition.getPubSubTopic(),
@@ -2641,17 +2646,16 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       // TODO need a way to safeguard DIV errors from backup version that have once been current (but not anymore)
       // during re-balancing
       boolean needToUnsub = !(isCurrentVersion.getAsBoolean() || partitionConsumptionState.isEndOfPushReceived());
-      if (needToUnsub && ignoreFatalDIVError) {
+      if (needToUnsub && ignoreFatalDivError) {
         errorMessage += ". Consumption will be halted.";
         ingestionNotificationDispatcher
             .reportError(Collections.singletonList(partitionConsumptionState), errorMessage, e);
         unSubscribePartition(new PubSubTopicPartitionImpl(versionTopic, faultyPartition), false);
       } else {
-        String message = ignoreFatalDIVError
+        String message = ignoreFatalDivError
             ? "{} Ignoring FATAL DIV first time for user provided position subscription. {}"
             : "{}. Consumption will continue because it is either a current version replica or EOP has already been received. {}";
         LOGGER.warn(message, errorMessage, e.getMessage());
-        ignoreFatalDIVError = false;
       }
     } catch (VeniceMessageException | UnsupportedOperationException e) {
       throw new VeniceException(
@@ -2971,18 +2975,23 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return hybridStoreConfig.isPresent();
   }
 
-  private void syncEndOfPushTimestampToMetadataService(long endOfPushTimestamp) {
+  private void syncEndOfPushTimestampToMetadataService(KafkaMessageEnvelope kafkaMessageEnvelope, EndOfPush endOfPush) {
     storageMetadataService.computeStoreVersionState(kafkaVersionTopic, previousStoreVersionState -> {
       if (previousStoreVersionState != null) {
-        previousStoreVersionState.endOfPushTimestamp = endOfPushTimestamp;
+        previousStoreVersionState.endOfPushTimestamp = kafkaMessageEnvelope.producerMetadata.messageTimestamp;
 
         // Sync latest store version level metadata to disk
         return previousStoreVersionState;
       } else {
-        throw new VeniceException(
-            "Unexpected: received some " + ControlMessageType.END_OF_PUSH.name()
-                + " control message in a topic where we have not yet received a "
-                + ControlMessageType.START_OF_PUSH.name() + " control message.");
+        if (ignoreFatalDivError) {
+          StoreVersionState storeVersionState = getNewStoreVersionState(kafkaMessageEnvelope, !isHybridMode(), null);
+          return storeVersionState;
+        } else {
+          throw new VeniceException(
+              "Unexpected: received some " + ControlMessageType.END_OF_PUSH.name()
+                  + " control message in a topic where we have not yet received a "
+                  + ControlMessageType.START_OF_PUSH.name() + " control message.");
+        }
       }
     });
   }
@@ -3038,25 +3047,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         storageMetadataService.computeStoreVersionState(kafkaVersionTopic, previousStoreVersionState -> {
           if (previousStoreVersionState == null) {
             // No other partition of the same topic has started yet, let's initialize the StoreVersionState
-            StoreVersionState newStoreVersionState = new StoreVersionState();
-            newStoreVersionState.sorted = sorted;
-            newStoreVersionState.chunked = startOfPush.chunked;
-            newStoreVersionState.compressionStrategy = startOfPush.compressionStrategy;
-            newStoreVersionState.compressionDictionary = startOfPush.compressionDictionary;
-            if (startOfPush.compressionStrategy == CompressionStrategy.ZSTD_WITH_DICT.getValue()) {
-              if (startOfPush.compressionDictionary == null) {
-                throw new VeniceException(
-                    "compression Dictionary should not be empty if CompressionStrategy is ZSTD_WITH_DICT");
-              }
-            }
-            newStoreVersionState.batchConflictResolutionPolicy = startOfPush.timestampPolicy;
-            newStoreVersionState.startOfPushTimestamp = startOfPushKME.producerMetadata.messageTimestamp;
-
-            LOGGER.info(
-                "Persisted {} for the first time following a SOP for topic {} with sorted: {}.",
-                StoreVersionState.class.getSimpleName(),
-                kafkaVersionTopic,
-                newStoreVersionState.sorted);
+            StoreVersionState newStoreVersionState = getNewStoreVersionState(startOfPushKME, sorted, startOfPush);
             return newStoreVersionState;
           } else if (previousStoreVersionState.chunked != startOfPush.chunked) {
             // Something very wrong is going on ): ...
@@ -3111,10 +3102,36 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
   }
 
+  private StoreVersionState getNewStoreVersionState(KafkaMessageEnvelope KME, boolean sorted, StartOfPush startOfPush) {
+    StoreVersionState newStoreVersionState = new StoreVersionState();
+    newStoreVersionState.sorted = sorted;
+    newStoreVersionState.chunked = startOfPush != null ? startOfPush.chunked : isChunked;
+    newStoreVersionState.compressionStrategy = startOfPush != null ? startOfPush.compressionStrategy : NO_OP.getValue();
+    newStoreVersionState.compressionDictionary = startOfPush != null ? startOfPush.compressionDictionary : null;
+    if (startOfPush != null && startOfPush.compressionStrategy == CompressionStrategy.ZSTD_WITH_DICT.getValue()) {
+      if (startOfPush.compressionDictionary == null) {
+        throw new VeniceException(
+            "compression Dictionary should not be empty if CompressionStrategy is ZSTD_WITH_DICT");
+      }
+    }
+    newStoreVersionState.batchConflictResolutionPolicy = startOfPush != null ? startOfPush.timestampPolicy : 1;
+    newStoreVersionState.startOfPushTimestamp = KME.producerMetadata.messageTimestamp;
+
+    if (startOfPush != null) {
+      LOGGER.info(
+          "Persisted {} for the first time following a SOP for topic {} with sorted: {}.",
+          StoreVersionState.class.getSimpleName(),
+          kafkaVersionTopic,
+          newStoreVersionState.sorted);
+    }
+    return newStoreVersionState;
+  }
+
   protected void processEndOfPush(
       KafkaMessageEnvelope endOfPushKME,
       PubSubPosition offset,
-      PartitionConsumptionState partitionConsumptionState) {
+      PartitionConsumptionState partitionConsumptionState,
+      EndOfPush endOfPush) {
 
     // Do not process duplication EOP messages.
     if (partitionConsumptionState.getOffsetRecord().isEndOfPushReceived()) {
@@ -3156,7 +3173,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     // persist the EOP message producer's timestamp.
     partitionConsumptionState.setEndOfPushTimestamp(endOfPushKME.producerMetadata.messageTimestamp);
-    syncEndOfPushTimestampToMetadataService(endOfPushKME.producerMetadata.messageTimestamp);
+    syncEndOfPushTimestampToMetadataService(endOfPushKME, endOfPush);
 
     /**
      * It's a bit of tricky here. Since the offset is not updated yet, it's actually previous offset reported
@@ -3254,7 +3271,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
          */
         break;
       case END_OF_PUSH:
-        processEndOfPush(kafkaMessageEnvelope, offset, partitionConsumptionState);
+        EndOfPush endOfPush = (EndOfPush) controlMessage.controlMessageUnion;
+        processEndOfPush(kafkaMessageEnvelope, offset, partitionConsumptionState, endOfPush);
         break;
       case START_OF_SEGMENT:
         break;

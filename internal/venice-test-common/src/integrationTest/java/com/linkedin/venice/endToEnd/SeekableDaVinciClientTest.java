@@ -61,6 +61,7 @@ import java.util.stream.Stream;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.samza.system.SystemProducer;
+import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.DataProvider;
@@ -145,7 +146,7 @@ public class SeekableDaVinciClientTest {
       SeekableDaVinciClient<Integer, Integer> client =
           factory.getAndStartGenericSeekableAvroClient(storeName, daVinciConfig);
       List<DefaultPubSubMessage> messages = getDataMessages(storeName);
-      DefaultPubSubMessage pubSubMessage = messages.get(1);
+      DefaultPubSubMessage pubSubMessage = messages.get(5);
       VeniceChangeCoordinate changeCoordinate = new VeniceChangeCoordinate(
           pubSubMessage.getTopic().getName(),
           pubSubMessage.getPosition(),
@@ -158,8 +159,8 @@ public class SeekableDaVinciClientTest {
       TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
         for (Integer i = 0; i < KEY_COUNT; i++) {
           Object o = client.get(i).get();
-          // Assert.assertEquals(o, i < 1 ? null : i);
-          System.out.println("Key: " + i + " Value: " + o);
+          Assert.assertEquals(o, i);
+          // System.out.println("Key: " + i + " Value: " + o);
         }
       });
     }
