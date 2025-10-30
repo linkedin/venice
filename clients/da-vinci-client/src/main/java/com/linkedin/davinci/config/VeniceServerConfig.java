@@ -67,6 +67,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_ADAPTIVE_THROTTLER_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_ADAPTIVE_THROTTLER_MULTI_GET_LATENCY_THRESHOLD;
 import static com.linkedin.venice.ConfigKeys.SERVER_ADAPTIVE_THROTTLER_READ_COMPUTE_GET_LATENCY_THRESHOLD;
 import static com.linkedin.venice.ConfigKeys.SERVER_ADAPTIVE_THROTTLER_SIGNAL_IDLE_THRESHOLD;
+import static com.linkedin.venice.ConfigKeys.SERVER_ADAPTIVE_THROTTLER_SIGNAL_REFRESH_INTERVAL_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_ADAPTIVE_THROTTLER_SINGLE_GET_LATENCY_THRESHOLD;
 import static com.linkedin.venice.ConfigKeys.SERVER_BATCH_REPORT_END_OF_INCREMENTAL_PUSH_STATUS_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_BLOB_TRANSFER_ADAPTIVE_THROTTLER_ENABLED;
@@ -546,6 +547,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final double adaptiveThrottlerSingleGetLatencyThreshold;
   private final double adaptiveThrottlerMultiGetLatencyThreshold;
   private final double adaptiveThrottlerReadComputeLatencyThreshold;
+  private final int adaptiveThrottlerSignalRefreshIntervalInSeconds;
 
   private final int fastAvroFieldLimitPerMethod;
 
@@ -788,6 +790,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
         serverProperties.getDouble(SERVER_ADAPTIVE_THROTTLER_MULTI_GET_LATENCY_THRESHOLD, 10d);
     adaptiveThrottlerReadComputeLatencyThreshold =
         serverProperties.getDouble(SERVER_ADAPTIVE_THROTTLER_READ_COMPUTE_GET_LATENCY_THRESHOLD, 50d);
+    adaptiveThrottlerSignalRefreshIntervalInSeconds =
+        serverProperties.getInt(SERVER_ADAPTIVE_THROTTLER_SIGNAL_REFRESH_INTERVAL_IN_SECONDS, 30);
 
     databaseSyncBytesIntervalForTransactionalMode =
         serverProperties.getSizeInBytes(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_TRANSACTIONAL_MODE, 32 * 1024 * 1024);
@@ -1659,6 +1663,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public double getAdaptiveThrottlerReadComputeLatencyThreshold() {
     return adaptiveThrottlerReadComputeLatencyThreshold;
+  }
+
+  public int getAdaptiveThrottlerSignalRefreshIntervalInSeconds() {
+    return adaptiveThrottlerSignalRefreshIntervalInSeconds;
   }
 
   public int getFastAvroFieldLimitPerMethod() {

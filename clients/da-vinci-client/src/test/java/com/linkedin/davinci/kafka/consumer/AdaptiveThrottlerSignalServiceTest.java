@@ -78,9 +78,11 @@ public class AdaptiveThrottlerSignalServiceTest {
     HeartbeatMonitoringService heartbeatMonitoringService = mock(HeartbeatMonitoringService.class);
     VeniceServerConfig veniceServerConfig = mock(VeniceServerConfig.class);
     when(veniceServerConfig.getAdaptiveThrottlerSingleGetLatencyThreshold()).thenReturn(10d);
+    when(veniceServerConfig.getAdaptiveThrottlerSignalRefreshIntervalInSeconds()).thenReturn(10);
     AdaptiveThrottlerSignalService adaptiveThrottlerSignalService =
         new AdaptiveThrottlerSignalService(veniceServerConfig, metricsRepository, heartbeatMonitoringService);
     VeniceAdaptiveIngestionThrottler adaptiveIngestionThrottler = mock(VeniceAdaptiveIngestionThrottler.class);
+    Assert.assertEquals(adaptiveThrottlerSignalService.getAdaptiveThrottlerSignalRefreshIntervalInSeconds(), 10);
     adaptiveThrottlerSignalService.registerThrottler(adaptiveIngestionThrottler);
     Assert.assertEquals(adaptiveThrottlerSignalService.getThrottlerList().size(), 1);
     Assert.assertEquals(adaptiveThrottlerSignalService.getThrottlerList().get(0), adaptiveIngestionThrottler);

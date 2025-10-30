@@ -14,7 +14,7 @@ import org.apache.logging.log4j.Logger;
 
 public class VeniceAdaptiveIngestionThrottler extends EventThrottler implements VeniceAdaptiveThrottler {
   private static final Logger LOGGER = LogManager.getLogger(VeniceAdaptiveIngestionThrottler.class);
-  private static long DEFAULT_UNLIMITED_QUOTA_VALUE = -1L;
+  private static final long DEFAULT_UNLIMITED_QUOTA_VALUE = -1L;
   private final List<BooleanSupplier> limiterSuppliers = new ArrayList<>();
   private final List<BooleanSupplier> boosterSuppliers = new ArrayList<>();
 
@@ -143,7 +143,8 @@ public class VeniceAdaptiveIngestionThrottler extends EventThrottler implements 
           currentThrottlerIndex.incrementAndGet();
         }
         LOGGER.info(
-            "Reach max signal idle count, adjusting throttler index to: {} with throttle rate: {}",
+            "Reach max signal idle count for {}, adjusting throttler index to: {} with throttle rate: {}",
+            throttlerName,
             currentThrottlerIndex,
             eventThrottlers.get(currentThrottlerIndex.get()).getMaxRatePerSecond());
         signalIdleCount = 0;
