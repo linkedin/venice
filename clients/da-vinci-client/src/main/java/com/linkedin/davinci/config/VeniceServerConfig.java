@@ -158,6 +158,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_OPTIMIZE_DATABASE_FOR_BACKUP
 import static com.linkedin.venice.ConfigKeys.SERVER_OPTIMIZE_DATABASE_FOR_BACKUP_VERSION_NO_READ_THRESHOLD_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_OPTIMIZE_DATABASE_SERVICE_SCHEDULE_INTERNAL_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_PARALLEL_BATCH_GET_CHUNK_SIZE;
+import static com.linkedin.venice.ConfigKeys.SERVER_PARALLEL_RESOURCE_SHUTDOWN_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_PARTITION_GRACEFUL_DROP_DELAY_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_PUBSUB_CONSUMER_POLL_RETRY_BACKOFF_MS;
@@ -667,6 +668,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final int inactiveTopicPartitionCheckerThresholdInSeconds;
   private final int serverIngestionInfoLogLineLimit;
 
+  private final boolean parallelResourceShutdownEnabled;
+
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     this(serverProperties, Collections.emptyMap());
   }
@@ -1133,6 +1136,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     this.useMetricsBasedPositionInLagComputation =
         serverProperties.getBoolean(SERVER_USE_METRICS_BASED_POSITION_IN_LAG_COMPUTATION, false);
     this.serverIngestionInfoLogLineLimit = serverProperties.getInt(SERVER_INGESTION_INFO_LOG_LINE_LIMIT, 20);
+    this.parallelResourceShutdownEnabled =
+        serverProperties.getBoolean(SERVER_PARALLEL_RESOURCE_SHUTDOWN_ENABLED, false);
   }
 
   List<Double> extractThrottleLimitFactorsFor(VeniceProperties serverProperties, String configKey) {
@@ -2042,5 +2047,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public int getServerIngestionInfoLogLineLimit() {
     return this.serverIngestionInfoLogLineLimit;
+  }
+
+  public boolean isParallelResourceShutdownEnabled() {
+    return parallelResourceShutdownEnabled;
   }
 }

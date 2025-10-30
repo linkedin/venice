@@ -1713,10 +1713,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       List<CompletableFuture<Void>> shutdownFutures = new ArrayList<>(partitionConsumptionStateMap.size());
 
       /**
-       * Speed up DaVinci shutdown by closing partitions concurrently.
+       * Speed shutdown by closing partitions concurrently. For Server it is controlled by server config, for DaVinci
+       * client it is always enabled.
        */
-      ExecutorService shutdownExecutorForDvc =
-          isDaVinciClient ? Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors() * 2) : null;
+      boolean enableParallelShutdown = serverConfig.isParallelResourceShutdownEnabled() || isDaVinciClient;
+      ExecutorService shutdownExecutor =
+          enableParallelShutdown ? Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors() * 2) : null;
 
       // If the ingestion task is stopped gracefully (server stops), persist processed offset to disk
       for (Map.Entry<Integer, PartitionConsumptionState> entry: partitionConsumptionStateMap.entrySet()) {
@@ -1739,8 +1741,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           consumerUnSubscribeAllTopics(partitionConsumptionState);
 
           if (ingestionCheckpointDuringGracefulShutdownEnabled) {
-            PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(versionTopic, partition);
             try {
+              PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(versionTopic, partition);
               CompletableFuture<Void> cmdFuture = storeBufferService.execSyncOffsetCommandAsync(topicPartition, this);
               waitForSyncOffsetCmd(cmdFuture, topicPartition);
               waitForAllMessageToBeProcessedFromTopicPartition(topicPartition, partitionConsumptionState);
@@ -1750,18 +1752,15 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           }
         };
 
-        if (shutdownExecutorForDvc != null) {
-          shutdownFutures.add(CompletableFuture.runAsync(shutdownRunnable, shutdownExecutorForDvc));
+        if (enableParallelShutdown) {
+          shutdownFutures.add(CompletableFuture.runAsync(shutdownRunnable, shutdownExecutor));
         } else {
-          /**
-           * TODO: evaluate whether we need to apply concurrent shutdown in Venice Server or not.
-           */
           shutdownRunnable.run();
         }
       }
-      if (isDaVinciClient) {
+      if (enableParallelShutdown) {
         /**
-         * DaVinci shutdown shouldn't take that long because of high concurrency, and it is fine to specify a high timeout here
+         * Shutdown shouldn't take that long because of high concurrency, and it is fine to specify a high timeout here
          * to avoid infinite wait in case there is some regression.
          */
         CompletableFuture.allOf(shutdownFutures.toArray(new CompletableFuture[0])).get(60, SECONDS);
@@ -1858,7 +1857,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     div.updateOffsetRecordForPartition(PartitionTracker.VERSION_TOPIC, pcs.getPartition(), pcs.getOffsetRecord());
     // update the offset metadata in the OffsetRecord.
     updateOffsetMetadataInOffsetRecord(pcs);
-    syncOffset(kafkaVersionTopic, pcs);
+    syncOffset(pcs);
   }
 
   /**
@@ -1868,7 +1867,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     PartitionConsumptionState pcs = getPartitionConsumptionState(topicPartition.getPartitionNumber());
     vtDivSnapshot.updateOffsetRecord(PartitionTracker.VERSION_TOPIC, pcs.getOffsetRecord());
     updateOffsetMetadataInOffsetRecord(pcs);
-    syncOffset(kafkaVersionTopic, pcs);
+    syncOffset(pcs);
   }
 
   private void handleIngestionException(Exception e) {
@@ -2760,10 +2759,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   /**
    * This method flushes data partition on disk and syncs the underlying database with {@link OffsetRecord}.
    * Note that the updates for {@link OffsetRecord} is happened in {@link #updateOffsetMetadataInOffsetRecord}
-   * @param topic, the given version topic(VT) for the store.
    * @param pcs, the corresponding {@link PartitionConsumptionState} to sync with.
    */
-  private void syncOffset(String topic, PartitionConsumptionState pcs) {
+  private void syncOffset(PartitionConsumptionState pcs) {
     int partition = pcs.getPartition();
     if (this.storageEngine.isClosed()) {
       LOGGER.warn("Storage engine has been closed. Could not execute sync offset for replica: {}", pcs.getReplicaId());
@@ -4555,10 +4553,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return serverConfig;
   }
 
-  public void updateOffsetMetadataAndSync(String topic, int partitionId) {
+  public void updateOffsetMetadataAndSync(int partitionId) {
     PartitionConsumptionState pcs = getPartitionConsumptionState(partitionId);
     updateOffsetMetadataInOffsetRecord(pcs);
-    syncOffset(topic, pcs);
+    syncOffset(pcs);
   }
 
   /**
