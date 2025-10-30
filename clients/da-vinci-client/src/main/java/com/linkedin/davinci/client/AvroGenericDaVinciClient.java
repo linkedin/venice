@@ -260,14 +260,14 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
     throwIfNotReady();
     Map<Integer, PubSubPosition> positionMap = new HashMap<>();
     for (VeniceChangeCoordinate changeCoordinate: checkpoints) {
-      if (!Objects.equals(changeCoordinate.getStoreName(), storeBackend.getStoreName())) {
+      if (!Objects.equals(changeCoordinate.getStoreName(), getStoreBackend().getStoreName())) {
         throw new VeniceClientException(
             "Store name mismatch: " + changeCoordinate.getStoreName() + " != " + storeBackend.getStoreName());
       }
       positionMap.put(changeCoordinate.getPartition(), changeCoordinate.getPosition());
     }
     addPartitionsToSubscription(ComplementSet.wrap(positionMap.keySet()));
-    return storeBackend.seekToCheckPoints(positionMap);
+    return getStoreBackend().seekToCheckPoints(positionMap);
   }
 
   protected CompletableFuture<Void> seekToTimestamps(Map<Integer, Long> timestamps) {
@@ -276,7 +276,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
     }
     throwIfNotReady();
     addPartitionsToSubscription(ComplementSet.wrap(timestamps.keySet()));
-    return storeBackend.seekToTimestamps(timestamps);
+    return getStoreBackend().seekToTimestamps(timestamps);
   }
 
   protected CompletableFuture<Void> seekToTimestamps(Long timestamps) {
@@ -285,7 +285,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
     }
     throwIfNotReady();
     addPartitionsToSubscription(ComplementSet.universalSet());
-    return storeBackend.seekToTimestamps(timestamps);
+    return getStoreBackend().seekToTimestamps(timestamps);
   }
 
   protected CompletableFuture<Void> subscribe(ComplementSet<Integer> partitions) {
