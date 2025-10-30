@@ -34,6 +34,7 @@ public class AdaptiveThrottlerSignalService extends AbstractVeniceService {
   private final double singleGetLatencyP99Threshold;
   private final double multiGetLatencyP99Threshold;
   private final double readComputeLatencyP99Threshold;
+  private final int adaptiveThrottlerSignalRefreshIntervalInSeconds;
 
   private final MetricsRepository metricsRepository;
   private final HeartbeatMonitoringService heartbeatMonitoringService;
@@ -56,6 +57,8 @@ public class AdaptiveThrottlerSignalService extends AbstractVeniceService {
     this.singleGetLatencyP99Threshold = veniceServerConfig.getAdaptiveThrottlerSingleGetLatencyThreshold();
     this.multiGetLatencyP99Threshold = veniceServerConfig.getAdaptiveThrottlerMultiGetLatencyThreshold();
     this.readComputeLatencyP99Threshold = veniceServerConfig.getAdaptiveThrottlerReadComputeLatencyThreshold();
+    this.adaptiveThrottlerSignalRefreshIntervalInSeconds =
+        veniceServerConfig.getAdaptiveThrottlerSignalRefreshIntervalInSeconds();
     this.metricsRepository = metricsRepository;
     this.updateService =
         Executors.newSingleThreadScheduledExecutor(new DaemonThreadFactory("AdaptiveThrottlerSignalService"));
@@ -157,7 +160,11 @@ public class AdaptiveThrottlerSignalService extends AbstractVeniceService {
 
   @Override
   public boolean startInner() throws Exception {
-    updateService.scheduleAtFixedRate(this::refreshSignalAndThrottler, 1, 1, TimeUnit.MINUTES);
+    updateService.scheduleAtFixedRate(
+        this::refreshSignalAndThrottler,
+        adaptiveThrottlerSignalRefreshIntervalInSeconds,
+        adaptiveThrottlerSignalRefreshIntervalInSeconds,
+        TimeUnit.SECONDS);
     return true;
   }
 
@@ -168,5 +175,9 @@ public class AdaptiveThrottlerSignalService extends AbstractVeniceService {
 
   List<VeniceAdaptiveThrottler> getThrottlerList() {
     return throttlerList;
+  }
+
+  int getAdaptiveThrottlerSignalRefreshIntervalInSeconds() {
+    return adaptiveThrottlerSignalRefreshIntervalInSeconds;
   }
 }
