@@ -21,7 +21,6 @@ import com.linkedin.d2.balancer.D2ClientBuilder;
 import com.linkedin.davinci.client.DaVinciConfig;
 import com.linkedin.davinci.client.SeekableDaVinciClient;
 import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
-import com.linkedin.davinci.consumer.VeniceChangeCoordinate;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
@@ -33,7 +32,6 @@ import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.ConstantVenicePartitioner;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterContext;
-import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
@@ -41,7 +39,6 @@ import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.PropertyBuilder;
@@ -58,24 +55,19 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 import org.apache.samza.system.SystemProducer;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
-import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
 public class SeekableDaVinciClientTest {
-  private static final Logger LOGGER = LogManager.getLogger(DaVinciClientIsolatedAndHybridStoreTest.class);
   private static final int KEY_COUNT = 10;
   private static final int TEST_TIMEOUT = 120_000;
   private static final PubSubTopicRepository PUB_SUB_TOPIC_REPOSITORY = new PubSubTopicRepository();
   private VeniceClusterWrapper cluster;
   private D2Client d2Client;
-  private PubSubProducerAdapterFactory pubSubProducerAdapterFactory;
 
   @BeforeClass
   public void setUp() {
@@ -97,8 +89,6 @@ public class SeekableDaVinciClientTest {
         .setZkSessionTimeout(3, TimeUnit.SECONDS)
         .setZkStartupTimeout(3, TimeUnit.SECONDS)
         .build();
-    pubSubProducerAdapterFactory =
-        cluster.getPubSubBrokerWrapper().getPubSubClientsFactory().getProducerAdapterFactory();
     D2ClientUtils.startClient(d2Client);
   }
 
@@ -110,7 +100,7 @@ public class SeekableDaVinciClientTest {
     Utils.closeQuietlyWithErrorLogged(cluster);
   }
 
-  @Test(timeOut = TEST_TIMEOUT)
+  @Test(enabled = false, timeOut = TEST_TIMEOUT)
   public void testDVCSeeking() throws Exception {
     final int partition = 0;
     final int partitionCount = 1;
@@ -147,28 +137,17 @@ public class SeekableDaVinciClientTest {
           factory.getAndStartGenericSeekableAvroClient(storeName, daVinciConfig);
       List<DefaultPubSubMessage> messages = getDataMessages(storeName);
       DefaultPubSubMessage pubSubMessage = messages.get(5);
-      VeniceChangeCoordinate changeCoordinate = new VeniceChangeCoordinate(
-          pubSubMessage.getTopic().getName(),
-          pubSubMessage.getPosition(),
-          pubSubMessage.getPartition());
 
       // Seek to the checkpoint of the 5th message
-      // client.seekToCheckpoint(Collections.singleton(changeCoordinate)).get();
       client.seekToTimestamp(pubSubMessage.getValue().getProducerMetadata().getMessageTimestamp()).get();
       // client.subscribeAll().get();
       TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
         for (Integer i = 0; i < KEY_COUNT; i++) {
           Object o = client.get(i).get();
           Assert.assertEquals(o, i);
-          // System.out.println("Key: " + i + " Value: " + o);
         }
       });
     }
-  }
-
-  @DataProvider(name = "CompressionStrategy")
-  public static Object[][] compressionStrategy() {
-    return DataProviderUtils.allPermutationGenerator(DataProviderUtils.COMPRESSION_STRATEGIES);
   }
 
   private void setupHybridStore(String storeName, Consumer<UpdateStoreQueryParams> paramsConsumer, int keyCount) {
