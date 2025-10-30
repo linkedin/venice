@@ -413,7 +413,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private boolean skipAfterBatchPushUnsubEnabled = false;
   private final List<AutoCloseable> thingsToClose = new ArrayList<>();
   private final Version version;
-  private boolean ignoreFatalDivError = false;
+  private boolean skipValidationForSeekableClientEnabled = false;
 
   public StoreIngestionTask(
       StorageService storageService,
@@ -1086,7 +1086,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected boolean isReadyToServe(PartitionConsumptionState partitionConsumptionState) {
     // For da-vinci client with ignoreFatalDivError enabled, we don't need to check for lag.
     // TODO: Implement proper way to check ready to serve for seekable da-vinci client
-    if (ignoreFatalDivError && isDaVinciClient()) {
+    if (skipValidationForSeekableClientEnabled) {
       partitionConsumptionState.lagHasCaughtUp();
       return true;
     }
@@ -2261,8 +2261,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
         // Subscribe to local version topic.
         PubSubPosition subscribePosition;
-        if (consumerAction.getPubSubPosition() != null) {
-          ignoreFatalDivError = true;
+        if (consumerAction.getPubSubPosition() != null && isDaVinciClient) {
+          skipValidationForSeekableClientEnabled = true;
           subscribePosition = consumerAction.getPubSubPosition();
           LOGGER.info("Subscribed to user provided position: {} offset: {}", topicPartition, subscribePosition);
 
@@ -2647,16 +2647,22 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       // TODO need a way to safeguard DIV errors from backup version that have once been current (but not anymore)
       // during re-balancing
       boolean needToUnsub = !(isCurrentVersion.getAsBoolean() || partitionConsumptionState.isEndOfPushReceived());
-      if (needToUnsub && !ignoreFatalDivError) {
+      if (needToUnsub && !skipValidationForSeekableClientEnabled) {
         errorMessage += ". Consumption will be halted.";
         ingestionNotificationDispatcher
             .reportError(Collections.singletonList(partitionConsumptionState), errorMessage, e);
         unSubscribePartition(new PubSubTopicPartitionImpl(versionTopic, faultyPartition), false);
       } else {
-        String message = ignoreFatalDivError
+        String message = skipValidationForSeekableClientEnabled
             ? "{} Ignoring FATAL DIV first time for user provided position subscription. {}"
             : "{}. Consumption will continue because it is either a current version replica or EOP has already been received. {}";
-        LOGGER.warn(message, errorMessage, e.getMessage());
+        if (skipAfterBatchPushUnsubEnabled) {
+          if (REDUNDANT_LOGGING_FILTER.isRedundantException(message)) {
+            LOGGER.warn(message, errorMessage, e.getMessage());
+          }
+        } else {
+          LOGGER.warn(message, errorMessage, e.getMessage());
+        }
       }
     } catch (VeniceMessageException | UnsupportedOperationException e) {
       throw new VeniceException(
@@ -2984,7 +2990,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         // Sync latest store version level metadata to disk
         return previousStoreVersionState;
       } else {
-        if (ignoreFatalDivError) {
+        if (skipValidationForSeekableClientEnabled) {
           StoreVersionState storeVersionState = getNewStoreVersionState(kafkaMessageEnvelope, !isHybridMode(), null);
           return storeVersionState;
         } else {
