@@ -103,9 +103,10 @@ public abstract class AbstractPartitionStateModel extends StateModel {
       boolean rollback) {
     String from = message.getFromState();
     String to = message.getToState();
-    logEntry(from, to, message, context, rollback);
     // Change name to indicate which st is occupied this thread.
+    String currentThreadName = Thread.currentThread().getName();
     Thread.currentThread().setName("Helix-ST-" + message.getResourceName() + "-" + partition + "-" + from + "->" + to);
+    logEntry(from, to, message, context, rollback);
     try {
       LogContext.setLogContext(storeAndServerConfigs.getLogContext());
       stateTransitionStats.trackStateTransitionStarted(from, to);
@@ -114,34 +115,30 @@ public abstract class AbstractPartitionStateModel extends StateModel {
       logCompletion(from, to, message, context, rollback);
     } finally {
       // Once st is terminated, change the name to indicate this thread will not be occupied by this st.
-      Thread.currentThread().setName("Inactive ST thread.");
+      Thread.currentThread().setName(currentThreadName);
     }
   }
 
   private void logEntry(String from, String to, Message message, NotificationContext context, boolean rollback) {
     logger.info(
-        "{} {} transition from {} to {} for resource: {}, partition: {} invoked with message {} and context {}",
+        "{} {} transition from {} to {}. Message {} and context: {}",
         getStorePartitionDescription(),
         rollback ? "rolling back" : "initiating",
         from,
         to,
-        getStoreAndServerConfigs().getStoreVersionName(),
-        partition,
         message,
-        context);
+        HelixTransitionTimingUtils.formatNotificationContext(context));
   }
 
   private void logCompletion(String from, String to, Message message, NotificationContext context, boolean rollback) {
     logger.info(
-        "{} {} transition from {} to {} for resource: {}, partition: {} invoked with message {} and context {}",
+        "{} {} transition from {} to {}. Message {}. LatencyBreakdown: {}",
         getStorePartitionDescription(),
         rollback ? "rolled back" : "completed",
         from,
         to,
-        getStoreAndServerConfigs().getStoreVersionName(),
-        partition,
         message,
-        context);
+        HelixTransitionTimingUtils.formatTransitionTiming(message, context));
   }
 
   /**
