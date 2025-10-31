@@ -32,8 +32,11 @@ public class AuditInfo {
     try {
       HttpServletRequest rawRequest = request.raw();
       Object certificateObject = rawRequest.getAttribute(CONTROLLER_SSL_CERTIFICATE_ATTRIBUTE_NAME);
-      if (certificateObject != null) {
-        return ((X509Certificate[]) certificateObject)[0].getSubjectX500Principal().getName();
+      if (certificateObject instanceof X509Certificate[]) {
+        X509Certificate[] certs = (X509Certificate[]) certificateObject;
+        if (certs.length > 0 && certs[0] != null) {
+          return certs[0].getSubjectX500Principal().getName();
+        }
       }
     } catch (Exception e) {
       // Silently handle any exceptions during principal extraction
@@ -71,8 +74,6 @@ public class AuditInfo {
       joiner.add("Latency: " + latency + " ms");
     }
 
-    String string = joiner.toString();
-    System.out.println(string);
-    return string;
+    return joiner.toString();
   }
 }
