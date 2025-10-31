@@ -2254,7 +2254,15 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         LOGGER.info("Subscribed to: {} position: {}", topicPartition, localVtSubscribePosition);
         if (isGlobalRtDivEnabled()) {
           // TODO: remove. this is a temporary log for debugging while the feature is in its infancy
-          LOGGER.info("event=globalRtDiv Subscribed to: {} position: {}", topicPartition, localVtSubscribePosition);
+          TopicManager topicManager = getTopicManager(localKafkaServer);
+          PubSubPosition endPosition = topicManager.getLatestPositionCached(topicPartition);
+          long diff = topicManager.diffPosition(topicPartition, localVtSubscribePosition, endPosition);
+          LOGGER.info(
+              "event=globalRtDiv Subscribed to: {} position: {} endPosition: {} diff: {}",
+              topicPartition,
+              localVtSubscribePosition,
+              endPosition,
+              diff);
         }
         storageUtilizationManager.initPartition(partition);
         break;
