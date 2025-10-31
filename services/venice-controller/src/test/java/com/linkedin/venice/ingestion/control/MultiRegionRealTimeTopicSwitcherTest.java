@@ -1,6 +1,7 @@
 package com.linkedin.venice.ingestion.control;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
@@ -13,6 +14,7 @@ import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.utils.Utils;
@@ -24,6 +26,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
+import java.util.concurrent.CompletableFuture;
 import org.mockito.ArgumentCaptor;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -42,23 +45,33 @@ public class MultiRegionRealTimeTopicSwitcherTest {
 
     TopicManager mockTopicManager = mock(TopicManager.class);
 
-    // Local factory and writer
-    VeniceWriterFactory localWriterFactory = mock(VeniceWriterFactory.class);
+    // Single factory and distinct writers selected by brokerAddress
+    VeniceWriterFactory writerFactory = mock(VeniceWriterFactory.class);
     VeniceWriter localWriter = mock(VeniceWriter.class);
-    when(localWriterFactory.createVeniceWriter(any(VeniceWriterOptions.class))).thenReturn(localWriter);
-
-    // Remote factories and writers
-    VeniceWriterFactory remoteFactoryA = mock(VeniceWriterFactory.class);
     VeniceWriter remoteWriterA = mock(VeniceWriter.class);
-    when(remoteFactoryA.createVeniceWriter(any(VeniceWriterOptions.class))).thenReturn(remoteWriterA);
-
-    VeniceWriterFactory remoteFactoryB = mock(VeniceWriterFactory.class);
     VeniceWriter remoteWriterB = mock(VeniceWriter.class);
-    when(remoteFactoryB.createVeniceWriter(any(VeniceWriterOptions.class))).thenReturn(remoteWriterB);
-
-    Map<String, VeniceWriterFactory> remoteFactories = new HashMap<>();
-    remoteFactories.put(remoteDcA, remoteFactoryA);
-    remoteFactories.put(remoteDcB, remoteFactoryB);
+    when(writerFactory.createVeniceWriter(any(VeniceWriterOptions.class))).thenAnswer(invocation -> {
+      VeniceWriterOptions opts = invocation.getArgument(0);
+      String broker = opts.getBrokerAddress();
+      if (broker == null) {
+        return localWriter;
+      }
+      switch (broker) {
+        case "broker-a":
+          return remoteWriterA;
+        case "broker-b":
+          return remoteWriterB;
+        default:
+          return localWriter;
+      }
+    });
+    // Ensure nonBlockingBroadcast returns completed futures so switcher does not block
+    when(localWriter.nonBlockingBroadcastVersionSwapWithRegionInfo(any(), any(), any(), any(), anyLong(), any()))
+        .thenReturn(Collections.singletonList(CompletableFuture.completedFuture(mock(PubSubProduceResult.class))));
+    when(remoteWriterA.nonBlockingBroadcastVersionSwapWithRegionInfo(any(), any(), any(), any(), anyLong(), any()))
+        .thenReturn(Collections.singletonList(CompletableFuture.completedFuture(mock(PubSubProduceResult.class))));
+    when(remoteWriterB.nonBlockingBroadcastVersionSwapWithRegionInfo(any(), any(), any(), any(), anyLong(), any()))
+        .thenReturn(Collections.singletonList(CompletableFuture.completedFuture(mock(PubSubProduceResult.class))));
 
     Properties props = new Properties();
     props.put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, "dummy");
@@ -91,15 +104,19 @@ public class MultiRegionRealTimeTopicSwitcherTest {
     when(mockStore.getVersionOrThrow(1)).thenReturn(prevVersion);
     when(mockStore.getVersionOrThrow(2)).thenReturn(nextVersion);
 
-    // Spy the switcher to make generation id deterministic
+    // Build broker map for all (including local); spy the switcher to make generation id deterministic
     long deterministicGenerationId = 12345L;
+    Map<String, String> brokerMap = new HashMap<>();
+    brokerMap.put(localDc, "broker-local");
+    brokerMap.put(remoteDcA, "broker-a");
+    brokerMap.put(remoteDcB, "broker-b");
     MultiRegionRealTimeTopicSwitcher switcher = spy(
         new MultiRegionRealTimeTopicSwitcher(
             mockTopicManager,
-            localWriterFactory,
+            writerFactory,
             veniceProperties,
             pubSubTopicRepository,
-            remoteFactories,
+            brokerMap,
             localDc));
     doReturn(deterministicGenerationId).when(switcher).getVersionSwapGenerationId();
 
@@ -109,9 +126,7 @@ public class MultiRegionRealTimeTopicSwitcherTest {
     // Assert: verify VeniceWriterOptions used expected topic and partition count
     ArgumentCaptor<VeniceWriterOptions> optionsCaptor = ArgumentCaptor.forClass(VeniceWriterOptions.class);
     // Total calls = number of DCs (local + 2 remotes) => 3
-    verify(localWriterFactory, times(1)).createVeniceWriter(optionsCaptor.capture());
-    verify(remoteFactoryA, times(1)).createVeniceWriter(optionsCaptor.capture());
-    verify(remoteFactoryB, times(1)).createVeniceWriter(optionsCaptor.capture());
+    verify(writerFactory, times(3)).createVeniceWriter(optionsCaptor.capture());
 
     for (VeniceWriterOptions vwo: optionsCaptor.getAllValues()) {
       Assert.assertEquals(vwo.getTopicName(), rtTopicName, "Topic name should be RT topic");
@@ -119,7 +134,7 @@ public class MultiRegionRealTimeTopicSwitcherTest {
     }
 
     // Verify each writer received a region-aware version swap with expected arguments
-    verify(localWriter, times(1)).broadcastVersionSwapWithRegionInfo(
+    verify(localWriter, times(1)).nonBlockingBroadcastVersionSwapWithRegionInfo(
         prevTopic,
         nextTopic,
         localDc,
@@ -127,7 +142,7 @@ public class MultiRegionRealTimeTopicSwitcherTest {
         deterministicGenerationId,
         Collections.EMPTY_MAP);
 
-    verify(remoteWriterA, times(1)).broadcastVersionSwapWithRegionInfo(
+    verify(remoteWriterA, times(1)).nonBlockingBroadcastVersionSwapWithRegionInfo(
         prevTopic,
         nextTopic,
         localDc,
@@ -135,7 +150,7 @@ public class MultiRegionRealTimeTopicSwitcherTest {
         deterministicGenerationId,
         Collections.EMPTY_MAP);
 
-    verify(remoteWriterB, times(1)).broadcastVersionSwapWithRegionInfo(
+    verify(remoteWriterB, times(1)).nonBlockingBroadcastVersionSwapWithRegionInfo(
         prevTopic,
         nextTopic,
         localDc,

@@ -1381,7 +1381,10 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
 
   /**
    * Similar to {@link #broadcastVersionSwap(String, String, Map)} but with region info intended to guide Venice change
-   * capture consumer to perform version swap correctly in a true A/A setup (with unique writers in each region).
+   * capture consumer to perform version swap correctly in a true A/A setup (with unique writers in each region). The
+   * broadcast is also non-blocking and returns a list of future correspond to the control message write for each
+   * partition. The caller is responsible for waiting on the futures to ensure the control message is written to all
+   * partitions.
    *
    * @param oldServingVersionTopic the version topic change capture consumer should switch from.
    * @param newServingVersionTopic the version topic change capture consumer should switch to.
@@ -1389,8 +1392,9 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    * @param destinationRegion of the RT topic where the original version swap message is being sent to.
    * @param generationId to identify this version switch event when there are multiple version switch events.
    * @param debugInfo arbitrary key/value pairs of information that will be propagated alongside the control message.
+   * @return List of futures for each partition version swap message that was sent to.
    */
-  public void broadcastVersionSwapWithRegionInfo(
+  public List<CompletableFuture<PubSubProduceResult>> nonBlockingBroadcastVersionSwapWithRegionInfo(
       @Nonnull String oldServingVersionTopic,
       @Nonnull String newServingVersionTopic,
       @Nonnull String sourceRegion,
@@ -1408,8 +1412,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         sourceRegion,
         destinationRegion,
         generationId);
-    broadcastControlMessage(controlMessage, debugInfo);
-    producerAdapter.flush();
+    return broadcastControlMessage(controlMessage, debugInfo);
   }
 
   private VersionSwap generateVersionSwapMessage(
@@ -1970,15 +1973,21 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   /**
    * @param controlMessage a {@link ControlMessage} instance to persist into all Kafka partitions.
    * @param debugInfo arbitrary key/value pairs of information that will be propagated alongside the control message.
+   * @return a list of future correspond to the control message write for each partition.
    */
-  private void broadcastControlMessage(ControlMessage controlMessage, Map<String, String> debugInfo) {
+  private List<CompletableFuture<PubSubProduceResult>> broadcastControlMessage(
+      ControlMessage controlMessage,
+      Map<String, String> debugInfo) {
+    List<CompletableFuture<PubSubProduceResult>> partitionWriteFuture = new ArrayList<>();
     for (int partition = 0; partition < numberOfPartitions; partition++) {
-      sendControlMessage(controlMessage, partition, debugInfo, null, DEFAULT_LEADER_METADATA_WRAPPER);
+      partitionWriteFuture
+          .add(sendControlMessage(controlMessage, partition, debugInfo, null, DEFAULT_LEADER_METADATA_WRAPPER));
     }
     logger.info(
         "Successfully broadcast {} Control Message for topic: {}",
         ControlMessageType.valueOf(controlMessage),
         topicName);
+    return partitionWriteFuture;
   }
 
   private Map<CharSequence, CharSequence> getDebugInfo(Map<String, String> debugInfoToAdd) {

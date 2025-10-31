@@ -608,28 +608,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         throw new VeniceException(
             "Child data center kafka url map doesn't contain the local region: " + localRegionName);
       }
-      Map<String, VeniceWriterFactory> remoteDataCenterWriterFactoryMap = new HashMap<>();
+      Map<String, String> activeActiveRealTimeSourceFabricBrokerUrlMap = new HashMap<>(childDataCenterKafkaUrlMap);
       Set<String> activeActiveRealTimeSourceFabrics = commonConfig.getActiveActiveRealTimeSourceFabrics();
-      for (Map.Entry<String, String> entry: childDataCenterKafkaUrlMap.entrySet()) {
-        String regionName = entry.getKey();
-        if (regionName.equals(localRegionName) || !activeActiveRealTimeSourceFabrics.contains(regionName)) {
-          continue;
-        }
-        String kafkaUrl = entry.getValue();
-        remoteDataCenterWriterFactoryMap.put(
-            regionName,
-            new VeniceWriterFactory(
-                VeniceWriterFactory.cloneAndUpdateBrokerAddress(commonConfig.getProps(), kafkaUrl),
-                pubSubClientsFactory.getProducerAdapterFactory(),
-                metricsRepository,
-                pubSubPositionTypeRegistry));
-      }
+      activeActiveRealTimeSourceFabricBrokerUrlMap.keySet().retainAll(activeActiveRealTimeSourceFabrics);
       this.realTimeTopicSwitcher = new MultiRegionRealTimeTopicSwitcher(
           topicManagerRepository.getLocalTopicManager(),
           veniceWriterFactory,
           commonConfig.getProps(),
           pubSubTopicRepository,
-          remoteDataCenterWriterFactoryMap,
+          activeActiveRealTimeSourceFabricBrokerUrlMap,
           localRegionName);
     } else {
       this.realTimeTopicSwitcher = new RealTimeTopicSwitcher(
