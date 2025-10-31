@@ -255,7 +255,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
 
   protected CompletableFuture<Void> seekToCheckpoint(Set<VeniceChangeCoordinate> checkpoints) {
     if (getBackend().isIsolatedIngestion()) {
-      throw new VeniceClientException("Isolated Ingestion is not supported with DaVinciRecordTransformer");
+      throw new VeniceClientException("Isolated Ingestion is not supported with seekToCheckpoint");
     }
     throwIfNotReady();
     Map<Integer, PubSubPosition> positionMap = new HashMap<>();
@@ -272,7 +272,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
 
   protected CompletableFuture<Void> seekToTimestamps(Map<Integer, Long> timestamps) {
     if (getBackend().isIsolatedIngestion()) {
-      throw new VeniceClientException("Isolated Ingestion is not supported with DaVinciRecordTransformer");
+      throw new VeniceClientException("Isolated Ingestion is not supported with seekToTimestamps");
     }
     throwIfNotReady();
     addPartitionsToSubscription(ComplementSet.wrap(timestamps.keySet()));
@@ -281,7 +281,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
 
   protected CompletableFuture<Void> seekToTimestamps(Long timestamps) {
     if (getBackend().isIsolatedIngestion()) {
-      throw new VeniceClientException("Isolated Ingestion is not supported with DaVinciRecordTransformer");
+      throw new VeniceClientException("Isolated Ingestion is not supported with seekToTimestamps");
     }
     throwIfNotReady();
     addPartitionsToSubscription(ComplementSet.universalSet());
