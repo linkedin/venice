@@ -15,6 +15,7 @@ import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.stats.dimensions.HttpResponseStatusCodeCategory;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
 import com.linkedin.venice.stats.metrics.MetricEntity;
+import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.OpenTelemetryDataTestUtils;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
@@ -32,6 +33,7 @@ public class SparkServerStatsTest extends AbstractTestVeniceParentHelixAdmin {
   private InMemoryMetricReader inMemoryMetricReader;
 
   private SparkServerStats sparkServerStats;
+  private SparkServerStats sparkServerGenericClusterStats;
 
   @BeforeMethod
   public void setUp() throws Exception {
@@ -52,11 +54,15 @@ public class SparkServerStatsTest extends AbstractTestVeniceParentHelixAdmin {
 
     setupInternalMocks();
 
-    this.sparkServerStats = new SparkServerStats(metricsRepository, TEST_CLUSTER_NAME);
+    this.sparkServerStats = new SparkServerStats(metricsRepository, TEST_METRIC_PREFIX, TEST_CLUSTER_NAME);
+    this.sparkServerGenericClusterStats = new SparkServerStats(
+        metricsRepository,
+        TEST_METRIC_PREFIX,
+        SparkServerStats.NON_CLUSTER_SPECIFIC_STAT_CLUSTER_NAME);
   }
 
-  @Test
-  public void testRecordRequest() {
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testRecordRequest(boolean genericCluster) {
 
     // Request
     String testPath = "/store";
@@ -66,22 +72,29 @@ public class SparkServerStatsTest extends AbstractTestVeniceParentHelixAdmin {
     when(request.requestMethod()).thenReturn(testMethod);
 
     // Record metric
-    this.sparkServerStats.recordRequest(request);
+    SparkServerStats stats;
+    if (genericCluster) {
+      stats = sparkServerGenericClusterStats;
+    } else {
+      stats = sparkServerStats;
+    }
+    stats.recordRequest(request);
 
     // test validation
+    String clusterName = genericCluster ? SparkServerStats.NON_CLUSTER_SPECIFIC_STAT_CLUSTER_NAME : TEST_CLUSTER_NAME;
     validateLongPointFromDataFromCounter(
         ControllerMetricEntity.INFLIGHT_CALL_COUNT.getMetricName(),
         1,
         Attributes.builder()
-            .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), TEST_CLUSTER_NAME)
+            .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), clusterName)
             .put(
                 VENICE_CONTROLLER_ENDPOINT.getDimensionNameInDefaultFormat(),
                 ControllerRoute.valueOfPath(testPath).toString().toLowerCase())
             .build());
   }
 
-  @Test
-  public void testRecordSuccessfulRequest() {
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testRecordSuccessfulRequest(boolean genericCluster) {
 
     // Request
     String testPath = "/store";
@@ -95,15 +108,22 @@ public class SparkServerStatsTest extends AbstractTestVeniceParentHelixAdmin {
     Response response = mock(Response.class);
     when(response.status()).thenReturn(testResponseCode);
 
-    // Record request
-    this.sparkServerStats.recordRequest(request);
+    // Record metric
+    SparkServerStats stats;
+    if (genericCluster) {
+      stats = sparkServerGenericClusterStats;
+    } else {
+      stats = sparkServerStats;
+    }
+    stats.recordRequest(request);
 
     // Test validation
+    String clusterName = genericCluster ? SparkServerStats.NON_CLUSTER_SPECIFIC_STAT_CLUSTER_NAME : TEST_CLUSTER_NAME;
     validateLongPointFromDataFromCounter(
         ControllerMetricEntity.INFLIGHT_CALL_COUNT.getMetricName(),
         1,
         Attributes.builder()
-            .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), TEST_CLUSTER_NAME)
+            .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), clusterName)
             .put(
                 VENICE_CONTROLLER_ENDPOINT.getDimensionNameInDefaultFormat(),
                 ControllerRoute.valueOfPath(testPath).toString().toLowerCase())
@@ -111,14 +131,14 @@ public class SparkServerStatsTest extends AbstractTestVeniceParentHelixAdmin {
 
     // Record success
     int testCallTime = 1000;
-    this.sparkServerStats.recordSuccessfulRequest(request, response, testCallTime);
+    stats.recordSuccessfulRequest(request, response, testCallTime);
 
     // Test validation
     validateLongPointFromDataFromCounter(
         ControllerMetricEntity.CALL_COUNT.getMetricName(),
         1,
         Attributes.builder()
-            .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), TEST_CLUSTER_NAME)
+            .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), clusterName)
             .put(
                 VENICE_CONTROLLER_ENDPOINT.getDimensionNameInDefaultFormat(),
                 ControllerRoute.valueOfPath(testPath).toString().toLowerCase())
@@ -134,7 +154,7 @@ public class SparkServerStatsTest extends AbstractTestVeniceParentHelixAdmin {
         ControllerMetricEntity.INFLIGHT_CALL_COUNT.getMetricName(),
         0,
         Attributes.builder()
-            .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), TEST_CLUSTER_NAME)
+            .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), clusterName)
             .put(
                 VENICE_CONTROLLER_ENDPOINT.getDimensionNameInDefaultFormat(),
                 ControllerRoute.valueOfPath(testPath).toString().toLowerCase())
@@ -146,7 +166,7 @@ public class SparkServerStatsTest extends AbstractTestVeniceParentHelixAdmin {
         1,
         testCallTime,
         Attributes.builder()
-            .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), TEST_CLUSTER_NAME)
+            .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), clusterName)
             .put(
                 VENICE_CONTROLLER_ENDPOINT.getDimensionNameInDefaultFormat(),
                 ControllerRoute.valueOfPath(testPath).toString().toLowerCase())
@@ -160,8 +180,8 @@ public class SparkServerStatsTest extends AbstractTestVeniceParentHelixAdmin {
             .build());
   }
 
-  @Test
-  public void testRecordFailRequest() {
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testRecordFailRequest(boolean genericCluster) {
     // Request
     String testPath = "/store";
     String testMethod = "GET";
@@ -174,15 +194,22 @@ public class SparkServerStatsTest extends AbstractTestVeniceParentHelixAdmin {
     Response response = mock(Response.class);
     when(response.status()).thenReturn(testResponseCode);
 
-    // Record request
-    this.sparkServerStats.recordRequest(request);
+    // Record metric
+    SparkServerStats stats;
+    if (genericCluster) {
+      stats = sparkServerGenericClusterStats;
+    } else {
+      stats = sparkServerStats;
+    }
+    stats.recordRequest(request);
 
     // Test validation
+    String clusterName = genericCluster ? SparkServerStats.NON_CLUSTER_SPECIFIC_STAT_CLUSTER_NAME : TEST_CLUSTER_NAME;
     validateLongPointFromDataFromCounter(
         ControllerMetricEntity.INFLIGHT_CALL_COUNT.getMetricName(),
         1,
         Attributes.builder()
-            .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), TEST_CLUSTER_NAME)
+            .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), clusterName)
             .put(
                 VENICE_CONTROLLER_ENDPOINT.getDimensionNameInDefaultFormat(),
                 ControllerRoute.valueOfPath(testPath).toString().toLowerCase())
@@ -190,14 +217,14 @@ public class SparkServerStatsTest extends AbstractTestVeniceParentHelixAdmin {
 
     // Record success
     int testCallTime = 1000;
-    this.sparkServerStats.recordFailedRequest(request, response, testCallTime);
+    stats.recordFailedRequest(request, response, testCallTime);
 
     // Test validation
     validateLongPointFromDataFromCounter(
         ControllerMetricEntity.CALL_COUNT.getMetricName(),
         1,
         Attributes.builder()
-            .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), TEST_CLUSTER_NAME)
+            .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), clusterName)
             .put(
                 VENICE_CONTROLLER_ENDPOINT.getDimensionNameInDefaultFormat(),
                 ControllerRoute.valueOfPath(testPath).toString().toLowerCase())
@@ -213,7 +240,7 @@ public class SparkServerStatsTest extends AbstractTestVeniceParentHelixAdmin {
         ControllerMetricEntity.INFLIGHT_CALL_COUNT.getMetricName(),
         0,
         Attributes.builder()
-            .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), TEST_CLUSTER_NAME)
+            .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), clusterName)
             .put(
                 VENICE_CONTROLLER_ENDPOINT.getDimensionNameInDefaultFormat(),
                 ControllerRoute.valueOfPath(testPath).toString().toLowerCase())
@@ -225,7 +252,7 @@ public class SparkServerStatsTest extends AbstractTestVeniceParentHelixAdmin {
         1,
         testCallTime,
         Attributes.builder()
-            .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), TEST_CLUSTER_NAME)
+            .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), clusterName)
             .put(
                 VENICE_CONTROLLER_ENDPOINT.getDimensionNameInDefaultFormat(),
                 ControllerRoute.valueOfPath(testPath).toString().toLowerCase())
@@ -267,6 +294,5 @@ public class SparkServerStatsTest extends AbstractTestVeniceParentHelixAdmin {
         expectedAttributes,
         metricName,
         TEST_METRIC_PREFIX);
-
   }
 }

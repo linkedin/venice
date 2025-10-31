@@ -167,8 +167,8 @@ public class AdminSparkServer extends AbstractVeniceService {
   private final Optional<DynamicAccessController> accessController;
 
   protected static final ObjectMapper OBJECT_MAPPER = ObjectMapperFactory.getInstance();
-  final private Map<String, SparkServerStats> statsMap;
-  final private SparkServerStats nonclusterSpecificStats;
+  private final Map<String, SparkServerStats> statsMap;
+  private final SparkServerStats nonclusterSpecificStats;
 
   private static String REQUEST_START_TIME = "startTime";
   private static String REQUEST_SUCCEED = "succeed";
@@ -212,11 +212,12 @@ public class AdminSparkServer extends AbstractVeniceService {
     statsMap = new HashMap<>(clusters.size());
     String statsPrefix = sslEnabled ? "secure_" : "";
     for (String cluster: clusters) {
-      statsMap.put(
-          cluster,
-          new SparkServerStats(metricsRepository, cluster + "." + statsPrefix + "controller_spark_server"));
+      statsMap.put(cluster, new SparkServerStats(metricsRepository, statsPrefix + "controller_spark_server", cluster));
     }
-    nonclusterSpecificStats = new SparkServerStats(metricsRepository, "." + statsPrefix + "controller_spark_server");
+    nonclusterSpecificStats = new SparkServerStats(
+        metricsRepository,
+        "." + statsPrefix + "controller_spark_server",
+        SparkServerStats.NON_CLUSTER_SPECIFIC_STAT_CLUSTER_NAME);
     EmbeddedServers.add(EmbeddedServers.Identifiers.JETTY, new VeniceSparkServerFactory(jettyConfigOverrides));
 
     httpService = Service.ignite();
