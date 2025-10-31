@@ -70,7 +70,7 @@ public class AdminConsumerService extends AbstractVeniceService {
     }
     this.localKafkaServerUrl = admin.getKafkaBootstrapServers(admin.isSslToKafka());
     this.consumerFactory = consumerFactory;
-    this.threadFactory = new DaemonThreadFactory("AdminConsumerService", logContext);
+    this.threadFactory = new DaemonThreadFactory("AdminConsumerService-" + config.getClusterName(), logContext);
   }
 
   @Override

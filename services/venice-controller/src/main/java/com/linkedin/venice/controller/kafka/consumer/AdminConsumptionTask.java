@@ -129,7 +129,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     }
   }
 
-  private static final String CONSUMER_TASK_ID_FORMAT = AdminConsumptionTask.class.getSimpleName() + " [Topic: %s] ";
+  private static final String CONSUMER_TASK_ID_FORMAT = AdminConsumptionTask.class.getSimpleName() + "-%s";
   private static final long UNASSIGNED_VALUE = -1L;
   private static final int READ_CYCLE_DELAY_MS = 1000;
   private static final int MAX_DUPLICATE_MESSAGE_LOGS = 20;
@@ -272,7 +272,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     this.clusterName = clusterName;
     this.pubSubAdminTopic = pubSubTopicRepository.getTopic(AdminTopicUtils.getTopicNameFromClusterName(clusterName));
     this.adminTopicPartition = new PubSubTopicPartitionImpl(pubSubAdminTopic, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID);
-    this.consumerTaskId = String.format(CONSUMER_TASK_ID_FORMAT, pubSubAdminTopic.getName());
+    this.consumerTaskId = String.format(CONSUMER_TASK_ID_FORMAT, clusterName);
     this.LOGGER = LogManager.getLogger(consumerTaskId);
     this.admin = admin;
     this.isParentController = isParentController;
