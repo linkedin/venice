@@ -1815,7 +1815,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     Runnable shutdownRunnable = () -> {
       consumerUnSubscribeAllTopics(partitionConsumptionState);
       // If the ingestion task is stopped gracefully (server stops), persist processed offset to disk.
-      if (getServerConfig().isServerIngestionCheckpointDuringGracefulShutdownEnabled()) {
+      // The Global RT DIV feature is entirely driven by consumer, so any drainer sync must be disabled to not interfere
+      if (getServerConfig().isServerIngestionCheckpointDuringGracefulShutdownEnabled() && !isGlobalRtDivEnabled()) {
         try {
           PubSubTopicPartition topicPartition = partitionConsumptionState.getReplicaTopicPartition();
           CompletableFuture<Void> cmdFuture = getStoreBufferService().execSyncOffsetCommandAsync(topicPartition, this);
