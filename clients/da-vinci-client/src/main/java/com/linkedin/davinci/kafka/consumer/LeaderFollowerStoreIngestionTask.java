@@ -3462,11 +3462,12 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
     // TODO: remove. this is a temporary log for debugging while the feature is in its infancy
     LOGGER.info(
-        "event=globalRtDiv Sending Global RT DIV message for topic-partition: {} broker: {} producerCount: {} producers: {}, valueSize: {} pps: {}",
+        "event=globalRtDiv Sending Global RT DIV message for topic-partition: {} versionTopic: {} LCRP: {} broker: {} producerCount: {}, valueSize: {}",
         topicPartition,
+        versionTopic,
+        previousMessage.getPosition(),
         brokerUrl,
         rtDivPartitionStates.size(),
-        rtDivPartitionStates.keySet(),
         valueBytes.length);
 
     // Produce to local VT for the Global RT DIV + latest RT position (GlobalRtDivState)
