@@ -2264,7 +2264,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         if (consumerAction.getPubSubPosition() != null && isDaVinciClient) {
           skipValidationForSeekableClientEnabled = true;
           subscribePosition = consumerAction.getPubSubPosition();
-          LOGGER.info("Subscribed to user provided position: {} offset: {}", topicPartition, subscribePosition);
+          LOGGER.info("Subscribed to user partition : {} position: {}", topicPartition, subscribePosition);
 
         } else {
           subscribePosition = getLocalVtSubscribePosition(newPartitionConsumptionState);
@@ -3116,17 +3116,17 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     newStoreVersionState.compressionStrategy =
         startOfPush != null ? startOfPush.compressionStrategy : compressionStrategy.getValue();
     newStoreVersionState.compressionDictionary = startOfPush != null ? startOfPush.compressionDictionary : null;
-    if (startOfPush != null && startOfPush.compressionStrategy == CompressionStrategy.ZSTD_WITH_DICT.getValue()) {
-      if (startOfPush.compressionDictionary == null) {
+    if (newStoreVersionState.compressionStrategy == CompressionStrategy.ZSTD_WITH_DICT.getValue()) {
+      if (startOfPush != null && startOfPush.compressionDictionary == null) {
         throw new VeniceException(
             "compression Dictionary should not be empty if CompressionStrategy is ZSTD_WITH_DICT");
+      } else if (startOfPush == null) { // only retrieve the dictionary if it is new EOP created during seek calls
+        // we need to retrieve the dictionary from the kafka topic
+        newStoreVersionState.compressionDictionary = DictionaryUtils.readDictionaryFromKafka(
+            storeName,
+            serverConfig.getKafkaConsumerConfigsForLocalConsumption(),
+            PubSubMessageDeserializer.createDefaultDeserializer());
       }
-    } else if (newStoreVersionState.compressionStrategy == CompressionStrategy.ZSTD_WITH_DICT.getValue()) {
-      // we need to retrieve the dictionary from the kafka topic
-      newStoreVersionState.compressionDictionary = DictionaryUtils.readDictionaryFromKafka(
-          storeName,
-          serverConfig.getKafkaConsumerConfigsForLocalConsumption(),
-          PubSubMessageDeserializer.createDefaultDeserializer());
     }
     newStoreVersionState.batchConflictResolutionPolicy = startOfPush != null ? startOfPush.timestampPolicy : 1;
     newStoreVersionState.startOfPushTimestamp = KME.producerMetadata.messageTimestamp;
