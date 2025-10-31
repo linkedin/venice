@@ -2620,6 +2620,19 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     Assert.assertTrue(currentPush.isPresent());
     assertEquals(currentPush.get(), latestTopic);
     verify(mockParentAdmin, times(14)).getOffLinePushStatus(clusterName, latestTopic);
+
+    version = new VersionImpl(storeName, 2, "test_push_id");
+    version.setStatus(VersionStatus.KILLED);
+    store.addVersion(version);
+    doReturn(store).when(mockParentAdmin).getStore(clusterName, storeName);
+    response = mock(StoreResponse.class);
+    info = mock(StoreInfo.class);
+    doReturn(response).when(client).getStore(anyString());
+    doReturn(info).when(response).getStore();
+    doReturn(new StoreVersionInfo(store, store.getVersion(1))).when(internalAdmin)
+        .waitVersion(eq(clusterName), eq(storeName), eq(1), any());
+    currentPush = mockParentAdmin.getTopicForCurrentPushJob(clusterName, storeName, false, false);
+    Assert.assertFalse(currentPush.isPresent());
   }
 
   @Test
