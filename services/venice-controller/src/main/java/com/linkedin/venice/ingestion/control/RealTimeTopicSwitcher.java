@@ -46,7 +46,7 @@ public class RealTimeTopicSwitcher {
 
   private final TopicManager topicManager;
   private final String destKafkaBootstrapServers;
-  private final VeniceWriterFactory veniceWriterFactory;
+  protected final VeniceWriterFactory veniceWriterFactory;
   private final Time timer;
   private final int kafkaReplicationFactorForRTTopics;
   private final int kafkaReplicationFactor;
@@ -252,7 +252,7 @@ public class RealTimeTopicSwitcher {
     }
   }
 
-  private void broadcastVersionSwap(Version previousStoreVersion, Version nextStoreVersion, String topicName) {
+  protected void broadcastVersionSwap(Version previousStoreVersion, Version nextStoreVersion, String topicName) {
     String storeName = previousStoreVersion.getStoreName();
     int partitionCount;
 
