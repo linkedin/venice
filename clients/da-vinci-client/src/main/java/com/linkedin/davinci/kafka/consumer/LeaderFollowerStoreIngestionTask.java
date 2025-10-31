@@ -909,7 +909,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     long diff =
         topicManager.diffPosition(pcs.getReplicaTopicPartition(), localVtEndPosition, latestProcessedLocalVtPosition);
 
-    // diff <= 0 means end position was probably stale
+    // diff < 0 means end position was probably stale
     // Log using redundant-exception filter to trace edge conditions
     if (diff < 0) {
       String msg =
