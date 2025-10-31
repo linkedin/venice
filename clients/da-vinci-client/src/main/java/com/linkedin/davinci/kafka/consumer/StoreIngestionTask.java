@@ -2680,7 +2680,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      * Check whether offset metadata checkpoint will happen; if so, update the producer states recorded in OffsetRecord
      * with the updated producer states maintained in {@link #drainerDiv}
      */
-    if (shouldSyncOffset(partitionConsumptionState, record, leaderProducedRecordContext)) {
+    if (shouldSyncOffset(partitionConsumptionState, record, leaderProducedRecordContext) && !isGlobalRtDivEnabled()) {
       updateOffsetMetadataAndSyncOffset(partitionConsumptionState);
     }
   }
@@ -2730,7 +2730,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       ControlMessage controlMessage = (leaderProducedRecordContext == null
           ? (ControlMessage) record.getValue().getPayloadUnion()
           : (ControlMessage) leaderProducedRecordContext.getValueUnion());
-      final ControlMessageType controlMessageType = ControlMessageType.valueOf(controlMessage);
       /**
        * We don't want to sync offset/database for every control message since it could trigger RocksDB to generate
        * a lot of small level-0 SST files, which will make the compaction very inefficient.
@@ -2744,9 +2743,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
        * TODO: if we know some other types of Control Messages are frequent as START_OF_SEGMENT and END_OF_SEGMENT in the future,
        * we need to consider to exclude them to avoid the issue described above.
        */
-      if (!controlMessageType.isSegmentControlMessage()) {
-        syncOffset = true;
-      }
+      return !ControlMessageType.valueOf(controlMessage).isSegmentControlMessage();
     } else {
       if (isGlobalRtDivEnabled()) {
         return false; // for the Global RT DIV feature, size-based sync is by ConsumptionTask rather than Drainer

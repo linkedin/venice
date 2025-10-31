@@ -3440,7 +3440,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     PartitionTracker rtDiv = consumerDiv.cloneRtProducerStates(partition, brokerUrl);
     Map<CharSequence, ProducerPartitionState> rtDivPartitionStates = rtDiv.getPartitionStates(realTimeTopicType);
 
-    // Create GlobalRtDivState (RT DIV + latest RT position) and serialize into a byte array. Try compression.
+    // Create GlobalRtDivState (RT DIV + LCRP) and serialize into a byte array. Try compression.
     final byte[] valueBytes = createGlobalRtDivValueBytes(previousMessage, brokerUrl, rtDivPartitionStates);
 
     // The callback onCompletionFunction sends the VT DIV + LCVP to the drainer after producing to VT successfully
