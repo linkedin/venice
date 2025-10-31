@@ -9,6 +9,7 @@ import com.linkedin.venice.helix.HelixPartitionStatusAccessor;
 import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.HybridStoreQuotaStatus;
@@ -67,6 +68,7 @@ public abstract class AbstractPartitionStateModel extends StateModel {
   private final CompletableFuture<HelixPartitionStatusAccessor> partitionStatusAccessorFuture;
   private final String instanceName;
   private final ParticipantStateTransitionStats stateTransitionStats;
+  private VeniceUserStoreType storeType;
 
   private HelixPartitionStatusAccessor partitionPushStatusAccessor;
 
@@ -132,13 +134,48 @@ public abstract class AbstractPartitionStateModel extends StateModel {
 
   private void logCompletion(String from, String to, Message message, NotificationContext context, boolean rollback) {
     logger.info(
-        "{} {} transition from {} to {}. Message {}. LatencyBreakdown: {}",
+        "{} ({}) {} transition from {} to {}. Message {}. LatencyBreakdown: {}",
         getStorePartitionDescription(),
+        getStoreType(),
         rollback ? "rolled back" : "completed",
         from,
         to,
         message,
         HelixTransitionTimingUtils.formatTransitionTiming(message, context));
+  }
+
+  VeniceUserStoreType getStoreType() {
+    if (storeType == null) {
+      storeType = determineStoreType();
+    }
+    return storeType;
+  }
+
+  /**
+   * Determines the store type based on store metadata.
+   * Returns SYSTEM for system stores, HYBRID_ONLY/BATCH_ONLY for user stores based on version configuration,
+   * or ALL as a fallback when store/version metadata is unavailable.
+   */
+  private VeniceUserStoreType determineStoreType() {
+    String storeVersionName = storeAndServerConfigs.getStoreVersionName();
+    try {
+      String storeName = Version.parseStoreFromKafkaTopicName(storeVersionName);
+      Store store = getStoreRepo().getStore(storeName);
+      if (store == null) {
+        return VeniceUserStoreType.ALL;
+      }
+      if (store.isSystemStore()) {
+        return VeniceUserStoreType.SYSTEM;
+      }
+      int versionNumber = Version.parseVersionFromKafkaTopicName(storeVersionName);
+      Version version = store.getVersion(versionNumber);
+      if (version == null) {
+        return VeniceUserStoreType.ALL;
+      }
+      return version.isHybrid() ? VeniceUserStoreType.HYBRID_ONLY : VeniceUserStoreType.BATCH_ONLY;
+    } catch (Exception e) {
+      return VeniceUserStoreType.ALL;
+    }
   }
 
   /**
