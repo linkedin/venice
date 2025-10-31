@@ -2,6 +2,7 @@ package com.linkedin.davinci.client;
 
 import com.linkedin.davinci.consumer.VeniceChangeCoordinate;
 import com.linkedin.davinci.storage.chunking.GenericChunkingAdapter;
+import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -55,11 +56,11 @@ public class AvroGenericSeekableDaVinciClient<K, V> extends AvroGenericDaVinciCl
 
   @Override
   public CompletableFuture<Void> seekToTail() {
-    return null;
+    throw new VeniceClientException("seekToTail is not supported yet");
   }
 
   @Override
   public CompletableFuture<Void> seekToTail(Set<Integer> partitions) {
-    return null;
+    throw new VeniceClientException("seekToTail is not supported yet");
   }
 }
