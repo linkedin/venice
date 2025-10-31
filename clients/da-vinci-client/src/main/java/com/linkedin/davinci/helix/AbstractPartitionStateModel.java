@@ -15,6 +15,7 @@ import com.linkedin.venice.pushmonitor.HybridStoreQuotaStatus;
 import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.Timer;
 import com.linkedin.venice.utils.Utils;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
@@ -254,7 +255,7 @@ public abstract class AbstractPartitionStateModel extends StateModel {
       }
     };
     try (Timer t = Timer.run(setupTimeLogging)) {
-      ingestionBackend.startConsumption(storeAndServerConfigs, partition);
+      ingestionBackend.startConsumption(storeAndServerConfigs, partition, Optional.empty());
     }
   }
 

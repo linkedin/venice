@@ -4,9 +4,11 @@ import static com.linkedin.venice.stats.ClientType.DAVINCI_CLIENT;
 
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.davinci.client.AvroGenericDaVinciClient;
+import com.linkedin.davinci.client.AvroGenericSeekableDaVinciClient;
 import com.linkedin.davinci.client.AvroSpecificDaVinciClient;
 import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.davinci.client.DaVinciConfig;
+import com.linkedin.davinci.client.SeekableDaVinciClient;
 import com.linkedin.davinci.client.StatsAvroGenericDaVinciClient;
 import com.linkedin.davinci.client.StatsAvroSpecificDaVinciClient;
 import com.linkedin.davinci.client.VersionSpecificAvroGenericDaVinciClient;
@@ -354,6 +356,25 @@ public class CachingDaVinciClientFactory
     }
   }
 
+  class GenericSeekableDaVinciClientConstructor<K, V> implements DaVinciClientConstructor {
+    @Override
+    public DaVinciClient<K, V> apply(
+        DaVinciConfig config,
+        ClientConfig clientConfig,
+        VeniceProperties backendConfig,
+        Optional<Set<String>> managedClients,
+        ICProvider icProvider) {
+      // For seekable client, we currently do not provide a stats-wrapping implementation.
+      return new AvroGenericSeekableDaVinciClient<>(
+          config,
+          clientConfig,
+          backendConfig,
+          managedClients,
+          icProvider,
+          readChunkExecutorForLargeRequest);
+    }
+  }
+
   class SpecificDaVinciClientConstructor<K, V extends SpecificRecord> implements DaVinciClientConstructor {
     @Override
     public DaVinciClient<K, V> apply(
@@ -477,5 +498,32 @@ public class CachingDaVinciClientFactory
       client.start();
     }
     return client;
+  }
+
+  // Seekable Generic Avro client creation methods
+  public <K, V> SeekableDaVinciClient<K, V> getGenericSeekableAvroClient(String storeName, DaVinciConfig config) {
+    DaVinciClient<K, V> client = getClient(
+        storeName,
+        null,
+        config,
+        null,
+        new GenericSeekableDaVinciClientConstructor<>(),
+        AvroGenericSeekableDaVinciClient.class,
+        false);
+    return (SeekableDaVinciClient<K, V>) client;
+  }
+
+  public <K, V> SeekableDaVinciClient<K, V> getAndStartGenericSeekableAvroClient(
+      String storeName,
+      DaVinciConfig config) {
+    DaVinciClient<K, V> client = getClient(
+        storeName,
+        null,
+        config,
+        null,
+        new GenericSeekableDaVinciClientConstructor<>(),
+        AvroGenericSeekableDaVinciClient.class,
+        true);
+    return (SeekableDaVinciClient<K, V>) client;
   }
 }

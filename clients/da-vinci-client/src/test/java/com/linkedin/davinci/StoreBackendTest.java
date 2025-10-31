@@ -248,7 +248,12 @@ public class StoreBackendTest {
 
     int partition = 2;
     // Expecting to subscribe to the specified version (version1), which is neither current nor latest.
-    CompletableFuture subscribeResult = storeBackend.subscribe(ComplementSet.of(partition), Optional.of(version1));
+    CompletableFuture subscribeResult = storeBackend.subscribe(
+        ComplementSet.of(partition),
+        Optional.of(version1),
+        Collections.emptyMap(),
+        null,
+        Collections.emptyMap());
     versionMap.get(version1.kafkaTopicName()).completePartition(partition);
     subscribeResult.get(3, TimeUnit.SECONDS);
     // Verify that subscribe selected the specified version as current.
@@ -278,7 +283,12 @@ public class StoreBackendTest {
 
     int partition = 2;
     // Subscribe to the specified version (version1) with version-specific client
-    CompletableFuture subscribeResult = storeBackend.subscribe(ComplementSet.of(partition), Optional.of(version1));
+    CompletableFuture subscribeResult = storeBackend.subscribe(
+        ComplementSet.of(partition),
+        Optional.of(version1),
+        Collections.emptyMap(),
+        null,
+        Collections.emptyMap());
     versionMap.get(version1.kafkaTopicName()).completePartition(partition);
     subscribeResult.get(3, TimeUnit.SECONDS);
 

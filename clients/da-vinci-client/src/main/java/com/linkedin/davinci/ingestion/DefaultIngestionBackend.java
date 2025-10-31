@@ -16,6 +16,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreVersionInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import com.linkedin.venice.utils.ConfigCommonUtils;
@@ -24,6 +25,7 @@ import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.File;
 import java.util.Arrays;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.atomic.AtomicReference;
@@ -59,7 +61,10 @@ public class DefaultIngestionBackend implements IngestionBackend {
   }
 
   @Override
-  public void startConsumption(VeniceStoreVersionConfig storeConfig, int partition) {
+  public void startConsumption(
+      VeniceStoreVersionConfig storeConfig,
+      int partition,
+      Optional<PubSubPosition> pubSubPosition) {
     String storeVersion = storeConfig.getStoreVersionName();
     LOGGER.info("Retrieving storage engine for store {} partition {}", storeVersion, partition);
     StoreVersionInfo storeAndVersion =
@@ -79,7 +84,7 @@ public class DefaultIngestionBackend implements IngestionBackend {
           "Retrieved storage engine for store {} partition {}. Starting consumption in ingestion service",
           storeVersion,
           partition);
-      getStoreIngestionService().startConsumption(storeConfig, partition);
+      getStoreIngestionService().startConsumption(storeConfig, partition, pubSubPosition);
       LOGGER.info(
           "Completed starting consumption in ingestion service for store {} partition {}",
           storeVersion,

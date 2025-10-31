@@ -528,7 +528,12 @@ public class DaVinciBackend implements Closeable {
         StorageEngine storageEngine = getStorageService().getStorageEngine(versionTopic);
         aggVersionedStorageEngineStats.setStorageEngine(versionTopic, storageEngine);
         StoreBackend storeBackend = getStoreOrThrow(storeName);
-        storeBackend.subscribe(ComplementSet.newSet(partitions), Optional.of(version));
+        storeBackend.subscribe(
+            ComplementSet.newSet(partitions),
+            Optional.of(version),
+            Collections.emptyMap(),
+            null,
+            Collections.emptyMap());
       });
     }
   }
@@ -690,7 +695,7 @@ public class DaVinciBackend implements Closeable {
     }
   }
 
-  protected final boolean isIsolatedIngestion() {
+  public final boolean isIsolatedIngestion() {
     return configLoader.getVeniceServerConfig().getIngestionMode().equals(IngestionMode.ISOLATED);
   }
 
