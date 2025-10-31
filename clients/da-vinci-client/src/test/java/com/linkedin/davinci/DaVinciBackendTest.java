@@ -12,6 +12,7 @@ import static com.linkedin.venice.pushmonitor.ExecutionStatus.ERROR;
 import static com.linkedin.venice.utils.DataProviderUtils.BOOLEAN;
 import static com.linkedin.venice.utils.DataProviderUtils.allPermutationGenerator;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doNothing;
@@ -285,7 +286,7 @@ public class DaVinciBackendTest {
       ComplementSet<Integer> partitions = invocation.getArgument(0);
       mockStoreBackend.getSubscription().addAll(partitions);
       return null;
-    }).when(mockStoreBackend).subscribe(any(), any());
+    }).when(mockStoreBackend).subscribe(any(), any(), anyMap(), any(), anyMap());
 
     Version mockVersion = mock(Version.class);
     when(mockVersion.kafkaTopicName()).thenReturn(resourceName);

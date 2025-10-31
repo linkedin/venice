@@ -46,6 +46,7 @@ public class DiskUsage {
       this.disk = Files.getFileStore(Paths.get(path));
       this.totalSpaceBytes = disk.getTotalSpace();
     } catch (IOException e) {
+      LOGGER.error("DiskUsage failed on path: {}", path, e);
       throw new VeniceException("Invalid path for DiskUsage: " + path);
     }
     freeSpaceBytesRequired = (long) ((1 - diskFullThreshold) * totalSpaceBytes);

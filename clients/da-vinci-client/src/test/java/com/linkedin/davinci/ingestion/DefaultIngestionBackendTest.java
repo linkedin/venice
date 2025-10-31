@@ -37,6 +37,7 @@ import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.utils.ConfigCommonUtils;
 import java.io.InputStream;
 import java.time.Duration;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import org.mockito.Mock;
 import org.mockito.Mockito;
@@ -45,6 +46,9 @@ import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 
+/**
+ * Unit test for {@link DefaultIngestionBackend}
+ */
 public class DefaultIngestionBackendTest {
   @Mock
   private StorageMetadataService storageMetadataService;
@@ -91,7 +95,7 @@ public class DefaultIngestionBackendTest {
 
     when(storeConfig.getStoreVersionName()).thenReturn(STORE_VERSION);
     when(storeIngestionService.getMetadataRepo()).thenReturn(metadataRepo);
-    doNothing().when(storeIngestionService).startConsumption(any(VeniceStoreVersionConfig.class), anyInt());
+    doNothing().when(storeIngestionService).startConsumption(any(VeniceStoreVersionConfig.class), anyInt(), any());
     when(metadataRepo.waitVersion(anyString(), anyInt(), any(Duration.class))).thenReturn(storeAndVersion);
     when(storageMetadataService.getStoreVersionState(STORE_VERSION)).thenReturn(storeVersionState);
     when(storageService.openStoreForNewPartition(eq(storeConfig), eq(PARTITION), any())).thenReturn(storageEngine);
@@ -131,7 +135,7 @@ public class DefaultIngestionBackendTest {
     when(rocksDBServerConfig.isRocksDBPlainTableFormatEnabled()).thenReturn(false);
     when(veniceServerConfig.getRocksDBServerConfig()).thenReturn(rocksDBServerConfig);
 
-    ingestionBackend.startConsumption(storeConfig, PARTITION);
+    ingestionBackend.startConsumption(storeConfig, PARTITION, Optional.empty());
     verifyBlobTransfer(true);
     verify(aggVersionedBlobTransferStats).recordBlobTransferResponsesCount(eq(STORE_NAME), eq(VERSION_NUMBER));
     verify(aggVersionedBlobTransferStats)
@@ -198,7 +202,7 @@ public class DefaultIngestionBackendTest {
     when(store.getBlobTransferInServerEnabled()).thenReturn(storeSetting);
     when(veniceServerConfig.getBlobTransferReceiverServerPolicy()).thenReturn(serverSetting);
 
-    ingestionBackend.startConsumption(storeConfig, PARTITION);
+    ingestionBackend.startConsumption(storeConfig, PARTITION, Optional.empty());
     verifyBlobTransfer(expectEnabled);
   }
 
@@ -226,7 +230,7 @@ public class DefaultIngestionBackendTest {
     when(rocksDBServerConfig.isRocksDBPlainTableFormatEnabled()).thenReturn(false);
     when(veniceServerConfig.getRocksDBServerConfig()).thenReturn(rocksDBServerConfig);
 
-    ingestionBackend.startConsumption(storeConfig, PARTITION);
+    ingestionBackend.startConsumption(storeConfig, PARTITION, Optional.empty());
     verify(blobTransferManager).get(eq(STORE_NAME), eq(VERSION_NUMBER), eq(PARTITION), eq(BLOB_TRANSFER_FORMAT));
     verify(aggVersionedBlobTransferStats).recordBlobTransferResponsesCount(eq(STORE_NAME), eq(VERSION_NUMBER));
     verify(aggVersionedBlobTransferStats)
@@ -237,7 +241,6 @@ public class DefaultIngestionBackendTest {
   public void testStartConsumptionWithBlobTransferValidatePartitionStatus() {
     when(storageService.getStorageEngine(Version.composeKafkaTopic(STORE_NAME, VERSION_NUMBER)))
         .thenReturn(storageEngine);
-
     when(store.isBlobTransferEnabled()).thenReturn(true);
     when(storeIngestionService.isDaVinciClient()).thenReturn(true);
     when(store.isHybrid()).thenReturn(true);
@@ -250,7 +253,7 @@ public class DefaultIngestionBackendTest {
     doNothing().when(storageEngine)
         .adjustStoragePartition(eq(PARTITION), eq(StoragePartitionAdjustmentTrigger.END_BLOB_TRANSFER), any());
 
-    ingestionBackend.startConsumption(storeConfig, PARTITION);
+    ingestionBackend.startConsumption(storeConfig, PARTITION, Optional.empty());
 
     verify(blobTransferManager).get(eq(STORE_NAME), eq(VERSION_NUMBER), eq(PARTITION), eq(BLOB_TRANSFER_FORMAT));
     verify(aggVersionedBlobTransferStats).recordBlobTransferResponsesCount(eq(STORE_NAME), eq(VERSION_NUMBER));
@@ -361,7 +364,7 @@ public class DefaultIngestionBackendTest {
     when(veniceServerConfig.getRocksDBServerConfig()).thenReturn(rocksDBServerConfig);
     when(storageService.getStorageEngine(kafkaTopic)).thenReturn(storageEngine);
 
-    ingestionBackend.startConsumption(storeConfig, PARTITION);
+    ingestionBackend.startConsumption(storeConfig, PARTITION, Optional.empty());
     verify(blobTransferManager).get(eq(STORE_NAME), eq(VERSION_NUMBER), eq(PARTITION), eq(BLOB_TRANSFER_FORMAT));
     verify(aggVersionedBlobTransferStats).recordBlobTransferResponsesCount(eq(STORE_NAME), eq(VERSION_NUMBER));
     verify(aggVersionedBlobTransferStats)

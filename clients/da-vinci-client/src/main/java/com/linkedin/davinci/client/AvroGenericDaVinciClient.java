@@ -21,6 +21,7 @@ import com.linkedin.davinci.DaVinciBackend;
 import com.linkedin.davinci.StoreBackend;
 import com.linkedin.davinci.VersionBackend;
 import com.linkedin.davinci.config.VeniceConfigLoader;
+import com.linkedin.davinci.consumer.VeniceChangeCoordinate;
 import com.linkedin.davinci.storage.chunking.AbstractAvroChunkingAdapter;
 import com.linkedin.davinci.storage.chunking.GenericChunkingAdapter;
 import com.linkedin.davinci.storage.chunking.GenericRecordChunkingAdapter;
@@ -47,6 +48,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.schema.SchemaRepoBackedSchemaReader;
 import com.linkedin.venice.serialization.AvroStoreDeserializerCache;
@@ -249,6 +251,41 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
   @Override
   public CompletableFuture<Void> subscribe(Set<Integer> partitions) {
     return subscribe(ComplementSet.wrap(partitions));
+  }
+
+  protected CompletableFuture<Void> seekToCheckpoint(Set<VeniceChangeCoordinate> checkpoints) {
+    if (getBackend().isIsolatedIngestion()) {
+      throw new VeniceClientException("Isolated Ingestion is not supported with seekToCheckpoint");
+    }
+    throwIfNotReady();
+    Map<Integer, PubSubPosition> positionMap = new HashMap<>();
+    for (VeniceChangeCoordinate changeCoordinate: checkpoints) {
+      if (!Objects.equals(changeCoordinate.getStoreName(), getStoreBackend().getStoreName())) {
+        throw new VeniceClientException(
+            "Store name mismatch: " + changeCoordinate.getStoreName() + " != " + storeBackend.getStoreName());
+      }
+      positionMap.put(changeCoordinate.getPartition(), changeCoordinate.getPosition());
+    }
+    addPartitionsToSubscription(ComplementSet.wrap(positionMap.keySet()));
+    return getStoreBackend().seekToCheckPoints(positionMap);
+  }
+
+  protected CompletableFuture<Void> seekToTimestamps(Map<Integer, Long> timestamps) {
+    if (getBackend().isIsolatedIngestion()) {
+      throw new VeniceClientException("Isolated Ingestion is not supported with seekToTimestamps");
+    }
+    throwIfNotReady();
+    addPartitionsToSubscription(ComplementSet.wrap(timestamps.keySet()));
+    return getStoreBackend().seekToTimestamps(timestamps);
+  }
+
+  protected CompletableFuture<Void> seekToTimestamps(Long timestamps) {
+    if (getBackend().isIsolatedIngestion()) {
+      throw new VeniceClientException("Isolated Ingestion is not supported with seekToTimestamps");
+    }
+    throwIfNotReady();
+    addPartitionsToSubscription(ComplementSet.universalSet());
+    return getStoreBackend().seekToTimestamps(timestamps);
   }
 
   protected CompletableFuture<Void> subscribe(ComplementSet<Integer> partitions) {
