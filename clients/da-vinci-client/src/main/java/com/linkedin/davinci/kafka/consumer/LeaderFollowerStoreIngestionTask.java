@@ -7,7 +7,6 @@ import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.LEADER
 import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.PAUSE_TRANSITION_FROM_STANDBY_TO_LEADER;
 import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.STANDBY;
 import static com.linkedin.davinci.validation.PartitionTracker.TopicType.REALTIME_TOPIC_TYPE;
-import static com.linkedin.davinci.validation.PartitionTracker.TopicType.VERSION_TOPIC_TYPE;
 import static com.linkedin.venice.kafka.protocol.enums.ControlMessageType.END_OF_PUSH;
 import static com.linkedin.venice.kafka.protocol.enums.ControlMessageType.START_OF_SEGMENT;
 import static com.linkedin.venice.kafka.protocol.enums.MessageType.UPDATE;
@@ -2345,7 +2344,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         TopicType topicType = PartitionTracker.VERSION_TOPIC;
         if (isGlobalRtDivEnabled()) {
           if (isRealTimeTopic || isConsumingFromRemoteVersionTopic(pcs)) {
-              topicType = TopicType.of(REALTIME_TOPIC_TYPE, kafkaUrl);
+            topicType = TopicType.of(REALTIME_TOPIC_TYPE, kafkaUrl);
           }
         }
         validateMessage(topicType, consumerDiv, record, pcs, false);
@@ -2775,7 +2774,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         return true;
       }
     }
-    return shouldSyncOffset(pcs, consumerRecord, null);
+    return isNonSegmentControlMessage(consumerRecord, null);
   }
 
   /**
