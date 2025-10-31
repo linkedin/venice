@@ -5578,7 +5578,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       throw new VeniceNoStoreException(storeName, clusterName);
     }
 
-    if (originalStore.isHybrid() && !multiClusterConfigs.isSkipHybridStoreRTTopicCompactionPolicyUpdateEnabled()) {
+    if (originalStore.isHybrid() && !getMultiClusterConfigs().getControllerConfig(clusterName)
+        .isSkipHybridStoreRTTopicCompactionPolicyUpdateEnabled()) {
       // If this is a hybrid store, always try to disable compaction if RT topic exists.
       try {
         PubSubTopic rtTopic = pubSubTopicRepository.getTopic(Utils.getRealTimeTopicName(originalStore));

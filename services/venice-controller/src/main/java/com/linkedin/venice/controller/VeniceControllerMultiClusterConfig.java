@@ -83,10 +83,6 @@ public class VeniceControllerMultiClusterConfig {
     return getCommonConfig().isParent();
   }
 
-  public boolean isSkipHybridStoreRTTopicCompactionPolicyUpdateEnabled() {
-    return getCommonConfig().isSkipHybridStoreRTTopicCompactionPolicyUpdateEnabled();
-  }
-
   public ParentControllerRegionState getParentControllerRegionState() {
     return getCommonConfig().getParentControllerRegionState();
   }
