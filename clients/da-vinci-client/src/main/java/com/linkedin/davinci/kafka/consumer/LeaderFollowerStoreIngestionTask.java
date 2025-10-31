@@ -911,7 +911,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
     // diff <= 0 means end position was probably stale
     // Log using redundant-exception filter to trace edge conditions
-    if (diff <= 0) {
+    if (diff < 0) {
       String msg =
           "Negative diff between local VT end position: " + localVtEndPosition + " and latest processed VT position: "
               + latestProcessedLocalVtPosition + " for partition: " + pcs.getReplicaTopicPartition();
