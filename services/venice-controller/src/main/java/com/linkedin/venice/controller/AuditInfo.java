@@ -1,8 +1,12 @@
 package com.linkedin.venice.controller;
 
+import static com.linkedin.venice.VeniceConstants.CONTROLLER_SSL_CERTIFICATE_ATTRIBUTE_NAME;
+
+import java.security.cert.X509Certificate;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.StringJoiner;
+import javax.servlet.http.HttpServletRequest;
 import spark.Request;
 
 
@@ -11,6 +15,7 @@ public class AuditInfo {
   private Map<String, String> params;
   private String method;
   private String clientIp;
+  private String servicePrincipal;
 
   public AuditInfo(Request request) {
     this.url = request.url();
@@ -20,6 +25,20 @@ public class AuditInfo {
     }
     this.method = request.requestMethod();
     this.clientIp = request.ip() + ":" + request.raw().getRemotePort();
+    this.servicePrincipal = extractServicePrincipal(request);
+  }
+
+  private String extractServicePrincipal(Request request) {
+    try {
+      HttpServletRequest rawRequest = request.raw();
+      Object certificateObject = rawRequest.getAttribute(CONTROLLER_SSL_CERTIFICATE_ATTRIBUTE_NAME);
+      if (certificateObject != null) {
+        return ((X509Certificate[]) certificateObject)[0].getSubjectX500Principal().getName();
+      }
+    } catch (Exception e) {
+      // Silently handle any exceptions during principal extraction
+    }
+    return "N/A";
   }
 
   @Override
@@ -42,12 +61,18 @@ public class AuditInfo {
       joiner.add(status);
     }
 
-    joiner.add(method).add(url).add(params.toString()).add("ClientIP: " + clientIp);
+    joiner.add(method)
+        .add(url)
+        .add(params.toString())
+        .add("ClientIP: " + clientIp)
+        .add("Principal: " + servicePrincipal);
 
     if (latency != null) {
       joiner.add("Latency: " + latency + " ms");
     }
 
-    return joiner.toString();
+    String string = joiner.toString();
+    System.out.println(string);
+    return string;
   }
 }
