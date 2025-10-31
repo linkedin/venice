@@ -725,7 +725,7 @@ public class VeniceWriterUnitTest {
           null,
           null,
           null,
-          false);
+          true);
 
       ArgumentCaptor<KafkaKey> keyArgumentCaptor = ArgumentCaptor.forClass(KafkaKey.class);
       ArgumentCaptor<KafkaMessageEnvelope> kmeArgumentCaptor = ArgumentCaptor.forClass(KafkaMessageEnvelope.class);

@@ -2280,11 +2280,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           // TODO: remove. this is a temporary log for debugging while the feature is in its infancy
           TopicManager topicManager = getTopicManager(localKafkaServer);
           PubSubPosition endPosition = topicManager.getLatestPositionCached(topicPartition);
-          long diff = topicManager.diffPosition(topicPartition, localVtSubscribePosition, endPosition);
+          long diff = topicManager.diffPosition(topicPartition, endPosition, subscribePosition);
           LOGGER.info(
               "event=globalRtDiv Subscribed to: {} position: {} endPosition: {} diff: {}",
               topicPartition,
-              localVtSubscribePosition,
+              subscribePosition,
               endPosition,
               diff);
         }
