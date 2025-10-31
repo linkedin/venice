@@ -58,6 +58,14 @@ class VersionSwapDataChangeListener<K, V> implements StoreDataChangedListener {
           // of a deleted version topic, we'll always get the latest version on subsequent retries
           Store currentStore = storeRepository.getStore(storeName);
           int currentVersion = currentStore.getCurrentVersion();
+          Version currentVersionObj = currentStore.getVersion(currentVersion);
+          if (currentVersionObj == null) {
+            LOGGER.warn(
+                "Current version: {} not found for store: {}. It might have been deleted.",
+                currentVersion,
+                storeName);
+            return;
+          }
 
           // Check the current ingested version
           Set<PubSubTopicPartition> subscriptions = this.consumer.getTopicAssignment();
@@ -92,7 +100,7 @@ class VersionSwapDataChangeListener<K, V> implements StoreDataChangedListener {
           this.consumer
               .internalSeekToEndOfPush(
                   partitions,
-                  pubSubTopicRepository.getTopic(currentStore.getVersion(currentVersion).kafkaTopicName()),
+                  pubSubTopicRepository.getTopic(currentVersionObj.kafkaTopicName()),
                   true)
               .get();
 
