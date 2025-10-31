@@ -2343,8 +2343,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
          * TODO: An improvement can be made to fail all future versions for fatal DIV exceptions after EOP.
          */
         TopicType topicType = PartitionTracker.VERSION_TOPIC;
-        if (isGlobalRtDivEnabled() || isConsumingFromRemoteVersionTopic(pcs)) {
-          topicType = TopicType.of(isRealTimeTopic ? REALTIME_TOPIC_TYPE : VERSION_TOPIC_TYPE, kafkaUrl);
+        if (isGlobalRtDivEnabled()) {
+          if (isRealTimeTopic || isConsumingFromRemoteVersionTopic(pcs)) {
+              topicType = TopicType.of(REALTIME_TOPIC_TYPE, kafkaUrl);
+          }
         }
         validateMessage(topicType, consumerDiv, record, pcs, false);
         versionedDIVStats.recordSuccessMsg(storeName, versionNumber);
