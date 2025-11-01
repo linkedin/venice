@@ -2773,8 +2773,13 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       if (put.getSchemaId() != CHUNK_SCHEMA_ID) {
         return true;
       }
+    } else if (isNonSegmentControlMessage(consumerRecord, null)) {
+      return true; // sync when processing most control messages
     }
-    return isNonSegmentControlMessage(consumerRecord, null);
+
+    // must be greater than the interval in shouldSendGlobalRtDiv() to not interfere
+    final long syncBytesInterval = getSyncBytesInterval(pcs); // size-based sync condition
+    return syncBytesInterval > 0 && (pcs.getProcessedRecordSizeSinceLastSync() >= 2 * syncBytesInterval);
   }
 
   /**
