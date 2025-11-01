@@ -74,10 +74,14 @@ public class RouteHttpRequestStatsTest {
 
     delegateMode = new VeniceDelegateMode(mockConfig, mockRouterStats, stats);
 
-    // Get the private method using reflection
+    // Get the private method using reflection with doPrivileged
     selectLeastLoadedHostMethod =
-        VeniceDelegateMode.class.getDeclaredMethod("selectLeastLoadedHost", List.class, VenicePath.class);
-    selectLeastLoadedHostMethod.setAccessible(true);
+        java.security.AccessController.doPrivileged((java.security.PrivilegedExceptionAction<Method>) () -> {
+          Method method =
+              VeniceDelegateMode.class.getDeclaredMethod("selectLeastLoadedHost", List.class, VenicePath.class);
+          method.setAccessible(true);
+          return method;
+        });
   }
 
   @Test
