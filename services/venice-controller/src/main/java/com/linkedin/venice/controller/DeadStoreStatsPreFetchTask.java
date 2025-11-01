@@ -41,13 +41,16 @@ public class DeadStoreStatsPreFetchTask implements Runnable, Closeable {
     logger.info("Started {}", taskId);
     isRunning.set(true);
     try {
-      // wait for 60 seconds for controller to become leader as it's required to be leader for dead store stats
-      long deadline = System.currentTimeMillis() + TimeUnit.SECONDS.toMillis(60);
+      // wait for 300 seconds for controller to become leader as it's required to be leader for dead store stats
+      long deadline = System.currentTimeMillis() + TimeUnit.SECONDS.toMillis(300);
       while (!admin.isLeaderControllerFor(clusterName)) {
         if (System.currentTimeMillis() > deadline) {
           throw new VeniceException("Timed out waiting for controller to become leader for cluster: " + clusterName);
         }
-        Utils.sleep(10_000); // sleep for 10 seconds
+        if (!Utils.sleep(10_000)) {
+          logger.info("Sleep was interrupted, stopping dead store stats prefetch task for cluster: {}", clusterName);
+          break;
+        }
       }
 
       logger.debug("Initial fetch of dead store stats for cluster: {}", clusterName);
@@ -58,11 +61,15 @@ public class DeadStoreStatsPreFetchTask implements Runnable, Closeable {
 
     while (isRunning.get()) {
       try {
-        Utils.sleep(refreshIntervalMs);
+        Thread.sleep(refreshIntervalMs);
         long startTime = System.currentTimeMillis();
         logger.debug("Fetching dead store stats for cluster: {}", clusterName);
         admin.preFetchDeadStoreStats(clusterName, getStoresInCluster());
         logger.info("Successfully refreshed dead store stats in {} ms", System.currentTimeMillis() - startTime);
+      } catch (InterruptedException e) {
+        logger.info("Thread interrupted, stopping dead store stats prefetch task for cluster: {}", clusterName);
+        Thread.currentThread().interrupt(); // Restore interrupt status
+        break;
       } catch (Exception e) {
         logger.error("Error while refreshing dead store stats for cluster: {}", clusterName, e);
       }
