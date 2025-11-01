@@ -737,6 +737,31 @@ public class LeaderFollowerStoreIngestionTaskTest {
     doReturn(ControlMessageType.START_OF_SEGMENT.getValue()).when(mockControlMessage).getControlMessageType();
     assertFalse(
         mockIngestionTask.shouldSyncOffsetFromSnapshot(nonSegmentControlMessage, mockPartitionConsumptionState));
+
+    // Mock the getSyncBytesInterval method to return a specific value
+    doReturn(1000L).when(mockIngestionTask).getSyncBytesInterval(any());
+
+    // Create a mock message that is neither a Global RT DIV nor a control message
+    final DefaultPubSubMessage regularMessage = getMockMessage(3).getMessage();
+    KafkaKey regularMockKey = regularMessage.getKey();
+    doReturn(false).when(regularMockKey).isGlobalRtDiv();
+    doReturn(false).when(regularMockKey).isControlMessage();
+
+    // Test case 1: When processedRecordSizeSinceLastSync is less than 2*syncBytesInterval
+    doReturn(1500L).when(mockPartitionConsumptionState).getProcessedRecordSizeSinceLastSync();
+    assertFalse(mockIngestionTask.shouldSyncOffsetFromSnapshot(regularMessage, mockPartitionConsumptionState));
+
+    // Test case 2: When processedRecordSizeSinceLastSync is equal to 2*syncBytesInterval
+    doReturn(2000L).when(mockPartitionConsumptionState).getProcessedRecordSizeSinceLastSync();
+    assertTrue(mockIngestionTask.shouldSyncOffsetFromSnapshot(regularMessage, mockPartitionConsumptionState));
+
+    // Test case 3: When processedRecordSizeSinceLastSync is greater than 2*syncBytesInterval
+    doReturn(2500L).when(mockPartitionConsumptionState).getProcessedRecordSizeSinceLastSync();
+    assertTrue(mockIngestionTask.shouldSyncOffsetFromSnapshot(regularMessage, mockPartitionConsumptionState));
+
+    // Test case 4: When syncBytesInterval is 0 (disabled)
+    doReturn(0L).when(mockIngestionTask).getSyncBytesInterval(any());
+    assertFalse(mockIngestionTask.shouldSyncOffsetFromSnapshot(regularMessage, mockPartitionConsumptionState));
   }
 
   @Test
