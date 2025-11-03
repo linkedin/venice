@@ -2949,6 +2949,11 @@ public class ConfigKeys {
   public static final String SERVER_INGESTION_INFO_LOG_LINE_LIMIT = "server.ingestion.info.log.line.limit";
 
   /**
+   * Experiment config to skip the compaction policy update for hybrid store real-time topic during update store operation
+   */
+  public static final String SKIP_HYBRID_STORE_RT_TOPIC_COMPACTION_POLICY_UPDATE_ENABLED =
+      "skip.hybrid.store.rt.topic.compaction.policy.update.enabled";
+  /**
    * Whether the child controller in each data center will use the MultiRegionRealTimeTopicSwitcher to send version swap
    * messages to the RT topics in remote data centers.
    * Default is false (i.e. use the RealTimeTopicSwitcher to only write to local RT topic).

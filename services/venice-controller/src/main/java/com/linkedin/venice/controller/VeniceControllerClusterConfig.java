@@ -191,6 +191,7 @@ import static com.linkedin.venice.ConfigKeys.REPUSH_CANDIDATE_FILTER_CLASS_NAMES
 import static com.linkedin.venice.ConfigKeys.REPUSH_ORCHESTRATOR_CLASS_NAME;
 import static com.linkedin.venice.ConfigKeys.SERVICE_DISCOVERY_REGISTRATION_RETRY_MS;
 import static com.linkedin.venice.ConfigKeys.SKIP_DEFERRED_VERSION_SWAP_FOR_DVC_ENABLED;
+import static com.linkedin.venice.ConfigKeys.SKIP_HYBRID_STORE_RT_TOPIC_COMPACTION_POLICY_UPDATE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SSL_KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.SSL_TO_KAFKA_LEGACY;
 import static com.linkedin.venice.ConfigKeys.STORAGE_ENGINE_OVERHEAD_RATIO;
@@ -659,6 +660,8 @@ public class VeniceControllerClusterConfig {
   private final boolean useMultiRegionRealTimeTopicSwitcher;
   private final Set<String> activeActiveRealTimeSourceFabrics;
 
+  private final boolean isSkipHybridStoreRTTopicCompactionPolicyUpdateEnabled;
+
   public VeniceControllerClusterConfig(VeniceProperties props) {
     this.props = props;
     this.clusterName = props.getString(CLUSTER_NAME);
@@ -688,6 +691,8 @@ public class VeniceControllerClusterConfig {
     } else {
       this.persistenceType = PersistenceType.IN_MEMORY;
     }
+    this.isSkipHybridStoreRTTopicCompactionPolicyUpdateEnabled =
+        props.getBoolean(SKIP_HYBRID_STORE_RT_TOPIC_COMPACTION_POLICY_UPDATE_ENABLED, false);
 
     if (props.containsKey(CONCURRENT_PUSH_DETECTION_STRATEGY)) {
       this.concurrentPushDetectionStrategy =
@@ -2183,6 +2188,10 @@ public class VeniceControllerClusterConfig {
 
   public boolean isRealTimeTopicVersioningEnabled() {
     return isRealTimeTopicVersioningEnabled;
+  }
+
+  public boolean isSkipHybridStoreRTTopicCompactionPolicyUpdateEnabled() {
+    return isSkipHybridStoreRTTopicCompactionPolicyUpdateEnabled;
   }
 
   /**
