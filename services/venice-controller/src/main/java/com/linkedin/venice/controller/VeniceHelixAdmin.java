@@ -3104,6 +3104,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 version.setPushStreamSourceAddress(sourceKafkaBootstrapServers);
                 version.setNativeReplicationSourceFabric(sourceFabric);
               }
+            } else {
+              // When native replication is disabled, inherit pushStreamSourceAddress from store config
+              if (store.getPushStreamSourceAddress() != null && !store.getPushStreamSourceAddress().isEmpty()) {
+                version.setPushStreamSourceAddress(store.getPushStreamSourceAddress());
+              } else {
+                version.setPushStreamSourceAddress(getKafkaBootstrapServers(isSslToKafka()));
+              }
             }
 
             /**

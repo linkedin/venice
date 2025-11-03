@@ -388,6 +388,7 @@ public class TestGlobalRtDiv {
         .setHybridOffsetLagThreshold(2L)
         .setChunkingEnabled(isChunkingEnabled)
         .setCompressionStrategy(CompressionStrategy.NO_OP)
+        .setNativeReplicationEnabled(false)
         .setPartitionCount(partitionCount);
   }
 
