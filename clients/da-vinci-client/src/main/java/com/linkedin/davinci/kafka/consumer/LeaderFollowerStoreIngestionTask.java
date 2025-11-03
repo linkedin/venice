@@ -3595,7 +3595,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           manifestContainer);
     } catch (Exception e) {
       // TODO: evaluate whether these logs can be set to debug
-      LOGGER.warn(
+      LOGGER.error(
           "Unable to retrieve the stored value bytes for key: {}, topic-partition: {}",
           new String(keyBytes),
           topicPartition,
@@ -3618,7 +3618,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion());
     } catch (Exception e) {
       // TODO: evaluate whether these logs can be set to debug
-      LOGGER.warn(
+      LOGGER.error(
           "Unable to deserialize stored value bytes for key: {}, topic-partition: {}",
           new String(keyBytes),
           topicPartition,
