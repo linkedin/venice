@@ -67,6 +67,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_ADAPTIVE_THROTTLER_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_ADAPTIVE_THROTTLER_MULTI_GET_LATENCY_THRESHOLD;
 import static com.linkedin.venice.ConfigKeys.SERVER_ADAPTIVE_THROTTLER_READ_COMPUTE_GET_LATENCY_THRESHOLD;
 import static com.linkedin.venice.ConfigKeys.SERVER_ADAPTIVE_THROTTLER_SIGNAL_IDLE_THRESHOLD;
+import static com.linkedin.venice.ConfigKeys.SERVER_ADAPTIVE_THROTTLER_SIGNAL_REFRESH_INTERVAL_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_ADAPTIVE_THROTTLER_SINGLE_GET_LATENCY_THRESHOLD;
 import static com.linkedin.venice.ConfigKeys.SERVER_BATCH_REPORT_END_OF_INCREMENTAL_PUSH_STATUS_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_BLOB_TRANSFER_ADAPTIVE_THROTTLER_ENABLED;
@@ -158,6 +159,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_OPTIMIZE_DATABASE_FOR_BACKUP
 import static com.linkedin.venice.ConfigKeys.SERVER_OPTIMIZE_DATABASE_FOR_BACKUP_VERSION_NO_READ_THRESHOLD_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_OPTIMIZE_DATABASE_SERVICE_SCHEDULE_INTERNAL_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_PARALLEL_BATCH_GET_CHUNK_SIZE;
+import static com.linkedin.venice.ConfigKeys.SERVER_PARALLEL_RESOURCE_SHUTDOWN_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_PARTITION_GRACEFUL_DROP_DELAY_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_PUBSUB_CONSUMER_POLL_RETRY_BACKOFF_MS;
@@ -545,6 +547,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final double adaptiveThrottlerSingleGetLatencyThreshold;
   private final double adaptiveThrottlerMultiGetLatencyThreshold;
   private final double adaptiveThrottlerReadComputeLatencyThreshold;
+  private final int adaptiveThrottlerSignalRefreshIntervalInSeconds;
 
   private final int fastAvroFieldLimitPerMethod;
 
@@ -667,6 +670,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final int inactiveTopicPartitionCheckerThresholdInSeconds;
   private final int serverIngestionInfoLogLineLimit;
 
+  private final boolean parallelResourceShutdownEnabled;
+
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     this(serverProperties, Collections.emptyMap());
   }
@@ -785,6 +790,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
         serverProperties.getDouble(SERVER_ADAPTIVE_THROTTLER_MULTI_GET_LATENCY_THRESHOLD, 10d);
     adaptiveThrottlerReadComputeLatencyThreshold =
         serverProperties.getDouble(SERVER_ADAPTIVE_THROTTLER_READ_COMPUTE_GET_LATENCY_THRESHOLD, 50d);
+    adaptiveThrottlerSignalRefreshIntervalInSeconds =
+        serverProperties.getInt(SERVER_ADAPTIVE_THROTTLER_SIGNAL_REFRESH_INTERVAL_IN_SECONDS, 30);
 
     databaseSyncBytesIntervalForTransactionalMode =
         serverProperties.getSizeInBytes(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_TRANSACTIONAL_MODE, 32 * 1024 * 1024);
@@ -1133,6 +1140,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     this.useMetricsBasedPositionInLagComputation =
         serverProperties.getBoolean(SERVER_USE_METRICS_BASED_POSITION_IN_LAG_COMPUTATION, false);
     this.serverIngestionInfoLogLineLimit = serverProperties.getInt(SERVER_INGESTION_INFO_LOG_LINE_LIMIT, 20);
+    this.parallelResourceShutdownEnabled =
+        serverProperties.getBoolean(SERVER_PARALLEL_RESOURCE_SHUTDOWN_ENABLED, false);
   }
 
   List<Double> extractThrottleLimitFactorsFor(VeniceProperties serverProperties, String configKey) {
@@ -1656,6 +1665,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     return adaptiveThrottlerReadComputeLatencyThreshold;
   }
 
+  public int getAdaptiveThrottlerSignalRefreshIntervalInSeconds() {
+    return adaptiveThrottlerSignalRefreshIntervalInSeconds;
+  }
+
   public int getFastAvroFieldLimitPerMethod() {
     return fastAvroFieldLimitPerMethod;
   }
@@ -2042,5 +2055,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public int getServerIngestionInfoLogLineLimit() {
     return this.serverIngestionInfoLogLineLimit;
+  }
+
+  public boolean isParallelResourceShutdownEnabled() {
+    return parallelResourceShutdownEnabled;
   }
 }

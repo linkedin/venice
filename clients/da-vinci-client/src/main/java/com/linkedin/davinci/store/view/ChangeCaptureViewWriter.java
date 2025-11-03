@@ -213,7 +213,15 @@ public class ChangeCaptureViewWriter extends VeniceViewWriter {
     versionSwapToBroadcast.oldServingVersionTopic = versionSwapMessage.oldServingVersionTopic;
     versionSwapToBroadcast.newServingVersionTopic = versionSwapMessage.newServingVersionTopic;
     versionSwapToBroadcast.localHighWatermarkPubSubPositions = localHighWatermarkPubSubPositions;
+    // Defensive coding, these new fields added to VersionSwap have defaults if they are deserialized from Avro bytes.
+    // However, we could run into NPE if they are constructed in other ways. e.g. the empty constructor.
+    versionSwapToBroadcast.sourceRegion =
+        versionSwapMessage.sourceRegion == null ? "" : versionSwapMessage.sourceRegion;
+    versionSwapToBroadcast.destinationRegion =
+        versionSwapMessage.destinationRegion == null ? "" : versionSwapMessage.destinationRegion;
+    versionSwapToBroadcast.generationId = versionSwapMessage.generationId;
     controlMessageToBroadcast.controlMessageUnion = versionSwapToBroadcast;
+
     return controlMessageToBroadcast;
   }
 }

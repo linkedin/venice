@@ -1049,6 +1049,17 @@ public class ConfigKeys {
       "server.adaptive.throttler.read.compute.latency.threshold";
 
   /**
+   * Config to enable parallel resource shutdown operation to speed up overall ingestion task shutdown.
+   */
+  public static final String SERVER_PARALLEL_RESOURCE_SHUTDOWN_ENABLED = "server.parallel.resource.shutdown.enabled";
+
+  /**
+   * Config for adaptive throttler signal refresh interval in seconds.
+   */
+  public static final String SERVER_ADAPTIVE_THROTTLER_SIGNAL_REFRESH_INTERVAL_IN_SECONDS =
+      "server.adaptive.throttler.signal.refresh.interval.in.seconds";
+
+  /**
    * A list of fully-qualified class names of all stats classes that needs to be initialized in isolated ingestion process,
    * separated by comma. This config will help isolated ingestion process to register extra stats needed for monitoring,
    * for example: JVM GC/Memory stats. All the classes defined here will be extending {@link com.linkedin.venice.stats.AbstractVeniceStats},
@@ -2942,4 +2953,11 @@ public class ConfigKeys {
    */
   public static final String SKIP_HYBRID_STORE_RT_TOPIC_COMPACTION_POLICY_UPDATE_ENABLED =
       "skip.hybrid.store.rt.topic.compaction.policy.update.enabled";
+  /**
+   * Whether the child controller in each data center will use the MultiRegionRealTimeTopicSwitcher to send version swap
+   * messages to the RT topics in remote data centers.
+   * Default is false (i.e. use the RealTimeTopicSwitcher to only write to local RT topic).
+   */
+  public static final String CONTROLLER_USE_MULTI_REGION_REAL_TIME_TOPIC_SWITCHER_ENABLED =
+      "controller.use.multi.region.real.time.topic.switcher.enabled";
 }

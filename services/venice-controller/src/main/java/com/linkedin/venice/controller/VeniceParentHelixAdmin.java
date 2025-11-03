@@ -1538,6 +1538,9 @@ public class VeniceParentHelixAdmin implements Admin {
     if (lastVersionNum == NON_EXISTING_VERSION || lastVersion == null) {
       LOGGER.info("Store {} does not have any version", storeName);
       return Optional.empty();
+    } else if (lastVersion.getStatus() == KILLED || lastVersion.getStatus() == ERROR) {
+      LOGGER.info("Store {} version {} is killed or in error state", storeName, lastVersionNum);
+      return Optional.empty();
     }
     LOGGER.info(
         "Found latest version status: {} for store: {}, version: {}",

@@ -157,7 +157,14 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
       long defaultBackupVersionRetentionMs,
       Time time,
       int currentVersion) {
+    List<Version> versions = store.getVersions();
 
+    // regardless of retention, if there are more than 2 versions, we should clean up
+    // except for the case where there are 3 versions and the second version is the current version indicating ongoing
+    // push
+    if (versions.stream().filter(v -> v.getNumber() < currentVersion).count() > 1) {
+      return true;
+    }
     long backupVersionRetentionMs = store.getBackupVersionRetentionMs();
     if (backupVersionRetentionMs < 0) {
       backupVersionRetentionMs = defaultBackupVersionRetentionMs;
@@ -252,18 +259,16 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
    */
   protected boolean cleanupBackupVersion(Store store, String clusterName) {
     int currentVersion = store.getCurrentVersion();
+    List<Version> versions = store.getVersions();
 
-    if (store.getCurrentVersion() == NON_EXISTING_VERSION || store.getVersions().size() < 2) {
+    if (store.getCurrentVersion() == NON_EXISTING_VERSION || versions.size() < 2) {
       return false;
     }
 
-    List<Version> versions = store.getVersions();
     if (!whetherStoreReadyToBeCleanup(store, admin.getBackupVersionDefaultRetentionMs(), time, currentVersion)) {
       // not ready to clean up backup versions yet, update the backup version ideal state to use 2 replicas after
       // minimal delay
-      if (multiClusterConfig.getControllerConfig(clusterName).isBackupVersionReplicaReductionEnabled()
-          && store.getLatestVersionPromoteToCurrentTimestamp() + minBackupVersionCleanupDelay < time
-              .getMilliseconds()) {
+      if (multiClusterConfig.getControllerConfig(clusterName).isBackupVersionReplicaReductionEnabled()) {
         for (Version version: versions) {
           if (version.getNumber() >= currentVersion) {
             continue;
