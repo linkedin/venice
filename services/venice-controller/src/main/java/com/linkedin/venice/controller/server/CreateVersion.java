@@ -342,6 +342,28 @@ public class CreateVersion extends AbstractRoute {
     response.setPartitions(referenceHybridVersion.getPartitionCount());
     response.setCompressionStrategy(CompressionStrategy.NO_OP);
     response.setKafkaTopic(Utils.getRealTimeTopicName(referenceHybridVersion));
+
+    // Override Kafka bootstrap servers if source grid fabric is set and feature is enabled
+    String sourceGridFabric = request.getSourceGridFabric();
+    if (sourceGridFabric != null
+        && admin.getControllerConfig(request.getClusterName()).isEnableStreamPushSourceGridFabricOverride()) {
+      String bootstrapServerAddress = admin.getNativeReplicationKafkaBootstrapServerAddress(sourceGridFabric);
+      if (bootstrapServerAddress == null) {
+        LOGGER.error(
+            "Failed to get the broker server URL for source grid fabric: {} for store: {} in cluster: {}. Will use default Kafka bootstrap servers.",
+            sourceGridFabric,
+            store.getName(),
+            request.getClusterName());
+      } else {
+        LOGGER.info(
+            "Stream push job source region is being overridden with: {} address: {} for store: {} in cluster: {}",
+            sourceGridFabric,
+            bootstrapServerAddress,
+            store.getName(),
+            request.getClusterName());
+        response.setKafkaBootstrapServers(bootstrapServerAddress);
+      }
+    }
   }
 
   /**

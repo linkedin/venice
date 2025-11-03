@@ -53,6 +53,7 @@ import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.acl.NoOpDynamicAccessController;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controller.Admin;
+import com.linkedin.venice.controller.VeniceControllerClusterConfig;
 import com.linkedin.venice.controllerapi.RequestTopicForPushRequest;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -867,6 +868,126 @@ public class CreateVersionTest {
     assertEquals(response.getPartitions(), 42);
     assertEquals(response.getCompressionStrategy(), CompressionStrategy.NO_OP);
     assertEquals(response.getKafkaTopic(), Utils.getRealTimeTopicName(mockVersion));
+    assertNull(
+        response.getKafkaBootstrapServers(),
+        "Bootstrap servers should not be set when source grid fabric is null");
+  }
+
+  @Test
+  public void testHandleStreamPushTypeWithSourceGridFabric() {
+    Admin admin = mock(Admin.class);
+    Store store = mock(Store.class);
+    when(store.getName()).thenReturn(STORE_NAME);
+    String clusterName = "CLUSTER_NAME";
+    String sourceGridFabric = "dc-source";
+    String sourceBootstrapServers = "source.kafka.bootstrap.com:9092";
+
+    RequestTopicForPushRequest request = new RequestTopicForPushRequest(clusterName, STORE_NAME, STREAM, "JOB_ID");
+    request.setSourceGridFabric(sourceGridFabric);
+
+    VersionCreationResponse response = new VersionCreationResponse();
+    CreateVersion createVersion = new CreateVersion(true, Optional.of(accessClient), false);
+
+    Version mockVersion = mock(Version.class);
+    when(mockVersion.getStoreName()).thenReturn(STORE_NAME);
+    when(mockVersion.getPartitionCount()).thenReturn(42);
+    when(admin.isParent()).thenReturn(false);
+    when(admin.getReferenceVersionForStreamingWrites(clusterName, STORE_NAME, "JOB_ID")).thenReturn(mockVersion);
+
+    // Mock controller config to enable the feature
+    VeniceControllerClusterConfig mockConfig = mock(VeniceControllerClusterConfig.class);
+    when(mockConfig.isEnableStreamPushSourceGridFabricOverride()).thenReturn(true);
+    when(admin.getControllerConfig(clusterName)).thenReturn(mockConfig);
+    when(admin.getNativeReplicationKafkaBootstrapServerAddress(sourceGridFabric)).thenReturn(sourceBootstrapServers);
+
+    // Execute
+    createVersion.handleStreamPushType(admin, store, request, response);
+
+    // Verify
+    assertEquals(response.getPartitions(), 42);
+    assertEquals(response.getCompressionStrategy(), CompressionStrategy.NO_OP);
+    assertEquals(response.getKafkaTopic(), Utils.getRealTimeTopicName(mockVersion));
+    assertEquals(
+        response.getKafkaBootstrapServers(),
+        sourceBootstrapServers,
+        "Bootstrap servers should be overridden when source grid fabric is set and feature is enabled");
+    verify(admin).getNativeReplicationKafkaBootstrapServerAddress(sourceGridFabric);
+  }
+
+  @Test
+  public void testHandleStreamPushTypeWithSourceGridFabricNotFound() {
+    Admin admin = mock(Admin.class);
+    Store store = mock(Store.class);
+    when(store.getName()).thenReturn(STORE_NAME);
+    String clusterName = "CLUSTER_NAME";
+    String sourceGridFabric = "dc-unknown";
+
+    RequestTopicForPushRequest request = new RequestTopicForPushRequest(clusterName, STORE_NAME, STREAM, "JOB_ID");
+    request.setSourceGridFabric(sourceGridFabric);
+
+    VersionCreationResponse response = new VersionCreationResponse();
+    CreateVersion createVersion = new CreateVersion(true, Optional.of(accessClient), false);
+
+    Version mockVersion = mock(Version.class);
+    when(mockVersion.getStoreName()).thenReturn(STORE_NAME);
+    when(mockVersion.getPartitionCount()).thenReturn(42);
+    when(admin.isParent()).thenReturn(false);
+    when(admin.getReferenceVersionForStreamingWrites(clusterName, STORE_NAME, "JOB_ID")).thenReturn(mockVersion);
+
+    // Mock controller config to enable the feature
+    VeniceControllerClusterConfig mockConfig = mock(VeniceControllerClusterConfig.class);
+    when(mockConfig.isEnableStreamPushSourceGridFabricOverride()).thenReturn(true);
+    when(admin.getControllerConfig(clusterName)).thenReturn(mockConfig);
+    when(admin.getNativeReplicationKafkaBootstrapServerAddress(sourceGridFabric)).thenReturn(null);
+
+    // Execute - should not throw exception, just log error and use default bootstrap servers
+    createVersion.handleStreamPushType(admin, store, request, response);
+
+    // Verify that bootstrap servers were not overridden (null means use default)
+    assertNull(
+        response.getKafkaBootstrapServers(),
+        "Bootstrap servers should not be set when source region address is not found");
+    assertEquals(response.getPartitions(), 42);
+    assertEquals(response.getCompressionStrategy(), CompressionStrategy.NO_OP);
+    assertEquals(response.getKafkaTopic(), Utils.getRealTimeTopicName(mockVersion));
+  }
+
+  @Test
+  public void testHandleStreamPushTypeWithSourceGridFabricFeatureDisabled() {
+    Admin admin = mock(Admin.class);
+    Store store = mock(Store.class);
+    when(store.getName()).thenReturn(STORE_NAME);
+    String clusterName = "CLUSTER_NAME";
+    String sourceGridFabric = "dc-source";
+
+    RequestTopicForPushRequest request = new RequestTopicForPushRequest(clusterName, STORE_NAME, STREAM, "JOB_ID");
+    request.setSourceGridFabric(sourceGridFabric);
+
+    VersionCreationResponse response = new VersionCreationResponse();
+    CreateVersion createVersion = new CreateVersion(true, Optional.of(accessClient), false);
+
+    Version mockVersion = mock(Version.class);
+    when(mockVersion.getStoreName()).thenReturn(STORE_NAME);
+    when(mockVersion.getPartitionCount()).thenReturn(42);
+    when(admin.isParent()).thenReturn(false);
+    when(admin.getReferenceVersionForStreamingWrites(clusterName, STORE_NAME, "JOB_ID")).thenReturn(mockVersion);
+
+    // Mock controller config with feature disabled
+    VeniceControllerClusterConfig mockConfig = mock(VeniceControllerClusterConfig.class);
+    when(mockConfig.isEnableStreamPushSourceGridFabricOverride()).thenReturn(false);
+    when(admin.getControllerConfig(clusterName)).thenReturn(mockConfig);
+
+    // Execute
+    createVersion.handleStreamPushType(admin, store, request, response);
+
+    // Verify that bootstrap servers were not overridden when feature is disabled
+    assertNull(response.getKafkaBootstrapServers(), "Bootstrap servers should not be set when feature is disabled");
+    assertEquals(response.getPartitions(), 42);
+    assertEquals(response.getCompressionStrategy(), CompressionStrategy.NO_OP);
+    assertEquals(response.getKafkaTopic(), Utils.getRealTimeTopicName(mockVersion));
+
+    // Verify getNativeReplicationKafkaBootstrapServerAddress was never called
+    verify(admin, never()).getNativeReplicationKafkaBootstrapServerAddress(anyString());
   }
 
   @Test
