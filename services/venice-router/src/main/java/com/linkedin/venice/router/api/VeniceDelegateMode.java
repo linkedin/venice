@@ -356,7 +356,6 @@ public class VeniceDelegateMode extends ScatterGatherMode {
     H minHost = null;
     for (H h: hosts) {
       Instance node = (Instance) h;
-      routeHttpRequestStats.recordHostConsidered(node.getNodeId());
       if (!path.canRequestStorageNode(node.getNodeId()))
         continue;
       long pendingRequestCount = routeHttpRequestStats.getPendingRequestCount(node.getNodeId());
@@ -382,7 +381,6 @@ public class VeniceDelegateMode extends ScatterGatherMode {
       }
     }
     H finalHost = minHost;
-    routeHttpRequestStats.recordHostSelected(((Instance) finalHost).getNodeId());
     hosts.removeIf(aHost -> !aHost.equals(finalHost));
     host = finalHost;
     return host;
