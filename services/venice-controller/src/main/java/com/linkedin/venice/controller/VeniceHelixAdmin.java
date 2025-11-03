@@ -2235,17 +2235,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     StoreGraveyard storeGraveyard = getStoreGraveyard();
     VeniceControllerClusterConfig config = clusterResources.getConfig();
 
-    // Get the creation time of the store in the graveyard (when it was deleted)
-    long deletedTime = storeGraveyard.getStoreGraveyardCreationTime(clusterName, storeName);
+    // Get the deletion time of the store in the graveyard (when it was deleted)
+    long deletedTime = storeGraveyard.getStoreDeletedTime(clusterName, storeName);
 
     // If store exists in graveyard, check the time window
     if (deletedTime != HelixStoreGraveyard.STORE_NOT_IN_GRAVEYARD) {
       long currentTime = System.currentTimeMillis();
-
-      long timeWindowMs = (long) config.getStoreRecreationAfterDeletionTimeWindowSeconds() * Time.MS_PER_SECOND; // Convert
-                                                                                                                 // seconds
-                                                                                                                 // to
-                                                                                                                 // milliseconds
+      long timeWindowMs = (long) config.getStoreRecreationAfterDeletionTimeWindowSeconds() * Time.MS_PER_SECOND;
       long timeSinceDeletion = currentTime - deletedTime;
 
       if (timeSinceDeletion < timeWindowMs) {

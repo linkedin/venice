@@ -45,12 +45,12 @@ public interface StoreGraveyard {
   List<String> listStoreNamesFromGraveyard(String clusterName);
 
   /**
-   * Get the creation time of a store in the graveyard.
-   * This returns the time when the store was put into the graveyard.
-   * 
+   * Get the deletion time of a store in the graveyard.
+   * This returns the time when the store was last updated in the graveyard (via updateZNode).
+   *
    * @param clusterName the cluster name
    * @param storeName the store name
-   * @return the creation time in milliseconds since epoch, or a negative value if the store doesn't exist in graveyard
+   * @return the deletion time in milliseconds since epoch, or STORE_NOT_IN_GRAVEYARD if the store doesn't exist in graveyard
    */
-  long getStoreGraveyardCreationTime(String clusterName, String storeName);
+  long getStoreDeletedTime(String clusterName, String storeName);
 }

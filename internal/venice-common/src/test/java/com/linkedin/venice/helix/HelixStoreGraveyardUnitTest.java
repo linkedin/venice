@@ -136,7 +136,7 @@ public class HelixStoreGraveyardUnitTest {
   }
 
   @Test
-  void testGetStoreGraveyardCreationTime() {
+  void testGetStoreDeletedTime() {
     String clusterName = "testCluster";
     String storeName = "testStore";
     String path = graveyard.getStoreGraveyardPath(clusterName, storeName);
@@ -148,16 +148,16 @@ public class HelixStoreGraveyardUnitTest {
     // Test case 1: Store exists in graveyard - should return creation time
     Stat mockStat = mock(Stat.class);
     long expectedCreationTime = 1234567890L;
-    when(mockStat.getCtime()).thenReturn(expectedCreationTime);
+    when(mockStat.getMtime()).thenReturn(expectedCreationTime);
     when(mockDataAccessor.getStat(eq(path), eq(AccessOption.PERSISTENT))).thenReturn(mockStat);
 
-    long actualCreationTime = graveyard.getStoreGraveyardCreationTime(clusterName, storeName);
+    long actualCreationTime = graveyard.getStoreDeletedTime(clusterName, storeName);
     assertEquals(actualCreationTime, expectedCreationTime);
 
     // Test case 2: Store does not exist in graveyard - should return STORE_NOT_IN_GRAVEYARD
     when(mockDataAccessor.getStat(eq(path), eq(AccessOption.PERSISTENT))).thenReturn(null);
 
-    long nonExistentStoreTime = graveyard.getStoreGraveyardCreationTime(clusterName, storeName);
+    long nonExistentStoreTime = graveyard.getStoreDeletedTime(clusterName, storeName);
     assertEquals(nonExistentStoreTime, HelixStoreGraveyard.STORE_NOT_IN_GRAVEYARD);
   }
 }

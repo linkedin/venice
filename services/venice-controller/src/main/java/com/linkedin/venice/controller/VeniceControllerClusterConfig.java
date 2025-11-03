@@ -1095,8 +1095,7 @@ public class VeniceControllerClusterConfig {
     this.storeGraveyardCleanupSleepIntervalBetweenListFetchMinutes =
         props.getInt(CONTROLLER_STORE_GRAVEYARD_CLEANUP_SLEEP_INTERVAL_BETWEEN_LIST_FETCH_MINUTES, 15);
     this.storeRecreationAfterDeletionTimeWindowSeconds =
-        props.getInt(CONTROLLER_STORE_RECREATION_AFTER_DELETION_TIME_WINDOW_SECONDS, 21600); // Default 6 hours in
-                                                                                             // seconds
+        props.getInt(CONTROLLER_STORE_RECREATION_AFTER_DELETION_TIME_WINDOW_SECONDS, 21600);
     this.parentSystemStoreRepairServiceEnabled =
         props.getBoolean(CONTROLLER_PARENT_SYSTEM_STORE_REPAIR_SERVICE_ENABLED, false);
     this.parentSystemStoreRepairCheckIntervalSeconds =

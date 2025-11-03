@@ -207,21 +207,23 @@ public class HelixStoreGraveyard implements StoreGraveyard {
   }
 
   /**
-   * Get the creation time of a store in the graveyard.
-   * This returns the time when the store was put into the graveyard (via updateZNode).
-   * 
+   * Get the deletion time of a store in the graveyard.
+   * This returns the modification time of the ZNode, which represents when the store was last put into 
+   * the graveyard or when the graveyard entry was last updated. Note that this may not be the original 
+   * deletion time if the store has been deleted multiple times or the graveyard entry has been modified.
+   *
    * @param clusterName the cluster name
    * @param storeName the store name
-   * @return the creation time in milliseconds since epoch, or STORE_NOT_IN_GRAVEYARD if the store doesn't exist in graveyard
+   * @return the ZNode modification time in milliseconds since epoch, or STORE_NOT_IN_GRAVEYARD if the store doesn't exist in graveyard
    */
-  public long getStoreGraveyardCreationTime(String clusterName, String storeName) {
+  public long getStoreDeletedTime(String clusterName, String storeName) {
     String path = getStoreGraveyardPath(clusterName, storeName);
     Stat stat = dataAccessor.getStat(path, AccessOption.PERSISTENT);
     if (stat == null) {
       LOGGER.debug("Store {} does not exist in graveyard for cluster {}", storeName, clusterName);
       return STORE_NOT_IN_GRAVEYARD;
     }
-    return stat.getCtime();
+    return stat.getMtime();
   }
 
   @Override

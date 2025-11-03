@@ -1448,7 +1448,7 @@ public class TestVeniceHelixAdmin {
 
     // Test Case 1: Store does not exist in graveyard - should pass
     doReturn(HelixStoreGraveyard.STORE_NOT_IN_GRAVEYARD).when(storeGraveyard)
-        .getStoreGraveyardCreationTime(clusterName, storeName);
+        .getStoreDeletedTime(clusterName, storeName);
     admin.checkStoreGraveyardForRecreation(clusterName, storeName); // Should not throw
 
     // Test Case 2: Store deleted within time window - should throw exception
@@ -1456,7 +1456,7 @@ public class TestVeniceHelixAdmin {
     long deletedTime = currentTime - (2 * Time.MS_PER_HOUR); // 2 hours ago (7200 seconds)
     int timeWindowSeconds = 21600; // 6-hour window in seconds
 
-    doReturn(deletedTime).when(storeGraveyard).getStoreGraveyardCreationTime(clusterName, storeName);
+    doReturn(deletedTime).when(storeGraveyard).getStoreDeletedTime(clusterName, storeName);
     doReturn(timeWindowSeconds).when(config).getStoreRecreationAfterDeletionTimeWindowSeconds();
 
     VeniceException exception =
@@ -1468,19 +1468,20 @@ public class TestVeniceHelixAdmin {
 
     // Test Case 3: Store deleted outside time window - should pass
     long oldDeletedTime = currentTime - (8 * Time.MS_PER_HOUR); // 8 hours ago (28800 seconds)
-    doReturn(oldDeletedTime).when(storeGraveyard).getStoreGraveyardCreationTime(clusterName, storeName);
+    doReturn(oldDeletedTime).when(storeGraveyard).getStoreDeletedTime(clusterName, storeName);
     admin.checkStoreGraveyardForRecreation(clusterName, storeName); // Should not throw
 
     // Test Case 4: Store deleted exactly at time window boundary - should pass
-    long boundaryDeletedTime = currentTime - (timeWindowSeconds * Time.MS_PER_SECOND); // Exactly 21600 seconds ago
-    doReturn(boundaryDeletedTime).when(storeGraveyard).getStoreGraveyardCreationTime(clusterName, storeName);
+    long boundaryDeletedTime = currentTime - ((long) timeWindowSeconds * Time.MS_PER_SECOND); // Exactly 21600 seconds
+                                                                                              // ago
+    doReturn(boundaryDeletedTime).when(storeGraveyard).getStoreDeletedTime(clusterName, storeName);
     admin.checkStoreGraveyardForRecreation(clusterName, storeName); // Should not throw
 
     // Test Case 5: Custom time window configuration
-    long recentDeletedTime = currentTime - (30 * 60 * 1000L); // 30 minutes ago (1800 seconds)
+    long recentDeletedTime = currentTime - (30 * Time.MS_PER_MINUTE); // 30 minutes ago (1800 seconds)
     int customTimeWindowSeconds = 3600; // 1-hour window in seconds
 
-    doReturn(recentDeletedTime).when(storeGraveyard).getStoreGraveyardCreationTime(clusterName, storeName);
+    doReturn(recentDeletedTime).when(storeGraveyard).getStoreDeletedTime(clusterName, storeName);
     doReturn(customTimeWindowSeconds).when(config).getStoreRecreationAfterDeletionTimeWindowSeconds();
 
     VeniceException customException =
