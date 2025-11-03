@@ -32,7 +32,15 @@ public class AvroStoreDeserializerCache<T> implements StoreDeserializerCache<T> 
     this(schemaReader::getValueSchema, FastSerializerDeserializerFactory::getFastAvroGenericDeserializer);
   }
 
-  private AvroStoreDeserializerCache(
+  /**
+   * Constructor that allows custom deserializer factory to be provided.
+   * This enables support for custom serialization formats (e.g., Protocol Buffers)
+   * while reusing the caching infrastructure.
+   *
+   * @param schemaGetter Function to retrieve schema by schema ID
+   * @param deserializerGetter Function to create deserializer given writer and reader schemas
+   */
+  public AvroStoreDeserializerCache(
       IntFunction<Schema> schemaGetter,
       BiFunction<Schema, Schema, RecordDeserializer<T>> deserializerGetter) {
     this.cache = new BiIntKeyCache<>(
