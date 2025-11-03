@@ -48,16 +48,6 @@ public class RouteHttpRequestStats {
     stats.recordUnhealthyQueueDuration(duration);
   }
 
-  public void recordHostConsidered(String hostName) {
-    InternalHostStats stats = routeStatsMap.computeIfAbsent(hostName, h -> new InternalHostStats(metricsRepository, h));
-    stats.recordHostConsidered();
-  }
-
-  public void recordHostSelected(String hostName) {
-    InternalHostStats stats = routeStatsMap.computeIfAbsent(hostName, h -> new InternalHostStats(metricsRepository, h));
-    stats.recordHostSelected();
-  }
-
   public long getPendingRequestCount(String hostName) {
     InternalHostStats stat = routeStatsMap.get(hostName);
     if (stat == null) {
@@ -72,16 +62,11 @@ public class RouteHttpRequestStats {
     private final Sensor unhealthyPendingRateSensor;
     private AtomicLong pendingRequestCount;
     private final Sensor pendingRequestCountSensor;
-    /** Number of times a host was considered in least loaded routing */
-    private final Sensor hostConsideredCountSensor;
-    /** Number of times a host was actually selected in least loaded routing  */
-    private final Sensor hostSelectedCountSensor;
 
     public InternalHostStats(MetricsRepository metricsRepository, String hostName) {
       super(metricsRepository, StatsUtils.convertHostnameToMetricName(hostName));
       this.pendingRequestCount = new AtomicLong();
-      this.pendingRequestCountSensor =
-          registerSensor("pending_request_count", new OccurrenceRate(), new Avg(), new Max());
+      this.pendingRequestCountSensor = registerSensor("pending_request_count", new Avg(), new Max());
 
       this.unhealthyPendingQueueDuration = registerSensor(
           "unhealthy_pending_queue_duration_per_route",
@@ -90,8 +75,6 @@ public class RouteHttpRequestStats {
           new Max(),
           new SampledTotal());
       this.unhealthyPendingRateSensor = registerSensor("unhealthy_pending_queue_per_route", new OccurrenceRate());
-      this.hostConsideredCountSensor = registerSensor("host_considered_for_least_loaded_routing", new OccurrenceRate());
-      this.hostSelectedCountSensor = registerSensor("host_selected_by_least_loaded_routing", new OccurrenceRate());
     }
 
     public void recordPendingRequestCount() {
@@ -105,14 +88,6 @@ public class RouteHttpRequestStats {
     public void recordUnhealthyQueueDuration(double duration) {
       unhealthyPendingRateSensor.record();
       unhealthyPendingQueueDuration.record(duration);
-    }
-
-    public void recordHostConsidered() {
-      hostConsideredCountSensor.record();
-    }
-
-    public void recordHostSelected() {
-      hostSelectedCountSensor.record();
     }
   }
 }
