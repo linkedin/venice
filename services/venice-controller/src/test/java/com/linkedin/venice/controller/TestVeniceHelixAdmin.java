@@ -66,6 +66,7 @@ import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
+import com.linkedin.venice.pushmonitor.PushMonitorDelegator;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreWriter;
 import com.linkedin.venice.stats.dimensions.StoreRepushTriggerSource;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
@@ -1428,5 +1429,161 @@ public class TestVeniceHelixAdmin {
       verify(mockPushWriter).writeHeartbeat(eq(userStore), eq(timestamp));
       verify(mockMetaWriter).writeHeartbeat(eq(userStore), eq(timestamp));
     }
+  }
+
+  /**
+   * Test that killed versions are skipped when checking incremental push status.
+   */
+  @Test
+  public void testGetOfflinePushStatusSkipsKilledVersionsForIncrementalPush() {
+    String testStoreName = "test-store";
+    String testClusterName = "test-cluster";
+    String incrementalPushVersion = "test-inc-push-v1";
+
+    // Create mock store with multiple versions
+    Store store = mock(Store.class);
+    when(store.getName()).thenReturn(testStoreName);
+
+    // Version 1: ONLINE with incremental push enabled (should be checked)
+    Version version1 = mock(Version.class);
+    when(version1.getNumber()).thenReturn(1);
+    when(version1.isIncrementalPushEnabled()).thenReturn(true);
+    when(version1.getStatus()).thenReturn(VersionStatus.ONLINE);
+
+    // Version 2: KILLED with incremental push enabled (should be skipped)
+    Version version2 = mock(Version.class);
+    when(version2.getNumber()).thenReturn(2);
+    when(version2.isIncrementalPushEnabled()).thenReturn(true);
+    when(version2.getStatus()).thenReturn(VersionStatus.KILLED);
+
+    // Version 3: ERROR with incremental push enabled (should be skipped)
+    Version version3 = mock(Version.class);
+    when(version3.getNumber()).thenReturn(3);
+    when(version3.isIncrementalPushEnabled()).thenReturn(true);
+    when(version3.getStatus()).thenReturn(VersionStatus.ERROR);
+
+    // Version 4: ONLINE but incremental push disabled (should be skipped)
+    Version version4 = mock(Version.class);
+    when(version4.getNumber()).thenReturn(4);
+    when(version4.isIncrementalPushEnabled()).thenReturn(false);
+    when(version4.getStatus()).thenReturn(VersionStatus.ONLINE);
+
+    List<Version> versions = Arrays.asList(version1, version2, version3, version4);
+    when(store.getVersions()).thenReturn(versions);
+
+    // Mock admin and required dependencies
+    VeniceHelixAdmin admin = mock(VeniceHelixAdmin.class);
+    HelixVeniceClusterResources clusterResources = mock(HelixVeniceClusterResources.class);
+    PushMonitorDelegator pushMonitor = mock(PushMonitorDelegator.class);
+
+    when(clusterResources.getPushMonitor()).thenReturn(pushMonitor);
+
+    // Mock getOfflinePushStatusInfo to return a dummy status
+    Admin.OfflinePushStatusInfo dummyStatus = new Admin.OfflinePushStatusInfo(ExecutionStatus.STARTED);
+    when(admin.getOfflinePushStatusInfo(anyString(), anyString(), any(), any(), any(), anyInt(), anyBoolean()))
+        .thenReturn(dummyStatus);
+
+    doCallRealMethod().when(admin)
+        .getOffLinePushStatus(eq(testClusterName), anyString(), eq(Optional.of(incrementalPushVersion)), any(), any());
+
+    doNothing().when(admin).checkControllerLeadershipFor(testClusterName);
+    when(admin.getStore(testClusterName, testStoreName)).thenReturn(store);
+    when(admin.getHelixVeniceClusterResources(testClusterName)).thenReturn(clusterResources);
+
+    // Call the actual method
+    String kafkaTopic = Version.composeKafkaTopic(testStoreName, 1);
+    admin.getOffLinePushStatus(testClusterName, kafkaTopic, Optional.of(incrementalPushVersion), null, null);
+
+    // Verify getOfflinePushStatusInfo is called only for version 1 (ONLINE with incremental push)
+    verify(admin, times(1)).getOfflinePushStatusInfo(
+        eq(testClusterName),
+        eq(Version.composeKafkaTopic(testStoreName, 1)),
+        eq(Optional.of(incrementalPushVersion)),
+        eq(pushMonitor),
+        eq(store),
+        eq(1),
+        eq(false));
+
+    // Verify KILLED, ERROR, and non-incremental versions are never checked
+    verify(admin, never()).getOfflinePushStatusInfo(
+        anyString(),
+        eq(Version.composeKafkaTopic(testStoreName, 2)),
+        any(),
+        any(),
+        any(),
+        anyInt(),
+        anyBoolean());
+    verify(admin, never()).getOfflinePushStatusInfo(
+        anyString(),
+        eq(Version.composeKafkaTopic(testStoreName, 3)),
+        any(),
+        any(),
+        any(),
+        anyInt(),
+        anyBoolean());
+    verify(admin, never()).getOfflinePushStatusInfo(
+        anyString(),
+        eq(Version.composeKafkaTopic(testStoreName, 4)),
+        any(),
+        any(),
+        any(),
+        anyInt(),
+        anyBoolean());
+  }
+
+  /**
+   * Test that when all versions are killed/error, the method returns NOT_CREATED status.
+   */
+  @Test
+  public void testGetOfflinePushStatusReturnsNotCreatedWhenAllVersionsSkipped() {
+    String testStoreName = "test-store";
+    String testClusterName = "test-cluster";
+    String incrementalPushVersion = "test-inc-push-v1";
+
+    // Create mock store with only killed/error versions
+    Store store = mock(Store.class);
+    when(store.getName()).thenReturn(testStoreName);
+
+    // Version 1: KILLED
+    Version version1 = mock(Version.class);
+    when(version1.getNumber()).thenReturn(1);
+    when(version1.isIncrementalPushEnabled()).thenReturn(true);
+    when(version1.getStatus()).thenReturn(VersionStatus.KILLED);
+
+    // Version 2: ERROR
+    Version version2 = mock(Version.class);
+    when(version2.getNumber()).thenReturn(2);
+    when(version2.isIncrementalPushEnabled()).thenReturn(true);
+    when(version2.getStatus()).thenReturn(VersionStatus.ERROR);
+
+    List<Version> versions = Arrays.asList(version1, version2);
+    when(store.getVersions()).thenReturn(versions);
+
+    // Mock admin and required dependencies
+    VeniceHelixAdmin admin = mock(VeniceHelixAdmin.class);
+    HelixVeniceClusterResources clusterResources = mock(HelixVeniceClusterResources.class);
+    PushMonitorDelegator pushMonitor = mock(PushMonitorDelegator.class);
+
+    when(clusterResources.getPushMonitor()).thenReturn(pushMonitor);
+
+    doCallRealMethod().when(admin)
+        .getOffLinePushStatus(eq(testClusterName), anyString(), eq(Optional.of(incrementalPushVersion)), any(), any());
+
+    doNothing().when(admin).checkControllerLeadershipFor(testClusterName);
+    when(admin.getStore(testClusterName, testStoreName)).thenReturn(store);
+    when(admin.getHelixVeniceClusterResources(testClusterName)).thenReturn(clusterResources);
+
+    // Call the actual method
+    String kafkaTopic = Version.composeKafkaTopic(testStoreName, 1);
+    Admin.OfflinePushStatusInfo result =
+        admin.getOffLinePushStatus(testClusterName, kafkaTopic, Optional.of(incrementalPushVersion), null, null);
+
+    // Verify getOfflinePushStatusInfo was never called since all versions are filtered out
+    verify(admin, never())
+        .getOfflinePushStatusInfo(anyString(), anyString(), any(), any(), any(), anyInt(), anyBoolean());
+
+    // Verify result is NOT_CREATED
+    assertEquals(result.getExecutionStatus(), ExecutionStatus.NOT_CREATED);
+    assertTrue(result.getStatusDetails().contains("Offline job hasn't been created yet"));
   }
 }

@@ -7126,7 +7126,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     return monitor.getIncrementalPushStatusAndDetails(kafkaTopic, incrementalPushVersion, cvRepo);
   }
 
-  private OfflinePushStatusInfo getOfflinePushStatusInfo(
+  OfflinePushStatusInfo getOfflinePushStatusInfo(
       String clusterName,
       String kafkaTopic,
       Optional<String> incrementalPushVersion,
