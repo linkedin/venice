@@ -158,10 +158,8 @@ public class AdminConsumptionTask implements Runnable, Closeable {
 
   private boolean isSubscribed;
   private final PubSubConsumerAdapter consumer;
-  private volatile long offsetToSkip = UNASSIGNED_VALUE;
   private volatile PubSubPosition positionToSkip = PubSubSymbolicPosition.EARLIEST;
   private volatile long executionIdToSkip = UNASSIGNED_VALUE;
-  private volatile long offsetToSkipDIV = UNASSIGNED_VALUE;
   private volatile PubSubPosition positionToSkipDIV = PubSubSymbolicPosition.EARLIEST;
   private volatile long executionIdToSkipDIV = UNASSIGNED_VALUE;
   /**
@@ -480,9 +478,9 @@ public class AdminConsumptionTask implements Runnable, Closeable {
       undelegatedRecords.clear();
       failingPosition = PubSubSymbolicPosition.EARLIEST;
       failingExecutionId = UNASSIGNED_VALUE;
-      offsetToSkip = UNASSIGNED_VALUE;
+      positionToSkip = PubSubSymbolicPosition.EARLIEST;
       executionIdToSkip = UNASSIGNED_VALUE;
-      offsetToSkipDIV = UNASSIGNED_VALUE;
+      positionToSkipDIV = PubSubSymbolicPosition.EARLIEST;
       executionIdToSkipDIV = UNASSIGNED_VALUE;
       lastDelegatedExecutionId = UNASSIGNED_VALUE;
       lastPersistedExecutionId = UNASSIGNED_VALUE;
@@ -534,7 +532,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
           continue;
         }
         PubSubPosition adminMessagePosition = nextOp.getPosition();
-        if (checkOffsetToSkip(adminMessagePosition.getNumericOffset(), false)) {
+        if (checkPositionToSkip(adminMessagePosition, false)) {
           storeQueue.remove();
           skipOffsetCommandHasBeenProcessed = true;
         }
@@ -575,7 +573,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
       }
     }
     if (skipOffsetCommandHasBeenProcessed) {
-      resetOffsetToSkip();
+      resetPositionToSkip();
     }
     if (skipExecutionIdCommandHasBeenProcessed) {
       resetExecutionIdToSkip();
@@ -794,7 +792,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
    * @return corresponding executionId if applicable.
    */
   private long delegateMessage(DefaultPubSubMessage record) {
-    if (checkOffsetToSkip(record.getPosition().getNumericOffset(), true) || !shouldProcessRecord(record)) {
+    if (checkPositionToSkip(record.getPosition(), true) || !shouldProcessRecord(record)) {
       // Return lastDelegatedExecutionId to update the offset without changing the execution id. Skip DIV should/can be
       // used if the skip requires executionId to be reset because this skip here is skipping the message without doing
       // any processing. This may be the case when a message cannot be deserialized properly therefore we don't know
@@ -937,7 +935,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
   }
 
   private void checkAndValidateMessage(long incomingExecutionId, DefaultPubSubMessage record) {
-    if (checkOffsetToSkipDIV(record.getPosition().getNumericOffset()) || checkExecutionIdToSkipDIV(incomingExecutionId)
+    if (checkOffsetToSkipDIV(record.getPosition()) || checkExecutionIdToSkipDIV(incomingExecutionId)
         || lastDelegatedExecutionId == UNASSIGNED_VALUE) {
       lastDelegatedExecutionId = incomingExecutionId;
       LOGGER.info(
@@ -1090,8 +1088,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
       positionToSkipDIV = position;
     } else {
       throw new VeniceException(
-          "Cannot skip a position that isn't the first one failing. Last failed position is: "
-              + failingPosition.getNumericOffset());
+          "Cannot skip a position that isn't the first one failing. Last failed position is: " + failingPosition);
     }
   }
 
@@ -1105,20 +1102,20 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     }
   }
 
-  private void resetOffsetToSkip() {
-    offsetToSkip = UNASSIGNED_VALUE;
+  private void resetPositionToSkip() {
+    positionToSkip = PubSubSymbolicPosition.EARLIEST;
   }
 
   private void resetExecutionIdToSkip() {
     executionIdToSkip = UNASSIGNED_VALUE;
   }
 
-  private boolean checkOffsetToSkip(long offset, boolean reset) {
+  private boolean checkPositionToSkip(PubSubPosition position, boolean reset) {
     boolean skip = false;
-    if (offset == offsetToSkip) {
-      LOGGER.warn("Skipping admin message with offset {} as instructed", offset);
+    if (position.equals(positionToSkip)) {
+      LOGGER.warn("Skipping admin message with position {} as instructed", positionToSkip);
       if (reset) {
-        resetOffsetToSkip();
+        resetPositionToSkip();
       }
       skip = true;
     }
@@ -1137,11 +1134,11 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     return skip;
   }
 
-  private boolean checkOffsetToSkipDIV(long offset) {
+  private boolean checkOffsetToSkipDIV(PubSubPosition position) {
     boolean skip = false;
-    if (offset == offsetToSkipDIV) {
-      LOGGER.warn("Skipping DIV for admin message with offset {} as instructed", offset);
-      offsetToSkipDIV = UNASSIGNED_VALUE;
+    if (position.equals(positionToSkipDIV)) {
+      LOGGER.warn("Skipping DIV for admin message with position {} as instructed", position);
+      positionToSkipDIV = PubSubSymbolicPosition.EARLIEST;
       skip = true;
     }
     return skip;
