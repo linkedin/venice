@@ -172,8 +172,11 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
   }
 
   @Test
-  public void testStartAllPartitions() {
-    bootstrappingVeniceChangelogConsumer.start();
+  public void testStartAllPartitions() throws ExecutionException, InterruptedException {
+    // Completable future should finish even when no records are consumed after timeout
+    bootstrappingVeniceChangelogConsumer.setStartTimeout(1);
+    bootstrappingVeniceChangelogConsumer.start().get();
+
     assertTrue(bootstrappingVeniceChangelogConsumer.isStarted(), "isStarted should be true");
 
     verify(mockDaVinciClient).start();

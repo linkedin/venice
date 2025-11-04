@@ -65,7 +65,7 @@ import org.apache.logging.log4j.Logger;
 public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
     implements BootstrappingVeniceChangelogConsumer<K, V>, VeniceChangelogConsumer<K, V> {
   private static final Logger LOGGER = LogManager.getLogger(VeniceChangelogConsumerDaVinciRecordTransformerImpl.class);
-  private static final long START_TIMEOUT_IN_MINUTES = 1;
+  private long START_TIMEOUT_IN_SECONDS = 60;
 
   private final ChangelogClientConfig changelogClientConfig;
   private final String storeName;
@@ -211,10 +211,10 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
          * calls poll, they don't get an empty response. This also signals that blob transfer was completed
          * for at least one partition.
          */
-        if (!startLatch.await(START_TIMEOUT_IN_MINUTES, TimeUnit.MINUTES)) {
+        if (!startLatch.await(START_TIMEOUT_IN_SECONDS, TimeUnit.SECONDS)) {
           LOGGER.warn(
-              "Unable to receive a message after {} minute(s). Moving on to unblock start.",
-              START_TIMEOUT_IN_MINUTES);
+              "Unable to receive a message after {} seconds. Moving on to unblock start.",
+              START_TIMEOUT_IN_SECONDS);
         }
 
         if (changeCaptureStats != null) {
@@ -712,5 +712,10 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   @VisibleForTesting
   public Set<Integer> getSubscribedPartitions() {
     return subscribedPartitions;
+  }
+
+  @VisibleForTesting
+  public void setStartTimeout(long seconds) {
+    START_TIMEOUT_IN_SECONDS = seconds;
   }
 }
