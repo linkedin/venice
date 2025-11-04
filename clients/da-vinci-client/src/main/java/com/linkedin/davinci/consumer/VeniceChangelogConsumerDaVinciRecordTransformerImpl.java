@@ -22,7 +22,6 @@ import com.linkedin.venice.annotation.Experimental;
 import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.ClientConfig;
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubTopicImpl;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
@@ -191,13 +190,24 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
     startDaVinciClient();
 
     // If a user passes in empty partitions set, we subscribe to all partitions
+    Set<Integer> targetPartitions = new HashSet<>();
     if (partitions.isEmpty()) {
       for (int i = 0; i < daVinciClient.getPartitionCount(); i++) {
-        subscribedPartitions.add(i);
+        targetPartitions.add(i);
       }
     } else {
-      subscribedPartitions.addAll(partitions);
+      targetPartitions.addAll(partitions);
     }
+
+    // Check for intersection with already subscribed partitions
+    Set<Integer> intersection = new HashSet<>(subscribedPartitions);
+    intersection.retainAll(targetPartitions);
+    if (!intersection.isEmpty()) {
+      throw new VeniceClientException(
+          "Cannot subscribe to partitions: " + intersection + " as they are already subscribed");
+    }
+
+    subscribedPartitions.addAll(targetPartitions);
 
     CompletableFuture<Void> startFuture = CompletableFuture.supplyAsync(() -> {
       try {
@@ -235,7 +245,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
     subscriptionCall.apply(subscribedPartitions).whenComplete((result, error) -> {
       if (error != null) {
         LOGGER.error("Failed to subscribe to partitions: {} for store: {}", subscribedPartitions, storeName, error);
-        startFuture.completeExceptionally(new VeniceException(error));
+        startFuture.completeExceptionally(new VeniceClientException(error));
         return;
       }
 
@@ -292,10 +302,20 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   }
 
   public void unsubscribe(Set<Integer> partitions) {
+    for (int partition: partitions) {
+      subscribedPartitions.remove(partition);
+      partitionToVersionToServe.remove(partition);
+      currentVersionLastHeartbeat.remove(partition);
+      consumerSequenceIdGeneratorMap.remove(partition);
+    }
     this.daVinciClient.unsubscribe(partitions);
   }
 
   public void unsubscribeAll() {
+    subscribedPartitions.clear();
+    partitionToVersionToServe.clear();
+    currentVersionLastHeartbeat.clear();
+    consumerSequenceIdGeneratorMap.clear();
     this.daVinciClient.unsubscribeAll();
   }
 

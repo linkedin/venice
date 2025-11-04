@@ -34,6 +34,7 @@ import com.linkedin.davinci.client.DaVinciRecordTransformerRecordMetadata;
 import com.linkedin.davinci.client.DaVinciRecordTransformerResult;
 import com.linkedin.davinci.client.SeekableDaVinciClient;
 import com.linkedin.davinci.consumer.stats.BasicConsumerStats;
+import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
@@ -207,7 +208,13 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
     Set<Integer> partitionSet = Collections.singleton(1);
     bootstrappingVeniceChangelogConsumer.start();
 
+    assertThrows(VeniceClientException.class, () -> bootstrappingVeniceChangelogConsumer.start());
+    assertThrows(VeniceException.class, () -> bootstrappingVeniceChangelogConsumer.start(partitionSet));
+
+    bootstrappingVeniceChangelogConsumer.unsubscribeAll();
     bootstrappingVeniceChangelogConsumer.start();
+
+    bootstrappingVeniceChangelogConsumer.unsubscribe(partitionSet);
     bootstrappingVeniceChangelogConsumer.start(partitionSet);
   }
 
