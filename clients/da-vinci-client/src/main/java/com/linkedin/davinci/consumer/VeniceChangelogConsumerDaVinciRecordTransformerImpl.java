@@ -302,21 +302,21 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   }
 
   public void unsubscribe(Set<Integer> partitions) {
+    this.daVinciClient.unsubscribe(partitions);
     for (int partition: partitions) {
       subscribedPartitions.remove(partition);
       partitionToVersionToServe.remove(partition);
       currentVersionLastHeartbeat.remove(partition);
       consumerSequenceIdGeneratorMap.remove(partition);
     }
-    this.daVinciClient.unsubscribe(partitions);
   }
 
   public void unsubscribeAll() {
+    this.daVinciClient.unsubscribeAll();
     subscribedPartitions.clear();
     partitionToVersionToServe.clear();
     currentVersionLastHeartbeat.clear();
     consumerSequenceIdGeneratorMap.clear();
-    this.daVinciClient.unsubscribeAll();
   }
 
   public CompletableFuture<Void> seekToBeginningOfPush(Set<Integer> partitions) {
