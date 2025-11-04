@@ -8,6 +8,7 @@ import static com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory.
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.doCallRealMethod;
@@ -29,11 +30,12 @@ import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.d2.balancer.D2Client;
-import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
 import com.linkedin.davinci.client.DaVinciRecordTransformerRecordMetadata;
 import com.linkedin.davinci.client.DaVinciRecordTransformerResult;
+import com.linkedin.davinci.client.SeekableDaVinciClient;
 import com.linkedin.davinci.consumer.stats.BasicConsumerStats;
+import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
@@ -86,7 +88,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
   private VeniceChangelogConsumerDaVinciRecordTransformerImpl.DaVinciRecordTransformerChangelogConsumer futureRecordTransformer;
   private ChangelogClientConfig changelogClientConfig;
   private DaVinciRecordTransformerConfig mockDaVinciRecordTransformerConfig;
-  private DaVinciClient mockDaVinciClient;
+  private SeekableDaVinciClient mockDaVinciClient;
   private CompletableFuture<Void> daVinciClientSubscribeFuture;
   private List<Lazy<Integer>> keys;
   private BasicConsumerStats changeCaptureStats;
@@ -122,9 +124,10 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
         .setMetricsRepository(getVeniceMetricsRepository(CHANGE_DATA_CAPTURE_CLIENT, CONSUMER_METRIC_ENTITIES, true));
 
     veniceChangelogConsumerClientFactory = spy(new VeniceChangelogConsumerClientFactory(changelogClientConfig, null));
-    bootstrappingVeniceChangelogConsumer = new VeniceChangelogConsumerDaVinciRecordTransformerImpl<>(
-        changelogClientConfig,
-        veniceChangelogConsumerClientFactory);
+    bootstrappingVeniceChangelogConsumer = spy(
+        new VeniceChangelogConsumerDaVinciRecordTransformerImpl<>(
+            changelogClientConfig,
+            veniceChangelogConsumerClientFactory));
     assertFalse(
         bootstrappingVeniceChangelogConsumer.getRecordTransformerConfig().isRecordTransformationEnabled(),
         "Record transformation should be disabled.");
@@ -137,7 +140,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
         TEST_STORE_NAME, FUTURE_STORE_VERSION, keySchema, valueSchema, valueSchema, mockDaVinciRecordTransformerConfig);
 
     // Replace daVinciClient with a mock
-    mockDaVinciClient = mock(DaVinciClient.class);
+    mockDaVinciClient = mock(SeekableDaVinciClient.class);
     daVinciClientSubscribeFuture = new CompletableFuture<>();
     when(mockDaVinciClient.getPartitionCount()).thenReturn(PARTITION_COUNT);
     when(mockDaVinciClient.subscribe(any())).thenReturn(daVinciClientSubscribeFuture);
@@ -172,8 +175,11 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
   }
 
   @Test
-  public void testStartAllPartitions() {
-    bootstrappingVeniceChangelogConsumer.start();
+  public void testStartAllPartitions() throws ExecutionException, InterruptedException {
+    // Completable future should finish even when no records are consumed after timeout
+    bootstrappingVeniceChangelogConsumer.setStartTimeout(1);
+    bootstrappingVeniceChangelogConsumer.start().get();
+
     assertTrue(bootstrappingVeniceChangelogConsumer.isStarted(), "isStarted should be true");
 
     verify(mockDaVinciClient).start();
@@ -204,8 +210,16 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
     Set<Integer> partitionSet = Collections.singleton(1);
     bootstrappingVeniceChangelogConsumer.start();
 
-    assertThrows(VeniceException.class, () -> bootstrappingVeniceChangelogConsumer.start());
+    assertThrows(VeniceClientException.class, () -> bootstrappingVeniceChangelogConsumer.start());
     assertThrows(VeniceException.class, () -> bootstrappingVeniceChangelogConsumer.start(partitionSet));
+
+    bootstrappingVeniceChangelogConsumer.unsubscribeAll();
+    verify(bootstrappingVeniceChangelogConsumer).clearPartitionState(eq(Collections.emptySet()));
+    bootstrappingVeniceChangelogConsumer.start();
+
+    bootstrappingVeniceChangelogConsumer.unsubscribe(partitionSet);
+    verify(bootstrappingVeniceChangelogConsumer).clearPartitionState(partitionSet);
+    bootstrappingVeniceChangelogConsumer.start(partitionSet);
   }
 
   @Test
@@ -217,6 +231,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
     assertFalse(bootstrappingVeniceChangelogConsumer.isStarted(), "isStarted should be false");
 
     verify(mockDaVinciClient).close();
+    verify(bootstrappingVeniceChangelogConsumer).clearPartitionState(eq(Collections.emptySet()));
     verify(veniceChangelogConsumerClientFactory).deregisterClient(changelogClientConfig.getConsumerName());
   }
 

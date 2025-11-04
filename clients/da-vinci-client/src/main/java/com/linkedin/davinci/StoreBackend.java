@@ -138,31 +138,23 @@ public class StoreBackend {
     return subscribe(partitions, Optional.empty(), Collections.emptyMap(), null, Collections.emptyMap());
   }
 
-  public CompletableFuture<Void> seekToTimestamps(Long allPartitionTimestamp) {
+  public CompletableFuture<Void> seekToTimestamps(Long allPartitionTimestamp, Optional<Version> storeVersion) {
     return subscribe(
         ComplementSet.universalSet(),
-        Optional.empty(),
+        storeVersion,
         new HashMap<>(),
         allPartitionTimestamp,
         Collections.emptyMap());
   }
 
-  public CompletableFuture<Void> seekToCheckPoints(Map<Integer, PubSubPosition> checkpoints) {
-    return subscribe(
-        ComplementSet.wrap(checkpoints.keySet()),
-        Optional.empty(),
-        Collections.emptyMap(),
-        null,
-        checkpoints);
+  public CompletableFuture<Void> seekToCheckPoints(
+      Map<Integer, PubSubPosition> checkpoints,
+      Optional<Version> storeVersion) {
+    return subscribe(ComplementSet.wrap(checkpoints.keySet()), storeVersion, Collections.emptyMap(), null, checkpoints);
   }
 
-  public CompletableFuture<Void> seekToTimestamps(Map<Integer, Long> timestamps) {
-    return subscribe(
-        ComplementSet.wrap(timestamps.keySet()),
-        Optional.empty(),
-        timestamps,
-        null,
-        Collections.emptyMap());
+  public CompletableFuture<Void> seekToTimestamps(Map<Integer, Long> timestamps, Optional<Version> storeVersion) {
+    return subscribe(ComplementSet.wrap(timestamps.keySet()), storeVersion, timestamps, null, Collections.emptyMap());
   }
 
   private Version getCurrentVersion() {

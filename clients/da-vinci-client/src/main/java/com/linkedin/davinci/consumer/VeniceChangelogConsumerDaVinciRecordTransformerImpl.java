@@ -9,12 +9,12 @@ import static com.linkedin.venice.meta.PersistenceType.ROCKS_DB;
 import static com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory.FAIL;
 import static com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory.SUCCESS;
 
-import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.davinci.client.DaVinciConfig;
 import com.linkedin.davinci.client.DaVinciRecordTransformer;
 import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
 import com.linkedin.davinci.client.DaVinciRecordTransformerRecordMetadata;
 import com.linkedin.davinci.client.DaVinciRecordTransformerResult;
+import com.linkedin.davinci.client.SeekableDaVinciClient;
 import com.linkedin.davinci.client.StorageClass;
 import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
 import com.linkedin.davinci.consumer.stats.BasicConsumerStats;
@@ -22,7 +22,6 @@ import com.linkedin.venice.annotation.Experimental;
 import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.ClientConfig;
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubTopicImpl;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
@@ -55,6 +54,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.Function;
 import org.apache.avro.Schema;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -64,6 +64,7 @@ import org.apache.logging.log4j.Logger;
 public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
     implements BootstrappingVeniceChangelogConsumer<K, V>, VeniceChangelogConsumer<K, V> {
   private static final Logger LOGGER = LogManager.getLogger(VeniceChangelogConsumerDaVinciRecordTransformerImpl.class);
+  private long START_TIMEOUT_IN_SECONDS = 60;
 
   private final ChangelogClientConfig changelogClientConfig;
   private final String storeName;
@@ -75,7 +76,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   private final DaVinciRecordTransformerConfig recordTransformerConfig;
   // CachingDaVinciClientFactory used instead of DaVinciClientFactory, so we have the ability to close down the client
   private final CachingDaVinciClientFactory daVinciClientFactory;
-  private final DaVinciClient<Object, Object> daVinciClient;
+  private final SeekableDaVinciClient<K, V> daVinciClient;
   private final AtomicBoolean isStarted = new AtomicBoolean(false);
   private final CountDownLatch startLatch = new CountDownLatch(1);
   // Using a dedicated thread pool for CompletableFutures created by this class to avoid potential thread starvation
@@ -149,9 +150,9 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
     } else {
       if (innerClientConfig.isSpecificClient()) {
         this.daVinciClient = this.daVinciClientFactory
-            .getSpecificAvroClient(this.storeName, daVinciConfig, innerClientConfig.getSpecificValueClass());
+            .getSpecificSeekableAvroClient(this.storeName, daVinciConfig, innerClientConfig.getSpecificValueClass());
       } else {
-        this.daVinciClient = this.daVinciClientFactory.getGenericAvroClient(this.storeName, daVinciConfig);
+        this.daVinciClient = this.daVinciClientFactory.getGenericSeekableAvroClient(this.storeName, daVinciConfig);
       }
     }
 
@@ -167,26 +168,46 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
     this.consumerSequenceIdStartingValue = consumerSequenceIdStartingValue;
   }
 
-  // BootstrappingVeniceChangelogConsumer methods below
-
-  @Override
-  public synchronized CompletableFuture<Void> start(Set<Integer> partitions) {
-    // ToDo: Remove this exception to support VeniceChangelogConsumer APIs.
-    if (isStarted.get()) {
-      throw new VeniceException("VeniceChangelogConsumer is already started!");
+  private void startDaVinciClient() {
+    // Start daVinci client if not already started
+    if (!isStarted.get()) {
+      daVinciClient.start();
+      isStarted.set(true);
     }
+  }
 
-    daVinciClient.start();
-    isStarted.set(true);
+  /**
+   * Helper method to initialize client, update subscribed partitions, and execute subscription.
+   * This consolidates common logic across start, seekToCheckpoint, and seekToTimestamps.
+   *
+   * @param partitions Partitions to subscribe to (empty set means all partitions)
+   * @param subscriptionCall Function that takes subscribedPartitions and returns subscription future
+   * @return CompletableFuture that represents the async initialization work
+   */
+  private CompletableFuture<Void> initializeAndSubscribe(
+      Set<Integer> partitions,
+      Function<Set<Integer>, CompletableFuture<Void>> subscriptionCall) {
+    startDaVinciClient();
 
     // If a user passes in empty partitions set, we subscribe to all partitions
+    Set<Integer> targetPartitions = new HashSet<>();
     if (partitions.isEmpty()) {
       for (int i = 0; i < daVinciClient.getPartitionCount(); i++) {
-        subscribedPartitions.add(i);
+        targetPartitions.add(i);
       }
     } else {
-      subscribedPartitions.addAll(partitions);
+      targetPartitions.addAll(partitions);
     }
+
+    // Explicitly don't allow seeking to an already subscribed partition, as DaVinci doesn't support it
+    Set<Integer> intersection = new HashSet<>(subscribedPartitions);
+    intersection.retainAll(targetPartitions);
+    if (!intersection.isEmpty()) {
+      throw new VeniceClientException(
+          "Cannot subscribe to partitions: " + intersection + " as they are already subscribed");
+    }
+
+    subscribedPartitions.addAll(targetPartitions);
 
     CompletableFuture<Void> startFuture = CompletableFuture.supplyAsync(() -> {
       try {
@@ -195,7 +216,12 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
          * calls poll, they don't get an empty response. This also signals that blob transfer was completed
          * for at least one partition.
          */
-        startLatch.await();
+        if (!startLatch.await(START_TIMEOUT_IN_SECONDS, TimeUnit.SECONDS)) {
+          LOGGER.warn(
+              "Unable to consume a message after {} seconds for store: {}. Moving on to unblock start.",
+              START_TIMEOUT_IN_SECONDS,
+              storeName);
+        }
 
         if (changeCaptureStats != null) {
           backgroundReporterThread = new BackgroundReporterThread();
@@ -215,22 +241,29 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
      * Because pubSubMessages has limited capacity, blocking on the CompletableFuture
      * prevents the user from calling poll to drain pubSubMessages, so the threads populating pubSubMessages
      * will wait forever for capacity to become available. This leads to a deadlock.
-     */
-    daVinciClient.subscribe(subscribedPartitions).whenComplete((result, error) -> {
+    */
+    subscriptionCall.apply(subscribedPartitions).whenComplete((result, error) -> {
       if (error != null) {
         LOGGER.error("Failed to subscribe to partitions: {} for store: {}", subscribedPartitions, storeName, error);
-        startFuture.completeExceptionally(new VeniceException(error));
+        startFuture.completeExceptionally(new VeniceClientException(error));
         return;
       }
 
       isCaughtUp.set(true);
       LOGGER.info(
-          "BootstrappingVeniceChangelogConsumer is caught up for store: {} for partitions: {}",
+          "VeniceChangelogConsumer is caught up for store: {} for partitions: {}",
           storeName,
           subscribedPartitions);
     });
 
     return startFuture;
+  }
+
+  // BootstrappingVeniceChangelogConsumer methods below
+
+  @Override
+  public synchronized CompletableFuture<Void> start(Set<Integer> partitions) {
+    return initializeAndSubscribe(partitions, daVinciClient::subscribe);
   }
 
   @Override
@@ -248,6 +281,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
     daVinciClient.close();
     isStarted.set(false);
     veniceChangelogConsumerClientFactory.deregisterClient(changelogClientConfig.getConsumerName());
+    clearPartitionState(Collections.emptySet());
 
     LOGGER.info("Closed Changelog Consumer with name: {}", changelogClientConfig.getConsumerName());
   }
@@ -255,6 +289,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   // VeniceChangelogConsumer methods below
 
   public int getPartitionCount() {
+    startDaVinciClient();
     return this.daVinciClient.getPartitionCount();
   }
 
@@ -269,10 +304,12 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
 
   public void unsubscribe(Set<Integer> partitions) {
     this.daVinciClient.unsubscribe(partitions);
+    clearPartitionState(partitions);
   }
 
   public void unsubscribeAll() {
     this.daVinciClient.unsubscribeAll();
+    clearPartitionState(Collections.emptySet());
   }
 
   public CompletableFuture<Void> seekToBeginningOfPush(Set<Integer> partitions) {
@@ -284,8 +321,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   }
 
   public CompletableFuture<Void> seekToEndOfPush(Set<Integer> partitions) {
-    // ToDo: Figure out filtering of EOP messages
-    throw new VeniceClientException("seekToEndOfPush is not supported yet");
+    throw new VeniceClientException("seekToEndOfPush will not be supported");
   }
 
   public CompletableFuture<Void> seekToEndOfPush() {
@@ -302,18 +338,29 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   }
 
   public CompletableFuture<Void> seekToCheckpoint(Set<VeniceChangeCoordinate> checkpoints) {
-    // ToDo: Figure out seek to checkpoint
-    throw new VeniceClientException("seekToCheckpoint is not supported yet");
+    // Extract partitions from checkpoints
+    Set<Integer> partitions = new HashSet<>();
+    for (VeniceChangeCoordinate coordinate: checkpoints) {
+      partitions.add(coordinate.getPartition());
+    }
+
+    return initializeAndSubscribe(partitions, ignore -> daVinciClient.seekToCheckpoint(checkpoints));
   }
 
   public CompletableFuture<Void> seekToTimestamps(Map<Integer, Long> timestamps) {
-    // ToDo: Figure out seek to timestamp
-    throw new VeniceClientException("seekToTimestamps is not supported yet");
+    return initializeAndSubscribe(timestamps.keySet(), ignore -> daVinciClient.seekToTimestamps(timestamps));
   }
 
   public CompletableFuture<Void> seekToTimestamp(Long timestamp) {
-    // ToDo: Figure out seek to timestamp
-    throw new VeniceClientException("seekToTimestamp is not supported yet");
+    // Start client first, so we can call getPartitionCount()
+    startDaVinciClient();
+
+    Map<Integer, Long> timestamps = new HashMap<>();
+    for (int i = 0; i < daVinciClient.getPartitionCount(); i++) {
+      timestamps.put(i, timestamp);
+    }
+
+    return seekToTimestamps(timestamps);
   }
 
   public void pause(Set<Integer> partitions) {
@@ -667,6 +714,21 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   }
 
   @VisibleForTesting
+  public void clearPartitionState(Set<Integer> partitions) {
+    if (partitions.isEmpty()) {
+      subscribedPartitions.clear();
+      partitionToVersionToServe.clear();
+      currentVersionLastHeartbeat.clear();
+    } else {
+      for (int partition: partitions) {
+        subscribedPartitions.remove(partition);
+        partitionToVersionToServe.remove(partition);
+        currentVersionLastHeartbeat.remove(partition);
+      }
+    }
+  }
+
+  @VisibleForTesting
   public boolean isStarted() {
     return isStarted.get();
   }
@@ -674,5 +736,10 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   @VisibleForTesting
   public Set<Integer> getSubscribedPartitions() {
     return subscribedPartitions;
+  }
+
+  @VisibleForTesting
+  public void setStartTimeout(long seconds) {
+    START_TIMEOUT_IN_SECONDS = seconds;
   }
 }
