@@ -5732,12 +5732,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
       if (readQuotaInCU.isPresent()) {
         HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
+
         ZkRoutersClusterManager routersClusterManager = resources.getRoutersClusterManager();
         int routerCount = routersClusterManager.getLiveRoutersCount();
         VeniceControllerClusterConfig clusterConfig = getHelixVeniceClusterResources(clusterName).getConfig();
-        int defaultReadQuotaPerRouter = clusterConfig.getDefaultReadQuotaPerRouter();
+        long maxRouterReadCapacityCu = clusterConfig.getMaxRouterReadCapacityCu();
 
-        if (Math.max(defaultReadQuotaPerRouter, routerCount * defaultReadQuotaPerRouter) < readQuotaInCU.get()) {
+        // Take the max of total cluster capacity based on live routers and per router capacity because parent
+        // admin has 0 live routers and total cluster capacity will always be 0
+        if (Math.max(maxRouterReadCapacityCu * routerCount, maxRouterReadCapacityCu) < readQuotaInCU.get()) {
           throw new VeniceException(
               "Cannot update read quota for store " + storeName + " in cluster " + clusterName + ". Read quota "
                   + readQuotaInCU.get() + " requested is more than the cluster quota.");
