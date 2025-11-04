@@ -199,7 +199,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
       targetPartitions.addAll(partitions);
     }
 
-    // Check for intersection with already subscribed partitions
+    // Explicitly don't allow seeking to an already subscribed partition, as DaVinci doesn't support it
     Set<Integer> intersection = new HashSet<>(subscribedPartitions);
     intersection.retainAll(targetPartitions);
     if (!intersection.isEmpty()) {
