@@ -350,15 +350,17 @@ public class CreateVersion extends AbstractRoute {
       String bootstrapServerAddress = admin.getNativeReplicationKafkaBootstrapServerAddress(sourceGridFabric);
       if (bootstrapServerAddress == null) {
         LOGGER.error(
-            "Failed to get the broker server URL for source grid fabric: {} for store: {} in cluster: {}. Will use default Kafka bootstrap servers.",
+            "Failed to get the broker server URL for source grid fabric: {} for pushJob: {} store: {} in cluster: {}. Will use default PubSub bootstrap servers.",
             sourceGridFabric,
+            request.getPushJobId(),
             store.getName(),
             request.getClusterName());
       } else {
         LOGGER.info(
-            "Stream push job source region is being overridden with: {} address: {} for store: {} in cluster: {}",
+            "Stream push job source region is being overridden with: {} address: {} for pushJob: {} on store: {} in cluster: {}",
             sourceGridFabric,
             bootstrapServerAddress,
+            request.getPushJobId(),
             store.getName(),
             request.getClusterName());
         response.setKafkaBootstrapServers(bootstrapServerAddress);

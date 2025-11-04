@@ -2220,9 +2220,9 @@ public class ConfigKeys {
       "controller.disable.parent.request.topic.for.stream.pushes";
 
   /**
-   * Config to enable overriding Kafka bootstrap servers for stream push jobs based on source grid fabric.
+   * Config to enable overriding PubSub bootstrap servers for stream push jobs based on source grid fabric.
    * When enabled, if a source grid fabric is specified in the request, the controller will use the
-   * Kafka bootstrap servers for that fabric instead of the default local Kafka cluster.
+   * PubSub bootstrap servers for that fabric instead of the default local Kafka cluster.
    */
   public static final String CONTROLLER_ENABLE_STREAM_PUSH_SOURCE_GRID_FABRIC_OVERRIDE =
       "controller.enable.stream.push.source.grid.fabric.override";
