@@ -213,8 +213,9 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
          */
         if (!startLatch.await(START_TIMEOUT_IN_SECONDS, TimeUnit.SECONDS)) {
           LOGGER.warn(
-              "Unable to receive a message after {} seconds. Moving on to unblock start.",
-              START_TIMEOUT_IN_SECONDS);
+              "Unable to consume a message after {} seconds for store: {}. Moving on to unblock start.",
+              START_TIMEOUT_IN_SECONDS,
+              storeName);
         }
 
         if (changeCaptureStats != null) {
