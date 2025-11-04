@@ -29,10 +29,10 @@ import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.d2.balancer.D2Client;
-import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
 import com.linkedin.davinci.client.DaVinciRecordTransformerRecordMetadata;
 import com.linkedin.davinci.client.DaVinciRecordTransformerResult;
+import com.linkedin.davinci.client.SeekableDaVinciClient;
 import com.linkedin.davinci.consumer.stats.BasicConsumerStats;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -86,7 +86,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
   private VeniceChangelogConsumerDaVinciRecordTransformerImpl.DaVinciRecordTransformerChangelogConsumer futureRecordTransformer;
   private ChangelogClientConfig changelogClientConfig;
   private DaVinciRecordTransformerConfig mockDaVinciRecordTransformerConfig;
-  private DaVinciClient mockDaVinciClient;
+  private SeekableDaVinciClient mockDaVinciClient;
   private CompletableFuture<Void> daVinciClientSubscribeFuture;
   private List<Lazy<Integer>> keys;
   private BasicConsumerStats changeCaptureStats;
@@ -137,7 +137,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
         TEST_STORE_NAME, FUTURE_STORE_VERSION, keySchema, valueSchema, valueSchema, mockDaVinciRecordTransformerConfig);
 
     // Replace daVinciClient with a mock
-    mockDaVinciClient = mock(DaVinciClient.class);
+    mockDaVinciClient = mock(SeekableDaVinciClient.class);
     daVinciClientSubscribeFuture = new CompletableFuture<>();
     when(mockDaVinciClient.getPartitionCount()).thenReturn(PARTITION_COUNT);
     when(mockDaVinciClient.subscribe(any())).thenReturn(daVinciClientSubscribeFuture);
