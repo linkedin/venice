@@ -22,6 +22,7 @@ import com.linkedin.venice.annotation.Experimental;
 import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.ClientConfig;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubTopicImpl;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
@@ -46,6 +47,7 @@ import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -63,6 +65,7 @@ import org.apache.logging.log4j.Logger;
 public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
     implements BootstrappingVeniceChangelogConsumer<K, V>, VeniceChangelogConsumer<K, V> {
   private static final Logger LOGGER = LogManager.getLogger(VeniceChangelogConsumerDaVinciRecordTransformerImpl.class);
+  private static final long START_TIMEOUT_IN_MINUTES = 1;
 
   private final ChangelogClientConfig changelogClientConfig;
   private final String storeName;
@@ -76,10 +79,11 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   private final CachingDaVinciClientFactory daVinciClientFactory;
   private final SeekableDaVinciClient<K, V> daVinciClient;
   private final AtomicBoolean isStarted = new AtomicBoolean(false);
+  private final CountDownLatch startLatch = new CountDownLatch(1);
   // Using a dedicated thread pool for CompletableFutures created by this class to avoid potential thread starvation
   // issues in the default ForkJoinPool
   private final ExecutorService completableFutureThreadPool =
-      Executors.newFixedThreadPool(2, new DaemonThreadFactory("VeniceChangelogConsumerDaVinciRecordTransformerImpl"));
+      Executors.newFixedThreadPool(1, new DaemonThreadFactory("VeniceChangelogConsumerDaVinciRecordTransformerImpl"));
 
   private final Set<Integer> subscribedPartitions = new HashSet<>();
   private final ReentrantLock bufferLock = new ReentrantLock();
@@ -184,53 +188,69 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   private CompletableFuture<Void> initializeAndSubscribe(
       Set<Integer> partitions,
       Function<Set<Integer>, CompletableFuture<Void>> subscriptionCall) {
+    startDaVinciClient();
 
-    return CompletableFuture.runAsync(() -> {
-      startDaVinciClient();
-
-      // Normalize: empty partitions set means subscribe to all partitions
-      Set<Integer> targetPartitions;
-      if (partitions.isEmpty()) {
-        targetPartitions = new HashSet<>();
-        for (int i = 0; i < daVinciClient.getPartitionCount(); i++) {
-          targetPartitions.add(i);
-        }
-      } else {
-        targetPartitions = partitions;
+    // If a user passes in empty partitions set, we subscribe to all partitions
+    Set<Integer> targetPartitions;
+    if (partitions.isEmpty()) {
+      targetPartitions = new HashSet<>();
+      for (int i = 0; i < daVinciClient.getPartitionCount(); i++) {
+        targetPartitions.add(i);
       }
+    } else {
+      targetPartitions = partitions;
+    }
 
-      // Update subscribedPartitions before making the subscription call
-      subscribedPartitions.addAll(targetPartitions);
+    // Update subscribedPartitions before making the subscription call
+    subscribedPartitions.addAll(targetPartitions);
 
-      /*
-       * Avoid waiting on the CompletableFuture to prevent a circular dependency.
-       * When subscribe is called, DVRT scans the entire storage engine and fills pubSubMessages.
-       * Because pubSubMessages has limited capacity, we must NOT wait on the subscription future.
-       * The caller must poll to drain pubSubMessages, otherwise threads populating pubSubMessages will
-       * wait forever for capacity to become available, leading to a deadlock.
-       */
-      CompletableFuture<Void> subscriptionFuture = subscriptionCall.apply(subscribedPartitions);
-
-      // Attach completion handler that runs asynchronously after subscription completes
-      subscriptionFuture.whenComplete((result, error) -> {
-        if (error != null) {
-          LOGGER.error("Failed to subscribe to partitions: {} for store: {}", subscribedPartitions, storeName, error);
-          return;
+    CompletableFuture<Void> startFuture = CompletableFuture.supplyAsync(() -> {
+      try {
+        /*
+         * When this latch gets released, this means there's at least one message in pubSubMessages. So when the user
+         * calls poll, they don't get an empty response. This also signals that blob transfer was completed
+         * for at least one partition.
+         */
+        if (!startLatch.await(START_TIMEOUT_IN_MINUTES, TimeUnit.MINUTES)) {
+          LOGGER.warn(
+              "Unable to receive a message after {} minute(s). Moving on to unblock start.",
+              START_TIMEOUT_IN_MINUTES);
         }
 
-        // Start background reporter AFTER subscription completes successfully
-        if (changeCaptureStats != null && backgroundReporterThread == null) {
+        if (changeCaptureStats != null) {
           backgroundReporterThread = new BackgroundReporterThread();
           backgroundReporterThread.start();
         }
-
-        isCaughtUp.set(true);
-        LOGGER.info(
-            "VeniceChangelogConsumer is caught up for store: {} for partitions: {}",
-            storeName,
-            subscribedPartitions);
-      });
+      } catch (InterruptedException e) {
+        LOGGER.info("Thread was interrupted", e);
+        // Restore the interrupt status
+        Thread.currentThread().interrupt();
+      }
+      return null;
     }, completableFutureThreadPool);
+
+    /*
+     * Avoid waiting on the CompletableFuture to prevent a circular dependency.
+     * When subscribe is called, DVRT scans the entire storage engine and fills pubSubMessages.
+     * Because pubSubMessages has limited capacity, we must NOT wait on the subscription future.
+     * The caller must poll to drain pubSubMessages, otherwise threads populating pubSubMessages will
+     * wait forever for capacity to become available, leading to a deadlock.
+     */
+    subscriptionCall.apply(subscribedPartitions).whenComplete((result, error) -> {
+      if (error != null) {
+        LOGGER.error("Failed to subscribe to partitions: {} for store: {}", subscribedPartitions, storeName, error);
+        startFuture.completeExceptionally(new VeniceException(error));
+        return;
+      }
+
+      isCaughtUp.set(true);
+      LOGGER.info(
+          "VeniceChangelogConsumer is caught up for store: {} for partitions: {}",
+          storeName,
+          subscribedPartitions);
+    });
+
+    return startFuture;
   }
 
   // BootstrappingVeniceChangelogConsumer methods below
@@ -586,6 +606,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
             }
           }
 
+          startLatch.countDown();
         } catch (InterruptedException e) {
           LOGGER.error("Thread was interrupted while putting a message into pubSubMessages", e);
           Thread.currentThread().interrupt();
