@@ -8,6 +8,7 @@ import static com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory.
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.doCallRealMethod;
@@ -123,9 +124,10 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
         .setMetricsRepository(getVeniceMetricsRepository(CHANGE_DATA_CAPTURE_CLIENT, CONSUMER_METRIC_ENTITIES, true));
 
     veniceChangelogConsumerClientFactory = spy(new VeniceChangelogConsumerClientFactory(changelogClientConfig, null));
-    bootstrappingVeniceChangelogConsumer = new VeniceChangelogConsumerDaVinciRecordTransformerImpl<>(
-        changelogClientConfig,
-        veniceChangelogConsumerClientFactory);
+    bootstrappingVeniceChangelogConsumer = spy(
+        new VeniceChangelogConsumerDaVinciRecordTransformerImpl<>(
+            changelogClientConfig,
+            veniceChangelogConsumerClientFactory));
     assertFalse(
         bootstrappingVeniceChangelogConsumer.getRecordTransformerConfig().isRecordTransformationEnabled(),
         "Record transformation should be disabled.");
@@ -212,9 +214,11 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
     assertThrows(VeniceException.class, () -> bootstrappingVeniceChangelogConsumer.start(partitionSet));
 
     bootstrappingVeniceChangelogConsumer.unsubscribeAll();
+    verify(bootstrappingVeniceChangelogConsumer).clearPartitionState(eq(Collections.emptySet()));
     bootstrappingVeniceChangelogConsumer.start();
 
     bootstrappingVeniceChangelogConsumer.unsubscribe(partitionSet);
+    verify(bootstrappingVeniceChangelogConsumer).clearPartitionState(partitionSet);
     bootstrappingVeniceChangelogConsumer.start(partitionSet);
   }
 
@@ -227,6 +231,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
     assertFalse(bootstrappingVeniceChangelogConsumer.isStarted(), "isStarted should be false");
 
     verify(mockDaVinciClient).close();
+    verify(bootstrappingVeniceChangelogConsumer).clearPartitionState(eq(Collections.emptySet()));
     verify(veniceChangelogConsumerClientFactory).deregisterClient(changelogClientConfig.getConsumerName());
   }
 

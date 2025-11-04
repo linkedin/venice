@@ -281,6 +281,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
     daVinciClient.close();
     isStarted.set(false);
     veniceChangelogConsumerClientFactory.deregisterClient(changelogClientConfig.getConsumerName());
+    clearPartitionState(Collections.emptySet());
 
     LOGGER.info("Closed Changelog Consumer with name: {}", changelogClientConfig.getConsumerName());
   }
@@ -303,20 +304,12 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
 
   public void unsubscribe(Set<Integer> partitions) {
     this.daVinciClient.unsubscribe(partitions);
-    for (int partition: partitions) {
-      subscribedPartitions.remove(partition);
-      partitionToVersionToServe.remove(partition);
-      currentVersionLastHeartbeat.remove(partition);
-      consumerSequenceIdGeneratorMap.remove(partition);
-    }
+    clearPartitionState(partitions);
   }
 
   public void unsubscribeAll() {
     this.daVinciClient.unsubscribeAll();
-    subscribedPartitions.clear();
-    partitionToVersionToServe.clear();
-    currentVersionLastHeartbeat.clear();
-    consumerSequenceIdGeneratorMap.clear();
+    clearPartitionState(Collections.emptySet());
   }
 
   public CompletableFuture<Void> seekToBeginningOfPush(Set<Integer> partitions) {
@@ -717,6 +710,21 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
     @Override
     public void close() throws IOException {
 
+    }
+  }
+
+  @VisibleForTesting
+  public void clearPartitionState(Set<Integer> partitions) {
+    if (partitions.isEmpty()) {
+      subscribedPartitions.clear();
+      partitionToVersionToServe.clear();
+      currentVersionLastHeartbeat.clear();
+    } else {
+      for (int partition: partitions) {
+        subscribedPartitions.remove(partition);
+        partitionToVersionToServe.remove(partition);
+        currentVersionLastHeartbeat.remove(partition);
+      }
     }
   }
 
