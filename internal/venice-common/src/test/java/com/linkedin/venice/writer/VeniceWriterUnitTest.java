@@ -153,13 +153,15 @@ public class VeniceWriterUnitTest {
     VeniceWriter<Object, Object, Object> writer =
         new VeniceWriter(veniceWriterOptions, VeniceProperties.empty(), mockedProducer);
     byte[] serializedKeyBytes = new byte[] { 0xa, 0xb };
-    writer.deleteDeprecatedChunk(serializedKeyBytes, 0, null, VeniceWriter.DEFAULT_LEADER_METADATA_WRAPPER, null);
+    writer
+        .deleteDeprecatedChunk(serializedKeyBytes, 0, null, VeniceWriter.DEFAULT_LEADER_METADATA_WRAPPER, null, false);
     writer.deleteDeprecatedChunk(
         serializedKeyBytes,
         0,
         null,
         VeniceWriter.DEFAULT_LEADER_METADATA_WRAPPER,
-        new DeleteMetadata(CHUNK_VALUE_SCHEMA_ID, 1, WriterChunkingHelper.EMPTY_BYTE_BUFFER));
+        new DeleteMetadata(CHUNK_VALUE_SCHEMA_ID, 1, WriterChunkingHelper.EMPTY_BYTE_BUFFER),
+        false);
 
     ArgumentCaptor<KafkaKey> keyArgumentCaptor = ArgumentCaptor.forClass(KafkaKey.class);
     ArgumentCaptor<KafkaMessageEnvelope> kmeArgumentCaptor = ArgumentCaptor.forClass(KafkaMessageEnvelope.class);
@@ -723,7 +725,7 @@ public class VeniceWriterUnitTest {
           null,
           null,
           null,
-          false);
+          true);
 
       ArgumentCaptor<KafkaKey> keyArgumentCaptor = ArgumentCaptor.forClass(KafkaKey.class);
       ArgumentCaptor<KafkaMessageEnvelope> kmeArgumentCaptor = ArgumentCaptor.forClass(KafkaMessageEnvelope.class);

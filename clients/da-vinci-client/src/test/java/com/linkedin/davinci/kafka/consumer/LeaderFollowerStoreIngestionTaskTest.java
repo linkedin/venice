@@ -593,7 +593,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
         any(),
         any(),
         any(),
-        eq(false));
+        eq(true));
 
     // Verify that GlobalRtDivState is correctly compressed and serialized from the VeniceWriter#put() call
     byte[] compressedBytes = valueBytesArgumentCaptor.getValue();

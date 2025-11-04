@@ -1815,7 +1815,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     Runnable shutdownRunnable = () -> {
       consumerUnSubscribeAllTopics(partitionConsumptionState);
       // If the ingestion task is stopped gracefully (server stops), persist processed offset to disk.
-      if (getServerConfig().isServerIngestionCheckpointDuringGracefulShutdownEnabled()) {
+      // The Global RT DIV feature is entirely driven by consumer, so any drainer sync must be disabled to not interfere
+      if (getServerConfig().isServerIngestionCheckpointDuringGracefulShutdownEnabled() && !isGlobalRtDivEnabled()) {
         try {
           PubSubTopicPartition topicPartition = partitionConsumptionState.getReplicaTopicPartition();
           CompletableFuture<Void> cmdFuture = getStoreBufferService().execSyncOffsetCommandAsync(topicPartition, this);
@@ -2278,7 +2279,15 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         LOGGER.info("Subscribed to: {} position: {}", topicPartition, subscribePosition);
         if (isGlobalRtDivEnabled()) {
           // TODO: remove. this is a temporary log for debugging while the feature is in its infancy
-          LOGGER.info("event=globalRtDiv Subscribed to: {} position: {}", topicPartition, subscribePosition);
+          TopicManager topicManager = getTopicManager(localKafkaServer);
+          PubSubPosition endPosition = topicManager.getLatestPositionCached(topicPartition);
+          long diff = topicManager.diffPosition(topicPartition, endPosition, subscribePosition);
+          LOGGER.info(
+              "event=globalRtDiv Subscribed to: {} position: {} endPosition: {} diff: {}",
+              topicPartition,
+              subscribePosition,
+              endPosition,
+              diff);
         }
         storageUtilizationManager.initPartition(partition);
         break;
@@ -2729,11 +2738,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   boolean shouldSendGlobalRtDiv(DefaultPubSubMessage record, PartitionConsumptionState pcs, String brokerUrl) {
-    if (!isGlobalRtDivEnabled() || record.getKey().isControlMessage() || getConsumedBytesSinceLastSync().isEmpty()) {
+    if (!isGlobalRtDivEnabled() || record.getKey().isControlMessage()) {
       return false;
     }
-    // The Global RT DIV is sent on a per-broker basis, so divide the size limit by the number of brokers
-    final long syncBytesInterval = getSyncBytesInterval(pcs) / getConsumedBytesSinceLastSync().size();
+    final long syncBytesInterval = getSyncBytesInterval(pcs);
     return syncBytesInterval > 0 && (getConsumedBytesSinceLastSync().getOrDefault(brokerUrl, 0L) >= syncBytesInterval);
   }
 
@@ -2747,45 +2755,47 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * 1. Every ControlMessage
    * 2. Record count based strategy, which doesn't work well for stores with very small key/value pairs.
    *
-   * When the Global RT DIV feature is enabled, the size-based sync is no longer triggered by the drainer. The
-   * condition is on the ConsumptionTask and bytes consumed rather than bytes processed. The VT DIV is still synced
-   * by the drainer whenever a non-SOS/EOS control message is processed.
+   * When the Global RT DIV feature is enabled, the sync is no longer triggered by the drainer.
+   * The condition is on the ConsumptionTask and bytes consumed rather than bytes processed.
    */
   boolean shouldSyncOffset(
       PartitionConsumptionState pcs,
       DefaultPubSubMessage record,
       LeaderProducedRecordContext leaderProducedRecordContext) {
-    boolean syncOffset = false;
-    if (record.getKey().isControlMessage()) {
-      ControlMessage controlMessage = (leaderProducedRecordContext == null
-          ? (ControlMessage) record.getValue().getPayloadUnion()
-          : (ControlMessage) leaderProducedRecordContext.getValueUnion());
-      final ControlMessageType controlMessageType = ControlMessageType.valueOf(controlMessage);
-      /**
-       * We don't want to sync offset/database for every control message since it could trigger RocksDB to generate
-       * a lot of small level-0 SST files, which will make the compaction very inefficient.
-       * In hybrid mode, we know START_OF_SEGMENT and END_OF_SEGMENT could happen multiple times per partition since
-       * each Samza job could produce to every partition, and the situation could become even worse if the Samza jobs have been
-       * restarted many times.
-       * But we still want to checkpoint for those known infrequent control messages:
-       * 1. Easy testing;
-       * 2. Avoid unnecessary offset rewind when ungraceful shutdown happens.
-       *
-       * TODO: if we know some other types of Control Messages are frequent as START_OF_SEGMENT and END_OF_SEGMENT in the future,
-       * we need to consider to exclude them to avoid the issue described above.
-       */
-      if (!controlMessageType.isSegmentControlMessage()) {
-        syncOffset = true;
-      }
-    } else {
-      if (isGlobalRtDivEnabled()) {
-        return false; // for the Global RT DIV feature, size-based sync is by ConsumptionTask rather than Drainer
-      }
-
-      final long syncBytesInterval = getSyncBytesInterval(pcs);
-      syncOffset = (syncBytesInterval > 0 && (pcs.getProcessedRecordSizeSinceLastSync() >= syncBytesInterval));
+    if (isGlobalRtDivEnabled()) {
+      return false; // for the Global RT DIV feature, size-based sync is by ConsumptionTask rather than Drainer
     }
-    return syncOffset;
+
+    if (isNonSegmentControlMessage(record, leaderProducedRecordContext)) {
+      return true; // sync when processing most control messages
+    }
+
+    final long syncBytesInterval = getSyncBytesInterval(pcs); // size-based sync condition
+    return syncBytesInterval > 0 && (pcs.getProcessedRecordSizeSinceLastSync() >= syncBytesInterval);
+  }
+
+  /**
+   * Mainly used for determining when to sync the latest VT offset position in the OffsetRecord.
+   * We don't want to sync offset/database for every control message since it could trigger RocksDB to generate
+   * a lot of small level-0 SST files, which will make the compaction very inefficient.
+   * In hybrid mode, we know START_OF_SEGMENT and END_OF_SEGMENT could happen multiple times per partition since
+   * each Samza job could produce to every partition, and the situation could become even worse if the Samza jobs have been
+   * restarted many times.
+   * But we still want to checkpoint for those known infrequent control messages:
+   * 1. Easy testing;
+   * 2. Avoid unnecessary offset rewind when ungraceful shutdown happens.
+   *
+   * TODO: if we know some other types of Control Messages are frequent as START_OF_SEGMENT and END_OF_SEGMENT in the future,
+   * we need to consider to exclude them to avoid the issue described above.
+   */
+  static boolean isNonSegmentControlMessage(DefaultPubSubMessage record, LeaderProducedRecordContext leaderContext) {
+    if (!record.getKey().isControlMessage()) {
+      return false;
+    }
+
+    ControlMessage controlMessage =
+        (ControlMessage) (leaderContext == null ? record.getValue().getPayloadUnion() : leaderContext.getValueUnion());
+    return !ControlMessageType.valueOf(controlMessage).isSegmentControlMessage();
   }
 
   /**
