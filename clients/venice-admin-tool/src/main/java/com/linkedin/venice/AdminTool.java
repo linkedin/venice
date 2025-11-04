@@ -2080,7 +2080,7 @@ public class AdminTool {
 
     ChildAwareResponse response = srcControllerClient.listChildControllers(srcClusterName);
 
-    if (response.getChildDataCenterControllerUrlMap() == null) {
+    if (response.getChildDataCenterControllerUrlMap().isEmpty()) {
       // This is a controller in single datacenter setup
       printMigrationStatus(srcControllerClient, storeName, printFunction);
       printMigrationStatus(destControllerClient, storeName, printFunction);
@@ -2126,7 +2126,7 @@ public class AdminTool {
     checkPreconditionForStoreMigration(srcControllerClient, destControllerClient);
 
     ChildAwareResponse response = destControllerClient.listChildControllers(destClusterName);
-    if (response.getChildDataCenterControllerUrlMap() == null) {
+    if (response.getChildDataCenterControllerUrlMap().isEmpty()) {
       // This is a controller in single datacenter setup
       System.out.println("WARN: fabric option is ignored on child controller.");
       if (isClonedStoreOnline(srcControllerClient, destControllerClient, storeName)) {

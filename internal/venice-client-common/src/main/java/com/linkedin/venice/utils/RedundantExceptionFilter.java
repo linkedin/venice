@@ -14,7 +14,8 @@ public class RedundantExceptionFilter {
   private static RedundantExceptionFilter singleton;
 
   private final int bitSetSize;
-  private final ScheduledExecutorService cleanerExecutor = Executors.newScheduledThreadPool(1);
+  private final ScheduledExecutorService cleanerExecutor = Executors.newSingleThreadScheduledExecutor(
+      new DaemonThreadFactory(this.getClass().getName() + "-RedundantExceptionFilterExecutor"));
 
   private BitSet activeBitset;
   private BitSet oldBitSet;

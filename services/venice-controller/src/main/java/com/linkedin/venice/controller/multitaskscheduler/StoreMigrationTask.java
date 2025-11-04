@@ -31,12 +31,16 @@ class StoreMigrationTask implements Runnable {
   private Duration timeoutDuration = Duration.ofHours(24); // Default timeout duration
   private static final Logger LOGGER = LogManager.getLogger(StoreMigrationTask.class);
   private static final int LOG_INTERVAL = 30; // Interval for logging status in verifyMigrationStatus step
+  private static final int MAX_PROPAGATION_CHECK_INTERVAL_MS = 10000; // Max 10 seconds between checks
+  private static final int MIN_PROPAGATION_CHECK_INTERVAL_MS = 500; // Min 0.5 seconds for fast tests
   private ControllerClient srcControllerClient, destControllerClient;
   Map<String, ControllerClient> srcChildControllerClientMap, destChildControllerClientMap;
   private final Map<String, Boolean> fabricReadyMap = new HashMap<>();
   boolean statusVerified = false;
   private int counter = -1;
-  private boolean srcStoreReadWriteEnabled = true;
+  // Tracks if source store is in fully operational state (both reads AND writes enabled)
+  // Used to optimize updates by skipping redundant operations
+  private boolean srcStoreFullyReadWriteEnabled = true;
 
   public StoreMigrationTask(
       MigrationRecord record,
@@ -334,7 +338,8 @@ class StoreMigrationTask implements Runnable {
 
     if (srcStoreResponse.getErrorType() != ErrorType.STORE_NOT_FOUND) {
       StoreInfo store = srcStoreResponse.getStore();
-      if ((store.isEnableStoreReads() || store.isEnableStoreWrites()) && !updateSrcStoreReadWriteStatus(false, false)) {
+      boolean needsDisabling = store.isEnableStoreReads() || store.isEnableStoreWrites();
+      if (needsDisabling && !disableSrcStoreReadWrite()) {
         throw new VeniceException(
             "Failed to disable reads/writes for store " + record.getStoreName() + " in cluster "
                 + record.getSourceCluster());
@@ -494,38 +499,51 @@ class StoreMigrationTask implements Runnable {
         .collect(Collectors.toList());
   }
 
-  private boolean updateSrcStoreReadWriteStatus(boolean enableReads, boolean enableWrites) {
-    if (srcStoreReadWriteEnabled == (enableReads && enableWrites))
+  private boolean disableSrcStoreReadWrite() {
+    if (!srcStoreFullyReadWriteEnabled) { // Skip update if store is already disabled
       return true;
-
-    ControllerResponse response = srcControllerClient.updateStore(
+    }
+    LOGGER.info(
+        "Disabling reads and writes for store {} in cluster {}",
         record.getStoreName(),
-        new UpdateStoreQueryParams().setEnableReads(enableReads).setEnableWrites(enableWrites));
+        record.getSourceCluster());
+    ControllerResponse response = srcControllerClient
+        .updateStore(record.getStoreName(), new UpdateStoreQueryParams().setEnableReads(false).setEnableWrites(false));
     if (response.isError()) {
       LOGGER.error(
-          "Failed to update read/write status for store {} in cluster {}: {}",
+          "Failed to disable reads/writes for store {} in cluster {}: {}",
           record.getStoreName(),
           record.getSourceCluster(),
           response.getError());
       return false;
     }
 
-    // Wait for propagation
+    // Wait for configuration to propagate to store metadata
     for (int i = 0; i < 10; i++) {
       StoreInfo storeInfo = srcControllerClient.getStore(record.getStoreName()).getStore();
-      if (storeInfo.isEnableStoreReads() == enableReads && storeInfo.isEnableStoreWrites() == enableWrites) {
-        srcStoreReadWriteEnabled = enableReads && enableWrites;
+      // Check if both reads and writes are now disabled
+      if (!storeInfo.isEnableStoreReads() && !storeInfo.isEnableStoreWrites()) {
+        srcStoreFullyReadWriteEnabled = false;
+        LOGGER.info(
+            "Successfully disabled reads and writes for store {} in cluster {}",
+            record.getStoreName(),
+            record.getSourceCluster());
         return true;
       }
+
       try {
-        Thread.sleep(manager.getDelayInSeconds() * 1000 / 3);
+        int sleepMs = Math.max(
+            MIN_PROPAGATION_CHECK_INTERVAL_MS,
+            Math.min(MAX_PROPAGATION_CHECK_INTERVAL_MS, manager.getDelayInSeconds() * 1000 / 3));
+        Thread.sleep(sleepMs);
       } catch (InterruptedException e) {
         Thread.currentThread().interrupt();
         throw new RuntimeException(e);
       }
     }
+
     LOGGER.error(
-        "Timeout waiting for read/write status update on store {} cluster {}",
+        "Timeout waiting for reads/writes to be disabled on store {} cluster {}",
         record.getStoreName(),
         record.getSourceCluster());
     return false;

@@ -148,6 +148,31 @@ public class StoreMigrationManagerTest {
   /** Happy-path resume: a paused migration should schedule the next step. */
   @Test
   public void testResumeMigrationSuccess() {
+    String storeName = "TestResumeWithoutNextStep";
+    storeMigrationManager.scheduleMigration(storeName, SOURCE_CLUSTER, DESTINATION_CLUSTER, 0);
+
+    // Pause after step 0 -> record becomes "paused" (currentStep == pauseAfter)
+    storeMigrationManager.pauseMigrationAfter(storeName, 0);
+    MigrationRecord rec = storeMigrationManager.getMigrationRecord(storeName);
+    assertEquals(rec.getPauseAfter().getStepNumber(), 0);
+    rec.setCurrentStep(1); // simulate that we are at step 1 now
+    rec.setPaused(true); // The migration record should be paused now
+    // Add Mock StoreMigration task for the store since it is paused
+    storeMigrationManager.migrationTasks.put(storeName, mock(StoreMigrationTask.class));
+
+    // Clear the interaction that was produced by the original scheduleMigration
+    reset(mockExecutorService);
+    // Resume the migration at the next step (step 1)
+    storeMigrationManager.resumeMigration(storeName);
+
+    // A brand-new scheduling must have happened
+    verify(mockExecutorService)
+        .schedule(any(StoreMigrationTask.class), eq((long) DEFAULT_DELAY_IN_SECONDS), eq(TimeUnit.SECONDS));
+    assertEquals(rec.getCurrentStep(), 1);
+  }
+
+  @Test
+  public void testResumeMigrationNextStepSuccess() {
     String storeName = "TestResumeStore";
     storeMigrationManager.scheduleMigration(storeName, SOURCE_CLUSTER, DESTINATION_CLUSTER, 0);
 

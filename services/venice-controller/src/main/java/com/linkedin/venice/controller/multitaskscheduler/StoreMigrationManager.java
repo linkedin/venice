@@ -3,6 +3,7 @@ package com.linkedin.venice.controller.multitaskscheduler;
 import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.utils.DaemonThreadFactory;
+import com.linkedin.venice.utils.RedundantExceptionFilter;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -12,6 +13,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -25,6 +27,7 @@ public class StoreMigrationManager extends ScheduledTaskManager {
   private final int delayInSeconds; // Default delay in seconds for scheduling the next step
   private final List<String> childFabricList;
   private static final Logger LOGGER = LogManager.getLogger(StoreMigrationManager.class);
+  protected RedundantExceptionFilter filter;
 
   public MigrationRecord getMigrationRecord(String storeName) {
     return migrationRecords.get(storeName);
@@ -73,6 +76,8 @@ public class StoreMigrationManager extends ScheduledTaskManager {
     this.delayInSeconds = delayInSeconds;
     this.migrationRecords = new ConcurrentHashMap<>();
     this.migrationTasks = new ConcurrentHashMap<>();
+    // Create a redundancy filter with ~1M bit slots (~128KB) and a 20-minute suppression window for duplicate logs
+    this.filter = new RedundantExceptionFilter(1024 * 1024, TimeUnit.MINUTES.toMillis(20));
   }
 
   public ScheduledFuture<?> scheduleMigration(
@@ -230,5 +235,13 @@ public class StoreMigrationManager extends ScheduledTaskManager {
 
   public int getDelayInSeconds() {
     return delayInSeconds;
+  }
+
+  @Override
+  public void shutdown() {
+    if (filter != null) {
+      filter.shutdown();
+    }
+    super.shutdown();
   }
 }
