@@ -889,6 +889,7 @@ public class CreateVersionTest {
     CreateVersion createVersion = new CreateVersion(true, Optional.of(accessClient), false);
 
     Version mockVersion = mock(Version.class);
+    when(mockVersion.isActiveActiveReplicationEnabled()).thenReturn(true);
     when(mockVersion.getStoreName()).thenReturn(STORE_NAME);
     when(mockVersion.getPartitionCount()).thenReturn(42);
     when(admin.isParent()).thenReturn(false);
@@ -926,6 +927,7 @@ public class CreateVersionTest {
     request.setSourceGridFabric(sourceGridFabric);
 
     VersionCreationResponse response = new VersionCreationResponse();
+    response.setKafkaBootstrapServers("default.bootstrap.servers:9092");
     CreateVersion createVersion = new CreateVersion(true, Optional.of(accessClient), false);
 
     Version mockVersion = mock(Version.class);
@@ -943,10 +945,11 @@ public class CreateVersionTest {
     // Execute - should not throw exception, just log error and use default bootstrap servers
     createVersion.handleStreamPushType(admin, store, request, response);
 
-    // Verify that bootstrap servers were not overridden (null means use default)
-    assertNull(
+    // Verify that bootstrap servers were not overridden when source region address is not found
+    assertEquals(
         response.getKafkaBootstrapServers(),
-        "Bootstrap servers should not be set when source region address is not found");
+        "default.bootstrap.servers:9092",
+        "Bootstrap servers should not be set overridden when source grid fabric address is not found");
     assertEquals(response.getPartitions(), 42);
     assertEquals(response.getCompressionStrategy(), CompressionStrategy.NO_OP);
     assertEquals(response.getKafkaTopic(), Utils.getRealTimeTopicName(mockVersion));
@@ -964,6 +967,7 @@ public class CreateVersionTest {
     request.setSourceGridFabric(sourceGridFabric);
 
     VersionCreationResponse response = new VersionCreationResponse();
+    response.setKafkaBootstrapServers("default.bootstrap.servers:9092");
     CreateVersion createVersion = new CreateVersion(true, Optional.of(accessClient), false);
 
     Version mockVersion = mock(Version.class);
@@ -981,7 +985,10 @@ public class CreateVersionTest {
     createVersion.handleStreamPushType(admin, store, request, response);
 
     // Verify that bootstrap servers were not overridden when feature is disabled
-    assertNull(response.getKafkaBootstrapServers(), "Bootstrap servers should not be set when feature is disabled");
+    assertEquals(
+        response.getKafkaBootstrapServers(),
+        "default.bootstrap.servers:9092",
+        "Bootstrap servers should not be set when feature is disabled");
     assertEquals(response.getPartitions(), 42);
     assertEquals(response.getCompressionStrategy(), CompressionStrategy.NO_OP);
     assertEquals(response.getKafkaTopic(), Utils.getRealTimeTopicName(mockVersion));

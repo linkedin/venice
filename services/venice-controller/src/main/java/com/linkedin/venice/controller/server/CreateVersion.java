@@ -346,7 +346,8 @@ public class CreateVersion extends AbstractRoute {
     // Override Kafka bootstrap servers if source grid fabric is set and feature is enabled
     String sourceGridFabric = request.getSourceGridFabric();
     if (sourceGridFabric != null
-        && admin.getControllerConfig(request.getClusterName()).isEnableStreamPushSourceGridFabricOverride()) {
+        && admin.getControllerConfig(request.getClusterName()).isEnableStreamPushSourceGridFabricOverride()
+        && referenceHybridVersion.isActiveActiveReplicationEnabled()) {
       String bootstrapServerAddress = admin.getNativeReplicationKafkaBootstrapServerAddress(sourceGridFabric);
       if (bootstrapServerAddress == null) {
         LOGGER.error(

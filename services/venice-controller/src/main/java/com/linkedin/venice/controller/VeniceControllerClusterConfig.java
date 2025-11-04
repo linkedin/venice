@@ -588,7 +588,7 @@ public class VeniceControllerClusterConfig {
   private final boolean disableParentRequestTopicForStreamPushes;
 
   /**
-   * Config to enable overriding Kafka bootstrap servers for stream push jobs based on source grid fabric.
+   * Config to enable overriding PubSub bootstrap servers for stream push jobs based on source grid fabric.
    */
   private final boolean enableStreamPushSourceGridFabricOverride;
 
