@@ -128,6 +128,7 @@ public class AvroGenericDaVinciClientTest {
             backendConfig,
             Optional.empty(),
             null,
+            null,
             null));
     doReturn(false).when(dvcClient).isReady();
     doNothing().when(dvcClient).initBackend(any(), any(), any(), any(), any());
@@ -430,7 +431,8 @@ public class AvroGenericDaVinciClientTest {
     veniceChangeCoordinates.add(mock(VeniceChangeCoordinate.class));
 
     // Mock the seekToCheckpoint method
-    doReturn(CompletableFuture.completedFuture(null)).when(mockStoreBackend).seekToCheckPoints(anyMap());
+    doReturn(CompletableFuture.completedFuture(null)).when(mockStoreBackend)
+        .seekToCheckPoints(anyMap(), Optional.empty());
     doReturn(true).when(dvcClient).isReady();
     when(dvcClient.getStoreBackend()).thenReturn(mockStoreBackend);
 
@@ -455,7 +457,8 @@ public class AvroGenericDaVinciClientTest {
     Field backendField = AvroGenericDaVinciClient.class.getDeclaredField("daVinciBackend");
     backendField.setAccessible(true);
     // Mock the seek method
-    doReturn(CompletableFuture.completedFuture(null)).when(mockStoreBackend).seekToTimestamps(anyMap());
+    doReturn(CompletableFuture.completedFuture(null)).when(mockStoreBackend)
+        .seekToTimestamps(anyMap(), Optional.empty());
     doReturn(true).when(dvcClient).isReady();
     when(dvcClient.getStoreBackend()).thenReturn(mockStoreBackend);
     Map<Integer, Long> timestamps = new HashMap<>();
@@ -481,7 +484,8 @@ public class AvroGenericDaVinciClientTest {
     Field backendField = AvroGenericDaVinciClient.class.getDeclaredField("daVinciBackend");
     backendField.setAccessible(true);
     // Mock the seek method
-    doReturn(CompletableFuture.completedFuture(null)).when(mockStoreBackend).seekToTimestamps(anyMap());
+    doReturn(CompletableFuture.completedFuture(null)).when(mockStoreBackend)
+        .seekToTimestamps(anyMap(), Optional.empty());
     doReturn(false).when(dvcClient).isReady();
     when(dvcClient.getStoreBackend()).thenReturn(mockStoreBackend);
     Map<Integer, Long> timestamps = new HashMap<>();

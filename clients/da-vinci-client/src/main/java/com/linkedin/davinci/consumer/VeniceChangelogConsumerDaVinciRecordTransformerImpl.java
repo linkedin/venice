@@ -9,12 +9,12 @@ import static com.linkedin.venice.meta.PersistenceType.ROCKS_DB;
 import static com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory.FAIL;
 import static com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory.SUCCESS;
 
-import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.davinci.client.DaVinciConfig;
 import com.linkedin.davinci.client.DaVinciRecordTransformer;
 import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
 import com.linkedin.davinci.client.DaVinciRecordTransformerRecordMetadata;
 import com.linkedin.davinci.client.DaVinciRecordTransformerResult;
+import com.linkedin.davinci.client.SeekableDaVinciClient;
 import com.linkedin.davinci.client.StorageClass;
 import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
 import com.linkedin.davinci.consumer.stats.BasicConsumerStats;
@@ -75,7 +75,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   private final DaVinciRecordTransformerConfig recordTransformerConfig;
   // CachingDaVinciClientFactory used instead of DaVinciClientFactory, so we have the ability to close down the client
   private final CachingDaVinciClientFactory daVinciClientFactory;
-  private final DaVinciClient<Object, Object> daVinciClient;
+  private final SeekableDaVinciClient<K, V> daVinciClient;
   private final AtomicBoolean isStarted = new AtomicBoolean(false);
   private final CountDownLatch startLatch = new CountDownLatch(1);
   // Using a dedicated thread pool for CompletableFutures created by this class to avoid potential thread starvation
@@ -149,9 +149,9 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
     } else {
       if (innerClientConfig.isSpecificClient()) {
         this.daVinciClient = this.daVinciClientFactory
-            .getSpecificAvroClient(this.storeName, daVinciConfig, innerClientConfig.getSpecificValueClass());
+            .getSpecificSeekableAvroClient(this.storeName, daVinciConfig, innerClientConfig.getSpecificValueClass());
       } else {
-        this.daVinciClient = this.daVinciClientFactory.getGenericAvroClient(this.storeName, daVinciConfig);
+        this.daVinciClient = this.daVinciClientFactory.getGenericSeekableAvroClient(this.storeName, daVinciConfig);
       }
     }
 
@@ -225,7 +225,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
 
       isCaughtUp.set(true);
       LOGGER.info(
-          "BootstrappingVeniceChangelogConsumer is caught up for store: {} for partitions: {}",
+          "VeniceChangelogConsumer is caught up for store: {} for partitions: {}",
           storeName,
           subscribedPartitions);
     });
@@ -302,18 +302,99 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   }
 
   public CompletableFuture<Void> seekToCheckpoint(Set<VeniceChangeCoordinate> checkpoints) {
-    // ToDo: Figure out seek to checkpoint
-    throw new VeniceClientException("seekToCheckpoint is not supported yet");
+    daVinciClient.start();
+
+    for (VeniceChangeCoordinate coordinate: checkpoints) {
+      subscribedPartitions.add(coordinate.getPartition());
+    }
+
+    CompletableFuture<Void> startFuture = CompletableFuture.supplyAsync(() -> {
+      try {
+        /*
+         * When this latch gets released, this means there's at least one message in pubSubMessages. So when the user
+         * calls poll, they don't get an empty response.
+         */
+        startLatch.await();
+
+        if (changeCaptureStats != null) {
+          backgroundReporterThread = new BackgroundReporterThread();
+          backgroundReporterThread.start();
+        }
+      } catch (InterruptedException e) {
+        LOGGER.info("Thread was interrupted", e);
+        // Restore the interrupt status
+        Thread.currentThread().interrupt();
+      }
+      return null;
+    }, completableFutureThreadPool);
+
+    daVinciClient.seekToCheckpoint(checkpoints).whenComplete((result, error) -> {
+      if (error != null) {
+        LOGGER.error("Failed to subscribe to partitions: {} for store: {}", subscribedPartitions, storeName, error);
+        startFuture.completeExceptionally(new VeniceException(error));
+        return;
+      }
+
+      isCaughtUp.set(true);
+      LOGGER.info(
+          "VeniceChangelogConsumer is caught up for store: {} for partitions: {}",
+          storeName,
+          subscribedPartitions);
+    });
+
+    return startFuture;
   }
 
   public CompletableFuture<Void> seekToTimestamps(Map<Integer, Long> timestamps) {
-    // ToDo: Figure out seek to timestamp
-    throw new VeniceClientException("seekToTimestamps is not supported yet");
+    daVinciClient.start();
+
+    subscribedPartitions.addAll(timestamps.keySet());
+
+    CompletableFuture<Void> startFuture = CompletableFuture.supplyAsync(() -> {
+      try {
+        /*
+         * When this latch gets released, this means there's at least one message in pubSubMessages. So when the user
+         * calls poll, they don't get an empty response.
+         */
+        startLatch.await();
+
+        if (changeCaptureStats != null) {
+          backgroundReporterThread = new BackgroundReporterThread();
+          backgroundReporterThread.start();
+        }
+      } catch (InterruptedException e) {
+        LOGGER.info("Thread was interrupted", e);
+        // Restore the interrupt status
+        Thread.currentThread().interrupt();
+      }
+      return null;
+    }, completableFutureThreadPool);
+
+    daVinciClient.seekToTimestamps(timestamps).whenComplete((result, error) -> {
+      if (error != null) {
+        LOGGER.error("Failed to subscribe to partitions: {} for store: {}", subscribedPartitions, storeName, error);
+        startFuture.completeExceptionally(new VeniceException(error));
+        return;
+      }
+
+      isCaughtUp.set(true);
+      LOGGER.info(
+          "VeniceChangelogConsumer is caught up for store: {} for partitions: {}",
+          storeName,
+          subscribedPartitions);
+    });
+
+    return startFuture;
   }
 
   public CompletableFuture<Void> seekToTimestamp(Long timestamp) {
-    // ToDo: Figure out seek to timestamp
-    throw new VeniceClientException("seekToTimestamp is not supported yet");
+    Map<Integer, Long> timestamps = new HashMap<>();
+    for (int i = 0; i < daVinciClient.getPartitionCount(); i++) {
+      timestamps.put(i, timestamp);
+      subscribedPartitions.add(i);
+    }
+
+    return seekToTimestamps(timestamps);
   }
 
   public void pause(Set<Integer> partitions) {
