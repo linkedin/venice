@@ -7,6 +7,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_CHECKSUM_VERIFICATI
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyMap;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doNothing;
@@ -432,7 +433,7 @@ public class AvroGenericDaVinciClientTest {
 
     // Mock the seekToCheckpoint method
     doReturn(CompletableFuture.completedFuture(null)).when(mockStoreBackend)
-        .seekToCheckPoints(anyMap(), Optional.empty());
+        .seekToCheckPoints(anyMap(), eq(Optional.empty()));
     doReturn(true).when(dvcClient).isReady();
     when(dvcClient.getStoreBackend()).thenReturn(mockStoreBackend);
 
@@ -458,7 +459,7 @@ public class AvroGenericDaVinciClientTest {
     backendField.setAccessible(true);
     // Mock the seek method
     doReturn(CompletableFuture.completedFuture(null)).when(mockStoreBackend)
-        .seekToTimestamps(anyMap(), Optional.empty());
+        .seekToTimestamps(anyMap(), eq(Optional.empty()));
     doReturn(true).when(dvcClient).isReady();
     when(dvcClient.getStoreBackend()).thenReturn(mockStoreBackend);
     Map<Integer, Long> timestamps = new HashMap<>();
@@ -485,7 +486,7 @@ public class AvroGenericDaVinciClientTest {
     backendField.setAccessible(true);
     // Mock the seek method
     doReturn(CompletableFuture.completedFuture(null)).when(mockStoreBackend)
-        .seekToTimestamps(anyMap(), Optional.empty());
+        .seekToTimestamps(anyMap(), eq(Optional.empty()));
     doReturn(false).when(dvcClient).isReady();
     when(dvcClient.getStoreBackend()).thenReturn(mockStoreBackend);
     Map<Integer, Long> timestamps = new HashMap<>();
