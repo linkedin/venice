@@ -563,7 +563,7 @@ public class CachingDaVinciClientFactory
         config,
         valueClass,
         new SpecificSeekableDaVinciClientConstructor<>(),
-        getClientClass(config, true),
+        AvroSpecificSeekableDaVinciClient.class,
         false);
     return (SeekableDaVinciClient<K, V>) client;
   }
