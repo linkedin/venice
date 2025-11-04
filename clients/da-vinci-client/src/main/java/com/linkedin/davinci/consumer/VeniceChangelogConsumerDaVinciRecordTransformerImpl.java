@@ -191,18 +191,13 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
     startDaVinciClient();
 
     // If a user passes in empty partitions set, we subscribe to all partitions
-    Set<Integer> targetPartitions;
     if (partitions.isEmpty()) {
-      targetPartitions = new HashSet<>();
       for (int i = 0; i < daVinciClient.getPartitionCount(); i++) {
-        targetPartitions.add(i);
+        subscribedPartitions.add(i);
       }
     } else {
-      targetPartitions = partitions;
+      subscribedPartitions.addAll(partitions);
     }
-
-    // Update subscribedPartitions before making the subscription call
-    subscribedPartitions.addAll(targetPartitions);
 
     CompletableFuture<Void> startFuture = CompletableFuture.supplyAsync(() -> {
       try {
@@ -233,10 +228,10 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
     /*
      * Avoid waiting on the CompletableFuture to prevent a circular dependency.
      * When subscribe is called, DVRT scans the entire storage engine and fills pubSubMessages.
-     * Because pubSubMessages has limited capacity, we must NOT wait on the subscription future.
-     * The caller must poll to drain pubSubMessages, otherwise threads populating pubSubMessages will
-     * wait forever for capacity to become available, leading to a deadlock.
-     */
+     * Because pubSubMessages has limited capacity, blocking on the CompletableFuture
+     * prevents the user from calling poll to drain pubSubMessages, so the threads populating pubSubMessages
+     * will wait forever for capacity to become available. This leads to a deadlock.
+    */
     subscriptionCall.apply(subscribedPartitions).whenComplete((result, error) -> {
       if (error != null) {
         LOGGER.error("Failed to subscribe to partitions: {} for store: {}", subscribedPartitions, storeName, error);
