@@ -42,6 +42,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.PERSONA_N
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PERSONA_OWNERS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PERSONA_QUOTA;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PERSONA_STORES;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.POSITION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PUSH_IN_SORTED_ORDER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PUSH_JOB_ID;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PUSH_STRATEGY;
@@ -706,14 +707,15 @@ public class ControllerClient implements Closeable {
     return request(ControllerRoute.KILL_OFFLINE_PUSH_JOB, params, ControllerResponse.class);
   }
 
-  public ControllerResponse skipAdminMessage(String offset, boolean skipDIV, String executionId) {
-    if (offset != null && executionId != null) {
+  public ControllerResponse skipAdminMessage(String typeIdAndBase64PositionBytes, boolean skipDIV, String executionId) {
+    if (typeIdAndBase64PositionBytes != null && executionId != null) {
       throw new IllegalArgumentException(
-          "Only one of offset or executionId can be specified, offset " + offset + ", execution id " + executionId);
+          "Only one of position or executionId can be specified, position " + typeIdAndBase64PositionBytes
+              + ", execution id " + executionId);
     }
     QueryParams params = newParams().add(SKIP_DIV, skipDIV);
-    if (offset != null) {
-      params.add(OFFSET, offset);
+    if (typeIdAndBase64PositionBytes != null) {
+      params.add(POSITION, typeIdAndBase64PositionBytes);
     }
     if (executionId != null) {
       params.add(EXECUTION_ID, executionId);

@@ -214,8 +214,7 @@ public class TestMultiDataCenterAdminOperations {
     // Cleanup the failing admin message
     for (VeniceControllerWrapper controller: controllersToTest) {
       AdminConsumerService adminConsumerService = controller.getAdminConsumerServiceByCluster(clusterName);
-      adminConsumerService
-          .setOffsetToSkip(clusterName, adminConsumerService.getFailingPosition().getNumericOffset(), false);
+      adminConsumerService.setPositionToSkip(clusterName, adminConsumerService.getFailingPosition(), false);
     }
 
     AdminConsumerService parentAdminConsumerService = parentController.getAdminConsumerServiceByCluster(clusterName);

@@ -635,7 +635,7 @@ public interface Admin extends AutoCloseable, Closeable {
    * @param offset
    * @param skipDIV tries to skip only the DIV check for the blocking message.
    */
-  void skipAdminMessage(String clusterName, long offset, boolean skipDIV, long executionId);
+  void skipAdminMessage(String clusterName, String typeIdAndBase64PositionBytes, boolean skipDIV, long executionId);
 
   /**
    * Get the id of the last succeed execution in this controller.
