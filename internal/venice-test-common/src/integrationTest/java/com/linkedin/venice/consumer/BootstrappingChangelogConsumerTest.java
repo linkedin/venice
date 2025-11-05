@@ -52,7 +52,6 @@ import com.linkedin.davinci.consumer.BootstrappingVeniceChangelogConsumer;
 import com.linkedin.davinci.consumer.ChangeEvent;
 import com.linkedin.davinci.consumer.ChangelogClientConfig;
 import com.linkedin.davinci.consumer.VeniceChangeCoordinate;
-import com.linkedin.davinci.consumer.VeniceChangelogConsumer;
 import com.linkedin.davinci.consumer.VeniceChangelogConsumerClientFactory;
 import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
@@ -699,14 +698,6 @@ public class BootstrappingChangelogConsumerTest {
         bootstrappingVeniceChangelogConsumerList);
 
     cleanUpStoreAndVerify(storeName);
-  }
-
-  private void pollChangeEventsFromChangeCaptureConsumerToList(
-      List<PubSubMessage<GenericRecord, ChangeEvent<GenericRecord>, VeniceChangeCoordinate>> polledChangeEvents,
-      VeniceChangelogConsumer<GenericRecord, GenericRecord> veniceChangelogConsumer) {
-    Collection<PubSubMessage<GenericRecord, ChangeEvent<GenericRecord>, VeniceChangeCoordinate>> pubSubMessages =
-        veniceChangelogConsumer.poll(1000);
-    polledChangeEvents.addAll(pubSubMessages);
   }
 
   public static void pollChangeEventsFromChangeCaptureConsumer(
