@@ -372,7 +372,7 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
   }
 
   /**
-   * This to true to use the new {@link VeniceChangelogConsumer}.
+   * Set this to true to use the new {@link VeniceChangelogConsumer}.
    */
   public ChangelogClientConfig setIsNewStatelessClientEnabled(Boolean newStatelessClientEnabled) {
     this.isNewStatelessClientEnabled = newStatelessClientEnabled;

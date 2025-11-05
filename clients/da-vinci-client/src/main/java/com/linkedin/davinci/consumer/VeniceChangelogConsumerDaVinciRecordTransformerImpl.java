@@ -362,8 +362,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   }
 
   public void pause(Set<Integer> partitions) {
-    // ToDo: API doesn't exist in DaVinci. Figure out
-    throw new VeniceClientException("pause is not supported yet");
+    throw new VeniceClientException("pause will not be supported");
   }
 
   public void pause() {
@@ -371,8 +370,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   }
 
   public void resume(Set<Integer> partitions) {
-    // ToDo: API doesn't exist in DaVinci. Figure out
-    throw new VeniceClientException("resume is not supported yet");
+    throw new VeniceClientException("resume will not be supported");
   }
 
   public void resume() {
