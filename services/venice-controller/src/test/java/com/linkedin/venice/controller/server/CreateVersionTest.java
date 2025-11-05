@@ -987,7 +987,7 @@ public class CreateVersionTest {
     assertEquals(
         response.getKafkaBootstrapServers(),
         "default.bootstrap.servers:9092",
-        "Bootstrap servers should not be set when feature is disabled");
+        "Bootstrap servers should not be overridden when feature is disabled");
     assertEquals(response.getPartitions(), 42);
     assertEquals(response.getCompressionStrategy(), CompressionStrategy.NO_OP);
     assertEquals(response.getKafkaTopic(), Utils.getRealTimeTopicName(mockVersion));
