@@ -1,6 +1,10 @@
 package com.linkedin.davinci.consumer;
 
+import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
+import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
+import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
@@ -80,7 +84,7 @@ public class VeniceChangelogConsumerClientFactoryTest {
     mockStoreInfo.setViewConfigs(viewConfigMap);
     Mockito.when(mockStoreResponse.getStore()).thenReturn(mockStoreInfo);
     Mockito.when(mockControllerClient.getStore(STORE_NAME)).thenReturn(mockStoreResponse);
-    Mockito.when(mockControllerClient.retryableRequest(Mockito.anyInt(), Mockito.any())).thenReturn(mockStoreResponse);
+    Mockito.when(mockControllerClient.retryableRequest(anyInt(), Mockito.any())).thenReturn(mockStoreResponse);
     VeniceChangelogConsumer consumer = veniceChangelogConsumerClientFactory.getChangelogConsumer(STORE_NAME);
 
     Assert.assertTrue(consumer instanceof VeniceAfterImageConsumerImpl);
@@ -208,6 +212,125 @@ public class VeniceChangelogConsumerClientFactoryTest {
     Mockito.when(mockControllerClient.getStore(STORE_NAME)).thenReturn(mockStoreResponse);
     globalChangelogClientConfig.setViewName(VIEW_NAME);
     Assert.assertThrows(() -> veniceChangelogConsumerClientFactory.getChangelogConsumer(STORE_NAME));
+  }
+
+  @Test
+  public void testGetBootstrappingChangelogConsumer()
+      throws ExecutionException, InterruptedException, JsonProcessingException {
+    Properties consumerProperties = new Properties();
+    String localKafkaUrl = "http://www.fooAddress.linkedin.com:16337";
+    consumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, localKafkaUrl);
+    consumerProperties.put(CLUSTER_NAME, TEST_CLUSTER_NAME);
+    consumerProperties.put(ZOOKEEPER_ADDRESS, TEST_ZOOKEEPER_ADDRESS);
+
+    SchemaReader mockSchemaReader = Mockito.mock(SchemaReader.class);
+    Mockito.when(mockSchemaReader.getKeySchema()).thenReturn(TestKeyRecord.SCHEMA$);
+    PubSubConsumerAdapter mockKafkaConsumer = Mockito.mock(PubSubConsumerAdapter.class);
+
+    ChangelogClientConfig globalChangelogClientConfig =
+        new ChangelogClientConfig().setConsumerProperties(consumerProperties)
+            .setSchemaReader(mockSchemaReader)
+            .setBootstrapFileSystemPath(TEST_BOOTSTRAP_FILE_SYSTEM_PATH)
+            .setLocalD2ZkHosts(TEST_ZOOKEEPER_ADDRESS)
+            .setIsBeforeImageView(true);
+    VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =
+        new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig, new MetricsRepository());
+    D2ControllerClient mockControllerClient = Mockito.mock(D2ControllerClient.class);
+
+    veniceChangelogConsumerClientFactory.setD2ControllerClient(mockControllerClient);
+    veniceChangelogConsumerClientFactory.setConsumer(mockKafkaConsumer);
+
+    StoreResponse mockStoreResponse = Mockito.mock(StoreResponse.class);
+    Mockito.when(mockStoreResponse.isError()).thenReturn(false);
+    StoreInfo mockStoreInfo = new StoreInfo();
+    mockStoreInfo.setPartitionCount(1);
+    mockStoreInfo.setCurrentVersion(1);
+    ViewConfig viewConfig = new ViewConfigImpl(ChangeCaptureView.class.getCanonicalName(), new HashMap<>());
+    Map<String, ViewConfig> viewConfigMap = new HashMap<>();
+    viewConfigMap.put(VIEW_NAME, viewConfig);
+    mockStoreInfo.setViewConfigs(viewConfigMap);
+    Mockito.when(mockStoreResponse.getStore()).thenReturn(mockStoreInfo);
+    Mockito.when(mockControllerClient.getStore(STORE_NAME)).thenReturn(mockStoreResponse);
+    BootstrappingVeniceChangelogConsumer consumer =
+        veniceChangelogConsumerClientFactory.getBootstrappingChangelogConsumer(STORE_NAME);
+
+    Assert.assertTrue(consumer instanceof VeniceChangelogConsumerDaVinciRecordTransformerImpl);
+
+    globalChangelogClientConfig.setViewName(VIEW_NAME);
+
+    consumer = veniceChangelogConsumerClientFactory.getBootstrappingChangelogConsumer(STORE_NAME);
+    Assert.assertTrue(consumer instanceof VeniceChangelogConsumerDaVinciRecordTransformerImpl);
+
+    D2ServiceDiscoveryResponse serviceDiscoveryResponse = new D2ServiceDiscoveryResponse();
+    serviceDiscoveryResponse.setCluster(TEST_CLUSTER);
+    serviceDiscoveryResponse.setD2Service("TEST_ROUTER_D2_SERVICE");
+    serviceDiscoveryResponse.setServerD2Service("TEST_SERVER_D2_SERVICE");
+    serviceDiscoveryResponse.setName(STORE_NAME);
+    String discoverClusterResponse = ObjectMapperFactory.getInstance().writeValueAsString(serviceDiscoveryResponse);
+
+    RestResponse discoverClusterRestResponse = mock(RestResponse.class);
+    doReturn(ByteString.unsafeWrap(discoverClusterResponse.getBytes(StandardCharsets.UTF_8)))
+        .when(discoverClusterRestResponse)
+        .getEntity();
+
+    // Verify branches which have a managed D2Client passed in for the controller client
+    D2Client mockD2Client = Mockito.mock(D2Client.class);
+    Future mockClusterDiscoveryFuture = Mockito.mock(Future.class);
+    Mockito.when(mockClusterDiscoveryFuture.get()).thenReturn(discoverClusterRestResponse);
+    Mockito.when(mockD2Client.restRequest(Mockito.any())).thenReturn(mockClusterDiscoveryFuture);
+
+    globalChangelogClientConfig.setD2Client(mockD2Client).setD2ControllerClient(null).setControllerRequestRetryCount(1);
+
+    VeniceChangelogConsumerClientFactory.ViewClassGetter mockViewGetter = (
+        String storeName,
+        String viewName,
+        D2ControllerClient d2ControllerClient,
+        int retries) -> ChangeCaptureView.class.getCanonicalName();
+
+    veniceChangelogConsumerClientFactory =
+        new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig, new MetricsRepository());
+    veniceChangelogConsumerClientFactory.setViewClassGetter(mockViewGetter);
+    veniceChangelogConsumerClientFactory.setD2ControllerClient(mockControllerClient);
+    veniceChangelogConsumerClientFactory.setConsumer(mockKafkaConsumer);
+
+    consumer = veniceChangelogConsumerClientFactory.getBootstrappingChangelogConsumer(STORE_NAME);
+    Assert.assertTrue(consumer instanceof VeniceChangelogConsumerDaVinciRecordTransformerImpl);
+  }
+
+  @Test
+  public void testGetBootstrappingChangelogConsumerThrowsException() {
+    Properties consumerProperties = new Properties();
+    String localKafkaUrl = "http://www.fooAddress.linkedin.com:16337";
+    consumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, localKafkaUrl);
+    consumerProperties.put(CLUSTER_NAME, TEST_CLUSTER_NAME);
+    consumerProperties.put(ZOOKEEPER_ADDRESS, TEST_ZOOKEEPER_ADDRESS);
+
+    SchemaReader mockSchemaReader = Mockito.mock(SchemaReader.class);
+    Mockito.when(mockSchemaReader.getKeySchema()).thenReturn(TestKeyRecord.SCHEMA$);
+    PubSubConsumerAdapter mockKafkaConsumer = Mockito.mock(PubSubConsumerAdapter.class);
+
+    ChangelogClientConfig globalChangelogClientConfig =
+        new ChangelogClientConfig().setConsumerProperties(consumerProperties)
+            .setSchemaReader(mockSchemaReader)
+            .setBootstrapFileSystemPath(TEST_BOOTSTRAP_FILE_SYSTEM_PATH)
+            .setLocalD2ZkHosts(TEST_ZOOKEEPER_ADDRESS);
+    VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =
+        new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig, new MetricsRepository());
+    D2ControllerClient mockControllerClient = Mockito.mock(D2ControllerClient.class);
+
+    veniceChangelogConsumerClientFactory.setConsumer(mockKafkaConsumer);
+
+    StoreResponse mockStoreResponse = Mockito.mock(StoreResponse.class);
+    Mockito.when(mockStoreResponse.isError()).thenReturn(false);
+    StoreInfo mockStoreInfo = new StoreInfo();
+    mockStoreInfo.setPartitionCount(1);
+    mockStoreInfo.setCurrentVersion(1);
+    Map<String, ViewConfig> viewConfigMap = new HashMap<>();
+    mockStoreInfo.setViewConfigs(viewConfigMap);
+    Mockito.when(mockStoreResponse.getStore()).thenReturn(mockStoreInfo);
+    Mockito.when(mockControllerClient.getStore(STORE_NAME)).thenReturn(mockStoreResponse);
+    globalChangelogClientConfig.setViewName(VIEW_NAME);
+    Assert.assertThrows(() -> veniceChangelogConsumerClientFactory.getBootstrappingChangelogConsumer(STORE_NAME));
   }
 
   @DataProvider(name = "kmeDeserializerScenarios", parallel = true)
