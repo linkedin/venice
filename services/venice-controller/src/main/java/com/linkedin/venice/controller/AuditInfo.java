@@ -39,7 +39,8 @@ public class AuditInfo {
         }
       }
     } catch (Exception e) {
-      // Silently handle any exceptions during principal extraction
+      // Silently ignore exceptions during principal extraction to avoid cluttering controller logs.
+      // Principal extraction is a nice-to-have audit feature and not critical for operation.
     }
     return "N/A";
   }
