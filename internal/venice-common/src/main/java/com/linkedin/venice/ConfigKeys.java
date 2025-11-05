@@ -2219,6 +2219,14 @@ public class ConfigKeys {
   public static final String CONTROLLER_DISABLE_PARENT_REQUEST_TOPIC_FOR_STREAM_PUSHES =
       "controller.disable.parent.request.topic.for.stream.pushes";
 
+  /**
+   * Config to enable overriding PubSub bootstrap servers for stream push jobs based on source grid fabric.
+   * When enabled, if a source grid fabric is specified in the request, the controller will use the
+   * PubSub bootstrap servers for that fabric instead of the default local Kafka cluster.
+   */
+  public static final String CONTROLLER_ENABLE_STREAM_PUSH_SOURCE_GRID_FABRIC_OVERRIDE =
+      "controller.enable.stream.push.source.grid.fabric.override";
+
   public static final String CONTROLLER_DEFAULT_READ_QUOTA_PER_ROUTER = "controller.default.read.quota.per.router";
 
   /**

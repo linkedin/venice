@@ -53,6 +53,7 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_DISABLE_PARENT_REQUEST_T
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_DISABLE_PARENT_TOPIC_TRUNCATION_UPON_COMPLETION;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_EARLY_DELETE_BACKUP_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_ENABLE_DISABLED_REPLICA_ENABLED;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_ENABLE_STREAM_PUSH_SOURCE_GRID_FABRIC_OVERRIDE;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_ENFORCE_SSL;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_GRPC_SERVER_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_GRPC_SERVER_THREAD_COUNT;
@@ -586,6 +587,11 @@ public class VeniceControllerClusterConfig {
    */
   private final boolean disableParentRequestTopicForStreamPushes;
 
+  /**
+   * Config to enable overriding PubSub bootstrap servers for stream push jobs based on source grid fabric.
+   */
+  private final boolean enableStreamPushSourceGridFabricOverride;
+
   private final int defaultReadQuotaPerRouter;
 
   private final int defaultMaxRecordSizeBytes; // default value for VeniceWriter.maxRecordSizeBytes
@@ -776,6 +782,8 @@ public class VeniceControllerClusterConfig {
     this.jettyConfigOverrides = props.clipAndFilterNamespace(CONTROLLER_JETTY_CONFIG_OVERRIDE_PREFIX);
     this.disableParentRequestTopicForStreamPushes =
         props.getBoolean(CONTROLLER_DISABLE_PARENT_REQUEST_TOPIC_FOR_STREAM_PUSHES, false);
+    this.enableStreamPushSourceGridFabricOverride =
+        props.getBoolean(CONTROLLER_ENABLE_STREAM_PUSH_SOURCE_GRID_FABRIC_OVERRIDE, true);
     this.defaultReadQuotaPerRouter =
         props.getInt(CONTROLLER_DEFAULT_READ_QUOTA_PER_ROUTER, DEFAULT_PER_ROUTER_READ_QUOTA);
     this.defaultMaxRecordSizeBytes =
@@ -1354,6 +1362,10 @@ public class VeniceControllerClusterConfig {
 
   public boolean isDisableParentRequestTopicForStreamPushes() {
     return disableParentRequestTopicForStreamPushes;
+  }
+
+  public boolean isEnableStreamPushSourceGridFabricOverride() {
+    return enableStreamPushSourceGridFabricOverride;
   }
 
   public int getMaxNumberOfPartitions() {

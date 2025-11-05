@@ -3164,7 +3164,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                     sourceGridFabric,
                     emergencySourceRegion,
                     targetedRegions);
-                sourceKafkaBootstrapServers = getNativeReplicationKafkaBootstrapServerAddress(sourceFabric);
+                sourceKafkaBootstrapServers = getPubSubBootstrapServersForRegion(sourceFabric);
                 if (sourceKafkaBootstrapServers == null) {
                   sourceKafkaBootstrapServers = getKafkaBootstrapServers(isSslToKafka());
                 }
@@ -4567,7 +4567,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     boolean allTopicsAreDeleted = true;
     Set<String> parentFabrics = multiClusterConfigs.getParentFabrics();
     for (String parentFabric: parentFabrics) {
-      String kafkaBootstrapServerAddress = getNativeReplicationKafkaBootstrapServerAddress(parentFabric);
+      String kafkaBootstrapServerAddress = getPubSubBootstrapServersForRegion(parentFabric);
       allTopicsAreDeleted &= truncateKafkaTopic(
           getTopicManager(kafkaBootstrapServerAddress),
           kafkaTopicName,
@@ -7486,12 +7486,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   /**
-   * @return KafkaUrl for the given fabric.
+   * @return PubSub address for the given region.
    * @see ConfigKeys#CHILD_DATA_CENTER_KAFKA_URL_PREFIX
    */
   @Override
-  public String getNativeReplicationKafkaBootstrapServerAddress(String sourceFabric) {
-    return multiClusterConfigs.getChildDataCenterKafkaUrlMap().get(sourceFabric);
+  public String getPubSubBootstrapServersForRegion(String sourceRegion) {
+    return multiClusterConfigs.getChildDataCenterKafkaUrlMap().get(sourceRegion);
   }
 
   /**
@@ -9252,7 +9252,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   public Optional<String> getAggregateRealTimeTopicSource(String clusterName) {
     String sourceRegion = multiClusterConfigs.getControllerConfig(clusterName).getAggregateRealTimeSourceRegion();
     if (!StringUtils.isEmpty(sourceRegion)) {
-      return Optional.of(getNativeReplicationKafkaBootstrapServerAddress(sourceRegion));
+      return Optional.of(getPubSubBootstrapServersForRegion(sourceRegion));
     } else {
       return Optional.empty();
     }

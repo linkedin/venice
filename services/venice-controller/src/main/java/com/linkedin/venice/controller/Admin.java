@@ -522,7 +522,7 @@ public interface Admin extends AutoCloseable, Closeable {
    */
   String getRegionName();
 
-  String getNativeReplicationKafkaBootstrapServerAddress(String sourceFabric);
+  String getPubSubBootstrapServersForRegion(String sourceFabric);
 
   String getNativeReplicationSourceFabric(
       String clusterName,
