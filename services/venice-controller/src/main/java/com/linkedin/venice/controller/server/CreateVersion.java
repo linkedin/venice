@@ -348,7 +348,7 @@ public class CreateVersion extends AbstractRoute {
     if (sourceGridFabric != null
         && admin.getControllerConfig(request.getClusterName()).isEnableStreamPushSourceGridFabricOverride()
         && referenceHybridVersion.isActiveActiveReplicationEnabled()) {
-      String bootstrapServerAddress = admin.getNativeReplicationKafkaBootstrapServerAddress(sourceGridFabric);
+      String bootstrapServerAddress = admin.getPubSubBootstrapServersForRegion(sourceGridFabric);
       if (bootstrapServerAddress == null) {
         LOGGER.error(
             "Failed to get the broker server URL for source grid fabric: {} for pushJob: {} store: {} in cluster: {}. Will use default PubSub bootstrap servers.",
@@ -552,7 +552,7 @@ public class CreateVersion extends AbstractRoute {
     if (overRideSourceRegion == null) {
       return;
     }
-    String bootstrapServerAddress = admin.getNativeReplicationKafkaBootstrapServerAddress(overRideSourceRegion);
+    String bootstrapServerAddress = admin.getPubSubBootstrapServersForRegion(overRideSourceRegion);
     if (bootstrapServerAddress == null) {
       throw new VeniceException("Failed to get the broker server URL for the source region: " + overRideSourceRegion);
     }

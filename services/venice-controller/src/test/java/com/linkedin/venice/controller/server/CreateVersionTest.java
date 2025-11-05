@@ -307,7 +307,7 @@ public class CreateVersionTest {
     doReturn(emergencySrcRegion).when(admin).getEmergencySourceRegion(CLUSTER_NAME);
     doCallRealMethod().when(request).queryParamOrDefault(any(), any());
     doReturn(true).when(accessClient).isAllowlistUsers(certificate, STORE_NAME, HTTP_GET);
-    doReturn("dc-1.region.io").when(admin).getNativeReplicationKafkaBootstrapServerAddress(emergencySrcRegion.get());
+    doReturn("dc-1.region.io").when(admin).getPubSubBootstrapServersForRegion(emergencySrcRegion.get());
     doReturn(version).when(admin)
         .incrementVersionIdempotent(
             CLUSTER_NAME,
@@ -436,7 +436,7 @@ public class CreateVersionTest {
     // AA-all-region and NR are enabled AND emergencySourceRegion is not set but pushJobSourceGridFabric is provided
     creationResponse = new VersionCreationResponse();
     creationResponse.setKafkaBootstrapServers("default.src.region.com");
-    doReturn("vpj.src.region.com").when(admin).getNativeReplicationKafkaBootstrapServerAddress("dc-vpj");
+    doReturn("vpj.src.region.com").when(admin).getPubSubBootstrapServersForRegion("dc-vpj");
     overrideSourceRegionAddressForIncrementalPushJob(
         admin,
         creationResponse,
@@ -451,7 +451,7 @@ public class CreateVersionTest {
     // AA-all-region and NR are enabled AND emergencySourceRegion is set and pushJobSourceGridFabric is provided
     creationResponse = new VersionCreationResponse();
     creationResponse.setKafkaBootstrapServers("emergency.src.region.com");
-    doReturn("emergency.src.region.com").when(admin).getNativeReplicationKafkaBootstrapServerAddress("dc-e");
+    doReturn("emergency.src.region.com").when(admin).getPubSubBootstrapServersForRegion("dc-e");
     overrideSourceRegionAddressForIncrementalPushJob(
         admin,
         creationResponse,
@@ -466,7 +466,7 @@ public class CreateVersionTest {
     // AA-all-region and NR are enabled AND emergencySourceRegion is set and pushJobSourceGridFabric is not provided
     creationResponse = new VersionCreationResponse();
     creationResponse.setKafkaBootstrapServers("emergency.src.region.com");
-    doReturn("emergency.src.region.com").when(admin).getNativeReplicationKafkaBootstrapServerAddress("dc-e");
+    doReturn("emergency.src.region.com").when(admin).getPubSubBootstrapServersForRegion("dc-e");
     overrideSourceRegionAddressForIncrementalPushJob(
         admin,
         creationResponse,
@@ -483,7 +483,7 @@ public class CreateVersionTest {
   public void testOverrideSourceRegionAddressForIncrementalPushJobWhenOverrideRegionAddressIsNotFound() {
     VersionCreationResponse creationResponse = new VersionCreationResponse();
     creationResponse.setKafkaBootstrapServers("default.src.region.com");
-    doReturn(null).when(admin).getNativeReplicationKafkaBootstrapServerAddress("dc1");
+    doReturn(null).when(admin).getPubSubBootstrapServersForRegion("dc1");
     overrideSourceRegionAddressForIncrementalPushJob(
         admin,
         creationResponse,
@@ -811,8 +811,7 @@ public class CreateVersionTest {
     when(mockRequest3.getSourceGridFabric()).thenReturn("gridFabric");
     when(mockLazy3.get()).thenReturn(true);
 
-    when(mockAdmin3.getNativeReplicationKafkaBootstrapServerAddress("emergencyRegion"))
-        .thenReturn("emergencyRegionAddress");
+    when(mockAdmin3.getPubSubBootstrapServersForRegion("emergencyRegion")).thenReturn("emergencyRegionAddress");
 
     createVersion.configureSourceFabric(mockAdmin3, mockVersion3, mockLazy3, mockRequest3, mockResponse3);
 
@@ -899,7 +898,7 @@ public class CreateVersionTest {
     VeniceControllerClusterConfig mockConfig = mock(VeniceControllerClusterConfig.class);
     when(mockConfig.isEnableStreamPushSourceGridFabricOverride()).thenReturn(true);
     when(admin.getControllerConfig(clusterName)).thenReturn(mockConfig);
-    when(admin.getNativeReplicationKafkaBootstrapServerAddress(sourceGridFabric)).thenReturn(sourceBootstrapServers);
+    when(admin.getPubSubBootstrapServersForRegion(sourceGridFabric)).thenReturn(sourceBootstrapServers);
 
     // Execute
     createVersion.handleStreamPushType(admin, store, request, response);
@@ -912,7 +911,7 @@ public class CreateVersionTest {
         response.getKafkaBootstrapServers(),
         sourceBootstrapServers,
         "Bootstrap servers should be overridden when source grid fabric is set and feature is enabled");
-    verify(admin).getNativeReplicationKafkaBootstrapServerAddress(sourceGridFabric);
+    verify(admin).getPubSubBootstrapServersForRegion(sourceGridFabric);
   }
 
   @Test
@@ -940,7 +939,7 @@ public class CreateVersionTest {
     VeniceControllerClusterConfig mockConfig = mock(VeniceControllerClusterConfig.class);
     when(mockConfig.isEnableStreamPushSourceGridFabricOverride()).thenReturn(true);
     when(admin.getControllerConfig(clusterName)).thenReturn(mockConfig);
-    when(admin.getNativeReplicationKafkaBootstrapServerAddress(sourceGridFabric)).thenReturn(null);
+    when(admin.getPubSubBootstrapServersForRegion(sourceGridFabric)).thenReturn(null);
 
     // Execute - should not throw exception, just log error and use default bootstrap servers
     createVersion.handleStreamPushType(admin, store, request, response);
@@ -993,8 +992,8 @@ public class CreateVersionTest {
     assertEquals(response.getCompressionStrategy(), CompressionStrategy.NO_OP);
     assertEquals(response.getKafkaTopic(), Utils.getRealTimeTopicName(mockVersion));
 
-    // Verify getNativeReplicationKafkaBootstrapServerAddress was never called
-    verify(admin, never()).getNativeReplicationKafkaBootstrapServerAddress(anyString());
+    // Verify getPubSubBootstrapServersForRegion was never called
+    verify(admin, never()).getPubSubBootstrapServersForRegion(anyString());
   }
 
   @Test

@@ -4468,11 +4468,11 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   /**
-   * @see VeniceHelixAdmin#getNativeReplicationKafkaBootstrapServerAddress(String)
+   * @see VeniceHelixAdmin#getPubSubBootstrapServersForRegion(String)
    */
   @Override
-  public String getNativeReplicationKafkaBootstrapServerAddress(String sourceFabric) {
-    return getVeniceHelixAdmin().getNativeReplicationKafkaBootstrapServerAddress(sourceFabric);
+  public String getPubSubBootstrapServersForRegion(String sourceFabric) {
+    return getVeniceHelixAdmin().getPubSubBootstrapServersForRegion(sourceFabric);
   }
 
   /**
