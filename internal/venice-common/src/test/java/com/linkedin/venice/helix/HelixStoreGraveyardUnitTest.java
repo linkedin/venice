@@ -2,6 +2,7 @@ package com.linkedin.venice.helix;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
@@ -17,7 +18,10 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import org.apache.helix.AccessOption;
+import org.apache.helix.manager.zk.ZkBaseDataAccessor;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
+import org.apache.zookeeper.data.Stat;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
@@ -129,5 +133,31 @@ public class HelixStoreGraveyardUnitTest {
         true);
 
     assertEquals(result, 5);
+  }
+
+  @Test
+  void testGetStoreDeletedTime() {
+    String clusterName = "testCluster";
+    String storeName = "testStore";
+    String path = graveyard.getStoreGraveyardPath(clusterName, storeName);
+
+    // Mock the dataAccessor to return a Stat with creation time
+    ZkBaseDataAccessor<Store> mockDataAccessor = mock(ZkBaseDataAccessor.class);
+    graveyard.dataAccessor = mockDataAccessor;
+
+    // Test case 1: Store exists in graveyard - should return creation time
+    Stat mockStat = mock(Stat.class);
+    long expectedCreationTime = 1234567890L;
+    when(mockStat.getMtime()).thenReturn(expectedCreationTime);
+    when(mockDataAccessor.getStat(eq(path), eq(AccessOption.PERSISTENT))).thenReturn(mockStat);
+
+    long actualCreationTime = graveyard.getStoreDeletedTime(clusterName, storeName);
+    assertEquals(actualCreationTime, expectedCreationTime);
+
+    // Test case 2: Store does not exist in graveyard - should return STORE_NOT_IN_GRAVEYARD
+    when(mockDataAccessor.getStat(eq(path), eq(AccessOption.PERSISTENT))).thenReturn(null);
+
+    long nonExistentStoreTime = graveyard.getStoreDeletedTime(clusterName, storeName);
+    assertEquals(nonExistentStoreTime, HelixStoreGraveyard.STORE_NOT_IN_GRAVEYARD);
   }
 }

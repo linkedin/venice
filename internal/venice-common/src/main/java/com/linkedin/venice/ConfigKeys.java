@@ -631,6 +631,13 @@ public class ConfigKeys {
       "controller.store.graveyard.cleanup.sleep.interval.between.list.fetch.minutes";
 
   /**
+   * Minimum time window in seconds that must pass after a store is deleted before it can be recreated.
+   * This prevents accidental recreation of recently deleted stores. Default is 21600 seconds (6 hours).
+   */
+  public static final String CONTROLLER_STORE_RECREATION_AFTER_DELETION_TIME_WINDOW_SECONDS =
+      "controller.store.recreation.after.deletion.time.window.seconds";
+
+  /**
    * Whether the superset schema generation in Parent Controller should be done via passed callback or not.
    */
   public static final String CONTROLLER_PARENT_EXTERNAL_SUPERSET_SCHEMA_GENERATION_ENABLED =

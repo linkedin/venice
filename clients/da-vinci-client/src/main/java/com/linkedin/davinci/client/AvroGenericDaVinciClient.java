@@ -66,6 +66,7 @@ import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -253,6 +254,22 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
     return subscribe(ComplementSet.wrap(partitions));
   }
 
+  private Optional<Version> getVersion() {
+    throwIfNotReady();
+
+    if (getStoreVersion() == null) {
+      return Optional.empty();
+    }
+
+    Store store = getBackend().getStoreRepository().getStoreOrThrow(getStoreName());
+    Version version = store.getVersion(getStoreVersion());
+
+    if (version == null) {
+      throw new VeniceClientException("Version: " + getStoreVersion() + " does not exist for store: " + getStoreName());
+    }
+    return Optional.of(version);
+  }
+
   protected CompletableFuture<Void> seekToCheckpoint(Set<VeniceChangeCoordinate> checkpoints) {
     if (getBackend().isIsolatedIngestion()) {
       throw new VeniceClientException("Isolated Ingestion is not supported with seekToCheckpoint");
@@ -267,7 +284,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
       positionMap.put(changeCoordinate.getPartition(), changeCoordinate.getPosition());
     }
     addPartitionsToSubscription(ComplementSet.wrap(positionMap.keySet()));
-    return getStoreBackend().seekToCheckPoints(positionMap);
+    return getStoreBackend().seekToCheckPoints(positionMap, getVersion());
   }
 
   protected CompletableFuture<Void> seekToTimestamps(Map<Integer, Long> timestamps) {
@@ -276,7 +293,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
     }
     throwIfNotReady();
     addPartitionsToSubscription(ComplementSet.wrap(timestamps.keySet()));
-    return getStoreBackend().seekToTimestamps(timestamps);
+    return getStoreBackend().seekToTimestamps(timestamps, getVersion());
   }
 
   protected CompletableFuture<Void> seekToTimestamps(Long timestamps) {
@@ -285,13 +302,13 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
     }
     throwIfNotReady();
     addPartitionsToSubscription(ComplementSet.universalSet());
-    return getStoreBackend().seekToTimestamps(timestamps);
+    return getStoreBackend().seekToTimestamps(timestamps, getVersion());
   }
 
   protected CompletableFuture<Void> subscribe(ComplementSet<Integer> partitions) {
     throwIfNotReady();
     addPartitionsToSubscription(partitions);
-    return storeBackend.subscribe(partitions);
+    return getStoreBackend().subscribe(partitions, getVersion(), Collections.emptyMap(), null, Collections.emptyMap());
   }
 
   @Override

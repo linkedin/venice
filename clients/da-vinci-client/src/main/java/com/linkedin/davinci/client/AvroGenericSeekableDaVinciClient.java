@@ -21,7 +21,8 @@ public class AvroGenericSeekableDaVinciClient<K, V> extends AvroGenericDaVinciCl
       VeniceProperties backendConfig,
       Optional<Set<String>> managedClients,
       ICProvider icProvider,
-      Executor readChunkExecutorForLargeRequest) {
+      Executor readChunkExecutorForLargeRequest,
+      Integer storeVersion) {
     super(
         daVinciConfig,
         clientConfig,
@@ -31,7 +32,7 @@ public class AvroGenericSeekableDaVinciClient<K, V> extends AvroGenericDaVinciCl
         GenericChunkingAdapter.INSTANCE,
         () -> {},
         readChunkExecutorForLargeRequest,
-        null);
+        storeVersion);
   }
 
   @Override
