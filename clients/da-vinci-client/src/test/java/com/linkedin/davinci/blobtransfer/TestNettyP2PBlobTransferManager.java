@@ -22,6 +22,7 @@ import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.blobtransfer.BlobFinder;
 import com.linkedin.venice.blobtransfer.BlobPeersDiscoveryResponse;
 import com.linkedin.venice.exceptions.VeniceBlobTransferFileNotFoundException;
+import com.linkedin.venice.exceptions.VenicePeersAllFailedException;
 import com.linkedin.venice.exceptions.VenicePeersConnectionException;
 import com.linkedin.venice.exceptions.VenicePeersNotFoundException;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
@@ -512,6 +513,40 @@ public class TestNettyP2PBlobTransferManager {
       Assert.assertNotNull(throwable);
       Assert.assertTrue(throwable instanceof TimeoutException);
       Assert.assertTrue(throwable.getMessage().contains("Timeout while waiting for blob transfer"));
+    });
+  }
+
+  @Test
+  public void testAllPeersFailException() {
+    // Preparation:
+    List<String> hostlist = Arrays.asList("badhost1", "badhost2", "badhost3");
+    BlobPeersDiscoveryResponse response = new BlobPeersDiscoveryResponse();
+    response.setDiscoveryResult(hostlist);
+
+    doReturn(response).when(finder).discoverBlobPeers(anyString(), anyInt(), anyInt());
+
+    StoreVersionState storeVersionState = new StoreVersionState();
+    Mockito.doReturn(storeVersionState).when(storageMetadataService).getStoreVersionState(Mockito.any());
+
+    InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer =
+        AvroProtocolDefinition.PARTITION_STATE.getSerializer();
+    OffsetRecord expectOffsetRecord =
+        new OffsetRecord(partitionStateSerializer, DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING);
+    expectOffsetRecord.setOffsetLag(1000L);
+    Mockito.doReturn(expectOffsetRecord)
+        .when(storageMetadataService)
+        .getLastOffset(Mockito.any(), Mockito.anyInt(), any());
+
+    // Execution:
+    CompletionStage<InputStream> future =
+        manager.get(TEST_STORE, TEST_VERSION, TEST_PARTITION, BlobTransferTableFormat.BLOCK_BASED_TABLE);
+
+    // Verification:
+    Assert.assertTrue(future.toCompletableFuture().isCompletedExceptionally());
+    future.whenComplete((result, throwable) -> {
+      Assert.assertNotNull(throwable);
+      Assert.assertTrue(throwable instanceof VenicePeersAllFailedException);
+      Assert.assertTrue(throwable.getMessage().contains("failed to connect to any peer"));
     });
   }
 
