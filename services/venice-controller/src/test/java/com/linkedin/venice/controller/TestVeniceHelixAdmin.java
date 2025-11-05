@@ -1589,7 +1589,7 @@ public class TestVeniceHelixAdmin {
     assertEquals(result.getExecutionStatus(), ExecutionStatus.NOT_CREATED);
     assertTrue(result.getStatusDetails().contains("Offline job hasn't been created yet"));
   }
-  
+
   @Test
   public void testCheckStoreGraveyardForRecreation() {
     VeniceHelixAdmin admin = mock(VeniceHelixAdmin.class);
