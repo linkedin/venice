@@ -10,19 +10,20 @@ import java.util.concurrent.CompletableFuture;
  * This interface is meant for users where local state must be built off of the entirety of a Venice data set.
  *
  * This interface provides automatic state management with local checkpointing and efficient data access
- * through local compaction. It eliminates the need for manual offset management and improves restart performance.
+ * through local compaction. It eliminates the need for manual checkpoint management and improves restart performance.
  *
  * KEY BENEFITS:
- * - Automatic State Management: No need to manually track offsets or manage checkpoints. The consumer handles
- *   all state management automatically.
+ * - Automatic State Management: No need to manually manage checkpoints.
+ *   The client handles all state management automatically.
  * - Efficient Restart: Resumes from the last checkpoint on restart, consuming only new changes since the last
- *   Kafka checkpoint. This reduces recovery time and eliminates the need to re-consume every event from Kafka.
+ *   Kafka checkpoint. This reduces recovery time and eliminates the need to re-consume every event from Kafka
+ *   on restart.
  * - Local Compaction: All data is compacted locally, providing efficient access to the current state without consuming
  *   duplicate events.
  * - Fast Bootstrap on Fresh Nodes: On fresh nodes without local state, obtains a complete data snapshot from existing
- *   nodes instead of consuming the entire Kafka history (requires blob transfer to be enabled).
+ *   nodes instead of consuming evert Kafka event (requires blob transfer to be enabled).
  *
- * This interface intentionally does not expose seek() operations to ensure local state consistency.
+ * This interface intentionally does not expose seek() operations for simplicity.
  * For more fine-grained control over seeking, see {@link VeniceChangelogConsumer}.
  *
  * @param <K> Key type
@@ -36,8 +37,6 @@ public interface BootstrappingVeniceChangelogConsumer<K, V> {
    *
    * The returned future completes when there is at least one message available to be polled.
    * Use {@link #isCaughtUp()} to determine when all subscribed partitions have caught up to the latest offset.
-   *
-   * NOTE: If you pass in an empty set, the consumer will subscribe to all partitions for the store.
    *
    * @param partitions Set of partition IDs to subscribe to. Pass empty set to subscribe to all partitions.
    * @return A future that completes when at least one message is available to poll.
@@ -56,7 +55,7 @@ public interface BootstrappingVeniceChangelogConsumer<K, V> {
    * local compacted state. Once the local state is fully consumed, subsequent calls will return
    * real-time updates made to the Venice store.
    *
-   * Records are returned in batches up to the configured MAX_BUFFER_SIZE. The method will return immediately if:
+   * Records are returned in batches up to the configured MAX_BUFFER_SIZE. This method will return immediately if:
    * 1. The buffer reaches MAX_BUFFER_SIZE before the timeout expires, OR
    * 2. The timeout is reached
    *
@@ -74,7 +73,7 @@ public interface BootstrappingVeniceChangelogConsumer<K, V> {
    * Indicates whether all subscribed partitions have caught up to the latest offset at the time of subscription.
    * Once this becomes true, it will remain true even if the consumer begins to lag later on.
    *
-   * This is useful for determining when the initial bootstrap phase has completed and the consumer has transitioned
+   * This is for determining when the initial bootstrap phase has completed and the consumer has transitioned
    * to consuming real-time events.
    *
    * @return True if all subscribed partitions have caught up to their target offsets.
