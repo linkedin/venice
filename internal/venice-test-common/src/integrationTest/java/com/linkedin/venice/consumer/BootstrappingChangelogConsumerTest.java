@@ -285,7 +285,6 @@ public class BootstrappingChangelogConsumerTest {
             .setLocalD2ZkHosts(zkAddress)
             .setControllerRequestRetryCount(3)
             .setBootstrapFileSystemPath(inputDirPath)
-            .setIsExperimentalClientEnabled(true)
             .setD2Client(d2Client)
             // Setting the max buffer size to a low threshold to ensure puts to the buffer get blocked and drained
             // correctly during regular operation and restarts
@@ -504,8 +503,7 @@ public class BootstrappingChangelogConsumerTest {
             .setLocalD2ZkHosts(zkAddress)
             .setControllerRequestRetryCount(3)
             .setBootstrapFileSystemPath(inputDirPath1)
-            .setD2Client(d2Client)
-            .setIsExperimentalClientEnabled(true);
+            .setD2Client(d2Client);
 
     VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =
         new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig, metricsRepository);
@@ -609,7 +607,6 @@ public class BootstrappingChangelogConsumerTest {
             .setLocalD2ZkHosts(zkAddress)
             .setControllerRequestRetryCount(3)
             .setBootstrapFileSystemPath(inputDirPath)
-            .setIsExperimentalClientEnabled(true)
             .setD2Client(d2Client);
     VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =
         new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig, metricsRepository);
@@ -722,8 +719,7 @@ public class BootstrappingChangelogConsumerTest {
             .setLocalD2ZkHosts(zkAddress)
             .setControllerRequestRetryCount(3)
             .setBootstrapFileSystemPath(inputDirPath1)
-            .setD2Client(d2Client)
-            .setIsExperimentalClientEnabled(true);
+            .setD2Client(d2Client);
 
     VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =
         new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig, metricsRepository);

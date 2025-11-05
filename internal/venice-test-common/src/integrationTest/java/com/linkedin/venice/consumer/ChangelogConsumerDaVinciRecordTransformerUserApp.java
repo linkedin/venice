@@ -123,8 +123,7 @@ public class ChangelogConsumerDaVinciRecordTransformerUserApp {
             .setLocalD2ZkHosts(zkUrl)
             .setControllerRequestRetryCount(3)
             .setBootstrapFileSystemPath(baseDataPath)
-            .setD2Client(d2Client)
-            .setIsExperimentalClientEnabled(true);
+            .setD2Client(d2Client);
 
     VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =
         new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig, metricsRepository);

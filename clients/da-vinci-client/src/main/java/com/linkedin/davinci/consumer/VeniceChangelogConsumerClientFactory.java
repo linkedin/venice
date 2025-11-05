@@ -127,13 +127,19 @@ public class VeniceChangelogConsumerClientFactory {
             pubSubMessageDeserializer,
             this);
       }
-      return new VeniceAfterImageConsumerImpl(
-          newStoreChangelogClientConfig,
-          consumer != null
-              ? consumer
-              : getPubSubConsumer(newStoreChangelogClientConfig, pubSubMessageDeserializer, consumerName),
-          pubSubMessageDeserializer,
-          this);
+
+      if (globalChangelogClientConfig.isNewStatelessClientEnabled()) {
+        return new VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>(newStoreChangelogClientConfig, this);
+      } else {
+        return new VeniceAfterImageConsumerImpl(
+            newStoreChangelogClientConfig,
+            consumer != null
+                ? consumer
+                : getPubSubConsumer(newStoreChangelogClientConfig, pubSubMessageDeserializer, consumerName),
+            pubSubMessageDeserializer,
+            this);
+      }
+
     });
   }
 
@@ -146,7 +152,6 @@ public class VeniceChangelogConsumerClientFactory {
   }
 
   /**
-   * Use this if you're using the experimental client
    * @param keyClass The {@link SpecificRecord} class for your key
    * @param valueClass The {@link SpecificRecord} class for your value
    * @param valueSchema The {@link Schema} for your values
@@ -167,25 +172,10 @@ public class VeniceChangelogConsumerClientFactory {
               .setConsumerName(consumerName)
               .setIsStateful(true);
 
-      if (globalChangelogClientConfig.isExperimentalClientEnabled()) {
-        return new VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>(newStoreChangelogClientConfig, this);
-      } else {
-        return new LocalBootstrappingVeniceChangelogConsumer<K, V>(
-            newStoreChangelogClientConfig,
-            consumer != null
-                ? consumer
-                : getPubSubConsumer(newStoreChangelogClientConfig, pubSubMessageDeserializer, consumerName),
-            pubSubMessageDeserializer,
-            consumerId,
-            this);
-      }
+      return new VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>(newStoreChangelogClientConfig, this);
     });
   }
 
-  /**
-   * Creates a BootstrappingVeniceChangelogConsumer with consumer id. This is used to create multiple
-   * consumers so that each consumer can only subscribe to certain partitions.
-   */
   public <K, V> BootstrappingVeniceChangelogConsumer<K, V> getBootstrappingChangelogConsumer(
       String storeName,
       String consumerId,
