@@ -114,4 +114,35 @@ public class AdminOperationSerializerTest {
       assertEquals(e.getMessage(), expectedMessage);
     }
   }
+
+  @Test
+  public void testSerializeDeserializeWithDocChange() {
+    // Create an AdminOperation object with latest version
+    AddVersion addVersion = (AddVersion) AdminMessageType.ADD_VERSION.getNewInstance();
+    addVersion.clusterName = "clusterName";
+    addVersion.storeName = "storeName";
+    addVersion.pushJobId = "pushJobId";
+    addVersion.versionNum = 1;
+    addVersion.numberOfPartitions = 20;
+
+    AdminOperation adminMessage = new AdminOperation();
+    adminMessage.operationType = AdminMessageType.ADD_VERSION.getValue();
+    adminMessage.payloadUnion = addVersion;
+    adminMessage.executionId = 1;
+
+    doCallRealMethod().when(adminOperationSerializer).serialize(any(), anyInt());
+    doCallRealMethod().when(adminOperationSerializer).deserialize(any(), anyInt());
+
+    // Serialize the AdminOperation object with writer schema id v24
+    byte[] serializedBytes = adminOperationSerializer.serialize(adminMessage, 24);
+
+    // Deserialize the AdminOperation object with reader schema id v25
+    AdminOperation deserializedOperation = adminOperationSerializer.deserialize(ByteBuffer.wrap(serializedBytes), 25);
+    AddVersion deserializedOperationPayloadUnion = (AddVersion) deserializedOperation.getPayloadUnion();
+    assertEquals(deserializedOperationPayloadUnion.clusterName.toString(), "clusterName");
+    assertEquals(deserializedOperationPayloadUnion.storeName.toString(), "storeName");
+    assertEquals(deserializedOperationPayloadUnion.pushJobId.toString(), "pushJobId");
+    assertEquals(deserializedOperationPayloadUnion.versionNum, 1);
+    assertEquals(deserializedOperationPayloadUnion.numberOfPartitions, 20);
+  }
 }
