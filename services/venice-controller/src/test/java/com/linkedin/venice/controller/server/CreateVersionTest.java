@@ -948,7 +948,7 @@ public class CreateVersionTest {
     assertEquals(
         response.getKafkaBootstrapServers(),
         "default.bootstrap.servers:9092",
-        "Bootstrap servers should not be set overridden when source grid fabric address is not found");
+        "Bootstrap servers should not be overridden when source grid fabric address is not found");
     assertEquals(response.getPartitions(), 42);
     assertEquals(response.getCompressionStrategy(), CompressionStrategy.NO_OP);
     assertEquals(response.getKafkaTopic(), Utils.getRealTimeTopicName(mockVersion));
