@@ -1,8 +1,12 @@
 package com.linkedin.venice.controller;
 
+import static com.linkedin.venice.VeniceConstants.CONTROLLER_SSL_CERTIFICATE_ATTRIBUTE_NAME;
+
+import java.security.cert.X509Certificate;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.StringJoiner;
+import javax.servlet.http.HttpServletRequest;
 import spark.Request;
 
 
@@ -11,6 +15,7 @@ public class AuditInfo {
   private Map<String, String> params;
   private String method;
   private String clientIp;
+  private String servicePrincipal;
 
   public AuditInfo(Request request) {
     this.url = request.url();
@@ -20,6 +25,24 @@ public class AuditInfo {
     }
     this.method = request.requestMethod();
     this.clientIp = request.ip() + ":" + request.raw().getRemotePort();
+    this.servicePrincipal = extractServicePrincipal(request);
+  }
+
+  private String extractServicePrincipal(Request request) {
+    try {
+      HttpServletRequest rawRequest = request.raw();
+      Object certificateObject = rawRequest.getAttribute(CONTROLLER_SSL_CERTIFICATE_ATTRIBUTE_NAME);
+      if (certificateObject instanceof X509Certificate[]) {
+        X509Certificate[] certs = (X509Certificate[]) certificateObject;
+        if (certs.length > 0 && certs[0] != null) {
+          return certs[0].getSubjectX500Principal().getName();
+        }
+      }
+    } catch (Exception e) {
+      // Silently ignore exceptions during principal extraction to avoid cluttering controller logs.
+      // Principal extraction is a nice-to-have audit feature and not critical for operation.
+    }
+    return "N/A";
   }
 
   @Override
@@ -42,7 +65,11 @@ public class AuditInfo {
       joiner.add(status);
     }
 
-    joiner.add(method).add(url).add(params.toString()).add("ClientIP: " + clientIp);
+    joiner.add(method)
+        .add(url)
+        .add(params.toString())
+        .add("ClientIP: " + clientIp)
+        .add("Principal: " + servicePrincipal);
 
     if (latency != null) {
       joiner.add("Latency: " + latency + " ms");

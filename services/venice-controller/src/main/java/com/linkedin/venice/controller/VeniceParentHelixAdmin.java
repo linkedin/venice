@@ -882,7 +882,12 @@ public class VeniceParentHelixAdmin implements Admin {
         throw new AdminMessageConsumptionTimeoutException(errMsg, lastException);
       }
 
-      LOGGER.info("Waiting execution id: {} to be consumed, currently at: {}", executionId, consumedExecutionId);
+      LOGGER.info(
+          "Waiting execution id: {} to be consumed, currently at: {} clusterName: {} storeName: {}",
+          executionId,
+          consumedExecutionId,
+          clusterName,
+          storeName);
       Utils.sleep(SLEEP_INTERVAL_FOR_DATA_CONSUMPTION_IN_MS);
     }
     LOGGER.info("The message has been consumed, execution id: {}", executionId);
