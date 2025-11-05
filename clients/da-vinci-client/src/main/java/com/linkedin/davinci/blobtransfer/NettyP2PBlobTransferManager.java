@@ -181,8 +181,7 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
       });
     }
 
-    // error case 2: no valid peers found for the requested blob after trying all possible hosts, skip bootstrapping
-    // from blob.
+    // error case 2: all hosts have been tried and failed for blob transfer, falling back to Kafka for bootstrapping.
     chainOfPeersFuture.thenRun(() -> {
       if (!resultFuture.isDone()) {
         resultFuture.completeExceptionally(
