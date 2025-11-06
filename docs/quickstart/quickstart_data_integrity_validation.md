@@ -43,10 +43,10 @@ permalink: /docs/quickstart/quickstart_data_integrity_validation
 - Receiver - ConsumptionTask/StoreIngestionTask
 
 ### Persistence
-- DIV needs to be check pointed for several reasons:
+- DIV needs to be checkpointed for several reasons:
   * DIV state would be lost on server restarts leading to potential data integrity issues undetected (inaccuracy)
   * Otherwise, without checkpointing, DIV needs to rebuild its state from the beginning of the topic on every restart (inefficiency)
-  * In case of a crash or restart, we needs to know where to resume validation from (last checkpoint).
+  * In case of a crash or restart, we need to know where to resume validation from (last checkpoint).
 
 ### Why Two Separate DIV validators?
 - Two state pipeline
@@ -125,4 +125,4 @@ permalink: /docs/quickstart/quickstart_data_integrity_validation
   * When checkpointing offsets, DIV clears expired state.
   * When loading state from disk (e.g., after restart), maxAge is also applied. This prevents loading stale state after a restart.
   * Why MaxAge ≥ Rewind Time for Hybrid Stores?
-    * Support RT reply, otherwise it don’t recognize producer’s div state in RT.
+    * Support RT replay, otherwise it doesn't recognize producer’s div state in RT.
