@@ -54,8 +54,7 @@ public class PubSubPositionJsonWireFormat {
 
   @Override
   public String toString() {
-    return "PubSubPositionJsonWireFormat{" + "typeId=" + typeId + ", positionBytes='" + base64PositionBytes + '\''
-        + '}';
+    return "PubSubPositionJsonWireFormat{" + "typeId=" + typeId + ", positionBytes=" + base64PositionBytes + "}";
   }
 
   @Override

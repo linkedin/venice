@@ -70,6 +70,6 @@ message AdminTopicGrpcMetadata {
 }
 
 message PubSubPositionGrpcWireFormat {
-  int32 type_id = 1;
+  int32 typeId = 1;
   string base64PositionBytes = 2;
 }

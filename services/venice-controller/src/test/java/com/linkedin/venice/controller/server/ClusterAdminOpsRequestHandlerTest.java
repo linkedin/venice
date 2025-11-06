@@ -258,7 +258,7 @@ public class ClusterAdminOpsRequestHandlerTest {
         exception.getMessage().contains("Positions must be provided to update cluster-level admin topic metadata"),
         "Actual message: " + exception.getMessage());
 
-    // both offsets and store name are provided
+    // both position and store name are provided
     metadata = AdminTopicGrpcMetadata.newBuilder()
         .setClusterName(clusterName)
         .setExecutionId(executionId)

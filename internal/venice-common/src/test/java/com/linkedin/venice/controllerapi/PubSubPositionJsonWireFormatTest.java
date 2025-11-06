@@ -72,6 +72,6 @@ public class PubSubPositionJsonWireFormatTest {
     PubSubPositionJsonWireFormat format = new PubSubPositionJsonWireFormat(1, "abc");
     String str = format.toString();
     assertTrue(str.contains("typeId=1"));
-    assertTrue(str.contains("positionBytes='abc'"));
+    assertTrue(str.contains("positionBytes=abc"));
   }
 }

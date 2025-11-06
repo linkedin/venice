@@ -53,6 +53,7 @@ import com.linkedin.venice.controllerapi.NodeReplicasReadinessResponse;
 import com.linkedin.venice.controllerapi.NodeStatusResponse;
 import com.linkedin.venice.controllerapi.OwnerResponse;
 import com.linkedin.venice.controllerapi.PartitionResponse;
+import com.linkedin.venice.controllerapi.PubSubPositionJsonWireFormat;
 import com.linkedin.venice.controllerapi.PubSubTopicConfigResponse;
 import com.linkedin.venice.controllerapi.ReadyForDataRecoveryResponse;
 import com.linkedin.venice.controllerapi.RepushJobResponse;
@@ -3132,12 +3133,18 @@ public class AdminTool {
         System.out.println(latestStep);
         AdminTopicMetadataResponse response =
             checkControllerResponse(srcFabricChildControllerClient.getAdminTopicMetadata(Optional.empty()));
+        long executionId = response.getExecutionId();
+        PubSubPositionJsonWireFormat position = response.getPosition();
+        PubSubPositionJsonWireFormat upstreamPosition = response.getUpstreamPosition();
+
+        System.out.println(
+            "step4: execution id: " + executionId + " position " + position + " upstream position " + upstreamPosition);
         checkControllerResponse(
             destFabricChildControllerClient.updateAdminTopicMetadata(
-                response.getExecutionId(),
+                executionId,
                 Optional.empty(),
-                Optional.of(response.getPosition()),
-                Optional.of(response.getUpstreamPosition())));
+                Optional.of(position),
+                Optional.of(upstreamPosition)));
       }
 
       latestStep = "step5: copying store metadata and starting data recovery for non-existent stores in dest fabric";
