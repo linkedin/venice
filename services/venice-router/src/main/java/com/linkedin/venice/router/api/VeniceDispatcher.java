@@ -115,6 +115,10 @@ public final class VeniceDispatcher implements PartitionDispatchHandler4<Instanc
     this.routerStats = routerStats;
   }
 
+  public RouterStats<RouteHttpStats> getPerRouteStatsByType() {
+    return perRouteStatsByType;
+  }
+
   @Override
   public void dispatch(
       @Nonnull Scatter<Instance, VenicePath, RouterKey> scatter,

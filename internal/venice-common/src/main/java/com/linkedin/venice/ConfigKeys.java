@@ -1769,6 +1769,14 @@ public class ConfigKeys {
   public static final String ROUTER_STATEFUL_HEALTHCHECK_ENABLED = "router.stateful.healthcheck.enabled";
 
   /**
+   * Enable latency-based routing for host selection.
+   * When enabled, uses average response latency as the primary criterion with a 1.5x spectrum
+   * threshold, ref AVG_LATENCY_SPECTRUM_FOR_HOST_SELECTION.
+   * When disabled (default), uses pending request count to decide on the host.
+   */
+  public static final String ROUTER_LATENCY_BASED_ROUTING_ENABLED = "router.latency.based.routing.enabled";
+
+  /**
   * Maximum number of pending router request per storage node after which router concludes that host to be unhealthy
   * and stops sending further request to it..
   */
