@@ -52,7 +52,6 @@ import com.linkedin.davinci.consumer.BootstrappingVeniceChangelogConsumer;
 import com.linkedin.davinci.consumer.ChangeEvent;
 import com.linkedin.davinci.consumer.ChangelogClientConfig;
 import com.linkedin.davinci.consumer.VeniceChangeCoordinate;
-import com.linkedin.davinci.consumer.VeniceChangelogConsumer;
 import com.linkedin.davinci.consumer.VeniceChangelogConsumerClientFactory;
 import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
@@ -73,7 +72,6 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.samza.VeniceSystemProducer;
 import com.linkedin.venice.store.rocksdb.RocksDBUtils;
-import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.ForkedJavaProcess;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.PushInputSchemaBuilder;
@@ -87,11 +85,9 @@ import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
@@ -155,116 +151,6 @@ public class BootstrappingChangelogConsumerTest {
     TestView.resetCounters();
   }
 
-  @Test(timeOut = TEST_TIMEOUT, dataProvider = "changelogConsumer", dataProviderClass = DataProviderUtils.class)
-  public void testVeniceChangelogConsumer(int consumerCount) throws Exception {
-    String storeName = Utils.getUniqueString("store");
-    String inputDirPath = setUpStore(storeName);
-
-    PubSubBrokerWrapper localKafka = clusterWrapper.getPubSubBrokerWrapper();
-    String localKafkaUrl = localKafka.getAddress();
-    Properties consumerProperties = new Properties();
-    consumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, localKafkaUrl);
-    consumerProperties.put(CLUSTER_NAME, clusterName);
-    consumerProperties.put(ZOOKEEPER_ADDRESS, zkAddress);
-    consumerProperties.putAll(clusterWrapper.getPubSubClientProperties());
-    ChangelogClientConfig globalChangelogClientConfig =
-        new ChangelogClientConfig().setConsumerProperties(consumerProperties)
-            .setControllerD2ServiceName(D2_SERVICE_NAME)
-            .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
-            .setD2Client(d2Client)
-            .setLocalD2ZkHosts(zkAddress)
-            .setControllerRequestRetryCount(3)
-            .setBootstrapFileSystemPath(Utils.getUniqueString(inputDirPath));
-    VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =
-        new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig, metricsRepository);
-    List<BootstrappingVeniceChangelogConsumer<GenericRecord, GenericRecord>> bootstrappingVeniceChangelogConsumerList =
-        new ArrayList<>();
-    for (int i = 0; i < consumerCount; i++) {
-      bootstrappingVeniceChangelogConsumerList
-          .add(veniceChangelogConsumerClientFactory.getBootstrappingChangelogConsumer(storeName, Integer.toString(i)));
-    }
-
-    try (VeniceSystemProducer veniceProducer =
-        IntegrationTestPushUtils.getSamzaProducer(clusterWrapper, storeName, Version.PushType.STREAM)) {
-      // Run Samza job to send PUT and DELETE requests.
-      runSamzaStreamJob(veniceProducer, storeName, 1, null, 10, 10, 100, false);
-      // Produce a DELETE record with large timestamp
-      sendStreamingDeleteRecord(veniceProducer, storeName, deleteWithRmdKeyIndex, 1000L);
-    }
-
-    try (AvroGenericStoreClient<GenericRecord, GenericRecord> client = ClientFactory.getAndStartGenericAvroClient(
-        ClientConfig.defaultGenericClientConfig(storeName)
-            .setVeniceURL(clusterWrapper.getRandomRouterURL())
-            .setMetricsRepository(metricsRepository))) {
-      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
-        assertNull(client.get(deleteWithRmdKeyIndex).get());
-      });
-    }
-
-    // Wait for 10 seconds so bootstrap can load results from kafka
-    Utils.sleep(10000);
-    if (consumerCount == 1) {
-      bootstrappingVeniceChangelogConsumerList.get(0).start().get();
-    } else {
-      for (int i = 0; i < consumerCount; i++) {
-        bootstrappingVeniceChangelogConsumerList.get(i).start(Collections.singleton(i)).get();
-      }
-    }
-
-    Map<String, PubSubMessage<GenericRecord, ChangeEvent<GenericRecord>, VeniceChangeCoordinate>> polledChangeEventsMap =
-        new HashMap<>();
-    List<PubSubMessage<GenericRecord, ChangeEvent<GenericRecord>, VeniceChangeCoordinate>> polledChangeEventsList =
-        new ArrayList<>();
-    // 21 changes in near-line. 10 puts, 10 deletes, and 1 record with a producer timestamp
-    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
-      pollChangeEventsFromChangeCaptureConsumer(
-          polledChangeEventsMap,
-          polledChangeEventsList,
-          bootstrappingVeniceChangelogConsumerList);
-      // 21 events for near-line events, but the 10 deletes are not returned due to compaction.
-      int expectedRecordCount = DEFAULT_USER_DATA_RECORD_COUNT + 9 + consumerCount;
-      assertEquals(polledChangeEventsList.size(), expectedRecordCount);
-
-      verifyPut(polledChangeEventsMap, 100, 110, 1, false);
-
-      // Verify the 10 deletes were compacted away
-      for (int i = 110; i < 120; i++) {
-        String key = Integer.toString(i);
-        PubSubMessage<GenericRecord, ChangeEvent<GenericRecord>, VeniceChangeCoordinate> message =
-            polledChangeEventsMap.get((key));
-        assertNull(message);
-      }
-    });
-    polledChangeEventsList.clear();
-    polledChangeEventsMap.clear();
-
-    runNearlineJobAndVerifyConsumption(
-        120,
-        storeName,
-        1,
-        polledChangeEventsMap,
-        polledChangeEventsList,
-        bootstrappingVeniceChangelogConsumerList,
-        true,
-        false);
-
-    // Since nothing is produced, so no changed events generated.
-    verifyNoRecordsProduced(polledChangeEventsMap, polledChangeEventsList, bootstrappingVeniceChangelogConsumerList);
-
-    VeniceChangelogConsumer<GenericRecord, GenericRecord> afterImageChangelogConsumer =
-        veniceChangelogConsumerClientFactory.getChangelogConsumer(storeName);
-    afterImageChangelogConsumer.subscribe(new HashSet<>(Arrays.asList(0, 1, 2))).get();
-
-    List<PubSubMessage<GenericRecord, ChangeEvent<GenericRecord>, VeniceChangeCoordinate>> changedEventList =
-        new ArrayList<>();
-    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
-      pollChangeEventsFromChangeCaptureConsumerToList(changedEventList, afterImageChangelogConsumer);
-      assertEquals(changedEventList.size(), 141);
-    });
-
-    cleanUpStoreAndVerify(storeName);
-  }
-
   @Test(timeOut = TEST_TIMEOUT * 2)
   public void testVeniceChangelogConsumerDaVinciRecordTransformerImpl() throws Exception {
     String storeName = Utils.getUniqueString("store");
@@ -285,7 +171,6 @@ public class BootstrappingChangelogConsumerTest {
             .setLocalD2ZkHosts(zkAddress)
             .setControllerRequestRetryCount(3)
             .setBootstrapFileSystemPath(inputDirPath)
-            .setIsExperimentalClientEnabled(true)
             .setD2Client(d2Client)
             // Setting the max buffer size to a low threshold to ensure puts to the buffer get blocked and drained
             // correctly during regular operation and restarts
@@ -504,8 +389,7 @@ public class BootstrappingChangelogConsumerTest {
             .setLocalD2ZkHosts(zkAddress)
             .setControllerRequestRetryCount(3)
             .setBootstrapFileSystemPath(inputDirPath1)
-            .setD2Client(d2Client)
-            .setIsExperimentalClientEnabled(true);
+            .setD2Client(d2Client);
 
     VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =
         new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig, metricsRepository);
@@ -609,7 +493,6 @@ public class BootstrappingChangelogConsumerTest {
             .setLocalD2ZkHosts(zkAddress)
             .setControllerRequestRetryCount(3)
             .setBootstrapFileSystemPath(inputDirPath)
-            .setIsExperimentalClientEnabled(true)
             .setD2Client(d2Client);
     VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =
         new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig, metricsRepository);
@@ -722,8 +605,7 @@ public class BootstrappingChangelogConsumerTest {
             .setLocalD2ZkHosts(zkAddress)
             .setControllerRequestRetryCount(3)
             .setBootstrapFileSystemPath(inputDirPath1)
-            .setD2Client(d2Client)
-            .setIsExperimentalClientEnabled(true);
+            .setD2Client(d2Client);
 
     VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =
         new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig, metricsRepository);
@@ -816,14 +698,6 @@ public class BootstrappingChangelogConsumerTest {
         bootstrappingVeniceChangelogConsumerList);
 
     cleanUpStoreAndVerify(storeName);
-  }
-
-  private void pollChangeEventsFromChangeCaptureConsumerToList(
-      List<PubSubMessage<GenericRecord, ChangeEvent<GenericRecord>, VeniceChangeCoordinate>> polledChangeEvents,
-      VeniceChangelogConsumer<GenericRecord, GenericRecord> veniceChangelogConsumer) {
-    Collection<PubSubMessage<GenericRecord, ChangeEvent<GenericRecord>, VeniceChangeCoordinate>> pubSubMessages =
-        veniceChangelogConsumer.poll(1000);
-    polledChangeEvents.addAll(pubSubMessages);
   }
 
   public static void pollChangeEventsFromChangeCaptureConsumer(

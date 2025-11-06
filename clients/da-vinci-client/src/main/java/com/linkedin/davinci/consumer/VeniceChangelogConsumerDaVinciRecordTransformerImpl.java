@@ -18,7 +18,6 @@ import com.linkedin.davinci.client.SeekableDaVinciClient;
 import com.linkedin.davinci.client.StorageClass;
 import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
 import com.linkedin.davinci.consumer.stats.BasicConsumerStats;
-import com.linkedin.venice.annotation.Experimental;
 import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.ClientConfig;
@@ -60,7 +59,6 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 
-@Experimental
 public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
     implements BootstrappingVeniceChangelogConsumer<K, V>, VeniceChangelogConsumer<K, V> {
   private static final Logger LOGGER = LogManager.getLogger(VeniceChangelogConsumerDaVinciRecordTransformerImpl.class);
@@ -364,8 +362,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   }
 
   public void pause(Set<Integer> partitions) {
-    // ToDo: API doesn't exist in DaVinci. Figure out
-    throw new VeniceClientException("pause is not supported yet");
+    throw new VeniceClientException("pause will not be supported");
   }
 
   public void pause() {
@@ -373,8 +370,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   }
 
   public void resume(Set<Integer> partitions) {
-    // ToDo: API doesn't exist in DaVinci. Figure out
-    throw new VeniceClientException("resume is not supported yet");
+    throw new VeniceClientException("resume will not be supported");
   }
 
   public void resume() {

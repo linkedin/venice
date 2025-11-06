@@ -116,8 +116,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
         .setRocksDBBlockCacheSizeInBytes(TEST_ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES)
         .setDatabaseSyncBytesInterval(TEST_DB_SYNC_BYTES_INTERVAL)
         .setD2Client(mock(D2Client.class))
-        .setShouldCompactMessages(true)
-        .setIsExperimentalClientEnabled(true);
+        .setShouldCompactMessages(true);
     assertEquals(changelogClientConfig.getMaxBufferSize(), 1000, "Default max buffer size should be 1000");
     changelogClientConfig.setMaxBufferSize(MAX_BUFFER_SIZE);
     changelogClientConfig.getInnerClientConfig()

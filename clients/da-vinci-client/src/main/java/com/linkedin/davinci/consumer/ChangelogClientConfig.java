@@ -59,7 +59,7 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
    */
   private boolean skipFailedToAssembleRecords = true;
 
-  private Boolean isExperimentalClientEnabled = false;
+  private Boolean isNewStatelessClientEnabled = false;
   private int maxBufferSize = 1000;
   private boolean useRequestBasedMetadataRepository = false;
 
@@ -257,8 +257,8 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
   }
 
   /**
-   * If you're using the experimental client, and you want to deserialize your keys into
-   * {@link org.apache.avro.specific.SpecificRecord} thenr set this configuration.
+   * If you're using the {@link BootstrappingVeniceChangelogConsumer}, and you want to deserialize your keys into
+   * {@link org.apache.avro.specific.SpecificRecord} then set this configuration.
    */
   public ChangelogClientConfig setSpecificKey(Class specificKey) {
     this.innerClientConfig.setSpecificKeyClass(specificKey);
@@ -271,7 +271,7 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
   }
 
   /**
-   * If you're using the experimental client, and you want to deserialize your values into
+   * If you're using the {@link BootstrappingVeniceChangelogConsumer}, and you want to deserialize your values into
    * {@link org.apache.avro.specific.SpecificRecord} then set this configuration.
    */
   public ChangelogClientConfig setSpecificValueSchema(Schema specificValueSchema) {
@@ -345,7 +345,7 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
         .setDatabaseSyncBytesInterval(config.getDatabaseSyncBytesInterval())
         .setShouldCompactMessages(config.shouldCompactMessages())
         .setIsBeforeImageView(config.isBeforeImageView())
-        .setIsExperimentalClientEnabled(config.isExperimentalClientEnabled())
+        .setIsNewStatelessClientEnabled(config.isNewStatelessClientEnabled())
         .setMaxBufferSize(config.getMaxBufferSize())
         .setSeekThreadPoolSize(config.getSeekThreadPoolSize())
         .setShouldSkipFailedToAssembleRecords(config.shouldSkipFailedToAssembleRecords())
@@ -367,16 +367,15 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
     return this;
   }
 
-  protected Boolean isExperimentalClientEnabled() {
-    return isExperimentalClientEnabled;
+  protected Boolean isNewStatelessClientEnabled() {
+    return isNewStatelessClientEnabled;
   }
 
   /**
-   * This uses a highly experimental client.
-   * It is currently only supported for {@link BootstrappingVeniceChangelogConsumer}.
+   * Set this to true to use the new {@link VeniceChangelogConsumer}.
    */
-  public ChangelogClientConfig setIsExperimentalClientEnabled(Boolean experimentalClientEnabled) {
-    isExperimentalClientEnabled = experimentalClientEnabled;
+  public ChangelogClientConfig setIsNewStatelessClientEnabled(Boolean newStatelessClientEnabled) {
+    this.isNewStatelessClientEnabled = newStatelessClientEnabled;
     return this;
   }
 
@@ -388,7 +387,6 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
    * Sets the maximum number of records that can be buffered and returned to the user when calling poll.
    * When the maximum number of records is reached, ingestion will be paused until the buffer is drained.
    * Please note that this is separate from {@link com.linkedin.venice.ConfigKeys#SERVER_KAFKA_MAX_POLL_RECORDS}.
-   * In order for this feature to be used, {@link #setIsExperimentalClientEnabled(Boolean)} must be set to true.
    * It is currently only supported for {@link BootstrappingVeniceChangelogConsumer}.
    */
   public ChangelogClientConfig setMaxBufferSize(int maxBufferSize) {
