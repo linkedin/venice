@@ -58,12 +58,11 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
   public static final long INVALID_MESSAGE_TIMESTAMP = -1;
   public static final long INVALID_HEARTBEAT_LAG = Long.MAX_VALUE;
   public static final int DEFAULT_LAG_MONITOR_CLEANUP_CYCLE = 5;
-
   private static final Logger LOGGER = LogManager.getLogger(HeartbeatMonitoringService.class);
   private final ReadOnlyStoreRepository metadataRepository;
   private final Thread reportingThread;
   private final Thread lagCleanupAndLoggingThread;
-
+  private final VeniceServerConfig serverConfig;
   private final Set<String> regionNames;
   private final String localRegionName;
 
@@ -109,6 +108,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
     this.customizedViewRepositoryFuture = customizedViewRepositoryFuture;
     this.nodeId = Utils.getHelixNodeIdentifier(serverConfig.getListenerHostname(), serverConfig.getListenerPort());
     this.lagMonitorCleanupCycle = serverConfig.getLagMonitorCleanupCycle();
+    this.serverConfig = serverConfig;
   }
 
   private synchronized void initializeEntry(
@@ -651,6 +651,11 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
                   version.getKey(),
                   partition.getKey(),
                   region.getKey());
+              if (serverConfig.isLagBasedReplicaAutoResubscribeEnabled()
+                  && serverConfig.getLagBasedReplicaAutoResubscribeThresholdInSeconds() < lag) {
+                kafkaStoreIngestionService
+                    .maybeAddResubscribeRequest(storeName.getKey(), version.getKey(), partition.getKey());
+              }
             }
           }
         }
