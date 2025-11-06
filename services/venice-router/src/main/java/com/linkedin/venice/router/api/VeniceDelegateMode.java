@@ -364,11 +364,17 @@ public class VeniceDelegateMode extends ScatterGatherMode {
   }
 
   /**
-   * Select the least loaded host from the available replicas.
+   * Select the least loaded host from the available healthy replicas.
    * Behavior depends on the latencyBasedRoutingEnabled config flag:
-   * - When disabled (default): Uses pending request count only as the primary criteria
-   * - When enabled : Uses avg latency as the primary criteria with a spectrum threshold.
-   *   Randomly selects from candidate hosts within the latency threshold to avoid skewed traffic.
+   *
+   * When enabled, uses average response latency as the criterion with a 1.5x spectrum
+   * threshold among the healthy host list. Ref {@link #AVG_LATENCY_SPECTRUM_FOR_HOST_SELECTION}.
+   * Randomly selects within the latency spectrum to avoid skewed traffic.
+   *
+   * When disabled (default), uses pending request count to decide on the host selection
+   * among the healthy host list.
+   *
+   * Note: Healthy host list is based on pending queue count: Ref {@link VeniceHostHealth#isHostHealthy}
    */
   private <H> H selectLeastLoadedHost(List<H> hosts, VenicePath path, RouteHttpStats routeHttpStats)
       throws RouterException {
@@ -413,8 +419,8 @@ public class VeniceDelegateMode extends ScatterGatherMode {
 
   /**
    * Select host based on low latency with spectrum threshold.
-   * 1. Find the minimum latency among all eligible hosts
-   * 2. Select all hosts with latency <= minLatency * AVG_LATENCY_SPECTRUM_FOR_HOST_SELECTION
+   * 1. Find the minimum latency among all eligible hosts (eligible = based on {@link VeniceHostHealth#isHostHealthy})
+   * 2. Select all hosts with latency <= minLatency * {@link #AVG_LATENCY_SPECTRUM_FOR_HOST_SELECTION}
    * 3. Randomly pick one from the candidate hosts to avoid skewed traffic
    */
   private <H> H selectLeastLoadedHostByLatency(List<H> hosts, VenicePath path, RouteHttpStats routeHttpStats)

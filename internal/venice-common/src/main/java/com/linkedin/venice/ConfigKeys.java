@@ -1770,9 +1770,13 @@ public class ConfigKeys {
 
   /**
    * Enable latency-based routing for host selection.
-   * When enabled, uses average response latency as the primary criterion with a 1.5x spectrum
-   * threshold, ref AVG_LATENCY_SPECTRUM_FOR_HOST_SELECTION.
-   * When disabled (default), uses pending request count to decide on the host.
+   * When enabled, uses average response latency as the criterion with a 1.5x spectrum
+   * threshold among the healthy host list. Ref AVG_LATENCY_SPECTRUM_FOR_HOST_SELECTION
+   *
+   * When disabled (default), uses pending request count to decide on the host selection
+   * among the healthy host list.
+   *
+   * Note: Healthy host list is based on pending queue count: Ref VeniceHostHealth#isHostHealthy.
    */
   public static final String ROUTER_LATENCY_BASED_ROUTING_ENABLED = "router.latency.based.routing.enabled";
 
