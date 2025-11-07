@@ -32,7 +32,6 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.KAFKA_TOP
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.KEY_SCHEMA;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.LOOK_BACK_MS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.OFFSET;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.OPERATION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.OWNER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PARTITIONERS;
@@ -72,7 +71,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.TARGETED_
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TARGET_REGION_PUSH_WITH_DEFERRED_SWAP;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TOPIC;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TO_BE_STOPPED_INSTANCES;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.UPSTREAM_OFFSET;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.UPSTREAM_POSITION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VALUE_SCHEMA;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VERSION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VOLDEMORT_STORE_NAME;
@@ -1483,12 +1482,12 @@ public class ControllerClient implements Closeable {
   public AdminTopicMetadataResponse updateAdminTopicMetadata(
       long executionId,
       Optional<String> storeName,
-      Optional<Long> offset,
-      Optional<Long> upstreamOffset) {
+      Optional<PubSubPositionJsonWireFormat> position,
+      Optional<PubSubPositionJsonWireFormat> upstreamPosition) {
     QueryParams params = newParams().add(EXECUTION_ID, executionId)
         .add(NAME, storeName)
-        .add(OFFSET, offset)
-        .add(UPSTREAM_OFFSET, upstreamOffset);
+        .add(POSITION, position)
+        .add(UPSTREAM_POSITION, upstreamPosition);
     return request(ControllerRoute.UPDATE_ADMIN_TOPIC_METADATA, params, AdminTopicMetadataResponse.class);
   }
 

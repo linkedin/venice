@@ -2,6 +2,7 @@ package com.linkedin.venice.controller;
 
 import static com.linkedin.venice.meta.Version.PushType.INCREMENTAL;
 import static com.linkedin.venice.meta.Version.PushType.STREAM;
+import static com.linkedin.venice.pubsub.PubSubUtil.getPubSubPositionGrpcWireFormat;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -64,9 +65,13 @@ import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.meta.ViewConfig;
 import com.linkedin.venice.meta.ViewConfigImpl;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
+import com.linkedin.venice.protocols.controller.PubSubPositionGrpcWireFormat;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.manager.TopicManager;
+import com.linkedin.venice.pubsub.mock.InMemoryPubSubPosition;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreWriter;
 import com.linkedin.venice.stats.dimensions.StoreRepushTriggerSource;
@@ -974,14 +979,15 @@ public class TestVeniceHelixAdmin {
     doCallRealMethod().when(veniceHelixAdmin).getAdminTopicMetadata(clusterName, Optional.empty());
 
     // Case 1: Not store name provided
-    Map<String, Long> remoteMetadata = AdminTopicMetadataAccessor
-        .generateMetadataMap(Optional.of(10L), Optional.of(-1L), Optional.of(1L), Optional.of(1L));
+    AdminMetadata remoteMetadata = new AdminMetadata();
+    remoteMetadata.setPubSubPosition(ApacheKafkaOffsetPosition.of(10L));
+    remoteMetadata.setExecutionId(1L);
+    remoteMetadata.setAdminOperationProtocolVersion(1L);
     AdminConsumerService adminConsumerService = mock(AdminConsumerService.class);
     when(veniceHelixAdmin.getAdminConsumerService(clusterName)).thenReturn(adminConsumerService);
-    when(adminConsumerService.getAdminTopicMetadata(anyString()))
-        .thenReturn(AdminMetadata.fromLegacyMap(remoteMetadata));
+    when(adminConsumerService.getAdminTopicMetadata(anyString())).thenReturn(remoteMetadata);
 
-    Map<String, Long> metadata = veniceHelixAdmin.getAdminTopicMetadata(clusterName, Optional.empty());
+    AdminMetadata metadata = veniceHelixAdmin.getAdminTopicMetadata(clusterName, Optional.empty());
     assertEquals(metadata, remoteMetadata);
 
     // Case 2: Store name is provided
@@ -991,20 +997,21 @@ public class TestVeniceHelixAdmin {
     when(veniceHelixAdmin.getExecutionIdAccessor()).thenReturn(executionIdAccessor);
     when(executionIdAccessor.getLastSucceededExecutionIdMap(anyString())).thenReturn(executionIdMap);
     when(veniceHelixAdmin.getExecutionIdAccessor()).thenReturn(executionIdAccessor);
-    when(adminConsumerService.getAdminTopicMetadata(anyString()))
-        .thenReturn(AdminMetadata.fromLegacyMap(remoteMetadata));
+    when(adminConsumerService.getAdminTopicMetadata(anyString())).thenReturn(remoteMetadata);
 
-    Map<String, Long> expectedMetadata = AdminTopicMetadataAccessor
-        .generateMetadataMap(Optional.of(-1L), Optional.of(-1L), Optional.of(10L), Optional.of(-1L));
-    Map<String, Long> metadataForStore = veniceHelixAdmin.getAdminTopicMetadata(clusterName, Optional.of(storeName));
+    AdminMetadata expectedMetadata = new AdminMetadata();
+    expectedMetadata.setExecutionId(10L);
+    AdminMetadata metadataForStore = veniceHelixAdmin.getAdminTopicMetadata(clusterName, Optional.of(storeName));
     assertEquals(metadataForStore, expectedMetadata);
   }
 
   @Test
   public void testUpdateAdminTopicMetadata() {
     long executionId = 10L;
-    Long offset = 10L;
-    Long upstreamOffset = 1L;
+    PubSubPosition position = InMemoryPubSubPosition.of(10L);
+    PubSubPositionGrpcWireFormat pubSubPositionGrpcWireFormat = getPubSubPositionGrpcWireFormat(position);
+    PubSubPosition upstreamPosition = InMemoryPubSubPosition.of(1L);
+    PubSubPositionGrpcWireFormat upstreamPositionGrpcWireFormat = getPubSubPositionGrpcWireFormat(upstreamPosition);
     VeniceHelixAdmin veniceHelixAdmin = mock(VeniceHelixAdmin.class);
     doCallRealMethod().when(veniceHelixAdmin)
         .updateAdminTopicMetadata(clusterName, executionId, Optional.of(storeName), Optional.empty(), Optional.empty());
@@ -1013,8 +1020,8 @@ public class TestVeniceHelixAdmin {
             clusterName,
             executionId,
             Optional.empty(),
-            Optional.of(offset),
-            Optional.of(upstreamOffset));
+            Optional.of(pubSubPositionGrpcWireFormat),
+            Optional.of(upstreamPositionGrpcWireFormat));
 
     // Case 1: Store name is provided
     ExecutionIdAccessor executionIdAccessor = mock(ExecutionIdAccessor.class);
@@ -1031,10 +1038,14 @@ public class TestVeniceHelixAdmin {
         clusterName,
         executionId,
         Optional.empty(),
-        Optional.of(offset),
-        Optional.of(upstreamOffset));
+        Optional.of(pubSubPositionGrpcWireFormat),
+        Optional.of(upstreamPositionGrpcWireFormat));
     verify(executionIdAccessor, never()).updateLastSucceededExecutionId(anyString(), anyLong());
-    verify(adminConsumerService, times(1)).updateAdminTopicMetadata(clusterName, executionId, offset, upstreamOffset);
+    verify(adminConsumerService, times(1)).updateAdminTopicMetadata(
+        clusterName,
+        executionId,
+        pubSubPositionGrpcWireFormat,
+        upstreamPositionGrpcWireFormat);
   }
 
   @Test

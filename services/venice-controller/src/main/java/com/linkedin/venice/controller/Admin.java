@@ -3,6 +3,7 @@ package com.linkedin.venice.controller;
 import com.linkedin.venice.acl.AclException;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
+import com.linkedin.venice.controller.kafka.consumer.AdminMetadata;
 import com.linkedin.venice.controller.logcompaction.CompactionManager;
 import com.linkedin.venice.controller.repush.RepushJobRequest;
 import com.linkedin.venice.controllerapi.NodeReplicasReadinessState;
@@ -28,6 +29,7 @@ import com.linkedin.venice.meta.UncompletedPartition;
 import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.persona.StoragePersona;
+import com.linkedin.venice.protocols.controller.PubSubPositionGrpcWireFormat;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
@@ -632,7 +634,7 @@ public interface Admin extends AutoCloseable, Closeable {
    * message that cannot be processed for some reason, we will need to forcibly skip that message in order to unblock
    * the task from consuming subsequent messages.
    * @param clusterName
-   * @param offset
+   * @param typeIdAndBase64PositionBytes
    * @param skipDIV tries to skip only the DIV check for the blocking message.
    */
   void skipAdminMessage(String clusterName, String typeIdAndBase64PositionBytes, boolean skipDIV, long executionId);
@@ -994,14 +996,14 @@ public interface Admin extends AutoCloseable, Closeable {
 
   RegionPushDetails getRegionPushDetails(String clusterName, String storeName, boolean isPartitionDetailEnabled);
 
-  Map<String, Long> getAdminTopicMetadata(String clusterName, Optional<String> storeName);
+  AdminMetadata getAdminTopicMetadata(String clusterName, Optional<String> storeName);
 
   void updateAdminTopicMetadata(
       String clusterName,
       long executionId,
       Optional<String> storeName,
-      Optional<Long> offset,
-      Optional<Long> upstreamOffset);
+      Optional<PubSubPositionGrpcWireFormat> position,
+      Optional<PubSubPositionGrpcWireFormat> upstreamPosition);
 
   void updateAdminOperationProtocolVersion(String clusterName, Long adminOperationProtocolVersion);
 

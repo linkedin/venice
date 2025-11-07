@@ -4,8 +4,8 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.ADMIN_OPE
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.EXECUTION_ID;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.OFFSET;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.UPSTREAM_OFFSET;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.POSITION;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.UPSTREAM_POSITION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_ADMIN_TOPIC_METADATA;
 import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_ADMIN_OPERATION_PROTOCOL_VERSION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_ADMIN_TOPIC_METADATA;
@@ -15,13 +15,16 @@ import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.AdminTopicMetadataResponse;
 import com.linkedin.venice.controllerapi.ControllerResponse;
+import com.linkedin.venice.controllerapi.PubSubPositionJsonWireFormat;
 import com.linkedin.venice.exceptions.ErrorType;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.protocols.controller.AdminTopicGrpcMetadata;
 import com.linkedin.venice.protocols.controller.AdminTopicMetadataGrpcRequest;
 import com.linkedin.venice.protocols.controller.AdminTopicMetadataGrpcResponse;
+import com.linkedin.venice.protocols.controller.PubSubPositionGrpcWireFormat;
 import com.linkedin.venice.protocols.controller.UpdateAdminOperationProtocolVersionGrpcRequest;
 import com.linkedin.venice.protocols.controller.UpdateAdminTopicMetadataGrpcRequest;
+import com.linkedin.venice.pubsub.PubSubUtil;
 import java.util.Optional;
 import org.apache.http.HttpStatus;
 import spark.Route;
@@ -54,8 +57,9 @@ public class AdminTopicMetadataRoutes extends AbstractRoute {
         storeName.ifPresent(responseObject::setName);
         responseObject.setExecutionId(adminTopicMetadata.getExecutionId());
         if (!storeName.isPresent()) {
-          responseObject.setOffset(adminTopicMetadata.getOffset());
-          responseObject.setUpstreamOffset(adminTopicMetadata.getUpstreamOffset());
+          responseObject.setPosition(PubSubPositionJsonWireFormat.fromGrpcWireFormat(adminTopicMetadata.getPosition()));
+          responseObject.setUpstreamPosition(
+              PubSubPositionJsonWireFormat.fromGrpcWireFormat(adminTopicMetadata.getUpstreamPosition()));
           responseObject.setAdminOperationProtocolVersion(adminTopicMetadata.getAdminOperationProtocolVersion());
         }
       } catch (Throwable e) {
@@ -85,14 +89,16 @@ public class AdminTopicMetadataRoutes extends AbstractRoute {
         String clusterName = request.queryParams(CLUSTER);
         long executionId = Long.parseLong(request.queryParams(EXECUTION_ID));
         Optional<String> storeName = Optional.ofNullable(request.queryParams(NAME));
-        Optional<Long> offset = Optional.ofNullable(request.queryParams(OFFSET)).map(Long::parseLong);
-        Optional<Long> upstreamOffset = Optional.ofNullable(request.queryParams(UPSTREAM_OFFSET)).map(Long::parseLong);
+        Optional<PubSubPositionGrpcWireFormat> position =
+            Optional.ofNullable(request.queryParams(POSITION)).map(PubSubUtil::parsePositionParam);
+        Optional<PubSubPositionGrpcWireFormat> upstreamPosition =
+            Optional.ofNullable(request.queryParams(UPSTREAM_POSITION)).map(PubSubUtil::parsePositionParam);
 
         AdminTopicGrpcMetadata.Builder adminMetadataBuilder =
             AdminTopicGrpcMetadata.newBuilder().setClusterName(clusterName).setExecutionId(executionId);
         storeName.ifPresent(adminMetadataBuilder::setStoreName);
-        offset.ifPresent(adminMetadataBuilder::setOffset);
-        upstreamOffset.ifPresent(adminMetadataBuilder::setUpstreamOffset);
+        position.ifPresent(adminMetadataBuilder::setPosition);
+        upstreamPosition.ifPresent(adminMetadataBuilder::setUpstreamPosition);
         AdminTopicMetadataGrpcResponse internalResponse = requestHandler.updateAdminTopicMetadata(
             UpdateAdminTopicMetadataGrpcRequest.newBuilder().setMetadata(adminMetadataBuilder.build()).build());
         responseObject.setCluster(internalResponse.getMetadata().getClusterName());

@@ -13,6 +13,7 @@ import static org.testng.Assert.expectThrows;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.AdminCommandExecutionTracker;
 import com.linkedin.venice.controller.ControllerRequestHandlerDependencies;
+import com.linkedin.venice.controller.kafka.consumer.AdminMetadata;
 import com.linkedin.venice.controllerapi.AdminCommandExecution;
 import com.linkedin.venice.controllerapi.AdminCommandExecutionStatus;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -23,11 +24,13 @@ import com.linkedin.venice.protocols.controller.AdminTopicMetadataGrpcRequest;
 import com.linkedin.venice.protocols.controller.AdminTopicMetadataGrpcResponse;
 import com.linkedin.venice.protocols.controller.LastSuccessfulAdminCommandExecutionGrpcRequest;
 import com.linkedin.venice.protocols.controller.LastSuccessfulAdminCommandExecutionGrpcResponse;
+import com.linkedin.venice.protocols.controller.PubSubPositionGrpcWireFormat;
 import com.linkedin.venice.protocols.controller.UpdateAdminOperationProtocolVersionGrpcRequest;
 import com.linkedin.venice.protocols.controller.UpdateAdminTopicMetadataGrpcRequest;
+import com.linkedin.venice.pubsub.PubSubUtil;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
+import com.linkedin.venice.pubsub.mock.InMemoryPubSubPosition;
 import java.util.Collections;
-import java.util.HashMap;
-import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import org.testng.annotations.BeforeMethod;
@@ -146,13 +149,16 @@ public class ClusterAdminOpsRequestHandlerTest {
   public void testGetAdminTopicMetadataSuccess() {
     String clusterName = "test-cluster";
     long executionId = 123L;
-    long offset = 456L;
-    long upstreamOffset = 789L;
+    PubSubPosition position = InMemoryPubSubPosition.of(456L);
+    PubSubPositionGrpcWireFormat PubSubPositionGrpcWireFormat = PubSubUtil.getPubSubPositionGrpcWireFormat(position);
+    PubSubPosition upstreamPosition = InMemoryPubSubPosition.of(789L);
+    PubSubPositionGrpcWireFormat upstreamPubSubPositionGrpcWireFormat =
+        PubSubUtil.getPubSubPositionGrpcWireFormat(upstreamPosition);
 
-    Map<String, Long> metadata = new HashMap<>();
-    metadata.put("offset", offset);
-    metadata.put("upstreamOffset", upstreamOffset);
-    metadata.put("executionId", executionId);
+    AdminMetadata metadata = new AdminMetadata();
+    metadata.setPubSubPosition(position);
+    metadata.setUpstreamPubSubPosition(upstreamPosition);
+    metadata.setExecutionId(executionId);
 
     when(mockAdmin.getAdminTopicMetadata(eq(clusterName), any())).thenReturn(metadata);
 
@@ -164,8 +170,8 @@ public class ClusterAdminOpsRequestHandlerTest {
     assertNotNull(response);
     AdminTopicGrpcMetadata adminTopicGrpcMetadata = response.getMetadata();
     assertEquals(adminTopicGrpcMetadata.getExecutionId(), executionId);
-    assertEquals(adminTopicGrpcMetadata.getOffset(), offset);
-    assertEquals(adminTopicGrpcMetadata.getUpstreamOffset(), upstreamOffset);
+    assertEquals(adminTopicGrpcMetadata.getPosition(), PubSubPositionGrpcWireFormat);
+    assertEquals(adminTopicGrpcMetadata.getUpstreamPosition(), upstreamPubSubPositionGrpcWireFormat);
 
     // non null store name
     request = AdminTopicMetadataGrpcRequest.newBuilder().setClusterName(clusterName).setStoreName("test-store").build();
@@ -193,8 +199,8 @@ public class ClusterAdminOpsRequestHandlerTest {
     AdminTopicGrpcMetadata metadata = AdminTopicGrpcMetadata.newBuilder()
         .setClusterName(clusterName)
         .setExecutionId(executionId)
-        .setOffset(123L)
-        .setUpstreamOffset(456L)
+        .setPosition(PubSubUtil.getPubSubPositionGrpcWireFormat(InMemoryPubSubPosition.of(123L)))
+        .setUpstreamPosition(PubSubUtil.getPubSubPositionGrpcWireFormat(InMemoryPubSubPosition.of(456L)))
         .build();
     UpdateAdminTopicMetadataGrpcRequest request =
         UpdateAdminTopicMetadataGrpcRequest.newBuilder().setMetadata(metadata).build();
@@ -237,7 +243,7 @@ public class ClusterAdminOpsRequestHandlerTest {
         UpdateAdminTopicMetadataGrpcRequest.newBuilder().setMetadata(metadata).build();
     exception = expectThrows(VeniceException.class, () -> handler.updateAdminTopicMetadata(request1));
     assertTrue(
-        exception.getMessage().contains("Offsets must be provided to update cluster-level admin topic metadata"),
+        exception.getMessage().contains("Positions must be provided to update cluster-level admin topic metadata"),
         "Actual message: " + exception.getMessage());
 
     metadata = AdminTopicGrpcMetadata.newBuilder()
@@ -249,21 +255,21 @@ public class ClusterAdminOpsRequestHandlerTest {
         UpdateAdminTopicMetadataGrpcRequest.newBuilder().setMetadata(metadata).build();
     exception = expectThrows(VeniceException.class, () -> handler.updateAdminTopicMetadata(request2));
     assertTrue(
-        exception.getMessage().contains("Offsets must be provided to update cluster-level admin topic metadata"),
+        exception.getMessage().contains("Positions must be provided to update cluster-level admin topic metadata"),
         "Actual message: " + exception.getMessage());
 
-    // both offsets and store name are provided
+    // both position and store name are provided
     metadata = AdminTopicGrpcMetadata.newBuilder()
         .setClusterName(clusterName)
         .setExecutionId(executionId)
-        .setOffset(123L)
+        .setPosition(PubSubUtil.getPubSubPositionGrpcWireFormat(InMemoryPubSubPosition.of(123L)))
         .setStoreName("test-store")
         .build();
     UpdateAdminTopicMetadataGrpcRequest request3 =
         UpdateAdminTopicMetadataGrpcRequest.newBuilder().setMetadata(metadata).build();
     exception = expectThrows(VeniceException.class, () -> handler.updateAdminTopicMetadata(request3));
     assertTrue(
-        exception.getMessage().contains("Updating offsets is not allowed for store-level admin topic metadata"),
+        exception.getMessage().contains("Updating positions is not allowed for store-level admin topic metadata"),
         "Actual message: " + exception.getMessage());
   }
 

@@ -39,7 +39,6 @@ import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterOptions;
 import java.util.Collections;
-import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.CountDownLatch;
@@ -272,9 +271,8 @@ public class AdminConsumptionTaskIntegrationTest {
 
     // Verify that the original metadata is correct
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-      Map<String, Long> adminTopicMetadata = admin.getAdminTopicMetadata(clusterName, Optional.empty());
-      Assert.assertTrue(adminTopicMetadata.containsKey("adminOperationProtocolVersion"));
-      Assert.assertEquals(adminTopicMetadata.get("adminOperationProtocolVersion"), currentVersion);
+      AdminMetadata adminTopicMetadata = admin.getAdminTopicMetadata(clusterName, Optional.empty());
+      Assert.assertEquals(adminTopicMetadata.getAdminOperationProtocolVersion(), currentVersion);
     });
 
     // Update the admin operation version
@@ -282,9 +280,8 @@ public class AdminConsumptionTaskIntegrationTest {
 
     // Verify the admin operation metadata version is updated
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-      Map<String, Long> adminTopicMetadata = admin.getAdminTopicMetadata(clusterName, Optional.empty());
-      Assert.assertTrue(adminTopicMetadata.containsKey("adminOperationProtocolVersion"));
-      Assert.assertEquals(adminTopicMetadata.get("adminOperationProtocolVersion"), newVersion);
+      AdminMetadata adminTopicMetadata = admin.getAdminTopicMetadata(clusterName, Optional.empty());
+      Assert.assertEquals(adminTopicMetadata.getAdminOperationProtocolVersion(), newVersion);
     });
   }
 
