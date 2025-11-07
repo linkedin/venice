@@ -374,7 +374,7 @@ public class VeniceDelegateMode extends ScatterGatherMode {
    * When disabled (default), uses pending request count to decide on the host selection
    * among the healthy host list.
    *
-   * Note: Healthy host list is based on pending queue count: Ref {@link VeniceHostHealth#isHostHealthy}
+   * Note: Healthy host list is based on {@link VeniceHostHealth#isHostHealthy}
    */
   private <H> H selectLeastLoadedHost(List<H> hosts, VenicePath path, RouteHttpStats routeHttpStats)
       throws RouterException {
@@ -394,7 +394,10 @@ public class VeniceDelegateMode extends ScatterGatherMode {
     H minHost = null;
     long smallestPendingCount = Long.MAX_VALUE;
 
-    for (H h: hosts) {
+    // shuffle to randomize in case of a tie
+    List<H> candidateHosts = new ArrayList<>(hosts);
+    Collections.shuffle(candidateHosts);
+    for (H h: candidateHosts) {
       Instance node = (Instance) h;
       String nodeId = node.getNodeId();
 

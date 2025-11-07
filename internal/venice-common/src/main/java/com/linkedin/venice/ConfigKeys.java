@@ -1776,7 +1776,7 @@ public class ConfigKeys {
    * When disabled (default), uses pending request count to decide on the host selection
    * among the healthy host list.
    *
-   * Note: Healthy host list is based on pending queue count: Ref VeniceHostHealth#isHostHealthy.
+   * Note: Healthy host list is based on VeniceHostHealth#isHostHealthy.
    */
   public static final String ROUTER_LATENCY_BASED_ROUTING_ENABLED = "router.latency.based.routing.enabled";
 
