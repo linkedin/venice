@@ -394,10 +394,7 @@ public class VeniceDelegateMode extends ScatterGatherMode {
     H minHost = null;
     long smallestPendingCount = Long.MAX_VALUE;
 
-    // shuffle to randomize in case of a tie
-    List<H> candidateHosts = new ArrayList<>(hosts);
-    Collections.shuffle(candidateHosts);
-    for (H h: candidateHosts) {
+    for (H h: hosts) {
       Instance node = (Instance) h;
       String nodeId = node.getNodeId();
 
