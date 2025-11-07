@@ -289,6 +289,7 @@ public class DaVinciClientSubscribeTest {
             daVinciConfig,
             extraProps);
     try (DaVinciClient<Integer, Object> client = daVinciTestContext.getDaVinciClient()) {
+      client.subscribeAll().get();
       TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
         try {
           Map<Integer, Integer> keyValueMap = new HashMap<>();
@@ -343,6 +344,7 @@ public class DaVinciClientSubscribeTest {
        */
       try (DaVinciClient<Integer, Integer> client =
           ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster, baseDataPath, daVinciConfig)) {
+        client.subscribeAll().get();
         TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, false, true, () -> {
           for (int i = 0; i < KEY_COUNT; i++) {
             int value = client.get(i).get();
