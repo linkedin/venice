@@ -1,6 +1,5 @@
 package com.linkedin.davinci;
 
-import static com.linkedin.venice.ConfigKeys.DA_VINCI_SUBSCRIBE_ON_DISK_PARTITIONS_AUTOMATICALLY;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_INSTANCE_NAME_SUFFIX;
 import static com.linkedin.venice.ConfigKeys.VALIDATE_VENICE_INTERNAL_SCHEMA_VERSION;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.DVC_INGESTION_ERROR_DISK_FULL;
@@ -71,7 +70,6 @@ import com.linkedin.venice.serialization.avro.SchemaPresenceChecker;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.stats.TehutiUtils;
-import com.linkedin.venice.utils.ComplementSet;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -518,24 +516,6 @@ public class DaVinciBackend implements Closeable {
             blobTransferManager,
             configLoader.getVeniceServerConfig());
     ingestionBackend.addIngestionNotifier(ingestionListener);
-
-    if (configLoader.getCombinedProperties().getBoolean(DA_VINCI_SUBSCRIBE_ON_DISK_PARTITIONS_AUTOMATICALLY, true)) {
-      // Subscribe all bootstrap version partitions.
-      storeNameToBootstrapVersionMap.forEach((storeName, version) -> {
-        List<Integer> partitions = storeNameToPartitionListMap.get(storeName);
-        String versionTopic = version.kafkaTopicName();
-        LOGGER.info("Bootstrapping partitions {} for {}", partitions, versionTopic);
-        StorageEngine storageEngine = getStorageService().getStorageEngine(versionTopic);
-        aggVersionedStorageEngineStats.setStorageEngine(versionTopic, storageEngine);
-        StoreBackend storeBackend = getStoreOrThrow(storeName);
-        storeBackend.subscribe(
-            ComplementSet.newSet(partitions),
-            Optional.of(version),
-            Collections.emptyMap(),
-            null,
-            Collections.emptyMap());
-      });
-    }
   }
 
   @Override

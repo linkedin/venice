@@ -10,7 +10,6 @@ import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_LEV
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_LEVEL0_STOPS_WRITES_TRIGGER_WRITE_ONLY_VERSION;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
-import static com.linkedin.venice.ConfigKeys.DA_VINCI_SUBSCRIBE_ON_DISK_PARTITIONS_AUTOMATICALLY;
 import static com.linkedin.venice.ConfigKeys.INGESTION_USE_DA_VINCI_CLIENT;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
@@ -201,13 +200,6 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
       // since the record transformer config is never persisted to disk. Additionally, this will spawn multiple
       // transformers per version, and if the user's transformer is stateful this could cause issues.
       throw new VeniceClientException("Ingestion Isolation is not supported with DaVinciRecordTransformer");
-    }
-
-    if (backendConfig.getBoolean(DA_VINCI_SUBSCRIBE_ON_DISK_PARTITIONS_AUTOMATICALLY, true)
-        && recordTransformerConfig != null) {
-      throw new VeniceClientException(
-          DA_VINCI_SUBSCRIBE_ON_DISK_PARTITIONS_AUTOMATICALLY
-              + " must be set to false when using DaVinciRecordTransformer");
     }
 
     preValidation.run();
