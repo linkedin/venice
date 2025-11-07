@@ -2,7 +2,6 @@ package com.linkedin.davinci.consumer;
 
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
-import static com.linkedin.venice.ConfigKeys.DA_VINCI_SUBSCRIBE_ON_DISK_PARTITIONS_AUTOMATICALLY;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
 import static com.linkedin.venice.meta.PersistenceType.ROCKS_DB;
@@ -452,8 +451,6 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
         .put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 0)
         .put(DATA_BASE_PATH, changelogClientConfig.getBootstrapFileSystemPath())
         .put(PERSISTENCE_TYPE, ROCKS_DB)
-        // Turning this off, so users don't subscribe to unwanted partitions automatically
-        .put(DA_VINCI_SUBSCRIBE_ON_DISK_PARTITIONS_AUTOMATICALLY, false)
         .put(PUSH_STATUS_STORE_ENABLED, !isVersionSpecificClient)
         .build();
   }

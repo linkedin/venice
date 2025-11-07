@@ -27,7 +27,6 @@ import static com.linkedin.venice.ConfigKeys.DAVINCI_P2P_BLOB_TRANSFER_SERVER_PO
 import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_CHECK_INTERVAL_IN_MS;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_SPEEDUP_ENABLED;
-import static com.linkedin.venice.ConfigKeys.DA_VINCI_SUBSCRIBE_ON_DISK_PARTITIONS_AUTOMATICALLY;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED;
@@ -847,8 +846,7 @@ public class DaVinciClientRecordTransformerTest {
         .put(SSL_KEY_PASSWORD, LOCAL_PASSWORD)
         .put(SSL_KEYMANAGER_ALGORITHM, "SunX509")
         .put(SSL_TRUSTMANAGER_ALGORITHM, "SunX509")
-        .put(SSL_SECURE_RANDOM_IMPLEMENTATION, "SHA1PRNG")
-        .put(DA_VINCI_SUBSCRIBE_ON_DISK_PARTITIONS_AUTOMATICALLY, false);
+        .put(SSL_SECURE_RANDOM_IMPLEMENTATION, "SHA1PRNG");
     VeniceProperties backendConfig2 = configBuilder.build();
 
     try (CachingDaVinciClientFactory factory2 = DaVinciTestContext.getCachingDaVinciClientFactory(
@@ -1156,7 +1154,6 @@ public class DaVinciClientRecordTransformerTest {
         .put(DATA_BASE_PATH, baseDataPath)
         .put(PERSISTENCE_TYPE, ROCKS_DB)
         .put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 2 * 1024 * 1024L)
-        .put(DA_VINCI_SUBSCRIBE_ON_DISK_PARTITIONS_AUTOMATICALLY, false)
         .put(DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_SPEEDUP_ENABLED, true)
         .put(SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED, true);
 
