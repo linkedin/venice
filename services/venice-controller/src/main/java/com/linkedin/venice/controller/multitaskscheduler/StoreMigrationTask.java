@@ -30,14 +30,12 @@ class StoreMigrationTask implements Runnable {
   private final StoreMigrationManager manager;
   private Duration timeoutDuration = Duration.ofHours(24); // Default timeout duration
   private static final Logger LOGGER = LogManager.getLogger(StoreMigrationTask.class);
-  private static final int LOG_INTERVAL = 30; // Interval for logging status in verifyMigrationStatus step
   private static final int MAX_PROPAGATION_CHECK_INTERVAL_MS = 10000; // Max 10 seconds between checks
   private static final int MIN_PROPAGATION_CHECK_INTERVAL_MS = 500; // Min 0.5 seconds for fast tests
   private ControllerClient srcControllerClient, destControllerClient;
   Map<String, ControllerClient> srcChildControllerClientMap, destChildControllerClientMap;
   private final Map<String, Boolean> fabricReadyMap = new HashMap<>();
   boolean statusVerified = false;
-  private int counter = -1;
   // Tracks if source store is in fully operational state (both reads AND writes enabled)
   // Used to optimize updates by skipping redundant operations
   private boolean srcStoreFullyReadWriteEnabled = true;
@@ -148,12 +146,18 @@ class StoreMigrationTask implements Runnable {
     if (srcChildControllerClientMap.isEmpty() && destChildControllerClientMap.isEmpty()) {
       statusVerified = isClonedStoreOnline(srcControllerClient, destControllerClient, record);
       if (statusVerified) {
-        LOGGER.info("Store {} ready in destination cluster {}", record.getStoreName(), record.getDestinationCluster());
-      } else if (++counter % LOG_INTERVAL == 0) {
         LOGGER.info(
-            "Store {} not ready in destination cluster {}, retry later",
+            "Store {} is ready in destination cluster {} in the single datacenter setup.",
             record.getStoreName(),
             record.getDestinationCluster());
+      } else {
+        String logKey = record.getStoreName() + "_" + record.getDestinationCluster();
+        if (manager.filter.isRedundantException(logKey)) {
+          LOGGER.info(
+              "Store {} is not ready in destination cluster {} in the single datacenter setup, retry later.",
+              record.getStoreName(),
+              record.getDestinationCluster());
+        }
       }
     } else {
       verifyMultiDatacenterStatus();
@@ -180,15 +184,18 @@ class StoreMigrationTask implements Runnable {
           record)) {
         fabricReadyMap.put(fabric, true);
         LOGGER.info(
-            "Store {} ready in cluster {} fabric {}",
+            "Store {} is ready in cluster {} fabric {}",
             record.getStoreName(),
             record.getDestinationCluster(),
             fabric);
-      } else if (++counter % LOG_INTERVAL == 0) {
-        LOGGER.info(
-            "Store {} not ready in destination cluster {}, retry later",
-            record.getStoreName(),
-            record.getDestinationCluster());
+      } else {
+        String logKey = record.getStoreName() + "_" + record.getDestinationCluster();
+        if (manager.filter.isRedundantException(logKey)) {
+          LOGGER.info(
+              "Store {} is not ready in destination cluster {} fabric {}, retry later",
+              record.getStoreName(),
+              record.getDestinationCluster());
+        }
       }
     }
     statusVerified = findNotReadyFabrics().isEmpty();
@@ -210,9 +217,9 @@ class StoreMigrationTask implements Runnable {
         .filter(e -> Boolean.TRUE.equals(e.getValue()))
         .map(Map.Entry::getKey)
         .collect(Collectors.toList());
-    ChildAwareResponse response = destControllerClient.listChildControllers(record.getDestinationCluster());
-    boolean isSingleDC = readyFabrics.isEmpty() && response.getChildDataCenterControllerUrlMap().isEmpty()
-        && response.getChildDataCenterControllerD2Map().isEmpty();
+    ChildAwareResponse childAwareResponse = destControllerClient.listChildControllers(record.getDestinationCluster());
+    boolean isSingleDC = readyFabrics.isEmpty() && childAwareResponse.getChildDataCenterControllerUrlMap() == null
+        && childAwareResponse.getChildDataCenterControllerD2Map() == null;
 
     boolean updateSuccessful = true;
     if (isSingleDC) {

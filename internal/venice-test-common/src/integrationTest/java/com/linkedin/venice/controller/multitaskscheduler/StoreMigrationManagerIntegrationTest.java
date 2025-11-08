@@ -141,7 +141,15 @@ public class StoreMigrationManagerIntegrationTest {
     VeniceHelixAdmin veniceHelixAdmin =
         multiClusterWrapper.getClusters().get(destCluster).getLeaderVeniceController().getVeniceHelixAdmin();
 
-    int pauseAfterStep = 4; // Pause after step 4
+    try (AvroGenericStoreClient<String, Object> client = ClientFactory.getAndStartGenericAvroClient(clientConfig)) {
+      readFromStore(client);
+      AbstractAvroStoreClient<String, Object> castClient =
+          (AbstractAvroStoreClient<String, Object>) ((StatTrackingStoreClient<String, Object>) client)
+              .getInnerStoreClient();
+      Assert.assertTrue(castClient.toString().contains(srcD2ServiceName));
+    }
+
+    int pauseAfterStep = 4; // Pause after step 4: VERIFY_READ_REDIRECTION
     // Schedule the migration
     storeMigrationManager.scheduleMigration(
         storeName,
