@@ -20,8 +20,6 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import org.apache.avro.Schema;
-import org.apache.avro.specific.SpecificData;
-import org.apache.avro.specific.SpecificRecord;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -42,7 +40,14 @@ public class SystemSchemaInitializationRoutine implements ClusterLeaderInitializ
       AvroProtocolDefinition protocolDefinition,
       VeniceControllerMultiClusterConfig multiClusterConfigs,
       VeniceHelixAdmin admin) {
-    this(protocolDefinition, multiClusterConfigs, admin, Optional.empty(), Optional.empty(), false, null);
+    this(
+        protocolDefinition,
+        multiClusterConfigs,
+        admin,
+        Optional.empty(),
+        Optional.empty(),
+        false,
+        protocolDefinition.getCurrentProtocolVersionSchema());
   }
 
   public SystemSchemaInitializationRoutine(
@@ -59,7 +64,7 @@ public class SystemSchemaInitializationRoutine implements ClusterLeaderInitializ
         keySchema,
         storeMetadataUpdate,
         autoRegisterDerivedComputeSchema,
-        null);
+        protocolDefinition.getCurrentProtocolVersionSchema());
   }
 
   public SystemSchemaInitializationRoutine(
@@ -69,11 +74,9 @@ public class SystemSchemaInitializationRoutine implements ClusterLeaderInitializ
       Optional<Schema> keySchema,
       Optional<UpdateStoreQueryParams> storeMetadataUpdate,
       boolean autoRegisterDerivedComputeSchema,
-      Class<? extends SpecificRecord> specificRecordClass) {
+      Schema compiledProtocolSchema) {
     this.protocolDefinition = protocolDefinition;
-    this.protocolSchema = specificRecordClass != null
-        ? SpecificData.get().getSchema(specificRecordClass)
-        : protocolDefinition.getCurrentProtocolVersionSchema();
+    this.protocolSchema = compiledProtocolSchema;
     this.multiClusterConfigs = multiClusterConfigs;
     this.admin = admin;
     this.keySchema = keySchema;

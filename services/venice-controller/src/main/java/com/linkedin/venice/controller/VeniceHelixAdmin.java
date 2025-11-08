@@ -292,6 +292,7 @@ import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import javax.annotation.Nonnull;
 import org.apache.avro.Schema;
+import org.apache.avro.specific.SpecificData;
 import org.apache.avro.util.Utf8;
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.lang.Validate;
@@ -715,6 +716,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             multiClusterConfigs,
             this));
     if (multiClusterConfigs.isAdminOperationSystemStoreEnabled()) {
+      Schema adminOperationCompiledSchema = SpecificData.get().getSchema(AdminOperation.class);
       initRoutines.add(
           new SystemSchemaInitializationRoutine(
               AvroProtocolDefinition.ADMIN_OPERATION,
@@ -723,7 +725,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
               Optional.empty(),
               Optional.empty(),
               false,
-              AdminOperation.class));
+              adminOperationCompiledSchema));
     }
 
     if (multiClusterConfigs.isZkSharedMetaSystemSchemaStoreAutoCreationEnabled()) {
