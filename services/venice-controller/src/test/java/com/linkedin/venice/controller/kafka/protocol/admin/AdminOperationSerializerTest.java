@@ -116,6 +116,14 @@ public class AdminOperationSerializerTest {
           "Current schema version: 74. New semantic is being used. Field AdminOperation.payloadUnion.UpdateStore.separateRealTimeTopicEnabled: Boolean value true is not the default value false or false";
       assertEquals(e.getMessage(), expectedMessage);
     }
+
+    try {
+      // Validate should fail when target schema id is greater than the latest schema id
+      adminOperationSerializer
+          .validate(adminMessage, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION + 1);
+    } catch (VeniceProtocolException e) {
+      assertTrue(e.getMessage().contains("We don't support serialization to future schema versions."));
+    }
   }
 
   @Test
@@ -148,6 +156,12 @@ public class AdminOperationSerializerTest {
     assertEquals(deserializedOperationPayloadUnion.numberOfPartitions, 20);
   }
 
+  /**
+   * Test downloading and storing schema if it's absent in the protocol map.
+   * 1st attempt: schema not found in system store schema repository, expect VeniceProtocolException.
+   * 2nd attempt: schema found in system store schema repository, but error downloading schema, expect VeniceProtocolException.
+   * 3rd attempt: schema found in system store schema repository, schema downloaded successfully and added to protocol map.
+   */
   @Test
   public void testDownloadAndSchemaIfNecessary() {
     AdminOperationSerializer adminOperationSerializer = Mockito.spy(new AdminOperationSerializer());
@@ -155,8 +169,6 @@ public class AdminOperationSerializerTest {
     VeniceHelixAdmin mockAdmin = Mockito.mock(VeniceHelixAdmin.class);
     Schema mockSchema = Mockito.mock(Schema.class);
     SchemaEntry mockSchemaEntry = Mockito.mock(SchemaEntry.class);
-    // First call returns null, second call returns the mock schema
-    when(mockSchemaEntry.getSchema()).thenReturn(null).thenReturn(mockSchema);
     HelixReadOnlyZKSharedSchemaRepository mockSchemaRepo = Mockito.mock(HelixReadOnlyZKSharedSchemaRepository.class);
     when(mockAdmin.getReadOnlyZKSharedSchemaRepository()).thenReturn(mockSchemaRepo);
     when(mockSchemaRepo.getValueSchema(anyString(), anyInt())).thenReturn(mockSchemaEntry);
@@ -164,16 +176,31 @@ public class AdminOperationSerializerTest {
     int nonExistSchemaId = AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION + 1;
     doCallRealMethod().when(adminOperationSerializer).fetchAndStoreSchemaIfAbsent(any(), anyInt());
 
+    // hasValueSchema: 1st call: schema not exists; 2nd call & 3rd call: schema exists
+    when(mockSchemaRepo.hasValueSchema(anyString(), anyInt())).thenReturn(false).thenReturn(true).thenReturn(true);
+
+    // getSchema First call returns null (for 2nd attempt), second call returns the mock schema (for 3rd attempt)
+    when(mockSchemaEntry.getSchema()).thenReturn(null).thenReturn(mockSchema);
+
+    // 1st attempt: schema not exist in system store schema repository
     try {
-      // First attempt: schema not found in system store schema repository
       adminOperationSerializer.fetchAndStoreSchemaIfAbsent(mockAdmin, nonExistSchemaId);
     } catch (VeniceProtocolException e) {
-      String expectedMessage = "Could not find AdminOperation schema for schema id: " + nonExistSchemaId
-          + " in system store schema repository";
+      String expectedMessage = "Failed to fetch schema id: " + nonExistSchemaId
+          + " from system store schema repository as it does not exist.";
       assertEquals(e.getMessage(), expectedMessage);
     }
 
-    // Second attempt: schema found in system store schema repository
+    // 2nd attempt: error downloading schema from system store schema repository
+    try {
+      adminOperationSerializer.fetchAndStoreSchemaIfAbsent(mockAdmin, nonExistSchemaId);
+    } catch (VeniceProtocolException e) {
+      String expectedMessage = "Failed to fetch schema id: " + nonExistSchemaId
+          + " from system store schema repository even though it exists.";
+      assertEquals(e.getMessage(), expectedMessage);
+    }
+
+    // 3rd attempt: schema found in system store schema repository
     adminOperationSerializer.fetchAndStoreSchemaIfAbsent(mockAdmin, nonExistSchemaId);
     // Verify schema is downloaded and added to the protocol map
     assertEquals(adminOperationSerializer.getSchema(nonExistSchemaId), mockSchema);
