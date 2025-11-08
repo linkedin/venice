@@ -14,6 +14,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
+import java.util.HashMap;
 import java.util.Map;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericDatumReader;
@@ -113,10 +114,18 @@ public class AdminOperationSerializer {
   }
 
   /**
-   * Validate the AdminOperation message against the target schema.
+   * Validate the AdminOperation message against the target schema for serialization compatibility.
    * @throws VeniceProtocolException if the message does not conform to the target schema.
    */
   public void validate(AdminOperation message, int targetSchemaId) {
+    // We don't support serialization to future schema versions.
+    // Fail fast in this case.
+    if (targetSchemaId > LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION) {
+      throw new VeniceProtocolException(
+          "Target schema id: " + targetSchemaId + " is greater than the latest schema id: "
+              + LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION + ". We don't support serialization to future schema versions.");
+    }
+
     Schema targetSchema = getSchema(targetSchemaId);
     try {
       SemanticDetector.traverseAndValidate(message, LATEST_SCHEMA, targetSchema, "AdminOperation", null);
@@ -129,7 +138,7 @@ public class AdminOperationSerializer {
 
   public static Map<Integer, Schema> initProtocolMap() {
     try {
-      Map<Integer, Schema> protocolSchemaMap = new VeniceConcurrentHashMap<>();
+      Map<Integer, Schema> protocolSchemaMap = new HashMap<>();
       for (int i = 1; i <= LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION; i++) {
         protocolSchemaMap.put(i, Utils.getSchemaFromResource("avro/AdminOperation/v" + i + "/AdminOperation.avsc"));
       }

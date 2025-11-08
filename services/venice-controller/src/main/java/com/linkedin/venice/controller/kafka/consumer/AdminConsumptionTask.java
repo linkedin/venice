@@ -902,7 +902,8 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     if (MessageType.PUT == messageType) {
       Put put = (Put) kafkaValue.payloadUnion;
       try {
-        if (admin.isAdminOperationSystemStoreEnabled()) {
+        if (admin.isAdminOperationSystemStoreEnabled()
+            && put.schemaId > AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION) {
           deserializer.fetchAndStoreSchemaIfAbsent(admin, put.schemaId);
         }
         adminOperation = deserializer.deserialize(put.putValue, put.schemaId);
