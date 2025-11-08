@@ -5,6 +5,7 @@ import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
 import com.linkedin.venice.exceptions.VeniceProtocolException;
+import com.linkedin.venice.helix.HelixReadOnlyZKSharedSchemaRepository;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -32,6 +33,9 @@ public class AdminOperationSerializer {
   private static final Schema LATEST_SCHEMA = AdminOperation.getClassSchema();
 
   private static final Map<Integer, Schema> PROTOCOL_MAP = initProtocolMap();
+
+  private static final String ADMIN_OPERATION_SYSTEM_STORE_NAME =
+      AvroProtocolDefinition.ADMIN_OPERATION.getSystemStoreName();
 
   /**
    * Cache for schemas downloaded from system store schema repository.
@@ -135,6 +139,9 @@ public class AdminOperationSerializer {
     }
   }
 
+  /**
+   * Get schema by schema id from either built-in protocol map or system store schema repository cache.
+   */
   public Schema getSchema(int schemaId) {
     if (PROTOCOL_MAP.containsKey(schemaId)) {
       return PROTOCOL_MAP.get(schemaId);
@@ -155,13 +162,22 @@ public class AdminOperationSerializer {
     if (PROTOCOL_MAP.containsKey(schemaId) || cacheSchemaMapFromSystemStore.containsKey(schemaId)) {
       return;
     }
-    String adminOperationSchemaStoreName = AvroProtocolDefinition.ADMIN_OPERATION.getSystemStoreName();
-    Schema schema =
-        admin.getReadOnlyZKSharedSchemaRepository().getValueSchema(adminOperationSchemaStoreName, schemaId).getSchema();
-    if (schema == null) {
-      throw new VeniceProtocolException(
-          "Could not find AdminOperation schema for schema id: " + schemaId + " in system store schema repository");
+    HelixReadOnlyZKSharedSchemaRepository zkSharedSchemaRepository = admin.getReadOnlyZKSharedSchemaRepository();
+
+    boolean schemaExists = zkSharedSchemaRepository.hasValueSchema(ADMIN_OPERATION_SYSTEM_STORE_NAME, schemaId);
+
+    Schema schema = null;
+    if (schemaExists) {
+      schema = zkSharedSchemaRepository.getValueSchema(ADMIN_OPERATION_SYSTEM_STORE_NAME, schemaId).getSchema();
     }
+
+    if (schema == null) {
+      String msg = "Failed to fetch schema id: " + schemaId + " from system store schema repository"
+          + (schemaExists ? " even though it exists." : " as it does not exist.");
+      throw new VeniceProtocolException(msg);
+    }
+
+    // Add the downloaded schema to the cache map
     cacheSchemaMapFromSystemStore.put(schemaId, schema);
   }
 
