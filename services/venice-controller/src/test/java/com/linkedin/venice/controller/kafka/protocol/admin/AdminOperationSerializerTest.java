@@ -25,10 +25,9 @@ import org.testng.annotations.Test;
 
 
 public class AdminOperationSerializerTest {
-  private final AdminOperationSerializer adminOperationSerializer = Mockito.mock(AdminOperationSerializer.class);
-
   @Test
   public void testGetSchema() {
+    AdminOperationSerializer adminOperationSerializer = new AdminOperationSerializer();
     expectThrows(VeniceProtocolException.class, () -> adminOperationSerializer.getSchema(0));
     expectThrows(
         VeniceProtocolException.class,
@@ -37,6 +36,8 @@ public class AdminOperationSerializerTest {
 
   @Test
   public void testAdminOperationSerializer() {
+    AdminOperationSerializer adminOperationSerializer = new AdminOperationSerializer();
+
     // Create an AdminOperation object with latest version
     UpdateStore updateStore = (UpdateStore) AdminMessageType.UPDATE_STORE.getNewInstance();
     updateStore.clusterName = "clusterName";
@@ -56,9 +57,6 @@ public class AdminOperationSerializerTest {
     adminMessage.operationType = AdminMessageType.UPDATE_STORE.getValue();
     adminMessage.payloadUnion = updateStore;
     adminMessage.executionId = 1;
-
-    doCallRealMethod().when(adminOperationSerializer).serialize(any(), anyInt());
-    doCallRealMethod().when(adminOperationSerializer).deserialize(any(), anyInt());
 
     // Serialize the AdminOperation object with writer schema id v74, should not fail
     byte[] serializedBytes = adminOperationSerializer.serialize(adminMessage, 74);
@@ -89,6 +87,8 @@ public class AdminOperationSerializerTest {
 
   @Test
   public void testValidateAdminOperation() {
+    AdminOperationSerializer adminOperationSerializer = new AdminOperationSerializer();
+
     // Create an AdminOperation object with latest version
     UpdateStore updateStore = (UpdateStore) AdminMessageType.UPDATE_STORE.getNewInstance();
     updateStore.clusterName = "clusterName";
@@ -108,9 +108,6 @@ public class AdminOperationSerializerTest {
     adminMessage.payloadUnion = updateStore;
     adminMessage.executionId = 1;
 
-    doCallRealMethod().when(adminOperationSerializer).serialize(any(), anyInt());
-    doCallRealMethod().when(adminOperationSerializer).deserialize(any(), anyInt());
-
     // Serialize the AdminOperation object with writer schema id v74
     try {
       adminOperationSerializer.validate(adminMessage, 74);
@@ -123,6 +120,8 @@ public class AdminOperationSerializerTest {
 
   @Test
   public void testSerializeDeserializeWithDocChange() {
+    AdminOperationSerializer adminOperationSerializer = new AdminOperationSerializer();
+
     // Create an AdminOperation object with latest version
     AddVersion addVersion = (AddVersion) AdminMessageType.ADD_VERSION.getNewInstance();
     addVersion.clusterName = "clusterName";
@@ -135,9 +134,6 @@ public class AdminOperationSerializerTest {
     adminMessage.operationType = AdminMessageType.ADD_VERSION.getValue();
     adminMessage.payloadUnion = addVersion;
     adminMessage.executionId = 1;
-
-    doCallRealMethod().when(adminOperationSerializer).serialize(any(), anyInt());
-    doCallRealMethod().when(adminOperationSerializer).deserialize(any(), anyInt());
 
     // Serialize the AdminOperation object with writer schema id v24
     byte[] serializedBytes = adminOperationSerializer.serialize(adminMessage, 24);
@@ -154,6 +150,8 @@ public class AdminOperationSerializerTest {
 
   @Test
   public void testDownloadAndSchemaIfNecessary() {
+    AdminOperationSerializer adminOperationSerializer = Mockito.spy(new AdminOperationSerializer());
+
     VeniceHelixAdmin mockAdmin = Mockito.mock(VeniceHelixAdmin.class);
     Schema mockSchema = Mockito.mock(Schema.class);
     SchemaEntry mockSchemaEntry = Mockito.mock(SchemaEntry.class);
