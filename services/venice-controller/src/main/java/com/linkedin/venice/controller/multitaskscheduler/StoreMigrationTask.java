@@ -152,7 +152,7 @@ class StoreMigrationTask implements Runnable {
             record.getDestinationCluster());
       } else {
         String logKey = record.getStoreName() + "_" + record.getDestinationCluster();
-        if (manager.filter.isRedundantException(logKey)) {
+        if (!manager.filter.isRedundantException(logKey)) {
           LOGGER.info(
               "Store {} is not ready in destination cluster {} in the single datacenter setup, retry later.",
               record.getStoreName(),
@@ -190,7 +190,7 @@ class StoreMigrationTask implements Runnable {
             fabric);
       } else {
         String logKey = record.getStoreName() + "_" + record.getDestinationCluster();
-        if (manager.filter.isRedundantException(logKey)) {
+        if (!manager.filter.isRedundantException(logKey)) {
           LOGGER.info(
               "Store {} is not ready in destination cluster {} fabric {}, retry later",
               record.getStoreName(),

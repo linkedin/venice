@@ -26,6 +26,7 @@ import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.VersionStatus;
+import com.linkedin.venice.utils.RedundantExceptionFilter;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Arrays;
@@ -51,12 +52,20 @@ public class StoreMigrationTaskTest {
   private D2ControllerClient mockD2srcControllerClient;
   @Mock
   private D2ControllerClient mockD2DestControllerClient;
+  @Mock
+  private RedundantExceptionFilter mockFilter;
 
   private StoreMigrationTask task;
 
   @BeforeMethod
   public void setUp() {
     MockitoAnnotations.openMocks(this);
+
+    // Set up the filter mock - by default, allow all messages to be logged
+    when(mockFilter.isRedundantException(any(String.class))).thenReturn(false);
+    // Expose the filter through the manager mock
+    mockManager.filter = mockFilter;
+
     Map<String, ControllerClient> srcChildControllerClientMap = new HashMap<>();
     srcChildControllerClientMap.put("fabric1", mockD2srcControllerClient);
     Map<String, ControllerClient> destChildControllerClientMap = new HashMap<>();
