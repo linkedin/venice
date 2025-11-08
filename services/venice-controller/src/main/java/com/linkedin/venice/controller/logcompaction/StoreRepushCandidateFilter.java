@@ -49,7 +49,7 @@ public class StoreRepushCandidateFilter implements RepushCandidateFilter {
     }
 
     // Store criteria
-    if (!storeInfo.isCompactionEnabled() || storeInfo.isMigrating()
+    if (!storeInfo.isCompactionEnabled() || storeInfo.isMigrating() || !storeInfo.isEnableStoreWrites()
         || !isLatestVersionStale(getVersionStalenessThresholdMs(storeInfo, clusterName), storeInfo)) {
       return false;
     }
