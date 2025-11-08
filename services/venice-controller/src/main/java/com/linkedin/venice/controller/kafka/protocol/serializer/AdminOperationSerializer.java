@@ -31,7 +31,15 @@ public class AdminOperationSerializer {
 
   private static final Schema LATEST_SCHEMA = AdminOperation.getClassSchema();
 
-  private final Map<Integer, Schema> PROTOCOL_MAP = initProtocolMap();
+  private static final Map<Integer, Schema> PROTOCOL_MAP = initProtocolMap();
+
+  /**
+   * Cache for schemas downloaded from system store schema repository.
+   * This map is separate from PROTOCOL_MAP to distinguish between built-in schemas and downloaded schemas.
+   * Built-in schemas are initialized at startup and are immutable.
+   * Downloaded schemas are downloaded from system store schema repository, and are mutable.
+   */
+  private static final Map<Integer, Schema> cacheSchemaMapFromSystemStore = new VeniceConcurrentHashMap<>();
 
   /**
    * Serialize AdminOperation object to bytes[] with the writer schema
@@ -128,10 +136,14 @@ public class AdminOperationSerializer {
   }
 
   public Schema getSchema(int schemaId) {
-    if (!PROTOCOL_MAP.containsKey(schemaId)) {
-      throw new VeniceProtocolException("Admin operation schema version: " + schemaId + " doesn't exist");
+    if (PROTOCOL_MAP.containsKey(schemaId)) {
+      return PROTOCOL_MAP.get(schemaId);
     }
-    return PROTOCOL_MAP.get(schemaId);
+    if (cacheSchemaMapFromSystemStore.containsKey(schemaId)) {
+      return cacheSchemaMapFromSystemStore.get(schemaId);
+    }
+
+    throw new VeniceProtocolException("Admin operation schema version: " + schemaId + " doesn't exist");
   }
 
   /**
@@ -140,7 +152,7 @@ public class AdminOperationSerializer {
    */
   public void fetchAndStoreSchemaIfAbsent(VeniceHelixAdmin admin, int schemaId) {
     // No need to download if the schema is already available.
-    if (PROTOCOL_MAP.containsKey(schemaId)) {
+    if (PROTOCOL_MAP.containsKey(schemaId) || cacheSchemaMapFromSystemStore.containsKey(schemaId)) {
       return;
     }
     String adminOperationSchemaStoreName = AvroProtocolDefinition.ADMIN_OPERATION.getSystemStoreName();
@@ -150,7 +162,7 @@ public class AdminOperationSerializer {
       throw new VeniceProtocolException(
           "Could not find AdminOperation schema for schema id: " + schemaId + " in system store schema repository");
     }
-    PROTOCOL_MAP.put(schemaId, schema);
+    cacheSchemaMapFromSystemStore.put(schemaId, schema);
   }
 
   /**
@@ -174,11 +186,11 @@ public class AdminOperationSerializer {
 
   @VisibleForTesting
   public void addSchema(int schemaId, Schema schema) {
-    PROTOCOL_MAP.put(schemaId, schema);
+    cacheSchemaMapFromSystemStore.put(schemaId, schema);
   }
 
   @VisibleForTesting
   public void removeSchema(int schemaId) {
-    PROTOCOL_MAP.remove(schemaId);
+    cacheSchemaMapFromSystemStore.remove(schemaId);
   }
 }
