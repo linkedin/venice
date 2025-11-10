@@ -1223,10 +1223,10 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
         store.setCurrentVersion(targetVersionNum);
 
         // For jobs that stop polling early or for pushes that don't poll (empty push), we need to truncate the parent
-        // VT
-        // here to unblock the next push
+        // VT here to unblock the next push
         String kafkaTopicName = Version.composeKafkaTopic(storeName, targetVersionNum);
         if (!veniceParentHelixAdmin.isTopicTruncated(kafkaTopicName)) {
+          LOGGER.info("Truncating parent VT for {}", kafkaTopicName);
           veniceParentHelixAdmin.truncateKafkaTopic(Version.composeKafkaTopic(storeName, targetVersionNum));
         }
       }

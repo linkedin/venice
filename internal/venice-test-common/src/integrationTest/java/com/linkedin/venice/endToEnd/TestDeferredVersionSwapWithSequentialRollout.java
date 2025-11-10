@@ -12,6 +12,7 @@ import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V3_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUSH_LIST;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP;
+import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
 
 import com.linkedin.davinci.client.DaVinciClient;
@@ -21,6 +22,7 @@ import com.linkedin.venice.controller.MockStoreLifecycleHooks;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
+import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.hooks.StoreVersionLifecycleEventOutcome;
 import com.linkedin.venice.integration.utils.DaVinciTestContext;
 import com.linkedin.venice.integration.utils.ServiceFactory;
@@ -44,6 +46,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.IntStream;
@@ -345,6 +348,31 @@ public class TestDeferredVersionSwapWithSequentialRollout {
         coloVersions.forEach((colo, version) -> {
           Assert.assertEquals((int) version, 1);
         });
+      });
+
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+        StoreResponse parentStore = parentControllerClient.getStore(storeName);
+        Assert.assertNotNull(parentStore);
+        StoreInfo storeInfo = parentStore.getStore();
+        Assert.assertEquals(storeInfo.getVersion(1).get().getStatus(), VersionStatus.ONLINE);
+      });
+
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+        // Verify that we can create a new version
+        VersionCreationResponse versionCreationResponse = parentControllerClient.requestTopicForWrites(
+            storeName,
+            1000,
+            Version.PushType.BATCH,
+            Version.guidBasedDummyPushId(),
+            true,
+            true,
+            false,
+            Optional.empty(),
+            Optional.empty(),
+            Optional.empty(),
+            false,
+            -1);
+        assertFalse(versionCreationResponse.isError());
       });
     }
   }
