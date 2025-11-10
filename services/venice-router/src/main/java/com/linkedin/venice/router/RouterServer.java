@@ -530,7 +530,8 @@ public class RouterServer extends AbstractVeniceService {
         routeHttpRequestStats,
         aggHostHealthStats,
         routerStats);
-    scatterGatherMode = new VeniceDelegateMode(config, routerStats, routeHttpRequestStats);
+    scatterGatherMode =
+        new VeniceDelegateMode(config, routerStats, routeHttpRequestStats, dispatcher.getPerRouteStatsByType());
 
     if (config.isRouterHeartBeatEnabled()) {
       heartbeat =

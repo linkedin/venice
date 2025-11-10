@@ -59,6 +59,7 @@ import static com.linkedin.venice.ConfigKeys.ROUTER_HTTP_CLIENT_POOL_SIZE;
 import static com.linkedin.venice.ConfigKeys.ROUTER_IDLE_CONNECTION_TO_SERVER_CLEANUP_ENABLED;
 import static com.linkedin.venice.ConfigKeys.ROUTER_IDLE_CONNECTION_TO_SERVER_CLEANUP_THRESHOLD_MINS;
 import static com.linkedin.venice.ConfigKeys.ROUTER_IO_WORKER_COUNT;
+import static com.linkedin.venice.ConfigKeys.ROUTER_LATENCY_BASED_ROUTING_ENABLED;
 import static com.linkedin.venice.ConfigKeys.ROUTER_LEAKED_FUTURE_CLEANUP_POLL_INTERVAL_MS;
 import static com.linkedin.venice.ConfigKeys.ROUTER_LEAKED_FUTURE_CLEANUP_THRESHOLD_MS;
 import static com.linkedin.venice.ConfigKeys.ROUTER_LONG_TAIL_RETRY_BUDGET_ENFORCEMENT_WINDOW_MS;
@@ -176,6 +177,7 @@ public class VeniceRouterConfig implements RouterRetryConfig {
   private final int socketTimeout;
   private final int connectionTimeout;
   private final boolean statefulRouterHealthCheckEnabled;
+  private final boolean latencyBasedRoutingEnabled;
   private final int routerUnhealthyPendingConnThresholdPerRoute;
   private final int routerPendingConnResumeThresholdPerRoute;
   private final boolean perNodeClientAllocationEnabled;
@@ -313,6 +315,7 @@ public class VeniceRouterConfig implements RouterRetryConfig {
       connectionTimeout = props.getInt(ROUTER_CONNECTION_TIMEOUT, 5000); // 5s
 
       statefulRouterHealthCheckEnabled = props.getBoolean(ROUTER_STATEFUL_HEALTHCHECK_ENABLED, true);
+      latencyBasedRoutingEnabled = props.getBoolean(ROUTER_LATENCY_BASED_ROUTING_ENABLED, false);
       routerUnhealthyPendingConnThresholdPerRoute =
           props.getInt(ROUTER_UNHEALTHY_PENDING_CONNECTION_THRESHOLD_PER_ROUTE, 100);
       routerPendingConnResumeThresholdPerRoute = props.getInt(ROUTER_PENDING_CONNECTION_RESUME_THRESHOLD_PER_ROUTE, 15);
@@ -612,6 +615,10 @@ public class VeniceRouterConfig implements RouterRetryConfig {
 
   public boolean isStatefulRouterHealthCheckEnabled() {
     return statefulRouterHealthCheckEnabled;
+  }
+
+  public boolean isLatencyBasedRoutingEnabled() {
+    return latencyBasedRoutingEnabled;
   }
 
   public int getRouterUnhealthyPendingConnThresholdPerRoute() {

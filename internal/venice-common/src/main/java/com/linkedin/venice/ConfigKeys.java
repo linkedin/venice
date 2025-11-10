@@ -1772,6 +1772,18 @@ public class ConfigKeys {
   public static final String ROUTER_STATEFUL_HEALTHCHECK_ENABLED = "router.stateful.healthcheck.enabled";
 
   /**
+   * Enable latency-based routing for host selection.
+   * When enabled, uses average response latency as the criterion with a 1.5x spectrum
+   * threshold among the healthy host list. Ref AVG_LATENCY_SPECTRUM_FOR_HOST_SELECTION
+   *
+   * When disabled (default), uses pending request count to decide on the host selection
+   * among the healthy host list.
+   *
+   * Note: Healthy host list is based on VeniceHostHealth#isHostHealthy.
+   */
+  public static final String ROUTER_LATENCY_BASED_ROUTING_ENABLED = "router.latency.based.routing.enabled";
+
+  /**
   * Maximum number of pending router request per storage node after which router concludes that host to be unhealthy
   * and stops sending further request to it..
   */
