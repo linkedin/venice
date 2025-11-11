@@ -57,6 +57,11 @@ public class GuidUtils {
     return new String(guid.bytes(), CHARSET); // TODO: Optimize this. It's probably expensive...
   }
 
+  public static CharSequence guidToUtf8(GUID guid) {
+    /** TODO: Consider replacing with {@link GuidUtils#getUtf8FromGuid(GUID)}, which might be more efficient. */
+    return new Utf8(getCharSequenceFromGuid(guid));
+  }
+
   public static Utf8 getUtf8FromGuid(GUID guid) {
     /** Adapted from {@link StringCoding#encodeUTF8(byte, byte[], boolean)} */
     byte[] val = guid.bytes();
