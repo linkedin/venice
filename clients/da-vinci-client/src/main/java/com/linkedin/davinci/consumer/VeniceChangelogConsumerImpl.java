@@ -1400,7 +1400,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     public void run() {
       while (!Thread.interrupted()) {
         try {
-          recordStats(currentVersionLastHeartbeat, changeCaptureStats, getTopicAssignment());
+          recordStats(getLastHeartbeatPerPartition(), changeCaptureStats, getTopicAssignment());
           TimeUnit.SECONDS.sleep(60L);
         } catch (InterruptedException e) {
           LOGGER.warn("Lag Monitoring thread interrupted!  Shutting down...", e);
@@ -1411,15 +1411,13 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     }
 
     protected void recordStats(
-        ConcurrentHashMap<Integer, Long> currentVersionLastHeartbeat,
+        Map<Integer, Long> currentVersionLastHeartbeat,
         BasicConsumerStats changeCaptureStats,
         Set<PubSubTopicPartition> assignment) {
 
-      // Snapshot the heartbeat map to avoid iterating while it is being updated concurrently
       long now = System.currentTimeMillis();
       long maxLag = Long.MIN_VALUE;
-      Map<Integer, Long> heartbeatSnapshot = new HashMap<>(currentVersionLastHeartbeat);
-      for (Long heartBeatTimestamp: heartbeatSnapshot.values()) {
+      for (Long heartBeatTimestamp: currentVersionLastHeartbeat.values()) {
         if (heartBeatTimestamp != null) {
           maxLag = Math.max(maxLag, now - heartBeatTimestamp);
         }
@@ -1445,5 +1443,11 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       // Record max and min consumed versions
       changeCaptureStats.emitCurrentConsumingVersionMetrics(minVersion, maxVersion);
     }
+  }
+
+  @Override
+  public Map<Integer, Long> getLastHeartbeatPerPartition() {
+    // Snapshot the heartbeat map to avoid iterating while it is being updated concurrently
+    return new HashMap<>(currentVersionLastHeartbeat);
   }
 }

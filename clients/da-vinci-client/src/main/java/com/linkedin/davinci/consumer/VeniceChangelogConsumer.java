@@ -215,6 +215,15 @@ public interface VeniceChangelogConsumer<K, V> {
   boolean isCaughtUp();
 
   /**
+   * Returns the timestamp of the last heartbeat received for each subscribed partition.
+   * Heartbeats are messages sent periodically by Venice servers to measure lag.
+   *
+   * @return a map of partition number to the timestamp, in milliseconds, of the last
+   *         heartbeat received for that partition.
+   */
+  Map<Integer, Long> getLastHeartbeatPerPartition();
+
+  /**
    * Release the internal resources.
    */
   void close();

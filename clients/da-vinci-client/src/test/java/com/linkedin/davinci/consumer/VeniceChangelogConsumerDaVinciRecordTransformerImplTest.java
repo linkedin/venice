@@ -499,6 +499,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
 
     verify(changeCaptureStats, times(0)).emitCurrentConsumingVersionMetrics(anyInt(), anyInt());
     verify(changeCaptureStats, times(0)).emitHeartBeatDelayMetrics(anyLong());
+    assertEquals(bootstrappingVeniceChangelogConsumer.getLastHeartbeatPerPartition().size(), 0);
     bootstrappingVeniceChangelogConsumer.start();
 
     recordTransformer.onStartVersionIngestion(true);
@@ -513,6 +514,10 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
           .emitCurrentConsumingVersionMetrics(CURRENT_STORE_VERSION, CURRENT_STORE_VERSION);
       verify(changeCaptureStats, atLeastOnce()).emitHeartBeatDelayMetrics(anyLong());
     });
+    assertEquals(bootstrappingVeniceChangelogConsumer.getLastHeartbeatPerPartition().size(), partitionSet.size());
+    assertTrue(
+        bootstrappingVeniceChangelogConsumer.getLastHeartbeatPerPartition().get(partitionId) < System
+            .currentTimeMillis());
 
     // Perform version swap on one partition
     futureRecordTransformer.onVersionSwap(CURRENT_STORE_VERSION, FUTURE_STORE_VERSION, 0);
