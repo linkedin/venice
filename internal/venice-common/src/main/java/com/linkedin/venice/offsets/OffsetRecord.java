@@ -31,7 +31,6 @@ import javax.annotation.Nonnull;
 import org.apache.avro.generic.GenericDatumWriter;
 import org.apache.avro.io.ByteBufferToHexFormatJsonEncoder;
 import org.apache.avro.io.Encoder;
-import org.apache.avro.util.Utf8;
 import org.apache.commons.lang.Validate;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -203,11 +202,11 @@ public class OffsetRecord {
   }
 
   public synchronized void setProducerPartitionState(GUID producerGuid, ProducerPartitionState state) {
-    this.partitionState.producerStates.put(guidToUtf8(producerGuid), state);
+    this.partitionState.producerStates.put(GuidUtils.guidToUtf8(producerGuid), state);
   }
 
   public synchronized void removeProducerPartitionState(GUID producerGuid) {
-    this.partitionState.producerStates.remove(guidToUtf8(producerGuid));
+    this.partitionState.producerStates.remove(GuidUtils.guidToUtf8(producerGuid));
   }
 
   public synchronized Map<CharSequence, ProducerPartitionState> getProducerPartitionStateMap() {
@@ -220,14 +219,14 @@ public class OffsetRecord {
       ProducerPartitionState state) {
     partitionState.getRealtimeTopicProducerStates()
         .computeIfAbsent(kafkaUrl, url -> new VeniceConcurrentHashMap<>())
-        .put(guidToUtf8(producerGuid), state);
+        .put(GuidUtils.guidToUtf8(producerGuid), state);
   }
 
   public synchronized void removeRealTimeTopicProducerState(String kafkaUrl, GUID producerGuid) {
     if (partitionState.getRealtimeTopicProducerStates().get(kafkaUrl) == null) {
       return;
     }
-    partitionState.getRealtimeTopicProducerStates().get(kafkaUrl).remove(guidToUtf8(producerGuid));
+    partitionState.getRealtimeTopicProducerStates().get(kafkaUrl).remove(GuidUtils.guidToUtf8(producerGuid));
   }
 
   public synchronized ProducerPartitionState getRealTimeProducerState(String kafkaUrl, GUID producerGuid) {
@@ -235,7 +234,7 @@ public class OffsetRecord {
     if (map == null) {
       return null;
     }
-    return map.get(guidToUtf8(producerGuid));
+    return map.get(GuidUtils.guidToUtf8(producerGuid));
   }
 
   private Map<String, Map<CharSequence, ProducerPartitionState>> getRealTimeProducerState() {
@@ -243,7 +242,7 @@ public class OffsetRecord {
   }
 
   public synchronized ProducerPartitionState getProducerPartitionState(GUID producerGuid) {
-    return getProducerPartitionStateMap().get(guidToUtf8(producerGuid));
+    return getProducerPartitionStateMap().get(GuidUtils.guidToUtf8(producerGuid));
   }
 
   public void setDatabaseInfo(Map<String, String> databaseInfo) {
@@ -396,17 +395,6 @@ public class OffsetRecord {
   public void setTrackingIncrementalPushStatus(
       Map<String, IncrementalPushReplicaStatus> trackingIncrementalPushStatus) {
     this.partitionState.trackingIncrementalPushStatus = trackingIncrementalPushStatus;
-  }
-
-  /**
-   * It may be useful to cache this mapping. TODO: Explore GC tuning later.
-   *
-   * @param guid to be converted
-   * @return a {@link Utf8} instance corresponding to the {@link GUID} that was passed in
-   */
-  CharSequence guidToUtf8(GUID guid) {
-    /** TODO: Consider replacing with {@link GuidUtils#getUtf8FromGuid(GUID)}, which might be more efficient. */
-    return new Utf8(GuidUtils.getCharSequenceFromGuid(guid));
   }
 
   @Override
