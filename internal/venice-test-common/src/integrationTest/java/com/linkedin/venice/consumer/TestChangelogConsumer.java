@@ -1180,7 +1180,7 @@ public class TestChangelogConsumer {
     VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =
         new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig, metricsRepository);
     VeniceChangelogConsumer<Integer, Utf8> changeLogConsumer =
-        veniceChangelogConsumerClientFactory.getVersionSpecificChangelogConsumer(storeName, 1, "0");
+        veniceChangelogConsumerClientFactory.getVersionSpecificChangelogConsumer(storeName, 1);
 
     changeLogConsumer.subscribeAll().get();
     Map<Integer, PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessagesMap = new HashMap();
@@ -1283,7 +1283,7 @@ public class TestChangelogConsumer {
     VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =
         new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig, metricsRepository);
     VeniceChangelogConsumer<Integer, Utf8> changeLogConsumer =
-        veniceChangelogConsumerClientFactory.getVersionSpecificChangelogConsumer(storeName, 1, "0");
+        veniceChangelogConsumerClientFactory.getVersionSpecificChangelogConsumer(storeName, 1);
 
     changeLogConsumer.subscribeAll().get();
     Map<Integer, PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessagesMap = new HashMap();
@@ -1374,7 +1374,7 @@ public class TestChangelogConsumer {
     IntegrationTestPushUtils.runVPJ(props);
 
     VeniceChangelogConsumer<Integer, Utf8> changeLogConsumer3 =
-        veniceChangelogConsumerClientFactory.getVersionSpecificChangelogConsumer(storeName, version, "0");
+        veniceChangelogConsumerClientFactory.getVersionSpecificChangelogConsumer(storeName, version);
     changeLogConsumer3.subscribeAll().get();
 
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {

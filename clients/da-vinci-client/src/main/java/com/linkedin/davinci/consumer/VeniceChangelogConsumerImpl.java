@@ -1,6 +1,5 @@
 package com.linkedin.davinci.consumer;
 
-import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES;
 import static com.linkedin.venice.ConfigKeys.CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS;
 import static com.linkedin.venice.ConfigKeys.CLIENT_USE_REQUEST_BASED_METADATA_REPOSITORY;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
@@ -236,8 +235,6 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       // Instead of setting these configs, we could refactor RocksDBStorageEngineFactory to take a more generic config.
       rocksDBBufferProperties.put(CLUSTER_NAME, "");
       rocksDBBufferProperties.put(ZOOKEEPER_ADDRESS, "");
-      rocksDBBufferProperties
-          .put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, changelogClientConfig.getRocksDBBlockCacheSizeInBytes());
       rocksDBBufferProperties
           .put(KAFKA_BOOTSTRAP_SERVERS, changelogClientConfig.getConsumerProperties().get(KAFKA_BOOTSTRAP_SERVERS));
       VeniceProperties rocksDBBufferVeniceProperties = new VeniceProperties(rocksDBBufferProperties);

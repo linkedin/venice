@@ -215,7 +215,7 @@ public class VeniceChangelogConsumerClientFactoryTest {
   }
 
   @Test
-  public void testGetBootstrappingChangelogConsumer()
+  public void testGetStatefulChangelogConsumer()
       throws ExecutionException, InterruptedException, JsonProcessingException {
     Properties consumerProperties = new Properties();
     String localKafkaUrl = "http://www.fooAddress.linkedin.com:16337";
@@ -251,14 +251,14 @@ public class VeniceChangelogConsumerClientFactoryTest {
     mockStoreInfo.setViewConfigs(viewConfigMap);
     Mockito.when(mockStoreResponse.getStore()).thenReturn(mockStoreInfo);
     Mockito.when(mockControllerClient.getStore(STORE_NAME)).thenReturn(mockStoreResponse);
-    BootstrappingVeniceChangelogConsumer consumer =
-        veniceChangelogConsumerClientFactory.getBootstrappingChangelogConsumer(STORE_NAME);
+    StatefulVeniceChangelogConsumer consumer =
+        veniceChangelogConsumerClientFactory.getStatefulChangelogConsumer(STORE_NAME);
 
     Assert.assertTrue(consumer instanceof VeniceChangelogConsumerDaVinciRecordTransformerImpl);
 
     globalChangelogClientConfig.setViewName(VIEW_NAME);
 
-    consumer = veniceChangelogConsumerClientFactory.getBootstrappingChangelogConsumer(STORE_NAME);
+    consumer = veniceChangelogConsumerClientFactory.getStatefulChangelogConsumer(STORE_NAME);
     Assert.assertTrue(consumer instanceof VeniceChangelogConsumerDaVinciRecordTransformerImpl);
 
     D2ServiceDiscoveryResponse serviceDiscoveryResponse = new D2ServiceDiscoveryResponse();
@@ -293,12 +293,12 @@ public class VeniceChangelogConsumerClientFactoryTest {
     veniceChangelogConsumerClientFactory.setD2ControllerClient(mockControllerClient);
     veniceChangelogConsumerClientFactory.setConsumer(mockKafkaConsumer);
 
-    consumer = veniceChangelogConsumerClientFactory.getBootstrappingChangelogConsumer(STORE_NAME);
+    consumer = veniceChangelogConsumerClientFactory.getStatefulChangelogConsumer(STORE_NAME);
     Assert.assertTrue(consumer instanceof VeniceChangelogConsumerDaVinciRecordTransformerImpl);
   }
 
   @Test
-  public void testGetBootstrappingChangelogConsumerThrowsException() {
+  public void testGetStatefulChangelogConsumerThrowsException() {
     Properties consumerProperties = new Properties();
     String localKafkaUrl = "http://www.fooAddress.linkedin.com:16337";
     consumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, localKafkaUrl);
@@ -330,7 +330,7 @@ public class VeniceChangelogConsumerClientFactoryTest {
     Mockito.when(mockStoreResponse.getStore()).thenReturn(mockStoreInfo);
     Mockito.when(mockControllerClient.getStore(STORE_NAME)).thenReturn(mockStoreResponse);
     globalChangelogClientConfig.setViewName(VIEW_NAME);
-    Assert.assertThrows(() -> veniceChangelogConsumerClientFactory.getBootstrappingChangelogConsumer(STORE_NAME));
+    Assert.assertThrows(() -> veniceChangelogConsumerClientFactory.getStatefulChangelogConsumer(STORE_NAME));
   }
 
   @DataProvider(name = "kmeDeserializerScenarios", parallel = true)

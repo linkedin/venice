@@ -59,7 +59,7 @@ import org.apache.logging.log4j.Logger;
 
 
 public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
-    implements BootstrappingVeniceChangelogConsumer<K, V>, VeniceChangelogConsumer<K, V> {
+    implements StatefulVeniceChangelogConsumer<K, V>, VeniceChangelogConsumer<K, V> {
   private static final Logger LOGGER = LogManager.getLogger(VeniceChangelogConsumerDaVinciRecordTransformerImpl.class);
   private long START_TIMEOUT_IN_SECONDS = 60;
 
@@ -256,7 +256,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
     return startFuture;
   }
 
-  // BootstrappingVeniceChangelogConsumer methods below
+  // StatefulVeniceChangelogConsumer methods below
 
   @Override
   public synchronized CompletableFuture<Void> start(Set<Integer> partitions) {
