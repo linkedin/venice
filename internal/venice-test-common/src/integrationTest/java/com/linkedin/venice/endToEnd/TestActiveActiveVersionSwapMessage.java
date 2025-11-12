@@ -2,54 +2,77 @@ package com.linkedin.venice.endToEnd;
 
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_USE_MULTI_REGION_REAL_TIME_TOPIC_SWITCHER_ENABLED;
+import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_SOURCE_FABRIC;
 import static com.linkedin.venice.ConfigKeys.PARENT_KAFKA_CLUSTER_FABRIC_LIST;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_PARENT_DATA_CENTER_REGION_NAME;
+import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.D2_SERVICE_NAME;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRecord;
 import static com.linkedin.venice.utils.TestUtils.assertCommand;
 import static com.linkedin.venice.utils.TestUtils.createAndVerifyStoreInAllRegions;
 import static com.linkedin.venice.utils.TestUtils.updateStoreToHybrid;
+import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.d2.balancer.D2ClientBuilder;
+import com.linkedin.davinci.consumer.ChangeEvent;
+import com.linkedin.davinci.consumer.ChangelogClientConfig;
+import com.linkedin.davinci.consumer.VeniceChangeCoordinate;
+import com.linkedin.davinci.consumer.VeniceChangelogConsumer;
+import com.linkedin.davinci.consumer.VeniceChangelogConsumerClientFactory;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
+import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.VersionSwap;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterContext;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
+import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
+import com.linkedin.venice.samza.VeniceSystemProducer;
+import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+import org.apache.avro.generic.GenericRecord;
+import org.apache.samza.system.SystemProducer;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -191,6 +214,153 @@ public class TestActiveActiveVersionSwapMessage {
           4);
     } finally {
       deleteStores(storeName);
+    }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testCDCMultiDataCenterVersioSwapMessageHandling() throws Exception {
+    String storeName = Utils.getUniqueString("test-store");
+    try {
+      String keySchemaStr = TestChangelogKey.SCHEMA$.toString();
+      String valueSchemaStr = TestChangelogValue.SCHEMA$.toString();
+      createAndVerifyStoreInAllRegions(
+          storeName,
+          parentControllerClient,
+          dcControllerClientList,
+          keySchemaStr,
+          valueSchemaStr);
+      updateStoreToHybrid(storeName, parentControllerClient, Optional.of(true), Optional.of(true), Optional.of(true));
+      // Force to rewind the entire RT
+      parentControllerClient.updateStore(storeName, new UpdateStoreQueryParams().setHybridRewindSeconds(600L));
+      // Empty push to create a version
+      VersionCreationResponse versionCreationResponse =
+          parentControllerClient.emptyPush(storeName, Utils.getUniqueString("empty-hybrid-push"), 1L);
+      assertCommand(versionCreationResponse);
+      TestUtils.waitForNonDeterministicAssertion(
+          PUSH_TIMEOUT,
+          TimeUnit.MILLISECONDS,
+          true,
+          () -> Assert.assertEquals(
+              parentControllerClient.queryJobStatus(versionCreationResponse.getKafkaTopic()).getStatus(),
+              ExecutionStatus.COMPLETED.toString()));
+      // Write 100 records in one child region
+      try (VeniceSystemProducer veniceProducer = IntegrationTestPushUtils.getSamzaProducer(
+          childDatacenters.get(0).getClusters().get(CLUSTER_NAMES[0]),
+          storeName,
+          Version.PushType.STREAM)) {
+        veniceProducer.start();
+        performStreamWrites(veniceProducer, storeName, 100, 0);
+      }
+      // Write another 50 records in remote region
+      try (VeniceSystemProducer veniceProducer = IntegrationTestPushUtils.getSamzaProducer(
+          childDatacenters.get(1).getClusters().get(CLUSTER_NAMES[0]),
+          storeName,
+          Version.PushType.STREAM)) {
+        veniceProducer.start();
+        performStreamWrites(veniceProducer, storeName, 50, 100);
+      }
+      // Start a local consumer that should subscribe to v1
+      MetricsRepository metricsRepository = new MetricsRepository();
+      VeniceChangelogConsumerClientFactory changelogConsumerClientFactory =
+          getChangeLogConsumerFactory(childDatacenters.get(0), metricsRepository);
+      VeniceChangelogConsumer<GenericRecord, GenericRecord> consumer =
+          changelogConsumerClientFactory.getChangelogConsumer(storeName);
+      consumer.subscribeAll().get();
+      Map<String, GenericRecord> polledChangeEventsMap = new HashMap<>();
+      List<String> polledChangeEventsKeyList = new ArrayList<>();
+      pollUntilSpecificIndexes(
+          consumer,
+          polledChangeEventsMap,
+          polledChangeEventsKeyList,
+          Collections.singleton("149"));
+      // Another empty push should trigger version swap message write and switch current version to v2
+      VersionCreationResponse newVersionCreationResponse =
+          parentControllerClient.emptyPush(storeName, Utils.getUniqueString("empty-hybrid-push"), 1L);
+      assertCommand(newVersionCreationResponse);
+      TestUtils.waitForNonDeterministicAssertion(
+          PUSH_TIMEOUT,
+          TimeUnit.MILLISECONDS,
+          true,
+          () -> Assert.assertEquals(
+              parentControllerClient.queryJobStatus(newVersionCreationResponse.getKafkaTopic()).getStatus(),
+              ExecutionStatus.COMPLETED.toString()));
+      // Write 5 more records in local region, we need enough to cover all the partitions.
+      try (VeniceSystemProducer veniceProducer = IntegrationTestPushUtils.getSamzaProducer(
+          childDatacenters.get(0).getClusters().get(CLUSTER_NAMES[0]),
+          storeName,
+          Version.PushType.STREAM)) {
+        veniceProducer.start();
+        performStreamWrites(veniceProducer, storeName, 5, 150);
+      }
+      Set<String> afterNewVersionIndexes = new HashSet<>();
+      for (int i = 150; i < 155; i++) {
+        afterNewVersionIndexes.add(String.valueOf(i));
+      }
+      pollUntilSpecificIndexes(consumer, polledChangeEventsMap, polledChangeEventsKeyList, afterNewVersionIndexes);
+      // In this controlled test we shouldn't see any duplicates since version swap messages are not interleaved with
+      // any data writes. 100 local writes + 50 remote writs + 5 after version swap writes = 155
+      Assert.assertEquals(polledChangeEventsKeyList.size(), 155);
+      for (int i = 0; i < 155; i++) {
+        Assert.assertTrue(polledChangeEventsMap.containsKey(String.valueOf(i)));
+      }
+    } finally {
+      deleteStores(storeName);
+    }
+  }
+
+  private void pollUntilSpecificIndexes(
+      VeniceChangelogConsumer<GenericRecord, GenericRecord> consumer,
+      Map<String, GenericRecord> polledChangeEventsMap,
+      List<String> polledChangeEventsKeyList,
+      Set<String> specificIndexes) {
+    final Set<String> consumedSpecificIndexes = new HashSet<>();
+    TestUtils.waitForNonDeterministicCompletion(30, TimeUnit.SECONDS, () -> {
+      Collection<PubSubMessage<GenericRecord, ChangeEvent<GenericRecord>, VeniceChangeCoordinate>> pubSubMessages =
+          consumer.poll(100);
+      for (PubSubMessage<GenericRecord, ChangeEvent<GenericRecord>, VeniceChangeCoordinate> pubSubMessage: pubSubMessages) {
+        String key = pubSubMessage.getKey() == null ? null : String.valueOf(pubSubMessage.getKey().get("id"));
+        polledChangeEventsMap.put(key, pubSubMessage.getValue().getCurrentValue());
+        polledChangeEventsKeyList.add(key);
+        if (key != null && specificIndexes.contains(key)) {
+          consumedSpecificIndexes.add(key);
+        }
+      }
+      return consumedSpecificIndexes.size() == specificIndexes.size();
+    });
+  }
+
+  private VeniceChangelogConsumerClientFactory getChangeLogConsumerFactory(
+      VeniceMultiClusterWrapper localRegion,
+      MetricsRepository metricsRepository) {
+    Properties consumerProperties = new Properties();
+    consumerProperties.putAll(multiRegionMultiClusterWrapper.getPubSubClientProperties());
+    consumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, localRegion.getPubSubBrokerWrapper().getAddress());
+    ChangelogClientConfig changelogClientConfig = new ChangelogClientConfig().setConsumerProperties(consumerProperties)
+        .setControllerD2ServiceName(D2_SERVICE_NAME)
+        .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
+        .setLocalD2ZkHosts(localRegion.getZkServerWrapper().getAddress())
+        .setD2Client(IntegrationTestPushUtils.getD2Client(localRegion.getZkServerWrapper().getAddress()))
+        .setVersionSwapDetectionIntervalTimeInSeconds(3L)
+        .setControllerRequestRetryCount(3)
+        .setBootstrapFileSystemPath(getTempDataDirectory().getAbsolutePath())
+        .setVersionSwapByControlMessageEnabled(true)
+        .setClientRegionName(localRegion.getRegionName())
+        .setTotalRegionCount(childDatacenters.size());
+    return new VeniceChangelogConsumerClientFactory(changelogClientConfig, metricsRepository);
+  }
+
+  private void performStreamWrites(SystemProducer veniceProducer, String storeName, int numPuts, int startIndex) {
+    for (int i = startIndex; i < startIndex + numPuts; i++) {
+      TestChangelogKey key = new TestChangelogKey();
+      key.id = i;
+
+      Object valueObject;
+      TestChangelogValue value = new TestChangelogValue();
+      value.firstName = "first_name_stream_" + i;
+      value.lastName = "last_name_stream_" + i;
+      valueObject = value;
+
+      sendStreamingRecord(veniceProducer, storeName, key, valueObject, null);
     }
   }
 

@@ -81,6 +81,17 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
    */
   private PubSubConsumerAdapterFactory<? extends PubSubConsumerAdapter> pubSubConsumerAdapterFactory;
   private PubSubContext pubSubContext;
+  private boolean versionSwapByControlMessageEnabled = false;
+  /**
+   * Client region name used for filtering version swap messages from other regions in A/A setup. The client will only
+   * react to version swap messages with the same source region as the client region name.
+   */
+  private String clientRegionName = "";
+  /**
+   * Total region count used for version swap in A/A setup. Each subscribed partition need to receive this many
+   * corresponding version swap messages before it can safely go to the new version to ensure data completeness.
+   */
+  private int totalRegionCount = 1;
 
   public ChangelogClientConfig(String storeName) {
     this.innerClientConfig = new ClientConfig<>(storeName);
@@ -327,6 +338,33 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
     return this.isStateful;
   }
 
+  public boolean isVersionSwapByControlMessageEnabled() {
+    return this.versionSwapByControlMessageEnabled;
+  }
+
+  public ChangelogClientConfig setVersionSwapByControlMessageEnabled(boolean isVersionSwapByControlMessageEnabled) {
+    this.versionSwapByControlMessageEnabled = isVersionSwapByControlMessageEnabled;
+    return this;
+  }
+
+  public String getClientRegionName() {
+    return this.clientRegionName;
+  }
+
+  public ChangelogClientConfig setClientRegionName(String clientRegionName) {
+    this.clientRegionName = clientRegionName;
+    return this;
+  }
+
+  public int getTotalRegionCount() {
+    return this.totalRegionCount;
+  }
+
+  public ChangelogClientConfig setTotalRegionCount(int totalRegionCount) {
+    this.totalRegionCount = totalRegionCount;
+    return this;
+  }
+
   public static <V extends SpecificRecord> ChangelogClientConfig<V> cloneConfig(ChangelogClientConfig<V> config) {
     ChangelogClientConfig<V> newConfig = new ChangelogClientConfig<V>().setStoreName(config.getStoreName())
         .setLocalD2ZkHosts(config.getLocalD2ZkHosts())
@@ -354,7 +392,10 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
         // Store version should not be cloned
         .setStoreVersion(null)
         // Is stateful config should not be cloned
-        .setIsStateful(false);
+        .setIsStateful(false)
+        .setVersionSwapByControlMessageEnabled(config.isVersionSwapByControlMessageEnabled())
+        .setClientRegionName(config.getClientRegionName())
+        .setTotalRegionCount(config.getTotalRegionCount());
     return newConfig;
   }
 
