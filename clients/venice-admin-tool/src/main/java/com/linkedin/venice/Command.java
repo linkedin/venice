@@ -99,7 +99,6 @@ import static com.linkedin.venice.Arg.NEARLINE_PRODUCER_COMPRESSION_ENABLED;
 import static com.linkedin.venice.Arg.NEARLINE_PRODUCER_COUNT_PER_WRITER;
 import static com.linkedin.venice.Arg.NON_INTERACTIVE;
 import static com.linkedin.venice.Arg.NUM_VERSIONS_TO_PRESERVE;
-import static com.linkedin.venice.Arg.OFFSET;
 import static com.linkedin.venice.Arg.OUTFILE;
 import static com.linkedin.venice.Arg.OWNER;
 import static com.linkedin.venice.Arg.PARENT_DIRECTORY;
@@ -108,6 +107,7 @@ import static com.linkedin.venice.Arg.PARTITIONER_CLASS;
 import static com.linkedin.venice.Arg.PARTITIONER_PARAMS;
 import static com.linkedin.venice.Arg.PARTITION_COUNT;
 import static com.linkedin.venice.Arg.PARTITION_DETAIL_ENABLED;
+import static com.linkedin.venice.Arg.POSITION;
 import static com.linkedin.venice.Arg.PRINCIPAL;
 import static com.linkedin.venice.Arg.PROGRESS_INTERVAL;
 import static com.linkedin.venice.Arg.PUSH_ID;
@@ -225,7 +225,7 @@ public enum Command {
   ), KILL_JOB("kill-job", "Kill a running push job", new Arg[] { URL, STORE, VERSION }, new Arg[] { CLUSTER }),
   SKIP_ADMIN_MESSAGE(
       "skip-admin-message", "Skip an admin message", new Arg[] { URL, CLUSTER },
-      new Arg[] { SKIP_DIV, OFFSET, EXECUTION_ID }
+      new Arg[] { SKIP_DIV, POSITION, EXECUTION_ID }
   ),
   NEW_STORE(
       "new-store", "", new Arg[] { URL, CLUSTER, STORE, KEY_SCHEMA, VALUE_SCHEMA }, new Arg[] { OWNER, VSON_STORE }
