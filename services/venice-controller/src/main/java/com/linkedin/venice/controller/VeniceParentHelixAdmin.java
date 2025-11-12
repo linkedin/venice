@@ -1167,40 +1167,18 @@ public class VeniceParentHelixAdmin implements Admin {
       message.payloadUnion = deleteStore;
 
       sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
-
-      // Deleting ACL needs to be the last step in store deletion process.
-      deleteAclsForStore(store, storeName);
     } catch (AdminMessageConsumptionTimeoutException timeoutException) {
       LOGGER.info(
           "Timed out while waiting for delete store admin message to be consumed for store: {} in cluster: {}",
           storeName,
           clusterName,
           timeoutException);
-      deleteAclsForStore(store, storeName);
       throw timeoutException;
     } catch (Exception e) {
       LOGGER.info("Caught an exception when deleting store {} in cluster {}", storeName, clusterName, e);
       throw e;
     } finally {
       releaseAdminMessageLock(clusterName, storeName);
-    }
-  }
-
-  /**
-   * Deletes the acls associated with a store
-   * @param store
-   * @param storeName
-   */
-  protected void deleteAclsForStore(Store store, String storeName) {
-    if (store == null) {
-      LOGGER.warn("Store object for {} is missing! Skipping acl deletion!", storeName);
-      return;
-    }
-
-    if (!store.isMigrating()) {
-      cleanUpAclsForStore(store.getName(), VeniceSystemStoreType.getEnabledSystemStoreTypes(store));
-    } else {
-      LOGGER.info("Store: {} is migrating! Skipping acl deletion!", storeName);
     }
   }
 
@@ -4876,7 +4854,7 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   /**
-   * @see Admin#skipAdminMessage(String, long, boolean, long)
+   * @see Admin#skipAdminMessage(String, String, boolean, long)
    */
   @Override
   public void skipAdminMessage(
@@ -5431,27 +5409,6 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   /**
-   * This deletes all existing ACL's for a store using the authorizerService interface.
-   * @param storeName store being provisioned.
-   */
-  private void cleanUpAclsForStore(String storeName, List<VeniceSystemStoreType> enabledVeniceSystemStores) {
-    if (authorizerService.isPresent()) {
-      Resource resource = new Resource(storeName);
-      try {
-        authorizerService.get().clearAcls(resource);
-        for (VeniceSystemStoreType veniceSystemStoreType: enabledVeniceSystemStores) {
-          Resource systemStoreResource = new Resource(veniceSystemStoreType.getSystemStoreName(storeName));
-          authorizerService.get().clearAcls(systemStoreResource);
-          authorizerService.get().clearResource(systemStoreResource);
-        }
-      } catch (Exception e) {
-        LOGGER.error("ACLProvisioning: failure in deleting ACL's for store: {}", storeName, e);
-        throw new VeniceException(e);
-      }
-    }
-  }
-
-  /**
    * @see Admin#updateAclForStore(String, String, String)
    */
   @Override
@@ -5515,12 +5472,10 @@ public class VeniceParentHelixAdmin implements Admin {
       if (!authorizerService.isPresent()) {
         throw new VeniceUnsupportedOperationException("deleteAclForStore is not supported yet!");
       }
-      Store store = getVeniceHelixAdmin().checkPreConditionForAclOp(clusterName, storeName);
-      if (!store.isMigrating()) {
-        cleanUpAclsForStore(storeName, VeniceSystemStoreType.getEnabledSystemStoreTypes(store));
-      } else {
-        LOGGER.info("Store {} is migrating! Skipping acl deletion!", storeName);
-      }
+      getVeniceHelixAdmin().cleanupAclsForStore(
+          getVeniceHelixAdmin().checkPreConditionForAclOp(clusterName, storeName),
+          storeName,
+          clusterName);
     }
   }
 

@@ -3287,7 +3287,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
       Assert.fail("Delete store should time out");
     } catch (AdminMessageConsumptionTimeoutException e) {
       Assert.assertEquals(e, expectedException);
-      verify(adminSpy, times(1)).deleteAclsForStore(store, storeName);
+      verify(internalAdmin, times(1)).cleanupAclsForStore(store, storeName, clusterName);
     }
   }
 

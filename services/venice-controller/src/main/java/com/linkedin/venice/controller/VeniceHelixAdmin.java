@@ -46,6 +46,8 @@ import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.acl.VeniceComponent;
 import com.linkedin.venice.annotation.VisibleForTesting;
+import com.linkedin.venice.authorization.AuthorizerService;
+import com.linkedin.venice.authorization.Resource;
 import com.linkedin.venice.client.store.AvroSpecificStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
@@ -482,8 +484,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   private final Set<PushJobCheckpoints> pushJobUserErrorCheckpoints;
   private final LogContext logContext;
 
-  final Map<String, DeadStoreStats> deadStoreStatsMap = new VeniceConcurrentHashMap<>();
-  final Map<String, LogCompactionStats> logCompactionStatsMap = new VeniceConcurrentHashMap<>();
+  private Optional<AuthorizerService> authorizerService;
+
+  private final Map<String, DeadStoreStats> deadStoreStatsMap = new VeniceConcurrentHashMap<>();
+  private final Map<String, LogCompactionStats> logCompactionStatsMap = new VeniceConcurrentHashMap<>();
 
   // Test only.
   public VeniceHelixAdmin(
@@ -503,6 +507,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         Optional.empty(),
         Optional.empty(),
         Optional.empty(),
+        Optional.empty(),
         pubSubTopicRepository,
         pubSubClientsFactory,
         pubSubPositionTypeRegistry,
@@ -519,6 +524,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       Map<String, D2Client> d2Clients,
       Optional<SSLConfig> sslConfig,
       Optional<DynamicAccessController> accessController,
+      Optional<AuthorizerService> authorizerService,
       Optional<ICProvider> icProvider,
       PubSubTopicRepository pubSubTopicRepository,
       PubSubClientsFactory pubSubClientsFactory,
@@ -539,9 +545,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     this.deprecatedJobTopicMaxRetentionMs = multiClusterConfigs.getDeprecatedJobTopicMaxRetentionMs();
     this.backupVersionDefaultRetentionMs = multiClusterConfigs.getBackupVersionDefaultRetentionMs();
     this.defaultMaxRecordSizeBytes = multiClusterConfigs.getDefaultMaxRecordSizeBytes();
-
     this.minNumberOfStoreVersionsToPreserve = multiClusterConfigs.getMinNumberOfStoreVersionsToPreserve();
-
+    this.authorizerService = authorizerService;
     this.d2Client = d2Client;
     this.d2Clients = d2Clients;
     this.pubSubTopicRepository = pubSubTopicRepository;
@@ -1348,12 +1353,46 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         // Helix will remove all data under this store's znode including key and value schemas.
         resources.getStoreMetadataRepository().deleteStore(storeName);
       }
+      // Delete ACLs associated with this store if this is parent controller & ACL authorizer is enabled.
+      if (isParent() && authorizerService.isPresent()) {
+        cleanupAclsForStore(store, storeName, clusterName);
+      }
       storeConfig = storeConfigAccessor.getStoreConfig(storeName);
       // Delete the config for this store after deleting the store.
       if (storeConfig != null && storeConfig.isDeleting()) {
         storeConfigAccessor.deleteConfig(storeName);
       }
       LOGGER.info("Store {} in cluster {} has been deleted.", storeName, clusterName);
+    }
+  }
+
+  /**
+   * Deletes the acls associated with a store
+   */
+  protected void cleanupAclsForStore(Store store, String storeName, String clusterName) {
+    if (!authorizerService.isPresent()) {
+      return;
+    }
+    if (store == null) {
+      LOGGER.warn("Store object for: {} is missing in cluster: {}! Skipping acl deletion!", storeName, clusterName);
+      return;
+    }
+    if (store.isMigrating()) {
+      LOGGER.info("Store: {} in cluster: {} is migrating! Skipping acl deletion!", storeName, clusterName);
+      return;
+    }
+    List<VeniceSystemStoreType> enabledVeniceSystemStores = VeniceSystemStoreType.getEnabledSystemStoreTypes(store);
+    Resource resource = new Resource(storeName);
+    try {
+      authorizerService.get().clearAcls(resource);
+      for (VeniceSystemStoreType veniceSystemStoreType: enabledVeniceSystemStores) {
+        Resource systemStoreResource = new Resource(veniceSystemStoreType.getSystemStoreName(storeName));
+        authorizerService.get().clearAcls(systemStoreResource);
+        authorizerService.get().clearResource(systemStoreResource);
+      }
+    } catch (Exception e) {
+      LOGGER.error("ACLProvisioning: failure in deleting ACL's for store: {}", storeName, e);
+      throw new VeniceException(e);
     }
   }
 
@@ -9876,5 +9915,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   Map<String, D2Client> getD2Clients() {
     return d2Clients;
+  }
+
+  DeadStoreStats getDeadStoreStats(String clusterName) {
+    return deadStoreStatsMap.get(clusterName);
   }
 }

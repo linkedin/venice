@@ -420,7 +420,7 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
         pubSubBrokerWrapper.getPubSubPositionTypeRegistry(),
         Optional.empty());
 
-    Assert.assertTrue(admin.deadStoreStatsMap.get(clusterName) instanceof MockDeadStoreStats);
+    Assert.assertTrue(admin.getDeadStoreStats(clusterName) instanceof MockDeadStoreStats);
   }
 
   public static class MockDeadStoreStats implements DeadStoreStats {
