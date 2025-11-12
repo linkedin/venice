@@ -204,16 +204,23 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
   public void testStartMultipleTimes() {
     Set<Integer> partitionSet = Collections.singleton(1);
     statefulVeniceChangelogConsumer.start();
+    recordTransformer.onStartVersionIngestion(true);
+    assertEquals(statefulVeniceChangelogConsumer.getLastHeartbeatPerPartition().size(), PARTITION_COUNT);
 
     assertThrows(VeniceClientException.class, () -> statefulVeniceChangelogConsumer.start());
     assertThrows(VeniceException.class, () -> statefulVeniceChangelogConsumer.start(partitionSet));
 
     statefulVeniceChangelogConsumer.unsubscribeAll();
     verify(statefulVeniceChangelogConsumer).clearPartitionState(eq(Collections.emptySet()));
-    statefulVeniceChangelogConsumer.start();
+    assertTrue(statefulVeniceChangelogConsumer.getLastHeartbeatPerPartition().isEmpty());
 
+    statefulVeniceChangelogConsumer.start();
+    recordTransformer.onStartVersionIngestion(true);
     statefulVeniceChangelogConsumer.unsubscribe(partitionSet);
     verify(statefulVeniceChangelogConsumer).clearPartitionState(partitionSet);
+    assertFalse(statefulVeniceChangelogConsumer.getLastHeartbeatPerPartition().isEmpty());
+    assertEquals(statefulVeniceChangelogConsumer.getLastHeartbeatPerPartition().size(), PARTITION_COUNT - 1);
+
     statefulVeniceChangelogConsumer.start(partitionSet);
   }
 

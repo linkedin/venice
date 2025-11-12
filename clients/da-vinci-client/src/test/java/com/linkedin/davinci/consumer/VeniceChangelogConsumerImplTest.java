@@ -480,9 +480,17 @@ public class VeniceChangelogConsumerImplTest {
     veniceChangelogConsumer.setStoreRepository(mockRepository);
 
     Assert.assertEquals(veniceChangelogConsumer.getPartitionCount(), 2);
-    veniceChangelogConsumer.subscribe(new HashSet<>(Arrays.asList(0))).get();
+    Set<Integer> subscribedPartitions = Collections.singleton(0);
+    veniceChangelogConsumer.subscribe(subscribedPartitions).get();
     verify(mockPubSubConsumer)
         .subscribe(new PubSubTopicPartitionImpl(oldVersionTopic, 0), PubSubSymbolicPosition.EARLIEST);
+    when(mockPubSubConsumer.getAssignment()).thenReturn(
+        new HashSet<>(
+            veniceChangelogConsumer
+                .getPartitionListToSubscribe(subscribedPartitions, Collections.emptySet(), mock(PubSubTopic.class))));
+
+    assertEquals(veniceChangelogConsumer.getLastHeartbeatPerPartition().size(), 1);
+    assertTrue(veniceChangelogConsumer.getLastHeartbeatPerPartition().get(0) < System.currentTimeMillis());
 
     List<PubSubMessage<String, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessages =
         (List<PubSubMessage<String, ChangeEvent<Utf8>, VeniceChangeCoordinate>>) veniceChangelogConsumer
@@ -512,8 +520,7 @@ public class VeniceChangelogConsumerImplTest {
     verify(mockPubSubConsumer, times(3)).batchUnsubscribe(any());
     verify(mockPubSubConsumer).close();
     verify(veniceChangelogConsumerClientFactory).deregisterClient(changelogClientConfig.getConsumerName());
-    assertEquals(veniceChangelogConsumer.getLastHeartbeatPerPartition().size(), 1);
-    assertTrue(veniceChangelogConsumer.getLastHeartbeatPerPartition().get(0) < System.currentTimeMillis());
+    assertEquals(veniceChangelogConsumer.getLastHeartbeatPerPartition().size(), 0);
   }
 
   @Test
