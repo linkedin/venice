@@ -47,6 +47,12 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
   private long databaseSyncBytesInterval = 32 * 1024 * 1024L;
 
   /**
+   * RocksDB block cache size per BootstrappingVeniceChangelogConsumer. Default is 64 MB. This config is used for both
+   * the internal bootstrapping change log consumer and chunk assembler's RocksDB usage.
+   */
+  private long rocksDBBlockCacheSizeInBytes = 64 * 1024 * 1024L;
+
+  /**
    * Whether to skip failed to assemble records or fail the consumption by throwing errors. Default is set to true.
    * This is acceptable for now because we allow user to provide a {@link VeniceChangeCoordinate} to seek to. The seek
    * could land in-between chunks. Partially consumed chunked records cannot be assembled and will be skipped.
@@ -241,6 +247,15 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
     return this;
   }
 
+  public long getRocksDBBlockCacheSizeInBytes() {
+    return rocksDBBlockCacheSizeInBytes;
+  }
+
+  public ChangelogClientConfig setRocksDBBlockCacheSizeInBytes(long rocksDBBlockCacheSizeInBytes) {
+    this.rocksDBBlockCacheSizeInBytes = rocksDBBlockCacheSizeInBytes;
+    return this;
+  }
+
   /**
    * If you're using the {@link StatefulVeniceChangelogConsumer}, and you want to deserialize your keys into
    * {@link org.apache.avro.specific.SpecificRecord} then set this configuration.
@@ -325,6 +340,7 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
         .setControllerRequestRetryCount(config.getControllerRequestRetryCount())
         .setBootstrapFileSystemPath(config.getBootstrapFileSystemPath())
         .setVersionSwapDetectionIntervalTimeInSeconds(config.getVersionSwapDetectionIntervalTimeInSeconds())
+        .setRocksDBBlockCacheSizeInBytes(config.getRocksDBBlockCacheSizeInBytes())
         .setConsumerName(config.consumerName)
         .setDatabaseSyncBytesInterval(config.getDatabaseSyncBytesInterval())
         .setShouldCompactMessages(config.shouldCompactMessages())
