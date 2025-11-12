@@ -3,6 +3,7 @@ package com.linkedin.davinci.consumer;
 import com.linkedin.davinci.repository.NativeMetadataRepositoryViewAdapter;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
+import com.linkedin.venice.kafka.protocol.VersionSwap;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
@@ -73,7 +74,8 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
         storeRepository,
         storeName,
         changelogClientConfig.getConsumerName(),
-        this.changeCaptureStats);
+        this.changeCaptureStats,
+        changelogClientConfig.isVersionSwapByControlMessageEnabled());
   }
 
   @Override
@@ -176,6 +178,100 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
         }
       }
     }
+  }
+
+  /**
+   * Similar to {@link #internalSeekToEndOfPush} this can also be optimized later for a faster find.
+   */
+  @Override
+  protected CompletableFuture<Void> internalFindNewVersionCheckpoints(
+      String oldVersionTopic,
+      String newVersionTopic,
+      long generationId,
+      Set<Integer> partitions) {
+    if (partitions.isEmpty()) {
+      return CompletableFuture.completedFuture(null);
+    }
+    return CompletableFuture.supplyAsync(() -> {
+      boolean lockAcquired = false;
+      Map<Integer, VeniceChangeCoordinate> checkpoints = new HashMap<>();
+      try {
+        synchronized (internalSeekConsumer) {
+          PubSubConsumerAdapter consumerAdapter = internalSeekConsumer.get();
+          consumerAdapter.batchUnsubscribe(consumerAdapter.getAssignment());
+          Map<PubSubTopicPartition, List<DefaultPubSubMessage>> polledResults;
+          Map<Integer, Boolean> versionSwapConsumedPerPartitionMap = new HashMap<>();
+          for (Integer partition: partitions) {
+            versionSwapConsumedPerPartitionMap.put(partition, false);
+          }
+          List<PubSubTopicPartition> topicPartitionList = getPartitionListToSubscribe(
+              partitions,
+              Collections.EMPTY_SET,
+              pubSubTopicRepository.getTopic(newVersionTopic));
+
+          for (PubSubTopicPartition topicPartition: topicPartitionList) {
+            consumerAdapter.subscribe(topicPartition, PubSubSymbolicPosition.EARLIEST);
+          }
+
+          // Poll until we receive the desired version swap message in the new version topic for each partition
+          LOGGER.info(
+              "Polling for version swap messages in: {} with generation id: {} for partitions: {}",
+              newVersionTopic,
+              generationId,
+              partitions);
+          while (!versionSwapConsumedPerPartitionMap.values().stream().allMatch(x -> x)) {
+            polledResults = consumerAdapter.poll(5000L);
+            for (Map.Entry<PubSubTopicPartition, List<DefaultPubSubMessage>> entry: polledResults.entrySet()) {
+              PubSubTopicPartition pubSubTopicPartition = entry.getKey();
+              List<DefaultPubSubMessage> messageList = entry.getValue();
+              for (DefaultPubSubMessage message: messageList) {
+                if (message.getKey().isControlMessage()) {
+                  ControlMessage controlMessage = (ControlMessage) message.getValue().getPayloadUnion();
+                  ControlMessageType controlMessageType = ControlMessageType.valueOf(controlMessage);
+                  if (controlMessageType.equals(ControlMessageType.VERSION_SWAP)) {
+                    VersionSwap versionSwap = (VersionSwap) controlMessage.getControlMessageUnion();
+                    // In theory just matching the generation id and source region should be sufficient but just to be
+                    // safe we will match all fields
+                    if (versionSwap.getGenerationId() == generationId
+                        && versionSwap.getSourceRegion().toString().equals(clientRegionName)
+                        && oldVersionTopic.equals(versionSwap.getOldServingVersionTopic().toString())
+                        && newVersionTopic.equals(versionSwap.getNewServingVersionTopic().toString())) {
+                      LOGGER.info(
+                          "Found corresponding version swap message for partition: {}",
+                          pubSubTopicPartition.getPartitionNumber());
+                      versionSwapConsumedPerPartitionMap.put(pubSubTopicPartition.getPartitionNumber(), true);
+                      VeniceChangeCoordinate coordinate = new VeniceChangeCoordinate(
+                          pubSubTopicPartition.getPubSubTopic().getName(),
+                          message.getPosition(),
+                          pubSubTopicPartition.getPartitionNumber());
+                      checkpoints.put(pubSubTopicPartition.getPartitionNumber(), coordinate);
+                      // We are done with this partition
+                      consumerAdapter.unSubscribe(pubSubTopicPartition);
+                      break;
+                    }
+                  }
+                }
+              }
+            }
+          }
+          LOGGER.info(
+              "Found all version swap messages in: {} with generation id: {} for partitions: {}",
+              newVersionTopic,
+              generationId,
+              partitions);
+        }
+        // We cannot change the subscription here because the consumer might not finish polling all the messages in the
+        // old version topic yet. We can acquire the lock and update the VersionSwapMessageState.
+        subscriptionLock.writeLock().lock();
+        lockAcquired = true;
+        versionSwapMessageState.setNewTopicCheckpoints(checkpoints);
+      } finally {
+        if (lockAcquired) {
+          subscriptionLock.writeLock().unlock();
+        }
+      }
+      return null;
+    }, seekExecutorService);
   }
 
   protected CompletableFuture<Void> internalSeekToEndOfPush(

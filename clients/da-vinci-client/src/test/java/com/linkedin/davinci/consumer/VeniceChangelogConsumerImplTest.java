@@ -622,7 +622,7 @@ public class VeniceChangelogConsumerImplTest {
     BasicConsumerStats mockChangeCaptureStats = mock(BasicConsumerStats.class);
 
     VersionSwapDataChangeListener changeListener =
-        new VersionSwapDataChangeListener(mockConsumer, mockRepository, storeName, "", mockChangeCaptureStats);
+        new VersionSwapDataChangeListener(mockConsumer, mockRepository, storeName, "", mockChangeCaptureStats, false);
     changeListener.handleStoreChanged(mockStore);
     verify(mockConsumer).internalSeekToEndOfPush(anySet(), any(), anyBoolean());
     verify(mockChangeCaptureStats).emitVersionSwapCountMetrics(SUCCESS);
@@ -664,7 +664,8 @@ public class VeniceChangelogConsumerImplTest {
         mockRepository,
         storeName,
         "",
-        mockChangeCaptureStats);
+        mockChangeCaptureStats,
+        false);
     changeListener.handleStoreChanged(mockStore);
     verify(veniceChangelogConsumer).handleVersionSwapFailure(any());
 
