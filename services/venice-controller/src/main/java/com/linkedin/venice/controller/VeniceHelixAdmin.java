@@ -1370,9 +1370,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    * Deletes the acls associated with a store
    */
   protected void cleanupAclsForStore(Store store, String storeName, String clusterName) {
-    if (!authorizerService.isPresent()) {
-      return;
-    }
     if (store == null) {
       LOGGER.warn("Store object for: {} is missing in cluster: {}! Skipping acl deletion!", storeName, clusterName);
       return;
@@ -1381,14 +1378,22 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       LOGGER.info("Store: {} in cluster: {} is migrating! Skipping acl deletion!", storeName, clusterName);
       return;
     }
+    if (!getAuthorizerService().isPresent()) {
+      LOGGER.info(
+          "Authorizer service is not present! Skipping acl deletion for store: {} in cluster: {}",
+          storeName,
+          clusterName);
+      return;
+    }
+    AuthorizerService authorizerService = getAuthorizerService().get();
     List<VeniceSystemStoreType> enabledVeniceSystemStores = VeniceSystemStoreType.getEnabledSystemStoreTypes(store);
     Resource resource = new Resource(storeName);
     try {
-      authorizerService.get().clearAcls(resource);
+      getAuthorizerService().get().clearAcls(resource);
       for (VeniceSystemStoreType veniceSystemStoreType: enabledVeniceSystemStores) {
         Resource systemStoreResource = new Resource(veniceSystemStoreType.getSystemStoreName(storeName));
-        authorizerService.get().clearAcls(systemStoreResource);
-        authorizerService.get().clearResource(systemStoreResource);
+        authorizerService.clearAcls(systemStoreResource);
+        authorizerService.clearResource(systemStoreResource);
       }
     } catch (Exception e) {
       LOGGER.error("ACLProvisioning: failure in deleting ACL's for store: {}", storeName, e);
@@ -9919,5 +9924,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   DeadStoreStats getDeadStoreStats(String clusterName) {
     return deadStoreStatsMap.get(clusterName);
+  }
+
+  Optional<AuthorizerService> getAuthorizerService() {
+    return authorizerService;
   }
 }
