@@ -61,6 +61,8 @@ public class ProtocolVersionAutoDetectionService extends AbstractVeniceService {
   @Override
   public boolean startInner() throws Exception {
     LOGGER.info("Starting {}", serviceName);
+    // Report initial state to avoid gap in alerts.
+    stats.recordProtocolVersionAutoDetectionErrorSensor(resetFailureCount());
     executor.scheduleAtFixedRate(getRunnableTask(), sleepIntervalInMs, sleepIntervalInMs, TimeUnit.MILLISECONDS);
     return true;
   }
