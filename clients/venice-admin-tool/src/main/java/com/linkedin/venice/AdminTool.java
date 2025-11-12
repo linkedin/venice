@@ -2495,6 +2495,8 @@ public class AdminTool {
     Optional<Boolean> abortOnFailure =
         Optional.ofNullable(getOptionalArgument(cmd, Arg.ABORT_ON_FAILURE)).map(Boolean::parseBoolean);
     Optional<Integer> currStep = Optional.ofNullable(getOptionalArgument(cmd, Arg.INITIAL_STEP)).map(Integer::parseInt);
+    Optional<Integer> pauseAfterStep =
+        Optional.ofNullable(getOptionalArgument(cmd, Arg.PAUSE_AFTER_STEP)).map(Integer::parseInt);
 
     if (srcClusterName.equals(destClusterName)) {
       throw new VeniceException("Source and destination cluster cannot be the same!");
@@ -2508,7 +2510,7 @@ public class AdminTool {
     assertStoreNotMigrating(srcControllerClient, storeName);
 
     StoreMigrationResponse storeMigrationResponse =
-        srcControllerClient.autoMigrateStore(storeName, destClusterName, currStep, abortOnFailure);
+        srcControllerClient.autoMigrateStore(storeName, destClusterName, currStep, pauseAfterStep, abortOnFailure);
     printObject(storeMigrationResponse);
 
     if (storeMigrationResponse.isError()) {

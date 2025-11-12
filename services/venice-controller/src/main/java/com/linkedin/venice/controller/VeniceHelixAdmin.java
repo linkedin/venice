@@ -82,6 +82,7 @@ import com.linkedin.venice.controller.stats.LogCompactionStats;
 import com.linkedin.venice.controller.stats.PushJobStatusStats;
 import com.linkedin.venice.controllerapi.AdminOperationProtocolVersionControllerResponse;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.ControllerClientFactory;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
@@ -382,6 +383,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   private static final long PUSH_STATUS_STORE_WRITER_TIMEOUT_MS = TimeUnit.SECONDS.toMillis(30);
   private final InternalAvroSpecificSerializer<PushJobDetails> pushJobDetailsSerializer =
       AvroProtocolDefinition.PUSH_JOB_DETAILS.getSerializer();
+  private volatile static String SELF_URL;
 
   static final int VERSION_ID_UNSET = -1;
 
@@ -455,6 +457,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    */
   private final Map<String, Map<String, ControllerClient>> clusterControllerClientPerColoMap =
       new VeniceConcurrentHashMap<>();
+  private final Map<String, ControllerClient> clusterParentControllerClientMap = new VeniceConcurrentHashMap<>();
   private final Map<String, HelixLiveInstanceMonitor> liveInstanceMonitorMap = new HashMap<>();
 
   private final VeniceDistClusterControllerStateModelFactory controllerStateModelFactory;
@@ -9764,24 +9767,58 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       String destClusterName,
       String storeName,
       Optional<Integer> currStep,
+      Optional<Integer> pauseAfterStep,
       Optional<Boolean> abortOnFailure) {
     checkControllerLeadershipFor(srcClusterName);
     Optional<MultiTaskSchedulerService> multiTaskSchedulerService =
         getHelixVeniceClusterResources(srcClusterName).getMultiTaskSchedulerService();
     if (multiTaskSchedulerService.isPresent()) {
       StoreMigrationManager storeMigrationManager = multiTaskSchedulerService.get().getStoreMigrationManager();
+      Map<String, ControllerClient> srcChildControllerClientMap = getControllerClientMap(srcClusterName);
+      Map<String, ControllerClient> destChildControllerClientMap = getControllerClientMap(destClusterName);
+      if (srcChildControllerClientMap.size() != destChildControllerClientMap.size()) {
+        throw new VeniceException(
+            "Source and destination child controller client maps must have the same size, but got: "
+                + srcChildControllerClientMap.size() + " on source, " + destChildControllerClientMap.size()
+                + " on destination.",
+            ErrorType.INCORRECT_CONTROLLER);
+      }
       storeMigrationManager.scheduleMigration(
           storeName,
           srcClusterName,
           destClusterName,
           currStep.orElse(0),
-          0,
-          abortOnFailure.orElse(false));
+          pauseAfterStep.orElse(Integer.MAX_VALUE),
+          abortOnFailure.orElse(false),
+          getParentControllerClient(srcClusterName, srcClusterName),
+          getParentControllerClient(destClusterName, srcClusterName),
+          srcChildControllerClientMap,
+          destChildControllerClientMap);
     } else {
       throw new VeniceException(
           "Store migration is not supported in this cluster: " + srcClusterName,
           ErrorType.INCORRECT_CONTROLLER);
     }
+  }
+
+  // Auto-store migration is a long-running job; always use the service’s self URL when constructing a client to ensure
+  // that the host is discoverable and treated as the parent host
+  public ControllerClient getParentControllerClient(String clusterName, String sourceCluster) {
+    Objects.requireNonNull(clusterName, "clusterName cannot be null");
+    return clusterParentControllerClientMap
+        .computeIfAbsent(clusterName, key -> createControllerClientWithCurrentURL(key, sourceCluster));
+  }
+
+  private synchronized String getCurrentUrl(String sourceCluster) {
+    if (SELF_URL == null) {
+      SELF_URL = getLeaderController(sourceCluster).getUrl(false);
+    }
+    return SELF_URL;
+  }
+
+  private ControllerClient createControllerClientWithCurrentURL(String clusterName, String sourceCluster) {
+    String url = getCurrentUrl(sourceCluster);
+    return ControllerClientFactory.getControllerClient(clusterName, url, sslFactory);
   }
 
   public Optional<SSLFactory> getSslFactory() {
