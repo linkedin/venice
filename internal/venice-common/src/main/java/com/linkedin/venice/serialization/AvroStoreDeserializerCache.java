@@ -7,6 +7,7 @@ import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.utils.collections.BiIntKeyCache;
 import java.util.function.BiFunction;
+import java.util.function.Function;
 import java.util.function.IntFunction;
 import org.apache.avro.Schema;
 
@@ -45,6 +46,12 @@ public class AvroStoreDeserializerCache<T> implements StoreDeserializerCache<T> 
       BiFunction<Schema, Schema, RecordDeserializer<T>> deserializerGetter) {
     this.cache = new BiIntKeyCache<>(
         (writerId, readerId) -> deserializerGetter.apply(schemaGetter.apply(writerId), schemaGetter.apply(readerId)));
+  }
+
+  public AvroStoreDeserializerCache(
+      IntFunction<Schema> schemaGetter,
+      Function<Schema, RecordDeserializer<T>> deserializerGetter) {
+    this.cache = new BiIntKeyCache<>((writerId, readerId) -> deserializerGetter.apply(schemaGetter.apply(writerId)));
   }
 
   public RecordDeserializer<T> getDeserializer(int writerSchemaId, int readerSchemaId) {
