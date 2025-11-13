@@ -79,7 +79,10 @@ public class MetaStoreWriter implements Closeable {
   private final PubSubTopicRepository pubSubTopicRepository;
   private final long closeTimeoutMs;
   private final int numOfConcurrentVwCloseOps;
-
+  /*
+   * Function to resolve store names to Store objects. Used to fetch system store metadata
+   * for determining the correct RT topic names.
+   */
   public Function<String, Store> storeResolver;
 
   public MetaStoreWriter(
@@ -372,11 +375,13 @@ public class MetaStoreWriter implements Closeable {
       int largestUsedRTVersionNumber;
       VeniceSystemStoreType type = VeniceSystemStoreType.getSystemStoreType(store.getName());
       if (type != null && store.isSystemStore()) {
+        // metaStoreName is user system store
         largestUsedRTVersionNumber = ((SystemStore) store).getVeniceStore().getLargestUsedRTVersionNumber();
       } else {
+        // metaStoreName is zkShared system store
         largestUsedRTVersionNumber = store.getLargestUsedRTVersionNumber();
       }
-      String rt = Utils.getRealTimeTopicName(storeResolver.apply(metaStoreName), largestUsedRTVersionNumber);
+      String rt = Utils.getRealTimeTopicName(store, largestUsedRTVersionNumber);
       PubSubTopic rtTopic = pubSubTopicRepository.getTopic(rt);
       if (!topicManager.containsTopicAndAllPartitionsAreOnline(rtTopic)) {
         throw new VeniceException("Realtime topic: " + rtTopic + " doesn't exist or some partitions are not online");

@@ -71,10 +71,11 @@ public class DaVinciBackendTest {
   private MockedStatic<ClientFactory> mockClientFactory;
   private MockedConstruction<VeniceMetadataRepositoryBuilder> mockMetadataBuilder;
   private MockedConstruction<SchemaPresenceChecker> mockSchemaPresenceChecker;
+  private MockedStatic<ZkClientFactory> mockZkFactory;
 
   @BeforeClass
   public void init() {
-    MockedStatic<ZkClientFactory> mockZkFactory = mockStatic(ZkClientFactory.class);
+    mockZkFactory = mockStatic(ZkClientFactory.class);
     ZkClient mockZkClient = mock(ZkClient.class);
     mockZkFactory.when(() -> ZkClientFactory.newZkClient(anyString())).thenReturn(mockZkClient);
     doNothing().when(mockZkClient).subscribeStateChanges(any(ZkClientStatusStats.class));
