@@ -5657,15 +5657,7 @@ public class VeniceParentHelixAdmin implements Admin {
 
   @Override
   public int getLargestUsedRTVersion(String clusterName, String storeName) {
-    Map<String, ControllerClient> childControllers = getVeniceHelixAdmin().getControllerClientMap(clusterName);
-    int aggregatedLargestUsedRTVersionNumber = getVeniceHelixAdmin().getLargestUsedRTVersion(clusterName, storeName);
-    for (Map.Entry<String, ControllerClient> controller: childControllers.entrySet()) {
-      VersionResponse response = controller.getValue().getStoreLargestUsedVersion(clusterName, storeName);
-      if (response.getVersion() > aggregatedLargestUsedRTVersionNumber) {
-        aggregatedLargestUsedRTVersionNumber = response.getVersion();
-      }
-    }
-    return aggregatedLargestUsedRTVersionNumber;
+    return getVeniceHelixAdmin().getLargestUsedRTVersion(clusterName, storeName);
   }
 
   /**

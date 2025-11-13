@@ -29,7 +29,7 @@ public class PushStatusStoreVeniceWriterCache implements AutoCloseable {
   private final Map<String, VeniceWriter> veniceWriters = new VeniceConcurrentHashMap<>();
   private final Schema valueSchema;
   private final Schema updateSchema;
-  Function<String, Object> storeResolver;
+  private final Function<String, Object> storeResolver;
 
   // writerFactory Used for instantiating VeniceWriter
   public PushStatusStoreVeniceWriterCache(

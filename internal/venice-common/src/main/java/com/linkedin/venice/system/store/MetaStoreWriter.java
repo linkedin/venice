@@ -376,7 +376,7 @@ public class MetaStoreWriter implements Closeable {
       } else {
         largestUsedRTVersionNumber = store.getLargestUsedRTVersionNumber();
       }
-      String rt = Utils.getRealTimeTopicName(storeResolver.apply(metaStoreName), largestUsedRTVersionNumber);
+      String rt = Utils.getRealTimeTopicName(store, largestUsedRTVersionNumber);
       PubSubTopic rtTopic = pubSubTopicRepository.getTopic(rt);
       if (!topicManager.containsTopicAndAllPartitionsAreOnline(rtTopic)) {
         throw new VeniceException("Realtime topic: " + rtTopic + " doesn't exist or some partitions are not online");
