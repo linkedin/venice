@@ -16,8 +16,8 @@ import org.apache.avro.Schema;
  *
  * <p>Example usage for Protocol Buffers:
  * <pre>{@code
- * DeserializerFactory<MyValueProto> protoValueFactory = 
- *     (writerSchema, readerSchema) -> new RecordDeserializerToProto<>(writerSchema, MyValueProto.class);
+ * DeserializerFactory<MyValueProto> protoValueFactory =
+ *     (writerSchema) -> new RecordDeserializerToProto<>(writerSchema, MyValueProto.class);
  *
  * ClientConfig config = new ClientConfig.ClientConfigBuilder()
  *     .setValueDeserializerFactory(protoValueFactory)
@@ -36,9 +36,7 @@ public interface DeserializerFactory<V> {
    * this schema evolution appropriately.
    *
    * @param writerSchema the schema that was used when the value was written
-   * @param readerSchema the schema to use when reading the value (may be same as writer schema)
    * @return a record deserializer that can deserialize Avro bytes to the value type; must not return null
-   * @throws IllegalArgumentException if the schemas are not compatible
    */
-  RecordDeserializer<V> createDeserializer(Schema writerSchema, Schema readerSchema);
+  RecordDeserializer<V> createDeserializer(Schema writerSchema);
 }

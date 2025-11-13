@@ -121,8 +121,7 @@ public class ClientConfigTest {
     DeserializerFactory mockDeserializerFactory = mock(DeserializerFactory.class);
     RecordDeserializer mockDeserializer = mock(RecordDeserializer.class);
     Schema writerSchema = mock(Schema.class);
-    Schema readerSchema = mock(Schema.class);
-    when(mockDeserializerFactory.createDeserializer(writerSchema, readerSchema)).thenReturn(mockDeserializer);
+    when(mockDeserializerFactory.createDeserializer(writerSchema)).thenReturn(mockDeserializer);
 
     ClientConfig.ClientConfigBuilder clientConfigBuilder = getClientConfigWithMinimumRequiredInputs();
     clientConfigBuilder.setValueDeserializerFactory(mockDeserializerFactory);
@@ -135,7 +134,7 @@ public class ClientConfigTest {
     // Verify the factory works
     Optional<DeserializerFactory> factoryOptional = clientConfig.getValueDeserializerFactory();
     assertTrue(factoryOptional.isPresent());
-    RecordDeserializer deserializer = factoryOptional.get().createDeserializer(writerSchema, readerSchema);
+    RecordDeserializer deserializer = factoryOptional.get().createDeserializer(writerSchema);
     assertEquals(deserializer, mockDeserializer);
   }
 
