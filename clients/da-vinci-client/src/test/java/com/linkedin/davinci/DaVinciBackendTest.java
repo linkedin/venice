@@ -140,7 +140,6 @@ public class DaVinciBackendTest {
     mockClientFactory.close();
     mockMetadataBuilder.close();
     mockSchemaPresenceChecker.close();
-    mockZkFactory.close();
   }
 
   @DataProvider(name = "DvcErrorExecutionStatusAndBoolean")
