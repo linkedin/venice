@@ -10,6 +10,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.TopicSwitch;
+import com.linkedin.venice.kafka.protocol.state.IncrementalPushReplicaStatus;
 import com.linkedin.venice.kafka.validation.checksum.CheckSum;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.meta.Version;
@@ -35,6 +36,7 @@ import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
 import java.util.stream.Collectors;
@@ -269,6 +271,7 @@ public class PartitionConsumptionState {
 
   private final Schema keySchema;
   private KeyUrnCompressor keyUrnCompressor;
+  private Map<String, IncrementalPushReplicaStatus> trackingIncrementalPushStatus;
 
   public PartitionConsumptionState(
       PubSubTopicPartition partitionReplica,
@@ -310,6 +313,7 @@ public class PartitionConsumptionState {
     latestConsumedRtPositions = new VeniceConcurrentHashMap<>(3);
     divRtCheckpointPositions = new VeniceConcurrentHashMap<>(3);
     latestProcessedRtPositions = new VeniceConcurrentHashMap<>(3);
+    trackingIncrementalPushStatus = new VeniceConcurrentHashMap<>(3);
     if (offsetRecord.getLeaderTopic() != null && Version.isRealTimeTopic(offsetRecord.getLeaderTopic())) {
       offsetRecord.cloneRtPositionCheckpoints(latestConsumedRtPositions);
       offsetRecord.cloneRtPositionCheckpoints(latestProcessedRtPositions);
@@ -1082,5 +1086,41 @@ public class PartitionConsumptionState {
 
   public KeyUrnCompressor getKeyDictCompressor() {
     return keyUrnCompressor;
+  }
+
+  public Map<String, IncrementalPushReplicaStatus> getTrackingIncrementalPushStatus() {
+    return trackingIncrementalPushStatus;
+  }
+
+  /**
+   * Update the tracking incremental push status map for a specific push job ID.
+   * @param pushJobId the incremental push job ID
+   * @param status the push status (e.g., START or END)
+   * @param timestamp the timestamp when this status was recorded
+   */
+  public void setTrackingIncrementalPushStatus(String pushJobId, int status, long timestamp) {
+    int maxRetentionDays = 2;
+    purgeTrackingIncrementalPushStatus(maxRetentionDays);
+
+    IncrementalPushReplicaStatus replicaStatus = new IncrementalPushReplicaStatus(status, timestamp);
+    this.trackingIncrementalPushStatus.put(pushJobId, replicaStatus);
+  }
+
+  /**
+   * Purge old entries from the tracking incremental push status map based on:
+   * - Time: only keep records from the last maxDurationDay days
+   * @param maxDurationDay the max duration in days to keep incremental push status records
+   */
+  private void purgeTrackingIncrementalPushStatus(int maxDurationDay) {
+    if (this.trackingIncrementalPushStatus == null || this.trackingIncrementalPushStatus.isEmpty()) {
+      return;
+    }
+
+    long currentTimeMs = System.currentTimeMillis();
+    long maxDurationMs = TimeUnit.DAYS.toMillis(maxDurationDay);
+
+    // remove entries older than maxDurationDay
+    this.trackingIncrementalPushStatus.entrySet()
+        .removeIf(entry -> (currentTimeMs - entry.getValue().timestamp) > maxDurationMs);
   }
 }

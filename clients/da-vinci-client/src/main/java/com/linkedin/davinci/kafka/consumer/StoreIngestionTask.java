@@ -111,6 +111,7 @@ import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubUnsubscribedTopicPartitionException;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.pubsub.manager.TopicManagerRepository;
+import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.ChunkedValueManifestSerializer;
@@ -2828,6 +2829,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     offsetRecord.setDatabaseInfo(dbCheckpointingInfoReference.get());
     // Update key urn compression dictionary
     offsetRecord.setKeyUrnCompressionDict(pcs.getKeyUrnCompressionDict());
+    // Update the push job info
+    offsetRecord.setTrackingIncrementalPushStatus(pcs.getTrackingIncrementalPushStatus());
+
     storageMetadataService.put(this.kafkaVersionTopic, partition, offsetRecord);
     pcs.resetProcessedRecordSizeSinceLastSync();
     // TODO: update
@@ -3219,6 +3223,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     if (!batchReportIncPushStatusEnabled || partitionConsumptionState.isComplete()) {
       ingestionNotificationDispatcher
           .reportStartOfIncrementalPushReceived(partitionConsumptionState, startVersion.toString());
+      partitionConsumptionState.setTrackingIncrementalPushStatus(
+          startVersion.toString(),
+          ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED.getValue(),
+          System.currentTimeMillis());
     }
   }
 
@@ -3229,6 +3237,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     if (!batchReportIncPushStatusEnabled || partitionConsumptionState.isComplete()) {
       ingestionNotificationDispatcher
           .reportEndOfIncrementalPushReceived(partitionConsumptionState, endVersion.toString());
+
+      partitionConsumptionState.setTrackingIncrementalPushStatus(
+          endVersion.toString(),
+          ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED.getValue(),
+          System.currentTimeMillis());
     } else {
       LOGGER.info(
           "Adding incremental push: {} to pending batch report list for replica: {}.",
