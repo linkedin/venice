@@ -1367,7 +1367,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   /**
-   * Deletes the acls associated with a store
+   * Deletes the acls associated with a store.
+   *
+   * @param store The {@link Store} object representing the store whose ACLs are to be deleted.
+   * @param storeName The name of the store.
+   * @param clusterName The name of the cluster where the store resides.
    */
   protected void cleanupAclsForStore(Store store, String storeName, String clusterName) {
     if (store == null) {
@@ -1389,7 +1393,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     List<VeniceSystemStoreType> enabledVeniceSystemStores = VeniceSystemStoreType.getEnabledSystemStoreTypes(store);
     Resource resource = new Resource(storeName);
     try {
-      getAuthorizerService().get().clearAcls(resource);
+      authorizerService.clearAcls(resource);
       for (VeniceSystemStoreType veniceSystemStoreType: enabledVeniceSystemStores) {
         Resource systemStoreResource = new Resource(veniceSystemStoreType.getSystemStoreName(storeName));
         authorizerService.clearAcls(systemStoreResource);
