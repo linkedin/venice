@@ -292,16 +292,13 @@ public class StatefulVeniceChangelogConsumerTest {
     polledChangeEventsList.clear();
     polledChangeEventsMap.clear();
     statefulVeniceChangelogConsumer.stop();
-
-    StatefulVeniceChangelogConsumer<GenericRecord, GenericRecord> statefulVeniceChangelogConsumer2 =
-        veniceChangelogConsumerClientFactory.getStatefulChangelogConsumer(storeName);
-    statefulVeniceChangelogConsumer2.start().get();
+    statefulVeniceChangelogConsumer.start().get();
 
     TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
       pollChangeEventsFromChangeCaptureConsumer(
           polledChangeEventsMap,
           polledChangeEventsList,
-          statefulVeniceChangelogConsumer2);
+          statefulVeniceChangelogConsumer);
       // 40 near-line put events, but one of them overwrites a key from batch push.
       // Also, Deletes won't show up on restart when scanning RocksDB.
       int expectedRecordCount = DEFAULT_USER_DATA_RECORD_COUNT + 39;
