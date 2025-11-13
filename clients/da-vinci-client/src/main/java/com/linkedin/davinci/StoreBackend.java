@@ -16,6 +16,7 @@ import com.linkedin.venice.utils.RegionUtils;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -135,7 +136,7 @@ public class StoreBackend {
   }
 
   public CompletableFuture<Void> subscribe(ComplementSet<Integer> partitions) {
-    return subscribe(partitions, Optional.empty(), Collections.emptyMap(), null, Collections.emptyMap());
+    return subscribe(partitions, Optional.empty(), Collections.emptyMap(), null, Collections.emptyMap(), false);
   }
 
   public CompletableFuture<Void> seekToTimestamps(Long allPartitionTimestamp, Optional<Version> storeVersion) {
@@ -144,17 +145,40 @@ public class StoreBackend {
         storeVersion,
         new HashMap<>(),
         allPartitionTimestamp,
-        Collections.emptyMap());
+        Collections.emptyMap(),
+        false);
+  }
+
+  public CompletableFuture<Void> seekToTail(Optional<Version> storeVersion) {
+    return subscribe(
+        ComplementSet.universalSet(),
+        storeVersion,
+        Collections.emptyMap(),
+        null,
+        Collections.emptyMap(),
+        true);
   }
 
   public CompletableFuture<Void> seekToCheckPoints(
       Map<Integer, PubSubPosition> checkpoints,
       Optional<Version> storeVersion) {
-    return subscribe(ComplementSet.wrap(checkpoints.keySet()), storeVersion, Collections.emptyMap(), null, checkpoints);
+    return subscribe(
+        ComplementSet.wrap(checkpoints.keySet()),
+        storeVersion,
+        Collections.emptyMap(),
+        null,
+        checkpoints,
+        false);
   }
 
   public CompletableFuture<Void> seekToTimestamps(Map<Integer, Long> timestamps, Optional<Version> storeVersion) {
-    return subscribe(ComplementSet.wrap(timestamps.keySet()), storeVersion, timestamps, null, Collections.emptyMap());
+    return subscribe(
+        ComplementSet.wrap(timestamps.keySet()),
+        storeVersion,
+        timestamps,
+        null,
+        Collections.emptyMap(),
+        false);
   }
 
   private Version getCurrentVersion() {
@@ -170,7 +194,8 @@ public class StoreBackend {
       Optional<Version> bootstrapVersion,
       Map<Integer, Long> timestamps,
       Long allPartitionsTimestamp,
-      Map<Integer, PubSubPosition> positionMap) {
+      Map<Integer, PubSubPosition> positionMap,
+      boolean seekToTails) {
     if (daVinciCurrentVersion == null) {
       setDaVinciCurrentVersion(new VersionBackend(backend, bootstrapVersion.orElseGet(() -> {
         Version version = getCurrentVersion();
@@ -207,33 +232,37 @@ public class StoreBackend {
       if (daVinciFutureVersion == null) {
         trySubscribeDaVinciFutureVersion();
       } else {
-        daVinciFutureVersion.subscribe(partitions, timestamps, allPartitionsTimestamp, positionMap)
+        daVinciFutureVersion.subscribe(partitions, timestamps, positionMap, seekToTails)
             .whenComplete((v, e) -> trySwapDaVinciCurrentVersion(e));
       }
     }
 
     VersionBackend savedVersion = daVinciCurrentVersion;
-    return daVinciCurrentVersion.subscribe(partitions, timestamps, allPartitionsTimestamp, positionMap)
-        .exceptionally(e -> {
-          synchronized (this) {
-            addFaultyVersion(savedVersion, e);
-            // Don't propagate failure to subscribe() caller, if future version has become current and is ready to
-            // serve.
-            if (daVinciCurrentVersion != null && daVinciCurrentVersion.isReadyToServe(subscription)) {
-              return null;
-            }
-          }
-          throw (e instanceof CompletionException) ? (CompletionException) e : new CompletionException(e);
-        })
-        .whenComplete((v, e) -> {
-          synchronized (this) {
-            if (e == null) {
-              LOGGER.info("Ready to serve partitions {} of {}", subscription, daVinciCurrentVersion);
-            } else {
-              LOGGER.warn("Failed to subscribe to partitions {} of {}", subscription, savedVersion, e);
-            }
-          }
-        });
+    List<Integer> partitionList = daVinciCurrentVersion.getPartitions(partitions);
+    if (allPartitionsTimestamp != null) {
+      for (int partition: partitionList) {
+        timestamps.put(partition, allPartitionsTimestamp);
+      }
+    }
+    return daVinciCurrentVersion.subscribe(partitions, timestamps, positionMap, seekToTails).exceptionally(e -> {
+      synchronized (this) {
+        addFaultyVersion(savedVersion, e);
+        // Don't propagate failure to subscribe() caller, if future version has become current and is ready to
+        // serve.
+        if (daVinciCurrentVersion != null && daVinciCurrentVersion.isReadyToServe(subscription)) {
+          return null;
+        }
+      }
+      throw (e instanceof CompletionException) ? (CompletionException) e : new CompletionException(e);
+    }).whenComplete((v, e) -> {
+      synchronized (this) {
+        if (e == null) {
+          LOGGER.info("Ready to serve partitions {} of {}", subscription, daVinciCurrentVersion);
+        } else {
+          LOGGER.warn("Failed to subscribe to partitions {} of {}", subscription, savedVersion, e);
+        }
+      }
+    });
   }
 
   public synchronized void unsubscribe(ComplementSet<Integer> partitions) {
@@ -302,7 +331,7 @@ public class StoreBackend {
       LOGGER.info("Subscribing to future version {}", targetVersion.kafkaTopicName());
       setDaVinciFutureVersion(new VersionBackend(backend, targetVersion, stats));
       // For future version subscription, we don't need to pass any timestamps or position map
-      daVinciFutureVersion.subscribe(subscription, Collections.emptyMap(), null, Collections.emptyMap())
+      daVinciFutureVersion.subscribe(subscription, Collections.emptyMap(), Collections.emptyMap(), false)
           .whenComplete((v, e) -> trySwapDaVinciCurrentVersion(e));
     } else {
       LOGGER.info(

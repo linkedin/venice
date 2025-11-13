@@ -366,8 +366,8 @@ public class VersionBackend {
   synchronized CompletableFuture<Void> subscribe(
       ComplementSet<Integer> partitions,
       Map<Integer, Long> timestamps,
-      Long allPartitionTimestamp,
-      Map<Integer, PubSubPosition> positionMap) {
+      Map<Integer, PubSubPosition> positionMap,
+      boolean seekToTail) {
     Instant startTime = Instant.now();
     int validCheckPointCount = 0;
     if (!timestamps.isEmpty()) {
@@ -376,7 +376,7 @@ public class VersionBackend {
     if (!positionMap.isEmpty()) {
       validCheckPointCount++;
     }
-    if (allPartitionTimestamp != null) {
+    if (seekToTail) {
       validCheckPointCount++;
     }
     if (validCheckPointCount > 1) {
@@ -407,9 +407,6 @@ public class VersionBackend {
       } else {
         partitionFutures.computeIfAbsent(partition, k -> new CompletableFuture<>());
         partitionsToStartConsumption.add(partition);
-        if (allPartitionTimestamp != null) {
-          timestamps.put(partition, allPartitionTimestamp);
-        }
       }
       partitionToBatchReportEOIPEnabled.put(partition, batchReportEOIPStatusEnabled);
       futures.add(partitionFutures.get(partition));
@@ -426,7 +423,7 @@ public class VersionBackend {
           .updateLagMonitor(version.kafkaTopicName(), partition, HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR);
       // AtomicReference of storage engine will be updated internally.
       Optional<PubSubPosition> pubSubPosition = backend.getIngestionService()
-          .getPubSubPosition(config, partition, timestamps.get(partition), positionMap.get(partition));
+          .getPubSubPosition(config, partition, timestamps.get(partition), positionMap.get(partition), seekToTail);
       backend.getIngestionBackend().startConsumption(config, partition, pubSubPosition);
       tryStartHeartbeat();
     }
@@ -573,7 +570,7 @@ public class VersionBackend {
     return partitionToPendingReportIncrementalPushList;
   }
 
-  private List<Integer> getPartitions(ComplementSet<Integer> partitions) {
+  public List<Integer> getPartitions(ComplementSet<Integer> partitions) {
     return IntStream.range(0, version.getPartitionCount())
         .filter(partitions::contains)
         .boxed()

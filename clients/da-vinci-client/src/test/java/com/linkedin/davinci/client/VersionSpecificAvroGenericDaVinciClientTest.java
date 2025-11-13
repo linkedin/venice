@@ -63,7 +63,7 @@ public class VersionSpecificAvroGenericDaVinciClientTest {
 
     verify(versionSpecificAvroGenericDaVinciClient).addPartitionsToSubscription(partitionsSet);
     verify(storeBackend)
-        .subscribe(partitionsSet, Optional.of(version), Collections.emptyMap(), null, Collections.emptyMap());
+        .subscribe(partitionsSet, Optional.of(version), Collections.emptyMap(), null, Collections.emptyMap(), false);
   }
 
   @Test

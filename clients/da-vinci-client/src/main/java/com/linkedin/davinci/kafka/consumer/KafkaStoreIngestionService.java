@@ -722,18 +722,20 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       VeniceStoreVersionConfig veniceStore,
       int partitionId,
       Long timestamp,
-      PubSubPosition pubSubPosition) {
+      PubSubPosition pubSubPosition,
+      boolean seekToTail) {
     if (pubSubPosition != null) {
       return Optional.of(pubSubPosition);
     }
     final String topic = veniceStore.getStoreVersionName();
-
+    PubSubTopicPartition partition = new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partitionId);
+    TopicManager topicManager =
+        getPubSubContext().getTopicManagerRepository().getTopicManager(serverConfig.getKafkaBootstrapServers());
     Optional<PubSubPosition> position = Optional.empty();
     if (timestamp != null) {
-      PubSubTopicPartition partition = new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partitionId);
-      TopicManager topicManager =
-          getPubSubContext().getTopicManagerRepository().getTopicManager(serverConfig.getKafkaBootstrapServers());
       position = Optional.of(topicManager.getPositionByTime(partition, timestamp));
+    } else if (seekToTail) {
+      position = Optional.of(topicManager.getEndPositionsForPartitionWithRetries(partition));
     }
     return position;
   }

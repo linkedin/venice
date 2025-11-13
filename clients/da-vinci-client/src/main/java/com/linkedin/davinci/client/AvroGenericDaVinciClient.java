@@ -262,6 +262,24 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
     return Optional.of(version);
   }
 
+  protected CompletableFuture<Void> seekToTail() {
+    if (getBackend().isIsolatedIngestion()) {
+      throw new VeniceClientException("Isolated Ingestion is not supported with seekToCheckpoint");
+    }
+    throwIfNotReady();
+    addPartitionsToSubscription(ComplementSet.universalSet());
+    return getStoreBackend().seekToTail(getVersion());
+  }
+
+  protected CompletableFuture<Void> seekToTail(Set<Integer> partitionSet) {
+    if (getBackend().isIsolatedIngestion()) {
+      throw new VeniceClientException("Isolated Ingestion is not supported with seekToCheckpoint");
+    }
+    throwIfNotReady();
+    addPartitionsToSubscription(ComplementSet.wrap(partitionSet));
+    return getStoreBackend().seekToTail(getVersion());
+  }
+
   protected CompletableFuture<Void> seekToCheckpoint(Set<VeniceChangeCoordinate> checkpoints) {
     if (getBackend().isIsolatedIngestion()) {
       throw new VeniceClientException("Isolated Ingestion is not supported with seekToCheckpoint");
@@ -288,19 +306,20 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
     return getStoreBackend().seekToTimestamps(timestamps, getVersion());
   }
 
-  protected CompletableFuture<Void> seekToTimestamps(Long timestamps) {
+  protected CompletableFuture<Void> seekToTimestamps(Long timestamp) {
     if (getBackend().isIsolatedIngestion()) {
       throw new VeniceClientException("Isolated Ingestion is not supported with seekToTimestamps");
     }
     throwIfNotReady();
     addPartitionsToSubscription(ComplementSet.universalSet());
-    return getStoreBackend().seekToTimestamps(timestamps, getVersion());
+    return getStoreBackend().seekToTimestamps(timestamp, getVersion());
   }
 
   protected CompletableFuture<Void> subscribe(ComplementSet<Integer> partitions) {
     throwIfNotReady();
     addPartitionsToSubscription(partitions);
-    return getStoreBackend().subscribe(partitions, getVersion(), Collections.emptyMap(), null, Collections.emptyMap());
+    return getStoreBackend()
+        .subscribe(partitions, getVersion(), Collections.emptyMap(), null, Collections.emptyMap(), false);
   }
 
   @Override

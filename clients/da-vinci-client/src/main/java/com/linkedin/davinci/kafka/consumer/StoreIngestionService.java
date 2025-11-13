@@ -113,5 +113,6 @@ public interface StoreIngestionService {
       VeniceStoreVersionConfig veniceStore,
       int partitionId,
       Long timestamp,
-      PubSubPosition pubSubPosition);
+      PubSubPosition pubSubPosition,
+      boolean seekToTail);
 }
