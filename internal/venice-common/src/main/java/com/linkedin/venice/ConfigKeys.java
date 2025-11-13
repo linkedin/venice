@@ -2657,6 +2657,12 @@ public class ConfigKeys {
       "server.resubscription.triggered.by.version.ingestion.context.change.enabled";
 
   /**
+   * Server configs to configure the check interval of the topic partition re-subscription during ingestion.
+   */
+  public static final String SERVER_RESUBSCRIPTION_CHECK_INTERVAL_IN_SECONDS =
+      "server.resubscription.check.interval.in.seconds";
+
+  /**
    * Quota for AA/WC leader replica as we know AA/WC messages are expensive, so we would like to use the following throttler
    * to limit the resource usage.
    */

@@ -415,6 +415,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private final List<AutoCloseable> thingsToClose = new ArrayList<>();
   private final Version version;
   private boolean skipValidationForSeekableClientEnabled = false;
+  private final Set<Integer> currentVersionResubscribeSet = new HashSet<>();
+  private long lastResubscriptionCheckTimestamp = System.currentTimeMillis();
 
   public StoreIngestionTask(
       StorageService storageService,
@@ -746,6 +748,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       Optional<PubSubPosition> pubSubPosition) {
     activeReplicaCount.incrementAndGet();
     LOGGER.info("Bootstrap replica: {}. Active replica count in SIT: {}", topicPartition, activeReplicaCount.get());
+    if (isCurrentVersion()) {
+      currentVersionResubscribeSet.add(topicPartition.getPartitionNumber());
+    }
     subscribePartition(topicPartition, true, pubSubPosition);
   }
 
@@ -753,6 +758,36 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     throwIfNotRunning();
     for (PartitionConsumptionState partitionConsumptionState: partitionConsumptionStateMap.values()) {
       resubscribe(partitionConsumptionState);
+    }
+  }
+
+  void resubscribeForCompletedCurrentVersionPartition() throws InterruptedException {
+    throwIfNotRunning();
+    Iterator<Integer> it = currentVersionResubscribeSet.iterator();
+    while (it.hasNext()) {
+      int partition = it.next();
+      PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(partition);
+      if (partitionConsumptionState == null) {
+        LOGGER.warn(
+            "Replica: {} does not exist in PCS map, skip resubscription.",
+            Utils.getReplicaId(versionTopic, partition));
+        it.remove();
+        continue;
+      }
+      if (partitionConsumptionState.isErrorReported()) {
+        it.remove();
+        LOGGER.info(
+            "Replica: {} is already errored, will NOT trigger resubscription",
+            partitionConsumptionState.getReplicaId());
+        return;
+      }
+      if (partitionConsumptionState.isComplete()) {
+        it.remove();
+        LOGGER.info(
+            "Replica: {} becomes current serving replica, will trigger resubscription",
+            partitionConsumptionState.getReplicaId());
+        resubscribe(partitionConsumptionState);
+      }
     }
   }
 
@@ -1613,6 +1648,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   protected void refreshIngestionContextIfChanged(Store store) throws InterruptedException {
+    if ((System.currentTimeMillis() - lastResubscriptionCheckTimestamp) < SECONDS
+        .toMillis(serverConfig.getResubscriptionCheckIntervalInSeconds())) {
+      return;
+    }
+    lastResubscriptionCheckTimestamp = System.currentTimeMillis();
+
     if (!serverConfig.isResubscriptionTriggeredByVersionIngestionContextChangeEnabled() || !isHybridMode()
         || isSystemStore) {
       return;
@@ -1629,6 +1670,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     PartitionReplicaIngestionContext.WorkloadType newWorkloadType =
         PartitionReplicaIngestionContext.determineWorkloadType(isActiveActiveReplicationEnabled, isWriteComputeEnabled);
     if (newVersionRole.equals(versionRole) && newWorkloadType.equals(workloadType)) {
+      if (!currentVersionResubscribeSet.isEmpty()) {
+        resubscribeForCompletedCurrentVersionPartition();
+      }
       return;
     }
 
@@ -3875,8 +3919,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     // TODO: Move remote KafkaConsumerService creating operations into the aggKafkaConsumerService.
     aggKafkaConsumerService
         .createKafkaConsumerService(createKafkaConsumerProperties(kafkaProps, resolvedKafkaURL, consumeRemotely));
-    PartitionReplicaIngestionContext partitionReplicaIngestionContext =
-        new PartitionReplicaIngestionContext(versionTopic, pubSubTopicPartition, versionRole, workloadType);
+    PartitionConsumptionState pcs = partitionConsumptionStateMap.get(pubSubTopicPartition.getPartitionNumber());
+    boolean isReadyToServe = pcs != null && pcs.isComplete();
+    PartitionReplicaIngestionContext partitionReplicaIngestionContext = new PartitionReplicaIngestionContext(
+        versionTopic,
+        pubSubTopicPartition,
+        versionRole,
+        workloadType,
+        isReadyToServe);
     // localKafkaServer doesn't have suffix but kafkaURL may have suffix,
     // and we don't want to pass the resolvedKafkaURL as it will be passed to data receiver for parsing cluster id
     aggKafkaConsumerService.subscribeConsumerFor(kafkaURL, this, partitionReplicaIngestionContext, startPosition);
