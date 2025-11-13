@@ -21,11 +21,8 @@ import com.linkedin.venice.authorization.Resource;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Store;
-import com.linkedin.venice.meta.SystemStoreAttributes;
-import com.linkedin.venice.meta.SystemStoreAttributesImpl;
 import com.linkedin.venice.utils.TestUtils;
 import java.util.HashMap;
-import java.util.Map;
 import java.util.Optional;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -41,21 +38,13 @@ public class TestVeniceHelixAdminWithAcl {
 
   @BeforeMethod(alwaysRun = true)
   public void setUp() {
-    // Setup authorizer with some default permissions
     authorizerService = new MockVeniceAuthorizer();
-
-    // Add some default ACLs for testing
-    AclBinding defaultAcl = new AclBinding(new Resource(STORE_NAME));
-    defaultAcl.addAceEntry(new AceEntry(new Principal("admin"), Method.Read, Permission.ALLOW));
-    defaultAcl.addAceEntry(new AceEntry(new Principal("admin"), Method.Write, Permission.ALLOW));
-    authorizerService.setAcls(defaultAcl);
 
     // Setup store with proper configuration
     store = TestUtils.createTestStore(STORE_NAME, "owner", System.currentTimeMillis());
     store.setMigrating(false);
     store.setSystemStores(new HashMap<>());
 
-    // Create a mock VeniceHelixAdmin
     veniceAdminMock = mock(VeniceHelixAdmin.class);
 
     // Set up the mock to use our test authorizer service
@@ -93,9 +82,6 @@ public class TestVeniceHelixAdminWithAcl {
 
   @Test
   public void testCleanupAclsForStoreWhenStoreIsNull() {
-    // Reset counter
-    authorizerService.clearAclCounter = 0;
-
     // Call with null store - should log a warning but not throw
     veniceAdminMock.cleanupAclsForStore(null, STORE_NAME, CLUSTER_NAME);
 
@@ -108,10 +94,6 @@ public class TestVeniceHelixAdminWithAcl {
     // Mark store as migrating
     store.setMigrating(true);
 
-    // Reset counter
-    authorizerService.clearAclCounter = 0;
-
-    // Call the method under test
     veniceAdminMock.cleanupAclsForStore(store, STORE_NAME, CLUSTER_NAME);
 
     // Verify no interactions with authorizer service when store is migrating
@@ -120,19 +102,9 @@ public class TestVeniceHelixAdminWithAcl {
 
   @Test
   public void testCleanupAclsForStoreWhenAuthorizerServiceNotPresent() {
-    // Create a new mock VeniceHelixAdmin without authorizer service
-    VeniceHelixAdmin mockAdmin = mock(VeniceHelixAdmin.class);
+    when(veniceAdminMock.getAuthorizerService()).thenReturn(Optional.empty());
 
-    // Set up the mock to return empty authorizer service
-    when(mockAdmin.getAuthorizerService()).thenReturn(Optional.empty());
-
-    // Set up the real method call for cleanupAclsForStore
-    doCallRealMethod().when(mockAdmin).cleanupAclsForStore(any(Store.class), anyString(), anyString());
-
-    // Reset counter
-    authorizerService.clearAclCounter = 0;
-
-    mockAdmin.cleanupAclsForStore(store, STORE_NAME, CLUSTER_NAME);
+    veniceAdminMock.cleanupAclsForStore(store, STORE_NAME, CLUSTER_NAME);
 
     // Verify no interactions with our test authorizer service (since the mock has no authorizer)
     assertEquals(authorizerService.clearAclCounter, 0, "clearAcls should not be called when authorizer is not present");
@@ -140,51 +112,21 @@ public class TestVeniceHelixAdminWithAcl {
 
   @Test
   public void testCleanupAclsForStoreWhenAuthorizerThrowsException() {
-    AclBinding aclBinding = new AclBinding(new Resource(STORE_NAME));
-    aclBinding.addAceEntry(new AceEntry(new Principal("admin"), Method.Read, Permission.ALLOW));
-    aclBinding.addAceEntry(new AceEntry(new Principal("admin"), Method.Write, Permission.ALLOW));
-    authorizerService.setAcls(aclBinding);
-
-    // Create a mock authorizer that throws exceptions
     AuthorizerService mockAuthorizerService = mock(AuthorizerService.class);
     doThrow(new RuntimeException("Test exception")).when(mockAuthorizerService).clearAcls(any(Resource.class));
-
-    // Create a new mock admin with the throwing authorizer
-    VeniceHelixAdmin mockAdmin = mock(VeniceHelixAdmin.class);
-    when(mockAdmin.getAuthorizerService()).thenReturn(Optional.of(mockAuthorizerService));
-    doCallRealMethod().when(mockAdmin).cleanupAclsForStore(any(Store.class), anyString(), anyString());
+    when(veniceAdminMock.getAuthorizerService()).thenReturn(Optional.of(mockAuthorizerService));
 
     // Verify that VeniceException is thrown
-    expectThrows(VeniceException.class, () -> mockAdmin.cleanupAclsForStore(store, STORE_NAME, CLUSTER_NAME));
-
+    expectThrows(VeniceException.class, () -> veniceAdminMock.cleanupAclsForStore(store, STORE_NAME, CLUSTER_NAME));
     // Verify the exception was thrown after the clearAcls call
     verify(mockAuthorizerService, times(1)).clearAcls(any(Resource.class));
   }
 
   @Test
   public void testCleanupAclsForStoreWithMultipleSystemStores() {
-    // Setup test data with multiple ACEs
-    AclBinding aclBinding = new AclBinding(new Resource(STORE_NAME));
-    aclBinding.addAceEntry(new AceEntry(new Principal("admin"), Method.Read, Permission.ALLOW));
-    aclBinding.addAceEntry(new AceEntry(new Principal("admin"), Method.Write, Permission.ALLOW));
-    authorizerService.setAcls(aclBinding);
-
     // Enable system stores on the Store object
-    // The implementation only cleans up ACLs for "enabled" system stores
     store.setDaVinciPushStatusStoreEnabled(true);
     store.setStoreMetaSystemStoreEnabled(true);
-
-    // Setup system store attributes
-    Map<String, SystemStoreAttributes> systemStores = new HashMap<>();
-    SystemStoreAttributesImpl davinciAttrs = new SystemStoreAttributesImpl();
-    davinciAttrs.setCurrentVersion(1);
-    systemStores.put(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getPrefix(), davinciAttrs);
-
-    SystemStoreAttributesImpl metaAttrs = new SystemStoreAttributesImpl();
-    metaAttrs.setCurrentVersion(1);
-    systemStores.put(VeniceSystemStoreType.META_STORE.getPrefix(), metaAttrs);
-
-    store.setSystemStores(systemStores);
 
     // Add ACLs for enabled system stores
     int expectedSystemStoreCount = 2; // DaVinci Push Status + Meta Store
@@ -197,10 +139,6 @@ public class TestVeniceHelixAdminWithAcl {
       authorizerService.setAcls(systemAcl);
     }
 
-    // Reset counter
-    authorizerService.clearAclCounter = 0;
-
-    // Call the method under test
     veniceAdminMock.cleanupAclsForStore(store, STORE_NAME, CLUSTER_NAME);
 
     // Verify the authorizer service was called to clear ACLs
