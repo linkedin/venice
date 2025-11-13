@@ -98,6 +98,7 @@ public class TopicManager implements Closeable {
                 .setMetricsRepository(context.getMetricsRepository())
                 .setVeniceProperties(context.getPubSubProperties(pubSubClusterAddress))
                 .setAdminClientName("TopicManager")
+                .setVeniceComponent(context.getVeniceComponent())
                 .build());
     this.topicMetadataFetcher = new TopicMetadataFetcher(pubSubClusterAddress, context, stats, pubSubAdminAdapter);
     this.logger.info(
