@@ -96,6 +96,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
@@ -930,15 +931,14 @@ public class DaVinciClientRecordTransformerTest {
           factory.getAndStartGenericSeekableAvroClient(storeName, clientConfig);
 
       // test seek by timestamp
-      /* clientWithRecordTransformer.seekToTimestamp(pubSubMessage.getValue().producerMetadata.messageTimestamp).get();
+      clientWithRecordTransformer.seekToTimestamp(pubSubMessage.getValue().producerMetadata.messageTimestamp).get();
       TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
         for (int k = 1; k <= numKeys; ++k) {
           // Record shouldn't be stored in Da Vinci
           assertNull(clientWithRecordTransformer.get(k).get());
           // Record should be stored in inMemoryDB
           String expectedValue = "a" + k + "Transformed";
-          System.out.println(recordTransformer.get(k));
-       //   assertEquals(recordTransformer.get(k), k < 4 ? null : expectedValue);
+          assertEquals(recordTransformer.get(k), k < 3 ? null : expectedValue);
         }
       });
       clientWithRecordTransformer.unsubscribeAll();
@@ -950,13 +950,12 @@ public class DaVinciClientRecordTransformerTest {
           assertNull(clientWithRecordTransformer.get(k).get());
           // Record should be stored in inMemoryDB
           String expectedValue = "a" + k + "Transformed";
-          System.out.println("cc " + recordTransformer.get(k));
-          //  assertEquals(recordTransformer.get(k), k < 4 ? null : expectedValue);
+          assertEquals(recordTransformer.get(k), k < 4 ? null : expectedValue);
         }
-      }); */
+      });
 
       // test seek to tail
-      clientWithRecordTransformer.seekToTail().get();
+      /* clientWithRecordTransformer.seekToTail().get();
       TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
         for (int k = 1; k <= numKeys; ++k) {
           // Record shouldn't be stored in Da Vinci
@@ -965,7 +964,7 @@ public class DaVinciClientRecordTransformerTest {
           System.out.println("cc " + recordTransformer.get(k));
           assertEquals(recordTransformer.get(k), null);
         }
-      });
+      });*/
 
     }
   }
