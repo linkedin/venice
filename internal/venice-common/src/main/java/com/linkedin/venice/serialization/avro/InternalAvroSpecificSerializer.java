@@ -104,18 +104,26 @@ public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends SpecificReco
 
   private final BiConsumer<Integer, Schema> newSchemaEncountered;
 
+  protected InternalAvroSpecificSerializer(
+      AvroProtocolDefinition protocolDef,
+      Integer payloadOffsetOverride,
+      Schema compiledProtocolSchema) {
+    this(protocolDef, payloadOffsetOverride, (schemaId, schema) -> {}, compiledProtocolSchema);
+  }
+
   protected InternalAvroSpecificSerializer(AvroProtocolDefinition protocolDef) {
     this(protocolDef, null);
   }
 
   protected InternalAvroSpecificSerializer(AvroProtocolDefinition protocolDef, Integer payloadOffsetOverride) {
-    this(protocolDef, payloadOffsetOverride, (schemaId, schema) -> {});
+    this(protocolDef, payloadOffsetOverride, (schemaId, schema) -> {}, protocolDef.getCurrentProtocolVersionSchema());
   }
 
   protected InternalAvroSpecificSerializer(
       AvroProtocolDefinition protocolDef,
       Integer payloadOffsetOverride,
-      BiConsumer<Integer, Schema> newSchemaEncountered) {
+      BiConsumer<Integer, Schema> newSchemaEncountered,
+      Schema compiledProtocolSchema) {
     // Magic byte handling
     if (protocolDef.getMagicByte().isPresent()) {
       this.magicByte = protocolDef.getMagicByte().get();
@@ -124,6 +132,8 @@ public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends SpecificReco
       this.magicByte = 0;
       this.MAGIC_BYTE_LENGTH = 0;
     }
+
+    this.compiledProtocol = compiledProtocolSchema;
 
     // Protocol version handling
     this.PROTOCOL_VERSION_OFFSET = MAGIC_BYTE_OFFSET + MAGIC_BYTE_LENGTH;
@@ -156,9 +166,8 @@ public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends SpecificReco
       }
       this.PAYLOAD_OFFSET = payloadOffsetOverride;
     }
-    this.compiledProtocol = protocolDef.getCurrentProtocolVersionSchema();
 
-    Map<Integer, Schema> protocolSchemaMap = Utils.getAllSchemasFromResources(protocolDef);
+    Map<Integer, Schema> protocolSchemaMap = Utils.getAllSchemasFromResources(protocolDef, compiledProtocolSchema);
     int minimumSchemaId = protocolSchemaMap.keySet()
         .stream()
         .min(Integer::compareTo)
