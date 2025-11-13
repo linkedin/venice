@@ -69,7 +69,6 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
   private static final String TEST_ZOOKEEPER_ADDRESS = "test_zookeeper";
   public static final String D2_SERVICE_NAME = "ChildController";
   private static final String TEST_BOOTSTRAP_FILE_SYSTEM_PATH = "/export/content/data/change-capture";
-  private static final long TEST_ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES = 1024L;
   private static final long TEST_DB_SYNC_BYTES_INTERVAL = 1000L;
   private static final int PARTITION_COUNT = 3;
   private static final int POLL_TIMEOUT = 1;
@@ -83,7 +82,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
 
   private Schema keySchema;
   private Schema valueSchema;
-  private VeniceChangelogConsumerDaVinciRecordTransformerImpl<Integer, Integer> bootstrappingVeniceChangelogConsumer;
+  private VeniceChangelogConsumerDaVinciRecordTransformerImpl<Integer, Integer> statefulVeniceChangelogConsumer;
   private VeniceChangelogConsumerDaVinciRecordTransformerImpl.DaVinciRecordTransformerChangelogConsumer recordTransformer;
   private VeniceChangelogConsumerDaVinciRecordTransformerImpl.DaVinciRecordTransformerChangelogConsumer futureRecordTransformer;
   private ChangelogClientConfig changelogClientConfig;
@@ -113,7 +112,6 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
         .setD2ServiceName(DEFAULT_CLUSTER_DISCOVERY_D2_SERVICE_NAME)
         .setConsumerProperties(new Properties())
         .setLocalD2ZkHosts(TEST_ZOOKEEPER_ADDRESS)
-        .setRocksDBBlockCacheSizeInBytes(TEST_ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES)
         .setDatabaseSyncBytesInterval(TEST_DB_SYNC_BYTES_INTERVAL)
         .setD2Client(mock(D2Client.class))
         .setShouldCompactMessages(true);
@@ -123,19 +121,18 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
         .setMetricsRepository(getVeniceMetricsRepository(CHANGE_DATA_CAPTURE_CLIENT, CONSUMER_METRIC_ENTITIES, true));
 
     veniceChangelogConsumerClientFactory = spy(new VeniceChangelogConsumerClientFactory(changelogClientConfig, null));
-    bootstrappingVeniceChangelogConsumer = spy(
+    statefulVeniceChangelogConsumer = spy(
         new VeniceChangelogConsumerDaVinciRecordTransformerImpl<>(
             changelogClientConfig,
             veniceChangelogConsumerClientFactory));
     assertFalse(
-        bootstrappingVeniceChangelogConsumer.getRecordTransformerConfig().isRecordTransformationEnabled(),
+        statefulVeniceChangelogConsumer.getRecordTransformerConfig().isRecordTransformationEnabled(),
         "Record transformation should be disabled.");
 
     mockDaVinciRecordTransformerConfig = mock(DaVinciRecordTransformerConfig.class);
-    recordTransformer =
-        bootstrappingVeniceChangelogConsumer.new DaVinciRecordTransformerChangelogConsumer(TEST_STORE_NAME,
-            CURRENT_STORE_VERSION, keySchema, valueSchema, valueSchema, mockDaVinciRecordTransformerConfig);
-    futureRecordTransformer = bootstrappingVeniceChangelogConsumer.new DaVinciRecordTransformerChangelogConsumer(
+    recordTransformer = statefulVeniceChangelogConsumer.new DaVinciRecordTransformerChangelogConsumer(TEST_STORE_NAME,
+        CURRENT_STORE_VERSION, keySchema, valueSchema, valueSchema, mockDaVinciRecordTransformerConfig);
+    futureRecordTransformer = statefulVeniceChangelogConsumer.new DaVinciRecordTransformerChangelogConsumer(
         TEST_STORE_NAME, FUTURE_STORE_VERSION, keySchema, valueSchema, valueSchema, mockDaVinciRecordTransformerConfig);
 
     // Replace daVinciClient with a mock
@@ -149,14 +146,13 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
         Field daVinciClientField =
             VeniceChangelogConsumerDaVinciRecordTransformerImpl.class.getDeclaredField("daVinciClient");
         daVinciClientField.setAccessible(true);
-        daVinciClientField.set(bootstrappingVeniceChangelogConsumer, mockDaVinciClient);
+        daVinciClientField.set(statefulVeniceChangelogConsumer, mockDaVinciClient);
 
         Field changeCaptureStatsField =
             VeniceChangelogConsumerDaVinciRecordTransformerImpl.class.getDeclaredField("changeCaptureStats");
         changeCaptureStatsField.setAccessible(true);
-        changeCaptureStats =
-            spy((BasicConsumerStats) changeCaptureStatsField.get(bootstrappingVeniceChangelogConsumer));
-        changeCaptureStatsField.set(bootstrappingVeniceChangelogConsumer, changeCaptureStats);
+        changeCaptureStats = spy((BasicConsumerStats) changeCaptureStatsField.get(statefulVeniceChangelogConsumer));
+        changeCaptureStatsField.set(statefulVeniceChangelogConsumer, changeCaptureStats);
 
       } catch (NoSuchFieldException | IllegalAccessException e) {
         throw new RuntimeException(e);
@@ -176,67 +172,74 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
   @Test
   public void testStartAllPartitions() throws ExecutionException, InterruptedException {
     // Completable future should finish even when no records are consumed after timeout
-    bootstrappingVeniceChangelogConsumer.setStartTimeout(1);
-    bootstrappingVeniceChangelogConsumer.start().get();
+    statefulVeniceChangelogConsumer.setStartTimeout(1);
+    statefulVeniceChangelogConsumer.start().get();
 
-    assertTrue(bootstrappingVeniceChangelogConsumer.isStarted(), "isStarted should be true");
+    assertTrue(statefulVeniceChangelogConsumer.isStarted(), "isStarted should be true");
 
     verify(mockDaVinciClient).start();
-    assertEquals(bootstrappingVeniceChangelogConsumer.getSubscribedPartitions(), partitionSet);
+    assertEquals(statefulVeniceChangelogConsumer.getSubscribedPartitions(), partitionSet);
   }
 
   @Test
   public void testStartWithEmptyPartitions() {
-    bootstrappingVeniceChangelogConsumer.start(Collections.emptySet());
-    assertTrue(bootstrappingVeniceChangelogConsumer.isStarted(), "isStarted should be true");
+    statefulVeniceChangelogConsumer.start(Collections.emptySet());
+    assertTrue(statefulVeniceChangelogConsumer.isStarted(), "isStarted should be true");
 
     verify(mockDaVinciClient).start();
-    assertEquals(bootstrappingVeniceChangelogConsumer.getSubscribedPartitions(), partitionSet);
+    assertEquals(statefulVeniceChangelogConsumer.getSubscribedPartitions(), partitionSet);
   }
 
   @Test
   public void testStartSpecificPartitions() {
     Set<Integer> partitionSet = Collections.singleton(1);
-    bootstrappingVeniceChangelogConsumer.start(partitionSet);
-    assertTrue(bootstrappingVeniceChangelogConsumer.isStarted(), "isStarted should be true");
+    statefulVeniceChangelogConsumer.start(partitionSet);
+    assertTrue(statefulVeniceChangelogConsumer.isStarted(), "isStarted should be true");
 
     verify(mockDaVinciClient).start();
-    assertEquals(bootstrappingVeniceChangelogConsumer.getSubscribedPartitions(), partitionSet);
+    assertEquals(statefulVeniceChangelogConsumer.getSubscribedPartitions(), partitionSet);
   }
 
   @Test
   public void testStartMultipleTimes() {
     Set<Integer> partitionSet = Collections.singleton(1);
-    bootstrappingVeniceChangelogConsumer.start();
+    statefulVeniceChangelogConsumer.start();
+    recordTransformer.onStartVersionIngestion(true);
+    assertEquals(statefulVeniceChangelogConsumer.getLastHeartbeatPerPartition().size(), PARTITION_COUNT);
 
-    assertThrows(VeniceClientException.class, () -> bootstrappingVeniceChangelogConsumer.start());
-    assertThrows(VeniceException.class, () -> bootstrappingVeniceChangelogConsumer.start(partitionSet));
+    assertThrows(VeniceClientException.class, () -> statefulVeniceChangelogConsumer.start());
+    assertThrows(VeniceException.class, () -> statefulVeniceChangelogConsumer.start(partitionSet));
 
-    bootstrappingVeniceChangelogConsumer.unsubscribeAll();
-    verify(bootstrappingVeniceChangelogConsumer).clearPartitionState(eq(Collections.emptySet()));
-    bootstrappingVeniceChangelogConsumer.start();
+    statefulVeniceChangelogConsumer.unsubscribeAll();
+    verify(statefulVeniceChangelogConsumer).clearPartitionState(eq(Collections.emptySet()));
+    assertTrue(statefulVeniceChangelogConsumer.getLastHeartbeatPerPartition().isEmpty());
 
-    bootstrappingVeniceChangelogConsumer.unsubscribe(partitionSet);
-    verify(bootstrappingVeniceChangelogConsumer).clearPartitionState(partitionSet);
-    bootstrappingVeniceChangelogConsumer.start(partitionSet);
+    statefulVeniceChangelogConsumer.start();
+    recordTransformer.onStartVersionIngestion(true);
+    statefulVeniceChangelogConsumer.unsubscribe(partitionSet);
+    verify(statefulVeniceChangelogConsumer).clearPartitionState(partitionSet);
+    assertFalse(statefulVeniceChangelogConsumer.getLastHeartbeatPerPartition().isEmpty());
+    assertEquals(statefulVeniceChangelogConsumer.getLastHeartbeatPerPartition().size(), PARTITION_COUNT - 1);
+
+    statefulVeniceChangelogConsumer.start(partitionSet);
   }
 
   @Test
   public void testStop() throws Exception {
-    bootstrappingVeniceChangelogConsumer.start();
-    assertTrue(bootstrappingVeniceChangelogConsumer.isStarted(), "isStarted should be true");
+    statefulVeniceChangelogConsumer.start();
+    assertTrue(statefulVeniceChangelogConsumer.isStarted(), "isStarted should be true");
 
-    bootstrappingVeniceChangelogConsumer.stop();
-    assertFalse(bootstrappingVeniceChangelogConsumer.isStarted(), "isStarted should be false");
+    statefulVeniceChangelogConsumer.stop();
+    assertFalse(statefulVeniceChangelogConsumer.isStarted(), "isStarted should be false");
 
     verify(mockDaVinciClient).close();
-    verify(bootstrappingVeniceChangelogConsumer).clearPartitionState(eq(Collections.emptySet()));
+    verify(statefulVeniceChangelogConsumer).clearPartitionState(eq(Collections.emptySet()));
     verify(veniceChangelogConsumerClientFactory).deregisterClient(changelogClientConfig.getConsumerName());
   }
 
   @Test
   public void testPutAndDelete() {
-    bootstrappingVeniceChangelogConsumer.start();
+    statefulVeniceChangelogConsumer.start();
     recordTransformer.onStartVersionIngestion(true);
 
     for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
@@ -253,7 +256,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
 
   @Test
   public void testVersionSwap() {
-    bootstrappingVeniceChangelogConsumer.start();
+    statefulVeniceChangelogConsumer.start();
     recordTransformer.onStartVersionIngestion(true);
     // Setting this to true to verify that the next current version doesn't start serving immediately.
     // It should only serve when it processes the VSM.
@@ -315,7 +318,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
     Field partitionToVersionToServeField =
         VeniceChangelogConsumerDaVinciRecordTransformerImpl.class.getDeclaredField("partitionToVersionToServe");
     partitionToVersionToServeField.setAccessible(true);
-    partitionToVersionToServeField.set(bootstrappingVeniceChangelogConsumer, null);
+    partitionToVersionToServeField.set(statefulVeniceChangelogConsumer, null);
 
     assertThrows(
         Exception.class,
@@ -325,7 +328,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
 
   @Test
   public void testCompletableFutureFromStart() {
-    CompletableFuture startCompletableFuture = bootstrappingVeniceChangelogConsumer.start();
+    CompletableFuture startCompletableFuture = statefulVeniceChangelogConsumer.start();
     recordTransformer.onStartVersionIngestion(true);
     futureRecordTransformer.onStartVersionIngestion(false);
 
@@ -349,19 +352,19 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
 
   @Test
   public void testCompletableFutureFromStartException() {
-    assertFalse(bootstrappingVeniceChangelogConsumer.isCaughtUp());
+    assertFalse(statefulVeniceChangelogConsumer.isCaughtUp());
 
-    CompletableFuture startCompletableFuture = bootstrappingVeniceChangelogConsumer.start();
+    CompletableFuture startCompletableFuture = statefulVeniceChangelogConsumer.start();
     recordTransformer.onStartVersionIngestion(true);
 
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
       verify(mockDaVinciClient).subscribe(partitionSet);
       assertFalse(startCompletableFuture.isDone());
     });
-    assertFalse(bootstrappingVeniceChangelogConsumer.isCaughtUp());
+    assertFalse(statefulVeniceChangelogConsumer.isCaughtUp());
 
     daVinciClientSubscribeFuture.completeExceptionally(new VeniceException("Test exception"));
-    assertFalse(bootstrappingVeniceChangelogConsumer.isCaughtUp());
+    assertFalse(statefulVeniceChangelogConsumer.isCaughtUp());
 
     assertThrows(ExecutionException.class, startCompletableFuture::get);
   }
@@ -383,16 +386,16 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
 
     Field bufferLockField = VeniceChangelogConsumerDaVinciRecordTransformerImpl.class.getDeclaredField("bufferLock");
     bufferLockField.setAccessible(true);
-    bufferLockField.set(bootstrappingVeniceChangelogConsumer, bufferLock);
+    bufferLockField.set(statefulVeniceChangelogConsumer, bufferLock);
 
     Field bufferIsFullConditionField =
         VeniceChangelogConsumerDaVinciRecordTransformerImpl.class.getDeclaredField("bufferIsFullCondition");
     bufferIsFullConditionField.setAccessible(true);
-    bufferIsFullConditionField.set(bootstrappingVeniceChangelogConsumer, bufferIsFullCondition);
+    bufferIsFullConditionField.set(statefulVeniceChangelogConsumer, bufferIsFullCondition);
 
     assertEquals(changelogClientConfig.getMaxBufferSize(), MAX_BUFFER_SIZE);
 
-    bootstrappingVeniceChangelogConsumer.start();
+    statefulVeniceChangelogConsumer.start();
     recordTransformer.onStartVersionIngestion(true);
 
     int partitionId = 1;
@@ -430,14 +433,14 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
 
     // Buffer is full, so poll shouldn't await on the buffer full condition
     int timeoutInMs = 100;
-    bootstrappingVeniceChangelogConsumer.poll(timeoutInMs);
+    statefulVeniceChangelogConsumer.poll(timeoutInMs);
     verify(bufferIsFullCondition, never()).await(timeoutInMs, TimeUnit.MILLISECONDS);
 
     reset(bufferLock);
     reset(bufferIsFullCondition);
 
     // Empty the buffer and verify that all CompletableFutures are done
-    bootstrappingVeniceChangelogConsumer.poll(timeoutInMs);
+    statefulVeniceChangelogConsumer.poll(timeoutInMs);
     verify(bufferLock).lock();
     verify(bufferLock).unlock();
     // Buffer isn't full, so poll should await on the buffer is full condition and timeout
@@ -455,7 +458,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
      * due to the condition being signaled after the processPut calls fill up the buffer.
      */
     CompletableFuture.supplyAsync(() -> {
-      bootstrappingVeniceChangelogConsumer.poll(timeoutInMs);
+      statefulVeniceChangelogConsumer.poll(timeoutInMs);
       return null;
     });
 
@@ -477,17 +480,17 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
 
   @Test
   public void testPollFailure() throws NoSuchFieldException, IllegalAccessException {
-    VeniceChangelogConsumerDaVinciRecordTransformerImpl bootstrappingVeniceChangelogConsumer =
+    VeniceChangelogConsumerDaVinciRecordTransformerImpl statefulVeniceChangelogConsumer =
         mock(VeniceChangelogConsumerDaVinciRecordTransformerImpl.class);
 
     Field changeCaptureStatsField =
         VeniceChangelogConsumerDaVinciRecordTransformerImpl.class.getDeclaredField("changeCaptureStats");
     changeCaptureStatsField.setAccessible(true);
     BasicConsumerStats consumerStats = mock(BasicConsumerStats.class);
-    changeCaptureStatsField.set(bootstrappingVeniceChangelogConsumer, consumerStats);
+    changeCaptureStatsField.set(statefulVeniceChangelogConsumer, consumerStats);
 
-    doCallRealMethod().when(bootstrappingVeniceChangelogConsumer).poll(POLL_TIMEOUT);
-    assertThrows(Exception.class, () -> bootstrappingVeniceChangelogConsumer.poll(POLL_TIMEOUT));
+    doCallRealMethod().when(statefulVeniceChangelogConsumer).poll(POLL_TIMEOUT);
+    assertThrows(Exception.class, () -> statefulVeniceChangelogConsumer.poll(POLL_TIMEOUT));
 
     verify(consumerStats).emitPollCountMetrics(FAIL);
     verify(consumerStats, times(0)).emitRecordsConsumedCountMetrics(anyInt());
@@ -495,11 +498,12 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
 
   @Test
   public void testMetricReportingThread() {
-    bootstrappingVeniceChangelogConsumer.setBackgroundReporterThreadSleepIntervalSeconds(1L);
+    statefulVeniceChangelogConsumer.setBackgroundReporterThreadSleepIntervalSeconds(1L);
 
     verify(changeCaptureStats, times(0)).emitCurrentConsumingVersionMetrics(anyInt(), anyInt());
     verify(changeCaptureStats, times(0)).emitHeartBeatDelayMetrics(anyLong());
-    bootstrappingVeniceChangelogConsumer.start();
+    assertEquals(statefulVeniceChangelogConsumer.getLastHeartbeatPerPartition().size(), 0);
+    statefulVeniceChangelogConsumer.start();
 
     recordTransformer.onStartVersionIngestion(true);
     futureRecordTransformer.onStartVersionIngestion(false);
@@ -513,6 +517,9 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
           .emitCurrentConsumingVersionMetrics(CURRENT_STORE_VERSION, CURRENT_STORE_VERSION);
       verify(changeCaptureStats, atLeastOnce()).emitHeartBeatDelayMetrics(anyLong());
     });
+    assertEquals(statefulVeniceChangelogConsumer.getLastHeartbeatPerPartition().size(), partitionSet.size());
+    assertTrue(
+        statefulVeniceChangelogConsumer.getLastHeartbeatPerPartition().get(partitionId) < System.currentTimeMillis());
 
     // Perform version swap on one partition
     futureRecordTransformer.onVersionSwap(CURRENT_STORE_VERSION, FUTURE_STORE_VERSION, 0);
@@ -528,9 +535,9 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
 
   @Test
   public void testIsCaughtUp() {
-    assertFalse(bootstrappingVeniceChangelogConsumer.isCaughtUp());
+    assertFalse(statefulVeniceChangelogConsumer.isCaughtUp());
 
-    CompletableFuture startCompletableFuture = bootstrappingVeniceChangelogConsumer.start(partitionSet);
+    CompletableFuture startCompletableFuture = statefulVeniceChangelogConsumer.start(partitionSet);
     recordTransformer.onStartVersionIngestion(true);
 
     // Add records for all but 1 partition to complete the start future, but to not complete the subscribe future.
@@ -542,21 +549,21 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
       verify(mockDaVinciClient).subscribe(partitionSet);
       assertTrue(startCompletableFuture.isDone());
     });
-    assertFalse(bootstrappingVeniceChangelogConsumer.isCaughtUp());
+    assertFalse(statefulVeniceChangelogConsumer.isCaughtUp());
 
     // Add record for last partition
     recordTransformer.processPut(keys.get(PARTITION_COUNT - 1), lazyValue, PARTITION_COUNT - 1, recordMetadata);
     daVinciClientSubscribeFuture.complete(null);
 
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
-      assertTrue(bootstrappingVeniceChangelogConsumer.isCaughtUp());
+      assertTrue(statefulVeniceChangelogConsumer.isCaughtUp());
     });
   }
 
   private void verifyPuts(int value, boolean compactionEvent) {
     clearInvocations(changeCaptureStats);
     Collection<PubSubMessage<Integer, ChangeEvent<Integer>, VeniceChangeCoordinate>> pubSubMessages =
-        bootstrappingVeniceChangelogConsumer.poll(POLL_TIMEOUT);
+        statefulVeniceChangelogConsumer.poll(POLL_TIMEOUT);
 
     if (compactionEvent) {
       verify(changeCaptureStats).emitRecordsConsumedCountMetrics(PARTITION_COUNT * 2);
@@ -579,7 +586,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
     }
 
     clearInvocations(changeCaptureStats);
-    assertEquals(bootstrappingVeniceChangelogConsumer.poll(POLL_TIMEOUT).size(), 0, "Buffer should be empty");
+    assertEquals(statefulVeniceChangelogConsumer.poll(POLL_TIMEOUT).size(), 0, "Buffer should be empty");
     verify(changeCaptureStats).emitRecordsConsumedCountMetrics(0);
     verify(changeCaptureStats).emitPollCountMetrics(VeniceResponseStatusCategory.SUCCESS);
   }
@@ -587,7 +594,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
   private void verifyDeletes() {
     clearInvocations(changeCaptureStats);
     Collection<PubSubMessage<Integer, ChangeEvent<Integer>, VeniceChangeCoordinate>> pubSubMessages =
-        bootstrappingVeniceChangelogConsumer.poll(POLL_TIMEOUT);
+        statefulVeniceChangelogConsumer.poll(POLL_TIMEOUT);
     verify(changeCaptureStats).emitRecordsConsumedCountMetrics(PARTITION_COUNT);
     verify(changeCaptureStats).emitPollCountMetrics(VeniceResponseStatusCategory.SUCCESS);
     assertEquals(pubSubMessages.size(), PARTITION_COUNT);
@@ -602,7 +609,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
     }
 
     clearInvocations(changeCaptureStats);
-    assertEquals(bootstrappingVeniceChangelogConsumer.poll(POLL_TIMEOUT).size(), 0, "Buffer should be empty");
+    assertEquals(statefulVeniceChangelogConsumer.poll(POLL_TIMEOUT).size(), 0, "Buffer should be empty");
     verify(changeCaptureStats).emitRecordsConsumedCountMetrics(0);
     verify(changeCaptureStats).emitPollCountMetrics(VeniceResponseStatusCategory.SUCCESS);
   }

@@ -59,7 +59,7 @@ import org.apache.logging.log4j.Logger;
 
 
 public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
-    implements BootstrappingVeniceChangelogConsumer<K, V>, VeniceChangelogConsumer<K, V> {
+    implements StatefulVeniceChangelogConsumer<K, V>, VeniceChangelogConsumer<K, V> {
   private static final Logger LOGGER = LogManager.getLogger(VeniceChangelogConsumerDaVinciRecordTransformerImpl.class);
   private long START_TIMEOUT_IN_SECONDS = 60;
 
@@ -256,7 +256,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
     return startFuture;
   }
 
-  // BootstrappingVeniceChangelogConsumer methods below
+  // StatefulVeniceChangelogConsumer methods below
 
   @Override
   public synchronized CompletableFuture<Void> start(Set<Integer> partitions) {
@@ -485,8 +485,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
       // Emit heartbeat delay metrics based on last heartbeat per partition
       long now = System.currentTimeMillis();
       long maxLag = Long.MIN_VALUE;
-      Map<Integer, Long> heartbeatSnapshot = new HashMap<>(currentVersionLastHeartbeat);
-      for (Long heartBeatTimestamp: heartbeatSnapshot.values()) {
+      for (Long heartBeatTimestamp: getLastHeartbeatPerPartition().values()) {
         if (heartBeatTimestamp != null) {
           maxLag = Math.max(maxLag, now - heartBeatTimestamp);
         }
@@ -510,6 +509,12 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
       // Record max and min consumed versions
       changeCaptureStats.emitCurrentConsumingVersionMetrics(minVersion, maxVersion);
     }
+  }
+
+  @Override
+  public Map<Integer, Long> getLastHeartbeatPerPartition() {
+    // Snapshot the heartbeat map to avoid iterating while it is being updated concurrently
+    return new HashMap<>(currentVersionLastHeartbeat);
   }
 
   @VisibleForTesting
