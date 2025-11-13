@@ -164,6 +164,7 @@ public class VeniceChangelogConsumerClientFactory {
       ChangelogClientConfig newStoreChangelogClientConfig =
           getNewStoreChangelogClientConfig(storeName).setSpecificKey(keyClass)
               .setSpecificValue(valueClass)
+              .setConsumerName(storeName)
               .setSpecificValueSchema(valueSchema)
               .setIsStateful(true);
 
