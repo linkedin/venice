@@ -32,7 +32,7 @@ public interface AuthorizerService {
    * @param principal who is performing the method on the resource.
    * @return {@code true} if principal has the permission to perform the method on the resource, otherwise return {@code false}.
    */
-  public boolean canAccess(Method method, Resource resource, Principal principal);
+  boolean canAccess(Method method, Resource resource, Principal principal);
 
   /**
    * Check if the principal has the permission to perform the method on the resource. Implementation should define how to handle
@@ -43,7 +43,7 @@ public interface AuthorizerService {
    * @param accessorCert who is performing the method on the resource.
    * @return {@code true} if principal has the permission to perform the method on the resource, otherwise return {@code false}.
    */
-  public boolean canAccess(Method method, Resource resource, X509Certificate accessorCert);
+  boolean canAccess(Method method, Resource resource, X509Certificate accessorCert);
 
   /**
    * Return a list of existing AceEntries present for the given resource.
@@ -51,7 +51,7 @@ public interface AuthorizerService {
    * @param resource
    * @return {@link AclBinding} object containg the list of existing aceEntries. The AceEntry list may be empty if there is no existing ACL's provisioned.
    */
-  public AclBinding describeAcls(Resource resource);
+  AclBinding describeAcls(Resource resource);
 
   /**
    * This will set the AceEntries in provided AclBinding object to be the current set of ACL's for the resource. This
@@ -59,14 +59,14 @@ public interface AuthorizerService {
    *
    * @param aclBinding A fully contained object having a list of AceEntries associated with the resource.
    */
-  public void setAcls(AclBinding aclBinding);
+  void setAcls(AclBinding aclBinding);
 
   /**
    * This will clear the existing AceEntries for a resource.
    *
    * @param resource the resource for which all ACl's will be cleared.
    */
-  public void clearAcls(Resource resource);
+  void clearAcls(Resource resource);
 
   /**
    * This will add a single AceEntry to the existing AceEntries for a resource. Implementation may or may not allow duplicate/conflicting
@@ -75,7 +75,7 @@ public interface AuthorizerService {
    * @param resource The resource for which an AceEntry is getting added.
    * @param aceEntry The AceEntry to be removed.
    */
-  public void addAce(Resource resource, AceEntry aceEntry);
+  void addAce(Resource resource, AceEntry aceEntry);
 
   /**
    * This will remove a single AceEntry from the existing AceEntries for a resource. Implementation should define how to handle
@@ -85,7 +85,7 @@ public interface AuthorizerService {
    * @param resource The resource for which an AceEntry is getting removed.
    * @param aceEntry The AceEntry to be removed.
    */
-  public void removeAce(Resource resource, AceEntry aceEntry);
+  void removeAce(Resource resource, AceEntry aceEntry);
 
   /**
    * This may perform any initialization steps that may be necessary before start provisioning any ACL's for a resource. This
@@ -95,8 +95,8 @@ public interface AuthorizerService {
    * Implementation should mandate if this needs to be called before start provisioning any ACL's for the resource.
    * @param resource
    */
-  public default void setupResource(Resource resource) {
-  };
+  default void setupResource(Resource resource) {
+  }
 
   /**
    * This may perform any finalization steps that may be necessary after all ACL's for a resource is deleted and the resource will
@@ -107,7 +107,6 @@ public interface AuthorizerService {
    * Implementation should mandate if this needs to be called after deleting all ACL's for the resource.
    * @param resource
    */
-  public default void clearResource(Resource resource) {
-  };
-
+  default void clearResource(Resource resource) {
+  }
 }
