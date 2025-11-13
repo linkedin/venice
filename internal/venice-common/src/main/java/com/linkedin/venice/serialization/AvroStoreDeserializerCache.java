@@ -48,6 +48,14 @@ public class AvroStoreDeserializerCache<T> implements StoreDeserializerCache<T> 
         (writerId, readerId) -> deserializerGetter.apply(schemaGetter.apply(writerId), schemaGetter.apply(readerId)));
   }
 
+  /**
+   * Constructor that allows custom deserializer factory to be provided.
+   * This enables support for custom serialization formats (e.g., Protocol Buffers).
+   * This variant assumes that the deserializer only needs the writer schema which is true for the case Protocol Buffers.
+   *
+   * @param schemaGetter Function to retrieve schema by schema ID
+   * @param deserializerGetter Function to create deserializer given the writer schema
+   */
   public AvroStoreDeserializerCache(
       IntFunction<Schema> schemaGetter,
       Function<Schema, RecordDeserializer<T>> deserializerGetter) {
