@@ -80,7 +80,6 @@ import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_HYBRID_TIME
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_REAL_TIME_TOPIC_NAME;
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_REWIND_TIME_IN_SECONDS;
 import static com.linkedin.venice.meta.Store.NON_EXISTING_VERSION;
-import com.linkedin.venice.meta.SystemStore;
 import static com.linkedin.venice.meta.Version.VERSION_SEPARATOR;
 import static com.linkedin.venice.meta.VersionStatus.CREATED;
 import static com.linkedin.venice.meta.VersionStatus.ERROR;
@@ -232,6 +231,7 @@ import com.linkedin.venice.meta.StoreDataAudit;
 import com.linkedin.venice.meta.StoreGraveyard;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.StoreVersionInfo;
+import com.linkedin.venice.meta.SystemStore;
 import com.linkedin.venice.meta.VeniceETLStrategy;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
@@ -5615,15 +5615,7 @@ public class VeniceParentHelixAdmin implements Admin {
 
   @Override
   public int getLargestUsedRTVersion(String clusterName, String storeName) {
-    Map<String, ControllerClient> childControllers = getVeniceHelixAdmin().getControllerClientMap(clusterName);
-    int aggregatedLargestUsedRTVersionNumber = getVeniceHelixAdmin().getLargestUsedRTVersion(clusterName, storeName);
-    for (Map.Entry<String, ControllerClient> controller: childControllers.entrySet()) {
-      VersionResponse response = controller.getValue().getStoreLargestUsedVersion(clusterName, storeName);
-      if (response.getVersion() > aggregatedLargestUsedRTVersionNumber) {
-        aggregatedLargestUsedRTVersionNumber = response.getVersion();
-      }
-    }
-    return aggregatedLargestUsedRTVersionNumber;
+    return getVeniceHelixAdmin().getLargestUsedRTVersion(clusterName, storeName);
   }
 
   /**

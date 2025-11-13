@@ -562,9 +562,15 @@ public class DaVinciBackend implements Closeable {
     return storeRepository;
   }
 
+  /**
+   * Resolves and returns the store object for the given store name.
+   * For user system stores, this returns the SystemStoreAttributes from the parent user store.
+   * For regular stores and shared system stores, this returns the Store object directly.
+   */
   public final Object getStore(String storeName) {
     VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(storeName);
     if (systemStoreType != null) {
+      // it is a user system store
       String userStoreName = VeniceSystemStoreType.extractUserStoreName(storeName);
       Store userStore = storeRepository.getStore(userStoreName);
       Map<String, SystemStoreAttributes> systemStores = userStore.getSystemStores();

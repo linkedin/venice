@@ -5282,7 +5282,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     if (!store.isHybrid()) {
       String realTimeTopic = Utils.getRealTimeTopicName(store);
       if (realTimeTopic != null) {
-        PubSubTopic realTimeTopicForBatchStore = pubSubTopicRepository.getTopic(Utils.getRealTimeTopicName(store));
+        PubSubTopic realTimeTopicForBatchStore = pubSubTopicRepository.getTopic(realTimeTopic);
         TopicManager topicManager = getTopicManagerForCluster(clusterConfig);
         if (topicManager.containsTopic(realTimeTopicForBatchStore)) {
           int rtPartitionCount = topicManager.getPartitionCount(realTimeTopicForBatchStore);
