@@ -3218,7 +3218,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   protected void processStartOfIncrementalPush(
       ControlMessage startOfIncrementalPush,
-      PartitionConsumptionState partitionConsumptionState) {
+      PartitionConsumptionState partitionConsumptionState,
+      long pubSubMessageTime) {
     CharSequence startVersion = ((StartOfIncrementalPush) startOfIncrementalPush.controlMessageUnion).version;
     if (!batchReportIncPushStatusEnabled || partitionConsumptionState.isComplete()) {
       ingestionNotificationDispatcher
@@ -3226,13 +3227,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       partitionConsumptionState.setTrackingIncrementalPushStatus(
           startVersion.toString(),
           ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED.getValue(),
-          System.currentTimeMillis());
+          pubSubMessageTime);
     }
   }
 
   protected void processEndOfIncrementalPush(
       ControlMessage endOfIncrementalPush,
-      PartitionConsumptionState partitionConsumptionState) {
+      PartitionConsumptionState partitionConsumptionState,
+      long pubSubMessageTime) {
     CharSequence endVersion = ((EndOfIncrementalPush) endOfIncrementalPush.controlMessageUnion).version;
     if (!batchReportIncPushStatusEnabled || partitionConsumptionState.isComplete()) {
       ingestionNotificationDispatcher
@@ -3241,7 +3243,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       partitionConsumptionState.setTrackingIncrementalPushStatus(
           endVersion.toString(),
           ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED.getValue(),
-          System.currentTimeMillis());
+          pubSubMessageTime);
     } else {
       LOGGER.info(
           "Adding incremental push: {} to pending batch report list for replica: {}.",
@@ -3284,6 +3286,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       ControlMessage controlMessage,
       int partition,
       PubSubPosition offset,
+      long pubSubMessageTime,
       PartitionConsumptionState partitionConsumptionState) {
     /**
      * If leader consumes control messages from topics other than version topic, it should produce
@@ -3326,10 +3329,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         }
         break;
       case START_OF_INCREMENTAL_PUSH:
-        processStartOfIncrementalPush(controlMessage, partitionConsumptionState);
+        processStartOfIncrementalPush(controlMessage, partitionConsumptionState, pubSubMessageTime);
         break;
       case END_OF_INCREMENTAL_PUSH:
-        processEndOfIncrementalPush(controlMessage, partitionConsumptionState);
+        processEndOfIncrementalPush(controlMessage, partitionConsumptionState, pubSubMessageTime);
         break;
       case TOPIC_SWITCH:
         TopicSwitch topicSwitch = (TopicSwitch) controlMessage.controlMessageUnion;
@@ -3426,6 +3429,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             controlMessage,
             consumerRecord.getTopicPartition().getPartitionNumber(),
             consumerRecord.getPosition(),
+            consumerRecord.getPubSubMessageTime(),
             partitionConsumptionState);
         try {
           if (controlMessage.controlMessageType == START_OF_SEGMENT.getValue()

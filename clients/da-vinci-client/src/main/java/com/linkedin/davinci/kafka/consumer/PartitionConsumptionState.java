@@ -24,6 +24,7 @@ import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.server.state.KeyUrnCompressionDict;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
+import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.writer.LeaderCompleteState;
@@ -67,6 +68,7 @@ public class PartitionConsumptionState {
   private static final Logger LOGGER = LogManager.getLogger(PartitionConsumptionState.class);
   private static final int MAX_INCREMENTAL_PUSH_ENTRY_NUM = 50;
   private static final long DEFAULT_HEARTBEAT_LAG_THRESHOLD_MS = MINUTES.toMillis(2); // Default is 2 minutes.
+  private static final long MAX_RETENTION_DAYS_IN_MS = TimeUnit.DAYS.toMillis(2);
   private static final CharSequence PREVIOUSLY_READY_TO_SERVE = new Utf8("previouslyReadyToServe");
   private static final String TRUE = "true";
 
@@ -1099,28 +1101,23 @@ public class PartitionConsumptionState {
    * @param timestamp the timestamp when this status was recorded
    */
   public void setTrackingIncrementalPushStatus(String pushJobId, int status, long timestamp) {
-    int maxRetentionDays = 2;
-    purgeTrackingIncrementalPushStatus(maxRetentionDays);
+    purgeTrackingIncrementalPushStatus();
 
     IncrementalPushReplicaStatus replicaStatus = new IncrementalPushReplicaStatus(status, timestamp);
     this.trackingIncrementalPushStatus.put(pushJobId, replicaStatus);
   }
 
   /**
-   * Purge old entries from the tracking incremental push status map based on:
-   * - Time: only keep records from the last maxDurationDay days
-   * @param maxDurationDay the max duration in days to keep incremental push status records
+   * Purge old entries from the tracking incremental push status map based on MAX_RETENTION_DAYS_IN_MS
    */
-  private void purgeTrackingIncrementalPushStatus(int maxDurationDay) {
+  private void purgeTrackingIncrementalPushStatus() {
     if (this.trackingIncrementalPushStatus == null || this.trackingIncrementalPushStatus.isEmpty()) {
       return;
     }
 
-    long currentTimeMs = System.currentTimeMillis();
-    long maxDurationMs = TimeUnit.DAYS.toMillis(maxDurationDay);
-
     // remove entries older than maxDurationDay
     this.trackingIncrementalPushStatus.entrySet()
-        .removeIf(entry -> (currentTimeMs - entry.getValue().timestamp) > maxDurationMs);
+        .removeIf(
+            entry -> LatencyUtils.getElapsedTimeFromMsToMs(entry.getValue().timestamp) > MAX_RETENTION_DAYS_IN_MS);
   }
 }
