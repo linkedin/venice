@@ -101,6 +101,7 @@ public class OffsetRecord {
     emptyPartitionState.lastUpdate = 0;
     emptyPartitionState.databaseInfo = new VeniceConcurrentHashMap<>();
     emptyPartitionState.previousStatuses = new VeniceConcurrentHashMap<>();
+    emptyPartitionState.trackingIncrementalPushStatus = new VeniceConcurrentHashMap<>();
     emptyPartitionState.leaderOffset = PubSubSymbolicPosition.EARLIEST.getNumericOffset();
     emptyPartitionState.upstreamOffsetMap = new VeniceConcurrentHashMap<>();
     emptyPartitionState.upstreamVersionTopicOffset = PubSubSymbolicPosition.EARLIEST.getNumericOffset();
