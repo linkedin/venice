@@ -98,6 +98,7 @@ public class ImmutablePubSubMessage implements DefaultPubSubMessage {
   public int getHeapSize() {
     /** The {@link #topicPartition} is supposed to be a shared instance, and is therefore ignored. */
     return SHALLOW_CLASS_OVERHEAD + InstanceSizeEstimator.getObjectSize(key)
-        + InstanceSizeEstimator.getObjectSize(value) + InstanceSizeEstimator.getObjectSize(pubSubPosition);
+        + InstanceSizeEstimator.getObjectSize(value) + InstanceSizeEstimator.getObjectSize(pubSubPosition)
+        + (pubSubMessageHeaders != null ? InstanceSizeEstimator.getObjectSize(pubSubMessageHeaders) : 0);
   }
 }
