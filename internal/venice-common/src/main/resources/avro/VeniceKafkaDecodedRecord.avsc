@@ -14,9 +14,9 @@
       "doc": "Raw bytes of the value"
     },
     {
-      "name": "offset",
-      "type": "long",
-      "doc": "The offset of this record in Kafka"
+      "name": "position",
+      "type": "string",
+      "doc": "The position of this record in Kafka"
     },
     {
       "name": "DELETED_TS",
