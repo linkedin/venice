@@ -777,7 +777,8 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
         for (Map.Entry<Integer, Map<String, HeartbeatTimeStampEntry>> partition: version.getValue().entrySet()) {
           for (Map.Entry<String, HeartbeatTimeStampEntry> region: partition.getValue().entrySet()) {
             long heartbeatTs = region.getValue().timestamp;
-            if (currentVersion == version.getKey()) {
+            // The current version heartbeat lag will only be tracking serving current version, not bootstrapping ones.
+            if (currentVersion == version.getKey() && region.getValue().readyToServe) {
               minHeartbeatTimestampForCurrentVersion = Math.min(minHeartbeatTimestampForCurrentVersion, heartbeatTs);
             } else {
               minHeartbeatTimestampForNonCurrentVersion =
