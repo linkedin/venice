@@ -46,7 +46,7 @@ public interface StoreSchemaFetcher extends Closeable {
   /**
    * Get value schema by value schema id.
    */
-  SchemaEntry getValueSchema(int valueSchemaId);
+  Schema getValueSchema(int valueSchemaId);
 
   /**
    * Returns the Update (Write Compute) schema of the provided Value schema. The returned schema is used to construct

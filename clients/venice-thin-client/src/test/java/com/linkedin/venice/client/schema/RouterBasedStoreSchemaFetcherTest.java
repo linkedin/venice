@@ -6,7 +6,6 @@ import com.linkedin.venice.client.store.AbstractAvroStoreClient;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import java.io.IOException;
@@ -200,11 +199,10 @@ public class RouterBasedStoreSchemaFetcherTest {
 
     // Get value schema by id
     StoreSchemaFetcher storeSchemaFetcher = new RouterBasedStoreSchemaFetcher(mockClient);
-    SchemaEntry schemaEntry = storeSchemaFetcher.getValueSchema(1);
+    Schema valueSchema = storeSchemaFetcher.getValueSchema(1);
 
     // Validate the schema entry
-    Assert.assertEquals(schemaEntry.getId(), 1);
-    Assert.assertEquals(schemaEntry.getSchemaStr(), valueSchemaStr1);
+    Assert.assertEquals(valueSchema, Schema.parse(valueSchemaStr1));
   }
 
   private MultiSchemaResponse createValueSchemaMultiSchemaResponse() {

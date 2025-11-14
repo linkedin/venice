@@ -127,10 +127,14 @@ public class RouterBasedStoreSchemaFetcher implements StoreSchemaFetcher {
   }
 
   @Override
-  public SchemaEntry getValueSchema(int valueSchemaId) {
+  public Schema getValueSchema(int valueSchemaId) {
     String valueSchemaRequestPath = TYPE_VALUE_SCHEMA + "/" + storeClient.getStoreName() + "/" + valueSchemaId;
-    SchemaResponse valueSchemaResponse = fetchSingleSchema(valueSchemaRequestPath);
-    return new SchemaEntry(valueSchemaResponse.getId(), valueSchemaResponse.getSchemaStr());
+    String valueSchemaStr = fetchSingleSchemaString(valueSchemaRequestPath);
+    try {
+      return parseSchemaFromJSONLooseValidation(valueSchemaStr);
+    } catch (Exception e) {
+      throw new VeniceException("Got exception while parsing value schema", e);
+    }
   }
 
   @Override
