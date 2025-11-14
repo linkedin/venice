@@ -111,6 +111,7 @@ import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubUnsubscribedTopicPartitionException;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.pubsub.manager.TopicManagerRepository;
+import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.ChunkedValueManifestSerializer;
@@ -2828,6 +2829,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     offsetRecord.setDatabaseInfo(dbCheckpointingInfoReference.get());
     // Update key urn compression dictionary
     offsetRecord.setKeyUrnCompressionDict(pcs.getKeyUrnCompressionDict());
+    // Update the push job info
+    offsetRecord.setTrackingIncrementalPushStatus(pcs.getTrackingIncrementalPushStatus());
+
     storageMetadataService.put(this.kafkaVersionTopic, partition, offsetRecord);
     pcs.resetProcessedRecordSizeSinceLastSync();
     // TODO: update
@@ -3214,21 +3218,32 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   protected void processStartOfIncrementalPush(
       ControlMessage startOfIncrementalPush,
-      PartitionConsumptionState partitionConsumptionState) {
+      PartitionConsumptionState partitionConsumptionState,
+      long pubSubMessageTime) {
     CharSequence startVersion = ((StartOfIncrementalPush) startOfIncrementalPush.controlMessageUnion).version;
     if (!batchReportIncPushStatusEnabled || partitionConsumptionState.isComplete()) {
       ingestionNotificationDispatcher
           .reportStartOfIncrementalPushReceived(partitionConsumptionState, startVersion.toString());
+      partitionConsumptionState.setTrackingIncrementalPushStatus(
+          startVersion.toString(),
+          ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED.getValue(),
+          pubSubMessageTime);
     }
   }
 
   protected void processEndOfIncrementalPush(
       ControlMessage endOfIncrementalPush,
-      PartitionConsumptionState partitionConsumptionState) {
+      PartitionConsumptionState partitionConsumptionState,
+      long pubSubMessageTime) {
     CharSequence endVersion = ((EndOfIncrementalPush) endOfIncrementalPush.controlMessageUnion).version;
     if (!batchReportIncPushStatusEnabled || partitionConsumptionState.isComplete()) {
       ingestionNotificationDispatcher
           .reportEndOfIncrementalPushReceived(partitionConsumptionState, endVersion.toString());
+
+      partitionConsumptionState.setTrackingIncrementalPushStatus(
+          endVersion.toString(),
+          ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED.getValue(),
+          pubSubMessageTime);
     } else {
       LOGGER.info(
           "Adding incremental push: {} to pending batch report list for replica: {}.",
@@ -3271,6 +3286,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       ControlMessage controlMessage,
       int partition,
       PubSubPosition offset,
+      long pubSubMessageTime,
       PartitionConsumptionState partitionConsumptionState) {
     /**
      * If leader consumes control messages from topics other than version topic, it should produce
@@ -3313,10 +3329,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         }
         break;
       case START_OF_INCREMENTAL_PUSH:
-        processStartOfIncrementalPush(controlMessage, partitionConsumptionState);
+        processStartOfIncrementalPush(controlMessage, partitionConsumptionState, pubSubMessageTime);
         break;
       case END_OF_INCREMENTAL_PUSH:
-        processEndOfIncrementalPush(controlMessage, partitionConsumptionState);
+        processEndOfIncrementalPush(controlMessage, partitionConsumptionState, pubSubMessageTime);
         break;
       case TOPIC_SWITCH:
         TopicSwitch topicSwitch = (TopicSwitch) controlMessage.controlMessageUnion;
@@ -3413,6 +3429,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             controlMessage,
             consumerRecord.getTopicPartition().getPartitionNumber(),
             consumerRecord.getPosition(),
+            consumerRecord.getPubSubMessageTime(),
             partitionConsumptionState);
         try {
           if (controlMessage.controlMessageType == START_OF_SEGMENT.getValue()
