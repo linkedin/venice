@@ -6,6 +6,7 @@ import com.linkedin.venice.client.store.AbstractAvroStoreClient;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import java.io.IOException;
@@ -182,6 +183,28 @@ public class RouterBasedStoreSchemaFetcherTest {
     Assert.assertEquals(updateSchema3, UPDATE_SCHEMA_CONVERTER.convert(valueSchemaStr3));
     // Each update schema fetch should call get value schemas first then get latest update schema.
     Mockito.verify(mockClient, Mockito.timeout(TIMEOUT).times(6)).getRaw(Mockito.anyString());
+  }
+
+  @Test
+  public void testGetValueSchemaById()
+      throws IOException, ExecutionException, InterruptedException, VeniceClientException {
+    AbstractAvroStoreClient mockClient = Mockito.mock(AbstractAvroStoreClient.class);
+    Mockito.doReturn(storeName).when(mockClient).getStoreName();
+
+    // Set up mocks for value schemas
+    CompletableFuture<byte[]> mockGetValueSchema1 = Mockito.mock(CompletableFuture.class);
+    Mockito.doReturn(OBJECT_MAPPER.writeValueAsBytes(createSingleSchemaResponse(1, valueSchemaStr1)))
+        .when(mockGetValueSchema1)
+        .get();
+    Mockito.doReturn(mockGetValueSchema1).when(mockClient).getRaw("value_schema/" + storeName + "/1");
+
+    // Get value schema by id
+    StoreSchemaFetcher storeSchemaFetcher = new RouterBasedStoreSchemaFetcher(mockClient);
+    SchemaEntry schemaEntry = storeSchemaFetcher.getValueSchema(1);
+
+    // Validate the schema entry
+    Assert.assertEquals(schemaEntry.getId(), 1);
+    Assert.assertEquals(schemaEntry.getSchemaStr(), valueSchemaStr1);
   }
 
   private MultiSchemaResponse createValueSchemaMultiSchemaResponse() {

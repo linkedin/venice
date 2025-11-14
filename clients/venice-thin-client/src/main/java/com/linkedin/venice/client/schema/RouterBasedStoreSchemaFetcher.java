@@ -127,6 +127,13 @@ public class RouterBasedStoreSchemaFetcher implements StoreSchemaFetcher {
   }
 
   @Override
+  public SchemaEntry getValueSchema(int valueSchemaId) {
+    String valueSchemaRequestPath = TYPE_VALUE_SCHEMA + "/" + storeClient.getStoreName() + "/" + valueSchemaId;
+    SchemaResponse valueSchemaResponse = fetchSingleSchema(valueSchemaRequestPath);
+    return new SchemaEntry(valueSchemaResponse.getId(), valueSchemaResponse.getSchemaStr());
+  }
+
+  @Override
   public DerivedSchemaEntry getUpdateSchemaEntry(int valueSchemaId) {
     // Fetch the latest update schema for the specified value schema.
     String updateSchemaRequestPath = TYPE_GET_UPDATE_SCHEMA + "/" + storeClient.getStoreName() + "/" + valueSchemaId;
