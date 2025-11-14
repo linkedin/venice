@@ -760,13 +760,13 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
   }
 
   AggregatedHeartbeatLagEntry getMaxHeartbeatLag(
+      long currentTimestamp,
       Map<String, Map<Integer, Map<Integer, Map<String, HeartbeatTimeStampEntry>>>> heartbeatTimestamps) {
-    long currentTimestamp = System.currentTimeMillis();
     long minHeartbeatTimestampForCurrentVersion = Long.MAX_VALUE;
     long minHeartbeatTimestampForNonCurrentVersion = Long.MAX_VALUE;
     for (Map.Entry<String, Map<Integer, Map<Integer, Map<String, HeartbeatTimeStampEntry>>>> storeName: heartbeatTimestamps
         .entrySet()) {
-      Store store = metadataRepository.getStore(storeName.getKey());
+      Store store = getMetadataRepository().getStore(storeName.getKey());
       if (store == null) {
         LOGGER.debug("Store: {} not found in repository", storeName.getKey());
         continue;
@@ -794,11 +794,11 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
   }
 
   public AggregatedHeartbeatLagEntry getMaxLeaderHeartbeatLag() {
-    return getMaxHeartbeatLag(leaderHeartbeatTimeStamps);
+    return getMaxHeartbeatLag(System.currentTimeMillis(), leaderHeartbeatTimeStamps);
   }
 
   public AggregatedHeartbeatLagEntry getMaxFollowerHeartbeatLag() {
-    return getMaxHeartbeatLag(followerHeartbeatTimeStamps);
+    return getMaxHeartbeatLag(System.currentTimeMillis(), followerHeartbeatTimeStamps);
   }
 
   @FunctionalInterface
