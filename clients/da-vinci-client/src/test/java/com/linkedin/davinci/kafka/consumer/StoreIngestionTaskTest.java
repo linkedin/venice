@@ -4664,16 +4664,16 @@ public abstract class StoreIngestionTaskTest {
     doReturn(partitionConsumptionStateMap).when(storeIngestionTask).getPartitionConsumptionStateMap();
     PartitionConsumptionState pcs1 = mock(PartitionConsumptionState.class);
     doReturn(false).when(pcs1).isComplete();
-    doReturn(false).when(pcs1).hasSwitchedConsumptionPool();
+    doReturn(false).when(pcs1).hasResubscribedAfterBootstrapAsCurrentVersion();
     PartitionConsumptionState pcs2 = mock(PartitionConsumptionState.class);
     doReturn(false).when(pcs2).isComplete();
-    doReturn(true).when(pcs2).hasSwitchedConsumptionPool();
+    doReturn(true).when(pcs2).hasResubscribedAfterBootstrapAsCurrentVersion();
     PartitionConsumptionState pcs3 = mock(PartitionConsumptionState.class);
     doReturn(true).when(pcs3).isComplete();
-    doReturn(false).when(pcs3).hasSwitchedConsumptionPool();
+    doReturn(false).when(pcs3).hasResubscribedAfterBootstrapAsCurrentVersion();
     PartitionConsumptionState pcs4 = mock(PartitionConsumptionState.class);
     doReturn(true).when(pcs4).isComplete();
-    doReturn(true).when(pcs4).hasSwitchedConsumptionPool();
+    doReturn(true).when(pcs4).hasResubscribedAfterBootstrapAsCurrentVersion();
     partitionConsumptionStateMap.put(0, pcs1);
     partitionConsumptionStateMap.put(1, pcs2);
     partitionConsumptionStateMap.put(2, pcs3);
@@ -4688,7 +4688,7 @@ public abstract class StoreIngestionTaskTest {
     doReturn(true).when(storeIngestionTask).isCurrentVersion();
     storeIngestionTask.resubscribeForCompletedCurrentVersionPartition();
     verify(storeIngestionTask, times(1)).resubscribe(any());
-    verify(pcs3, times(1)).setHasSwitchedConsumptionPool(eq(true));
+    verify(pcs3, times(1)).setHasResubscribedAfterBootstrapAsCurrentVersion(eq(true));
 
   }
 
