@@ -70,7 +70,6 @@ import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.meta.MaterializedViewParameters;
-import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.ViewConfig;
 import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
@@ -100,7 +99,6 @@ import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
@@ -175,12 +173,6 @@ public class TestChangelogConsumer {
     String parentControllerURLs =
         parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(Collectors.joining(","));
     parentControllerClient = new ControllerClient(clusterName, parentControllerURLs);
-    TestUtils.assertCommand(
-        parentControllerClient.configureActiveActiveReplicationForCluster(
-            true,
-            VeniceUserStoreType.BATCH_ONLY.toString(),
-            Optional.empty()),
-        "Failed to configure active-active replication for cluster " + clusterName);
     d2Client = new D2ClientBuilder()
         .setZkHosts(multiRegionMultiClusterWrapper.getChildRegions().get(0).getZkServerWrapper().getAddress())
         .setZkSessionTimeout(3, TimeUnit.SECONDS)
