@@ -168,7 +168,56 @@ public class TestRmdUtils {
 
   @Test
   public void testExtractLatestTimestampFromRmd() {
-    Assert.assertEquals(30L, RmdUtils.getLastUpdateTimestamp(rmdRecordWithValidPerFieldLevelTimestamp));
-    Assert.assertEquals(0L, RmdUtils.getLastUpdateTimestamp(rmdRecordWithOnlyRootLevelTimestamp));
+    Assert.assertEquals(RmdUtils.getLastUpdateTimestamp(rmdRecordWithValidPerFieldLevelTimestamp), 30L);
+    Assert.assertEquals(RmdUtils.getLastUpdateTimestamp(rmdRecordWithOnlyRootLevelTimestamp), 0L);
+  }
+
+  @Test
+  public void testGetLastUpdateTimestampWithCollectionFields() {
+    RmdSchemaGeneratorV1 rmdSchemaGeneratorV1 = new RmdSchemaGeneratorV1();
+    Schema timestampSchema = rmdSchemaGeneratorV1.generateMetadataSchema(TestWriteUtils.USER_WITH_STRING_MAP_SCHEMA);
+    Schema mapFieldSchema = timestampSchema.getField("timestamp").schema().getTypes().get(1).getField("value").schema();
+
+    GenericRecord mapFieldRecord = new GenericData.Record(mapFieldSchema);
+    long[] activeElemTs = { 100L, 200L, 150L };
+    long[] deletedElemTs = { 50L, 75L, 300L }; // 300L should be the max
+    mapFieldRecord.put(ACTIVE_ELEM_TS_FIELD_NAME, activeElemTs);
+    mapFieldRecord.put(TOP_LEVEL_TS_FIELD_NAME, 25L);
+    mapFieldRecord.put(DELETED_ELEM_TS_FIELD_NAME, deletedElemTs);
+
+    GenericRecord timestampRecord =
+        new GenericData.Record(timestampSchema.getField("timestamp").schema().getTypes().get(1));
+    timestampRecord.put("key", 10L);
+    timestampRecord.put("age", 50L);
+    timestampRecord.put("value", mapFieldRecord);
+
+    GenericRecord rmdRecord = new GenericData.Record(timestampSchema);
+    rmdRecord.put(TIMESTAMP_FIELD_NAME, timestampRecord);
+
+    Assert.assertEquals(RmdUtils.getLastUpdateTimestamp(rmdRecord), 300L);
+  }
+
+  @Test
+  public void testGetLastUpdateTimestampWithEmptyCollections() {
+    RmdSchemaGeneratorV1 rmdSchemaGeneratorV1 = new RmdSchemaGeneratorV1();
+    Schema timestampSchema = rmdSchemaGeneratorV1.generateMetadataSchema(TestWriteUtils.USER_WITH_STRING_MAP_SCHEMA);
+    Schema mapFieldSchema = timestampSchema.getField("timestamp").schema().getTypes().get(1).getField("value").schema();
+
+    GenericRecord mapFieldRecord = new GenericData.Record(mapFieldSchema);
+    mapFieldRecord.put(ACTIVE_ELEM_TS_FIELD_NAME, Collections.emptyList());
+    mapFieldRecord.put(TOP_LEVEL_TS_FIELD_NAME, 25L);
+    mapFieldRecord.put(DELETED_ELEM_TS_FIELD_NAME, Collections.emptyList());
+
+    GenericRecord timestampRecord =
+        new GenericData.Record(timestampSchema.getField("timestamp").schema().getTypes().get(1));
+    timestampRecord.put("key", 100L); // This should be the max
+    timestampRecord.put("age", 50L);
+    timestampRecord.put("value", mapFieldRecord);
+
+    GenericRecord rmdRecord = new GenericData.Record(timestampSchema);
+    rmdRecord.put(TIMESTAMP_FIELD_NAME, timestampRecord);
+
+    // Should return 100L (max from key field since collections are empty)
+    Assert.assertEquals(RmdUtils.getLastUpdateTimestamp(rmdRecord), 100L);
   }
 }
