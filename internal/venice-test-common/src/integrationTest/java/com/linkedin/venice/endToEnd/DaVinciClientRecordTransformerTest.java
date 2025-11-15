@@ -942,6 +942,9 @@ public class DaVinciClientRecordTransformerTest {
         }
       });
       clientWithRecordTransformer.unsubscribeAll();
+      clientWithRecordTransformer.close();
+      recordTransformer.clearInMemoryDB();
+      clientWithRecordTransformer.start();
       // test seek by change coordinate
       clientWithRecordTransformer.seekToCheckpoint(Collections.singleton(changeCoordinate)).get();
       TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
@@ -950,22 +953,24 @@ public class DaVinciClientRecordTransformerTest {
           assertNull(clientWithRecordTransformer.get(k).get());
           // Record should be stored in inMemoryDB
           String expectedValue = "a" + k + "Transformed";
-          assertEquals(recordTransformer.get(k), k < 4 ? null : expectedValue);
+          assertEquals(recordTransformer.get(k), k < 3 ? null : expectedValue);
         }
       });
 
+      clientWithRecordTransformer.unsubscribeAll();
+      clientWithRecordTransformer.close();
+      recordTransformer.clearInMemoryDB();
+      clientWithRecordTransformer.start();
       // test seek to tail
-      /* clientWithRecordTransformer.seekToTail().get();
+      clientWithRecordTransformer.seekToTail().get();
+
       TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
         for (int k = 1; k <= numKeys; ++k) {
           // Record shouldn't be stored in Da Vinci
           assertNull(clientWithRecordTransformer.get(k).get());
-          // Record should be stored in inMemoryDB
-          System.out.println("cc " + recordTransformer.get(k));
           assertEquals(recordTransformer.get(k), null);
         }
-      });*/
-
+      });
     }
   }
 

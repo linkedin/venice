@@ -9,6 +9,7 @@ import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
+import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubUnsubscribedTopicPartitionException;
@@ -155,7 +156,11 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
       PubSubTopicPartition topicPartitionToSubscribe,
       PubSubPosition lastReadPosition) {
     long delegateSubscribeStartTime = System.currentTimeMillis();
-    this.delegate.subscribe(topicPartitionToSubscribe, lastReadPosition);
+    boolean inclusive = false;
+    if (lastReadPosition == PubSubSymbolicPosition.LATEST) {
+      inclusive = true;
+    }
+    this.delegate.subscribe(topicPartitionToSubscribe, lastReadPosition, inclusive);
     PubSubTopic previousVersionTopic =
         subscribedTopicPartitionToVersionTopic.put(topicPartitionToSubscribe, versionTopic);
     if (previousVersionTopic != null && !previousVersionTopic.equals(versionTopic)) {

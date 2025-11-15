@@ -2314,6 +2314,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             newPartitionConsumptionState,
             subscribePosition,
             localKafkaServer);
+        if (subscribePosition == PubSubSymbolicPosition.LATEST) {
+          partitionConsumptionStateMap.get(partition).lagHasCaughtUp();
+          reportCompleted(partitionConsumptionStateMap.get(partition), true);
+        }
         LOGGER.info("Subscribed to: {} position: {}", topicPartition, subscribePosition);
         if (isGlobalRtDivEnabled()) {
           // TODO: remove. this is a temporary log for debugging while the feature is in its infancy
