@@ -763,7 +763,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       return;
     }
     for (PartitionConsumptionState partitionConsumptionState: partitionConsumptionStateMap.values()) {
-      if (partitionConsumptionState.isComplete() && partitionConsumptionState.hasResubscribedAfterBootstrapAsCurrentVersion()) {
+      if (partitionConsumptionState.isComplete()
+          && !partitionConsumptionState.hasResubscribedAfterBootstrapAsCurrentVersion()) {
         LOGGER.info(
             "Replica: {} becomes current serving replica, will trigger resubscription",
             partitionConsumptionState.getReplicaId());
