@@ -153,8 +153,10 @@ public abstract class AbstractPartitionStateModel extends StateModel {
 
   /**
    * Determines the store type based on store metadata.
-   * Returns SYSTEM for system stores, HYBRID_ONLY/BATCH_ONLY for user stores based on version configuration,
-   * or ALL as a fallback when store/version metadata is unavailable.
+   * Returns {@link VeniceStoreType#SYSTEM} for system stores, {@link VeniceStoreType#HYBRID} or
+   * {@link VeniceStoreType#BATCH} for user stores based on the version configuration, or
+   * {@link VeniceStoreType#UNKNOWN} as a fallback when store or version metadata is unavailable
+   * or an error occurs.
    */
   private VeniceStoreType determineStoreType() {
     String storeVersionName = storeAndServerConfigs.getStoreVersionName();
