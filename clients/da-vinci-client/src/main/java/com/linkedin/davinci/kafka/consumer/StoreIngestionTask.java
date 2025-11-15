@@ -753,6 +753,15 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   void resubscribeForAllPartitions() throws InterruptedException {
     throwIfNotRunning();
     for (PartitionConsumptionState partitionConsumptionState: partitionConsumptionStateMap.values()) {
+      /**
+       * For completed current version replica, if we resubscribe during version role change, it will be resubscribed to
+       * correct high priority pool. We will mark {@link PartitionConsumptionState#hasResubscribedAfterBootstrapAsCurrentVersion}
+       * to true so that it won't be resubscribed again.
+       */
+      if (isCurrentVersion() && partitionConsumptionState.isComplete()
+          && !partitionConsumptionState.hasResubscribedAfterBootstrapAsCurrentVersion()) {
+        partitionConsumptionState.setHasResubscribedAfterBootstrapAsCurrentVersion(true);
+      }
       resubscribe(partitionConsumptionState);
     }
   }
@@ -762,7 +771,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     if (!isCurrentVersion()) {
       return;
     }
-    for (PartitionConsumptionState partitionConsumptionState: partitionConsumptionStateMap.values()) {
+    for (PartitionConsumptionState partitionConsumptionState: getPartitionConsumptionStateMap().values()) {
+      /**
+       * For bootstrapping current version replica which is completed but has not resubscribed yet, we will update the flag
+       * and resubscribe again to make sure it is landed into correct high priority pool.
+       */
       if (partitionConsumptionState.isComplete()
           && !partitionConsumptionState.hasResubscribedAfterBootstrapAsCurrentVersion()) {
         LOGGER.info(
