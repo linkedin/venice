@@ -21,6 +21,7 @@ import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import com.linkedin.venice.utils.ConfigCommonUtils;
+import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.File;
@@ -29,6 +30,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 import org.apache.logging.log4j.LogManager;
@@ -108,6 +110,7 @@ public class DefaultIngestionBackend implements IngestionBackend {
           partition,
           requestTableFormat,
           serverConfig.getBlobTransferDisabledOffsetLagThreshold(),
+          serverConfig.getBlobTransferDisabledTimeLagThresholdInMinutes(),
           storeConfig,
           svsSupplier);
 
@@ -138,6 +141,7 @@ public class DefaultIngestionBackend implements IngestionBackend {
       int partitionId,
       BlobTransferTableFormat tableFormat,
       long blobTransferDisabledOffsetLagThreshold,
+      int blobTransferDisabledTimeLagThresholdInMinutes,
       VeniceStoreVersionConfig storeConfig,
       Supplier<StoreVersionState> svsSupplier) {
     String storeName = store.getName();
@@ -147,11 +151,12 @@ public class DefaultIngestionBackend implements IngestionBackend {
     // If the offset lag is below the blobTransferDisabledOffsetLagThreshold, it indicates there is not lagging and
     // can bootstrap from Kafka.
     storageService.openStore(storeConfig, svsSupplier);
-    if (!isOffsetLagged(
+    if (!isReplicaLagged(
         store.getName(),
         versionNumber,
         partitionId,
         blobTransferDisabledOffsetLagThreshold,
+        blobTransferDisabledTimeLagThresholdInMinutes,
         store.isHybrid())) {
       return CompletableFuture.completedFuture(null);
     }
@@ -320,29 +325,26 @@ public class DefaultIngestionBackend implements IngestionBackend {
    *        This value is controlled by config BLOB_TRANSFER_DISABLED_OFFSET_LAG_THRESHOLD, and default is 100000L.
    *        If the offset lag is within this threshold, bootstrapping from Kafka is allowed, even if blob transfer is enabled.
    *        If the lag exceeds this threshold, bootstrapping should happen from blobs transfer firstly.
+   * @param blobTransferDisabledTimeLagThresholdInMinutes the maximum allowed time lag threshold.
    * @param hybridStore whether the store is a hybrid store or not.
    *                    If it is a hybrid store, then check via the offset.
    *                    If it is a batch store, check if the batch push is done or not.
    * @return true if the store is lagged and needs to bootstrap from blob transfer, else false then bootstrap from Kafka.
    */
-  public boolean isOffsetLagged(
+  public boolean isReplicaLagged(
       String store,
       int versionNumber,
       int partition,
       long blobTransferDisabledOffsetLagThreshold,
+      int blobTransferDisabledTimeLagThresholdInMinutes,
       boolean hybridStore) {
     String topicName = Version.composeKafkaTopic(store, versionNumber);
     OffsetRecord offsetRecord =
-        storageMetadataService.getLastOffset(topicName, partition, storeIngestionService.getPubSubContext());
-
+        getStorageMetadataService().getLastOffset(topicName, partition, getStoreIngestionService().getPubSubContext());
     if (offsetRecord == null) {
+      LOGGER.warn("Offset record not found for: {}", Utils.getReplicaId(topicName, partition));
       return true;
     }
-
-    if (blobTransferDisabledOffsetLagThreshold < 0) {
-      return true;
-    }
-
     if (!hybridStore) {
       if (offsetRecord.isEndOfPushReceived()) {
         LOGGER.info(
@@ -350,23 +352,37 @@ public class DefaultIngestionBackend implements IngestionBackend {
             Utils.getReplicaId(topicName, partition));
         return false;
       }
-    } else {
-      if (offsetRecord.getOffsetLag() == 0
-          && PubSubSymbolicPosition.EARLIEST.equals(offsetRecord.getCheckpointedLocalVtPosition())) {
-        LOGGER.info(
-            "Offset lag is 0 and topic offset is EARLIEST for replica {}.",
-            Utils.getReplicaId(topicName, partition));
-        return true;
-      }
+      return true;
+    }
+    /**
+     * If the time-lag threshold is active, it will refer to the number to make decision. Otherwise fallback to offset
+     * base lag check.
+     */
+    if (blobTransferDisabledTimeLagThresholdInMinutes > 0) {
+      return LatencyUtils.getElapsedTimeFromMsToMs(offsetRecord.getHeartbeatTimestamp()) > TimeUnit.MINUTES
+          .toMillis(blobTransferDisabledTimeLagThresholdInMinutes);
+    }
+    /**
+     * Legacy way of using offset threshold to determine if a replica is lagged and need blob transfer.
+     */
+    if (blobTransferDisabledOffsetLagThreshold < 0) {
+      return true;
+    }
+    if (offsetRecord.getOffsetLag() == 0
+        && PubSubSymbolicPosition.EARLIEST.equals(offsetRecord.getCheckpointedLocalVtPosition())) {
+      LOGGER.info(
+          "Offset lag is 0 and topic offset is EARLIEST for replica {}.",
+          Utils.getReplicaId(topicName, partition));
+      return true;
+    }
 
-      if (offsetRecord.getOffsetLag() < blobTransferDisabledOffsetLagThreshold) {
-        LOGGER.info(
-            "Offset lag {} for hybrid store replica {} is within the allowed lag threshold {}. Bootstrapping from Kafka.",
-            offsetRecord.getOffsetLag(),
-            Utils.getReplicaId(topicName, partition),
-            blobTransferDisabledOffsetLagThreshold);
-        return false;
-      }
+    if (offsetRecord.getOffsetLag() < blobTransferDisabledOffsetLagThreshold) {
+      LOGGER.info(
+          "Offset lag {} for hybrid store replica {} is within the allowed lag threshold {}. Bootstrapping from Kafka.",
+          offsetRecord.getOffsetLag(),
+          Utils.getReplicaId(topicName, partition),
+          blobTransferDisabledOffsetLagThreshold);
+      return false;
     }
 
     LOGGER.info(
@@ -436,6 +452,10 @@ public class DefaultIngestionBackend implements IngestionBackend {
   @Override
   public void close() {
     // Do nothing here, since this is only a wrapper class.
+  }
+
+  StorageMetadataService getStorageMetadataService() {
+    return storageMetadataService;
   }
 
   /**
