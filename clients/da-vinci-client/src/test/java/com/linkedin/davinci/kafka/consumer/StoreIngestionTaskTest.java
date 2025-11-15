@@ -29,6 +29,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_
 import static com.linkedin.venice.ConfigKeys.SERVER_RECORD_LEVEL_METRICS_WHEN_BOOTSTRAPPING_CURRENT_VERSION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_REMOTE_CONSUMER_CONFIG_PREFIX;
 import static com.linkedin.venice.ConfigKeys.SERVER_RESET_ERROR_REPLICA_ENABLED;
+import static com.linkedin.venice.ConfigKeys.SERVER_RESUBSCRIPTION_CHECK_INTERVAL_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_RESUBSCRIPTION_TRIGGERED_BY_VERSION_INGESTION_CONTEXT_CHANGE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_UNSUB_AFTER_BATCHPUSH;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
@@ -4576,9 +4577,17 @@ public abstract class StoreIngestionTaskTest {
                 .subscribe(eq(fooRtTopicPartition), any(PubSubPosition.class));
           });
         }, AA_ON);
+    /**
+     * This test requires checking for every round of SIT thread run loop. To maintain the goal of the check, disable
+     * the check interval feature here. We should consider how to make the check more relaxed while still checking the
+     * critical part of the feature.
+     */
+    Map<String, Object> extraServerProperties = new HashMap<>();
+    extraServerProperties.put(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 3L);
+    extraServerProperties.put(SERVER_RESUBSCRIPTION_CHECK_INTERVAL_IN_SECONDS, 0);
     config.setPollStrategy(localPollStrategy)
         .setHybridStoreConfig(Optional.of(hybridStoreConfig))
-        .setExtraServerProperties(Collections.singletonMap(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 3L));
+        .setExtraServerProperties(extraServerProperties);
     runTest(config);
   }
 
@@ -4645,6 +4654,42 @@ public abstract class StoreIngestionTaskTest {
     doReturn(Store.NON_EXISTING_VERSION).when(store).getCurrentVersion();
     ingestionTask.refreshIngestionContextIfChanged(store);
     verify(ingestionTask, never()).resubscribeForAllPartitions();
+  }
+
+  @Test
+  public void testResubscribeForCompletedCurrentVersionPartition() throws InterruptedException {
+    StoreIngestionTask storeIngestionTask = mock(StoreIngestionTask.class);
+    doCallRealMethod().when(storeIngestionTask).resubscribeForCompletedCurrentVersionPartition();
+    Map<Integer, PartitionConsumptionState> partitionConsumptionStateMap = new HashMap<>();
+    doReturn(partitionConsumptionStateMap).when(storeIngestionTask).getPartitionConsumptionStateMap();
+    PartitionConsumptionState pcs1 = mock(PartitionConsumptionState.class);
+    doReturn(false).when(pcs1).isComplete();
+    doReturn(false).when(pcs1).hasResubscribedAfterBootstrapAsCurrentVersion();
+    PartitionConsumptionState pcs2 = mock(PartitionConsumptionState.class);
+    doReturn(false).when(pcs2).isComplete();
+    doReturn(true).when(pcs2).hasResubscribedAfterBootstrapAsCurrentVersion();
+    PartitionConsumptionState pcs3 = mock(PartitionConsumptionState.class);
+    doReturn(true).when(pcs3).isComplete();
+    doReturn(false).when(pcs3).hasResubscribedAfterBootstrapAsCurrentVersion();
+    PartitionConsumptionState pcs4 = mock(PartitionConsumptionState.class);
+    doReturn(true).when(pcs4).isComplete();
+    doReturn(true).when(pcs4).hasResubscribedAfterBootstrapAsCurrentVersion();
+    partitionConsumptionStateMap.put(0, pcs1);
+    partitionConsumptionStateMap.put(1, pcs2);
+    partitionConsumptionStateMap.put(2, pcs3);
+    partitionConsumptionStateMap.put(3, pcs4);
+
+    // Non-current version don't do resubscription.
+    doReturn(false).when(storeIngestionTask).isCurrentVersion();
+    storeIngestionTask.resubscribeForCompletedCurrentVersionPartition();
+    verify(storeIngestionTask, never()).resubscribe(any());
+
+    // Only completed replica will flip once.
+    doReturn(true).when(storeIngestionTask).isCurrentVersion();
+    storeIngestionTask.resubscribeForCompletedCurrentVersionPartition();
+    verify(storeIngestionTask, times(1)).resubscribe(any());
+    verify(pcs3, times(1)).setHasResubscribedAfterBootstrapAsCurrentVersion(eq(true));
+
   }
 
   @Test(dataProvider = "aaConfigProvider")
