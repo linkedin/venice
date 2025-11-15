@@ -645,7 +645,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
                   heartbeatTs,
                   currentTimestamp);
               kafkaStoreIngestionService.attemptToPrintIngestionInfoFor(
-                  storeName.getKey(),
+                  metadataRepository.getStore(storeName.getKey()),
                   version.getKey(),
                   partition.getKey(),
                   region.getKey());

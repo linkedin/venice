@@ -1,6 +1,7 @@
 package com.linkedin.venice.controller;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -14,6 +15,7 @@ import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.client.store.AvroSpecificStoreClient;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.participant.protocol.ParticipantMessageKey;
 import com.linkedin.venice.participant.protocol.ParticipantMessageValue;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
@@ -39,6 +41,7 @@ public class ParticipantStoreClientsManagerTest {
   private VeniceWriterFactory veniceWriterFactory;
   private PubSubTopicRepository pubSubTopicRepository;
   private ParticipantStoreClientsManager participantStoreClientsManager;
+  private Admin mockAdmin = mock(Admin.class);
 
   @BeforeMethod
   public void setUp() {
@@ -52,6 +55,12 @@ public class ParticipantStoreClientsManagerTest {
         topicManagerRepository,
         veniceWriterFactory,
         pubSubTopicRepository);
+    Store mockStore = mock(Store.class);
+    String participantStoreName = VeniceSystemStoreUtils.getParticipantStoreNameForCluster(CLUSTER_NAME);
+    when(mockAdmin.getStore(eq(CLUSTER_NAME), eq(participantStoreName))).thenReturn(mockStore);
+    when(mockStore.isSystemStore()).thenReturn(true);
+    when(mockStore.isHybrid()).thenReturn(true);
+    when(mockStore.getName()).thenReturn(participantStoreName);
   }
 
   @Test
@@ -111,12 +120,12 @@ public class ParticipantStoreClientsManagerTest {
       return null;
     }).when(veniceWriterFactory).createVeniceWriter(any());
 
-    VeniceWriter participantStoreWriter = participantStoreClientsManager.getWriter(CLUSTER_NAME);
+    VeniceWriter participantStoreWriter = participantStoreClientsManager.getWriter(CLUSTER_NAME, mockAdmin);
     assertNotNull(participantStoreWriter);
     assertSame(mockWriter, participantStoreWriter);
 
     // call getWriter again with the same cluster name
-    VeniceWriter result2 = participantStoreClientsManager.getWriter(CLUSTER_NAME);
+    VeniceWriter result2 = participantStoreClientsManager.getWriter(CLUSTER_NAME, mockAdmin);
     assertSame(participantStoreWriter, result2);
   }
 
@@ -129,7 +138,7 @@ public class ParticipantStoreClientsManagerTest {
     when(localTopicManager.containsTopicAndAllPartitionsAreOnline(participantStoreTopic)).thenReturn(false);
 
     Exception exception =
-        expectThrows(VeniceException.class, () -> participantStoreClientsManager.getWriter(CLUSTER_NAME));
+        expectThrows(VeniceException.class, () -> participantStoreClientsManager.getWriter(CLUSTER_NAME, mockAdmin));
     assertEquals(
         exception.getMessage(),
         "Can't find the expected topic " + participantStoreTopic + " for participant message store "

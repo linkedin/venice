@@ -168,6 +168,7 @@ import com.linkedin.venice.meta.StoreGraveyard;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.StoreName;
 import com.linkedin.venice.meta.StoreVersionInfo;
+import com.linkedin.venice.meta.SystemStore;
 import com.linkedin.venice.meta.SystemStoreAttributes;
 import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
@@ -658,7 +659,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         zkSharedSchemaRepository,
         pubSubTopicRepository,
         commonConfig.getMetaStoreWriterCloseTimeoutInMS(),
-        commonConfig.getMetaStoreWriterCloseConcurrency());
+        commonConfig.getMetaStoreWriterCloseConcurrency(),
+        storeName -> getStore(discoverCluster(storeName), storeName));
     metaStoreReader = new MetaStoreReader(d2Client, commonConfig.getClusterDiscoveryD2ServiceName());
     pushStatusStoreReader = new PushStatusStoreReader(
         d2Client,
@@ -673,7 +675,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           veniceWriterFactory,
           CONTROLLER_HEARTBEAT_INSTANCE_NAME,
           valueSchemaEntry,
-          updateSchemaEntry);
+          updateSchemaEntry,
+          storeName -> getStore(discoverCluster(storeName), storeName));
     });
 
     clusterToLiveClusterConfigRepo = new VeniceConcurrentHashMap<>();
@@ -1040,9 +1043,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         Collections.singletonList(VeniceControllerStateModel.getPartitionNameFromVeniceClusterName(clusterName));
     helixAdminClient.enablePartition(true, controllerClusterName, controllerName, clusterName, partitionNames);
     if (multiClusterConfigs.getControllerConfig(clusterName).isParticipantMessageStoreEnabled()) {
-      participantMessageStoreRTTMap.put(
-          clusterName,
-          Utils.composeRealTimeTopic(VeniceSystemStoreUtils.getParticipantStoreNameForCluster(clusterName)));
+      String participantStoreName = VeniceSystemStoreUtils.getParticipantStoreNameForCluster(clusterName);
+      String realTimeTopicName = Utils.composeRealTimeTopic(participantStoreName);
+      participantMessageStoreRTTMap.put(clusterName, realTimeTopicName);
     }
     waitUntilClusterResourceIsVisibleInEV(clusterName);
   }
@@ -1232,7 +1235,17 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     /* If this store existed previously, we do not want to use the same RT topic name that was used by the previous
     store. To ensure this, increase largestUsedRTVersionNumber and new RT name will be different */
     if (config.isRealTimeTopicVersioningEnabled()) {
-      newStore.setLargestUsedRTVersionNumber(largestUsedRTVersionNumber + 1);
+      VeniceSystemStoreType type = VeniceSystemStoreType.getSystemStoreType(newStore.getName());
+      int newNumber;
+      if (type == null && newStore.isSystemStore()) {
+        // Top-level shared ZK store
+        newNumber = largestUsedRTVersionNumber;
+      } else {
+        // User-level system store OR regular store
+        newNumber = largestUsedRTVersionNumber + 1;
+      }
+
+      newStore.setLargestUsedRTVersionNumber(newNumber);
     }
   }
 
@@ -1625,9 +1638,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
               + " is not configured");
     }
     String pushJobDetailsStoreName = VeniceSystemStoreUtils.getPushJobDetailsStoreName();
+    Store pushJobDetailsStore = getStore(pushJobStatusStoreClusterName, pushJobDetailsStoreName);
     if (pushJobDetailsRTTopic == null) {
       // Verify the RT topic exists and give some time in case it's getting created.
-      PubSubTopic expectedRTTopic = pubSubTopicRepository.getTopic(Utils.composeRealTimeTopic(pushJobDetailsStoreName));
+      PubSubTopic expectedRTTopic = pubSubTopicRepository.getTopic(Utils.getRealTimeTopicName(pushJobDetailsStore));
       for (int attempt = 0; attempt < INTERNAL_STORE_GET_RRT_TOPIC_ATTEMPTS; attempt++) {
         if (attempt > 0)
           Utils.sleep(INTERNAL_STORE_RTT_RETRY_BACKOFF_MS);
@@ -2686,10 +2700,16 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
         VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(storeName);
         if (systemStoreType != null && systemStoreType.equals(VeniceSystemStoreType.META_STORE)) {
-          setUpMetaStoreAndMayProduceSnapshot(clusterName, systemStoreType.extractRegularStoreName(storeName));
+          setUpMetaStoreAndMayProduceSnapshot(
+              clusterName,
+              systemStoreType.extractRegularStoreName(storeName),
+              largestUsedRTVersionNumber);
         }
         if (systemStoreType != null && systemStoreType.equals(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE)) {
-          setUpDaVinciPushStatusStore(clusterName, systemStoreType.extractRegularStoreName(storeName));
+          setUpDaVinciPushStatusStore(
+              clusterName,
+              systemStoreType.extractRegularStoreName(storeName),
+              largestUsedRTVersionNumber);
         }
 
         // Update the store object to avoid potential system store flags reversion during repository.updateStore(store).
@@ -2762,7 +2782,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             if (store.containsVersion(versionNumber)) {
               throwVersionAlreadyExists(storeName, versionNumber);
             } else {
-              store.addVersion(version, false, DEFAULT_RT_VERSION_NUMBER);
+              store.addVersion(version, false, store.getLargestUsedRTVersionNumber());
             }
             storeRepository.updateStore(store);
           }
@@ -2964,6 +2984,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       Optional<String> emergencySourceRegion,
       boolean versionSwapDeferred,
       int repushSourceVersion) {
+    Store store = getStore(clusterName, storeName);
+    int largestUsedRTVersionNumber;
+    VeniceSystemStoreType type = VeniceSystemStoreType.getSystemStoreType(store.getName());
+    if (type != null && store.isSystemStore()) {
+      largestUsedRTVersionNumber = ((SystemStore) store).getVeniceStore().getLargestUsedRTVersionNumber();
+    } else {
+      largestUsedRTVersionNumber = store.getLargestUsedRTVersionNumber();
+    }
+
     return addVersion(
         clusterName,
         storeName,
@@ -2985,7 +3014,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         versionSwapDeferred,
         null,
         repushSourceVersion,
-        getStore(clusterName, storeName).getLargestUsedRTVersionNumber());
+        largestUsedRTVersionNumber);
   }
 
   private Optional<Version> getVersionFromSourceCluster(
@@ -3101,10 +3130,16 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
            */
           VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(storeName);
           if (systemStoreType != null && systemStoreType.equals(VeniceSystemStoreType.META_STORE)) {
-            setUpMetaStoreAndMayProduceSnapshot(clusterName, systemStoreType.extractRegularStoreName(storeName));
+            setUpMetaStoreAndMayProduceSnapshot(
+                clusterName,
+                systemStoreType.extractRegularStoreName(storeName),
+                currentRTVersionNumber);
           }
           if (systemStoreType != null && systemStoreType.equals(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE)) {
-            setUpDaVinciPushStatusStore(clusterName, systemStoreType.extractRegularStoreName(storeName));
+            setUpDaVinciPushStatusStore(
+                clusterName,
+                systemStoreType.extractRegularStoreName(storeName),
+                currentRTVersionNumber);
           }
 
           Store store = repository.getStore(storeName);
@@ -3781,7 +3816,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    * @throws VeniceNoStoreException if the store does not exist in the specified cluster.
    * @throws VeniceException if the store is not a user system store or if the partition count is invalid.
    */
-  void ensureRealTimeTopicExistsForUserSystemStores(String clusterName, String storeName) {
+  void ensureRealTimeTopicExistsForUserSystemStores(String clusterName, String storeName, int currentRTVersionNumber) {
     checkControllerLeadershipFor(clusterName);
     Store store = getStore(clusterName, storeName);
     if (store == null) {
@@ -3794,7 +3829,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       throw new VeniceException(
           "Failed to create real time topic for store: " + storeName + " because it is not a user system store.");
     }
-    PubSubTopic realTimeTopic = getPubSubTopicRepository().getTopic(Utils.getRealTimeTopicName(store));
+    PubSubTopic realTimeTopic =
+        getPubSubTopicRepository().getTopic(Utils.getRealTimeTopicName(store, currentRTVersionNumber));
     TopicManager topicManager = getTopicManager();
     if (topicManager.containsTopic(realTimeTopic)) {
       return;
@@ -3817,7 +3853,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       }
       VeniceControllerClusterConfig clusterConfig = getControllerConfig(clusterName);
       LOGGER.info(
-          "Creating real time topic for user system store: {} with partition count: {}",
+          "Creating real time topic {} for user system store: {} with partition count: {}",
+          realTimeTopic,
           storeName,
           partitionCount);
       getTopicManager().createTopic(
@@ -5168,8 +5205,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     // However, safeguards are necessary to prevent clients from toggling the hybrid setting with a partition update
     // in edge cases.
     if (!store.isHybrid()) {
-      PubSubTopic realTimeTopicForBatchStore = pubSubTopicRepository.getTopic(Utils.getRealTimeTopicName(store));
-      if (realTimeTopicForBatchStore != null) {
+      String realTimeTopic = Utils.getRealTimeTopicName(store);
+      if (realTimeTopic != null) {
+        PubSubTopic realTimeTopicForBatchStore = pubSubTopicRepository.getTopic(realTimeTopic);
         TopicManager topicManager = getTopicManagerForCluster(clusterConfig);
         if (topicManager.containsTopic(realTimeTopicForBatchStore)) {
           int rtPartitionCount = topicManager.getPartitionCount(realTimeTopicForBatchStore);
@@ -5209,9 +5247,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   private void generateAndUpdateRealTimeTopicName(Store store) {
-    String newRealTimeTopicName = Utils.isRTVersioningApplicable(store.getName())
-        ? Utils.composeRealTimeTopic(store.getName(), store.getLargestUsedRTVersionNumber() + 1)
-        : DEFAULT_REAL_TIME_TOPIC_NAME;
+    String newRealTimeTopicName =
+        Utils.composeRealTimeTopic(store.getName(), store.getLargestUsedRTVersionNumber() + 1);
 
     store.getHybridStoreConfig().setRealTimeTopicName(newRealTimeTopicName);
     /*
@@ -6281,9 +6318,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       }
 
       String newRealTimeTopicName = oldStore.getLargestUsedRTVersionNumber() > DEFAULT_RT_VERSION_NUMBER
-          && Utils.isRTVersioningApplicable(oldStore.getName())
-              ? Utils.composeRealTimeTopic(oldStore.getName(), oldStore.getLargestUsedRTVersionNumber())
-              : DEFAULT_REAL_TIME_TOPIC_NAME;
+          ? Utils.composeRealTimeTopic(oldStore.getName(), oldStore.getLargestUsedRTVersionNumber())
+          : DEFAULT_REAL_TIME_TOPIC_NAME;
 
       mergedHybridStoreConfig = new HybridStoreConfigImpl(
           hybridRewindSeconds.get(),
@@ -8069,7 +8105,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         "Delete KILL ingestion message for topic: {} from participant store in cluster: {}",
         kafkaTopic,
         clusterName);
-    VeniceWriter writer = participantStoreClientsManager.getWriter(clusterName);
+    VeniceWriter writer = participantStoreClientsManager.getWriter(clusterName, this);
     ParticipantMessageKey key = new ParticipantMessageKey();
     key.resourceName = kafkaTopic;
     key.messageType = ParticipantMessageType.KILL_PUSH_JOB.getValue();
@@ -8079,7 +8115,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   public void sendKillMessageToParticipantStore(String clusterName, String kafkaTopic) {
     LOGGER.info("Send kill message for topic: {} to participant store of cluster: {}", kafkaTopic, clusterName);
-    VeniceWriter writer = participantStoreClientsManager.getWriter(clusterName);
+    VeniceWriter writer = participantStoreClientsManager.getWriter(clusterName, this);
     ParticipantMessageType killPushJobType = ParticipantMessageType.KILL_PUSH_JOB;
     ParticipantMessageKey key = new ParticipantMessageKey();
     key.resourceName = kafkaTopic;
@@ -9345,7 +9381,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     return topicToCreationTime.get(topic);
   }
 
-  private void setUpDaVinciPushStatusStore(String clusterName, String storeName) {
+  private void setUpDaVinciPushStatusStore(String clusterName, String storeName, int currentRTVersionNumber) {
     checkControllerLeadershipFor(clusterName);
     ReadWriteStoreRepository repository = getHelixVeniceClusterResources(clusterName).getStoreMetadataRepository();
     Store store = repository.getStore(storeName);
@@ -9356,7 +9392,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     if (!isParent()) {
       // We do not materialize PS3 for parent region. Hence, skip RT topic creation.
-      ensureRealTimeTopicExistsForUserSystemStores(clusterName, daVinciPushStatusStoreName);
+      ensureRealTimeTopicExistsForUserSystemStores(clusterName, daVinciPushStatusStoreName, currentRTVersionNumber);
     }
     if (!store.isDaVinciPushStatusStoreEnabled()) {
       storeMetadataUpdate(clusterName, storeName, (s, resources) -> {
@@ -9371,7 +9407,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    * @param clusterName The cluster name.
    * @param regularStoreName The regular user store name.
    */
-  void setUpMetaStoreAndMayProduceSnapshot(String clusterName, String regularStoreName) {
+  void setUpMetaStoreAndMayProduceSnapshot(
+      String clusterName,
+      String regularStoreName,
+      int largestUsedRTVersionNumber) {
     checkControllerLeadershipFor(clusterName);
     ReadWriteStoreRepository repository = getHelixVeniceClusterResources(clusterName).getStoreMetadataRepository();
     Store store = repository.getStore(regularStoreName);
@@ -9384,7 +9423,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       // We do not materialize meta store for parent region. Hence, skip RT topic creation.
       ensureRealTimeTopicExistsForUserSystemStores(
           clusterName,
-          VeniceSystemStoreType.META_STORE.getSystemStoreName(regularStoreName));
+          VeniceSystemStoreType.META_STORE.getSystemStoreName(regularStoreName),
+          largestUsedRTVersionNumber);
     }
 
     // Update the store flag to enable meta system store.
@@ -9627,6 +9667,17 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       return getStoreGraveyard().getLargestUsedVersionNumber(storeName);
     }
     return Math.max(store.getLargestUsedVersionNumber(), getStoreGraveyard().getLargestUsedVersionNumber(storeName));
+  }
+
+  @Override
+  public int getLargestUsedRTVersion(String clusterName, String storeName) {
+    Store store = getStore(clusterName, storeName);
+    // If the store does not exist, check the store graveyard.
+    if (store == null) {
+      return getStoreGraveyard().getLargestUsedRTVersionNumber(storeName);
+    }
+    return Math
+        .max(store.getLargestUsedRTVersionNumber(), getStoreGraveyard().getLargestUsedRTVersionNumber(storeName));
   }
 
   /**
