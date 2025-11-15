@@ -44,9 +44,20 @@ public enum AdminMessageType {
   SET_STORE_CURRENT_VERSION(10, false), UPDATE_STORE(11, false), DELETE_STORE(12, false), DELETE_OLD_VERSION(13, false),
   MIGRATE_STORE(14, false), ABORT_MIGRATION(15, false), ADD_VERSION(16, false), DERIVED_SCHEMA_CREATION(17, false),
   SUPERSET_SCHEMA_CREATION(18, false), CONFIGURE_NATIVE_REPLICATION_FOR_CLUSTER(19, true),
-  REPLICATION_METADATA_SCHEMA_CREATION(20, false), CONFIGURE_ACTIVE_ACTIVE_REPLICATION_FOR_CLUSTER(21, true),
+  REPLICATION_METADATA_SCHEMA_CREATION(20, false),
+
   /**
-   * @deprecated We do not support incremental push policy anymore.
+   * Active-active replication is now enabled by default for all new hybrid stores.
+   * Mass configuration of existing stores via admin messages is no longer supported.
+   * @deprecated This admin message type is obsolete. Active-active replication should be configured per-store
+   * during store creation or via individual store update operations.
+   */
+  @Deprecated
+  CONFIGURE_ACTIVE_ACTIVE_REPLICATION_FOR_CLUSTER(21, true),
+
+  /**
+   * Incremental push policy configuration has been removed from Venice.
+   * @deprecated This admin message type is no longer supported and will be ignored if received.
    */
   @Deprecated
   CONFIGURE_INCREMENTAL_PUSH_FOR_CLUSTER(22, true), META_SYSTEM_STORE_AUTO_CREATION_VALIDATION(23, false),

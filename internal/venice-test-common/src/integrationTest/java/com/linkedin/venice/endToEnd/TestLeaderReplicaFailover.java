@@ -27,7 +27,6 @@ import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.OfflinePushStrategy;
-import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
@@ -114,11 +113,6 @@ public class TestLeaderReplicaFailover {
   public void testLeaderReplicaFailoverFutureVersion() throws Exception {
     ControllerClient parentControllerClient =
         new ControllerClient(clusterWrapper.getClusterName(), clusterWrapper.getAllControllersURLs());
-    TestUtils.assertCommand(
-        parentControllerClient.configureActiveActiveReplicationForCluster(
-            true,
-            VeniceUserStoreType.BATCH_ONLY.toString(),
-            Optional.empty()));
     File inputDir = getTempDataDirectory();
     Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir);
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
@@ -238,11 +232,6 @@ public class TestLeaderReplicaFailover {
   public void testLeaderReplicaFailoverCurrentVersion() throws Exception {
     ControllerClient parentControllerClient =
         new ControllerClient(clusterWrapper.getClusterName(), clusterWrapper.getAllControllersURLs());
-    TestUtils.assertCommand(
-        parentControllerClient.configureActiveActiveReplicationForCluster(
-            true,
-            VeniceUserStoreType.BATCH_ONLY.toString(),
-            Optional.empty()));
     File inputDir = getTempDataDirectory();
     Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir);
     String inputDirPath = "file:" + inputDir.getAbsolutePath();

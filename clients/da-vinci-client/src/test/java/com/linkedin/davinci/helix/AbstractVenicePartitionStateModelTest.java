@@ -10,6 +10,7 @@ import com.linkedin.venice.helix.HelixPartitionStatusAccessor;
 import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.VeniceStoreType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.Utils;
 import java.util.concurrent.CompletableFuture;
@@ -18,7 +19,9 @@ import org.apache.helix.NotificationContext;
 import org.apache.helix.customizedstate.CustomizedStateProvider;
 import org.apache.helix.model.Message;
 import org.mockito.Mockito;
+import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
+import org.testng.annotations.Test;
 
 
 public abstract class AbstractVenicePartitionStateModelTest<MODEL_TYPE extends AbstractPartitionStateModel, NOTIFIER_TYPE extends LeaderFollowerIngestionProgressNotifier> {
@@ -109,4 +112,46 @@ public abstract class AbstractVenicePartitionStateModelTest<MODEL_TYPE extends A
   protected abstract MODEL_TYPE getParticipantStateModel();
 
   protected abstract NOTIFIER_TYPE getNotifier() throws InterruptedException;
+
+  @Test
+  public void testGetStoreType() {
+    // Setup: Ensure getStore returns mockStore
+    Mockito.when(mockReadOnlyStoreRepository.getStore(storeName)).thenReturn(mockStore);
+
+    // Case 1: System store returns SYSTEM
+    Mockito.when(mockStore.isSystemStore()).thenReturn(true);
+    VeniceStoreType storeType = testStateModel.getStoreType();
+    Assert.assertEquals(storeType, VeniceStoreType.SYSTEM, "System store should return SYSTEM type");
+
+    // Case 2: Hybrid user store returns HYBRID
+    MODEL_TYPE freshModel = getParticipantStateModel();
+    Version mockVersion = Mockito.mock(Version.class);
+    Mockito.when(mockStore.isSystemStore()).thenReturn(false);
+    Mockito.when(mockStore.getVersion(version)).thenReturn(mockVersion);
+    Mockito.when(mockVersion.isHybrid()).thenReturn(true);
+    storeType = freshModel.getStoreType();
+    Assert.assertEquals(storeType, VeniceStoreType.HYBRID, "Hybrid store should return HYBRID type");
+
+    // Case 3: Batch-only user store returns BATCH
+    freshModel = getParticipantStateModel();
+    Mockito.when(mockStore.isSystemStore()).thenReturn(false);
+    Mockito.when(mockStore.getVersion(version)).thenReturn(mockVersion);
+    Mockito.when(mockVersion.isHybrid()).thenReturn(false);
+    storeType = freshModel.getStoreType();
+    Assert.assertEquals(storeType, VeniceStoreType.BATCH, "Batch store should return BATCH type");
+
+    // Case 4: Store not found returns UNKNOWN
+    freshModel = getParticipantStateModel();
+    Mockito.when(mockReadOnlyStoreRepository.getStore(storeName)).thenReturn(null);
+    storeType = freshModel.getStoreType();
+    Assert.assertEquals(storeType, VeniceStoreType.UNKNOWN, "Store not found should return UNKNOWN type");
+
+    // Case 5: Version not found returns UNKNOWN
+    freshModel = getParticipantStateModel();
+    Mockito.when(mockReadOnlyStoreRepository.getStore(storeName)).thenReturn(mockStore);
+    Mockito.when(mockStore.isSystemStore()).thenReturn(false);
+    Mockito.when(mockStore.getVersion(version)).thenReturn(null);
+    storeType = freshModel.getStoreType();
+    Assert.assertEquals(storeType, VeniceStoreType.UNKNOWN, "Version not found should return UNKNOWN type");
+  }
 }
