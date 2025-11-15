@@ -51,20 +51,5 @@ public enum VeniceStoreType {
    *   <li>Push status system stores for tracking push job progress</li>
    * </ul>
    */
-  SYSTEM,
-
-  /**
-   * Unknown or indeterminate store type.
-   *
-   * <p>This type is used when:
-   * <ul>
-   *   <li>Store metadata is not yet available (for example, during startup)</li>
-   *   <li>Version information cannot be resolved</li>
-   *   <li>An error occurs while determining the store type</li>
-   * </ul>
-   *
-   * <p>Callers should handle this type gracefully and retry classification
-   * once metadata becomes available.
-   */
-  UNKNOWN
+  SYSTEM
 }

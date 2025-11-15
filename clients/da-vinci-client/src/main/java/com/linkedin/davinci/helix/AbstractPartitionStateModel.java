@@ -2,6 +2,7 @@ package com.linkedin.davinci.helix;
 
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.ingestion.IngestionBackend;
+import com.linkedin.davinci.kafka.consumer.PartitionReplicaIngestionContext;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionService;
 import com.linkedin.davinci.stats.ParticipantStateTransitionStats;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -68,9 +69,10 @@ public abstract class AbstractPartitionStateModel extends StateModel {
   private final CompletableFuture<HelixPartitionStatusAccessor> partitionStatusAccessorFuture;
   private final String instanceName;
   private final ParticipantStateTransitionStats stateTransitionStats;
-  private VeniceStoreType storeType;
-
   private HelixPartitionStatusAccessor partitionPushStatusAccessor;
+  private final String storeName;
+  private final int versionNumber;
+  private VeniceStoreType storeVersionType;
 
   public AbstractPartitionStateModel(
       IngestionBackend ingestionBackend,
@@ -79,7 +81,8 @@ public abstract class AbstractPartitionStateModel extends StateModel {
       int partition,
       CompletableFuture<HelixPartitionStatusAccessor> accessorFuture,
       String instanceName,
-      ParticipantStateTransitionStats stateTransitionStats) {
+      ParticipantStateTransitionStats stateTransitionStats,
+      String resourceName) {
     this.ingestionBackend = ingestionBackend;
     this.storeRepository = storeRepository;
     this.storeAndServerConfigs = storeAndServerConfigs;
@@ -92,6 +95,14 @@ public abstract class AbstractPartitionStateModel extends StateModel {
     this.partitionStatusAccessorFuture = accessorFuture;
     this.instanceName = instanceName;
     this.stateTransitionStats = stateTransitionStats;
+
+    // Parse storeName and versionNumber from resourceName
+    try {
+      this.storeName = Version.parseStoreFromKafkaTopicName(resourceName);
+      this.versionNumber = Version.parseVersionFromKafkaTopicName(resourceName);
+    } catch (Exception e) {
+      throw new VeniceException("Failed to parse storeName and versionNumber from resourceName: " + resourceName, e);
+    }
   }
 
   protected void executeStateTransition(Message message, NotificationContext context, Runnable handler) {
@@ -123,7 +134,8 @@ public abstract class AbstractPartitionStateModel extends StateModel {
 
   private void logEntry(String from, String to, Message message, NotificationContext context, boolean rollback) {
     logger.info(
-        "{} {} transition from {} to {}. Message {} and context: {}",
+        "{} replica {} {} transition from {} to {}. Message {} and context: {}",
+        getReplicaTypeDescription(),
         getStorePartitionDescription(),
         rollback ? "rolling back" : "initiating",
         from,
@@ -134,50 +146,14 @@ public abstract class AbstractPartitionStateModel extends StateModel {
 
   private void logCompletion(String from, String to, Message message, NotificationContext context, boolean rollback) {
     logger.info(
-        "{} ({}) {} transition from {} to {}. Message {}. LatencyBreakdown: {}",
+        "{} replica {} {} transition from {} to {}. Message {}. LatencyBreakdown: {}",
+        getReplicaTypeDescription(),
         getStorePartitionDescription(),
-        getStoreType(),
         rollback ? "rolled back" : "completed",
         from,
         to,
         message,
         HelixTransitionTimingUtils.formatTransitionTiming(message, context));
-  }
-
-  VeniceStoreType getStoreType() {
-    if (storeType == null) {
-      storeType = determineStoreType();
-    }
-    return storeType;
-  }
-
-  /**
-   * Determines the store type based on store metadata.
-   * Returns {@link VeniceStoreType#SYSTEM} for system stores, {@link VeniceStoreType#HYBRID} or
-   * {@link VeniceStoreType#BATCH} for user stores based on the version configuration, or
-   * {@link VeniceStoreType#UNKNOWN} as a fallback when store or version metadata is unavailable
-   * or an error occurs.
-   */
-  private VeniceStoreType determineStoreType() {
-    String storeVersionName = storeAndServerConfigs.getStoreVersionName();
-    try {
-      String storeName = Version.parseStoreFromKafkaTopicName(storeVersionName);
-      Store store = getStoreRepo().getStore(storeName);
-      if (store == null) {
-        return VeniceStoreType.UNKNOWN;
-      }
-      if (store.isSystemStore()) {
-        return VeniceStoreType.SYSTEM;
-      }
-      int versionNumber = Version.parseVersionFromKafkaTopicName(storeVersionName);
-      Version version = store.getVersion(versionNumber);
-      if (version == null) {
-        return VeniceStoreType.UNKNOWN;
-      }
-      return version.isHybrid() ? VeniceStoreType.HYBRID : VeniceStoreType.BATCH;
-    } catch (Exception e) {
-      return VeniceStoreType.UNKNOWN;
-    }
   }
 
   /**
@@ -367,8 +343,7 @@ public abstract class AbstractPartitionStateModel extends StateModel {
       int bootstrapToOnlineTimeoutInHours;
       try {
         bootstrapToOnlineTimeoutInHours =
-            getStoreRepo().getStoreOrThrow(Version.parseStoreFromKafkaTopicName(resourceName))
-                .getBootstrapToOnlineTimeoutInHours();
+            getStoreRepo().getStoreOrThrow(storeName).getBootstrapToOnlineTimeoutInHours();
       } catch (Exception e) {
         logger.warn(
             "Failed to fetch bootstrapToOnlineTimeoutInHours from store config for resource {}, using the default value of {} hours instead",
@@ -445,7 +420,88 @@ public abstract class AbstractPartitionStateModel extends StateModel {
     return partition;
   }
 
+  protected String getStoreName() {
+    return storeName;
+  }
+
+  protected int getVersionNumber() {
+    return versionNumber;
+  }
+
   public String getStorePartitionDescription() {
     return storePartitionDescription;
+  }
+
+  /**
+   * Returns a human-readable description of the replica type based on store type and version role.
+   * Examples: "System store future version", "Batch store current version", "Hybrid store backup version"
+   */
+  String getReplicaTypeDescription() {
+    VeniceStoreType type = getStoreVersionType();
+    String role = getStoreVersionRole();
+    String roleDesc = role.isEmpty() ? "unknown" : role.toLowerCase();
+    return type.name() + " store " + roleDesc + " version";
+  }
+
+  /**
+   * Returns the role of this store version (CURRENT, BACKUP, or FUTURE) as a string.
+   * This is a best-effort operation - during rollbacks or metadata inconsistencies,
+   * the reported role may be temporarily inaccurate (e.g., a backup version may briefly appear as FUTURE).
+   * @return the store version role name, or empty string if store metadata is unavailable
+   */
+  protected String getStoreVersionRole() {
+    try {
+      Store store = getStoreRepo().getStore(storeName);
+      if (store != null) {
+        return PartitionReplicaIngestionContext.determineStoreVersionRole(versionNumber, store.getCurrentVersion())
+            .name();
+      }
+    } catch (Exception e) {
+      // Ignore exception since this is best-effort and mainly for logging purpose
+    }
+    return "";
+  }
+
+  protected VeniceStoreType getStoreVersionType() {
+    if (storeVersionType == null) {
+      storeVersionType = determineStoreType();
+    }
+    return storeVersionType;
+  }
+
+  /**
+   * Infers the {@link VeniceStoreType} for the current store version.
+   *
+   * <p>This is a best-effort classification intended primarily for logging.
+   * Any parsing or lookup failures are ignored and the method falls back to
+   * {@link VeniceStoreType#BATCH}.</p>
+   *
+   * <ul>
+   *   <li>{@link VeniceStoreType#SYSTEM} if the store is a system store</li>
+   *   <li>{@link VeniceStoreType#HYBRID} if the referenced version is hybrid</li>
+   *   <li>{@link VeniceStoreType#BATCH} for all other cases or on any error</li>
+   * </ul>
+   */
+  private VeniceStoreType determineStoreType() {
+    try {
+      final String storeVersionName = storeAndServerConfigs.getStoreVersionName();
+      final String storeName = Version.parseStoreFromKafkaTopicName(storeVersionName);
+
+      final Store store = getStoreRepo().getStore(storeName);
+      if (store != null) {
+        if (store.isSystemStore()) {
+          return VeniceStoreType.SYSTEM;
+        }
+
+        final Version version = store.getVersion(versionNumber);
+        if (version != null && version.isHybrid()) {
+          return VeniceStoreType.HYBRID;
+        }
+      }
+    } catch (Exception e) {
+      // Swallow the exception since this is best-effort classification for logging.
+    }
+
+    return VeniceStoreType.BATCH;
   }
 }

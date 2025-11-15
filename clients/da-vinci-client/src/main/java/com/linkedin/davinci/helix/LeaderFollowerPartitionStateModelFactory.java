@@ -67,7 +67,8 @@ public class LeaderFollowerPartitionStateModelFactory extends AbstractStateModel
         partitionPushStatusAccessorFuture,
         instanceName,
         getStateTransitionStats(resourceName),
-        heartbeatMonitoringService);
+        heartbeatMonitoringService,
+        resourceName);
   }
 
   /**
