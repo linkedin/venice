@@ -1593,4 +1593,89 @@ public class PubSubConsumerAdapterTest {
         elapsedTime <= PUBSUB_OP_TIMEOUT_WITH_VARIANCE,
         "Unsubscribe should not block for longer than the timeout");
   }
+
+  // Test: Subscribe to end position (inclusive) should not consume any messages
+  @Test(timeOut = 3 * Time.MS_PER_MINUTE)
+  public void testSubscribeToEndPositionInclusiveConsumesNoMessages()
+      throws ExecutionException, InterruptedException, TimeoutException {
+    PubSubTopic existingPubSubTopic = pubSubTopicRepository.getTopic(Utils.getUniqueString("existing-topic-"));
+    int numPartitions = 2;
+    int numMessages = 1000;
+
+    // Create topic
+    pubSubAdminAdapterLazy.get()
+        .createTopic(existingPubSubTopic, numPartitions, REPLICATION_FACTOR, TOPIC_CONFIGURATION);
+    assertTrue(pubSubAdminAdapterLazy.get().containsTopic(existingPubSubTopic), "Topic should exist");
+
+    PubSubTopicPartition partition = new PubSubTopicPartitionImpl(existingPubSubTopic, 0);
+
+    // Produce 1000 messages to partition 0
+    PubSubProducerAdapter pubSubProducerAdapter = pubSubProducerAdapterLazy.get();
+    CompletableFuture<PubSubProduceResult> lastMessageFuture = null;
+    for (int i = 0; i < numMessages; i++) {
+      lastMessageFuture = pubSubProducerAdapter.sendMessage(
+          existingPubSubTopic.getName(),
+          0,
+          PubSubHelper.getDummyKey(),
+          PubSubHelper.getDummyValue(),
+          null,
+          null);
+    }
+
+    // Wait for last message to be produced
+    assertNotNull(lastMessageFuture, "Last message future should not be null");
+    PubSubProduceResult lastProduceResult = lastMessageFuture.get(30, TimeUnit.SECONDS);
+    assertNotNull(lastProduceResult, "Last produce result should not be null");
+
+    // Get end position for the partition
+    long startTime = System.currentTimeMillis();
+    PubSubPosition endPosition = pubSubConsumerAdapter.endPosition(partition);
+    long elapsedTime = System.currentTimeMillis() - startTime;
+    assertNotNull(endPosition, "End position should not be null");
+    assertTrue(
+        elapsedTime <= PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS_WITH_VARIANCE,
+        "endPosition should not block for too long");
+
+    // Verify that the end position is after all messages
+    assertPositionDifferenceFromEarliest(
+        partition,
+        endPosition,
+        numMessages,
+        "End position should be after all " + numMessages + " messages");
+    assertTrue(
+        pubSubConsumerAdapter.positionDifference(partition, endPosition, lastProduceResult.getPubSubPosition()) > 0,
+        "End position should be after last produced message");
+
+    // Subscribe to the partition at end position with inclusive=true
+    startTime = System.currentTimeMillis();
+    pubSubConsumerAdapter.subscribe(partition, endPosition, true);
+    elapsedTime = System.currentTimeMillis() - startTime;
+    assertTrue(pubSubConsumerAdapter.hasSubscription(partition), "Should be subscribed to the partition");
+    assertTrue(
+        elapsedTime <= PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS_WITH_VARIANCE,
+        "Subscribe should not block for too long");
+
+    // Poll multiple times to ensure no messages are consumed
+    int pollAttempts = 10;
+    int totalMessagesConsumed = 0;
+    for (int attempt = 0; attempt < pollAttempts; attempt++) {
+      Map<PubSubTopicPartition, List<DefaultPubSubMessage>> messages = pubSubConsumerAdapter.poll(100);
+      assertNotNull(messages, "Messages map should not be null");
+      List<DefaultPubSubMessage> partitionMessages = messages.get(partition);
+      if (partitionMessages != null) {
+        totalMessagesConsumed += partitionMessages.size();
+      }
+      Thread.sleep(10); // Small delay between polls
+    }
+
+    // Verify that no messages were consumed
+    assertEquals(
+        totalMessagesConsumed,
+        0,
+        "No messages should be consumed when subscribing at end position (inclusive)");
+
+    // Unsubscribe
+    pubSubConsumerAdapter.unSubscribe(partition);
+    assertFalse(pubSubConsumerAdapter.hasSubscription(partition), "Should not be subscribed after unsubscribe");
+  }
 }
