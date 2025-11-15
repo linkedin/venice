@@ -783,7 +783,15 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       String errorMsg = "After waiting " + TimeUnit.MILLISECONDS.toHours(this.bootstrapTimeoutInMs)
           + " hours, resource:" + storeName + " partitions:" + timeoutPartitions + " still can not complete ingestion.";
       LOGGER.error(errorMsg);
-      throw new VeniceTimeoutException(errorMsg);
+      VeniceException ex = new VeniceTimeoutException(errorMsg);
+      if (isCurrentVersion()) {
+        // For current version, a rebalance failure should not incur whole SIT closure.
+        for (int partition: timeoutPartitions) {
+          reportError(errorMsg, partition, ex);
+        }
+      } else {
+        throw ex;
+      }
     }
 
     checkWhetherToCloseUnusedVeniceWriter(veniceWriter, veniceWriterForRealTime, partitionConsumptionStateMap, () -> {
