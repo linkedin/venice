@@ -184,6 +184,27 @@ public class RouterBasedStoreSchemaFetcherTest {
     Mockito.verify(mockClient, Mockito.timeout(TIMEOUT).times(6)).getRaw(Mockito.anyString());
   }
 
+  @Test
+  public void testGetValueSchemaById()
+      throws IOException, ExecutionException, InterruptedException, VeniceClientException {
+    AbstractAvroStoreClient mockClient = Mockito.mock(AbstractAvroStoreClient.class);
+    Mockito.doReturn(storeName).when(mockClient).getStoreName();
+
+    // Set up mocks for value schemas
+    CompletableFuture<byte[]> mockGetValueSchema1 = Mockito.mock(CompletableFuture.class);
+    Mockito.doReturn(OBJECT_MAPPER.writeValueAsBytes(createSingleSchemaResponse(1, valueSchemaStr1)))
+        .when(mockGetValueSchema1)
+        .get();
+    Mockito.doReturn(mockGetValueSchema1).when(mockClient).getRaw("value_schema/" + storeName + "/1");
+
+    // Get value schema by id
+    StoreSchemaFetcher storeSchemaFetcher = new RouterBasedStoreSchemaFetcher(mockClient);
+    Schema valueSchema = storeSchemaFetcher.getValueSchema(1);
+
+    // Validate the schema entry
+    Assert.assertEquals(valueSchema, Schema.parse(valueSchemaStr1));
+  }
+
   private MultiSchemaResponse createValueSchemaMultiSchemaResponse() {
     MultiSchemaResponse multiSchemaResponse = new MultiSchemaResponse();
     MultiSchemaResponse.Schema[] schemas = new MultiSchemaResponse.Schema[3];
