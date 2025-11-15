@@ -146,7 +146,6 @@ import static com.linkedin.venice.Arg.STORES_TO_REPLICATE;
 import static com.linkedin.venice.Arg.STORE_FILTER_FILE;
 import static com.linkedin.venice.Arg.STORE_LIFECYCLE_HOOKS_LIST;
 import static com.linkedin.venice.Arg.STORE_SIZE;
-import static com.linkedin.venice.Arg.STORE_TYPE;
 import static com.linkedin.venice.Arg.STORE_VIEW_CONFIGS;
 import static com.linkedin.venice.Arg.SYSTEM_STORE_TYPE;
 import static com.linkedin.venice.Arg.TARGET_SWAP_REGION;
@@ -463,16 +462,6 @@ public enum Command {
   REMOVE_FROM_STORE_ACL(
       "remove-from-store-acl", "Remove a principal from ACL's for an existing store",
       new Arg[] { URL, STORE, PRINCIPAL }, new Arg[] { CLUSTER, READABILITY, WRITEABILITY }
-  ),
-  ENABLE_ACTIVE_ACTIVE_REPLICATION_FOR_CLUSTER(
-      "enable-active-active-replication-for-cluster",
-      "enable active active replication for certain stores (batch-only, hybrid-only, incremental-push, hybrid-or-incremental, all) in a cluster",
-      new Arg[] { URL, CLUSTER, STORE_TYPE }, new Arg[] { REGIONS_FILTER }
-  ),
-  DISABLE_ACTIVE_ACTIVE_REPLICATION_FOR_CLUSTER(
-      "disable-active-active-replication-for-cluster",
-      "disable active active replication for certain stores (batch-only, hybrid-only, incremental-push, hybrid-or-incremental, all) in a cluster",
-      new Arg[] { URL, CLUSTER, STORE_TYPE }, new Arg[] { REGIONS_FILTER }
   ),
   GET_DELETABLE_STORE_TOPICS(
       "get-deletable-store-topics",

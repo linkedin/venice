@@ -15,7 +15,6 @@ import static com.linkedin.venice.meta.PersistenceType.ROCKS_DB;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingDeleteRecord;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRecordWithKeyPrefix;
 import static com.linkedin.venice.utils.TestUtils.assertCommand;
-import static com.linkedin.venice.utils.TestUtils.createAndVerifyStoreInAllRegions;
 import static com.linkedin.venice.utils.TestUtils.updateStoreToHybrid;
 import static com.linkedin.venice.utils.TestUtils.waitForNonDeterministicAssertion;
 import static com.linkedin.venice.utils.TestWriteUtils.STRING_SCHEMA;
@@ -40,7 +39,6 @@ import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
-import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
@@ -54,7 +52,6 @@ import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.OnlineInstanceFinder;
 import com.linkedin.venice.meta.StoreInfo;
-import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.samza.VeniceObjectWithTimestamp;
 import com.linkedin.venice.samza.VeniceSystemProducer;
@@ -171,59 +168,6 @@ public class ActiveActiveReplicationForHybridTest {
     Utils.closeQuietlyWithErrorLogged(dc0Client);
     Utils.closeQuietlyWithErrorLogged(dc1Client);
     Utils.closeQuietlyWithErrorLogged(multiRegionMultiClusterWrapper);
-  }
-
-  @Test(timeOut = TEST_TIMEOUT)
-  public void testEnableActiveActiveReplicationForCluster() {
-    String storeName1 = Utils.getUniqueString("test-batch-store");
-    String storeName2 = Utils.getUniqueString("test-hybrid-store");
-    try {
-      createAndVerifyStoreInAllRegions(storeName1, parentControllerClient, dcControllerClientList);
-      createAndVerifyStoreInAllRegions(storeName2, parentControllerClient, dcControllerClientList);
-
-      assertCommand(
-          parentControllerClient.updateStore(
-              storeName2,
-              new UpdateStoreQueryParams().setHybridRewindSeconds(10).setHybridOffsetLagThreshold(2)));
-
-      // Test batch
-      assertCommand(
-          parentControllerClient.configureActiveActiveReplicationForCluster(
-              true,
-              VeniceUserStoreType.BATCH_ONLY.toString(),
-              Optional.empty()));
-      verifyDCConfigAARepl(parentControllerClient, storeName1, false, false, true);
-      verifyDCConfigAARepl(dc0Client, storeName1, false, false, true);
-      verifyDCConfigAARepl(dc1Client, storeName1, false, false, true);
-      assertCommand(
-          assertCommand(
-              parentControllerClient.configureActiveActiveReplicationForCluster(
-                  false,
-                  VeniceUserStoreType.BATCH_ONLY.toString(),
-                  Optional.of("dc-parent-0.parent,dc-0"))));
-      verifyDCConfigAARepl(parentControllerClient, storeName1, false, true, false);
-      verifyDCConfigAARepl(dc0Client, storeName1, false, true, false);
-      verifyDCConfigAARepl(dc1Client, storeName1, false, true, true);
-
-      assertCommand(
-          parentControllerClient.configureActiveActiveReplicationForCluster(
-              true,
-              VeniceUserStoreType.HYBRID_ONLY.toString(),
-              Optional.empty()));
-      verifyDCConfigAARepl(parentControllerClient, storeName2, true, false, true);
-      verifyDCConfigAARepl(dc0Client, storeName2, true, false, true);
-      verifyDCConfigAARepl(dc1Client, storeName2, true, false, true);
-      assertCommand(
-          parentControllerClient.configureActiveActiveReplicationForCluster(
-              false,
-              VeniceUserStoreType.HYBRID_ONLY.toString(),
-              Optional.empty()));
-      verifyDCConfigAARepl(parentControllerClient, storeName2, true, true, false);
-      verifyDCConfigAARepl(dc0Client, storeName2, true, true, false);
-      verifyDCConfigAARepl(dc1Client, storeName2, true, true, false);
-    } finally {
-      deleteStores(storeName1, storeName2);
-    }
   }
 
   @Test(timeOut = TEST_TIMEOUT)

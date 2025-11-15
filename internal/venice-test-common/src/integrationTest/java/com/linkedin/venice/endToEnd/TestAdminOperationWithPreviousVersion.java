@@ -39,7 +39,6 @@ import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptio
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
-import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.persona.StoragePersona;
 import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
@@ -616,18 +615,6 @@ public class TestAdminOperationWithPreviousVersion {
         StoreInfo storeInfo = storeResponse.getStore();
         assertTrue(storeInfo.isActiveActiveReplicationEnabled());
       });
-    });
-  }
-
-  @Test(timeOut = TEST_TIMEOUT)
-  public void testConfigureActiveActiveReplicationForCluster() {
-    runTestForEntryNames(Collections.singletonList("ConfigureActiveActiveReplicationForCluster"), () -> {
-      TestUtils.assertCommand(
-          parentControllerClient.configureActiveActiveReplicationForCluster(
-              true,
-              VeniceUserStoreType.BATCH_ONLY.toString(),
-              Optional.empty()),
-          "Failed to configure active-active replication for cluster " + clusterName);
     });
   }
 
