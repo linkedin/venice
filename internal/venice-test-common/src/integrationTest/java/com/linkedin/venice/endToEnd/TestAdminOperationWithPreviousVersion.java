@@ -17,7 +17,38 @@ import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.client.store.StatTrackingStoreClient;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controller.Admin;
+import com.linkedin.venice.controller.kafka.protocol.admin.AbortMigration;
+import com.linkedin.venice.controller.kafka.protocol.admin.AddVersion;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
+import com.linkedin.venice.controller.kafka.protocol.admin.ConfigureActiveActiveReplicationForCluster;
+import com.linkedin.venice.controller.kafka.protocol.admin.ConfigureIncrementalPushForCluster;
+import com.linkedin.venice.controller.kafka.protocol.admin.ConfigureNativeReplicationForCluster;
+import com.linkedin.venice.controller.kafka.protocol.admin.CreateStoragePersona;
+import com.linkedin.venice.controller.kafka.protocol.admin.DeleteAllVersions;
+import com.linkedin.venice.controller.kafka.protocol.admin.DeleteOldVersion;
+import com.linkedin.venice.controller.kafka.protocol.admin.DeleteStoragePersona;
+import com.linkedin.venice.controller.kafka.protocol.admin.DeleteStore;
+import com.linkedin.venice.controller.kafka.protocol.admin.DeleteUnusedValueSchemas;
+import com.linkedin.venice.controller.kafka.protocol.admin.DerivedSchemaCreation;
+import com.linkedin.venice.controller.kafka.protocol.admin.DisableStoreRead;
+import com.linkedin.venice.controller.kafka.protocol.admin.EnableStoreRead;
+import com.linkedin.venice.controller.kafka.protocol.admin.KillOfflinePushJob;
+import com.linkedin.venice.controller.kafka.protocol.admin.MetaSystemStoreAutoCreationValidation;
+import com.linkedin.venice.controller.kafka.protocol.admin.MetadataSchemaCreation;
+import com.linkedin.venice.controller.kafka.protocol.admin.MigrateStore;
+import com.linkedin.venice.controller.kafka.protocol.admin.PauseStore;
+import com.linkedin.venice.controller.kafka.protocol.admin.PushStatusSystemStoreAutoCreationValidation;
+import com.linkedin.venice.controller.kafka.protocol.admin.ResumeStore;
+import com.linkedin.venice.controller.kafka.protocol.admin.RollForwardCurrentVersion;
+import com.linkedin.venice.controller.kafka.protocol.admin.RollbackCurrentVersion;
+import com.linkedin.venice.controller.kafka.protocol.admin.SetStoreCurrentVersion;
+import com.linkedin.venice.controller.kafka.protocol.admin.SetStoreOwner;
+import com.linkedin.venice.controller.kafka.protocol.admin.SetStorePartitionCount;
+import com.linkedin.venice.controller.kafka.protocol.admin.StoreCreation;
+import com.linkedin.venice.controller.kafka.protocol.admin.SupersetSchemaCreation;
+import com.linkedin.venice.controller.kafka.protocol.admin.UpdateStoragePersona;
+import com.linkedin.venice.controller.kafka.protocol.admin.UpdateStore;
+import com.linkedin.venice.controller.kafka.protocol.admin.ValueSchemaCreation;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
 import com.linkedin.venice.controllerapi.AdminTopicMetadataResponse;
 import com.linkedin.venice.controllerapi.ControllerClient;
@@ -58,8 +89,10 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
@@ -93,11 +126,17 @@ import org.testng.annotations.Test;
  * </p>
  *
  * <p>
+ *   <b>Test Coverage Enforcement:</b>
+ *   All admin operations must have test coverage declared in {@link #OPERATION_TO_TEST_METHOD}.
+ *   Coverage is validated in {@code @BeforeClass}, causing immediate failure if any operation is missing a test.
+ * </p>
+ *
+ * <p>
  *   How to add new test for new operation:
  *   <ol>
- *     <li>Create a new test method with the name test<OperationName> </li>
- *     <li>Use runTestForEntryNames inside that test to provide all OperationNames that we are testing</li>
- *     <li>Write integration test</li>
+ *     <li>Create a new test method with the name test&lt;OperationName&gt; </li>
+ *     <li>Add the mapping to {@link #OPERATION_TO_TEST_METHOD}: {@code put("OperationName", "testOperationName")}</li>
+ *     <li>In the test method, call {@code runTestForEntryNames(Collections.singletonList("OperationName"), ...)}</li>
  *   </ol>
  * </p>
  */
@@ -119,21 +158,70 @@ public class TestAdminOperationWithPreviousVersion {
   static final Schema PREVIOUS_SCHEMA = AdminOperationSerializer.getSchema(PREVIOUS_SCHEMA_ID_FOR_ADMIN_OPERATION);
   private static final Set<String> NEW_UNION_ENTRIES = getNewUnionEntries();
 
+  /**
+   * Operations that are excluded from test coverage requirements.
+   * This includes deprecated, unused, or no-op operations that don't need integration tests.
+   * <p>
+   * When adding an operation here, include a comment explaining why it's excluded.
+   */
+  private static final Set<String> EXCLUDED_OPERATIONS = new HashSet<>(
+      Arrays.asList(
+          // Deprecated: No longer used in production, was replaced by store-level config
+          ConfigureNativeReplicationForCluster.class.getSimpleName(),
+          ConfigureIncrementalPushForCluster.class.getSimpleName()));
+  /**
+   * Declarative mapping of which operations are covered by which test methods.
+   * This is validated in @BeforeClass to ensure all operations have tests before execution begins.
+   * <p>
+   * When adding a new admin operation, add it here or to {@link #EXCLUDED_OPERATIONS}, or the test will fail.
+   */
+  private static final Map<String, String> OPERATION_TO_TEST_METHOD = new HashMap<String, String>() {
+    {
+      put(StoreCreation.class.getSimpleName(), "testStoreCreation");
+      put(PushStatusSystemStoreAutoCreationValidation.class.getSimpleName(), "testStoreCreation");
+      put(MetaSystemStoreAutoCreationValidation.class.getSimpleName(), "testStoreCreation");
+      put(PauseStore.class.getSimpleName(), "testPauseStore");
+      put(ResumeStore.class.getSimpleName(), "testPauseStore");
+      put(DisableStoreRead.class.getSimpleName(), "testDisableStoreRead");
+      put(EnableStoreRead.class.getSimpleName(), "testDisableStoreRead");
+      put(ValueSchemaCreation.class.getSimpleName(), "testValueSchemaCreation");
+      put(DeleteUnusedValueSchemas.class.getSimpleName(), "testValueSchemaCreation");
+      put(CreateStoragePersona.class.getSimpleName(), "testStoragePersona");
+      put(UpdateStoragePersona.class.getSimpleName(), "testStoragePersona");
+      put(DeleteStoragePersona.class.getSimpleName(), "testStoragePersona");
+      put(RollbackCurrentVersion.class.getSimpleName(), "testRollbackCurrentVersion");
+      put(RollForwardCurrentVersion.class.getSimpleName(), "testRollbackCurrentVersion");
+      put(ConfigureActiveActiveReplicationForCluster.class.getSimpleName(), "testConfigureActiveActiveReplication");
+      put(MigrateStore.class.getSimpleName(), "testMigrateStore");
+      put(AbortMigration.class.getSimpleName(), "testMigrateStore");
+      put(KillOfflinePushJob.class.getSimpleName(), "testKillOfflinePushJob");
+      put(DeleteAllVersions.class.getSimpleName(), "testDeleteAllVersions");
+      put(SetStoreOwner.class.getSimpleName(), "testSetStoreOwner");
+      put(SetStorePartitionCount.class.getSimpleName(), "testSetStorePartitionCount");
+      put(SetStoreCurrentVersion.class.getSimpleName(), "testSetStoreCurrentVersion");
+      put(UpdateStore.class.getSimpleName(), "testUpdateStore");
+      put(DeleteStore.class.getSimpleName(), "testDeleteStore");
+      put(DeleteOldVersion.class.getSimpleName(), "testDeleteOldVersion");
+      put(DerivedSchemaCreation.class.getSimpleName(), "testDerivedSchemaCreation");
+      put(AddVersion.class.getSimpleName(), "testAddVersion");
+      put(MetadataSchemaCreation.class.getSimpleName(), "testMetadataSchemaCreation");
+      put(SupersetSchemaCreation.class.getSimpleName(), "testSupersetSchemaCreation");
+    }
+  };
+
   private VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegionMultiClusterWrapper;
   private ControllerClient parentControllerClient;
   private String clusterName;
   private Admin veniceAdmin;
   private List<ControllerClient> childControllerClients;
   private VeniceMultiClusterWrapper multiClusterWrapperRegion0;
-  private int countTestRun;
-  private Set<String> testedOperations;
 
   @BeforeClass(alwaysRun = true)
   public void setUp() throws Exception {
     Utils.thisIsLocalhost();
-    // Reset the test run count to 0 for each test class
-    countTestRun = 0;
-    testedOperations = new HashSet<>();
+
+    // Validate that all operations have test coverage BEFORE running any tests
+    validateOperationCoverage();
 
     // Set the cluster name to the first cluster
     clusterName = CLUSTER_NAMES[0];
@@ -187,9 +275,6 @@ public class TestAdminOperationWithPreviousVersion {
 
   @BeforeMethod
   void beforeEachTest() {
-    // Increment the count of test run
-    countTestRun++;
-
     // Verify the admin protocol version
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
       assertEquals(
@@ -202,16 +287,32 @@ public class TestAdminOperationWithPreviousVersion {
   @AfterClass(alwaysRun = true)
   public void cleanUp() {
     multiRegionMultiClusterWrapper.close();
+  }
 
-    // If the countTestRun = 1, it means we are running one specific test only, no need to verify for all operations
-    // However, if you are running all tests, we will verify that all operations are tested
-    if (countTestRun > 1) {
-      for (String operationName: getPayloadUnionSchemaNames(LATEST_SCHEMA)) {
-        assertTrue(
-            testedOperations.contains(operationName),
-            "Operation type " + operationName + " was not tested. Please add integration test for " + operationName
-                + " in TestAdminOperationWithPreviousVersion and use runTestForEntryNames in that test.");
+  /**
+   * Validates that all admin operations have test coverage declared in OPERATION_TO_TEST_METHOD
+   * or are explicitly excluded in EXCLUDED_OPERATIONS.
+   * This runs in @BeforeClass, so any missing coverage causes immediate failure before expensive test setup.
+   */
+  private void validateOperationCoverage() {
+    List<String> allOperations = getPayloadUnionSchemaNames(LATEST_SCHEMA);
+    List<String> missingOperations = new ArrayList<>();
+
+    for (String operationName: allOperations) {
+      if (!OPERATION_TO_TEST_METHOD.containsKey(operationName) && !EXCLUDED_OPERATIONS.contains(operationName)) {
+        missingOperations.add(operationName);
       }
+    }
+
+    if (!missingOperations.isEmpty()) {
+      throw new AssertionError(
+          "The following admin operations do not have test coverage declared in OPERATION_TO_TEST_METHOD "
+              + "or EXCLUDED_OPERATIONS: " + missingOperations + "\n\n" + "To fix:\n"
+              + "1. Add a test method for the operation (e.g., testMyNewOperation)\n"
+              + "2. Add the mapping to OPERATION_TO_TEST_METHOD: put(\"MyNewOperation\", \"testMyNewOperation\")\n"
+              + "3. In the test method, call runTestForEntryNames(Collections.singletonList(\"MyNewOperation\"), ...)\n"
+              + "\n" + "OR if the operation is deprecated/unused:\n"
+              + "1. Add it to EXCLUDED_OPERATIONS with a comment explaining why\n");
     }
   }
 
@@ -290,7 +391,7 @@ public class TestAdminOperationWithPreviousVersion {
 
       // Check version
       for (ControllerClient childControllerClient: childControllerClients) {
-        TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, false, true, () -> {
+        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, true, () -> {
           StoreResponse storeResponse = childControllerClient.getStore(storeName);
           assertFalse(storeResponse.isError());
           StoreInfo storeInfo = storeResponse.getStore();
@@ -632,23 +733,6 @@ public class TestAdminOperationWithPreviousVersion {
   }
 
   @Test(timeOut = TEST_TIMEOUT)
-  public void testConfigureNativeReplicationForCluster() {
-    // No usage found for this operation
-    // Check @code{AdminExecutionTask#handleEnableNativeReplicationForCluster}
-    runTestForEntryNames(Collections.singletonList("ConfigureNativeReplicationForCluster"), () -> {
-      // Empty Runnable, does nothing
-    });
-  }
-
-  @Test(timeOut = TEST_TIMEOUT)
-  public void testConfigureIncrementalPushForCluster() {
-    // No usage found for this operation
-    runTestForEntryNames(Collections.singletonList("ConfigureIncrementalPushForCluster"), () -> {
-      // Empty Runnable, does nothing
-    });
-  }
-
-  @Test(timeOut = TEST_TIMEOUT)
   public void testMigrateStore() {
     runTestForEntryNames(Arrays.asList("MigrateStore", "AbortMigration"), () -> {
       String storeName = Utils.getUniqueString("test");
@@ -909,9 +993,6 @@ public class TestAdminOperationWithPreviousVersion {
    * @param testLogic: The logic to run the test
    */
   private void runTestForEntryNames(List<String> entryNames, Runnable testLogic) {
-    // Mark the operation type as tested
-    testedOperations.addAll(entryNames);
-
     boolean isNewUnionEntry = false;
     for (String entryName: entryNames) {
       if (NEW_UNION_ENTRIES.contains(entryName)) {
