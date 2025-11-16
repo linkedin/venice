@@ -70,6 +70,7 @@ import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
+import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
@@ -87,6 +88,8 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.views.MaterializedView;
+import com.linkedin.venice.writer.LeaderCompleteState;
+import com.linkedin.venice.writer.LeaderMetadataWrapper;
 import com.linkedin.venice.writer.VeniceWriter;
 import it.unimi.dsi.fastutil.objects.Object2IntMaps;
 import java.io.IOException;
@@ -521,6 +524,111 @@ public class LeaderFollowerStoreIngestionTaskTest {
     doReturn(ControlMessageType.START_OF_SEGMENT.getValue()).when(controlMessage).getControlMessageType();
     doReturn(ApacheKafkaOffsetPosition.of(seqNumber)).when(pubSubMessage).getPosition();
     return pubSubMessageProcessedResultWrapper;
+  }
+
+  @Test
+  public void testSendIngestionHeartbeatWithDependentFeatures() throws InterruptedException {
+    setUp();
+
+    // Mock the HeartbeatMonitoringService and KafkaStoreIngestionService
+    HeartbeatMonitoringService mockHeartbeatMonitoringService = mock(HeartbeatMonitoringService.class);
+    KafkaStoreIngestionService mockKafkaStoreIngestionService = mock(KafkaStoreIngestionService.class);
+
+    // Mock the getHeartbeatMonitoringService method to return our mock
+    doReturn(mockHeartbeatMonitoringService).when(leaderFollowerStoreIngestionTask).getHeartbeatMonitoringService();
+    when(mockHeartbeatMonitoringService.getKafkaStoreIngestionService()).thenReturn(mockKafkaStoreIngestionService);
+
+    // Mock VeniceWriter and its sendHeartbeat method
+    VeniceWriter mockVeniceWriter = mock(VeniceWriter.class);
+    Lazy<VeniceWriter<byte[], byte[], byte[]>> lazyMockWriter = Lazy.of(() -> mockVeniceWriter);
+    when(mockPartitionConsumptionState.getVeniceWriterLazyRef()).thenReturn(lazyMockWriter);
+
+    CompletableFuture<PubSubProduceResult> mockFuture = mock(CompletableFuture.class);
+    when(mockVeniceWriter.sendHeartbeat(any(), any(), any(), anyBoolean(), any(), anyLong(), anyBoolean()))
+        .thenReturn(mockFuture);
+
+    // Mock other required objects
+    PubSubTopicPartition mockTopicPartition = mock(PubSubTopicPartition.class);
+    PubSubProducerCallback mockCallback = mock(PubSubProducerCallback.class);
+    LeaderMetadataWrapper mockLeaderMetadataWrapper = mock(LeaderMetadataWrapper.class);
+
+    // Test case 1: Both dependent features enabled - should pass true to sendHeartbeat
+    doReturn(true).when(leaderFollowerStoreIngestionTask).isSystemSchemaInitializationAtStartTimeEnabled();
+    when(mockKafkaStoreIngestionService.isKMESchemeReaderPresent()).thenReturn(true);
+
+    leaderFollowerStoreIngestionTask.sendIngestionHeartbeat(
+        mockPartitionConsumptionState,
+        mockTopicPartition,
+        mockCallback,
+        mockLeaderMetadataWrapper,
+        false, // shouldLog
+        false, // addLeaderCompleteState
+        LeaderCompleteState.LEADER_NOT_COMPLETED,
+        System.currentTimeMillis());
+
+    // Verify that sendHeartbeat was called with dependentFeatureEnabled = true
+    verify(mockVeniceWriter).sendHeartbeat(
+        eq(mockTopicPartition),
+        eq(mockCallback),
+        eq(mockLeaderMetadataWrapper),
+        eq(false), // addLeaderCompleteState
+        eq(LeaderCompleteState.LEADER_NOT_COMPLETED),
+        anyLong(), // originTimeStampMs
+        eq(true)); // dependentFeatureEnabled should be true
+
+    // Reset the mock for next test
+    clearInvocations(mockVeniceWriter);
+
+    // Test case 2: System schema initialization disabled - should pass false to sendHeartbeat
+    doReturn(false).when(leaderFollowerStoreIngestionTask).isSystemSchemaInitializationAtStartTimeEnabled();
+    when(mockKafkaStoreIngestionService.isKMESchemeReaderPresent()).thenReturn(true);
+
+    leaderFollowerStoreIngestionTask.sendIngestionHeartbeat(
+        mockPartitionConsumptionState,
+        mockTopicPartition,
+        mockCallback,
+        mockLeaderMetadataWrapper,
+        false, // shouldLog
+        false, // addLeaderCompleteState
+        LeaderCompleteState.LEADER_NOT_COMPLETED,
+        System.currentTimeMillis());
+
+    // Verify that sendHeartbeat was called with dependentFeatureEnabled = false
+    verify(mockVeniceWriter).sendHeartbeat(
+        eq(mockTopicPartition),
+        eq(mockCallback),
+        eq(mockLeaderMetadataWrapper),
+        eq(false), // addLeaderCompleteState
+        eq(LeaderCompleteState.LEADER_NOT_COMPLETED),
+        anyLong(), // originTimeStampMs
+        eq(false)); // dependentFeatureEnabled should be false
+
+    // Reset the mock for next test
+    clearInvocations(mockVeniceWriter);
+
+    // Test case 3: KME reader disabled - should pass false to sendHeartbeat
+    doReturn(true).when(leaderFollowerStoreIngestionTask).isSystemSchemaInitializationAtStartTimeEnabled();
+    when(mockKafkaStoreIngestionService.isKMESchemeReaderPresent()).thenReturn(false);
+
+    leaderFollowerStoreIngestionTask.sendIngestionHeartbeat(
+        mockPartitionConsumptionState,
+        mockTopicPartition,
+        mockCallback,
+        mockLeaderMetadataWrapper,
+        false, // shouldLog
+        false, // addLeaderCompleteState
+        LeaderCompleteState.LEADER_NOT_COMPLETED,
+        System.currentTimeMillis());
+
+    // Verify that sendHeartbeat was called with dependentFeatureEnabled = false
+    verify(mockVeniceWriter).sendHeartbeat(
+        eq(mockTopicPartition),
+        eq(mockCallback),
+        eq(mockLeaderMetadataWrapper),
+        eq(false), // addLeaderCompleteState
+        eq(LeaderCompleteState.LEADER_NOT_COMPLETED),
+        anyLong(), // originTimeStampMs
+        eq(false)); // dependentFeatureEnabled should be false
   }
 
   @Test(timeOut = 60_000)

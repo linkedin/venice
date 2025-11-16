@@ -421,7 +421,13 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         ? new OptimizedKafkaValueSerializer(newSchemaEncountered)
         : new OptimizedKafkaValueSerializer();
 
-    kafkaMessageEnvelopeSchemaReader.ifPresent(kafkaValueSerializer::setSchemaReader);
+    kafkaMessageEnvelopeSchemaReader.ifPresent(reader -> {
+      LOGGER.info(
+          "Initialized KME schema reader. Type: {}, Latest value schema ID: {}",
+          reader.getClass().getSimpleName(),
+          reader.getLatestValueSchemaId());
+      kafkaValueSerializer.setSchemaReader(reader);
+    });
     PubSubMessageDeserializer pubSubDeserializer = new PubSubMessageDeserializer(
         kafkaValueSerializer,
         new LandFillObjectPool<>(KafkaMessageEnvelope::new),
@@ -1518,4 +1524,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     }
   }
 
+  public boolean isKMESchemeReaderPresent() {
+    return kafkaMessageEnvelopeSchemaReader.isPresent();
+  }
 }

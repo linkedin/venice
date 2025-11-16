@@ -138,16 +138,17 @@ public class MaterializedViewWriterTest {
     KafkaKey kafkaKey = mock(KafkaKey.class);
     doReturn(KafkaKey.HEART_BEAT.getKey()).when(kafkaKey).getKey();
     ComplexVeniceWriter veniceWriter = mock(ComplexVeniceWriter.class);
-    when(veniceWriter.sendHeartbeat(anyString(), anyInt(), any(), any(), anyBoolean(), any(), anyLong()))
+    when(veniceWriter.sendHeartbeat(anyString(), anyInt(), any(), any(), anyBoolean(), any(), anyLong(), anyBoolean()))
         .thenReturn(CompletableFuture.completedFuture(null));
     doReturn(CompletableFuture.completedFuture(null)).when(veniceWriter)
-        .sendHeartbeat(anyString(), anyInt(), any(), any(), anyBoolean(), any(), anyLong());
+        .sendHeartbeat(anyString(), anyInt(), any(), any(), anyBoolean(), any(), anyLong(), anyBoolean());
     materializedViewWriter.setVeniceWriter(veniceWriter);
     KafkaMessageEnvelope kafkaMessageEnvelope = mock(KafkaMessageEnvelope.class);
     PartitionConsumptionState partitionConsumptionState = mock(PartitionConsumptionState.class);
     materializedViewWriter
         .processControlMessage(kafkaKey, kafkaMessageEnvelope, controlMessage, 1, partitionConsumptionState);
-    verify(veniceWriter, never()).sendHeartbeat(anyString(), anyInt(), any(), any(), anyBoolean(), any(), anyLong());
+    verify(veniceWriter, never())
+        .sendHeartbeat(anyString(), anyInt(), any(), any(), anyBoolean(), any(), anyLong(), anyBoolean());
   }
 
   @Test
