@@ -10,7 +10,6 @@ import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controller.kafka.protocol.admin.AbortMigration;
 import com.linkedin.venice.controller.kafka.protocol.admin.AddVersion;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
-import com.linkedin.venice.controller.kafka.protocol.admin.ConfigureActiveActiveReplicationForCluster;
 import com.linkedin.venice.controller.kafka.protocol.admin.ConfigureNativeReplicationForCluster;
 import com.linkedin.venice.controller.kafka.protocol.admin.CreateStoragePersona;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteAllVersions;
@@ -52,7 +51,6 @@ import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.LifecycleHooksRecord;
 import com.linkedin.venice.meta.LifecycleHooksRecordImpl;
 import com.linkedin.venice.meta.Store;
-import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.utils.CollectionUtils;
@@ -62,7 +60,6 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.Callable;
@@ -249,9 +246,9 @@ public class AdminExecutionTask implements Callable<Void> {
           handleEnableNativeReplicationForCluster((ConfigureNativeReplicationForCluster) adminOperation.payloadUnion);
           break;
         case CONFIGURE_ACTIVE_ACTIVE_REPLICATION_FOR_CLUSTER:
-          handleEnableActiveActiveReplicationForCluster(
-              (ConfigureActiveActiveReplicationForCluster) adminOperation.payloadUnion);
-          break;
+          throw new VeniceUnsupportedOperationException(
+              "CONFIGURE_ACTIVE_ACTIVE_REPLICATION_FOR_CLUSTER is no longer supported. "
+                  + "Use the update-store command to configure active-active replication per store instead.");
         case REPLICATION_METADATA_SCHEMA_CREATION:
           handleReplicationMetadataSchemaCreation((MetadataSchemaCreation) adminOperation.payloadUnion);
           break;
@@ -733,20 +730,6 @@ public class AdminExecutionTask implements Callable<Void> {
     LOGGER.info(
         "Received message to configure native replication for cluster: {} but ignoring it as native replication is the only mode",
         message.clusterName);
-  }
-
-  private void handleEnableActiveActiveReplicationForCluster(ConfigureActiveActiveReplicationForCluster message) {
-    String clusterName = message.clusterName.toString();
-    VeniceUserStoreType storeType = VeniceUserStoreType.valueOf(message.storeType.toString().toUpperCase());
-    boolean enableActiveActiveReplication = message.enabled;
-    Optional<String> regionsFilter =
-        (message.regionsFilter == null) ? Optional.empty() : Optional.of(message.regionsFilter.toString());
-    admin.configureActiveActiveReplication(
-        clusterName,
-        storeType,
-        Optional.empty(),
-        enableActiveActiveReplication,
-        regionsFilter);
   }
 
   private boolean checkPreConditionForReplicateAddVersion(String clusterName, String storeName) {

@@ -516,12 +516,6 @@ public class AdminTool {
         case REMOVE_FROM_STORE_ACL:
           removeFromStoreAcl(cmd);
           break;
-        case ENABLE_ACTIVE_ACTIVE_REPLICATION_FOR_CLUSTER:
-          enableActiveActiveReplicationForCluster(cmd);
-          break;
-        case DISABLE_ACTIVE_ACTIVE_REPLICATION_FOR_CLUSTER:
-          disableActiveActiveReplicationForCluster(cmd);
-          break;
         case GET_DELETABLE_STORE_TOPICS:
           getDeletableStoreTopics(cmd);
           break;
@@ -2919,28 +2913,6 @@ public class AdminTool {
         System.out.println("No change in ACLs");
       }
     }
-  }
-
-  private static void enableActiveActiveReplicationForCluster(CommandLine cmd) {
-    String storeType = getRequiredArgument(cmd, Arg.STORE_TYPE);
-    String regionsFilterParam = getOptionalArgument(cmd, Arg.REGIONS_FILTER);
-    Optional<String> regionsFilter =
-        StringUtils.isEmpty(regionsFilterParam) ? Optional.empty() : Optional.of(regionsFilterParam);
-
-    ControllerResponse response =
-        controllerClient.configureActiveActiveReplicationForCluster(true, storeType, regionsFilter);
-    printObject(response);
-  }
-
-  private static void disableActiveActiveReplicationForCluster(CommandLine cmd) {
-    String storeType = getRequiredArgument(cmd, Arg.STORE_TYPE);
-    String regionsFilterParam = getOptionalArgument(cmd, Arg.REGIONS_FILTER);
-    Optional<String> regionsFilter =
-        StringUtils.isEmpty(regionsFilterParam) ? Optional.empty() : Optional.of(regionsFilterParam);
-
-    ControllerResponse response =
-        controllerClient.configureActiveActiveReplicationForCluster(false, storeType, regionsFilter);
-    printObject(response);
   }
 
   private static void getDeletableStoreTopics(CommandLine cmd) {
