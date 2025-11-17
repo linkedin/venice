@@ -45,6 +45,8 @@ public interface StoreSchemaFetcher extends Closeable {
 
   /**
    * Get value schema by value schema id.
+   * If the schema is not found, Router will return 404 NOT_FOUND error, and StoreSchemaFetcher will handle and throw
+   * {@link VeniceException}.
    */
   Schema getValueSchema(int valueSchemaId);
 
