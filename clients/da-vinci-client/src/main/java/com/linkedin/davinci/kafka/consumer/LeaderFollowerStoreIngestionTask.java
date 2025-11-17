@@ -2298,7 +2298,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           getStoreName(),
           getVersionNumber(),
           partitionConsumptionState.getPartition(),
-          // For Da Vinci there is no kafkaUrl mapping configured and the local region is default to empty.
+          /**
+           * For Da Vinci there is no kafkaUrl mapping configured, we should refer to local region name setup in the
+           * Venice server config. This is consistent from the heartbeat lag calculation for ready-to-serve check.
+           */
           isDaVinciClient()
               ? getServerConfig().getRegionName()
               : getServerConfig().getKafkaClusterUrlToAliasMap().get(kafkaUrl),
