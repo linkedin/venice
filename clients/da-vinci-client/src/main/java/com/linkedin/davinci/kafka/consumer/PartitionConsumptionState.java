@@ -274,6 +274,11 @@ public class PartitionConsumptionState {
   private final Schema keySchema;
   private KeyUrnCompressor keyUrnCompressor;
   private Map<String, IncrementalPushReplicaStatus> trackingIncrementalPushStatus;
+  /**
+   * Indicates whether a bootstrapping current version replica has resubscribed after bootstrap completed.
+   * In a replica's lifetime, this will only be flipped at most once.
+   */
+  private boolean hasResubscribedAfterBootstrapAsCurrentVersion;
 
   public PartitionConsumptionState(
       PubSubTopicPartition partitionReplica,
@@ -330,7 +335,7 @@ public class PartitionConsumptionState {
     this.leaderCompleteState = LeaderCompleteState.LEADER_NOT_COMPLETED;
     this.lastLeaderCompleteStateUpdateInMs = 0;
     this.pendingReportIncPushVersionList = offsetRecord.getPendingReportIncPushVersionList();
-
+    this.hasResubscribedAfterBootstrapAsCurrentVersion = false;
     KeyUrnCompressionDict keyUrnCompressionDict = offsetRecord.getKeyUrnCompressionDict();
     if (keyUrnCompressionDict != null) {
       if (keyUrnCompressionDict.keyUrnCompressionDictionaryVersion != 1) {
@@ -1119,5 +1124,13 @@ public class PartitionConsumptionState {
     this.trackingIncrementalPushStatus.entrySet()
         .removeIf(
             entry -> LatencyUtils.getElapsedTimeFromMsToMs(entry.getValue().timestamp) > MAX_RETENTION_DAYS_IN_MS);
+  }
+
+  public boolean hasResubscribedAfterBootstrapAsCurrentVersion() {
+    return hasResubscribedAfterBootstrapAsCurrentVersion;
+  }
+
+  public void setHasResubscribedAfterBootstrapAsCurrentVersion(boolean hasResubscribedAfterBootstrapAsCurrentVersion) {
+    this.hasResubscribedAfterBootstrapAsCurrentVersion = hasResubscribedAfterBootstrapAsCurrentVersion;
   }
 }
