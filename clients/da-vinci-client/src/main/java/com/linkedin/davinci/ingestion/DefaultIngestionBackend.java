@@ -316,14 +316,16 @@ public class DefaultIngestionBackend implements IngestionBackend {
   }
 
   /**
-   * A helper method to help decide if skip blob transfer and use kafka ingestion directly when there are some files already restore.
-   *
+   * A helper method to help decide if skip blob transfer and use PubSub ingestion directly by comparing ingestion
+   * state and lag threshold.
+   * 1. If `blobTransferDisabledOffsetLagThreshold` is negative, the offset lag check is skipped, and blob transfer
+   * always runs. (This is because retained data may not be cleaned up unless a new host is added, making it difficult
+   * to validate this feature. This is legacy field and will be retired once `blobTransferDisabledTimeLagThresholdInMinutes`
+   * is fully enabled).
    * 1. If the store is a batch store, check if the end of push is received
-   * 2. If the store is a hybrid store, check the offset lag within the allowed threshold.
-   *
-   * Note: If `blobTransferDisabledOffsetLagThreshold` is negative, the offset lag check is skipped, and blob transfer always runs.
-   * This is because retained data may not be cleaned up unless a new host is added, making it difficult to validate this feature.
-   * This 'blobTransferDisabledOffsetLagThreshold' config ensures blob transfer always runs in such cases.
+   * 2. If the store is a hybrid store, check the offset lag within the allowed threshold:
+   *   - (1) If `blobTransferDisabledTimeLagThresholdInMinutes` is positive, check time lag against the persisted timestamp.
+   *   - (2) Otherwise, fall back to check persisted offset lag with `blobTransferDisabledTimeLagThresholdInMinutes`.
    *
    * @param store the store name
    * @param versionNumber the version number
