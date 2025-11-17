@@ -13,6 +13,7 @@ import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.util.Collection;
 import java.util.Collections;
@@ -76,6 +77,11 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
         changelogClientConfig.getConsumerName(),
         this.changeCaptureStats,
         changelogClientConfig.isVersionSwapByControlMessageEnabled());
+  }
+
+  // Intended for unit test only.
+  void setTime(Time time) {
+    this.time = time;
   }
 
   @Override
@@ -181,7 +187,8 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
   }
 
   /**
-   * Similar to {@link #internalSeekToEndOfPush} this can also be optimized later for a faster find.
+   * Similar to {@link #internalSeekToEndOfPush} exception in addition to finding the EOP of each partition we will also
+   * be looking for the first relevant version swap. This can also be optimized later for a faster find.
    */
   @Override
   protected CompletableFuture<Void> internalFindNewVersionCheckpoints(
@@ -195,6 +202,7 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
     return CompletableFuture.supplyAsync(() -> {
       boolean lockAcquired = false;
       Map<Integer, VeniceChangeCoordinate> checkpoints = new HashMap<>();
+      Map<Integer, VeniceChangeCoordinate> eopCheckpoints = new HashMap<>();
       try {
         synchronized (internalSeekConsumer) {
           PubSubConsumerAdapter consumerAdapter = internalSeekConsumer.get();
@@ -228,7 +236,18 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
                 if (message.getKey().isControlMessage()) {
                   ControlMessage controlMessage = (ControlMessage) message.getValue().getPayloadUnion();
                   ControlMessageType controlMessageType = ControlMessageType.valueOf(controlMessage);
-                  if (controlMessageType.equals(ControlMessageType.VERSION_SWAP)) {
+                  if (controlMessageType.equals(ControlMessageType.END_OF_PUSH)) {
+                    VeniceChangeCoordinate eopCoordinate = new VeniceChangeCoordinate(
+                        pubSubTopicPartition.getPubSubTopic().getName(),
+                        message.getPosition(),
+                        pubSubTopicPartition.getPartitionNumber());
+                    eopCheckpoints.put(pubSubTopicPartition.getPartitionNumber(), eopCoordinate);
+                    LOGGER.info(
+                        "Found EOP for version swap message with generation id: {} for partition: {}",
+                        generationId,
+                        pubSubTopicPartition.getPartitionNumber());
+                    // We continue to poll until we find the corresponding version swap which should be after EOP
+                  } else if (controlMessageType.equals(ControlMessageType.VERSION_SWAP)) {
                     VersionSwap versionSwap = (VersionSwap) controlMessage.getControlMessageUnion();
                     // In theory just matching the generation id and source region should be sufficient but just to be
                     // safe we will match all fields
@@ -236,9 +255,6 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
                         && versionSwap.getSourceRegion().toString().equals(clientRegionName)
                         && oldVersionTopic.equals(versionSwap.getOldServingVersionTopic().toString())
                         && newVersionTopic.equals(versionSwap.getNewServingVersionTopic().toString())) {
-                      LOGGER.info(
-                          "Found corresponding version swap message for partition: {}",
-                          pubSubTopicPartition.getPartitionNumber());
                       versionSwapConsumedPerPartitionMap.put(pubSubTopicPartition.getPartitionNumber(), true);
                       VeniceChangeCoordinate coordinate = new VeniceChangeCoordinate(
                           pubSubTopicPartition.getPubSubTopic().getName(),
@@ -247,6 +263,10 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
                       checkpoints.put(pubSubTopicPartition.getPartitionNumber(), coordinate);
                       // We are done with this partition
                       consumerAdapter.unSubscribe(pubSubTopicPartition);
+                      LOGGER.info(
+                          "Found corresponding version swap message with generation id: {} for partition: {}",
+                          generationId,
+                          pubSubTopicPartition.getPartitionNumber());
                       break;
                     }
                   }
@@ -264,7 +284,8 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
         // old version topic yet. We can acquire the lock and update the VersionSwapMessageState.
         subscriptionLock.writeLock().lock();
         lockAcquired = true;
-        versionSwapMessageState.setNewTopicCheckpoints(checkpoints);
+        versionSwapMessageState.setNewTopicVersionSwapCheckpoints(checkpoints);
+        versionSwapMessageState.setNewTopicEOPCheckpoints(eopCheckpoints);
       } finally {
         if (lockAcquired) {
           subscriptionLock.writeLock().unlock();

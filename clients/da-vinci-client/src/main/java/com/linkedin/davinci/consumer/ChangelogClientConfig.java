@@ -92,6 +92,11 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
    * corresponding version swap messages before it can safely go to the new version to ensure data completeness.
    */
   private int totalRegionCount = 1;
+  /**
+   * Version swap timeout in milliseconds. If the version swap is not completed within this time, the consumer will swap
+   * to the new version and resume normal consumption from EOP for any incomplete partitions. Default is 30 minutes.
+   */
+  private long versionSwapTimeoutInMs = 30 * 60 * 1000;
 
   public ChangelogClientConfig(String storeName) {
     this.innerClientConfig = new ClientConfig<>(storeName);
@@ -365,6 +370,15 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
     return this;
   }
 
+  public long getVersionSwapTimeoutInMs() {
+    return this.versionSwapTimeoutInMs;
+  }
+
+  public ChangelogClientConfig setVersionSwapTimeoutInMs(long versionSwapTimeoutInMs) {
+    this.versionSwapTimeoutInMs = versionSwapTimeoutInMs;
+    return this;
+  }
+
   public static <V extends SpecificRecord> ChangelogClientConfig<V> cloneConfig(ChangelogClientConfig<V> config) {
     ChangelogClientConfig<V> newConfig = new ChangelogClientConfig<V>().setStoreName(config.getStoreName())
         .setLocalD2ZkHosts(config.getLocalD2ZkHosts())
@@ -395,7 +409,8 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
         .setIsStateful(false)
         .setVersionSwapByControlMessageEnabled(config.isVersionSwapByControlMessageEnabled())
         .setClientRegionName(config.getClientRegionName())
-        .setTotalRegionCount(config.getTotalRegionCount());
+        .setTotalRegionCount(config.getTotalRegionCount())
+        .setVersionSwapTimeoutInMs(config.getVersionSwapTimeoutInMs());
     return newConfig;
   }
 
