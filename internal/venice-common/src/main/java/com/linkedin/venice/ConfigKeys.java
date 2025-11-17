@@ -2092,9 +2092,15 @@ public class ConfigKeys {
   // This is a config to set the reader idle timeout (in seconds) on the client side to handle scenarios where the
   // server shuts down before transfer completes.
   public static final String BLOB_RECEIVE_READER_IDLE_TIME_IN_SECONDS = "blob.receive.reader.idle.time.in.seconds";
-  // this is a config to decide the max allowed offset lag to use kafka, even if the blob transfer is enable.
+  // This is a config to decide the max allowed offset lag to use pubsub, even if the blob transfer is enable.
   public static final String BLOB_TRANSFER_DISABLED_OFFSET_LAG_THRESHOLD =
       "blob.transfer.disabled.offset.lag.threshold";
+  /**
+   * This is a config to decide the max allowed time lag to use pubsub, even if the blob transfer is enable.
+   * If the config is non-positive, this means the feature is disabled.
+   */
+  public static final String BLOB_TRANSFER_DISABLED_TIME_LAG_THRESHOLD_IN_MINUTES =
+      "blob.transfer.disabled.time.lag.threshold.in.minutes";
   // This is a freshness in sec to measure the connectivity between the peers,
   // if the connectivity is not fresh, then retry the connection.
   public static final String BLOB_TRANSFER_PEERS_CONNECTIVITY_FRESHNESS_IN_SECONDS =

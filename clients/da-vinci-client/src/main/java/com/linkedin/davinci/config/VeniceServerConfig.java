@@ -8,6 +8,7 @@ import static com.linkedin.venice.ConfigKeys.BLOB_RECEIVE_READER_IDLE_TIME_IN_SE
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_ACL_ENABLED;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_CLIENT_READ_LIMIT_BYTES_PER_SEC;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_DISABLED_OFFSET_LAG_THRESHOLD;
+import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_DISABLED_TIME_LAG_THRESHOLD_IN_MINUTES;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_MANAGER_ENABLED;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_MAX_CONCURRENT_SNAPSHOT_USER;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_MAX_TIMEOUT_IN_MIN;
@@ -617,6 +618,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final long blobTransferClientReadLimitBytesPerSec;
   private final long blobTransferServiceWriteLimitBytesPerSec;
   private final long blobTransferDisabledOffsetLagThreshold;
+  private final int blobTransferDisabledTimeLagThresholdInMinutes;
   private final int snapshotCleanupIntervalInMins;
   private final int dvcP2pBlobTransferServerPort;
   private final int dvcP2pBlobTransferClientPort;
@@ -720,6 +722,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     snapshotCleanupIntervalInMins = serverProperties.getInt(BLOB_TRANSFER_SNAPSHOT_CLEANUP_INTERVAL_IN_MINS, 120);
     blobTransferDisabledOffsetLagThreshold =
         serverProperties.getLong(BLOB_TRANSFER_DISABLED_OFFSET_LAG_THRESHOLD, 100000L);
+    blobTransferDisabledTimeLagThresholdInMinutes =
+        serverProperties.getInt(BLOB_TRANSFER_DISABLED_TIME_LAG_THRESHOLD_IN_MINUTES, 0); // Default: Disabled.
+
     dvcP2pBlobTransferServerPort = serverProperties.getInt(DAVINCI_P2P_BLOB_TRANSFER_SERVER_PORT, -1);
     dvcP2pBlobTransferClientPort =
         serverProperties.getInt(DAVINCI_P2P_BLOB_TRANSFER_CLIENT_PORT, dvcP2pBlobTransferServerPort);
@@ -1237,6 +1242,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public long getBlobTransferDisabledOffsetLagThreshold() {
     return blobTransferDisabledOffsetLagThreshold;
+  }
+
+  public int getBlobTransferDisabledTimeLagThresholdInMinutes() {
+    return blobTransferDisabledTimeLagThresholdInMinutes;
   }
 
   public int getSnapshotCleanupIntervalInMins() {
