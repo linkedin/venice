@@ -218,7 +218,7 @@ public class TestActiveActiveVersionSwapMessage {
   }
 
   @Test(timeOut = TEST_TIMEOUT)
-  public void testCDCMultiDataCenterVersioSwapMessageHandling() throws Exception {
+  public void testCDCMultiDataCenterVersionSwapMessageHandling() throws Exception {
     String storeName = Utils.getUniqueString("test-store");
     try {
       String keySchemaStr = TestChangelogKey.SCHEMA$.toString();
@@ -259,20 +259,45 @@ public class TestActiveActiveVersionSwapMessage {
         veniceProducer.start();
         performStreamWrites(veniceProducer, storeName, 50, 100);
       }
-      // Start a local consumer that should subscribe to v1
+      // Start a local consumer with version swap by control messages that should subscribe to v1
       MetricsRepository metricsRepository = new MetricsRepository();
-      VeniceChangelogConsumerClientFactory changelogConsumerClientFactory =
-          getChangeLogConsumerFactory(childDatacenters.get(0), metricsRepository);
+      VeniceChangelogConsumerClientFactory changelogConsumerClientFactory = new VeniceChangelogConsumerClientFactory(
+          getDefaultVersionSwapEnabledChangelogClientConfig(childDatacenters.get(0)),
+          metricsRepository);
       VeniceChangelogConsumer<GenericRecord, GenericRecord> consumer =
           changelogConsumerClientFactory.getChangelogConsumer(storeName);
       consumer.subscribeAll().get();
-      Map<String, GenericRecord> polledChangeEventsMap = new HashMap<>();
+      Map<String, VeniceChangeCoordinate> polledChangeEventsMap = new HashMap<>();
       List<String> polledChangeEventsKeyList = new ArrayList<>();
       pollUntilSpecificIndexes(
           consumer,
           polledChangeEventsMap,
           polledChangeEventsKeyList,
           Collections.singleton("149"));
+      // Start a second consumer configured with a short version swap timeout and a non-existing region to simulate when
+      // a region is down.
+      MetricsRepository metricsRepository2 = new MetricsRepository();
+      ChangelogClientConfig timeoutConsumerConfig =
+          getDefaultVersionSwapEnabledChangelogClientConfig(childDatacenters.get(0));
+      timeoutConsumerConfig.setTotalRegionCount(childDatacenters.size() + 1);
+      timeoutConsumerConfig.setVersionSwapTimeoutInMs(1000L);
+      timeoutConsumerConfig.setConsumerName("timeout-consumer");
+      VeniceChangelogConsumerClientFactory timeoutConsumerFactory =
+          new VeniceChangelogConsumerClientFactory(timeoutConsumerConfig, metricsRepository2);
+      VeniceChangelogConsumer<GenericRecord, GenericRecord> timeoutConsumer =
+          timeoutConsumerFactory.getChangelogConsumer(storeName);
+      timeoutConsumer.subscribeAll().get();
+      Map<String, VeniceChangeCoordinate> timeoutConsumerpolledChangeEventsMap = new HashMap<>();
+      List<String> timeoutConsumerpolledChangeEventsKeyList = new ArrayList<>();
+      // For the other consumer we need to make sure it consumes to tail for all partitions for ease of verification.
+      // Since it has a short version swap timeout, without this condition a partition could forcefully swap to the new
+      // version before reaching the first version swap message.
+      pollUntilSpecificEventKeyListSize(
+          timeoutConsumer,
+          timeoutConsumerpolledChangeEventsMap,
+          timeoutConsumerpolledChangeEventsKeyList,
+          150);
+
       // Another empty push should trigger version swap message write and switch current version to v2
       VersionCreationResponse newVersionCreationResponse =
           parentControllerClient.emptyPush(storeName, Utils.getUniqueString("empty-hybrid-push"), 1L);
@@ -303,6 +328,21 @@ public class TestActiveActiveVersionSwapMessage {
       for (int i = 0; i < 155; i++) {
         Assert.assertTrue(polledChangeEventsMap.containsKey(String.valueOf(i)));
       }
+      // Hacky verification using toString since internal topic is not exposed by the VeniceChangeCoordinate
+      Assert
+          .assertTrue(polledChangeEventsMap.get("154").toString().contains(newVersionCreationResponse.getKafkaTopic()));
+
+      // The other consumer should be able to consume at least 305 events if version swap via timeout is successful.
+      // 150 (base) + 150 (base replayed in new version) + 5 (new writes after version swap) = 305.
+      pollUntilSpecificEventKeyListSize(
+          timeoutConsumer,
+          timeoutConsumerpolledChangeEventsMap,
+          timeoutConsumerpolledChangeEventsKeyList,
+          305);
+      Assert.assertTrue(
+          timeoutConsumerpolledChangeEventsMap.get("149")
+              .toString()
+              .contains(newVersionCreationResponse.getKafkaTopic()));
     } finally {
       deleteStores(storeName);
     }
@@ -310,7 +350,7 @@ public class TestActiveActiveVersionSwapMessage {
 
   private void pollUntilSpecificIndexes(
       VeniceChangelogConsumer<GenericRecord, GenericRecord> consumer,
-      Map<String, GenericRecord> polledChangeEventsMap,
+      Map<String, VeniceChangeCoordinate> polledChangeEventsMap,
       List<String> polledChangeEventsKeyList,
       Set<String> specificIndexes) {
     final Set<String> consumedSpecificIndexes = new HashSet<>();
@@ -319,7 +359,7 @@ public class TestActiveActiveVersionSwapMessage {
           consumer.poll(100);
       for (PubSubMessage<GenericRecord, ChangeEvent<GenericRecord>, VeniceChangeCoordinate> pubSubMessage: pubSubMessages) {
         String key = pubSubMessage.getKey() == null ? null : String.valueOf(pubSubMessage.getKey().get("id"));
-        polledChangeEventsMap.put(key, pubSubMessage.getValue().getCurrentValue());
+        polledChangeEventsMap.put(key, pubSubMessage.getPosition());
         polledChangeEventsKeyList.add(key);
         if (key != null && specificIndexes.contains(key)) {
           consumedSpecificIndexes.add(key);
@@ -329,9 +369,25 @@ public class TestActiveActiveVersionSwapMessage {
     });
   }
 
-  private VeniceChangelogConsumerClientFactory getChangeLogConsumerFactory(
-      VeniceMultiClusterWrapper localRegion,
-      MetricsRepository metricsRepository) {
+  private void pollUntilSpecificEventKeyListSize(
+      VeniceChangelogConsumer<GenericRecord, GenericRecord> consumer,
+      Map<String, VeniceChangeCoordinate> polledChangeEventsMap,
+      List<String> polledChangeEventsKeyList,
+      int specifiedSize) {
+    TestUtils.waitForNonDeterministicCompletion(30, TimeUnit.SECONDS, () -> {
+      Collection<PubSubMessage<GenericRecord, ChangeEvent<GenericRecord>, VeniceChangeCoordinate>> pubSubMessages =
+          consumer.poll(100);
+      for (PubSubMessage<GenericRecord, ChangeEvent<GenericRecord>, VeniceChangeCoordinate> pubSubMessage: pubSubMessages) {
+        String key = pubSubMessage.getKey() == null ? null : String.valueOf(pubSubMessage.getKey().get("id"));
+        polledChangeEventsMap.put(key, pubSubMessage.getPosition());
+        polledChangeEventsKeyList.add(key);
+      }
+      return polledChangeEventsKeyList.size() >= specifiedSize;
+    });
+  }
+
+  private ChangelogClientConfig getDefaultVersionSwapEnabledChangelogClientConfig(
+      VeniceMultiClusterWrapper localRegion) {
     Properties consumerProperties = new Properties();
     consumerProperties.putAll(multiRegionMultiClusterWrapper.getPubSubClientProperties());
     consumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, localRegion.getPubSubBrokerWrapper().getAddress());
@@ -346,7 +402,7 @@ public class TestActiveActiveVersionSwapMessage {
         .setVersionSwapByControlMessageEnabled(true)
         .setClientRegionName(localRegion.getRegionName())
         .setTotalRegionCount(childDatacenters.size());
-    return new VeniceChangelogConsumerClientFactory(changelogClientConfig, metricsRepository);
+    return changelogClientConfig;
   }
 
   private void performStreamWrites(SystemProducer veniceProducer, String storeName, int numPuts, int startIndex) {
