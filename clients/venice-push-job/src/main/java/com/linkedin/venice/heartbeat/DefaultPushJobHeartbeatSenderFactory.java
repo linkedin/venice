@@ -56,7 +56,7 @@ public class DefaultPushJobHeartbeatSenderFactory implements PushJobHeartbeatSen
     StoreInfo storeInfo = heartBeatStoreResponse.getStore();
     PartitionerConfig partitionerConfig = storeInfo.getPartitionerConfig();
     int partitionNum = storeInfo.getPartitionCount();
-    String heartbeatKafkaTopicName = Utils.composeRealTimeTopic(heartbeatStoreName);
+    String heartbeatKafkaTopicName = Utils.getRealTimeTopicName(heartBeatStoreResponse.getStore());
     VeniceWriter<byte[], byte[], byte[]> veniceWriter = getVeniceWriter(
         heartbeatKafkaTopicName,
         partitionerConfig,
