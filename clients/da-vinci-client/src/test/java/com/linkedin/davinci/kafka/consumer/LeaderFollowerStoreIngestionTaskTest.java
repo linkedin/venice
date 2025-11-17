@@ -554,7 +554,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
 
     // Test case 1: Both dependent features enabled - should pass true to sendHeartbeat
     doReturn(true).when(leaderFollowerStoreIngestionTask).isSystemSchemaInitializationAtStartTimeEnabled();
-    when(mockKafkaStoreIngestionService.isKMESchemeReaderPresent()).thenReturn(true);
+    when(mockKafkaStoreIngestionService.isKMESchemaReaderPresent()).thenReturn(true);
 
     leaderFollowerStoreIngestionTask.sendIngestionHeartbeat(
         mockPartitionConsumptionState,
@@ -581,7 +581,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
 
     // Test case 2: System schema initialization disabled - should pass false to sendHeartbeat
     doReturn(false).when(leaderFollowerStoreIngestionTask).isSystemSchemaInitializationAtStartTimeEnabled();
-    when(mockKafkaStoreIngestionService.isKMESchemeReaderPresent()).thenReturn(true);
+    when(mockKafkaStoreIngestionService.isKMESchemaReaderPresent()).thenReturn(true);
 
     leaderFollowerStoreIngestionTask.sendIngestionHeartbeat(
         mockPartitionConsumptionState,
@@ -608,7 +608,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
 
     // Test case 3: KME reader disabled - should pass false to sendHeartbeat
     doReturn(true).when(leaderFollowerStoreIngestionTask).isSystemSchemaInitializationAtStartTimeEnabled();
-    when(mockKafkaStoreIngestionService.isKMESchemeReaderPresent()).thenReturn(false);
+    when(mockKafkaStoreIngestionService.isKMESchemaReaderPresent()).thenReturn(false);
 
     leaderFollowerStoreIngestionTask.sendIngestionHeartbeat(
         mockPartitionConsumptionState,

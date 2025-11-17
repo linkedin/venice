@@ -1524,7 +1524,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     }
   }
 
-  public boolean isKMESchemeReaderPresent() {
+  public boolean isKMESchemaReaderPresent() {
     return kafkaMessageEnvelopeSchemaReader.isPresent();
   }
 }

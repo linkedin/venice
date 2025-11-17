@@ -3954,7 +3954,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       long originTimeStampMs) {
     CompletableFuture<PubSubProduceResult> heartBeatFuture;
     boolean dependentFeatureEnabled = isSystemSchemaInitializationAtStartTimeEnabled()
-        && getHeartbeatMonitoringService().getKafkaStoreIngestionService().isKMESchemeReaderPresent();
+        && getHeartbeatMonitoringService().getKafkaStoreIngestionService().isKMESchemaReaderPresent();
     try {
       heartBeatFuture = partitionConsumptionState.getVeniceWriterLazyRef()
           .get()
