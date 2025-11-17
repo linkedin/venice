@@ -28,13 +28,16 @@ public class VersionSwapMessageState {
   private final Map<Integer, PubSubPosition> partitionToVersionSwapLowWatermarkPositionMap;
   private final Set<Integer> assignedPartitions;
   private final Set<Integer> completedPartitions;
+  private final long versionSwapStartTimestamp;
   private CompletableFuture<Void> findNewTopicCheckpointFuture;
-  private Map<Integer, VeniceChangeCoordinate> newTopicCheckpoints = new HashMap<>();
+  private Map<Integer, VeniceChangeCoordinate> newTopicVersionSwapCheckpoints = new HashMap<>();
+  private Map<Integer, VeniceChangeCoordinate> newTopicEOPCheckpoints = new HashMap<>();
 
   public VersionSwapMessageState(
       VersionSwap versionSwap,
       int totalRegionCount,
-      Set<PubSubTopicPartition> currentAssignment) {
+      Set<PubSubTopicPartition> currentAssignment,
+      long versionSwapStartTimestamp) {
     this.oldVersionTopic = versionSwap.getOldServingVersionTopic().toString();
     this.newVersionTopic = versionSwap.getNewServingVersionTopic().toString();
     this.versionSwapGenerationId = versionSwap.getGenerationId();
@@ -49,6 +52,7 @@ public class VersionSwapMessageState {
     }
     this.partitionToVersionSwapLowWatermarkPositionMap = new HashMap<>();
     this.completedPartitions = new HashSet<>();
+    this.versionSwapStartTimestamp = versionSwapStartTimestamp;
   }
 
   public PubSubPosition getVersionSwapLowWatermarkPosition(String topic, int partitionId) {
@@ -79,17 +83,21 @@ public class VersionSwapMessageState {
     return findNewTopicCheckpointFuture;
   }
 
-  public void setNewTopicCheckpoints(Map<Integer, VeniceChangeCoordinate> newTopicCheckpoints) {
-    this.newTopicCheckpoints = newTopicCheckpoints;
+  public void setNewTopicVersionSwapCheckpoints(Map<Integer, VeniceChangeCoordinate> newTopicVersionSwapCheckpoints) {
+    this.newTopicVersionSwapCheckpoints = newTopicVersionSwapCheckpoints;
   }
 
-  public Set<VeniceChangeCoordinate> getNewTopicCheckpoints() {
+  public void setNewTopicEOPCheckpoints(Map<Integer, VeniceChangeCoordinate> newTopicEOPCheckpoints) {
+    this.newTopicEOPCheckpoints = newTopicEOPCheckpoints;
+  }
+
+  public Set<VeniceChangeCoordinate> getNewTopicVersionSwapCheckpoints() {
     // Defensive coding
     if (findNewTopicCheckpointFuture == null || !findNewTopicCheckpointFuture.isDone()) {
-      throw new IllegalStateException("New topic checkpoints are not available yet");
+      throw new VeniceException("New topic checkpoints are not available yet");
     }
     Set<VeniceChangeCoordinate> checkpoints = new HashSet<>();
-    for (Map.Entry<Integer, VeniceChangeCoordinate> entry: newTopicCheckpoints.entrySet()) {
+    for (Map.Entry<Integer, VeniceChangeCoordinate> entry: newTopicVersionSwapCheckpoints.entrySet()) {
       if (completedPartitions.contains(entry.getKey())) {
         checkpoints.add(entry.getValue());
       }
@@ -97,8 +105,43 @@ public class VersionSwapMessageState {
     return checkpoints;
   }
 
+  /**
+   * Intended to be used as a backup strategy if any partition still did not complete version swap within the timeout.
+   * Remaining partitions will be resumed from EOP instead of first relevant version swap message in the new topic.
+   */
+  public Set<VeniceChangeCoordinate> getNewTopicCheckpointsWithEOPAsBackup() {
+    Set<VeniceChangeCoordinate> checkpoints = getNewTopicVersionSwapCheckpoints();
+    for (Integer partition: getIncompletePartitions()) {
+      if (newTopicEOPCheckpoints.containsKey(partition)) {
+        checkpoints.add(newTopicEOPCheckpoints.get(partition));
+      } else {
+        throw new VeniceException(
+            String.format("EOP VeniceChangeCoordinate is missing unexpectedly for partition: %s", partition));
+      }
+    }
+    return checkpoints;
+  }
+
   public Set<Integer> getAssignedPartitions() {
     return assignedPartitions;
+  }
+
+  public Set<Integer> getIncompletePartitions() {
+    Set<Integer> incompletePartitions = new HashSet<>(assignedPartitions);
+    incompletePartitions.removeAll(completedPartitions);
+    return incompletePartitions;
+  }
+
+  /**
+   * If we have reached the timeout for the version swap, we need to forcefully seek to the new topic using the EOP
+   * positions for any remaining partitions as our backup plan which should cover a variety of edge cases (e.g. consumer
+   * is not polling fast enough, consumer starting position was in between version swaps, a region is down, etc...) In
+   * all these edge cases it's better to go to the new topic and consume a lot of duplicate messages than staying on the
+   * old topic which will eventually be deleted.
+   * @return the timestamp when the version swap was started.
+   */
+  public long getVersionSwapStartTimestamp() {
+    return versionSwapStartTimestamp;
   }
 
   /**
