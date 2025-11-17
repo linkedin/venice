@@ -318,7 +318,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   }
 
   public CompletableFuture<Void> seekToEndOfPush(Set<Integer> partitions) {
-    throw new VeniceClientException("seekToEndOfPush will not be supported");
+    return daVinciClient.seekToTail(partitions);
   }
 
   public CompletableFuture<Void> seekToEndOfPush() {
@@ -326,12 +326,11 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   }
 
   public CompletableFuture<Void> seekToTail(Set<Integer> partitions) {
-    // ToDo: Seek to latest
-    throw new VeniceClientException("seekToTail is not supported yet");
+    return daVinciClient.seekToTail(partitions);
   }
 
   public CompletableFuture<Void> seekToTail() {
-    return this.seekToTail(Collections.emptySet());
+    return daVinciClient.seekToTail();
   }
 
   public CompletableFuture<Void> seekToCheckpoint(Set<VeniceChangeCoordinate> checkpoints) {
