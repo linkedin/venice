@@ -91,6 +91,7 @@ import com.linkedin.venice.writer.VeniceWriter;
 import it.unimi.dsi.fastutil.objects.Object2IntMaps;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -964,5 +965,59 @@ public class LeaderFollowerStoreIngestionTaskTest {
     doCallRealMethod().when(leaderFollowerStoreIngestionTask).extractUpstreamClusterId(consumerRecord7);
     int clusterId7 = leaderFollowerStoreIngestionTask.extractUpstreamClusterId(consumerRecord7);
     assertEquals(clusterId7, Integer.MAX_VALUE, "Should extract large cluster ID correctly");
+  }
+
+  @Test
+  public void testHeartbeatRecord() {
+    HeartbeatMonitoringService heartbeatMonitoringService = mock(HeartbeatMonitoringService.class);
+
+    LeaderFollowerStoreIngestionTask ingestionTask = mock(LeaderFollowerStoreIngestionTask.class);
+    doReturn("foo").when(ingestionTask).getStoreName();
+    doReturn(1).when(ingestionTask).getVersionNumber();
+    doCallRealMethod().when(ingestionTask).recordHeartbeatReceived(any(), any(), anyString());
+
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    doReturn(100).when(pcs).getPartition();
+    doReturn(false).when(pcs).isComplete();
+
+    DefaultPubSubMessage consumerRecord = mock(DefaultPubSubMessage.class);
+    KafkaMessageEnvelope kafkaMessageEnvelope = new KafkaMessageEnvelope();
+    ProducerMetadata producerMetadata = new ProducerMetadata();
+    producerMetadata.messageTimestamp = 123L;
+    kafkaMessageEnvelope.setProducerMetadata(producerMetadata);
+    doReturn(kafkaMessageEnvelope).when(consumerRecord).getValue();
+
+    VeniceServerConfig veniceServerConfig = mock(VeniceServerConfig.class);
+    Map<String, String> urlMap = Collections.singletonMap("abc:123", "c1");
+    doReturn(urlMap).when(veniceServerConfig).getKafkaClusterUrlToAliasMap();
+    doReturn(veniceServerConfig).when(ingestionTask).getServerConfig();
+
+    // Monitoring service is null.
+    ingestionTask.recordHeartbeatReceived(pcs, consumerRecord, "abc:123");
+    verify(heartbeatMonitoringService, never())
+        .recordLeaderHeartbeat(anyString(), anyInt(), anyInt(), anyString(), anyLong(), anyBoolean());
+    verify(heartbeatMonitoringService, never())
+        .recordFollowerHeartbeat(anyString(), anyInt(), anyInt(), anyString(), anyLong(), anyBoolean());
+
+    // Verify Leader
+    doReturn(heartbeatMonitoringService).when(ingestionTask).getHeartbeatMonitoringService();
+    doReturn(LeaderFollowerStateType.LEADER).when(pcs).getLeaderFollowerState();
+    ingestionTask.recordHeartbeatReceived(pcs, consumerRecord, "abc:123");
+    verify(heartbeatMonitoringService, times(1))
+        .recordLeaderHeartbeat(eq("foo"), eq(1), eq(100), eq("c1"), eq(123L), eq(false));
+    verify(heartbeatMonitoringService, never())
+        .recordFollowerHeartbeat(anyString(), anyInt(), anyInt(), anyString(), anyLong(), anyBoolean());
+    // Verify Follower
+    doReturn(false).when(ingestionTask).isDaVinciClient();
+    doReturn(LeaderFollowerStateType.STANDBY).when(pcs).getLeaderFollowerState();
+    ingestionTask.recordHeartbeatReceived(pcs, consumerRecord, "abc:123");
+    verify(heartbeatMonitoringService, times(1))
+        .recordFollowerHeartbeat(eq("foo"), eq(1), eq(100), eq("c1"), eq(123L), eq(false));
+    // Verify Da Vinci
+    doReturn(true).when(ingestionTask).isDaVinciClient();
+    doReturn("local").when(veniceServerConfig).getRegionName();
+    ingestionTask.recordHeartbeatReceived(pcs, consumerRecord, "abc:123");
+    verify(heartbeatMonitoringService, times(1))
+        .recordFollowerHeartbeat(eq("foo"), eq(1), eq(100), eq("local"), eq(123L), eq(false));
   }
 }

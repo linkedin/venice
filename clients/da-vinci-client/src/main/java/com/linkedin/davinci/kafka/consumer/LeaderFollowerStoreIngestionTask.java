@@ -2287,23 +2287,22 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
     if (partitionConsumptionState.getLeaderFollowerState().equals(LEADER)) {
       getHeartbeatMonitoringService().recordLeaderHeartbeat(
-          storeName,
-          versionNumber,
+          getStoreName(),
+          getVersionNumber(),
           partitionConsumptionState.getPartition(),
-          serverConfig.getKafkaClusterUrlToAliasMap().get(kafkaUrl),
-          consumerRecord.getValue().producerMetadata.messageTimestamp,
+          getServerConfig().getKafkaClusterUrlToAliasMap().get(kafkaUrl),
+          consumerRecord.getValue().getProducerMetadata().getMessageTimestamp(),
           partitionConsumptionState.isComplete());
     } else {
       getHeartbeatMonitoringService().recordFollowerHeartbeat(
-          storeName,
-          versionNumber,
+          getStoreName(),
+          getVersionNumber(),
           partitionConsumptionState.getPartition(),
-          isDaVinciClient() ? "" : serverConfig.getKafkaClusterUrlToAliasMap().get(kafkaUrl), // For Da Vinci there is
-                                                                                              // no kafkaUrl mapping
-                                                                                              // configured and the
-                                                                                              // local region is default
-                                                                                              // to empty.
-          consumerRecord.getValue().producerMetadata.messageTimestamp,
+          // For Da Vinci there is no kafkaUrl mapping configured and the local region is default to empty.
+          isDaVinciClient()
+              ? getServerConfig().getRegionName()
+              : getServerConfig().getKafkaClusterUrlToAliasMap().get(kafkaUrl),
+          consumerRecord.getValue().getProducerMetadata().getMessageTimestamp(),
           partitionConsumptionState.isComplete());
     }
   }
