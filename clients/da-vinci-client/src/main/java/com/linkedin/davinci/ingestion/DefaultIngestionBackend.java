@@ -151,14 +151,21 @@ public class DefaultIngestionBackend implements IngestionBackend {
     // If the offset lag is below the blobTransferDisabledOffsetLagThreshold, it indicates there is not lagging and
     // can bootstrap from Kafka.
     storageService.openStore(storeConfig, svsSupplier);
-    if (!isReplicaLagged(
+    if (!isReplicaLaggedAndNeedBlobTransfer(
         store.getName(),
         versionNumber,
         partitionId,
         blobTransferDisabledOffsetLagThreshold,
         blobTransferDisabledTimeLagThresholdInMinutes,
         store.isHybrid())) {
+      LOGGER.info(
+          "Replica: {} is not lagged, will consume from PubSub directly",
+          Utils.getReplicaId(Version.composeKafkaTopic(storeName, versionNumber), partitionId));
       return CompletableFuture.completedFuture(null);
+    } else {
+      LOGGER.info(
+          "Replica: {} is lagged, will try to bootstrap via blob transfer",
+          Utils.getReplicaId(Version.composeKafkaTopic(storeName, versionNumber), partitionId));
     }
 
     // After decide to bootstrap from blobs transfer, close the partition, clean up the offset and partition folder,
@@ -331,7 +338,7 @@ public class DefaultIngestionBackend implements IngestionBackend {
    *                    If it is a batch store, check if the batch push is done or not.
    * @return true if the store is lagged and needs to bootstrap from blob transfer, else false then bootstrap from Kafka.
    */
-  public boolean isReplicaLagged(
+  public boolean isReplicaLaggedAndNeedBlobTransfer(
       String store,
       int versionNumber,
       int partition,
@@ -343,6 +350,13 @@ public class DefaultIngestionBackend implements IngestionBackend {
         getStorageMetadataService().getLastOffset(topicName, partition, getStoreIngestionService().getPubSubContext());
     if (offsetRecord == null) {
       LOGGER.warn("Offset record not found for: {}", Utils.getReplicaId(topicName, partition));
+      return true;
+    }
+    /**
+     * Legacy way of using offset threshold to determine if a replica is lagged and need blob transfer.
+     * We should remove this once the time-lag based threshold check is fully rolled out.
+     */
+    if (blobTransferDisabledOffsetLagThreshold < 0) {
       return true;
     }
     if (!hybridStore) {
@@ -362,12 +376,7 @@ public class DefaultIngestionBackend implements IngestionBackend {
       return LatencyUtils.getElapsedTimeFromMsToMs(offsetRecord.getHeartbeatTimestamp()) > TimeUnit.MINUTES
           .toMillis(blobTransferDisabledTimeLagThresholdInMinutes);
     }
-    /**
-     * Legacy way of using offset threshold to determine if a replica is lagged and need blob transfer.
-     */
-    if (blobTransferDisabledOffsetLagThreshold < 0) {
-      return true;
-    }
+
     if (offsetRecord.getOffsetLag() == 0
         && PubSubSymbolicPosition.EARLIEST.equals(offsetRecord.getCheckpointedLocalVtPosition())) {
       LOGGER.info(

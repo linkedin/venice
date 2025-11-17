@@ -418,25 +418,34 @@ public class DefaultIngestionBackendTest {
 
     // Test batch-only store.
     doReturn(true).when(offsetRecord).isEndOfPushReceived();
-    Assert.assertFalse(ingestionBackend.isReplicaLagged(store, version, partition, offsetLagThreshold, 0, false));
-    Assert.assertFalse(ingestionBackend.isReplicaLagged(store, version, partition, offsetLagThreshold, 1, false));
+    Assert.assertTrue(ingestionBackend.isReplicaLaggedAndNeedBlobTransfer(store, version, partition, -1, 0, false));
+    Assert.assertFalse(
+        ingestionBackend.isReplicaLaggedAndNeedBlobTransfer(store, version, partition, offsetLagThreshold, 0, false));
+    Assert.assertFalse(
+        ingestionBackend.isReplicaLaggedAndNeedBlobTransfer(store, version, partition, offsetLagThreshold, 1, false));
     doReturn(false).when(offsetRecord).isEndOfPushReceived();
-    Assert.assertTrue(ingestionBackend.isReplicaLagged(store, version, partition, offsetLagThreshold, 0, false));
-    Assert.assertTrue(ingestionBackend.isReplicaLagged(store, version, partition, offsetLagThreshold, 1, false));
+    Assert.assertTrue(
+        ingestionBackend.isReplicaLaggedAndNeedBlobTransfer(store, version, partition, offsetLagThreshold, 0, false));
+    Assert.assertTrue(
+        ingestionBackend.isReplicaLaggedAndNeedBlobTransfer(store, version, partition, offsetLagThreshold, 1, false));
 
     // Test hybrid store
     doReturn(System.currentTimeMillis() - TimeUnit.MINUTES.toMillis(2)).when(offsetRecord).getHeartbeatTimestamp();
     doReturn(offsetLagThreshold + 1).when(offsetRecord).getOffsetLag();
     // Refer to Time-lag
-    Assert.assertTrue(ingestionBackend.isReplicaLagged(store, version, partition, offsetLagThreshold, 1, true));
-    Assert.assertFalse(ingestionBackend.isReplicaLagged(store, version, partition, offsetLagThreshold, 3, true));
+    Assert.assertTrue(
+        ingestionBackend.isReplicaLaggedAndNeedBlobTransfer(store, version, partition, offsetLagThreshold, 1, true));
+    Assert.assertFalse(
+        ingestionBackend.isReplicaLaggedAndNeedBlobTransfer(store, version, partition, offsetLagThreshold, 3, true));
     // Refer to Offset-lag
-    Assert.assertTrue(ingestionBackend.isReplicaLagged(store, version, partition, -1, 0, true));
-    Assert.assertTrue(ingestionBackend.isReplicaLagged(store, version, partition, offsetLagThreshold, 0, true));
+    Assert.assertTrue(ingestionBackend.isReplicaLaggedAndNeedBlobTransfer(store, version, partition, -1, 0, true));
+    Assert.assertTrue(
+        ingestionBackend.isReplicaLaggedAndNeedBlobTransfer(store, version, partition, offsetLagThreshold, 0, true));
     doReturn(offsetLagThreshold - 1).when(offsetRecord).getOffsetLag();
-    Assert.assertFalse(ingestionBackend.isReplicaLagged(store, version, partition, offsetLagThreshold, 0, true));
+    Assert.assertFalse(
+        ingestionBackend.isReplicaLaggedAndNeedBlobTransfer(store, version, partition, offsetLagThreshold, 0, true));
     // Legacy edge case.
     doReturn(PubSubSymbolicPosition.EARLIEST).when(offsetRecord).getCheckpointedLocalVtPosition();
-    Assert.assertTrue(ingestionBackend.isReplicaLagged(store, version, partition, 0, 0, true));
+    Assert.assertTrue(ingestionBackend.isReplicaLaggedAndNeedBlobTransfer(store, version, partition, 0, 0, true));
   }
 }
