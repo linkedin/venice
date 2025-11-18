@@ -65,8 +65,6 @@ public class SparkPubSubInputFormat implements Scan, Batch {
 
   @Override
   public Batch toBatch() {
-
-    System.out.println(">>> DEBUG: SparkPubSubInputFormat.toBatch() CALLED <<<");
     return this;
   }
 }
