@@ -180,12 +180,12 @@ public class OffsetRecord {
   /**
    * @return the last messageTimeStamp across all producers tracked by this OffsetRecord
    */
-  public long getMaxMessageTimeInMs() {
-    long maxMessageTimestamp = -1;
-    for (ProducerPartitionState state: this.partitionState.producerStates.values()) {
-      maxMessageTimestamp = Math.max(maxMessageTimestamp, state.messageTimestamp);
-    }
-    return maxMessageTimestamp;
+  public long calculateLatestMessageTimeInMs() {
+    return this.partitionState.producerStates.values()
+        .stream()
+        .mapToLong(ProducerPartitionState::getMessageTimestamp)
+        .max()
+        .orElse(-1);
   }
 
   public long getLatestProducerProcessingTimeInMs() {
@@ -406,7 +406,7 @@ public class OffsetRecord {
   public String toString() {
     return "OffsetRecord{" + "localVtPosition=" + getCheckpointedLocalVtPosition() + ", remoteVtPosition="
         + getCheckpointedRemoteVtPosition() + ", rtPositions=" + getPartitionUpstreamPositionString() + ", leaderTopic="
-        + getLeaderTopic() + ", offsetLag=" + getOffsetLag() + ", eventTimeEpochMs=" + getMaxMessageTimeInMs()
+        + getLeaderTopic() + ", offsetLag=" + getOffsetLag() + ", eventTimeEpochMs=" + calculateLatestMessageTimeInMs()
         + ", latestProducerProcessingTimeInMs=" + getLatestProducerProcessingTimeInMs() + ", isEndOfPushReceived="
         + isEndOfPushReceived() + ", databaseInfo=" + getDatabaseInfo() + ", realTimeProducerState="
         + getRealTimeProducerState() + ", recordTransformerClassHash=" + getRecordTransformerClassHash()

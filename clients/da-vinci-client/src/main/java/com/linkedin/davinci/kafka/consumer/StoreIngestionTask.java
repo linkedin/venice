@@ -1934,6 +1934,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   protected void updateOffsetMetadataAndSyncOffset(DataIntegrityValidator div, @Nonnull PartitionConsumptionState pcs) {
+    if (isGlobalRtDivEnabled()) {
+      LOGGER.info("Skipping updateOffsetMetadataAndSyncOffset() because Global RT DIV is enabled.");
+      return;
+    }
     /**
      * Offset metadata and producer states must be updated at the same time in OffsetRecord; otherwise, one checkpoint
      * could be ahead of the other.
@@ -2918,7 +2922,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     String msg = "Offset synced for replica: " + pcs.getReplicaId() + " - localVtPosition: {} progress: {}";
     if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
-      final PubSubPosition position = offsetRecord.getCheckpointedLocalVtPosition();
+      final PubSubPosition position = (isGlobalRtDivEnabled()) ? offsetRecord.getLatestConsumedVtPosition() : offsetRecord.getCheckpointedLocalVtPosition();
       int percentage = -1;
       if (getServerConfig().isIngestionProgressLoggingEnabled()) {
         final PubSubTopicPartition topicPartition = pcs.getReplicaTopicPartition();

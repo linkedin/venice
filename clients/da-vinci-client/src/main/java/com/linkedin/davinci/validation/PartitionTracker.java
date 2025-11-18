@@ -153,15 +153,15 @@ public class PartitionTracker {
   }
 
   public void setPartitionState(TopicType type, OffsetRecord offsetRecord, long maxAgeInMs) {
-    long minimumRequiredRecordProducerTimestamp =
-        maxAgeInMs == DISABLED ? DISABLED : offsetRecord.getMaxMessageTimeInMs() - maxAgeInMs;
-    setPartitionState(type, offsetRecord.getProducerPartitionStateMap(), minimumRequiredRecordProducerTimestamp);
+    long earliestAllowableTimestamp =
+        maxAgeInMs == DISABLED ? DISABLED : offsetRecord.calculateLatestMessageTimeInMs() - maxAgeInMs;
+    setPartitionState(type, offsetRecord.getProducerPartitionStateMap(), earliestAllowableTimestamp);
   }
 
   public void setPartitionState(
       TopicType type,
       Map<CharSequence, ProducerPartitionState> producerPartitionStateMap,
-      long minimumRequiredRecordProducerTimestamp) {
+      long earliestAllowableTimestamp) {
     Iterator<Map.Entry<CharSequence, ProducerPartitionState>> iterator =
         producerPartitionStateMap.entrySet().iterator();
     Map.Entry<CharSequence, ProducerPartitionState> entry;
@@ -171,7 +171,7 @@ public class PartitionTracker {
       entry = iterator.next();
       producerGuid = GuidUtils.getGuidFromCharSequence(entry.getKey());
       producerPartitionState = entry.getValue();
-      if (producerPartitionState.messageTimestamp >= minimumRequiredRecordProducerTimestamp) {
+      if (producerPartitionState.messageTimestamp >= earliestAllowableTimestamp) {
         /**
          * This {@link producerPartitionState} is eligible to be retained, so we'll set the state in the
          * {@link PartitionTracker}.
@@ -212,6 +212,7 @@ public class PartitionTracker {
    */
   public void cloneVtProducerStates(PartitionTracker destProducerTracker) {
     for (Map.Entry<GUID, Segment> entry: vtSegments.entrySet()) {
+      entry.getValue().getLastRecordProducerTimestamp();
       destProducerTracker.setSegment(PartitionTracker.VERSION_TOPIC, entry.getKey(), new Segment(entry.getValue()));
     }
     destProducerTracker.updateLatestConsumedVtPosition(latestConsumedVtPosition.get());
@@ -711,7 +712,7 @@ public class PartitionTracker {
   }
 
   void clearExpiredStateAndUpdateOffsetRecord(TopicType type, OffsetRecord offsetRecord, long maxAgeInMs) {
-    long minimumRequiredRecordProducerTimestamp = offsetRecord.getMaxMessageTimeInMs() - maxAgeInMs;
+    long minimumRequiredRecordProducerTimestamp = offsetRecord.calculateLatestMessageTimeInMs() - maxAgeInMs;
     int numberOfClearedGUIDs = 0;
     Iterator<Map.Entry<GUID, Segment>> iterator = getSegments(type).entrySet().iterator();
     Map.Entry<GUID, Segment> entry;

@@ -103,7 +103,7 @@ public class DataIntegrityValidator {
       PartitionTracker.TopicType type,
       int partition,
       Map<CharSequence, ProducerPartitionState> producerPartitionStateMap) {
-    registerPartition(partition).setPartitionState(type, producerPartitionStateMap, DISABLED);
+    registerPartition(partition).setPartitionState(type, producerPartitionStateMap, this.maxAgeInMs);
   }
 
   /**
