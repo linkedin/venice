@@ -127,6 +127,28 @@ public class PartitionConsumptionState {
   private final AtomicReference<LatchStatus> latchStatus = new AtomicReference<>(LatchStatus.NONE);
 
   /**
+   * Tracks DoL state during STANDBY to LEADER transition. Null when not in transition or DoL not enabled.
+   *
+   * <p>Thread access patterns:
+   * <ul>
+   *   <li>State machine thread: calls setDolState(), getDolState(), clearDolState(), isDolComplete()</li>
+   *   <li>Producer callback thread: calls getDolState(), then setDolProduced() on the DolStamp</li>
+   *   <li>Consumer/drainer thread: calls getDolState(), then setDolConsumed() on the DolStamp</li>
+   * </ul>
+   *
+   * <p>Thread safety: The volatile reference ensures proper publication. The DolStamp's internal flags
+   * (dolProduced, dolConsumed) are also volatile. Since flags only transition one-way (false → true),
+   * stale reads are safe - they just delay completion detection until the next check.
+   */
+  private volatile DolStamp dolStamp = null;
+
+  /**
+   * The highest leadership term observed by this replica. Currently used only
+   * for troubleshooting. This will eventually become part of the durable state.
+   */
+  private volatile long highestLeadershipTerm = -1;
+
+  /**
    * This future is completed in drainer thread after persisting the associated record and offset to DB.
    */
   private volatile Future<Void> lastLeaderPersistFuture = null;
@@ -522,6 +544,26 @@ public class PartitionConsumptionState {
     return this.leaderFollowerState;
   }
 
+  public DolStamp getDolState() {
+    return this.dolStamp;
+  }
+
+  public void setDolState(DolStamp dolStamp) {
+    this.dolStamp = dolStamp;
+  }
+
+  public void clearDolState() {
+    this.dolStamp = null;
+  }
+
+  public long getHighestLeadershipTerm() {
+    return highestLeadershipTerm;
+  }
+
+  public void setHighestLeadershipTerm(long term) {
+    this.highestLeadershipTerm = term;
+  }
+
   public void setLastLeaderPersistFuture(Future<Void> future) {
     this.lastLeaderPersistFuture = future;
   }
@@ -873,6 +915,8 @@ public class PartitionConsumptionState {
    * @return the current upstream version topic position
    */
   public PubSubPosition getLatestProcessedRemoteVtPosition() {
+    // TODO: Ideally, we should get this from offset record to ensure durability
+    // return this.offsetRecord.getCheckpointedRemoteVtPosition();
     return this.latestProcessedRemoteVtPosition;
   }
 
