@@ -24,6 +24,7 @@ import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertThrows;
@@ -100,7 +101,6 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -143,6 +143,7 @@ public class VeniceChangelogConsumerImplTest {
   NativeMetadataRepositoryViewAdapter mockRepository;
   private VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory;
   private static final long pollTimeoutMs = 1000L;
+  private static final int partitionCount = 2;
 
   @BeforeMethod
   public void setUp() {
@@ -176,7 +177,7 @@ public class VeniceChangelogConsumerImplTest {
     mockRepository = mock(NativeMetadataRepositoryViewAdapter.class);
     Store store = mock(Store.class);
     Version mockVersion = new VersionImpl(storeName, 1, "foo");
-    mockVersion.setPartitionCount(2);
+    mockVersion.setPartitionCount(partitionCount);
     when(store.getCurrentVersion()).thenReturn(1);
     when(store.getCompressionStrategy()).thenReturn(CompressionStrategy.NO_OP);
     when(store.getPartitionCount()).thenReturn(2);
@@ -479,9 +480,17 @@ public class VeniceChangelogConsumerImplTest {
     veniceChangelogConsumer.setStoreRepository(mockRepository);
 
     Assert.assertEquals(veniceChangelogConsumer.getPartitionCount(), 2);
-    veniceChangelogConsumer.subscribe(new HashSet<>(Arrays.asList(0))).get();
+    Set<Integer> subscribedPartitions = Collections.singleton(0);
+    veniceChangelogConsumer.subscribe(subscribedPartitions).get();
     verify(mockPubSubConsumer)
         .subscribe(new PubSubTopicPartitionImpl(oldVersionTopic, 0), PubSubSymbolicPosition.EARLIEST);
+    when(mockPubSubConsumer.getAssignment()).thenReturn(
+        new HashSet<>(
+            veniceChangelogConsumer
+                .getPartitionListToSubscribe(subscribedPartitions, Collections.emptySet(), mock(PubSubTopic.class))));
+
+    assertEquals(veniceChangelogConsumer.getLastHeartbeatPerPartition().size(), 1);
+    assertTrue(veniceChangelogConsumer.getLastHeartbeatPerPartition().get(0) < System.currentTimeMillis());
 
     List<PubSubMessage<String, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessages =
         (List<PubSubMessage<String, ChangeEvent<Utf8>, VeniceChangeCoordinate>>) veniceChangelogConsumer
@@ -511,6 +520,7 @@ public class VeniceChangelogConsumerImplTest {
     verify(mockPubSubConsumer, times(3)).batchUnsubscribe(any());
     verify(mockPubSubConsumer).close();
     verify(veniceChangelogConsumerClientFactory).deregisterClient(changelogClientConfig.getConsumerName());
+    assertEquals(veniceChangelogConsumer.getLastHeartbeatPerPartition().size(), 0);
   }
 
   @Test
@@ -779,12 +789,12 @@ public class VeniceChangelogConsumerImplTest {
         veniceChangelogConsumerClientFactory);
     veniceChangelogConsumer.setStoreRepository(mockRepository);
 
-    Assert.assertEquals(veniceChangelogConsumer.getPartitionCount(), 2);
+    Assert.assertEquals(veniceChangelogConsumer.getPartitionCount(), partitionCount);
 
     VeniceChangelogConsumerImpl.HeartbeatReporterThread reporterThread =
         veniceChangelogConsumer.getHeartbeatReporterThread();
 
-    ConcurrentHashMap<Integer, Long> lastHeartbeat = new VeniceConcurrentHashMap<>();
+    Map<Integer, Long> lastHeartbeat = new HashMap<>();
     BasicConsumerStats consumerStats = Mockito.mock(BasicConsumerStats.class);
     Set<PubSubTopicPartition> topicPartitionSet = new HashSet<>();
     topicPartitionSet.add(new PubSubTopicPartitionImpl(oldVersionTopic, 1));

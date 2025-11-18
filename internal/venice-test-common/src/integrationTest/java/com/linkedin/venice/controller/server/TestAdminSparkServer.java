@@ -1159,8 +1159,8 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
   @Test(timeOut = TEST_TIMEOUT)
   public void controllerClientCanNotAutoMigrateStore() {
     String storeName = Utils.getUniqueString("test-store-can-not-migrate");
-    StoreMigrationResponse response =
-        parentControllerClient.autoMigrateStore(storeName, "dest-cluster", Optional.empty(), Optional.empty());
+    StoreMigrationResponse response = parentControllerClient
+        .autoMigrateStore(storeName, "dest-cluster", Optional.empty(), Optional.empty(), Optional.empty());
     Assert.assertTrue(response.isError());
     Assert.assertEquals(response.getErrorType(), ErrorType.STORE_NOT_FOUND);
   }

@@ -10,6 +10,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.TopicSwitch;
+import com.linkedin.venice.kafka.protocol.state.IncrementalPushReplicaStatus;
 import com.linkedin.venice.kafka.validation.checksum.CheckSum;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.meta.Version;
@@ -23,6 +24,7 @@ import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.server.state.KeyUrnCompressionDict;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
+import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.writer.LeaderCompleteState;
@@ -35,6 +37,7 @@ import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
 import java.util.stream.Collectors;
@@ -65,6 +68,7 @@ public class PartitionConsumptionState {
   private static final Logger LOGGER = LogManager.getLogger(PartitionConsumptionState.class);
   private static final int MAX_INCREMENTAL_PUSH_ENTRY_NUM = 50;
   private static final long DEFAULT_HEARTBEAT_LAG_THRESHOLD_MS = MINUTES.toMillis(2); // Default is 2 minutes.
+  private static final long MAX_RETENTION_DAYS_IN_MS = TimeUnit.DAYS.toMillis(2);
   private static final CharSequence PREVIOUSLY_READY_TO_SERVE = new Utf8("previouslyReadyToServe");
   private static final String TRUE = "true";
 
@@ -269,6 +273,12 @@ public class PartitionConsumptionState {
 
   private final Schema keySchema;
   private KeyUrnCompressor keyUrnCompressor;
+  private Map<String, IncrementalPushReplicaStatus> trackingIncrementalPushStatus;
+  /**
+   * Indicates whether a bootstrapping current version replica has resubscribed after bootstrap completed.
+   * In a replica's lifetime, this will only be flipped at most once.
+   */
+  private boolean hasResubscribedAfterBootstrapAsCurrentVersion;
 
   public PartitionConsumptionState(
       PubSubTopicPartition partitionReplica,
@@ -310,6 +320,7 @@ public class PartitionConsumptionState {
     latestConsumedRtPositions = new VeniceConcurrentHashMap<>(3);
     divRtCheckpointPositions = new VeniceConcurrentHashMap<>(3);
     latestProcessedRtPositions = new VeniceConcurrentHashMap<>(3);
+    trackingIncrementalPushStatus = new VeniceConcurrentHashMap<>(3);
     if (offsetRecord.getLeaderTopic() != null && Version.isRealTimeTopic(offsetRecord.getLeaderTopic())) {
       offsetRecord.cloneRtPositionCheckpoints(latestConsumedRtPositions);
       offsetRecord.cloneRtPositionCheckpoints(latestProcessedRtPositions);
@@ -324,7 +335,7 @@ public class PartitionConsumptionState {
     this.leaderCompleteState = LeaderCompleteState.LEADER_NOT_COMPLETED;
     this.lastLeaderCompleteStateUpdateInMs = 0;
     this.pendingReportIncPushVersionList = offsetRecord.getPendingReportIncPushVersionList();
-
+    this.hasResubscribedAfterBootstrapAsCurrentVersion = false;
     KeyUrnCompressionDict keyUrnCompressionDict = offsetRecord.getKeyUrnCompressionDict();
     if (keyUrnCompressionDict != null) {
       if (keyUrnCompressionDict.keyUrnCompressionDictionaryVersion != 1) {
@@ -1082,5 +1093,44 @@ public class PartitionConsumptionState {
 
   public KeyUrnCompressor getKeyDictCompressor() {
     return keyUrnCompressor;
+  }
+
+  public Map<String, IncrementalPushReplicaStatus> getTrackingIncrementalPushStatus() {
+    return trackingIncrementalPushStatus;
+  }
+
+  /**
+   * Update the tracking incremental push status map for a specific push job ID.
+   * @param pushJobId the incremental push job ID
+   * @param status the push status (e.g., START or END)
+   * @param timestamp the timestamp when this status was recorded
+   */
+  public void setTrackingIncrementalPushStatus(String pushJobId, int status, long timestamp) {
+    purgeTrackingIncrementalPushStatus();
+
+    IncrementalPushReplicaStatus replicaStatus = new IncrementalPushReplicaStatus(status, timestamp);
+    this.trackingIncrementalPushStatus.put(pushJobId, replicaStatus);
+  }
+
+  /**
+   * Purge old entries from the tracking incremental push status map based on MAX_RETENTION_DAYS_IN_MS
+   */
+  private void purgeTrackingIncrementalPushStatus() {
+    if (this.trackingIncrementalPushStatus == null || this.trackingIncrementalPushStatus.isEmpty()) {
+      return;
+    }
+
+    // remove entries older than maxDurationDay
+    this.trackingIncrementalPushStatus.entrySet()
+        .removeIf(
+            entry -> LatencyUtils.getElapsedTimeFromMsToMs(entry.getValue().timestamp) > MAX_RETENTION_DAYS_IN_MS);
+  }
+
+  public boolean hasResubscribedAfterBootstrapAsCurrentVersion() {
+    return hasResubscribedAfterBootstrapAsCurrentVersion;
+  }
+
+  public void setHasResubscribedAfterBootstrapAsCurrentVersion(boolean hasResubscribedAfterBootstrapAsCurrentVersion) {
+    this.hasResubscribedAfterBootstrapAsCurrentVersion = hasResubscribedAfterBootstrapAsCurrentVersion;
   }
 }

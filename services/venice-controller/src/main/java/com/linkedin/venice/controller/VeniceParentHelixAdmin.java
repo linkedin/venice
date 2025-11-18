@@ -128,7 +128,6 @@ import com.linkedin.venice.controller.kafka.consumer.AdminMetadata;
 import com.linkedin.venice.controller.kafka.protocol.admin.AbortMigration;
 import com.linkedin.venice.controller.kafka.protocol.admin.AddVersion;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
-import com.linkedin.venice.controller.kafka.protocol.admin.ConfigureActiveActiveReplicationForCluster;
 import com.linkedin.venice.controller.kafka.protocol.admin.CreateStoragePersona;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteAllVersions;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteOldVersion;
@@ -231,12 +230,12 @@ import com.linkedin.venice.meta.StoreDataAudit;
 import com.linkedin.venice.meta.StoreGraveyard;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.StoreVersionInfo;
-import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.meta.ViewConfig;
 import com.linkedin.venice.meta.ViewConfigImpl;
 import com.linkedin.venice.persona.StoragePersona;
+import com.linkedin.venice.protocols.controller.PubSubPositionGrpcWireFormat;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeader;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeaders;
@@ -799,8 +798,10 @@ public class VeniceParentHelixAdmin implements Admin {
       String destClusterName,
       String storeName,
       Optional<Integer> currStep,
+      Optional<Integer> pauseAfterStep,
       Optional<Boolean> abortOnFailure) {
-    veniceHelixAdmin.autoMigrateStore(srcClusterName, destClusterName, storeName, currStep, abortOnFailure);
+    veniceHelixAdmin
+        .autoMigrateStore(srcClusterName, destClusterName, storeName, currStep, pauseAfterStep, abortOnFailure);
   }
 
   @Override
@@ -882,7 +883,12 @@ public class VeniceParentHelixAdmin implements Admin {
         throw new AdminMessageConsumptionTimeoutException(errMsg, lastException);
       }
 
-      LOGGER.info("Waiting execution id: {} to be consumed, currently at: {}", executionId, consumedExecutionId);
+      LOGGER.info(
+          "Waiting execution id: {} to be consumed, currently at: {} clusterName: {} storeName: {}",
+          executionId,
+          consumedExecutionId,
+          clusterName,
+          storeName);
       Utils.sleep(SLEEP_INTERVAL_FOR_DATA_CONSUMPTION_IN_MS);
     }
     LOGGER.info("The message has been consumed, execution id: {}", executionId);
@@ -1159,40 +1165,18 @@ public class VeniceParentHelixAdmin implements Admin {
       message.payloadUnion = deleteStore;
 
       sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
-
-      // Deleting ACL needs to be the last step in store deletion process.
-      deleteAclsForStore(store, storeName);
     } catch (AdminMessageConsumptionTimeoutException timeoutException) {
       LOGGER.info(
           "Timed out while waiting for delete store admin message to be consumed for store: {} in cluster: {}",
           storeName,
           clusterName,
           timeoutException);
-      deleteAclsForStore(store, storeName);
       throw timeoutException;
     } catch (Exception e) {
       LOGGER.info("Caught an exception when deleting store {} in cluster {}", storeName, clusterName, e);
       throw e;
     } finally {
       releaseAdminMessageLock(clusterName, storeName);
-    }
-  }
-
-  /**
-   * Deletes the acls associated with a store
-   * @param store
-   * @param storeName
-   */
-  protected void deleteAclsForStore(Store store, String storeName) {
-    if (store == null) {
-      LOGGER.warn("Store object for {} is missing! Skipping acl deletion!", storeName);
-      return;
-    }
-
-    if (!store.isMigrating()) {
-      cleanUpAclsForStore(store.getName(), VeniceSystemStoreType.getEnabledSystemStoreTypes(store));
-    } else {
-      LOGGER.info("Store: {} is migrating! Skipping acl deletion!", storeName);
     }
   }
 
@@ -1537,6 +1521,9 @@ public class VeniceParentHelixAdmin implements Admin {
 
     if (lastVersionNum == NON_EXISTING_VERSION || lastVersion == null) {
       LOGGER.info("Store {} does not have any version", storeName);
+      return Optional.empty();
+    } else if (lastVersion.getStatus() == KILLED || lastVersion.getStatus() == ERROR) {
+      LOGGER.info("Store {} version {} is killed or in error state", storeName, lastVersionNum);
       return Optional.empty();
     }
     LOGGER.info(
@@ -4465,11 +4452,11 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   /**
-   * @see VeniceHelixAdmin#getNativeReplicationKafkaBootstrapServerAddress(String)
+   * @see VeniceHelixAdmin#getPubSubBootstrapServersForRegion(String)
    */
   @Override
-  public String getNativeReplicationKafkaBootstrapServerAddress(String sourceFabric) {
-    return getVeniceHelixAdmin().getNativeReplicationKafkaBootstrapServerAddress(sourceFabric);
+  public String getPubSubBootstrapServersForRegion(String sourceFabric) {
+    return getVeniceHelixAdmin().getPubSubBootstrapServersForRegion(sourceFabric);
   }
 
   /**
@@ -4865,11 +4852,15 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   /**
-   * @see Admin#skipAdminMessage(String, long, boolean, long)
+   * @see Admin#skipAdminMessage(String, String, boolean, long)
    */
   @Override
-  public void skipAdminMessage(String clusterName, long offset, boolean skipDIV, long executionId) {
-    getVeniceHelixAdmin().skipAdminMessage(clusterName, offset, skipDIV, executionId);
+  public void skipAdminMessage(
+      String clusterName,
+      String typeIdAndBase64PositionBytes,
+      boolean skipDIV,
+      long executionId) {
+    getVeniceHelixAdmin().skipAdminMessage(clusterName, typeIdAndBase64PositionBytes, skipDIV, executionId);
   }
 
   /**
@@ -4905,7 +4896,7 @@ public class VeniceParentHelixAdmin implements Admin {
    * Get AdminTopicMetadata from parent controller
    */
   @Override
-  public Map<String, Long> getAdminTopicMetadata(String clusterName, Optional<String> storeName) {
+  public AdminMetadata getAdminTopicMetadata(String clusterName, Optional<String> storeName) {
     return getVeniceHelixAdmin().getAdminTopicMetadata(clusterName, storeName);
   }
 
@@ -4917,8 +4908,8 @@ public class VeniceParentHelixAdmin implements Admin {
       String clusterName,
       long executionId,
       Optional<String> storeName,
-      Optional<Long> offset,
-      Optional<Long> upstreamOffset) {
+      Optional<PubSubPositionGrpcWireFormat> position,
+      Optional<PubSubPositionGrpcWireFormat> upstreamPosition) {
     throw new VeniceUnsupportedOperationException("updateAdminTopicMetadata");
   }
 
@@ -5416,27 +5407,6 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   /**
-   * This deletes all existing ACL's for a store using the authorizerService interface.
-   * @param storeName store being provisioned.
-   */
-  private void cleanUpAclsForStore(String storeName, List<VeniceSystemStoreType> enabledVeniceSystemStores) {
-    if (authorizerService.isPresent()) {
-      Resource resource = new Resource(storeName);
-      try {
-        authorizerService.get().clearAcls(resource);
-        for (VeniceSystemStoreType veniceSystemStoreType: enabledVeniceSystemStores) {
-          Resource systemStoreResource = new Resource(veniceSystemStoreType.getSystemStoreName(storeName));
-          authorizerService.get().clearAcls(systemStoreResource);
-          authorizerService.get().clearResource(systemStoreResource);
-        }
-      } catch (Exception e) {
-        LOGGER.error("ACLProvisioning: failure in deleting ACL's for store: {}", storeName, e);
-        throw new VeniceException(e);
-      }
-    }
-  }
-
-  /**
    * @see Admin#updateAclForStore(String, String, String)
    */
   @Override
@@ -5500,37 +5470,11 @@ public class VeniceParentHelixAdmin implements Admin {
       if (!authorizerService.isPresent()) {
         throw new VeniceUnsupportedOperationException("deleteAclForStore is not supported yet!");
       }
-      Store store = getVeniceHelixAdmin().checkPreConditionForAclOp(clusterName, storeName);
-      if (!store.isMigrating()) {
-        cleanUpAclsForStore(storeName, VeniceSystemStoreType.getEnabledSystemStoreTypes(store));
-      } else {
-        LOGGER.info("Store {} is migrating! Skipping acl deletion!", storeName);
-      }
+      getVeniceHelixAdmin().cleanupAclsForStore(
+          getVeniceHelixAdmin().checkPreConditionForAclOp(clusterName, storeName),
+          storeName,
+          clusterName);
     }
-  }
-
-  /**
-   * @see Admin#configureActiveActiveReplication(String, VeniceUserStoreType, Optional, boolean, Optional)
-   */
-  @Override
-  public void configureActiveActiveReplication(
-      String clusterName,
-      VeniceUserStoreType storeType,
-      Optional<String> storeName,
-      boolean enableNativeReplicationForCluster,
-      Optional<String> regionsFilter) {
-    ConfigureActiveActiveReplicationForCluster migrateClusterToActiveActiveReplication =
-        (ConfigureActiveActiveReplicationForCluster) AdminMessageType.CONFIGURE_ACTIVE_ACTIVE_REPLICATION_FOR_CLUSTER
-            .getNewInstance();
-    migrateClusterToActiveActiveReplication.clusterName = clusterName;
-    migrateClusterToActiveActiveReplication.storeType = storeType.toString();
-    migrateClusterToActiveActiveReplication.enabled = enableNativeReplicationForCluster;
-    migrateClusterToActiveActiveReplication.regionsFilter = regionsFilter.orElse(null);
-
-    AdminOperation message = new AdminOperation();
-    message.operationType = AdminMessageType.CONFIGURE_ACTIVE_ACTIVE_REPLICATION_FOR_CLUSTER.getValue();
-    message.payloadUnion = migrateClusterToActiveActiveReplication;
-    sendAdminMessageAndWaitForConsumed(clusterName, null, message);
   }
 
   /**

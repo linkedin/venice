@@ -153,7 +153,7 @@ def integrationTestBuckets = [
         "com.linkedin.venice.endToEnd.TestRepush"
     ],
     "3": [
-        "com.linkedin.venice.consumer.BootstrappingChangelogConsumerTest"
+        "com.linkedin.venice.consumer.StatefulVeniceChangelogConsumerTest"
     ],
     "4": [
         "com.linkedin.venice.endToEnd.TestDeferredVersionSwap",

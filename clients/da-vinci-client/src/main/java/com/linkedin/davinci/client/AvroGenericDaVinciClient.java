@@ -10,7 +10,6 @@ import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_LEV
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_LEVEL0_STOPS_WRITES_TRIGGER_WRITE_ONLY_VERSION;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
-import static com.linkedin.venice.ConfigKeys.DA_VINCI_SUBSCRIBE_ON_DISK_PARTITIONS_AUTOMATICALLY;
 import static com.linkedin.venice.ConfigKeys.INGESTION_USE_DA_VINCI_CLIENT;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
@@ -21,6 +20,7 @@ import com.linkedin.davinci.DaVinciBackend;
 import com.linkedin.davinci.StoreBackend;
 import com.linkedin.davinci.VersionBackend;
 import com.linkedin.davinci.config.VeniceConfigLoader;
+import com.linkedin.davinci.consumer.VeniceChangeCoordinate;
 import com.linkedin.davinci.storage.chunking.AbstractAvroChunkingAdapter;
 import com.linkedin.davinci.storage.chunking.GenericChunkingAdapter;
 import com.linkedin.davinci.storage.chunking.GenericRecordChunkingAdapter;
@@ -47,6 +47,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.schema.SchemaRepoBackedSchemaReader;
 import com.linkedin.venice.serialization.AvroStoreDeserializerCache;
@@ -64,6 +65,7 @@ import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -200,13 +202,6 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
       throw new VeniceClientException("Ingestion Isolation is not supported with DaVinciRecordTransformer");
     }
 
-    if (backendConfig.getBoolean(DA_VINCI_SUBSCRIBE_ON_DISK_PARTITIONS_AUTOMATICALLY, true)
-        && recordTransformerConfig != null) {
-      throw new VeniceClientException(
-          DA_VINCI_SUBSCRIBE_ON_DISK_PARTITIONS_AUTOMATICALLY
-              + " must be set to false when using DaVinciRecordTransformer");
-    }
-
     preValidation.run();
   }
 
@@ -251,10 +246,61 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
     return subscribe(ComplementSet.wrap(partitions));
   }
 
+  private Optional<Version> getVersion() {
+    throwIfNotReady();
+
+    if (getStoreVersion() == null) {
+      return Optional.empty();
+    }
+
+    Store store = getBackend().getStoreRepository().getStoreOrThrow(getStoreName());
+    Version version = store.getVersion(getStoreVersion());
+
+    if (version == null) {
+      throw new VeniceClientException("Version: " + getStoreVersion() + " does not exist for store: " + getStoreName());
+    }
+    return Optional.of(version);
+  }
+
+  protected CompletableFuture<Void> seekToCheckpoint(Set<VeniceChangeCoordinate> checkpoints) {
+    if (getBackend().isIsolatedIngestion()) {
+      throw new VeniceClientException("Isolated Ingestion is not supported with seekToCheckpoint");
+    }
+    throwIfNotReady();
+    Map<Integer, PubSubPosition> positionMap = new HashMap<>();
+    for (VeniceChangeCoordinate changeCoordinate: checkpoints) {
+      if (!Objects.equals(changeCoordinate.getStoreName(), getStoreBackend().getStoreName())) {
+        throw new VeniceClientException(
+            "Store name mismatch: " + changeCoordinate.getStoreName() + " != " + storeBackend.getStoreName());
+      }
+      positionMap.put(changeCoordinate.getPartition(), changeCoordinate.getPosition());
+    }
+    addPartitionsToSubscription(ComplementSet.wrap(positionMap.keySet()));
+    return getStoreBackend().seekToCheckPoints(positionMap, getVersion());
+  }
+
+  protected CompletableFuture<Void> seekToTimestamps(Map<Integer, Long> timestamps) {
+    if (getBackend().isIsolatedIngestion()) {
+      throw new VeniceClientException("Isolated Ingestion is not supported with seekToTimestamps");
+    }
+    throwIfNotReady();
+    addPartitionsToSubscription(ComplementSet.wrap(timestamps.keySet()));
+    return getStoreBackend().seekToTimestamps(timestamps, getVersion());
+  }
+
+  protected CompletableFuture<Void> seekToTimestamps(Long timestamps) {
+    if (getBackend().isIsolatedIngestion()) {
+      throw new VeniceClientException("Isolated Ingestion is not supported with seekToTimestamps");
+    }
+    throwIfNotReady();
+    addPartitionsToSubscription(ComplementSet.universalSet());
+    return getStoreBackend().seekToTimestamps(timestamps, getVersion());
+  }
+
   protected CompletableFuture<Void> subscribe(ComplementSet<Integer> partitions) {
     throwIfNotReady();
     addPartitionsToSubscription(partitions);
-    return storeBackend.subscribe(partitions);
+    return getStoreBackend().subscribe(partitions, getVersion(), Collections.emptyMap(), null, Collections.emptyMap());
   }
 
   @Override

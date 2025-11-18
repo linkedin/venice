@@ -679,9 +679,11 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       int partition,
       PubSubProducerCallback callback,
       LeaderMetadataWrapper leaderMetadataWrapper,
-      DeleteMetadata deleteMetadata) {
+      DeleteMetadata deleteMetadata,
+      boolean isGlobalRtDiv) {
 
-    KafkaKey kafkaKey = new KafkaKey(MessageType.DELETE, serializedKey);
+    MessageType keyMessageType = (isGlobalRtDiv) ? MessageType.GLOBAL_RT_DIV : MessageType.DELETE;
+    KafkaKey kafkaKey = new KafkaKey(keyMessageType, serializedKey);
     Delete delete = new Delete();
     delete.schemaId = AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion();
     if (deleteMetadata == null) {
@@ -803,13 +805,15 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         partition,
         chunkCallback,
         leaderMetadataWrapper,
-        deleteMetadataForOldChunk);
+        deleteMetadataForOldChunk,
+        false);
     deleteDeprecatedChunksFromManifest(
         oldRmdManifest,
         partition,
         chunkCallback,
         leaderMetadataWrapper,
-        deleteMetadataForOldChunk);
+        deleteMetadataForOldChunk,
+        false);
 
     return produceResultFuture;
   }
@@ -957,7 +961,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         putMetadata,
         oldValueManifest,
         oldRmdManifest,
-        true);
+        false);
   }
 
   /**
@@ -1024,7 +1028,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         putMetadata,
         oldValueManifest,
         oldRmdManifest,
-        true,
+        false,
         pubSubMessageHeaders);
   }
 
@@ -1039,7 +1043,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       PutMetadata putMetadata,
       ChunkedValueManifest oldValueManifest,
       ChunkedValueManifest oldRmdManifest,
-      boolean isPutMessage) {
+      boolean isGlobalRtDiv) {
     return put(
         serializedKey,
         serializedValue,
@@ -1051,7 +1055,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         putMetadata,
         oldValueManifest,
         oldRmdManifest,
-        isPutMessage,
+        isGlobalRtDiv,
         EmptyPubSubMessageHeaders.SINGLETON);
   }
 
@@ -1069,7 +1073,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       PutMetadata putMetadata,
       ChunkedValueManifest oldValueManifest,
       ChunkedValueManifest oldRmdManifest,
-      boolean isPutMessage,
+      boolean isGlobalRtDiv,
       PubSubMessageHeaders pubSubMessageHeaders) {
     int replicationMetadataPayloadSize = putMetadata == null ? 0 : putMetadata.getSerializedSize();
     isChunkingFlagInvoked = true;
@@ -1081,7 +1085,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     int veniceRecordSize = serializedKey.length + serializedValue.length + replicationMetadataPayloadSize;
     if (isChunkingNeededForRecord(veniceRecordSize)) { // ~1MB default
       // RMD size is not checked because it's an internal component, and a user's write should not be failed due to it
-      if ((isChunkingEnabled && !isRecordTooLarge(serializedKey.length + serializedValue.length)) || !isPutMessage) {
+      if ((isChunkingEnabled && !isRecordTooLarge(serializedKey.length + serializedValue.length)) || isGlobalRtDiv) {
         return putLargeValue(
             serializedKey,
             serializedValue,
@@ -1093,7 +1097,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
             putMetadata,
             oldValueManifest,
             oldRmdManifest,
-            isPutMessage);
+            isGlobalRtDiv);
       } else {
         throw new RecordTooLargeException(
             "This record exceeds the maximum size. "
@@ -1110,10 +1114,10 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
           .setChunkingInfo(serializedKey, null, null, null, null, oldValueManifest, oldRmdManifest);
     }
 
-    MessageType keyType = (isPutMessage) ? MessageType.PUT : MessageType.GLOBAL_RT_DIV;
+    MessageType keyType = (isGlobalRtDiv) ? MessageType.GLOBAL_RT_DIV : MessageType.PUT;
     KafkaKey kafkaKey = new KafkaKey(keyType, serializedKey);
     int schemaId =
-        (isPutMessage) ? valueSchemaId : AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion();
+        (isGlobalRtDiv) ? AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion() : valueSchemaId;
 
     // Initialize the SpecificRecord instances used by the Avro-based Kafka protocol
     Put putPayload = buildPutPayload(serializedValue, schemaId, putMetadata);
@@ -1137,8 +1141,15 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         partition,
         chunkCallback,
         leaderMetadataWrapper,
-        deleteMetadata);
-    deleteDeprecatedChunksFromManifest(oldRmdManifest, partition, chunkCallback, leaderMetadataWrapper, deleteMetadata);
+        deleteMetadata,
+        isGlobalRtDiv);
+    deleteDeprecatedChunksFromManifest(
+        oldRmdManifest,
+        partition,
+        chunkCallback,
+        leaderMetadataWrapper,
+        deleteMetadata,
+        false);
 
     return produceResultFuture;
   }
@@ -1373,13 +1384,62 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     Validate.notEmpty(oldServingVersionTopic);
     Validate.notEmpty(newServingVersionTopic);
     ControlMessage controlMessage = getEmptyControlMessage(ControlMessageType.VERSION_SWAP);
+    controlMessage.controlMessageUnion =
+        generateVersionSwapMessage(oldServingVersionTopic, newServingVersionTopic, "", "", 0);
+    broadcastControlMessage(controlMessage, debugInfo);
+    producerAdapter.flush();
+  }
+
+  /**
+   * Similar to {@link #broadcastVersionSwap(String, String, Map)} but with region info intended to guide Venice change
+   * capture consumer to perform version swap correctly in a true A/A setup (with unique writers in each region). The
+   * broadcast is also non-blocking and returns a list of future correspond to the control message write for each
+   * partition. The caller is responsible for waiting on the futures to ensure the control message is written to all
+   * partitions.
+   *
+   * @param oldServingVersionTopic the version topic change capture consumer should switch from.
+   * @param newServingVersionTopic the version topic change capture consumer should switch to.
+   * @param sourceRegion where the version swap event occurred.
+   * @param destinationRegion of the RT topic where the original version swap message is being sent to.
+   * @param generationId to identify this version switch event when there are multiple version switch events.
+   * @param debugInfo arbitrary key/value pairs of information that will be propagated alongside the control message.
+   * @return List of futures for each partition version swap message that was sent to.
+   */
+  public List<CompletableFuture<PubSubProduceResult>> nonBlockingBroadcastVersionSwapWithRegionInfo(
+      @Nonnull String oldServingVersionTopic,
+      @Nonnull String newServingVersionTopic,
+      @Nonnull String sourceRegion,
+      @Nonnull String destinationRegion,
+      long generationId,
+      Map<String, String> debugInfo) {
+    Validate.notEmpty(oldServingVersionTopic);
+    Validate.notEmpty(newServingVersionTopic);
+    Validate.notEmpty(sourceRegion);
+    Validate.notEmpty(destinationRegion);
+    ControlMessage controlMessage = getEmptyControlMessage(ControlMessageType.VERSION_SWAP);
+    controlMessage.controlMessageUnion = generateVersionSwapMessage(
+        oldServingVersionTopic,
+        newServingVersionTopic,
+        sourceRegion,
+        destinationRegion,
+        generationId);
+    return broadcastControlMessage(controlMessage, debugInfo);
+  }
+
+  private VersionSwap generateVersionSwapMessage(
+      @Nonnull String oldServingVersionTopic,
+      @Nonnull String newServingVersionTopic,
+      @Nonnull String sourceRegion,
+      @Nonnull String destinationRegion,
+      long generationId) {
     VersionSwap versionSwap = new VersionSwap();
     versionSwap.oldServingVersionTopic = oldServingVersionTopic;
     versionSwap.newServingVersionTopic = newServingVersionTopic;
     versionSwap.localHighWatermarkPubSubPositions = Collections.emptyList();
-    controlMessage.controlMessageUnion = versionSwap;
-    broadcastControlMessage(controlMessage, debugInfo);
-    producerAdapter.flush();
+    versionSwap.sourceRegion = sourceRegion;
+    versionSwap.destinationRegion = destinationRegion;
+    versionSwap.generationId = generationId;
+    return versionSwap;
   }
 
   public void broadcastStartOfIncrementalPush(String version, Map<String, String> debugInfo) {
@@ -1680,7 +1740,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       PutMetadata putMetadata,
       ChunkedValueManifest oldValueManifest,
       ChunkedValueManifest oldRmdManifest,
-      boolean isPutMessage) {
+      boolean isGlobalRtDiv) {
     int replicationMetadataPayloadSize = putMetadata == null ? 0 : putMetadata.getSerializedSize();
     final Supplier<String> reportSizeGenerator =
         () -> getSizeReport(serializedKey.length, serializedValue.length, replicationMetadataPayloadSize);
@@ -1694,9 +1754,9 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
                 DEFAULT_UPSTREAM_KAFKA_CLUSTER_ID,
                 DEFAULT_TERM_ID,
                 leaderMetadataWrapper.getViewPartitionMap());
-    MessageType keyMessageType = (isPutMessage) ? MessageType.PUT : MessageType.GLOBAL_RT_DIV;
+    MessageType keyMessageType = (isGlobalRtDiv) ? MessageType.GLOBAL_RT_DIV : MessageType.PUT;
     int schemaId =
-        (isPutMessage) ? valueSchemaId : AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion();
+        (isGlobalRtDiv) ? AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion() : valueSchemaId;
     BiConsumer<KeyProvider, Put> sendMessageFunction = (keyProvider, putPayload) -> sendMessage(
         keyProvider,
         MessageType.PUT,
@@ -1762,8 +1822,15 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         partition,
         chunkCallback,
         leaderMetadataWrapper,
-        deleteMetadata);
-    deleteDeprecatedChunksFromManifest(oldRmdManifest, partition, chunkCallback, leaderMetadataWrapper, deleteMetadata);
+        deleteMetadata,
+        isGlobalRtDiv);
+    deleteDeprecatedChunksFromManifest(
+        oldRmdManifest,
+        partition,
+        chunkCallback,
+        leaderMetadataWrapper,
+        deleteMetadata,
+        false);
 
     return manifestProduceFuture;
   }
@@ -1846,13 +1913,20 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       int partition,
       PubSubProducerCallback chunkCallback,
       LeaderMetadataWrapper leaderMetadataWrapper,
-      DeleteMetadata deleteMetadata) {
+      DeleteMetadata deleteMetadata,
+      boolean isGlobalRtDiv) {
     if (manifest == null) {
       return;
     }
     for (int i = 0; i < manifest.keysWithChunkIdSuffix.size(); i++) {
       byte[] chunkKeyBytes = manifest.keysWithChunkIdSuffix.get(i).array();
-      deleteDeprecatedChunk(chunkKeyBytes, partition, chunkCallback, leaderMetadataWrapper, deleteMetadata);
+      deleteDeprecatedChunk(
+          chunkKeyBytes,
+          partition,
+          chunkCallback,
+          leaderMetadataWrapper,
+          deleteMetadata,
+          isGlobalRtDiv);
     }
   }
 
@@ -1924,15 +1998,21 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   /**
    * @param controlMessage a {@link ControlMessage} instance to persist into all Kafka partitions.
    * @param debugInfo arbitrary key/value pairs of information that will be propagated alongside the control message.
+   * @return a list of future correspond to the control message write for each partition.
    */
-  private void broadcastControlMessage(ControlMessage controlMessage, Map<String, String> debugInfo) {
+  private List<CompletableFuture<PubSubProduceResult>> broadcastControlMessage(
+      ControlMessage controlMessage,
+      Map<String, String> debugInfo) {
+    List<CompletableFuture<PubSubProduceResult>> partitionWriteFuture = new ArrayList<>();
     for (int partition = 0; partition < numberOfPartitions; partition++) {
-      sendControlMessage(controlMessage, partition, debugInfo, null, DEFAULT_LEADER_METADATA_WRAPPER);
+      partitionWriteFuture
+          .add(sendControlMessage(controlMessage, partition, debugInfo, null, DEFAULT_LEADER_METADATA_WRAPPER));
     }
     logger.info(
         "Successfully broadcast {} Control Message for topic: {}",
         ControlMessageType.valueOf(controlMessage),
         topicName);
+    return partitionWriteFuture;
   }
 
   private Map<CharSequence, CharSequence> getDebugInfo(Map<String, String> debugInfoToAdd) {

@@ -578,7 +578,8 @@ public class AdminConsumptionTaskTest {
     executor.submit(task);
     TestUtils.waitForNonDeterministicCompletion(5, TimeUnit.SECONDS, () -> {
       try {
-        task.skipMessageWithOffset(1L); // won't accept skip command until task has failed on this offset.
+        task.skipMessageWithPosition(InMemoryPubSubPosition.of(1L)); // won't accept skip command until task has failed
+                                                                     // on this offset.
       } catch (VeniceException e) {
         return false;
       }
@@ -718,7 +719,7 @@ public class AdminConsumptionTaskTest {
         TIMEOUT,
         TimeUnit.MILLISECONDS,
         () -> Assert.assertEquals(task.getFailingPosition(), position3));
-    task.skipMessageWithOffset(3L);
+    task.skipMessageWithPosition(InMemoryPubSubPosition.of(3L));
     TestUtils.waitForNonDeterministicAssertion(
         TIMEOUT,
         TimeUnit.MILLISECONDS,
@@ -1285,7 +1286,7 @@ public class AdminConsumptionTaskTest {
     Assert.assertEquals(getLastExecutionId(clusterName), -1L);
 
     // skip the blocking message
-    task.skipMessageWithOffset(1);
+    task.skipMessageWithPosition(InMemoryPubSubPosition.of(1));
     TestUtils.waitForNonDeterministicAssertion(
         TIMEOUT,
         TimeUnit.MILLISECONDS,
@@ -1522,7 +1523,7 @@ public class AdminConsumptionTaskTest {
         TimeUnit.MILLISECONDS,
         () -> Assert.assertEquals(task.getFailingPosition(), position));
     // Skip the DIV check, make sure the sequence number is updated and new admin messages can also be processed
-    task.skipMessageDIVWithOffset(((InMemoryPubSubPosition) position).getInternalOffset());
+    task.skipMessageDIVWithPosition(position);
     TestUtils.waitForNonDeterministicAssertion(
         TIMEOUT,
         TimeUnit.MILLISECONDS,
@@ -2009,7 +2010,7 @@ public class AdminConsumptionTaskTest {
 
     // Once we skip the failing message , the store should recover
 
-    task.skipMessageWithOffset(1);
+    task.skipMessageWithPosition(InMemoryPubSubPosition.of(1L));
     TestUtils.waitForNonDeterministicAssertion(
         TIMEOUT,
         TimeUnit.MILLISECONDS,

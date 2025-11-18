@@ -320,11 +320,8 @@ public class TestKafkaTopicDumper {
         0,
         0,
         null);
-    KafkaTopicDumper.logIfTopicSwitchMessage(nonTsCtrlMsg, PubSubPositionDeserializer.DEFAULT_DESERIALIZER); // Should
-                                                                                                             // not
-                                                                                                             // throw
-                                                                                                             // any
-                                                                                                             // exception
+    // Should not throw any exception
+    KafkaTopicDumper.logIfTopicSwitchMessage(nonTsCtrlMsg, PubSubPositionDeserializer.DEFAULT_DESERIALIZER);
 
     // Case 3: Non-control message
     KafkaKey regularMsgKey = new KafkaKey(MessageType.PUT, Utils.getUniqueString("key-").getBytes());
@@ -336,11 +333,8 @@ public class TestKafkaTopicDumper {
         0,
         0,
         null);
-    KafkaTopicDumper.logIfTopicSwitchMessage(regularMessage, PubSubPositionDeserializer.DEFAULT_DESERIALIZER); // Should
-                                                                                                               // not
-                                                                                                               // throw
-                                                                                                               // any
-                                                                                                               // exception
+    // Should not throw any exception
+    KafkaTopicDumper.logIfTopicSwitchMessage(regularMessage, PubSubPositionDeserializer.DEFAULT_DESERIALIZER);
   }
 
   @Test

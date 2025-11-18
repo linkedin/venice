@@ -52,7 +52,6 @@ import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.MultiStoreStatusResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
-import com.linkedin.venice.exceptions.AdminMessageConsumptionTimeoutException;
 import com.linkedin.venice.exceptions.ConcurrentBatchPushException;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.ErrorType;
@@ -2620,6 +2619,19 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     Assert.assertTrue(currentPush.isPresent());
     assertEquals(currentPush.get(), latestTopic);
     verify(mockParentAdmin, times(14)).getOffLinePushStatus(clusterName, latestTopic);
+
+    version = new VersionImpl(storeName, 2, "test_push_id");
+    version.setStatus(VersionStatus.KILLED);
+    store.addVersion(version);
+    doReturn(store).when(mockParentAdmin).getStore(clusterName, storeName);
+    response = mock(StoreResponse.class);
+    info = mock(StoreInfo.class);
+    doReturn(response).when(client).getStore(anyString());
+    doReturn(info).when(response).getStore();
+    doReturn(new StoreVersionInfo(store, store.getVersion(1))).when(internalAdmin)
+        .waitVersion(eq(clusterName), eq(storeName), eq(1), any());
+    currentPush = mockParentAdmin.getTopicForCurrentPushJob(clusterName, storeName, false, false);
+    Assert.assertFalse(currentPush.isPresent());
   }
 
   @Test
@@ -3254,28 +3266,6 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
       doReturn(response).when(entry.getValue()).rollForwardToFutureVersion(any(), any(), anyInt());
     }
     adminSpy.rollForwardToFutureVersion(clusterName, storeName, null);
-  }
-
-  @Test
-  public void testDeleteStoreAdminMessageTimeout() {
-    VeniceParentHelixAdmin adminSpy = spy(parentAdmin);
-
-    String storeName = "testStore";
-    String owner = "testOwner";
-    Store store = TestUtils.createTestStore(storeName, owner, System.currentTimeMillis());
-    doReturn(store).when(internalAdmin).getStore(eq(clusterName), eq(storeName));
-    doReturn(store).when(internalAdmin).checkPreConditionForDeletion(eq(clusterName), eq(storeName));
-
-    AdminMessageConsumptionTimeoutException expectedException =
-        new AdminMessageConsumptionTimeoutException("timed out!", new Exception());
-    doThrow(expectedException).when(adminSpy).sendAdminMessageAndWaitForConsumed(any(), any(), any());
-    try {
-      adminSpy.deleteStore(clusterName, storeName, false, 0, true);
-      Assert.fail("Delete store should time out");
-    } catch (AdminMessageConsumptionTimeoutException e) {
-      Assert.assertEquals(e, expectedException);
-      verify(adminSpy, times(1)).deleteAclsForStore(store, storeName);
-    }
   }
 
   private Store setupForStoreViewConfigUpdateTest(String storeName) {

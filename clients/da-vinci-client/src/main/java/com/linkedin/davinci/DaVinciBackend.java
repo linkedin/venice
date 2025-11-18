@@ -1,6 +1,5 @@
 package com.linkedin.davinci;
 
-import static com.linkedin.venice.ConfigKeys.DA_VINCI_SUBSCRIBE_ON_DISK_PARTITIONS_AUTOMATICALLY;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_INSTANCE_NAME_SUFFIX;
 import static com.linkedin.venice.ConfigKeys.VALIDATE_VENICE_INTERNAL_SCHEMA_VERSION;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.DVC_INGESTION_ERROR_DISK_FULL;
@@ -71,16 +70,13 @@ import com.linkedin.venice.serialization.avro.SchemaPresenceChecker;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.stats.TehutiUtils;
-import com.linkedin.venice.utils.ComplementSet;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.Closeable;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -439,49 +435,6 @@ public class DaVinciBackend implements Closeable {
 
   @VisibleForTesting
   final synchronized void bootstrap() {
-    List<StorageEngine> storageEngines = getStorageService().getStorageEngineRepository().getAllLocalStorageEngines();
-    LOGGER.info("Starting bootstrap, storageEngines: {}", storageEngines);
-    Map<String, Version> storeNameToBootstrapVersionMap = new HashMap<>();
-    Map<String, List<Integer>> storeNameToPartitionListMap = new HashMap<>();
-
-    for (StorageEngine storageEngine: storageEngines) {
-      String kafkaTopicName = storageEngine.getStoreVersionName();
-      String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopicName);
-      if (VeniceSystemStoreType.META_STORE.isSystemStore(storeName)) {
-        // Do not bootstrap meta system store via DaVinci backend initialization since the operation is not supported by
-        // ThinClientMetaStoreBasedRepository. This shouldn't happen normally, but it's possible if the user was using
-        // DVC based metadata for the same store and switched to thin client based metadata.
-        continue;
-      }
-
-      try {
-        getStoreOrThrow(storeName); // throws VeniceNoStoreException
-      } catch (VeniceNoStoreException e) {
-        throw new VeniceException("Unexpected to encounter non-existing store here: " + storeName);
-      }
-
-      int versionNumber = Version.parseVersionFromKafkaTopicName(kafkaTopicName);
-
-      Version version = storeRepository.getStoreOrThrow(storeName).getVersion(versionNumber);
-      if (version == null) {
-        throw new VeniceException(
-            "Could not find version: " + versionNumber + " for store: " + storeName + " in storeRepository!");
-      }
-
-      /**
-       * Set the target bootstrap version for the store in the below order:
-       * 1. CURRENT_VERSION: store's CURRENT_VERSION exists locally.
-       * 2. FUTURE_VERSION: store's CURRENT_VERSION does not exist locally, but FUTURE_VERSION exists locally.
-       * In most case, we will choose 1, as the CURRENT_VERSION will always exists locally regardless of the FUTURE_VERSION
-       * Case 2 will only exist when store version retention policy is > 2, and rollback happens on Venice side.
-       */
-      if (!(storeNameToBootstrapVersionMap.containsKey(storeName)
-          && (storeNameToBootstrapVersionMap.get(storeName).getNumber() < versionNumber))) {
-        storeNameToBootstrapVersionMap.put(storeName, version);
-        storeNameToPartitionListMap.put(storeName, getStorageService().getUserPartitions(kafkaTopicName));
-      }
-    }
-
     /**
      * In order to make bootstrap logic compatible with ingestion isolation, we first scan all local storage engines,
      * record all store versions that are up-to-date and close all storage engines. This will make sure child process
@@ -518,19 +471,6 @@ public class DaVinciBackend implements Closeable {
             blobTransferManager,
             configLoader.getVeniceServerConfig());
     ingestionBackend.addIngestionNotifier(ingestionListener);
-
-    if (configLoader.getCombinedProperties().getBoolean(DA_VINCI_SUBSCRIBE_ON_DISK_PARTITIONS_AUTOMATICALLY, true)) {
-      // Subscribe all bootstrap version partitions.
-      storeNameToBootstrapVersionMap.forEach((storeName, version) -> {
-        List<Integer> partitions = storeNameToPartitionListMap.get(storeName);
-        String versionTopic = version.kafkaTopicName();
-        LOGGER.info("Bootstrapping partitions {} for {}", partitions, versionTopic);
-        StorageEngine storageEngine = getStorageService().getStorageEngine(versionTopic);
-        aggVersionedStorageEngineStats.setStorageEngine(versionTopic, storageEngine);
-        StoreBackend storeBackend = getStoreOrThrow(storeName);
-        storeBackend.subscribe(ComplementSet.newSet(partitions), Optional.of(version));
-      });
-    }
   }
 
   @Override
@@ -690,7 +630,7 @@ public class DaVinciBackend implements Closeable {
     }
   }
 
-  protected final boolean isIsolatedIngestion() {
+  public final boolean isIsolatedIngestion() {
     return configLoader.getVeniceServerConfig().getIngestionMode().equals(IngestionMode.ISOLATED);
   }
 

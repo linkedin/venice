@@ -95,6 +95,7 @@ public class CompactionManagerTest {
     Version version6 = mock(Version.class);
     Version version7 = mock(Version.class);
     Version version8 = mock(Version.class);
+    Version version9 = mock(Version.class);
 
     // set version number for Version mocks
     when(version1.getNumber()).thenReturn(currentVersionNumber);
@@ -106,6 +107,7 @@ public class CompactionManagerTest {
     when(version6.getNumber()).thenReturn(currentVersionNumber);
     when(version7.getNumber()).thenReturn(currentVersionNumber);
     when(version8.getNumber()).thenReturn(currentVersionNumber);
+    when(version9.getNumber()).thenReturn(currentVersionNumber);
 
     // set createTime for Version mocks
 
@@ -145,6 +147,10 @@ public class CompactionManagerTest {
     when(version8.getCreatedTime())
         .thenReturn(System.currentTimeMillis() - TimeUnit.HOURS.toMillis(COMPACTION_THRESHOLD + 1));
 
+    // 25 hours
+    when(version9.getCreatedTime())
+        .thenReturn(System.currentTimeMillis() - TimeUnit.HOURS.toMillis(COMPACTION_THRESHOLD + 1));
+
     // Mock StoreInfo instances
     StoreInfo store1 = new StoreInfo();
     StoreInfo store2 = new StoreInfo();
@@ -154,6 +160,7 @@ public class CompactionManagerTest {
     StoreInfo store6 = new StoreInfo();
     StoreInfo store7 = new StoreInfo();
     StoreInfo store8 = new StoreInfo();
+    StoreInfo store9 = new StoreInfo();
 
     // Set store names
     store1.setName(TEST_STORE_NAME_PREFIX + "1");
@@ -164,6 +171,7 @@ public class CompactionManagerTest {
     store6.setName(TEST_STORE_NAME_PREFIX + "6");
     store7.setName(TEST_STORE_NAME_PREFIX + "7");
     store8.setName(TEST_STORE_NAME_PREFIX + "8");
+    store9.setName(TEST_STORE_NAME_PREFIX + "9");
 
     // Return Version mocks when getVersion() is called
     store1.setVersions(Collections.singletonList(version1));
@@ -174,6 +182,7 @@ public class CompactionManagerTest {
     store6.setVersions(Collections.singletonList(version6));
     store7.setVersions(Collections.singletonList(version7));
     store8.setVersions(Collections.singletonList(version8));
+    store9.setVersions(Collections.singletonList(version9));
 
     // Mock HybridStoreConfig for the first two StoreInfo instances
     store1.setHybridStoreConfig(mock(HybridStoreConfig.class));
@@ -183,6 +192,7 @@ public class CompactionManagerTest {
     store6.setHybridStoreConfig(mock(HybridStoreConfig.class));
     store7.setHybridStoreConfig(mock(HybridStoreConfig.class));
     store8.setHybridStoreConfig(mock(HybridStoreConfig.class));
+    store9.setHybridStoreConfig(mock(HybridStoreConfig.class));
 
     // Set isActiveActiveReplicationEnabled for the first two StoreInfo instances
     store1.setActiveActiveReplicationEnabled(true);
@@ -193,6 +203,7 @@ public class CompactionManagerTest {
     store6.setActiveActiveReplicationEnabled(true);
     store7.setActiveActiveReplicationEnabled(true);
     store8.setActiveActiveReplicationEnabled(true);
+    store9.setActiveActiveReplicationEnabled(true);
 
     // Set compaction enabled for all but store6
     store1.setCompactionEnabled(true);
@@ -203,6 +214,7 @@ public class CompactionManagerTest {
     store6.setCompactionEnabled(false);
     store7.setCompactionEnabled(true);
     store8.setCompactionEnabled(true);
+    store9.setCompactionEnabled(true);
 
     // Set store-level compaction threshold
     store1.setCompactionThreshold(-1);
@@ -213,6 +225,18 @@ public class CompactionManagerTest {
     store6.setCompactionThreshold(-1);
     store7.setCompactionThreshold(TimeUnit.HOURS.toMillis(COMPACTION_THRESHOLD) * 2);
     store8.setCompactionThreshold(TimeUnit.HOURS.toMillis(COMPACTION_THRESHOLD) / 2);
+    store9.setCompactionThreshold(-1);
+
+    // Set store-level Writes Enabled
+    store1.setEnableStoreWrites(true);
+    store2.setEnableStoreWrites(true);
+    store3.setEnableStoreWrites(true);
+    store4.setEnableStoreWrites(true);
+    store5.setEnableStoreWrites(true);
+    store6.setEnableStoreWrites(true);
+    store7.setEnableStoreWrites(true);
+    store8.setEnableStoreWrites(true);
+    store9.setEnableStoreWrites(false);
 
     // Add StoreInfo instances to the list
     storeInfoList.add(store1);
@@ -223,6 +247,7 @@ public class CompactionManagerTest {
     storeInfoList.add(store6);
     storeInfoList.add(store7);
     storeInfoList.add(store8);
+    storeInfoList.add(store9);
 
     // Verify stores compaction-ready status
     assertTrue(testCompactionManager.filterStore(store1, TEST_CLUSTER_NAME_1)); // compacted more than threshold
@@ -243,6 +268,7 @@ public class CompactionManagerTest {
     assertFalse(testCompactionManager.filterStore(store7, TEST_CLUSTER_NAME_1)); // Store level threshold not
                                                                                  // reached
     assertTrue(testCompactionManager.filterStore(store8, TEST_CLUSTER_NAME_1)); // Store level threshold reached
+    assertFalse(testCompactionManager.filterStore(store9, TEST_CLUSTER_NAME_1)); // Store level threshold reached
 
     // Test
     List<StoreInfo> compactionReadyStores =
@@ -257,6 +283,7 @@ public class CompactionManagerTest {
     verify(mockLogCompactionStats, Mockito.times(0)).recordStoreNominatedForCompactionCount(store6.getName());
     verify(mockLogCompactionStats, Mockito.times(0)).recordStoreNominatedForCompactionCount(store7.getName());
     verify(mockLogCompactionStats, Mockito.times(1)).recordStoreNominatedForCompactionCount(store8.getName());
+    verify(mockLogCompactionStats, Mockito.times(0)).recordStoreNominatedForCompactionCount(store9.getName());
 
     // Validate setCompactionEligible metric emission
     verify(mockLogCompactionStats, Mockito.times(1)).setCompactionEligible(store1.getName());
@@ -267,6 +294,7 @@ public class CompactionManagerTest {
     verify(mockLogCompactionStats, Mockito.times(0)).setCompactionEligible(store6.getName());
     verify(mockLogCompactionStats, Mockito.times(0)).setCompactionEligible(store7.getName());
     verify(mockLogCompactionStats, Mockito.times(1)).setCompactionEligible(store8.getName());
+    verify(mockLogCompactionStats, Mockito.times(0)).setCompactionEligible(store9.getName());
 
     // Test validation
     assertEquals(compactionReadyStores.size(), 3);
@@ -278,6 +306,7 @@ public class CompactionManagerTest {
     assertFalse(compactionReadyStores.contains(store6));
     assertFalse(compactionReadyStores.contains(store7));
     assertTrue(compactionReadyStores.contains(store8));
+    assertFalse(compactionReadyStores.contains(store9));
   }
 
   @Test(expectedExceptions = VeniceException.class)
@@ -371,6 +400,7 @@ public class CompactionManagerTest {
     when(storeInfo.getVersions()).thenReturn(Collections.singletonList(version));
     when(storeInfo.isActiveActiveReplicationEnabled()).thenReturn(true);
     when(storeInfo.isCompactionEnabled()).thenReturn(true);
+    when(storeInfo.isEnableStoreWrites()).thenReturn(true);
     return storeInfo;
   }
 

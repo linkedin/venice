@@ -18,6 +18,7 @@ import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.store.rocksdb.RocksDBUtils;
@@ -32,6 +33,7 @@ import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
@@ -443,6 +445,22 @@ public class BlobP2PTransferAmongServersTest {
             offsetRecord1.getCheckpointedLocalVtPosition());
       }
     });
+
+    // get the store info
+    StoreInfo storeInfo = controllerClient.getClusterStores(cluster.getClusterName())
+        .getStoreInfoList()
+        .stream()
+        .filter(store -> store.getName().equals(storeName))
+        .findFirst()
+        .get();
+
+    Version latestVersion =
+        storeInfo.getVersions().stream().max(Comparator.comparingInt(Version::getNumber)).orElse(null);
+
+    Assert.assertEquals(
+        latestVersion.getBlobTransferInServerEnabled(),
+        ConfigCommonUtils.ActivationState.ENABLED.toString(),
+        "Latest version " + latestVersion.getNumber() + " should have blob transfer enabled");
 
     // cleanup and stop server 1
     cluster.stopVeniceServer(server1Port);

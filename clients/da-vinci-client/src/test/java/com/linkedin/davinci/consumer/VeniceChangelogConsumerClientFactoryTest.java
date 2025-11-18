@@ -5,7 +5,6 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
@@ -16,20 +15,15 @@ import static org.testng.Assert.expectThrows;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.data.ByteString;
-import com.linkedin.davinci.repository.NativeMetadataRepositoryViewAdapter;
 import com.linkedin.r2.message.rest.RestResponse;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.client.store.schemas.TestKeyRecord;
-import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
-import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
-import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.ViewConfig;
 import com.linkedin.venice.meta.ViewConfigImpl;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
@@ -90,7 +84,7 @@ public class VeniceChangelogConsumerClientFactoryTest {
     mockStoreInfo.setViewConfigs(viewConfigMap);
     Mockito.when(mockStoreResponse.getStore()).thenReturn(mockStoreInfo);
     Mockito.when(mockControllerClient.getStore(STORE_NAME)).thenReturn(mockStoreResponse);
-    Mockito.when(mockControllerClient.retryableRequest(Mockito.anyInt(), Mockito.any())).thenReturn(mockStoreResponse);
+    Mockito.when(mockControllerClient.retryableRequest(anyInt(), Mockito.any())).thenReturn(mockStoreResponse);
     VeniceChangelogConsumer consumer = veniceChangelogConsumerClientFactory.getChangelogConsumer(STORE_NAME);
 
     Assert.assertTrue(consumer instanceof VeniceAfterImageConsumerImpl);
@@ -221,7 +215,7 @@ public class VeniceChangelogConsumerClientFactoryTest {
   }
 
   @Test
-  public void testGetBootstrappingChangelogConsumer()
+  public void testGetStatefulChangelogConsumer()
       throws ExecutionException, InterruptedException, JsonProcessingException {
     Properties consumerProperties = new Properties();
     String localKafkaUrl = "http://www.fooAddress.linkedin.com:16337";
@@ -257,28 +251,15 @@ public class VeniceChangelogConsumerClientFactoryTest {
     mockStoreInfo.setViewConfigs(viewConfigMap);
     Mockito.when(mockStoreResponse.getStore()).thenReturn(mockStoreInfo);
     Mockito.when(mockControllerClient.getStore(STORE_NAME)).thenReturn(mockStoreResponse);
-    BootstrappingVeniceChangelogConsumer consumer =
-        veniceChangelogConsumerClientFactory.getBootstrappingChangelogConsumer(STORE_NAME);
+    StatefulVeniceChangelogConsumer consumer =
+        veniceChangelogConsumerClientFactory.getStatefulChangelogConsumer(STORE_NAME);
 
-    Assert.assertTrue(consumer instanceof LocalBootstrappingVeniceChangelogConsumer);
+    Assert.assertTrue(consumer instanceof VeniceChangelogConsumerDaVinciRecordTransformerImpl);
 
     globalChangelogClientConfig.setViewName(VIEW_NAME);
 
-    NativeMetadataRepositoryViewAdapter mockRepository = mock(NativeMetadataRepositoryViewAdapter.class);
-    Store store = mock(Store.class);
-    Version mockVersion = new VersionImpl(STORE_NAME, 1, "foo");
-    mockVersion.setPartitionCount(2);
-    Mockito.when(store.getCurrentVersion()).thenReturn(1);
-    Mockito.when(store.getCompressionStrategy()).thenReturn(CompressionStrategy.NO_OP);
-    Mockito.when(store.getPartitionCount()).thenReturn(2);
-    Mockito.when(store.getVersion(anyInt())).thenReturn(mockVersion);
-    Mockito.when(mockRepository.getStore(anyString())).thenReturn(store);
-    Mockito.when(store.getVersionOrThrow(Mockito.anyInt())).thenReturn(mockVersion);
-
-    ((LocalBootstrappingVeniceChangelogConsumer) consumer).setStoreRepository(mockRepository);
-
-    consumer = veniceChangelogConsumerClientFactory.getBootstrappingChangelogConsumer(STORE_NAME);
-    Assert.assertTrue(consumer instanceof LocalBootstrappingVeniceChangelogConsumer);
+    consumer = veniceChangelogConsumerClientFactory.getStatefulChangelogConsumer(STORE_NAME);
+    Assert.assertTrue(consumer instanceof VeniceChangelogConsumerDaVinciRecordTransformerImpl);
 
     D2ServiceDiscoveryResponse serviceDiscoveryResponse = new D2ServiceDiscoveryResponse();
     serviceDiscoveryResponse.setCluster(TEST_CLUSTER);
@@ -312,12 +293,12 @@ public class VeniceChangelogConsumerClientFactoryTest {
     veniceChangelogConsumerClientFactory.setD2ControllerClient(mockControllerClient);
     veniceChangelogConsumerClientFactory.setConsumer(mockKafkaConsumer);
 
-    consumer = veniceChangelogConsumerClientFactory.getBootstrappingChangelogConsumer(STORE_NAME);
-    Assert.assertTrue(consumer instanceof LocalBootstrappingVeniceChangelogConsumer);
+    consumer = veniceChangelogConsumerClientFactory.getStatefulChangelogConsumer(STORE_NAME);
+    Assert.assertTrue(consumer instanceof VeniceChangelogConsumerDaVinciRecordTransformerImpl);
   }
 
   @Test
-  public void testGetBootstrappingChangelogConsumerThrowsException() {
+  public void testGetStatefulChangelogConsumerThrowsException() {
     Properties consumerProperties = new Properties();
     String localKafkaUrl = "http://www.fooAddress.linkedin.com:16337";
     consumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, localKafkaUrl);
@@ -349,7 +330,7 @@ public class VeniceChangelogConsumerClientFactoryTest {
     Mockito.when(mockStoreResponse.getStore()).thenReturn(mockStoreInfo);
     Mockito.when(mockControllerClient.getStore(STORE_NAME)).thenReturn(mockStoreResponse);
     globalChangelogClientConfig.setViewName(VIEW_NAME);
-    Assert.assertThrows(() -> veniceChangelogConsumerClientFactory.getBootstrappingChangelogConsumer(STORE_NAME));
+    Assert.assertThrows(() -> veniceChangelogConsumerClientFactory.getStatefulChangelogConsumer(STORE_NAME));
   }
 
   @DataProvider(name = "kmeDeserializerScenarios", parallel = true)

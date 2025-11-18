@@ -37,14 +37,20 @@ import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.utils.ConfigCommonUtils;
 import java.io.InputStream;
 import java.time.Duration;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.mockito.MockitoAnnotations;
+import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 
+/**
+ * Unit test for {@link DefaultIngestionBackend}
+ */
 public class DefaultIngestionBackendTest {
   @Mock
   private StorageMetadataService storageMetadataService;
@@ -91,7 +97,7 @@ public class DefaultIngestionBackendTest {
 
     when(storeConfig.getStoreVersionName()).thenReturn(STORE_VERSION);
     when(storeIngestionService.getMetadataRepo()).thenReturn(metadataRepo);
-    doNothing().when(storeIngestionService).startConsumption(any(VeniceStoreVersionConfig.class), anyInt());
+    doNothing().when(storeIngestionService).startConsumption(any(VeniceStoreVersionConfig.class), anyInt(), any());
     when(metadataRepo.waitVersion(anyString(), anyInt(), any(Duration.class))).thenReturn(storeAndVersion);
     when(storageMetadataService.getStoreVersionState(STORE_VERSION)).thenReturn(storeVersionState);
     when(storageService.openStoreForNewPartition(eq(storeConfig), eq(PARTITION), any())).thenReturn(storageEngine);
@@ -131,7 +137,7 @@ public class DefaultIngestionBackendTest {
     when(rocksDBServerConfig.isRocksDBPlainTableFormatEnabled()).thenReturn(false);
     when(veniceServerConfig.getRocksDBServerConfig()).thenReturn(rocksDBServerConfig);
 
-    ingestionBackend.startConsumption(storeConfig, PARTITION);
+    ingestionBackend.startConsumption(storeConfig, PARTITION, Optional.empty());
     verifyBlobTransfer(true);
     verify(aggVersionedBlobTransferStats).recordBlobTransferResponsesCount(eq(STORE_NAME), eq(VERSION_NUMBER));
     verify(aggVersionedBlobTransferStats)
@@ -198,7 +204,7 @@ public class DefaultIngestionBackendTest {
     when(store.getBlobTransferInServerEnabled()).thenReturn(storeSetting);
     when(veniceServerConfig.getBlobTransferReceiverServerPolicy()).thenReturn(serverSetting);
 
-    ingestionBackend.startConsumption(storeConfig, PARTITION);
+    ingestionBackend.startConsumption(storeConfig, PARTITION, Optional.empty());
     verifyBlobTransfer(expectEnabled);
   }
 
@@ -226,7 +232,7 @@ public class DefaultIngestionBackendTest {
     when(rocksDBServerConfig.isRocksDBPlainTableFormatEnabled()).thenReturn(false);
     when(veniceServerConfig.getRocksDBServerConfig()).thenReturn(rocksDBServerConfig);
 
-    ingestionBackend.startConsumption(storeConfig, PARTITION);
+    ingestionBackend.startConsumption(storeConfig, PARTITION, Optional.empty());
     verify(blobTransferManager).get(eq(STORE_NAME), eq(VERSION_NUMBER), eq(PARTITION), eq(BLOB_TRANSFER_FORMAT));
     verify(aggVersionedBlobTransferStats).recordBlobTransferResponsesCount(eq(STORE_NAME), eq(VERSION_NUMBER));
     verify(aggVersionedBlobTransferStats)
@@ -237,7 +243,6 @@ public class DefaultIngestionBackendTest {
   public void testStartConsumptionWithBlobTransferValidatePartitionStatus() {
     when(storageService.getStorageEngine(Version.composeKafkaTopic(STORE_NAME, VERSION_NUMBER)))
         .thenReturn(storageEngine);
-
     when(store.isBlobTransferEnabled()).thenReturn(true);
     when(storeIngestionService.isDaVinciClient()).thenReturn(true);
     when(store.isHybrid()).thenReturn(true);
@@ -250,7 +255,7 @@ public class DefaultIngestionBackendTest {
     doNothing().when(storageEngine)
         .adjustStoragePartition(eq(PARTITION), eq(StoragePartitionAdjustmentTrigger.END_BLOB_TRANSFER), any());
 
-    ingestionBackend.startConsumption(storeConfig, PARTITION);
+    ingestionBackend.startConsumption(storeConfig, PARTITION, Optional.empty());
 
     verify(blobTransferManager).get(eq(STORE_NAME), eq(VERSION_NUMBER), eq(PARTITION), eq(BLOB_TRANSFER_FORMAT));
     verify(aggVersionedBlobTransferStats).recordBlobTransferResponsesCount(eq(STORE_NAME), eq(VERSION_NUMBER));
@@ -280,11 +285,11 @@ public class DefaultIngestionBackendTest {
         .thenReturn(errorFuture);
 
     CompletableFuture<Void> future = ingestionBackend
-        .bootstrapFromBlobs(store, VERSION_NUMBER, PARTITION, BLOB_TRANSFER_FORMAT, 100L, storeConfig, null)
+        .bootstrapFromBlobs(store, VERSION_NUMBER, PARTITION, BLOB_TRANSFER_FORMAT, 100L, 0, storeConfig, null)
         .toCompletableFuture();
     assertTrue(future.isDone());
-    verify(aggVersionedBlobTransferStats).recordBlobTransferResponsesCount(eq(STORE_NAME), eq(VERSION_NUMBER));
-    verify(aggVersionedBlobTransferStats)
+    verify(aggVersionedBlobTransferStats, never()).recordBlobTransferResponsesCount(eq(STORE_NAME), eq(VERSION_NUMBER));
+    verify(aggVersionedBlobTransferStats, never())
         .recordBlobTransferResponsesBasedOnBoostrapStatus(eq(STORE_NAME), eq(VERSION_NUMBER), eq(false));
   }
 
@@ -305,9 +310,18 @@ public class DefaultIngestionBackendTest {
     when(blobTransferManager.get(eq(STORE_NAME), eq(VERSION_NUMBER), eq(PARTITION), eq(BLOB_TRANSFER_FORMAT)))
         .thenReturn(future);
 
-    CompletableFuture<Void> result = ingestionBackend
-        .bootstrapFromBlobs(store, VERSION_NUMBER, PARTITION, BLOB_TRANSFER_FORMAT, laggingThreshold, storeConfig, null)
-        .toCompletableFuture();
+    CompletableFuture<Void> result =
+        ingestionBackend
+            .bootstrapFromBlobs(
+                store,
+                VERSION_NUMBER,
+                PARTITION,
+                BLOB_TRANSFER_FORMAT,
+                laggingThreshold,
+                0,
+                storeConfig,
+                null)
+            .toCompletableFuture();
     assertTrue(result.isDone());
     verify(blobTransferManager, never())
         .get(eq(STORE_NAME), eq(VERSION_NUMBER), eq(PARTITION), eq(BLOB_TRANSFER_FORMAT));
@@ -332,9 +346,18 @@ public class DefaultIngestionBackendTest {
     when(blobTransferManager.get(eq(STORE_NAME), eq(VERSION_NUMBER), eq(PARTITION), eq(BLOB_TRANSFER_FORMAT)))
         .thenReturn(future);
 
-    CompletableFuture<Void> result = ingestionBackend
-        .bootstrapFromBlobs(store, VERSION_NUMBER, PARTITION, BLOB_TRANSFER_FORMAT, laggingThreshold, storeConfig, null)
-        .toCompletableFuture();
+    CompletableFuture<Void> result =
+        ingestionBackend
+            .bootstrapFromBlobs(
+                store,
+                VERSION_NUMBER,
+                PARTITION,
+                BLOB_TRANSFER_FORMAT,
+                laggingThreshold,
+                0,
+                storeConfig,
+                null)
+            .toCompletableFuture();
     assertTrue(result.isDone());
     verify(blobTransferManager, never())
         .get(eq(STORE_NAME), eq(VERSION_NUMBER), eq(PARTITION), eq(BLOB_TRANSFER_FORMAT));
@@ -361,7 +384,7 @@ public class DefaultIngestionBackendTest {
     when(veniceServerConfig.getRocksDBServerConfig()).thenReturn(rocksDBServerConfig);
     when(storageService.getStorageEngine(kafkaTopic)).thenReturn(storageEngine);
 
-    ingestionBackend.startConsumption(storeConfig, PARTITION);
+    ingestionBackend.startConsumption(storeConfig, PARTITION, Optional.empty());
     verify(blobTransferManager).get(eq(STORE_NAME), eq(VERSION_NUMBER), eq(PARTITION), eq(BLOB_TRANSFER_FORMAT));
     verify(aggVersionedBlobTransferStats).recordBlobTransferResponsesCount(eq(STORE_NAME), eq(VERSION_NUMBER));
     verify(aggVersionedBlobTransferStats)
@@ -378,5 +401,51 @@ public class DefaultIngestionBackendTest {
 
     doReturn(false).when(mockIngestionService).hasCurrentVersionBootstrapping();
     assertFalse(ingestionBackend.hasCurrentVersionBootstrapping());
+  }
+
+  @Test
+  public void testReplicaBlobTransferLagCheck() {
+    KafkaStoreIngestionService mockIngestionService = mock(KafkaStoreIngestionService.class);
+    StorageMetadataService mockStorageMetadataService = mock(StorageMetadataService.class);
+    OffsetRecord offsetRecord = Mockito.mock(OffsetRecord.class);
+    doReturn(offsetRecord).when(mockStorageMetadataService).getLastOffset(anyString(), anyInt(), any());
+    DefaultIngestionBackend ingestionBackend =
+        new DefaultIngestionBackend(mockStorageMetadataService, mockIngestionService, null, null, null);
+    String store = "foo";
+    int version = 123;
+    int partition = 456;
+    long offsetLagThreshold = 10000L;
+
+    // Test batch-only store.
+    doReturn(true).when(offsetRecord).isEndOfPushReceived();
+    Assert.assertTrue(ingestionBackend.isReplicaLaggedAndNeedBlobTransfer(store, version, partition, -1, 0, false));
+    Assert.assertFalse(
+        ingestionBackend.isReplicaLaggedAndNeedBlobTransfer(store, version, partition, offsetLagThreshold, 0, false));
+    Assert.assertFalse(
+        ingestionBackend.isReplicaLaggedAndNeedBlobTransfer(store, version, partition, offsetLagThreshold, 1, false));
+    doReturn(false).when(offsetRecord).isEndOfPushReceived();
+    Assert.assertTrue(
+        ingestionBackend.isReplicaLaggedAndNeedBlobTransfer(store, version, partition, offsetLagThreshold, 0, false));
+    Assert.assertTrue(
+        ingestionBackend.isReplicaLaggedAndNeedBlobTransfer(store, version, partition, offsetLagThreshold, 1, false));
+
+    // Test hybrid store
+    doReturn(System.currentTimeMillis() - TimeUnit.MINUTES.toMillis(2)).when(offsetRecord).getHeartbeatTimestamp();
+    doReturn(offsetLagThreshold + 1).when(offsetRecord).getOffsetLag();
+    // Refer to Time-lag
+    Assert.assertTrue(
+        ingestionBackend.isReplicaLaggedAndNeedBlobTransfer(store, version, partition, offsetLagThreshold, 1, true));
+    Assert.assertFalse(
+        ingestionBackend.isReplicaLaggedAndNeedBlobTransfer(store, version, partition, offsetLagThreshold, 3, true));
+    // Refer to Offset-lag
+    Assert.assertTrue(ingestionBackend.isReplicaLaggedAndNeedBlobTransfer(store, version, partition, -1, 0, true));
+    Assert.assertTrue(
+        ingestionBackend.isReplicaLaggedAndNeedBlobTransfer(store, version, partition, offsetLagThreshold, 0, true));
+    doReturn(offsetLagThreshold - 1).when(offsetRecord).getOffsetLag();
+    Assert.assertFalse(
+        ingestionBackend.isReplicaLaggedAndNeedBlobTransfer(store, version, partition, offsetLagThreshold, 0, true));
+    // Legacy edge case.
+    doReturn(PubSubSymbolicPosition.EARLIEST).when(offsetRecord).getCheckpointedLocalVtPosition();
+    Assert.assertTrue(ingestionBackend.isReplicaLaggedAndNeedBlobTransfer(store, version, partition, 0, 0, true));
   }
 }

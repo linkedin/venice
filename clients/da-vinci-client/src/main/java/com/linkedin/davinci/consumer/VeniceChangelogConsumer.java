@@ -86,6 +86,7 @@ public interface VeniceChangelogConsumer<K, V> {
    * @return a future which completes when the operation has succeeded for all partitions.
    * @throws VeniceException if seek operation failed for any of the partitions, or seeking was performed on unsubscribed partitions
    */
+  @Deprecated
   CompletableFuture<Void> seekToEndOfPush(Set<Integer> partitions);
 
   /**
@@ -94,6 +95,7 @@ public interface VeniceChangelogConsumer<K, V> {
    * @return a future which completes when the operation has succeeded for all partitions.
    * @throws VeniceException if seek operation failed for any of the partitions.
    */
+  @Deprecated
   CompletableFuture<Void> seekToEndOfPush();
 
   /**
@@ -168,6 +170,7 @@ public interface VeniceChangelogConsumer<K, V> {
    *
    * @throws VeniceException if operation failed for any of the partitions.
    */
+  @Deprecated
   void pause(Set<Integer> partitions);
 
   /**
@@ -175,6 +178,7 @@ public interface VeniceChangelogConsumer<K, V> {
    *
    * @throws VeniceException if operation failed for any of the partitions.
    */
+  @Deprecated
   void pause();
 
   /**
@@ -182,6 +186,7 @@ public interface VeniceChangelogConsumer<K, V> {
    *
    * @throws VeniceException if operation failed for any of the partitions.
    */
+  @Deprecated
   void resume(Set<Integer> partitions);
 
   /**
@@ -189,6 +194,7 @@ public interface VeniceChangelogConsumer<K, V> {
    *
    * @throws VeniceException if operation failed for any of the partitions.
    */
+  @Deprecated
   void resume();
 
   /**
@@ -207,6 +213,15 @@ public interface VeniceChangelogConsumer<K, V> {
    * @return True if all subscribed partitions have caught up.
    */
   boolean isCaughtUp();
+
+  /**
+   * Returns the timestamp of the last heartbeat received for each subscribed partition.
+   * Heartbeats are messages sent periodically by Venice servers to measure lag.
+   *
+   * @return a map of partition number to the timestamp, in milliseconds, of the last
+   *         heartbeat received for that partition.
+   */
+  Map<Integer, Long> getLastHeartbeatPerPartition();
 
   /**
    * Release the internal resources.

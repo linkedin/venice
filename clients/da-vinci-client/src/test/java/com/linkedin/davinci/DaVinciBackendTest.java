@@ -3,7 +3,6 @@ package com.linkedin.davinci;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
-import static com.linkedin.venice.ConfigKeys.DA_VINCI_SUBSCRIBE_ON_DISK_PARTITIONS_AUTOMATICALLY;
 import static com.linkedin.venice.ConfigKeys.INGESTION_USE_DA_VINCI_CLIENT;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.DVC_INGESTION_ERROR_MEMORY_LIMIT_REACHED;
@@ -13,7 +12,6 @@ import static com.linkedin.venice.utils.DataProviderUtils.BOOLEAN;
 import static com.linkedin.venice.utils.DataProviderUtils.allPermutationGenerator;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.clearInvocations;
-import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockConstruction;
@@ -23,17 +21,12 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertThrows;
-import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 import static org.testng.AssertJUnit.assertNull;
 
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.repository.VeniceMetadataRepositoryBuilder;
-import com.linkedin.davinci.storage.StorageEngineRepository;
-import com.linkedin.davinci.storage.StorageService;
-import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheConfig;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.schema.StoreSchemaFetcher;
@@ -43,21 +36,15 @@ import com.linkedin.venice.exceptions.DiskLimitExhaustedException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.ClusterInfoProvider;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
-import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.SubscriptionBasedReadOnlyStoreRepository;
-import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.serialization.avro.SchemaPresenceChecker;
 import com.linkedin.venice.service.ICProvider;
-import com.linkedin.venice.utils.ComplementSet;
 import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.ExecutionException;
@@ -248,82 +235,6 @@ public class DaVinciBackendTest {
         new DaVinciBackend.BootstrappingAwareCompletableFuture(backend);
     future.getBootstrappingFuture().get(10, TimeUnit.SECONDS);
     verify(backend, times(2)).hasCurrentVersionBootstrapping();
-  }
-
-  @Test
-  public void testBootstrappingSubscription() {
-    StorageService mockStorageService = mock(StorageService.class);
-
-    StorageEngineRepository mockStorageEngineRepository = mock(StorageEngineRepository.class);
-    StorageEngine storageEngine = mock(StorageEngine.class);
-    String resourceName = "test_store_v1";
-    when(storageEngine.getStoreVersionName()).thenReturn(resourceName);
-
-    List<StorageEngine> localStorageEngines = new ArrayList<>();
-    localStorageEngines.add(storageEngine);
-
-    // Mock storage service behavior
-    when(mockStorageService.getStorageEngineRepository()).thenReturn(mockStorageEngineRepository);
-    when(mockStorageService.getStorageEngine(resourceName)).thenReturn(storageEngine);
-    when(mockStorageEngineRepository.getAllLocalStorageEngines()).thenReturn(localStorageEngines);
-
-    List<Integer> userPartitionList = new ArrayList<>();
-    userPartitionList.add(0);
-    userPartitionList.add(1);
-    userPartitionList.add(2);
-    when(mockStorageService.getUserPartitions(resourceName)).thenReturn(userPartitionList);
-
-    HashSet<Integer> backendSubscription = new HashSet<>();
-    backendSubscription.add(0);
-    backendSubscription.add(1);
-
-    StoreBackend mockStoreBackend = mock(StoreBackend.class);
-    ComplementSet<Integer> backendSubscriptionSet = ComplementSet.wrap(backendSubscription);
-    when(mockStoreBackend.getSubscription()).thenReturn(backendSubscriptionSet);
-
-    doAnswer(invocation -> {
-      ComplementSet<Integer> partitions = invocation.getArgument(0);
-      mockStoreBackend.getSubscription().addAll(partitions);
-      return null;
-    }).when(mockStoreBackend).subscribe(any(), any());
-
-    Version mockVersion = mock(Version.class);
-    when(mockVersion.kafkaTopicName()).thenReturn(resourceName);
-
-    Store mockStore = mock(Store.class);
-    SubscriptionBasedReadOnlyStoreRepository mockStoreRepository = mock(SubscriptionBasedReadOnlyStoreRepository.class);
-    when(mockStoreRepository.getStoreOrThrow(Version.parseStoreFromKafkaTopicName(resourceName))).thenReturn(mockStore);
-    when(mockStore.getVersion(Version.parseVersionFromKafkaTopicName(resourceName))).thenReturn(mockVersion);
-
-    backend.setStoreRepository(mockStoreRepository);
-    backend.setStorageService(mockStorageService);
-    backend.addStoreBackend(Version.parseStoreFromKafkaTopicName(resourceName), mockStoreBackend);
-
-    // DA_VINCI_SUBSCRIBE_ON_DISK_PARTITIONS_AUTOMATICALLY == false
-    Properties properties = backend.getConfigLoader().getCombinedProperties().toProperties();
-    properties.setProperty(DA_VINCI_SUBSCRIBE_ON_DISK_PARTITIONS_AUTOMATICALLY, "false");
-    VeniceProperties veniceProperties = new VeniceProperties(properties);
-    VeniceConfigLoader configLoader = new VeniceConfigLoader(veniceProperties);
-    backend.setConfigLoader(configLoader);
-    backend.bootstrap();
-
-    ComplementSet<Integer> subscription = mockStoreBackend.getSubscription();
-    assertTrue(subscription.contains(0));
-    assertTrue(subscription.contains(1));
-    assertFalse(subscription.contains(2));
-
-    // DA_VINCI_SUBSCRIBE_ON_DISK_PARTITIONS_AUTOMATICALLY == true
-    properties = backend.getConfigLoader().getCombinedProperties().toProperties();
-    properties.setProperty(DA_VINCI_SUBSCRIBE_ON_DISK_PARTITIONS_AUTOMATICALLY, "true");
-    veniceProperties = new VeniceProperties(properties);
-    configLoader = new VeniceConfigLoader(veniceProperties);
-    backend.setConfigLoader(configLoader);
-    backend.bootstrap();
-
-    subscription = mockStoreBackend.getSubscription();
-    assertTrue(subscription.contains(0));
-    assertTrue(subscription.contains(1));
-    assertTrue(subscription.contains(2));
   }
 
   @Test

@@ -342,6 +342,31 @@ public class CreateVersion extends AbstractRoute {
     response.setPartitions(referenceHybridVersion.getPartitionCount());
     response.setCompressionStrategy(CompressionStrategy.NO_OP);
     response.setKafkaTopic(Utils.getRealTimeTopicName(referenceHybridVersion));
+
+    // Override Kafka bootstrap servers if source grid fabric is set and feature is enabled
+    String sourceGridFabric = request.getSourceGridFabric();
+    if (sourceGridFabric != null
+        && admin.getControllerConfig(request.getClusterName()).isEnableStreamPushSourceGridFabricOverride()
+        && referenceHybridVersion.isActiveActiveReplicationEnabled()) {
+      String bootstrapServerAddress = admin.getPubSubBootstrapServersForRegion(sourceGridFabric);
+      if (bootstrapServerAddress == null) {
+        LOGGER.error(
+            "Failed to get the broker server URL for source grid fabric: {} for pushJob: {} store: {} in cluster: {}. Will use default PubSub bootstrap servers.",
+            sourceGridFabric,
+            request.getPushJobId(),
+            store.getName(),
+            request.getClusterName());
+      } else {
+        LOGGER.info(
+            "Stream push job source region is being overridden with: {} address: {} for pushJob: {} on store: {} in cluster: {}",
+            sourceGridFabric,
+            bootstrapServerAddress,
+            request.getPushJobId(),
+            store.getName(),
+            request.getClusterName());
+        response.setKafkaBootstrapServers(bootstrapServerAddress);
+      }
+    }
   }
 
   /**
@@ -527,7 +552,7 @@ public class CreateVersion extends AbstractRoute {
     if (overRideSourceRegion == null) {
       return;
     }
-    String bootstrapServerAddress = admin.getNativeReplicationKafkaBootstrapServerAddress(overRideSourceRegion);
+    String bootstrapServerAddress = admin.getPubSubBootstrapServersForRegion(overRideSourceRegion);
     if (bootstrapServerAddress == null) {
       throw new VeniceException("Failed to get the broker server URL for the source region: " + overRideSourceRegion);
     }

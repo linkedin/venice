@@ -12,6 +12,7 @@ public class ControllerApiConstants {
 
   public static final String AUTO_STORE_MIGRATION_CURRENT_STEP = "auto_store_migration_current_step";
   public static final String AUTO_STORE_MIGRATION_ABORT_ON_FAILURE = "auto_store_migration_abort_on_failure";
+  public static final String AUTO_STORE_MIGRATION_PAUSE_AFTER_STEP = "auto_store_migration_pause_after_step";
   /**
    * @deprecated Use {@link #STORE_NAME} instead.
    */
@@ -46,7 +47,7 @@ public class ControllerApiConstants {
   public static final String SCHEMA_COMPAT_TYPE = "schema_compat_type";
   public static final String DERIVED_SCHEMA_ID = "derived_schema_id";
   public static final String TOPIC = "topic";
-  public static final String OFFSET = "offset";
+  public static final String POSITION = "position";
   public static final String OPERATION = "operation";
   public static final String READ_OPERATION = "read";
   public static final String WRITE_OPERATION = "write";
@@ -230,7 +231,7 @@ public class ControllerApiConstants {
   public static final String KAFKA_TOPIC_LOG_COMPACTION_ENABLED = "kafka.topic.log.compaction.enabled";
   public static final String KAFKA_TOPIC_RETENTION_IN_MS = "kafka.topic.retention.in.ms";
   public static final String KAFKA_TOPIC_MIN_IN_SYNC_REPLICA = "kafka.topic.min.in.sync.replica";
-  public static final String UPSTREAM_OFFSET = "upstream_offset";
+  public static final String UPSTREAM_POSITION = "upstream_position";
   public static final String ADMIN_OPERATION_PROTOCOL_VERSION = "admin_operation_protocol_version";
 
   public static final String PERSONA_NAME = "persona_name";

@@ -234,10 +234,9 @@ public class TestAdminSparkWithMocks {
     doReturn(corpRegionKafka).when(admin).getKafkaBootstrapServers(anyBoolean());
     doReturn(true).when(admin).whetherEnableBatchPushFromAdmin(anyString(), anyString());
     doReturn(true).when(admin).isActiveActiveReplicationEnabledInAllRegion(clusterName, storeName, false);
-    doReturn(corpRegionKafka).when(admin).getNativeReplicationKafkaBootstrapServerAddress(corpRegion);
-    doReturn(emergencySourceRegionKafka).when(admin)
-        .getNativeReplicationKafkaBootstrapServerAddress(emergencySourceRegion);
-    doReturn(sourceGridFabricKafka).when(admin).getNativeReplicationKafkaBootstrapServerAddress(sourceGridFabric);
+    doReturn(corpRegionKafka).when(admin).getPubSubBootstrapServersForRegion(corpRegion);
+    doReturn(emergencySourceRegionKafka).when(admin).getPubSubBootstrapServersForRegion(emergencySourceRegion);
+    doReturn(sourceGridFabricKafka).when(admin).getPubSubBootstrapServersForRegion(sourceGridFabric);
 
     if (emergencySourceRegionPresent) {
       doReturn(Optional.of(emergencySourceRegion)).when(admin).getEmergencySourceRegion(clusterName);

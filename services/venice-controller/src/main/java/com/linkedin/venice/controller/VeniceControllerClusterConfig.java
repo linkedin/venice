@@ -53,6 +53,7 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_DISABLE_PARENT_REQUEST_T
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_DISABLE_PARENT_TOPIC_TRUNCATION_UPON_COMPLETION;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_EARLY_DELETE_BACKUP_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_ENABLE_DISABLED_REPLICA_ENABLED;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_ENABLE_STREAM_PUSH_SOURCE_GRID_FABRIC_OVERRIDE;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_ENFORCE_SSL;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_GRPC_SERVER_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_GRPC_SERVER_THREAD_COUNT;
@@ -93,6 +94,7 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_STORAGE_CLUSTER_HELIX_CL
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_STORE_GRAVEYARD_CLEANUP_DELAY_MINUTES;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_STORE_GRAVEYARD_CLEANUP_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_STORE_GRAVEYARD_CLEANUP_SLEEP_INTERVAL_BETWEEN_LIST_FETCH_MINUTES;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_STORE_RECREATION_AFTER_DELETION_TIME_WINDOW_SECONDS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_SYSTEM_SCHEMA_CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_SYSTEM_STORE_ACL_SYNCHRONIZATION_DELAY_MS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_UNUSED_SCHEMA_CLEANUP_INTERVAL_SECONDS;
@@ -191,6 +193,7 @@ import static com.linkedin.venice.ConfigKeys.REPUSH_CANDIDATE_FILTER_CLASS_NAMES
 import static com.linkedin.venice.ConfigKeys.REPUSH_ORCHESTRATOR_CLASS_NAME;
 import static com.linkedin.venice.ConfigKeys.SERVICE_DISCOVERY_REGISTRATION_RETRY_MS;
 import static com.linkedin.venice.ConfigKeys.SKIP_DEFERRED_VERSION_SWAP_FOR_DVC_ENABLED;
+import static com.linkedin.venice.ConfigKeys.SKIP_HYBRID_STORE_RT_TOPIC_COMPACTION_POLICY_UPDATE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SSL_KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.SSL_TO_KAFKA_LEGACY;
 import static com.linkedin.venice.ConfigKeys.STORAGE_ENGINE_OVERHEAD_RATIO;
@@ -443,6 +446,8 @@ public class VeniceControllerClusterConfig {
 
   private final int storeGraveyardCleanupSleepIntervalBetweenListFetchMinutes;
 
+  private final int storeRecreationAfterDeletionTimeWindowSeconds;
+
   private final boolean parentSystemStoreRepairServiceEnabled;
 
   private final int parentSystemStoreRepairCheckIntervalSeconds;
@@ -582,6 +587,11 @@ public class VeniceControllerClusterConfig {
    */
   private final boolean disableParentRequestTopicForStreamPushes;
 
+  /**
+   * Config to enable overriding PubSub bootstrap servers for stream push jobs based on source grid fabric.
+   */
+  private final boolean enableStreamPushSourceGridFabricOverride;
+
   private final int defaultReadQuotaPerRouter;
 
   private final int defaultMaxRecordSizeBytes; // default value for VeniceWriter.maxRecordSizeBytes
@@ -654,8 +664,14 @@ public class VeniceControllerClusterConfig {
   private final boolean isMultiTaskSchedulerServiceEnabled;
   private final int storeMigrationThreadPoolSize;
   private final int storeMigrationMaxRetryAttempts;
+  private final int storeMigrationTaskIntervalInSeconds;
+  private final List<String> storeMigrationFabricList;
 
   private final boolean backupVersionReplicaReductionEnabled;
+  private final boolean useMultiRegionRealTimeTopicSwitcher;
+  private final Set<String> activeActiveRealTimeSourceFabrics;
+
+  private final boolean isSkipHybridStoreRTTopicCompactionPolicyUpdateEnabled;
 
   public VeniceControllerClusterConfig(VeniceProperties props) {
     this.props = props;
@@ -686,6 +702,8 @@ public class VeniceControllerClusterConfig {
     } else {
       this.persistenceType = PersistenceType.IN_MEMORY;
     }
+    this.isSkipHybridStoreRTTopicCompactionPolicyUpdateEnabled =
+        props.getBoolean(SKIP_HYBRID_STORE_RT_TOPIC_COMPACTION_POLICY_UPDATE_ENABLED, false);
 
     if (props.containsKey(CONCURRENT_PUSH_DETECTION_STRATEGY)) {
       this.concurrentPushDetectionStrategy =
@@ -766,6 +784,8 @@ public class VeniceControllerClusterConfig {
     this.jettyConfigOverrides = props.clipAndFilterNamespace(CONTROLLER_JETTY_CONFIG_OVERRIDE_PREFIX);
     this.disableParentRequestTopicForStreamPushes =
         props.getBoolean(CONTROLLER_DISABLE_PARENT_REQUEST_TOPIC_FOR_STREAM_PUSHES, false);
+    this.enableStreamPushSourceGridFabricOverride =
+        props.getBoolean(CONTROLLER_ENABLE_STREAM_PUSH_SOURCE_GRID_FABRIC_OVERRIDE, true);
     this.defaultReadQuotaPerRouter =
         props.getInt(CONTROLLER_DEFAULT_READ_QUOTA_PER_ROUTER, DEFAULT_PER_ROUTER_READ_QUOTA);
     this.defaultMaxRecordSizeBytes =
@@ -871,17 +891,18 @@ public class VeniceControllerClusterConfig {
       }
     }
 
-    Set<String> activeActiveRealTimeSourceFabrics = Utils
+    Set<String> tmpActiveActiveRealTimeSourceFabrics = Utils
         .parseCommaSeparatedStringToSet(props.getString(ACTIVE_ACTIVE_REAL_TIME_SOURCE_FABRIC_LIST, (String) null));
 
-    if (activeActiveRealTimeSourceFabrics.isEmpty()) {
+    if (tmpActiveActiveRealTimeSourceFabrics.isEmpty()) {
       LOGGER.info(
           "'{}' not configured explicitly. Using '{}' from '{}'",
           ACTIVE_ACTIVE_REAL_TIME_SOURCE_FABRIC_LIST,
           nativeReplicationSourceFabricAllowlist,
           NATIVE_REPLICATION_FABRIC_ALLOWLIST);
-      activeActiveRealTimeSourceFabrics = nativeReplicationSourceFabricAllowlist;
+      tmpActiveActiveRealTimeSourceFabrics = nativeReplicationSourceFabricAllowlist;
     }
+    this.activeActiveRealTimeSourceFabrics = tmpActiveActiveRealTimeSourceFabrics;
 
     for (String aaSourceFabric: activeActiveRealTimeSourceFabrics) {
       if (!childDataCenterKafkaUrlMap.containsKey(aaSourceFabric)) {
@@ -1091,6 +1112,8 @@ public class VeniceControllerClusterConfig {
     this.storeGraveyardCleanupDelayMinutes = props.getInt(CONTROLLER_STORE_GRAVEYARD_CLEANUP_DELAY_MINUTES, 0);
     this.storeGraveyardCleanupSleepIntervalBetweenListFetchMinutes =
         props.getInt(CONTROLLER_STORE_GRAVEYARD_CLEANUP_SLEEP_INTERVAL_BETWEEN_LIST_FETCH_MINUTES, 15);
+    this.storeRecreationAfterDeletionTimeWindowSeconds =
+        props.getInt(CONTROLLER_STORE_RECREATION_AFTER_DELETION_TIME_WINDOW_SECONDS, 21600);
     this.parentSystemStoreRepairServiceEnabled =
         props.getBoolean(CONTROLLER_PARENT_SYSTEM_STORE_REPAIR_SERVICE_ENABLED, false);
     this.parentSystemStoreRepairCheckIntervalSeconds =
@@ -1234,8 +1257,17 @@ public class VeniceControllerClusterConfig {
     this.isMultiTaskSchedulerServiceEnabled = props.getBoolean(ConfigKeys.MULTITASK_SCHEDULER_SERVICE_ENABLED, false);
     this.storeMigrationThreadPoolSize = props.getInt(ConfigKeys.STORE_MIGRATION_THREAD_POOL_SIZE, 1);
     this.storeMigrationMaxRetryAttempts = props.getInt(ConfigKeys.STORE_MIGRATION_MAX_RETRY_ATTEMPTS, 3);
+    this.storeMigrationTaskIntervalInSeconds =
+        props.getInt(ConfigKeys.STORE_MIGRATION_TASK_SCHEDULING_INTERVAL_SECONDS, 60);
+    if (props.getString(ConfigKeys.STORE_MIGRATION_FABRIC_LIST, "").isEmpty()) {
+      this.storeMigrationFabricList = Collections.emptyList();
+    } else {
+      this.storeMigrationFabricList = props.getList(ConfigKeys.STORE_MIGRATION_FABRIC_LIST);
+    }
     this.backupVersionReplicaReductionEnabled =
         props.getBoolean(CONTROLLER_BACKUP_VERSION_REPLICA_REDUCTION_ENABLED, false);
+    this.useMultiRegionRealTimeTopicSwitcher =
+        props.getBoolean(ConfigKeys.CONTROLLER_USE_MULTI_REGION_REAL_TIME_TOPIC_SWITCHER_ENABLED, false);
 
     this.logClusterConfig();
   }
@@ -1339,6 +1371,10 @@ public class VeniceControllerClusterConfig {
 
   public boolean isDisableParentRequestTopicForStreamPushes() {
     return disableParentRequestTopicForStreamPushes;
+  }
+
+  public boolean isEnableStreamPushSourceGridFabricOverride() {
+    return enableStreamPushSourceGridFabricOverride;
   }
 
   public int getMaxNumberOfPartitions() {
@@ -1992,6 +2028,10 @@ public class VeniceControllerClusterConfig {
     return storeGraveyardCleanupSleepIntervalBetweenListFetchMinutes;
   }
 
+  public int getStoreRecreationAfterDeletionTimeWindowSeconds() {
+    return storeRecreationAfterDeletionTimeWindowSeconds;
+  }
+
   public boolean isParentSystemStoreRepairServiceEnabled() {
     return parentSystemStoreRepairServiceEnabled;
   }
@@ -2050,6 +2090,14 @@ public class VeniceControllerClusterConfig {
 
   public int getStoreMigrationMaxRetryAttempts() {
     return storeMigrationMaxRetryAttempts;
+  }
+
+  public int getStoreMigrationTaskIntervalInSeconds() {
+    return storeMigrationTaskIntervalInSeconds;
+  }
+
+  public List<String> getStoreMigrationFabricList() {
+    return storeMigrationFabricList;
   }
 
   /**
@@ -2180,6 +2228,10 @@ public class VeniceControllerClusterConfig {
     return isRealTimeTopicVersioningEnabled;
   }
 
+  public boolean isSkipHybridStoreRTTopicCompactionPolicyUpdateEnabled() {
+    return isSkipHybridStoreRTTopicCompactionPolicyUpdateEnabled;
+  }
+
   /**
    * A function that would put a k/v pair into a map with some processing works.
    */
@@ -2271,6 +2323,14 @@ public class VeniceControllerClusterConfig {
 
   public HelixCapacityConfig getHelixCapacityConfig() {
     return helixCapacityConfig;
+  }
+
+  public boolean isUseMultiRegionRealTimeTopicSwitcherEnabled() {
+    return useMultiRegionRealTimeTopicSwitcher;
+  }
+
+  public Set<String> getActiveActiveRealTimeSourceFabrics() {
+    return activeActiveRealTimeSourceFabrics;
   }
 
   private void validateHelixRebalancePreferences(

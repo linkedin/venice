@@ -99,7 +99,6 @@ import static com.linkedin.venice.Arg.NEARLINE_PRODUCER_COMPRESSION_ENABLED;
 import static com.linkedin.venice.Arg.NEARLINE_PRODUCER_COUNT_PER_WRITER;
 import static com.linkedin.venice.Arg.NON_INTERACTIVE;
 import static com.linkedin.venice.Arg.NUM_VERSIONS_TO_PRESERVE;
-import static com.linkedin.venice.Arg.OFFSET;
 import static com.linkedin.venice.Arg.OUTFILE;
 import static com.linkedin.venice.Arg.OWNER;
 import static com.linkedin.venice.Arg.PARENT_DIRECTORY;
@@ -108,6 +107,7 @@ import static com.linkedin.venice.Arg.PARTITIONER_CLASS;
 import static com.linkedin.venice.Arg.PARTITIONER_PARAMS;
 import static com.linkedin.venice.Arg.PARTITION_COUNT;
 import static com.linkedin.venice.Arg.PARTITION_DETAIL_ENABLED;
+import static com.linkedin.venice.Arg.POSITION;
 import static com.linkedin.venice.Arg.PRINCIPAL;
 import static com.linkedin.venice.Arg.PROGRESS_INTERVAL;
 import static com.linkedin.venice.Arg.PUSH_ID;
@@ -146,7 +146,6 @@ import static com.linkedin.venice.Arg.STORES_TO_REPLICATE;
 import static com.linkedin.venice.Arg.STORE_FILTER_FILE;
 import static com.linkedin.venice.Arg.STORE_LIFECYCLE_HOOKS_LIST;
 import static com.linkedin.venice.Arg.STORE_SIZE;
-import static com.linkedin.venice.Arg.STORE_TYPE;
 import static com.linkedin.venice.Arg.STORE_VIEW_CONFIGS;
 import static com.linkedin.venice.Arg.SYSTEM_STORE_TYPE;
 import static com.linkedin.venice.Arg.TARGET_SWAP_REGION;
@@ -225,7 +224,7 @@ public enum Command {
   ), KILL_JOB("kill-job", "Kill a running push job", new Arg[] { URL, STORE, VERSION }, new Arg[] { CLUSTER }),
   SKIP_ADMIN_MESSAGE(
       "skip-admin-message", "Skip an admin message", new Arg[] { URL, CLUSTER },
-      new Arg[] { SKIP_DIV, OFFSET, EXECUTION_ID }
+      new Arg[] { SKIP_DIV, POSITION, EXECUTION_ID }
   ),
   NEW_STORE(
       "new-store", "", new Arg[] { URL, CLUSTER, STORE, KEY_SCHEMA, VALUE_SCHEMA }, new Arg[] { OWNER, VSON_STORE }
@@ -463,16 +462,6 @@ public enum Command {
   REMOVE_FROM_STORE_ACL(
       "remove-from-store-acl", "Remove a principal from ACL's for an existing store",
       new Arg[] { URL, STORE, PRINCIPAL }, new Arg[] { CLUSTER, READABILITY, WRITEABILITY }
-  ),
-  ENABLE_ACTIVE_ACTIVE_REPLICATION_FOR_CLUSTER(
-      "enable-active-active-replication-for-cluster",
-      "enable active active replication for certain stores (batch-only, hybrid-only, incremental-push, hybrid-or-incremental, all) in a cluster",
-      new Arg[] { URL, CLUSTER, STORE_TYPE }, new Arg[] { REGIONS_FILTER }
-  ),
-  DISABLE_ACTIVE_ACTIVE_REPLICATION_FOR_CLUSTER(
-      "disable-active-active-replication-for-cluster",
-      "disable active active replication for certain stores (batch-only, hybrid-only, incremental-push, hybrid-or-incremental, all) in a cluster",
-      new Arg[] { URL, CLUSTER, STORE_TYPE }, new Arg[] { REGIONS_FILTER }
   ),
   GET_DELETABLE_STORE_TOPICS(
       "get-deletable-store-topics",

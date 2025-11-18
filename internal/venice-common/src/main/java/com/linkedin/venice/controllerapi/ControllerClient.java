@@ -5,6 +5,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.ADMIN_OPE
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.AMPLIFICATION_FACTOR;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.AUTO_STORE_MIGRATION_ABORT_ON_FAILURE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.AUTO_STORE_MIGRATION_CURRENT_STEP;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.AUTO_STORE_MIGRATION_PAUSE_AFTER_STEP;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BATCH_JOB_HEARTBEAT_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER_DEST;
@@ -32,7 +33,6 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.KAFKA_TOP
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.KEY_SCHEMA;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.LOOK_BACK_MS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.OFFSET;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.OPERATION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.OWNER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PARTITIONERS;
@@ -42,6 +42,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.PERSONA_N
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PERSONA_OWNERS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PERSONA_QUOTA;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PERSONA_STORES;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.POSITION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PUSH_IN_SORTED_ORDER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PUSH_JOB_ID;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PUSH_STRATEGY;
@@ -66,12 +67,11 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORAGE_N
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_CONFIG_NAME_FILTER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_CONFIG_VALUE_FILTER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_SIZE;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_TYPE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TARGETED_REGIONS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TARGET_REGION_PUSH_WITH_DEFERRED_SWAP;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TOPIC;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TO_BE_STOPPED_INSTANCES;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.UPSTREAM_OFFSET;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.UPSTREAM_POSITION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VALUE_SCHEMA;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VERSION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VOLDEMORT_STORE_NAME;
@@ -87,7 +87,6 @@ import com.linkedin.venice.exceptions.ErrorType;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.helix.VeniceJsonSerializer;
-import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
@@ -627,9 +626,11 @@ public class ControllerClient implements Closeable {
       String storeName,
       String destClusterName,
       Optional<Integer> currStep,
+      Optional<Integer> pauseAfterStep,
       Optional<Boolean> abortOnFailure) {
     QueryParams params = newParams().add(NAME, storeName).add(CLUSTER_DEST, destClusterName);
     currStep.ifPresent(cs -> params.add(AUTO_STORE_MIGRATION_CURRENT_STEP, cs));
+    pauseAfterStep.ifPresent(pas -> params.add(AUTO_STORE_MIGRATION_PAUSE_AFTER_STEP, pas));
     abortOnFailure.ifPresent(aof -> params.add(AUTO_STORE_MIGRATION_ABORT_ON_FAILURE, aof));
     params.add(AUTO_STORE_MIGRATION_ABORT_ON_FAILURE, abortOnFailure);
     return request(ControllerRoute.AUTO_MIGRATE_STORE, params, StoreMigrationResponse.class);
@@ -706,14 +707,15 @@ public class ControllerClient implements Closeable {
     return request(ControllerRoute.KILL_OFFLINE_PUSH_JOB, params, ControllerResponse.class);
   }
 
-  public ControllerResponse skipAdminMessage(String offset, boolean skipDIV, String executionId) {
-    if (offset != null && executionId != null) {
+  public ControllerResponse skipAdminMessage(String typeIdAndBase64PositionBytes, boolean skipDIV, String executionId) {
+    if (typeIdAndBase64PositionBytes != null && executionId != null) {
       throw new IllegalArgumentException(
-          "Only one of offset or executionId can be specified, offset " + offset + ", execution id " + executionId);
+          "Only one of position or executionId can be specified, position " + typeIdAndBase64PositionBytes
+              + ", execution id " + executionId);
     }
     QueryParams params = newParams().add(SKIP_DIV, skipDIV);
-    if (offset != null) {
-      params.add(OFFSET, offset);
+    if (typeIdAndBase64PositionBytes != null) {
+      params.add(POSITION, typeIdAndBase64PositionBytes);
     }
     if (executionId != null) {
       params.add(EXECUTION_ID, executionId);
@@ -1207,17 +1209,6 @@ public class ControllerClient implements Closeable {
         null);
   }
 
-  public ControllerResponse configureActiveActiveReplicationForCluster(
-      boolean enableActiveActiveReplication,
-      String storeType,
-      Optional<String> regionsFilter) {
-    // Verify the input storeType is valid
-    VeniceUserStoreType.valueOf(storeType.toUpperCase());
-    QueryParams params = newParams().add(STATUS, enableActiveActiveReplication).add(STORE_TYPE, storeType);
-    regionsFilter.ifPresent(f -> params.add(REGIONS_FILTER, f));
-    return request(ControllerRoute.CONFIGURE_ACTIVE_ACTIVE_REPLICATION_FOR_CLUSTER, params, ControllerResponse.class);
-  }
-
   public ControllerResponse checkResourceCleanupForStoreCreation(String storeName) {
     QueryParams params = newParams().add(NAME, storeName);
     return request(ControllerRoute.CHECK_RESOURCE_CLEANUP_FOR_STORE_CREATION, params, ControllerResponse.class);
@@ -1481,12 +1472,12 @@ public class ControllerClient implements Closeable {
   public AdminTopicMetadataResponse updateAdminTopicMetadata(
       long executionId,
       Optional<String> storeName,
-      Optional<Long> offset,
-      Optional<Long> upstreamOffset) {
+      Optional<PubSubPositionJsonWireFormat> position,
+      Optional<PubSubPositionJsonWireFormat> upstreamPosition) {
     QueryParams params = newParams().add(EXECUTION_ID, executionId)
         .add(NAME, storeName)
-        .add(OFFSET, offset)
-        .add(UPSTREAM_OFFSET, upstreamOffset);
+        .add(POSITION, position)
+        .add(UPSTREAM_POSITION, upstreamPosition);
     return request(ControllerRoute.UPDATE_ADMIN_TOPIC_METADATA, params, AdminTopicMetadataResponse.class);
   }
 

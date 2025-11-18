@@ -9,6 +9,7 @@ import com.linkedin.davinci.stats.AggVersionedBlobTransferStats;
 import com.linkedin.venice.blobtransfer.BlobFinder;
 import com.linkedin.venice.blobtransfer.BlobPeersDiscoveryResponse;
 import com.linkedin.venice.exceptions.VeniceBlobTransferFileNotFoundException;
+import com.linkedin.venice.exceptions.VenicePeersAllFailedException;
 import com.linkedin.venice.exceptions.VenicePeersConnectionException;
 import com.linkedin.venice.exceptions.VenicePeersNotFoundException;
 import com.linkedin.venice.meta.Version;
@@ -110,7 +111,7 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
    * - Fatal cases, skip bootstrapping from blob:
    * 1. If no peers info are found for the requested blob, a VenicePeersNotFoundException is thrown.
    *    In this case, blob transfer is not used for bootstrapping at all.
-   * 2. If all peers fail to connect or have no snapshot, a VenicePeersNotFoundException is thrown,
+   * 2. If all peers fail to connect or have no snapshot, a VenicePeersAllFailedException is thrown,
    *    and Kafka is used for bootstrapping instead.
    *
    * - Non-fatal cases, move to the next possible host:
@@ -180,12 +181,11 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
       });
     }
 
-    // error case 2: no valid peers found for the requested blob after trying all possible hosts, skip bootstrapping
-    // from blob.
+    // error case 2: all hosts have been tried and failed for blob transfer, falling back to Kafka for bootstrapping.
     chainOfPeersFuture.thenRun(() -> {
       if (!resultFuture.isDone()) {
         resultFuture.completeExceptionally(
-            new VenicePeersNotFoundException(String.format(NO_VALID_PEERS_MSG_FORMAT, replicaId)));
+            new VenicePeersAllFailedException(String.format(NO_VALID_PEERS_MSG_FORMAT, replicaId)));
       }
     });
   }

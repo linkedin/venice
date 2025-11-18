@@ -1,5 +1,8 @@
 package com.linkedin.venice.controllerapi;
 
+import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
+
+
 public class AdminTopicMetadataResponse extends ControllerResponse {
   /**
    * The last persisted admin message's execution id, which could be store-level or cluster-level. Store-level
@@ -8,15 +11,16 @@ public class AdminTopicMetadataResponse extends ControllerResponse {
    */
   private long executionId = -1;
   /**
-   * The last persisted offset in local admin topic, which is cluster-level and stored in
+   * The last persisted position in local admin topic, which is cluster-level and stored in
    * /venice/<clusterName>/adminTopicMetadata znode
    */
-  private long offset = -1;
+  private PubSubPositionJsonWireFormat position = PubSubSymbolicPosition.EARLIEST.toJsonWireFormat();
+
   /**
-   * The last persisted offset in source admin topic, which is cluster-level and stored in
+   * The last persisted position in source admin topic, which is cluster-level and stored in
    * /venice/<clusterName>/adminTopicMetadata znode
    */
-  private long upstreamOffset = -1;
+  private PubSubPositionJsonWireFormat upstreamPosition = PubSubSymbolicPosition.EARLIEST.toJsonWireFormat();
 
   /**
    * The current admin operation protocol version, which is cluster-level and be SOT for serialize/deserialize admin operation message
@@ -27,24 +31,24 @@ public class AdminTopicMetadataResponse extends ControllerResponse {
     return executionId;
   }
 
-  public long getOffset() {
-    return offset;
+  public PubSubPositionJsonWireFormat getPosition() {
+    return position;
   }
 
-  public long getUpstreamOffset() {
-    return upstreamOffset;
+  public PubSubPositionJsonWireFormat getUpstreamPosition() {
+    return upstreamPosition;
   }
 
   public void setExecutionId(long executionId) {
     this.executionId = executionId;
   }
 
-  public void setOffset(long offset) {
-    this.offset = offset;
+  public void setPosition(PubSubPositionJsonWireFormat position) {
+    this.position = position;
   }
 
-  public void setUpstreamOffset(long upstreamOffset) {
-    this.upstreamOffset = upstreamOffset;
+  public void setUpstreamPosition(PubSubPositionJsonWireFormat upstreamPosition) {
+    this.upstreamPosition = upstreamPosition;
   }
 
   public void setAdminOperationProtocolVersion(long adminOperationProtocolVersion) {

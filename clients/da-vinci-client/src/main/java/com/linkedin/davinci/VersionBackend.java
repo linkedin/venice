@@ -20,6 +20,7 @@ import com.linkedin.venice.meta.IngestionMode;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.VenicePartitioner;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.serialization.AvroStoreDeserializerCache;
 import com.linkedin.venice.serialization.StoreDeserializerCache;
@@ -362,8 +363,25 @@ public class VersionBackend {
     return getPartitions(partitions).stream().allMatch(this::isPartitionReadyToServe);
   }
 
-  synchronized CompletableFuture<Void> subscribe(ComplementSet<Integer> partitions) {
+  synchronized CompletableFuture<Void> subscribe(
+      ComplementSet<Integer> partitions,
+      Map<Integer, Long> timestamps,
+      Long allPartitionTimestamp,
+      Map<Integer, PubSubPosition> positionMap) {
     Instant startTime = Instant.now();
+    int validCheckPointCount = 0;
+    if (!timestamps.isEmpty()) {
+      validCheckPointCount++;
+    }
+    if (!positionMap.isEmpty()) {
+      validCheckPointCount++;
+    }
+    if (allPartitionTimestamp != null) {
+      validCheckPointCount++;
+    }
+    if (validCheckPointCount > 1) {
+      throw new VeniceException("Multiple checkpoint types are not supported");
+    }
     List<Integer> partitionList = getPartitions(partitions);
     if (partitionList.isEmpty()) {
       LOGGER.error("No partitions to subscribe to for {}", this);
@@ -389,6 +407,9 @@ public class VersionBackend {
       } else {
         partitionFutures.computeIfAbsent(partition, k -> new CompletableFuture<>());
         partitionsToStartConsumption.add(partition);
+        if (allPartitionTimestamp != null) {
+          timestamps.put(partition, allPartitionTimestamp);
+        }
       }
       partitionToBatchReportEOIPEnabled.put(partition, batchReportEOIPStatusEnabled);
       futures.add(partitionFutures.get(partition));
@@ -404,7 +425,9 @@ public class VersionBackend {
       backend.getHeartbeatMonitoringService()
           .updateLagMonitor(version.kafkaTopicName(), partition, HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR);
       // AtomicReference of storage engine will be updated internally.
-      backend.getIngestionBackend().startConsumption(config, partition);
+      Optional<PubSubPosition> pubSubPosition = backend.getIngestionService()
+          .getPubSubPosition(config, partition, timestamps.get(partition), positionMap.get(partition));
+      backend.getIngestionBackend().startConsumption(config, partition, pubSubPosition);
       tryStartHeartbeat();
     }
 

@@ -1,7 +1,9 @@
 package com.linkedin.venice.endToEnd;
 
 import static com.linkedin.venice.endToEnd.TestBatch.TEST_TIMEOUT;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
 import static com.linkedin.venice.utils.TestUtils.assertCommand;
+import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V1_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V2_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithStringToNameRecordV1Schema;
@@ -35,10 +37,13 @@ import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
+import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.spark.datawriter.jobs.DataWriterSparkJob;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
@@ -48,6 +53,7 @@ import com.linkedin.venice.utils.Utils;
 import java.io.File;
 import java.io.IOException;
 import java.util.List;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -276,6 +282,133 @@ public class TestIncrementalPush {
         parentControllerClient,
         60,
         TimeUnit.SECONDS);
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testIncrementalPushAfterKilledPush() throws IOException {
+    // Setup job properties
+    File inputDir = getTempDataDirectory();
+    Schema recordSchema = writeSimpleAvroFileWithStringToNameRecordV1Schema(inputDir);
+    String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
+    String inputDirPath = "file://" + inputDir.getAbsolutePath();
+    String storeName = Utils.getUniqueString("testIncrementalPushAfterKilledPush");
+    Properties props =
+        IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, storeName);
+    UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setUnusedSchemaDeletionEnabled(true);
+    storeParms.setTargetRegionSwapWaitTime(1);
+    storeParms.setHybridRewindSeconds(10L)
+        .setHybridOffsetLagThreshold(2L)
+        .setIncrementalPushEnabled(true)
+        .setActiveActiveReplicationEnabled(true);
+    String parentControllerURLs = multiRegionMultiClusterWrapper.getControllerConnectString();
+
+    try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAME, parentControllerURLs)) {
+      createStoreForJob(CLUSTER_NAME, keySchemaStr, NAME_RECORD_V1_SCHEMA.toString(), props, storeParms).close();
+
+      // Create V1
+      IntegrationTestPushUtils.runVPJ(props);
+
+      // Create V2, kill job
+      parentControllerClient.requestTopicForWrites(
+          storeName,
+          1000,
+          Version.PushType.BATCH,
+          Version.numberBasedDummyPushId(1),
+          true,
+          true,
+          false,
+          Optional.empty(),
+          Optional.empty(),
+          Optional.of("dc-1"),
+          false,
+          -1);
+      parentControllerClient.killOfflinePushJob(Version.composeKafkaTopic(storeName, 2));
+
+      // Start incremental push
+      writeSimpleAvroFileWithStringToNameRecordV1Schema(inputDir, 200);
+      Properties props2 =
+          IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, storeName);
+      props2.put(INCREMENTAL_PUSH, true);
+      IntegrationTestPushUtils.runVPJ(props2);
+
+      VeniceClusterWrapper veniceClusterWrapper = childDatacenters.get(0).getClusters().get(CLUSTER_NAME);
+      veniceClusterWrapper.waitVersion(storeName, 1);
+      try (AvroGenericStoreClient<Object, Object> storeReader = ClientFactory.getAndStartGenericAvroClient(
+          ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(veniceClusterWrapper.getRandomRouterURL()))) {
+        TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
+          try {
+            for (int i = 1; i < 200; i++) {
+              String key = String.valueOf(i);
+              GenericRecord value = (GenericRecord) storeReader.get(key).get();
+              assertNotNull(value, "Key " + key + " should not be missing!");
+              assertEquals(value.get("firstName").toString(), "first_name_" + key);
+              assertEquals(value.get("lastName").toString(), "last_name_" + key);
+            }
+          } catch (Exception e) {
+            throw new VeniceException(e);
+          }
+        });
+      }
+    }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testIncrementalPushIsRecordInOffsetRecord() throws IOException {
+    // Setup job properties
+    File inputDir = getTempDataDirectory();
+    Schema recordSchema = writeSimpleAvroFileWithStringToNameRecordV1Schema(inputDir);
+    String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
+    String inputDirPath = "file://" + inputDir.getAbsolutePath();
+    String storeName = Utils.getUniqueString("testIncrementalPushIsRecordInOffsetRecord");
+    Properties props =
+        IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, storeName);
+    UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setUnusedSchemaDeletionEnabled(true);
+    storeParms.setHybridRewindSeconds(10L)
+        .setHybridOffsetLagThreshold(2L)
+        .setIncrementalPushEnabled(true)
+        .setActiveActiveReplicationEnabled(true);
+    String parentControllerURLs = multiRegionMultiClusterWrapper.getControllerConnectString();
+
+    try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAME, parentControllerURLs)) {
+      createStoreForJob(CLUSTER_NAME, keySchemaStr, NAME_RECORD_V1_SCHEMA.toString(), props, storeParms).close();
+
+      // Create V1
+      IntegrationTestPushUtils.runVPJ(props);
+
+      // Start incremental push
+      writeSimpleAvroFileWithStringToNameRecordV1Schema(inputDir, 200);
+      Properties props2 =
+          IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, storeName);
+      props2.put(INCREMENTAL_PUSH, true);
+      IntegrationTestPushUtils.runVPJ(props2);
+
+      VeniceClusterWrapper veniceClusterWrapper = childDatacenters.get(0).getClusters().get(CLUSTER_NAME);
+      veniceClusterWrapper.waitVersion(storeName, 1);
+      try (AvroGenericStoreClient<Object, Object> storeReader = ClientFactory.getAndStartGenericAvroClient(
+          ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(veniceClusterWrapper.getRandomRouterURL()))) {
+        TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
+          try {
+            // pick any server, check partition offset record
+            VeniceServerWrapper server = veniceClusterWrapper.getVeniceServers().get(0);
+            for (int partitionId = 0; partitionId < 3; partitionId++) {
+              OffsetRecord offsetRecord = server.getVeniceServer()
+                  .getStorageMetadataService()
+                  .getLastOffset(
+                      storeName + "_v1",
+                      partitionId,
+                      server.getVeniceServer().getKafkaStoreIngestionService().getPubSubContext());
+              Assert.assertFalse(offsetRecord.getTrackingIncrementalPushStatus().isEmpty());
+              // for each push job id, the status should be END_OF_INCREMENTAL_PUSH_RECEIVED
+              offsetRecord.getTrackingIncrementalPushStatus().forEach((pushJobId, TsToStatus) -> {
+                Assert.assertEquals(TsToStatus.status, ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED.getValue());
+              });
+            }
+          } catch (Exception e) {
+            throw new VeniceException(e);
+          }
+        });
+      }
+    }
   }
 
   @AfterClass(alwaysRun = true)

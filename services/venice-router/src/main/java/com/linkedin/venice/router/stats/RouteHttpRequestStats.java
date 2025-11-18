@@ -66,7 +66,7 @@ public class RouteHttpRequestStats {
     public InternalHostStats(MetricsRepository metricsRepository, String hostName) {
       super(metricsRepository, StatsUtils.convertHostnameToMetricName(hostName));
       this.pendingRequestCount = new AtomicLong();
-      this.pendingRequestCountSensor = registerSensor("pending_request_count", new Max());
+      this.pendingRequestCountSensor = registerSensor("pending_request_count", new Avg(), new Max());
 
       this.unhealthyPendingQueueDuration = registerSensor(
           "unhealthy_pending_queue_duration_per_route",

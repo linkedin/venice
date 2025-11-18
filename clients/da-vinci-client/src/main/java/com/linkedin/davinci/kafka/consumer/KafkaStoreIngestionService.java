@@ -66,9 +66,11 @@ import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.PubSubUtil;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.pubsub.manager.TopicManagerContext;
 import com.linkedin.venice.pubsub.manager.TopicManagerRepository;
 import com.linkedin.venice.schema.SchemaReader;
@@ -700,14 +702,40 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     topicLockManager.removeAllLocks();
   }
 
+  @Override
+  public Optional<PubSubPosition> getPubSubPosition(
+      VeniceStoreVersionConfig veniceStore,
+      int partitionId,
+      Long timestamp,
+      PubSubPosition pubSubPosition) {
+    if (pubSubPosition != null) {
+      return Optional.of(pubSubPosition);
+    }
+    final String topic = veniceStore.getStoreVersionName();
+
+    Optional<PubSubPosition> position = Optional.empty();
+    if (timestamp != null) {
+      PubSubTopicPartition partition = new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partitionId);
+      TopicManager topicManager =
+          getPubSubContext().getTopicManagerRepository().getTopicManager(serverConfig.getKafkaBootstrapServers());
+      position = Optional.of(topicManager.getPositionByTime(partition, timestamp));
+    }
+    return position;
+  }
+
   /**
-   * Starts consuming messages from Kafka Partition corresponding to Venice Partition.
-   * Subscribes to partition if required.
-   * @param veniceStore Venice Store for the partition.
-   * @param partitionId Venice partition's id.
+   * Starts consuming messages from Kafka Partition corresponding to Venice Partition. Subscribes to partition if
+   * required.
+   *
+   * @param veniceStore    Venice Store for the partition.
+   * @param partitionId    Venice partition's id.
+   * @param pubSubPosition
    */
   @Override
-  public void startConsumption(VeniceStoreVersionConfig veniceStore, int partitionId) {
+  public void startConsumption(
+      VeniceStoreVersionConfig veniceStore,
+      int partitionId,
+      Optional<PubSubPosition> pubSubPosition) {
 
     final String topic = veniceStore.getStoreVersionName();
 
@@ -755,9 +783,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
        */
       int maxVersionNumber = Math.max(maxVersionNumberFromMetadataRepo, maxVersionNumberFromTopicName);
       updateStatsEmission(topicNameToIngestionTaskMap, storeName, maxVersionNumber);
-
-      storeIngestionTask
-          .subscribePartition(new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partitionId));
+      PubSubTopicPartition partition = new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partitionId);
+      storeIngestionTask.subscribePartition(partition, pubSubPosition);
     }
     LOGGER.info("Started Consuming - Replica: {}.", Utils.getReplicaId(topic, partitionId));
   }

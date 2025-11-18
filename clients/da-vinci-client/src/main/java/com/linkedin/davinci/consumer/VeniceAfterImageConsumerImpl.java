@@ -256,7 +256,7 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
             // first, check and see if all partitions are already after EOP
             adjustSeekCheckPointsBasedOnHeartbeats(
                 checkpoints,
-                new HashMap<>(currentVersionLastHeartbeat),
+                getLastHeartbeatPerPartition(),
                 consumerAdapter,
                 topicPartitionList);
           }

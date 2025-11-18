@@ -7,7 +7,6 @@ import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.LEADER
 import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.PAUSE_TRANSITION_FROM_STANDBY_TO_LEADER;
 import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.STANDBY;
 import static com.linkedin.davinci.validation.PartitionTracker.TopicType.REALTIME_TOPIC_TYPE;
-import static com.linkedin.davinci.validation.PartitionTracker.TopicType.VERSION_TOPIC_TYPE;
 import static com.linkedin.venice.kafka.protocol.enums.ControlMessageType.END_OF_PUSH;
 import static com.linkedin.venice.kafka.protocol.enums.ControlMessageType.START_OF_SEGMENT;
 import static com.linkedin.venice.kafka.protocol.enums.MessageType.UPDATE;
@@ -614,14 +613,17 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     boolean pushTimeout = false;
     Set<Integer> timeoutPartitions = null;
     long checkStartTimeInNS = System.nanoTime();
-    for (PartitionConsumptionState partitionConsumptionState: partitionConsumptionStateMap.values()) {
+    for (PartitionConsumptionState partitionConsumptionState: getPartitionConsumptionStateMap().values()) {
       final int partition = partitionConsumptionState.getPartition();
 
       /**
-       * Check whether the push timeout
+       * Check whether the ingestion timeout for bootstrapping replicas.
+       * For future version, it should fail the push job.
+       * For current / backup version re-ingestion, it should report failure to the replica, but should keep other
+       * online replica continue serving and do not close ingestion task.
        */
       if (!partitionConsumptionState.isComplete() && LatencyUtils.getElapsedTimeFromMsToMs(
-          partitionConsumptionState.getConsumptionStartTimeInMs()) > this.bootstrapTimeoutInMs) {
+          partitionConsumptionState.getConsumptionStartTimeInMs()) > getBootstrapTimeoutInMs()) {
         if (!pushTimeout) {
           pushTimeout = true;
           timeoutPartitions = new HashSet<>();
@@ -770,27 +772,42 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           break;
 
         case STANDBY:
-          // no long running task for follower
+          // no long-running task for follower
           break;
       }
     }
-    if (emitMetrics.get()) {
+    if (isMetricsEmissionEnabled()) {
       hostLevelIngestionStats
           .recordCheckLongRunningTasksLatency(LatencyUtils.getElapsedTimeFromNSToMS(checkStartTimeInNS));
     }
 
     if (pushTimeout) {
       // Timeout
-      String errorMsg = "After waiting " + TimeUnit.MILLISECONDS.toHours(this.bootstrapTimeoutInMs)
-          + " hours, resource:" + storeName + " partitions:" + timeoutPartitions + " still can not complete ingestion.";
+      String errorMsg =
+          "After waiting " + TimeUnit.MILLISECONDS.toHours(getBootstrapTimeoutInMs()) + " hours, resource:"
+              + getStoreName() + " partitions:" + timeoutPartitions + " still can not complete ingestion.";
       LOGGER.error(errorMsg);
-      throw new VeniceTimeoutException(errorMsg);
+      VeniceException ex = new VeniceTimeoutException(errorMsg);
+      Store store = getStoreRepository().getStoreOrThrow(getStoreName());
+      int currentVersion = store.getCurrentVersion();
+      LOGGER.info("DEBUGGING: {} {}", currentVersion, getVersionNumber());
+      if (getVersionNumber() <= currentVersion) {
+        // For current / backup version, a replica's re-bootstrap timeout should not incur whole SIT closure.
+        for (int partition: timeoutPartitions) {
+          reportError(errorMsg, partition, ex);
+        }
+      } else {
+        throw ex;
+      }
     }
 
-    checkWhetherToCloseUnusedVeniceWriter(veniceWriter, veniceWriterForRealTime, partitionConsumptionStateMap, () -> {
-      veniceWriter =
-          Lazy.of(() -> constructVeniceWriter(veniceWriterFactory, getVersionTopic().getName(), version, true, 1));
-    }, getVersionTopic().getName());
+    checkWhetherToCloseUnusedVeniceWriter(
+        getVeniceWriter(),
+        getVeniceWriterForRealTime(),
+        getPartitionConsumptionStateMap(),
+        () -> veniceWriter =
+            Lazy.of(() -> constructVeniceWriter(veniceWriterFactory, getVersionTopic().getName(), version, true, 1)),
+        getVersionTopic().getName());
   }
 
   protected static boolean checkWhetherToCloseUnusedVeniceWriter(
@@ -910,9 +927,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     long diff =
         topicManager.diffPosition(pcs.getReplicaTopicPartition(), localVtEndPosition, latestProcessedLocalVtPosition);
 
-    // diff <= 0 means end position was probably stale
+    // diff < 0 means end position was probably stale
     // Log using redundant-exception filter to trace edge conditions
-    if (diff <= 0) {
+    if (diff < 0) {
       String msg =
           "Negative diff between local VT end position: " + localVtEndPosition + " and latest processed VT position: "
               + latestProcessedLocalVtPosition + " for partition: " + pcs.getReplicaTopicPartition();
@@ -2288,23 +2305,25 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
     if (partitionConsumptionState.getLeaderFollowerState().equals(LEADER)) {
       getHeartbeatMonitoringService().recordLeaderHeartbeat(
-          storeName,
-          versionNumber,
+          getStoreName(),
+          getVersionNumber(),
           partitionConsumptionState.getPartition(),
-          serverConfig.getKafkaClusterUrlToAliasMap().get(kafkaUrl),
-          consumerRecord.getValue().producerMetadata.messageTimestamp,
+          getServerConfig().getKafkaClusterUrlToAliasMap().get(kafkaUrl),
+          consumerRecord.getValue().getProducerMetadata().getMessageTimestamp(),
           partitionConsumptionState.isComplete());
     } else {
       getHeartbeatMonitoringService().recordFollowerHeartbeat(
-          storeName,
-          versionNumber,
+          getStoreName(),
+          getVersionNumber(),
           partitionConsumptionState.getPartition(),
-          isDaVinciClient() ? "" : serverConfig.getKafkaClusterUrlToAliasMap().get(kafkaUrl), // For Da Vinci there is
-                                                                                              // no kafkaUrl mapping
-                                                                                              // configured and the
-                                                                                              // local region is default
-                                                                                              // to empty.
-          consumerRecord.getValue().producerMetadata.messageTimestamp,
+          /**
+           * For Da Vinci there is no kafkaUrl mapping configured, we should refer to local region name setup in the
+           * Venice server config. This is consistent from the heartbeat lag calculation for ready-to-serve check.
+           */
+          isDaVinciClient()
+              ? getServerConfig().getRegionName()
+              : getServerConfig().getKafkaClusterUrlToAliasMap().get(kafkaUrl),
+          consumerRecord.getValue().getProducerMetadata().getMessageTimestamp(),
           partitionConsumptionState.isComplete());
     }
   }
@@ -2337,14 +2356,15 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     Iterator<DefaultPubSubMessage> iter = records.iterator();
     while (iter.hasNext()) {
       DefaultPubSubMessage record = iter.next();
-      boolean isRealTimeTopic = record.getTopicPartition().getPubSubTopic().isRealTime();
       try {
         /**
          * TODO: An improvement can be made to fail all future versions for fatal DIV exceptions after EOP.
          */
-        final TopicType topicType = (isGlobalRtDivEnabled())
-            ? TopicType.of(isRealTimeTopic ? REALTIME_TOPIC_TYPE : VERSION_TOPIC_TYPE, kafkaUrl)
-            : PartitionTracker.VERSION_TOPIC;
+        TopicType topicType = PartitionTracker.VERSION_TOPIC;
+        // shouldProduceToVersionTopic() ensures this is a LEADER that is consuming from RT or remote VT
+        if (isGlobalRtDivEnabled() && shouldProduceToVersionTopic(pcs)) {
+          topicType = TopicType.of(REALTIME_TOPIC_TYPE, kafkaUrl);
+        }
         validateMessage(topicType, consumerDiv, record, pcs, false);
         versionedDIVStats.recordSuccessMsg(storeName, versionNumber);
       } catch (FatalDataValidationException e) {
@@ -2772,7 +2792,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         return true;
       }
     }
-    return shouldSyncOffset(pcs, consumerRecord, null);
+    return isNonSegmentControlMessage(consumerRecord, null);
   }
 
   /**
@@ -3439,7 +3459,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     PartitionTracker rtDiv = consumerDiv.cloneRtProducerStates(partition, brokerUrl);
     Map<CharSequence, ProducerPartitionState> rtDivPartitionStates = rtDiv.getPartitionStates(realTimeTopicType);
 
-    // Create GlobalRtDivState (RT DIV + latest RT position) and serialize into a byte array. Try compression.
+    // Create GlobalRtDivState (RT DIV + LCRP) and serialize into a byte array. Try compression.
     final byte[] valueBytes = createGlobalRtDivValueBytes(previousMessage, brokerUrl, rtDivPartitionStates);
 
     // The callback onCompletionFunction sends the VT DIV + LCVP to the drainer after producing to VT successfully
@@ -3462,11 +3482,12 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
     // TODO: remove. this is a temporary log for debugging while the feature is in its infancy
     LOGGER.info(
-        "event=globalRtDiv Sending Global RT DIV message for topic-partition: {} broker: {} producerCount: {} producers: {}, valueSize: {} pps: {}",
+        "event=globalRtDiv Sending Global RT DIV message for topic-partition: {} versionTopic: {} LCRP: {} broker: {} producerCount: {}, valueSize: {}",
         topicPartition,
+        versionTopic,
+        previousMessage.getPosition(),
         brokerUrl,
         rtDivPartitionStates.size(),
-        rtDivPartitionStates.keySet(),
         valueBytes.length);
 
     // Produce to local VT for the Global RT DIV + latest RT position (GlobalRtDivState)
@@ -3483,7 +3504,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             null,
             valueManifestContainer.getManifest(),
             null,
-            false);
+            true);
 
     consumedBytesSinceLastSync.put(brokerUrl, 0L); // reset the timer for the next sync, since RT DIV was just synced
   }
@@ -3592,6 +3613,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           compressor.get(),
           manifestContainer);
     } catch (Exception e) {
+      // TODO: evaluate whether these logs can be set to debug
       LOGGER.error(
           "Unable to retrieve the stored value bytes for key: {}, topic-partition: {}",
           new String(keyBytes),
@@ -3601,6 +3623,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
 
     if (valueBytes == null) {
+      // TODO: evaluate whether these logs can be set to debug
       LOGGER.warn(
           "No value found in the storage engine for key: {}, topic-partition: {}",
           new String(keyBytes),
@@ -3613,6 +3636,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           ByteUtils.extractByteArray(valueBytes),
           AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion());
     } catch (Exception e) {
+      // TODO: evaluate whether these logs can be set to debug
       LOGGER.error(
           "Unable to deserialize stored value bytes for key: {}, topic-partition: {}",
           new String(keyBytes),
@@ -4376,5 +4400,13 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
   private String logChange(boolean hasChanged) {
     return hasChanged ? "(changed)" : "(unchanged)";
+  }
+
+  Lazy<VeniceWriter<byte[], byte[], byte[]>> getVeniceWriter() {
+    return veniceWriter;
+  }
+
+  Lazy<VeniceWriter<byte[], byte[], byte[]>> getVeniceWriterForRealTime() {
+    return veniceWriterForRealTime;
   }
 }

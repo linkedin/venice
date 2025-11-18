@@ -8,7 +8,6 @@ import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_CHECK_INTERVAL_IN_MS;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_SPEEDUP_ENABLED;
-import static com.linkedin.venice.ConfigKeys.DA_VINCI_SUBSCRIBE_ON_DISK_PARTITIONS_AUTOMATICALLY;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_DISK_FULL_THRESHOLD;
@@ -290,6 +289,7 @@ public class DaVinciClientSubscribeTest {
             daVinciConfig,
             extraProps);
     try (DaVinciClient<Integer, Object> client = daVinciTestContext.getDaVinciClient()) {
+      client.subscribeAll().get();
       TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
         try {
           Map<Integer, Integer> keyValueMap = new HashMap<>();
@@ -344,6 +344,7 @@ public class DaVinciClientSubscribeTest {
        */
       try (DaVinciClient<Integer, Integer> client =
           ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster, baseDataPath, daVinciConfig)) {
+        client.subscribeAll().get();
         TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, false, true, () -> {
           for (int i = 0; i < KEY_COUNT; i++) {
             int value = client.get(i).get();
@@ -376,7 +377,6 @@ public class DaVinciClientSubscribeTest {
         .put(PUSH_STATUS_STORE_ENABLED, true)
         .put(DAVINCI_PUSH_STATUS_CHECK_INTERVAL_IN_MS, 1000)
         .put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 2 * 1024 * 1024L)
-        .put(DA_VINCI_SUBSCRIBE_ON_DISK_PARTITIONS_AUTOMATICALLY, false)
         .build();
 
     MetricsRepository metricsRepository = new MetricsRepository();

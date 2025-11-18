@@ -1,13 +1,17 @@
 package com.linkedin.venice.controller.kafka.consumer;
 
+import static com.linkedin.venice.pubsub.PubSubUtil.getPubSubPositionWireFormat;
+
 import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.controller.VeniceControllerClusterConfig;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controller.ZkAdminTopicMetadataAccessor;
 import com.linkedin.venice.controller.stats.AdminConsumptionStats;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.protocols.controller.PubSubPositionGrpcWireFormat;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterContext;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
+import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
@@ -45,6 +49,7 @@ public class AdminConsumerService extends AbstractVeniceService {
   private final String localKafkaServerUrl;
   private final PubSubMessageDeserializer pubSubMessageDeserializer;
   private final LogContext logContext;
+  private final PubSubPositionDeserializer pubSubPositionDeserializer;
 
   public AdminConsumerService(
       VeniceHelixAdmin admin,
@@ -70,7 +75,8 @@ public class AdminConsumerService extends AbstractVeniceService {
     }
     this.localKafkaServerUrl = admin.getKafkaBootstrapServers(admin.isSslToKafka());
     this.consumerFactory = consumerFactory;
-    this.threadFactory = new DaemonThreadFactory("AdminConsumerService", logContext);
+    this.pubSubPositionDeserializer = config.getPubSubPositionDeserializer();
+    this.threadFactory = new DaemonThreadFactory("AdminConsumerService-" + config.getClusterName(), logContext);
   }
 
   @Override
@@ -118,17 +124,17 @@ public class AdminConsumerService extends AbstractVeniceService {
   /**
    * Skip admin message with specified offset for the given cluster.
    */
-  public void setOffsetToSkip(String clusterName, long offset, boolean skipDIV) {
+  public void setPositionToSkip(String clusterName, PubSubPosition position, boolean skipDIV) {
     if (clusterName.equals(config.getClusterName())) {
       if (skipDIV) {
-        consumerTask.skipMessageDIVWithOffset(offset);
+        consumerTask.skipMessageDIVWithPosition(position);
       } else {
-        consumerTask.skipMessageWithOffset(offset);
+        consumerTask.skipMessageWithPosition(position);
       }
     } else {
       throw new VeniceException(
           "This AdminConsumptionService is for cluster " + config.getClusterName()
-              + ".  Cannot skip admin message with offset " + offset + " for cluster " + clusterName);
+              + ". Cannot skip admin message with position " + position + " for cluster " + clusterName);
     }
   }
 
@@ -211,13 +217,19 @@ public class AdminConsumerService extends AbstractVeniceService {
   /**
    * Update cluster-level execution id, position, and upstream position in a child colo.
    */
-  public void updateAdminTopicMetadata(String clusterName, long executionId, long offset, long upstreamOffset) {
+  public void updateAdminTopicMetadata(
+      String clusterName,
+      long executionId,
+      PubSubPositionGrpcWireFormat position,
+      PubSubPositionGrpcWireFormat upstreamPosition) {
     if (clusterName.equals(config.getClusterName())) {
       try (AutoCloseableLock ignore =
           admin.getHelixVeniceClusterResources(clusterName).getClusterLockManager().createClusterWriteLock()) {
+
         AdminMetadata metadata = new AdminMetadata();
-        metadata.setOffset(offset);
-        metadata.setUpstreamOffset(upstreamOffset);
+        metadata.setPubSubPosition(pubSubPositionDeserializer.toPosition(getPubSubPositionWireFormat(position)));
+        metadata.setUpstreamPubSubPosition(
+            pubSubPositionDeserializer.toPosition(getPubSubPositionWireFormat(upstreamPosition)));
         metadata.setExecutionId(executionId);
         adminTopicMetadataAccessor.updateMetadata(clusterName, metadata);
       }

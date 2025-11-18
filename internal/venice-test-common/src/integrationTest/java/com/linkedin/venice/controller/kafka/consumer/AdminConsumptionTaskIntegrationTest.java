@@ -2,6 +2,7 @@ package com.linkedin.venice.controller.kafka.consumer;
 
 import static com.linkedin.venice.ConfigKeys.ADMIN_CONSUMPTION_CYCLE_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.ADMIN_CONSUMPTION_MAX_WORKER_THREAD_POOL_SIZE;
+import static com.linkedin.venice.pubsub.PubSubUtil.getBase64EncodedString;
 
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.kafka.AdminTopicUtils;
@@ -25,8 +26,10 @@ import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
+import com.linkedin.venice.pubsub.api.PubSubPositionWireFormat;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.manager.TopicManager;
+import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.ConfigCommonUtils;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
@@ -36,7 +39,6 @@ import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterOptions;
 import java.util.Collections;
-import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.CountDownLatch;
@@ -145,7 +147,11 @@ public class AdminConsumptionTaskIntegrationTest {
         TimeUnit.MILLISECONDS,
         () -> Assert.assertEquals(adminConsumerService.getFailingPosition(), failingPosition));
 
-    parentControllerClient.skipAdminMessage(Long.toString(failingPosition.getNumericOffset()), false, null);
+    PubSubPositionWireFormat positionWireFormat = failingPosition.getPositionWireFormat();
+    String positionTypeIdAndBase64EncodedBytes = positionWireFormat.getType() + ":"
+        + getBase64EncodedString(ByteUtils.extractByteArray(positionWireFormat.getRawBytes()));
+
+    parentControllerClient.skipAdminMessage(positionTypeIdAndBase64EncodedBytes, false, null);
 
     TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
       Assert.assertFalse(parentControllerClient.getStore(storeName).isError());
@@ -265,9 +271,8 @@ public class AdminConsumptionTaskIntegrationTest {
 
     // Verify that the original metadata is correct
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-      Map<String, Long> adminTopicMetadata = admin.getAdminTopicMetadata(clusterName, Optional.empty());
-      Assert.assertTrue(adminTopicMetadata.containsKey("adminOperationProtocolVersion"));
-      Assert.assertEquals(adminTopicMetadata.get("adminOperationProtocolVersion"), currentVersion);
+      AdminMetadata adminTopicMetadata = admin.getAdminTopicMetadata(clusterName, Optional.empty());
+      Assert.assertEquals(adminTopicMetadata.getAdminOperationProtocolVersion(), currentVersion);
     });
 
     // Update the admin operation version
@@ -275,9 +280,8 @@ public class AdminConsumptionTaskIntegrationTest {
 
     // Verify the admin operation metadata version is updated
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-      Map<String, Long> adminTopicMetadata = admin.getAdminTopicMetadata(clusterName, Optional.empty());
-      Assert.assertTrue(adminTopicMetadata.containsKey("adminOperationProtocolVersion"));
-      Assert.assertEquals(adminTopicMetadata.get("adminOperationProtocolVersion"), newVersion);
+      AdminMetadata adminTopicMetadata = admin.getAdminTopicMetadata(clusterName, Optional.empty());
+      Assert.assertEquals(adminTopicMetadata.getAdminOperationProtocolVersion(), newVersion);
     });
   }
 

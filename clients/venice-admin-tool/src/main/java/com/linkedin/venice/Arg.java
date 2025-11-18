@@ -39,6 +39,7 @@ public enum Arg {
   STORAGE_NODE("storage-node", "n", true, "Helix instance ID for a storage node, eg. lva1-app1234_1690"),
   KEY("key", "k", true, "Plain-text key for identifying a record in a store"),
   OFFSET("offset", "of", true, "Kafka offset number"),
+  POSITION("position", "po", true, "<typeId:base64EncodedPositionWfBytes>"),
   EXECUTION_ID("execution-id", "eid", true, "Execution ID of admin operation"),
   EXECUTION("execution", "e", true, "Execution ID of async admin command"),
   PARTITION_COUNT("partition-count", "pn", true, "number of partitions a store has"),
@@ -330,6 +331,7 @@ public enum Arg {
       "enum-schema-evolution-allowed", "esea", true, "Allow enum schema evolution for a store"
   ), INITIAL_STEP("initial-step", "is", true, "Initial step of the auto store migration"),
   ABORT_ON_FAILURE("abort-on-failure", "aof", true, "Abort the auto store migration if any step fails"),
+  PAUSE_AFTER_STEP("pause-after-step", "pas", true, "Pause the auto store migration after this step"),
   STORE_LIFECYCLE_HOOKS_LIST("store-lifecycle-hooks-list", "slhl", true, "List of store lifecycle hooks"),
   KEY_URN_COMPRESSION_EANBLED(
       "key-urn-compression-enabled", "kuce", true, "Enable/Disable key urn compression for a store."
