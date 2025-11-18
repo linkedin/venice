@@ -102,10 +102,11 @@ public class SparkPubSubInputPartitionReader implements PartitionReader<Internal
         replicationMetadataVersionId = put.getReplicationMetadataVersionId();
         break;
       case DELETE:
-        Delete delete = (Delete) pubSubMessageValue.getPayloadUnion();
         messageType = MessageType.DELETE.getValue();
-        value = EMPTY_BYTE_BUFFER;
+        Delete delete = (Delete) pubSubMessageValue.getPayloadUnion();
         schemaId = delete.getSchemaId();
+        value = EMPTY_BYTE_BUFFER;
+
         replicationMetadataPayload = delete.getReplicationMetadataPayload();
         replicationMetadataVersionId = delete.getReplicationMetadataVersionId();
         break;
@@ -117,11 +118,13 @@ public class SparkPubSubInputPartitionReader implements PartitionReader<Internal
 
     /**
      *  See {@link com.linkedin.venice.spark.SparkConstants#RAW_PUBSUB_INPUT_TABLE_SCHEMA} for the schema definition.
+     *  Enforce the region to be UTF8String for Spark compatibility and additionally handle ordering of columns per
+     *  the schema.
      */
     currentRow = new GenericInternalRow(
-        new Object[] { region == null ? null : UTF8String.fromString(region), topicPartition.getPartitionNumber(),
-            rec.getOffset(), messageType, schemaId, ByteUtils.extractByteArray(key), ByteUtils.extractByteArray(value),
-            replicationMetadataVersionId, ByteUtils.extractByteArray(replicationMetadataPayload) });
+        new Object[] { UTF8String.fromString(region), topicPartition.getPartitionNumber(), rec.getOffset(), messageType,
+            schemaId, ByteUtils.extractByteArray(key), ByteUtils.extractByteArray(value), replicationMetadataVersionId,
+            ByteUtils.extractByteArray(replicationMetadataPayload) });
 
     logProgressPercent();
     return true;
