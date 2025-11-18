@@ -1027,8 +1027,16 @@ public class LeaderFollowerStoreIngestionTaskTest {
   @Test
   public void testIngestionTimeoutHandling() throws InterruptedException {
     LeaderFollowerStoreIngestionTask storeIngestionTask = mock(LeaderFollowerStoreIngestionTask.class);
+    doReturn("foo").when(storeIngestionTask).getStoreName();
     doReturn(Lazy.of(() -> mock(VeniceWriter.class))).when(storeIngestionTask).getVeniceWriter();
     doReturn(Lazy.of(() -> mock(VeniceWriter.class))).when(storeIngestionTask).getVeniceWriterForRealTime();
+    ReadOnlyStoreRepository storeRepository = mock(ReadOnlyStoreRepository.class);
+    doReturn(storeRepository).when(storeIngestionTask).getStoreRepository();
+    Store store = mock(Store.class);
+    doReturn(5).when(store).getCurrentVersion();
+    doReturn(store).when(storeRepository).getStoreOrThrow(anyString());
+
+    // Timeout replica
     doReturn(TimeUnit.DAYS.toMillis(1)).when(storeIngestionTask).getBootstrapTimeoutInMs();
     PubSubTopic topic = new PubSubTopicImpl("foo_v1");
     doReturn(topic).when(storeIngestionTask).getVersionTopic();
@@ -1036,6 +1044,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
     Map<Integer, PartitionConsumptionState> pcsMap = new HashMap<>();
     doReturn(pcsMap).when(storeIngestionTask).getPartitionConsumptionStateMap();
 
+    // Not yet timeout replica
     PartitionConsumptionState pcs1 = mock(PartitionConsumptionState.class);
     pcsMap.put(1, pcs1);
     doReturn(LeaderFollowerStateType.STANDBY).when(pcs1).getLeaderFollowerState();
@@ -1043,6 +1052,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
     doReturn(1).when(pcs1).getPartition();
     doReturn(System.currentTimeMillis() - TimeUnit.DAYS.toMillis(2)).when(pcs1).getConsumptionStartTimeInMs();
 
+    // Timeout replica
     PartitionConsumptionState pcs2 = mock(PartitionConsumptionState.class);
     pcsMap.put(2, pcs2);
     doReturn(LeaderFollowerStateType.STANDBY).when(pcs2).getLeaderFollowerState();
@@ -1057,15 +1067,23 @@ public class LeaderFollowerStoreIngestionTaskTest {
     doReturn(3).when(pcs3).getPartition();
     doReturn(System.currentTimeMillis() - TimeUnit.DAYS.toMillis(2)).when(pcs3).getConsumptionStartTimeInMs();
 
-    // For non-current version it should be throwing exception.
+    // For future version it should be throwing exception.
+    doReturn(10).when(storeIngestionTask).getVersionNumber();
     Assert.assertThrows(VeniceTimeoutException.class, storeIngestionTask::checkLongRunningTaskState);
 
     // For current version we should report error and only failing this partition instead of throwing exception and stop
     // SIT.
-    doReturn(true).when(storeIngestionTask).isCurrentVersion();
+    doReturn(5).when(storeIngestionTask).getVersionNumber();
     storeIngestionTask.checkLongRunningTaskState();
     verify(storeIngestionTask, times(1)).reportError(anyString(), eq(1), any());
     verify(storeIngestionTask, times(0)).reportError(anyString(), eq(2), any());
     verify(storeIngestionTask, times(1)).reportError(anyString(), eq(3), any());
+
+    // Same for the backup version.
+    doReturn(1).when(storeIngestionTask).getVersionNumber();
+    storeIngestionTask.checkLongRunningTaskState();
+    verify(storeIngestionTask, times(2)).reportError(anyString(), eq(1), any());
+    verify(storeIngestionTask, times(0)).reportError(anyString(), eq(2), any());
+    verify(storeIngestionTask, times(2)).reportError(anyString(), eq(3), any());
   }
 }

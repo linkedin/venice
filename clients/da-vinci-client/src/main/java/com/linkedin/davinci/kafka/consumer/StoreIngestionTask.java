@@ -5221,4 +5221,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   long getBootstrapTimeoutInMs() {
     return bootstrapTimeoutInMs;
   }
+
+  ReadOnlyStoreRepository getStoreRepository() {
+    return storeRepository;
+  }
 }

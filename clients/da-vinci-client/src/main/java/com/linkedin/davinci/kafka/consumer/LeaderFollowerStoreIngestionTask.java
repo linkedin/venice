@@ -617,7 +617,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       final int partition = partitionConsumptionState.getPartition();
 
       /**
-       * Check whether the push timeout
+       * Check whether the ingestion timeout for bootstrapping replicas.
+       * For future version, it should fail the push job.
+       * For current / backup version re-ingestion, it should report failure to the replica, but should keep other
+       * online replica continue serving and do not close ingestion task.
        */
       if (!partitionConsumptionState.isComplete() && LatencyUtils.getElapsedTimeFromMsToMs(
           partitionConsumptionState.getConsumptionStartTimeInMs()) > getBootstrapTimeoutInMs()) {
@@ -769,7 +772,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           break;
 
         case STANDBY:
-          // no long running task for follower
+          // no long-running task for follower
           break;
       }
     }
@@ -780,12 +783,16 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
     if (pushTimeout) {
       // Timeout
-      String errorMsg = "After waiting " + TimeUnit.MILLISECONDS.toHours(this.bootstrapTimeoutInMs)
-          + " hours, resource:" + storeName + " partitions:" + timeoutPartitions + " still can not complete ingestion.";
+      String errorMsg =
+          "After waiting " + TimeUnit.MILLISECONDS.toHours(getBootstrapTimeoutInMs()) + " hours, resource:"
+              + getStoreName() + " partitions:" + timeoutPartitions + " still can not complete ingestion.";
       LOGGER.error(errorMsg);
       VeniceException ex = new VeniceTimeoutException(errorMsg);
-      if (isCurrentVersion()) {
-        // For current version, a rebalance failure should not incur whole SIT closure.
+      Store store = getStoreRepository().getStoreOrThrow(getStoreName());
+      int currentVersion = store.getCurrentVersion();
+      LOGGER.info("DEBUGGING: {} {}", currentVersion, getVersionNumber());
+      if (getVersionNumber() <= currentVersion) {
+        // For current / backup version, a replica's re-bootstrap timeout should not incur whole SIT closure.
         for (int partition: timeoutPartitions) {
           reportError(errorMsg, partition, ex);
         }
@@ -798,10 +805,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         getVeniceWriter(),
         getVeniceWriterForRealTime(),
         getPartitionConsumptionStateMap(),
-        () -> {
-          veniceWriter =
-              Lazy.of(() -> constructVeniceWriter(veniceWriterFactory, getVersionTopic().getName(), version, true, 1));
-        },
+        () -> veniceWriter =
+            Lazy.of(() -> constructVeniceWriter(veniceWriterFactory, getVersionTopic().getName(), version, true, 1)),
         getVersionTopic().getName());
   }
 
