@@ -115,8 +115,6 @@ public class IsolatedIngestionUtils {
       AvroProtocolDefinition.INGESTION_STORAGE_METADATA.getSerializer();
   private static final InternalAvroSpecificSerializer<ProcessShutdownCommand> processShutdownCommandSerializer =
       AvroProtocolDefinition.PROCESS_SHUTDOWN_COMMAND.getSerializer();
-  private static final InternalAvroSpecificSerializer<IngestionTaskCommand> ingestionDummyContentSerializer =
-      ingestionTaskCommandSerializer;
   private static final InternalAvroSpecificSerializer<LoadedStoreUserPartitionMapping> storeUserPartitionMappingSerializer =
       AvroProtocolDefinition.LOADED_STORE_USER_PARTITION_MAPPING.getSerializer();
 
@@ -126,17 +124,17 @@ public class IsolatedIngestionUtils {
               new AbstractMap.SimpleEntry<>(COMMAND, ingestionTaskCommandSerializer),
               new AbstractMap.SimpleEntry<>(REPORT, ingestionTaskReportSerializer),
               new AbstractMap.SimpleEntry<>(METRIC, ingestionMetricsReportSerializer),
-              new AbstractMap.SimpleEntry<>(HEARTBEAT, ingestionDummyContentSerializer),
+              new AbstractMap.SimpleEntry<>(HEARTBEAT, ingestionTaskCommandSerializer),
               new AbstractMap.SimpleEntry<>(UPDATE_METADATA, ingestionStorageMetadataSerializer),
               new AbstractMap.SimpleEntry<>(SHUTDOWN_COMPONENT, processShutdownCommandSerializer),
-              new AbstractMap.SimpleEntry<>(GET_LOADED_STORE_USER_PARTITION_MAPPING, ingestionDummyContentSerializer))
+              new AbstractMap.SimpleEntry<>(GET_LOADED_STORE_USER_PARTITION_MAPPING, ingestionTaskCommandSerializer))
           .collect(Collectors.toMap(AbstractMap.SimpleEntry::getKey, AbstractMap.SimpleEntry::getValue));
 
   private static final Map<IngestionAction, InternalAvroSpecificSerializer> ingestionActionToResponseSerializerMap =
       Stream.of(
           new AbstractMap.SimpleEntry<>(COMMAND, ingestionTaskReportSerializer),
-          new AbstractMap.SimpleEntry<>(REPORT, ingestionDummyContentSerializer),
-          new AbstractMap.SimpleEntry<>(METRIC, ingestionDummyContentSerializer),
+          new AbstractMap.SimpleEntry<>(REPORT, ingestionTaskCommandSerializer),
+          new AbstractMap.SimpleEntry<>(METRIC, ingestionTaskCommandSerializer),
           new AbstractMap.SimpleEntry<>(HEARTBEAT, ingestionTaskCommandSerializer),
           new AbstractMap.SimpleEntry<>(UPDATE_METADATA, ingestionTaskReportSerializer),
           new AbstractMap.SimpleEntry<>(SHUTDOWN_COMPONENT, ingestionTaskReportSerializer),
