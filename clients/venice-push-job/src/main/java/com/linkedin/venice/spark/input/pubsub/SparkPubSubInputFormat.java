@@ -62,4 +62,11 @@ public class SparkPubSubInputFormat implements Scan, Batch {
   public StructType readSchema() {
     return null;
   }
+
+  @Override
+  public Batch toBatch() {
+
+    System.out.println(">>> DEBUG: SparkPubSubInputFormat.toBatch() CALLED <<<");
+    return this;
+  }
 }

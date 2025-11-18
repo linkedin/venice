@@ -21,6 +21,7 @@ import org.apache.logging.log4j.Logger;
 import org.apache.spark.sql.catalyst.InternalRow;
 import org.apache.spark.sql.catalyst.expressions.GenericInternalRow;
 import org.apache.spark.sql.connector.read.PartitionReader;
+import org.apache.spark.unsafe.types.UTF8String;
 
 
 /**
@@ -101,10 +102,10 @@ public class SparkPubSubInputPartitionReader implements PartitionReader<Internal
         replicationMetadataVersionId = put.getReplicationMetadataVersionId();
         break;
       case DELETE:
-        messageType = MessageType.DELETE.getValue();
         Delete delete = (Delete) pubSubMessageValue.getPayloadUnion();
-        schemaId = delete.getSchemaId();
+        messageType = MessageType.DELETE.getValue();
         value = EMPTY_BYTE_BUFFER;
+        schemaId = delete.getSchemaId();
         replicationMetadataPayload = delete.getReplicationMetadataPayload();
         replicationMetadataVersionId = delete.getReplicationMetadataVersionId();
         break;
@@ -114,13 +115,37 @@ public class SparkPubSubInputPartitionReader implements PartitionReader<Internal
                 + pubSubMessage.getPosition());
     }
 
-    /**
-     *  See {@link com.linkedin.venice.spark.SparkConstants#RAW_PUBSUB_INPUT_TABLE_SCHEMA} for the schema definition.
-     */
-    currentRow = new GenericInternalRow(
-        new Object[] { region, topicPartition.getPartitionNumber(), messageType, rec.getOffset(), schemaId,
-            ByteUtils.extractByteArray(key), ByteUtils.extractByteArray(value),
-            ByteUtils.extractByteArray(replicationMetadataPayload), replicationMetadataVersionId });
+    // Build row in EXACT schema order:
+    // __region__, __partition__, __offset__, __message_type__, __schema_id__,
+    // key, value, __replication_metadata_version_id__, __replication_metadata_payload__
+    currentRow = new GenericInternalRow(9);
+
+    // 0: __region__ (string -> UTF8String)
+    currentRow.update(0, region == null ? null : UTF8String.fromString(region));
+
+    // 1: __partition__ (int)
+    currentRow.setInt(1, topicPartition.getPartitionNumber());
+
+    // 2: __offset__ (long)
+    currentRow.setLong(2, rec.getOffset());
+
+    // 3: __message_type__ (int)
+    currentRow.setInt(3, messageType);
+
+    // 4: __schema_id__ (int)
+    currentRow.setInt(4, schemaId);
+
+    // 5: key (binary)
+    currentRow.update(5, ByteUtils.extractByteArray(key));
+
+    // 6: value (binary)
+    currentRow.update(6, ByteUtils.extractByteArray(value));
+
+    // 7: __replication_metadata_version_id__ (int)
+    currentRow.setInt(7, replicationMetadataVersionId);
+
+    // 8: __replication_metadata_payload__ (binary)
+    currentRow.update(8, ByteUtils.extractByteArray(replicationMetadataPayload));
 
     logProgressPercent();
     return true;
@@ -130,6 +155,10 @@ public class SparkPubSubInputPartitionReader implements PartitionReader<Internal
   public InternalRow get() {
     // should return the same row if called multiple times
     return currentRow;
+  }
+
+  private static UTF8String utf8(String s) {
+    return s == null ? null : UTF8String.fromString(s);
   }
 
   public float logProgressPercent() {

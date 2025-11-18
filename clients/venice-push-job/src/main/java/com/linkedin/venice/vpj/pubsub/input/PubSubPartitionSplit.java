@@ -32,7 +32,7 @@ import java.util.Objects;
 public class PubSubPartitionSplit implements Serializable {
   private static final long serialVersionUID = 1L;
 
-  /** Serializable identity for the partition (avoid holding non-serializable PubSubTopicPartition). */
+  private static final PubSubTopicRepository TOPIC_REPOSITORY = new PubSubTopicRepository();
   private String topicName;
   private int partitionNumber;
 
@@ -57,9 +57,8 @@ public class PubSubPartitionSplit implements Serializable {
   private transient PubSubPosition startPubSubPosition;
   private transient PubSubPosition endPubSubPosition;
 
-  /** Nullary constructor for deserialization. */
   public PubSubPartitionSplit() {
-    this.topicRepository = new PubSubTopicRepository();
+    this.topicRepository = TOPIC_REPOSITORY;
   }
 
   public PubSubPartitionSplit(
@@ -96,7 +95,7 @@ public class PubSubPartitionSplit implements Serializable {
 
   public PubSubTopicPartition getPubSubTopicPartition() {
     if (pubSubTopicPartition == null) {
-      pubSubTopicPartition = new PubSubTopicPartitionImpl(topicRepository.getTopic(topicName), partitionNumber);
+      pubSubTopicPartition = new PubSubTopicPartitionImpl(getTopicRepository().getTopic(topicName), partitionNumber);
     }
     return pubSubTopicPartition;
   }
@@ -175,6 +174,7 @@ public class PubSubPartitionSplit implements Serializable {
     this.endFactoryClass = in.readUTF();
 
     // clear transient caches
+    this.topicRepository = null;
     this.pubSubTopicPartition = null;
     this.startPubSubPosition = null;
     this.endPubSubPosition = null;
@@ -220,6 +220,9 @@ public class PubSubPartitionSplit implements Serializable {
   }
 
   public PubSubTopicRepository getTopicRepository() {
+    if (topicRepository == null) {
+      topicRepository = TOPIC_REPOSITORY;
+    }
     return topicRepository;
   }
 }
