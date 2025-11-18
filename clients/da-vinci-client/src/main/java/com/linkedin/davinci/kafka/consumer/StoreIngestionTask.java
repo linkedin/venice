@@ -2368,11 +2368,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
          * {@link #kafkaDataValidationService}, we would like to drain all the buffered messages before cleaning up those
          * two variables to avoid the race condition.
          */
-        partitionConsumptionStateMap.remove(partition);
-        if (consumerAction.isHelixTriggeredAction()) {
+        if (isDaVinciClient() || consumerAction.isHelixTriggeredAction()) {
           LOGGER.info(
-              "Removing tracking of replica: {} from storage utilization manager as this UNSUBSCRIBE is helix triggered action",
-              topicPartition);
+              "Removing replica: {} from PCS map and storage utilization manager. Trigger: {}",
+              topicPartition,
+              isDaVinciClient() ? "DaVinci client unsubscribe" : "Helix-triggered unsubscribe");
+          partitionConsumptionStateMap.remove(partition);
           storageUtilizationManager.removePartition(partition);
         }
         getDataIntegrityValidator().clearPartition(partition);
