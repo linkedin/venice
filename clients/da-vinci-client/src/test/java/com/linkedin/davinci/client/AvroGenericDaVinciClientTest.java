@@ -45,6 +45,7 @@ import java.lang.reflect.Field;
 import java.security.AccessController;
 import java.security.PrivilegedAction;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -458,7 +459,7 @@ public class AvroGenericDaVinciClientTest {
   }
 
   @Test
-  public void testSeekToTimestampWithException() throws Exception {
+  public void testSeekToTail() throws Exception {
     // Setup
     ClientConfig clientConfig = new ClientConfig(storeName);
     AvroGenericSeekableDaVinciClient<Integer, String> dvcClient =
@@ -470,20 +471,31 @@ public class AvroGenericDaVinciClientTest {
     Field backendField = AvroGenericDaVinciClient.class.getDeclaredField("daVinciBackend");
     backendField.setAccessible(true);
     // Mock the seek method
-    doReturn(CompletableFuture.completedFuture(null)).when(mockStoreBackend)
-        .seekToTimestamps(anyMap(), eq(Optional.empty()));
-    doReturn(false).when(dvcClient).isReady();
+    doReturn(CompletableFuture.completedFuture(null)).when(mockStoreBackend).seekToTail(eq(Optional.empty()));
+    doReturn(true).when(dvcClient).isReady();
     when(dvcClient.getStoreBackend()).thenReturn(mockStoreBackend);
     Map<Integer, Long> timestamps = new HashMap<>();
     timestamps.put(1, 1000L);
     // Test
+    CompletableFuture<Void> future = dvcClient.seekToTail();
+    future.get(); // Wait for completion
+    // Verify
+    verify(dvcClient).seekToTail();
+    assertTrue(future.isDone() && !future.isCompletedExceptionally());
+  }
 
-    // Test
-    // Verify the exception is propagated
+  @Test
+  public void testSeekToTailWhenNotReady() throws Exception {
+    // Setup
+    ClientConfig clientConfig = new ClientConfig(storeName);
+    AvroGenericSeekableDaVinciClient<Integer, String> dvcClient =
+        (AvroGenericSeekableDaVinciClient<Integer, String>) setUpSeekableClient(clientConfig, true);
+
+    // Test and verify exception
     try {
-      CompletableFuture<Void> future = dvcClient.seekToTimestamps(timestamps);
+      CompletableFuture<Void> future = dvcClient.seekToTail(Collections.emptySet());
       future.get();
-      fail("Expected exception to be thrown");
+      fail("Expected VeniceClientException to be thrown when client is not ready");
     } catch (VeniceClientException e) {
     }
   }
