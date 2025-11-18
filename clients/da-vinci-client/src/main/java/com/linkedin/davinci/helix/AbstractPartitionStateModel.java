@@ -434,13 +434,15 @@ public abstract class AbstractPartitionStateModel extends StateModel {
 
   /**
    * Returns a human-readable description of the replica type based on store type and version role.
-   * Examples: "System store future version", "Batch store current version", "Hybrid store backup version"
+   * Examples: "SYSTEM store future version", "BATCH store current version", "HYBRID store", "HYBRID store backup version"
    */
   String getReplicaTypeDescription() {
     VeniceStoreType type = getStoreVersionType();
     String role = getStoreVersionRole();
-    String roleDesc = role.isEmpty() ? "unknown" : role.toLowerCase();
-    return type.name() + " store " + roleDesc + " version";
+    if (role.isEmpty()) {
+      return type.name() + " store";
+    }
+    return type.name() + " store " + role.toLowerCase() + " version";
   }
 
   /**
@@ -473,13 +475,14 @@ public abstract class AbstractPartitionStateModel extends StateModel {
    * Infers the {@link VeniceStoreType} for the current store version.
    *
    * <p>This is a best-effort classification intended primarily for logging.
-   * Any parsing or lookup failures are ignored and the method falls back to
-   * {@link VeniceStoreType#BATCH}.</p>
+   * Any parsing or lookup failures are ignored and the method returns
+   * {@link VeniceStoreType#BATCH} as the default, since BATCH is the most common/base case.
+   * Note that {@code BATCH} is a specific store type, not a generic fallback for unknown or error cases.</p>
    *
    * <ul>
    *   <li>{@link VeniceStoreType#SYSTEM} if the store is a system store</li>
    *   <li>{@link VeniceStoreType#HYBRID} if the referenced version is hybrid</li>
-   *   <li>{@link VeniceStoreType#BATCH} for all other cases or on any error</li>
+   *   <li>{@link VeniceStoreType#BATCH} for all other cases or if the type cannot be determined</li>
    * </ul>
    */
   private VeniceStoreType determineStoreType() {

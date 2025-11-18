@@ -193,6 +193,6 @@ public abstract class AbstractVenicePartitionStateModelTest<MODEL_TYPE extends A
     freshModel = getParticipantStateModel();
     when(mockReadOnlyStoreRepository.getStore(storeName)).thenReturn(null);
     description = freshModel.getReplicaTypeDescription();
-    assertEquals(description, "BATCH store unknown version", "Case 4: Unknown store");
+    assertEquals(description, "BATCH store", "Case 4: Unknown store");
   }
 }
