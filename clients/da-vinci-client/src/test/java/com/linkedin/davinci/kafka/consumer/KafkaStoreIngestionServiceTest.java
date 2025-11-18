@@ -60,7 +60,9 @@ import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
+import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.schema.SchemaEntry;
@@ -221,6 +223,52 @@ public abstract class KafkaStoreIngestionServiceTest {
   }
 
   @Test
+  public void testGetPubSubPosition_WhenPubSubPositionProvided() {
+    // Setup
+    String storeName = "test-store";
+    int partitionId = 0;
+    PubSubPosition expectedPosition = mock(PubSubPosition.class);
+    VeniceStoreVersionConfig storeConfig = mock(VeniceStoreVersionConfig.class);
+    when(storeConfig.getStoreVersionName()).thenReturn(storeName + "_v1");
+
+    // Test with non-null pubSubPosition
+    Optional<PubSubPosition> result = kafkaStoreIngestionService.getPubSubPosition(
+        storeConfig,
+        partitionId,
+        null, // timestamp
+        expectedPosition,
+        false // seekToTail
+    );
+
+    // Verify
+    assertTrue(result.isPresent());
+    assertEquals(expectedPosition, result.get());
+  }
+
+  @Test
+  public void testGetPubSubPosition_WithSeekToTail() {
+    // Setup
+    String storeName = "test-store";
+    String topicName = storeName + "_v1";
+    int partitionId = 0;
+    VeniceStoreVersionConfig storeConfig = mock(VeniceStoreVersionConfig.class);
+    when(storeConfig.getStoreVersionName()).thenReturn(topicName);
+
+    // Test with seekToTail = true
+    Optional<PubSubPosition> result = kafkaStoreIngestionService.getPubSubPosition(
+        storeConfig,
+        partitionId,
+        null, // timestamp
+        null, // pubSubPosition
+        true // seekToTail
+    );
+
+    // Verify
+    assertTrue(result.isPresent());
+    assertEquals(PubSubSymbolicPosition.LATEST, result.get());
+  }
+
+  @Test
   public void testDisableMetricsEmission() {
     String mockStoreName = "test";
     String mockSimilarStoreName = "testTest";
@@ -236,7 +284,7 @@ public abstract class KafkaStoreIngestionServiceTest {
 
     for (int i = 1; i <= taskNum; i++) {
       StoreIngestionTask task = mock(StoreIngestionTask.class);
-      topicNameToIngestionTaskMap.put(mockStoreName + "_v" + String.valueOf(i), task);
+      topicNameToIngestionTaskMap.put(mockStoreName + "_v" + i, task);
     }
 
     topicNameToIngestionTaskMap.put(mockSimilarStoreName + "_v1", mock(StoreIngestionTask.class));
@@ -246,7 +294,7 @@ public abstract class KafkaStoreIngestionServiceTest {
     doReturn(mockStore).when(mockMetadataRepo).getStore(mockStoreName);
 
     VeniceStoreVersionConfig mockStoreConfig = mock(VeniceStoreVersionConfig.class);
-    doReturn(mockStoreName + "_v" + String.valueOf(taskNum)).when(mockStoreConfig).getStoreVersionName();
+    doReturn(mockStoreName + "_v" + taskNum).when(mockStoreConfig).getStoreVersionName();
 
     kafkaStoreIngestionService.updateStatsEmission(topicNameToIngestionTaskMap, mockStoreName, maxVersionNumber);
 
