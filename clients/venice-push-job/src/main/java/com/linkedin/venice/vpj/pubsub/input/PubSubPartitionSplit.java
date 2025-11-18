@@ -31,8 +31,8 @@ import java.util.Objects;
  */
 public class PubSubPartitionSplit implements Serializable {
   private static final long serialVersionUID = 1L;
-
   private static final PubSubTopicRepository TOPIC_REPOSITORY = new PubSubTopicRepository();
+  /** Serializable identity for the partition (avoid holding non-serializable PubSubTopicPartition). */
   private String topicName;
   private int partitionNumber;
 
