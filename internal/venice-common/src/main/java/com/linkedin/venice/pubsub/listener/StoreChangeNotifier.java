@@ -12,7 +12,9 @@ import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.LogContext;
 import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
 import it.unimi.dsi.fastutil.ints.IntSet;
-import java.util.HashMap;
+import it.unimi.dsi.fastutil.objects.Object2ObjectMap;
+import it.unimi.dsi.fastutil.objects.Object2ObjectMaps;
+import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
@@ -70,7 +72,7 @@ public class StoreChangeNotifier implements StoreDataChangedListener, AutoClosea
 
   private final ExecutorService notificationExecutor;
   private final ConcurrentHashMap<String, StoreChangeTasks> taskRegistry;
-  private final Map<String, IntSet> storeVersionSets;
+  private final Object2ObjectMap<String, IntSet> storeVersionSets;
   private final AtomicInteger taskIdSuffixCounter;
   private final AtomicBoolean closed;
   private final VeniceComponent veniceComponent;
@@ -94,7 +96,7 @@ public class StoreChangeNotifier implements StoreDataChangedListener, AutoClosea
     this.notificationExecutor =
         Executors.newFixedThreadPool(threadPoolSize, new DaemonThreadFactory("pubsub-client-notifier", logContext));
     this.taskRegistry = new ConcurrentHashMap<>();
-    this.storeVersionSets = new HashMap<>();
+    this.storeVersionSets = Object2ObjectMaps.synchronize(new Object2ObjectOpenHashMap<>());
     this.taskIdSuffixCounter = new AtomicInteger(0);
     this.closed = new AtomicBoolean(false);
 
@@ -171,9 +173,7 @@ public class StoreChangeNotifier implements StoreDataChangedListener, AutoClosea
     LOGGER.info("Store created: {}", storeName);
 
     // Initialize tracking state for the new store
-    synchronized (storeVersionSets) {
-      storeVersionSets.put(storeName, new IntOpenHashSet(store.getVersionNumbers()));
-    }
+    storeVersionSets.put(storeName, new IntOpenHashSet(store.getVersionNumbers()));
 
     notifyTasksForStoreCreated(store);
   }
@@ -191,9 +191,7 @@ public class StoreChangeNotifier implements StoreDataChangedListener, AutoClosea
     // Notify tasks BEFORE cleaning up state (tasks may need current state)
     notifyTasksForStoreDeleted(store);
 
-    synchronized (storeVersionSets) {
-      storeVersionSets.remove(storeName);
-    }
+    storeVersionSets.remove(storeName);
   }
 
   @Override
@@ -206,33 +204,31 @@ public class StoreChangeNotifier implements StoreDataChangedListener, AutoClosea
     String storeName = store.getName();
 
     // Detect what changed by comparing with previous state
-    synchronized (storeVersionSets) {
-      IntSet previousVersions = storeVersionSets.get(storeName);
-      IntSet currentVersions = new IntOpenHashSet(store.getVersionNumbers());
+    IntSet previousVersions = storeVersionSets.get(storeName);
+    IntSet currentVersions = new IntOpenHashSet(store.getVersionNumbers());
 
-      if (previousVersions != null) {
-        // Check for version deletions
-        IntSet deletedVersions = new IntOpenHashSet(previousVersions);
-        deletedVersions.removeAll(currentVersions);
+    if (previousVersions != null) {
+      // Check for version deletions
+      IntSet deletedVersions = new IntOpenHashSet(previousVersions);
+      deletedVersions.removeAll(currentVersions);
 
-        for (int deletedVersion: deletedVersions) {
-          LOGGER.info("Store {} version deleted: {}", storeName, deletedVersion);
-          notifyTasksForVersionDeleted(store, deletedVersion);
-        }
-
-        // Check for new versions added
-        IntSet addedVersions = new IntOpenHashSet(currentVersions);
-        addedVersions.removeAll(previousVersions);
-
-        for (int addedVersion: addedVersions) {
-          LOGGER.info("Store {} version added: {}", storeName, addedVersion);
-          notifyTasksForVersionAdded(store, addedVersion);
-        }
+      for (int deletedVersion: deletedVersions) {
+        LOGGER.info("Store {} version deleted: {}", storeName, deletedVersion);
+        notifyTasksForVersionDeleted(store, deletedVersion);
       }
 
-      // Update tracking state
-      storeVersionSets.put(storeName, currentVersions);
+      // Check for new versions added
+      IntSet addedVersions = new IntOpenHashSet(currentVersions);
+      addedVersions.removeAll(previousVersions);
+
+      for (int addedVersion: addedVersions) {
+        LOGGER.info("Store {} version added: {}", storeName, addedVersion);
+        notifyTasksForVersionAdded(store, addedVersion);
+      }
     }
+
+    // Update tracking state
+    storeVersionSets.put(storeName, currentVersions);
   }
 
   @Override
@@ -257,9 +253,7 @@ public class StoreChangeNotifier implements StoreDataChangedListener, AutoClosea
       int taskCount = taskRegistry.size();
       taskRegistry.clear();
 
-      synchronized (storeVersionSets) {
-        storeVersionSets.clear();
-      }
+      storeVersionSets.clear();
 
       LOGGER.info(
           "StoreChangeNotifier for {} closed. Cleared {} task registrations",
