@@ -18,6 +18,7 @@ import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.PubSubContext;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
+import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
@@ -116,6 +117,68 @@ public class PartitionConsumptionState {
   }
 
   /**
+   * Tracks Declaration of Leadership (DoL) state during STANDBY to LEADER transition.
+   * DoL mechanism ensures the new leader is fully caught up with VT before switching to remote VT or RT.
+   */
+  static class DolState {
+    private final long leadershipTerm;
+    private final String hostId;
+    private volatile boolean dolProduced; // DoL message was acked by broker
+    private volatile boolean dolConsumed; // DoL message was consumed back by this replica
+    private volatile CompletableFuture<PubSubProduceResult> dolProduceFuture; // Future tracking DoL produce result
+
+    public DolState(long leadershipTerm, String hostId) {
+      this.leadershipTerm = leadershipTerm;
+      this.hostId = hostId;
+      this.dolProduced = false;
+      this.dolConsumed = false;
+      this.dolProduceFuture = null;
+    }
+
+    public long getLeadershipTerm() {
+      return leadershipTerm;
+    }
+
+    public String getHostId() {
+      return hostId;
+    }
+
+    public boolean isDolProduced() {
+      return dolProduced;
+    }
+
+    public void setDolProduced(boolean dolProduced) {
+      this.dolProduced = dolProduced;
+    }
+
+    public boolean isDolConsumed() {
+      return dolConsumed;
+    }
+
+    public void setDolConsumed(boolean dolConsumed) {
+      this.dolConsumed = dolConsumed;
+    }
+
+    public CompletableFuture<PubSubProduceResult> getDolProduceFuture() {
+      return dolProduceFuture;
+    }
+
+    public void setDolProduceFuture(CompletableFuture<PubSubProduceResult> dolProduceFuture) {
+      this.dolProduceFuture = dolProduceFuture;
+    }
+
+    public boolean isReady() {
+      return dolProduced && dolConsumed;
+    }
+
+    @Override
+    public String toString() {
+      return "DolState{term=" + leadershipTerm + ", host=" + hostId + ", produced=" + dolProduced + ", consumed="
+          + dolConsumed + ", futureSet=" + (dolProduceFuture != null) + "}";
+    }
+  }
+
+  /**
    * Only used in L/F model. Check if the partition has released the latch.
    * In L/F ingestion task, Optionally, the state model holds a latch that
    * is used to determine when it should transit from offline to follower.
@@ -125,6 +188,11 @@ public class PartitionConsumptionState {
    * details why we need latch for certain resources.
    */
   private final AtomicReference<LatchStatus> latchStatus = new AtomicReference<>(LatchStatus.NONE);
+
+  /**
+   * Tracks DoL state during STANDBY to LEADER transition. Null when not in transition or DoL not enabled.
+   */
+  private volatile DolState dolState = null;
 
   /**
    * This future is completed in drainer thread after persisting the associated record and offset to DB.
@@ -520,6 +588,18 @@ public class PartitionConsumptionState {
 
   public final LeaderFollowerStateType getLeaderFollowerState() {
     return this.leaderFollowerState;
+  }
+
+  public DolState getDolState() {
+    return this.dolState;
+  }
+
+  public void setDolState(DolState dolState) {
+    this.dolState = dolState;
+  }
+
+  public void clearDolState() {
+    this.dolState = null;
   }
 
   public void setLastLeaderPersistFuture(Future<Void> future) {
