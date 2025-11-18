@@ -125,6 +125,7 @@ import static com.linkedin.venice.Arg.REPLICATE_ALL_CONFIGS;
 import static com.linkedin.venice.Arg.REPLICATION_FACTOR;
 import static com.linkedin.venice.Arg.RETRY;
 import static com.linkedin.venice.Arg.RMD_CHUNKING_ENABLED;
+import static com.linkedin.venice.Arg.ROLL_FORWARD_TIMEOUT_MS;
 import static com.linkedin.venice.Arg.SEPARATE_REALTIME_TOPIC_ENABLED;
 import static com.linkedin.venice.Arg.SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND;
 import static com.linkedin.venice.Arg.SERVER_URL;
@@ -640,6 +641,10 @@ public enum Command {
   CLEAN_EXECUTION_IDS(
       "clean-execution-ids", "Clean execution ids for the deleted store from `succeededPerStore` map.",
       new Arg[] { URL, CLUSTER }
+  ),
+  ROLL_FORWARD_TO_FUTURE_VERSION(
+      "roll-forward-to-future-version", "Roll forward to a future version", new Arg[] { URL, STORE },
+      new Arg[] { REGIONS_FILTER, ROLL_FORWARD_TIMEOUT_MS }
   );
 
   private final String commandName;

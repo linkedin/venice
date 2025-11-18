@@ -639,6 +639,9 @@ public class AdminTool {
         case UPDATE_ADMIN_OPERATION_PROTOCOL_VERSION:
           updateAdminOperationProtocolVersion(cmd);
           break;
+        case ROLL_FORWARD_TO_FUTURE_VERSION:
+          rollForwardToFutureVersion(cmd);
+          break;
         default:
           StringJoiner availableCommands = new StringJoiner(", ");
           for (Command c: Command.values()) {
@@ -2532,6 +2535,30 @@ public class AdminTool {
     }
 
     ControllerResponse response = controllerClient.writeEndOfPush(storeName, intVersion);
+    printObject(response);
+  }
+
+  private static void rollForwardToFutureVersion(CommandLine cmd) {
+    String storeName = getRequiredArgument(cmd, Arg.STORE);
+    String regionsFilter = getOptionalArgument(cmd, Arg.REGIONS_FILTER);
+    String rollForwardTimeoutMs = getOptionalArgument(cmd, Arg.ROLL_FORWARD_TIMEOUT_MS);
+
+    ControllerResponse response;
+    if (regionsFilter == null) {
+      regionsFilter = "";
+    }
+    int timeoutMs;
+    if (rollForwardTimeoutMs != null) {
+      try {
+        timeoutMs = Integer.parseInt(rollForwardTimeoutMs);
+        response = controllerClient.rollForwardToFutureVersion(storeName, regionsFilter, timeoutMs);
+      } catch (NumberFormatException e) {
+        System.err.println("ERROR: " + rollForwardTimeoutMs + " is not a valid integer");
+        return;
+      }
+    } else {
+      response = controllerClient.rollForwardToFutureVersion(storeName, regionsFilter);
+    }
     printObject(response);
   }
 
