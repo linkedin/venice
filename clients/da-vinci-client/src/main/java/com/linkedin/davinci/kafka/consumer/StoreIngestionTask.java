@@ -2368,8 +2368,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
          * {@link #kafkaDataValidationService}, we would like to drain all the buffered messages before cleaning up those
          * two variables to avoid the race condition.
          */
-        partitionConsumptionStateMap.remove(partition);
         if (consumerAction.isHelixTriggeredAction()) {
+          partitionConsumptionStateMap.remove(partition);
           LOGGER.info(
               "Removing tracking of replica: {} from storage utilization manager as this UNSUBSCRIBE is helix triggered action",
               topicPartition);
