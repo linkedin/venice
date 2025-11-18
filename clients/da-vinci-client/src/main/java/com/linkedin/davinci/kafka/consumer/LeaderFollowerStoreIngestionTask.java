@@ -42,7 +42,6 @@ import com.linkedin.davinci.validation.DataIntegrityValidator;
 import com.linkedin.davinci.validation.PartitionTracker;
 import com.linkedin.davinci.validation.PartitionTracker.TopicType;
 import com.linkedin.venice.annotation.VisibleForTesting;
-import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceMessageException;
@@ -483,6 +482,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
               "State transition from STANDBY to LEADER is paused for replica: {} as this store is undergoing migration",
               partitionConsumptionState.getReplicaId());
         } else {
+          // Initialize DoL state and send DoL stamp to local VT
+          initializeAndSendDoLStamp(partitionConsumptionState, checker.getLeadershipTerm());
+
           // Mark this partition in the middle of STANDBY to LEADER transition
           partitionConsumptionState.setLeaderFollowerState(IN_TRANSITION_FROM_STANDBY_TO_LEADER);
           LOGGER.info(
@@ -852,6 +854,88 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   }
 
   /**
+   * Initializes DoL state and sends DoL stamp to local VT during STANDBY to LEADER transition.
+   *
+   * @param partitionConsumptionState the partition consumption state
+   * @param leadershipTerm the leadership term for this transition
+   */
+  private void initializeAndSendDoLStamp(PartitionConsumptionState partitionConsumptionState, long leadershipTerm) {
+    if (!shouldUseDolMechanism()) {
+      LOGGER.debug(
+          "Skipping DoL stamp initialization for replica: {} as DoL mechanism is disabled",
+          partitionConsumptionState.getReplicaId());
+      return;
+    }
+    // Close any existing VeniceWriter partition session
+    veniceWriter.get().closePartition(partitionConsumptionState.getPartition());
+
+    DolStamp dolStamp = new DolStamp(leadershipTerm, veniceWriter.get().getWriterId());
+    partitionConsumptionState.setDolState(dolStamp);
+    LOGGER.info(
+        "Initialized DoL state: {} for replica: {} with term: {} and hostId: {}",
+        dolStamp,
+        partitionConsumptionState.getReplicaId(),
+        leadershipTerm,
+        veniceWriter.get().getWriterId());
+
+    // Send DolStamp to local VT
+    PubSubProducerCallback dolCallback = new DolStampProduceCallback(partitionConsumptionState, leadershipTerm);
+    CompletableFuture<PubSubProduceResult> dolProduceFuture = veniceWriter.get()
+        .sendDoLStamp(
+            partitionConsumptionState.getReplicaTopicPartition(),
+            dolCallback,
+            leadershipTerm,
+            localKafkaClusterId);
+    // Store the produce future in DolStamp
+    dolStamp.setDolProduceFuture(dolProduceFuture);
+  }
+
+  /**
+   * Callback to handle DoL message produce completion.
+   */
+  private static class DolStampProduceCallback implements PubSubProducerCallback {
+    private final PartitionConsumptionState pcs;
+    private final long leadershipTerm;
+
+    public DolStampProduceCallback(PartitionConsumptionState pcs, long leadershipTerm) {
+      this.pcs = pcs;
+      this.leadershipTerm = leadershipTerm;
+    }
+
+    @Override
+    public void onCompletion(PubSubProduceResult produceResult, Exception exception) {
+      if (exception != null) {
+        LOGGER.error(
+            "Failed to produce DoL message for replica: {} with term: {}",
+            pcs.getReplicaId(),
+            leadershipTerm,
+            exception);
+        // Clear DoL state on failure
+        pcs.clearDolState();
+        return;
+      }
+
+      // Mark DoL as produced
+      DolStamp dolStamp = pcs.getDolState();
+      if (dolStamp != null && dolStamp.getLeadershipTerm() == leadershipTerm) {
+        dolStamp.setDolProduced(true);
+        LOGGER.info(
+            "DoL message produce confirmed for replica: {} at position: {} (term: {}) - dolStamp: {}",
+            pcs.getReplicaId(),
+            produceResult.getPubSubPosition(),
+            leadershipTerm,
+            dolStamp);
+      } else {
+        LOGGER.warn(
+            "DoL state mismatch or null for replica: {} - expected term: {}, dolStamp: {}",
+            pcs.getReplicaId(),
+            leadershipTerm,
+            dolStamp);
+      }
+    }
+  }
+
+  /**
    *  TODO: Replace this mechanism with loopback logic.
    *  The leader replica should append a special message (e.g., Declaration of Leadership with term info)
    *  at the end of the local version topic (VT), then wait until it consumes the message back from VT.
@@ -859,6 +943,39 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    *  This is part of the fast leadership handover project.
    */
   private boolean canSwitchToLeaderTopic(PartitionConsumptionState pcs) {
+    // Check if DoL mechanism is enabled via config (system stores vs user stores)
+    DolStamp dolStamp = pcs.getDolState();
+    if (shouldUseDolMechanism() && dolStamp != null) {
+      // Check if DoL state is ready (both produced and consumed)
+      if (dolStamp.isReady()) {
+        long dolLatencyMs = dolStamp.getLatencyMs();
+        LOGGER.info(
+            "DoL mechanism complete for replica: {} - unblocking switch to the leader topic. Total DoL latency: {} ms. DolStamp: {}",
+            pcs.getReplicaId(),
+            dolLatencyMs,
+            dolStamp);
+        // Clear DoL state as we're done with this transition
+        pcs.clearDolState();
+        return true;
+      }
+
+      // DoL not ready yet, stay on local VT
+      LOGGER.debug("DoL mechanism not ready for replica: {} - DolStamp: {}", pcs.getReplicaId(), dolStamp);
+      return false;
+    } else {
+      // Use legacy time-based mechanism
+      return canSwitchToLeaderTopicLegacy(pcs);
+    }
+  }
+
+  /**
+   * Legacy mechanism for determining when a replica can switch to consuming from the leader (RT) topic.
+   * Uses time-based waiting and special handling for user system stores.
+   *
+   * <p>This will be replaced by the DoL (Declaration of Leadership) mechanism when
+   * {@code server.leader.handover.use.dol.mechanism} is enabled.
+   */
+  private boolean canSwitchToLeaderTopicLegacy(PartitionConsumptionState pcs) {
     /**
      * Potential risk: it's possible that Kafka consumer would starve one of the partitions for a long
      * time even though there are new messages in it, so it's possible that the old leader is still producing
@@ -1105,7 +1222,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     syncConsumedUpstreamRTOffsetMapIfNeeded(pcs, Collections.singletonMap(pubSubAddress, startPos));
     LOGGER.info(
         "Leader replica: {} started consuming: {} from: {}",
-        pcs.getReplicaId(),
+        pcs,
         Utils.getReplicaId(leaderTopic, pcs.getPartition()),
         startPos);
   }
@@ -1217,6 +1334,14 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   }
 
   private boolean isConsumingFromRemoteVersionTopic(PartitionConsumptionState partitionConsumptionState) {
+    // orint all three conditions for easier debugging
+    LOGGER.info(
+        "Checking remote VT consumption for replica: {}. EOP received: {}, isCurrentVersion: {}, nativeReplicationSourceVersionTopicKafkaURL: {}, localKafkaServer: {}",
+        partitionConsumptionState.getReplicaId(),
+        partitionConsumptionState.isEndOfPushReceived(),
+        isCurrentVersion.getAsBoolean(),
+        nativeReplicationSourceVersionTopicKafkaURL,
+        localKafkaServer);
     return !partitionConsumptionState.isEndOfPushReceived() && !isCurrentVersion.getAsBoolean()
     // Do not enable remote consumption for the source fabric leader. Otherwise, it will produce extra messages.
         && !Objects.equals(nativeReplicationSourceVersionTopicKafkaURL, localKafkaServer);
@@ -3845,7 +3970,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   }
 
   private boolean isIngestingSystemStore() {
-    return VeniceSystemStoreUtils.isSystemStore(storeName);
+    return isSystemStore;
   }
 
   /**

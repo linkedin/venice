@@ -139,7 +139,15 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
 
   @Transition(to = HelixState.LEADER_STATE, from = HelixState.STANDBY_STATE)
   public void onBecomeLeaderFromStandby(Message message, NotificationContext context) {
-    LeaderSessionIdChecker checker = new LeaderSessionIdChecker(leaderSessionId.incrementAndGet(), leaderSessionId);
+    /**
+     * Use the Helix message creation timestamp as the leadership term for the
+     * leader session. Record filtering based on leadership term validity is not
+     * enforced yet; the goal is to observe system behavior before turning on strict
+     * checks. This value also helps with diagnosing ordering and handover issues.
+     */
+    long leadershipTerm = message.getCreateTimeStamp();
+    LeaderSessionIdChecker checker =
+        new LeaderSessionIdChecker(leadershipTerm, leaderSessionId.incrementAndGet(), leaderSessionId);
     executeStateTransition(
         message,
         context,
@@ -274,14 +282,24 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
   public static class LeaderSessionIdChecker {
     private final long assignedSessionId;
     private final AtomicLong latestSessionIdHandle;
+    private final long leadershipTerm;
 
     public LeaderSessionIdChecker(long assignedSessionId, AtomicLong latestSessionIdHandle) {
+      this(-1, assignedSessionId, latestSessionIdHandle);
+    }
+
+    public LeaderSessionIdChecker(long leadershipTerm, long assignedSessionId, AtomicLong latestSessionIdHandle) {
+      this.leadershipTerm = leadershipTerm;
       this.assignedSessionId = assignedSessionId;
       this.latestSessionIdHandle = latestSessionIdHandle;
     }
 
     public boolean isSessionIdValid() {
       return assignedSessionId == latestSessionIdHandle.get();
+    }
+
+    public long getLeadershipTerm() {
+      return leadershipTerm;
     }
   }
 }

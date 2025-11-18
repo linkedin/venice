@@ -4405,7 +4405,7 @@ public abstract class StoreIngestionTaskTest {
     doCallRealMethod().when(leaderFollowerStoreIngestionTask).startConsumingAsLeader(any());
 
     doCallRealMethod().when(leaderFollowerStoreIngestionTask)
-        .resolveRtTopicPartitionWithPubSubBrokerAddress(any(), any(), any());
+        .resolveTopicPartitionWithPubSubBrokerAddress(any(), any(), any());
     doReturn(false).when(leaderFollowerStoreIngestionTask).shouldNewLeaderSwitchToRemoteConsumption(any());
     Set<String> kafkaServerSet = new HashSet<>();
     kafkaServerSet.add("localhost");
@@ -6134,11 +6134,10 @@ public abstract class StoreIngestionTaskTest {
   }
 
   @Test
-  public void testResolveRtTopicPartitionWithPubSubBrokerAddress() throws NoSuchFieldException, IllegalAccessException {
+  public void testResolveTopicPartitionWithPubSubBrokerAddress() throws NoSuchFieldException, IllegalAccessException {
     StoreIngestionTask storeIngestionTask = mock(StoreIngestionTask.class);
     Function<String, String> resolver = Utils::resolveKafkaUrlForSepTopic;
-    doCallRealMethod().when(storeIngestionTask)
-        .resolveRtTopicPartitionWithPubSubBrokerAddress(any(), any(), anyString());
+    doCallRealMethod().when(storeIngestionTask).resolveTopicPartitionWithPubSubBrokerAddress(any(), any(), anyString());
     doCallRealMethod().when(storeIngestionTask).resolveRtTopicWithPubSubBrokerAddress(any(), anyString());
     doReturn(pubSubTopicRepository).when(storeIngestionTask).getPubSubTopicRepository();
     doReturn(resolver).when(storeIngestionTask).getKafkaClusterUrlResolver();
@@ -6157,14 +6156,14 @@ public abstract class StoreIngestionTaskTest {
     field.set(storeIngestionTask, separateRealTimeTopic);
 
     PubSubTopicPartition resolvedRtTopicPartition =
-        storeIngestionTask.resolveRtTopicPartitionWithPubSubBrokerAddress(realTimeTopic, pcs, kafkaUrl);
+        storeIngestionTask.resolveTopicPartitionWithPubSubBrokerAddress(realTimeTopic, pcs, kafkaUrl);
     Assert.assertEquals(resolvedRtTopicPartition.getPubSubTopic(), realTimeTopic);
     Assert.assertEquals(
-        storeIngestionTask.resolveRtTopicPartitionWithPubSubBrokerAddress(versionTopic, pcs, kafkaUrl).getPubSubTopic(),
+        storeIngestionTask.resolveTopicPartitionWithPubSubBrokerAddress(versionTopic, pcs, kafkaUrl).getPubSubTopic(),
         versionTopic);
     Assert.assertEquals(
         storeIngestionTask
-            .resolveRtTopicPartitionWithPubSubBrokerAddress(realTimeTopic, pcs, kafkaUrl + Utils.SEPARATE_TOPIC_SUFFIX)
+            .resolveTopicPartitionWithPubSubBrokerAddress(realTimeTopic, pcs, kafkaUrl + Utils.SEPARATE_TOPIC_SUFFIX)
             .getPubSubTopic(),
         separateRealTimeTopic);
   }
