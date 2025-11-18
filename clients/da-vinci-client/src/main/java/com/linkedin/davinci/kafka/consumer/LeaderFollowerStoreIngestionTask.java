@@ -2485,19 +2485,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         // Update the latest consumed VT position (LCVP) since we're consuming from the version topic
         if (isGlobalRtDivEnabled()) {
           getConsumerDiv().updateLatestConsumedVtPosition(partition, consumerRecord.getPosition());
-
-          if (shouldSyncOffsetFromSnapshot(consumerRecord, partitionConsumptionState)) {
-            PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(getVersionTopic(), partition);
-            PartitionTracker vtDiv = consumerDiv.cloneVtProducerStates(partition); // has latest consumed VT position
-            storeBufferService.execSyncOffsetFromSnapshotAsync(topicPartition, vtDiv, this);
-            // TODO: remove. this is a temporary log for debugging while the feature is in its infancy
-            int partitionStateMapSize = vtDiv.getPartitionStates(PartitionTracker.VERSION_TOPIC).size();
-            LOGGER.info(
-                "event=globalRtDiv Syncing LCVP for OffsetRecord topic-partition: {} position: {} size: {}",
-                topicPartition,
-                consumerRecord.getPosition(),
-                partitionStateMapSize);
-          }
+          // Only after the current message is queued to drainer
+          // The Offset Record's LCVP may be synced in syncOffsetFromSnapshotIfNeeded()
         }
 
         /**
@@ -2785,6 +2774,26 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           ingestionTaskName + " hasProducedToKafka: exception for message received from: "
               + consumerRecord.getTopicPartition() + ", Offset: " + consumerRecord.getPosition() + ". Bubbling up.",
           e);
+    }
+  }
+
+  void syncOffsetFromSnapshotIfNeeded(DefaultPubSubMessage record, PubSubTopicPartition topicPartition) {
+    int partition = topicPartition.getPartitionNumber();
+    if (!isGlobalRtDivEnabled() || !shouldSyncOffsetFromSnapshot(record, getPartitionConsumptionState(partition))) {
+      return; // without Global RT DIV enabled, the offset record is synced in the drainer in syncOffset()
+    }
+
+    try {
+      PartitionTracker vtDiv = consumerDiv.cloneVtProducerStates(partition); // has latest consumed VT position
+      storeBufferService.execSyncOffsetFromSnapshotAsync(topicPartition, vtDiv, this);
+      // TODO: remove. this is a temporary log for debugging while the feature is in its infancy
+      LOGGER.info(
+          "event=globalRtDiv Syncing LCVP for OffsetRecord topic-partition: {} position: {} size: {}",
+          topicPartition,
+          record.getPosition(),
+          vtDiv.getPartitionStates(PartitionTracker.VERSION_TOPIC).size());
+    } catch (InterruptedException e) {
+      LOGGER.error("Unable to sync offset", e);
     }
   }
 
