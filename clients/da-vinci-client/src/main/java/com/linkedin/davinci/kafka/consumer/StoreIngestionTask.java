@@ -352,7 +352,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   // Total number of partition for this store version
   protected final int storeVersionPartitionCount;
 
-  private AtomicInteger pendingSubscriptionActionCount = new AtomicInteger(0);
+  private final AtomicInteger pendingSubscriptionActionCount = new AtomicInteger(0);
   private int subscribedCount = 0;
   private int forceUnSubscribedCount = 0;
 
@@ -5216,5 +5216,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   AbstractStoreBufferService getStoreBufferService() {
     return storeBufferService;
+  }
+
+  long getBootstrapTimeoutInMs() {
+    return bootstrapTimeoutInMs;
   }
 }

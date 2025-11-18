@@ -613,14 +613,14 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     boolean pushTimeout = false;
     Set<Integer> timeoutPartitions = null;
     long checkStartTimeInNS = System.nanoTime();
-    for (PartitionConsumptionState partitionConsumptionState: partitionConsumptionStateMap.values()) {
+    for (PartitionConsumptionState partitionConsumptionState: getPartitionConsumptionStateMap().values()) {
       final int partition = partitionConsumptionState.getPartition();
 
       /**
        * Check whether the push timeout
        */
       if (!partitionConsumptionState.isComplete() && LatencyUtils.getElapsedTimeFromMsToMs(
-          partitionConsumptionState.getConsumptionStartTimeInMs()) > this.bootstrapTimeoutInMs) {
+          partitionConsumptionState.getConsumptionStartTimeInMs()) > getBootstrapTimeoutInMs()) {
         if (!pushTimeout) {
           pushTimeout = true;
           timeoutPartitions = new HashSet<>();
@@ -773,7 +773,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           break;
       }
     }
-    if (emitMetrics.get()) {
+    if (isMetricsEmissionEnabled()) {
       hostLevelIngestionStats
           .recordCheckLongRunningTasksLatency(LatencyUtils.getElapsedTimeFromNSToMS(checkStartTimeInNS));
     }
@@ -794,10 +794,15 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       }
     }
 
-    checkWhetherToCloseUnusedVeniceWriter(veniceWriter, veniceWriterForRealTime, partitionConsumptionStateMap, () -> {
-      veniceWriter =
-          Lazy.of(() -> constructVeniceWriter(veniceWriterFactory, getVersionTopic().getName(), version, true, 1));
-    }, getVersionTopic().getName());
+    checkWhetherToCloseUnusedVeniceWriter(
+        getVeniceWriter(),
+        getVeniceWriterForRealTime(),
+        getPartitionConsumptionStateMap(),
+        () -> {
+          veniceWriter =
+              Lazy.of(() -> constructVeniceWriter(veniceWriterFactory, getVersionTopic().getName(), version, true, 1));
+        },
+        getVersionTopic().getName());
   }
 
   protected static boolean checkWhetherToCloseUnusedVeniceWriter(
@@ -4390,5 +4395,13 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
   private String logChange(boolean hasChanged) {
     return hasChanged ? "(changed)" : "(unchanged)";
+  }
+
+  Lazy<VeniceWriter<byte[], byte[], byte[]>> getVeniceWriter() {
+    return veniceWriter;
+  }
+
+  Lazy<VeniceWriter<byte[], byte[], byte[]>> getVeniceWriterForRealTime() {
+    return veniceWriterForRealTime;
   }
 }
