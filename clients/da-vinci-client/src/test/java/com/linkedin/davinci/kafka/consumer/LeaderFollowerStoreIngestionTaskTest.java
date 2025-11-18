@@ -43,6 +43,7 @@ import com.linkedin.davinci.validation.DataIntegrityValidator;
 import com.linkedin.davinci.validation.PartitionTracker;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.VeniceCompressor;
+import com.linkedin.venice.exceptions.VeniceTimeoutException;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.LeaderMetadata;
@@ -64,6 +65,7 @@ import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.pubsub.PubSubContext;
 import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
+import com.linkedin.venice.pubsub.PubSubTopicImpl;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
@@ -104,6 +106,7 @@ import java.util.function.BooleanSupplier;
 import org.mockito.ArgumentCaptor;
 import org.mockito.internal.verification.VerificationModeFactory;
 import org.mockito.verification.Timeout;
+import org.testng.Assert;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
@@ -1019,5 +1022,68 @@ public class LeaderFollowerStoreIngestionTaskTest {
     ingestionTask.recordHeartbeatReceived(pcs, consumerRecord, "abc:123");
     verify(heartbeatMonitoringService, times(1))
         .recordFollowerHeartbeat(eq("foo"), eq(1), eq(100), eq("local"), eq(123L), eq(false));
+  }
+
+  @Test
+  public void testIngestionTimeoutHandling() throws InterruptedException {
+    LeaderFollowerStoreIngestionTask storeIngestionTask = mock(LeaderFollowerStoreIngestionTask.class);
+    doReturn("foo").when(storeIngestionTask).getStoreName();
+    doReturn(Lazy.of(() -> mock(VeniceWriter.class))).when(storeIngestionTask).getVeniceWriter();
+    doReturn(Lazy.of(() -> mock(VeniceWriter.class))).when(storeIngestionTask).getVeniceWriterForRealTime();
+    ReadOnlyStoreRepository storeRepository = mock(ReadOnlyStoreRepository.class);
+    doReturn(storeRepository).when(storeIngestionTask).getStoreRepository();
+    Store store = mock(Store.class);
+    doReturn(5).when(store).getCurrentVersion();
+    doReturn(store).when(storeRepository).getStoreOrThrow(anyString());
+
+    // Timeout replica
+    doReturn(TimeUnit.DAYS.toMillis(1)).when(storeIngestionTask).getBootstrapTimeoutInMs();
+    PubSubTopic topic = new PubSubTopicImpl("foo_v1");
+    doReturn(topic).when(storeIngestionTask).getVersionTopic();
+    doCallRealMethod().when(storeIngestionTask).checkLongRunningTaskState();
+    Map<Integer, PartitionConsumptionState> pcsMap = new HashMap<>();
+    doReturn(pcsMap).when(storeIngestionTask).getPartitionConsumptionStateMap();
+
+    // Not yet timeout replica
+    PartitionConsumptionState pcs1 = mock(PartitionConsumptionState.class);
+    pcsMap.put(1, pcs1);
+    doReturn(LeaderFollowerStateType.STANDBY).when(pcs1).getLeaderFollowerState();
+    doReturn(false).when(pcs1).isComplete();
+    doReturn(1).when(pcs1).getPartition();
+    doReturn(System.currentTimeMillis() - TimeUnit.DAYS.toMillis(2)).when(pcs1).getConsumptionStartTimeInMs();
+
+    // Timeout replica
+    PartitionConsumptionState pcs2 = mock(PartitionConsumptionState.class);
+    pcsMap.put(2, pcs2);
+    doReturn(LeaderFollowerStateType.STANDBY).when(pcs2).getLeaderFollowerState();
+    doReturn(false).when(pcs2).isComplete();
+    doReturn(2).when(pcs2).getPartition();
+    doReturn(System.currentTimeMillis() - TimeUnit.HOURS.toMillis(2)).when(pcs2).getConsumptionStartTimeInMs();
+
+    PartitionConsumptionState pcs3 = mock(PartitionConsumptionState.class);
+    pcsMap.put(3, pcs3);
+    doReturn(LeaderFollowerStateType.STANDBY).when(pcs3).getLeaderFollowerState();
+    doReturn(false).when(pcs3).isComplete();
+    doReturn(3).when(pcs3).getPartition();
+    doReturn(System.currentTimeMillis() - TimeUnit.DAYS.toMillis(2)).when(pcs3).getConsumptionStartTimeInMs();
+
+    // For future version it should be throwing exception.
+    doReturn(10).when(storeIngestionTask).getVersionNumber();
+    Assert.assertThrows(VeniceTimeoutException.class, storeIngestionTask::checkLongRunningTaskState);
+
+    // For current version we should report error and only failing this partition instead of throwing exception and stop
+    // SIT.
+    doReturn(5).when(storeIngestionTask).getVersionNumber();
+    storeIngestionTask.checkLongRunningTaskState();
+    verify(storeIngestionTask, times(1)).reportError(anyString(), eq(1), any());
+    verify(storeIngestionTask, times(0)).reportError(anyString(), eq(2), any());
+    verify(storeIngestionTask, times(1)).reportError(anyString(), eq(3), any());
+
+    // Same for the backup version.
+    doReturn(1).when(storeIngestionTask).getVersionNumber();
+    storeIngestionTask.checkLongRunningTaskState();
+    verify(storeIngestionTask, times(2)).reportError(anyString(), eq(1), any());
+    verify(storeIngestionTask, times(0)).reportError(anyString(), eq(2), any());
+    verify(storeIngestionTask, times(2)).reportError(anyString(), eq(3), any());
   }
 }
