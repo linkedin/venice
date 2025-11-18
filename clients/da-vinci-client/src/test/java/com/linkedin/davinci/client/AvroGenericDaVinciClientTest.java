@@ -474,8 +474,6 @@ public class AvroGenericDaVinciClientTest {
     doReturn(CompletableFuture.completedFuture(null)).when(mockStoreBackend).seekToTail(eq(Optional.empty()));
     doReturn(true).when(dvcClient).isReady();
     when(dvcClient.getStoreBackend()).thenReturn(mockStoreBackend);
-    Map<Integer, Long> timestamps = new HashMap<>();
-    timestamps.put(1, 1000L);
     // Test
     CompletableFuture<Void> future = dvcClient.seekToTail();
     future.get(); // Wait for completion
