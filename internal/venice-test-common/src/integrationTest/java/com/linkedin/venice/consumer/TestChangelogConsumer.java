@@ -1224,7 +1224,7 @@ public class TestChangelogConsumer {
         sendStreamingRecord(veniceProducer, storeName, 10000, "10000", null);
       }
 
-      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
+      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
         Collection<PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> tempPubSubMessagesList =
             changeLogConsumer.poll(1000);
         assertEquals(tempPubSubMessagesList.size(), 1);
