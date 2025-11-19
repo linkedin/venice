@@ -148,7 +148,7 @@ public class DuckDBDaVinciRecordTransformer
    * @throws RuntimeException if SQL operations fail
    */
   @Override
-  public void onStartVersionIngestion(int partitionId, boolean isCurrentVersion) {
+  synchronized public void onStartVersionIngestion(int partitionId, boolean isCurrentVersion) {
     if (setUpComplete.get()) {
       return;
     }
