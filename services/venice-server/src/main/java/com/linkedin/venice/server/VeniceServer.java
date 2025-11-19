@@ -539,6 +539,9 @@ public class VeniceServer {
           .setBlobTransferAclHandler(BlobTransferUtils.createAclHandler(veniceConfigLoader))
           .setAdaptiveBlobTransferWriteTrafficThrottler(writeThrottler)
           .setAdaptiveBlobTransferReadTrafficThrottler(readThrottler)
+          .setPushStatusNotifierSupplier(() -> {
+            return helixParticipationService != null ? helixParticipationService.getPushStatusNotifier() : null;
+          })
           .build();
     } else {
       aggVersionedBlobTransferStats = null;

@@ -135,7 +135,8 @@ public class TestNettyP2PBlobTransferManager {
             60,
             blobTransferMaxTimeoutInMin,
             globalChannelTrafficShapingHandler,
-            sslFactory));
+            sslFactory,
+            null));
     finder = mock(BlobFinder.class);
 
     manager = new NettyP2PBlobTransferManager(server, client, finder, tmpPartitionDir.toString(), blobTransferStats);
@@ -488,7 +489,8 @@ public class TestNettyP2PBlobTransferManager {
             0, // general transfer timeout immediately
             10,
             newGlobalChannelTrafficShapingHandler,
-            sslFactory));
+            sslFactory,
+            null));
 
     P2PBlobTransferService newServer = new P2PBlobTransferService(
         port,

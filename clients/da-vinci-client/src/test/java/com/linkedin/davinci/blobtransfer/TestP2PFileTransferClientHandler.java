@@ -89,7 +89,8 @@ public class TestP2PFileTransferClientHandler {
             TEST_STORE,
             TEST_VERSION,
             TEST_PARTITION,
-            BlobTransferUtils.BlobTransferTableFormat.BLOCK_BASED_TABLE));
+            BlobTransferUtils.BlobTransferTableFormat.BLOCK_BASED_TABLE,
+            () -> null));
 
     Mockito.doNothing().when(clientMetadataHandler).updateStorePartitionMetadata(Mockito.any(), Mockito.any());
 
