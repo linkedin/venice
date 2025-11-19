@@ -101,7 +101,7 @@ String tableName = getStoreName() + "_v" + getStoreVersion();
 String currentVersionViewName = getStoreName() + "_current_version";
 
 @Override
-public void onStartVersionIngestion(int partitionId, boolean isCurrentVersion) {
+synchronized public void onStartVersionIngestion(int partitionId, boolean isCurrentVersion) {
   if (setUpComplete.get()) {
     return;
   }
