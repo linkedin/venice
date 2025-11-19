@@ -1130,6 +1130,7 @@ public class TestChangelogConsumer {
     File inputDir = getTempDataDirectory();
     int version = 1;
     int numKeys = 100;
+    int partitionCount = 3;
     Schema recordSchema =
         TestWriteUtils.writeSimpleAvroFileWithIntToStringSchema(inputDir, Integer.toString(version), numKeys);
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
@@ -1146,7 +1147,7 @@ public class TestChangelogConsumer {
         .setHybridOffsetLagThreshold(8)
         .setChunkingEnabled(true)
         .setNativeReplicationEnabled(true)
-        .setPartitionCount(3);
+        .setPartitionCount(partitionCount);
     MetricsRepository metricsRepository =
         getVeniceMetricsRepository(CHANGE_DATA_CAPTURE_CLIENT, CONSUMER_METRIC_ENTITIES, true);
     createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms);
@@ -1171,61 +1172,69 @@ public class TestChangelogConsumer {
             .setBootstrapFileSystemPath(Utils.getUniqueString(inputDirPath));
     VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =
         new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig, metricsRepository);
-    VeniceChangelogConsumer<Integer, Utf8> changeLogConsumer =
-        veniceChangelogConsumerClientFactory.getVersionSpecificChangelogConsumer(storeName, 1);
-
-    changeLogConsumer.subscribeAll().get();
     Map<Integer, PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessagesMap = new HashMap();
-    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-      Collection<PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessagesList =
-          changeLogConsumer.poll(1000);
-      for (PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate> message: pubSubMessagesList) {
-        pubSubMessagesMap.put(message.getKey(), message);
-      }
-      assertEquals(pubSubMessagesMap.size(), numKeys);
-    });
-
     Map<Integer, VeniceChangeCoordinate> partitionToChangeCoordinateMap = new HashMap();
 
-    // All data should be from version 1
-    for (int i = 1; i <= numKeys; i++) {
-      ImmutableChangeCapturePubSubMessage<Integer, ChangeEvent<Utf8>> message =
-          (ImmutableChangeCapturePubSubMessage<Integer, ChangeEvent<Utf8>>) pubSubMessagesMap.get(i);
-      partitionToChangeCoordinateMap.put(message.getPartition(), message.getPosition());
+    try (VeniceChangelogConsumer<Integer, Utf8> changeLogConsumer =
+        veniceChangelogConsumerClientFactory.getVersionSpecificChangelogConsumer(storeName, 1)) {
 
-      assertEquals(message.getValue().getCurrentValue().toString(), Integer.toString(version) + i);
-      assertTrue(message.getPayloadSize() > 0);
-      assertNotNull(message.getPosition());
-      assertTrue(message.getWriterSchemaId() > 0);
-      assertNotNull(message.getReplicationMetadataPayload());
+      for (int partition = 0; partition < partitionCount; partition++) {
+        // Ensure we can "seek" multiple times on the same version
+        changeLogConsumer.subscribe(Collections.singleton(partition)).get();
+      }
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+        Collection<PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessagesList =
+            changeLogConsumer.poll(1000);
+        for (PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate> message: pubSubMessagesList) {
+          pubSubMessagesMap.put(message.getKey(), message);
+        }
+        assertEquals(pubSubMessagesMap.size(), numKeys);
+      });
+
+      // All data should be from version 1
+      for (int i = 1; i <= numKeys; i++) {
+        ImmutableChangeCapturePubSubMessage<Integer, ChangeEvent<Utf8>> message =
+            (ImmutableChangeCapturePubSubMessage<Integer, ChangeEvent<Utf8>>) pubSubMessagesMap.get(i);
+        partitionToChangeCoordinateMap.put(message.getPartition(), message.getPosition());
+
+        assertEquals(message.getValue().getCurrentValue().toString(), Integer.toString(version) + i);
+        assertTrue(message.getPayloadSize() > 0);
+        assertNotNull(message.getPosition());
+        assertTrue(message.getWriterSchemaId() > 0);
+        assertNotNull(message.getReplicationMetadataPayload());
+      }
     }
 
     // Restart client and resume from the last consumed checkpoints
-    changeLogConsumer.close();
     pubSubMessagesMap.clear();
-    changeLogConsumer.seekToCheckpoint(new HashSet<>(partitionToChangeCoordinateMap.values())).get();
 
-    // Shouldn't be any messages to consume
-    Collection<PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessagesList =
-        changeLogConsumer.poll(1000);
-    assertEquals(pubSubMessagesList.size(), 0);
+    try (VeniceChangelogConsumer<Integer, Utf8> changeLogConsumer =
+        veniceChangelogConsumerClientFactory.getVersionSpecificChangelogConsumer(storeName, 1)) {
+      pubSubMessagesMap.clear();
+      changeLogConsumer.seekToCheckpoint(new HashSet<>(partitionToChangeCoordinateMap.values())).get();
 
-    try (VeniceSystemProducer veniceProducer =
-        IntegrationTestPushUtils.getSamzaProducerForStream(multiRegionMultiClusterWrapper, 0, storeName)) {
-      // Run Samza job to send PUT and DELETE requests.
-      sendStreamingRecord(veniceProducer, storeName, 10000, "10000", null);
-    }
-
-    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-      Collection<PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> tempPubSubMessagesList =
+      // Shouldn't be any messages to consume
+      Collection<PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessagesList =
           changeLogConsumer.poll(1000);
-      assertEquals(tempPubSubMessagesList.size(), 1);
+      assertEquals(pubSubMessagesList.size(), 0);
 
-      for (PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate> pubSubMessage: tempPubSubMessagesList) {
-        assertEquals((int) pubSubMessage.getKey(), 10000);
-        assertEquals(pubSubMessage.getValue().getCurrentValue().toString(), "10000");
+      try (VeniceSystemProducer veniceProducer =
+          IntegrationTestPushUtils.getSamzaProducerForStream(multiRegionMultiClusterWrapper, 0, storeName)) {
+        // Run Samza job to send PUT and DELETE requests.
+        sendStreamingRecord(veniceProducer, storeName, 10000, "10000", null);
       }
-    });
+
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+        Collection<PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> tempPubSubMessagesList =
+            changeLogConsumer.poll(1000);
+        assertEquals(tempPubSubMessagesList.size(), 1);
+
+        for (PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate> pubSubMessage: tempPubSubMessagesList) {
+          assertEquals((int) pubSubMessage.getKey(), 10000);
+          assertEquals(pubSubMessage.getValue().getCurrentValue().toString(), "10000");
+        }
+      });
+    }
   }
 
   @Test(timeOut = TEST_TIMEOUT, priority = 3)

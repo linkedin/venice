@@ -161,9 +161,10 @@ public abstract class DaVinciRecordTransformer<K, V, O> implements Closeable {
    *
    * By default, it's a no-op.
    *
+   * @param partitionId what partition is being subscribed
    * @param isCurrentVersion whether the version being started is the current serving version; if not it's a future version
    */
-  public void onStartVersionIngestion(boolean isCurrentVersion) {
+  public void onStartVersionIngestion(int partitionId, boolean isCurrentVersion) {
     return;
   }
 

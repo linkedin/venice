@@ -16,7 +16,7 @@ import java.util.concurrent.CompletableFuture;
  * @param <V> The Type for value
  */
 @Experimental
-public interface VeniceChangelogConsumer<K, V> {
+public interface VeniceChangelogConsumer<K, V> extends AutoCloseable {
   /**
    * @return total number of store partitions
   */

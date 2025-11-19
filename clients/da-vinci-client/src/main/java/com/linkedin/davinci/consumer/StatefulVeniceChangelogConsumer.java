@@ -30,7 +30,7 @@ import java.util.concurrent.CompletableFuture;
  * @param <K> Key type
  * @param <V> Value type
  */
-public interface StatefulVeniceChangelogConsumer<K, V> {
+public interface StatefulVeniceChangelogConsumer<K, V> extends AutoCloseable {
   /**
    * Starts the consumer by subscribing to the specified partitions. On restart, the client automatically resumes
    * from the last checkpoint. On fresh start, it begins from the beginning of the topic or leverages blob transfer

@@ -66,7 +66,7 @@ public class DuckDBDaVinciRecordTransformerTest {
       Schema outputValueSchema = recordTransformer.getOutputValueSchema();
       assertEquals(outputValueSchema.getType(), Schema.Type.RECORD);
 
-      recordTransformer.onStartVersionIngestion(true);
+      recordTransformer.onStartVersionIngestion(1, true);
 
       GenericRecord keyRecord = new GenericData.Record(SINGLE_FIELD_RECORD_SCHEMA);
       keyRecord.put("key", "key");
@@ -134,8 +134,8 @@ public class DuckDBDaVinciRecordTransformerTest {
 
     String duckDBUrl = recordTransformer_v1.getDuckDBUrl();
 
-    recordTransformer_v1.onStartVersionIngestion(true);
-    recordTransformer_v2.onStartVersionIngestion(false);
+    recordTransformer_v1.onStartVersionIngestion(1, true);
+    recordTransformer_v2.onStartVersionIngestion(1, false);
 
     GenericRecord keyRecord = new GenericData.Record(SINGLE_FIELD_RECORD_SCHEMA);
     keyRecord.put("key", "key");
@@ -203,7 +203,7 @@ public class DuckDBDaVinciRecordTransformerTest {
 
     String duckDBUrl = recordTransformerForStore1.getDuckDBUrl();
 
-    recordTransformerForStore1.onStartVersionIngestion(true);
+    recordTransformerForStore1.onStartVersionIngestion(1, true);
 
     GenericRecord keyRecord = new GenericData.Record(SINGLE_FIELD_RECORD_SCHEMA);
     keyRecord.put("key", "key");
@@ -215,7 +215,7 @@ public class DuckDBDaVinciRecordTransformerTest {
     Lazy<GenericRecord> lazyValueForStore1 = Lazy.of(() -> valueRecordForStore1);
     recordTransformerForStore1.processPut(lazyKeyForStore1, lazyValueForStore1, partitionId, null);
 
-    recordTransformerForStore2.onStartVersionIngestion(true);
+    recordTransformerForStore2.onStartVersionIngestion(1, true);
 
     try (Connection connection = DriverManager.getConnection(duckDBUrl);
         Statement stmt = connection.createStatement()) {

@@ -204,7 +204,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
   public void testStartMultipleTimes() {
     Set<Integer> partitionSet = Collections.singleton(1);
     statefulVeniceChangelogConsumer.start();
-    recordTransformer.onStartVersionIngestion(true);
+    onStartVersionIngestionHelper(true, true);
     assertEquals(statefulVeniceChangelogConsumer.getLastHeartbeatPerPartition().size(), PARTITION_COUNT);
 
     assertThrows(VeniceClientException.class, () -> statefulVeniceChangelogConsumer.start());
@@ -215,7 +215,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
     assertTrue(statefulVeniceChangelogConsumer.getLastHeartbeatPerPartition().isEmpty());
 
     statefulVeniceChangelogConsumer.start();
-    recordTransformer.onStartVersionIngestion(true);
+    onStartVersionIngestionHelper(true, true);
     statefulVeniceChangelogConsumer.unsubscribe(partitionSet);
     verify(statefulVeniceChangelogConsumer).clearPartitionState(partitionSet);
     assertFalse(statefulVeniceChangelogConsumer.getLastHeartbeatPerPartition().isEmpty());
@@ -240,7 +240,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
   @Test
   public void testPutAndDelete() {
     statefulVeniceChangelogConsumer.start();
-    recordTransformer.onStartVersionIngestion(true);
+    onStartVersionIngestionHelper(true, true);
 
     for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
       recordTransformer.processPut(keys.get(partitionId), lazyValue, partitionId, recordMetadata);
@@ -257,10 +257,10 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
   @Test
   public void testVersionSwap() {
     statefulVeniceChangelogConsumer.start();
-    recordTransformer.onStartVersionIngestion(true);
-    // Setting this to true to verify that the next current version doesn't start serving immediately.
+    onStartVersionIngestionHelper(true, true);
+    // Setting isCurrentVersion to true to verify that the next current version doesn't start serving immediately.
     // It should only serve when it processes the VSM.
-    futureRecordTransformer.onStartVersionIngestion(true);
+    onStartVersionIngestionHelper(false, true);
 
     List<Lazy<Integer>> keys = new ArrayList<>();
     for (int i = 0; i < PARTITION_COUNT; i++) {
@@ -329,8 +329,8 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
   @Test
   public void testCompletableFutureFromStart() {
     CompletableFuture startCompletableFuture = statefulVeniceChangelogConsumer.start();
-    recordTransformer.onStartVersionIngestion(true);
-    futureRecordTransformer.onStartVersionIngestion(false);
+    onStartVersionIngestionHelper(true, true);
+    onStartVersionIngestionHelper(true, false);
 
     // CompletableFuture should not be finished until a record has been pushed to the buffer by the current version
     assertFalse(startCompletableFuture.isDone());
@@ -355,7 +355,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
     assertFalse(statefulVeniceChangelogConsumer.isCaughtUp());
 
     CompletableFuture startCompletableFuture = statefulVeniceChangelogConsumer.start();
-    recordTransformer.onStartVersionIngestion(true);
+    onStartVersionIngestionHelper(true, true);
 
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
       verify(mockDaVinciClient).subscribe(partitionSet);
@@ -396,7 +396,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
     assertEquals(changelogClientConfig.getMaxBufferSize(), MAX_BUFFER_SIZE);
 
     statefulVeniceChangelogConsumer.start();
-    recordTransformer.onStartVersionIngestion(true);
+    onStartVersionIngestionHelper(true, true);
 
     int partitionId = 1;
 
@@ -505,8 +505,8 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
     assertEquals(statefulVeniceChangelogConsumer.getLastHeartbeatPerPartition().size(), 0);
     statefulVeniceChangelogConsumer.start();
 
-    recordTransformer.onStartVersionIngestion(true);
-    futureRecordTransformer.onStartVersionIngestion(false);
+    onStartVersionIngestionHelper(true, true);
+    onStartVersionIngestionHelper(true, false);
 
     int partitionId = 0;
     recordTransformer.processPut(keys.get(partitionId), lazyValue, partitionId, recordMetadata);
@@ -538,7 +538,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
     assertFalse(statefulVeniceChangelogConsumer.isCaughtUp());
 
     CompletableFuture startCompletableFuture = statefulVeniceChangelogConsumer.start(partitionSet);
-    recordTransformer.onStartVersionIngestion(true);
+    onStartVersionIngestionHelper(true, true);
 
     // Add records for all but 1 partition to complete the start future, but to not complete the subscribe future.
     for (int partitionId = 0; partitionId < PARTITION_COUNT - 1; partitionId++) {
@@ -612,5 +612,15 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
     assertEquals(statefulVeniceChangelogConsumer.poll(POLL_TIMEOUT).size(), 0, "Buffer should be empty");
     verify(changeCaptureStats).emitRecordsConsumedCountMetrics(0);
     verify(changeCaptureStats).emitPollCountMetrics(VeniceResponseStatusCategory.SUCCESS);
+  }
+
+  private void onStartVersionIngestionHelper(boolean currentRecordTransformer, boolean isCurrentVersion) {
+    for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
+      if (currentRecordTransformer) {
+        recordTransformer.onStartVersionIngestion(partitionId, isCurrentVersion);
+      } else {
+        futureRecordTransformer.onStartVersionIngestion(partitionId, isCurrentVersion);
+      }
+    }
   }
 }
