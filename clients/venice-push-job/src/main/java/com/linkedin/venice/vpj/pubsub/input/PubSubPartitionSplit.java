@@ -31,7 +31,6 @@ import java.util.Objects;
  */
 public class PubSubPartitionSplit implements Serializable {
   private static final long serialVersionUID = 1L;
-  private static final PubSubTopicRepository TOPIC_REPOSITORY = new PubSubTopicRepository();
   /** Serializable identity for the partition (avoid holding non-serializable PubSubTopicPartition). */
   private String topicName;
   private int partitionNumber;
@@ -58,7 +57,7 @@ public class PubSubPartitionSplit implements Serializable {
   private transient PubSubPosition endPubSubPosition;
 
   public PubSubPartitionSplit() {
-    this.topicRepository = TOPIC_REPOSITORY;
+    this.topicRepository = new PubSubTopicRepository();
   }
 
   public PubSubPartitionSplit(
@@ -174,7 +173,6 @@ public class PubSubPartitionSplit implements Serializable {
     this.endFactoryClass = in.readUTF();
 
     // clear transient caches
-    this.topicRepository = null;
     this.pubSubTopicPartition = null;
     this.startPubSubPosition = null;
     this.endPubSubPosition = null;
@@ -221,7 +219,7 @@ public class PubSubPartitionSplit implements Serializable {
 
   public PubSubTopicRepository getTopicRepository() {
     if (topicRepository == null) {
-      topicRepository = TOPIC_REPOSITORY;
+      topicRepository = new PubSubTopicRepository();
     }
     return topicRepository;
   }
