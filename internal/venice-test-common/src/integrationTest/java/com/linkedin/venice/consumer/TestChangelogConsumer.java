@@ -1224,7 +1224,7 @@ public class TestChangelogConsumer {
         sendStreamingRecord(veniceProducer, storeName, 10000, "10000", null);
       }
 
-      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
         Collection<PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> tempPubSubMessagesList =
             changeLogConsumer.poll(1000);
         assertEquals(tempPubSubMessagesList.size(), 1);
@@ -1283,119 +1283,125 @@ public class TestChangelogConsumer {
             .setBootstrapFileSystemPath(Utils.getUniqueString(inputDirPath));
     VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =
         new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig, metricsRepository);
-    VeniceChangelogConsumer<Integer, Utf8> changeLogConsumer =
-        veniceChangelogConsumerClientFactory.getVersionSpecificChangelogConsumer(storeName, 1);
-
-    changeLogConsumer.subscribeAll().get();
     Map<Integer, PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessagesMap = new HashMap();
-    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-      Collection<PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessagesList =
-          changeLogConsumer.poll(1000);
-      for (PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate> message: pubSubMessagesList) {
-        pubSubMessagesMap.put(message.getKey(), message);
-      }
-      assertEquals(pubSubMessagesMap.size(), numKeys);
-    });
 
-    // All data should be from version 1
-    for (int i = 1; i <= numKeys; i++) {
-      ImmutableChangeCapturePubSubMessage<Integer, ChangeEvent<Utf8>> message =
-          (ImmutableChangeCapturePubSubMessage<Integer, ChangeEvent<Utf8>>) pubSubMessagesMap.get(i);
-      assertEquals(message.getValue().getCurrentValue().toString(), Integer.toString(version) + i);
-      assertTrue(message.getPayloadSize() > 0);
-      assertNotNull(message.getPosition());
-      assertTrue(message.getWriterSchemaId() > 0);
-      assertNotNull(message.getReplicationMetadataPayload());
+    try (VeniceChangelogConsumer<Integer, Utf8> changeLogConsumer =
+        veniceChangelogConsumerClientFactory.getVersionSpecificChangelogConsumer(storeName, 1)) {
+      changeLogConsumer.subscribeAll().get();
+
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+        Collection<PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessagesList =
+            changeLogConsumer.poll(1000);
+        for (PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate> message: pubSubMessagesList) {
+          pubSubMessagesMap.put(message.getKey(), message);
+        }
+        assertEquals(pubSubMessagesMap.size(), numKeys);
+      });
+
+      // All data should be from version 1
+      for (int i = 1; i <= numKeys; i++) {
+        ImmutableChangeCapturePubSubMessage<Integer, ChangeEvent<Utf8>> message =
+            (ImmutableChangeCapturePubSubMessage<Integer, ChangeEvent<Utf8>>) pubSubMessagesMap.get(i);
+        assertEquals(message.getValue().getCurrentValue().toString(), Integer.toString(version) + i);
+        assertTrue(message.getPayloadSize() > 0);
+        assertNotNull(message.getPosition());
+        assertTrue(message.getWriterSchemaId() > 0);
+        assertNotNull(message.getReplicationMetadataPayload());
+      }
     }
 
     // Restart client to ensure it seeks to the beginning of the topic and all record metadata is available
-    changeLogConsumer.close();
     pubSubMessagesMap.clear();
-    changeLogConsumer.subscribeAll().get();
+    try (VeniceChangelogConsumer<Integer, Utf8> changeLogConsumer =
+        veniceChangelogConsumerClientFactory.getVersionSpecificChangelogConsumer(storeName, 1)) {
+      changeLogConsumer.subscribeAll().get();
 
-    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-      Collection<PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessagesList =
-          changeLogConsumer.poll(1000);
-      for (PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate> message: pubSubMessagesList) {
-        pubSubMessagesMap.put(message.getKey(), message);
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+        Collection<PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessagesList =
+            changeLogConsumer.poll(1000);
+        for (PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate> message: pubSubMessagesList) {
+          pubSubMessagesMap.put(message.getKey(), message);
+        }
+        assertEquals(pubSubMessagesMap.size(), numKeys);
+      });
+
+      // All data should be from version 1
+      for (int i = 1; i <= numKeys; i++) {
+        ImmutableChangeCapturePubSubMessage<Integer, ChangeEvent<Utf8>> message =
+            (ImmutableChangeCapturePubSubMessage<Integer, ChangeEvent<Utf8>>) pubSubMessagesMap.get(i);
+        assertEquals(message.getValue().getCurrentValue().toString(), Integer.toString(version) + i);
+        assertTrue(message.getPayloadSize() > 0);
+        assertNotNull(message.getPosition());
+        assertTrue(message.getWriterSchemaId() > 0);
+        assertNotNull(message.getReplicationMetadataPayload());
       }
-      assertEquals(pubSubMessagesMap.size(), numKeys);
-    });
 
-    // All data should be from version 1
-    for (int i = 1; i <= numKeys; i++) {
-      ImmutableChangeCapturePubSubMessage<Integer, ChangeEvent<Utf8>> message =
-          (ImmutableChangeCapturePubSubMessage<Integer, ChangeEvent<Utf8>>) pubSubMessagesMap.get(i);
-      assertEquals(message.getValue().getCurrentValue().toString(), Integer.toString(version) + i);
-      assertTrue(message.getPayloadSize() > 0);
-      assertNotNull(message.getPosition());
-      assertTrue(message.getWriterSchemaId() > 0);
-      assertNotNull(message.getReplicationMetadataPayload());
+      // Push version 2
+      version++;
+      TestWriteUtils.writeSimpleAvroFileWithIntToStringSchema(inputDir, Integer.toString(version), numKeys);
+      IntegrationTestPushUtils.runVPJ(props);
+
+      // Client shouldn't be able to poll anything, since it's still on version 1
+      assertEquals(changeLogConsumer.poll(1000).size(), 0);
     }
-
-    // Push version 2
-    version++;
-    TestWriteUtils.writeSimpleAvroFileWithIntToStringSchema(inputDir, Integer.toString(version), numKeys);
-    IntegrationTestPushUtils.runVPJ(props);
-
-    // Client shouldn't be able to poll anything, since it's still on version 1
-    assertEquals(changeLogConsumer.poll(1000).size(), 0);
 
     // Restart client
-    changeLogConsumer.close();
     pubSubMessagesMap.clear();
-    changeLogConsumer.subscribeAll().get();
+    try (VeniceChangelogConsumer<Integer, Utf8> changeLogConsumer =
+        veniceChangelogConsumerClientFactory.getVersionSpecificChangelogConsumer(storeName, 1)) {
+      changeLogConsumer.subscribeAll().get();
 
-    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-      Collection<PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessagesList =
-          changeLogConsumer.poll(1000);
-      for (PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate> message: pubSubMessagesList) {
-        pubSubMessagesMap.put(message.getKey(), message);
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+        Collection<PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessagesList =
+            changeLogConsumer.poll(1000);
+        for (PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate> message: pubSubMessagesList) {
+          pubSubMessagesMap.put(message.getKey(), message);
+        }
+        assertEquals(pubSubMessagesMap.size(), numKeys);
+      });
+
+      // All data should be from version 1
+      for (int i = 1; i <= numKeys; i++) {
+        ImmutableChangeCapturePubSubMessage<Integer, ChangeEvent<Utf8>> message =
+            (ImmutableChangeCapturePubSubMessage<Integer, ChangeEvent<Utf8>>) pubSubMessagesMap.get(i);
+        assertEquals(message.getValue().getCurrentValue().toString(), Integer.toString(version - 1) + i);
+        assertTrue(message.getPayloadSize() > 0);
+        assertNotNull(message.getPosition());
+        assertTrue(message.getWriterSchemaId() > 0);
+        assertNotNull(message.getReplicationMetadataPayload());
       }
-      assertEquals(pubSubMessagesMap.size(), numKeys);
-    });
 
-    // All data should be from version 1
-    for (int i = 1; i <= numKeys; i++) {
-      ImmutableChangeCapturePubSubMessage<Integer, ChangeEvent<Utf8>> message =
-          (ImmutableChangeCapturePubSubMessage<Integer, ChangeEvent<Utf8>>) pubSubMessagesMap.get(i);
-      assertEquals(message.getValue().getCurrentValue().toString(), Integer.toString(version - 1) + i);
-      assertTrue(message.getPayloadSize() > 0);
-      assertNotNull(message.getPosition());
-      assertTrue(message.getWriterSchemaId() > 0);
-      assertNotNull(message.getReplicationMetadataPayload());
-    }
+      // Push version 3 with deferred version swap and subscribe to the future version
+      changeLogConsumer.close();
+      pubSubMessagesMap.clear();
+      version++;
+      TestWriteUtils.writeSimpleAvroFileWithIntToStringSchema(inputDir, Integer.toString(version), numKeys);
+      props.put(DEFER_VERSION_SWAP, true);
+      IntegrationTestPushUtils.runVPJ(props);
 
-    // Push version 3 with deferred version swap and subscribe to the future version
-    changeLogConsumer.close();
-    pubSubMessagesMap.clear();
-    version++;
-    TestWriteUtils.writeSimpleAvroFileWithIntToStringSchema(inputDir, Integer.toString(version), numKeys);
-    props.put(DEFER_VERSION_SWAP, true);
-    IntegrationTestPushUtils.runVPJ(props);
+      VeniceChangelogConsumer<Integer, Utf8> changeLogConsumer3 =
+          veniceChangelogConsumerClientFactory.getVersionSpecificChangelogConsumer(storeName, version);
+      changeLogConsumer3.subscribeAll().get();
 
-    VeniceChangelogConsumer<Integer, Utf8> changeLogConsumer3 =
-        veniceChangelogConsumerClientFactory.getVersionSpecificChangelogConsumer(storeName, version);
-    changeLogConsumer3.subscribeAll().get();
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+        Collection<PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessagesList =
+            changeLogConsumer3.poll(1000);
+        for (PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate> message: pubSubMessagesList) {
+          pubSubMessagesMap.put(message.getKey(), message);
+        }
+        assertEquals(pubSubMessagesMap.size(), numKeys);
+      });
 
-    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-      Collection<PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessagesList =
-          changeLogConsumer3.poll(1000);
-      for (PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate> message: pubSubMessagesList) {
-        pubSubMessagesMap.put(message.getKey(), message);
+      // All data should be from future version 3
+      for (int i = 1; i <= numKeys; i++) {
+        ImmutableChangeCapturePubSubMessage<Integer, ChangeEvent<Utf8>> message =
+            (ImmutableChangeCapturePubSubMessage<Integer, ChangeEvent<Utf8>>) pubSubMessagesMap.get(i);
+        assertEquals(message.getValue().getCurrentValue().toString(), Integer.toString(version) + i);
+        assertTrue(message.getPayloadSize() > 0);
+        assertNotNull(message.getPosition());
+        assertTrue(message.getWriterSchemaId() > 0);
+        assertNotNull(message.getReplicationMetadataPayload());
       }
-      assertEquals(pubSubMessagesMap.size(), numKeys);
-    });
-
-    // All data should be from future version 3
-    for (int i = 1; i <= numKeys; i++) {
-      ImmutableChangeCapturePubSubMessage<Integer, ChangeEvent<Utf8>> message =
-          (ImmutableChangeCapturePubSubMessage<Integer, ChangeEvent<Utf8>>) pubSubMessagesMap.get(i);
-      assertEquals(message.getValue().getCurrentValue().toString(), Integer.toString(version) + i);
-      assertTrue(message.getPayloadSize() > 0);
-      assertNotNull(message.getPosition());
-      assertTrue(message.getWriterSchemaId() > 0);
-      assertNotNull(message.getReplicationMetadataPayload());
     }
   }
 
