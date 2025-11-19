@@ -173,7 +173,6 @@ def integrationTestBuckets = [
         "com.linkedin.venice.integration.utils.SystemExitPrevention"
     ],
     "7": [
-        "com.linkedin.venice.endToEnd.PushJobDetailsTest",
         "com.linkedin.venice.endToEnd.DaVinciClientIsolatedAndHybridStoreTest",
         "com.linkedin.venice.consumer.TestChangelogConsumerWithParallelProcessing",
         "com.linkedin.venice.kafka.KafkaConsumptionTest"
@@ -188,7 +187,8 @@ def integrationTestBuckets = [
         "com.linkedin.venice.endToEnd.TestStoreMigration",
         "com.linkedin.venice.controller.TestVeniceHelixAdminWithIsolatedEnvironment",
         "com.linkedin.venice.helix.TestHelixExternalViewRepository",
-        "com.linkedin.venice.fastclient.BatchGetAvroStoreClientTest"
+        "com.linkedin.venice.fastclient.BatchGetAvroStoreClientTest",
+        "com.linkedin.venice.endToEnd.PushJobDetailsTest"
     ],
     "10": [
         "com.linkedin.venice.endToEnd.TestHybridQuota",

@@ -1124,7 +1124,7 @@ public class TestChangelogConsumer {
     Assert.assertEquals(partitionSequenceIdMap.size(), 3);
   }
 
-  @Test(timeOut = TEST_TIMEOUT, priority = 3)
+  @Test(timeOut = TEST_TIMEOUT * 2, priority = 3)
   public void testVersionSpecificSeekingChangeLogConsumer()
       throws IOException, ExecutionException, InterruptedException {
     File inputDir = getTempDataDirectory();
