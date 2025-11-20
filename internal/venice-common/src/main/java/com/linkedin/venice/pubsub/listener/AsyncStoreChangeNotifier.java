@@ -45,7 +45,7 @@ import org.apache.logging.log4j.Logger;
  *
  * <p><b>Usage Example:</b>
  * <pre>{@code
- * StoreChangeNotifier notifier = new StoreChangeNotifier(
+ * AsyncStoreChangeNotifier notifier = new AsyncStoreChangeNotifier(
  *     VeniceComponent.SERVER,
  *     logContext,
  *     4 // thread pool size
@@ -65,8 +65,8 @@ import org.apache.logging.log4j.Logger;
  * <p><b>Thread Safety:</b> All public methods are thread-safe and can be called concurrently.
  */
 @ThreadSafe
-public class StoreChangeNotifier implements StoreDataChangedListener, AutoCloseable {
-  private static final Logger LOGGER = LogManager.getLogger(StoreChangeNotifier.class);
+public class AsyncStoreChangeNotifier implements StoreDataChangedListener, AutoCloseable {
+  private static final Logger LOGGER = LogManager.getLogger(AsyncStoreChangeNotifier.class);
   private static final long SHUTDOWN_TIMEOUT_SECONDS = 30;
 
   private final ExecutorService notificationExecutor;
@@ -76,7 +76,7 @@ public class StoreChangeNotifier implements StoreDataChangedListener, AutoClosea
   private final AtomicBoolean closed;
   private final VeniceComponent veniceComponent;
 
-  public StoreChangeNotifier(VeniceComponent veniceComponent, LogContext logContext, int threadPoolSize) {
+  public AsyncStoreChangeNotifier(VeniceComponent veniceComponent, LogContext logContext, int threadPoolSize) {
     if (veniceComponent == null) {
       throw new IllegalArgumentException("VeniceComponent cannot be null");
     }
@@ -96,7 +96,7 @@ public class StoreChangeNotifier implements StoreDataChangedListener, AutoClosea
     this.closed = new AtomicBoolean(false);
 
     LOGGER.info(
-        "StoreChangeNotifier initialized for {} with {} notification threads",
+        "AsyncStoreChangeNotifier initialized for {} with {} notification threads",
         veniceComponent.getName(),
         threadPoolSize);
   }
@@ -229,7 +229,7 @@ public class StoreChangeNotifier implements StoreDataChangedListener, AutoClosea
   @Override
   public void close() {
     if (closed.compareAndSet(false, true)) {
-      LOGGER.info("Closing StoreChangeNotifier for {}...", veniceComponent.getName());
+      LOGGER.info("Closing AsyncStoreChangeNotifier for {}...", veniceComponent.getName());
 
       notificationExecutor.shutdown();
       try {
@@ -251,7 +251,7 @@ public class StoreChangeNotifier implements StoreDataChangedListener, AutoClosea
       storeVersionSets.clear();
 
       LOGGER.info(
-          "StoreChangeNotifier for {} closed. Cleared {} task registrations",
+          "AsyncStoreChangeNotifier for {} closed. Cleared {} task registrations",
           veniceComponent.getName(),
           taskCount);
     }
