@@ -3008,7 +3008,7 @@ public class ConfigKeys {
       "controller.use.multi.region.real.time.topic.switcher.enabled";
 
   /**
-   * Thread pool size for the StoreChangeNotifier service that handles store metadata change events.
+   * Thread pool size for the AsyncStoreChangeNotifier service that handles store metadata change events.
    * Default is 1.
    */
   public static final String STORE_CHANGE_NOTIFIER_THREAD_POOL_SIZE = "store.change.notifier.thread.pool.size";

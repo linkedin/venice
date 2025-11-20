@@ -2,7 +2,7 @@ package com.linkedin.venice.pubsub;
 
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
-import com.linkedin.venice.pubsub.listener.StoreChangeNotifier;
+import com.linkedin.venice.pubsub.listener.AsyncStoreChangeNotifier;
 import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Objects;
@@ -28,7 +28,7 @@ public class PubSubConsumerAdapterContext {
   private final PubSubMessageDeserializer pubSubMessageDeserializer;
   private final PubSubPositionTypeRegistry pubSubPositionTypeRegistry;
   private final boolean isOffsetCollectionEnabled;
-  private final StoreChangeNotifier storeChangeNotifier;
+  private final AsyncStoreChangeNotifier asyncStoreChangeNotifier;
 
   private PubSubConsumerAdapterContext(Builder builder) {
     this.consumerName = builder.consumerName;
@@ -40,7 +40,7 @@ public class PubSubConsumerAdapterContext {
     this.isOffsetCollectionEnabled = builder.isOffsetCollectionEnabled;
     this.pubSubMessageDeserializer = builder.pubSubMessageDeserializer;
     this.pubSubPositionTypeRegistry = builder.pubSubPositionTypeRegistry;
-    this.storeChangeNotifier = builder.storeChangeNotifier;
+    this.asyncStoreChangeNotifier = builder.asyncStoreChangeNotifier;
   }
 
   public String getConsumerName() {
@@ -79,8 +79,8 @@ public class PubSubConsumerAdapterContext {
     return pubSubPositionTypeRegistry;
   }
 
-  public StoreChangeNotifier getStoreChangeNotifier() {
-    return storeChangeNotifier;
+  public AsyncStoreChangeNotifier getStoreChangeNotifier() {
+    return asyncStoreChangeNotifier;
   }
 
   public static class Builder {
@@ -93,7 +93,7 @@ public class PubSubConsumerAdapterContext {
     private PubSubPositionTypeRegistry pubSubPositionTypeRegistry;
     private MetricsRepository metricsRepository;
     private boolean isOffsetCollectionEnabled;
-    private StoreChangeNotifier storeChangeNotifier;
+    private AsyncStoreChangeNotifier asyncStoreChangeNotifier;
 
     public Builder setConsumerName(String consumerName) {
       this.consumerName = consumerName;
@@ -140,8 +140,8 @@ public class PubSubConsumerAdapterContext {
       return this;
     }
 
-    public Builder setStoreChangeNotifier(StoreChangeNotifier storeChangeNotifier) {
-      this.storeChangeNotifier = storeChangeNotifier;
+    public Builder setStoreChangeNotifier(AsyncStoreChangeNotifier asyncStoreChangeNotifier) {
+      this.asyncStoreChangeNotifier = asyncStoreChangeNotifier;
       return this;
     }
 

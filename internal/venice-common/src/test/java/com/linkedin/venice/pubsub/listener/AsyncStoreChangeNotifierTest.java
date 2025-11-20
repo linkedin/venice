@@ -22,12 +22,12 @@ import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 
-public class StoreChangeNotifierTest {
-  private StoreChangeNotifier notifier;
+public class AsyncStoreChangeNotifierTest {
+  private AsyncStoreChangeNotifier notifier;
 
   @BeforeMethod
   public void setUp() {
-    notifier = new StoreChangeNotifier(VeniceComponent.SERVER, LogContext.EMPTY, 2);
+    notifier = new AsyncStoreChangeNotifier(VeniceComponent.SERVER, LogContext.EMPTY, 2);
   }
 
   @AfterMethod
@@ -317,16 +317,16 @@ public class StoreChangeNotifierTest {
   public void testConstructorWithInvalidThreadPoolSize() {
     expectThrows(
         IllegalArgumentException.class,
-        () -> new StoreChangeNotifier(VeniceComponent.SERVER, LogContext.EMPTY, 0));
+        () -> new AsyncStoreChangeNotifier(VeniceComponent.SERVER, LogContext.EMPTY, 0));
   }
 
   @Test
   public void testConstructorWithNullLogContext() {
-    expectThrows(IllegalArgumentException.class, () -> new StoreChangeNotifier(VeniceComponent.SERVER, null, 2));
+    expectThrows(IllegalArgumentException.class, () -> new AsyncStoreChangeNotifier(VeniceComponent.SERVER, null, 2));
   }
 
   @Test
   public void testConstructorWithNullVeniceComponent() {
-    expectThrows(IllegalArgumentException.class, () -> new StoreChangeNotifier(null, LogContext.EMPTY, 2));
+    expectThrows(IllegalArgumentException.class, () -> new AsyncStoreChangeNotifier(null, LogContext.EMPTY, 2));
   }
 }

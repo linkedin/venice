@@ -1,7 +1,7 @@
 package com.linkedin.venice.pubsub;
 
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
-import com.linkedin.venice.pubsub.listener.StoreChangeNotifier;
+import com.linkedin.venice.pubsub.listener.AsyncStoreChangeNotifier;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.pubsub.manager.TopicManagerRepository;
 
@@ -16,7 +16,7 @@ public class PubSubContext {
   private final PubSubPositionTypeRegistry pubSubPositionTypeRegistry;
   private final PubSubPositionDeserializer pubSubPositionDeserializer;
   private final PubSubTopicRepository pubSubTopicRepository;
-  private final StoreChangeNotifier storeChangeNotifier;
+  private final AsyncStoreChangeNotifier asyncStoreChangeNotifier;
   private final PubSubMessageDeserializer pubSubMessageDeserializer;
   private final PubSubClientsFactory pubSubClientsFactory;
 
@@ -25,7 +25,7 @@ public class PubSubContext {
     this.pubSubPositionTypeRegistry = builder.pubSubPositionTypeRegistry;
     this.pubSubPositionDeserializer = builder.pubSubPositionDeserializer;
     this.pubSubTopicRepository = builder.pubSubTopicRepository;
-    this.storeChangeNotifier = builder.storeChangeNotifier;
+    this.asyncStoreChangeNotifier = builder.asyncStoreChangeNotifier;
     this.pubSubMessageDeserializer = builder.pubSubMessageDeserializer;
     this.pubSubClientsFactory = builder.pubSubClientsFactory;
   }
@@ -50,8 +50,8 @@ public class PubSubContext {
     return pubSubTopicRepository;
   }
 
-  public StoreChangeNotifier getStoreChangeNotifier() {
-    return storeChangeNotifier;
+  public AsyncStoreChangeNotifier getStoreChangeNotifier() {
+    return asyncStoreChangeNotifier;
   }
 
   public PubSubMessageDeserializer getPubSubMessageDeserializer() {
@@ -68,7 +68,7 @@ public class PubSubContext {
     private PubSubPositionTypeRegistry pubSubPositionTypeRegistry;
     private PubSubPositionDeserializer pubSubPositionDeserializer;
     private PubSubTopicRepository pubSubTopicRepository;
-    private StoreChangeNotifier storeChangeNotifier;
+    private AsyncStoreChangeNotifier asyncStoreChangeNotifier;
     private PubSubMessageDeserializer pubSubMessageDeserializer;
     private PubSubClientsFactory pubSubClientsFactory;
 
@@ -92,8 +92,8 @@ public class PubSubContext {
       return this;
     }
 
-    public Builder setStoreChangeNotifier(StoreChangeNotifier storeChangeNotifier) {
-      this.storeChangeNotifier = storeChangeNotifier;
+    public Builder setStoreChangeNotifier(AsyncStoreChangeNotifier asyncStoreChangeNotifier) {
+      this.asyncStoreChangeNotifier = asyncStoreChangeNotifier;
       return this;
     }
 

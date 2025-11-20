@@ -70,7 +70,7 @@ import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import com.linkedin.venice.pubsub.listener.StoreChangeNotifier;
+import com.linkedin.venice.pubsub.listener.AsyncStoreChangeNotifier;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.pubsub.manager.TopicManagerContext;
 import com.linkedin.venice.pubsub.manager.TopicManagerRepository;
@@ -205,7 +205,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
   private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
   private final PubSubContext pubSubContext;
-  private final StoreChangeNotifier storeChangeNotifier;
+  private final AsyncStoreChangeNotifier asyncStoreChangeNotifier;
   private final KafkaValueSerializer kafkaValueSerializer;
   private final IngestionThrottler ingestionThrottler;
   private final ExecutorService aaWCWorkLoadProcessingThreadPool;
@@ -308,11 +308,11 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
     VeniceComponent component =
         serverConfig.isDaVinciClient() ? VeniceComponent.DAVINCI_CLIENT : VeniceComponent.SERVER;
-    this.storeChangeNotifier = new StoreChangeNotifier(
+    this.asyncStoreChangeNotifier = new AsyncStoreChangeNotifier(
         component,
         serverConfig.getLogContext(),
         serverConfig.getStoreChangeNotifierThreadPoolSize());
-    this.metadataRepo.registerStoreDataChangedListener(storeChangeNotifier);
+    this.metadataRepo.registerStoreDataChangedListener(asyncStoreChangeNotifier);
 
     /**
      * Register a callback function to handle the case when a new KME value schema is encountered when the server
@@ -366,7 +366,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
             .setTopicMetadataFetcherThreadPoolSize(serverConfig.getTopicManagerMetadataFetcherThreadPoolSize())
             .setTopicMetadataFetcherConsumerPoolSize(serverConfig.getTopicManagerMetadataFetcherConsumerPoolSize())
             .setVeniceComponent(component)
-            .setStoreChangeNotifier(storeChangeNotifier)
+            .setStoreChangeNotifier(asyncStoreChangeNotifier)
             .build();
     this.topicManagerRepository =
         new TopicManagerRepository(topicManagerContext, serverConfig.getKafkaBootstrapServers());
@@ -374,7 +374,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         .setPubSubPositionTypeRegistry(serverConfig.getPubSubPositionTypeRegistry())
         .setPubSubPositionDeserializer(new PubSubPositionDeserializer(serverConfig.getPubSubPositionTypeRegistry()))
         .setPubSubTopicRepository(pubSubTopicRepository)
-        .setStoreChangeNotifier(storeChangeNotifier)
+        .setStoreChangeNotifier(asyncStoreChangeNotifier)
         .setPubSubMessageDeserializer(pubSubDeserializer)
         .setPubSubClientsFactory(pubSubClientsFactory)
         .build();
@@ -685,7 +685,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
    */
   @Override
   public void stopInner() {
-    Utils.closeQuietlyWithErrorLogged(storeChangeNotifier);
+    Utils.closeQuietlyWithErrorLogged(asyncStoreChangeNotifier);
     Utils.closeQuietlyWithErrorLogged(ingestionThrottler);
     Utils.closeQuietlyWithErrorLogged(participantStoreConsumptionTask);
     shutdownExecutorService(participantStoreConsumerExecutorService, "participantStoreConsumerExecutorService", true);
