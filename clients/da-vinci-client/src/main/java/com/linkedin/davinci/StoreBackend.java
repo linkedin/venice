@@ -1,5 +1,6 @@
 package com.linkedin.davinci;
 
+import com.linkedin.davinci.client.DaVinciSeekCheckpointInfo;
 import com.linkedin.davinci.config.StoreBackendConfig;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -14,7 +15,6 @@ import com.linkedin.venice.utils.ComplementSet;
 import com.linkedin.venice.utils.ConcurrentRef;
 import com.linkedin.venice.utils.ReferenceCounted;
 import com.linkedin.venice.utils.RegionUtils;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -137,44 +137,38 @@ public class StoreBackend {
   }
 
   public CompletableFuture<Void> subscribe(ComplementSet<Integer> partitions) {
-    return subscribe(partitions, Optional.empty(), Collections.emptyMap(), null, Collections.emptyMap(), false);
+    return subscribe(partitions, Optional.empty(), null);
   }
 
-  public CompletableFuture<Void> seekToTimestamps(Long allPartitionTimestamp, Optional<Version> storeVersion) {
-    return subscribe(
-        ComplementSet.universalSet(),
-        storeVersion,
-        new HashMap<>(),
-        allPartitionTimestamp,
-        Collections.emptyMap(),
-        false);
-  }
+  // public CompletableFuture<Void> seekToTimestamps(Long allPartitionTimestamp, Optional<Version> storeVersion) {
+  // return subscribe(
+  // ComplementSet.universalSet(),
+  // storeVersion, null);
+  // }
 
-  public CompletableFuture<Void> seekToTail(Optional<Version> storeVersion) {
-    return subscribe(ComplementSet.universalSet(), storeVersion, Collections.emptyMap(), null, new HashMap<>(), true);
-  }
-
-  public CompletableFuture<Void> seekToCheckPoints(
-      Map<Integer, PubSubPosition> checkpoints,
+  public CompletableFuture<Void> seekToCheckpoint(
+      DaVinciSeekCheckpointInfo checkpointInfo,
       Optional<Version> storeVersion) {
-    return subscribe(
-        ComplementSet.wrap(checkpoints.keySet()),
-        storeVersion,
-        Collections.emptyMap(),
-        null,
-        checkpoints,
-        false);
+    return subscribe(checkpointInfo.getPartitions(), storeVersion, checkpointInfo);
   }
 
-  public CompletableFuture<Void> seekToTimestamps(Map<Integer, Long> timestamps, Optional<Version> storeVersion) {
-    return subscribe(
-        ComplementSet.wrap(timestamps.keySet()),
-        storeVersion,
-        timestamps,
-        null,
-        Collections.emptyMap(),
-        false);
-  }
+  // public CompletableFuture<Void> seekToTail(Optional<Version> storeVersion) {
+  // return subscribe(ComplementSet.universalSet(), storeVersion, null);
+  // }
+
+  // public CompletableFuture<Void> seekToCheckPoints(
+  // Map<Integer, PubSubPosition> checkpoints,
+  // Optional<Version> storeVersion) {
+  // return subscribe(
+  // ComplementSet.wrap(checkpoints.keySet()),
+  // storeVersion, null);
+  // }
+
+  // public CompletableFuture<Void> seekToTimestamps(Map<Integer, Long> timestamps, Optional<Version> storeVersion) {
+  // return subscribe(
+  // ComplementSet.wrap(timestamps.keySet()),
+  // storeVersion, null);
+  // }
 
   private Version getCurrentVersion() {
     return backend.getVeniceCurrentVersion(storeName);
@@ -187,10 +181,7 @@ public class StoreBackend {
   public synchronized CompletableFuture<Void> subscribe(
       ComplementSet<Integer> partitions,
       Optional<Version> bootstrapVersion,
-      Map<Integer, Long> timestamps,
-      Long allPartitionsTimestamp,
-      Map<Integer, PubSubPosition> positionMap,
-      boolean seekToTails) {
+      DaVinciSeekCheckpointInfo checkpointInfo) {
     if (daVinciCurrentVersion == null) {
       setDaVinciCurrentVersion(new VersionBackend(backend, bootstrapVersion.orElseGet(() -> {
         Version version = getCurrentVersion();
@@ -227,23 +218,26 @@ public class StoreBackend {
       if (daVinciFutureVersion == null) {
         trySubscribeDaVinciFutureVersion();
       } else {
-        daVinciFutureVersion.subscribe(partitions, timestamps, positionMap)
-            .whenComplete((v, e) -> trySwapDaVinciCurrentVersion(e));
+        daVinciFutureVersion.subscribe(partitions, null).whenComplete((v, e) -> trySwapDaVinciCurrentVersion(e));
       }
     }
 
     VersionBackend savedVersion = daVinciCurrentVersion;
     List<Integer> partitionList = daVinciCurrentVersion.getPartitions(partitions);
-    if (allPartitionsTimestamp != null) {
+    if (checkpointInfo.getAllPartitionsTimestamp() != null) {
+      Map<Integer, Long> timestamps = new HashMap<>();
       for (int partition: partitionList) {
-        timestamps.put(partition, allPartitionsTimestamp);
+        timestamps.put(partition, checkpointInfo.getAllPartitionsTimestamp());
       }
-    } else if (seekToTails) {
+      checkpointInfo.setTimestampsMap(timestamps);
+    } else if (checkpointInfo.isSeekToTail()) {
+      Map<Integer, PubSubPosition> positionMap = new HashMap<>();
       for (int partition: partitionList) {
         positionMap.put(partition, PubSubSymbolicPosition.LATEST);
       }
+      checkpointInfo.setPositionMap(positionMap);
     }
-    return daVinciCurrentVersion.subscribe(partitions, timestamps, positionMap).exceptionally(e -> {
+    return daVinciCurrentVersion.subscribe(partitions, checkpointInfo).exceptionally(e -> {
       synchronized (this) {
         addFaultyVersion(savedVersion, e);
         // Don't propagate failure to subscribe() caller, if future version has become current and is ready to
@@ -330,8 +324,7 @@ public class StoreBackend {
       LOGGER.info("Subscribing to future version {}", targetVersion.kafkaTopicName());
       setDaVinciFutureVersion(new VersionBackend(backend, targetVersion, stats));
       // For future version subscription, we don't need to pass any timestamps or position map
-      daVinciFutureVersion.subscribe(subscription, Collections.emptyMap(), Collections.emptyMap())
-          .whenComplete((v, e) -> trySwapDaVinciCurrentVersion(e));
+      daVinciFutureVersion.subscribe(subscription, null).whenComplete((v, e) -> trySwapDaVinciCurrentVersion(e));
     } else {
       LOGGER.info(
           "Skipping subscribe to future version: {} in region: {} because the target version status is: {} and the target regions are: {}",

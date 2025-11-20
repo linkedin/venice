@@ -419,7 +419,7 @@ public class AvroGenericDaVinciClientTest {
 
     // Mock the seekToCheckpoint method
     doReturn(CompletableFuture.completedFuture(null)).when(mockStoreBackend)
-        .seekToCheckPoints(anyMap(), eq(Optional.empty()));
+        .seekToCheckpoint(eq(new DaVinciSeekCheckpointInfo(null, null, null, false)), eq(Optional.empty()));
     doReturn(true).when(dvcClient).isReady();
     when(dvcClient.getStoreBackend()).thenReturn(mockStoreBackend);
 
@@ -444,12 +444,13 @@ public class AvroGenericDaVinciClientTest {
     Field backendField = AvroGenericDaVinciClient.class.getDeclaredField("daVinciBackend");
     backendField.setAccessible(true);
     // Mock the seek method
-    doReturn(CompletableFuture.completedFuture(null)).when(mockStoreBackend)
-        .seekToTimestamps(anyMap(), eq(Optional.empty()));
     doReturn(true).when(dvcClient).isReady();
     when(dvcClient.getStoreBackend()).thenReturn(mockStoreBackend);
     Map<Integer, Long> timestamps = new HashMap<>();
     timestamps.put(1, 1000L);
+    doReturn(CompletableFuture.completedFuture(null)).when(mockStoreBackend)
+        .seekToCheckpoint(eq(new DaVinciSeekCheckpointInfo(null, timestamps, null, false)), eq(Optional.empty()));
+
     // Test
     CompletableFuture<Void> future = dvcClient.seekToTimestamps(timestamps);
     future.get(); // Wait for completion
@@ -471,7 +472,8 @@ public class AvroGenericDaVinciClientTest {
     Field backendField = AvroGenericDaVinciClient.class.getDeclaredField("daVinciBackend");
     backendField.setAccessible(true);
     // Mock the seek method
-    doReturn(CompletableFuture.completedFuture(null)).when(mockStoreBackend).seekToTail(eq(Optional.empty()));
+    doReturn(CompletableFuture.completedFuture(null)).when(mockStoreBackend)
+        .seekToCheckpoint(eq(new DaVinciSeekCheckpointInfo(null, null, null, true)), eq(Optional.empty()));
     doReturn(true).when(dvcClient).isReady();
     when(dvcClient.getStoreBackend()).thenReturn(mockStoreBackend);
     // Test

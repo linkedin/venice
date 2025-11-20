@@ -229,13 +229,15 @@ public abstract class KafkaStoreIngestionServiceTest {
     PubSubPosition expectedPosition = mock(PubSubPosition.class);
     VeniceStoreVersionConfig storeConfig = mock(VeniceStoreVersionConfig.class);
     when(storeConfig.getStoreVersionName()).thenReturn(storeName + "_v1");
+    Map<Integer, PubSubPosition> positionMap = new HashMap<>();
+    positionMap.put(partitionId, expectedPosition);
 
     // Test with non-null pubSubPosition
     Optional<PubSubPosition> result = kafkaStoreIngestionService.getPubSubPosition(
         storeConfig,
         partitionId,
         null, // timestamp
-        expectedPosition);
+        positionMap);
 
     // Verify
     assertTrue(result.isPresent());
