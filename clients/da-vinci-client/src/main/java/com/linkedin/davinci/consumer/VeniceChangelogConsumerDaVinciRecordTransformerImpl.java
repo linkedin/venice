@@ -81,7 +81,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   private final ExecutorService completableFutureThreadPool =
       Executors.newFixedThreadPool(1, new DaemonThreadFactory("VeniceChangelogConsumerDaVinciRecordTransformerImpl"));
 
-  private final Set<Integer> subscribedPartitions = ConcurrentHashMap.newKeySet();
+  private final Set<Integer> subscribedPartitions = VeniceConcurrentHashMap.newKeySet();
   private final ReentrantLock bufferLock = new ReentrantLock();
   private final Condition bufferIsFullCondition = bufferLock.newCondition();
   private BackgroundReporterThread backgroundReporterThread;
@@ -549,6 +549,9 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
          * To avoid this, we should only serve the current version if no other version is currently being served.
          * Once the next current version has consumed the version swap message, then it has caught up enough to be
          * ready to serve.
+         *
+         * This call also occur when it is running in version specific mode, and no version swap will happen.
+         * In this case, just serve the currently subscribed version.
          */
         partitionToVersionToServe.computeIfAbsent(partitionId, v -> getStoreVersion());
       }

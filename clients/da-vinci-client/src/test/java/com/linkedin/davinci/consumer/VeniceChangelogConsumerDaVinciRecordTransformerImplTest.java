@@ -330,7 +330,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
   public void testCompletableFutureFromStart() {
     CompletableFuture startCompletableFuture = statefulVeniceChangelogConsumer.start();
     onStartVersionIngestionHelper(true, true);
-    onStartVersionIngestionHelper(true, false);
+    onStartVersionIngestionHelper(false, false);
 
     // CompletableFuture should not be finished until a record has been pushed to the buffer by the current version
     assertFalse(startCompletableFuture.isDone());
