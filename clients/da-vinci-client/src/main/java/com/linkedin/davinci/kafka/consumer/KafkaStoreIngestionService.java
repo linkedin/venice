@@ -68,7 +68,6 @@ import com.linkedin.venice.pubsub.PubSubUtil;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
-import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.manager.TopicManager;
@@ -708,8 +707,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       VeniceStoreVersionConfig veniceStore,
       int partitionId,
       Long timestamp,
-      PubSubPosition pubSubPosition,
-      boolean seekToTail) {
+      PubSubPosition pubSubPosition) {
     if (pubSubPosition != null) {
       return Optional.of(pubSubPosition);
     }
@@ -720,8 +718,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     Optional<PubSubPosition> position = Optional.empty();
     if (timestamp != null) {
       position = Optional.of(topicManager.getPositionByTime(partition, timestamp));
-    } else if (seekToTail) {
-      position = Optional.of(PubSubSymbolicPosition.LATEST);
     }
     return position;
   }

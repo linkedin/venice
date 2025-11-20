@@ -7,6 +7,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
+import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.serialization.AvroStoreDeserializerCache;
 import com.linkedin.venice.serialization.StoreDeserializerCache;
 import com.linkedin.venice.utils.ComplementSet;
@@ -150,13 +151,7 @@ public class StoreBackend {
   }
 
   public CompletableFuture<Void> seekToTail(Optional<Version> storeVersion) {
-    return subscribe(
-        ComplementSet.universalSet(),
-        storeVersion,
-        Collections.emptyMap(),
-        null,
-        Collections.emptyMap(),
-        true);
+    return subscribe(ComplementSet.universalSet(), storeVersion, Collections.emptyMap(), null, new HashMap<>(), true);
   }
 
   public CompletableFuture<Void> seekToCheckPoints(
@@ -232,7 +227,7 @@ public class StoreBackend {
       if (daVinciFutureVersion == null) {
         trySubscribeDaVinciFutureVersion();
       } else {
-        daVinciFutureVersion.subscribe(partitions, timestamps, positionMap, seekToTails)
+        daVinciFutureVersion.subscribe(partitions, timestamps, positionMap)
             .whenComplete((v, e) -> trySwapDaVinciCurrentVersion(e));
       }
     }
@@ -243,8 +238,12 @@ public class StoreBackend {
       for (int partition: partitionList) {
         timestamps.put(partition, allPartitionsTimestamp);
       }
+    } else if (seekToTails) {
+      for (int partition: partitionList) {
+        positionMap.put(partition, PubSubSymbolicPosition.LATEST);
+      }
     }
-    return daVinciCurrentVersion.subscribe(partitions, timestamps, positionMap, seekToTails).exceptionally(e -> {
+    return daVinciCurrentVersion.subscribe(partitions, timestamps, positionMap).exceptionally(e -> {
       synchronized (this) {
         addFaultyVersion(savedVersion, e);
         // Don't propagate failure to subscribe() caller, if future version has become current and is ready to
@@ -331,7 +330,7 @@ public class StoreBackend {
       LOGGER.info("Subscribing to future version {}", targetVersion.kafkaTopicName());
       setDaVinciFutureVersion(new VersionBackend(backend, targetVersion, stats));
       // For future version subscription, we don't need to pass any timestamps or position map
-      daVinciFutureVersion.subscribe(subscription, Collections.emptyMap(), Collections.emptyMap(), false)
+      daVinciFutureVersion.subscribe(subscription, Collections.emptyMap(), Collections.emptyMap())
           .whenComplete((v, e) -> trySwapDaVinciCurrentVersion(e));
     } else {
       LOGGER.info(
