@@ -2752,6 +2752,8 @@ public class ConfigKeys {
       "server.lag.based.replica.auto.resubscribe.threshold.in.seconds";
   public static final String SERVER_LAG_BASED_REPLICA_AUTO_RESUBSCRIBE_INTERVAL_IN_SECONDS =
       "server.lag.based.replica.auto.resubscribe.interval.in.seconds";
+  public static final String SERVER_LAG_BASED_REPLICA_AUTO_RESUBSCRIBE_MAX_REPLICA_COUNT =
+      "server.lag.based.replica.auto.resubscribe.max.replica.count";
 
   /**
    * Whether to enable producer throughput optimization for realtime workload or not.
