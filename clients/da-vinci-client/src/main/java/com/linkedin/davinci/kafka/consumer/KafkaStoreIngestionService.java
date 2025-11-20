@@ -309,9 +309,9 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     VeniceComponent component =
         serverConfig.isDaVinciClient() ? VeniceComponent.DAVINCI_CLIENT : VeniceComponent.SERVER;
     this.storeChangeNotifier = new StoreChangeNotifier(
-        serverConfig.getStoreChangeNotifierThreadPoolSize(),
+        component,
         serverConfig.getLogContext(),
-        component);
+        serverConfig.getStoreChangeNotifierThreadPoolSize());
     this.metadataRepo.registerStoreDataChangedListener(storeChangeNotifier);
 
     /**

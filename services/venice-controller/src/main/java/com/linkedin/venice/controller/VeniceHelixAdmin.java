@@ -590,9 +590,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     this.zkClient.subscribeStateChanges(new ZkClientStatusStats(metricsRepository, "controller-zk-client"));
     this.adapterSerializer = new HelixAdapterSerializer();
     this.storeChangeNotifier = new StoreChangeNotifier(
-        multiClusterConfigs.getStoreChangeNotifierThreadPoolSize(),
+        VeniceComponent.CONTROLLER,
         logContext,
-        VeniceComponent.CONTROLLER);
+        multiClusterConfigs.getStoreChangeNotifierThreadPoolSize());
     TopicManagerContext topicManagerContext =
         new TopicManagerContext.Builder().setPubSubTopicRepository(pubSubTopicRepository)
             .setPubSubPositionTypeRegistry(commonConfig.getPubSubPositionTypeRegistry())
