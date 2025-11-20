@@ -550,7 +550,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
          * Once the next current version has consumed the version swap message, then it has caught up enough to be
          * ready to serve.
          *
-         * This call also occur when it is running in version specific mode, and no version swap will happen.
+         * This can also occur when it is running in version specific mode, and no version swap will happen.
          * In this case, just serve the currently subscribed version.
          */
         partitionToVersionToServe.computeIfAbsent(partitionId, v -> getStoreVersion());
