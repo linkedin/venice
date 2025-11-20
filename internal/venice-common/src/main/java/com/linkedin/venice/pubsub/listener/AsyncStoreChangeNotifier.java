@@ -10,7 +10,6 @@ import com.linkedin.venice.pubsub.listener.StoreChangeTasks.VersionAddedTask;
 import com.linkedin.venice.pubsub.listener.StoreChangeTasks.VersionDeletedTask;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.LogContext;
-import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
 import it.unimi.dsi.fastutil.ints.IntSet;
 import it.unimi.dsi.fastutil.objects.Object2ObjectMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectMaps;
@@ -144,7 +143,7 @@ public class AsyncStoreChangeNotifier implements StoreDataChangedListener, AutoC
 
     StoreChangeTasks removed = taskRegistry.remove(taskId);
     if (removed != null) {
-      LOGGER.info("Unregistered tasks with ID: {}", taskId);
+      LOGGER.debug("Unregistered tasks with ID: {}", taskId);
       return true;
     }
     return false;
@@ -160,15 +159,15 @@ public class AsyncStoreChangeNotifier implements StoreDataChangedListener, AutoC
   @Override
   public void handleStoreCreated(Store store) {
     if (store == null) {
-      LOGGER.warn("Received null store in handleStoreCreated");
+      LOGGER.debug("Received null store in handleStoreCreated");
       return;
     }
 
     String storeName = store.getName();
-    LOGGER.info("Store created: {}", storeName);
+    LOGGER.debug("Store created: {}", storeName);
 
     // Initialize tracking state for the new store
-    storeVersionSets.put(storeName, new IntOpenHashSet(store.getVersionNumbers()));
+    storeVersionSets.put(storeName, store.getVersionNumbers());
 
     notifyTasksForStoreCreated(store);
   }
@@ -176,12 +175,12 @@ public class AsyncStoreChangeNotifier implements StoreDataChangedListener, AutoC
   @Override
   public void handleStoreDeleted(Store store) {
     if (store == null) {
-      LOGGER.warn("Received null store in handleStoreDeleted");
+      LOGGER.debug("Received null store in handleStoreDeleted");
       return;
     }
 
     String storeName = store.getName();
-    LOGGER.info("Store deleted: {}", storeName);
+    LOGGER.debug("Store deleted: {}", storeName);
 
     // Notify tasks BEFORE cleaning up state (tasks may need current state)
     notifyTasksForStoreDeleted(store);
@@ -192,7 +191,7 @@ public class AsyncStoreChangeNotifier implements StoreDataChangedListener, AutoC
   @Override
   public void handleStoreChanged(Store store) {
     if (store == null) {
-      LOGGER.warn("Received null store in handleStoreChanged");
+      LOGGER.debug("Received null store in handleStoreChanged");
       return;
     }
 
@@ -200,25 +199,23 @@ public class AsyncStoreChangeNotifier implements StoreDataChangedListener, AutoC
 
     // Detect what changed by comparing with previous state
     IntSet previousVersions = storeVersionSets.get(storeName);
-    IntSet currentVersions = new IntOpenHashSet(store.getVersionNumbers());
+    IntSet currentVersions = store.getVersionNumbers();
 
     if (previousVersions != null) {
-      // Check for version deletions
-      IntSet deletedVersions = new IntOpenHashSet(previousVersions);
-      deletedVersions.removeAll(currentVersions);
-
-      for (int deletedVersion: deletedVersions) {
-        LOGGER.info("Store {} version deleted: {}", storeName, deletedVersion);
-        notifyTasksForVersionDeleted(store, deletedVersion);
+      // Check for version deletions - iterate through previous and check if missing in current
+      for (int version: previousVersions) {
+        if (!currentVersions.contains(version)) {
+          LOGGER.debug("Store {} version deleted: {}", storeName, version);
+          notifyTasksForVersionDeleted(store, version);
+        }
       }
 
-      // Check for new versions added
-      IntSet addedVersions = new IntOpenHashSet(currentVersions);
-      addedVersions.removeAll(previousVersions);
-
-      for (int addedVersion: addedVersions) {
-        LOGGER.info("Store {} version added: {}", storeName, addedVersion);
-        notifyTasksForVersionAdded(store, addedVersion);
+      // Check for new versions added - iterate through current and check if missing in previous
+      for (int version: currentVersions) {
+        if (!previousVersions.contains(version)) {
+          LOGGER.debug("Store {} version added: {}", storeName, version);
+          notifyTasksForVersionAdded(store, version);
+        }
       }
     }
 
@@ -270,7 +267,7 @@ public class AsyncStoreChangeNotifier implements StoreDataChangedListener, AutoC
     }
 
     if (taskCount > 0) {
-      LOGGER.info("Submitted {} tasks for STORE_CREATED event on store: {}", taskCount, store.getName());
+      LOGGER.debug("Submitted {} tasks for STORE_CREATED event on store: {}", taskCount, store.getName());
     }
   }
 
@@ -287,7 +284,7 @@ public class AsyncStoreChangeNotifier implements StoreDataChangedListener, AutoC
     }
 
     if (taskCount > 0) {
-      LOGGER.info("Submitted {} tasks for STORE_DELETED event on store: {}", taskCount, store.getName());
+      LOGGER.debug("Submitted {} tasks for STORE_DELETED event on store: {}", taskCount, store.getName());
     }
   }
 
@@ -308,7 +305,7 @@ public class AsyncStoreChangeNotifier implements StoreDataChangedListener, AutoC
     }
 
     if (taskCount > 0) {
-      LOGGER.info(
+      LOGGER.debug(
           "Submitted {} tasks for VERSION_ADDED event on store: {}, version: {}",
           taskCount,
           store.getName(),
@@ -333,7 +330,7 @@ public class AsyncStoreChangeNotifier implements StoreDataChangedListener, AutoC
     }
 
     if (taskCount > 0) {
-      LOGGER.info(
+      LOGGER.debug(
           "Submitted {} tasks for VERSION_DELETED event on store: {}, version: {}",
           taskCount,
           store.getName(),
@@ -343,7 +340,7 @@ public class AsyncStoreChangeNotifier implements StoreDataChangedListener, AutoC
 
   private void submitTask(String taskId, Runnable taskRunnable, StoreChangeEventType eventType, String context) {
     if (closed.get()) {
-      LOGGER.warn("Attempted to submit task after notifier was closed");
+      LOGGER.debug("Attempted to submit task after notifier was closed");
       return;
     }
 
