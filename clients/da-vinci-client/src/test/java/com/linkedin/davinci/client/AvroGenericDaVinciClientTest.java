@@ -480,6 +480,13 @@ public class AvroGenericDaVinciClientTest {
     // Verify
     verify(dvcClient).seekToTail();
     assertTrue(future.isDone() && !future.isCompletedExceptionally());
+
+    future = dvcClient.seekToTail(Collections.singleton(1));
+    future.get(); // Wait for completion
+    // Verify
+    verify(dvcClient).seekToTail(Collections.singleton(1));
+    assertTrue(future.isDone() && !future.isCompletedExceptionally());
+
   }
 
   @Test
