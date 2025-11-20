@@ -306,14 +306,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     KafkaClusterBasedRecordThrottler kafkaClusterBasedRecordThrottler =
         new KafkaClusterBasedRecordThrottler(kafkaUrlToRecordsThrottler);
 
-    VeniceComponent component =
-        serverConfig.isDaVinciClient() ? VeniceComponent.DAVINCI_CLIENT : VeniceComponent.SERVER;
-    this.asyncStoreChangeNotifier = new AsyncStoreChangeNotifier(
-        component,
-        serverConfig.getLogContext(),
-        serverConfig.getStoreChangeNotifierThreadPoolSize());
-    this.metadataRepo.registerStoreDataChangedListener(asyncStoreChangeNotifier);
-
     /**
      * Register a callback function to handle the case when a new KME value schema is encountered when the server
      * consumes messages from Kafka.
@@ -354,6 +346,14 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         kafkaValueSerializer,
         new LandFillObjectPool<>(KafkaMessageEnvelope::new),
         new LandFillObjectPool<>(KafkaMessageEnvelope::new));
+
+    VeniceComponent component =
+        serverConfig.isDaVinciClient() ? VeniceComponent.DAVINCI_CLIENT : VeniceComponent.SERVER;
+    this.asyncStoreChangeNotifier = new AsyncStoreChangeNotifier(
+        component,
+        serverConfig.getLogContext(),
+        serverConfig.getStoreChangeNotifierThreadPoolSize());
+    this.metadataRepo.registerStoreDataChangedListener(asyncStoreChangeNotifier);
 
     TopicManagerContext topicManagerContext =
         new TopicManagerContext.Builder().setPubSubTopicRepository(pubSubTopicRepository)
