@@ -366,17 +366,13 @@ public class VersionBackend {
   synchronized CompletableFuture<Void> subscribe(
       ComplementSet<Integer> partitions,
       Map<Integer, Long> timestamps,
-      Map<Integer, PubSubPosition> positionMap,
-      boolean seekToTail) {
+      Map<Integer, PubSubPosition> positionMap) {
     Instant startTime = Instant.now();
     int validCheckPointCount = 0;
     if (!timestamps.isEmpty()) {
       validCheckPointCount++;
     }
     if (!positionMap.isEmpty()) {
-      validCheckPointCount++;
-    }
-    if (seekToTail) {
       validCheckPointCount++;
     }
     if (validCheckPointCount > 1) {
@@ -423,7 +419,7 @@ public class VersionBackend {
           .updateLagMonitor(version.kafkaTopicName(), partition, HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR);
       // AtomicReference of storage engine will be updated internally.
       Optional<PubSubPosition> pubSubPosition = backend.getIngestionService()
-          .getPubSubPosition(config, partition, timestamps.get(partition), positionMap.get(partition), seekToTail);
+          .getPubSubPosition(config, partition, timestamps.get(partition), positionMap.get(partition));
       backend.getIngestionBackend().startConsumption(config, partition, pubSubPosition);
       tryStartHeartbeat();
     }

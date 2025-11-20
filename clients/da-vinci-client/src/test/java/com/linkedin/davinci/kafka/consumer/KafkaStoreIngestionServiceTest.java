@@ -62,7 +62,6 @@ import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
-import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.schema.SchemaEntry;
@@ -236,36 +235,11 @@ public abstract class KafkaStoreIngestionServiceTest {
         storeConfig,
         partitionId,
         null, // timestamp
-        expectedPosition,
-        false // seekToTail
-    );
+        expectedPosition);
 
     // Verify
     assertTrue(result.isPresent());
     assertEquals(expectedPosition, result.get());
-  }
-
-  @Test
-  public void testGetPubSubPosition_WithSeekToTail() {
-    // Setup
-    String storeName = "test-store";
-    String topicName = storeName + "_v1";
-    int partitionId = 0;
-    VeniceStoreVersionConfig storeConfig = mock(VeniceStoreVersionConfig.class);
-    when(storeConfig.getStoreVersionName()).thenReturn(topicName);
-
-    // Test with seekToTail = true
-    Optional<PubSubPosition> result = kafkaStoreIngestionService.getPubSubPosition(
-        storeConfig,
-        partitionId,
-        null, // timestamp
-        null, // pubSubPosition
-        true // seekToTail
-    );
-
-    // Verify
-    assertTrue(result.isPresent());
-    assertEquals(PubSubSymbolicPosition.LATEST, result.get());
   }
 
   @Test
