@@ -183,7 +183,8 @@ public class StoreBackend {
         return version;
       }), stats));
 
-    } else if (bootstrapVersion.isPresent()) {
+    } else if (bootstrapVersion.isPresent()
+        && !bootstrapVersion.get().kafkaTopicName().equals(daVinciCurrentVersion.getVersion().kafkaTopicName())) {
       throw new VeniceException(
           "Bootstrap version is already selected, storeName=" + storeName + ", currentVersion=" + daVinciCurrentVersion
               + ", desiredVersion=" + bootstrapVersion.get().kafkaTopicName());

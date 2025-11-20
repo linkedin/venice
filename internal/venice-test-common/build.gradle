@@ -146,7 +146,8 @@ def integrationTestConfigs = {
 def integrationTestBuckets = [
     "1": [
         "com.linkedin.venice.endToEnd.PartialUpdateWithHeartbeatReadyToServeCheckTest",
-        "com.linkedin.venice.endToEnd.TestIncrementalPush"
+        "com.linkedin.venice.endToEnd.TestIncrementalPush",
+        "com.linkedin.venice.endToEnd.DaVinciClientIsolatedAndHybridStoreTest"
     ],
     "2": [
         "com.linkedin.venice.endToEnd.PartialUpdateTest",
@@ -168,13 +169,10 @@ def integrationTestBuckets = [
     ],
     "6": [
         "com.linkedin.venice.endToEnd.DaVinciClientP2PBlobTransferTest",
-        "com.linkedin.venice.controller.VeniceParentHelixAdminTest",
         "com.linkedin.venice.controller.TestParentControllerWithMultiDataCenter",
         "com.linkedin.venice.integration.utils.SystemExitPrevention"
     ],
     "7": [
-        "com.linkedin.venice.endToEnd.PushJobDetailsTest",
-        "com.linkedin.venice.endToEnd.DaVinciClientIsolatedAndHybridStoreTest",
         "com.linkedin.venice.consumer.TestChangelogConsumerWithParallelProcessing",
         "com.linkedin.venice.kafka.KafkaConsumptionTest"
     ],
@@ -188,7 +186,8 @@ def integrationTestBuckets = [
         "com.linkedin.venice.endToEnd.TestStoreMigration",
         "com.linkedin.venice.controller.TestVeniceHelixAdminWithIsolatedEnvironment",
         "com.linkedin.venice.helix.TestHelixExternalViewRepository",
-        "com.linkedin.venice.fastclient.BatchGetAvroStoreClientTest"
+        "com.linkedin.venice.fastclient.BatchGetAvroStoreClientTest",
+        "com.linkedin.venice.endToEnd.PushJobDetailsTest"
     ],
     "10": [
         "com.linkedin.venice.endToEnd.TestHybridQuota",
@@ -203,7 +202,8 @@ def integrationTestBuckets = [
         "com.linkedin.venice.controller.server.TestAdminSparkServer",
         "com.linkedin.venice.controller.TestDelayedRebalance",
         "com.linkedin.venice.client.store.TestSslTransportClient",
-        "com.linkedin.venice.helix.TestHelixReadOnlyStoreRepositoryAdapter"
+        "com.linkedin.venice.helix.TestHelixReadOnlyStoreRepositoryAdapter",
+        "com.linkedin.venice.controller.VeniceParentHelixAdminTest"
     ],
     "12": [
         "com.linkedin.venice.endToEnd.DaVinciClientTest",

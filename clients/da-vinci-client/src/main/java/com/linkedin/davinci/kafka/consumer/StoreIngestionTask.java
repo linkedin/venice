@@ -612,15 +612,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       this.schemaIdToSchemaMap = new VeniceConcurrentHashMap<>();
 
       this.recordTransformerStats = internalRecordTransformerConfig.getRecordTransformerStats();
-
-      // onStartVersionIngestion called here instead of run() because this needs to finish running
-      // before bootstrapping starts
-      long startTime = System.nanoTime();
-      recordTransformer.onStartVersionIngestion(isCurrentVersion.getAsBoolean());
-      LOGGER.info(
-          "DaVinciRecordTransformer onStartVersionIngestion took {} ms for store version: {}",
-          LatencyUtils.getElapsedTimeFromNSToMS(startTime),
-          storeVersionName);
     } else {
       this.schemaIdToSchemaMap = null;
       this.recordTransformerConfig = null;
@@ -806,6 +797,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       recordTransformerOnRecoveryThreadPool.submit(() -> {
         try {
           long startTime = System.nanoTime();
+          recordTransformer.onStartVersionIngestion(partitionNumber, isCurrentVersion.getAsBoolean());
+          LOGGER.info(
+              "DaVinciRecordTransformer onStartVersionIngestion took {} ms for store version: {} and partition: {}",
+              LatencyUtils.getElapsedTimeFromNSToMS(startTime),
+              storeVersionName,
+              partitionNumber);
+
+          startTime = System.nanoTime();
           recordTransformer.internalOnRecovery(
               storageEngine,
               partitionNumber,

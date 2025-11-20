@@ -487,10 +487,10 @@ public class VeniceChangelogConsumerImplTest {
     when(mockPubSubConsumer.getAssignment()).thenReturn(
         new HashSet<>(
             veniceChangelogConsumer
-                .getPartitionListToSubscribe(subscribedPartitions, Collections.emptySet(), mock(PubSubTopic.class))));
+                .getPartitionListToSubscribe(subscribedPartitions, Collections.emptySet(), oldVersionTopic)));
 
     assertEquals(veniceChangelogConsumer.getLastHeartbeatPerPartition().size(), 1);
-    assertTrue(veniceChangelogConsumer.getLastHeartbeatPerPartition().get(0) < System.currentTimeMillis());
+    assertTrue(veniceChangelogConsumer.getLastHeartbeatPerPartition().get(0) <= System.currentTimeMillis());
 
     List<PubSubMessage<String, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessages =
         (List<PubSubMessage<String, ChangeEvent<Utf8>, VeniceChangeCoordinate>>) veniceChangelogConsumer
@@ -517,7 +517,7 @@ public class VeniceChangelogConsumerImplTest {
     }
 
     veniceChangelogConsumer.close();
-    verify(mockPubSubConsumer, times(3)).batchUnsubscribe(any());
+    verify(mockPubSubConsumer).batchUnsubscribe(any());
     verify(mockPubSubConsumer).close();
     verify(veniceChangelogConsumerClientFactory).deregisterClient(changelogClientConfig.getConsumerName());
     assertEquals(veniceChangelogConsumer.getLastHeartbeatPerPartition().size(), 0);

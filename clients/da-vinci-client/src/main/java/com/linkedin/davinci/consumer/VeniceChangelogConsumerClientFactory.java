@@ -182,9 +182,12 @@ public class VeniceChangelogConsumerClientFactory {
    * Subscribes to a specific version of a Venice store. This is only intended for internal use.
    */
   public <K, V> VeniceChangelogConsumer<K, V> getVersionSpecificChangelogConsumer(String storeName, int storeVersion) {
-    return versionSpecificStoreClientMap.computeIfAbsent(storeName + "v_" + storeVersion, name -> {
+    String consumerName = storeName + "v_" + storeVersion;
+    return versionSpecificStoreClientMap.computeIfAbsent(consumerName, name -> {
       ChangelogClientConfig newStoreChangelogClientConfig =
-          getNewStoreChangelogClientConfig(storeName).setStoreVersion(storeVersion).setIsStateful(false);
+          getNewStoreChangelogClientConfig(storeName).setStoreVersion(storeVersion)
+              .setIsStateful(false)
+              .setConsumerName(consumerName);
 
       return new VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>(newStoreChangelogClientConfig, this);
     });
