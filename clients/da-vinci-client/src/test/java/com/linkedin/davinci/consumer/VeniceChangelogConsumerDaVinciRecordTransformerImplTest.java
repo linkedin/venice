@@ -506,7 +506,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
     statefulVeniceChangelogConsumer.start();
 
     onStartVersionIngestionHelper(true, true);
-    onStartVersionIngestionHelper(true, false);
+    onStartVersionIngestionHelper(false, false);
 
     int partitionId = 0;
     recordTransformer.processPut(keys.get(partitionId), lazyValue, partitionId, recordMetadata);
