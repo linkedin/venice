@@ -4,6 +4,7 @@ import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_HEARTBEAT_INTERVAL_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_STOP_CONSUMPTION_TIMEOUT_IN_SECONDS;
 
+import com.linkedin.davinci.client.DaVinciSeekCheckpointInfo;
 import com.linkedin.davinci.client.InternalDaVinciRecordTransformerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.listener.response.NoOpReadResponseStats;
@@ -365,19 +366,8 @@ public class VersionBackend {
 
   synchronized CompletableFuture<Void> subscribe(
       ComplementSet<Integer> partitions,
-      Map<Integer, Long> timestamps,
-      Map<Integer, PubSubPosition> positionMap) {
+      DaVinciSeekCheckpointInfo checkpointInfo) {
     Instant startTime = Instant.now();
-    int validCheckPointCount = 0;
-    if (!timestamps.isEmpty()) {
-      validCheckPointCount++;
-    }
-    if (!positionMap.isEmpty()) {
-      validCheckPointCount++;
-    }
-    if (validCheckPointCount > 1) {
-      throw new VeniceException("Multiple checkpoint types are not supported");
-    }
     List<Integer> partitionList = getPartitions(partitions);
     if (partitionList.isEmpty()) {
       LOGGER.error("No partitions to subscribe to for {}", this);
@@ -418,8 +408,14 @@ public class VersionBackend {
       backend.getHeartbeatMonitoringService()
           .updateLagMonitor(version.kafkaTopicName(), partition, HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR);
       // AtomicReference of storage engine will be updated internally.
-      Optional<PubSubPosition> pubSubPosition = backend.getIngestionService()
-          .getPubSubPosition(config, partition, timestamps.get(partition), positionMap.get(partition));
+      Optional<PubSubPosition> pubSubPosition = checkpointInfo == null
+          ? Optional.empty()
+          : backend.getIngestionService()
+              .getPubSubPosition(
+                  config,
+                  partition,
+                  checkpointInfo.getTimestampsMap(),
+                  checkpointInfo.getPostitionMap());
       backend.getIngestionBackend().startConsumption(config, partition, pubSubPosition);
       tryStartHeartbeat();
     }
