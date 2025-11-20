@@ -274,6 +274,13 @@ public class HelixVeniceClusterResources implements VeniceResource {
     veniceAdminStats = new VeniceAdminStats(metricsRepository, "venice-admin-" + clusterName);
     this.storagePersonaRepository =
         new StoragePersonaRepository(clusterName, this.storeMetadataRepository, adapterSerializer, zkClient);
+    /**
+     * Register the shared StoreChangeNotifier with this cluster's metadata repository.
+     * The VeniceController maintains a single StoreChangeNotifier instance that listens to store metadata
+     * changes across all clusters. Each cluster's metadata repository registers this shared notifier to
+     * propagate store lifecycle events (creation, deletion, version changes) to registered PubSub adapters,
+     * which allows event-driven cache invalidation and resource cleanup.
+     */
     this.storeMetadataRepository.registerStoreDataChangedListener(admin.getStoreChangeNotifier());
   }
 
@@ -335,6 +342,7 @@ public class HelixVeniceClusterResources implements VeniceResource {
      * push status changes and act on the changes which should have been done by leader controller only,
      * like broadcasting StartOfBufferReplay/TopicSwitch messages.
      */
+    storeMetadataRepository.unregisterStoreDataChangedListener(admin.getStoreChangeNotifier());
     pushMonitor.stopAllMonitoring();
     storeMetadataRepository.clear();
     schemaRepository.clear();

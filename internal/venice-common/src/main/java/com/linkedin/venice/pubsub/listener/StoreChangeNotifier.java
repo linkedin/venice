@@ -46,9 +46,9 @@ import org.apache.logging.log4j.Logger;
  * <p><b>Usage Example:</b>
  * <pre>{@code
  * StoreChangeNotifier notifier = new StoreChangeNotifier(
- *     4, // thread pool size
+ *     VeniceComponent.SERVER,
  *     logContext,
- *     VeniceComponent.SERVER
+ *     4 // thread pool size
  * );
  *
  * StoreChangeTasks tasks = StoreChangeTasks.builder()
@@ -67,7 +67,6 @@ import org.apache.logging.log4j.Logger;
 @ThreadSafe
 public class StoreChangeNotifier implements StoreDataChangedListener, AutoCloseable {
   private static final Logger LOGGER = LogManager.getLogger(StoreChangeNotifier.class);
-  private static final int DEFAULT_THREAD_POOL_SIZE = 1;
   private static final long SHUTDOWN_TIMEOUT_SECONDS = 30;
 
   private final ExecutorService notificationExecutor;
@@ -77,19 +76,15 @@ public class StoreChangeNotifier implements StoreDataChangedListener, AutoClosea
   private final AtomicBoolean closed;
   private final VeniceComponent veniceComponent;
 
-  public StoreChangeNotifier(LogContext logContext, VeniceComponent veniceComponent) {
-    this(DEFAULT_THREAD_POOL_SIZE, logContext, veniceComponent);
-  }
-
-  public StoreChangeNotifier(int threadPoolSize, LogContext logContext, VeniceComponent veniceComponent) {
-    if (threadPoolSize <= 0) {
-      throw new IllegalArgumentException("Thread pool size must be positive, got: " + threadPoolSize);
+  public StoreChangeNotifier(VeniceComponent veniceComponent, LogContext logContext, int threadPoolSize) {
+    if (veniceComponent == null) {
+      throw new IllegalArgumentException("VeniceComponent cannot be null");
     }
     if (logContext == null) {
       throw new IllegalArgumentException("LogContext cannot be null");
     }
-    if (veniceComponent == null) {
-      throw new IllegalArgumentException("VeniceComponent cannot be null");
+    if (threadPoolSize <= 0) {
+      throw new IllegalArgumentException("Thread pool size must be positive, got: " + threadPoolSize);
     }
 
     this.veniceComponent = veniceComponent;

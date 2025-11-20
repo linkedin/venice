@@ -27,7 +27,7 @@ public class StoreChangeNotifierTest {
 
   @BeforeMethod
   public void setUp() {
-    notifier = new StoreChangeNotifier(2, LogContext.EMPTY, VeniceComponent.SERVER);
+    notifier = new StoreChangeNotifier(VeniceComponent.SERVER, LogContext.EMPTY, 2);
   }
 
   @AfterMethod
@@ -317,16 +317,16 @@ public class StoreChangeNotifierTest {
   public void testConstructorWithInvalidThreadPoolSize() {
     expectThrows(
         IllegalArgumentException.class,
-        () -> new StoreChangeNotifier(0, LogContext.EMPTY, VeniceComponent.SERVER));
+        () -> new StoreChangeNotifier(VeniceComponent.SERVER, LogContext.EMPTY, 0));
   }
 
   @Test
   public void testConstructorWithNullLogContext() {
-    expectThrows(IllegalArgumentException.class, () -> new StoreChangeNotifier(2, null, VeniceComponent.SERVER));
+    expectThrows(IllegalArgumentException.class, () -> new StoreChangeNotifier(VeniceComponent.SERVER, null, 2));
   }
 
   @Test
   public void testConstructorWithNullVeniceComponent() {
-    expectThrows(IllegalArgumentException.class, () -> new StoreChangeNotifier(2, LogContext.EMPTY, null));
+    expectThrows(IllegalArgumentException.class, () -> new StoreChangeNotifier(null, LogContext.EMPTY, 2));
   }
 }
