@@ -7090,6 +7090,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   @Override
   public void stopVeniceController() {
     try {
+      storeChangeNotifier.close();
       controllerStateModelFactory.close();
       helixManager.disconnect();
       topicManagerRepository.close();

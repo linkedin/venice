@@ -338,11 +338,14 @@ public class HelixVeniceClusterResources implements VeniceResource {
   @Override
   public void clear() {
     /**
+     * Unregister the shared StoreChangeNotifier from this cluster's metadata repository.
+     */
+    storeMetadataRepository.unregisterStoreDataChangedListener(admin.getStoreChangeNotifier());
+    /**
      * Also stop monitoring all the pushes; otherwise, the standby controller host will still listen to
      * push status changes and act on the changes which should have been done by leader controller only,
      * like broadcasting StartOfBufferReplay/TopicSwitch messages.
      */
-    storeMetadataRepository.unregisterStoreDataChangedListener(admin.getStoreChangeNotifier());
     pushMonitor.stopAllMonitoring();
     storeMetadataRepository.clear();
     schemaRepository.clear();
