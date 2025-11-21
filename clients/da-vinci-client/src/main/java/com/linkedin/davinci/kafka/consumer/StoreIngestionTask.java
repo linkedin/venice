@@ -272,7 +272,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   /**
    * Keeps track of producer states inside version topic that drainer threads have processed so far.
    * Producers states in this validator will be flushed to the metadata partition of the storage engine regularly in
-   * {@link #syncOffset(String, PartitionConsumptionState)}
+   * {@link #syncOffset(PartitionConsumptionState)}
    * NOTE: consumerDiv will be used in place of this when {@link #isGlobalRtDivEnabled()} is true.
    */
   private final DataIntegrityValidator drainerDiv;
@@ -1335,7 +1335,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   /**
    * Checks if the consumed message is a DoL (Declaration of Leadership) stamp and marks it as consumed
-   * if it matches the current DolState. This method is called during message consumption to detect when
+   * if it matches the current DolStamp. This method is called during message consumption to detect when
    * the leader replica has successfully consumed back its own DoL stamp, indicating it's fully caught up
    * with the version topic and ready to switch to consuming from remote VT or RT.
    *
@@ -1380,8 +1380,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
 
     // Get current DoL state - may be null if not in STANDBY->LEADER transition
-    DolState currentDolState = partitionConsumptionState.getDolState();
-    if (currentDolState == null) {
+    DolStamp currentDolStamp = partitionConsumptionState.getDolState();
+    if (currentDolStamp == null) {
       // Not currently waiting for a DoL, just log for observability
       LOGGER.debug(
           "Replica: {} consumed DoL stamp for term: {} from host: {} (timestamp: {}), but not currently waiting for DoL",
@@ -1393,32 +1393,32 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
 
     // Check if this DoL matches the expected term and host
-    long expectedTermId = currentDolState.getLeadershipTerm();
-    String expectedHostId = currentDolState.getHostId();
+    long expectedTermId = currentDolStamp.getLeadershipTerm();
+    String expectedHostId = currentDolStamp.getHostId();
 
     if (consumedTermId == expectedTermId && consumedHostId.equals(expectedHostId)) {
       // Successfully consumed our own DoL stamp - mark as consumed
-      currentDolState.setDolConsumed(true);
+      currentDolStamp.setDolConsumed(true);
       LOGGER.info(
           "Replica {}: finished DoL loopback. The leader wrote its DoL stamp to the "
               + "local VT and successfully consumed it again, confirming the replica is "
-              + "fully caught up. [term={}, host={}, timestamp={}]. DolState={}",
+              + "fully caught up. [term={}, host={}, timestamp={}]. DolStamp={}",
           replicaId,
           consumedTermId,
           consumedHostId,
           messageTimestamp,
-          currentDolState);
+          currentDolStamp);
     } else {
       // Received a DoL stamp that doesn't match our expected state
       LOGGER.warn(
           "Replica: {} consumed DoL stamp with mismatched metadata. Expected: [term={}, host={}], Received: [term={}, host={}]. "
-              + "This may indicate a stale message or concurrent leadership changes. Current DolState: {}",
+              + "This may indicate a stale message or concurrent leadership changes. Current DolStamp: {}",
           replicaId,
           expectedTermId,
           expectedHostId,
           consumedTermId,
           consumedHostId,
-          currentDolState);
+          currentDolStamp);
     }
   }
 

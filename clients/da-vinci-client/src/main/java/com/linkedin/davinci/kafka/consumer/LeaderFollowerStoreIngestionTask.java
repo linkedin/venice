@@ -866,11 +866,11 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       return;
     }
 
-    DolState dolState = new DolState(leadershipTerm, veniceWriter.get().getWriterId());
-    partitionConsumptionState.setDolState(dolState);
+    DolStamp dolStamp = new DolStamp(leadershipTerm, veniceWriter.get().getWriterId());
+    partitionConsumptionState.setDolState(dolStamp);
     LOGGER.info(
         "Initialized DoL state: {} for replica: {} with term: {} and hostId: {}",
-        dolState,
+        dolStamp,
         partitionConsumptionState.getReplicaId(),
         leadershipTerm,
         veniceWriter.get().getWriterId());
@@ -880,8 +880,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     CompletableFuture<PubSubProduceResult> dolProduceFuture = veniceWriter.get()
         .sendDoLStamp(partitionConsumptionState.getReplicaTopicPartition(), dolCallback, leadershipTerm);
 
-    // Store the produce future in DolState
-    dolState.setDolProduceFuture(dolProduceFuture);
+    // Store the produce future in DolStamp
+    dolStamp.setDolProduceFuture(dolProduceFuture);
 
     // Chain logging for produce completion
     dolProduceFuture.thenAccept((result) -> {
@@ -926,21 +926,21 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       }
 
       // Mark DoL as produced
-      DolState dolState = pcs.getDolState();
-      if (dolState != null && dolState.getLeadershipTerm() == leadershipTerm) {
-        dolState.setDolProduced(true);
+      DolStamp dolStamp = pcs.getDolState();
+      if (dolStamp != null && dolStamp.getLeadershipTerm() == leadershipTerm) {
+        dolStamp.setDolProduced(true);
         LOGGER.info(
-            "DoL message produce confirmed for partition {} at position {} (term: {}) - dolState: {}",
+            "DoL message produce confirmed for partition {} at position {} (term: {}) - dolStamp: {}",
             pcs.getPartition(),
             produceResult.getPubSubPosition(),
             leadershipTerm,
-            dolState);
+            dolStamp);
       } else {
         LOGGER.warn(
-            "DoL state mismatch or null for partition {} - expected term: {}, dolState: {}",
+            "DoL state mismatch or null for partition {} - expected term: {}, dolStamp: {}",
             pcs.getPartition(),
             leadershipTerm,
-            dolState);
+            dolStamp);
       }
     }
   }
@@ -954,21 +954,21 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    */
   private boolean canSwitchToLeaderTopic(PartitionConsumptionState pcs) {
     // Check if DoL mechanism is enabled via config (system stores vs user stores)
-    DolState dolState = pcs.getDolState();
-    if (shouldUseDolMechanism() && dolState != null) {
+    DolStamp dolStamp = pcs.getDolState();
+    if (shouldUseDolMechanism() && dolStamp != null) {
       // Check if DoL state is ready (both produced and consumed)
-      if (dolState.isReady()) {
+      if (dolStamp.isReady()) {
         LOGGER.info(
-            "DoL mechanism complete for replica: {} - switching to leader topic. DolState: {}",
+            "DoL mechanism complete for replica: {} - switching to leader topic. DolStamp: {}",
             pcs.getReplicaId(),
-            dolState);
+            dolStamp);
         // Clear DoL state as we're done with this transition
         pcs.clearDolState();
         return true;
       }
 
       // DoL not ready yet, stay on local VT
-      LOGGER.info("DoL mechanism not ready for partition {} - DolState: {}", pcs.getReplicaId(), dolState);
+      LOGGER.info("DoL mechanism not ready for partition {} - DolStamp: {}", pcs.getReplicaId(), dolStamp);
       return false;
     } else {
       // Use legacy time-based mechanism

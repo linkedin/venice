@@ -2243,6 +2243,12 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       PubSubProducerCallback callback,
       long leadershipTerm) {
     KafkaMessageEnvelope kafkaMessageEnvelope = getDoLStampKME(leadershipTerm, writerId, heartBeatMessage);
+
+    logger.info(
+        "Sending DoL stamp message to topic-partition {} for leadership term {} kme: {}",
+        topicPartition,
+        leadershipTerm,
+        kafkaMessageEnvelope);
     return producerAdapter.sendMessage(
         topicPartition.getPubSubTopic().getName(),
         topicPartition.getPartitionNumber(),

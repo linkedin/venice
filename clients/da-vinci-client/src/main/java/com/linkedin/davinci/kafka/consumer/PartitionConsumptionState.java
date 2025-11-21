@@ -129,7 +129,7 @@ public class PartitionConsumptionState {
   /**
    * Tracks DoL state during STANDBY to LEADER transition. Null when not in transition or DoL not enabled.
    */
-  private volatile DolState dolState = null;
+  private volatile DolStamp dolStamp = null;
 
   /**
    * The highest leadership term observed by this replica. Currently used only
@@ -533,16 +533,16 @@ public class PartitionConsumptionState {
     return this.leaderFollowerState;
   }
 
-  public DolState getDolState() {
-    return this.dolState;
+  public DolStamp getDolState() {
+    return this.dolStamp;
   }
 
-  public void setDolState(DolState dolState) {
-    this.dolState = dolState;
+  public void setDolState(DolStamp dolStamp) {
+    this.dolStamp = dolStamp;
   }
 
   public void clearDolState() {
-    this.dolState = null;
+    this.dolStamp = null;
   }
 
   public long getHighestLeadershipTerm() {

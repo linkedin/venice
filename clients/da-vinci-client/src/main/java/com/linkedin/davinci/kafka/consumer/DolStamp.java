@@ -8,14 +8,14 @@ import java.util.concurrent.CompletableFuture;
  * Tracks Declaration of Leadership (DoL) state during STANDBY to LEADER transition.
  * DoL mechanism ensures the new leader is fully caught up with VT before switching to remote VT or RT.
  */
-public class DolState {
+public class DolStamp {
   private final long leadershipTerm;
   private final String hostId;
   private volatile boolean dolProduced; // DoL message was acked by broker
   private volatile boolean dolConsumed; // DoL message was consumed back by this replica
   private volatile CompletableFuture<PubSubProduceResult> dolProduceFuture; // Future tracking DoL produce result
 
-  public DolState(long leadershipTerm, String hostId) {
+  public DolStamp(long leadershipTerm, String hostId) {
     this.leadershipTerm = leadershipTerm;
     this.hostId = hostId;
     this.dolProduced = false;
@@ -61,7 +61,7 @@ public class DolState {
 
   @Override
   public String toString() {
-    return "DolState{term=" + leadershipTerm + ", host=" + hostId + ", produced=" + dolProduced + ", consumed="
+    return "DolStamp{term=" + leadershipTerm + ", host=" + hostId + ", produced=" + dolProduced + ", consumed="
         + dolConsumed + ", futureSet=" + (dolProduceFuture != null) + "}";
   }
 }
