@@ -224,13 +224,13 @@ public class StoreBackend {
 
     VersionBackend savedVersion = daVinciCurrentVersion;
     List<Integer> partitionList = daVinciCurrentVersion.getPartitions(partitions);
-    if (checkpointInfo.getAllPartitionsTimestamp() != null) {
+    if (checkpointInfo != null && checkpointInfo.getAllPartitionsTimestamp() != null) {
       Map<Integer, Long> timestamps = new HashMap<>();
       for (int partition: partitionList) {
         timestamps.put(partition, checkpointInfo.getAllPartitionsTimestamp());
       }
       checkpointInfo.setTimestampsMap(timestamps);
-    } else if (checkpointInfo.isSeekToTail()) {
+    } else if (checkpointInfo != null && checkpointInfo.isSeekToTail()) {
       Map<Integer, PubSubPosition> positionMap = new HashMap<>();
       for (int partition: partitionList) {
         positionMap.put(partition, PubSubSymbolicPosition.LATEST);
