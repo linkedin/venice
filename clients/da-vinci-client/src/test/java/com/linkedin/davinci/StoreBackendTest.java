@@ -280,9 +280,8 @@ public class StoreBackendTest {
 
     for (int partitionId = 0; partitionId < partitionCount; partitionId++) {
       // Subscribe to the specified version (version1) with version-specific client
-      CompletableFuture subscribeResult = storeBackend.subscribe(
-          ComplementSet.of(partitionId),
-          Optional.of(version1), null);
+      CompletableFuture subscribeResult =
+          storeBackend.subscribe(ComplementSet.of(partitionId), Optional.of(version1), null);
       versionMap.get(version1.kafkaTopicName()).completePartition(partitionId);
       subscribeResult.get(3, TimeUnit.SECONDS);
     }
@@ -294,12 +293,7 @@ public class StoreBackendTest {
     verify(storeBackend, never()).trySubscribeDaVinciFutureVersion();
 
     // Try to subscribe to a new version
-    assertThrows(
-        VeniceException.class,
-        () -> storeBackend.subscribe(
-            ComplementSet.of(1),
-            Optional.of(version3),
-            null));
+    assertThrows(VeniceException.class, () -> storeBackend.subscribe(ComplementSet.of(1), Optional.of(version3), null));
   }
 
   @Test
