@@ -489,7 +489,6 @@ public class CreateVersion extends AbstractRoute {
       boolean missingWriteAccess,
       boolean missingReadAccess) throws JsonProcessingException {
     response.status(HttpStatus.SC_FORBIDDEN);
-    VersionCreationResponse responseObject = new VersionCreationResponse();
     String userId = getPrincipalId(request);
     String errorMessage = "Missing [%s] ACLs for user \"" + userId + "\". Please setup ACLs for your store.";
     if (missingWriteAccess) {
