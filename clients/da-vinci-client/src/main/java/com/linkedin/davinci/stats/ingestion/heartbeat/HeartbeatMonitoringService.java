@@ -619,14 +619,14 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
             .recordFollowerLag(storeName, version, region, heartbeatTs, isReadyToServe)));
   }
 
-  protected void checkAndMaybeLogHeartbeatDelayMap(
+  void checkAndMaybeLogHeartbeatDelayMap(
       Map<String, Map<Integer, Map<Integer, Map<String, HeartbeatTimeStampEntry>>>> heartbeatTimestamps) {
-    if (kafkaStoreIngestionService == null) {
+    if (getKafkaStoreIngestionService() == null) {
       // Service not initialized yet, skip logging
       return;
     }
     long currentTimestamp = System.currentTimeMillis();
-    boolean isLeader = heartbeatTimestamps == leaderHeartbeatTimeStamps;
+    boolean isLeader = heartbeatTimestamps == getLeaderHeartbeatTimeStamps();
     for (Map.Entry<String, Map<Integer, Map<Integer, Map<String, HeartbeatTimeStampEntry>>>> storeName: heartbeatTimestamps
         .entrySet()) {
       for (Map.Entry<Integer, Map<Integer, Map<String, HeartbeatTimeStampEntry>>> version: storeName.getValue()
@@ -646,14 +646,18 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
                   lag,
                   heartbeatTs,
                   currentTimestamp);
-              kafkaStoreIngestionService.attemptToPrintIngestionInfoFor(
+              getKafkaStoreIngestionService().attemptToPrintIngestionInfoFor(
                   storeName.getKey(),
                   version.getKey(),
                   partition.getKey(),
                   region.getKey());
-              if (serverConfig.isLagBasedReplicaAutoResubscribeEnabled()
-                  && serverConfig.getLagBasedReplicaAutoResubscribeThresholdInSeconds() < lag) {
-                kafkaStoreIngestionService
+              /**
+               * Here we don't consider whether it is current version or not, as it will need extra logic to extract.
+               * We will delegate to KafkaConsumerService to determine whether it takes this request as it has information.
+               */
+              if (getServerConfig().isLagBasedReplicaAutoResubscribeEnabled() && TimeUnit.SECONDS
+                  .toMillis(getServerConfig().getLagBasedReplicaAutoResubscribeThresholdInSeconds()) < lag) {
+                getKafkaStoreIngestionService()
                     .maybeAddResubscribeRequest(storeName.getKey(), version.getKey(), partition.getKey());
               }
             }
@@ -895,5 +899,13 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
 
   public void setKafkaStoreIngestionService(KafkaStoreIngestionService kafkaStoreIngestionService) {
     this.kafkaStoreIngestionService = kafkaStoreIngestionService;
+  }
+
+  KafkaStoreIngestionService getKafkaStoreIngestionService() {
+    return kafkaStoreIngestionService;
+  }
+
+  VeniceServerConfig getServerConfig() {
+    return serverConfig;
   }
 }

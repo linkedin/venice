@@ -5249,12 +5249,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         continue;
       }
       try {
+        LOGGER.info("Resubscribing: {}", pcs.getReplicaId());
         getPartitionToPreviousResubscribeTimeMap().put(partition, System.currentTimeMillis());
+        count++;
         resubscribe(pcs);
       } catch (Exception e) {
         LOGGER.warn("Caught exception when resubscribing for replica: {}", pcs.getReplicaId());
       }
-      count++;
     }
   }
 
