@@ -2400,7 +2400,7 @@ public class VeniceParentHelixAdmin implements Admin {
       Version futureVersion = getStore(clusterName, storeName).getVersion(futureVersionBeforeRollForward);
       boolean onlyDeferredSwap =
           futureVersion.isVersionSwapDeferred() && StringUtils.isEmpty(futureVersion.getTargetSwapRegion());
-      if (onlyDeferredSwap) {
+      if (onlyDeferredSwap && getVeniceHelixAdmin().isTruncatingTopicNeeded(clusterName)) {
         LOGGER.info(
             "Truncating topic {} after child controllers tried to roll forward to not block new versions",
             kafkaTopic);
@@ -4449,7 +4449,8 @@ public class VeniceParentHelixAdmin implements Admin {
 
       if ((failedBatchPush || nonIncPushBatchSuccess && !isDeferredVersionSwap || incPushEnabledBatchPushSuccess
           || isTargetRegionPushWithDeferredSwap)
-          && !getMultiClusterConfigs().getCommonConfig().disableParentTopicTruncationUponCompletion()) {
+          && !getMultiClusterConfigs().getCommonConfig().disableParentTopicTruncationUponCompletion()
+          && getVeniceHelixAdmin().isTruncatingTopicNeeded(clusterName)) {
         LOGGER.info("Truncating kafka topic: {} with job status: {}", kafkaTopic, currentReturnStatus);
         truncateKafkaTopic(kafkaTopic);
         if (version != null && version.getPushType().isStreamReprocessing()) {
@@ -4810,7 +4811,7 @@ public class VeniceParentHelixAdmin implements Admin {
        *
        * The reason is that every errored push will call this function.
        */
-      if (maxErroredTopicNumToKeep == 0) {
+      if (getVeniceHelixAdmin().isTruncatingTopicNeeded(clusterName) && maxErroredTopicNumToKeep == 0) {
         // Truncate Kafka topic
         LOGGER.info("Truncating topic when kill offline push job, topic: {}", kafkaTopic);
         truncateKafkaTopic(kafkaTopic);
