@@ -4113,6 +4113,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     deleteOneStoreVersion(clusterName, storeName, versionNumber, false);
   }
 
+  /**
+   * Check if truncating topic is needed; If it's child fabrics or parent fabric with topic write needed, return true;
+   * Otherwise, return false
+   * @param clusterName
+   * @return
+   */
   public boolean isTruncatingTopicNeeded(String clusterName) {
     return !multiClusterConfigs.isParent() || multiClusterConfigs.getControllerConfig(clusterName)
         .getConcurrentPushDetectionStrategy()
