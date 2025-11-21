@@ -416,6 +416,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private final Version version;
   private boolean skipValidationForSeekableClientEnabled = false;
   private long lastResubscriptionCheckTimestamp = System.currentTimeMillis();
+  private final boolean isSystemSchemaInitializationAtStartTimeEnabled;
 
   public StoreIngestionTask(
       StorageService storageService,
@@ -673,6 +674,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.parallelProcessingThreadPool = builder.getAAWCWorkLoadProcessingThreadPool();
     this.hostName = Utils.getHostName() + "_" + storeVersionConfig.getListenerPort();
     this.zkHelixAdmin = zkHelixAdmin;
+    this.isSystemSchemaInitializationAtStartTimeEnabled = serverConfig.isSystemSchemaInitializationAtStartTimeEnabled();
   }
 
   /** Package-private on purpose, only intended for tests. Do not use for production use cases. */
@@ -4986,6 +4988,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   boolean isGlobalRtDivEnabled() {
     return isGlobalRtDivEnabled;
+  }
+
+  boolean isSystemSchemaInitializationAtStartTimeEnabled() {
+    return isSystemSchemaInitializationAtStartTimeEnabled;
   }
 
   /** When Global RT DIV is enabled the ConsumptionTask's DIV is exclusively used to validate data integrity. */

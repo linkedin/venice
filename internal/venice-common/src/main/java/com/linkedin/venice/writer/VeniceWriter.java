@@ -1632,11 +1632,10 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
 
       PubSubProducerCallback internalCallback = new SendMessageErrorLoggerCallback(kafkaValue, logger);
       PubSubProducerCallback outputCallback = setInternalCallback(callback, internalCallback);
-      PubSubMessageHeaders finalPubSubMessageHeaders = getHeaders(
-          kafkaValue.getProducerMetadata(),
-          false,
-          LeaderCompleteState.LEADER_NOT_COMPLETED,
-          pubSubMessageHeaders);
+      // For data messages, considerSkipVtpHeaderForHeartbeat is set to false because it's not a heartbeat message.
+      boolean addVtpHeader = shouldAddVtpHeader(kafkaValue.getProducerMetadata(), false);
+      PubSubMessageHeaders finalPubSubMessageHeaders =
+          getHeaders(false, LeaderCompleteState.LEADER_NOT_COMPLETED, pubSubMessageHeaders, addVtpHeader);
       try {
         return producerAdapter
             .sendMessage(topicName, partition, key, kafkaValue, finalPubSubMessageHeaders, outputCallback);
@@ -1682,22 +1681,19 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    */
 
   private PubSubMessageHeaders getHeaders(
-      ProducerMetadata producerMetadata,
       boolean addLeaderCompleteState,
       LeaderCompleteState leaderCompleteState,
-      PubSubMessageHeaders headers) {
+      PubSubMessageHeaders headers,
+      boolean addVtpHeader) {
     PubSubMessageHeader viewPartitionHeader = headers.get(VENICE_VIEW_PARTITIONS_MAP_HEADER);
-    // If the message is the first message in a segment, we need to add the protocol schema headers.
-    boolean needVtpHeader =
-        producerMetadata.getSegmentNumber() == 0 && producerMetadata.getMessageSequenceNumber() == 0;
 
     // construct PubSubMessageHeaders only if it is needed
     PubSubMessageHeaders returnPubSubMessageHeaders = (headers instanceof EmptyPubSubMessageHeaders)
-        && (needVtpHeader || addLeaderCompleteState || viewPartitionHeader != null)
+        && (addVtpHeader || addLeaderCompleteState || viewPartitionHeader != null)
             ? new PubSubMessageHeaders()
             : headers;
 
-    if (needVtpHeader && protocolSchemaHeader != null) {
+    if (addVtpHeader && protocolSchemaHeader != null) {
       returnPubSubMessageHeaders.add(protocolSchemaHeader);
     }
     if (addLeaderCompleteState) {
@@ -1708,6 +1704,29 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     }
 
     return returnPubSubMessageHeaders;
+  }
+
+  private boolean shouldAddVtpHeader(ProducerMetadata producerMetadata, boolean considerSkipVtpHeaderForHeartbeat) {
+    /**
+     * If the message is the first message in a segment for data messages, we need to add the protocol schema headers.
+     *
+     * For heartbeat messages, we do not add protocol schema headers for the following reasons:
+     * 1. Heartbeat messages are sent frequently, adding protocol schema headers will increase the
+     *    message size and bandwidth consumption unnecessarily.
+     * 2. Consumers don't need new protocol schema headers to process heartbeat messages.
+     *
+     * When KME schema evolution happens, what if a server with new KME schema deploys first and sends a heartbeat
+     * before sending any data message?
+     *
+     * Server 1 deploys -> Registers KME v2 in system store during startup. (requires isSystemSchemaInitializationAtStartTimeEnabled = true)
+     * Server 1 sends heartbeat -> Serialized with KME v2 (no VTP header)
+     * Server 2 receives heartbeat -> Detects unknown protocol version, schema reader fetches KME v2. (requires KME scheme reader to be present)
+     * Schema cached locally -> Current and future heartbeats deserialize successfully.
+     * No VTP headers needed -> System-level schema evolution handles compatibility.
+     */
+
+    return !considerSkipVtpHeaderForHeartbeat && producerMetadata.getSegmentNumber() == 0
+        && producerMetadata.getMessageSequenceNumber() == 0;
   }
 
   /**
@@ -2224,7 +2243,8 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       LeaderMetadataWrapper leaderMetadataWrapper,
       boolean addLeaderCompleteState,
       LeaderCompleteState leaderCompleteState,
-      long originTimeStampMs) {
+      long originTimeStampMs,
+      boolean considerSkipVtpHeaderForHeartbeat) {
     if (isClosed) {
       CompletableFuture<PubSubProduceResult> future = new CompletableFuture<>();
       future.completedFuture(null);
@@ -2233,16 +2253,15 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     }
     KafkaMessageEnvelope kafkaMessageEnvelope =
         getHeartbeatKME(originTimeStampMs, leaderMetadataWrapper, heartBeatMessage, writerId);
+
+    boolean addVtpHeader =
+        shouldAddVtpHeader(kafkaMessageEnvelope.getProducerMetadata(), considerSkipVtpHeaderForHeartbeat);
     return producerAdapter.sendMessage(
         topicPartition.getPubSubTopic().getName(),
         topicPartition.getPartitionNumber(),
         KafkaKey.HEART_BEAT,
         kafkaMessageEnvelope,
-        getHeaders(
-            kafkaMessageEnvelope.getProducerMetadata(),
-            addLeaderCompleteState,
-            leaderCompleteState,
-            EmptyPubSubMessageHeaders.SINGLETON),
+        getHeaders(addLeaderCompleteState, leaderCompleteState, EmptyPubSubMessageHeaders.SINGLETON, addVtpHeader),
         callback);
   }
 
@@ -2253,19 +2272,18 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       LeaderMetadataWrapper leaderMetadataWrapper,
       boolean addLeaderCompleteState,
       LeaderCompleteState leaderCompleteState,
-      long originTimeStampMs) {
+      long originTimeStampMs,
+      boolean considerSkipVtpHeaderForHeartbeat) {
     KafkaMessageEnvelope kafkaMessageEnvelope =
         getHeartbeatKME(originTimeStampMs, leaderMetadataWrapper, heartBeatMessage, writerId);
+    boolean addVtpHeader =
+        shouldAddVtpHeader(kafkaMessageEnvelope.getProducerMetadata(), considerSkipVtpHeaderForHeartbeat);
     return producerAdapter.sendMessage(
         topicName,
         partitionNumber,
         KafkaKey.HEART_BEAT,
         kafkaMessageEnvelope,
-        getHeaders(
-            kafkaMessageEnvelope.getProducerMetadata(),
-            addLeaderCompleteState,
-            leaderCompleteState,
-            EmptyPubSubMessageHeaders.SINGLETON),
+        getHeaders(addLeaderCompleteState, leaderCompleteState, EmptyPubSubMessageHeaders.SINGLETON, addVtpHeader),
         callback);
   }
 

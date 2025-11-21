@@ -492,14 +492,19 @@ public class VeniceWriterUnitTest {
     }
   }
 
-  @DataProvider(name = "Boolean-LeaderCompleteState")
-  public static Object[][] booleanBooleanCompression() {
-    return DataProviderUtils
-        .allPermutationGenerator(DataProviderUtils.BOOLEAN, new Object[] { LEADER_NOT_COMPLETED, LEADER_COMPLETED });
+  @DataProvider(name = "Boolean-Boolean-LeaderCompleteState")
+  public static Object[][] booleanBooleanLeaderCompleteState() {
+    return DataProviderUtils.allPermutationGenerator(
+        DataProviderUtils.BOOLEAN,
+        DataProviderUtils.BOOLEAN,
+        new Object[] { LEADER_NOT_COMPLETED, LEADER_COMPLETED });
   }
 
-  @Test(dataProvider = "Boolean-LeaderCompleteState")
-  public void testSendHeartbeat(boolean addLeaderCompleteHeader, LeaderCompleteState leaderCompleteState) {
+  @Test(dataProvider = "Boolean-Boolean-LeaderCompleteState")
+  public void testSendHeartbeat(
+      boolean considerSkipVtpHeaderForHeartbeat,
+      boolean addLeaderCompleteHeader,
+      LeaderCompleteState leaderCompleteState) {
     PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
     CompletableFuture mockedFuture = mock(CompletableFuture.class);
     when(mockedProducer.sendMessage(any(), any(), any(), any(), any(), any())).thenReturn(mockedFuture);
@@ -529,7 +534,8 @@ public class VeniceWriterUnitTest {
           DEFAULT_LEADER_METADATA_WRAPPER,
           addLeaderCompleteHeader,
           leaderCompleteState,
-          System.currentTimeMillis());
+          System.currentTimeMillis(),
+          considerSkipVtpHeaderForHeartbeat);
     }
     ArgumentCaptor<KafkaMessageEnvelope> kmeArgumentCaptor = ArgumentCaptor.forClass(KafkaMessageEnvelope.class);
     ArgumentCaptor<KafkaKey> kafkaKeyArgumentCaptor = ArgumentCaptor.forClass(KafkaKey.class);
@@ -556,10 +562,22 @@ public class VeniceWriterUnitTest {
     }
 
     for (PubSubMessageHeaders pubSubMessageHeaders: pubSubMessageHeadersArgumentCaptor.getAllValues()) {
-      assertEquals(pubSubMessageHeaders.toList().size(), addLeaderCompleteHeader ? 2 : 1);
+      // Calculate expected header count:
+      // - VTP header: included when considerSkipVtpHeaderForHeartbeat = false
+      // - Leader complete header: included when addLeaderCompleteHeader = true
+      int expectedHeaderCount = 0;
+      if (!considerSkipVtpHeaderForHeartbeat) {
+        expectedHeaderCount++; // VTP header
+      }
       if (addLeaderCompleteHeader) {
-        // 0: VENICE_TRANSPORT_PROTOCOL_HEADER, 1: VENICE_LEADER_COMPLETION_STATE_HEADER
-        PubSubMessageHeader leaderCompleteHeader = pubSubMessageHeaders.toList().get(1);
+        expectedHeaderCount++; // Leader complete header
+      }
+
+      assertEquals(pubSubMessageHeaders.toList().size(), expectedHeaderCount);
+
+      if (addLeaderCompleteHeader) {
+        // Find the leader complete header
+        PubSubMessageHeader leaderCompleteHeader = pubSubMessageHeaders.get(VENICE_LEADER_COMPLETION_STATE_HEADER);
         assertEquals(leaderCompleteHeader.key(), VENICE_LEADER_COMPLETION_STATE_HEADER);
         assertEquals(leaderCompleteHeader.value()[0], leaderCompleteState.getValue());
       }

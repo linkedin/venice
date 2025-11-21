@@ -3961,7 +3961,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         originTimeStampMs);
   }
 
-  private CompletableFuture<PubSubProduceResult> sendIngestionHeartbeat(
+  CompletableFuture<PubSubProduceResult> sendIngestionHeartbeat(
       PartitionConsumptionState partitionConsumptionState,
       PubSubTopicPartition topicPartition,
       PubSubProducerCallback callback,
@@ -3971,6 +3971,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       LeaderCompleteState leaderCompleteState,
       long originTimeStampMs) {
     CompletableFuture<PubSubProduceResult> heartBeatFuture;
+    boolean dependentFeatureEnabled = isSystemSchemaInitializationAtStartTimeEnabled()
+        && getHeartbeatMonitoringService().getKafkaStoreIngestionService().isKMESchemaReaderPresent();
     try {
       heartBeatFuture = partitionConsumptionState.getVeniceWriterLazyRef()
           .get()
@@ -3980,7 +3982,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
               leaderMetadataWrapper,
               addLeaderCompleteState,
               leaderCompleteState,
-              originTimeStampMs);
+              originTimeStampMs,
+              dependentFeatureEnabled);
       if (shouldLog) {
         heartBeatFuture
             .whenComplete((ignore, throwable) -> logIngestionHeartbeat(topicPartition, (Exception) throwable));

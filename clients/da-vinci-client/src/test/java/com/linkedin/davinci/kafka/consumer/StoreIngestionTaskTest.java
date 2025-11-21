@@ -2994,7 +2994,8 @@ public abstract class StoreIngestionTaskTest {
             DEFAULT_LEADER_METADATA_WRAPPER,
             true,
             LeaderCompleteState.getLeaderCompleteState(true),
-            System.currentTimeMillis());
+            System.currentTimeMillis(),
+            true);
         messageCountPerPartition[partition]++;
       }
 
@@ -5134,7 +5135,8 @@ public abstract class StoreIngestionTaskTest {
     VeniceWriterFactory veniceWriterFactory = mock(VeniceWriterFactory.class);
     CompletableFuture heartBeatFuture = new CompletableFuture();
     heartBeatFuture.complete(null);
-    doReturn(heartBeatFuture).when(veniceWriter).sendHeartbeat(any(), any(), any(), anyBoolean(), any(), anyLong());
+    doReturn(heartBeatFuture).when(veniceWriter)
+        .sendHeartbeat(any(), any(), any(), anyBoolean(), any(), anyLong(), anyBoolean());
     doReturn(veniceWriter).when(veniceWriterFactory).createVeniceWriter(any());
 
     doReturn(Lazy.of(() -> veniceWriter)).when(pcs).getVeniceWriterLazyRef();
@@ -5168,9 +5170,9 @@ public abstract class StoreIngestionTaskTest {
     // Second invocation should be skipped since it shouldn't be time for another heartbeat yet.
     ingestionTask.maybeSendIngestionHeartbeat();
     if (hybridConfig == HYBRID && isRealTimeTopic && nodeType == NodeType.LEADER) {
-      verify(veniceWriter, times(1)).sendHeartbeat(any(), any(), any(), anyBoolean(), any(), anyLong());
+      verify(veniceWriter, times(1)).sendHeartbeat(any(), any(), any(), anyBoolean(), any(), anyLong(), anyBoolean());
     } else {
-      verify(veniceWriter, never()).sendHeartbeat(any(), any(), any(), anyBoolean(), any(), anyLong());
+      verify(veniceWriter, never()).sendHeartbeat(any(), any(), any(), anyBoolean(), any(), anyLong(), anyBoolean());
     }
 
     /**
@@ -5272,17 +5274,19 @@ public abstract class StoreIngestionTaskTest {
     PubSubTopicPartition pubSubTopicPartition1sep = new PubSubTopicPartitionImpl(sepRTtopic, 1);
 
     // all succeeded
-    doReturn(heartBeatFuture).when(veniceWriter).sendHeartbeat(any(), any(), any(), anyBoolean(), any(), anyLong());
+    doReturn(heartBeatFuture).when(veniceWriter)
+        .sendHeartbeat(any(), any(), any(), anyBoolean(), any(), anyLong(), anyBoolean());
     AtomicReference<Set<String>> failedPartitions = new AtomicReference<>(null);
     failedPartitions.set(ingestionTask.maybeSendIngestionHeartbeat());
     assertEquals(failedPartitions.get().size(), 0);
 
     // 1 partition throws exception
     doReturn(heartBeatFuture).when(veniceWriter)
-        .sendHeartbeat(eq(pubSubTopicPartition0), any(), any(), anyBoolean(), any(), anyLong());
+        .sendHeartbeat(eq(pubSubTopicPartition0), any(), any(), anyBoolean(), any(), anyLong(), anyBoolean());
     doAnswer(invocation -> {
       throw new Exception("mock exception");
-    }).when(veniceWriter).sendHeartbeat(eq(pubSubTopicPartition1), any(), any(), anyBoolean(), any(), anyLong());
+    }).when(veniceWriter)
+        .sendHeartbeat(eq(pubSubTopicPartition1), any(), any(), anyBoolean(), any(), anyLong(), anyBoolean());
     // wait for SERVER_INGESTION_HEARTBEAT_INTERVAL_MS
     TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
       failedPartitions.set(ingestionTask.maybeSendIngestionHeartbeat());
@@ -5297,10 +5301,11 @@ public abstract class StoreIngestionTaskTest {
 
     // 1 partition throws exception
     doReturn(heartBeatFuture).when(veniceWriter)
-        .sendHeartbeat(eq(pubSubTopicPartition0), any(), any(), anyBoolean(), any(), anyLong());
+        .sendHeartbeat(eq(pubSubTopicPartition0), any(), any(), anyBoolean(), any(), anyLong(), anyBoolean());
     doAnswer(invocation -> {
       throw new Exception("mock exception");
-    }).when(veniceWriter).sendHeartbeat(eq(pubSubTopicPartition1sep), any(), any(), anyBoolean(), any(), anyLong());
+    }).when(veniceWriter)
+        .sendHeartbeat(eq(pubSubTopicPartition1sep), any(), any(), anyBoolean(), any(), anyLong(), anyBoolean());
     // wait for SERVER_INGESTION_HEARTBEAT_INTERVAL_MS
     TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
       failedPartitions.set(ingestionTask.maybeSendIngestionHeartbeat());
@@ -5316,7 +5321,8 @@ public abstract class StoreIngestionTaskTest {
     // both partition throws exception
     doAnswer(invocation -> {
       throw new Exception("mock exception");
-    }).when(veniceWriter).sendHeartbeat(eq(pubSubTopicPartition0), any(), any(), anyBoolean(), any(), anyLong());
+    }).when(veniceWriter)
+        .sendHeartbeat(eq(pubSubTopicPartition0), any(), any(), anyBoolean(), any(), anyLong(), anyBoolean());
     // wait for SERVER_INGESTION_HEARTBEAT_INTERVAL_MS
     TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
       failedPartitions.set(ingestionTask.maybeSendIngestionHeartbeat());

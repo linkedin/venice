@@ -889,4 +889,8 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
   public void setKafkaStoreIngestionService(KafkaStoreIngestionService kafkaStoreIngestionService) {
     this.kafkaStoreIngestionService = kafkaStoreIngestionService;
   }
+
+  public KafkaStoreIngestionService getKafkaStoreIngestionService() {
+    return kafkaStoreIngestionService;
+  }
 }
