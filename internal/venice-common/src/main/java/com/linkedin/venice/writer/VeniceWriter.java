@@ -2217,6 +2217,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     LeaderMetadata leaderMetadataFooter = new LeaderMetadata();
     leaderMetadataFooter.hostName = writerId;
     leaderMetadataFooter.termId = leadershipTerm;
+    leaderMetadataFooter.upstreamPubSubPosition = ByteBuffer.allocate(0); // Initialize to empty ByteBuffer
 
     KafkaMessageEnvelope kafkaMessageEnvelope = new KafkaMessageEnvelope();
     kafkaMessageEnvelope.messageType = MessageType.CONTROL_MESSAGE.getValue();

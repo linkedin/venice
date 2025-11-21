@@ -22,7 +22,6 @@ import com.linkedin.davinci.client.InternalDaVinciRecordTransformerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
 import com.linkedin.davinci.ingestion.LagType;
-import com.linkedin.davinci.kafka.consumer.PartitionConsumptionState.DolState;
 import com.linkedin.davinci.listener.response.NoOpReadResponseStats;
 import com.linkedin.davinci.schema.merge.CollectionTimestampMergeRecordHelper;
 import com.linkedin.davinci.schema.merge.MergeRecordHelper;
@@ -43,7 +42,6 @@ import com.linkedin.davinci.validation.DataIntegrityValidator;
 import com.linkedin.davinci.validation.PartitionTracker;
 import com.linkedin.davinci.validation.PartitionTracker.TopicType;
 import com.linkedin.venice.annotation.VisibleForTesting;
-import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceMessageException;
@@ -854,12 +852,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     return true;
   }
 
-  private boolean shouldUseDolMechanism() {
-    return isIngestingSystemStore()
-        ? serverConfig.isLeaderHandoverUseDoLMechanismEnabledForSystemStores()
-        : serverConfig.isLeaderHandoverUseDoLMechanismEnabledForUserStores();
-  }
-
   /**
    * Initializes DoL state and sends DoL stamp to local VT during STANDBY to LEADER transition.
    *
@@ -867,28 +859,26 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    * @param leadershipTerm the leadership term for this transition
    */
   private void initializeAndSendDoLStamp(PartitionConsumptionState partitionConsumptionState, long leadershipTerm) {
-    if (!shouldUseDolMechanism() || !partitionConsumptionState.getVeniceWriterLazyRef().isPresent()) {
+    if (!shouldUseDolMechanism()) {
       LOGGER.debug(
-          "Skipping DoL stamp initialization for replica: {} as {}",
-          partitionConsumptionState.getReplicaId(),
-          !shouldUseDolMechanism() ? "DoL mechanism is disabled" : "VeniceWriter is not initialized");
+          "Skipping DoL stamp initialization for replica: {} as DoL mechanism is disabled",
+          partitionConsumptionState.getReplicaId());
       return;
     }
 
-    VeniceWriter<byte[], byte[], byte[]> veniceWriter = partitionConsumptionState.getVeniceWriterLazyRef().get();
-    DolState dolState = new DolState(leadershipTerm, veniceWriter.getWriterId());
+    DolState dolState = new DolState(leadershipTerm, veniceWriter.get().getWriterId());
     partitionConsumptionState.setDolState(dolState);
     LOGGER.info(
         "Initialized DoL state: {} for replica: {} with term: {} and hostId: {}",
         dolState,
         partitionConsumptionState.getReplicaId(),
         leadershipTerm,
-        veniceWriter.getWriterId());
+        veniceWriter.get().getWriterId());
 
     // Send DolStamp to local VT
     PubSubProducerCallback dolCallback = new DolStampProduceCallback(partitionConsumptionState, leadershipTerm);
-    CompletableFuture<PubSubProduceResult> dolProduceFuture =
-        veniceWriter.sendDoLStamp(partitionConsumptionState.getReplicaTopicPartition(), dolCallback, leadershipTerm);
+    CompletableFuture<PubSubProduceResult> dolProduceFuture = veniceWriter.get()
+        .sendDoLStamp(partitionConsumptionState.getReplicaTopicPartition(), dolCallback, leadershipTerm);
 
     // Store the produce future in DolState
     dolState.setDolProduceFuture(dolProduceFuture);
@@ -3953,7 +3943,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   }
 
   private boolean isIngestingSystemStore() {
-    return VeniceSystemStoreUtils.isSystemStore(storeName);
+    return isSystemStore;
   }
 
   /**

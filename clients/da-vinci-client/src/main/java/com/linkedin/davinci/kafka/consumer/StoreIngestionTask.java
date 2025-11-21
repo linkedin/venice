@@ -1334,6 +1334,101 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   /**
+   * Checks if the consumed message is a DoL (Declaration of Leadership) stamp and marks it as consumed
+   * if it matches the current DolState. This method is called during message consumption to detect when
+   * the leader replica has successfully consumed back its own DoL stamp, indicating it's fully caught up
+   * with the version topic and ready to switch to consuming from remote VT or RT.
+   *
+   * @param partitionConsumptionState the partition consumption state tracking DoL status
+   * @param dolPubSubMessage the consumed DoL PubSub message with leadership metadata
+   */
+  private void checkAndHandleDoLMessage(
+      PartitionConsumptionState partitionConsumptionState,
+      DefaultPubSubMessage dolPubSubMessage) {
+    // Early exit if DoL mechanism is disabled via config
+    if (!shouldUseDolMechanism()) {
+      return;
+    }
+
+    // Extract leadership metadata from the message
+    KafkaMessageEnvelope messageEnvelope = dolPubSubMessage.getValue();
+    LeaderMetadata leaderMetadata = messageEnvelope.getLeaderMetadataFooter();
+    if (leaderMetadata == null) {
+      // Message doesn't have leadership metadata, skip processing
+      return;
+    }
+
+    // Extract term information from the consumed message
+    long consumedTermId = leaderMetadata.getTermId();
+    String consumedHostId = leaderMetadata.getHostName().toString();
+    long messageTimestamp = messageEnvelope.getProducerMetadata() != null
+        ? messageEnvelope.getProducerMetadata().getMessageTimestamp()
+        : -1;
+    String replicaId = partitionConsumptionState.getReplicaId();
+
+    // Update highest observed leadership term for monitoring
+    long previousHighestTerm = partitionConsumptionState.getHighestLeadershipTerm();
+    if (consumedTermId > previousHighestTerm) {
+      partitionConsumptionState.setHighestLeadershipTerm(consumedTermId);
+      LOGGER.info(
+          "Replica: {} observed new highest leadership term: {} (previous: {}) from host: {} at timestamp: {}",
+          replicaId,
+          consumedTermId,
+          previousHighestTerm,
+          consumedHostId,
+          messageTimestamp);
+    }
+
+    // Get current DoL state - may be null if not in STANDBY->LEADER transition
+    DolState currentDolState = partitionConsumptionState.getDolState();
+    if (currentDolState == null) {
+      // Not currently waiting for a DoL, just log for observability
+      LOGGER.debug(
+          "Replica: {} consumed DoL stamp for term: {} from host: {} (timestamp: {}), but not currently waiting for DoL",
+          replicaId,
+          consumedTermId,
+          consumedHostId,
+          messageTimestamp);
+      return;
+    }
+
+    // Check if this DoL matches the expected term and host
+    long expectedTermId = currentDolState.getLeadershipTerm();
+    String expectedHostId = currentDolState.getHostId();
+
+    if (consumedTermId == expectedTermId && consumedHostId.equals(expectedHostId)) {
+      // Successfully consumed our own DoL stamp - mark as consumed
+      currentDolState.setDolConsumed(true);
+      LOGGER.info(
+          "Replica {}: finished DoL loopback. The leader wrote its DoL stamp to the "
+              + "local VT and successfully consumed it again, confirming the replica is "
+              + "fully caught up. [term={}, host={}, timestamp={}]. DolState={}",
+          replicaId,
+          consumedTermId,
+          consumedHostId,
+          messageTimestamp,
+          currentDolState);
+    } else {
+      // Received a DoL stamp that doesn't match our expected state
+      LOGGER.warn(
+          "Replica: {} consumed DoL stamp with mismatched metadata. Expected: [term={}, host={}], Received: [term={}, host={}]. "
+              + "This may indicate a stale message or concurrent leadership changes. Current DolState: {}",
+          replicaId,
+          expectedTermId,
+          expectedHostId,
+          consumedTermId,
+          consumedHostId,
+          currentDolState);
+    }
+  }
+
+  protected boolean shouldUseDolMechanism() {
+    return isSystemStore
+        ? serverConfig.isLeaderHandoverUseDoLMechanismEnabledForSystemStores()
+        : serverConfig.isLeaderHandoverUseDoLMechanismEnabledForUserStores();
+  }
+
+  /**
    * This function is in charge of producing the consumer records to the writer buffers maintained by {@link StoreBufferService}.
    *
    * This function may modify the original record in KME and it is unsafe to use the payload from KME directly after this call.
@@ -3467,6 +3562,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
                   consumerRecord.getPubSubMessageTime());
             }
           }
+          // Check if this is a DoL (Declaration of Leadership) stamp message
+          if (controlMessage.controlMessageType == START_OF_SEGMENT.getValue()
+              && Arrays.equals(consumerRecord.getKey().getKey(), KafkaKey.DOL_STAMP.getKey())) {
+            // Process DoL stamp to check if it matches the expected leadership term
+            checkAndHandleDoLMessage(partitionConsumptionState, consumerRecord);
+          }
+
         } catch (Exception e) {
           LOGGER.error("Failed to record Record heartbeat with message: ", e);
         }
@@ -3641,7 +3743,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       PartitionConsumptionState partitionConsumptionState,
       boolean tolerateMissingMessagesForRealTimeTopic) {
     KafkaKey key = consumerRecord.getKey();
-    if (key.isControlMessage() && Arrays.equals(KafkaKey.HEART_BEAT.getKey(), key.getKey())) {
+    if (key.isControlMessage() && (Arrays.equals(KafkaKey.HEART_BEAT.getKey(), key.getKey())
+        || Arrays.equals(KafkaKey.DOL_STAMP.getKey(), key.getKey()))) {
       return; // Skip validation for ingestion heartbeat records.
     } else if (isGlobalRtDivEnabled() && isRecordSelfProduced(consumerRecord)) {
       // Skip validation for self-produced records. If there were any issues, the followers would've reported it already
