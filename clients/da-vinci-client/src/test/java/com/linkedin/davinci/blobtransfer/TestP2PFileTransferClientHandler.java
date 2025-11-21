@@ -11,10 +11,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.davinci.blobtransfer.client.MetadataAggregator;
 import com.linkedin.davinci.blobtransfer.client.P2PFileTransferClientHandler;
 import com.linkedin.davinci.blobtransfer.client.P2PMetadataTransferHandler;
-import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.kafka.protocol.state.IncrementalPushReplicaStatus;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -40,8 +38,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Comparator;
-import java.util.HashMap;
-import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutionException;
@@ -68,7 +64,6 @@ public class TestP2PFileTransferClientHandler {
 
   P2PFileTransferClientHandler clientFileHandler;
   P2PMetadataTransferHandler clientMetadataHandler;
-  VeniceNotifier veniceNotifier;
 
   @BeforeMethod
   public void setUp() throws IOException {
@@ -87,8 +82,6 @@ public class TestP2PFileTransferClientHandler {
             BlobTransferUtils.BlobTransferTableFormat.BLOCK_BASED_TABLE,
             checksumValidationExecutorService));
 
-    veniceNotifier = Mockito.mock(VeniceNotifier.class);
-
     clientMetadataHandler = Mockito.spy(
         new P2PMetadataTransferHandler(
             storageMetadataService,
@@ -97,13 +90,7 @@ public class TestP2PFileTransferClientHandler {
             TEST_VERSION,
             TEST_PARTITION,
             BlobTransferUtils.BlobTransferTableFormat.BLOCK_BASED_TABLE,
-            () -> veniceNotifier));
-    Mockito.doNothing()
-        .when(veniceNotifier)
-        .startOfIncrementalPushReceived(Mockito.anyString(), Mockito.anyInt(), Mockito.any());
-    Mockito.doNothing()
-        .when(veniceNotifier)
-        .endOfIncrementalPushReceived(Mockito.anyString(), Mockito.anyInt(), Mockito.any());
+            () -> null));
 
     Mockito.doNothing().when(clientMetadataHandler).updateStorePartitionMetadata(Mockito.any(), Mockito.any());
 
@@ -323,54 +310,6 @@ public class TestP2PFileTransferClientHandler {
         AvroProtocolDefinition.PARTITION_STATE.getSerializer();
     OffsetRecord offsetRecord = new OffsetRecord(partitionStateSerializer, DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING);
     offsetRecord.setOffsetLag(1000L);
-    expectedMetadata.setOffsetRecord(ByteBuffer.wrap(offsetRecord.toBytes()));
-
-    ObjectMapper objectMapper = new ObjectMapper();
-    String metadataJson = objectMapper.writeValueAsString(expectedMetadata);
-    byte[] metadataBytes = metadataJson.getBytes(CharsetUtil.UTF_8);
-
-    FullHttpResponse metadataResponse = new DefaultFullHttpResponse(
-        HttpVersion.HTTP_1_1,
-        HttpResponseStatus.OK,
-        Unpooled.copiedBuffer(metadataJson, CharsetUtil.UTF_8));
-    metadataResponse.headers().set(HttpHeaderNames.CONTENT_LENGTH, metadataBytes.length);
-    metadataResponse.headers().set(HttpHeaderNames.CONTENT_TYPE, "application/json");
-    metadataResponse.headers().set(BLOB_TRANSFER_TYPE, BlobTransferType.METADATA);
-
-    DefaultHttpResponse endOfTransfer = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
-    endOfTransfer.headers().add(BLOB_TRANSFER_STATUS, BLOB_TRANSFER_COMPLETED);
-
-    // Simulate inbound data for the metadata response
-    ch.writeInbound(metadataResponse);
-    ch.writeInbound(endOfTransfer);
-
-    // Ensure the future is completed
-    inputStreamFuture.toCompletableFuture().get(1, TimeUnit.MINUTES);
-
-    // Verify that the metadata was correctly parsed and handled
-    BlobTransferPartitionMetadata actualMetadata = clientMetadataHandler.getMetadata();
-    Assert.assertNotNull(actualMetadata);
-    Assert.assertEquals(actualMetadata.getTopicName(), expectedMetadata.getTopicName());
-    Assert.assertEquals(actualMetadata.getPartitionId(), expectedMetadata.getPartitionId());
-    Assert.assertEquals(actualMetadata.getOffsetRecord(), expectedMetadata.getOffsetRecord());
-    Assert.assertTrue(inputStreamFuture.toCompletableFuture().isDone());
-  }
-
-  @Test
-  public void testSingleMetadataTransferWithIncrementalPushInfo()
-      throws JsonProcessingException, ExecutionException, InterruptedException, TimeoutException {
-    BlobTransferPartitionMetadata expectedMetadata = new BlobTransferPartitionMetadata();
-    expectedMetadata.setTopicName(TEST_STORE + "_v" + TEST_VERSION);
-    expectedMetadata.setPartitionId(TEST_PARTITION);
-    InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer =
-        AvroProtocolDefinition.PARTITION_STATE.getSerializer();
-    OffsetRecord offsetRecord = new OffsetRecord(partitionStateSerializer, DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING);
-    offsetRecord.setOffsetLag(1000L);
-    Map<String, IncrementalPushReplicaStatus> incrementalPushInfo = new HashMap<>();
-    incrementalPushInfo.put("pushJobVersion1", new IncrementalPushReplicaStatus(8, 1000L));
-    incrementalPushInfo.put("pushJobVersion2", new IncrementalPushReplicaStatus(8, 2000L));
-
-    offsetRecord.setTrackingIncrementalPushStatus(incrementalPushInfo);
     expectedMetadata.setOffsetRecord(ByteBuffer.wrap(offsetRecord.toBytes()));
 
     ObjectMapper objectMapper = new ObjectMapper();
