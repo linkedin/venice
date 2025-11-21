@@ -222,7 +222,7 @@ public abstract class KafkaStoreIngestionServiceTest {
   }
 
   @Test
-  public void testGetPubSubPosition_WhenPubSubPositionProvided() {
+  public void testGetPubSubPosition() {
     // Setup
     String storeName = "test-store";
     int partitionId = 0;
@@ -240,6 +240,30 @@ public abstract class KafkaStoreIngestionServiceTest {
         positionMap);
 
     // Verify
+    assertTrue(result.isPresent());
+    assertEquals(expectedPosition, result.get());
+    // Test case 2: When positionMap is null
+    result = kafkaStoreIngestionService.getPubSubPosition(storeConfig, partitionId, null, null);
+    assertFalse(result.isPresent());
+
+    // Test case 3: When positionMap doesn't contain the partition
+    result = kafkaStoreIngestionService.getPubSubPosition(
+        storeConfig,
+        partitionId + 1, // different partition
+        null,
+        positionMap);
+    assertFalse(result.isPresent());
+
+    // Test case 4: When positionMap contains null position for the partition
+    positionMap.put(partitionId, null);
+    result = kafkaStoreIngestionService.getPubSubPosition(storeConfig, partitionId, null, positionMap);
+    assertFalse(result.isPresent());
+
+    // Test case 5: When timestamp is provided (should be ignored when positionMap has the position)
+    Map<Integer, Long> tsMap = new HashMap<>();
+    tsMap.put(partitionId, System.currentTimeMillis());
+    positionMap.put(partitionId, expectedPosition);
+    result = kafkaStoreIngestionService.getPubSubPosition(storeConfig, partitionId, tsMap, positionMap);
     assertTrue(result.isPresent());
     assertEquals(expectedPosition, result.get());
   }
