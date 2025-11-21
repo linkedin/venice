@@ -106,6 +106,8 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceResourceAccessException;
 import com.linkedin.venice.exceptions.VeniceTimeoutException;
 import com.linkedin.venice.hadoop.exceptions.VeniceInvalidInputException;
+import com.linkedin.venice.hadoop.exceptions.VeniceSchemaFieldNotFoundException;
+import com.linkedin.venice.hadoop.exceptions.VeniceSchemaMismatchException;
 import com.linkedin.venice.hadoop.input.kafka.KafkaInputDictTrainer;
 import com.linkedin.venice.hadoop.mapreduce.datawriter.jobs.DataWriterMRJob;
 import com.linkedin.venice.hadoop.mapreduce.engine.DefaultJobClientWrapper;
@@ -888,6 +890,8 @@ public class VenicePushJob implements AutoCloseable {
            * data path contains no data as well in the avro flow.
            */
           updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.INVALID_INPUT_FILE);
+        } else if (e instanceof VeniceSchemaFieldNotFoundException || e instanceof VeniceSchemaMismatchException) {
+          updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.INPUT_DATA_SCHEMA_VALIDATION_FAILED);
         }
         pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(PushJobDetailsStatus.ERROR.getValue()));
         pushJobDetails.failureDetails = e.toString();
@@ -1934,7 +1938,7 @@ public class VenicePushJob implements AutoCloseable {
           + "\n\t\tSchema defined in Venice: \t%s";
       String errorMessage =
           String.format(errorMessageFormat, setting.storeName, pushJobSetting.keySchemaString, serverSchema.toString());
-      throw new VeniceException(errorMessage);
+      throw new VeniceSchemaMismatchException(errorMessage);
     }
   }
 
@@ -2034,7 +2038,7 @@ public class VenicePushJob implements AutoCloseable {
           throw new VeniceException("Superset schema not found for store: " + setting.storeName);
         }
         if (!validateSubsetValueSchema(pushJobSetting.valueSchema, supersetSchema.getSchemaStr())) {
-          throw new VeniceException(
+          throw new VeniceSchemaMismatchException(
               "Input value schema is not subset of superset schema. Input value schema: " + pushJobSetting.valueSchema
                   + " , superset schema: " + supersetSchema.getSchemaStr());
         }
@@ -2378,10 +2382,7 @@ public class VenicePushJob implements AutoCloseable {
             pushJobSetting.repushSourceVersion,
             setting.pushToSeparateRealtimeTopicEnabled));
     if (versionCreationResponse.isError()) {
-      if (ErrorType.CONCURRENT_BATCH_PUSH.equals(versionCreationResponse.getErrorType())) {
-        LOGGER.error("Unable to run this job since another batch push is running. See the error message for details.");
-        updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.CONCURRENT_BATCH_PUSH);
-      }
+      handleVersionCreationError(versionCreationResponse);
       throw new VeniceException(
           "Failed to create new store version with urls: " + setting.veniceControllerUrl + ", error: "
               + versionCreationResponse.getError());
@@ -2444,6 +2445,24 @@ public class VenicePushJob implements AutoCloseable {
                 + " is using RMD ID: " + sourceVersion.getRmdVersionId() + ", new version: " + newVersion.getNumber()
                 + " is using RMD ID: " + newVersion.getRmdVersionId());
       }
+    }
+  }
+
+  /**
+   * We handle errors during creation flow prior to propagating the exception to make sure the errors are
+   * categorized. The checkpoints as part of categorization is used to differentiate between user errors and platform
+   * errors.
+   */
+  @VisibleForTesting
+  void handleVersionCreationError(VersionCreationResponse versionCreationResponse) {
+    if (ErrorType.CONCURRENT_BATCH_PUSH.equals(versionCreationResponse.getErrorType())) {
+      LOGGER.error("Unable to run this job since another batch push is running. See the error message for details.");
+      updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.CONCURRENT_BATCH_PUSH);
+    } else if (ErrorType.ACL_ERROR.equals(versionCreationResponse.getErrorType())) {
+      // Reusing WRITE_ACL_FAILED checkpoint for all types of ACL errors. Ideally rename this to READ_WRITE_ACL_FAILED
+      // or more generic one
+      LOGGER.error("Push job failed due to : {}", versionCreationResponse.getError());
+      updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.WRITE_ACL_FAILED);
     }
   }
 
