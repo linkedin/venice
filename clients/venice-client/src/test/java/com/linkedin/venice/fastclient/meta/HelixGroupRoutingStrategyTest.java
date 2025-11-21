@@ -8,6 +8,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.fastclient.BatchGetRequestContext;
@@ -132,4 +133,98 @@ public class HelixGroupRoutingStrategyTest {
     verify(mockStats).recordGroupRequest(1);
     verify(mockStats).recordGroupResponseWaitingTime(eq(1), anyDouble());
   }
+
+  /**
+   * Test that getReplicas handles missing replica in helixGroupInfo gracefully.
+   * This tests defensive behavior when there's a race condition between routing info
+   * and helix group info updates.
+   */
+  @Test
+  public void testGetReplicasWithMissingHelixGroupInfo() {
+    HelixGroupRoutingStrategy strategy =
+        new HelixGroupRoutingStrategy(instanceHealthMonitor, new MetricsRepository(), "test_store");
+    strategy.updateHelixGroupInfo(getHelixGroupInfo());
+
+    // Create a replica list with an unknown instance (not in helixGroupInfo)
+    String unknownInstance = "https://unknown:1234";
+    List<String> replicasWithUnknown = Arrays.asList(instance1, instance2, unknownInstance);
+
+    // This should NOT throw NPE, even though unknownInstance is not in helixGroupInfo
+    String selectedReplica = strategy.getReplicas(0, 0, replicasWithUnknown);
+
+    // Should select instance1 (the known instance in group 0)
+    assertEquals(selectedReplica, instance1);
+  }
+
+  /**
+   * - New replica appears in routing info (from CustomizedView)
+   * - But not yet in helix group info (InstanceConfig update lagging)
+   */
+  @Test
+  public void testGetReplicasWithRaceConditionScenario() {
+    HelixGroupRoutingStrategy strategy =
+        new HelixGroupRoutingStrategy(instanceHealthMonitor, new MetricsRepository(), "test_store");
+
+    // Initial helix group info (only has instance1 and instance2)
+    Map<String, Integer> initialHelixGroupInfo = new HashMap<>();
+    initialHelixGroupInfo.put(instance1, 0);
+    initialHelixGroupInfo.put(instance2, 1);
+    strategy.updateHelixGroupInfo(initialHelixGroupInfo);
+
+    // Simulate race condition: routing info has new instance3
+    // but helix group info hasn't been updated yet
+    String newInstance = instance3;
+    List<String> replicasWithNew = Arrays.asList(instance1, instance2, newInstance);
+
+    // Request that would select group 2 (where instance3 should be, but isn't yet)
+    long requestId = 2;
+    int groupId = 2;
+
+    // This should NOT throw NPE - should handle gracefully
+    String selectedReplica = strategy.getReplicas(requestId, groupId, replicasWithNew);
+
+    // Should fall back to one of the known instances or return null
+    assertTrue(selectedReplica == null || selectedReplica.equals(instance1) || selectedReplica.equals(instance2));
+  }
+
+  /**
+   * Test that all replicas missing from helixGroupInfo returns null gracefully.
+   */
+  @Test
+  public void testGetReplicasWhenAllReplicasMissing() {
+    HelixGroupRoutingStrategy strategy =
+        new HelixGroupRoutingStrategy(instanceHealthMonitor, new MetricsRepository(), "test_store");
+    strategy.updateHelixGroupInfo(getHelixGroupInfo());
+
+    // All replicas are unknown
+    List<String> unknownReplicas = Arrays.asList("https://unknown1:1234", "https://unknown2:1234");
+
+    // Should return null, not throw NPE
+    String selectedReplica = strategy.getReplicas(0, 0, unknownReplicas);
+    assertNull(selectedReplica);
+  }
+
+  /**
+   * Regression test: verify normal operation still works correctly after defensive fix.
+   */
+  @Test
+  public void testGetReplicasNormalOperation() {
+    HelixGroupRoutingStrategy strategy =
+        new HelixGroupRoutingStrategy(instanceHealthMonitor, new MetricsRepository(), "test_store");
+    strategy.updateHelixGroupInfo(getHelixGroupInfo());
+
+    // All replicas are known
+    List<String> replicas = Arrays.asList(instance1, instance2, instance3);
+
+    // Should work normally - each request selects the correct group
+    String selectedReplica = strategy.getReplicas(0, 0, replicas);
+    assertEquals(selectedReplica, instance1);
+
+    selectedReplica = strategy.getReplicas(1, 1, replicas);
+    assertEquals(selectedReplica, instance2);
+
+    selectedReplica = strategy.getReplicas(2, 2, replicas);
+    assertEquals(selectedReplica, instance3);
+  }
+
 }
