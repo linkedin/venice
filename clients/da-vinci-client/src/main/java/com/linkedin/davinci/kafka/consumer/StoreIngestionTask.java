@@ -3224,11 +3224,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     if (!batchReportIncPushStatusEnabled || partitionConsumptionState.isComplete()) {
       ingestionNotificationDispatcher
           .reportStartOfIncrementalPushReceived(partitionConsumptionState, startVersion.toString());
-      partitionConsumptionState.setTrackingIncrementalPushStatus(
-          startVersion.toString(),
-          ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED.getValue(),
-          pubSubMessageTime);
     }
+
+    partitionConsumptionState.setTrackingIncrementalPushStatus(
+        startVersion.toString(),
+        ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED.getValue(),
+        pubSubMessageTime);
   }
 
   protected void processEndOfIncrementalPush(
@@ -3239,11 +3240,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     if (!batchReportIncPushStatusEnabled || partitionConsumptionState.isComplete()) {
       ingestionNotificationDispatcher
           .reportEndOfIncrementalPushReceived(partitionConsumptionState, endVersion.toString());
-
-      partitionConsumptionState.setTrackingIncrementalPushStatus(
-          endVersion.toString(),
-          ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED.getValue(),
-          pubSubMessageTime);
     } else {
       LOGGER.info(
           "Adding incremental push: {} to pending batch report list for replica: {}.",
@@ -3251,6 +3247,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           partitionConsumptionState.getReplicaId());
       partitionConsumptionState.addIncPushVersionToPendingReportList(endVersion.toString());
     }
+
+    partitionConsumptionState.setTrackingIncrementalPushStatus(
+        endVersion.toString(),
+        ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED.getValue(),
+        pubSubMessageTime);
   }
 
   /**
