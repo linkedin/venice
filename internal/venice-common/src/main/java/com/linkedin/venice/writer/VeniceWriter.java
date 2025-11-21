@@ -2205,6 +2205,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    */
   public static KafkaMessageEnvelope getDoLStampKME(
       long leadershipTerm,
+      int localPubSubClusterId,
       String writerId,
       ControlMessage dolStampMessage) {
     ProducerMetadata producerMetadata = new ProducerMetadata();
@@ -2217,7 +2218,9 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     LeaderMetadata leaderMetadataFooter = new LeaderMetadata();
     leaderMetadataFooter.hostName = writerId;
     leaderMetadataFooter.termId = leadershipTerm;
-    leaderMetadataFooter.upstreamPubSubPosition = ByteBuffer.allocate(0); // Initialize to empty ByteBuffer
+    leaderMetadataFooter.upstreamOffset = -1; // Indicate no upstream offset
+    leaderMetadataFooter.upstreamPubSubPosition = PubSubSymbolicPosition.EARLIEST.toWireFormatBuffer();
+    leaderMetadataFooter.upstreamKafkaClusterId = localPubSubClusterId;
 
     KafkaMessageEnvelope kafkaMessageEnvelope = new KafkaMessageEnvelope();
     kafkaMessageEnvelope.messageType = MessageType.CONTROL_MESSAGE.getValue();
@@ -2241,8 +2244,10 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   public CompletableFuture<PubSubProduceResult> sendDoLStamp(
       PubSubTopicPartition topicPartition,
       PubSubProducerCallback callback,
-      long leadershipTerm) {
-    KafkaMessageEnvelope kafkaMessageEnvelope = getDoLStampKME(leadershipTerm, writerId, heartBeatMessage);
+      long leadershipTerm,
+      int localPubSubClusterId) {
+    KafkaMessageEnvelope kafkaMessageEnvelope =
+        getDoLStampKME(leadershipTerm, localPubSubClusterId, writerId, heartBeatMessage);
 
     logger.info(
         "Sending DoL stamp message to topic-partition {} for leadership term {} kme: {}",

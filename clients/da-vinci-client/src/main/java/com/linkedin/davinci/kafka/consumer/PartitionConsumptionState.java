@@ -904,6 +904,8 @@ public class PartitionConsumptionState {
    * @return the current upstream version topic position
    */
   public PubSubPosition getLatestProcessedRemoteVtPosition() {
+    // TODO: Ideally, we should get this from offset record to ensure durability
+    // return this.offsetRecord.getCheckpointedRemoteVtPosition();
     return this.latestProcessedRemoteVtPosition;
   }
 
@@ -988,6 +990,13 @@ public class PartitionConsumptionState {
           ? getDivRtCheckpointPosition(pubSubBrokerAddress)
           : getLatestProcessedRtPosition(pubSubBrokerAddress);
     } else {
+      LOGGER.info(
+          "### Getting leader position for replica: {}. Remote consumption enabled: {} remote: {} local: {}",
+          getReplicaTopicPartition(),
+          consumeRemotely(),
+          getLatestProcessedRemoteVtPosition(),
+          getLatestProcessedVtPosition());
+
       return consumeRemotely() ? getLatestProcessedRemoteVtPosition() : getLatestProcessedVtPosition();
     }
   }

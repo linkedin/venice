@@ -865,6 +865,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           partitionConsumptionState.getReplicaId());
       return;
     }
+    // Close any existing VeniceWriter partition session
+    veniceWriter.get().closePartition(partitionConsumptionState.getPartition());
 
     DolStamp dolStamp = new DolStamp(leadershipTerm, veniceWriter.get().getWriterId());
     partitionConsumptionState.setDolState(dolStamp);
@@ -878,26 +880,13 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     // Send DolStamp to local VT
     PubSubProducerCallback dolCallback = new DolStampProduceCallback(partitionConsumptionState, leadershipTerm);
     CompletableFuture<PubSubProduceResult> dolProduceFuture = veniceWriter.get()
-        .sendDoLStamp(partitionConsumptionState.getReplicaTopicPartition(), dolCallback, leadershipTerm);
-
+        .sendDoLStamp(
+            partitionConsumptionState.getReplicaTopicPartition(),
+            dolCallback,
+            leadershipTerm,
+            localKafkaClusterId);
     // Store the produce future in DolStamp
     dolStamp.setDolProduceFuture(dolProduceFuture);
-
-    // Chain logging for produce completion
-    dolProduceFuture.thenAccept((result) -> {
-      LOGGER.info(
-          "DoL stamp produced for replica: {} at offset: {} for term: {}",
-          partitionConsumptionState.getReplicaId(),
-          result.getPubSubPosition(),
-          leadershipTerm);
-    }).exceptionally((ex) -> {
-      LOGGER.error(
-          "Failed to produce DoL stamp for replica: {} for term: {}",
-          partitionConsumptionState.getReplicaId(),
-          leadershipTerm,
-          ex);
-      return null;
-    });
   }
 
   /**
@@ -916,8 +905,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     public void onCompletion(PubSubProduceResult produceResult, Exception exception) {
       if (exception != null) {
         LOGGER.error(
-            "Failed to produce DoL message for partition {} with term {}",
-            pcs.getPartition(),
+            "Failed to produce DoL message for replica: {} with term: {}",
+            pcs.getReplicaId(),
             leadershipTerm,
             exception);
         // Clear DoL state on failure
@@ -930,15 +919,15 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       if (dolStamp != null && dolStamp.getLeadershipTerm() == leadershipTerm) {
         dolStamp.setDolProduced(true);
         LOGGER.info(
-            "DoL message produce confirmed for partition {} at position {} (term: {}) - dolStamp: {}",
-            pcs.getPartition(),
+            "DoL message produce confirmed for replica: {} at position: {} (term: {}) - dolStamp: {}",
+            pcs.getReplicaId(),
             produceResult.getPubSubPosition(),
             leadershipTerm,
             dolStamp);
       } else {
         LOGGER.warn(
-            "DoL state mismatch or null for partition {} - expected term: {}, dolStamp: {}",
-            pcs.getPartition(),
+            "DoL state mismatch or null for replica: {} - expected term: {}, dolStamp: {}",
+            pcs.getReplicaId(),
             leadershipTerm,
             dolStamp);
       }
@@ -958,9 +947,11 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     if (shouldUseDolMechanism() && dolStamp != null) {
       // Check if DoL state is ready (both produced and consumed)
       if (dolStamp.isReady()) {
+        long dolLatencyMs = dolStamp.getLatencyMs();
         LOGGER.info(
-            "DoL mechanism complete for replica: {} - switching to leader topic. DolStamp: {}",
+            "DoL mechanism complete for replica: {} - unblocking switch to the leader topic. Total DoL latency: {} ms. DolStamp: {}",
             pcs.getReplicaId(),
+            dolLatencyMs,
             dolStamp);
         // Clear DoL state as we're done with this transition
         pcs.clearDolState();
@@ -968,7 +959,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       }
 
       // DoL not ready yet, stay on local VT
-      LOGGER.info("DoL mechanism not ready for partition {} - DolStamp: {}", pcs.getReplicaId(), dolStamp);
+      LOGGER.debug("DoL mechanism not ready for replica: {} - DolStamp: {}", pcs.getReplicaId(), dolStamp);
       return false;
     } else {
       // Use legacy time-based mechanism
@@ -1230,7 +1221,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     syncConsumedUpstreamRTOffsetMapIfNeeded(pcs, Collections.singletonMap(pubSubAddress, startPos));
     LOGGER.info(
         "Leader replica: {} started consuming: {} from: {}",
-        pcs.getReplicaId(),
+        pcs,
         Utils.getReplicaId(leaderTopic, pcs.getPartition()),
         startPos);
   }
@@ -1336,6 +1327,14 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   }
 
   private boolean isConsumingFromRemoteVersionTopic(PartitionConsumptionState partitionConsumptionState) {
+    // orint all three conditions for easier debugging
+    LOGGER.info(
+        "Checking remote VT consumption for replica: {}. EOP received: {}, isCurrentVersion: {}, nativeReplicationSourceVersionTopicKafkaURL: {}, localKafkaServer: {}",
+        partitionConsumptionState.getReplicaId(),
+        partitionConsumptionState.isEndOfPushReceived(),
+        isCurrentVersion.getAsBoolean(),
+        nativeReplicationSourceVersionTopicKafkaURL,
+        localKafkaServer);
     return !partitionConsumptionState.isEndOfPushReceived() && !isCurrentVersion.getAsBoolean()
     // Do not enable remote consumption for the source fabric leader. Otherwise, it will produce extra messages.
         && !Objects.equals(nativeReplicationSourceVersionTopicKafkaURL, localKafkaServer);
