@@ -75,7 +75,7 @@ public class TopicManager implements Closeable {
   private final PubSubTopicRepository pubSubTopicRepository;
   private final TopicManagerStats stats;
   private final TopicMetadataFetcher topicMetadataFetcher;
-  private AtomicBoolean isClosed = new AtomicBoolean(false);
+  private final AtomicBoolean isClosed = new AtomicBoolean(false);
 
   // TODO: Consider moving this cache to TopicMetadataFetcher
   // It's expensive to grab the topic config over and over again, and it changes infrequently.
@@ -98,6 +98,7 @@ public class TopicManager implements Closeable {
                 .setMetricsRepository(context.getMetricsRepository())
                 .setVeniceProperties(context.getPubSubProperties(pubSubClusterAddress))
                 .setAdminClientName("TopicManager")
+                .setStoreChangeNotifier(context.getStoreChangeNotifier())
                 .build());
     this.topicMetadataFetcher = new TopicMetadataFetcher(pubSubClusterAddress, context, stats, pubSubAdminAdapter);
     this.logger.info(

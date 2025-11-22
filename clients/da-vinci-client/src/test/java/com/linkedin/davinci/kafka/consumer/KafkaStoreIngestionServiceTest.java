@@ -67,6 +67,7 @@ import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.utils.DataProviderUtils;
+import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.ReferenceCounted;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -188,6 +189,8 @@ public abstract class KafkaStoreIngestionServiceTest {
     doReturn(2).when(mockVeniceServerConfig).getAaWCIngestionStorageLookupThreadPoolSize();
     doReturn(1).when(mockVeniceServerConfig).getStoreWriterNumber();
     doReturn(5).when(mockVeniceServerConfig).getIdleIngestionTaskCleanupIntervalInSeconds();
+    doReturn(1).when(mockVeniceServerConfig).getStoreChangeNotifierThreadPoolSize();
+    doReturn(LogContext.EMPTY).when(mockVeniceServerConfig).getLogContext();
 
     // Consumer related configs for preparing kafka consumer service.
     doReturn(dummyKafkaUrl).when(mockVeniceServerConfig).getKafkaBootstrapServers();

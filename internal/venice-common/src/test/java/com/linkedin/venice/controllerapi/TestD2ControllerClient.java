@@ -47,7 +47,7 @@ public class TestD2ControllerClient {
   }
 
   @AfterClass(alwaysRun = true)
-  public void teardown() {
+  public void tearDown() {
     D2ClientFactory.resetUnitTestMode();
   }
 

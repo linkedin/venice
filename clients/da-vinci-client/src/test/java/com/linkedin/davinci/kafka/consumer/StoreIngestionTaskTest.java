@@ -154,6 +154,7 @@ import com.linkedin.venice.offsets.InMemoryStorageMetadataService;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.pubsub.ImmutablePubSubMessage;
+import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterContext;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubContext;
@@ -1187,11 +1188,17 @@ public abstract class StoreIngestionTaskTest {
     extraServerProperties = new HashMap<>(extraServerProperties);
     veniceServerConfig = buildVeniceServerConfig(extraServerProperties);
 
+    PubSubClientsFactory mockPubSubClientsFactory = mock(PubSubClientsFactory.class);
+    doReturn(mockFactory).when(mockPubSubClientsFactory).getConsumerAdapterFactory();
+
+    PubSubContext mockPubSubContext = mock(PubSubContext.class);
+    doReturn(pubSubDeserializer).when(mockPubSubContext).getPubSubMessageDeserializer();
+    doReturn(mockPubSubClientsFactory).when(mockPubSubContext).getPubSubClientsFactory();
+
     Properties localKafkaProps = new Properties();
     localKafkaProps.put(KAFKA_BOOTSTRAP_SERVERS, inMemoryLocalKafkaBroker.getPubSubBrokerAddress());
     localKafkaConsumerService = getConsumerAssignmentStrategy().constructor.construct(
         ConsumerPoolType.REGULAR_POOL,
-        mockFactory,
         localKafkaProps,
         10,
         1,
@@ -1202,20 +1209,19 @@ public abstract class StoreIngestionTaskTest {
         1000,
         mock(StaleTopicChecker.class),
         isLiveConfigEnabled,
-        pubSubDeserializer,
         SystemTime.INSTANCE,
         kafkaConsumerServiceStats,
         false,
         mock(ReadOnlyStoreRepository.class),
         false,
-        veniceServerConfig);
+        veniceServerConfig,
+        mockPubSubContext);
     localKafkaConsumerService.start();
 
     Properties remoteKafkaProps = new Properties();
     remoteKafkaProps.put(KAFKA_BOOTSTRAP_SERVERS, inMemoryRemoteKafkaBroker.getPubSubBrokerAddress());
     remoteKafkaConsumerService = getConsumerAssignmentStrategy().constructor.construct(
         ConsumerPoolType.REGULAR_POOL,
-        mockFactory,
         remoteKafkaProps,
         10,
         1,
@@ -1226,13 +1232,13 @@ public abstract class StoreIngestionTaskTest {
         1000,
         mock(StaleTopicChecker.class),
         isLiveConfigEnabled,
-        pubSubDeserializer,
         SystemTime.INSTANCE,
         kafkaConsumerServiceStats,
         false,
         mock(ReadOnlyStoreRepository.class),
         false,
-        veniceServerConfig);
+        veniceServerConfig,
+        mockPubSubContext);
     remoteKafkaConsumerService.start();
 
     prepareAggKafkaConsumerServiceMock();

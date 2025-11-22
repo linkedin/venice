@@ -153,7 +153,7 @@ public class TestNettyP2PBlobTransferManager {
   }
 
   @AfterMethod
-  public void teardown() throws Exception {
+  public void tearDown() throws Exception {
     manager.close();
     // if the partition directory is not empty, delete all files
     if (Files.exists(tmpSnapshotDir)) {

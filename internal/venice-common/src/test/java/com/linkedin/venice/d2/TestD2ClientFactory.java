@@ -18,7 +18,7 @@ public class TestD2ClientFactory {
   }
 
   @AfterClass(alwaysRun = true)
-  public void teardown() {
+  public void tearDown() {
     D2ClientFactory.resetUnitTestMode();
   }
 

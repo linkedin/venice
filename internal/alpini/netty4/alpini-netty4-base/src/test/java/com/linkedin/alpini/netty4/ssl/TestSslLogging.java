@@ -43,7 +43,7 @@ public class TestSslLogging {
   }
 
   @AfterClass
-  public static void teardown() {
+  public static void tearDown() {
     // Remove appender and stop it
     LoggerContext context = (LoggerContext) LogManager.getContext(false);
     Configuration config = context.getConfiguration();

@@ -3,8 +3,7 @@ package com.linkedin.davinci.kafka.consumer;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.stats.AggKafkaConsumerServiceStats;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
-import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
-import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
+import com.linkedin.venice.pubsub.PubSubContext;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.Time;
@@ -35,7 +34,6 @@ public class StoreAwarePartitionWiseKafkaConsumerService extends PartitionWiseKa
 
   StoreAwarePartitionWiseKafkaConsumerService(
       final ConsumerPoolType poolType,
-      final PubSubConsumerAdapterFactory consumerFactory,
       final Properties consumerProperties,
       final long readCycleDelayMs,
       final int numOfConsumersPerKafkaCluster,
@@ -46,16 +44,15 @@ public class StoreAwarePartitionWiseKafkaConsumerService extends PartitionWiseKa
       final long sharedConsumerNonExistingTopicCleanupDelayMS,
       final StaleTopicChecker staleTopicChecker,
       final boolean liveConfigBasedKafkaThrottlingEnabled,
-      final PubSubMessageDeserializer pubSubDeserializer,
       final Time time,
       final AggKafkaConsumerServiceStats stats,
       final boolean isKafkaConsumerOffsetCollectionEnabled,
       final ReadOnlyStoreRepository metadataRepository,
       final boolean isUnregisterMetricForDeletedStoreEnabled,
-      VeniceServerConfig veniceServerConfig) {
+      final VeniceServerConfig veniceServerConfig,
+      final PubSubContext pubSubContext) {
     super(
         poolType,
-        consumerFactory,
         consumerProperties,
         readCycleDelayMs,
         numOfConsumersPerKafkaCluster,
@@ -66,14 +63,14 @@ public class StoreAwarePartitionWiseKafkaConsumerService extends PartitionWiseKa
         sharedConsumerNonExistingTopicCleanupDelayMS,
         staleTopicChecker,
         liveConfigBasedKafkaThrottlingEnabled,
-        pubSubDeserializer,
         time,
         stats,
         isKafkaConsumerOffsetCollectionEnabled,
         metadataRepository,
         isUnregisterMetricForDeletedStoreEnabled,
         StoreAwarePartitionWiseKafkaConsumerService.class.toString(),
-        veniceServerConfig);
+        veniceServerConfig,
+        pubSubContext);
   }
 
   @Override
