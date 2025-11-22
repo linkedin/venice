@@ -691,7 +691,7 @@ public class BlobP2PTransferAmongServersTest {
       IntegrationTestPushUtils.runVPJ(props);
 
       VeniceServerWrapper server1 = cluster.getVeniceServerByPort(server1Port);
-      VeniceServerWrapper server2 = cluster.getVeniceServerByPort(server2Port);
+      cluster.getVeniceServerByPort(server2Port);
 
       // Stop server 1
       cluster.stopVeniceServer(server1Port);
