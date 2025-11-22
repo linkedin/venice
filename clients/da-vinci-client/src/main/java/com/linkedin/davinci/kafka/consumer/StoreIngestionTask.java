@@ -2370,7 +2370,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
          */
         if (isDaVinciClient() || consumerAction.isHelixTriggeredAction()) {
           LOGGER.info(
-              "Removed replica: {} from PCS map and storage utilization manager. Trigger: {}",
+              "Removing replica: {} from PCS map and storage utilization manager. Trigger: {}",
               topicPartition,
               isDaVinciClient() ? "DaVinci client unsubscribe" : "Helix-triggered unsubscribe");
           partitionConsumptionStateMap.remove(partition);
