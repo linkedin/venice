@@ -771,7 +771,31 @@ public class CreateVersion extends AbstractRoute {
           throw new VeniceNoStoreException(storeName, clusterName);
         }
         Set<Version> previousVersions = new HashSet<>(store.getVersions());
-        version = admin.incrementVersionIdempotent(clusterName, storeName, pushJobId, partitionNum, replicationFactor);
+        boolean isDeferredVersionSwapForEmptyPushEnabled = admin.isDeferredVersionSwapForEmptyPushEnabled(storeName);
+        if (isDeferredVersionSwapForEmptyPushEnabled) {
+          String targetRegion = admin.getDeferredVersionSwapRegionRollforwardOrder(storeName);
+          version = admin.incrementVersionIdempotent(
+              clusterName,
+              storeName,
+              pushJobId,
+              partitionNum,
+              replicationFactor,
+              Version.PushType.BATCH,
+              true,
+              false,
+              null,
+              Optional.empty(),
+              Optional.empty(),
+              -1,
+              Optional.empty(),
+              true,
+              targetRegion,
+              -1);
+        } else {
+          version =
+              admin.incrementVersionIdempotent(clusterName, storeName, pushJobId, partitionNum, replicationFactor);
+        }
+
         int versionNumber = version.getNumber();
         responseObject.setCluster(clusterName);
         responseObject.setName(storeName);

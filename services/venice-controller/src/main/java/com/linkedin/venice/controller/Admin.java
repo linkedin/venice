@@ -572,6 +572,10 @@ public interface Admin extends AutoCloseable, Closeable {
     return 1;
   }
 
+  boolean isDeferredVersionSwapForEmptyPushEnabled(String store);
+
+  String getDeferredVersionSwapRegionRollforwardOrder(String store);
+
   List<Replica> getReplicas(String clusterName, String kafkaTopic);
 
   List<Replica> getReplicasOfStorageNode(String clusterName, String instanceId);
