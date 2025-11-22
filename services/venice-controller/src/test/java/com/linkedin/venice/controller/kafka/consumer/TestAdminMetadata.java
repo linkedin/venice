@@ -50,6 +50,7 @@ public class TestAdminMetadata {
 
     // Verify JSON is human-readable
     String jsonString = new String(jsonBytes);
+    System.out.println("Serialized AdminMetadata JSON: " + jsonString);
     assertTrue(jsonString.contains("\"executionId\" : 123"));
     assertTrue(jsonString.contains("\"offset\" : 12345"));
     assertTrue(jsonString.contains("\"upstreamOffset\" : 67890"));
