@@ -373,7 +373,6 @@ public class SparkPubSubInputPartitionReaderTest {
 
     // Case 2: Only CONTROL_MESSAGE records in the split => no rows surfaced
     SparkPubSubInputPartitionReader reader2 = createReaderWithMockIterator();
-    reader2 = createReaderWithMockIterator();
 
     PubSubSplitIterator.PubSubInputRecord controlRecord1 = createMockControlRecord(200L);
     PubSubSplitIterator.PubSubInputRecord controlRecord2 = createMockControlRecord(201L);
