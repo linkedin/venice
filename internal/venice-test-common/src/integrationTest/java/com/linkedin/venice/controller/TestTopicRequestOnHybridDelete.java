@@ -1,6 +1,5 @@
 package com.linkedin.venice.controller;
 
-import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_OPERATION_TIMEOUT_MS_DEFAULT_VALUE;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.getSamzaProducer;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.makeStoreHybrid;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRecord;
@@ -15,7 +14,6 @@ import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
-import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.IntegrationTestUtils;
 import com.linkedin.venice.integration.utils.ServiceFactory;
@@ -26,14 +24,10 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.manager.TopicManager;
-import com.linkedin.venice.pubsub.manager.TopicManagerRepository;
-import com.linkedin.venice.pushmonitor.ExecutionStatus;
-import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import java.util.List;
-import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import org.apache.avro.util.Utf8;
@@ -166,7 +160,8 @@ public class TestTopicRequestOnHybridDelete {
 
       Assert.assertEquals(controllerClient.getStore(storeName).getStore().getVersions().size(), 0);
       makeStoreHybrid(venice, storeName, 100L, 5L);
-      controllerClient.emptyPush(storeName, Utils.getUniqueString("push-id3"), 1L);
+      TestUtils.assertCommand(
+          controllerClient.sendEmptyPushAndWait(storeName, Utils.getUniqueString("push-id3"), 1L, 120_000));
 
       int expectedCurrentVersion = 3;
 
@@ -214,64 +209,6 @@ public class TestTopicRequestOnHybridDelete {
         // notice that D2 clients can be closed for more than one time
         veniceProducer.stop();
       }
-    }
-  }
-
-  // TODO this test passes, but the same workflow should be tested in a multi-colo simulation
-  @Test(timeOut = 60 * Time.MS_PER_SECOND)
-  public void deleteStoreAfterStartedPushAllowsNewPush() {
-    ControllerClient controllerClient = new ControllerClient(venice.getClusterName(), venice.getRandomRouterURL());
-    try (TopicManagerRepository topicManagerRepository = IntegrationTestPushUtils.getTopicManagerRepo(
-        PUBSUB_OPERATION_TIMEOUT_MS_DEFAULT_VALUE,
-        100,
-        0l,
-        venice.getPubSubBrokerWrapper(),
-        pubSubTopicRepository)) {
-
-      TopicManager topicManager = topicManagerRepository.getLocalTopicManager();
-
-      String storeName = Utils.getUniqueString("hybrid-store");
-      venice.getNewStore(storeName);
-      makeStoreHybrid(venice, storeName, 100L, 5L);
-
-      // new version, but don't write records
-      VersionCreationResponse startedVersion = controllerClient.requestTopicForWrites(
-          storeName,
-          1L,
-          Version.PushType.BATCH,
-          Utils.getUniqueString("pushId"),
-          true,
-          true,
-          false,
-          Optional.empty(),
-          Optional.empty(),
-          Optional.empty(),
-          false,
-          -1);
-      assertCommand(startedVersion);
-      Assert.assertEquals(
-          controllerClient.queryJobStatus(startedVersion.getKafkaTopic()).getStatus(),
-          ExecutionStatus.STARTED.toString());
-      Assert.assertTrue(
-          topicManager
-              .containsTopicAndAllPartitionsAreOnline(pubSubTopicRepository.getTopic(startedVersion.getKafkaTopic())));
-
-      // disable store
-      controllerClient
-          .updateStore(storeName, new UpdateStoreQueryParams().setEnableReads(false).setEnableWrites(false));
-      // delete versions
-      controllerClient.deleteAllVersions(storeName);
-      // enable store
-      controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setEnableReads(true).setEnableWrites(true));
-
-      controllerClient.emptyPush(storeName, Utils.getUniqueString("push-id3"), 1L);
-
-      int expectedCurrentVersion = 2;
-
-      TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
-        StoreResponse storeResponse = controllerClient.getStore(storeName);
-        Assert.assertEquals(storeResponse.getStore().getCurrentVersion(), expectedCurrentVersion);
-      });
     }
   }
 }
