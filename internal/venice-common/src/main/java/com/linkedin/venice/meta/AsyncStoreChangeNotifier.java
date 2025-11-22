@@ -1,14 +1,12 @@
-package com.linkedin.venice.pubsub.listener;
+package com.linkedin.venice.meta;
 
 import com.linkedin.venice.acl.VeniceComponent;
-import com.linkedin.venice.meta.Store;
-import com.linkedin.venice.meta.StoreDataChangedListener;
-import com.linkedin.venice.pubsub.listener.StoreChangeTasks.CurrentVersionChangedTask;
-import com.linkedin.venice.pubsub.listener.StoreChangeTasks.StoreChangeEventType;
-import com.linkedin.venice.pubsub.listener.StoreChangeTasks.StoreCreatedTask;
-import com.linkedin.venice.pubsub.listener.StoreChangeTasks.StoreDeletedTask;
-import com.linkedin.venice.pubsub.listener.StoreChangeTasks.VersionAddedTask;
-import com.linkedin.venice.pubsub.listener.StoreChangeTasks.VersionDeletedTask;
+import com.linkedin.venice.meta.StoreChangeTasks.CurrentVersionChangedTask;
+import com.linkedin.venice.meta.StoreChangeTasks.StoreChangeEventType;
+import com.linkedin.venice.meta.StoreChangeTasks.StoreCreatedTask;
+import com.linkedin.venice.meta.StoreChangeTasks.StoreDeletedTask;
+import com.linkedin.venice.meta.StoreChangeTasks.VersionAddedTask;
+import com.linkedin.venice.meta.StoreChangeTasks.VersionDeletedTask;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.LogContext;
 import it.unimi.dsi.fastutil.ints.IntSet;

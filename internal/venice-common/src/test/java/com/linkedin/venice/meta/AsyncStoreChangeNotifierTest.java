@@ -1,4 +1,4 @@
-package com.linkedin.venice.pubsub.listener;
+package com.linkedin.venice.meta;
 
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -11,7 +11,6 @@ import static org.testng.Assert.expectThrows;
 import static org.testng.Assert.fail;
 
 import com.linkedin.venice.acl.VeniceComponent;
-import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.utils.LogContext;
 import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
 import java.util.concurrent.CountDownLatch;
