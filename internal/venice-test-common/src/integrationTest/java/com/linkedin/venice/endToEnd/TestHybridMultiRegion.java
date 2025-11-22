@@ -185,12 +185,13 @@ public class TestHybridMultiRegion {
                   .setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
                   .setHybridRewindSeconds(streamingRewindSeconds)
                   .setHybridOffsetLagThreshold(streamingMessageLag)));
-      controllerClient.emptyPush(storeName, Utils.getUniqueString("empty-hybrid-push"), 1L);
+      TestUtils.assertCommand(
+          controllerClient.sendEmptyPushAndWait(storeName, Utils.getUniqueString("empty-hybrid-push"), 1L, 120000));
       File inputDir = getTempDataDirectory();
       String inputDirPath = "file://" + inputDir.getAbsolutePath();
+      // records 1-100
       TestWriteUtils
-          .writeSimpleAvroFileWithStringToStringAndTimestampSchema(inputDir, String.valueOf(123456789L).getBytes()); // records
-                                                                                                                     // 1-100
+          .writeSimpleAvroFileWithStringToStringAndTimestampSchema(inputDir, String.valueOf(123456789L).getBytes());
       Properties vpjProperties = defaultVPJProps(sharedVenice, inputDirPath, storeName);
       vpjProperties.setProperty(RMD_FIELD_PROP, "rmd");
       vpjProperties.setProperty(DATA_WRITER_COMPUTE_JOB_CLASS, DataWriterSparkJob.class.getCanonicalName());
@@ -202,7 +203,8 @@ public class TestHybridMultiRegion {
           Assert.expectThrows(VeniceException.class, () -> IntegrationTestPushUtils.runVPJ(vpjProperties));
       Assert.assertTrue(
           failureException.getMessage().contains("Input rmd schema does not match the server side RMD schema"),
-          "The exception message does not match with the expected one RMD validation failure");
+          "The exception message does not match with the expected one RMD validation failure. Got: "
+              + failureException.getMessage());
     }
   }
 
