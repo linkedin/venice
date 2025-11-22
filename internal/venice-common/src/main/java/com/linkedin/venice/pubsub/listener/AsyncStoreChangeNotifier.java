@@ -3,6 +3,7 @@ package com.linkedin.venice.pubsub.listener;
 import com.linkedin.venice.acl.VeniceComponent;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
+import com.linkedin.venice.pubsub.listener.StoreChangeTasks.CurrentVersionChangedTask;
 import com.linkedin.venice.pubsub.listener.StoreChangeTasks.StoreChangeEventType;
 import com.linkedin.venice.pubsub.listener.StoreChangeTasks.StoreCreatedTask;
 import com.linkedin.venice.pubsub.listener.StoreChangeTasks.StoreDeletedTask;
@@ -11,6 +12,9 @@ import com.linkedin.venice.pubsub.listener.StoreChangeTasks.VersionDeletedTask;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.LogContext;
 import it.unimi.dsi.fastutil.ints.IntSet;
+import it.unimi.dsi.fastutil.objects.Object2IntMap;
+import it.unimi.dsi.fastutil.objects.Object2IntMaps;
+import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectMaps;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
@@ -39,7 +43,7 @@ import org.apache.logging.log4j.Logger;
  *   <li>Rich context: Tasks receive full Store objects and version numbers</li>
  *   <li>Async execution: Tasks run in a thread pool to avoid blocking</li>
  *   <li>Failure isolation: Exceptions in one task don't affect others</li>
- *   <li>Minimal state: Only tracks version sets for change detection</li>
+ *   <li>Change detection: Tracks version sets and current version for precise change detection</li>
  * </ul>
  *
  * <p><b>Usage Example:</b>
@@ -52,6 +56,8 @@ import org.apache.logging.log4j.Logger;
  *
  * StoreChangeTasks tasks = StoreChangeTasks.builder()
  *     .onVersionAdded((store, version) -> handleNewVersion(store, version))
+ *     .onCurrentVersionChanged((store, newVersion, oldVersion) ->
+ *         handleCurrentVersionChange(store, newVersion, oldVersion))
  *     .build();
  *
  * String taskId = notifier.registerTasks("MyAdapter", tasks);
@@ -71,6 +77,7 @@ public class AsyncStoreChangeNotifier implements StoreDataChangedListener, AutoC
   private final ExecutorService notificationExecutor;
   private final ConcurrentHashMap<String, StoreChangeTasks> taskRegistry;
   private final Object2ObjectMap<String, IntSet> storeVersionSets;
+  private final Object2IntMap<String> storeCurrentVersions;
   private final AtomicInteger taskIdSuffixCounter;
   private final AtomicBoolean closed;
   private final VeniceComponent veniceComponent;
@@ -91,6 +98,7 @@ public class AsyncStoreChangeNotifier implements StoreDataChangedListener, AutoC
         Executors.newFixedThreadPool(threadPoolSize, new DaemonThreadFactory("pubsub-client-notifier", logContext));
     this.taskRegistry = new ConcurrentHashMap<>();
     this.storeVersionSets = Object2ObjectMaps.synchronize(new Object2ObjectOpenHashMap<>());
+    this.storeCurrentVersions = Object2IntMaps.synchronize(new Object2IntOpenHashMap<>());
     this.taskIdSuffixCounter = new AtomicInteger(0);
     this.closed = new AtomicBoolean(false);
 
@@ -169,6 +177,12 @@ public class AsyncStoreChangeNotifier implements StoreDataChangedListener, AutoC
     // Initialize tracking state for the new store
     storeVersionSets.put(storeName, store.getVersionNumbers());
 
+    // Initialize current version tracking
+    int currentVersion = store.getCurrentVersion();
+    if (currentVersion != Store.NON_EXISTING_VERSION) {
+      storeCurrentVersions.put(storeName, currentVersion);
+    }
+
     notifyTasksForStoreCreated(store);
   }
 
@@ -186,6 +200,7 @@ public class AsyncStoreChangeNotifier implements StoreDataChangedListener, AutoC
     notifyTasksForStoreDeleted(store);
 
     storeVersionSets.remove(storeName);
+    storeCurrentVersions.remove(storeName);
   }
 
   @Override
@@ -219,6 +234,25 @@ public class AsyncStoreChangeNotifier implements StoreDataChangedListener, AutoC
       }
     }
 
+    // Check for current version change
+    int newCurrentVersion = store.getCurrentVersion();
+    // Note: getInt returns 0 if key not present, so we check containsKey for first-time tracking
+    boolean hasTrackedVersion = storeCurrentVersions.containsKey(storeName);
+    int previousCurrentVersion =
+        hasTrackedVersion ? storeCurrentVersions.getInt(storeName) : Store.NON_EXISTING_VERSION;
+
+    if (newCurrentVersion != Store.NON_EXISTING_VERSION) {
+      if (!hasTrackedVersion || previousCurrentVersion != newCurrentVersion) {
+        LOGGER.debug(
+            "Store {} current version changed from {} to {}",
+            storeName,
+            previousCurrentVersion,
+            newCurrentVersion);
+        notifyTasksForCurrentVersionChanged(store, newCurrentVersion, previousCurrentVersion);
+        storeCurrentVersions.put(storeName, newCurrentVersion);
+      }
+    }
+
     // Update tracking state
     storeVersionSets.put(storeName, currentVersions);
   }
@@ -246,6 +280,7 @@ public class AsyncStoreChangeNotifier implements StoreDataChangedListener, AutoC
       taskRegistry.clear();
 
       storeVersionSets.clear();
+      storeCurrentVersions.clear();
 
       LOGGER.info(
           "AsyncStoreChangeNotifier for {} closed. Cleared {} task registrations",
@@ -335,6 +370,32 @@ public class AsyncStoreChangeNotifier implements StoreDataChangedListener, AutoC
           taskCount,
           store.getName(),
           versionNumber);
+    }
+  }
+
+  private void notifyTasksForCurrentVersionChanged(Store store, int newVersion, int previousVersion) {
+    int taskCount = 0;
+    for (Map.Entry<String, StoreChangeTasks> entry: taskRegistry.entrySet()) {
+      String taskId = entry.getKey();
+      CurrentVersionChangedTask task = entry.getValue().getOnCurrentVersionChanged();
+
+      if (task != null) {
+        taskCount++;
+        submitTask(
+            taskId,
+            () -> task.execute(store, newVersion, previousVersion),
+            StoreChangeEventType.CURRENT_VERSION_CHANGED,
+            store.getName() + " (v" + previousVersion + " -> v" + newVersion + ")");
+      }
+    }
+
+    if (taskCount > 0) {
+      LOGGER.debug(
+          "Submitted {} tasks for CURRENT_VERSION_CHANGED event on store: {}, previous: {}, new: {}",
+          taskCount,
+          store.getName(),
+          previousVersion,
+          newVersion);
     }
   }
 
