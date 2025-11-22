@@ -329,4 +329,312 @@ public class AsyncStoreChangeNotifierTest {
   public void testConstructorWithNullVeniceComponent() {
     expectThrows(IllegalArgumentException.class, () -> new AsyncStoreChangeNotifier(null, LogContext.EMPTY, 2));
   }
+
+  @Test
+  public void testHandleCurrentVersionChanged() throws InterruptedException {
+    CountDownLatch latch = new CountDownLatch(1);
+    AtomicInteger callCount = new AtomicInteger(0);
+    AtomicInteger capturedNewVersion = new AtomicInteger(-1);
+    AtomicInteger capturedPreviousVersion = new AtomicInteger(-1);
+
+    StoreChangeTasks tasks = StoreChangeTasks.builder().onCurrentVersionChanged((store, newVersion, prevVersion) -> {
+      callCount.incrementAndGet();
+      capturedNewVersion.set(newVersion);
+      capturedPreviousVersion.set(prevVersion);
+      latch.countDown();
+    }).build();
+
+    notifier.registerTasks("TestAdapter", tasks);
+
+    Store store = mock(Store.class);
+    when(store.getName()).thenReturn("testStore");
+    when(store.getVersionNumbers()).thenReturn(new IntOpenHashSet(new int[] { 1, 2 }));
+    when(store.getCurrentVersion()).thenReturn(1);
+
+    // Initialize state
+    notifier.handleStoreCreated(store);
+
+    // Change current version from 1 to 2
+    when(store.getCurrentVersion()).thenReturn(2);
+    notifier.handleStoreChanged(store);
+
+    assertTrue(latch.await(5, TimeUnit.SECONDS));
+    assertEquals(callCount.get(), 1);
+    assertEquals(capturedNewVersion.get(), 2);
+    assertEquals(capturedPreviousVersion.get(), 1);
+  }
+
+  @Test
+  public void testCurrentVersionChangedWithNoPreviousVersion() throws InterruptedException {
+    CountDownLatch latch = new CountDownLatch(1);
+    AtomicInteger capturedNewVersion = new AtomicInteger(-1);
+    AtomicInteger capturedPreviousVersion = new AtomicInteger(-1);
+
+    StoreChangeTasks tasks = StoreChangeTasks.builder().onCurrentVersionChanged((store, newVersion, prevVersion) -> {
+      capturedNewVersion.set(newVersion);
+      capturedPreviousVersion.set(prevVersion);
+      latch.countDown();
+    }).build();
+
+    notifier.registerTasks("TestAdapter", tasks);
+
+    Store store = mock(Store.class);
+    when(store.getName()).thenReturn("testStore");
+    when(store.getVersionNumbers()).thenReturn(new IntOpenHashSet(new int[] { 1 }));
+    when(store.getCurrentVersion()).thenReturn(Store.NON_EXISTING_VERSION);
+
+    // Initialize state with no current version
+    notifier.handleStoreCreated(store);
+
+    // First version goes online
+    when(store.getVersionNumbers()).thenReturn(new IntOpenHashSet(new int[] { 1 }));
+    when(store.getCurrentVersion()).thenReturn(1);
+    notifier.handleStoreChanged(store);
+
+    assertTrue(latch.await(5, TimeUnit.SECONDS));
+    assertEquals(capturedNewVersion.get(), 1);
+    assertEquals(capturedPreviousVersion.get(), Store.NON_EXISTING_VERSION);
+  }
+
+  @Test
+  public void testCurrentVersionRollback() throws InterruptedException {
+    CountDownLatch latch = new CountDownLatch(1);
+    AtomicInteger capturedNewVersion = new AtomicInteger(-1);
+    AtomicInteger capturedPreviousVersion = new AtomicInteger(-1);
+
+    StoreChangeTasks tasks = StoreChangeTasks.builder().onCurrentVersionChanged((store, newVersion, prevVersion) -> {
+      capturedNewVersion.set(newVersion);
+      capturedPreviousVersion.set(prevVersion);
+      latch.countDown();
+    }).build();
+
+    notifier.registerTasks("TestAdapter", tasks);
+
+    Store store = mock(Store.class);
+    when(store.getName()).thenReturn("testStore");
+    when(store.getVersionNumbers()).thenReturn(new IntOpenHashSet(new int[] { 1, 2, 3 }));
+    when(store.getCurrentVersion()).thenReturn(3);
+
+    // Initialize state with version 3
+    notifier.handleStoreCreated(store);
+
+    // Rollback from version 3 to version 2
+    when(store.getCurrentVersion()).thenReturn(2);
+    notifier.handleStoreChanged(store);
+
+    assertTrue(latch.await(5, TimeUnit.SECONDS));
+    assertEquals(capturedNewVersion.get(), 2);
+    assertEquals(capturedPreviousVersion.get(), 3);
+  }
+
+  @Test
+  public void testNoNotificationWhenCurrentVersionUnchanged() throws InterruptedException {
+    CountDownLatch latch = new CountDownLatch(1);
+    AtomicInteger callCount = new AtomicInteger(0);
+
+    StoreChangeTasks tasks = StoreChangeTasks.builder().onCurrentVersionChanged((store, newVersion, prevVersion) -> {
+      callCount.incrementAndGet();
+      latch.countDown();
+    }).build();
+
+    notifier.registerTasks("TestAdapter", tasks);
+
+    Store store = mock(Store.class);
+    when(store.getName()).thenReturn("testStore");
+    when(store.getVersionNumbers()).thenReturn(new IntOpenHashSet(new int[] { 1, 2 }));
+    when(store.getCurrentVersion()).thenReturn(2);
+
+    // Initialize state
+    notifier.handleStoreCreated(store);
+
+    // Trigger change with same current version
+    when(store.getVersionNumbers()).thenReturn(new IntOpenHashSet(new int[] { 1, 2, 3 }));
+    when(store.getCurrentVersion()).thenReturn(2); // Same as before
+    notifier.handleStoreChanged(store);
+
+    // Wait a bit to ensure no notification
+    assertFalse(latch.await(1, TimeUnit.SECONDS));
+    assertEquals(callCount.get(), 0);
+  }
+
+  @Test
+  public void testCurrentVersionChangedIsolation() throws InterruptedException {
+    CountDownLatch latch = new CountDownLatch(1);
+    AtomicInteger goodTaskCalls = new AtomicInteger(0);
+
+    StoreChangeTasks badTasks = StoreChangeTasks.builder().onCurrentVersionChanged((store, newVersion, prevVersion) -> {
+      throw new RuntimeException("Task failure");
+    }).build();
+
+    StoreChangeTasks goodTasks =
+        StoreChangeTasks.builder().onCurrentVersionChanged((store, newVersion, prevVersion) -> {
+          goodTaskCalls.incrementAndGet();
+          latch.countDown();
+        }).build();
+
+    notifier.registerTasks("BadAdapter", badTasks);
+    notifier.registerTasks("GoodAdapter", goodTasks);
+
+    Store store = mock(Store.class);
+    when(store.getName()).thenReturn("testStore");
+    when(store.getVersionNumbers()).thenReturn(new IntOpenHashSet(new int[] { 1, 2 }));
+    when(store.getCurrentVersion()).thenReturn(1);
+
+    // Initialize state
+    notifier.handleStoreCreated(store);
+
+    // Change current version
+    when(store.getCurrentVersion()).thenReturn(2);
+    notifier.handleStoreChanged(store);
+
+    assertTrue(latch.await(5, TimeUnit.SECONDS));
+    assertEquals(goodTaskCalls.get(), 1); // Good task still executed
+  }
+
+  @Test
+  public void testStoreCreatedInitializesCurrentVersion() throws InterruptedException {
+    CountDownLatch latch = new CountDownLatch(1);
+    AtomicInteger capturedNewVersion = new AtomicInteger(-1);
+    AtomicInteger capturedPreviousVersion = new AtomicInteger(-1);
+
+    StoreChangeTasks tasks = StoreChangeTasks.builder().onCurrentVersionChanged((store, newVersion, prevVersion) -> {
+      capturedNewVersion.set(newVersion);
+      capturedPreviousVersion.set(prevVersion);
+      latch.countDown();
+    }).build();
+
+    notifier.registerTasks("TestAdapter", tasks);
+
+    Store store = mock(Store.class);
+    when(store.getName()).thenReturn("testStore");
+    when(store.getVersionNumbers()).thenReturn(new IntOpenHashSet(new int[] { 1, 2 }));
+    when(store.getCurrentVersion()).thenReturn(2);
+
+    // Create store with existing current version - should initialize but not notify
+    notifier.handleStoreCreated(store);
+
+    // Now change it to verify initialization worked
+    when(store.getCurrentVersion()).thenReturn(1);
+    notifier.handleStoreChanged(store);
+
+    assertTrue(latch.await(5, TimeUnit.SECONDS));
+    assertEquals(capturedNewVersion.get(), 1);
+    assertEquals(capturedPreviousVersion.get(), 2); // Proves initialization happened
+  }
+
+  @Test
+  public void testStoreDeletedClearsCurrentVersion() throws InterruptedException {
+    CountDownLatch latch = new CountDownLatch(1);
+    AtomicInteger callCount = new AtomicInteger(0);
+    AtomicInteger capturedPreviousVersion = new AtomicInteger(-1);
+
+    StoreChangeTasks tasks = StoreChangeTasks.builder().onCurrentVersionChanged((store, newVersion, prevVersion) -> {
+      callCount.incrementAndGet();
+      capturedPreviousVersion.set(prevVersion);
+      latch.countDown();
+    }).build();
+
+    notifier.registerTasks("TestAdapter", tasks);
+
+    Store store = mock(Store.class);
+    when(store.getName()).thenReturn("testStore");
+    when(store.getVersionNumbers()).thenReturn(new IntOpenHashSet(new int[] { 1, 2 }));
+    when(store.getCurrentVersion()).thenReturn(2);
+
+    // Initialize state
+    notifier.handleStoreCreated(store);
+
+    // Delete store
+    notifier.handleStoreDeleted(store);
+
+    // Recreate store - should treat as first version (no previous tracked)
+    when(store.getCurrentVersion()).thenReturn(1);
+    notifier.handleStoreCreated(store);
+
+    // Change version to trigger notification
+    when(store.getCurrentVersion()).thenReturn(2);
+    notifier.handleStoreChanged(store);
+
+    assertTrue(latch.await(5, TimeUnit.SECONDS));
+    assertEquals(callCount.get(), 1);
+    assertEquals(capturedPreviousVersion.get(), 1); // Previous is 1, not the old deleted store's version
+  }
+
+  @Test
+  public void testMultipleCurrentVersionChanges() throws InterruptedException {
+    CountDownLatch latch = new CountDownLatch(3);
+    AtomicInteger callCount = new AtomicInteger(0);
+
+    StoreChangeTasks tasks = StoreChangeTasks.builder().onCurrentVersionChanged((store, newVersion, prevVersion) -> {
+      callCount.incrementAndGet();
+      latch.countDown();
+    }).build();
+
+    notifier.registerTasks("TestAdapter", tasks);
+
+    Store store = mock(Store.class);
+    when(store.getName()).thenReturn("testStore");
+    when(store.getVersionNumbers()).thenReturn(new IntOpenHashSet(new int[] { 1, 2, 3, 4 }));
+    when(store.getCurrentVersion()).thenReturn(1);
+
+    // Initialize
+    notifier.handleStoreCreated(store);
+
+    // Change 1 -> 2
+    when(store.getCurrentVersion()).thenReturn(2);
+    notifier.handleStoreChanged(store);
+
+    // Change 2 -> 3
+    when(store.getCurrentVersion()).thenReturn(3);
+    notifier.handleStoreChanged(store);
+
+    // Change 3 -> 4
+    when(store.getCurrentVersion()).thenReturn(4);
+    notifier.handleStoreChanged(store);
+
+    assertTrue(latch.await(5, TimeUnit.SECONDS));
+    assertEquals(callCount.get(), 3);
+  }
+
+  @Test
+  public void testCurrentVersionChangeWithVersionAddDelete() throws InterruptedException {
+    CountDownLatch versionAddedLatch = new CountDownLatch(1);
+    CountDownLatch currentVersionLatch = new CountDownLatch(1);
+    AtomicInteger versionAddedCalls = new AtomicInteger(0);
+    AtomicInteger currentVersionCalls = new AtomicInteger(0);
+    AtomicInteger capturedAddedVersion = new AtomicInteger(-1);
+    AtomicInteger capturedNewCurrentVersion = new AtomicInteger(-1);
+
+    StoreChangeTasks tasks = StoreChangeTasks.builder().onVersionAdded((store, version) -> {
+      versionAddedCalls.incrementAndGet();
+      capturedAddedVersion.set(version);
+      versionAddedLatch.countDown();
+    }).onCurrentVersionChanged((store, newVersion, prevVersion) -> {
+      currentVersionCalls.incrementAndGet();
+      capturedNewCurrentVersion.set(newVersion);
+      currentVersionLatch.countDown();
+    }).build();
+
+    notifier.registerTasks("TestAdapter", tasks);
+
+    Store store = mock(Store.class);
+    when(store.getName()).thenReturn("testStore");
+    when(store.getVersionNumbers()).thenReturn(new IntOpenHashSet(new int[] { 1, 2 }));
+    when(store.getCurrentVersion()).thenReturn(1);
+
+    // Initialize
+    notifier.handleStoreCreated(store);
+
+    // Add version 3 and make it current
+    when(store.getVersionNumbers()).thenReturn(new IntOpenHashSet(new int[] { 1, 2, 3 }));
+    when(store.getCurrentVersion()).thenReturn(3);
+    notifier.handleStoreChanged(store);
+
+    assertTrue(versionAddedLatch.await(5, TimeUnit.SECONDS));
+    assertTrue(currentVersionLatch.await(5, TimeUnit.SECONDS));
+    assertEquals(versionAddedCalls.get(), 1);
+    assertEquals(currentVersionCalls.get(), 1);
+    assertEquals(capturedAddedVersion.get(), 3);
+    assertEquals(capturedNewCurrentVersion.get(), 3);
+  }
 }

@@ -15,6 +15,9 @@ import javax.annotation.concurrent.Immutable;
  * StoreChangeTasks tasks = StoreChangeTasks.builder()
  *     .onStoreCreated(store -> cache.initialize(store.getName()))
  *     .onVersionAdded((store, version) -> cache.invalidate(store.getName()))
+ *     .onVersionDeleted((store, version) -> cache.cleanup(store.getName(), version))
+ *     .onCurrentVersionChanged((store, newVersion, oldVersion) ->
+ *         cache.updateCurrentVersion(store.getName(), newVersion))
  *     .onStoreDeleted(store -> cache.remove(store.getName()))
  *     .build();
  *
@@ -30,7 +33,7 @@ public final class StoreChangeTasks {
    * Event types for store metadata changes.
    */
   public enum StoreChangeEventType {
-    STORE_CREATED, STORE_DELETED, VERSION_ADDED, VERSION_DELETED
+    STORE_CREATED, STORE_DELETED, VERSION_ADDED, VERSION_DELETED, CURRENT_VERSION_CHANGED
   }
 
   /**
@@ -65,16 +68,26 @@ public final class StoreChangeTasks {
     void execute(Store store, int deletedVersionNumber);
   }
 
+  /**
+   * Task executed when a store's current version changes.
+   */
+  @FunctionalInterface
+  public interface CurrentVersionChangedTask {
+    void execute(Store store, int newCurrentVersion, int previousCurrentVersion);
+  }
+
   private final StoreCreatedTask onStoreCreated;
   private final StoreDeletedTask onStoreDeleted;
   private final VersionAddedTask onVersionAdded;
   private final VersionDeletedTask onVersionDeleted;
+  private final CurrentVersionChangedTask onCurrentVersionChanged;
 
   private StoreChangeTasks(Builder builder) {
     this.onStoreCreated = builder.onStoreCreated;
     this.onStoreDeleted = builder.onStoreDeleted;
     this.onVersionAdded = builder.onVersionAdded;
     this.onVersionDeleted = builder.onVersionDeleted;
+    this.onCurrentVersionChanged = builder.onCurrentVersionChanged;
   }
 
   public static Builder builder() {
@@ -97,6 +110,10 @@ public final class StoreChangeTasks {
     return onVersionDeleted;
   }
 
+  public CurrentVersionChangedTask getOnCurrentVersionChanged() {
+    return onCurrentVersionChanged;
+  }
+
   /**
    * Builder for constructing {@link StoreChangeTasks} instances.
    * All tasks are optional - only register tasks for events you care about.
@@ -106,6 +123,7 @@ public final class StoreChangeTasks {
     private StoreDeletedTask onStoreDeleted;
     private VersionAddedTask onVersionAdded;
     private VersionDeletedTask onVersionDeleted;
+    private CurrentVersionChangedTask onCurrentVersionChanged;
 
     public Builder onStoreCreated(StoreCreatedTask task) {
       this.onStoreCreated = task;
@@ -124,6 +142,11 @@ public final class StoreChangeTasks {
 
     public Builder onVersionDeleted(VersionDeletedTask task) {
       this.onVersionDeleted = task;
+      return this;
+    }
+
+    public Builder onCurrentVersionChanged(CurrentVersionChangedTask task) {
+      this.onCurrentVersionChanged = task;
       return this;
     }
 
