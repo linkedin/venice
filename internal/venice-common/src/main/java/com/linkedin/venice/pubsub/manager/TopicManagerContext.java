@@ -5,13 +5,13 @@ import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_OPERATION_TIMEOU
 import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_TOPIC_DELETION_STATUS_POLL_INTERVAL_MS_DEFAULT_VALUE;
 
 import com.linkedin.venice.acl.VeniceComponent;
+import com.linkedin.venice.meta.AsyncStoreChangeNotifier;
 import com.linkedin.venice.pubsub.PubSubAdminAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubAdminAdapter;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
-import com.linkedin.venice.pubsub.listener.AsyncStoreChangeNotifier;
 import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;

@@ -1,6 +1,5 @@
-package com.linkedin.venice.pubsub.listener;
+package com.linkedin.venice.meta;
 
-import com.linkedin.venice.meta.Store;
 import javax.annotation.concurrent.Immutable;
 
 

@@ -1,7 +1,7 @@
 package com.linkedin.venice.pubsub;
 
+import com.linkedin.venice.meta.AsyncStoreChangeNotifier;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
-import com.linkedin.venice.pubsub.listener.AsyncStoreChangeNotifier;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.pubsub.manager.TopicManagerRepository;
 
