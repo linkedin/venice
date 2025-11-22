@@ -7,6 +7,7 @@ import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.stats.AggVersionedIngestionStats;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.writer.VeniceWriterFactory;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -112,6 +113,6 @@ public interface StoreIngestionService {
   Optional<PubSubPosition> getPubSubPosition(
       VeniceStoreVersionConfig veniceStore,
       int partitionId,
-      Long timestamp,
-      PubSubPosition pubSubPosition);
+      Map<Integer, Long> timestampMap,
+      Map<Integer, PubSubPosition> pubSubPosition);
 }

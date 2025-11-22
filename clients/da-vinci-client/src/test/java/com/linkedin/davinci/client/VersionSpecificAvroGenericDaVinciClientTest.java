@@ -17,7 +17,6 @@ import com.linkedin.venice.meta.SubscriptionBasedReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.ComplementSet;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.Optional;
 import org.mockito.MockedStatic;
 import org.testng.annotations.AfterMethod;
@@ -62,8 +61,7 @@ public class VersionSpecificAvroGenericDaVinciClientTest {
     versionSpecificAvroGenericDaVinciClient.subscribe(partitionsSet);
 
     verify(versionSpecificAvroGenericDaVinciClient).addPartitionsToSubscription(partitionsSet);
-    verify(storeBackend)
-        .subscribe(partitionsSet, Optional.of(version), Collections.emptyMap(), null, Collections.emptyMap());
+    verify(storeBackend).subscribe(partitionsSet, Optional.of(version), null);
   }
 
   @Test
