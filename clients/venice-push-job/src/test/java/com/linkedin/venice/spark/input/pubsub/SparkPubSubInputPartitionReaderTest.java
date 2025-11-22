@@ -349,6 +349,110 @@ public class SparkPubSubInputPartitionReaderTest {
   }
 
   @Test
+  public void testNextSkipsControlMessages() throws IOException {
+    // Case 1: CONTROL_MESSAGE followed by a PUT should return only the PUT row
+    SparkPubSubInputPartitionReader reader = createReaderWithMockIterator();
+
+    PubSubSplitIterator.PubSubInputRecord controlRecord = createMockControlRecord(99L);
+    PubSubSplitIterator.PubSubInputRecord putRecord =
+        createMockPutRecord(100L, "after-control-key", "after-control-value", 42, null, 0);
+
+    when(mockSplitIterator.next()).thenReturn(controlRecord).thenReturn(putRecord).thenReturn(null);
+
+    // Reader should skip the control message internally and surface the PUT
+    assertTrue(reader.next(), "Reader should return true after skipping control message and reaching PUT");
+
+    InternalRow row = reader.get();
+    assertNotNull(row, "Row should not be null after skipping control message");
+    assertEquals(row.getInt(3), MessageType.PUT.getValue(), "First surfaced row should be PUT");
+    assertEquals(row.getLong(2), 100L, "Offset should correspond to the PUT record, not the control message");
+
+    // No more data after the PUT
+    assertFalse(reader.next(), "Reader should return false after consuming the PUT");
+    reader.close();
+
+    // Case 2: Only CONTROL_MESSAGE records in the split => no rows surfaced
+    SparkPubSubInputPartitionReader reader2 = createReaderWithMockIterator();
+    reader2 = createReaderWithMockIterator();
+
+    PubSubSplitIterator.PubSubInputRecord controlRecord1 = createMockControlRecord(200L);
+    PubSubSplitIterator.PubSubInputRecord controlRecord2 = createMockControlRecord(201L);
+
+    when(mockSplitIterator.next()).thenReturn(controlRecord1).thenReturn(controlRecord2).thenReturn(null);
+
+    assertFalse(
+        reader2.next(),
+        "Reader should return false when the split contains only control messages and no PUT/DELETE");
+    assertNull(reader.get(), "get() should return null when no non-control messages are available");
+    reader2.close();
+  }
+
+  @Test
+  public void testNextSkipsControlMessagesInMixedStream() throws IOException {
+    // Testing Mixed message stream: CONTROL, PUT, CONTROL, DELETE
+    SparkPubSubInputPartitionReader reader = createReaderWithMockIterator();
+
+    PubSubSplitIterator.PubSubInputRecord control1 = createMockControlRecord(90L);
+    PubSubSplitIterator.PubSubInputRecord putRecord = createMockPutRecord(100L, "put-key", "put-value", 1, null, 0);
+    PubSubSplitIterator.PubSubInputRecord control2 = createMockControlRecord(150L);
+    PubSubSplitIterator.PubSubInputRecord deleteRecord = createMockDeleteRecord(200L, "delete-key", 2, null, 0);
+
+    when(mockSplitIterator.next()).thenReturn(control1)
+        .thenReturn(putRecord)
+        .thenReturn(control2)
+        .thenReturn(deleteRecord)
+        .thenReturn(null);
+
+    // First visible record: PUT at 100
+    assertTrue(reader.next(), "First next() should surface the PUT after skipping leading CONTROL");
+    InternalRow firstRow = reader.get();
+    assertNotNull(firstRow, "First row should not be null");
+    assertEquals(firstRow.getInt(3), MessageType.PUT.getValue(), "First row should be PUT");
+    assertEquals(firstRow.getLong(2), 100L, "First row offset should be 100");
+
+    // Second visible record: DELETE at 200 (CONTROL in between must be skipped)
+    assertTrue(reader.next(), "Second next() should surface the DELETE after skipping middle CONTROL");
+    InternalRow secondRow = reader.get();
+    assertNotNull(secondRow, "Second row should not be null");
+    assertEquals(secondRow.getInt(3), MessageType.DELETE.getValue(), "Second row should be DELETE");
+    assertEquals(secondRow.getLong(2), 200L, "Second row offset should be 200");
+
+    // No more data
+    assertFalse(reader.next(), "Third next() should return false at end of stream");
+    reader.close();
+  }
+
+  @Test
+  public void testNextHandlesControlMessageBetweenData() throws IOException {
+    // Testing scenario Non-Leading and Non-trailing CONTROL: PUT, CONTROL, PUT
+    SparkPubSubInputPartitionReader reader = createReaderWithMockIterator();
+
+    PubSubSplitIterator.PubSubInputRecord put1 = createMockPutRecord(10L, "put-1", "v1", 1, null, 0);
+    PubSubSplitIterator.PubSubInputRecord control = createMockControlRecord(20L);
+    PubSubSplitIterator.PubSubInputRecord put2 = createMockPutRecord(30L, "put-2", "v2", 2, null, 0);
+
+    when(mockSplitIterator.next()).thenReturn(put1).thenReturn(control).thenReturn(put2).thenReturn(null);
+
+    // First next() should return PUT at offset 10
+    assertTrue(reader.next(), "First next() should surface first PUT");
+    InternalRow firstRow = reader.get();
+    assertNotNull(firstRow, "First row should not be null");
+    assertEquals(firstRow.getInt(3), MessageType.PUT.getValue(), "First row should be PUT");
+    assertEquals(firstRow.getLong(2), 10L, "First row offset should be 10");
+
+    // Second next() should skip CONTROL and surface second PUT at offset 30
+    assertTrue(reader.next(), "Second next() should skip CONTROL and surface second PUT");
+    InternalRow secondRow = reader.get();
+    assertNotNull(secondRow, "Second row should not be null");
+    assertEquals(secondRow.getInt(3), MessageType.PUT.getValue(), "Second row should be PUT");
+    assertEquals(secondRow.getLong(2), 30L, "Second row offset should be 30");
+
+    // No more data
+    assertFalse(reader.next(), "Third next() should return false at end of stream");
+    reader.close();
+  }
+
+  @Test
   public void testRawPubsubInternalRowOrdering() throws IOException {
     SparkPubSubInputPartitionReader reader = createReaderWithMockIterator();
 
@@ -479,6 +583,30 @@ public class SparkPubSubInputPartitionReaderTest {
     // Setup envelope
     when(mockEnvelope.getPayloadUnion()).thenReturn(mockDelete);
     when(mockEnvelope.getMessageType()).thenReturn(MessageType.DELETE.getValue());
+
+    // Setup message
+    when(mockMessage.getKey()).thenReturn(mockKey);
+    when(mockMessage.getValue()).thenReturn(mockEnvelope);
+    when(mockMessage.getPosition()).thenReturn(ApacheKafkaOffsetPosition.of(offset));
+
+    // Create record
+    PubSubSplitIterator.PubSubInputRecord record = mock(PubSubSplitIterator.PubSubInputRecord.class);
+    when(record.getPubSubMessage()).thenReturn(mockMessage);
+    when(record.getOffset()).thenReturn(offset);
+
+    return record;
+  }
+
+  /**
+   * Helper method to create a mock CONTROL_MESSAGE record.
+   */
+  private PubSubSplitIterator.PubSubInputRecord createMockControlRecord(long offset) {
+    DefaultPubSubMessage mockMessage = mock(DefaultPubSubMessage.class);
+    KafkaKey mockKey = mock(KafkaKey.class);
+    KafkaMessageEnvelope mockEnvelope = mock(KafkaMessageEnvelope.class);
+
+    // Setup mock envelope. We only care about the message type for control messages.
+    when(mockEnvelope.getMessageType()).thenReturn(MessageType.CONTROL_MESSAGE.getValue());
 
     // Setup message
     when(mockMessage.getKey()).thenReturn(mockKey);

@@ -72,62 +72,71 @@ public class SparkPubSubInputPartitionReader implements PartitionReader<Internal
 
   @Override
   public boolean next() throws IOException {
-    // Pull the next decoded unit from the iterator. Null => no more data.
-    PubSubInputRecord rec = pubSubSplitIterator.next();
-    if (rec == null) {
-      currentRow = null;
-      return false;
+    while (true) {
+      // Pull the next decoded unit from the iterator. Null => no more data.
+      PubSubInputRecord rec = pubSubSplitIterator.next();
+      if (rec == null) {
+        currentRow = null;
+        return false;
+      }
+
+      DefaultPubSubMessage pubSubMessage = rec.getPubSubMessage();
+      KafkaKey pubSubMessageKey = pubSubMessage.getKey();
+      KafkaMessageEnvelope pubSubMessageValue = pubSubMessage.getValue();
+      MessageType pubSubMessageType = MessageType.valueOf(pubSubMessageValue);
+
+      // Skip control messages.
+      if (pubSubMessageType == MessageType.CONTROL_MESSAGE) {
+        // look at next record, do not exit the split.
+        LOGGER.debug("Skipping control message in {} at {}", topicPartition, pubSubMessage.getPosition());
+        continue;
+      }
+
+      // Spark row setup :
+      ByteBuffer key = ByteBuffer.wrap(pubSubMessageKey.getKey(), 0, pubSubMessageKey.getKeyLength());
+      ByteBuffer value;
+      int messageType;
+      int schemaId;
+      ByteBuffer replicationMetadataPayload;
+      int replicationMetadataVersionId;
+
+      switch (pubSubMessageType) {
+        case PUT:
+          Put put = (Put) pubSubMessageValue.getPayloadUnion();
+          messageType = MessageType.PUT.getValue();
+          value = put.getPutValue();
+          schemaId = put.getSchemaId(); // chunking will be handled down the road in spark job.
+          replicationMetadataPayload = put.getReplicationMetadataPayload();
+          replicationMetadataVersionId = put.getReplicationMetadataVersionId();
+          break;
+        case DELETE:
+          messageType = MessageType.DELETE.getValue();
+          Delete delete = (Delete) pubSubMessageValue.getPayloadUnion();
+          schemaId = delete.getSchemaId();
+          value = EMPTY_BYTE_BUFFER;
+
+          replicationMetadataPayload = delete.getReplicationMetadataPayload();
+          replicationMetadataVersionId = delete.getReplicationMetadataVersionId();
+          break;
+        default:
+          throw new IOException(
+              "Unexpected message type: " + pubSubMessageType + " in " + topicPartition + " at "
+                  + pubSubMessage.getPosition());
+      }
+
+      /**
+       *  See {@link com.linkedin.venice.spark.SparkConstants#RAW_PUBSUB_INPUT_TABLE_SCHEMA} for the schema definition.
+       *  Enforce the region to be UTF8String for Spark compatibility and additionally handle ordering of columns per
+       *  the schema.
+       */
+      currentRow = new GenericInternalRow(
+          new Object[] { UTF8String.fromString(region), topicPartition.getPartitionNumber(), rec.getOffset(),
+              messageType, schemaId, ByteUtils.extractByteArray(key), ByteUtils.extractByteArray(value),
+              replicationMetadataVersionId, ByteUtils.extractByteArray(replicationMetadataPayload) });
+
+      logProgressPercent();
+      return true;
     }
-
-    DefaultPubSubMessage pubSubMessage = rec.getPubSubMessage();
-    KafkaKey pubSubMessageKey = pubSubMessage.getKey();
-    KafkaMessageEnvelope pubSubMessageValue = pubSubMessage.getValue();
-    MessageType pubSubMessageType = MessageType.valueOf(pubSubMessageValue);
-
-    // Spark row setup :
-    ByteBuffer key = ByteBuffer.wrap(pubSubMessageKey.getKey(), 0, pubSubMessageKey.getKeyLength());
-    ByteBuffer value;
-    int messageType;
-    int schemaId;
-    ByteBuffer replicationMetadataPayload;
-    int replicationMetadataVersionId;
-
-    switch (pubSubMessageType) {
-      case PUT:
-        Put put = (Put) pubSubMessageValue.getPayloadUnion();
-        messageType = MessageType.PUT.getValue();
-        value = put.getPutValue();
-        schemaId = put.getSchemaId(); // chunking will be handled down the road in spark job.
-        replicationMetadataPayload = put.getReplicationMetadataPayload();
-        replicationMetadataVersionId = put.getReplicationMetadataVersionId();
-        break;
-      case DELETE:
-        messageType = MessageType.DELETE.getValue();
-        Delete delete = (Delete) pubSubMessageValue.getPayloadUnion();
-        schemaId = delete.getSchemaId();
-        value = EMPTY_BYTE_BUFFER;
-
-        replicationMetadataPayload = delete.getReplicationMetadataPayload();
-        replicationMetadataVersionId = delete.getReplicationMetadataVersionId();
-        break;
-      default:
-        throw new IOException(
-            "Unexpected message type: " + pubSubMessageType + " in " + topicPartition + " at "
-                + pubSubMessage.getPosition());
-    }
-
-    /**
-     *  See {@link com.linkedin.venice.spark.SparkConstants#RAW_PUBSUB_INPUT_TABLE_SCHEMA} for the schema definition.
-     *  Enforce the region to be UTF8String for Spark compatibility and additionally handle ordering of columns per
-     *  the schema.
-     */
-    currentRow = new GenericInternalRow(
-        new Object[] { UTF8String.fromString(region), topicPartition.getPartitionNumber(), rec.getOffset(), messageType,
-            schemaId, ByteUtils.extractByteArray(key), ByteUtils.extractByteArray(value), replicationMetadataVersionId,
-            ByteUtils.extractByteArray(replicationMetadataPayload) });
-
-    logProgressPercent();
-    return true;
   }
 
   @Override
