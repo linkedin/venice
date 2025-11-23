@@ -318,7 +318,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   }
 
   public CompletableFuture<Void> seekToEndOfPush(Set<Integer> partitions) {
-    return daVinciClient.seekToTail(partitions);
+    throw new VeniceClientException("seekToEndOfPush will not be supported");
   }
 
   public CompletableFuture<Void> seekToEndOfPush() {

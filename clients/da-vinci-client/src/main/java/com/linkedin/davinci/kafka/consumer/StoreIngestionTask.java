@@ -2300,7 +2300,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
         // Subscribe to local version topic.
         PubSubPosition subscribePosition;
-        if (consumerAction.getPubSubPosition() != null && recordTransformer != null) {
+        if (consumerAction.getPubSubPosition() != null) {
+          if (recordTransformer == null) {
+            throw new VeniceException("seekToCheckpoint will not be supported for non-transformed client");
+          }
           skipValidationForSeekableClientEnabled = true;
           subscribePosition = consumerAction.getPubSubPosition();
           LOGGER.info("Subscribed to user given partition: {} position: {}", topicPartition, subscribePosition);

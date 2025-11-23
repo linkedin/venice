@@ -140,35 +140,11 @@ public class StoreBackend {
     return subscribe(partitions, Optional.empty(), null);
   }
 
-  // public CompletableFuture<Void> seekToTimestamps(Long allPartitionTimestamp, Optional<Version> storeVersion) {
-  // return subscribe(
-  // ComplementSet.universalSet(),
-  // storeVersion, null);
-  // }
-
   public CompletableFuture<Void> seekToCheckpoint(
       DaVinciSeekCheckpointInfo checkpointInfo,
       Optional<Version> storeVersion) {
     return subscribe(checkpointInfo.getPartitions(), storeVersion, checkpointInfo);
   }
-
-  // public CompletableFuture<Void> seekToTail(Optional<Version> storeVersion) {
-  // return subscribe(ComplementSet.universalSet(), storeVersion, null);
-  // }
-
-  // public CompletableFuture<Void> seekToCheckPoints(
-  // Map<Integer, PubSubPosition> checkpoints,
-  // Optional<Version> storeVersion) {
-  // return subscribe(
-  // ComplementSet.wrap(checkpoints.keySet()),
-  // storeVersion, null);
-  // }
-
-  // public CompletableFuture<Void> seekToTimestamps(Map<Integer, Long> timestamps, Optional<Version> storeVersion) {
-  // return subscribe(
-  // ComplementSet.wrap(timestamps.keySet()),
-  // storeVersion, null);
-  // }
 
   private Version getCurrentVersion() {
     return backend.getVeniceCurrentVersion(storeName);
