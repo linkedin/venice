@@ -208,6 +208,19 @@ public interface VeniceChangelogConsumer<K, V> extends AutoCloseable {
   Collection<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> poll(long timeoutInMs);
 
   /**
+   * Polling function to get any available messages from the underlying system for all partitions subscribed, including
+   * or excluding control messages based on the flag.
+   * @param timeoutInMs The maximum time to block/wait in between two polling requests (must not be greater than
+   *        {@link Long#MAX_VALUE} milliseconds)
+   * @param includeControlMessages Whether to include control messages in the returned collection.
+   * @return a collection of messages since the last fetch for the subscribed list of topic partitions
+   * @throws VeniceException if polling operation fails
+   */
+  Collection<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> poll(
+      long timeoutInMs,
+      boolean includeControlMessages);
+
+  /**
    * Checks whether all subscribed partitions are caught up during bootstrap. If a partition's (currentTimestamp - latestMessageTimestamp)
    * is smaller or equal to 1 min, we consider this partition is caught up.
    * @return True if all subscribed partitions have caught up.

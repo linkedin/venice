@@ -818,6 +818,13 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     return internalPoll(timeoutInMs, ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX);
   }
 
+  @Override
+  public Collection<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> poll(
+      long timeoutInMs,
+      boolean includeControlMessages) {
+    return internalPoll(timeoutInMs, ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX, includeControlMessages);
+  }
+
   protected Collection<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> internalPoll(
       long timeoutInMs,
       String topicSuffix,
