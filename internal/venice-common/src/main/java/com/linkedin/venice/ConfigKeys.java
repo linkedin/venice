@@ -2281,6 +2281,13 @@ public class ConfigKeys {
       "time.lag.threshold.for.fast.online.transition.in.restart.minutes";
 
   /**
+   * This config controls the behavior to enable/disable offset lag calculation and persistence during offset record
+   * sync action. The intention is to gradually deprecate this behavior until all the usage is removed from Server and
+   * Da Vinci clients. After they are fully deprecate, this config and the checkpoint logic will all be removed.
+   */
+  public static final String OFFSET_LAG_CHECKPOINT_DURING_SYNC_ENABLED = "offset.lag.checkpoint.during.sync.enabled";
+
+  /**
    * Enable offset collection for kafka topic partition from kafka consumer metrics.
    */
   public static final String SERVER_KAFKA_CONSUMER_OFFSET_COLLECTION_ENABLED =

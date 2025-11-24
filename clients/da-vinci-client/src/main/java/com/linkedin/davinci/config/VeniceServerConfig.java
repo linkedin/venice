@@ -54,6 +54,7 @@ import static com.linkedin.venice.ConfigKeys.MAX_LEADER_FOLLOWER_STATE_TRANSITIO
 import static com.linkedin.venice.ConfigKeys.META_STORE_WRITER_CLOSE_CONCURRENCY;
 import static com.linkedin.venice.ConfigKeys.META_STORE_WRITER_CLOSE_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.MIN_CONSUMER_IN_CONSUMER_POOL_PER_KAFKA_CLUSTER;
+import static com.linkedin.venice.ConfigKeys.OFFSET_LAG_CHECKPOINT_DURING_SYNC_ENABLED;
 import static com.linkedin.venice.ConfigKeys.OFFSET_LAG_DELTA_RELAX_FACTOR_FOR_FAST_ONLINE_TRANSITION_IN_RESTART;
 import static com.linkedin.venice.ConfigKeys.PARTICIPANT_MESSAGE_CONSUMPTION_DELAY_MS;
 import static com.linkedin.venice.ConfigKeys.PARTICIPANT_MESSAGE_STORE_ENABLED;
@@ -497,7 +498,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final long sharedConsumerNonExistingTopicCleanupDelayMS;
   private final int offsetLagDeltaRelaxFactorForFastOnlineTransitionInRestart;
   private final int timeLagThresholdForFastOnlineTransitionInRestartMinutes;
-
+  private final boolean offsetCheckpointDuringSyncEnabled;
   /**
    * Boolean flag indicating if it is a Da Vinci application.
    */
@@ -928,6 +929,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
         serverProperties.getInt(OFFSET_LAG_DELTA_RELAX_FACTOR_FOR_FAST_ONLINE_TRANSITION_IN_RESTART, 2);
     timeLagThresholdForFastOnlineTransitionInRestartMinutes =
         serverProperties.getInt(TIME_LAG_THRESHOLD_FOR_FAST_ONLINE_TRANSITION_IN_RESTART_MINUTES, -1);
+    offsetCheckpointDuringSyncEnabled = serverProperties.getBoolean(OFFSET_LAG_CHECKPOINT_DURING_SYNC_ENABLED, true);
 
     enableKafkaConsumerOffsetCollection =
         serverProperties.getBoolean(SERVER_KAFKA_CONSUMER_OFFSET_COLLECTION_ENABLED, true);
@@ -1559,6 +1561,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public int getTimeLagThresholdForFastOnlineTransitionInRestartMinutes() {
     return timeLagThresholdForFastOnlineTransitionInRestartMinutes;
+  }
+
+  public boolean isOffsetCheckpointDuringSyncEnabled() {
+    return offsetCheckpointDuringSyncEnabled;
   }
 
   public boolean isKafkaConsumerOffsetCollectionEnabled() {

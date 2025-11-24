@@ -1810,7 +1810,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
      * offset periodically and cache them; with this strategy, it is possible that partition could become 'ONLINE' at
      * most {@link com.linkedin.venice.pubsub.manager.TopicMetadataFetcher#ttlInNs} earlier.
      */
-    PubSubTopic leaderTopic = offsetRecord.getLeaderTopic(pubSubTopicRepository);
+    PubSubTopic leaderTopic = offsetRecord.getLeaderTopic(getPubSubTopicRepository());
     if (leaderTopic == null || !leaderTopic.isRealTime()) {
       /**
        * 1. Usually there is a batch-push or empty push for the hybrid store before replaying messages from real-time
@@ -1826,24 +1826,32 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       return Long.MAX_VALUE;
     }
 
-    // Followers and Davinci clients, use local VT to compute hybrid lag.
-    if (isDaVinciClient || partitionConsumptionState.getLeaderFollowerState().equals(STANDBY)) {
-      return measureLagWithCallToPubSub(
-          localKafkaServer,
-          partitionConsumptionState.getReplicaTopicPartition(),
-          partitionConsumptionState.getLatestProcessedVtPosition());
-    }
+    try {
+      // Followers and Davinci clients, use local VT to compute hybrid lag.
+      if (isDaVinciClient() || partitionConsumptionState.getLeaderFollowerState().equals(STANDBY)) {
+        return measureLagWithCallToPubSub(
+            getLocalKafkaServer(),
+            partitionConsumptionState.getReplicaTopicPartition(),
+            partitionConsumptionState.getLatestProcessedVtPosition());
+      }
 
-    // leaderTopic is the real-time topic now
-    String sourceRealTimeTopicKafkaURL;
-    Set<String> sourceRealTimeTopicKafkaURLs = getRealTimeDataSourceKafkaAddress(partitionConsumptionState);
-    if (sourceRealTimeTopicKafkaURLs.isEmpty()) {
-      throw new VeniceException("Expect a real-time source Kafka URL for " + partitionConsumptionState);
-    } else if (sourceRealTimeTopicKafkaURLs.size() == 1) {
-      sourceRealTimeTopicKafkaURL = sourceRealTimeTopicKafkaURLs.iterator().next();
-      return measureRtLagForSingleRegion(sourceRealTimeTopicKafkaURL, partitionConsumptionState, shouldLogLag);
-    } else {
-      return measureRtLagForMultiRegions(sourceRealTimeTopicKafkaURLs, partitionConsumptionState, shouldLogLag);
+      // leaderTopic is the real-time topic now
+      String sourceRealTimeTopicKafkaURL;
+      Set<String> sourceRealTimeTopicKafkaURLs = getRealTimeDataSourceKafkaAddress(partitionConsumptionState);
+      if (sourceRealTimeTopicKafkaURLs.isEmpty()) {
+        throw new VeniceException("Expect a real-time source Kafka URL for " + partitionConsumptionState);
+      } else if (sourceRealTimeTopicKafkaURLs.size() == 1) {
+        sourceRealTimeTopicKafkaURL = sourceRealTimeTopicKafkaURLs.iterator().next();
+        return measureRtLagForSingleRegion(sourceRealTimeTopicKafkaURL, partitionConsumptionState, shouldLogLag);
+      } else {
+        return measureRtLagForMultiRegions(sourceRealTimeTopicKafkaURLs, partitionConsumptionState, shouldLogLag);
+      }
+    } catch (Exception e) {
+      String msg = "Failed to measure Lag for replica: " + partitionConsumptionState.getReplicaId();
+      if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
+        LOGGER.error(msg, e);
+      }
+      return Long.MAX_VALUE;
     }
   }
 
