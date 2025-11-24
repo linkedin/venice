@@ -244,6 +244,7 @@ import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.ReflectUtils;
+import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.RetryUtils;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.StoreUtils;
@@ -7782,6 +7783,19 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   public List<Replica> getReplicasOfStorageNode(String cluster, String instanceId) {
     checkControllerLeadershipFor(cluster);
     return InstanceStatusDecider.getReplicasForInstance(getHelixVeniceClusterResources(cluster), instanceId);
+  }
+
+  @Override
+  public boolean isDeferredVersionSwapForEmptyPushEnabled(String storeName) {
+    String cluster = discoverCluster(storeName);
+    return multiClusterConfigs.getControllerConfig(cluster).isDeferredVersionSwapForEmptyPushEnabled();
+  }
+
+  @Override
+  public String getDeferredVersionSwapRegionRollforwardOrder(String storeName) {
+    String cluster = discoverCluster(storeName);
+    String order = multiClusterConfigs.getControllerConfig(cluster).getDeferredVersionSwapRegionRollforwardOrder();
+    return RegionUtils.parseRegionRolloutOrderList(order).get(0);
   }
 
   /**

@@ -270,6 +270,7 @@ import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.ReflectUtils;
+import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.RetryUtils;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.SystemTime;
@@ -6302,6 +6303,19 @@ public class VeniceParentHelixAdmin implements Admin {
     }
 
     return result;
+  }
+
+  @Override
+  public boolean isDeferredVersionSwapForEmptyPushEnabled(String storeName) {
+    String cluster = discoverCluster(storeName);
+    return multiClusterConfigs.getControllerConfig(cluster).isDeferredVersionSwapForEmptyPushEnabled();
+  }
+
+  @Override
+  public String getDeferredVersionSwapRegionRollforwardOrder(String storeName) {
+    String cluster = discoverCluster(storeName);
+    String order = multiClusterConfigs.getControllerConfig(cluster).getDeferredVersionSwapRegionRollforwardOrder();
+    return RegionUtils.parseRegionRolloutOrderList(order).get(0);
   }
 
 }
