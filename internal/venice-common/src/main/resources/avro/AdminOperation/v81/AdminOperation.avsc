@@ -1,0 +1,1134 @@
+{
+  "name": "AdminOperation",
+  "namespace": "com.linkedin.venice.controller.kafka.protocol.admin",
+  "type": "record",
+  "fields": [
+    {
+      "name": "operationType",
+      "doc": "0 => StoreCreation, 1 => ValueSchemaCreation, 2 => PauseStore, 3 => ResumeStore, 4 => KillOfflinePushJob, 5 => DisableStoreRead, 6 => EnableStoreRead, 7=> DeleteAllVersions, 8=> SetStoreOwner, 9=> SetStorePartitionCount, 10=> SetStoreCurrentVersion, 11=> UpdateStore, 12=> DeleteStore, 13=> DeleteOldVersion, 14=> MigrateStore, 15=> AbortMigration, 16=>AddVersion, 17=> DerivedSchemaCreation, 18=>SupersetSchemaCreation, 19=>EnableNativeReplicationForCluster, 20=>MetadataSchemaCreation, 21=>EnableActiveActiveReplicationForCluster, 25=>CreatePersona, 26=>DeletePersona, 27=>UpdatePersona, 28=>RollbackCurrentVersion, 29=>RollforwardCurrentVersion",
+      "type": "int"
+    }, {
+      "name": "executionId",
+      "doc": "ID of a command execution which is used to query the status of this command.",
+      "type": "long",
+      "default": 0
+    }, {
+      "name": "payloadUnion",
+      "doc": "This contains the main payload of the admin operation",
+      "type": [
+        {
+          "name": "StoreCreation",
+          "type": "record",
+          "fields": [
+            {
+              "name": "clusterName",
+              "type": "string"
+            },
+            {
+              "name": "storeName",
+              "type": "string"
+            },
+            {
+              "name": "owner",
+              "type": "string"
+            },
+            {
+              "name": "keySchema",
+              "type": {
+                "type": "record",
+                "name": "SchemaMeta",
+                "fields": [
+                  {"name": "schemaType", "type": "int", "doc": "0 => Avro-1.4, and we can add more if necessary"},
+                  {"name": "definition", "type": "string"}
+                ]
+              }
+            },
+            {
+              "name": "valueSchema",
+              "type": "SchemaMeta"
+            }
+          ]
+        },
+        {
+          "name": "ValueSchemaCreation",
+          "type": "record",
+          "fields": [
+            {
+              "name": "clusterName",
+              "type": "string"
+            },
+            {
+              "name": "storeName",
+              "type": "string"
+            },
+            {
+              "name": "schema",
+              "type": "SchemaMeta"
+            },
+            {
+              "name": "schemaId",
+              "type": "int"
+            },
+            {
+              "name": "doUpdateSupersetSchemaID",
+              "type": "boolean",
+              "doc": "Whether this superset schema ID should be updated to be the value schema ID for this store.",
+              "default": false
+            }
+          ]
+        },
+        {
+          "name": "PauseStore",
+          "type": "record",
+          "fields": [
+            {
+              "name": "clusterName",
+              "type": "string"
+            },
+            {
+              "name": "storeName",
+              "type": "string"
+            }
+          ]
+        },
+        {
+          "name": "ResumeStore",
+          "type": "record",
+          "fields": [
+            {
+              "name": "clusterName",
+              "type": "string"
+            },
+            {
+              "name": "storeName",
+              "type": "string"
+            }
+          ]
+        },
+        {
+          "name": "KillOfflinePushJob",
+          "type": "record",
+          "fields": [
+            {
+              "name": "clusterName",
+              "type": "string"
+            },
+            {
+              "name": "kafkaTopic",
+              "type": "string"
+            }
+          ]
+        },
+        {
+          "name": "DisableStoreRead",
+          "type": "record",
+          "fields": [
+            {
+              "name": "clusterName",
+              "type": "string"
+            },
+            {
+              "name": "storeName",
+              "type": "string"
+            }
+          ]
+        },
+        {
+          "name": "EnableStoreRead",
+          "type": "record",
+          "fields": [
+            {
+              "name": "clusterName",
+              "type": "string"
+            },
+            {
+              "name": "storeName",
+              "type": "string"
+            }
+          ]
+        },
+        {
+          "name": "DeleteAllVersions",
+          "type": "record",
+          "fields": [
+            {
+              "name": "clusterName",
+              "type": "string"
+            },
+            {
+              "name": "storeName",
+              "type": "string"
+            }
+          ]
+        },
+        {
+          "name": "SetStoreOwner",
+          "type": "record",
+          "fields": [
+            {
+              "name": "clusterName",
+              "type": "string"
+            },
+            {
+              "name": "storeName",
+              "type": "string"
+            },
+            {
+              "name": "owner",
+              "type": "string"
+            }
+          ]
+        },
+        {
+          "name": "SetStorePartitionCount",
+          "type": "record",
+          "fields": [
+            {
+              "name": "clusterName",
+              "type": "string"
+            },
+            {
+              "name": "storeName",
+              "type": "string"
+            },
+            {
+              "name": "partitionNum",
+              "type": "int"
+            }
+          ]
+        },
+        {
+          "name": "SetStoreCurrentVersion",
+          "type": "record",
+          "fields": [
+            {
+              "name": "clusterName",
+              "type": "string"
+            },
+            {
+              "name": "storeName",
+              "type": "string"
+            },
+            {
+              "name": "currentVersion",
+              "type": "int"
+            }
+          ]
+        },
+        {
+          "name": "UpdateStore",
+          "type": "record",
+          "fields": [
+            {
+              "name": "clusterName",
+              "type": "string"
+            },
+            {
+              "name": "storeName",
+              "type": "string"
+            },
+            {
+              "name": "owner",
+              "type": "string"
+            },
+            {
+              "name": "partitionNum",
+              "type": "int"
+            },
+            {
+              "name": "currentVersion",
+              "type": "int"
+            },
+            {
+              "name": "enableReads",
+              "type": "boolean"
+            },
+            {
+              "name": "enableWrites",
+              "type": "boolean"
+            },
+            {
+              "name": "storageQuotaInByte",
+              "type": "long",
+              "default": 21474836480
+            },
+            {
+              "name": "readQuotaInCU",
+              "type": "long",
+              "default": 1800
+            },
+            {
+              "name": "hybridStoreConfig",
+              "type": [
+                "null",
+                {
+                  "name": "HybridStoreConfigRecord",
+                  "type": "record",
+                  "fields": [
+                    {
+                      "name": "rewindTimeInSeconds",
+                      "type": "long"
+                    },
+                    {
+                      "name": "offsetLagThresholdToGoOnline",
+                      "type": "long"
+                    },
+                    {
+                      "name": "producerTimestampLagThresholdToGoOnlineInSeconds",
+                      "type": "long",
+                      "default": -1
+                    },
+                    {
+                      "name": "dataReplicationPolicy",
+                      "doc": "Real-time Samza job data replication policy. Using int because Avro Enums are not evolvable 0 => NON_AGGREGATE, 1 => AGGREGATE, 2 => NONE, 3 => ACTIVE_ACTIVE",
+                      "type": "int",
+                      "default": 0
+                    },
+                    {
+                      "name": "bufferReplayPolicy",
+                      "type": "int",
+                      "doc": "Policy that will be used during buffer replay. rewindTimeInSeconds defines the delta. 0 => REWIND_FROM_EOP (replay from 'EOP - rewindTimeInSeconds'), 1 => REWIND_FROM_SOP (replay from 'SOP - rewindTimeInSeconds')",
+                      "default": 0
+                    }
+                  ]
+                }
+              ],
+              "default": null
+            },
+            {
+              "name": "accessControlled",
+              "type": "boolean",
+              "default": false
+            },
+            {
+              "name": "compressionStrategy",
+              "doc": "Using int because Avro Enums are not evolvable",
+              "type": "int",
+              "default": 0
+            },
+            {
+              "name": "chunkingEnabled",
+              "type": "boolean",
+              "default": false
+            },
+            {
+              "name": "rmdChunkingEnabled",
+              "type": "boolean",
+              "default": false
+            },
+            {
+              "name": "singleGetRouterCacheEnabled",
+              "aliases": ["routerCacheEnabled"],
+              "type": "boolean",
+              "default": false
+            },
+            {
+              "name": "batchGetRouterCacheEnabled",
+              "type": "boolean",
+              "default": false
+            },
+            {
+              "name": "batchGetLimit",
+              "doc": "The max key number allowed in batch get request, and Venice will use cluster-level config if the limit (not positive) is not valid",
+              "type": "int",
+              "default": -1
+            },
+            {
+              "name": "numVersionsToPreserve",
+              "doc": "The max number of versions the store should preserve. Venice will use cluster-level config if the number is 0 here.",
+              "type": "int",
+              "default": 0
+            },
+            {
+              "name": "incrementalPushEnabled",
+              "doc": "a flag to see if the store supports incremental push or not",
+              "type": "boolean",
+              "default": false
+            },
+            {
+              "name": "separateRealTimeTopicEnabled",
+              "doc": "Flag to see if the store supports separate real-time topic for incremental push.",
+              "type": "boolean",
+              "default": false
+            },
+            {
+              "name": "isMigrating",
+              "doc": "Whether or not the store is in the process of migration",
+              "type": "boolean",
+              "default": false
+            },
+            {
+              "name": "writeComputationEnabled",
+              "doc": "Whether write-path computation feature is enabled for this store",
+              "type": "boolean",
+              "default": false
+            },
+            {
+              "name": "replicationMetadataVersionID",
+              "doc": "RMD (Replication metadata) version ID on the store-level. Default -1 means NOT_SET and the cluster-level RMD version ID should be used for stores.",
+              "type": "int",
+              "default":  -1
+            },
+            {
+              "name": "readComputationEnabled",
+              "doc": "Whether read-path computation feature is enabled for this store",
+              "type": "boolean",
+              "default": false
+            },
+            {
+              "name": "bootstrapToOnlineTimeoutInHours",
+              "doc": "Maximum number of hours allowed for the store to transition from bootstrap to online state",
+              "type": "int",
+              "default": 24
+            },
+            {
+              "name": "leaderFollowerModelEnabled",
+              "doc":  "Whether or not to use leader follower state transition model for upcoming version",
+              "type": "boolean",
+              "default": false
+            },
+            {
+              "name": "backupStrategy",
+              "doc":  "Strategies to store backup versions.",
+              "type": "int",
+              "default": 0
+            },
+            {
+              "name": "clientDecompressionEnabled",
+              "type": "boolean",
+              "default": true
+            },
+            {
+              "name": "schemaAutoRegisterFromPushJobEnabled",
+              "type": "boolean",
+              "default": false
+            },
+            {
+              "name": "hybridStoreOverheadBypass",
+              "type": "boolean",
+              "default": false
+            },
+            {
+              "name": "hybridStoreDiskQuotaEnabled",
+              "doc":  "Whether or not to enable disk storage quota for a hybrid store",
+              "type": "boolean",
+              "default": false
+            },
+            {
+              "name": "ETLStoreConfig",
+              "type": [
+                "null",
+                {
+                  "name": "ETLStoreConfigRecord",
+                  "type": "record",
+                  "fields": [
+                    {
+                      "name": "etledUserProxyAccount",
+                      "type": ["null", "string"]
+                    },
+                    {
+                      "name": "regularVersionETLEnabled",
+                      "type": "boolean"
+                    },
+                    {
+                      "name": "futureVersionETLEnabled",
+                      "type": "boolean"
+                    }
+                  ]
+                }
+              ],
+              "default": null
+            },
+            {
+              "name": "partitionerConfig",
+              "type": [
+                "null",
+                {
+                  "name": "PartitionerConfigRecord",
+                  "type": "record",
+                  "fields": [
+                    {
+                      "name": "partitionerClass",
+                      "type": "string"
+                    },
+                    {
+                      "name": "partitionerParams",
+                      "type": {
+                        "type": "map",
+                        "values": "string"
+                      }
+                    },
+                    {
+                      "name": "amplificationFactor",
+                      "type": "int"
+                    }
+                  ]
+                }
+              ],
+              "default": null
+            },
+            {
+              "name": "nativeReplicationEnabled",
+              "type": "boolean",
+              "default": false
+            },
+            {
+              "name": "pushStreamSourceAddress",
+              "type": ["null", "string"],
+              "default": null
+            },
+            {
+              "name": "largestUsedVersionNumber",
+              "type": ["null", "int"],
+              "default": null
+            },
+            {
+              "name": "incrementalPushPolicy",
+              "doc": "Incremental Push Policy to reconcile with real time pushes. Using int because Avro Enums are not evolvable 0 => PUSH_TO_VERSION_TOPIC, 1 => INCREMENTAL_PUSH_SAME_AS_REAL_TIME",
+              "type": "int",
+              "default": 0
+            },
+            {
+              "name": "backupVersionRetentionMs",
+              "type": "long",
+              "doc": "Backup version retention time after a new version is promoted to the current version, if not specified, Venice will use the configured retention as the default policy",
+              "default": -1
+            },
+            {
+              "name": "replicationFactor",
+              "doc": "number of replica each store version will have",
+              "type": "int",
+              "default": 3
+            },
+            {
+              "name": "migrationDuplicateStore",
+              "doc": "Whether or not the store is a duplicate store in the process of migration",
+              "type": "boolean",
+              "default": false
+            },
+            {
+              "name": "nativeReplicationSourceFabric",
+              "doc": "The source fabric to be used when the store is running in Native Replication mode.",
+              "type": ["null", "string"],
+              "default": null
+            },
+            {
+              "name": "activeActiveReplicationEnabled",
+              "doc": "A command option to enable/disable Active/Active replication feature for a store",
+              "type": "boolean",
+              "default": false
+            },
+            {
+              "name": "disableMetaStore",
+              "doc": "An UpdateStore command option to disable the companion meta system store",
+              "type": "boolean",
+              "default": false
+            },
+            {
+              "name": "disableDavinciPushStatusStore",
+              "doc": "An UpdateStore command option to disable the companion davinci push status store",
+              "type": "boolean",
+              "default": false
+            },
+            {
+              "name": "applyTargetVersionFilterForIncPush",
+              "doc": "An UpdateStore command option to enable/disable applying the target version filter for incremental pushes",
+              "type": "boolean",
+              "default": false
+            },
+            {
+              "name": "updatedConfigsList",
+              "doc": "The list that contains all updated configs by the UpdateStore command. Most of the fields in UpdateStore are not optional, and changing those fields to Optional (Union) is not a backward compatible change, so we have to add an addition array field to record all updated configs in parent controller.",
+              "type": {
+                "type": "array",
+                "items": "string"
+              },
+              "default": []
+            },
+            {
+              "name": "replicateAllConfigs",
+              "doc": "A flag to indicate whether all store configs in parent cluster will be replicated to child clusters; true by default, so that existing UpdateStore messages in Admin topic will behave the same as before.",
+              "type": "boolean",
+              "default": true
+            },
+            {
+              "name": "regionsFilter",
+              "doc": "A list of regions that will be impacted by the UpdateStore command",
+              "type": ["null", "string"],
+              "default": null
+            },
+            {
+              "name": "storagePersona",
+              "doc": "The name of the StoragePersona to add to the store",
+              "type": ["null", "string"],
+              "default": null
+            },
+            {
+              "name": "views",
+              "doc": "A map of views which describe and configure a downstream view of a venice store. Keys in this map are for convenience of managing configs.",
+              "type": ["null",
+                {
+                  "type":"map",
+                  "java-key-class": "java.lang.String",
+                  "avro.java.string": "String",
+                  "values": {
+                    "name": "StoreViewConfigRecord",
+                    "type": "record",
+                    "doc": "A configuration for a particular view.  This config should inform Venice leaders how to transform and transmit data to destination views.",
+                    "fields": [
+                      {
+                        "name": "viewClassName",
+                        "type": "string",
+                        "doc": "This informs what kind of view we are materializing.  This then informs what kind of parameters are passed to parse this input.  This is expected to be a fully formed class path name for materialization.",
+                        "default": ""
+                      },
+                      {
+                        "name": "viewParameters",
+                        "doc": "Optional parameters to be passed to the given view config.",
+                        "type": ["null",
+                          {
+                            "type": "map",
+                            "java-key-class": "java.lang.String",
+                            "avro.java.string": "String",
+                            "values": { "type": "string", "avro.java.string": "String" }
+                          }
+                        ],
+                        "default": null
+                      }
+                    ]
+                  }
+                }],
+              "default": null
+            },
+            {
+              "name": "latestSuperSetValueSchemaId",
+              "doc": "The schema id for the latest superset schema",
+              "type" : "int",
+              "default": -1
+            },
+            {
+              "name": "storageNodeReadQuotaEnabled",
+              "doc": "Whether storage node read quota is enabled for this store",
+              "type": "boolean",
+              "default": false
+            },
+            {
+              "name": "minCompactionLagSeconds",
+              "doc": "Store-level version topic min compaction lag",
+              "type": "long",
+              "default": -1
+            },
+            {
+              "name": "maxCompactionLagSeconds",
+              "doc": "Store-level version topic max compaction lag",
+              "type": "long",
+              "default": -1
+            },
+            {
+              "name": "maxRecordSizeBytes",
+              "doc": "Store-level maximum size of any record in bytes for batch push jobs",
+              "type": "int",
+              "default": -1
+            },
+            {
+              "name": "maxNearlineRecordSizeBytes",
+              "doc": "Store-level maximum size of any record in bytes for nearline jobs with partial updates",
+              "type": "int",
+              "default": -1
+            },
+            {
+              "name": "unusedSchemaDeletionEnabled",
+              "doc": "Whether unused schema deletion is enabled or not.",
+              "type": "boolean",
+              "default": false
+            },
+            {
+              "name": "blobTransferEnabled",
+              "doc": "Flag to indicate if the blob transfer is allowed or not",
+              "type": "boolean",
+              "default": false
+            }
+          ]
+        },
+        {
+          "name": "DeleteStore",
+          "type": "record",
+          "fields": [
+            {
+              "name": "clusterName",
+              "type": "string"
+            },
+            {
+              "name": "storeName",
+              "type": "string"
+            },
+            {
+              "name": "largestUsedVersionNumber",
+              "type": "int"
+            }
+          ]
+        },
+        {
+          "name": "DeleteOldVersion",
+          "type": "record",
+          "fields": [
+            {
+              "name": "clusterName",
+              "type": "string"
+            },
+            {
+              "name": "storeName",
+              "type": "string"
+            },
+            {
+              "name": "versionNum",
+              "type": "int"
+            }
+          ]
+        },
+        {
+          "name": "MigrateStore",
+          "type": "record",
+          "fields": [
+            {
+              "name": "srcClusterName",
+              "type": "string"
+            },
+            {
+              "name": "destClusterName",
+              "type": "string"
+            },
+            {
+              "name": "storeName",
+              "type": "string"
+            }
+          ]
+        },
+        {
+          "name": "AbortMigration",
+          "type": "record",
+          "fields": [
+            {
+              "name": "srcClusterName",
+              "type": "string"
+            },
+            {
+              "name": "destClusterName",
+              "type": "string"
+            },
+            {
+              "name": "storeName",
+              "type": "string"
+            }
+          ]
+        },
+        {
+          "name": "AddVersion",
+          "type": "record",
+          "fields": [
+            {
+              "name": "clusterName",
+              "type": "string"
+            },
+            {
+              "name": "storeName",
+              "type": "string"
+            },
+            {
+              "name": "pushJobId",
+              "type": "string"
+            },
+            {
+              "name": "versionNum",
+              "type": "int"
+            },
+            {
+              "name": "numberOfPartitions",
+              "type": "int"
+            },
+            {
+              "name": "pushType",
+              "doc": "The push type of the new version, 0 => BATCH, 1 => STREAM_REPROCESSING. Previous add version messages will default to BATCH and this is a safe because they were created when BATCH was the only version type",
+              "type": "int",
+              "default": 0
+            },
+            {
+              "name": "pushStreamSourceAddress",
+              "type": ["null", "string"],
+              "default": null
+            },
+            {
+              "name": "rewindTimeInSecondsOverride",
+              "doc": "The overridable rewind time config for this specific version of a hybrid store, and if it is not specified, the new version will use the store-level rewind time config",
+              "type": "long",
+              "default": -1
+            },
+            {
+              "name": "timestampMetadataVersionId",
+              "doc": "The A/A metadata schema version ID that will be used to deserialize metadataPayload.",
+              "type": "int",
+              "default": -1
+            },
+            {
+              "name": "versionSwapDeferred",
+              "doc": "Indicates if swapping this version to current version after push completion should be initiated or not",
+              "type": "boolean",
+              "default": false
+            },
+            {
+              "name": "targetedRegions",
+              "doc": "The list of regions that is separated by comma for targeted region push. If set, this admin message should only be consumed by the targeted regions",
+              "type": [
+                "null",
+                {
+                  "type": "array",
+                  "items":  "string"
+                }
+              ],
+              "default": null
+            },
+            {
+              "name": "repushSourceVersion",
+              "doc": "Indicates the source version from which a repush version is created",
+              "type": "int",
+              "default": -1
+            }
+          ]
+        },
+        {
+          "name": "DerivedSchemaCreation",
+          "type": "record",
+          "fields": [
+            {
+              "name": "clusterName",
+              "type": "string"
+            },
+            {
+              "name": "storeName",
+              "type": "string"
+            },
+            {
+              "name": "schema",
+              "type": "SchemaMeta"
+            },
+            {
+              "name": "valueSchemaId",
+              "type": "int"
+            },
+            {
+              "name": "derivedSchemaId",
+              "type": "int"
+            }
+          ]
+        },
+        {
+          "name": "SupersetSchemaCreation",
+          "type": "record",
+          "fields": [
+            {
+              "name": "clusterName",
+              "type": "string"
+            },
+            {
+              "name": "storeName",
+              "type": "string"
+            },
+            {
+              "name": "valueSchema",
+              "type": "SchemaMeta"
+            },
+            {
+              "name": "valueSchemaId",
+              "type": "int"
+            },
+            {
+              "name": "supersetSchema",
+              "type": "SchemaMeta"
+            },
+            {
+              "name": "supersetSchemaId",
+              "type": "int"
+            }
+          ]
+        },
+        {
+          "name": "ConfigureNativeReplicationForCluster",
+          "type": "record",
+          "fields": [
+            {
+              "name": "clusterName",
+              "type": "string"
+            },
+            {
+              "name": "storeType",
+              "type": "string"
+            },
+            {
+              "name": "enabled",
+              "type": "boolean"
+            },
+            {
+              "name": "nativeReplicationSourceRegion",
+              "doc": "The source region to be used when the store is running in Native Replication mode.",
+              "type": ["null", "string"],
+              "default": null
+            },
+            {
+              "name": "regionsFilter",
+              "type": ["null", "string"],
+              "default": null
+            }
+          ]
+        },
+        {
+          "name": "MetadataSchemaCreation",
+          "type": "record",
+          "fields": [
+            {
+              "name": "clusterName",
+              "type": "string"
+            },
+            {
+              "name": "storeName",
+              "type": "string"
+            },
+            {
+              "name": "valueSchemaId",
+              "type": "int"
+            },
+            {
+              "name": "metadataSchema",
+              "type": "SchemaMeta"
+            },
+            {
+              "name": "timestampMetadataVersionId",
+              "type": "int",
+              "aliases": ["metadataVersionId"],
+              "default": -1
+            }
+          ]
+        },
+        {
+          "name": "ConfigureActiveActiveReplicationForCluster",
+          "type": "record",
+          "fields": [
+            {
+              "name": "clusterName",
+              "type": "string"
+            },
+            {
+              "name": "storeType",
+              "type": "string"
+            },
+            {
+              "name": "enabled",
+              "type": "boolean"
+            },
+            {
+              "name": "regionsFilter",
+              "type": ["null", "string"],
+              "default": null
+            }
+          ]
+        }, {
+          "name": "ConfigureIncrementalPushForCluster",
+          "doc": "A command to migrate all incremental push stores in a cluster to a specific incremental push policy.",
+          "type": "record",
+          "fields": [
+            {
+              "name": "clusterName",
+              "type": "string"
+            },
+            {
+              "name": "incrementalPushPolicyToFilter",
+              "doc": "If this batch update command is trying to configure existing incremental push store type, their incremental push policy should also match this filter before the batch update command applies any change to them. Default value is -1, meaning there is no filter.",
+              "type": "int",
+              "default": -1
+            },
+            {
+              "name": "incrementalPushPolicyToApply",
+              "doc": "This field will determine what incremental push policy will be applied to the selected stores. Default value is 1, which is the INCREMENTAL_PUSH_SAME_AS_REAL_TIME policy",
+              "type": "int",
+              "default": 1
+            },
+            {
+              "name": "regionsFilter",
+              "type": ["null", "string"],
+              "default": null
+            }
+          ]
+        }, {
+          "name": "MetaSystemStoreAutoCreationValidation",
+          "type": "record",
+          "fields": [
+            {
+              "name": "clusterName",
+              "type": "string"
+            },
+            {
+              "name": "storeName",
+              "type": "string"
+            }
+          ]
+        }, {
+          "name": "PushStatusSystemStoreAutoCreationValidation",
+          "type": "record",
+          "fields": [
+            {
+              "name": "clusterName",
+              "type": "string"
+            },
+            {
+              "name": "storeName",
+              "type": "string"
+            }
+          ]
+        }, {
+          "name": "CreateStoragePersona",
+          "type": "record",
+          "fields": [
+            {
+              "name": "clusterName",
+              "type": "string"
+            },
+            {
+              "name": "name",
+              "type": "string"
+            },
+            {
+              "name": "quotaNumber",
+              "type": "long"
+            },
+            {
+              "name": "storesToEnforce",
+              "type": {
+                "type": "array",
+                "items": "string",
+                "default": []
+              }
+            },
+            {
+              "name": "owners",
+              "type": {
+                "type": "array",
+                "items": "string",
+                "default": []
+              }
+            }
+          ]
+        }, {
+          "name": "DeleteStoragePersona",
+          "type": "record",
+          "fields": [
+            {
+              "name": "clusterName",
+              "type": "string"
+            },
+            {
+              "name": "name",
+              "type": "string"
+            }
+          ]
+        }, {
+          "name": "UpdateStoragePersona",
+          "type": "record",
+          "fields": [
+            {
+              "name": "clusterName",
+              "type": "string"
+            }, {
+              "name": "name",
+              "type": "string"
+            }, {
+              "name": "quotaNumber",
+              "type": ["null","long"],
+              "default": null
+            }, {
+              "name": "storesToEnforce",
+              "type": [
+                "null",
+                {
+                  "type": "array",
+                  "items": "string"
+                }
+              ],
+              "default": null
+            }, {
+              "name": "owners",
+              "type": [
+                "null",
+                {
+                  "type": "array",
+                  "items":  "string"
+                }
+              ],
+              "default": null
+            }
+          ]
+        },
+        {
+          "name": "DeleteUnusedValueSchemas",
+          "type": "record",
+          "fields": [
+            {
+              "name": "clusterName",
+              "type": "string"
+            },
+            {
+              "name": "storeName",
+              "type": "string"
+            },
+            {
+              "name": "schemaIds",
+              "type": {
+                "type": "array",
+                "items": "int",
+                "default": []
+              }
+            }
+          ]
+        },
+        {
+          "name": "RollbackCurrentVersion",
+          "type": "record",
+          "fields": [
+            {
+              "name": "clusterName",
+              "type": "string"
+            },
+            {
+              "name": "storeName",
+              "type": "string"
+            },
+            {
+              "name": "regionsFilter",
+              "doc": "A list of regions that will be impacted by the RollbackCurrentVersion command",
+              "type": ["null", "string"],
+              "default": null
+            }
+          ]
+        },
+        {
+          "name": "RollForwardCurrentVersion",
+          "type": "record",
+          "fields": [
+            {
+              "name": "clusterName",
+              "type": "string"
+            },
+            {
+              "name": "storeName",
+              "type": "string"
+            },
+            {
+              "name": "regionsFilter",
+              "doc": "A list of regions that will be impacted by the RollForwardCurrentVersion command",
+              "type": ["null", "string"],
+              "default": null
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
