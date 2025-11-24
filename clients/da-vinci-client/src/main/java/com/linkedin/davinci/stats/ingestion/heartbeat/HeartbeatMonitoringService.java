@@ -57,9 +57,9 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
   public static final long DEFAULT_STALE_HEARTBEAT_LOG_THRESHOLD_MILLIS = TimeUnit.MINUTES.toMillis(10);
   public static final long INVALID_MESSAGE_TIMESTAMP = -1;
   public static final long INVALID_HEARTBEAT_LAG = Long.MAX_VALUE;
+  public static final int DEFAULT_LAG_MONITOR_CLEANUP_CYCLE = 5;
 
   private static final Logger LOGGER = LogManager.getLogger(HeartbeatMonitoringService.class);
-  private static final int DEFAULT_LAG_MONITOR_CLEANUP_CYCLE = 5;
   private final ReadOnlyStoreRepository metadataRepository;
   private final Thread reportingThread;
   private final Thread lagCleanupAndLoggingThread;
@@ -76,6 +76,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
   private final Duration maxWaitForVersionInfo;
   private final CompletableFuture<HelixCustomizedViewOfflinePushRepository> customizedViewRepositoryFuture;
   private final String nodeId;
+  private final int lagMonitorCleanupCycle;
   private HelixCustomizedViewOfflinePushRepository customizedViewRepository;
   private KafkaStoreIngestionService kafkaStoreIngestionService;
 
@@ -107,6 +108,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
     this.heartbeatMonitoringServiceStats = heartbeatMonitoringServiceStats;
     this.customizedViewRepositoryFuture = customizedViewRepositoryFuture;
     this.nodeId = Utils.getHelixNodeIdentifier(serverConfig.getListenerHostname(), serverConfig.getListenerPort());
+    this.lagMonitorCleanupCycle = serverConfig.getLagMonitorCleanupCycle();
   }
 
   private synchronized void initializeEntry(
@@ -737,7 +739,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
               // See comments in {@link #addLeaderLagMonitor(Version, int)} for race condition explanations
               if (v == null) {
                 return 1;
-              } else if (v + 1 >= DEFAULT_LAG_MONITOR_CLEANUP_CYCLE) {
+              } else if (v + 1 >= lagMonitorCleanupCycle) {
                 removeLagMonitor(new VersionImpl(storeName.getKey(), version.getKey(), ""), partition.getKey());
                 LOGGER.warn(
                     "Removing lingering replica: {} from heartbeat monitoring service because it is no longer assigned to this node: {}",

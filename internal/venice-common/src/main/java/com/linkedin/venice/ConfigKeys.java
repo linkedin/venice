@@ -3019,4 +3019,12 @@ public class ConfigKeys {
    */
   public static final String CONTROLLER_USE_MULTI_REGION_REAL_TIME_TOPIC_SWITCHER_ENABLED =
       "controller.use.multi.region.real.time.topic.switcher.enabled";
+
+  /**
+   * Number of consecutive cycles to wait before removing a replica that does not have a corresponding entry in local
+   * customized view cache before removing it from lag monitor. e.g. if this config is set to 10, and we are using the
+   * default sleep interval of 60 seconds then we will only remove the replica from lag monitor after at least 600
+   * seconds without having any corresponding entry in customized view.
+   */
+  public static final String SERVER_LAG_MONITOR_CLEANUP_CYCLE = "server.lag.monitor.cleanup.cycle";
 }
