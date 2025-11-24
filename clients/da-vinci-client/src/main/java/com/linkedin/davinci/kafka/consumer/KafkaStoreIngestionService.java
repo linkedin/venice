@@ -685,6 +685,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
    */
   @Override
   public void stopInner() {
+    metadataRepo.unregisterStoreDataChangedListener(asyncStoreChangeNotifier);
     Utils.closeQuietlyWithErrorLogged(asyncStoreChangeNotifier);
     Utils.closeQuietlyWithErrorLogged(ingestionThrottler);
     Utils.closeQuietlyWithErrorLogged(participantStoreConsumptionTask);

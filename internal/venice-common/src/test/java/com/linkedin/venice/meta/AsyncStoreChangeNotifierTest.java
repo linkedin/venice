@@ -37,60 +37,41 @@ public class AsyncStoreChangeNotifierTest {
   }
 
   @Test
-  public void testRegisterTasks() {
+  public void testRegisterAndUnregisterTasks() {
+    // Case 1: Basic registration - verify task ID format and count
     StoreChangeTasks tasks = StoreChangeTasks.builder().onStoreCreated(store -> {}).build();
-
     String taskId = notifier.registerTasks("TestAdapter", tasks);
-
     assertNotNull(taskId);
     assertTrue(taskId.startsWith("TestAdapter-"));
     assertEquals(notifier.getRegisteredTaskCount(), 1);
-  }
 
-  @Test
-  public void testRegisterMultipleTasks() {
+    // Case 2: Multiple registrations - verify unique IDs and count
     StoreChangeTasks tasks1 = StoreChangeTasks.builder().onStoreCreated(store -> {}).build();
     StoreChangeTasks tasks2 = StoreChangeTasks.builder().onStoreDeleted(store -> {}).build();
-
     String taskId1 = notifier.registerTasks("Adapter1", tasks1);
     String taskId2 = notifier.registerTasks("Adapter2", tasks2);
-
     assertNotEquals(taskId1, taskId2);
+    assertEquals(notifier.getRegisteredTaskCount(), 3);
+
+    // Case 3: Unregister tasks - verify count decreases and idempotency
+    assertTrue(notifier.unregisterTasks(taskId1));
     assertEquals(notifier.getRegisteredTaskCount(), 2);
-  }
+    assertTrue(notifier.unregisterTasks(taskId2));
+    assertEquals(notifier.getRegisteredTaskCount(), 1);
+    assertFalse(notifier.unregisterTasks(taskId1)); // Second call returns false
 
-  @Test
-  public void testUnregisterTasks() {
-    StoreChangeTasks tasks = StoreChangeTasks.builder().onStoreCreated(store -> {}).build();
-    String taskId = notifier.registerTasks("TestAdapter", tasks);
+    // Case 4: Invalid inputs - null/empty client ID
+    StoreChangeTasks validTasks = StoreChangeTasks.builder().build();
+    expectThrows(IllegalArgumentException.class, () -> notifier.registerTasks(null, validTasks));
+    expectThrows(IllegalArgumentException.class, () -> notifier.registerTasks("", validTasks));
 
-    assertTrue(notifier.unregisterTasks(taskId));
-    assertEquals(notifier.getRegisteredTaskCount(), 0);
-    assertFalse(notifier.unregisterTasks(taskId)); // Second call returns false
-  }
-
-  @Test
-  public void testRegisterTasksWithNullClientId() {
-    StoreChangeTasks tasks = StoreChangeTasks.builder().build();
-    expectThrows(IllegalArgumentException.class, () -> notifier.registerTasks(null, tasks));
-  }
-
-  @Test
-  public void testRegisterTasksWithEmptyClientId() {
-    StoreChangeTasks tasks = StoreChangeTasks.builder().build();
-    expectThrows(IllegalArgumentException.class, () -> notifier.registerTasks("", tasks));
-  }
-
-  @Test
-  public void testRegisterTasksWithNullTasks() {
+    // Case 5: Null tasks
     expectThrows(IllegalArgumentException.class, () -> notifier.registerTasks("TestAdapter", null));
-  }
 
-  @Test
-  public void testRegisterTasksAfterClose() {
+    // Case 6: Registration after close
     notifier.close();
-    StoreChangeTasks tasks = StoreChangeTasks.builder().build();
-    expectThrows(IllegalStateException.class, () -> notifier.registerTasks("TestAdapter", tasks));
+    StoreChangeTasks newTasks = StoreChangeTasks.builder().build();
+    expectThrows(IllegalStateException.class, () -> notifier.registerTasks("TestAdapter", newTasks));
   }
 
   @Test
@@ -313,19 +294,21 @@ public class AsyncStoreChangeNotifierTest {
   }
 
   @Test
-  public void testConstructorWithInvalidThreadPoolSize() {
+  public void testConstructorValidation() {
+    // Case 1: Invalid thread pool size (zero)
     expectThrows(
         IllegalArgumentException.class,
         () -> new AsyncStoreChangeNotifier(VeniceComponent.SERVER, LogContext.EMPTY, 0));
-  }
 
-  @Test
-  public void testConstructorWithNullLogContext() {
+    // Case 2: Invalid thread pool size (negative)
+    expectThrows(
+        IllegalArgumentException.class,
+        () -> new AsyncStoreChangeNotifier(VeniceComponent.SERVER, LogContext.EMPTY, -1));
+
+    // Case 3: Null LogContext
     expectThrows(IllegalArgumentException.class, () -> new AsyncStoreChangeNotifier(VeniceComponent.SERVER, null, 2));
-  }
 
-  @Test
-  public void testConstructorWithNullVeniceComponent() {
+    // Case 4: Null VeniceComponent
     expectThrows(IllegalArgumentException.class, () -> new AsyncStoreChangeNotifier(null, LogContext.EMPTY, 2));
   }
 

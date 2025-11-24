@@ -319,7 +319,10 @@ public class HelixVeniceClusterResources implements VeniceResource {
     // Make sure that metadataRepo is initialized first since schemaRepo and pushMonitor depend on it.
     storeMetadataRepository.refresh();
     repairStoreReplicationFactor(storeMetadataRepository);
-
+    if (admin.getStoreChangeNotifier() != null) {
+      // Re-register the shared AsyncStoreChangeNotifier after refresh to continue receiving store lifecycle events.
+      storeMetadataRepository.registerStoreDataChangedListener(admin.getStoreChangeNotifier());
+    }
     // Initialize the dynamic access client and also register the acl creation/deletion listener.
     if (accessController.isPresent()) {
       DynamicAccessController accessClient = accessController.get();
