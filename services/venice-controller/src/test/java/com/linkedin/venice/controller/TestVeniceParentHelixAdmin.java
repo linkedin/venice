@@ -3230,7 +3230,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
     doNothing().when(adminSpy)
         .sendAdminMessageAndWaitForConsumed(eq(clusterName), eq(storeName), any(AdminOperation.class));
-    doReturn(true).when(adminSpy).getVeniceHelixAdmin().isTruncatingTopicNeeded(clusterName);
+    doReturn(true).when(internalAdmin).isTruncatingTopicNeeded(clusterName);
     doReturn(true).when(adminSpy).truncateKafkaTopic(Version.composeKafkaTopic(storeName, 5));
 
     Map<String, Integer> after = Collections.singletonMap("r1", 5);
@@ -3262,7 +3262,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
     doNothing().when(adminSpy)
         .sendAdminMessageAndWaitForConsumed(eq(clusterName), eq(storeName), any(AdminOperation.class));
-    doReturn(true).when(adminSpy).getVeniceHelixAdmin().isTruncatingTopicNeeded(clusterName);
+
+    doReturn(true).when(internalAdmin).isTruncatingTopicNeeded(clusterName);
     doReturn(true).when(adminSpy).truncateKafkaTopic(anyString());
 
     for (Map.Entry<String, ControllerClient> entry: controllerClients.entrySet()) {
