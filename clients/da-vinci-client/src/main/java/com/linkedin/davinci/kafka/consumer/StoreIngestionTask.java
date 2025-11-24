@@ -2879,8 +2879,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   private void updateOffsetLagInMetadata(PartitionConsumptionState ps) {
-    // Measure and save real-time offset lag.
-    ps.getOffsetRecord().setOffsetLag(measureHybridOffsetLag(ps, false));
+    if (getServerConfig().isOffsetCheckpointDuringSyncEnabled()) {
+      // Measure and save real-time offset lag.
+      ps.getOffsetRecord().setOffsetLag(measureHybridOffsetLag(ps, false));
+    }
     // Measure and save real-time heartbeat timestamp.
     ps.getOffsetRecord().setHeartbeatTimestamp(measureHybridHeartbeatTimestamp(ps, false));
     ps.getOffsetRecord().setLastCheckpointTimestamp(System.currentTimeMillis());
@@ -5116,13 +5118,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   boolean checkFastReadyToServeForReplica(PartitionConsumptionState pcs) {
     if (getHybridStoreConfig().isPresent() && pcs.getReadyToServeInOffsetRecord()) {
       /**
-       * If time lag relax check is enabled, we will only check heartbeat lag during restart.
-       * Otherwise, we will perform offset lag relax check. It will be fully deprecated when time lag is used
-       * everywhere in ready-to-serve check.
+       * If time lag for ready-to-serve is used and time lag relax check is enabled, we will only check heartbeat lag
+       * during restart.
+       * If time lag for ready-to-serve is disabled and offset lag relax check is enabled, we will perform offset lag
+       * relax check. It will be fully deprecated when time lag is used everywhere in ready-to-serve check.
        */
       if (isTimeLagRelaxEnabled() && getServerConfig().isUseHeartbeatLagForReadyToServeCheckEnabled()) {
         return checkFastReadyToServeWithPreviousTimeLag(pcs);
-      } else if (isOffsetLagDeltaRelaxEnabled()) {
+      } else if (isOffsetLagDeltaRelaxEnabled() && !getServerConfig().isUseHeartbeatLagForReadyToServeCheckEnabled()) {
         return checkFastReadyToServeWithPreviousOffsetLag(pcs);
       }
     }
@@ -5224,5 +5227,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   ReadOnlyStoreRepository getStoreRepository() {
     return storeRepository;
+  }
+
+  String getLocalKafkaServer() {
+    return localKafkaServer;
   }
 }
