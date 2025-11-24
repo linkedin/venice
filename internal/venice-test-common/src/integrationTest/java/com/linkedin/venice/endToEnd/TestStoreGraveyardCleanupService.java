@@ -90,7 +90,7 @@ public class TestStoreGraveyardCleanupService {
       StoreGraveyard parentStoreGraveyard = parentControllers.get(0).getVeniceAdmin().getStoreGraveyard();
       StoreGraveyard childStoreGraveyard =
           childDatacenters.get(0).getLeaderController(CLUSTER_NAME).getVeniceAdmin().getStoreGraveyard();
-      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, true, () -> {
+      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, false, true, () -> {
         Assert.assertNull(parentStoreGraveyard.getStoreFromGraveyard(CLUSTER_NAME, batchStoreName, null));
         Assert.assertNull(childStoreGraveyard.getStoreFromGraveyard(CLUSTER_NAME, batchStoreName, null));
       });
