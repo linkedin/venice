@@ -506,4 +506,32 @@ public class AvroGenericDaVinciClientTest {
     } catch (VeniceClientException e) {
     }
   }
+
+  @Test
+  public void testSeekToTimestampWithException() throws Exception {
+    // Setup
+    ClientConfig clientConfig = new ClientConfig(storeName);
+    AvroGenericSeekableDaVinciClient<Integer, String> dvcClient =
+        (AvroGenericSeekableDaVinciClient<Integer, String>) setUpSeekableClient(clientConfig, true);
+
+    // Mock backend
+    StoreBackend mockStoreBackend = mock(StoreBackend.class);
+    // Use reflection to set the private daVinciBackend field
+    Field backendField = AvroGenericDaVinciClient.class.getDeclaredField("daVinciBackend");
+    backendField.setAccessible(true);
+    // Mock the seek method
+    doReturn(CompletableFuture.completedFuture(null)).when(mockStoreBackend)
+        .seekToCheckpoint(any(DaVinciSeekCheckpointInfo.class), eq(Optional.empty()));
+    doReturn(false).when(dvcClient).isReady();
+    when(dvcClient.getStoreBackend()).thenReturn(mockStoreBackend);
+    Map<Integer, Long> timestamps = new HashMap<>();
+    timestamps.put(1, 1000L);
+    // Verify the exception is propagated
+    try {
+      CompletableFuture<Void> future = dvcClient.seekToTimestamps(timestamps);
+      future.get();
+      fail("Expected exception to be thrown");
+    } catch (VeniceClientException e) {
+    }
+  }
 }

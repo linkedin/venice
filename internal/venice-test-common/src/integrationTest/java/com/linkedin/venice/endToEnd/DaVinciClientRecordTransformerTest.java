@@ -915,11 +915,6 @@ public class DaVinciClientRecordTransformerTest {
         myValueSchema,
         dummyRecordTransformerConfig);
     List<DefaultPubSubMessage> messages = getDataMessages(storeName, numKeys);
-    for (DefaultPubSubMessage message: messages) {
-      System.out.println(
-          "position: " + message.getPosition() + "ts11 "
-              + message.getValue().getProducerMetadata().getMessageTimestamp());
-    }
     DefaultPubSubMessage pubSubMessage = messages.get(4);
     VeniceChangeCoordinate changeCoordinate = new VeniceChangeCoordinate(
         pubSubMessage.getTopic().getName(),
