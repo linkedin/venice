@@ -209,6 +209,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_USE_METRICS_BASED_POSITION_I
 import static com.linkedin.venice.ConfigKeys.SERVER_ZSTD_DICT_COMPRESSION_LEVEL;
 import static com.linkedin.venice.ConfigKeys.SEVER_CALCULATE_QUOTA_USAGE_BASED_ON_PARTITIONS_ASSIGNMENT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SORTED_INPUT_DRAINER_SIZE;
+import static com.linkedin.venice.ConfigKeys.STORE_CHANGE_NOTIFIER_THREAD_POOL_SIZE;
 import static com.linkedin.venice.ConfigKeys.STORE_WRITER_BUFFER_AFTER_LEADER_LOGIC_ENABLED;
 import static com.linkedin.venice.ConfigKeys.STORE_WRITER_BUFFER_MEMORY_CAPACITY;
 import static com.linkedin.venice.ConfigKeys.STORE_WRITER_BUFFER_NOTIFY_DELTA;
@@ -663,6 +664,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final boolean isParticipantMessageStoreEnabled;
   private final long consumerPollTrackerStaleThresholdInSeconds;
   private final int daVinciRecordTransformerOnRecoveryThreadPoolSize;
+  private final int storeChangeNotifierThreadPoolSize;
 
   private final boolean validateSpecificSchemaEnabled;
   private final boolean useMetricsBasedPositionInLagComputation;
@@ -1133,6 +1135,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
         .getLong(SERVER_CONSUMER_POLL_TRACKER_STALE_THRESHOLD_IN_SECONDS, TimeUnit.MINUTES.toSeconds(15));
     daVinciRecordTransformerOnRecoveryThreadPoolSize = serverProperties
         .getInt(DAVINCI_RECORD_TRANSFORMER_ON_RECOVERY_THREAD_POOL_SIZE, Runtime.getRuntime().availableProcessors());
+    storeChangeNotifierThreadPoolSize = serverProperties.getInt(STORE_CHANGE_NOTIFIER_THREAD_POOL_SIZE, 1);
     this.ingestionTaskReusableObjectsStrategy = IngestionTaskReusableObjects.Strategy.valueOf(
         serverProperties.getString(
             SERVER_INGESTION_TASK_REUSABLE_OBJECTS_STRATEGY,
@@ -2038,6 +2041,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public int getDaVinciRecordTransformerOnRecoveryThreadPoolSize() {
     return daVinciRecordTransformerOnRecoveryThreadPoolSize;
+  }
+
+  public int getStoreChangeNotifierThreadPoolSize() {
+    return storeChangeNotifierThreadPoolSize;
   }
 
   public LogContext getLogContext() {

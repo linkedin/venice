@@ -135,6 +135,7 @@ import com.linkedin.venice.helix.ZkStoreConfigAccessor;
 import com.linkedin.venice.ingestion.control.MultiRegionRealTimeTopicSwitcher;
 import com.linkedin.venice.ingestion.control.RealTimeTopicSwitcher;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
+import com.linkedin.venice.meta.AsyncStoreChangeNotifier;
 import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.DarkClusterConfig;
@@ -484,7 +485,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   private final Set<PushJobCheckpoints> pushJobUserErrorCheckpoints;
   private final LogContext logContext;
 
-  private Optional<AuthorizerService> authorizerService;
+  private final Optional<AuthorizerService> authorizerService;
+  private final AsyncStoreChangeNotifier asyncStoreChangeNotifier;
 
   private final Map<String, DeadStoreStats> deadStoreStatsMap = new VeniceConcurrentHashMap<>();
   private final Map<String, LogCompactionStats> logCompactionStatsMap = new VeniceConcurrentHashMap<>();
@@ -587,7 +589,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     this.zkClient = ZkClientFactory.newZkClient(multiClusterConfigs.getZkAddress());
     this.zkClient.subscribeStateChanges(new ZkClientStatusStats(metricsRepository, "controller-zk-client"));
     this.adapterSerializer = new HelixAdapterSerializer();
-
+    this.asyncStoreChangeNotifier = new AsyncStoreChangeNotifier(
+        VeniceComponent.CONTROLLER,
+        logContext,
+        multiClusterConfigs.getStoreChangeNotifierThreadPoolSize());
     TopicManagerContext topicManagerContext =
         new TopicManagerContext.Builder().setPubSubTopicRepository(pubSubTopicRepository)
             .setPubSubPositionTypeRegistry(commonConfig.getPubSubPositionTypeRegistry())
@@ -598,6 +603,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             .setTopicMetadataFetcherConsumerPoolSize(commonConfig.getTopicManagerMetadataFetcherConsumerPoolSize())
             .setTopicMetadataFetcherThreadPoolSize(commonConfig.getTopicManagerMetadataFetcherThreadPoolSize())
             .setVeniceComponent(VeniceComponent.CONTROLLER)
+            .setStoreChangeNotifier(asyncStoreChangeNotifier)
             .build();
     this.topicManagerRepository =
         new TopicManagerRepository(topicManagerContext, getKafkaBootstrapServers(isSslToKafka()));
@@ -7084,6 +7090,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   @Override
   public void stopVeniceController() {
     try {
+      asyncStoreChangeNotifier.close();
       controllerStateModelFactory.close();
       helixManager.disconnect();
       topicManagerRepository.close();
@@ -9817,5 +9824,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   Optional<AuthorizerService> getAuthorizerService() {
     return authorizerService;
+  }
+
+  AsyncStoreChangeNotifier getStoreChangeNotifier() {
+    return asyncStoreChangeNotifier;
   }
 }

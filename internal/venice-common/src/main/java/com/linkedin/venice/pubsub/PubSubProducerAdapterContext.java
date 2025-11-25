@@ -1,6 +1,7 @@
 package com.linkedin.venice.pubsub;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.meta.AsyncStoreChangeNotifier;
 import com.linkedin.venice.pubsub.api.PubSubMessageSerializer;
 import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -34,6 +35,7 @@ public class PubSubProducerAdapterContext {
   private final PubSubMessageSerializer pubSubMessageSerializer;
   private final boolean isProducerCompressionEnabled;
   private final String compressionType;
+  private final AsyncStoreChangeNotifier asyncStoreChangeNotifier;
 
   private PubSubProducerAdapterContext(Builder builder) {
     this.producerName = builder.producerName;
@@ -47,6 +49,7 @@ public class PubSubProducerAdapterContext {
     this.isProducerCompressionEnabled = builder.isProducerCompressionEnabled;
     this.compressionType = builder.compressionType;
     this.pubSubPositionTypeRegistry = builder.pubSubPositionTypeRegistry;
+    this.asyncStoreChangeNotifier = builder.asyncStoreChangeNotifier;
   }
 
   public String getProducerName() {
@@ -93,6 +96,10 @@ public class PubSubProducerAdapterContext {
     return compressionType;
   }
 
+  public AsyncStoreChangeNotifier getStoreChangeNotifier() {
+    return asyncStoreChangeNotifier;
+  }
+
   public static class Builder {
     private String producerName;
     private String brokerAddress;
@@ -105,6 +112,7 @@ public class PubSubProducerAdapterContext {
     private boolean shouldValidateProducerConfigStrictly = true;
     private boolean isProducerCompressionEnabled = true;
     private String compressionType;
+    private AsyncStoreChangeNotifier asyncStoreChangeNotifier;
 
     public Builder setProducerName(String producerName) {
       this.producerName = producerName;
@@ -159,6 +167,11 @@ public class PubSubProducerAdapterContext {
 
     public Builder setCompressionType(String compressionType) {
       this.compressionType = compressionType;
+      return this;
+    }
+
+    public Builder setStoreChangeNotifier(AsyncStoreChangeNotifier asyncStoreChangeNotifier) {
+      this.asyncStoreChangeNotifier = asyncStoreChangeNotifier;
       return this;
     }
 

@@ -3027,4 +3027,10 @@ public class ConfigKeys {
    * seconds without having any corresponding entry in customized view.
    */
   public static final String SERVER_LAG_MONITOR_CLEANUP_CYCLE = "server.lag.monitor.cleanup.cycle";
+
+  /**
+   * Thread pool size for the async store change notifier service that handles store metadata change events.
+   * Default is 1.
+   */
+  public static final String STORE_CHANGE_NOTIFIER_THREAD_POOL_SIZE = "store.change.notifier.thread.pool.size";
 }

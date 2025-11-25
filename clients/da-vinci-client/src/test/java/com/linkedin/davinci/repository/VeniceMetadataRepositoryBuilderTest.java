@@ -65,7 +65,7 @@ public class VeniceMetadataRepositoryBuilderTest {
   }
 
   @AfterMethod
-  public void teardown() {
+  public void tearDown() {
     if (zkClientFactoryMock != null) {
       zkClientFactoryMock.close();
     }
