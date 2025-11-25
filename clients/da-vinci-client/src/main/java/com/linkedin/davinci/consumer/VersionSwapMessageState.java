@@ -1,11 +1,11 @@
 package com.linkedin.davinci.consumer;
 
-import com.linkedin.venice.annotation.NotThreadsafe;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.VersionSwap;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -15,10 +15,13 @@ import java.util.concurrent.CompletableFuture;
 
 /**
  * A class initialized to indicate that the changelog consumer is undergoing version swap. The class is also keeping
- * various states about this version swap. This class is NOT thread safe and the intended caller should at least
- * acquire the subscriptionLock.readLock().
+ * various states about this version swap. This class is thread safe by having all methods that change or read a state
+ * that's mutable synchronized. However, it's important to keep in mind that race can still occur if the caller is
+ * trying to perform a sequence of events that depend on each other. In those scenarios an external lock is required.
+ * E.g. (1) getFindNewTopicCheckpointFuture() and if the future is complete call (2) getNewTopicVersionSwapCheckpoints()
+ * By the time (2) is called it's possible that the result from (1) is no longer valid. A different thread slipped in
+ * between and changed the state.
  */
-@NotThreadsafe
 public class VersionSwapMessageState {
   private final String oldVersionTopic;
   private final String newVersionTopic;
@@ -55,7 +58,17 @@ public class VersionSwapMessageState {
     this.versionSwapStartTimestamp = versionSwapStartTimestamp;
   }
 
-  public PubSubPosition getVersionSwapLowWatermarkPosition(String topic, int partitionId) {
+  /**
+   * Get the pub sub position of the first relevant version swap message for the given partition. Null will be returned
+   * if the partition have not consumed its version swap yet. This is acceptable because different partitions could be
+   * making progress towards version swap at different pace. e.g. partition 0 consumed its version swap message already
+   * but partition 1 could still be consuming regular messages from the old version topic before encountering any
+   * version swap messages.
+   * @param topic where the version swap message originated from
+   * @param partitionId of the version topic
+   * @return the pub sub position or null
+   */
+  public synchronized PubSubPosition getVersionSwapLowWatermarkPosition(String topic, int partitionId) {
     if (oldVersionTopic.equals(topic)) {
       return partitionToVersionSwapLowWatermarkPositionMap.get(partitionId);
     } else {
@@ -75,23 +88,26 @@ public class VersionSwapMessageState {
     return versionSwapGenerationId;
   }
 
-  public void setFindNewTopicCheckpointFuture(CompletableFuture<Void> findNewTopicCheckpointFuture) {
+  public synchronized void setFindNewTopicCheckpointFuture(CompletableFuture<Void> findNewTopicCheckpointFuture) {
     this.findNewTopicCheckpointFuture = findNewTopicCheckpointFuture;
+    this.newTopicEOPCheckpoints.clear();
+    this.newTopicVersionSwapCheckpoints.clear();
   }
 
-  public CompletableFuture<Void> getFindNewTopicCheckpointFuture() {
+  public synchronized CompletableFuture<Void> getFindNewTopicCheckpointFuture() {
     return findNewTopicCheckpointFuture;
   }
 
-  public void setNewTopicVersionSwapCheckpoints(Map<Integer, VeniceChangeCoordinate> newTopicVersionSwapCheckpoints) {
+  public synchronized void setNewTopicVersionSwapCheckpoints(
+      Map<Integer, VeniceChangeCoordinate> newTopicVersionSwapCheckpoints) {
     this.newTopicVersionSwapCheckpoints = newTopicVersionSwapCheckpoints;
   }
 
-  public void setNewTopicEOPCheckpoints(Map<Integer, VeniceChangeCoordinate> newTopicEOPCheckpoints) {
+  public synchronized void setNewTopicEOPCheckpoints(Map<Integer, VeniceChangeCoordinate> newTopicEOPCheckpoints) {
     this.newTopicEOPCheckpoints = newTopicEOPCheckpoints;
   }
 
-  public Set<VeniceChangeCoordinate> getNewTopicVersionSwapCheckpoints() {
+  public synchronized Set<VeniceChangeCoordinate> getNewTopicVersionSwapCheckpoints() {
     // Defensive coding
     if (findNewTopicCheckpointFuture == null || !findNewTopicCheckpointFuture.isDone()) {
       throw new VeniceException("New topic checkpoints are not available yet");
@@ -109,7 +125,7 @@ public class VersionSwapMessageState {
    * Intended to be used as a backup strategy if any partition still did not complete version swap within the timeout.
    * Remaining partitions will be resumed from EOP instead of first relevant version swap message in the new topic.
    */
-  public Set<VeniceChangeCoordinate> getNewTopicCheckpointsWithEOPAsBackup() {
+  public synchronized Set<VeniceChangeCoordinate> getNewTopicCheckpointsWithEOPAsBackup() {
     Set<VeniceChangeCoordinate> checkpoints = getNewTopicVersionSwapCheckpoints();
     for (Integer partition: getIncompletePartitions()) {
       if (newTopicEOPCheckpoints.containsKey(partition)) {
@@ -123,10 +139,10 @@ public class VersionSwapMessageState {
   }
 
   public Set<Integer> getAssignedPartitions() {
-    return assignedPartitions;
+    return Collections.unmodifiableSet(assignedPartitions);
   }
 
-  public Set<Integer> getIncompletePartitions() {
+  public synchronized Set<Integer> getIncompletePartitions() {
     Set<Integer> incompletePartitions = new HashSet<>(assignedPartitions);
     incompletePartitions.removeAll(completedPartitions);
     return incompletePartitions;
@@ -149,7 +165,7 @@ public class VersionSwapMessageState {
    * This means we can subscribe to the new version topic and resume normal consumption from the first relevant version
    * swap message.
    */
-  public boolean isVersionSwapMessagesReceivedForAllPartitions() {
+  public synchronized boolean isVersionSwapMessagesReceivedForAllPartitions() {
     return completedPartitions.size() == receivedVersionSwapPartitionToRegionsMap.size();
   }
 
@@ -161,7 +177,7 @@ public class VersionSwapMessageState {
    * @param position of the version swap message.
    * @return true if all version swap messages related to this version swap event have been received.
    */
-  public boolean handleVersionSwap(
+  public synchronized boolean handleVersionSwap(
       VersionSwap versionSwap,
       PubSubTopicPartition pubSubTopicPartition,
       PubSubPosition position) {
@@ -197,7 +213,7 @@ public class VersionSwapMessageState {
    * Remove unsubscribed partitions from the ongoing version swap states.
    * @param partitions to unsubscribe
    */
-  public void handleUnsubscribe(Set<Integer> partitions) {
+  public synchronized void handleUnsubscribe(Set<Integer> partitions) {
     for (Integer partition: partitions) {
       receivedVersionSwapPartitionToRegionsMap.remove(partition);
       partitionToVersionSwapLowWatermarkPositionMap.remove(partition);

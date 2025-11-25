@@ -91,7 +91,7 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
    * Total region count used for version swap in A/A setup. Each subscribed partition need to receive this many
    * corresponding version swap messages before it can safely go to the new version to ensure data completeness.
    */
-  private int totalRegionCount = 1;
+  private int totalRegionCount = 0;
   /**
    * Version swap timeout in milliseconds. If the version swap is not completed within this time, the consumer will swap
    * to the new version and resume normal consumption from EOP for any incomplete partitions. Default is 30 minutes.
