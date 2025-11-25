@@ -4115,8 +4115,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   /**
    * Check if truncating topic is needed. If it's child fabrics or parent fabric with topic write needed, return true;
    * Otherwise, return false
-   * @param clusterName
-   * @return
+   * @param clusterName the cluster name to check
+   * @return true if topic truncation is needed, false otherwise
    */
   public boolean isTruncatingTopicNeeded(String clusterName) {
     return !multiClusterConfigs.isParent() || multiClusterConfigs.getControllerConfig(clusterName)
