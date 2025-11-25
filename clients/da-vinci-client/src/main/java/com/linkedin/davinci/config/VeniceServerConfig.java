@@ -147,7 +147,6 @@ import static com.linkedin.venice.ConfigKeys.SERVER_LOAD_CONTROLLER_SINGLE_GET_L
 import static com.linkedin.venice.ConfigKeys.SERVER_LOAD_CONTROLLER_WINDOW_SIZE_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_LOCAL_CONSUMER_CONFIG_PREFIX;
 import static com.linkedin.venice.ConfigKeys.SERVER_MAX_REQUEST_SIZE;
-import static com.linkedin.venice.ConfigKeys.SERVER_MAX_WAIT_AFTER_UNSUBSCRIBE_MS;
 import static com.linkedin.venice.ConfigKeys.SERVER_MAX_WAIT_FOR_VERSION_INFO_MS_CONFIG;
 import static com.linkedin.venice.ConfigKeys.SERVER_NEARLINE_WORKLOAD_PRODUCER_THROUGHPUT_OPTIMIZATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS;
@@ -644,7 +643,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final boolean isGlobalRtDivEnabled;
   private final boolean nearlineWorkloadProducerThroughputOptimizationEnabled;
   private final int zstdDictCompressionLevel;
-  private final long maxWaitAfterUnsubscribeMs;
   private final boolean deleteUnassignedPartitionsOnStartup;
   private final int aclInMemoryCacheTTLMs;
   private final int aaWCIngestionStorageLookupThreadPoolSize;
@@ -1107,8 +1105,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
           "Invalid zstd dict compression level: " + zstdDictCompressionLevel + " should be between "
               + Zstd.minCompressionLevel() + " and " + Zstd.maxCompressionLevel());
     }
-    maxWaitAfterUnsubscribeMs =
-        serverProperties.getLong(SERVER_MAX_WAIT_AFTER_UNSUBSCRIBE_MS, TimeUnit.MINUTES.toMillis(30));
 
     deleteUnassignedPartitionsOnStartup =
         serverProperties.getBoolean(SERVER_DELETE_UNASSIGNED_PARTITIONS_ON_STARTUP, false);
@@ -1974,10 +1970,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public int getZstdDictCompressionLevel() {
     return zstdDictCompressionLevel;
-  }
-
-  public long getMaxWaitAfterUnsubscribeMs() {
-    return maxWaitAfterUnsubscribeMs;
   }
 
   public boolean isDeleteUnassignedPartitionsOnStartupEnabled() {

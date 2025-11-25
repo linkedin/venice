@@ -43,9 +43,14 @@ import org.apache.logging.log4j.Logger;
  * TODO: move this logic inside consumption task, this class does not need to be sub-class of {@link PubSubConsumerAdapter}
  */
 class SharedKafkaConsumer implements PubSubConsumerAdapter {
-  // StoreIngestionTask#consumerUnSubscribeForStateTransition() uses an increased max wait (30 mins by default) for
-  // safety
   public static final long DEFAULT_MAX_WAIT_MS = TimeUnit.SECONDS.toMillis(10);
+
+  /**
+   * Increase the max wait during state transitions to ensure that it waits for the messages to finish processing. A
+   * poll() indicates that all previous inflight messages under the previous state were processed, so there can't be a
+   * state mismatch. The consumer_records_producing_to_write_buffer_latency metric suggests how long the wait should be.
+   */
+  public static final long STATE_TRANSITION_MAX_WAIT_MS = TimeUnit.MINUTES.toMillis(30);
 
   private static final Logger LOGGER = LogManager.getLogger(SharedKafkaConsumer.class);
 
