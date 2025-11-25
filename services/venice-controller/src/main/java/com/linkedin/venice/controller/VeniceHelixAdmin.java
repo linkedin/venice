@@ -4113,7 +4113,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   /**
-   * Check if truncating topic is needed; If it's child fabrics or parent fabric with topic write needed, return true;
+   * Check if truncating topic is needed. If it's child fabrics or parent fabric with topic write needed, return true;
    * Otherwise, return false
    * @param clusterName
    * @return
