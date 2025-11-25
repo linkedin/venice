@@ -9,15 +9,9 @@ import com.linkedin.venice.meta.StoreChangeTasks.VersionAddedTask;
 import com.linkedin.venice.meta.StoreChangeTasks.VersionDeletedTask;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.LogContext;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import it.unimi.dsi.fastutil.ints.IntSet;
-import it.unimi.dsi.fastutil.objects.Object2IntMap;
-import it.unimi.dsi.fastutil.objects.Object2IntMaps;
-import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
-import it.unimi.dsi.fastutil.objects.Object2ObjectMap;
-import it.unimi.dsi.fastutil.objects.Object2ObjectMaps;
-import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
@@ -73,9 +67,9 @@ public class AsyncStoreChangeNotifier implements StoreDataChangedListener, AutoC
   private static final long SHUTDOWN_TIMEOUT_SECONDS = 30;
 
   private final ExecutorService notificationExecutor;
-  private final ConcurrentHashMap<String, StoreChangeTasks> taskRegistry;
-  private final Object2ObjectMap<String, IntSet> storeVersionSets;
-  private final Object2IntMap<String> storeCurrentVersions;
+  private final Map<String, StoreChangeTasks> taskRegistry;
+  private final Map<String, IntSet> storeVersionSets;
+  private final Map<String, Integer> storeCurrentVersions;
   private final AtomicInteger taskIdSuffixCounter;
   private final AtomicBoolean closed;
   private final VeniceComponent veniceComponent;
@@ -94,9 +88,9 @@ public class AsyncStoreChangeNotifier implements StoreDataChangedListener, AutoC
     this.veniceComponent = veniceComponent;
     this.notificationExecutor =
         Executors.newFixedThreadPool(threadPoolSize, new DaemonThreadFactory("pubsub-client-notifier", logContext));
-    this.taskRegistry = new ConcurrentHashMap<>();
-    this.storeVersionSets = Object2ObjectMaps.synchronize(new Object2ObjectOpenHashMap<>());
-    this.storeCurrentVersions = Object2IntMaps.synchronize(new Object2IntOpenHashMap<>());
+    this.taskRegistry = new VeniceConcurrentHashMap<>();
+    this.storeVersionSets = new VeniceConcurrentHashMap<>();
+    this.storeCurrentVersions = new VeniceConcurrentHashMap<>();
     this.taskIdSuffixCounter = new AtomicInteger(0);
     this.closed = new AtomicBoolean(false);
 
@@ -165,7 +159,7 @@ public class AsyncStoreChangeNotifier implements StoreDataChangedListener, AutoC
   @Override
   public void handleStoreCreated(Store store) {
     if (store == null) {
-      LOGGER.debug("Received null store in handleStoreCreated");
+      LOGGER.error("Received null store in handleStoreCreated");
       return;
     }
 
@@ -232,23 +226,22 @@ public class AsyncStoreChangeNotifier implements StoreDataChangedListener, AutoC
       }
     }
 
-    // Check for current version change
+    // Check for current version change - use compute for atomic check-and-update
     int newCurrentVersion = store.getCurrentVersion();
-    // Note: getInt returns 0 if key not present, so we check containsKey for first-time tracking
-    boolean hasTrackedVersion = storeCurrentVersions.containsKey(storeName);
-    int previousCurrentVersion =
-        hasTrackedVersion ? storeCurrentVersions.getInt(storeName) : Store.NON_EXISTING_VERSION;
-
     if (newCurrentVersion != Store.NON_EXISTING_VERSION) {
-      if (!hasTrackedVersion || previousCurrentVersion != newCurrentVersion) {
-        LOGGER.debug(
-            "Store {} current version changed from {} to {}",
-            storeName,
-            previousCurrentVersion,
-            newCurrentVersion);
-        notifyTasksForCurrentVersionChanged(store, newCurrentVersion, previousCurrentVersion);
-        storeCurrentVersions.put(storeName, newCurrentVersion);
-      }
+      storeCurrentVersions.compute(storeName, (key, oldValue) -> {
+        int previousCurrentVersion = (oldValue != null) ? oldValue : Store.NON_EXISTING_VERSION;
+
+        if (oldValue == null || oldValue != newCurrentVersion) {
+          LOGGER.debug(
+              "Store {} current version changed from {} to {}",
+              storeName,
+              previousCurrentVersion,
+              newCurrentVersion);
+          notifyTasksForCurrentVersionChanged(store, newCurrentVersion, previousCurrentVersion);
+        }
+        return newCurrentVersion;
+      });
     }
 
     // Update tracking state
