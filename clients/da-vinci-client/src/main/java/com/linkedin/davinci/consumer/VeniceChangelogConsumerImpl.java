@@ -7,8 +7,6 @@ import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
-import static com.linkedin.venice.VeniceConstants.ENVIRONMENT_CONFIG_KEY_FOR_REGION_NAME;
-import static com.linkedin.venice.VeniceConstants.SYSTEM_PROPERTY_FOR_APP_RUNNING_REGION;
 import static com.linkedin.venice.kafka.protocol.enums.ControlMessageType.START_OF_SEGMENT;
 import static com.linkedin.venice.schema.rmd.RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD_POS;
 import static com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory.FAIL;
@@ -98,6 +96,7 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -105,6 +104,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.stream.Collectors;
@@ -185,6 +185,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   protected final String clientRegionName;
   protected final int totalRegionCount;
   protected final long versionSwapTimeoutInMs;
+  protected final AtomicReference<CountDownLatch> onGoingVersionSwapSignal = new AtomicReference<>();
   /**
    * Interaction of this field should acquire the subscriptionLock.readLock()
    */
@@ -219,29 +220,24 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     this.pubSubMessageDeserializer = pubSubMessageDeserializer;
     this.versionSwapByControlMessage = changelogClientConfig.isVersionSwapByControlMessageEnabled();
     this.totalRegionCount = changelogClientConfig.getTotalRegionCount();
+    this.clientRegionName = changelogClientConfig.getClientRegionName();
     this.versionSwapTimeoutInMs = changelogClientConfig.getVersionSwapTimeoutInMs();
     this.time = new SystemTime();
+    this.onGoingVersionSwapSignal.set(new CountDownLatch(0));
     if (versionSwapByControlMessage) {
-      String clientRegionNameFromConfig = changelogClientConfig.getClientRegionName();
-      if (clientRegionNameFromConfig.isEmpty()) {
-        String regionFromEnv = System.getenv(ENVIRONMENT_CONFIG_KEY_FOR_REGION_NAME);
-        if (regionFromEnv == null) {
-          regionFromEnv = System.getProperty(SYSTEM_PROPERTY_FOR_APP_RUNNING_REGION);
-        }
-        if (regionFromEnv == null) {
-          throw new VeniceException(
-              "Failed to enable version swap by control message because cannot resolve client region name from config, environment or system property");
-        }
-        clientRegionName = regionFromEnv;
-      } else {
-        clientRegionName = clientRegionNameFromConfig;
+      // Version swap related configs should all be resolved or explicitly set at this point.
+      if (this.clientRegionName.isEmpty()) {
+        throw new VeniceException(
+            "Failed to enable version swap by control message because client region name is missing");
+      }
+      if (this.totalRegionCount <= 0) {
+        throw new VeniceException(
+            "Failed to enable version swap by control message because total region count is not set");
       }
       LOGGER.info(
           "VeniceChangelogConsumer version swap by control message is enabled. Client region name: {}, total region count: {}",
           clientRegionName,
           totalRegionCount);
-    } else {
-      clientRegionName = "";
     }
 
     seekExecutorService = Executors.newFixedThreadPool(10, new DaemonThreadFactory(getClass().getSimpleName()));
@@ -382,21 +378,39 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
         throw new RuntimeException(e);
       }
 
-      PubSubTopic topicToSubscribe;
-      if (topic == null) {
-        topicToSubscribe = getCurrentServingVersionTopic();
+      if (versionSwapByControlMessage) {
+        boolean lockAcquiredAndNoOngoingVersionSwap = false;
+        for (int i = 0; i <= MAX_SUBSCRIBE_RETRIES; i++) {
+          // If version swap is in progress, wait for it to finish
+          try {
+            onGoingVersionSwapSignal.get().await();
+          } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+          }
+          subscriptionLock.writeLock().lock();
+          if (versionSwapMessageState != null) {
+            // A new version swap is in progress, wait for it to finish again
+            subscriptionLock.writeLock().unlock();
+          } else {
+            // No version swap is in progress, proceed with subscription
+            lockAcquiredAndNoOngoingVersionSwap = true;
+            break;
+          }
+        }
+        if (!lockAcquiredAndNoOngoingVersionSwap) {
+          // This should be extremely rare where the subscribe request is constantly conflicting with new version swaps
+          throw new VeniceException("Unable to subscribe to new partitions due to conflicting version swaps");
+        }
       } else {
-        topicToSubscribe = topic;
+        subscriptionLock.writeLock().lock();
       }
 
-      subscriptionLock.writeLock().lock();
       try {
-        if (versionSwapByControlMessage && versionSwapMessageState != null) {
-          throw new VeniceException(
-              String.format(
-                  "Unable to subscribe to new partitions while the changelog consumer is undergoing version swap from topic %s to topic %s",
-                  versionSwapMessageState.getOldVersionTopic(),
-                  versionSwapMessageState.getNewVersionTopic()));
+        PubSubTopic topicToSubscribe;
+        if (topic == null) {
+          topicToSubscribe = getCurrentServingVersionTopic();
+        } else {
+          topicToSubscribe = topic;
         }
         Set<PubSubTopicPartition> topicPartitionSet = getTopicAssignment();
         for (PubSubTopicPartition topicPartition: topicPartitionSet) {
@@ -841,6 +855,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
               changeCaptureStats.emitVersionSwapCountMetrics(SUCCESS);
               changeCaptureStats.setUndergoingVersionSwap(0);
               versionSwapMessageState = null;
+              onGoingVersionSwapSignal.get().countDown();
             } else {
               return Collections.emptyList();
             }
@@ -860,7 +875,13 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
               changeCaptureStats.emitVersionSwapCountMetrics(SUCCESS);
               changeCaptureStats.setUndergoingVersionSwap(0);
               versionSwapMessageState = null;
+              onGoingVersionSwapSignal.get().countDown();
             } else {
+              LOGGER.warn(
+                  "Version swap from topic: {} to topic: {}, generation id: {} already timed out but still unable to find new topic checkpoints to go to.",
+                  versionSwapMessageState.getOldVersionTopic(),
+                  versionSwapMessageState.getNewVersionTopic(),
+                  versionSwapMessageState.getVersionSwapGenerationId());
               return Collections.emptyList();
             }
           }
@@ -974,6 +995,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
               versionSwapMessageState.getNewVersionTopic(),
               versionSwapMessageState.getVersionSwapGenerationId(),
               versionSwapMessageState.getAssignedPartitions()));
+      return false;
     }
     return true;
   }
@@ -1441,6 +1463,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
         Set<PubSubTopicPartition> currentAssignment = getTopicAssignment();
         versionSwapMessageState =
             new VersionSwapMessageState(versionSwap, totalRegionCount, currentAssignment, time.getMilliseconds());
+        onGoingVersionSwapSignal.set(new CountDownLatch(1));
         changeCaptureStats.setUndergoingVersionSwap(1);
         LOGGER.info(
             "New version detected for store: {} through version swap messages. Performing version swap from topic: {} to topic: {}, generation id: {}",
