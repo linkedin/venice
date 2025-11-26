@@ -5243,10 +5243,17 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       PartitionConsumptionState pcs = getPartitionConsumptionStateMap().get(partition);
       if (pcs == null) {
         LOGGER.warn(
-            "Partition: {} does not exist in pcs map for SIT of: {}, will not resubscribe.",
-            partition,
+            "Replica: {} does not exist in pcs map for SIT of: {}, will not resubscribe.",
+            Utils.getReplicaId(versionTopic, partition),
             getVersionTopic());
         continue;
+      }
+      /**
+       * As of now, this feature intends to resolve ingestion performance issue introduced by consumer. We will rely on
+       * the error reset feature to handle the error replica properly.
+       */
+      if (pcs.isErrorReported()) {
+        LOGGER.warn("Replica: {} is already errored, will not resubscribe to repair.", pcs.getReplicaId());
       }
       try {
         LOGGER.info("Resubscribing: {}", pcs.getReplicaId());
