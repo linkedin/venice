@@ -227,7 +227,7 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
               newVersionTopic,
               generationId,
               partitions);
-          while (!versionSwapConsumedPerPartitionMap.values().stream().allMatch(x -> x)) {
+          while (!areAllTrue(versionSwapConsumedPerPartitionMap.values())) {
             polledResults = consumerAdapter.poll(5000L);
             for (Map.Entry<PubSubTopicPartition, List<DefaultPubSubMessage>> entry: polledResults.entrySet()) {
               PubSubTopicPartition pubSubTopicPartition = entry.getKey();
@@ -394,6 +394,15 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
       }
       return null;
     }, seekExecutorService);
+  }
+
+  private boolean areAllTrue(Collection<Boolean> booleanCollections) {
+    for (Boolean b: booleanCollections) {
+      if (!b) {
+        return false;
+      }
+    }
+    return true;
   }
 
   @Override

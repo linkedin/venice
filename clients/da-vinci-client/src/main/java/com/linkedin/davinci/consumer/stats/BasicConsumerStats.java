@@ -13,7 +13,6 @@ import com.linkedin.venice.stats.OpenTelemetryMetricsSetup;
 import com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
-import com.linkedin.venice.stats.metrics.AsyncMetricEntityStateBase;
 import com.linkedin.venice.stats.metrics.MetricEntity;
 import com.linkedin.venice.stats.metrics.MetricEntityStateBase;
 import com.linkedin.venice.stats.metrics.MetricEntityStateOneEnum;
@@ -23,7 +22,6 @@ import com.linkedin.venice.stats.metrics.ModuleMetricEntityInterface;
 import com.linkedin.venice.stats.metrics.TehutiMetricNameEnum;
 import io.opentelemetry.api.common.Attributes;
 import io.tehuti.metrics.MetricsRepository;
-import io.tehuti.metrics.stats.AsyncGauge;
 import io.tehuti.metrics.stats.Avg;
 import io.tehuti.metrics.stats.Gauge;
 import io.tehuti.metrics.stats.Max;
@@ -34,7 +32,6 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.atomic.AtomicInteger;
 
 
 /**
@@ -56,8 +53,6 @@ public class BasicConsumerStats extends AbstractVeniceStats {
   private final MetricEntityStateOneEnum<VeniceResponseStatusCategory> versionSwapFailCountMetric;
   private final MetricEntityStateOneEnum<VeniceResponseStatusCategory> chunkedRecordSuccessCountMetric;
   private final MetricEntityStateOneEnum<VeniceResponseStatusCategory> chunkedRecordFailCountMetric;
-  private final AsyncMetricEntityStateBase undergoingVersionSwapMetric;
-  private final AtomicInteger undergoingVersionSwap = new AtomicInteger(0);
 
   public BasicConsumerStats(MetricsRepository metricsRepository, String consumerName, String storeName) {
     super(metricsRepository, consumerName);
@@ -162,19 +157,6 @@ public class BasicConsumerStats extends AbstractVeniceStats {
         baseDimensionsMap,
         VeniceResponseStatusCategory.class);
 
-    undergoingVersionSwapMetric = AsyncMetricEntityStateBase.create(
-        BasicConsumerMetricEntity.UNDERGOING_VERSION_SWAP.getMetricEntity(),
-        otelRepository,
-        this::registerSensor,
-        BasicConsumerTehutiMetricName.UNDERGOING_VERSION_SWAP,
-        Collections.singletonList(
-            new AsyncGauge(
-                (ignored, ignored2) -> this.undergoingVersionSwap.get(),
-                BasicConsumerTehutiMetricName.UNDERGOING_VERSION_SWAP.getMetricName())),
-        baseDimensionsMap,
-        baseAttributes,
-        this.undergoingVersionSwap::get);
-
     /*
      * Record default value for version swap metrics so the UP_DOWN_COUNTER in OTEL will emit a default 0.
      * If you don't do this, the OTEL metric will return no data upon query time until a value is recorded.
@@ -223,10 +205,6 @@ public class BasicConsumerStats extends AbstractVeniceStats {
     }
   }
 
-  public void setUndergoingVersionSwap(int value) {
-    undergoingVersionSwap.set(value);
-  }
-
   @VisibleForTesting
   public Attributes getBaseAttributes() {
     return baseAttributes;
@@ -238,7 +216,7 @@ public class BasicConsumerStats extends AbstractVeniceStats {
   public enum BasicConsumerTehutiMetricName implements TehutiMetricNameEnum {
     MAX_PARTITION_LAG, RECORDS_CONSUMED, MINIMUM_CONSUMING_VERSION, MAXIMUM_CONSUMING_VERSION, POLL_SUCCESS_COUNT,
     POLL_FAIL_COUNT, VERSION_SWAP_SUCCESS_COUNT, VERSION_SWAP_FAIL_COUNT, CHUNKED_RECORD_SUCCESS_COUNT,
-    CHUNKED_RECORD_FAIL_COUNT, UNDERGOING_VERSION_SWAP;
+    CHUNKED_RECORD_FAIL_COUNT;
 
     private final String metricName;
 
@@ -293,13 +271,6 @@ public class BasicConsumerStats extends AbstractVeniceStats {
     CHUNKED_RECORD_COUNT(
         MetricType.COUNTER, MetricUnit.NUMBER, "Measures the count of chunked records consumed",
         setOf(VENICE_STORE_NAME, VENICE_RESPONSE_STATUS_CODE_CATEGORY)
-    ),
-    /**
-     * Indicate if the changelog consumer is undergoing version swap triggered by version swap messages
-     */
-    UNDERGOING_VERSION_SWAP(
-        MetricType.ASYNC_GAUGE, MetricUnit.NUMBER, "Indicate if the changelog consumer is undergoing version swap",
-        setOf(VENICE_STORE_NAME)
     );
 
     private final MetricEntity metricEntity;
