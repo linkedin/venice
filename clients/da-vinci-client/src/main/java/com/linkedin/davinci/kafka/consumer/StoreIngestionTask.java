@@ -5254,7 +5254,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         count++;
         resubscribe(pcs);
       } catch (Exception e) {
-        LOGGER.warn("Caught exception when resubscribing for replica: {}", pcs.getReplicaId());
+        LOGGER.error("Caught exception when resubscribing for replica: {}", pcs.getReplicaId(), e);
       }
     }
   }
