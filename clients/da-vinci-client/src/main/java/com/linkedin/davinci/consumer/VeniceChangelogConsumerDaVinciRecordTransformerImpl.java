@@ -441,9 +441,6 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
 
   @Override
   public boolean isCaughtUp() {
-    if (!changelogClientConfig.isStateful()) {
-      throw new VeniceClientException("isCaughtUp is not supported for non-stateful changelog consumer");
-    }
     return isCaughtUp.get();
   }
 
