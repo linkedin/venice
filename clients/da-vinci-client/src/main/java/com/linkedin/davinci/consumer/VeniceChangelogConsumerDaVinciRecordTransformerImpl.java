@@ -20,10 +20,12 @@ import com.linkedin.davinci.consumer.stats.BasicConsumerStats;
 import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.ClientConfig;
+import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubTopicImpl;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.PropertyBuilder;
@@ -93,6 +95,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   private final long consumerSequenceIdStartingValue;
   private final boolean isVersionSpecificClient;
   private final VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory;
+  private final boolean includeControlMessages;
 
   public VeniceChangelogConsumerDaVinciRecordTransformerImpl(
       ChangelogClientConfig changelogClientConfig,
@@ -144,7 +147,9 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
           storeName);
       this.daVinciClient = this.daVinciClientFactory
           .getVersionSpecificGenericAvroClient(this.storeName, changelogClientConfig.getStoreVersion(), daVinciConfig);
+      this.includeControlMessages = changelogClientConfig.shouldPassThroughControlMessages();
     } else {
+      this.includeControlMessages = false;
       if (innerClientConfig.isSpecificClient()) {
         this.daVinciClient = this.daVinciClientFactory
             .getSpecificSeekableAvroClient(this.storeName, daVinciConfig, innerClientConfig.getSpecificValueClass());
@@ -573,6 +578,9 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
       return new DaVinciRecordTransformerResult<>(DaVinciRecordTransformerResult.Result.UNCHANGED);
     }
 
+    /**
+     * Add ChangeCapturePubSubMessage to the buffer based on record metadata.
+     */
     public void addMessageToBuffer(
         K key,
         V value,
@@ -580,44 +588,77 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
         DaVinciRecordTransformerRecordMetadata recordMetadata) {
       if (partitionToVersionToServe.get(partitionId) == getStoreVersion()) {
         ChangeEvent<V> changeEvent = new ChangeEvent<>(null, value);
-        try {
-          pubSubMessages.put(
-              new ImmutableChangeCapturePubSubMessage<>(
-                  key,
-                  changeEvent,
-                  pubSubTopicPartitionMap.get(partitionId),
-                  recordMetadata.getPubSubPosition(),
-                  recordMetadata.getTimestamp(),
-                  recordMetadata.getPayloadSize(),
-                  isCaughtUp(),
-                  getNextConsumerSequenceId(partitionId),
-                  recordMetadata.getWriterSchemaId(),
-                  recordMetadata.getReplicationMetadataPayload()));
+        ImmutableChangeCapturePubSubMessage<K, ChangeEvent<V>> pubSubMessage =
+            new ImmutableChangeCapturePubSubMessage<>(
+                key,
+                changeEvent,
+                pubSubTopicPartitionMap.get(partitionId),
+                recordMetadata.getPubSubPosition(),
+                recordMetadata.getTimestamp(),
+                recordMetadata.getPayloadSize(),
+                isCaughtUp(),
+                getNextConsumerSequenceId(partitionId),
+                recordMetadata.getWriterSchemaId(),
+                recordMetadata.getReplicationMetadataPayload());
+        internalAddMessageToBuffer(partitionId, pubSubMessage);
+      }
+    }
 
-          /*
-           * pubSubMessages is full, signal to a poll thread awaiting on bufferFullCondition.
-           * Not signaling to all threads, because if multiple poll threads try to read pubSubMessages at
-           * the same time, all other poll threads besides the first reader will get any messages.
-           * Also, don't acquire the locker before inserting into pubSubMessages. If we acquire the lock before,
-           * and pubSubMessages is full, the put will be blocked, and we won't be able to release the lock. Leading
-           * to a deadlock. We also shouldn't signal before insertion either, because when the buffer is full multiple
-           * drainer threads will send a signal out at once. This leads to the original issue described at the
-           * beginning of this comment block.
-           */
-          if (pubSubMessages.remainingCapacity() == 0) {
-            bufferLock.lock();
-            try {
-              bufferIsFullCondition.signal();
-            } finally {
-              bufferLock.unlock();
-            }
+    /**
+     * Add ControlMessage to the buffer.
+     * Key and Value are both null. Details for control message are in controlMessage param.
+     */
+    public void addMessageToBuffer(int partitionId, PubSubPosition offset, ControlMessage controlMessage) {
+      if (partitionToVersionToServe.get(partitionId) == getStoreVersion()) {
+        ImmutableChangeCapturePubSubMessage<K, ChangeEvent<V>> pubSubMessage =
+            new ImmutableChangeCapturePubSubMessage<>(
+                null,
+                null,
+                pubSubTopicPartitionMap.get(partitionId),
+                offset,
+                0,
+                0,
+                false,
+                getNextConsumerSequenceId(partitionId),
+                -1,
+                null,
+                controlMessage);
+        internalAddMessageToBuffer(partitionId, pubSubMessage);
+      }
+    }
+
+    private void internalAddMessageToBuffer(
+        int partitionId,
+        ImmutableChangeCapturePubSubMessage<K, ChangeEvent<V>> pubSubMessage) {
+      if (partitionToVersionToServe.get(partitionId) != getStoreVersion()) {
+        return;
+      }
+
+      try {
+        pubSubMessages.put(pubSubMessage);
+        /*
+         * pubSubMessages is full, signal to a poll thread awaiting on bufferFullCondition.
+         * Not signaling to all threads, because if multiple poll threads try to read pubSubMessages at
+         * the same time, all other poll threads besides the first reader will get any messages.
+         * Also, don't acquire the locker before inserting into pubSubMessages. If we acquire the lock before,
+         * and pubSubMessages is full, the put will be blocked, and we won't be able to release the lock. Leading
+         * to a deadlock. We also shouldn't signal before insertion either, because when the buffer is full multiple
+         * drainer threads will send a signal out at once. This leads to the original issue described at the
+         * beginning of this comment block.
+         */
+        if (pubSubMessages.remainingCapacity() == 0) {
+          bufferLock.lock();
+          try {
+            bufferIsFullCondition.signal();
+          } finally {
+            bufferLock.unlock();
           }
-
-          startLatch.countDown();
-        } catch (InterruptedException e) {
-          LOGGER.error("Thread was interrupted while putting a message into pubSubMessages", e);
-          Thread.currentThread().interrupt();
         }
+
+        startLatch.countDown();
+      } catch (InterruptedException e) {
+        LOGGER.error("Thread was interrupted while putting a message into pubSubMessages", e);
+        Thread.currentThread().interrupt();
       }
     }
 
@@ -641,6 +682,18 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
       // When value is null, it indicates it's a delete
       addMessageToBuffer(key.get(), null, partitionId, recordMetadata);
     };
+
+    /**
+     * If includeControlMessages is false, this method is a no-op.
+     * Otherwise, it adds the control message to the buffer.
+     * This method is only applicable when using a version specific client.
+     */
+    public void onControlMessage(int partitionId, PubSubPosition offset, ControlMessage controlMessage) {
+      if (!includeControlMessages) {
+        return;
+      }
+      addMessageToBuffer(partitionId, offset, controlMessage);
+    }
 
     public void onVersionSwap(int currentVersion, int futureVersion, int partitionId) {
       /*

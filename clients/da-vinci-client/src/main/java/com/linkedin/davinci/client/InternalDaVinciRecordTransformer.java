@@ -4,9 +4,11 @@ import com.linkedin.davinci.consumer.VeniceChangelogConsumerDaVinciRecordTransfo
 import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.venice.annotation.Experimental;
 import com.linkedin.venice.compression.VeniceCompressor;
+import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.pubsub.PubSubContext;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.io.IOException;
@@ -107,6 +109,17 @@ public class InternalDaVinciRecordTransformer<K, V, O> extends DaVinciRecordTran
     if (isCDCRecordTransformer()) {
       ((VeniceChangelogConsumerDaVinciRecordTransformerImpl.DaVinciRecordTransformerChangelogConsumer) this.recordTransformer)
           .onHeartbeat(partitionId, heartbeatTimestamp);
+    }
+  }
+
+  /**
+   * On receiving a control message for a given partition and offset, we will process it here.
+   * It is used for Version Specific CDC.
+   */
+  public void onControlMessage(int partition, PubSubPosition offset, ControlMessage controlMessage) {
+    if (this.recordTransformer instanceof VeniceChangelogConsumerDaVinciRecordTransformerImpl.DaVinciRecordTransformerChangelogConsumer) {
+      ((VeniceChangelogConsumerDaVinciRecordTransformerImpl.DaVinciRecordTransformerChangelogConsumer) this.recordTransformer)
+          .onControlMessage(partition, offset, controlMessage);
     }
   }
 

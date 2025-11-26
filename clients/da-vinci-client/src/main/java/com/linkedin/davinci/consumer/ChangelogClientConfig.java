@@ -100,6 +100,11 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
    */
   private long versionSwapTimeoutInMs = MINUTES.toMillis(30);
 
+  /**
+   * Whether to pass through control messages to the user. Default is false.
+   */
+  private boolean passThroughControlMessages = false;
+
   public ChangelogClientConfig(String storeName) {
     this.innerClientConfig = new ClientConfig<>(storeName);
   }
@@ -404,6 +409,7 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
         .setSeekThreadPoolSize(config.getSeekThreadPoolSize())
         .setShouldSkipFailedToAssembleRecords(config.shouldSkipFailedToAssembleRecords())
         .setUseRequestBasedMetadataRepository(config.isUseRequestBasedMetadataRepository())
+        .setPassThroughControlMessages(config.shouldPassThroughControlMessages())
         .setInnerClientConfig(config.getInnerClientConfig())
         // Store version should not be cloned
         .setStoreVersion(null)
@@ -434,6 +440,18 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
    */
   public ChangelogClientConfig setIsNewStatelessClientEnabled(Boolean newStatelessClientEnabled) {
     this.isNewStatelessClientEnabled = newStatelessClientEnabled;
+    return this;
+  }
+
+  /**
+   * Get whether to pass through control messages to the user.
+   */
+  protected Boolean shouldPassThroughControlMessages() {
+    return passThroughControlMessages;
+  }
+
+  public ChangelogClientConfig setPassThroughControlMessages(Boolean passThroughControlMessages) {
+    this.passThroughControlMessages = passThroughControlMessages;
     return this;
   }
 
