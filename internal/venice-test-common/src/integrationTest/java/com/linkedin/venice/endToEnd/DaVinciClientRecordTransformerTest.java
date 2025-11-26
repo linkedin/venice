@@ -36,6 +36,7 @@ import static com.linkedin.venice.meta.PersistenceType.ROCKS_DB;
 import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_MB;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJProps;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRecord;
 import static com.linkedin.venice.utils.SslUtils.LOCAL_KEYSTORE_JKS;
 import static com.linkedin.venice.utils.SslUtils.LOCAL_PASSWORD;
 import static com.linkedin.venice.utils.TestWriteUtils.DEFAULT_USER_DATA_RECORD_COUNT;
@@ -80,6 +81,7 @@ import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.samza.VeniceSystemProducer;
 import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import com.linkedin.venice.utils.ForkedJavaProcess;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
@@ -885,8 +887,15 @@ public class DaVinciClientRecordTransformerTest {
     String customValue = "a";
     int numKeys = 10;
 
-    setUpStore(storeName, false, false, CompressionStrategy.NO_OP, customValue, numKeys, 1);
-
+    setUpStore(storeName, false, false, CompressionStrategy.NO_OP, customValue, 0, 1);
+    try (VeniceSystemProducer veniceProducer =
+        IntegrationTestPushUtils.getSamzaProducer(cluster, storeName, Version.PushType.STREAM)) {
+      for (int i = 1; i <= numKeys; ++i) {
+        String value = "a" + i;
+        sendStreamingRecord(veniceProducer, storeName, i, value);
+        Thread.sleep(500);
+      }
+    }
     VeniceProperties backendConfig = buildRecordTransformerBackendConfig(pushStatusStoreEnabled);
     MetricsRepository metricsRepository = new MetricsRepository();
 
@@ -930,18 +939,6 @@ public class DaVinciClientRecordTransformerTest {
       SeekableDaVinciClient<Integer, Object> clientWithRecordTransformer =
           factory.getAndStartGenericSeekableAvroClient(storeName, clientConfig);
 
-      // test seek by timestamp
-      clientWithRecordTransformer.seekToTimestamp(pubSubMessage.getValue().producerMetadata.messageTimestamp).get();
-      TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
-        for (int k = 1; k <= numKeys; ++k) {
-          // Record shouldn't be stored in Da Vinci
-          assertNull(clientWithRecordTransformer.get(k).get());
-          // Record should be stored in inMemoryDB
-          String expectedValue = "a" + k + "Transformed";
-          assertEquals(recordTransformer.get(k), k < 3 ? null : expectedValue);
-        }
-      });
-      clientWithRecordTransformer.unsubscribeAll();
       // test seek by change coordinate
       clientWithRecordTransformer.seekToCheckpoint(Collections.singleton(changeCoordinate)).get();
       TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
@@ -950,7 +947,37 @@ public class DaVinciClientRecordTransformerTest {
           assertNull(clientWithRecordTransformer.get(k).get());
           // Record should be stored in inMemoryDB
           String expectedValue = "a" + k + "Transformed";
-          assertEquals(recordTransformer.get(k), k < 3 ? null : expectedValue);
+          assertEquals(recordTransformer.get(k), k < 7 ? null : expectedValue);
+        }
+      });
+      clientWithRecordTransformer.unsubscribeAll();
+      clientWithRecordTransformer.close();
+      recordTransformer.clearInMemoryDB();
+      clientWithRecordTransformer.start();
+
+      // test seek by timestamp
+      clientWithRecordTransformer.seekToTimestamp(pubSubMessage.getValue().producerMetadata.messageTimestamp).get();
+      TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
+        for (int k = 1; k <= numKeys; ++k) {
+          // Record shouldn't be stored in Da Vinci
+          assertNull(clientWithRecordTransformer.get(k).get());
+          // Record should be stored in inMemoryDB
+          String expectedValue = "a" + k + "Transformed";
+          assertEquals(recordTransformer.get(k), k < 7 ? null : expectedValue);
+        }
+      });
+      clientWithRecordTransformer.unsubscribeAll();
+      clientWithRecordTransformer.close();
+      recordTransformer.clearInMemoryDB();
+      clientWithRecordTransformer.start();
+      // test seek to tail
+      clientWithRecordTransformer.seekToTail().get();
+
+      TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
+        for (int k = 1; k <= numKeys; ++k) {
+          // Record shouldn't be stored in Da Vinci nor inMemoryDB
+          assertNull(clientWithRecordTransformer.get(k).get());
+          assertNull(recordTransformer.get(k));
         }
       });
     }
@@ -1025,7 +1052,8 @@ public class DaVinciClientRecordTransformerTest {
         writeAvroFileRunnable,
         valueSchema,
         inputDir,
-        numPartitions);
+        numPartitions,
+        numKeys == 0);
   }
 
   /*
@@ -1062,7 +1090,8 @@ public class DaVinciClientRecordTransformerTest {
         writeAvroFileRunnable,
         valueSchema,
         inputDir,
-        numPartitions);
+        numPartitions,
+        false);
   }
 
   protected void setUpStore(
@@ -1075,7 +1104,8 @@ public class DaVinciClientRecordTransformerTest {
       Runnable writeAvroFileRunnable,
       String valueSchema,
       File inputDir,
-      int numPartitions) {
+      int numPartitions,
+      boolean emptyPush) {
     // Produce input data.
     writeAvroFileRunnable.run();
 
@@ -1099,7 +1129,11 @@ public class DaVinciClientRecordTransformerTest {
         cluster.createPushStatusSystemStore(storeName);
       }
       TestUtils.assertCommand(controllerClient.updateStore(storeName, params));
-      runVPJ(vpjProperties, 1, cluster);
+      if (emptyPush) {
+        controllerClient.sendEmptyPushAndWait(storeName, "test-push", 1, 30 * Time.MS_PER_SECOND);
+      } else {
+        runVPJ(vpjProperties, 1, cluster);
+      }
     }
   }
 
@@ -1136,7 +1170,8 @@ public class DaVinciClientRecordTransformerTest {
         writeAvroFileRunnable,
         valueSchema,
         inputDir,
-        3);
+        3,
+        false);
   }
 
   private static void runVPJ(Properties vpjProperties, int expectedVersionNumber, VeniceClusterWrapper cluster) {

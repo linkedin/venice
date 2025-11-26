@@ -60,6 +60,7 @@ import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
@@ -221,6 +222,53 @@ public abstract class KafkaStoreIngestionServiceTest {
   }
 
   @Test
+  public void testGetPubSubPosition() {
+    // Setup
+    String storeName = "test-store";
+    int partitionId = 0;
+    PubSubPosition expectedPosition = mock(PubSubPosition.class);
+    VeniceStoreVersionConfig storeConfig = mock(VeniceStoreVersionConfig.class);
+    when(storeConfig.getStoreVersionName()).thenReturn(storeName + "_v1");
+    Map<Integer, PubSubPosition> positionMap = new HashMap<>();
+    positionMap.put(partitionId, expectedPosition);
+
+    // Test with non-null pubSubPosition
+    Optional<PubSubPosition> result = kafkaStoreIngestionService.getPubSubPosition(
+        storeConfig,
+        partitionId,
+        null, // timestamp
+        positionMap);
+
+    // Verify
+    assertTrue(result.isPresent());
+    assertEquals(expectedPosition, result.get());
+    // Test case 2: When positionMap is null
+    result = kafkaStoreIngestionService.getPubSubPosition(storeConfig, partitionId, null, null);
+    assertFalse(result.isPresent());
+
+    // Test case 3: When positionMap doesn't contain the partition
+    result = kafkaStoreIngestionService.getPubSubPosition(
+        storeConfig,
+        partitionId + 1, // different partition
+        null,
+        positionMap);
+    assertFalse(result.isPresent());
+
+    // Test case 4: When positionMap contains null position for the partition
+    positionMap.put(partitionId, null);
+    result = kafkaStoreIngestionService.getPubSubPosition(storeConfig, partitionId, null, positionMap);
+    assertFalse(result.isPresent());
+
+    // Test case 5: When timestamp is provided (should be ignored when positionMap has the position)
+    Map<Integer, Long> tsMap = new HashMap<>();
+    tsMap.put(partitionId, System.currentTimeMillis());
+    positionMap.put(partitionId, expectedPosition);
+    result = kafkaStoreIngestionService.getPubSubPosition(storeConfig, partitionId, tsMap, positionMap);
+    assertTrue(result.isPresent());
+    assertEquals(expectedPosition, result.get());
+  }
+
+  @Test
   public void testDisableMetricsEmission() {
     String mockStoreName = "test";
     String mockSimilarStoreName = "testTest";
@@ -236,7 +284,7 @@ public abstract class KafkaStoreIngestionServiceTest {
 
     for (int i = 1; i <= taskNum; i++) {
       StoreIngestionTask task = mock(StoreIngestionTask.class);
-      topicNameToIngestionTaskMap.put(mockStoreName + "_v" + String.valueOf(i), task);
+      topicNameToIngestionTaskMap.put(mockStoreName + "_v" + i, task);
     }
 
     topicNameToIngestionTaskMap.put(mockSimilarStoreName + "_v1", mock(StoreIngestionTask.class));
@@ -246,7 +294,7 @@ public abstract class KafkaStoreIngestionServiceTest {
     doReturn(mockStore).when(mockMetadataRepo).getStore(mockStoreName);
 
     VeniceStoreVersionConfig mockStoreConfig = mock(VeniceStoreVersionConfig.class);
-    doReturn(mockStoreName + "_v" + String.valueOf(taskNum)).when(mockStoreConfig).getStoreVersionName();
+    doReturn(mockStoreName + "_v" + taskNum).when(mockStoreConfig).getStoreVersionName();
 
     kafkaStoreIngestionService.updateStatsEmission(topicNameToIngestionTaskMap, mockStoreName, maxVersionNumber);
 

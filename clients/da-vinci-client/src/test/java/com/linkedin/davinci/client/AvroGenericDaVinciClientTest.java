@@ -45,6 +45,7 @@ import java.lang.reflect.Field;
 import java.security.AccessController;
 import java.security.PrivilegedAction;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -418,7 +419,7 @@ public class AvroGenericDaVinciClientTest {
 
     // Mock the seekToCheckpoint method
     doReturn(CompletableFuture.completedFuture(null)).when(mockStoreBackend)
-        .seekToCheckPoints(anyMap(), eq(Optional.empty()));
+        .seekToCheckpoint(any(DaVinciSeekCheckpointInfo.class), eq(Optional.empty()));
     doReturn(true).when(dvcClient).isReady();
     when(dvcClient.getStoreBackend()).thenReturn(mockStoreBackend);
 
@@ -443,18 +444,67 @@ public class AvroGenericDaVinciClientTest {
     Field backendField = AvroGenericDaVinciClient.class.getDeclaredField("daVinciBackend");
     backendField.setAccessible(true);
     // Mock the seek method
-    doReturn(CompletableFuture.completedFuture(null)).when(mockStoreBackend)
-        .seekToTimestamps(anyMap(), eq(Optional.empty()));
     doReturn(true).when(dvcClient).isReady();
     when(dvcClient.getStoreBackend()).thenReturn(mockStoreBackend);
     Map<Integer, Long> timestamps = new HashMap<>();
     timestamps.put(1, 1000L);
+    doReturn(CompletableFuture.completedFuture(null)).when(mockStoreBackend)
+        .seekToCheckpoint(any(DaVinciSeekCheckpointInfo.class), eq(Optional.empty()));
+
     // Test
     CompletableFuture<Void> future = dvcClient.seekToTimestamps(timestamps);
     future.get(); // Wait for completion
     // Verify
     verify(dvcClient).seekToTimestamps(anyMap());
     assertTrue(future.isDone() && !future.isCompletedExceptionally());
+  }
+
+  @Test
+  public void testSeekToTail() throws Exception {
+    // Setup
+    ClientConfig clientConfig = new ClientConfig(storeName);
+    AvroGenericSeekableDaVinciClient<Integer, String> dvcClient =
+        (AvroGenericSeekableDaVinciClient<Integer, String>) setUpSeekableClient(clientConfig, true);
+
+    // Mock backend
+    StoreBackend mockStoreBackend = mock(StoreBackend.class);
+    // Use reflection to set the private daVinciBackend field
+    Field backendField = AvroGenericDaVinciClient.class.getDeclaredField("daVinciBackend");
+    backendField.setAccessible(true);
+    // Mock the seek method
+    doReturn(CompletableFuture.completedFuture(null)).when(mockStoreBackend)
+        .seekToCheckpoint(any(DaVinciSeekCheckpointInfo.class), eq(Optional.empty()));
+    doReturn(true).when(dvcClient).isReady();
+    when(dvcClient.getStoreBackend()).thenReturn(mockStoreBackend);
+    // Test
+    CompletableFuture<Void> future = dvcClient.seekToTail();
+    future.get(); // Wait for completion
+    // Verify
+    verify(dvcClient).seekToTail();
+    assertTrue(future.isDone() && !future.isCompletedExceptionally());
+
+    future = dvcClient.seekToTail(Collections.singleton(1));
+    future.get(); // Wait for completion
+    // Verify
+    verify(dvcClient).seekToTail(Collections.singleton(1));
+    assertTrue(future.isDone() && !future.isCompletedExceptionally());
+
+  }
+
+  @Test
+  public void testSeekToTailWhenNotReady() throws Exception {
+    // Setup
+    ClientConfig clientConfig = new ClientConfig(storeName);
+    AvroGenericSeekableDaVinciClient<Integer, String> dvcClient =
+        (AvroGenericSeekableDaVinciClient<Integer, String>) setUpSeekableClient(clientConfig, true);
+
+    // Test and verify exception
+    try {
+      CompletableFuture<Void> future = dvcClient.seekToTail(Collections.emptySet());
+      future.get();
+      fail("Expected VeniceClientException to be thrown when client is not ready");
+    } catch (VeniceClientException e) {
+    }
   }
 
   @Test
@@ -471,14 +521,11 @@ public class AvroGenericDaVinciClientTest {
     backendField.setAccessible(true);
     // Mock the seek method
     doReturn(CompletableFuture.completedFuture(null)).when(mockStoreBackend)
-        .seekToTimestamps(anyMap(), eq(Optional.empty()));
+        .seekToCheckpoint(any(DaVinciSeekCheckpointInfo.class), eq(Optional.empty()));
     doReturn(false).when(dvcClient).isReady();
     when(dvcClient.getStoreBackend()).thenReturn(mockStoreBackend);
     Map<Integer, Long> timestamps = new HashMap<>();
     timestamps.put(1, 1000L);
-    // Test
-
-    // Test
     // Verify the exception is propagated
     try {
       CompletableFuture<Void> future = dvcClient.seekToTimestamps(timestamps);
