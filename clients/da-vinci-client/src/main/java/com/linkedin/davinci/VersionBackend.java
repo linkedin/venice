@@ -214,7 +214,7 @@ public class VersionBackend {
   protected static void sendOutHeartbeat(DaVinciBackend backend, Version version) {
     if (backend.hasCurrentVersionBootstrapping()) {
       LOGGER.info(
-          "DaVinci still is still bootstrapping, so it will send heart-beat message with a special timestamp"
+          "DaVinci is still bootstrapping, so it will send heart-beat message with a special timestamp"
               + " for store: {} to avoid delaying the new push job",
           version.getStoreName());
       /**
