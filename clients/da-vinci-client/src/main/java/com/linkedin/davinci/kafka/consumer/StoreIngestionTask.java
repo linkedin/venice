@@ -5226,9 +5226,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     while (count < getServerConfig().getLagBasedReplicaAutoResubscribeMaxReplicaCount()
         && getResubscribeRequestQueue().peek() != null) {
       partition = getResubscribeRequestQueue().poll();
-      if (partition == null) {
-        break;
-      }
       long previousResubscribeTime = getPartitionToPreviousResubscribeTimeMap().getOrDefault(partition, 0L);
       int allowedResubscribeIntervalInSeconds = getServerConfig().getLagBasedReplicaAutoResubscribeIntervalInSeconds();
       if (System.currentTimeMillis() - previousResubscribeTime < SECONDS
