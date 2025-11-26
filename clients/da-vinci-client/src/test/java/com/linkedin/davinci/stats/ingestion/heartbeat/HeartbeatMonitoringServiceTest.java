@@ -845,5 +845,12 @@ public class HeartbeatMonitoringServiceTest {
     doReturn(600).when(serverConfig).getLagBasedReplicaAutoResubscribeThresholdInSeconds();
     heartbeatMonitoringService.checkAndMaybeLogHeartbeatDelayMap(heartbeatTimestamps);
     verify(kafkaStoreIngestionService, times(1)).maybeAddResubscribeRequest(eq(store), eq(version), eq(partition));
+
+    // Config enabled, does not trigger resubscribe for sep region.
+    heartbeatTimestamps.get(store).get(version).get(partition).remove(region);
+    region = "dc1_sep";
+    heartbeatTimestamps.get(store).get(version).get(partition).put(region, entry);
+    heartbeatMonitoringService.checkAndMaybeLogHeartbeatDelayMap(heartbeatTimestamps);
+    verify(kafkaStoreIngestionService, times(1)).maybeAddResubscribeRequest(eq(store), eq(version), eq(partition));
   }
 }

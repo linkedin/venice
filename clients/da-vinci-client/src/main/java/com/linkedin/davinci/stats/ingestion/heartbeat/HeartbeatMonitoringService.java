@@ -653,10 +653,14 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
                   region.getKey());
               /**
                * Here we don't consider whether it is current version or not, as it will need extra logic to extract.
-               * We will delegate to KafkaConsumerService to determine whether it takes this request as it has information.
+               * In this layer, we will filter out untracked region (separated realtime region).
+               * We will delegate to KafkaStoreIngestionService to determine whether it takes this request as it has
+               * information about SIT current version.
                */
-              if (getServerConfig().isLagBasedReplicaAutoResubscribeEnabled() && TimeUnit.SECONDS
-                  .toMillis(getServerConfig().getLagBasedReplicaAutoResubscribeThresholdInSeconds()) < lag) {
+              if (getServerConfig().isLagBasedReplicaAutoResubscribeEnabled()
+                  && TimeUnit.SECONDS
+                      .toMillis(getServerConfig().getLagBasedReplicaAutoResubscribeThresholdInSeconds()) < lag
+                  && !Utils.isSeparateTopicRegion(region.getKey())) {
                 getKafkaStoreIngestionService()
                     .maybeAddResubscribeRequest(storeName.getKey(), version.getKey(), partition.getKey());
               }
