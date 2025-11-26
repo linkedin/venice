@@ -187,9 +187,9 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   protected final long versionSwapTimeoutInMs;
   protected final AtomicReference<CountDownLatch> onGoingVersionSwapSignal = new AtomicReference<>();
   /**
-   * Interaction of this field should acquire the subscriptionLock.readLock()
+   * Interaction of this field should acquire the subscriptionLock.writeLock()
    */
-  protected VersionSwapMessageState versionSwapMessageState = null;
+  protected volatile VersionSwapMessageState versionSwapMessageState = null;
   protected Time time;
 
   public VeniceChangelogConsumerImpl(
@@ -341,6 +341,11 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     }
 
     LOGGER.info("Start a change log consumer client for store: {}", storeName);
+  }
+
+  // Unit test only and read only
+  VersionSwapMessageState getVersionSwapMessageState() {
+    return this.versionSwapMessageState;
   }
 
   @Override
@@ -818,7 +823,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       String topicSuffix,
       boolean includeControlMessage) {
     Collection<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> pubSubMessages = new ArrayList<>();
-    Map<PubSubTopicPartition, List<DefaultPubSubMessage>> messagesMap = Collections.EMPTY_MAP;
+    Map<PubSubTopicPartition, List<DefaultPubSubMessage>> messagesMap;
     boolean lockAcquired = false;
 
     try {
@@ -853,7 +858,6 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
                   versionSwapMessageState.getNewVersionTopic(),
                   versionSwapMessageState.getVersionSwapGenerationId());
               changeCaptureStats.emitVersionSwapCountMetrics(SUCCESS);
-              changeCaptureStats.setUndergoingVersionSwap(0);
               versionSwapMessageState = null;
               onGoingVersionSwapSignal.get().countDown();
             } else {
@@ -873,7 +877,6 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
                   versionSwapMessageState.getVersionSwapGenerationId(),
                   versionSwapMessageState.getIncompletePartitions());
               changeCaptureStats.emitVersionSwapCountMetrics(SUCCESS);
-              changeCaptureStats.setUndergoingVersionSwap(0);
               versionSwapMessageState = null;
               onGoingVersionSwapSignal.get().countDown();
             } else {
@@ -1109,8 +1112,6 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       }
     }
     if (messageType.equals(MessageType.DELETE)) {
-      Delete delete = (Delete) message.getValue().payloadUnion;
-
       // Deletes have a previous and current value of null. So just fill it in!
       ChangeEvent<V> changeEvent = new ChangeEvent<>(null, null);
       pubSubChangeEventMessage = Optional.of(
@@ -1464,7 +1465,6 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
         versionSwapMessageState =
             new VersionSwapMessageState(versionSwap, totalRegionCount, currentAssignment, time.getMilliseconds());
         onGoingVersionSwapSignal.set(new CountDownLatch(1));
-        changeCaptureStats.setUndergoingVersionSwap(1);
         LOGGER.info(
             "New version detected for store: {} through version swap messages. Performing version swap from topic: {} to topic: {}, generation id: {}",
             storeName,
@@ -1650,7 +1650,12 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     }
     unsubscribe(partitions);
     try {
-      internalSubscribe(partitions, mergedTopicName).get();
+      Set<VeniceChangeCoordinate> beginningOfNewTopic = new HashSet<>(partitions.size());
+      for (Integer p: partitions) {
+        beginningOfNewTopic
+            .add(new VeniceChangeCoordinate(mergedTopicName.getName(), PubSubSymbolicPosition.EARLIEST, p));
+      }
+      synchronousSeekToCheckpoint(beginningOfNewTopic);
     } catch (Exception e) {
       throw new VeniceException("Subscribe to new topic:" + mergedTopicName + " is not successful, error: " + e);
     }

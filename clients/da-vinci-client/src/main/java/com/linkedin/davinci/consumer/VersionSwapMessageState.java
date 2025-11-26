@@ -138,7 +138,7 @@ public class VersionSwapMessageState {
     return checkpoints;
   }
 
-  public Set<Integer> getAssignedPartitions() {
+  public synchronized Set<Integer> getAssignedPartitions() {
     return Collections.unmodifiableSet(assignedPartitions);
   }
 
