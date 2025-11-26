@@ -4113,13 +4113,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   /**
-   * Check if truncating topic is needed. If it's child fabrics or parent fabric with topic write needed, return true;
+   * Check if we should skip truncating topic. If it's parent fabrics and the topic write is needed, return true;
    * Otherwise, return false
    * @param clusterName the cluster name to check
    * @return true if topic truncation is needed, false otherwise
    */
-  public boolean isTruncatingTopicNeeded(String clusterName) {
-    return !multiClusterConfigs.isParent() || multiClusterConfigs.getControllerConfig(clusterName)
+  public boolean shouldSkipTruncatingTopic(String clusterName) {
+    return isParent() && !getMultiClusterConfigs().getControllerConfig(clusterName)
         .getConcurrentPushDetectionStrategy()
         .isTopicWriteNeeded();
   }
@@ -4159,7 +4159,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           String versionTopicName = Version.composeKafkaTopic(storeName, deletedVersion.get().getNumber());
 
           // skip truncating topic if it's parent controller and topic write is not needed
-          if (isTruncatingTopicNeeded(clusterName)) {
+          if (!shouldSkipTruncatingTopic(clusterName)) {
             if (fatalDataValidationFailureRetentionMs != -1 && hasFatalDataValidationError) {
               truncateKafkaTopic(versionTopicName, fatalDataValidationFailureRetentionMs);
             } else {
