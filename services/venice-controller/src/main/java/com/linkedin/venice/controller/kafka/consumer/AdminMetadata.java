@@ -178,12 +178,6 @@ public class AdminMetadata {
       } else {
         return PubSubSymbolicPosition.EARLIEST;
       }
-    } else if (offset != null && offset > position.getNumericOffset()) {
-      LOGGER.warn(
-          "Offset {} is greater than position {}. Resetting position to offset.",
-          offset,
-          position.getNumericOffset());
-      return ApacheKafkaOffsetPosition.of(offset);
     } else {
       return position;
     }
@@ -191,20 +185,10 @@ public class AdminMetadata {
 
   public void setPubSubPosition(PubSubPosition pubSubPosition) {
     this.position = pubSubPosition;
-    if (pubSubPosition != null) {
-      this.offset = pubSubPosition.getNumericOffset();
-    } else {
-      this.offset = UNDEFINED_VALUE;
-    }
   }
 
   public void setUpstreamPubSubPosition(PubSubPosition upstreamPubPosition) {
     this.upstreamPosition = upstreamPubPosition;
-    if (upstreamPubPosition != null) {
-      this.upstreamOffset = upstreamPubPosition.getNumericOffset();
-    } else {
-      this.upstreamOffset = UNDEFINED_VALUE;
-    }
   }
 
   @Override

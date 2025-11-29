@@ -74,12 +74,6 @@ public class AdminConsumptionStats extends AbstractVeniceStats {
     adminConsumeFailCountSensor = registerSensor("failed_admin_messages", new Count());
     adminConsumeFailRetriableMessageCountSensor = registerSensor("failed_retriable_admin_messages", new Count());
     adminTopicDIVErrorReportCountSensor = registerSensor("admin_message_div_error_report_count", new Count());
-    registerSensor(
-        new AsyncGauge(
-            (ignored, ignored2) -> adminConsumptionFailedPosition == null
-                ? 0L
-                : adminConsumptionFailedPosition.getNumericOffset(),
-            "failed_admin_message_offset"));
     adminConsumptionCycleDurationMsSensor =
         registerSensor("admin_consumption_cycle_duration_ms", new Avg(), new Min(), new Max());
     registerSensor(
