@@ -4164,10 +4164,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   /**
-   * Check if we should skip truncating topic. If it's parent fabrics and the topic write is needed, return true;
-   * Otherwise, return false
+   * Check if we should skip truncating topic. If it's parent fabrics and the topic write is NOT needed, return true;
+   * Otherwise, return false.
    * @param clusterName the cluster name to check
-   * @return true if topic truncation is needed, false otherwise
+   * @return true if topic truncation should be skipped, false otherwise
    */
   public boolean shouldSkipTruncatingTopic(String clusterName) {
     return isParent() && !getMultiClusterConfigs().getControllerConfig(clusterName)
