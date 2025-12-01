@@ -1,6 +1,6 @@
 package com.linkedin.venice;
 
-import static com.linkedin.venice.zk.VeniceZkPaths.ADMIN_TOPIC_METADATA;
+import static com.linkedin.venice.zk.VeniceZkPaths.ADMIN_TOPIC_METADATA_V2;
 import static com.linkedin.venice.zk.VeniceZkPaths.EXECUTION_IDS;
 import static com.linkedin.venice.zk.VeniceZkPaths.PARENT_OFFLINE_PUSHES;
 import static com.linkedin.venice.zk.VeniceZkPaths.ROUTERS;
@@ -89,7 +89,7 @@ public class TestTreeNode {
     TreeNode root = new TreeNode(BASE_PATH);
     root.addChild(STORE_CONFIGS);
     TreeNode cluster1 = root.addChild(CLUSTER_1);
-    TreeNode adminTopicMetadata = cluster1.addChild(ADMIN_TOPIC_METADATA);
+    TreeNode adminTopicMetadata = cluster1.addChild(ADMIN_TOPIC_METADATA_V2);
     adminTopicMetadata.addChild("file1");
     TreeNode file2 = adminTopicMetadata.addChild("file2");
     file2.addChild("file3");
@@ -99,7 +99,7 @@ public class TestTreeNode {
     cluster1.addChild(STORES);
     cluster1.addChild(STORE_GRAVEYARD);
     TreeNode cluster2 = root.addChild(CLUSTER_2);
-    cluster2.addChild(ADMIN_TOPIC_METADATA);
+    cluster2.addChild(ADMIN_TOPIC_METADATA_V2);
     cluster2.addChild(EXECUTION_IDS);
     cluster2.addChild(PARENT_OFFLINE_PUSHES);
     cluster2.addChild(ROUTERS);
@@ -123,7 +123,7 @@ public class TestTreeNode {
           Assert.assertEquals(child.getChildren().size(), 6);
           testContainsChildAsserts(child);
           for (TreeNode grandchild: child.getChildren().values()) {
-            if (grandchild.getName().equals(ADMIN_TOPIC_METADATA)) {
+            if (grandchild.getName().equals(ADMIN_TOPIC_METADATA_V2)) {
               Assert.assertEquals(grandchild.getChildren().size(), 2);
               for (TreeNode greatgrandchild: grandchild.getChildren().values()) {
                 if (greatgrandchild.getName().equals("file2")) {
@@ -144,7 +144,7 @@ public class TestTreeNode {
   }
 
   private void testContainsChildAsserts(TreeNode child) {
-    Assert.assertTrue(child.containsChild(ADMIN_TOPIC_METADATA));
+    Assert.assertTrue(child.containsChild(ADMIN_TOPIC_METADATA_V2));
     Assert.assertTrue(child.containsChild(EXECUTION_IDS));
     Assert.assertTrue(child.containsChild(PARENT_OFFLINE_PUSHES));
     Assert.assertTrue(child.containsChild(ROUTERS));

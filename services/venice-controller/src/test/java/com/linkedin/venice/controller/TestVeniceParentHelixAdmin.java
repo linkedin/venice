@@ -299,7 +299,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   public void testAddStore() {
     when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(null)
         .thenReturn(
-            AdminTopicMetadataAccessor.generateMetadataMap(
+            AdminTopicMetadataAccessor.generateAdminMetadata(
                 Optional.of(1L),
                 Optional.of(-1L),
                 Optional.of(1L),
@@ -387,14 +387,14 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
     for (String cluster: configMap.keySet()) {
       String adminTopic = AdminTopicUtils.getTopicNameFromClusterName(cluster);
-      String metadataPath = ZkAdminTopicMetadataAccessor.getAdminTopicMetadataNodePath(cluster);
+      String metadataPath = ZkAdminTopicMetadataAccessor.getAdminTopicV2MetadataNodePath(cluster);
 
       VeniceWriter veniceWriter = writerMap.get(cluster);
 
       // Return offset -1 before writing any data into topic.
       when(zkClient.readData(metadataPath, null)).thenReturn(null)
           .thenReturn(
-              AdminTopicMetadataAccessor.generateMetadataMap(
+              AdminTopicMetadataAccessor.generateAdminMetadata(
                   Optional.of(1L),
                   Optional.of(-1L),
                   Optional.of(1L),
@@ -479,7 +479,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         .thenReturn(new VeniceException("mock exception"));
     when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(null)
         .thenReturn(
-            AdminTopicMetadataAccessor.generateMetadataMap(
+            AdminTopicMetadataAccessor.generateAdminMetadata(
                 Optional.of(1L),
                 Optional.of(-1L),
                 Optional.of(1L),
@@ -506,7 +506,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     String storeName = "test-store";
     when(internalAdmin.getLastExceptionForStore(clusterName, storeName)).thenReturn(null);
     when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(
-        AdminTopicMetadataAccessor.generateMetadataMap(
+        AdminTopicMetadataAccessor.generateAdminMetadata(
             Optional.of(1L),
             Optional.of(-1L),
             Optional.of(1L),
@@ -546,7 +546,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
     when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(null)
         .thenReturn(
-            AdminTopicMetadataAccessor.generateMetadataMap(
+            AdminTopicMetadataAccessor.generateAdminMetadata(
                 Optional.of(1L),
                 Optional.of(-1L),
                 Optional.of(1L),
@@ -609,7 +609,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
     when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(null)
         .thenReturn(
-            AdminTopicMetadataAccessor.generateMetadataMap(
+            AdminTopicMetadataAccessor.generateAdminMetadata(
                 Optional.of(1L),
                 Optional.of(-1L),
                 Optional.of(1L),
@@ -639,7 +639,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   public void testDisableStoreRead() {
     when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(null)
         .thenReturn(
-            AdminTopicMetadataAccessor.generateMetadataMap(
+            AdminTopicMetadataAccessor.generateAdminMetadata(
                 Optional.of(1L),
                 Optional.of(-1L),
                 Optional.of(1L),
@@ -686,7 +686,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   public void testDisableStoreWrite() {
     when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(null)
         .thenReturn(
-            AdminTopicMetadataAccessor.generateMetadataMap(
+            AdminTopicMetadataAccessor.generateAdminMetadata(
                 Optional.of(1L),
                 Optional.of(-1L),
                 Optional.of(1L),
@@ -743,7 +743,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   public void testEnableStoreRead() {
     when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(null)
         .thenReturn(
-            AdminTopicMetadataAccessor.generateMetadataMap(
+            AdminTopicMetadataAccessor.generateAdminMetadata(
                 Optional.of(1L),
                 Optional.of(-1L),
                 Optional.of(1L),
@@ -790,7 +790,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   public void testEnableStoreWrite() {
     when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(null)
         .thenReturn(
-            AdminTopicMetadataAccessor.generateMetadataMap(
+            AdminTopicMetadataAccessor.generateAdminMetadata(
                 Optional.of(1L),
                 Optional.of(-1L),
                 Optional.of(1L),
@@ -839,7 +839,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
     when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(null)
         .thenReturn(
-            AdminTopicMetadataAccessor.generateMetadataMap(
+            AdminTopicMetadataAccessor.generateAdminMetadata(
                 Optional.of(1L),
                 Optional.of(-1L),
                 Optional.of(1L),
@@ -922,7 +922,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
                   .put(any(), any(), anyInt(), any(), any(), anyLong(), any(), any(), any(), any());
       when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(null)
           .thenReturn(
-              AdminTopicMetadataAccessor.generateMetadataMap(
+              AdminTopicMetadataAccessor.generateAdminMetadata(
                   Optional.of(1L),
                   Optional.of(-1L),
                   Optional.of(1L),
@@ -1153,7 +1153,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
                   .put(any(), any(), anyInt(), any(), any(), anyLong(), any(), any(), any(), any());
       when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(null)
           .thenReturn(
-              AdminTopicMetadataAccessor.generateMetadataMap(
+              AdminTopicMetadataAccessor.generateAdminMetadata(
                   Optional.of(1L),
                   Optional.of(-1L),
                   Optional.of(1L),
@@ -1929,7 +1929,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
     when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(null)
         .thenReturn(
-            AdminTopicMetadataAccessor.generateMetadataMap(
+            AdminTopicMetadataAccessor.generateAdminMetadata(
                 Optional.of(1L),
                 Optional.of(-1L),
                 Optional.of(1L),
@@ -2101,7 +2101,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
     when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(null)
         .thenReturn(
-            AdminTopicMetadataAccessor.generateMetadataMap(
+            AdminTopicMetadataAccessor.generateAdminMetadata(
                 Optional.of(1L),
                 Optional.of(-1L),
                 Optional.of(1L),
@@ -2127,7 +2127,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
     when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(null)
         .thenReturn(
-            AdminTopicMetadataAccessor.generateMetadataMap(
+            AdminTopicMetadataAccessor.generateAdminMetadata(
                 Optional.of(1L),
                 Optional.of(-1L),
                 Optional.of(1L),
@@ -2161,7 +2161,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
     when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(null)
         .thenReturn(
-            AdminTopicMetadataAccessor.generateMetadataMap(
+            AdminTopicMetadataAccessor.generateAdminMetadata(
                 Optional.of(1L),
                 Optional.of(-1L),
                 Optional.of(1L),
@@ -2333,7 +2333,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
     when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(null)
         .thenReturn(
-            AdminTopicMetadataAccessor.generateMetadataMap(
+            AdminTopicMetadataAccessor.generateAdminMetadata(
                 Optional.of(1L),
                 Optional.of(-1L),
                 Optional.of(1L),
@@ -2422,7 +2422,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
     when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(null)
         .thenReturn(
-            AdminTopicMetadataAccessor.generateMetadataMap(
+            AdminTopicMetadataAccessor.generateAdminMetadata(
                 Optional.of(1L),
                 Optional.of(-1L),
                 Optional.of(1L),
@@ -2763,7 +2763,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
       when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(null)
           .thenReturn(
-              AdminTopicMetadataAccessor.generateMetadataMap(
+              AdminTopicMetadataAccessor.generateAdminMetadata(
                   Optional.of(1L),
                   Optional.of(-1L),
                   Optional.of(1L),
@@ -2883,7 +2883,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     doReturn(store).when(internalAdmin).getStore(clusterName, storeB);
     doReturn(0).when(store).getLargestUsedRTVersionNumber();
     when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(
-        AdminTopicMetadataAccessor.generateMetadataMap(
+        AdminTopicMetadataAccessor.generateAdminMetadata(
             Optional.of(1L),
             Optional.of(-1L),
             Optional.of(1L),
@@ -2933,7 +2933,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
     when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(null)
         .thenReturn(
-            AdminTopicMetadataAccessor.generateMetadataMap(
+            AdminTopicMetadataAccessor.generateAdminMetadata(
                 Optional.of(1L),
                 Optional.of(-1L),
                 Optional.of(1L),
@@ -3014,7 +3014,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   public void testSendAdminMessageAcquiresClusterReadLock() {
     when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(null)
         .thenReturn(
-            AdminTopicMetadataAccessor.generateMetadataMap(
+            AdminTopicMetadataAccessor.generateAdminMetadata(
                 Optional.of(1L),
                 Optional.of(-1L),
                 Optional.of(1L),
@@ -3276,7 +3276,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
     when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(null)
         .thenReturn(
-            AdminTopicMetadataAccessor.generateMetadataMap(
+            AdminTopicMetadataAccessor.generateAdminMetadata(
                 Optional.of(1L),
                 Optional.of(-1L),
                 Optional.of(1L),

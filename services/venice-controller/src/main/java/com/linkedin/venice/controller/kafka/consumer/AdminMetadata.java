@@ -84,52 +84,6 @@ public class AdminMetadata {
     return map;
   }
 
-  /**
-   * Convert AdminMetadata to legacy Map<String, Long> format for V1 compatibility
-   * This only includes the Long fields and excludes Position objects
-   * @return Map<String, Long> containing only the Long fields
-   * @deprecated Scheduled for removal
-   */
-  public Map<String, Long> toLegacyMap() {
-    Map<String, Long> legacyMap = new HashMap<>();
-    if (executionId != null) {
-      legacyMap.put(AdminTopicMetadataAccessor.EXECUTION_ID_KEY, executionId);
-    }
-    if (offset != null) {
-      legacyMap.put(AdminTopicMetadataAccessor.OFFSET_KEY, offset);
-    }
-    if (upstreamOffset != null) {
-      legacyMap.put(AdminTopicMetadataAccessor.UPSTREAM_OFFSET_KEY, upstreamOffset);
-    }
-    if (adminOperationProtocolVersion != null) {
-      legacyMap.put(AdminTopicMetadataAccessor.ADMIN_OPERATION_PROTOCOL_VERSION_KEY, adminOperationProtocolVersion);
-    }
-    return legacyMap;
-  }
-
-  /**
-   * Factory method to create AdminMetadata from legacy Map<String, Long> format
-   */
-  public static AdminMetadata fromLegacyMap(Map<String, Long> legacyMap) {
-    AdminMetadata metadata = new AdminMetadata();
-    if (legacyMap != null) {
-      metadata.setExecutionId(legacyMap.get(AdminTopicMetadataAccessor.EXECUTION_ID_KEY));
-      metadata.setOffset(legacyMap.get(AdminTopicMetadataAccessor.OFFSET_KEY));
-      metadata.setUpstreamOffset(legacyMap.get(AdminTopicMetadataAccessor.UPSTREAM_OFFSET_KEY));
-      metadata.setAdminOperationProtocolVersion(
-          legacyMap.get(AdminTopicMetadataAccessor.ADMIN_OPERATION_PROTOCOL_VERSION_KEY));
-      metadata.setPubSubPosition(
-          metadata.getOffset().longValue() == UNDEFINED_VALUE
-              ? PubSubSymbolicPosition.EARLIEST
-              : ApacheKafkaOffsetPosition.of(metadata.getOffset()));
-      metadata.setUpstreamPubSubPosition(
-          metadata.getUpstreamOffset().longValue() == UNDEFINED_VALUE
-              ? PubSubSymbolicPosition.EARLIEST
-              : ApacheKafkaOffsetPosition.of(metadata.getUpstreamOffset()));
-    }
-    return metadata;
-  }
-
   // Getters and setters
   public Long getExecutionId() {
     return executionId == null ? UNDEFINED_VALUE : executionId;
@@ -178,12 +132,6 @@ public class AdminMetadata {
       } else {
         return PubSubSymbolicPosition.EARLIEST;
       }
-    } else if (offset != null && offset > position.getNumericOffset()) {
-      LOGGER.warn(
-          "Offset {} is greater than position {}. Resetting position to offset.",
-          offset,
-          position.getNumericOffset());
-      return ApacheKafkaOffsetPosition.of(offset);
     } else {
       return position;
     }
