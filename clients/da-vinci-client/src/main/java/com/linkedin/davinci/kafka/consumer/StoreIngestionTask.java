@@ -2300,11 +2300,16 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
         // Subscribe to local version topic.
         PubSubPosition subscribePosition;
-        if (consumerAction.getPubSubPosition() != null && isDaVinciClient) {
+        if (consumerAction.getPubSubPosition() != null) {
+          if (recordTransformer == null) {
+            throw new VeniceException("seekToCheckpoint will not be supported for non-transformed client");
+          }
           skipValidationForSeekableClientEnabled = true;
           subscribePosition = consumerAction.getPubSubPosition();
-          LOGGER.info("Subscribed to user partition : {} position: {}", topicPartition, subscribePosition);
-
+          LOGGER.info("Subscribed to user given partition: {} position: {}", topicPartition, subscribePosition);
+          // report completion immediately for user seek subscription
+          partitionConsumptionStateMap.get(partition).lagHasCaughtUp();
+          reportCompleted(partitionConsumptionStateMap.get(partition), true);
         } else {
           subscribePosition = getLocalVtSubscribePosition(newPartitionConsumptionState);
           LOGGER.info("Subscribed to local: {} position: {}", topicPartition, subscribePosition);
@@ -2314,6 +2319,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             newPartitionConsumptionState,
             subscribePosition,
             localKafkaServer);
+
         LOGGER.info("Subscribed to: {} position: {}", topicPartition, subscribePosition);
         if (isGlobalRtDivEnabled()) {
           // TODO: remove. this is a temporary log for debugging while the feature is in its infancy
