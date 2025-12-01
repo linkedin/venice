@@ -147,9 +147,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
           storeName);
       this.daVinciClient = this.daVinciClientFactory
           .getVersionSpecificGenericAvroClient(this.storeName, changelogClientConfig.getStoreVersion(), daVinciConfig);
-      this.includeControlMessages = changelogClientConfig.shouldIncludeControlMessages();
     } else {
-      this.includeControlMessages = false;
       if (innerClientConfig.isSpecificClient()) {
         this.daVinciClient = this.daVinciClientFactory
             .getSpecificSeekableAvroClient(this.storeName, daVinciConfig, innerClientConfig.getSpecificValueClass());
@@ -168,6 +166,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
     }
     this.consumerSequenceIdGeneratorMap = new VeniceConcurrentHashMap<>();
     this.consumerSequenceIdStartingValue = consumerSequenceIdStartingValue;
+    this.includeControlMessages = changelogClientConfig.shouldIncludeControlMessages();
   }
 
   private void startDaVinciClient() {
