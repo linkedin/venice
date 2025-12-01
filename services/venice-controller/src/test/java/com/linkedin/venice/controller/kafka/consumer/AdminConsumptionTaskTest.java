@@ -122,7 +122,6 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Queue;
@@ -1016,9 +1015,8 @@ public class AdminConsumptionTaskTest {
           AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
       final long executionId = i;
       TestUtils.waitForNonDeterministicCompletion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
-        Map<String, Long> metaData = adminTopicMetadataAccessor.getMetadata(clusterName).toLegacyMap();
-        return AdminTopicMetadataAccessor.getOffsets(metaData).getFirst() == executionId
-            && AdminTopicMetadataAccessor.getExecutionId(metaData) == executionId;
+        AdminMetadata metaData = adminTopicMetadataAccessor.getMetadata(clusterName);
+        return AdminTopicMetadataAccessor.getExecutionId(metaData) == executionId;
       });
 
       Assert.assertEquals(
@@ -1056,9 +1054,8 @@ public class AdminConsumptionTaskTest {
           pubSubMessageHeaders);
       final long executionId = i;
       TestUtils.waitForNonDeterministicCompletion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
-        Map<String, Long> metaData = adminTopicMetadataAccessor.getMetadata(clusterName).toLegacyMap();
-        return AdminTopicMetadataAccessor.getOffsets(metaData).getFirst() == executionId
-            && AdminTopicMetadataAccessor.getExecutionId(metaData) == executionId;
+        AdminMetadata metaData = adminTopicMetadataAccessor.getMetadata(clusterName);
+        return AdminTopicMetadataAccessor.getExecutionId(metaData) == executionId;
       });
 
       Assert.assertEquals(
