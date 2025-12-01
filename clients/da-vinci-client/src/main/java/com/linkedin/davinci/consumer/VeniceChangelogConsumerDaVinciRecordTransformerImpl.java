@@ -147,7 +147,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
           storeName);
       this.daVinciClient = this.daVinciClientFactory
           .getVersionSpecificGenericAvroClient(this.storeName, changelogClientConfig.getStoreVersion(), daVinciConfig);
-      this.includeControlMessages = changelogClientConfig.includeControlMessages();
+      this.includeControlMessages = changelogClientConfig.shouldIncludeControlMessages();
     } else {
       this.includeControlMessages = false;
       if (innerClientConfig.isSpecificClient()) {

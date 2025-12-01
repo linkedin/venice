@@ -410,7 +410,7 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
         .setSeekThreadPoolSize(config.getSeekThreadPoolSize())
         .setShouldSkipFailedToAssembleRecords(config.shouldSkipFailedToAssembleRecords())
         .setUseRequestBasedMetadataRepository(config.isUseRequestBasedMetadataRepository())
-        .setIncludeControlMessages(config.includeControlMessages())
+        .setIncludeControlMessages(config.shouldIncludeControlMessages())
         .setInnerClientConfig(config.getInnerClientConfig())
         // Store version should not be cloned
         .setStoreVersion(null)
@@ -447,7 +447,7 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
   /**
    * Get whether to pass through control messages to the user.
    */
-  protected Boolean includeControlMessages() {
+  protected Boolean shouldIncludeControlMessages() {
     return includeControlMessages;
   }
 
