@@ -168,7 +168,7 @@ public class TestVersionSpecificChangelogConsumer {
             .setUseRequestBasedMetadataRepository(true)
             .setD2Client(d2Client)
             .setBootstrapFileSystemPath(Utils.getUniqueString(inputDirPath))
-            .setPassThroughControlMessages(true); // Enable control messages passing
+            .setIncludeControlMessages(true); // Enable control messages passing
     VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =
         new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig, metricsRepository);
     VeniceChangelogConsumer<Integer, Utf8> changeLogConsumer =

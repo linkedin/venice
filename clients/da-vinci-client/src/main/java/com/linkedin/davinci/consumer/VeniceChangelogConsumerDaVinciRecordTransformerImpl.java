@@ -147,7 +147,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
           storeName);
       this.daVinciClient = this.daVinciClientFactory
           .getVersionSpecificGenericAvroClient(this.storeName, changelogClientConfig.getStoreVersion(), daVinciConfig);
-      this.includeControlMessages = changelogClientConfig.shouldPassThroughControlMessages();
+      this.includeControlMessages = changelogClientConfig.includeControlMessages();
     } else {
       this.includeControlMessages = false;
       if (innerClientConfig.isSpecificClient()) {
@@ -414,6 +414,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
       int messagesPolled = drainedPubSubMessages.size();
 
       if (changelogClientConfig.shouldCompactMessages()) {
+        Collection<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> tempPubSubMessages = new ArrayList<>();
         Map<K, PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> tempMap = new LinkedHashMap<>();
         /*
          * The behavior of LinkedHashMap is such that it maintains the order of insertion, but for values which are
@@ -422,10 +423,16 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
          * order to do that, we remove the entry before inserting it.
          */
         for (PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate> message: drainedPubSubMessages) {
+          if (message.getKey() == null) {
+            // Ignore null keys during compaction
+            tempPubSubMessages.add(message);
+            continue;
+          }
           tempMap.remove(message.getKey());
           tempMap.put(message.getKey(), message);
         }
-        drainedPubSubMessages = tempMap.values();
+        tempPubSubMessages.addAll(tempMap.values());
+        drainedPubSubMessages = tempPubSubMessages;
       }
 
       if (changeCaptureStats != null) {
@@ -689,7 +696,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
      * This method is only applicable when using a version specific client.
      */
     public void onControlMessage(int partitionId, PubSubPosition offset, ControlMessage controlMessage) {
-      if (!includeControlMessages) {
+      if (!isVersionSpecificClient || !includeControlMessages) {
         return;
       }
       addMessageToBuffer(partitionId, offset, controlMessage);
