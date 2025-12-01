@@ -614,7 +614,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
      * Add ControlMessage to the buffer.
      * Key and Value are both null. Details for control message are in controlMessage param.
      */
-    public void addMessageToBuffer(int partitionId, PubSubPosition offset, ControlMessage controlMessage) {
+    public void addControlMessageToBuffer(int partitionId, PubSubPosition offset, ControlMessage controlMessage) {
       if (partitionToVersionToServe.get(partitionId) == getStoreVersion()) {
         ImmutableChangeCapturePubSubMessage<K, ChangeEvent<V>> pubSubMessage =
             new ImmutableChangeCapturePubSubMessage<>(
@@ -633,6 +633,9 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
       }
     }
 
+    /**
+     * Internal method to add message to buffer.
+     */
     private void internalAddMessageToBuffer(
         int partitionId,
         ImmutableChangeCapturePubSubMessage<K, ChangeEvent<V>> pubSubMessage) {
@@ -690,15 +693,14 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
     };
 
     /**
-     * If includeControlMessages is false, this method is a no-op.
-     * Otherwise, it adds the control message to the buffer.
-     * This method is only applicable when using a version specific client.
+     * If includeControlMessages is FALSE, or the client is NOT version specific, this method is a no-op.
+     * If includeControlMessages is true, AND the client is version specific, it adds the control message to the buffer.
      */
     public void onControlMessage(int partitionId, PubSubPosition offset, ControlMessage controlMessage) {
       if (!isVersionSpecificClient || !includeControlMessages) {
         return;
       }
-      addMessageToBuffer(partitionId, offset, controlMessage);
+      addControlMessageToBuffer(partitionId, offset, controlMessage);
     }
 
     public void onVersionSwap(int currentVersion, int futureVersion, int partitionId) {
