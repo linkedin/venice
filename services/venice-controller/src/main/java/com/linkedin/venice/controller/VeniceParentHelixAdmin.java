@@ -2400,7 +2400,9 @@ public class VeniceParentHelixAdmin implements Admin {
       Version futureVersion = getStore(clusterName, storeName).getVersion(futureVersionBeforeRollForward);
       boolean onlyDeferredSwap =
           futureVersion.isVersionSwapDeferred() && StringUtils.isEmpty(futureVersion.getTargetSwapRegion());
-      if (onlyDeferredSwap && !getVeniceHelixAdmin().shouldSkipTruncatingTopic(clusterName)) {
+      ConcurrentPushDetectionStrategy concurrentPushDetectionStrategy =
+          getMultiClusterConfigs().getControllerConfig(clusterName).getConcurrentPushDetectionStrategy();
+      if (onlyDeferredSwap && concurrentPushDetectionStrategy.isTopicWriteNeeded()) {
         LOGGER.info(
             "Truncating topic {} after child controllers tried to roll forward to not block new versions",
             kafkaTopic);
@@ -4447,14 +4449,19 @@ public class VeniceParentHelixAdmin implements Admin {
       boolean isTargetRegionPushWithDeferredSwap =
           isDeferredVersionSwap && !StringUtils.isEmpty(version.getTargetSwapRegion());
 
+      ConcurrentPushDetectionStrategy concurrentPushDetectionStrategy =
+          getMultiClusterConfigs().getControllerConfig(clusterName).getConcurrentPushDetectionStrategy();
       if ((failedBatchPush || nonIncPushBatchSuccess && !isDeferredVersionSwap || incPushEnabledBatchPushSuccess
           || isTargetRegionPushWithDeferredSwap)
-          && !getMultiClusterConfigs().getCommonConfig().disableParentTopicTruncationUponCompletion()
-          && !getVeniceHelixAdmin().shouldSkipTruncatingTopic(clusterName)) {
-        LOGGER.info("Truncating kafka topic: {} with job status: {}", kafkaTopic, currentReturnStatus);
-        truncateKafkaTopic(kafkaTopic);
+          && !getMultiClusterConfigs().getCommonConfig().disableParentTopicTruncationUponCompletion()) {
+        if (concurrentPushDetectionStrategy.isTopicWriteNeeded()) {
+          LOGGER.info("Truncating kafka topic: {} with job status: {}", kafkaTopic, currentReturnStatus);
+          truncateKafkaTopic(kafkaTopic);
+        }
         if (version != null && version.getPushType().isStreamReprocessing()) {
-          truncateKafkaTopic(Version.composeStreamReprocessingTopic(store.getName(), version.getNumber()));
+          String streamReprocessingTopic = Version.composeStreamReprocessingTopic(store.getName(), version.getNumber());
+          LOGGER.info("Truncating kafka topic: {} with job status: {}", streamReprocessingTopic, currentReturnStatus);
+          truncateKafkaTopic(streamReprocessingTopic);
         }
         currentReturnStatusDetails.append("Parent Kafka topic truncated");
       }
@@ -4814,7 +4821,9 @@ public class VeniceParentHelixAdmin implements Admin {
       if (maxErroredTopicNumToKeep == 0) {
         // Truncate Kafka topic
         LOGGER.info("Truncating topic when kill offline push job, topic: {}", kafkaTopic);
-        if (!getVeniceHelixAdmin().shouldSkipTruncatingTopic(clusterName)) {
+        ConcurrentPushDetectionStrategy concurrentPushDetectionStrategy =
+            getMultiClusterConfigs().getControllerConfig(clusterName).getConcurrentPushDetectionStrategy();
+        if (concurrentPushDetectionStrategy.isTopicWriteNeeded()) {
           truncateKafkaTopic(kafkaTopic);
         }
         PubSubTopic correspondingStreamReprocessingTopic =

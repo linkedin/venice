@@ -1679,9 +1679,9 @@ public class TestVeniceHelixAdmin {
   public void testShouldSkipTruncatingTopicForParentControllersTopicWriteNeeded() {
     VeniceHelixAdmin admin = mock(VeniceHelixAdmin.class);
     VeniceControllerClusterConfig config = mock(VeniceControllerClusterConfig.class);
+    doReturn(ConcurrentPushDetectionStrategy.TOPIC_BASED_ONLY).when(config).getConcurrentPushDetectionStrategy();
 
     Map<String, VeniceControllerClusterConfig> configMap = new HashMap<>();
-    doReturn(ConcurrentPushDetectionStrategy.TOPIC_BASED_ONLY).when(config).getConcurrentPushDetectionStrategy();
     configMap.put(clusterName, config);
     doReturn(new VeniceControllerMultiClusterConfig(configMap)).when(admin).getMultiClusterConfigs();
     doReturn(true).when(admin).isParent();
