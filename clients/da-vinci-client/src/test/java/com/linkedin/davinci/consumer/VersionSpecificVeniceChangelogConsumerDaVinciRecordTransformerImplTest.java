@@ -154,17 +154,14 @@ public class VersionSpecificVeniceChangelogConsumerDaVinciRecordTransformerImplT
   @Test
   public void testPutAndDelete() {
     versionSpecificVeniceChangelogConsumer.start();
-    recordTransformer.onStartVersionIngestion(true);
-
     for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
-      recordTransformer.processPut(keys.get(partitionId), lazyValue, partitionId, recordMetadata);
+      recordTransformer.onStartVersionIngestion(partitionId, true);
     }
 
     ControlMessage controlMessage = new ControlMessage();
     controlMessage.setControlMessageType(ControlMessageType.END_OF_PUSH.getValue());
-
     for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
-      // Process control messages
+      recordTransformer.processPut(keys.get(partitionId), lazyValue, partitionId, recordMetadata);
       recordTransformer.onControlMessage(partitionId, recordMetadata.getPubSubPosition(), controlMessage);
     }
 
