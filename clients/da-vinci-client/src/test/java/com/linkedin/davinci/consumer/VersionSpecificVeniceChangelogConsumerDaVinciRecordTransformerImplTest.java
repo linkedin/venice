@@ -1,12 +1,20 @@
 package com.linkedin.davinci.consumer;
 
-import static com.linkedin.davinci.consumer.stats.BasicConsumerStats.*;
-import static com.linkedin.venice.client.store.ClientConfig.*;
-import static com.linkedin.venice.stats.ClientType.*;
-import static com.linkedin.venice.stats.VeniceMetricsRepository.*;
+import static com.linkedin.davinci.consumer.stats.BasicConsumerStats.CONSUMER_METRIC_ENTITIES;
+import static com.linkedin.venice.client.store.ClientConfig.DEFAULT_CLUSTER_DISCOVERY_D2_SERVICE_NAME;
+import static com.linkedin.venice.stats.ClientType.CHANGE_DATA_CAPTURE_CLIENT;
+import static com.linkedin.venice.stats.VeniceMetricsRepository.getVeniceMetricsRepository;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.*;
-import static org.testng.Assert.*;
+import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertNull;
 
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
@@ -17,7 +25,6 @@ import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
-import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
@@ -57,10 +64,8 @@ public class VersionSpecificVeniceChangelogConsumerDaVinciRecordTransformerImplT
   private Schema valueSchema;
   private VeniceChangelogConsumerDaVinciRecordTransformerImpl<Integer, Integer> versionSpecificVeniceChangelogConsumer;
   private VeniceChangelogConsumerDaVinciRecordTransformerImpl.DaVinciRecordTransformerChangelogConsumer recordTransformer;
-  private VeniceChangelogConsumerDaVinciRecordTransformerImpl.DaVinciRecordTransformerChangelogConsumer futureRecordTransformer;
   private ChangelogClientConfig changelogClientConfig;
   private DaVinciRecordTransformerConfig mockDaVinciRecordTransformerConfig;
-  private PubSubPosition mockOffsetPosition;
   private ControlMessage mockControlMessage;
   private SeekableDaVinciClient mockDaVinciClient;
   private CompletableFuture<Void> daVinciClientSubscribeFuture;
@@ -110,9 +115,6 @@ public class VersionSpecificVeniceChangelogConsumerDaVinciRecordTransformerImplT
     recordTransformer =
         versionSpecificVeniceChangelogConsumer.new DaVinciRecordTransformerChangelogConsumer(TEST_STORE_NAME,
             CURRENT_STORE_VERSION, keySchema, valueSchema, valueSchema, mockDaVinciRecordTransformerConfig);
-    futureRecordTransformer = versionSpecificVeniceChangelogConsumer.new DaVinciRecordTransformerChangelogConsumer(
-        TEST_STORE_NAME, FUTURE_STORE_VERSION, keySchema, valueSchema, valueSchema, mockDaVinciRecordTransformerConfig);
-    mockOffsetPosition = mock(PubSubPosition.class);
     mockControlMessage = mock(ControlMessage.class);
     when(mockControlMessage.getControlMessageType()).thenReturn(ControlMessageType.END_OF_PUSH.getValue());
 
