@@ -249,6 +249,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final TopicManagerRepository topicManagerRepository;
   /** Per-partition consumption state map */
   protected final ConcurrentMap<Integer, PartitionConsumptionState> partitionConsumptionStateMap;
+  private final ConcurrentMap<Integer, Long> partitionToPreviousResubscribeTimeMap = new VeniceConcurrentHashMap<>();
+  private final PriorityBlockingQueue<Integer> resubscribeRequestQueue = new PriorityBlockingQueue<>();
   private final AtomicInteger activeReplicaCount = new AtomicInteger(0);
   protected final AbstractStoreBufferService storeBufferService;
 
@@ -1749,6 +1751,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         Store store = storeRepository.getStoreOrThrow(storeName);
         if (!skipAfterBatchPushUnsubEnabled) {
           refreshIngestionContextIfChanged(store);
+          maybeProcessResubscribeRequest();
           processConsumerActions(store);
           checkLongRunningTaskState();
           checkIngestionProgress(store);
@@ -5223,6 +5226,49 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
   }
 
+  void maybeProcessResubscribeRequest() {
+    int count = 0;
+    Integer partition;
+    while (count < getServerConfig().getLagBasedReplicaAutoResubscribeMaxReplicaCount()
+        && getResubscribeRequestQueue().peek() != null) {
+      partition = getResubscribeRequestQueue().poll();
+      long previousResubscribeTime = getPartitionToPreviousResubscribeTimeMap().getOrDefault(partition, 0L);
+      int allowedResubscribeIntervalInSeconds = getServerConfig().getLagBasedReplicaAutoResubscribeIntervalInSeconds();
+      if (System.currentTimeMillis() - previousResubscribeTime < SECONDS
+          .toMillis(allowedResubscribeIntervalInSeconds)) {
+        LOGGER.info(
+            "Skip resubscribe request for partition: {} of SIT: {} as it has been resubscribed recently at: {}",
+            partition,
+            getVersionTopic(),
+            previousResubscribeTime);
+        continue;
+      }
+      PartitionConsumptionState pcs = getPartitionConsumptionStateMap().get(partition);
+      if (pcs == null) {
+        LOGGER.warn(
+            "Replica: {} does not exist in pcs map for SIT of: {}, will not resubscribe.",
+            Utils.getReplicaId(versionTopic, partition),
+            getVersionTopic());
+        continue;
+      }
+      /**
+       * As of now, this feature intends to resolve ingestion performance issue introduced by consumer. We will rely on
+       * the error reset feature to handle the error replica properly.
+       */
+      if (pcs.isErrorReported()) {
+        LOGGER.warn("Replica: {} is already errored, will not resubscribe to repair.", pcs.getReplicaId());
+      }
+      try {
+        LOGGER.info("Resubscribing: {}", pcs.getReplicaId());
+        getPartitionToPreviousResubscribeTimeMap().put(partition, System.currentTimeMillis());
+        count++;
+        resubscribe(pcs);
+      } catch (Exception e) {
+        LOGGER.error("Caught exception when resubscribing for replica: {}", pcs.getReplicaId(), e);
+      }
+    }
+  }
+
   AbstractStoreBufferService getStoreBufferService() {
     return storeBufferService;
   }
@@ -5237,5 +5283,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   String getLocalKafkaServer() {
     return localKafkaServer;
+  }
+
+  ConcurrentMap<Integer, Long> getPartitionToPreviousResubscribeTimeMap() {
+    return partitionToPreviousResubscribeTimeMap;
+  }
+
+  PriorityBlockingQueue<Integer> getResubscribeRequestQueue() {
+    return resubscribeRequestQueue;
   }
 }

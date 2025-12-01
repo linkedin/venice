@@ -133,6 +133,10 @@ import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_TASK_MAX_IDLE_COUN
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_TASK_REUSABLE_OBJECTS_STRATEGY;
 import static com.linkedin.venice.ConfigKeys.SERVER_KAFKA_CONSUMER_OFFSET_COLLECTION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_KAFKA_MAX_POLL_RECORDS;
+import static com.linkedin.venice.ConfigKeys.SERVER_LAG_BASED_REPLICA_AUTO_RESUBSCRIBE_ENABLED;
+import static com.linkedin.venice.ConfigKeys.SERVER_LAG_BASED_REPLICA_AUTO_RESUBSCRIBE_INTERVAL_IN_SECONDS;
+import static com.linkedin.venice.ConfigKeys.SERVER_LAG_BASED_REPLICA_AUTO_RESUBSCRIBE_MAX_REPLICA_COUNT;
+import static com.linkedin.venice.ConfigKeys.SERVER_LAG_BASED_REPLICA_AUTO_RESUBSCRIBE_THRESHOLD_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_LAG_MONITOR_CLEANUP_CYCLE;
 import static com.linkedin.venice.ConfigKeys.SERVER_LEADER_COMPLETE_STATE_CHECK_IN_FOLLOWER_VALID_INTERVAL_MS;
 import static com.linkedin.venice.ConfigKeys.SERVER_LEAKED_RESOURCE_CLEANUP_ENABLED;
@@ -675,6 +679,12 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final boolean inactiveTopicPartitionCheckerEnabled;
   private final int inactiveTopicPartitionCheckerInternalInSeconds;
   private final int inactiveTopicPartitionCheckerThresholdInSeconds;
+
+  private final boolean lagBasedReplicaAutoResubscribeEnabled;
+  private final int lagBasedReplicaAutoResubscribeIntervalInSeconds;
+  private final int lagBasedReplicaAutoResubscribeThresholdInSeconds;
+  private final int lagBasedReplicaAutoResubscribeMaxReplicaCount;
+
   private final int serverIngestionInfoLogLineLimit;
 
   private final boolean parallelResourceShutdownEnabled;
@@ -1149,6 +1159,14 @@ public class VeniceServerConfig extends VeniceClusterConfig {
         serverProperties.getInt(SERVER_INACTIVE_TOPIC_PARTITION_CHECKER_INTERNAL_IN_SECONDS, 100);
     this.inactiveTopicPartitionCheckerThresholdInSeconds =
         serverProperties.getInt(SERVER_INACTIVE_TOPIC_PARTITION_CHECKER_THRESHOLD_IN_SECONDS, 5);
+    this.lagBasedReplicaAutoResubscribeEnabled =
+        serverProperties.getBoolean(SERVER_LAG_BASED_REPLICA_AUTO_RESUBSCRIBE_ENABLED, false);
+    this.lagBasedReplicaAutoResubscribeIntervalInSeconds =
+        serverProperties.getInt(SERVER_LAG_BASED_REPLICA_AUTO_RESUBSCRIBE_INTERVAL_IN_SECONDS, 300);
+    this.lagBasedReplicaAutoResubscribeThresholdInSeconds =
+        serverProperties.getInt(SERVER_LAG_BASED_REPLICA_AUTO_RESUBSCRIBE_THRESHOLD_IN_SECONDS, 600);
+    this.lagBasedReplicaAutoResubscribeMaxReplicaCount =
+        serverProperties.getInt(SERVER_LAG_BASED_REPLICA_AUTO_RESUBSCRIBE_MAX_REPLICA_COUNT, 3);
     this.useMetricsBasedPositionInLagComputation =
         serverProperties.getBoolean(SERVER_USE_METRICS_BASED_POSITION_IN_LAG_COMPUTATION, false);
     this.serverIngestionInfoLogLineLimit = serverProperties.getInt(SERVER_INGESTION_INFO_LOG_LINE_LIMIT, 20);
@@ -2073,6 +2091,22 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public boolean isInactiveTopicPartitionCheckerEnabled() {
     return inactiveTopicPartitionCheckerEnabled;
+  }
+
+  public boolean isLagBasedReplicaAutoResubscribeEnabled() {
+    return lagBasedReplicaAutoResubscribeEnabled;
+  }
+
+  public int getLagBasedReplicaAutoResubscribeIntervalInSeconds() {
+    return lagBasedReplicaAutoResubscribeIntervalInSeconds;
+  }
+
+  public int getLagBasedReplicaAutoResubscribeThresholdInSeconds() {
+    return lagBasedReplicaAutoResubscribeThresholdInSeconds;
+  }
+
+  public int getLagBasedReplicaAutoResubscribeMaxReplicaCount() {
+    return lagBasedReplicaAutoResubscribeMaxReplicaCount;
   }
 
   public boolean isUseMetricsBasedPositionInLagComputationEnabled() {

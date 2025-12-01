@@ -1532,4 +1532,15 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     }
   }
 
+  public void maybeAddResubscribeRequest(String storeName, int version, int partition) {
+    PubSubTopic versionTopic = pubSubTopicRepository.getTopic(Version.composeKafkaTopic(storeName, version));
+    StoreIngestionTask storeIngestionTask = getStoreIngestionTask(versionTopic.getName());
+    if (storeIngestionTask == null) {
+      LOGGER.warn("StoreIngestionTask is not available for version topic: {}", versionTopic);
+      return;
+    }
+    storeIngestionTask.getResubscribeRequestQueue().add(partition);
+    LOGGER.info("Added replica: {} to pending resubscribe queue.", Utils.getReplicaId(versionTopic, partition));
+  }
+
 }
