@@ -2,6 +2,7 @@ package com.linkedin.davinci.consumer;
 
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import java.util.Collection;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 
@@ -29,7 +30,7 @@ import java.util.concurrent.CompletableFuture;
  * @param <K> Key type
  * @param <V> Value type
  */
-public interface BootstrappingVeniceChangelogConsumer<K, V> {
+public interface StatefulVeniceChangelogConsumer<K, V> extends AutoCloseable {
   /**
    * Starts the consumer by subscribing to the specified partitions. On restart, the client automatically resumes
    * from the last checkpoint. On fresh start, it begins from the beginning of the topic or leverages blob transfer
@@ -80,4 +81,12 @@ public interface BootstrappingVeniceChangelogConsumer<K, V> {
    */
   boolean isCaughtUp();
 
+  /**
+   * Returns the timestamp of the last heartbeat received for each subscribed partition.
+   * Heartbeats are messages sent every minute by Venice servers to measure lag.
+   *
+   * @return a map of partition number to the timestamp, in milliseconds, of the last
+   *         heartbeat received for that partition.
+   */
+  Map<Integer, Long> getLastHeartbeatPerPartition();
 }

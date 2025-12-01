@@ -352,6 +352,7 @@ public class DaVinciBackend implements Closeable {
             .setAggVersionedBlobTransferStats(aggVersionedBlobTransferStats)
             .setBlobTransferSSLFactory(BlobTransferUtils.createSSLFactoryForBlobTransferInDVC(configLoader))
             .setBlobTransferAclHandler(BlobTransferUtils.createAclHandler(configLoader))
+            .setPushStatusNotifierSupplier(() -> ingestionListener)
             .build();
       } else {
         aggVersionedBlobTransferStats = null;

@@ -59,7 +59,7 @@ import org.apache.logging.log4j.Logger;
 
 
 public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
-    implements BootstrappingVeniceChangelogConsumer<K, V>, VeniceChangelogConsumer<K, V> {
+    implements StatefulVeniceChangelogConsumer<K, V>, VeniceChangelogConsumer<K, V> {
   private static final Logger LOGGER = LogManager.getLogger(VeniceChangelogConsumerDaVinciRecordTransformerImpl.class);
   private long START_TIMEOUT_IN_SECONDS = 60;
 
@@ -81,7 +81,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   private final ExecutorService completableFutureThreadPool =
       Executors.newFixedThreadPool(1, new DaemonThreadFactory("VeniceChangelogConsumerDaVinciRecordTransformerImpl"));
 
-  private final Set<Integer> subscribedPartitions = new HashSet<>();
+  private final Set<Integer> subscribedPartitions = VeniceConcurrentHashMap.newKeySet();
   private final ReentrantLock bufferLock = new ReentrantLock();
   private final Condition bufferIsFullCondition = bufferLock.newCondition();
   private BackgroundReporterThread backgroundReporterThread;
@@ -256,7 +256,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
     return startFuture;
   }
 
-  // BootstrappingVeniceChangelogConsumer methods below
+  // StatefulVeniceChangelogConsumer methods below
 
   @Override
   public synchronized CompletableFuture<Void> start(Set<Integer> partitions) {
@@ -485,8 +485,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
       // Emit heartbeat delay metrics based on last heartbeat per partition
       long now = System.currentTimeMillis();
       long maxLag = Long.MIN_VALUE;
-      Map<Integer, Long> heartbeatSnapshot = new HashMap<>(currentVersionLastHeartbeat);
-      for (Long heartBeatTimestamp: heartbeatSnapshot.values()) {
+      for (Long heartBeatTimestamp: getLastHeartbeatPerPartition().values()) {
         if (heartBeatTimestamp != null) {
           maxLag = Math.max(maxLag, now - heartBeatTimestamp);
         }
@@ -512,6 +511,12 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
     }
   }
 
+  @Override
+  public Map<Integer, Long> getLastHeartbeatPerPartition() {
+    // Snapshot the heartbeat map to avoid iterating while it is being updated concurrently
+    return new HashMap<>(currentVersionLastHeartbeat);
+  }
+
   @VisibleForTesting
   protected void setBackgroundReporterThreadSleepIntervalSeconds(long interval) {
     backgroundReporterThreadSleepIntervalSeconds = interval;
@@ -533,29 +538,30 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
     }
 
     @Override
-    public void onStartVersionIngestion(boolean isCurrentVersion) {
-      for (int partitionId: subscribedPartitions) {
-        if (isCurrentVersion || isVersionSpecificClient) {
-          /*
-           * This condition can occur when the application is starting up (due to a restart/deployment) or when the
-           * next current version begins ingestion while the previous version is still serving.
-           * In the first case, it is acceptable to immediately serve the current version.
-           * In the second case, we should not immediately serve the next current version. Doing so would result in
-           * sending all messages from SOP to nearline events that the user has already received.
-           * To avoid this, we should only serve the current version if no other version is currently being served.
-           * Once the next current version has consumed the version swap message, then it has caught up enough to be
-           * ready to serve.
-           */
-          partitionToVersionToServe.computeIfAbsent(partitionId, v -> getStoreVersion());
-        }
-
-        // Caching these objects, so we don't need to recreate them on every single message received
-        pubSubTopicPartitionMap
-            .put(partitionId, new PubSubTopicPartitionImpl(new PubSubTopicImpl(topicName), partitionId));
-
-        // Initialize heartbeat timestamp for the partition to avoid empty lag until first heartbeat arrives
-        currentVersionLastHeartbeat.putIfAbsent(partitionId, System.currentTimeMillis());
+    public void onStartVersionIngestion(int partitionId, boolean isCurrentVersion) {
+      if (isCurrentVersion || isVersionSpecificClient) {
+        /*
+         * This condition can occur when the application is starting up (due to a restart/deployment) or when the
+         * next current version begins ingestion while the previous version is still serving.
+         * In the first case, it is acceptable to immediately serve the current version.
+         * In the second case, we should not immediately serve the next current version. Doing so would result in
+         * sending all messages from SOP to nearline events that the user has already received.
+         * To avoid this, we should only serve the current version if no other version is currently being served.
+         * Once the next current version has consumed the version swap message, then it has caught up enough to be
+         * ready to serve.
+         *
+         * This can also occur when it is running in version specific mode, and no version swap will happen.
+         * In this case, just serve the currently subscribed version.
+         */
+        partitionToVersionToServe.computeIfAbsent(partitionId, v -> getStoreVersion());
       }
+
+      // Caching these objects, so we don't need to recreate them on every single message received
+      pubSubTopicPartitionMap
+          .putIfAbsent(partitionId, new PubSubTopicPartitionImpl(new PubSubTopicImpl(topicName), partitionId));
+
+      // Initialize heartbeat timestamp for the partition to avoid empty lag until first heartbeat arrives
+      currentVersionLastHeartbeat.putIfAbsent(partitionId, System.currentTimeMillis());
     }
 
     @Override

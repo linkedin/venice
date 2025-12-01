@@ -740,4 +740,47 @@ public class HeartbeatMonitoringServiceTest {
     heartbeatMonitoringService.checkAndMaybeCleanupLagMonitor();
     Assert.assertEquals(heartbeatMonitoringService.getCleanupHeartbeatMap().size(), 5);
   }
+
+  @Test
+  public void testLargestHeartbeatLag() {
+    HeartbeatMonitoringService heartbeatMonitoringService = mock(HeartbeatMonitoringService.class);
+    doCallRealMethod().when(heartbeatMonitoringService).getMaxHeartbeatLag(anyLong(), anyMap());
+    ReadOnlyStoreRepository metadataRepo = mock(ReadOnlyStoreRepository.class);
+    doReturn(metadataRepo).when(heartbeatMonitoringService).getMetadataRepository();
+    Store store = mock(Store.class);
+    doReturn(1).when(store).getCurrentVersion();
+    String storeName = "foo";
+    doReturn(store).when(metadataRepo).getStore(storeName);
+
+    Map<String, Map<Integer, Map<Integer, Map<String, HeartbeatTimeStampEntry>>>> heartbeatTimestamps =
+        new VeniceConcurrentHashMap<>();
+    HeartbeatTimeStampEntry entry1 = new HeartbeatTimeStampEntry(1000L, false, false);
+    HeartbeatTimeStampEntry entry2 = new HeartbeatTimeStampEntry(2000L, true, false);
+    HeartbeatTimeStampEntry entry3 = new HeartbeatTimeStampEntry(3000L, false, true);
+    HeartbeatTimeStampEntry entry4 = new HeartbeatTimeStampEntry(4000L, true, true);
+
+    heartbeatTimestamps.put(storeName, new VeniceConcurrentHashMap<>());
+    heartbeatTimestamps.get(storeName).put(1, new VeniceConcurrentHashMap<>());
+    heartbeatTimestamps.get(storeName).get(1).put(0, new VeniceConcurrentHashMap<>());
+    heartbeatTimestamps.get(storeName).get(1).get(0).put("dc1", entry1);
+    heartbeatTimestamps.get(storeName).get(1).get(0).put("dc2", entry2);
+    heartbeatTimestamps.get(storeName).get(1).get(0).put("dc3", entry3);
+    heartbeatTimestamps.get(storeName).get(1).get(0).put("dc4", entry4);
+
+    // Current not-serving replica should not be tracked in the current version lag.
+    long currentTimestamp = 10000L;
+    AggregatedHeartbeatLagEntry aggregatedHeartbeatLagEntry =
+        heartbeatMonitoringService.getMaxHeartbeatLag(currentTimestamp, heartbeatTimestamps);
+    Assert.assertEquals(aggregatedHeartbeatLagEntry.getCurrentVersionHeartbeatLag(), 8000L);
+    Assert.assertEquals(aggregatedHeartbeatLagEntry.getNonCurrentVersionHeartbeatLag(), 9000L);
+
+    // Add a more stale entry in non-current version.
+    HeartbeatTimeStampEntry entry5 = new HeartbeatTimeStampEntry(100L, true, true);
+    heartbeatTimestamps.get(storeName).put(2, new VeniceConcurrentHashMap<>());
+    heartbeatTimestamps.get(storeName).get(2).put(0, new VeniceConcurrentHashMap<>());
+    heartbeatTimestamps.get(storeName).get(2).get(0).put("dc1", entry5);
+    aggregatedHeartbeatLagEntry = heartbeatMonitoringService.getMaxHeartbeatLag(currentTimestamp, heartbeatTimestamps);
+    Assert.assertEquals(aggregatedHeartbeatLagEntry.getCurrentVersionHeartbeatLag(), 8000L);
+    Assert.assertEquals(aggregatedHeartbeatLagEntry.getNonCurrentVersionHeartbeatLag(), 9900L);
+  }
 }

@@ -96,7 +96,7 @@ public class PubSubPartitionSplit implements Serializable {
 
   public PubSubTopicPartition getPubSubTopicPartition() {
     if (pubSubTopicPartition == null) {
-      pubSubTopicPartition = new PubSubTopicPartitionImpl(topicRepository.getTopic(topicName), partitionNumber);
+      pubSubTopicPartition = new PubSubTopicPartitionImpl(getTopicRepository().getTopic(topicName), partitionNumber);
     }
     return pubSubTopicPartition;
   }
@@ -220,6 +220,9 @@ public class PubSubPartitionSplit implements Serializable {
   }
 
   public PubSubTopicRepository getTopicRepository() {
+    if (topicRepository == null) {
+      topicRepository = new PubSubTopicRepository();
+    }
     return topicRepository;
   }
 }

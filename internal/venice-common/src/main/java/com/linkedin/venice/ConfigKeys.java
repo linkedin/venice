@@ -2092,9 +2092,15 @@ public class ConfigKeys {
   // This is a config to set the reader idle timeout (in seconds) on the client side to handle scenarios where the
   // server shuts down before transfer completes.
   public static final String BLOB_RECEIVE_READER_IDLE_TIME_IN_SECONDS = "blob.receive.reader.idle.time.in.seconds";
-  // this is a config to decide the max allowed offset lag to use kafka, even if the blob transfer is enable.
+  // This is a config to decide the max allowed offset lag to use pubsub, even if the blob transfer is enable.
   public static final String BLOB_TRANSFER_DISABLED_OFFSET_LAG_THRESHOLD =
       "blob.transfer.disabled.offset.lag.threshold";
+  /**
+   * This is a config to decide the max allowed time lag to use pubsub, even if the blob transfer is enable.
+   * If the config is non-positive, this means the feature is disabled.
+   */
+  public static final String BLOB_TRANSFER_DISABLED_TIME_LAG_THRESHOLD_IN_MINUTES =
+      "blob.transfer.disabled.time.lag.threshold.in.minutes";
   // This is a freshness in sec to measure the connectivity between the peers,
   // if the connectivity is not fresh, then retry the connection.
   public static final String BLOB_TRANSFER_PEERS_CONNECTIVITY_FRESHNESS_IN_SECONDS =
@@ -2273,6 +2279,13 @@ public class ConfigKeys {
    */
   public static final String TIME_LAG_THRESHOLD_FOR_FAST_ONLINE_TRANSITION_IN_RESTART_MINUTES =
       "time.lag.threshold.for.fast.online.transition.in.restart.minutes";
+
+  /**
+   * This config controls the behavior to enable/disable offset lag calculation and persistence during offset record
+   * sync action. The intention is to gradually deprecate this behavior until all the usage is removed from Server and
+   * Da Vinci clients. After they are fully deprecate, this config and the checkpoint logic will all be removed.
+   */
+  public static final String OFFSET_LAG_CHECKPOINT_DURING_SYNC_ENABLED = "offset.lag.checkpoint.during.sync.enabled";
 
   /**
    * Enable offset collection for kafka topic partition from kafka consumer metrics.
@@ -2657,6 +2670,12 @@ public class ConfigKeys {
       "server.resubscription.triggered.by.version.ingestion.context.change.enabled";
 
   /**
+   * Server configs to configure the check interval of the topic partition re-subscription during ingestion.
+   */
+  public static final String SERVER_RESUBSCRIPTION_CHECK_INTERVAL_IN_SECONDS =
+      "server.resubscription.check.interval.in.seconds";
+
+  /**
    * Quota for AA/WC leader replica as we know AA/WC messages are expensive, so we would like to use the following throttler
    * to limit the resource usage.
    */
@@ -2821,6 +2840,12 @@ public class ConfigKeys {
   public static final String DEFERRED_VERSION_SWAP_THREAD_POOL_SIZE = "deferred.version.swap.thread.pool.size";
 
   /**
+   * Specifies whether deferred version swap is enabled for empty pushes
+   */
+  public static final String DEFERRED_VERSION_SWAP_FOR_EMPTY_PUSH_ENABLED =
+      "deferred.version.swap.for.empty.push.enabled";
+
+  /**
    * Enables / disables allowing dvc clients to perform a target region push with deferred swap. When enabled, dvc clients
    * will be skipped and target regions will not be set and the deferred version swap service will skip checking stores with
    * isDavinciHeartbeatReported set to true. This is a temporary config until delayed ingestion for dvc is complete. Default value is enabled
@@ -2938,6 +2963,17 @@ public class ConfigKeys {
    * (Only matters if MULTITASK_SCHEDULER_SERVICE_ENABLED true). Class name of {@link com.linkedin.venice.controller.multitaskscheduler.MultiTaskSchedulerService} implementation
    */
   public static final String STORE_MIGRATION_MAX_RETRY_ATTEMPTS = "store.migration.max.retry.attempts";
+
+  /**
+   * (Only matters if MULTITASK_SCHEDULER_SERVICE_ENABLED true). Class name of {@link com.linkedin.venice.controller.multitaskscheduler.MultiTaskSchedulerService} implementation
+   */
+  public static final String STORE_MIGRATION_FABRIC_LIST = "store.migration.fabric.list";
+
+  /**
+   * (Only matters if MULTITASK_SCHEDULER_SERVICE_ENABLED true). Class name of {@link com.linkedin.venice.controller.multitaskscheduler.MultiTaskSchedulerService} implementation
+   */
+  public static final String STORE_MIGRATION_TASK_SCHEDULING_INTERVAL_SECONDS =
+      "store.migration.task.scheduling.interval.seconds";
 
   /**
    * The strategy for how to share memory-heavy objects used in the ingestion hot path.

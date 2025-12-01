@@ -44,6 +44,13 @@ public interface StoreSchemaFetcher extends Closeable {
   Map<Integer, Schema> getAllValueSchemasWithId();
 
   /**
+   * Get value schema by value schema id.
+   * If the schema is not found, Router will return 404 NOT_FOUND error, and StoreSchemaFetcher will handle and throw
+   * {@link VeniceException}.
+   */
+  Schema getValueSchema(int valueSchemaId);
+
+  /**
    * Returns the Update (Write Compute) schema of the provided Value schema. The returned schema is used to construct
    * a {@link GenericRecord} that partially updates a record value that is associated with this value schema.
    * This method is expected to throw {@link InvalidVeniceSchemaException} when the provided value schema could not be

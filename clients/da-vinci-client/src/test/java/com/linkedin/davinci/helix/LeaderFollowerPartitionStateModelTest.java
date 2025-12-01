@@ -72,7 +72,8 @@ public class LeaderFollowerPartitionStateModelTest {
         partitionPushStatusAccessorFuture,
         "instanceName",
         stateTransitionStats,
-        heartbeatMonitoringService);
+        heartbeatMonitoringService,
+        resourceName);
   }
 
   @Test

@@ -26,6 +26,7 @@ import com.linkedin.venice.vpj.pubsub.input.PubSubPartitionSplit;
 import com.linkedin.venice.vpj.pubsub.input.PubSubSplitIterator;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.Arrays;
 import org.apache.spark.sql.catalyst.InternalRow;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -105,13 +106,12 @@ public class SparkPubSubInputPartitionReaderTest {
     assertTrue(reader.next(), "Reader should successfully process PUT message");
     InternalRow row = reader.get();
     assertNotNull(row, "Row should not be null after processing PUT message");
-    // Note: The actual implementation has field order: region, partition, messageType, offset, schemaId, key, value,
-    // replicationMetadataPayload, replicationMetadataVersionId
-    // The real implementation incorrectly puts String instead of UTF8String, so we access it as Object
-    assertEquals(row.get(0, org.apache.spark.sql.types.DataTypes.StringType), TEST_REGION, "Region should match");
+    // Field order: region, partition, offset, messageType, schemaId, key, value,
+    // replicationMetadataVersionId, replicationMetadataPayload
+    assertEquals(row.getUTF8String(0).toString(), TEST_REGION, "Region should match");
     assertEquals(row.getInt(1), TEST_PARTITION_NUMBER, "Partition number should match");
-    assertEquals(row.getInt(2), MessageType.PUT.getValue(), "Message type should be PUT");
-    assertEquals(row.getLong(3), 100L, "Offset should match");
+    assertEquals(row.getLong(2), 100L, "Offset should match");
+    assertEquals(row.getInt(3), MessageType.PUT.getValue(), "Message type should be PUT");
     assertEquals(row.getInt(4), 1, "Schema ID should match");
 
     assertFalse(reader.next(), "Reader should return false when no more messages");
@@ -127,7 +127,7 @@ public class SparkPubSubInputPartitionReaderTest {
     assertTrue(reader.next(), "Reader should successfully process PUT message with metadata");
     InternalRow rowWithMetadata = reader.get();
     assertNotNull(rowWithMetadata, "Row should not be null");
-    assertEquals(rowWithMetadata.getInt(8), 5, "Replication metadata version ID should match");
+    assertEquals(rowWithMetadata.getInt(7), 5, "Replication metadata version ID should match");
 
     assertFalse(reader.next(), "Reader should return false when no more messages");
     reader.close();
@@ -157,13 +157,12 @@ public class SparkPubSubInputPartitionReaderTest {
     assertTrue(reader.next(), "Reader should successfully process DELETE message");
     InternalRow row = reader.get();
     assertNotNull(row, "Row should not be null after processing DELETE message");
-    // Note: The actual implementation has field order: region, partition, messageType, offset, schemaId, key, value,
-    // replicationMetadataPayload, replicationMetadataVersionId
-    // The real implementation incorrectly puts String instead of UTF8String, so we access it as Object
-    assertEquals(row.get(0, org.apache.spark.sql.types.DataTypes.StringType), TEST_REGION, "Region should match");
+    // Field order: region, partition, offset, messageType, schemaId, key, value,
+    // replicationMetadataVersionId, replicationMetadataPayload
+    assertEquals(row.getUTF8String(0).toString(), TEST_REGION, "Region should match");
     assertEquals(row.getInt(1), TEST_PARTITION_NUMBER, "Partition number should match");
-    assertEquals(row.getInt(2), MessageType.DELETE.getValue(), "Message type should be DELETE");
-    assertEquals(row.getLong(3), 200L, "Offset should match");
+    assertEquals(row.getLong(2), 200L, "Offset should match");
+    assertEquals(row.getInt(3), MessageType.DELETE.getValue(), "Message type should be DELETE");
     assertEquals(row.getInt(4), 10, "Schema ID should match");
     assertEquals(row.getBinary(6).length, 0, "DELETE message should have empty value");
 
@@ -180,7 +179,7 @@ public class SparkPubSubInputPartitionReaderTest {
     assertTrue(reader.next(), "Reader should successfully process DELETE message with metadata");
     InternalRow rowWithMetadata = reader.get();
     assertNotNull(rowWithMetadata, "Row should not be null");
-    assertEquals(rowWithMetadata.getInt(8), 7, "Replication metadata version ID should match");
+    assertEquals(rowWithMetadata.getInt(7), 7, "Replication metadata version ID should match");
 
     assertFalse(reader.next(), "Reader should return false when no more messages");
     reader.close();
@@ -193,11 +192,11 @@ public class SparkPubSubInputPartitionReaderTest {
 
     assertTrue(reader.next(), "Reader should process first DELETE message");
     InternalRow firstRow = reader.get();
-    assertEquals(firstRow.getLong(3), 202L, "First DELETE offset should match");
+    assertEquals(firstRow.getLong(2), 202L, "First DELETE offset should match");
 
     assertTrue(reader.next(), "Reader should process second DELETE message");
     InternalRow secondRow = reader.get();
-    assertEquals(secondRow.getLong(3), 203L, "Second DELETE offset should match");
+    assertEquals(secondRow.getLong(2), 203L, "Second DELETE offset should match");
 
     assertFalse(reader.next(), "Reader should return false when no more messages");
     reader.close();
@@ -261,7 +260,7 @@ public class SparkPubSubInputPartitionReaderTest {
 
     assertTrue(reader.next(), "Reader should handle PUT message");
     InternalRow putRow = reader.get();
-    assertEquals(putRow.getInt(2), MessageType.PUT.getValue(), "Message type should be PUT");
+    assertEquals(putRow.getInt(3), MessageType.PUT.getValue(), "Message type should be PUT");
     reader.close();
 
     // Case 2: Reader handles DELETE message type correctly
@@ -271,7 +270,7 @@ public class SparkPubSubInputPartitionReaderTest {
 
     assertTrue(reader.next(), "Reader should handle DELETE message");
     InternalRow deleteRow = reader.get();
-    assertEquals(deleteRow.getInt(2), MessageType.DELETE.getValue(), "Message type should be DELETE");
+    assertEquals(deleteRow.getInt(3), MessageType.DELETE.getValue(), "Message type should be DELETE");
     reader.close();
 
     // Case 3: Message type validation
@@ -283,10 +282,10 @@ public class SparkPubSubInputPartitionReaderTest {
     when(mockSplitIterator.next()).thenReturn(putRecord2).thenReturn(deleteRecord2).thenReturn(null);
 
     assertTrue(reader.next(), "Reader should process first message");
-    assertEquals(reader.get().getInt(2), MessageType.PUT.getValue(), "First message should be PUT");
+    assertEquals(reader.get().getInt(3), MessageType.PUT.getValue(), "First message should be PUT");
 
     assertTrue(reader.next(), "Reader should process second message");
-    assertEquals(reader.get().getInt(2), MessageType.DELETE.getValue(), "Second message should be DELETE");
+    assertEquals(reader.get().getInt(3), MessageType.DELETE.getValue(), "Second message should be DELETE");
 
     reader.close();
   }
@@ -339,7 +338,7 @@ public class SparkPubSubInputPartitionReaderTest {
 
     assertTrue(reader2.next(), "Reader should handle large offset values");
     InternalRow largeOffsetRow = reader2.get();
-    assertEquals(largeOffsetRow.getLong(3), Long.MAX_VALUE, "Large offset should be preserved");
+    assertEquals(largeOffsetRow.getLong(2), Long.MAX_VALUE, "Large offset should be preserved");
     reader2.close();
 
     // Case 3: Null region handling
@@ -347,6 +346,56 @@ public class SparkPubSubInputPartitionReaderTest {
         new SparkPubSubInputPartitionReader(inputPartition, mockConsumer, null, false);
     // Reader should handle null region gracefully
     reader3.close();
+  }
+
+  @Test
+  public void testRawPubsubInternalRowOrdering() throws IOException {
+    SparkPubSubInputPartitionReader reader = createReaderWithMockIterator();
+
+    // Setup: a PUT record with non-trivial values to assert per field
+    ByteBuffer replicationMetadata = ByteBuffer.wrap("rm-payload".getBytes());
+    PubSubSplitIterator.PubSubInputRecord record =
+        createMockPutRecord(123L, "ordering-key", "ordering-value", 42, replicationMetadata, 7);
+    when(mockSplitIterator.next()).thenReturn(record).thenReturn(null);
+
+    assertTrue(reader.next(), "Reader should process message for ordering validation");
+    InternalRow row = reader.get();
+    assertNotNull(row, "Row should not be null");
+
+    // Field by field ordering matches RAW_PUBSUB_INPUT_TABLE_SCHEMA
+    // 0: __region__ (StringType / UTF8String)
+    assertEquals(row.getUTF8String(0).toString(), TEST_REGION, "Region should match");
+
+    // 1: __partition__ (IntegerType)
+    assertEquals(row.getInt(1), TEST_PARTITION_NUMBER, "Partition number should match");
+
+    // 2: __offset__ (LongType)
+    assertEquals(row.getLong(2), 123L, "Offset should match");
+
+    // 3: __message_type__ (IntegerType)
+    assertEquals(row.getInt(3), MessageType.PUT.getValue(), "Message type should be PUT");
+
+    // 4: __schema_id__ (IntegerType)
+    assertEquals(row.getInt(4), 42, "Schema ID should match");
+
+    // 5: key (BinaryType)
+    assertTrue(Arrays.equals(row.getBinary(5), "ordering-key".getBytes()), "Key bytes should match expected value");
+
+    // 6: value (BinaryType)
+    assertTrue(Arrays.equals(row.getBinary(6), "ordering-value".getBytes()), "Value bytes should match expected value");
+
+    // 7: __replication_metadata_version_id__ (IntegerType)
+    assertEquals(row.getInt(7), 7, "Replication metadata version ID should match");
+
+    // 8: __replication_metadata_payload__ (BinaryType)
+    assertTrue(
+        Arrays.equals(row.getBinary(8), "rm-payload".getBytes()),
+        "Replication metadata payload bytes should match");
+
+    // No more records
+    assertFalse(reader.next(), "Reader should return false when no more messages");
+
+    reader.close();
   }
 
   /**

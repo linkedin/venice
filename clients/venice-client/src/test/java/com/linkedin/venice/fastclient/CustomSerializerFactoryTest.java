@@ -83,8 +83,7 @@ public class CustomSerializerFactoryTest {
 
     // Create a custom deserializer factory
     DeserializerFactory customDeserializerFactory = mock(DeserializerFactory.class);
-    when(customDeserializerFactory.createDeserializer(any(Schema.class), any(Schema.class)))
-        .thenReturn(customValueDeserializer);
+    when(customDeserializerFactory.createDeserializer(any(Schema.class))).thenReturn(customValueDeserializer);
 
     // Build client config with custom value deserializer factory
     ClientConfig.ClientConfigBuilder configBuilder = getClientConfigWithMinimumRequiredInputs();
@@ -99,7 +98,7 @@ public class CustomSerializerFactoryTest {
     // Verify the factory creates the custom deserializer
     Optional<DeserializerFactory> factoryOptional = clientConfig.getValueDeserializerFactory();
     assertTrue(factoryOptional.isPresent());
-    RecordDeserializer deserializer = factoryOptional.get().createDeserializer(valueSchema, valueSchema);
+    RecordDeserializer deserializer = factoryOptional.get().createDeserializer(valueSchema);
     assertEquals(deserializer, customValueDeserializer);
 
     // Verify the custom deserializer is used
@@ -123,8 +122,7 @@ public class CustomSerializerFactoryTest {
     when(customSerializerFactory.createSerializer(any(Schema.class))).thenReturn(customKeySerializer);
 
     DeserializerFactory customDeserializerFactory = mock(DeserializerFactory.class);
-    when(customDeserializerFactory.createDeserializer(any(Schema.class), any(Schema.class)))
-        .thenReturn(customValueDeserializer);
+    when(customDeserializerFactory.createDeserializer(any(Schema.class))).thenReturn(customValueDeserializer);
 
     // Build client config with both custom factories
     ClientConfig.ClientConfigBuilder configBuilder = getClientConfigWithMinimumRequiredInputs();
@@ -145,7 +143,7 @@ public class CustomSerializerFactoryTest {
 
     Optional<DeserializerFactory> deserializerFactoryOptional = clientConfig.getValueDeserializerFactory();
     assertTrue(deserializerFactoryOptional.isPresent());
-    RecordDeserializer deserializer = deserializerFactoryOptional.get().createDeserializer(valueSchema, valueSchema);
+    RecordDeserializer deserializer = deserializerFactoryOptional.get().createDeserializer(valueSchema);
     assertEquals(deserializer, customValueDeserializer);
   }
 

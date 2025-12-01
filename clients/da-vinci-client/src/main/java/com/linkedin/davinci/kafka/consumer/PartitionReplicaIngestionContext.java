@@ -20,6 +20,7 @@ public class PartitionReplicaIngestionContext {
   private final PubSubTopic versionTopic;
   private final VersionRole versionRole;
   private final WorkloadType workloadType;
+  private final boolean isReadyToServe;
 
   public enum VersionRole {
     CURRENT, BACKUP, FUTURE
@@ -35,10 +36,20 @@ public class PartitionReplicaIngestionContext {
       PubSubTopicPartition pubSubTopicPartition,
       VersionRole versionRole,
       WorkloadType workloadType) {
+    this(versionTopic, pubSubTopicPartition, versionRole, workloadType, true);
+  }
+
+  public PartitionReplicaIngestionContext(
+      PubSubTopic versionTopic,
+      PubSubTopicPartition pubSubTopicPartition,
+      VersionRole versionRole,
+      WorkloadType workloadType,
+      boolean isReadyToServe) {
     this.versionTopic = versionTopic;
     this.pubSubTopicPartition = pubSubTopicPartition;
     this.versionRole = versionRole;
     this.workloadType = workloadType;
+    this.isReadyToServe = isReadyToServe;
   }
 
   public VersionRole getVersionRole() {
@@ -55,6 +66,10 @@ public class PartitionReplicaIngestionContext {
 
   public WorkloadType getWorkloadType() {
     return workloadType;
+  }
+
+  public boolean isReadyToServe() {
+    return isReadyToServe;
   }
 
   public static WorkloadType determineWorkloadType(

@@ -41,7 +41,7 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
   private int seekThreadPoolSize = 10;
 
   /**
-   * This will be used in BootstrappingVeniceChangelogConsumer to determine when to sync updates with the underlying
+   * This will be used in {@link StatefulVeniceChangelogConsumer} to determine when to sync updates with the underlying
    * storage engine, e.g. flushes entity and offset data to disk. Default is 32 MB.
    */
   private long databaseSyncBytesInterval = 32 * 1024 * 1024L;
@@ -64,13 +64,13 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
   private boolean useRequestBasedMetadataRepository = false;
 
   /**
-   * If non-null, VeniceChangelogConsumer will subscribe to a specific version of a Venice store.
+   * If non-null, {@link VeniceChangelogConsumer} will subscribe to a specific version of a Venice store.
    * It is only intended for internal use.
    */
   private Integer storeVersion;
 
   /**
-   * If true, BootstrappingVeniceChangelogConsumer will be used and all records will be persisted onto disk.
+   * If true, {@link StatefulVeniceChangelogConsumer} will be used and all records will be persisted onto disk.
    * If false, VeniceChangelogConsumer will be used and records won't be persisted onto disk.
    */
   private boolean isStateful = false;
@@ -257,7 +257,7 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
   }
 
   /**
-   * If you're using the {@link BootstrappingVeniceChangelogConsumer}, and you want to deserialize your keys into
+   * If you're using the {@link StatefulVeniceChangelogConsumer}, and you want to deserialize your keys into
    * {@link org.apache.avro.specific.SpecificRecord} then set this configuration.
    */
   public ChangelogClientConfig setSpecificKey(Class specificKey) {
@@ -271,7 +271,7 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
   }
 
   /**
-   * If you're using the {@link BootstrappingVeniceChangelogConsumer}, and you want to deserialize your values into
+   * If you're using the {@link StatefulVeniceChangelogConsumer}, and you want to deserialize your values into
    * {@link org.apache.avro.specific.SpecificRecord} then set this configuration.
    */
   public ChangelogClientConfig setSpecificValueSchema(Schema specificValueSchema) {
@@ -387,7 +387,7 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
    * Sets the maximum number of records that can be buffered and returned to the user when calling poll.
    * When the maximum number of records is reached, ingestion will be paused until the buffer is drained.
    * Please note that this is separate from {@link com.linkedin.venice.ConfigKeys#SERVER_KAFKA_MAX_POLL_RECORDS}.
-   * It is currently only supported for {@link BootstrappingVeniceChangelogConsumer}.
+   * It is currently only supported for {@link StatefulVeniceChangelogConsumer}.
    */
   public ChangelogClientConfig setMaxBufferSize(int maxBufferSize) {
     this.maxBufferSize = maxBufferSize;

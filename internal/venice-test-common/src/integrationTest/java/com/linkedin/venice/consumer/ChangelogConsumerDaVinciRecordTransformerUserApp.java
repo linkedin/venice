@@ -21,8 +21,8 @@ import static com.linkedin.venice.ConfigKeys.DAVINCI_P2P_BLOB_TRANSFER_SERVER_PO
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_TRANSACTIONAL_MODE;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
-import static com.linkedin.venice.consumer.BootstrappingChangelogConsumerTest.pollChangeEventsFromChangeCaptureConsumer;
-import static com.linkedin.venice.consumer.BootstrappingChangelogConsumerTest.pollChangeEventsFromSpecificChangeCaptureConsumer;
+import static com.linkedin.venice.consumer.StatefulVeniceChangelogConsumerTest.pollChangeEventsFromChangeCaptureConsumer;
+import static com.linkedin.venice.consumer.StatefulVeniceChangelogConsumerTest.pollChangeEventsFromSpecificChangeCaptureConsumer;
 import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.D2_SERVICE_NAME;
 import static com.linkedin.venice.stats.ClientType.CHANGE_DATA_CAPTURE_CLIENT;
 import static com.linkedin.venice.stats.VeniceMetricsRepository.getVeniceMetricsRepository;
@@ -31,9 +31,9 @@ import static com.linkedin.venice.utils.SslUtils.LOCAL_PASSWORD;
 
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.d2.balancer.D2ClientBuilder;
-import com.linkedin.davinci.consumer.BootstrappingVeniceChangelogConsumer;
 import com.linkedin.davinci.consumer.ChangeEvent;
 import com.linkedin.davinci.consumer.ChangelogClientConfig;
+import com.linkedin.davinci.consumer.StatefulVeniceChangelogConsumer;
 import com.linkedin.davinci.consumer.VeniceChangeCoordinate;
 import com.linkedin.davinci.consumer.VeniceChangelogConsumerClientFactory;
 import com.linkedin.venice.D2.D2ClientUtils;
@@ -46,7 +46,6 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -127,21 +126,19 @@ public class ChangelogConsumerDaVinciRecordTransformerUserApp {
 
     VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =
         new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig, metricsRepository);
-    BootstrappingVeniceChangelogConsumer bootstrappingVeniceChangelogConsumer;
+    StatefulVeniceChangelogConsumer statefulVeniceChangelogConsumer;
 
     if (useSpecificRecord) {
-      bootstrappingVeniceChangelogConsumer = veniceChangelogConsumerClientFactory.getBootstrappingChangelogConsumer(
+      statefulVeniceChangelogConsumer = veniceChangelogConsumerClientFactory.getStatefulChangelogConsumer(
           storeName,
-          Integer.toString(0),
           TestChangelogKey.class,
           TestChangelogValue.class,
           TestChangelogValue.SCHEMA$);
     } else {
-      bootstrappingVeniceChangelogConsumer =
-          veniceChangelogConsumerClientFactory.getBootstrappingChangelogConsumer(storeName, Integer.toString(0));
+      statefulVeniceChangelogConsumer = veniceChangelogConsumerClientFactory.getStatefulChangelogConsumer(storeName);
     }
 
-    bootstrappingVeniceChangelogConsumer.start().get();
+    statefulVeniceChangelogConsumer.start().get();
     LOGGER.info("DVRT CDC user app has come online.");
 
     if (useSpecificRecord) {
@@ -153,7 +150,7 @@ public class ChangelogConsumerDaVinciRecordTransformerUserApp {
         pollChangeEventsFromSpecificChangeCaptureConsumer(
             polledChangeEventsMap,
             polledChangeEventsList,
-            Collections.singletonList(bootstrappingVeniceChangelogConsumer));
+            statefulVeniceChangelogConsumer);
         Assert.assertEquals(polledChangeEventsList.size(), eventsToPoll);
       });
     } else {
@@ -165,7 +162,7 @@ public class ChangelogConsumerDaVinciRecordTransformerUserApp {
         pollChangeEventsFromChangeCaptureConsumer(
             polledChangeEventsMap,
             polledChangeEventsList,
-            Collections.singletonList(bootstrappingVeniceChangelogConsumer));
+            statefulVeniceChangelogConsumer);
         Assert.assertEquals(polledChangeEventsList.size(), eventsToPoll);
       });
     }

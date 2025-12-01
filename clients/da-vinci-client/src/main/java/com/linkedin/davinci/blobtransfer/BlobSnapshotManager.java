@@ -354,6 +354,13 @@ public class BlobSnapshotManager {
 
     OffsetRecord offsetRecord = storageMetadataService
         .getLastOffset(blobTransferRequest.getTopicName(), blobTransferRequest.getPartition(), null);
+
+    LOGGER.info(
+        "Preparing offset record for topic {} partition {} with pushTrackingIncrementalPushStatus {}",
+        blobTransferRequest.getTopicName(),
+        blobTransferRequest.getPartition(),
+        offsetRecord.getTrackingIncrementalPushStatus());
+
     java.nio.ByteBuffer offsetRecordByte = ByteBuffer.wrap(offsetRecord.toBytes());
 
     return new BlobTransferPartitionMetadata(

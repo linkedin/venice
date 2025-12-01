@@ -2,6 +2,7 @@ package com.linkedin.davinci.blobtransfer;
 
 import static org.mockito.Mockito.mock;
 
+import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.stats.AggVersionedBlobTransferStats;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
@@ -31,6 +32,7 @@ public class TestBlobTransferManagerBuilder {
     StorageEngineRepository storageEngineRepository = mock(StorageEngineRepository.class);
     ClientConfig clientConfig = mock(ClientConfig.class);
     SSLFactory sslFactory = SslUtils.getVeniceLocalSslFactory();
+    VeniceNotifier notifier = mock(VeniceNotifier.class);
 
     BlobTransferAclHandler blobTransferAclHandler = mock(BlobTransferAclHandler.class);
 
@@ -58,6 +60,7 @@ public class TestBlobTransferManagerBuilder {
         .setAggVersionedBlobTransferStats(blobTransferStats)
         .setBlobTransferSSLFactory(Optional.of(sslFactory))
         .setBlobTransferAclHandler(Optional.of(blobTransferAclHandler))
+        .setPushStatusNotifierSupplier(() -> notifier)
         .build();
 
     Assert.assertNotNull(blobTransferManager);
@@ -100,6 +103,7 @@ public class TestBlobTransferManagerBuilder {
               .setReadOnlyStoreRepository(readOnlyStoreRepository)
               .setStorageEngineRepository(storageEngineRepository)
               .setAggVersionedBlobTransferStats(blobTransferStats)
+              .setPushStatusNotifierSupplier(() -> null)
               .build();
       Assert.assertNull(blobTransferManager);
     } catch (IllegalArgumentException e) {
@@ -117,6 +121,7 @@ public class TestBlobTransferManagerBuilder {
               .setReadOnlyStoreRepository(readOnlyStoreRepository)
               .setStorageEngineRepository(storageEngineRepository)
               .setAggVersionedBlobTransferStats(blobTransferStats)
+              .setPushStatusNotifierSupplier(() -> null)
               .build();
       Assert.assertNull(blobTransferManager1);
     } catch (IllegalArgumentException e) {
@@ -133,6 +138,7 @@ public class TestBlobTransferManagerBuilder {
           .setReadOnlyStoreRepository(readOnlyStoreRepository)
           .setStorageEngineRepository(storageEngineRepository)
           .setAggVersionedBlobTransferStats(blobTransferStats)
+          .setPushStatusNotifierSupplier(() -> null)
           .build();
       Assert.assertNull(blobTransferManager2);
     } catch (IllegalArgumentException e) {
@@ -154,6 +160,7 @@ public class TestBlobTransferManagerBuilder {
               .setAggVersionedBlobTransferStats(blobTransferStats)
               .setBlobTransferAclHandler(null)
               .setBlobTransferSSLFactory(Optional.ofNullable(sslFactory))
+              .setPushStatusNotifierSupplier(() -> null)
               .build();
       Assert.assertNull(blobTransferManager3);
     } catch (IllegalArgumentException e) {
@@ -173,6 +180,7 @@ public class TestBlobTransferManagerBuilder {
               .setAggVersionedBlobTransferStats(blobTransferStats)
               .setBlobTransferAclHandler(Optional.empty())
               .setBlobTransferSSLFactory(Optional.of(sslFactory))
+              .setPushStatusNotifierSupplier(() -> null)
               .build();
       Assert.assertNull(blobTransferManager4);
     } catch (IllegalArgumentException e) {

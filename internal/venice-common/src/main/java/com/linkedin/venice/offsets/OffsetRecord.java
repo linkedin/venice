@@ -6,6 +6,7 @@ import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.kafka.protocol.GUID;
+import com.linkedin.venice.kafka.protocol.state.IncrementalPushReplicaStatus;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.ProducerPartitionState;
 import com.linkedin.venice.pubsub.PubSubContext;
@@ -100,6 +101,7 @@ public class OffsetRecord {
     emptyPartitionState.lastUpdate = 0;
     emptyPartitionState.databaseInfo = new VeniceConcurrentHashMap<>();
     emptyPartitionState.previousStatuses = new VeniceConcurrentHashMap<>();
+    emptyPartitionState.trackingIncrementalPushStatus = new VeniceConcurrentHashMap<>();
     emptyPartitionState.leaderOffset = PubSubSymbolicPosition.EARLIEST.getNumericOffset();
     emptyPartitionState.upstreamOffsetMap = new VeniceConcurrentHashMap<>();
     emptyPartitionState.upstreamVersionTopicOffset = PubSubSymbolicPosition.EARLIEST.getNumericOffset();
@@ -385,6 +387,15 @@ public class OffsetRecord {
 
   public void setKeyUrnCompressionDict(KeyUrnCompressionDict keyUrnCompressionDict) {
     this.partitionState.keyUrnCompressionDict = keyUrnCompressionDict;
+  }
+
+  public Map<String, IncrementalPushReplicaStatus> getTrackingIncrementalPushStatus() {
+    return partitionState.trackingIncrementalPushStatus;
+  }
+
+  public void setTrackingIncrementalPushStatus(
+      Map<String, IncrementalPushReplicaStatus> trackingIncrementalPushStatus) {
+    this.partitionState.trackingIncrementalPushStatus = trackingIncrementalPushStatus;
   }
 
   /**

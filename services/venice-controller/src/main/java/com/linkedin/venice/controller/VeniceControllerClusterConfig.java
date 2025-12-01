@@ -118,6 +118,7 @@ import static com.linkedin.venice.ConfigKeys.DEFAULT_READ_STRATEGY;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_REPLICA_FACTOR;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_ROUTING_STRATEGY;
 import static com.linkedin.venice.ConfigKeys.DEFERRED_VERSION_SWAP_BUFFER_TIME;
+import static com.linkedin.venice.ConfigKeys.DEFERRED_VERSION_SWAP_FOR_EMPTY_PUSH_ENABLED;
 import static com.linkedin.venice.ConfigKeys.DEFERRED_VERSION_SWAP_REGION_ROLL_FORWARD_ORDER;
 import static com.linkedin.venice.ConfigKeys.DEFERRED_VERSION_SWAP_THREAD_POOL_SIZE;
 import static com.linkedin.venice.ConfigKeys.DELAY_TO_REBALANCE_MS;
@@ -616,6 +617,7 @@ public class VeniceControllerClusterConfig {
   private final double deferredVersionSwapBufferTime;
   private final String deferredVersionSwapRegionRollforwardOrder;
   private final int deferredVersionSwapThreadPoolSize;
+  private final boolean isDeferredVersionSwapForEmptyPushEnabled;
 
   private final Map<ClusterConfig.GlobalRebalancePreferenceKey, Integer> helixGlobalRebalancePreference;
   private final HelixCapacityConfig helixCapacityConfig;
@@ -664,6 +666,8 @@ public class VeniceControllerClusterConfig {
   private final boolean isMultiTaskSchedulerServiceEnabled;
   private final int storeMigrationThreadPoolSize;
   private final int storeMigrationMaxRetryAttempts;
+  private final int storeMigrationTaskIntervalInSeconds;
+  private final List<String> storeMigrationFabricList;
 
   private final boolean backupVersionReplicaReductionEnabled;
   private final boolean useMultiRegionRealTimeTopicSwitcher;
@@ -1251,10 +1255,19 @@ public class VeniceControllerClusterConfig {
     this.deferredVersionSwapRegionRollforwardOrder =
         props.getString(DEFERRED_VERSION_SWAP_REGION_ROLL_FORWARD_ORDER, "");
     this.deferredVersionSwapThreadPoolSize = props.getInt(DEFERRED_VERSION_SWAP_THREAD_POOL_SIZE, 1);
+    this.isDeferredVersionSwapForEmptyPushEnabled =
+        props.getBoolean(DEFERRED_VERSION_SWAP_FOR_EMPTY_PUSH_ENABLED, false);
 
     this.isMultiTaskSchedulerServiceEnabled = props.getBoolean(ConfigKeys.MULTITASK_SCHEDULER_SERVICE_ENABLED, false);
     this.storeMigrationThreadPoolSize = props.getInt(ConfigKeys.STORE_MIGRATION_THREAD_POOL_SIZE, 1);
     this.storeMigrationMaxRetryAttempts = props.getInt(ConfigKeys.STORE_MIGRATION_MAX_RETRY_ATTEMPTS, 3);
+    this.storeMigrationTaskIntervalInSeconds =
+        props.getInt(ConfigKeys.STORE_MIGRATION_TASK_SCHEDULING_INTERVAL_SECONDS, 60);
+    if (props.getString(ConfigKeys.STORE_MIGRATION_FABRIC_LIST, "").isEmpty()) {
+      this.storeMigrationFabricList = Collections.emptyList();
+    } else {
+      this.storeMigrationFabricList = props.getList(ConfigKeys.STORE_MIGRATION_FABRIC_LIST);
+    }
     this.backupVersionReplicaReductionEnabled =
         props.getBoolean(CONTROLLER_BACKUP_VERSION_REPLICA_REDUCTION_ENABLED, false);
     this.useMultiRegionRealTimeTopicSwitcher =
@@ -1825,6 +1838,10 @@ public class VeniceControllerClusterConfig {
     return deferredVersionSwapThreadPoolSize;
   }
 
+  public boolean isDeferredVersionSwapForEmptyPushEnabled() {
+    return isDeferredVersionSwapForEmptyPushEnabled;
+  }
+
   public boolean isSkipDeferredVersionSwapForDVCEnabled() {
     return skipDeferredVersionSwapForDVCEnabled;
   }
@@ -2081,6 +2098,14 @@ public class VeniceControllerClusterConfig {
 
   public int getStoreMigrationMaxRetryAttempts() {
     return storeMigrationMaxRetryAttempts;
+  }
+
+  public int getStoreMigrationTaskIntervalInSeconds() {
+    return storeMigrationTaskIntervalInSeconds;
+  }
+
+  public List<String> getStoreMigrationFabricList() {
+    return storeMigrationFabricList;
   }
 
   /**

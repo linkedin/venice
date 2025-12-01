@@ -168,13 +168,13 @@ public class SITFastReadyToServeTest {
     doReturn(true).when(serverConfig).isUseHeartbeatLagForReadyToServeCheckEnabled();
     storeIngestionTask.checkFastReadyToServeForReplica(pcs);
     verify(storeIngestionTask, times(0)).checkFastReadyToServeWithPreviousTimeLag(pcs);
-    verify(storeIngestionTask, times(2)).checkFastReadyToServeWithPreviousOffsetLag(pcs);
+    verify(storeIngestionTask, times(1)).checkFastReadyToServeWithPreviousOffsetLag(pcs);
 
     // Case 5: HB fast-start config enabled
     doReturn(true).when(storeIngestionTask).isTimeLagRelaxEnabled();
     doReturn(true).when(serverConfig).isUseHeartbeatLagForReadyToServeCheckEnabled();
     storeIngestionTask.checkFastReadyToServeForReplica(pcs);
     verify(storeIngestionTask, times(1)).checkFastReadyToServeWithPreviousTimeLag(pcs);
-    verify(storeIngestionTask, times(2)).checkFastReadyToServeWithPreviousOffsetLag(pcs);
+    verify(storeIngestionTask, times(1)).checkFastReadyToServeWithPreviousOffsetLag(pcs);
   }
 }

@@ -16,7 +16,7 @@ import java.util.concurrent.CompletableFuture;
  * @param <V> The Type for value
  */
 @Experimental
-public interface VeniceChangelogConsumer<K, V> {
+public interface VeniceChangelogConsumer<K, V> extends AutoCloseable {
   /**
    * @return total number of store partitions
   */
@@ -213,6 +213,15 @@ public interface VeniceChangelogConsumer<K, V> {
    * @return True if all subscribed partitions have caught up.
    */
   boolean isCaughtUp();
+
+  /**
+   * Returns the timestamp of the last heartbeat received for each subscribed partition.
+   * Heartbeats are messages sent periodically by Venice servers to measure lag.
+   *
+   * @return a map of partition number to the timestamp, in milliseconds, of the last
+   *         heartbeat received for that partition.
+   */
+  Map<Integer, Long> getLastHeartbeatPerPartition();
 
   /**
    * Release the internal resources.

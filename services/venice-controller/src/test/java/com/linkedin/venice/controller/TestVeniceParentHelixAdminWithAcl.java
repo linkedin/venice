@@ -1,6 +1,8 @@
 package com.linkedin.venice.controller;
 
 import static com.linkedin.venice.utils.TestUtils.DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.eq;
@@ -118,29 +120,6 @@ public class TestVeniceParentHelixAdminWithAcl extends AbstractTestVeniceParentH
     Assert.assertEquals(0, authorizerService.setAclsCounter);
   }
 
-  @Test
-  public void testDeleteStoreWithAuthorization() {
-    String storeName = "test-store-authorizer-delete";
-    String owner = "unittest";
-    Store store = TestUtils.createTestStore(storeName, owner, System.currentTimeMillis());
-    doReturn(store).when(internalAdmin).getStore(eq(clusterName), eq(storeName));
-    doReturn(store).when(internalAdmin).checkPreConditionForDeletion(eq(clusterName), eq(storeName));
-
-    when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(null)
-        .thenReturn(
-            AdminTopicMetadataAccessor.generateMetadataMap(
-                Optional.of(1L),
-                Optional.of(-1L),
-                Optional.of(1L),
-                Optional.of(LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION)));
-    initializeParentAdmin(Optional.of(authorizerService), Optional.empty());
-    parentAdmin.initStorageCluster(clusterName);
-    parentAdmin.deleteStore(clusterName, storeName, false, 0, true);
-    Assert.assertEquals(1, authorizerService.clearAclCounter);
-    AclBinding actualAB = authorizerService.describeAcls(new Resource(storeName));
-    Assert.assertTrue(isAclBindingSame(new AclBinding(new Resource(storeName)), actualAB));
-  }
-
   /**
    * This tests if updateAcl() is able to update the ACl rules for a store and deleteAcl is able to delete it.
    */
@@ -160,10 +139,16 @@ public class TestVeniceParentHelixAdminWithAcl extends AbstractTestVeniceParentH
         .addAce(new Resource(storeName), new AceEntry(new Principal("user:denyuser1"), Method.Read, Permission.DENY));
     curPerm = parentAdmin.getAclForStore(clusterName, storeName);
     Assert.assertEquals(expectedPerm, curPerm);
+
+    doReturn(Optional.ofNullable(authorizerService)).when(internalAdmin).getAuthorizerService();
+    doCallRealMethod().when(internalAdmin).cleanupAclsForStore(any(Store.class), eq(storeName), eq(clusterName));
     parentAdmin.deleteAclForStore(clusterName, storeName);
-    Assert.assertEquals(1, authorizerService.clearAclCounter);
+    verify(internalAdmin).cleanupAclsForStore(any(Store.class), eq(storeName), eq(clusterName));
     AclBinding actualAB = authorizerService.describeAcls(new Resource(storeName));
-    Assert.assertTrue(isAclBindingSame(new AclBinding(new Resource(storeName)), actualAB));
+    AclBinding expectedEmptyAB = new AclBinding(new Resource(storeName));
+    Assert.assertTrue(
+        isAclBindingSame(expectedEmptyAB, actualAB),
+        "ACLs were not properly cleared on deleteAclForStore. Actual: " + actualAB + ", Expected: " + expectedEmptyAB);
     curPerm = parentAdmin.getAclForStore(clusterName, storeName);
     Assert.assertEquals(curPerm, "");
   }

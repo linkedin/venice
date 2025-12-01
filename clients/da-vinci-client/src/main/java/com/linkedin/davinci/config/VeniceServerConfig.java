@@ -8,6 +8,7 @@ import static com.linkedin.venice.ConfigKeys.BLOB_RECEIVE_READER_IDLE_TIME_IN_SE
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_ACL_ENABLED;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_CLIENT_READ_LIMIT_BYTES_PER_SEC;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_DISABLED_OFFSET_LAG_THRESHOLD;
+import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_DISABLED_TIME_LAG_THRESHOLD_IN_MINUTES;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_MANAGER_ENABLED;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_MAX_CONCURRENT_SNAPSHOT_USER;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_MAX_TIMEOUT_IN_MIN;
@@ -53,6 +54,7 @@ import static com.linkedin.venice.ConfigKeys.MAX_LEADER_FOLLOWER_STATE_TRANSITIO
 import static com.linkedin.venice.ConfigKeys.META_STORE_WRITER_CLOSE_CONCURRENCY;
 import static com.linkedin.venice.ConfigKeys.META_STORE_WRITER_CLOSE_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.MIN_CONSUMER_IN_CONSUMER_POOL_PER_KAFKA_CLUSTER;
+import static com.linkedin.venice.ConfigKeys.OFFSET_LAG_CHECKPOINT_DURING_SYNC_ENABLED;
 import static com.linkedin.venice.ConfigKeys.OFFSET_LAG_DELTA_RELAX_FACTOR_FOR_FAST_ONLINE_TRANSITION_IN_RESTART;
 import static com.linkedin.venice.ConfigKeys.PARTICIPANT_MESSAGE_CONSUMPTION_DELAY_MS;
 import static com.linkedin.venice.ConfigKeys.PARTICIPANT_MESSAGE_STORE_ENABLED;
@@ -173,6 +175,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_REMOTE_INGESTION_REPAIR_SLEE
 import static com.linkedin.venice.ConfigKeys.SERVER_RESET_ERROR_REPLICA_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_REST_SERVICE_EPOLL_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_REST_SERVICE_STORAGE_THREAD_NUM;
+import static com.linkedin.venice.ConfigKeys.SERVER_RESUBSCRIPTION_CHECK_INTERVAL_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_RESUBSCRIPTION_TRIGGERED_BY_VERSION_INGESTION_CONTEXT_CHANGE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_ROCKSDB_STORAGE_CONFIG_CHECK_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_ROUTER_CONNECTION_WARMING_DELAY_MS;
@@ -495,7 +498,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final long sharedConsumerNonExistingTopicCleanupDelayMS;
   private final int offsetLagDeltaRelaxFactorForFastOnlineTransitionInRestart;
   private final int timeLagThresholdForFastOnlineTransitionInRestartMinutes;
-
+  private final boolean offsetCheckpointDuringSyncEnabled;
   /**
    * Boolean flag indicating if it is a Da Vinci application.
    */
@@ -616,6 +619,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final long blobTransferClientReadLimitBytesPerSec;
   private final long blobTransferServiceWriteLimitBytesPerSec;
   private final long blobTransferDisabledOffsetLagThreshold;
+  private final int blobTransferDisabledTimeLagThresholdInMinutes;
   private final int snapshotCleanupIntervalInMins;
   private final int dvcP2pBlobTransferServerPort;
   private final int dvcP2pBlobTransferClientPort;
@@ -623,6 +627,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final long daVinciCurrentVersionBootstrappingQuotaRecordsPerSecond;
   private final long daVinciCurrentVersionBootstrappingQuotaBytesPerSecond;
   private final boolean resubscriptionTriggeredByVersionIngestionContextChangeEnabled;
+  private final int resubscriptionCheckIntervalInSeconds;
   private final int defaultMaxRecordSizeBytes;
   private final int aaWCLeaderQuotaRecordsPerSecond;
   private final int sepRTLeaderQuotaRecordsPerSecond;
@@ -718,6 +723,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     snapshotCleanupIntervalInMins = serverProperties.getInt(BLOB_TRANSFER_SNAPSHOT_CLEANUP_INTERVAL_IN_MINS, 120);
     blobTransferDisabledOffsetLagThreshold =
         serverProperties.getLong(BLOB_TRANSFER_DISABLED_OFFSET_LAG_THRESHOLD, 100000L);
+    blobTransferDisabledTimeLagThresholdInMinutes =
+        serverProperties.getInt(BLOB_TRANSFER_DISABLED_TIME_LAG_THRESHOLD_IN_MINUTES, 0); // Default: Disabled.
+
     dvcP2pBlobTransferServerPort = serverProperties.getInt(DAVINCI_P2P_BLOB_TRANSFER_SERVER_PORT, -1);
     dvcP2pBlobTransferClientPort =
         serverProperties.getInt(DAVINCI_P2P_BLOB_TRANSFER_CLIENT_PORT, dvcP2pBlobTransferServerPort);
@@ -921,6 +929,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
         serverProperties.getInt(OFFSET_LAG_DELTA_RELAX_FACTOR_FOR_FAST_ONLINE_TRANSITION_IN_RESTART, 2);
     timeLagThresholdForFastOnlineTransitionInRestartMinutes =
         serverProperties.getInt(TIME_LAG_THRESHOLD_FOR_FAST_ONLINE_TRANSITION_IN_RESTART_MINUTES, -1);
+    offsetCheckpointDuringSyncEnabled = serverProperties.getBoolean(OFFSET_LAG_CHECKPOINT_DURING_SYNC_ENABLED, true);
 
     enableKafkaConsumerOffsetCollection =
         serverProperties.getBoolean(SERVER_KAFKA_CONSUMER_OFFSET_COLLECTION_ENABLED, true);
@@ -1051,6 +1060,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
         serverProperties.getSizeInBytes(DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_QUOTA_BYTES_PER_SECOND, -1);
     resubscriptionTriggeredByVersionIngestionContextChangeEnabled =
         serverProperties.getBoolean(SERVER_RESUBSCRIPTION_TRIGGERED_BY_VERSION_INGESTION_CONTEXT_CHANGE_ENABLED, false);
+    resubscriptionCheckIntervalInSeconds = serverProperties.getInt(SERVER_RESUBSCRIPTION_CHECK_INTERVAL_IN_SECONDS, 60);
     defaultMaxRecordSizeBytes =
         serverProperties.getInt(DEFAULT_MAX_RECORD_SIZE_BYTES, DEFAULT_MAX_RECORD_SIZE_BYTES_BACKFILL);
     if (defaultMaxRecordSizeBytes < BYTES_PER_MB) {
@@ -1234,6 +1244,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public long getBlobTransferDisabledOffsetLagThreshold() {
     return blobTransferDisabledOffsetLagThreshold;
+  }
+
+  public int getBlobTransferDisabledTimeLagThresholdInMinutes() {
+    return blobTransferDisabledTimeLagThresholdInMinutes;
   }
 
   public int getSnapshotCleanupIntervalInMins() {
@@ -1547,6 +1561,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public int getTimeLagThresholdForFastOnlineTransitionInRestartMinutes() {
     return timeLagThresholdForFastOnlineTransitionInRestartMinutes;
+  }
+
+  public boolean isOffsetCheckpointDuringSyncEnabled() {
+    return offsetCheckpointDuringSyncEnabled;
   }
 
   public boolean isKafkaConsumerOffsetCollectionEnabled() {
@@ -1879,6 +1897,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public boolean isResubscriptionTriggeredByVersionIngestionContextChangeEnabled() {
     return resubscriptionTriggeredByVersionIngestionContextChangeEnabled;
+  }
+
+  public int getResubscriptionCheckIntervalInSeconds() {
+    return resubscriptionCheckIntervalInSeconds;
   }
 
   public int getAaWCLeaderQuotaRecordsPerSecond() {

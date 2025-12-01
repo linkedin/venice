@@ -3,6 +3,7 @@ package com.linkedin.venice.controller.server;
 import static com.linkedin.venice.controller.server.VeniceRouteHandler.ACL_CHECK_FAILURE_WARN_MESSAGE_PREFIX;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.AUTO_STORE_MIGRATION_ABORT_ON_FAILURE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.AUTO_STORE_MIGRATION_CURRENT_STEP;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.AUTO_STORE_MIGRATION_PAUSE_AFTER_STEP;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER_DEST;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.FABRIC;
@@ -24,7 +25,6 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.STATUS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_CONFIG_NAME_FILTER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_CONFIG_VALUE_FILTER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_NAME;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_TYPE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TOPIC;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TOPIC_COMPACTION_POLICY;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VERSION;
@@ -34,7 +34,6 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.BACKUP_VERSION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.CLUSTER_HEALTH_STORES;
 import static com.linkedin.venice.controllerapi.ControllerRoute.COMPARE_STORE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.COMPLETE_MIGRATION;
-import static com.linkedin.venice.controllerapi.ControllerRoute.CONFIGURE_ACTIVE_ACTIVE_REPLICATION_FOR_CLUSTER;
 import static com.linkedin.venice.controllerapi.ControllerRoute.DELETE_ALL_VERSIONS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.DELETE_KAFKA_TOPIC;
 import static com.linkedin.venice.controllerapi.ControllerRoute.DELETE_STORE;
@@ -109,7 +108,6 @@ import com.linkedin.venice.meta.RegionPushDetails;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataAudit;
 import com.linkedin.venice.meta.StoreInfo;
-import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
@@ -560,7 +558,10 @@ public class StoresRoutes extends AbstractRoute {
   }
 
   /**
-   * @see Admin#autoMigrateStore(String, String, String, int, boolean)
+   * Automates the store migration process between source and destination clusters.
+   * Supports step-by-step execution with optional pause points and failure handling.
+   *
+   * @see Admin#autoMigrateStore(String, String, String, Optional, Optional, Optional)
    */
   public Route autoMigrateStore(Admin admin) {
     return new VeniceRouteHandler<StoreMigrationResponse>(StoreMigrationResponse.class) {
@@ -578,6 +579,8 @@ public class StoresRoutes extends AbstractRoute {
 
           Optional<Integer> currStep =
               Optional.ofNullable(request.queryParams(AUTO_STORE_MIGRATION_CURRENT_STEP)).map(Integer::parseInt);
+          Optional<Integer> pauseAfterStep =
+              Optional.ofNullable(request.queryParams(AUTO_STORE_MIGRATION_PAUSE_AFTER_STEP)).map(Integer::parseInt);
           Optional<Boolean> abortOnFailure =
               Optional.ofNullable(request.queryParams(AUTO_STORE_MIGRATION_ABORT_ON_FAILURE))
                   .map(Boolean::parseBoolean);
@@ -617,7 +620,7 @@ public class StoresRoutes extends AbstractRoute {
             storeMigrationResponse.setErrorType(ErrorType.BAD_REQUEST);
             return;
           }
-          admin.autoMigrateStore(srcClusterName, destClusterName, storeName, currStep, abortOnFailure);
+          admin.autoMigrateStore(srcClusterName, destClusterName, storeName, currStep, pauseAfterStep, abortOnFailure);
         } catch (Throwable e) {
           // Catch all exceptions and set the error in the response
           storeMigrationResponse.setError(e);
@@ -916,39 +919,6 @@ public class StoresRoutes extends AbstractRoute {
         veniceResponse.setCluster(request.queryParams(CLUSTER));
         veniceResponse.setName(request.queryParams(NAME));
         veniceResponse.setStorageEngineOverheadRatio(admin.getStorageEngineOverheadRatio(request.queryParams(CLUSTER)));
-      }
-    };
-  }
-
-  /**
-   * @see Admin#configureActiveActiveReplication(String, VeniceUserStoreType, Optional, boolean, Optional)
-   */
-  public Route enableActiveActiveReplicationForCluster(Admin admin) {
-    return new VeniceRouteHandler<ControllerResponse>(ControllerResponse.class) {
-      @Override
-      public void internalHandle(Request request, ControllerResponse veniceResponse) {
-        // Only allow allowlist users to run this command
-        if (!checkIsAllowListUser(request, veniceResponse, () -> isAllowListUser(request))) {
-          return;
-        }
-
-        AdminSparkServer.validateParams(request, CONFIGURE_ACTIVE_ACTIVE_REPLICATION_FOR_CLUSTER.getParams(), admin);
-
-        VeniceUserStoreType storeType = VeniceUserStoreType.valueOf(request.queryParams(STORE_TYPE).toUpperCase());
-
-        String cluster = request.queryParams(CLUSTER);
-        boolean enableActiveActiveReplicationForCluster =
-            Utils.parseBooleanOrThrow(request.queryParams(STATUS), STATUS);
-        String regionsFilterParams = request.queryParamOrDefault(REGIONS_FILTER, null);
-
-        admin.configureActiveActiveReplication(
-            cluster,
-            storeType,
-            Optional.empty(),
-            enableActiveActiveReplicationForCluster,
-            Optional.ofNullable(regionsFilterParams));
-
-        veniceResponse.setCluster(cluster);
       }
     };
   }

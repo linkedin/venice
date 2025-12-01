@@ -5,6 +5,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.ADMIN_OPE
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.AMPLIFICATION_FACTOR;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.AUTO_STORE_MIGRATION_ABORT_ON_FAILURE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.AUTO_STORE_MIGRATION_CURRENT_STEP;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.AUTO_STORE_MIGRATION_PAUSE_AFTER_STEP;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BATCH_JOB_HEARTBEAT_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER_DEST;
@@ -66,7 +67,6 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORAGE_N
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_CONFIG_NAME_FILTER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_CONFIG_VALUE_FILTER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_SIZE;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_TYPE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TARGETED_REGIONS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TARGET_REGION_PUSH_WITH_DEFERRED_SWAP;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TOPIC;
@@ -87,7 +87,6 @@ import com.linkedin.venice.exceptions.ErrorType;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.helix.VeniceJsonSerializer;
-import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
@@ -627,9 +626,11 @@ public class ControllerClient implements Closeable {
       String storeName,
       String destClusterName,
       Optional<Integer> currStep,
+      Optional<Integer> pauseAfterStep,
       Optional<Boolean> abortOnFailure) {
     QueryParams params = newParams().add(NAME, storeName).add(CLUSTER_DEST, destClusterName);
     currStep.ifPresent(cs -> params.add(AUTO_STORE_MIGRATION_CURRENT_STEP, cs));
+    pauseAfterStep.ifPresent(pas -> params.add(AUTO_STORE_MIGRATION_PAUSE_AFTER_STEP, pas));
     abortOnFailure.ifPresent(aof -> params.add(AUTO_STORE_MIGRATION_ABORT_ON_FAILURE, aof));
     params.add(AUTO_STORE_MIGRATION_ABORT_ON_FAILURE, abortOnFailure);
     return request(ControllerRoute.AUTO_MIGRATE_STORE, params, StoreMigrationResponse.class);
@@ -1206,17 +1207,6 @@ public class ControllerClient implements Closeable {
         DEFAULT_MAX_ATTEMPTS,
         null,
         null);
-  }
-
-  public ControllerResponse configureActiveActiveReplicationForCluster(
-      boolean enableActiveActiveReplication,
-      String storeType,
-      Optional<String> regionsFilter) {
-    // Verify the input storeType is valid
-    VeniceUserStoreType.valueOf(storeType.toUpperCase());
-    QueryParams params = newParams().add(STATUS, enableActiveActiveReplication).add(STORE_TYPE, storeType);
-    regionsFilter.ifPresent(f -> params.add(REGIONS_FILTER, f));
-    return request(ControllerRoute.CONFIGURE_ACTIVE_ACTIVE_REPLICATION_FOR_CLUSTER, params, ControllerResponse.class);
   }
 
   public ControllerResponse checkResourceCleanupForStoreCreation(String storeName) {

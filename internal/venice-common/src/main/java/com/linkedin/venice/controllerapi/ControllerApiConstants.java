@@ -12,6 +12,7 @@ public class ControllerApiConstants {
 
   public static final String AUTO_STORE_MIGRATION_CURRENT_STEP = "auto_store_migration_current_step";
   public static final String AUTO_STORE_MIGRATION_ABORT_ON_FAILURE = "auto_store_migration_abort_on_failure";
+  public static final String AUTO_STORE_MIGRATION_PAUSE_AFTER_STEP = "auto_store_migration_pause_after_step";
   /**
    * @deprecated Use {@link #STORE_NAME} instead.
    */

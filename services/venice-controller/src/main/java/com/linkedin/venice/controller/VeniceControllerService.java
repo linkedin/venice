@@ -97,6 +97,7 @@ public class VeniceControllerService extends AbstractVeniceService {
         d2Clients,
         sslConfig,
         accessController,
+        authorizerService,
         icProvider,
         pubSubTopicRepository,
         pubSubClientsFactory,

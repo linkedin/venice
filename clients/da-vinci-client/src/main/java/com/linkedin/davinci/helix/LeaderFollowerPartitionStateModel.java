@@ -12,7 +12,6 @@ import com.linkedin.venice.helix.HelixPartitionStatusAccessor;
 import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
-import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Utils;
 import java.util.concurrent.CompletableFuture;
@@ -71,7 +70,8 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
       CompletableFuture<HelixPartitionStatusAccessor> partitionPushStatusAccessorFuture,
       String instanceName,
       ParticipantStateTransitionStats stateTransitionStats,
-      HeartbeatMonitoringService heartbeatMonitoringService) {
+      HeartbeatMonitoringService heartbeatMonitoringService,
+      String resourceName) {
     super(
         ingestionBackend,
         metadataRepo,
@@ -79,7 +79,8 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
         partition,
         partitionPushStatusAccessorFuture,
         instanceName,
-        stateTransitionStats);
+        stateTransitionStats,
+        resourceName);
     this.notifier = notifier;
     this.stateTransitionStats = stateTransitionStats;
     this.heartbeatMonitoringService = heartbeatMonitoringService;
@@ -89,11 +90,8 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
   public void onBecomeStandbyFromOffline(Message message, NotificationContext context) {
     executeStateTransition(message, context, () -> {
       String resourceName = message.getResourceName();
-      String storeName = Version.parseStoreFromKafkaTopicName(resourceName);
-      int version = Version.parseVersionFromKafkaTopicName(resourceName);
-      Store store = getStoreRepo().getStoreOrThrow(storeName);
-      int currentVersion = store.getCurrentVersion();
-      boolean isCurrentVersion = currentVersion == version;
+      Store store = getStoreRepo().getStoreOrThrow(getStoreName());
+      boolean isCurrentVersion = store.getCurrentVersion() == getVersionNumber();
 
       // A future version is ready to serve if it's status is either PUSHED or ONLINE
       // PUSHED is set for future versions of a target region push with deferred swap
@@ -164,10 +162,7 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
     executeStateTransition(message, context, () -> {
       boolean isCurrentVersion = false;
       try {
-        String resourceName = message.getResourceName();
-        String storeName = Version.parseStoreFromKafkaTopicName(resourceName);
-        int version = Version.parseVersionFromKafkaTopicName(resourceName);
-        isCurrentVersion = getStoreRepo().getStoreOrThrow(storeName).getCurrentVersion() == version;
+        isCurrentVersion = getStoreRepo().getStoreOrThrow(getStoreName()).getCurrentVersion() == getVersionNumber();
       } catch (VeniceNoStoreException e) {
         logger.warn(
             "Failed to determine if the resource is current version. Replica: {}",
