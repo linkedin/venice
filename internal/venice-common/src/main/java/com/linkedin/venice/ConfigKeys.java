@@ -3058,11 +3058,12 @@ public class ConfigKeys {
   public static final String MAX_WAIT_TIME_FOR_CONCURRENTLY_DELETING_STORE_VERSIONS_IN_MS =
       "max_wait_time_for_concurrently_deleting_store_versions_in_ms";
 
+  /**
    * Number of consecutive cycles to wait before removing a replica that does not have a corresponding entry in local
    * customized view cache before removing it from lag monitor. e.g. if this config is set to 10, and we are using the
    * default sleep interval of 60 seconds then we will only remove the replica from lag monitor after at least 600
    * seconds without having any corresponding entry in customized view.
-   */
+  */
   public static final String SERVER_LAG_MONITOR_CLEANUP_CYCLE = "server.lag.monitor.cleanup.cycle";
 
   /**
