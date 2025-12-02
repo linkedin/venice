@@ -457,11 +457,6 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
      * order to do that, we remove the entry before inserting it.
      */
     for (PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate> message: messages) {
-      if (message.getKey() == null) {
-        // Ignore null keys during compaction
-        tempPubSubMessages.add(message);
-        continue;
-      }
       tempMap.remove(message.getKey());
       tempMap.put(message.getKey(), message);
     }
