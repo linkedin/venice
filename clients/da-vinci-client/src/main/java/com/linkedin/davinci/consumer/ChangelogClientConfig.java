@@ -1,5 +1,7 @@
 package com.linkedin.davinci.consumer;
 
+import static java.util.concurrent.TimeUnit.MINUTES;
+
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
@@ -96,7 +98,7 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
    * Version swap timeout in milliseconds. If the version swap is not completed within this time, the consumer will swap
    * to the new version and resume normal consumption from EOP for any incomplete partitions. Default is 30 minutes.
    */
-  private long versionSwapTimeoutInMs = 30 * 60 * 1000;
+  private long versionSwapTimeoutInMs = MINUTES.toMillis(30);
 
   public ChangelogClientConfig(String storeName) {
     this.innerClientConfig = new ClientConfig<>(storeName);
