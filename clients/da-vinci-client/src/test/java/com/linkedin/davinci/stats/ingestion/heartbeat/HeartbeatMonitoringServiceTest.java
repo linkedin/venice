@@ -654,6 +654,7 @@ public class HeartbeatMonitoringServiceTest {
     doReturn(Duration.ofSeconds(5)).when(serverConfig).getServerMaxWaitForVersionInfo();
     doReturn(hostname).when(serverConfig).getListenerHostname();
     doReturn(port).when(serverConfig).getListenerPort();
+    doReturn(5).when(serverConfig).getLagMonitorCleanupCycle();
     String backupVersionTopic = Version.composeKafkaTopic(mockStore.getName(), 1);
     String currentVersionTopic = Version.composeKafkaTopic(mockStore.getName(), 2);
 
@@ -739,5 +740,33 @@ public class HeartbeatMonitoringServiceTest {
         .getPartitionAssignments(anyString());
     heartbeatMonitoringService.checkAndMaybeCleanupLagMonitor();
     Assert.assertEquals(heartbeatMonitoringService.getCleanupHeartbeatMap().size(), 5);
+
+    // Verify lagMonitorCleanupCycle is configurable
+    doReturn(100).when(serverConfig).getLagMonitorCleanupCycle();
+    HeartbeatMonitoringService newHeartbeatMonitoringService = new HeartbeatMonitoringService(
+        mockMetricsRepository,
+        mockReadOnlyRepository,
+        serverConfig,
+        null,
+        mockCVRepositoryFuture);
+    // Initialize the new lag monitor for leader of p0 and follower of p1 and p2 for v1
+    newHeartbeatMonitoringService.updateLagMonitor(backupVersionTopic, 0, HeartbeatLagMonitorAction.SET_LEADER_MONITOR);
+    newHeartbeatMonitoringService
+        .updateLagMonitor(backupVersionTopic, 1, HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR);
+    newHeartbeatMonitoringService
+        .updateLagMonitor(backupVersionTopic, 2, HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR);
+    for (int i = 0; i < 50; i++) {
+      newHeartbeatMonitoringService.checkAndMaybeCleanupLagMonitor();
+    }
+    // All 3 replicas of V1 should be marked for cleanup and since we configured the cycle to be 100, it shouldn't be
+    // cleaned up yet after 50 cycles yet
+    Assert.assertEquals(newHeartbeatMonitoringService.getCleanupHeartbeatMap().size(), 3);
+    for (int i = 0; i < 3; i++) {
+      Assert.assertEquals(
+          newHeartbeatMonitoringService.getCleanupHeartbeatMap()
+              .get(Utils.getReplicaId(backupVersionTopic, i))
+              .intValue(),
+          50);
+    }
   }
 }
