@@ -176,10 +176,51 @@ public class VersionSpecificVeniceChangelogConsumerDaVinciRecordTransformerImplT
     verifyDeletes();
   }
 
+  @Test
+  public void testCompactionWithControlMessages() {
+    int targetPartitionId = 0;
+    versionSpecificVeniceChangelogConsumer.start();
+
+    recordTransformer.onStartVersionIngestion(targetPartitionId, true);
+
+    ControlMessage controlMessage = new ControlMessage();
+    controlMessage.setControlMessageType(ControlMessageType.END_OF_PUSH.getValue());
+    // Messages: put(0, value), put(1, value), control(0), put(2, value), control(1), put(1, value+1), put(0, value+2)
+    recordTransformer.processPut(keys.get(0), Lazy.of(() -> value), targetPartitionId, recordMetadata);
+    recordTransformer.processPut(keys.get(1), Lazy.of(() -> value), targetPartitionId, recordMetadata);
+    recordTransformer.onControlMessage(targetPartitionId, recordMetadata.getPubSubPosition(), controlMessage);
+    recordTransformer.processPut(keys.get(2), Lazy.of(() -> value), targetPartitionId, recordMetadata);
+    recordTransformer.onControlMessage(targetPartitionId, recordMetadata.getPubSubPosition(), controlMessage);
+    recordTransformer.processPut(keys.get(1), Lazy.of(() -> value + 1), targetPartitionId, recordMetadata);
+    recordTransformer.processPut(keys.get(0), Lazy.of(() -> value + 2), targetPartitionId, recordMetadata);
+
+    clearInvocations(changeCaptureStats);
+    Collection<PubSubMessage<Integer, ChangeEvent<Integer>, VeniceChangeCoordinate>> pubSubMessages =
+        versionSpecificVeniceChangelogConsumer.poll(POLL_TIMEOUT);
+
+    verify(changeCaptureStats).emitRecordsConsumedCountMetrics(7);
+    verify(changeCaptureStats).emitPollCountMetrics(VeniceResponseStatusCategory.SUCCESS);
+    assertEquals(pubSubMessages.size(), 5); // 5 messages expected after compaction
+
+    // Verify the messages
+    ArrayList<PubSubMessage<Integer, ChangeEvent<Integer>, VeniceChangeCoordinate>> messageList =
+        new ArrayList<>(pubSubMessages);
+
+    // Output: control(0), put(2, value), control(1), put(1, value+1), put(0, value+2)
+    assertNull(messageList.get(0).getKey()); // control(0)
+    assertEquals((int) messageList.get(1).getKey(), 2); // put(2, value)
+    assertEquals((int) messageList.get(1).getValue().getCurrentValue(), value);
+    assertNull(messageList.get(2).getKey()); // control(1)
+    assertEquals((int) messageList.get(3).getKey(), 1); // put(1, value+1)
+    assertEquals((int) messageList.get(3).getValue().getCurrentValue(), value + 1);
+    assertEquals((int) messageList.get(4).getKey(), 0); // put(0, value+2)
+    assertEquals((int) messageList.get(4).getValue().getCurrentValue(), value + 2);
+  }
+
   private void verifyPuts() {
     clearInvocations(changeCaptureStats);
     Collection<PubSubMessage<Integer, ChangeEvent<Integer>, VeniceChangeCoordinate>> pubSubMessages =
-        versionSpecificVeniceChangelogConsumer.poll(POLL_TIMEOUT * 2);
+        versionSpecificVeniceChangelogConsumer.poll(POLL_TIMEOUT);
 
     verify(changeCaptureStats).emitRecordsConsumedCountMetrics(PARTITION_COUNT * 2);
     verify(changeCaptureStats).emitPollCountMetrics(VeniceResponseStatusCategory.SUCCESS);

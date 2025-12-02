@@ -40,6 +40,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedList;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ArrayBlockingQueue;
@@ -413,25 +414,11 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
       int messagesPolled = drainedPubSubMessages.size();
 
       if (changelogClientConfig.shouldCompactMessages()) {
-        Collection<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> tempPubSubMessages = new ArrayList<>();
-        Map<K, PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> tempMap = new LinkedHashMap<>();
-        /*
-         * The behavior of LinkedHashMap is such that it maintains the order of insertion, but for values which are
-         * replaced, it's put in at the position of the first insertion. This isn't quite what we want, we want to keep
-         * only a single key (just as a map would), but we want to keep the position of the last insertion as well. So in
-         * order to do that, we remove the entry before inserting it.
-         */
-        for (PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate> message: drainedPubSubMessages) {
-          if (message.getKey() == null) {
-            // Ignore null keys during compaction
-            tempPubSubMessages.add(message);
-            continue;
-          }
-          tempMap.remove(message.getKey());
-          tempMap.put(message.getKey(), message);
+        if (includeControlMessages) {
+          drainedPubSubMessages = compactPubSubMessagesWithControlMessage(drainedPubSubMessages);
+        } else {
+          drainedPubSubMessages = compactPubSubMessages(drainedPubSubMessages);
         }
-        tempPubSubMessages.addAll(tempMap.values());
-        drainedPubSubMessages = tempPubSubMessages;
       }
 
       if (changeCaptureStats != null) {
@@ -453,6 +440,59 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   @Override
   public boolean isCaughtUp() {
     return isCaughtUp.get();
+  }
+
+  /**
+   * Compacts the given collection of PubSubMessages by retaining only the latest message for each unique key.
+   * This method assumes that there is no control message (with key=null and value=null) in the input collection.
+   */
+  private Collection<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> compactPubSubMessages(
+      Collection<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> messages) {
+    Collection<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> tempPubSubMessages = new ArrayList<>();
+    Map<K, PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> tempMap = new LinkedHashMap<>();
+    /*
+     * The behavior of LinkedHashMap is such that it maintains the order of insertion, but for values which are
+     * replaced, it's put in at the position of the first insertion. This isn't quite what we want, we want to keep
+     * only a single key (just as a map would), but we want to keep the position of the last insertion as well. So in
+     * order to do that, we remove the entry before inserting it.
+     */
+    for (PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate> message: messages) {
+      if (message.getKey() == null) {
+        // Ignore null keys during compaction
+        tempPubSubMessages.add(message);
+        continue;
+      }
+      tempMap.remove(message.getKey());
+      tempMap.put(message.getKey(), message);
+    }
+    tempPubSubMessages.addAll(tempMap.values());
+    return tempPubSubMessages;
+  }
+
+  /**
+   * Compacts the given collection of PubSubMessages by retaining only the latest message for each unique key,
+   * while preserving control messages (with key=null and value=null).
+   * This method will use more memory compared to compactPubSubMessages since it needs to track seen keys and reverse
+   * the order of messages.
+   */
+  private Collection<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> compactPubSubMessagesWithControlMessage(
+      Collection<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> messages) {
+    Set<K> seenKeys = new HashSet<>();
+    LinkedList<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> compactedMessageList = new LinkedList<>();
+    // Iterate in reverse order to keep the latest message for each key
+    ArrayList<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> messageList = new ArrayList<>(messages);
+    for (int i = messageList.size() - 1; i >= 0; i--) {
+      PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate> message = messageList.get(i);
+      K key = message.getKey();
+      if (key == null || !seenKeys.contains(key)) {
+        compactedMessageList.addFirst(message);
+        if (key != null) {
+          seenKeys.add(key);
+        }
+      }
+    }
+
+    return compactedMessageList;
   }
 
   private VeniceProperties buildVeniceConfig() {
