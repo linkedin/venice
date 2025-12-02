@@ -4169,6 +4169,18 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     deleteOneStoreVersion(clusterName, storeName, versionNumber, false);
   }
 
+  /**
+   * Check if we should skip truncating topic. If it's parent fabrics and the topic write is NOT needed, return true;
+   * Otherwise, return false.
+   * @param clusterName the cluster name to check
+   * @return true if topic truncation should be skipped, false otherwise
+   */
+  public boolean shouldSkipTruncatingTopic(String clusterName) {
+    return isParent() && !getMultiClusterConfigs().getControllerConfig(clusterName)
+        .getConcurrentPushDetectionStrategy()
+        .isTopicWriteNeeded();
+  }
+
   private void deleteOneStoreVersion(String clusterName, String storeName, int versionNumber, boolean isForcedDelete) {
     HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
     try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
@@ -4202,10 +4214,14 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         if (!store.isMigrating()) {
           // Not using deletedVersion.get().kafkaTopicName() because it's incorrect for Zk shared stores.
           String versionTopicName = Version.composeKafkaTopic(storeName, deletedVersion.get().getNumber());
-          if (fatalDataValidationFailureRetentionMs != -1 && hasFatalDataValidationError) {
-            truncateKafkaTopic(versionTopicName, fatalDataValidationFailureRetentionMs);
-          } else {
-            truncateKafkaTopic(versionTopicName);
+
+          // skip truncating topic if it's parent controller and topic write is not needed
+          if (!shouldSkipTruncatingTopic(clusterName)) {
+            if (fatalDataValidationFailureRetentionMs != -1 && hasFatalDataValidationError) {
+              truncateKafkaTopic(versionTopicName, fatalDataValidationFailureRetentionMs);
+            } else {
+              truncateKafkaTopic(versionTopicName);
+            }
           }
 
           if (deletedVersion.get().getPushType().isStreamReprocessing()) {
