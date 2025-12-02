@@ -448,7 +448,6 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
    */
   private Collection<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> compactPubSubMessages(
       Collection<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> messages) {
-    Collection<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> tempPubSubMessages = new ArrayList<>();
     Map<K, PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> tempMap = new LinkedHashMap<>();
     /*
      * The behavior of LinkedHashMap is such that it maintains the order of insertion, but for values which are
@@ -460,15 +459,13 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
       tempMap.remove(message.getKey());
       tempMap.put(message.getKey(), message);
     }
-    tempPubSubMessages.addAll(tempMap.values());
-    return tempPubSubMessages;
+    return tempMap.values();
   }
 
   /**
    * Compacts the given collection of PubSubMessages by retaining only the latest message for each unique key,
    * while preserving control messages (with key=null and value=null).
-   * This method will use more memory compared to compactPubSubMessages since it needs to track seen keys and reverse
-   * the order of messages.
+   * This method will use more memory compared to compactPubSubMessages since it duplicates the input collection.
    */
   private Collection<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> compactPubSubMessagesWithControlMessage(
       Collection<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> messages) {
@@ -486,7 +483,6 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
         }
       }
     }
-
     return compactedMessageList;
   }
 
