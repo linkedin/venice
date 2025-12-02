@@ -279,11 +279,14 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
+import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Consumer;
@@ -489,6 +492,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   private final Map<String, DeadStoreStats> deadStoreStatsMap = new VeniceConcurrentHashMap<>();
   private final Map<String, LogCompactionStats> logCompactionStatsMap = new VeniceConcurrentHashMap<>();
 
+  private final Map<String, ExecutorService> executorServiceMap;
+
   // Test only.
   public VeniceHelixAdmin(
       VeniceControllerMultiClusterConfig multiClusterConfigs,
@@ -551,6 +556,34 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     this.d2Clients = d2Clients;
     this.pubSubTopicRepository = pubSubTopicRepository;
     this.sslEnabled = sslEnabled;
+
+    // only create the executor service when concurrent deletion is enabled for the cluster
+    this.executorServiceMap = new HashMap<>();
+    for (String clusterName: multiClusterConfigs.getClusters()) {
+      if (multiClusterConfigs.getControllerConfig(clusterName).isEnableConcurrentlyDeletingStoreVersions()) {
+        int workerThreadSize = multiClusterConfigs.getControllerConfig(clusterName)
+            .getWorkerThreadSizeForConcurrentlyDeletingStoreVersions();
+        if (workerThreadSize <= 0) {
+          // by default, if worker thread size is not configured properly, will skip creating the executor service
+          LOGGER.warn(
+              "The worker thread pool size for concurrently deleting store versions is set to a non-positive number: {}. Thread pool will not be created",
+              multiClusterConfigs.getControllerConfig(clusterName)
+                  .getWorkerThreadSizeForConcurrentlyDeletingStoreVersions());
+        } else {
+          this.executorServiceMap.put(
+              clusterName,
+              new ThreadPoolExecutor(
+                  workerThreadSize,
+                  workerThreadSize,
+                  60,
+                  TimeUnit.SECONDS,
+                  new LinkedBlockingQueue<>(1000),
+                  new DaemonThreadFactory(
+                      String.format("Venice-Admin-Delete-Version-Task-%s", clusterName),
+                      getLogContext())));
+        }
+      }
+    }
 
     if (sslEnabled) {
       try {
@@ -4116,9 +4149,39 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       repository.updateStore(store);
       List<Version> deletingVersionSnapshot = new ArrayList<>(store.getVersions());
 
-      for (Version version: deletingVersionSnapshot) {
-        deleteOneStoreVersion(clusterName, version.getStoreName(), version.getNumber());
+      ExecutorService executorService = executorServiceMap.get(clusterName);
+      if (executorService != null) {
+        // delete all versions in parallel
+        List<Callable<Void>> tasks = new ArrayList<>();
+        for (Version version: deletingVersionSnapshot) {
+          tasks.add(() -> {
+            deleteOneStoreVersion(clusterName, version.getStoreName(), version.getNumber());
+            return null;
+          });
+        }
+        try {
+          List<Future<Void>> futures = executorService.invokeAll(
+              tasks,
+              getMultiClusterConfigs().getControllerConfig(clusterName)
+                  .getMaxWaitTimeForConcurrentlyDeletingStoreVersionsInMs(),
+              TimeUnit.MILLISECONDS);
+          for (Future<Void> future: futures) {
+            future.get();
+          }
+        } catch (InterruptedException | ExecutionException e) {
+          LOGGER.error(
+              "Concurrently store deletion: Failed to delete all versions in store: {} in cluster: {}",
+              storeName,
+              clusterName,
+              e);
+        }
+      } else {
+        // delete all versions sequentially
+        for (Version version: deletingVersionSnapshot) {
+          deleteOneStoreVersion(clusterName, version.getStoreName(), version.getNumber());
+        }
       }
+
       LOGGER.info("Deleted all versions in store: {} in cluster: {}", storeName, clusterName);
       return deletingVersionSnapshot;
     }
@@ -7090,6 +7153,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       zkClient.close();
       admin.close();
       helixAdminClient.close();
+      for (String cluster: multiClusterConfigs.getClusters()) {
+        ExecutorService executorService = executorServiceMap.get(cluster);
+        if (executorService != null) {
+          executorService.shutdownNow();
+        }
+      }
     } catch (Exception e) {
       throw new VeniceException("Can not stop controller correctly.", e);
     }
@@ -8576,6 +8645,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
       long elapsedTime = System.currentTimeMillis() - closeStartTime;
       long remainingTime = Math.max(1, HELIX_MANAGER_DISCONNECT_TIMEOUT_MS - elapsedTime);
+      for (String cluster: multiClusterConfigs.getClusters()) {
+        ExecutorService executorService = executorServiceMap.get(cluster);
+        if (executorService != null) {
+          executorService.shutdownNow();
+        }
+      }
       helixManagerDisconnectFuture.get(remainingTime, TimeUnit.MILLISECONDS);
     } catch (InterruptedException | ExecutionException | TimeoutException e) {
       LOGGER.error("Timed out waiting for helixManagerDisconnectFuture. Swallowing and moving on.", e);

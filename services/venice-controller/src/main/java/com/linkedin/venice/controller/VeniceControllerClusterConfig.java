@@ -675,6 +675,10 @@ public class VeniceControllerClusterConfig {
 
   private final boolean isSkipHybridStoreRTTopicCompactionPolicyUpdateEnabled;
 
+  private final boolean enableConcurrentlyDeletingStoreVersions;
+  private final int workerThreadSizeForConcurrentlyDeletingStoreVersions;
+  private final long maxWaitTimeForConcurrentlyDeletingStoreVersionsInMs;
+
   public VeniceControllerClusterConfig(VeniceProperties props) {
     this.props = props;
     this.clusterName = props.getString(CLUSTER_NAME);
@@ -1272,6 +1276,13 @@ public class VeniceControllerClusterConfig {
         props.getBoolean(CONTROLLER_BACKUP_VERSION_REPLICA_REDUCTION_ENABLED, false);
     this.useMultiRegionRealTimeTopicSwitcher =
         props.getBoolean(ConfigKeys.CONTROLLER_USE_MULTI_REGION_REAL_TIME_TOPIC_SWITCHER_ENABLED, false);
+
+    this.enableConcurrentlyDeletingStoreVersions =
+        props.getBoolean(ConfigKeys.ENABLE_CONCURRENTLY_DELETING_STORE_VERSIONS, false);
+    this.workerThreadSizeForConcurrentlyDeletingStoreVersions =
+        props.getInt(ConfigKeys.WORKER_THREAD_SIZE_FOR_CONCURRENTLY_DELETING_STORE_VERSIONS, -1);
+    this.maxWaitTimeForConcurrentlyDeletingStoreVersionsInMs =
+        props.getLong(ConfigKeys.MAX_WAIT_TIME_FOR_CONCURRENTLY_DELETING_STORE_VERSIONS_IN_MS, 120000);
 
     this.logClusterConfig();
   }
@@ -2405,6 +2416,18 @@ public class VeniceControllerClusterConfig {
       throw new ConfigurationException(
           CONTROLLER_HELIX_INSTANCE_CAPACITY + " cannot be <  " + CONTROLLER_HELIX_RESOURCE_CAPACITY_WEIGHT);
     }
+  }
+
+  public boolean isEnableConcurrentlyDeletingStoreVersions() {
+    return enableConcurrentlyDeletingStoreVersions;
+  }
+
+  public int getWorkerThreadSizeForConcurrentlyDeletingStoreVersions() {
+    return workerThreadSizeForConcurrentlyDeletingStoreVersions;
+  }
+
+  public long getMaxWaitTimeForConcurrentlyDeletingStoreVersionsInMs() {
+    return maxWaitTimeForConcurrentlyDeletingStoreVersionsInMs;
   }
 
   public LogContext getLogContext() {
