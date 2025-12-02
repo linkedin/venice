@@ -4,6 +4,7 @@ import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_HEARTBEAT_INTERVAL_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_STOP_CONSUMPTION_TIMEOUT_IN_SECONDS;
 
+import com.linkedin.davinci.client.DaVinciSeekCheckpointInfo;
 import com.linkedin.davinci.client.InternalDaVinciRecordTransformerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.listener.response.NoOpReadResponseStats;
@@ -214,7 +215,7 @@ public class VersionBackend {
   protected static void sendOutHeartbeat(DaVinciBackend backend, Version version) {
     if (backend.hasCurrentVersionBootstrapping()) {
       LOGGER.info(
-          "DaVinci still is still bootstrapping, so it will send heart-beat message with a special timestamp"
+          "DaVinci is still bootstrapping, so it will send heart-beat message with a special timestamp"
               + " for store: {} to avoid delaying the new push job",
           version.getStoreName());
       /**
@@ -365,23 +366,8 @@ public class VersionBackend {
 
   synchronized CompletableFuture<Void> subscribe(
       ComplementSet<Integer> partitions,
-      Map<Integer, Long> timestamps,
-      Long allPartitionTimestamp,
-      Map<Integer, PubSubPosition> positionMap) {
+      DaVinciSeekCheckpointInfo checkpointInfo) {
     Instant startTime = Instant.now();
-    int validCheckPointCount = 0;
-    if (!timestamps.isEmpty()) {
-      validCheckPointCount++;
-    }
-    if (!positionMap.isEmpty()) {
-      validCheckPointCount++;
-    }
-    if (allPartitionTimestamp != null) {
-      validCheckPointCount++;
-    }
-    if (validCheckPointCount > 1) {
-      throw new VeniceException("Multiple checkpoint types are not supported");
-    }
     List<Integer> partitionList = getPartitions(partitions);
     if (partitionList.isEmpty()) {
       LOGGER.error("No partitions to subscribe to for {}", this);
@@ -407,9 +393,6 @@ public class VersionBackend {
       } else {
         partitionFutures.computeIfAbsent(partition, k -> new CompletableFuture<>());
         partitionsToStartConsumption.add(partition);
-        if (allPartitionTimestamp != null) {
-          timestamps.put(partition, allPartitionTimestamp);
-        }
       }
       partitionToBatchReportEOIPEnabled.put(partition, batchReportEOIPStatusEnabled);
       futures.add(partitionFutures.get(partition));
@@ -425,8 +408,14 @@ public class VersionBackend {
       backend.getHeartbeatMonitoringService()
           .updateLagMonitor(version.kafkaTopicName(), partition, HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR);
       // AtomicReference of storage engine will be updated internally.
-      Optional<PubSubPosition> pubSubPosition = backend.getIngestionService()
-          .getPubSubPosition(config, partition, timestamps.get(partition), positionMap.get(partition));
+      Optional<PubSubPosition> pubSubPosition = checkpointInfo == null
+          ? Optional.empty()
+          : backend.getIngestionService()
+              .getPubSubPosition(
+                  config,
+                  partition,
+                  checkpointInfo.getTimestampsMap(),
+                  checkpointInfo.getPostitionMap());
       backend.getIngestionBackend().startConsumption(config, partition, pubSubPosition);
       tryStartHeartbeat();
     }
@@ -573,7 +562,7 @@ public class VersionBackend {
     return partitionToPendingReportIncrementalPushList;
   }
 
-  private List<Integer> getPartitions(ComplementSet<Integer> partitions) {
+  public List<Integer> getPartitions(ComplementSet<Integer> partitions) {
     return IntStream.range(0, version.getPartitionCount())
         .filter(partitions::contains)
         .boxed()

@@ -22,6 +22,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.linkedin.davinci.config.VeniceServerConfig;
+import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType;
 import com.linkedin.davinci.kafka.consumer.PartitionConsumptionState;
 import com.linkedin.venice.exceptions.VeniceNoHelixResourceException;
@@ -42,6 +43,7 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
 import java.time.Duration;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
@@ -654,6 +656,7 @@ public class HeartbeatMonitoringServiceTest {
     doReturn(Duration.ofSeconds(5)).when(serverConfig).getServerMaxWaitForVersionInfo();
     doReturn(hostname).when(serverConfig).getListenerHostname();
     doReturn(port).when(serverConfig).getListenerPort();
+    doReturn(5).when(serverConfig).getLagMonitorCleanupCycle();
     String backupVersionTopic = Version.composeKafkaTopic(mockStore.getName(), 1);
     String currentVersionTopic = Version.composeKafkaTopic(mockStore.getName(), 2);
 
@@ -739,6 +742,34 @@ public class HeartbeatMonitoringServiceTest {
         .getPartitionAssignments(anyString());
     heartbeatMonitoringService.checkAndMaybeCleanupLagMonitor();
     Assert.assertEquals(heartbeatMonitoringService.getCleanupHeartbeatMap().size(), 5);
+
+    // Verify lagMonitorCleanupCycle is configurable
+    doReturn(100).when(serverConfig).getLagMonitorCleanupCycle();
+    HeartbeatMonitoringService newHeartbeatMonitoringService = new HeartbeatMonitoringService(
+        mockMetricsRepository,
+        mockReadOnlyRepository,
+        serverConfig,
+        null,
+        mockCVRepositoryFuture);
+    // Initialize the new lag monitor for leader of p0 and follower of p1 and p2 for v1
+    newHeartbeatMonitoringService.updateLagMonitor(backupVersionTopic, 0, HeartbeatLagMonitorAction.SET_LEADER_MONITOR);
+    newHeartbeatMonitoringService
+        .updateLagMonitor(backupVersionTopic, 1, HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR);
+    newHeartbeatMonitoringService
+        .updateLagMonitor(backupVersionTopic, 2, HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR);
+    for (int i = 0; i < 50; i++) {
+      newHeartbeatMonitoringService.checkAndMaybeCleanupLagMonitor();
+    }
+    // All 3 replicas of V1 should be marked for cleanup and since we configured the cycle to be 100, it shouldn't be
+    // cleaned up yet after 50 cycles yet
+    Assert.assertEquals(newHeartbeatMonitoringService.getCleanupHeartbeatMap().size(), 3);
+    for (int i = 0; i < 3; i++) {
+      Assert.assertEquals(
+          newHeartbeatMonitoringService.getCleanupHeartbeatMap()
+              .get(Utils.getReplicaId(backupVersionTopic, i))
+              .intValue(),
+          50);
+    }
   }
 
   @Test
@@ -782,5 +813,44 @@ public class HeartbeatMonitoringServiceTest {
     aggregatedHeartbeatLagEntry = heartbeatMonitoringService.getMaxHeartbeatLag(currentTimestamp, heartbeatTimestamps);
     Assert.assertEquals(aggregatedHeartbeatLagEntry.getCurrentVersionHeartbeatLag(), 8000L);
     Assert.assertEquals(aggregatedHeartbeatLagEntry.getNonCurrentVersionHeartbeatLag(), 9900L);
+  }
+
+  @Test
+  public void testTriggerAutoResubscribe() {
+    String store = "foo";
+    int version = 100;
+    int partition = 123;
+    String region = "dc1";
+    Map<String, Map<Integer, Map<Integer, Map<String, HeartbeatTimeStampEntry>>>> heartbeatTimestamps = new HashMap<>();
+    HeartbeatTimeStampEntry entry =
+        new HeartbeatTimeStampEntry(System.currentTimeMillis() - TimeUnit.MINUTES.toMillis(15), true, true);
+    heartbeatTimestamps.put(store, new HashMap<>());
+    heartbeatTimestamps.get(store).put(version, new HashMap<>());
+    heartbeatTimestamps.get(store).get(version).put(partition, new HashMap<>());
+    heartbeatTimestamps.get(store).get(version).get(partition).put(region, entry);
+
+    HeartbeatMonitoringService heartbeatMonitoringService = mock(HeartbeatMonitoringService.class);
+    KafkaStoreIngestionService kafkaStoreIngestionService = mock(KafkaStoreIngestionService.class);
+    VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
+    doReturn(serverConfig).when(heartbeatMonitoringService).getServerConfig();
+    doReturn(kafkaStoreIngestionService).when(heartbeatMonitoringService).getKafkaStoreIngestionService();
+    doCallRealMethod().when(heartbeatMonitoringService).checkAndMaybeLogHeartbeatDelayMap(anyMap());
+
+    // Config not enabled, nothing happen
+    heartbeatMonitoringService.checkAndMaybeLogHeartbeatDelayMap(heartbeatTimestamps);
+    verify(kafkaStoreIngestionService, never()).maybeAddResubscribeRequest(eq(store), eq(version), eq(partition));
+
+    // Config enabled, trigger resubscribe.
+    doReturn(true).when(serverConfig).isLagBasedReplicaAutoResubscribeEnabled();
+    doReturn(600).when(serverConfig).getLagBasedReplicaAutoResubscribeThresholdInSeconds();
+    heartbeatMonitoringService.checkAndMaybeLogHeartbeatDelayMap(heartbeatTimestamps);
+    verify(kafkaStoreIngestionService, times(1)).maybeAddResubscribeRequest(eq(store), eq(version), eq(partition));
+
+    // Config enabled, does not trigger resubscribe for sep region.
+    heartbeatTimestamps.get(store).get(version).get(partition).remove(region);
+    region = "dc1_sep";
+    heartbeatTimestamps.get(store).get(version).get(partition).put(region, entry);
+    heartbeatMonitoringService.checkAndMaybeLogHeartbeatDelayMap(heartbeatTimestamps);
+    verify(kafkaStoreIngestionService, times(1)).maybeAddResubscribeRequest(eq(store), eq(version), eq(partition));
   }
 }

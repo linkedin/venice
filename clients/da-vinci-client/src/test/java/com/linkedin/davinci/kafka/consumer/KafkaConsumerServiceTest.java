@@ -20,8 +20,10 @@ import com.linkedin.davinci.utils.IndexedHashMap;
 import com.linkedin.davinci.utils.IndexedMap;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterContext;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
+import com.linkedin.venice.pubsub.PubSubContext;
 import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
@@ -159,9 +161,15 @@ public class KafkaConsumerServiceTest {
       MetricsRepository mockMetricsRepository,
       ConsumerPoolType poolType,
       IngestionThrottler mockIngestionThrottler) {
+    PubSubClientsFactory mockPubSubClientsFactory = mock(PubSubClientsFactory.class);
+    doReturn(factory).when(mockPubSubClientsFactory).getConsumerAdapterFactory();
+
+    PubSubContext mockPubSubContext = mock(PubSubContext.class);
+    doReturn(pubSubDeserializer).when(mockPubSubContext).getPubSubMessageDeserializer();
+    doReturn(mockPubSubClientsFactory).when(mockPubSubContext).getPubSubClientsFactory();
+
     KafkaConsumerService consumerService = new KafkaConsumerService(
         poolType,
-        factory,
         properties,
         1000L,
         1,
@@ -172,13 +180,13 @@ public class KafkaConsumerServiceTest {
         TimeUnit.MINUTES.toMillis(1),
         mock(StaleTopicChecker.class),
         false,
-        pubSubDeserializer,
         SystemTime.INSTANCE,
         null,
         false,
         mock(ReadOnlyStoreRepository.class),
         false,
-        mockVeniceServerConfig) {
+        mockVeniceServerConfig,
+        mockPubSubContext) {
       @Override
       protected SharedKafkaConsumer pickConsumerForPartition(
           PubSubTopic versionTopic,
@@ -221,9 +229,16 @@ public class KafkaConsumerServiceTest {
     MetricsRepository mockMetricsRepository = mock(MetricsRepository.class);
     final Sensor mockSensor = mock(Sensor.class);
     doReturn(mockSensor).when(mockMetricsRepository).sensor(anyString(), any());
+
+    PubSubClientsFactory mockPubSubClientsFactory = mock(PubSubClientsFactory.class);
+    doReturn(factory).when(mockPubSubClientsFactory).getConsumerAdapterFactory();
+
+    PubSubContext mockPubSubContext = mock(PubSubContext.class);
+    doReturn(pubSubDeserializer).when(mockPubSubContext).getPubSubMessageDeserializer();
+    doReturn(mockPubSubClientsFactory).when(mockPubSubContext).getPubSubClientsFactory();
+
     PartitionWiseKafkaConsumerService consumerService = new PartitionWiseKafkaConsumerService(
         ConsumerPoolType.REGULAR_POOL,
-        factory,
         properties,
         1000L,
         2,
@@ -234,13 +249,13 @@ public class KafkaConsumerServiceTest {
         TimeUnit.MINUTES.toMillis(1),
         mock(StaleTopicChecker.class),
         false,
-        pubSubDeserializer,
         SystemTime.INSTANCE,
         null,
         false,
         mock(ReadOnlyStoreRepository.class),
         false,
-        mockVeniceServerConfig);
+        mockVeniceServerConfig,
+        mockPubSubContext);
     consumerService.start();
 
     PubSubConsumerAdapter consumerForT1P0 = consumerService
@@ -395,9 +410,15 @@ public class KafkaConsumerServiceTest {
     final Sensor mockSensor = mock(Sensor.class);
     doReturn(mockSensor).when(mockMetricsRepository).sensor(anyString(), any());
 
+    PubSubClientsFactory mockPubSubClientsFactory = mock(PubSubClientsFactory.class);
+    doReturn(factory).when(mockPubSubClientsFactory).getConsumerAdapterFactory();
+
+    PubSubContext mockPubSubContext = mock(PubSubContext.class);
+    doReturn(pubSubDeserializer).when(mockPubSubContext).getPubSubMessageDeserializer();
+    doReturn(mockPubSubClientsFactory).when(mockPubSubContext).getPubSubClientsFactory();
+
     KafkaConsumerService consumerService = new KafkaConsumerService(
         ConsumerPoolType.REGULAR_POOL,
-        factory,
         properties,
         1000L,
         2,
@@ -408,13 +429,13 @@ public class KafkaConsumerServiceTest {
         TimeUnit.MINUTES.toMillis(1),
         mock(StaleTopicChecker.class),
         false,
-        pubSubDeserializer,
         SystemTime.INSTANCE,
         null,
         false,
         mock(ReadOnlyStoreRepository.class),
         false,
-        mockVeniceServerConfig) {
+        mockVeniceServerConfig,
+        mockPubSubContext) {
       @Override
       protected SharedKafkaConsumer pickConsumerForPartition(
           PubSubTopic versionTopic,

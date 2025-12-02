@@ -41,6 +41,7 @@ import com.linkedin.venice.exceptions.ErrorType;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
+import com.linkedin.venice.exceptions.VeniceStoreAclException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.Store;
@@ -447,11 +448,11 @@ public class CreateVersion extends AbstractRoute {
         // Also allow allowList users to run this command
         if (!isAllowListUser(request)) {
           if (!hasWriteAccessToTopic(request)) {
-            return buildAclErrorResponse(request, response, true, false);
+            buildStoreAclErrorAndThrowException(request, response, true, false);
           }
 
           if (this.checkReadMethodForKafka && !hasReadAccessToTopic(request)) {
-            return buildAclErrorResponse(request, response, false, true);
+            buildStoreAclErrorAndThrowException(request, response, false, true);
           }
         }
 
@@ -482,24 +483,23 @@ public class CreateVersion extends AbstractRoute {
    * When partners have ACL issues for their push, we should provide an accurate and informative messages that
    * help partners to unblock by themselves.
    */
-  private String buildAclErrorResponse(
+  private void buildStoreAclErrorAndThrowException(
       Request request,
       Response response,
       boolean missingWriteAccess,
       boolean missingReadAccess) throws JsonProcessingException {
     response.status(HttpStatus.SC_FORBIDDEN);
-    VersionCreationResponse responseObject = new VersionCreationResponse();
     String userId = getPrincipalId(request);
     String errorMessage = "Missing [%s] ACLs for user \"" + userId + "\". Please setup ACLs for your store.";
     if (missingWriteAccess) {
       errorMessage = String.format(errorMessage, "write");
-    }
-    if (missingReadAccess) {
+    } else if (missingReadAccess) {
       errorMessage = String.format(errorMessage, "read");
+    } else {
+      errorMessage = String.format(errorMessage, "read and write");
     }
-    responseObject.setError(errorMessage);
-    responseObject.setErrorType(ErrorType.BAD_REQUEST);
-    return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
+
+    throw new VeniceStoreAclException(errorMessage);
   }
 
   /**

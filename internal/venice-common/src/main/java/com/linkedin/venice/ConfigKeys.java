@@ -2747,6 +2747,34 @@ public class ConfigKeys {
       "server.inactive.topic.partition.checker.threshold.in.seconds";
 
   /**
+   * Config to enable/disable lag based replica auto-resubscribe feature.
+   * Default is false as we will plan to roll out step-by-step.
+   */
+  public static final String SERVER_LAG_BASED_REPLICA_AUTO_RESUBSCRIBE_ENABLED =
+      "server.lag.based.replica.auto.resubscribe.enabled";
+  /**
+   * Config to control the time lag threshold in seconds to trigger this auto-resubscribe feature.
+   * Default is 600s = 10 min.
+   */
+  public static final String SERVER_LAG_BASED_REPLICA_AUTO_RESUBSCRIBE_THRESHOLD_IN_SECONDS =
+      "server.lag.based.replica.auto.resubscribe.threshold.in.seconds";
+  /**
+   * Config to control the interval a replica is re-subscribed after previous attempt. This config intends to give replica
+   * sometime to auto-remediate the lag after re-subscription.
+   * Default is 300s = 5 min.
+   */
+  public static final String SERVER_LAG_BASED_REPLICA_AUTO_RESUBSCRIBE_INTERVAL_IN_SECONDS =
+      "server.lag.based.replica.auto.resubscribe.interval.in.seconds";
+  /**
+   * Config to control the maximum number of replicas can be resubscribed in one single store ingestion task check.
+   * This is to make sure in case resubscribe feature does not work as expected or encounter slowness during the process,
+   * the SIT thread will keep functioning and serve other requests.
+   * Default is 3.
+   */
+  public static final String SERVER_LAG_BASED_REPLICA_AUTO_RESUBSCRIBE_MAX_REPLICA_COUNT =
+      "server.lag.based.replica.auto.resubscribe.max.replica.count";
+
+  /**
    * Whether to enable producer throughput optimization for realtime workload or not.
    * Two strategies:
    * 1. Disable compression.
@@ -3029,5 +3057,18 @@ public class ConfigKeys {
 
   public static final String MAX_WAIT_TIME_FOR_CONCURRENTLY_DELETING_STORE_VERSIONS_IN_MS =
       "max_wait_time_for_concurrently_deleting_store_versions_in_ms";
+
+   * Number of consecutive cycles to wait before removing a replica that does not have a corresponding entry in local
+   * customized view cache before removing it from lag monitor. e.g. if this config is set to 10, and we are using the
+   * default sleep interval of 60 seconds then we will only remove the replica from lag monitor after at least 600
+   * seconds without having any corresponding entry in customized view.
+   */
+  public static final String SERVER_LAG_MONITOR_CLEANUP_CYCLE = "server.lag.monitor.cleanup.cycle";
+
+  /**
+   * Thread pool size for the async store change notifier service that handles store metadata change events.
+   * Default is 1.
+   */
+  public static final String STORE_CHANGE_NOTIFIER_THREAD_POOL_SIZE = "store.change.notifier.thread.pool.size";
 
 }

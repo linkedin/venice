@@ -669,6 +669,8 @@ public class VeniceControllerClusterConfig {
   private final int storeMigrationTaskIntervalInSeconds;
   private final List<String> storeMigrationFabricList;
 
+  private final int storeChangeNotifierThreadPoolSize;
+
   private final boolean backupVersionReplicaReductionEnabled;
   private final boolean useMultiRegionRealTimeTopicSwitcher;
   private final Set<String> activeActiveRealTimeSourceFabrics;
@@ -1267,6 +1269,8 @@ public class VeniceControllerClusterConfig {
     this.storeMigrationMaxRetryAttempts = props.getInt(ConfigKeys.STORE_MIGRATION_MAX_RETRY_ATTEMPTS, 3);
     this.storeMigrationTaskIntervalInSeconds =
         props.getInt(ConfigKeys.STORE_MIGRATION_TASK_SCHEDULING_INTERVAL_SECONDS, 60);
+
+    this.storeChangeNotifierThreadPoolSize = props.getInt(ConfigKeys.STORE_CHANGE_NOTIFIER_THREAD_POOL_SIZE, 1);
     if (props.getString(ConfigKeys.STORE_MIGRATION_FABRIC_LIST, "").isEmpty()) {
       this.storeMigrationFabricList = Collections.emptyList();
     } else {
@@ -2109,6 +2113,10 @@ public class VeniceControllerClusterConfig {
 
   public int getStoreMigrationMaxRetryAttempts() {
     return storeMigrationMaxRetryAttempts;
+  }
+
+  public int getStoreChangeNotifierThreadPoolSize() {
+    return storeChangeNotifierThreadPoolSize;
   }
 
   public int getStoreMigrationTaskIntervalInSeconds() {
