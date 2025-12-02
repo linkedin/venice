@@ -194,6 +194,10 @@ public class AggVersionedIngestionStats
         stat -> stat.recordConsumedRecordEndToEndProcessingLatency(value, currentTimeMs));
   }
 
+  public void recordRecordProcessingLatency(String storeName, int version, double value, long currentTimeMs) {
+    recordVersionedAndTotalStat(storeName, version, stat -> stat.recordRecordProcessingLatency(value, currentTimeMs));
+  }
+
   public void recordNearlineProducerToLocalBrokerLatency(String storeName, int version, double value, long timestamp) {
     recordVersionedAndTotalStat(
         storeName,
@@ -229,5 +233,16 @@ public class AggVersionedIngestionStats
         storeName,
         version,
         stat -> stat.recordBatchProcessingRequestLatency(latency, timestamp));
+  }
+
+  public void recordStorageEnginePutLatency(String storeName, int version, double latency, long currentTimeMs) {
+    recordVersionedAndTotalStat(storeName, version, stat -> stat.recordStorageEnginePutLatency(latency, currentTimeMs));
+  }
+
+  public void recordStorageEngineDeleteLatency(String storeName, int version, double latency, long currentTimeMs) {
+    recordVersionedAndTotalStat(
+        storeName,
+        version,
+        stat -> stat.recordStorageEngineDeleteLatency(latency, currentTimeMs));
   }
 }

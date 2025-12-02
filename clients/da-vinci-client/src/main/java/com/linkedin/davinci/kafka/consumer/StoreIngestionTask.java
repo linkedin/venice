@@ -3403,6 +3403,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             currentTimeMs);
       }
 
+      long recordProcessingStartTimeMs = System.currentTimeMillis();
       if (kafkaKey.isControlMessage()) {
         ControlMessage controlMessage = (leaderProducedRecordContext == null
             ? (ControlMessage) kafkaValue.payloadUnion
@@ -3453,6 +3454,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             storeName,
             versionNumber,
             LatencyUtils.getElapsedTimeFromNSToMS(beforeProcessingRecordTimestampNs),
+            currentTimeMs);
+        versionedIngestionStats.recordRecordProcessingLatency(
+            storeName,
+            versionNumber,
+            LatencyUtils.getElapsedTimeFromMsToMs(recordProcessingStartTimeMs),
             currentTimeMs);
       }
     } catch (DuplicateDataException e) {
@@ -4048,8 +4054,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           valueSchemaId = writerSchemaId;
         }
         if (emitRecordLevelMetrics) {
-          hostLevelIngestionStats
-              .recordStorageEnginePutLatency(LatencyUtils.getElapsedTimeFromNSToMS(startTimeNs), currentTimeMs);
+          versionedIngestionStats.recordStorageEnginePutLatency(
+              storeName,
+              versionNumber,
+              LatencyUtils.getElapsedTimeFromNSToMS(startTimeNs),
+              currentTimeMs);
         }
         break;
 
@@ -4099,9 +4108,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
         keyLen = keyBytes.length;
         deleteFromStorageEngine(producedPartition, keyBytes, delete);
-        if (metricsEnabled && recordLevelMetricEnabled.get()) {
-          hostLevelIngestionStats
-              .recordStorageEngineDeleteLatency(LatencyUtils.getElapsedTimeFromNSToMS(startTimeNs), currentTimeMs);
+        if (emitRecordLevelMetrics) {
+          versionedIngestionStats.recordStorageEngineDeleteLatency(
+              storeName,
+              versionNumber,
+              LatencyUtils.getElapsedTimeFromNSToMS(startTimeNs),
+              currentTimeMs);
         }
         break;
 

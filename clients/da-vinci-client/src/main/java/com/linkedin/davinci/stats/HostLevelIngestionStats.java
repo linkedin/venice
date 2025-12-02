@@ -86,10 +86,6 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
   private final Sensor processConsumerActionLatencySensor;
   // Measure the latency in checking long running task states, like leader promotion, TopicSwitch
   private final Sensor checkLongRunningTasksLatencySensor;
-  // Measure the latency in putting data into storage engine
-  private final Sensor storageEnginePutLatencySensor;
-  // Measure the latency in deleting data from storage engine
-  private final Sensor storageEngineDeleteLatencySensor;
 
   /**
    * Measure the number of times a record was found in {@link PartitionConsumptionState#transientRecordMap} during UPDATE
@@ -374,20 +370,6 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
         () -> totalStats.checkLongRunningTasksLatencySensor,
         avgAndMax());
 
-    String storageEnginePutLatencySensorName = "storage_engine_put_latency",
-        storageEngineDeleteLatencySensorName = "storage_engine_delete_latency";
-    this.storageEnginePutLatencySensor = registerPerStoreAndTotalSensor(
-        storageEnginePutLatencySensorName,
-        totalStats,
-        () -> totalStats.storageEnginePutLatencySensor,
-        avgAndMax());
-
-    this.storageEngineDeleteLatencySensor = registerPerStoreAndTotalSensor(
-        storageEngineDeleteLatencySensorName,
-        totalStats,
-        () -> totalStats.storageEngineDeleteLatencySensor,
-        avgAndMax());
-
     this.writeComputeCacheHitCount = registerPerStoreAndTotalSensor(
         "write_compute_cache_hit_count",
         totalStats,
@@ -610,14 +592,6 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
 
   public void recordCheckLongRunningTasksLatency(double latency) {
     checkLongRunningTasksLatencySensor.record(latency);
-  }
-
-  public void recordStorageEnginePutLatency(double latency, long currentTimeMs) {
-    storageEnginePutLatencySensor.record(latency, currentTimeMs);
-  }
-
-  public void recordStorageEngineDeleteLatency(double latency, long currentTimeMs) {
-    storageEngineDeleteLatencySensor.record(latency, currentTimeMs);
   }
 
   public void recordWriteComputeCacheHitCount() {
