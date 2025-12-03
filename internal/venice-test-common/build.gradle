@@ -178,6 +178,7 @@ def integrationTestBuckets = [
     ],
     "8": [
         "com.linkedin.venice.consumer.TestChangelogConsumer",
+        "com.linkedin.venice.consumer.TestVersionSpecificChangelogConsumer",
         "com.linkedin.venice.endToEnd.TestPushJobWithNativeReplication",
         "com.linkedin.venice.zk.TestMigrateVeniceZKPaths"
     ],

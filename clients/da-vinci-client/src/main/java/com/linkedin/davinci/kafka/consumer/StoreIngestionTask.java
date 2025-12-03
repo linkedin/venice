@@ -3348,6 +3348,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       case END_OF_PUSH:
         EndOfPush endOfPush = (EndOfPush) controlMessage.controlMessageUnion;
         processEndOfPush(kafkaMessageEnvelope, offset, partitionConsumptionState, endOfPush);
+        if (recordTransformer != null) {
+          recordTransformer.onControlMessage(partition, offset, controlMessage);
+        }
         break;
       case START_OF_SEGMENT:
         break;
@@ -3361,6 +3364,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           int futureVersion =
               Version.parseVersionFromVersionTopicName(versionSwap.getNewServingVersionTopic().toString());
           recordTransformer.onVersionSwap(currentVersion, futureVersion, partition);
+          recordTransformer.onControlMessage(partition, offset, controlMessage);
         }
         break;
       case START_OF_INCREMENTAL_PUSH:

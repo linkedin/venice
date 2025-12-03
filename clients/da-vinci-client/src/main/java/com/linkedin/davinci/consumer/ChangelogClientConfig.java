@@ -100,6 +100,12 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
    */
   private long versionSwapTimeoutInMs = MINUTES.toMillis(30);
 
+  /**
+   * Whether to include control messages in buffer for users to poll. Default is false.
+   * The config is only applicable to the version specific stateless changelog consumer.
+   */
+  private boolean includeControlMessages = false;
+
   public ChangelogClientConfig(String storeName) {
     this.innerClientConfig = new ClientConfig<>(storeName);
   }
@@ -404,6 +410,7 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
         .setSeekThreadPoolSize(config.getSeekThreadPoolSize())
         .setShouldSkipFailedToAssembleRecords(config.shouldSkipFailedToAssembleRecords())
         .setUseRequestBasedMetadataRepository(config.isUseRequestBasedMetadataRepository())
+        .setIncludeControlMessages(config.shouldIncludeControlMessages())
         .setInnerClientConfig(config.getInnerClientConfig())
         // Store version should not be cloned
         .setStoreVersion(null)
@@ -434,6 +441,18 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
    */
   public ChangelogClientConfig setIsNewStatelessClientEnabled(Boolean newStatelessClientEnabled) {
     this.isNewStatelessClientEnabled = newStatelessClientEnabled;
+    return this;
+  }
+
+  /**
+   * Get whether to pass through control messages to the user.
+   */
+  protected Boolean shouldIncludeControlMessages() {
+    return includeControlMessages;
+  }
+
+  public ChangelogClientConfig setIncludeControlMessages(Boolean includeControlMessages) {
+    this.includeControlMessages = includeControlMessages;
     return this;
   }
 
