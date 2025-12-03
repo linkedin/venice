@@ -825,8 +825,8 @@ public class TopicManager implements Closeable {
     Objects.requireNonNull(endPosition, "endPosition");
     Objects.requireNonNull(startPosition, "startPosition");
 
-    // Use cached earliest position when startPosition is EARLIEST to optimize performance. If
-    // it still resolves to EARLIEST, let
+    // Use cached earliest position when startPosition is EARLIEST to optimize performance.
+    // If it still resolves to EARLIEST, let diffPosition handle it.
     PubSubPosition resolvedStartPosition = startPosition;
     if (startPosition == PubSubSymbolicPosition.EARLIEST) {
       resolvedStartPosition = topicMetadataFetcher.getEarliestPositionCached(pubSubTopicPartition);

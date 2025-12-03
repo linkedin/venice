@@ -742,12 +742,12 @@ class TopicMetadataFetcher implements Closeable {
   }
 
   @VisibleForTesting
-  public Map<PubSubTopicPartition, ValueAndExpiryTime<PubSubPosition>> getEarliestPositionCache() {
+  Map<PubSubTopicPartition, ValueAndExpiryTime<PubSubPosition>> getEarliestPositionCache() {
     return earliestPositionCache;
   }
 
   @VisibleForTesting
-  public Map<PubSubTopicPartition, ValueAndExpiryTime<PubSubPosition>> getLatestPositionCache() {
+  Map<PubSubTopicPartition, ValueAndExpiryTime<PubSubPosition>> getLatestPositionCache() {
     return latestPositionCache;
   }
 
