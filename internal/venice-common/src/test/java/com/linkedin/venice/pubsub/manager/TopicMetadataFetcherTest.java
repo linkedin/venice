@@ -617,4 +617,190 @@ public class TopicMetadataFetcherTest {
       assertEquals(spyFetcher.getLatestPositionCache().get(tp0).getValue(), updatedPosition);
     });
   }
+
+  @Test
+  public void testGetEarliestPositionCachedScenarios() {
+    PubSubTopicPartition tp0 = new PubSubTopicPartitionImpl(pubSubTopic, 0);
+    when(adminMock.containsTopic(pubSubTopic)).thenReturn(true);
+
+    TopicMetadataFetcher spyFetcher = spy(topicMetadataFetcher);
+    ApacheKafkaOffsetPosition expectedPosition = ApacheKafkaOffsetPosition.of(0L);
+
+    // Case 1: Cache miss - should fetch and populate cache
+    Map<PubSubTopicPartition, PubSubPosition> tp0Map = new HashMap<>();
+    tp0Map.put(tp0, expectedPosition);
+    when(consumerMock.beginningPositions(eq(Collections.singleton(tp0)), any(Duration.class))).thenReturn(tp0Map);
+    PubSubPosition result1 = spyFetcher.getEarliestPositionCached(tp0);
+    assertEquals(result1, expectedPosition);
+    assertTrue(spyFetcher.getEarliestPositionCache().containsKey(tp0));
+    assertEquals(spyFetcher.getEarliestPositionCache().get(tp0).getValue(), expectedPosition);
+
+    // Case 2: Cache hit - should return cached value without fetching again
+    PubSubPosition result2 = spyFetcher.getEarliestPositionCached(tp0);
+    assertEquals(result2, expectedPosition);
+    verify(consumerMock, times(1)).beginningPositions(eq(Collections.singleton(tp0)), any(Duration.class)); // Should
+                                                                                                            // only be
+                                                                                                            // called
+                                                                                                            // once
+
+    // Case 3: Multiple partitions - each should be cached independently
+    PubSubTopicPartition tp1 = new PubSubTopicPartitionImpl(pubSubTopic, 1);
+    ApacheKafkaOffsetPosition expectedPosition1 = ApacheKafkaOffsetPosition.of(10L);
+    Map<PubSubTopicPartition, PubSubPosition> tp1Map = new HashMap<>();
+    tp1Map.put(tp1, expectedPosition1);
+    when(consumerMock.beginningPositions(eq(Collections.singleton(tp1)), any(Duration.class))).thenReturn(tp1Map);
+    PubSubPosition result3 = spyFetcher.getEarliestPositionCached(tp1);
+    assertEquals(result3, expectedPosition1);
+    assertEquals(spyFetcher.getEarliestPositionCache().size(), 2);
+
+    assertEquals(pubSubConsumerPool.size(), 1);
+  }
+
+  @Test
+  public void testGetEarliestPositionCachedWithException() {
+    PubSubTopicPartition tp0 = new PubSubTopicPartitionImpl(pubSubTopic, 0);
+    when(adminMock.containsTopic(pubSubTopic)).thenReturn(true);
+
+    TopicMetadataFetcher spyFetcher = spy(topicMetadataFetcher);
+
+    // Case 1: PubSubTopicDoesNotExistException - should return EARLIEST symbolic position
+    when(consumerMock.beginningPositions(eq(Collections.singleton(tp0)), any(Duration.class)))
+        .thenThrow(new PubSubTopicDoesNotExistException("Topic does not exist"));
+    PubSubPosition result1 = spyFetcher.getEarliestPositionCached(tp0);
+    assertEquals(result1, PubSubSymbolicPosition.EARLIEST);
+
+    // Case 2: PubSubOpTimeoutException - should return EARLIEST symbolic position
+    spyFetcher.getEarliestPositionCache().clear();
+    when(consumerMock.beginningPositions(eq(Collections.singleton(tp0)), any(Duration.class)))
+        .thenThrow(new PubSubOpTimeoutException("Timeout"));
+    PubSubPosition result2 = spyFetcher.getEarliestPositionCached(tp0);
+    assertEquals(result2, PubSubSymbolicPosition.EARLIEST);
+
+    assertEquals(pubSubConsumerPool.size(), 1);
+  }
+
+  @Test
+  public void testGetEarliestPositionCachedNonBlockingScenarios() {
+    PubSubTopicPartition tp0 = new PubSubTopicPartitionImpl(pubSubTopic, 0);
+    when(adminMock.containsTopic(pubSubTopic)).thenReturn(true);
+
+    TopicMetadataFetcher spyFetcher = spy(topicMetadataFetcher);
+    ApacheKafkaOffsetPosition expectedPosition = ApacheKafkaOffsetPosition.of(0L);
+
+    // Case 1: Cache miss - should return EARLIEST and trigger async population
+    PubSubPosition result1 = spyFetcher.getEarliestPositionCachedNonBlocking(tp0);
+    assertEquals(result1, PubSubSymbolicPosition.EARLIEST);
+
+    // Case 2: After async population completes, should return cached value
+    Map<PubSubTopicPartition, PubSubPosition> tp0Map = new HashMap<>();
+    tp0Map.put(tp0, expectedPosition);
+    when(consumerMock.beginningPositions(eq(Collections.singleton(tp0)), any(Duration.class))).thenReturn(tp0Map);
+    spyFetcher.getEarliestPositionCache().put(tp0, spyFetcher.new ValueAndExpiryTime<>(expectedPosition));
+    PubSubPosition result2 = spyFetcher.getEarliestPositionCachedNonBlocking(tp0);
+    assertEquals(result2, expectedPosition);
+
+    // Case 3: Expired cache entry - should return cached value but trigger async update
+    ValueAndExpiryTime<PubSubPosition> expiredEntry = spyFetcher.new ValueAndExpiryTime<>(expectedPosition);
+    expiredEntry.setExpiryTimeNs(System.nanoTime() - TimeUnit.SECONDS.toNanos(1));
+    spyFetcher.getEarliestPositionCache().put(tp0, expiredEntry);
+    PubSubPosition result3 = spyFetcher.getEarliestPositionCachedNonBlocking(tp0);
+    assertEquals(result3, expectedPosition);
+
+    assertEquals(pubSubConsumerPool.size(), 1);
+  }
+
+  @Test
+  public void testGetEarliestPositionNoRetry() throws ExecutionException, InterruptedException {
+    PubSubTopicPartition tp0 = new PubSubTopicPartitionImpl(pubSubTopic, 0);
+    when(adminMock.containsTopic(pubSubTopic)).thenReturn(true);
+
+    TopicMetadataFetcher spyFetcher = spy(topicMetadataFetcher);
+    ApacheKafkaOffsetPosition expectedPosition = ApacheKafkaOffsetPosition.of(0L);
+
+    // Case 1: Successful async fetch
+    Map<PubSubTopicPartition, PubSubPosition> tp0Map = new HashMap<>();
+    tp0Map.put(tp0, expectedPosition);
+    when(consumerMock.beginningPositions(eq(Collections.singleton(tp0)), any(Duration.class))).thenReturn(tp0Map);
+    CompletableFuture<PubSubPosition> future1 = spyFetcher.getEarliestPositionNoRetry(tp0);
+    PubSubPosition result1 = future1.get();
+    assertEquals(result1, expectedPosition);
+
+    // Case 2: Multiple concurrent calls should all complete successfully
+    CompletableFuture<PubSubPosition> future2 = spyFetcher.getEarliestPositionNoRetry(tp0);
+    CompletableFuture<PubSubPosition> future3 = spyFetcher.getEarliestPositionNoRetry(tp0);
+    PubSubPosition result2 = future2.get();
+    PubSubPosition result3 = future3.get();
+    assertEquals(result2, expectedPosition);
+    assertEquals(result3, expectedPosition);
+
+    assertEquals(pubSubConsumerPool.size(), 1);
+  }
+
+  @Test
+  public void testInvalidateKeyRemovesBothCaches() {
+    PubSubTopicPartition tp0 = new PubSubTopicPartitionImpl(pubSubTopic, 0);
+    when(adminMock.containsTopic(pubSubTopic)).thenReturn(true);
+
+    TopicMetadataFetcher spyFetcher = spy(topicMetadataFetcher);
+    ApacheKafkaOffsetPosition earliestPosition = ApacheKafkaOffsetPosition.of(0L);
+    ApacheKafkaOffsetPosition latestPosition = ApacheKafkaOffsetPosition.of(1000L);
+
+    // Case 1: Populate both caches
+    spyFetcher.getEarliestPositionCache().put(tp0, spyFetcher.new ValueAndExpiryTime<>(earliestPosition));
+    spyFetcher.getLatestPositionCache().put(tp0, spyFetcher.new ValueAndExpiryTime<>(latestPosition));
+    assertEquals(spyFetcher.getEarliestPositionCache().size(), 1);
+    assertEquals(spyFetcher.getLatestPositionCache().size(), 1);
+
+    // Case 2: Invalidate partition key - should remove from both caches
+    spyFetcher.invalidateKey(tp0);
+    assertEquals(spyFetcher.getEarliestPositionCache().size(), 0);
+    assertEquals(spyFetcher.getLatestPositionCache().size(), 0);
+
+    // Case 3: Invalidate topic key - should remove all partitions from both caches
+    PubSubTopicPartition tp1 = new PubSubTopicPartitionImpl(pubSubTopic, 1);
+    spyFetcher.getEarliestPositionCache().put(tp0, spyFetcher.new ValueAndExpiryTime<>(earliestPosition));
+    spyFetcher.getEarliestPositionCache().put(tp1, spyFetcher.new ValueAndExpiryTime<>(earliestPosition));
+    spyFetcher.getLatestPositionCache().put(tp0, spyFetcher.new ValueAndExpiryTime<>(latestPosition));
+    spyFetcher.getLatestPositionCache().put(tp1, spyFetcher.new ValueAndExpiryTime<>(latestPosition));
+    assertEquals(spyFetcher.getEarliestPositionCache().size(), 2);
+    assertEquals(spyFetcher.getLatestPositionCache().size(), 2);
+
+    spyFetcher.invalidateKey(pubSubTopic);
+    assertEquals(spyFetcher.getEarliestPositionCache().size(), 0);
+    assertEquals(spyFetcher.getLatestPositionCache().size(), 0);
+
+    assertEquals(pubSubConsumerPool.size(), 1);
+  }
+
+  @Test
+  public void testGetEarliestPositionCachedWithExpiredEntry() {
+    PubSubTopicPartition tp0 = new PubSubTopicPartitionImpl(pubSubTopic, 0);
+    when(adminMock.containsTopic(pubSubTopic)).thenReturn(true);
+
+    TopicMetadataFetcher spyFetcher = spy(topicMetadataFetcher);
+    ApacheKafkaOffsetPosition initialPosition = ApacheKafkaOffsetPosition.of(0L);
+    ApacheKafkaOffsetPosition updatedPosition = ApacheKafkaOffsetPosition.of(10L);
+
+    // Case 1: Pre-populate cache with expired entry
+    ValueAndExpiryTime<PubSubPosition> expiredEntry = spyFetcher.new ValueAndExpiryTime<>(initialPosition);
+    expiredEntry.setExpiryTimeNs(System.nanoTime() - TimeUnit.SECONDS.toNanos(1));
+    spyFetcher.getEarliestPositionCache().put(tp0, expiredEntry);
+
+    // Case 2: Mock async update to return updated position
+    CompletableFuture<PubSubPosition> delayedFuture = new CompletableFuture<>();
+    doReturn(delayedFuture).when(spyFetcher).getEarliestPositionNoRetry(eq(tp0));
+
+    // Case 3: Call getEarliestPositionCached - should return cached value but trigger async update
+    PubSubPosition result = spyFetcher.getEarliestPositionCached(tp0);
+    assertEquals(result, initialPosition);
+    verify(spyFetcher, times(1)).getEarliestPositionNoRetry(eq(tp0));
+
+    // Case 4: Complete the future and verify cache was updated
+    delayedFuture.complete(updatedPosition);
+    waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+      assertEquals(spyFetcher.getEarliestPositionCache().get(tp0).getValue(), updatedPosition);
+    });
+
+    assertEquals(pubSubConsumerPool.size(), 1);
+  }
 }

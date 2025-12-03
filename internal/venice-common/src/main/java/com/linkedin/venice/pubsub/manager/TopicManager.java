@@ -807,6 +807,9 @@ public class TopicManager implements Closeable {
    * In typical usage, {@code endPosition} is "last + 1", so the range is
    * {@code [startPosition, endPosition)}.
    *
+   * <p>If {@code startPosition} is {@link PubSubSymbolicPosition#EARLIEST}, this method will use
+   * the cached earliest position to optimize performance.
+   *
    * @param pubSubTopicPartition the topic-partition
    * @param endPosition the upper bound of the range
    * @param startPosition the lower bound of the range
@@ -822,7 +825,14 @@ public class TopicManager implements Closeable {
     Objects.requireNonNull(endPosition, "endPosition");
     Objects.requireNonNull(startPosition, "startPosition");
 
-    return topicMetadataFetcher.diffPosition(pubSubTopicPartition, endPosition, startPosition);
+    // Use cached earliest position when startPosition is EARLIEST to optimize performance. If
+    // it still resolves to EARLIEST, let
+    PubSubPosition resolvedStartPosition = startPosition;
+    if (startPosition == PubSubSymbolicPosition.EARLIEST) {
+      resolvedStartPosition = topicMetadataFetcher.getEarliestPositionCached(pubSubTopicPartition);
+    }
+
+    return topicMetadataFetcher.diffPosition(pubSubTopicPartition, endPosition, resolvedStartPosition);
   }
 
   /**
