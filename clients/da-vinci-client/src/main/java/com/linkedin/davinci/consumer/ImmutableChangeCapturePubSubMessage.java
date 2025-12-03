@@ -138,6 +138,7 @@ public class ImmutableChangeCapturePubSubMessage<K, V> implements PubSubMessage<
     return replicationMetadataPayload;
   }
 
+  @Override
   public ControlMessage getControlMessage() {
     return controlMessage;
   }

@@ -1,5 +1,6 @@
 package com.linkedin.venice.pubsub.api;
 
+import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.memory.Measurable;
 
 
@@ -58,5 +59,12 @@ public interface PubSubMessage<K, V, POSITION> extends Measurable {
 
   default PubSubMessageHeaders getPubSubMessageHeaders() {
     return EmptyPubSubMessageHeaders.SINGLETON;
+  }
+
+  /**
+   * If this message carries a control message, return it. Otherwise, return null.
+   */
+  default ControlMessage getControlMessage() {
+    return null;
   }
 }

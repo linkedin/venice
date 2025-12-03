@@ -183,14 +183,19 @@ public class VersionSpecificVeniceChangelogConsumerDaVinciRecordTransformerImplT
 
     recordTransformer.onStartVersionIngestion(targetPartitionId, true);
 
-    ControlMessage controlMessage = new ControlMessage();
-    controlMessage.setControlMessageType(ControlMessageType.END_OF_PUSH.getValue());
-    // Messages: put(0, value), put(1, value), control(0), put(2, value), control(1), put(1, value+1), put(0, value+2)
+    ControlMessage endOfPushControlMessage = new ControlMessage();
+    endOfPushControlMessage.setControlMessageType(ControlMessageType.END_OF_PUSH.getValue());
+
+    ControlMessage versionSwapControlMessage = new ControlMessage();
+    versionSwapControlMessage.setControlMessageType(ControlMessageType.VERSION_SWAP.getValue());
+
+    // Messages: put(0, value), put(1, value), EOP, put(2, value), VS, put(1, value+1), put(0, value+2)
     recordTransformer.processPut(keys.get(0), Lazy.of(() -> value), targetPartitionId, recordMetadata);
     recordTransformer.processPut(keys.get(1), Lazy.of(() -> value), targetPartitionId, recordMetadata);
-    recordTransformer.onControlMessage(targetPartitionId, recordMetadata.getPubSubPosition(), controlMessage);
+    recordTransformer.onControlMessage(targetPartitionId, recordMetadata.getPubSubPosition(), endOfPushControlMessage);
     recordTransformer.processPut(keys.get(2), Lazy.of(() -> value), targetPartitionId, recordMetadata);
-    recordTransformer.onControlMessage(targetPartitionId, recordMetadata.getPubSubPosition(), controlMessage);
+    recordTransformer
+        .onControlMessage(targetPartitionId, recordMetadata.getPubSubPosition(), versionSwapControlMessage);
     recordTransformer.processPut(keys.get(1), Lazy.of(() -> value + 1), targetPartitionId, recordMetadata);
     recordTransformer.processPut(keys.get(0), Lazy.of(() -> value + 2), targetPartitionId, recordMetadata);
 
@@ -206,11 +211,17 @@ public class VersionSpecificVeniceChangelogConsumerDaVinciRecordTransformerImplT
     ArrayList<PubSubMessage<Integer, ChangeEvent<Integer>, VeniceChangeCoordinate>> messageList =
         new ArrayList<>(pubSubMessages);
 
-    // Output: control(0), put(2, value), control(1), put(1, value+1), put(0, value+2)
-    assertNull(messageList.get(0).getKey()); // control(0)
+    // Output: EOP, put(2, value), VS, put(1, value+1), put(0, value+2)
+    assertNull(messageList.get(0).getKey()); // EOP control message
+    assertEquals(
+        messageList.get(0).getControlMessage().getControlMessageType(),
+        ControlMessageType.END_OF_PUSH.getValue());
     assertEquals((int) messageList.get(1).getKey(), 2); // put(2, value)
     assertEquals((int) messageList.get(1).getValue().getCurrentValue(), value);
-    assertNull(messageList.get(2).getKey()); // control(1)
+    assertNull(messageList.get(2).getKey()); // VS control message
+    assertEquals(
+        messageList.get(2).getControlMessage().getControlMessageType(),
+        ControlMessageType.VERSION_SWAP.getValue());
     assertEquals((int) messageList.get(3).getKey(), 1); // put(1, value+1)
     assertEquals((int) messageList.get(3).getValue().getCurrentValue(), value + 1);
     assertEquals((int) messageList.get(4).getKey(), 0); // put(0, value+2)
