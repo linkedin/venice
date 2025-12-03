@@ -375,6 +375,11 @@ public class DefaultIngestionBackend implements IngestionBackend {
      * base lag check.
      */
     if (blobTransferDisabledTimeLagThresholdInMinutes > 0) {
+      LOGGER.info(
+          "Checking time lag for hybrid store replica {} with heartbeat timestamp lag {} ms and offset HB timestamp {}.",
+          Utils.getReplicaId(topicName, partition),
+          LatencyUtils.getElapsedTimeFromMsToMs(offsetRecord.getHeartbeatTimestamp()),
+          offsetRecord.getHeartbeatTimestamp());
       return LatencyUtils.getElapsedTimeFromMsToMs(offsetRecord.getHeartbeatTimestamp()) > TimeUnit.MINUTES
           .toMillis(blobTransferDisabledTimeLagThresholdInMinutes);
     }
