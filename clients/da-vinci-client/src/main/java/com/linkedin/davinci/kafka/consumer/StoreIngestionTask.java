@@ -5209,6 +5209,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     try {
       final PubSubPosition position = pubSubPositionDeserializer.toPosition(wireFormatBytes);
+
+      // Symbolic positions (EARLIEST, LATEST) should always be returned as-is
+      if (position == PubSubSymbolicPosition.EARLIEST || position == PubSubSymbolicPosition.LATEST) {
+        return position;
+      }
+
       // Guard against regressions: honor the caller-provided minimum offset.
       if (position.getNumericOffset() < offset) {
         String context = String.format(" for: %s/%s", topicPartition, versionTopic);
