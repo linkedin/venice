@@ -5055,7 +5055,28 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       if (backupVersion == NON_EXISTING_VERSION) {
         return store;
       }
-      int previousVersion = store.getCurrentVersion();
+      int previousVersionNum = store.getCurrentVersion();
+      Version previousVersion = store.getVersion(previousVersionNum);
+      IdealState previousIdealState =
+          getIdealState(clusterName, Version.composeKafkaTopic(store.getName(), previousVersion.getNumber()));
+      int replicaCount = Integer.parseInt(previousIdealState.getReplicas());
+      int minActiveReplica = previousIdealState.getMinActiveReplicas();
+      IdealState backupIdealState =
+          getIdealState(clusterName, Version.composeKafkaTopic(store.getName(), backupVersion));
+      int backupReplicaCount = Integer.parseInt(backupIdealState.getReplicas());
+      int backupMinActiveReplica = backupIdealState.getMinActiveReplicas();
+      if (backupMinActiveReplica < minActiveReplica || backupReplicaCount < replicaCount) {
+        backupIdealState.setReplicas(String.valueOf(replicaCount));
+        backupIdealState.setMinActiveReplicas(minActiveReplica);
+        LOGGER.info(
+            "Updating backup version {} replicas and minActiveReplicas to match previous version {} in store {}",
+            backupVersion,
+            previousVersion,
+            storeName);
+        helixAdminClient
+            .updateIdealState(clusterName, Version.composeKafkaTopic(store.getName(), backupVersion), backupIdealState);
+      }
+
       store.setCurrentVersion(backupVersion);
       LOGGER.info(
           "Rolling back current version {} to version {} in store {}. Updating previous version {} status to ERROR",
@@ -5068,12 +5089,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           clusterName,
           store,
           backupVersion,
-          previousVersion,
+          previousVersionNum,
           false,
           store.isMigrating(),
           resources::isSourceCluster);
-      realTimeTopicSwitcher.transmitVersionSwapMessage(store, previousVersion, backupVersion);
-      store.updateVersionStatus(previousVersion, ERROR);
+      realTimeTopicSwitcher.transmitVersionSwapMessage(store, previousVersion.getNumber(), backupVersion);
+      store.updateVersionStatus(previousVersion.getNumber(), ERROR);
 
       return store;
     });
