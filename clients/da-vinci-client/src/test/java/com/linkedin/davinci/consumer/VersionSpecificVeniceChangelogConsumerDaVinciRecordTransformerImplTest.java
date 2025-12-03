@@ -214,13 +214,15 @@ public class VersionSpecificVeniceChangelogConsumerDaVinciRecordTransformerImplT
     // Output: EOP, put(2, value), VS, put(1, value+1), put(0, value+2)
     assertNull(messageList.get(0).getKey()); // EOP control message
     assertEquals(
-        messageList.get(0).getControlMessage().getControlMessageType(),
+        ((ImmutableChangeCapturePubSubMessage<Integer, ChangeEvent<Integer>>) messageList.get(0)).getControlMessage()
+            .getControlMessageType(),
         ControlMessageType.END_OF_PUSH.getValue());
     assertEquals((int) messageList.get(1).getKey(), 2); // put(2, value)
     assertEquals((int) messageList.get(1).getValue().getCurrentValue(), value);
     assertNull(messageList.get(2).getKey()); // VS control message
     assertEquals(
-        messageList.get(2).getControlMessage().getControlMessageType(),
+        ((ImmutableChangeCapturePubSubMessage<Integer, ChangeEvent<Integer>>) messageList.get(2)).getControlMessage()
+            .getControlMessageType(),
         ControlMessageType.VERSION_SWAP.getValue());
     assertEquals((int) messageList.get(3).getKey(), 1); // put(1, value+1)
     assertEquals((int) messageList.get(3).getValue().getCurrentValue(), value + 1);
