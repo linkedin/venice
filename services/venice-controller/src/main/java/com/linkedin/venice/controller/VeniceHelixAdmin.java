@@ -7504,12 +7504,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     admin.rebalance(controllerClusterName, clusterName, controllerClusterReplica);
   }
 
-  public boolean updateIdealState(String clusterName, String resourceName, int minReplica) {
+  public boolean updateIdealState(String clusterName, String resourceName, int minReplica, int replicationFactor) {
     IdealState idealState = helixAdminClient.getResourceIdealState(clusterName, resourceName);
-    if (idealState == null || idealState.getMinActiveReplicas() == minReplica) {
+    String replicas = String.valueOf(replicationFactor);
+    if (idealState == null
+        || (idealState.getMinActiveReplicas() == minReplica && replicas.equals(idealState.getReplicas()))) {
       return false;
     }
     idealState.setMinActiveReplicas(minReplica);
+    idealState.setReplicas(replicas);
     helixAdminClient.updateIdealState(clusterName, resourceName, idealState);
     return true;
   }

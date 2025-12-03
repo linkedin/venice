@@ -165,7 +165,7 @@ public class TestStoreBackupVersionDeletion {
           30,
           TimeUnit.SECONDS,
           () -> veniceHelixAdmin.getIdealState(CLUSTER_NAMES[0], Version.composeKafkaTopic(storeName, 2))
-              .getMinActiveReplicas() == 2);
+              .getMinActiveReplicas() == 1);
     }
   }
 

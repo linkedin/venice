@@ -269,7 +269,7 @@ public class TestStoreBackupVersionCleanupService {
     // Should still not clean up the only backup version
     Assert.assertFalse(service.cleanupBackupVersion(storeWithOneBackup, CLUSTER_NAME));
     verify(admin, never()).deleteOldVersionInStore(CLUSTER_NAME, storeWithOneBackup.getName(), 1);
-    verify(admin).updateIdealState(CLUSTER_NAME, Version.composeKafkaTopic(storeWithOneBackup.getName(), 1), 2);
+    verify(admin).updateIdealState(CLUSTER_NAME, Version.composeKafkaTopic(storeWithOneBackup.getName(), 1), 2, 3);
   }
 
   @Test
