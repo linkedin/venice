@@ -484,6 +484,14 @@ public class ConfigKeys {
 
   public static final String CONTROLLER_BACKUP_VERSION_DELETION_SLEEP_MS =
       "controller.backup.version.deletion.sleep.ms";
+  public static final String CONTROLLER_BACKUP_VERSION_MIN_ACTIVE_REPLICA =
+      "controller.backup.version.min.active.replica";
+  public static final String CONTROLLER_BACKUP_VERSION_REPLICA_COUNT = "controller.backup.version.replica.count";
+
+  public static final String CONTROLLER_BACKUP_VERSION_MIN_ACTIVE_REPLICA_HIGH_RF =
+      "controller.backup.version.min.active.replica.high.rf";
+  public static final String CONTROLLER_BACKUP_VERSION_REPLICA_COUNT_HIGH_RF =
+      "controller.backup.version.replica.count.high.rf";
 
   /**
    * The following config is to control whether to enable backup version cleanup based on retention policy or not at cluster level.

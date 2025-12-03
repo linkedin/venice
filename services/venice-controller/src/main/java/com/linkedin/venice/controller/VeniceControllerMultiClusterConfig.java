@@ -231,6 +231,22 @@ public class VeniceControllerMultiClusterConfig {
     return getCommonConfig().getBackupVersionCleanupSleepMs();
   }
 
+  public int getBackupVersionMinActiveReplica() {
+    return getCommonConfig().getBackupVersionMinActiveReplica();
+  }
+
+  public int getBackupVersionMinActiveReplicaHighRF() {
+    return getCommonConfig().getBackupVersionMinActiveReplicaHighRF();
+  }
+
+  public int getBackupVersionReplicaCount() {
+    return getCommonConfig().getBackupVersionReplicaCount();
+  }
+
+  public int getBackupVersionReplicaCountHighRF() {
+    return getCommonConfig().getBackupVersionReplicaCountHighRF();
+  }
+
   public long getDeferredVersionSwapSleepMs() {
     return getCommonConfig().getDeferredVersionSwapSleepMs();
   }
