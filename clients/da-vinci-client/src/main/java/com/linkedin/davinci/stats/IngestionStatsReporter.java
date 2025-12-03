@@ -143,6 +143,7 @@ public class IngestionStatsReporter extends AbstractVeniceStatsReporter<Ingestio
               () -> getStats().getConsumedRecordEndToEndProcessingLatencyMax(),
               0,
               CONSUMED_RECORD_END_TO_END_PROCESSING_LATENCY + "_max"));
+      registerLatencySensor("record_processing", IngestionStats::getRecordProcessingLatencySensor);
       registerSensor(new IngestionStatsGauge(this, () -> getStats().getIdleTime(), 0, IDLE_TIME + "_max"));
       registerSensor(
           new IngestionStatsGauge(
@@ -225,6 +226,8 @@ public class IngestionStatsReporter extends AbstractVeniceStatsReporter<Ingestio
               () -> getStats().getBatchProcessingRequestLatencySensor().getMax(),
               0,
               BATCH_PROCESSING_REQUEST_LATENCY + "_max"));
+      registerLatencySensor("storage_engine_put", IngestionStats::getStorageEnginePutLatencySensor);
+      registerLatencySensor("storage_engine_delete", IngestionStats::getStorageEngineDeleteLatencySensor);
     }
   }
 

@@ -37,6 +37,7 @@ public class IngestionStats {
   protected static final String SUBSCRIBE_ACTION_PREP_LATENCY = "subscribe_action_prep_latency";
   protected static final String CONSUMED_RECORD_END_TO_END_PROCESSING_LATENCY =
       "consumed_record_end_to_end_processing_latency";
+  protected static final String RECORD_PROCESSING_LATENCY = "record_processing_latency";
   protected static final String UPDATE_IGNORED_DCR = "update_ignored_dcr";
   protected static final String TOTAL_DCR = "total_dcr";
   protected static final String TOTAL_DUPLICATE_KEY_UPDATE_COUNT = "total_duplicate_key_update_count";
@@ -56,6 +57,8 @@ public class IngestionStats {
   public static final String BATCH_PROCESSING_REQUEST_RECORDS = "batch_processing_request_records";
   public static final String BATCH_PROCESSING_REQUEST_LATENCY = "batch_processing_request_latency";
   public static final String BATCH_PROCESSING_REQUEST_ERROR = "batch_processing_request_error";
+  public static final String STORAGE_ENGINE_PUT_LATENCY = "storage_engine_put_latency";
+  public static final String STORAGE_ENGINE_DELETE_LATENCY = "storage_engine_delete_latency";
 
   public static final String STORAGE_QUOTA_USED = "storage_quota_used";
 
@@ -83,6 +86,7 @@ public class IngestionStats {
   private final WritePathLatencySensor leaderProducerCompletionLatencySensor;
   private final WritePathLatencySensor subscribePrepLatencySensor;
   private final WritePathLatencySensor consumedRecordEndToEndProcessingLatencySensor;
+  private final WritePathLatencySensor recordProcessingLatencySensor;
   private final WritePathLatencySensor nearlineProducerToLocalBrokerLatencySensor;
   private final WritePathLatencySensor nearlineLocalBrokerToReadyToServeLatencySensor;
   private final WritePathLatencySensor producerCallBackLatency;
@@ -108,6 +112,8 @@ public class IngestionStats {
   private final LongAdderRateGauge batchProcessingRequestRecordsSensor = new LongAdderRateGauge();
   private final WritePathLatencySensor batchProcessingRequestLatencySensor;
   private final LongAdderRateGauge batchProcessingRequestErrorSensor = new LongAdderRateGauge();
+  private final WritePathLatencySensor storageEnginePutLatencySensor;
+  private final WritePathLatencySensor storageEngineDeleteLatencySensor;
 
   public IngestionStats(VeniceServerConfig serverConfig) {
 
@@ -167,6 +173,8 @@ public class IngestionStats {
         new WritePathLatencySensor(localMetricRepository, METRIC_CONFIG, SUBSCRIBE_ACTION_PREP_LATENCY);
     consumedRecordEndToEndProcessingLatencySensor =
         new WritePathLatencySensor(localMetricRepository, METRIC_CONFIG, CONSUMED_RECORD_END_TO_END_PROCESSING_LATENCY);
+    recordProcessingLatencySensor =
+        new WritePathLatencySensor(localMetricRepository, METRIC_CONFIG, RECORD_PROCESSING_LATENCY);
     nearlineProducerToLocalBrokerLatencySensor =
         new WritePathLatencySensor(localMetricRepository, METRIC_CONFIG, NEARLINE_PRODUCER_TO_LOCAL_BROKER_LATENCY);
     nearlineLocalBrokerToReadyToServeLatencySensor = new WritePathLatencySensor(
@@ -194,6 +202,10 @@ public class IngestionStats {
         new WritePathLatencySensor(localMetricRepository, METRIC_CONFIG, BATCH_PROCESSING_REQUEST_SIZE);
     batchProcessingRequestLatencySensor =
         new WritePathLatencySensor(localMetricRepository, METRIC_CONFIG, BATCH_PROCESSING_REQUEST_LATENCY);
+    storageEnginePutLatencySensor =
+        new WritePathLatencySensor(localMetricRepository, METRIC_CONFIG, STORAGE_ENGINE_PUT_LATENCY);
+    storageEngineDeleteLatencySensor =
+        new WritePathLatencySensor(localMetricRepository, METRIC_CONFIG, STORAGE_ENGINE_DELETE_LATENCY);
   }
 
   private void registerSensor(MetricsRepository localMetricRepository, String sensorName, LongAdderRateGauge gauge) {
@@ -285,6 +297,14 @@ public class IngestionStats {
 
   public void recordConsumedRecordEndToEndProcessingLatency(double value, long currentTimeMs) {
     consumedRecordEndToEndProcessingLatencySensor.record(value, currentTimeMs);
+  }
+
+  public void recordRecordProcessingLatency(double value, long currentTimeMs) {
+    recordProcessingLatencySensor.record(value, currentTimeMs);
+  }
+
+  public WritePathLatencySensor getRecordProcessingLatencySensor() {
+    return recordProcessingLatencySensor;
   }
 
   public double getRecordsConsumed() {
@@ -535,6 +555,22 @@ public class IngestionStats {
 
   public WritePathLatencySensor getBatchProcessingRequestLatencySensor() {
     return batchProcessingRequestLatencySensor;
+  }
+
+  public void recordStorageEnginePutLatency(double latency, long currentTimeMs) {
+    storageEnginePutLatencySensor.record(latency, currentTimeMs);
+  }
+
+  public WritePathLatencySensor getStorageEnginePutLatencySensor() {
+    return storageEnginePutLatencySensor;
+  }
+
+  public void recordStorageEngineDeleteLatency(double latency, long currentTimeMs) {
+    storageEngineDeleteLatencySensor.record(latency, currentTimeMs);
+  }
+
+  public WritePathLatencySensor getStorageEngineDeleteLatencySensor() {
+    return storageEngineDeleteLatencySensor;
   }
 
   public static double unAvailableToZero(double value) {
