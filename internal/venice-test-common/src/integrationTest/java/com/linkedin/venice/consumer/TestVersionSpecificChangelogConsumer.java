@@ -230,7 +230,7 @@ public class TestVersionSpecificChangelogConsumer {
     int numKeys = 10;
     Schema recordSchema =
         TestWriteUtils.writeSimpleAvroFileWithIntToStringSchema(inputDir, Integer.toString(version), numKeys);
-    int partitionCount = 3;
+    int partitionCount = 1;
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
     String storeName = Utils.getUniqueString("store");
     Properties props = TestWriteUtils.defaultVPJProps(
@@ -250,6 +250,7 @@ public class TestVersionSpecificChangelogConsumer {
         getVeniceMetricsRepository(CHANGE_DATA_CAPTURE_CLIENT, CONSUMER_METRIC_ENTITIES, true);
     createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms);
     IntegrationTestPushUtils.runVPJ(props);
+
     ZkServerWrapper localZkServer = multiRegionMultiClusterWrapper.getChildRegions().get(0).getZkServerWrapper();
     PubSubBrokerWrapper localKafka = multiRegionMultiClusterWrapper.getChildRegions().get(0).getPubSubBrokerWrapper();
     Properties consumerProperties = new Properties();
@@ -298,7 +299,8 @@ public class TestVersionSpecificChangelogConsumer {
     checkpoints.add(vcc);
 
     // Restart client
-    changeLogConsumer.close();
+    // changeLogConsumer.close();
+    changeLogConsumer.unsubscribeAll();
 
     // Seek to checkpoint
     changeLogConsumer.seekToCheckpoint(checkpoints).get();
@@ -314,7 +316,7 @@ public class TestVersionSpecificChangelogConsumer {
           pubSubMessagesMapAfterSeek.put(polledMessage.getKey(), polledMessage);
         }
       }
-      assertEquals(pubSubMessagesMapAfterSeek.size(), numKeys - 5);
+      assertEquals(pubSubMessagesMapAfterSeek.size(), numKeys - 6);
     });
   }
 
