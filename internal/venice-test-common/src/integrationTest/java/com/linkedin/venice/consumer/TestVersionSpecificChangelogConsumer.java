@@ -213,7 +213,7 @@ public class TestVersionSpecificChangelogConsumer {
     IntegrationTestPushUtils.runVPJ(props);
 
     VeniceChangelogConsumer<Integer, Utf8> changeLogConsumer3 =
-        veniceChangelogConsumerClientFactory.getVersionSpecificChangelogConsumer(storeName, version);
+        veniceChangelogConsumerClientFactory.getVersionSpecificChangelogConsumer(storeName, version, true);
     changeLogConsumer3.subscribeAll().get();
 
     // Client should see version 3 data
