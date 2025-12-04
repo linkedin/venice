@@ -1284,7 +1284,7 @@ public class VeniceControllerClusterConfig {
         props.getBoolean(ConfigKeys.CONTROLLER_USE_MULTI_REGION_REAL_TIME_TOPIC_SWITCHER_ENABLED, false);
 
     this.userStoreVersionRetentionCount = props.getInt(USER_STORE_VERSION_RETENTION_COUNT, 5);
-    this.systemStoreVersionRetentionCount = props.getInt(SYSTEM_STORE_VERSION_RETENTION_COUNT, 1);
+    this.systemStoreVersionRetentionCount = props.getInt(SYSTEM_STORE_VERSION_RETENTION_COUNT, 5);
 
     this.logClusterConfig();
   }
