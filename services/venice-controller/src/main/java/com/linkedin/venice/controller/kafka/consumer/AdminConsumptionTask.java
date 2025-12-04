@@ -25,6 +25,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
@@ -1053,9 +1054,24 @@ public class AdminConsumptionTask implements Runnable, Closeable {
       if (remoteConsumptionEnabled) {
         adminMetadata.setPubSubPosition(localPositionCheckpointAtStartTime);
         adminMetadata.setUpstreamPubSubPosition(lastDelegatedPosition);
+        // Set numeric offsets to keep them in sync with positions
+        if (localPositionCheckpointAtStartTime instanceof ApacheKafkaOffsetPosition) {
+          adminMetadata.setOffset(((ApacheKafkaOffsetPosition) localPositionCheckpointAtStartTime).getNumericOffset());
+        }
+        if (lastDelegatedPosition instanceof ApacheKafkaOffsetPosition) {
+          adminMetadata.setUpstreamOffset(((ApacheKafkaOffsetPosition) lastDelegatedPosition).getNumericOffset());
+        }
       } else {
         adminMetadata.setPubSubPosition(lastDelegatedPosition);
         adminMetadata.setUpstreamPubSubPosition(upstreamPositionCheckpointAtStartTime);
+        // Set numeric offsets to keep them in sync with positions
+        if (lastDelegatedPosition instanceof ApacheKafkaOffsetPosition) {
+          adminMetadata.setOffset(((ApacheKafkaOffsetPosition) lastDelegatedPosition).getNumericOffset());
+        }
+        if (upstreamPositionCheckpointAtStartTime instanceof ApacheKafkaOffsetPosition) {
+          adminMetadata.setUpstreamOffset(
+              ((ApacheKafkaOffsetPosition) upstreamPositionCheckpointAtStartTime).getNumericOffset());
+        }
       }
       adminTopicMetadataAccessor.updateMetadata(clusterName, adminMetadata);
       lastPersistedPosition = lastDelegatedPosition;

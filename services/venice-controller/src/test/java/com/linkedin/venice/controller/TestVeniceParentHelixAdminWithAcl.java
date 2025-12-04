@@ -77,7 +77,7 @@ public class TestVeniceParentHelixAdminWithAcl extends AbstractTestVeniceParentH
     }
 
     when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(
-        AdminTopicMetadataAccessor.generateMetadataMap(
+        AdminTopicMetadataAccessor.generateAdminMetadata(
             Optional.of(1L),
             Optional.of(-1L),
             Optional.of(1L),
@@ -168,7 +168,7 @@ public class TestVeniceParentHelixAdminWithAcl extends AbstractTestVeniceParentH
     when(zkClient.readData(zkMetadataNodePath, null))
         .thenReturn(new OffsetRecord(partitionStateSerializer, DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING))
         .thenReturn(
-            AdminTopicMetadataAccessor.generateMetadataMap(
+            AdminTopicMetadataAccessor.generateAdminMetadata(
                 Optional.of(1L),
                 Optional.of(-1L),
                 Optional.of(1L),
@@ -192,7 +192,7 @@ public class TestVeniceParentHelixAdminWithAcl extends AbstractTestVeniceParentH
     when(zkClient.readData(zkMetadataNodePath, null))
         .thenReturn(new OffsetRecord(partitionStateSerializer, DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING))
         .thenReturn(
-            AdminTopicMetadataAccessor.generateMetadataMap(
+            AdminTopicMetadataAccessor.generateAdminMetadata(
                 Optional.of(1L),
                 Optional.of(-1L),
                 Optional.of(1L),
@@ -213,7 +213,7 @@ public class TestVeniceParentHelixAdminWithAcl extends AbstractTestVeniceParentH
     when(zkClient.readData(zkMetadataNodePath, null))
         .thenReturn(new OffsetRecord(partitionStateSerializer, DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING))
         .thenReturn(
-            AdminTopicMetadataAccessor.generateMetadataMap(
+            AdminTopicMetadataAccessor.generateAdminMetadata(
                 Optional.of(1L),
                 Optional.of(-1L),
                 Optional.of(1L),

@@ -15,7 +15,6 @@ import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.zookeeper.data.Stat;
 import org.apache.zookeeper.server.DataTree;
@@ -52,7 +51,6 @@ public class TestZkAdminTopicMetadataAccessor {
     metadataDelta.put(AdminTopicMetadataAccessor.POSITION_KEY, position);
     AdminMetadata adminMetadata = new AdminMetadata(metadataDelta);
 
-    String metadataPath = ZkAdminTopicMetadataAccessor.getAdminTopicMetadataNodePath(clusterName);
     String v2MetadataPath = ZkAdminTopicMetadataAccessor.getAdminTopicV2MetadataNodePath(clusterName);
 
     try (MockedStatic<DataTree> dataTreeMockedStatic = Mockito.mockStatic(DataTree.class)) {
@@ -60,23 +58,18 @@ public class TestZkAdminTopicMetadataAccessor {
       Stat readStat = new Stat();
 
       // Mock the metadata on prod - null
-      when(zkClient.readData(metadataPath, readStat)).thenReturn(null);
       when(zkClient.readData(v2MetadataPath, readStat)).thenReturn(null);
 
       // Update the metadata
       zkAdminTopicMetadataAccessor.updateMetadata(clusterName, adminMetadata);
 
       // Verify that the metadata path got read 1 time
-      verify(zkClient, times(1)).readData(eq(metadataPath), eq(readStat));
       verify(zkClient, times(1)).readData(eq(v2MetadataPath), eq(readStat));
 
-      // Verify that the metadata path got read 1 time with the metadataDelta map and 1 time legacy metadata map and 1
-      // time with new admin metadata
-      verify(zkClient, times(1)).writeDataGetStat(eq(metadataPath), eq(adminMetadata.toLegacyMap()), eq(0));
+      // Verify that the metadata path got written with the admin metadata
       verify(zkClient, times(1)).writeDataGetStat(eq(v2MetadataPath), eq(adminMetadata), eq(0));
 
-      assertEquals(adminMetadata.toLegacyMap().size(), 1);
-      assertEquals(adminMetadata.toLegacyMap().get("offset").longValue(), 100L);
+      assertEquals(adminMetadata.getOffset().longValue(), 100L);
     }
   }
 
@@ -97,15 +90,12 @@ public class TestZkAdminTopicMetadataAccessor {
     metadataDelta.setOffset(newOffset);
     metadataDelta.setUpstreamPubSubPosition(position);
 
-    String metadataPath = ZkAdminTopicMetadataAccessor.getAdminTopicMetadataNodePath(clusterName);
     String v2MetadataPath = ZkAdminTopicMetadataAccessor.getAdminTopicV2MetadataNodePath(clusterName);
 
     try (MockedStatic<DataTree> dataTreeMockedStatic = Mockito.mockStatic(DataTree.class)) {
       dataTreeMockedStatic.when(() -> DataTree.copyStat(any(), any())).thenAnswer(invocation -> null);
       Stat readStat = new Stat();
-
-      when(zkClient.readData(metadataPath, readStat)).thenReturn(currentMetadata.toLegacyMap()); // Case 2: the metadata
-                                                                                                 // is not null
+      // Case 2: the metadata is not null
       when(zkClient.readData(v2MetadataPath, readStat)).thenReturn(currentMetadata);
 
       // Update the metadata on prod with new offset
@@ -120,12 +110,10 @@ public class TestZkAdminTopicMetadataAccessor {
       updatedMetadata.setExecutionId(1L);
       updatedMetadata.setAdminOperationProtocolVersion(18L);
 
-      // Verify that the metadata path got read 1 times
-      verify(zkClient, times(1)).readData(eq(metadataPath), eq(readStat));
+      // Verify that the metadata path got read 1 time
       verify(zkClient, times(1)).readData(eq(v2MetadataPath), eq(readStat));
 
       // Verify that the metadata path got written with the correct updated metadata
-      verify(zkClient, times(1)).writeDataGetStat(eq(metadataPath), eq(updatedMetadata.toLegacyMap()), eq(0));
       verify(zkClient, times(1)).writeDataGetStat(eq(v2MetadataPath), eq(updatedMetadata), eq(0));
     }
   }
@@ -133,29 +121,25 @@ public class TestZkAdminTopicMetadataAccessor {
   @Test
   public void testGetMetadata() {
     String clusterName = "test-cluster";
-    Map<String, Long> currentMetadata = AdminTopicMetadataAccessor
-        .generateMetadataMap(Optional.of(1L), Optional.of(-1L), Optional.of(1L), Optional.of(18L));
-    AdminMetadata currentV2Metadata = AdminMetadata.fromLegacyMap(currentMetadata);
+    AdminMetadata currentV2Metadata = new AdminMetadata();
+    currentV2Metadata.setExecutionId(1L);
+    currentV2Metadata.setOffset(-1L);
+    currentV2Metadata.setUpstreamOffset(1L);
+    currentV2Metadata.setAdminOperationProtocolVersion(18L);
     currentV2Metadata.setPubSubPosition(position);
 
-    String metadataPath = ZkAdminTopicMetadataAccessor.getAdminTopicMetadataNodePath(clusterName);
     String v2MetadataPath = ZkAdminTopicMetadataAccessor.getAdminTopicV2MetadataNodePath(clusterName);
 
-    when(zkClient.readData(metadataPath, null)).thenReturn(null).thenReturn(currentMetadata);
     when(zkClient.readData(v2MetadataPath, null)).thenReturn(null).thenReturn(currentV2Metadata);
 
     // Case 1: when there is no metadata
     AdminMetadata metadata = zkAdminTopicMetadataAccessor.getMetadata(clusterName);
-    AdminMetadata v2Metadata = zkAdminTopicMetadataAccessor.getV2AdminMetadata(clusterName);
 
     assertTrue(metadata.toMap().values().stream().allMatch(Objects::isNull), "All values should be null");
-    assertTrue(v2Metadata.toMap().values().stream().allMatch(Objects::isNull), "All values should be null");
 
     // Case 2: the metadata is not null
     metadata = zkAdminTopicMetadataAccessor.getMetadata(clusterName);
-    v2Metadata = zkAdminTopicMetadataAccessor.getV2AdminMetadata(clusterName);
 
-    assertEquals(metadata.toLegacyMap(), currentMetadata);
-    assertEquals(v2Metadata, currentV2Metadata);
+    assertEquals(metadata, currentV2Metadata);
   }
 }

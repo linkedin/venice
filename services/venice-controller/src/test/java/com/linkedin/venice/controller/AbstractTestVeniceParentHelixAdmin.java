@@ -64,7 +64,7 @@ public class AbstractTestVeniceParentHelixAdmin {
   protected static final String clusterName = "test-cluster";
   static final String regionName = "test-region";
   static final String topicName = AdminTopicUtils.getTopicNameFromClusterName(clusterName);
-  static final String zkMetadataNodePath = ZkAdminTopicMetadataAccessor.getAdminTopicMetadataNodePath(clusterName);
+  static final String zkMetadataNodePath = ZkAdminTopicMetadataAccessor.getAdminTopicV2MetadataNodePath(clusterName);
   static final int partitionId = AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID;
   static final AdminOperationSerializer adminOperationSerializer = new AdminOperationSerializer();
   static final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
