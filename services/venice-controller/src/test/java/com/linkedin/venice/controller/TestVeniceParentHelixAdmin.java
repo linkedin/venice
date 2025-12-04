@@ -1600,6 +1600,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     HelixReadWriteStoreRepository storeRepo = mock(HelixReadWriteStoreRepository.class);
     doReturn(testStore).when(storeRepo).getStore(storeName);
     doReturn(storeRepo).when(resources).getStoreMetadataRepository();
+    doReturn(5).when(config).getUserStoreVersionRetentionCount();
     parentAdmin.cleanupHistoricalVersions(clusterName, storeName);
     verify(storeRepo).getStore(storeName);
     verify(storeRepo, never()).updateStore(any());
@@ -1623,6 +1624,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     HelixReadWriteStoreRepository storeRepo = mock(HelixReadWriteStoreRepository.class);
     doReturn(testStore).when(storeRepo).getStore(storeName);
     doReturn(storeRepo).when(resources).getStoreMetadataRepository();
+    doReturn(5).when(config).getUserStoreVersionRetentionCount();
     mockControllerClients(storeName);
 
     parentAdmin.cleanupHistoricalVersions(clusterName, storeName);
@@ -1630,7 +1632,9 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     ArgumentCaptor<Store> storeCaptor = ArgumentCaptor.forClass(Store.class);
     verify(storeRepo).updateStore(storeCaptor.capture());
     Store capturedStore = storeCaptor.getValue();
-    assertEquals(capturedStore.getVersions().size(), VeniceParentHelixAdmin.STORE_VERSION_RETENTION_COUNT);
+    int storeVersionRetentionCount =
+        parentAdmin.getMultiClusterConfigs().getCommonConfig().getUserStoreVersionRetentionCount();
+    assertEquals(capturedStore.getVersions().size(), storeVersionRetentionCount);
 
     for (int i = 1; i <= 3; ++i) {
       Assert.assertFalse(capturedStore.containsVersion(i));
