@@ -66,7 +66,6 @@ import com.linkedin.venice.controller.init.SystemSchemaInitializationRoutine;
 import com.linkedin.venice.controller.kafka.StoreStatusDecider;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.controller.kafka.consumer.AdminMetadata;
-import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
 import com.linkedin.venice.controller.kafka.protocol.admin.HybridStoreConfigRecord;
 import com.linkedin.venice.controller.kafka.protocol.admin.StoreViewConfigRecord;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
@@ -292,7 +291,6 @@ import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import javax.annotation.Nonnull;
 import org.apache.avro.Schema;
-import org.apache.avro.specific.SpecificData;
 import org.apache.avro.util.Utf8;
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.lang.Validate;
@@ -715,8 +713,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             AvroProtocolDefinition.SERVER_STORE_PROPERTIES_PAYLOAD,
             multiClusterConfigs,
             this));
-    if (multiClusterConfigs.isAdminOperationSystemStoreEnabled()) {
-      Schema adminOperationCompiledSchema = SpecificData.get().getSchema(AdminOperation.class);
+    if (multiClusterConfigs.getControllerConfig(multiClusterConfigs.getSystemSchemaClusterName())
+        .isAdminOperationSystemStoreEnabled()) {
       initRoutines.add(
           new SystemSchemaInitializationRoutine(
               AvroProtocolDefinition.ADMIN_OPERATION,
@@ -725,7 +723,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
               Optional.empty(),
               Optional.empty(),
               false,
-              adminOperationCompiledSchema));
+              AdminOperationSerializer.LATEST_SCHEMA));
     }
 
     if (multiClusterConfigs.isZkSharedMetaSystemSchemaStoreAutoCreationEnabled()) {
@@ -1135,10 +1133,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   protected HelixAdmin getHelixAdmin() {
     return this.admin;
-  }
-
-  public boolean isAdminOperationSystemStoreEnabled() {
-    return multiClusterConfigs.isAdminOperationSystemStoreEnabled();
   }
 
   /**

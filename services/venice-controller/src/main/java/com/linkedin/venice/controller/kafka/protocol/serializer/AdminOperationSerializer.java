@@ -31,7 +31,7 @@ public class AdminOperationSerializer {
   public static final int LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION =
       AvroProtocolDefinition.ADMIN_OPERATION.getCurrentProtocolVersion();
 
-  private static final Schema LATEST_SCHEMA = AdminOperation.getClassSchema();
+  public static final Schema LATEST_SCHEMA = AdminOperation.getClassSchema();
 
   private static final Map<Integer, Schema> PROTOCOL_MAP = initProtocolMap();
 

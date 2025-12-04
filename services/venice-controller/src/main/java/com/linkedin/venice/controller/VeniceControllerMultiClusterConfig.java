@@ -275,10 +275,6 @@ public class VeniceControllerMultiClusterConfig {
     return getCommonConfig().isZkSharedMetaSystemSchemaStoreAutoCreationEnabled();
   }
 
-  public boolean isAdminOperationSystemStoreEnabled() {
-    return getCommonConfig().isAdminOperationSystemStoreEnabled();
-  }
-
   public boolean isZkSharedDaVinciPushStatusSystemSchemaStoreAutoCreationEnabled() {
     return getCommonConfig().isZkSharedDaVinciPushStatusSystemSchemaStoreAutoCreationEnabled();
   }
