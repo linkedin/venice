@@ -167,12 +167,11 @@ public class TestVersionSpecificChangelogConsumer {
             .setVersionSwapDetectionIntervalTimeInSeconds(3)
             .setUseRequestBasedMetadataRepository(true)
             .setD2Client(d2Client)
-            .setBootstrapFileSystemPath(Utils.getUniqueString(inputDirPath))
-            .setIncludeControlMessages(true); // Enable control messages passing
+            .setBootstrapFileSystemPath(Utils.getUniqueString(inputDirPath));
     VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =
         new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig, metricsRepository);
     VeniceChangelogConsumer<Integer, Utf8> changeLogConsumer =
-        veniceChangelogConsumerClientFactory.getVersionSpecificChangelogConsumer(storeName, 1);
+        veniceChangelogConsumerClientFactory.getVersionSpecificChangelogConsumer(storeName, 1, true);
 
     changeLogConsumer.subscribeAll().get();
 
