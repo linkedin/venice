@@ -88,6 +88,7 @@ import com.linkedin.venice.meta.LifecycleHooksRecord;
 import com.linkedin.venice.meta.QueryAction;
 import com.linkedin.venice.meta.ServerAdminAction;
 import com.linkedin.venice.meta.StoreInfo;
+import com.linkedin.venice.meta.VeniceETLStrategy;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.metadata.payload.StorePropertiesPayloadRecord;
@@ -1350,6 +1351,12 @@ public class AdminTool {
     booleanParam(cmd, Arg.REGULAR_VERSION_ETL_ENABLED, p -> params.setRegularVersionETLEnabled(p), argSet);
     booleanParam(cmd, Arg.FUTURE_VERSION_ETL_ENABLED, p -> params.setFutureVersionETLEnabled(p), argSet);
     genericParam(cmd, Arg.ETLED_PROXY_USER_ACCOUNT, s -> s, p -> params.setEtledProxyUserAccount(p), argSet);
+    genericParam(
+        cmd,
+        Arg.VENICE_ETL_STRATEGY,
+        s -> VeniceETLStrategy.valueOf(s),
+        p -> params.setETLStrategy(p),
+        argSet);
     booleanParam(cmd, Arg.NATIVE_REPLICATION_ENABLED, p -> params.setNativeReplicationEnabled(p), argSet);
     genericParam(cmd, Arg.PUSH_STREAM_SOURCE_ADDRESS, s -> s, p -> params.setPushStreamSourceAddress(p), argSet);
     stringMapParam(cmd, Arg.STORE_VIEW_CONFIGS, p -> params.setStoreViews(p), argSet);

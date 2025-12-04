@@ -170,6 +170,7 @@ import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.StoreName;
 import com.linkedin.venice.meta.StoreVersionInfo;
 import com.linkedin.venice.meta.SystemStoreAttributes;
+import com.linkedin.venice.meta.VeniceETLStrategy;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.VersionStatus;
@@ -3346,7 +3347,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             }
           }
 
-          resources.getVeniceVersionLifecycleEventManager().notifyVersionCreated(version, !sourceVersion.isPresent());
+          resources.getVeniceVersionLifecycleEventManager()
+              .notifyVersionCreated(store, version, !sourceVersion.isPresent());
 
           // Check the push job id to self-manage the ttlRepushEnabled store property.
           if (Version.isPushIdTTLRePush(pushJobId) && !store.isTTLRepushEnabled()) {
@@ -4266,7 +4268,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         if (store.isMigrating()) {
           isSourceCluster = resources.isSourceCluster(clusterName, storeName);
         }
-        resources.getVeniceVersionLifecycleEventManager().notifyVersionDeleted(deletedVersion.get(), isSourceCluster);
+        resources.getVeniceVersionLifecycleEventManager()
+            .notifyVersionDeleted(store, deletedVersion.get(), isSourceCluster);
       }
     }
   }
@@ -5770,6 +5773,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     Optional<Boolean> regularVersionETLEnabled = params.getRegularVersionETLEnabled();
     Optional<Boolean> futureVersionETLEnabled = params.getFutureVersionETLEnabled();
     Optional<String> etledUserProxyAccount = params.getETLedProxyUserAccount();
+    Optional<VeniceETLStrategy> etlStrategy = params.getETLStrategy();
     Optional<Boolean> nativeReplicationEnabled = params.getNativeReplicationEnabled();
     Optional<String> pushStreamSourceAddress = params.getPushStreamSourceAddress();
     Optional<Long> backupVersionRetentionMs = params.getBackupVersionRetentionMs();
@@ -6020,11 +6024,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           .ifPresent(value -> setAutoSchemaRegisterPushJobEnabled(clusterName, storeName, value));
       hybridStoreDiskQuotaEnabled.ifPresent(value -> setHybridStoreDiskQuotaEnabled(clusterName, storeName, value));
       if (regularVersionETLEnabled.isPresent() || futureVersionETLEnabled.isPresent()
-          || etledUserProxyAccount.isPresent()) {
+          || etledUserProxyAccount.isPresent() || etlStrategy.isPresent()) {
         ETLStoreConfig etlStoreConfig = new ETLStoreConfigImpl(
             etledUserProxyAccount.orElseGet(() -> originalStore.getEtlStoreConfig().getEtledUserProxyAccount()),
             regularVersionETLEnabled.orElseGet(() -> originalStore.getEtlStoreConfig().isRegularVersionETLEnabled()),
-            futureVersionETLEnabled.orElseGet(() -> originalStore.getEtlStoreConfig().isFutureVersionETLEnabled()));
+            futureVersionETLEnabled.orElseGet(() -> originalStore.getEtlStoreConfig().isFutureVersionETLEnabled()),
+            etlStrategy.orElseGet(() -> originalStore.getEtlStoreConfig().getETLStrategy()).getValue());
         storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
           store.setEtlStoreConfig(etlStoreConfig);
           return store;

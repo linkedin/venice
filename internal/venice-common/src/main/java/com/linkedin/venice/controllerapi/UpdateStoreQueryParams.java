@@ -25,6 +25,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENABLE_ST
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENABLE_WRITES;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENUM_SCHEMA_EVOLUTION_ALLOWED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ETLED_PROXY_USER_ACCOUNT;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.ETL_STRATEGY;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.FUTURE_VERSION_ETL_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.GLOBAL_RT_DIV_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.HYBRID_STORE_DISK_QUOTA_ENABLED;
@@ -94,6 +95,7 @@ import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.LifecycleHooksRecord;
 import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.StoreInfo;
+import com.linkedin.venice.meta.VeniceETLStrategy;
 import com.linkedin.venice.utils.ConfigCommonUtils;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import java.io.IOException;
@@ -197,6 +199,7 @@ public class UpdateStoreQueryParams extends QueryParams {
       updateStoreQueryParams.setEtledProxyUserAccount(etlStoreConfig.getEtledUserProxyAccount());
       updateStoreQueryParams.setRegularVersionETLEnabled(etlStoreConfig.isRegularVersionETLEnabled());
       updateStoreQueryParams.setFutureVersionETLEnabled(etlStoreConfig.isFutureVersionETLEnabled());
+      updateStoreQueryParams.setETLStrategy(etlStoreConfig.getETLStrategy());
     }
 
     HybridStoreConfig hybridStoreConfig = srcStore.getHybridStoreConfig();
@@ -583,6 +586,15 @@ public class UpdateStoreQueryParams extends QueryParams {
 
   public Optional<String> getETLedProxyUserAccount() {
     return Optional.ofNullable(params.get(ETLED_PROXY_USER_ACCOUNT));
+  }
+
+  public UpdateStoreQueryParams setETLStrategy(VeniceETLStrategy etlStrategy) {
+    params.put(ETL_STRATEGY, etlStrategy.name());
+    return this;
+  }
+
+  public Optional<VeniceETLStrategy> getETLStrategy() {
+    return Optional.ofNullable(params.get(ETL_STRATEGY)).map(VeniceETLStrategy::valueOf);
   }
 
   public Optional<Boolean> getNativeReplicationEnabled() {

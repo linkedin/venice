@@ -30,6 +30,7 @@ import com.linkedin.venice.integration.utils.IntegrationTestUtils;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
+import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.stats.HelixMessageChannelStats;
@@ -111,7 +112,7 @@ class AbstractTestVeniceHelixAdmin {
   // Mock version lifecycle event listener ignores all system store version events for simplifying assertions
   VeniceVersionLifecycleEventListener mockVersionLifecycleEventListener = new VeniceVersionLifecycleEventListener() {
     @Override
-    public void onVersionCreated(Version version, boolean isSourceCluster) {
+    public void onVersionCreated(Store store, Version version, boolean isSourceCluster) {
       if (!VeniceSystemStoreUtils.isSystemStore(version.getStoreName())) {
         versionLifecycleEvents
             .add(new VersionLifecycleEvent(VersionLifecycleEventType.CREATED, version, isSourceCluster));
@@ -119,7 +120,7 @@ class AbstractTestVeniceHelixAdmin {
     }
 
     @Override
-    public void onVersionDeleted(Version version, boolean isSourceCluster) {
+    public void onVersionDeleted(Store store, Version version, boolean isSourceCluster) {
       if (!VeniceSystemStoreUtils.isSystemStore(version.getStoreName())) {
         versionLifecycleEvents
             .add(new VersionLifecycleEvent(VersionLifecycleEventType.DELETED, version, isSourceCluster));
@@ -127,7 +128,7 @@ class AbstractTestVeniceHelixAdmin {
     }
 
     @Override
-    public void onVersionBecomingCurrentFromFuture(Version version, boolean isSourceCluster) {
+    public void onVersionBecomingCurrentFromFuture(Store store, Version version, boolean isSourceCluster) {
       if (!VeniceSystemStoreUtils.isSystemStore(version.getStoreName())) {
         versionLifecycleEvents.add(
             new VersionLifecycleEvent(
@@ -138,7 +139,7 @@ class AbstractTestVeniceHelixAdmin {
     }
 
     @Override
-    public void onVersionBecomingCurrentFromBackup(Version version, boolean isSourceCluster) {
+    public void onVersionBecomingCurrentFromBackup(Store store, Version version, boolean isSourceCluster) {
       if (!VeniceSystemStoreUtils.isSystemStore(version.getStoreName())) {
         versionLifecycleEvents.add(
             new VersionLifecycleEvent(
@@ -149,7 +150,7 @@ class AbstractTestVeniceHelixAdmin {
     }
 
     @Override
-    public void onVersionBecomingBackup(Version version, boolean isSourceCluster) {
+    public void onVersionBecomingBackup(Store store, Version version, boolean isSourceCluster) {
       if (!VeniceSystemStoreUtils.isSystemStore(version.getStoreName())) {
         versionLifecycleEvents
             .add(new VersionLifecycleEvent(VersionLifecycleEventType.BECOMING_BACKUP, version, isSourceCluster));

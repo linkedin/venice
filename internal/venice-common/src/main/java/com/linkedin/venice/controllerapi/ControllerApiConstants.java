@@ -137,6 +137,8 @@ public class ControllerApiConstants {
 
   public static final String ETLED_PROXY_USER_ACCOUNT = "etled_proxy_user_account";
 
+  public static final String ETL_STRATEGY = "etl_strategy";
+
   public static final String SKIP_DIV = "skip_div";
 
   public static final String STORE_TYPE = "store_type";

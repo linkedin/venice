@@ -159,6 +159,10 @@ public enum Arg {
       "etled-proxy-user-account", "epu", true,
       "if enabled ETL, the proxy user account for HDFS file directory where the ETLed snapshots will go."
   ),
+  VENICE_ETL_STRATEGY(
+      "venice-etl-strategy", "ves", true,
+      "ETL strategy for this store. Supported strategies are: EXTERNAL_SERVICE, EXTERNAL_WITH_VENICE_TRIGGER. Default is EXTERNAL_SERVICE."
+  ),
   BACKUP_VERSION_RETENTION_DAY(
       "backup-version-retention-day", "bvrd", true,
       "Backup version retention time in day after a new version is promoted to the current version, if not specified, Venice will use the configured retention as the default policy"

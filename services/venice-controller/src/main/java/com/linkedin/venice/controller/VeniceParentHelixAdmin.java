@@ -27,6 +27,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENABLE_ST
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENABLE_WRITES;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENUM_SCHEMA_EVOLUTION_ALLOWED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ETLED_PROXY_USER_ACCOUNT;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.ETL_STRATEGY;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.FUTURE_VERSION_ETL_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.GLOBAL_RT_DIV_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.HYBRID_STORE_DISK_QUOTA_ENABLED;
@@ -230,6 +231,7 @@ import com.linkedin.venice.meta.StoreDataAudit;
 import com.linkedin.venice.meta.StoreGraveyard;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.StoreVersionInfo;
+import com.linkedin.venice.meta.VeniceETLStrategy;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.meta.ViewConfig;
@@ -2650,6 +2652,7 @@ public class VeniceParentHelixAdmin implements Admin {
       Optional<Boolean> regularVersionETLEnabled = params.getRegularVersionETLEnabled();
       Optional<Boolean> futureVersionETLEnabled = params.getFutureVersionETLEnabled();
       Optional<String> etledUserProxyAccount = params.getETLedProxyUserAccount();
+      Optional<VeniceETLStrategy> etlStrategy = params.getETLStrategy();
       Optional<Boolean> nativeReplicationEnabled = params.getNativeReplicationEnabled();
       Optional<String> pushStreamSourceAddress = params.getPushStreamSourceAddress();
       Optional<Long> backupVersionRetentionMs = params.getBackupVersionRetentionMs();
@@ -3016,11 +3019,13 @@ public class VeniceParentHelixAdmin implements Admin {
       regularVersionETLEnabled.map(addToUpdatedConfigList(updatedConfigsList, REGULAR_VERSION_ETL_ENABLED));
       futureVersionETLEnabled.map(addToUpdatedConfigList(updatedConfigsList, FUTURE_VERSION_ETL_ENABLED));
       etledUserProxyAccount.map(addToUpdatedConfigList(updatedConfigsList, ETLED_PROXY_USER_ACCOUNT));
+      etlStrategy.map(addToUpdatedConfigList(updatedConfigsList, ETL_STRATEGY));
       setStore.ETLStoreConfig = mergeNewSettingIntoOldETLStoreConfig(
           currStore,
           regularVersionETLEnabled,
           futureVersionETLEnabled,
-          etledUserProxyAccount);
+          etledUserProxyAccount,
+          etlStrategy);
 
       setStore.largestUsedVersionNumber =
           largestUsedVersionNumber.map(addToUpdatedConfigList(updatedConfigsList, LARGEST_USED_VERSION_NUMBER))
@@ -5276,7 +5281,8 @@ public class VeniceParentHelixAdmin implements Admin {
       Store store,
       Optional<Boolean> regularVersionETLEnabled,
       Optional<Boolean> futureVersionETLEnabled,
-      Optional<String> etledUserProxyAccount) {
+      Optional<String> etledUserProxyAccount,
+      Optional<VeniceETLStrategy> etlStrategy) {
     ETLStoreConfig etlStoreConfig = store.getEtlStoreConfig();
     /**
      * If etl enabled is true (either current version or future version), then account name must be specified in the command
@@ -5296,6 +5302,7 @@ public class VeniceParentHelixAdmin implements Admin {
         regularVersionETLEnabled.orElseGet(etlStoreConfig::isRegularVersionETLEnabled);
     etlStoreConfigRecord.futureVersionETLEnabled =
         futureVersionETLEnabled.orElseGet(etlStoreConfig::isFutureVersionETLEnabled);
+    etlStoreConfigRecord.etlStrategy = etlStrategy.orElseGet(etlStoreConfig::getETLStrategy).getValue();
     return etlStoreConfigRecord;
   }
 

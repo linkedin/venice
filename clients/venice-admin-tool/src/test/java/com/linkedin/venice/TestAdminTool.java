@@ -35,6 +35,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.LifecycleHooksRecord;
 import com.linkedin.venice.meta.QueryAction;
 import com.linkedin.venice.meta.StoreInfo;
+import com.linkedin.venice.meta.VeniceETLStrategy;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.VersionStatus;
@@ -98,7 +99,8 @@ public class TestAdminTool {
     String[] args = { "--update-store", "--url", "http://localhost:7036", "--cluster", "test-cluster", "--store",
         "testStore", "--rmd-chunking-enabled", "true", "--blob-transfer-enabled", "true",
         "--blob-transfer-in-server-enabled", "ENABLED", "--target-region-swap", "prod",
-        "--target-region-swap-wait-time", "100", "--global-rt-div-enabled", "true", "--partitioner-params",
+        "--target-region-swap-wait-time", "100", "--global-rt-div-enabled", "true", "--regular-version-etl-enabled",
+        "true", "--venice-etl-strategy", "EXTERNAL_WITH_VENICE_TRIGGER", "--partitioner-params",
         "{\"" + K1 + "\":\"" + V1 + "\",\"" + K2 + "\":\"" + V2 + "\",\"" + K3 + "\":\"" + V3 + "\"}",
         "--store-lifecycle-hooks-list",
         "[{\"storeLifecycleHooksClassName\":\"com.example.MyHook1\",\"storeLifecycleHooksParams\":{\"paramA\":\"valueA\",\"paramB\":\"valueB\"}},{\"storeLifecycleHooksClassName\":\"com.example.MyHook2\",\"storeLifecycleHooksParams\":{\"foo\":\"bar\"}}]" };
@@ -117,6 +119,10 @@ public class TestAdminTool {
     assertEquals(params.getTargetRegionSwapWaitTime(), Optional.of(100));
     Assert.assertTrue(params.isGlobalRtDivEnabled().isPresent());
     Assert.assertTrue(params.isGlobalRtDivEnabled().get());
+    Assert.assertTrue(params.getRegularVersionETLEnabled().isPresent());
+    Assert.assertTrue(params.getRegularVersionETLEnabled().get());
+    Assert.assertTrue(params.getETLStrategy().isPresent());
+    Assert.assertEquals(params.getETLStrategy().get(), VeniceETLStrategy.EXTERNAL_WITH_VENICE_TRIGGER);
     Optional<Map<String, String>> partitionerParams = params.getPartitionerParams();
     Assert.assertTrue(partitionerParams.isPresent());
     Map<String, String> partitionerParamsMap = partitionerParams.get();
