@@ -3610,14 +3610,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         versionedDIVStats.recordSuccessMsg(storeName, versionNumber);
       }
     } catch (FatalDataValidationException fatalException) {
-      if (!partitionConsumptionState.isEndOfPushReceived()) {
-        if (skipValidationForSeekableClientEnabled) {
-          LOGGER.info(
-              "Ignoring FatalDataValidationException in seeking client for replica: {}",
-              consumerRecord.getTopicPartition());
-        } else {
-          throw fatalException;
-        }
+      if (skipValidationForSeekableClientEnabled) {
+        LOGGER.info(
+            "Ignoring FatalDataValidationException in seeking client for replica: {}",
+            consumerRecord.getTopicPartition());
+      } else if (!partitionConsumptionState.isEndOfPushReceived()) {
+        throw fatalException;
       } else {
         LOGGER.warn(
             "Encountered errors during updating metadata for 2nd round DIV validation "
