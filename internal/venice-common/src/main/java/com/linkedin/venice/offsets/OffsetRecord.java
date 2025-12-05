@@ -2,7 +2,6 @@ package com.linkedin.venice.offsets;
 
 import static com.linkedin.venice.guid.GuidUtils.guidToUtf8;
 import static com.linkedin.venice.pubsub.PubSubUtil.fromKafkaOffset;
-
 import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.GUID;
@@ -12,6 +11,7 @@ import com.linkedin.venice.kafka.protocol.state.ProducerPartitionState;
 import com.linkedin.venice.pubsub.PubSubContext;
 import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.PubSubUtil;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
@@ -497,53 +497,22 @@ public class OffsetRecord {
   }
 
   /**
-   * Best-effort deserialization of a {@code PubSubPosition} with an explicit offset fallback.
+   * Deserializes a {@code PubSubPosition} from the provided byte buffer, falling back to an
+   * offset-based position if deserialization fails or the buffer is empty.
    *
-   * <p>Behavior:
-   * <ul>
-   *   <li>If {@code wireFormatBytes} is {@code null} or has no remaining bytes, returns a position from {@code offset}.</li>
-   *   <li>Otherwise, tries to deserialize using {@code pubSubPositionDeserializer}.</li>
-   *   <li>If deserialization throws or yields a position whose numeric offset is less than {@code offset},
-   *       returns a position from {@code offset}.</li>
-   *   <li>On success, returns the deserialized position.</li>
-   * </ul>
-   *
-   * <p>The second parameter is required because callers often know a minimum offset that must not be
-   * regressed. Keeping it explicit makes the fallback rule obvious at the call site.</p>
+   * <p>
+   * This method delegates to {@link PubSubUtil#deserializePositionWithOffsetFallback}
+   * to ensure consistent deserialization behavior across the codebase.
+   * </p>
    *
    * @param wireFormatBytes byte buffer with serialized position data, may be {@code null}.
    *                        The buffer is not consumed (a sliced view is used).
    * @param offset          minimum numeric offset to use if deserialization fails or regresses
    * @return a {@code PubSubPosition} from the buffer if valid, otherwise derived from {@code offset}
+   * @see PubSubUtil#deserializePositionWithOffsetFallback
    */
   @VisibleForTesting
   PubSubPosition deserializePositionWithOffsetFallback(ByteBuffer wireFormatBytes, long offset) {
-    // Fast path: nothing to deserialize
-    if (wireFormatBytes == null || !wireFormatBytes.hasRemaining()) {
-      return fromKafkaOffset(offset);
-    }
-
-    try {
-      final PubSubPosition position = pubSubPositionDeserializer.toPosition(wireFormatBytes);
-
-      // Guard against regressions: honor the caller-provided minimum offset.
-      if (position.getNumericOffset() < offset) {
-        LOGGER.info(
-            "Deserialized position: {} is behind the provided offset: {}. Using offset-based position.",
-            position.getNumericOffset(),
-            offset);
-        return fromKafkaOffset(offset);
-      }
-
-      return position;
-    } catch (RuntimeException e) {
-      LOGGER.warn(
-          "Failed to deserialize PubSubPosition. Using offset-based position (offset={}, bufferRem={}, bufferCap={}).",
-          offset,
-          wireFormatBytes.remaining(),
-          wireFormatBytes.capacity(),
-          e);
-      return fromKafkaOffset(offset);
-    }
+    return PubSubUtil.deserializePositionWithOffsetFallback(wireFormatBytes, offset, pubSubPositionDeserializer);
   }
 }
