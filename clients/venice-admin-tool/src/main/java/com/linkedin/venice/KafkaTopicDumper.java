@@ -32,6 +32,7 @@ import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.PubSubUtil;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
@@ -505,7 +506,12 @@ public class KafkaTopicDumper implements AutoCloseable {
           producerMetadata.messageTimestamp,
           producerMetadata.logicalTimestamp,
           leaderMetadata == null ? "-" : leaderMetadata.hostName,
-          leaderMetadata == null ? "-" : pubSubPositionDeserializer.toPosition(leaderMetadata.upstreamPubSubPosition),
+          leaderMetadata == null
+              ? "-"
+              : PubSubUtil.deserializePositionWithOffsetFallback(
+                  leaderMetadata.upstreamPubSubPosition,
+                  leaderMetadata.upstreamOffset,
+                  pubSubPositionDeserializer),
           leaderMetadata == null ? "-" : leaderMetadata.upstreamKafkaClusterId,
           chunkMetadata);
     } catch (Exception e) {
@@ -656,7 +662,12 @@ public class KafkaTopicDumper implements AutoCloseable {
         producerMetadata.messageTimestamp,
         producerMetadata.logicalTimestamp,
         leaderMetadata == null ? "-" : leaderMetadata.hostName,
-        leaderMetadata == null ? "-" : pubSubPositionDeserializer.toPosition(leaderMetadata.upstreamPubSubPosition),
+        leaderMetadata == null
+            ? "-"
+            : PubSubUtil.deserializePositionWithOffsetFallback(
+                leaderMetadata.upstreamPubSubPosition,
+                leaderMetadata.upstreamOffset,
+                pubSubPositionDeserializer),
         leaderMetadata == null ? "-" : leaderMetadata.upstreamKafkaClusterId);
   }
 
