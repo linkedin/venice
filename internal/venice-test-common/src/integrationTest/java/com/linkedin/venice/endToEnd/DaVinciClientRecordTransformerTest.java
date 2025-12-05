@@ -879,7 +879,7 @@ public class DaVinciClientRecordTransformerTest {
     }
   }
 
-  @Test
+  @Test(timeOut = TEST_TIMEOUT)
   public void testRecordTransformerDaVinciWithSeeking() throws Exception {
     DaVinciConfig clientConfig = new DaVinciConfig();
     String storeName = Utils.getUniqueString(BASE_STORE_NAME);
@@ -890,7 +890,7 @@ public class DaVinciClientRecordTransformerTest {
     setUpStore(storeName, false, false, CompressionStrategy.NO_OP, customValue, 0, 1);
     try (VeniceSystemProducer veniceProducer =
         IntegrationTestPushUtils.getSamzaProducer(cluster, storeName, Version.PushType.STREAM)) {
-      for (int i = 1; i <= numKeys; ++i) {
+      for (int i = 0; i < numKeys; ++i) {
         String value = "a" + i;
         sendStreamingRecord(veniceProducer, storeName, i, value);
         Thread.sleep(500);
@@ -915,7 +915,8 @@ public class DaVinciClientRecordTransformerTest {
         myValueSchema,
         dummyRecordTransformerConfig);
     List<DefaultPubSubMessage> messages = getDataMessages(storeName, numKeys);
-    DefaultPubSubMessage pubSubMessage = messages.get(4);
+    int messageIndex = 4;
+    DefaultPubSubMessage pubSubMessage = messages.get(messageIndex);
     VeniceChangeCoordinate changeCoordinate = new VeniceChangeCoordinate(
         pubSubMessage.getTopic().getName(),
         pubSubMessage.getPosition(),
@@ -942,12 +943,12 @@ public class DaVinciClientRecordTransformerTest {
       // test seek by change coordinate
       clientWithRecordTransformer.seekToCheckpoint(Collections.singleton(changeCoordinate)).get();
       TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
-        for (int k = 1; k <= numKeys; ++k) {
+        for (int k = 0; k < numKeys; ++k) {
           // Record shouldn't be stored in Da Vinci
           assertNull(clientWithRecordTransformer.get(k).get());
           // Record should be stored in inMemoryDB
           String expectedValue = "a" + k + "Transformed";
-          assertEquals(recordTransformer.get(k), k < 7 ? null : expectedValue);
+          assertEquals(recordTransformer.get(k), k <= messageIndex ? null : expectedValue);
         }
       });
       clientWithRecordTransformer.unsubscribeAll();
@@ -958,12 +959,12 @@ public class DaVinciClientRecordTransformerTest {
       // test seek by timestamp
       clientWithRecordTransformer.seekToTimestamp(pubSubMessage.getValue().producerMetadata.messageTimestamp).get();
       TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
-        for (int k = 1; k <= numKeys; ++k) {
+        for (int k = 0; k < numKeys; ++k) {
           // Record shouldn't be stored in Da Vinci
           assertNull(clientWithRecordTransformer.get(k).get());
           // Record should be stored in inMemoryDB
           String expectedValue = "a" + k + "Transformed";
-          assertEquals(recordTransformer.get(k), k < 7 ? null : expectedValue);
+          assertEquals(recordTransformer.get(k), k <= messageIndex ? null : expectedValue);
         }
       });
       clientWithRecordTransformer.unsubscribeAll();
