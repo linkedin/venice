@@ -3611,9 +3611,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       }
     } catch (FatalDataValidationException fatalException) {
       if (skipValidationForSeekableClientEnabled) {
-        LOGGER.info(
-            "Ignoring FatalDataValidationException in seeking client for replica: {}",
-            consumerRecord.getTopicPartition());
+        String msg = "Ignoring FatalDataValidationException in seeking client for replica: "
+            + consumerRecord.getTopicPartition();
+        if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
+          LOGGER.info(msg);
+        }
       } else if (!partitionConsumptionState.isEndOfPushReceived()) {
         throw fatalException;
       } else {
