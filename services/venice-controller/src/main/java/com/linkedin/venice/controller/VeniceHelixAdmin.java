@@ -713,8 +713,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             AvroProtocolDefinition.SERVER_STORE_PROPERTIES_PAYLOAD,
             multiClusterConfigs,
             this));
-    if (multiClusterConfigs.getControllerConfig(multiClusterConfigs.getSystemSchemaClusterName())
-        .isAdminOperationSystemStoreEnabled()) {
+    if (isAdminOperationSystemStoreEnabled()) {
       initRoutines.add(
           new SystemSchemaInitializationRoutine(
               AvroProtocolDefinition.ADMIN_OPERATION,
@@ -1809,6 +1808,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           getReadWriteLiveClusterConfigRepository(clusterName);
       return clusterConfigRepository.getConfigs().isStoreMigrationAllowed();
     }
+  }
+
+  public boolean isAdminOperationSystemStoreEnabled() {
+    return multiClusterConfigs.getControllerConfig(multiClusterConfigs.getSystemSchemaClusterName())
+        .isAdminOperationSystemStoreEnabled();
   }
 
   /**
