@@ -1302,7 +1302,8 @@ public abstract class StoreIngestionTaskTest {
       }
 
       return null;
-    }).when(aggKafkaConsumerService).subscribeConsumerFor(anyString(), any(), any(), any(PubSubPosition.class), false);
+    }).when(aggKafkaConsumerService)
+        .subscribeConsumerFor(anyString(), any(), any(), any(PubSubPosition.class), anyBoolean());
 
     doAnswer(invocation -> {
       PubSubTopic versionTopic = invocation.getArgument(0, PubSubTopic.class);
