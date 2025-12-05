@@ -363,10 +363,12 @@ public class TestActiveActiveVersionSwapMessage {
           dcControllerClientList,
           keySchemaStr,
           valueSchemaStr);
-      updateStoreToHybrid(storeName, parentControllerClient, Optional.of(true), Optional.of(true), Optional.of(true));
       // Force to rewind the entire RT
-      parentControllerClient
-          .updateStore(storeName, new UpdateStoreQueryParams().setPartitionCount(1).setHybridRewindSeconds(600L));
+      parentControllerClient.updateStore(storeName, new UpdateStoreQueryParams().setPartitionCount(1));
+
+      updateStoreToHybrid(storeName, parentControllerClient, Optional.of(true), Optional.of(true), Optional.of(true));
+
+      parentControllerClient.updateStore(storeName, new UpdateStoreQueryParams().setHybridRewindSeconds(600L));
       // Empty push to create a version
       VersionCreationResponse versionCreationResponse =
           parentControllerClient.emptyPush(storeName, Utils.getUniqueString("empty-hybrid-push"), 1L);
@@ -396,7 +398,7 @@ public class TestActiveActiveVersionSwapMessage {
       VeniceChangelogConsumer<GenericRecord, GenericRecord> changeLogConsumer =
           veniceChangelogConsumerClientFactory.getVersionSpecificChangelogConsumer(storeName, 1);
 
-      changeLogConsumer.subscribeAll().get();
+      changeLogConsumer.subscribe(Collections.singleton(0)).get();
 
       // All data should be from version 1
       Map<Integer, VeniceChangeCoordinate> pubSubMessagesMap = new HashMap();
