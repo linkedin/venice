@@ -274,7 +274,7 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
       future.get();
       fail(VeniceKeyCountLimitException.class.getSimpleName() + " should be thrown");
     } catch (Exception e) {
-      assertEquals(VeniceKeyCountLimitException.class, e.getCause().getClass());
+      assertEquals(VeniceKeyCountLimitException.class, e.getCause().getCause().getClass());
     }
     // Update the store config to increase batch-get key limit
     veniceCluster.useControllerClient(

@@ -67,18 +67,14 @@ public class ClientFactory {
         ? new DispatchingVsonStoreClient<>(storeMetadata, clientConfig)
         : new DispatchingAvroGenericStoreClient<>(storeMetadata, clientConfig);
 
-    InternalAvroStoreClient<K, V> retryClient = dispatchingStoreClient;
-    if (clientConfig.isLongTailRetryEnabledForSingleGet() || clientConfig.isLongTailRetryEnabledForBatchGet()
-        || clientConfig.isLongTailRetryEnabledForCompute()) {
-      retryClient = new RetriableAvroGenericStoreClient<>(
-          dispatchingStoreClient,
-          clientConfig,
-          /**
-           * Reuse the {@link TimeoutProcessor} from {@link InstanceHealthMonitor} to
-           * reduce the thread usage.
-           */
-          storeMetadata.getInstanceHealthMonitor().getTimeoutProcessor());
-    }
+    InternalAvroStoreClient<K, V> retryClient = new RetriableAvroGenericStoreClient<>(
+        dispatchingStoreClient,
+        clientConfig,
+        /**
+         * Reuse the {@link TimeoutProcessor} from {@link InstanceHealthMonitor} to
+         * reduce the thread usage.
+         */
+        storeMetadata.getInstanceHealthMonitor().getTimeoutProcessor());
 
     InternalAvroStoreClient<K, V> loadControlClient = retryClient;
     if (clientConfig.isStoreLoadControllerEnabled()) {
@@ -103,14 +99,10 @@ public class ClientFactory {
     final DispatchingAvroSpecificStoreClient<K, V> dispatchingStoreClient =
         new DispatchingAvroSpecificStoreClient<>(storeMetadata, clientConfig);
 
-    InternalAvroStoreClient<K, V> retryClient = dispatchingStoreClient;
-    if (clientConfig.isLongTailRetryEnabledForSingleGet() || clientConfig.isLongTailRetryEnabledForBatchGet()
-        || clientConfig.isLongTailRetryEnabledForCompute()) {
-      retryClient = new RetriableAvroSpecificStoreClient<>(
-          dispatchingStoreClient,
-          clientConfig,
-          storeMetadata.getInstanceHealthMonitor().getTimeoutProcessor());
-    }
+    InternalAvroStoreClient<K, V> retryClient = new RetriableAvroSpecificStoreClient<>(
+        dispatchingStoreClient,
+        clientConfig,
+        storeMetadata.getInstanceHealthMonitor().getTimeoutProcessor());
 
     InternalAvroStoreClient<K, V> loadControlClient = retryClient;
     if (clientConfig.isStoreLoadControllerEnabled()) {
