@@ -1,19 +1,19 @@
 package com.linkedin.venice.endToEnd;
 
+import static com.linkedin.davinci.consumer.stats.BasicConsumerStats.*;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
-import static com.linkedin.venice.ConfigKeys.CONTROLLER_USE_MULTI_REGION_REAL_TIME_TOPIC_SWITCHER_ENABLED;
-import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
-import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_SOURCE_FABRIC;
-import static com.linkedin.venice.ConfigKeys.PARENT_KAFKA_CLUSTER_FABRIC_LIST;
-import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED;
-import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE;
+import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_PARENT_DATA_CENTER_REGION_NAME;
 import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.D2_SERVICE_NAME;
-import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRecord;
+import static com.linkedin.venice.stats.ClientType.*;
+import static com.linkedin.venice.stats.VeniceMetricsRepository.*;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.*;
 import static com.linkedin.venice.utils.TestUtils.assertCommand;
 import static com.linkedin.venice.utils.TestUtils.createAndVerifyStoreInAllRegions;
 import static com.linkedin.venice.utils.TestUtils.updateStoreToHybrid;
-import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
+import static com.linkedin.venice.utils.TestWriteUtils.*;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.*;
+import static org.testng.Assert.*;
 
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.d2.balancer.D2ClientBuilder;
@@ -56,6 +56,7 @@ import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -68,10 +69,12 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import org.apache.avro.generic.GenericRecord;
+import org.apache.avro.util.Utf8;
 import org.apache.samza.system.SystemProducer;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
@@ -343,6 +346,98 @@ public class TestActiveActiveVersionSwapMessage {
           timeoutConsumerpolledChangeEventsMap.get("149")
               .toString()
               .contains(newVersionCreationResponse.getKafkaTopic()));
+    } finally {
+      deleteStores(storeName);
+    }
+  }
+
+  @Test
+  public void testSeekToCheckpointWithVersionSpecific() throws IOException, ExecutionException, InterruptedException {
+    String storeName = Utils.getUniqueString("test-store");
+    try {
+      String keySchemaStr = TestChangelogKey.SCHEMA$.toString();
+      String valueSchemaStr = TestChangelogValue.SCHEMA$.toString();
+      createAndVerifyStoreInAllRegions(
+          storeName,
+          parentControllerClient,
+          dcControllerClientList,
+          keySchemaStr,
+          valueSchemaStr);
+      // Force to rewind the entire RT
+      parentControllerClient.updateStore(storeName, new UpdateStoreQueryParams().setPartitionCount(1));
+
+      updateStoreToHybrid(storeName, parentControllerClient, Optional.of(true), Optional.of(true), Optional.of(true));
+
+      parentControllerClient.updateStore(storeName, new UpdateStoreQueryParams().setHybridRewindSeconds(600L));
+      // Empty push to create a version
+      VersionCreationResponse versionCreationResponse =
+          parentControllerClient.emptyPush(storeName, Utils.getUniqueString("empty-hybrid-push"), 1L);
+      assertCommand(versionCreationResponse);
+      TestUtils.waitForNonDeterministicAssertion(
+          PUSH_TIMEOUT,
+          TimeUnit.MILLISECONDS,
+          true,
+          () -> Assert.assertEquals(
+              parentControllerClient.queryJobStatus(versionCreationResponse.getKafkaTopic()).getStatus(),
+              ExecutionStatus.COMPLETED.toString()));
+
+      // Write 100 records in one child region
+      try (VeniceSystemProducer veniceProducer = IntegrationTestPushUtils.getSamzaProducer(
+          childDatacenters.get(0).getClusters().get(CLUSTER_NAMES[0]),
+          storeName,
+          Version.PushType.STREAM)) {
+        veniceProducer.start();
+        performStreamWrites(veniceProducer, storeName, 100, 0);
+      }
+
+      ChangelogClientConfig globalChangelogClientConfig =
+          getDefaultVersionSwapEnabledChangelogClientConfig(childDatacenters.get(0));
+      MetricsRepository metricsRepository = new MetricsRepository();
+      VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =
+          new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig, metricsRepository);
+      VeniceChangelogConsumer<GenericRecord, GenericRecord> changeLogConsumer =
+          veniceChangelogConsumerClientFactory.getVersionSpecificChangelogConsumer(storeName, 1);
+
+      changeLogConsumer.subscribe(Collections.singleton(0)).get();
+
+      // All data should be from version 1
+      Map<Integer, VeniceChangeCoordinate> pubSubMessagesMap = new HashMap();
+
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+        Collection<PubSubMessage<GenericRecord, ChangeEvent<GenericRecord>, VeniceChangeCoordinate>> pubSubMessagesList =
+            changeLogConsumer.poll(1000);
+        for (PubSubMessage<GenericRecord, ChangeEvent<GenericRecord>, VeniceChangeCoordinate> message: pubSubMessagesList) {
+          if (message.getKey() != null) {
+            pubSubMessagesMap.put((Integer) (message.getKey().get("id")), message.getPosition());
+          }
+        }
+        assertEquals(pubSubMessagesMap.size(), 100);
+      });
+
+      HashSet<VeniceChangeCoordinate> checkpoints = new HashSet<>();
+      checkpoints.add(pubSubMessagesMap.get(50));
+
+      // Restart client
+      changeLogConsumer.unsubscribeAll();
+
+      // Seek to checkpoint
+      changeLogConsumer.seekToCheckpoint(checkpoints).get();
+
+      // all data should be from version 1 starting from key 6
+      Map<Integer, PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessagesMapAfterSeek =
+          new HashMap();
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+        Collection<PubSubMessage<GenericRecord, ChangeEvent<GenericRecord>, VeniceChangeCoordinate>> pubSubMessagesList =
+            changeLogConsumer.poll(1000);
+        for (PubSubMessage<GenericRecord, ChangeEvent<GenericRecord>, VeniceChangeCoordinate> polledMessage: pubSubMessagesList) {
+          if (polledMessage.getKey() != null) {
+            pubSubMessagesMapAfterSeek.put((Integer) polledMessage.getKey().get("id"), null);
+          }
+        }
+        System.out.println(pubSubMessagesMapAfterSeek.size());
+        assertEquals(pubSubMessagesMapAfterSeek.size(), 50);
+      });
+
     } finally {
       deleteStores(storeName);
     }

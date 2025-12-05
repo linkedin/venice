@@ -1292,7 +1292,8 @@ public abstract class StoreIngestionTaskTest {
           partitionReplicaIngestionContext.getPubSubTopicPartition(),
           kafkaUrl,
           kafkaClusterId);
-      kafkaConsumerService.startConsumptionIntoDataReceiver(partitionReplicaIngestionContext, offset, dataReceiver);
+      kafkaConsumerService
+          .startConsumptionIntoDataReceiver(partitionReplicaIngestionContext, offset, dataReceiver, false);
 
       if (local) {
         localConsumedDataReceiver = dataReceiver;
@@ -1301,7 +1302,7 @@ public abstract class StoreIngestionTaskTest {
       }
 
       return null;
-    }).when(aggKafkaConsumerService).subscribeConsumerFor(anyString(), any(), any(), any(PubSubPosition.class));
+    }).when(aggKafkaConsumerService).subscribeConsumerFor(anyString(), any(), any(), any(PubSubPosition.class), false);
 
     doAnswer(invocation -> {
       PubSubTopic versionTopic = invocation.getArgument(0, PubSubTopic.class);
@@ -3422,12 +3423,14 @@ public abstract class StoreIngestionTaskTest {
         inMemoryLocalKafkaBroker.getPubSubBrokerAddress(),
         storeIngestionTaskUnderTest,
         fooRtPartitionReplicaIngestionContext,
-        p0);
+        p0,
+        false);
     aggKafkaConsumerService.subscribeConsumerFor(
         inMemoryRemoteKafkaBroker.getPubSubBrokerAddress(),
         storeIngestionTaskUnderTest,
         fooRtPartitionReplicaIngestionContext,
-        p0);
+        p0,
+        false);
 
     VeniceWriter localRtWriter = getVeniceWriter(rtTopic, new MockInMemoryProducerAdapter(inMemoryLocalKafkaBroker));
     VeniceWriter remoteRtWriter = getVeniceWriter(rtTopic, new MockInMemoryProducerAdapter(inMemoryRemoteKafkaBroker));

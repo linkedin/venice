@@ -948,7 +948,7 @@ public class DaVinciClientRecordTransformerTest {
           assertNull(clientWithRecordTransformer.get(k).get());
           // Record should be stored in inMemoryDB
           String expectedValue = "a" + k + "Transformed";
-          assertEquals(recordTransformer.get(k), k <= messageIndex ? null : expectedValue);
+          assertEquals(recordTransformer.get(k), k < messageIndex ? null : expectedValue);
         }
       });
       clientWithRecordTransformer.unsubscribeAll();
@@ -964,7 +964,7 @@ public class DaVinciClientRecordTransformerTest {
           assertNull(clientWithRecordTransformer.get(k).get());
           // Record should be stored in inMemoryDB
           String expectedValue = "a" + k + "Transformed";
-          assertEquals(recordTransformer.get(k), k <= messageIndex ? null : expectedValue);
+          assertEquals(recordTransformer.get(k), k < messageIndex ? null : expectedValue);
         }
       });
       clientWithRecordTransformer.unsubscribeAll();
