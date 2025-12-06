@@ -35,6 +35,10 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_AUTO_MATERIALIZE_META_SY
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_BACKUP_VERSION_DEFAULT_RETENTION_MS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_BACKUP_VERSION_DELETION_SLEEP_MS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_BACKUP_VERSION_METADATA_FETCH_BASED_CLEANUP_ENABLED;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_BACKUP_VERSION_MIN_ACTIVE_REPLICA;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_BACKUP_VERSION_MIN_ACTIVE_REPLICA_HIGH_RF;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_BACKUP_VERSION_REPLICA_COUNT;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_BACKUP_VERSION_REPLICA_COUNT_HIGH_RF;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_BACKUP_VERSION_REPLICA_REDUCTION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_BACKUP_VERSION_RETENTION_BASED_CLEANUP_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_CLUSTER;
@@ -337,6 +341,10 @@ public class VeniceControllerClusterConfig {
   private final long errorPartitionProcessingCycleDelay;
   private final long backupVersionDefaultRetentionMs;
   private final long backupVersionCleanupSleepMs;
+  private final int backupVersionMinActiveReplica;
+  private final int backupVersionReplicaCount;
+  private final int backupVersionMinActiveReplicaHighRF;
+  private final int backupVersionReplicaCountHighRF;
 
   private final boolean backupVersionRetentionBasedCleanupEnabled;
   private final boolean backupVersionMetadataFetchBasedCleanupEnabled;
@@ -1006,6 +1014,10 @@ public class VeniceControllerClusterConfig {
         props.getLong(ERROR_PARTITION_PROCESSING_CYCLE_DELAY, 5 * Time.MS_PER_MINUTE);
     this.backupVersionCleanupSleepMs =
         props.getLong(CONTROLLER_BACKUP_VERSION_DELETION_SLEEP_MS, TimeUnit.MINUTES.toMillis(5));
+    this.backupVersionMinActiveReplica = props.getInt(CONTROLLER_BACKUP_VERSION_MIN_ACTIVE_REPLICA, 1);
+    this.backupVersionReplicaCount = props.getInt(CONTROLLER_BACKUP_VERSION_REPLICA_COUNT, 1);
+    this.backupVersionMinActiveReplicaHighRF = props.getInt(CONTROLLER_BACKUP_VERSION_MIN_ACTIVE_REPLICA_HIGH_RF, 2);
+    this.backupVersionReplicaCountHighRF = props.getInt(CONTROLLER_BACKUP_VERSION_REPLICA_COUNT_HIGH_RF, 3);
     this.backupVersionDefaultRetentionMs =
         props.getLong(CONTROLLER_BACKUP_VERSION_DEFAULT_RETENTION_MS, TimeUnit.DAYS.toMillis(7)); // 1 week
     this.backupVersionRetentionBasedCleanupEnabled =
@@ -1931,6 +1943,22 @@ public class VeniceControllerClusterConfig {
 
   public boolean isAutoMaterializeDaVinciPushStatusSystemStoreEnabled() {
     return isAutoMaterializeDaVinciPushStatusSystemStoreEnabled;
+  }
+
+  public int getBackupVersionMinActiveReplica() {
+    return backupVersionMinActiveReplica;
+  }
+
+  public int getBackupVersionMinActiveReplicaHighRF() {
+    return backupVersionMinActiveReplicaHighRF;
+  }
+
+  public int getBackupVersionReplicaCount() {
+    return backupVersionReplicaCount;
+  }
+
+  public int getBackupVersionReplicaCountHighRF() {
+    return backupVersionReplicaCountHighRF;
   }
 
   public String getEmergencySourceRegion() {
