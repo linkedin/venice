@@ -646,7 +646,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
           nextEligibleRegion);
       return null;
     } else if (VersionStatus.ONLINE.equals(version.getStatus())
-        && rolloutOrder.get(rolloutOrder.size() - 1).equals(nextEligibleRegion)) {
+        && regionToCurrentVersion.get(nextEligibleRegion) < targetVersionNum) {
       String message = "Continuing to roll forward" + kafkaTopicName + " because region " + nextEligibleRegion
           + " is ONLINE, " + "but the current version" + regionToCurrentVersion.get(nextEligibleRegion)
           + " is not the target version " + targetVersionNum;
