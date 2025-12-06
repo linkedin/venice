@@ -63,7 +63,7 @@ import org.apache.logging.log4j.Logger;
  *    c) {@link ConsumerSubscriptionCleaner}
  * 2. Receive various calls to interrogate or mutate consumer state, and delegate them to the correct unit, by
  *    maintaining a mapping of which unit belongs to which version-topic and subscribed topic-partition. Notably,
- *    the {@link #startConsumptionIntoDataReceiver(PartitionReplicaIngestionContext, PubSubPosition, ConsumedDataReceiver)} function allows the
+ *    the {@link AbstractKafkaConsumerService#startConsumptionIntoDataReceiver(PartitionReplicaIngestionContext, PubSubPosition, ConsumedDataReceiver, boolean)} function allows the
  *    caller to start funneling consumed data into a receiver (i.e. into another task).
  * 3. Provide a single abstract function that must be overridden by subclasses in order to implement a consumption
  *    load balancing strategy: {@link #pickConsumerForPartition(PubSubTopic, PubSubTopicPartition)}
@@ -257,7 +257,7 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
       if (topicPartitionToConsumerMap != null) {
         topicPartitionToConsumerMap.forEach((topicPartition, sharedConsumer) -> {
           /**
-           * Refer {@link KafkaConsumerService#startConsumptionIntoDataReceiver} for avoiding race condition caused by
+           * Refer {@link AbstractKafkaConsumerService#startConsumptionIntoDataReceiver} for avoiding race condition caused by
            * setting data receiver and unsubscribing concurrently for the same topic partition on a shared consumer.
            */
           try (AutoCloseableLock ignored = AutoCloseableLock.of(consumerToLocks.get(sharedConsumer))) {
@@ -279,7 +279,7 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
     SharedKafkaConsumer consumer = getConsumerAssignedToVersionTopicPartition(versionTopic, pubSubTopicPartition);
     if (consumer != null) {
       /**
-       * Refer {@link KafkaConsumerService#startConsumptionIntoDataReceiver} for avoiding race condition caused by
+       * Refer {@link AbstractKafkaConsumerService#startConsumptionIntoDataReceiver} for avoiding race condition caused by
        * setting data receiver and unsubscribing concurrently for the same topic partition on a shared consumer.
        */
       try (AutoCloseableLock ignored = AutoCloseableLock.of(consumerToLocks.get(consumer))) {
@@ -317,7 +317,7 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
     consumerUnSubTopicPartitionSet.forEach((sharedConsumer, tpSet) -> {
       ConsumptionTask task = consumerToConsumptionTask.get(sharedConsumer);
       /**
-       * Refer {@link KafkaConsumerService#startConsumptionIntoDataReceiver} for avoiding race condition caused by
+       * Refer {@link AbstractKafkaConsumerService#startConsumptionIntoDataReceiver} for avoiding race condition caused by
        * setting data receiver and unsubscribing concurrently for the same topic partition on a shared consumer.
        */
       try (AutoCloseableLock ignored = AutoCloseableLock.of(consumerToLocks.get(sharedConsumer))) {
@@ -461,7 +461,8 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
   public void startConsumptionIntoDataReceiver(
       PartitionReplicaIngestionContext partitionReplicaIngestionContext,
       PubSubPosition lastReadPosition,
-      ConsumedDataReceiver<List<DefaultPubSubMessage>> consumedDataReceiver) {
+      ConsumedDataReceiver<List<DefaultPubSubMessage>> consumedDataReceiver,
+      boolean inclusive) {
     PubSubTopic versionTopic = consumedDataReceiver.destinationIdentifier();
     PubSubTopicPartition topicPartition = partitionReplicaIngestionContext.getPubSubTopicPartition();
     SharedKafkaConsumer consumer = assignConsumerFor(versionTopic, topicPartition);
@@ -489,7 +490,7 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
        * {@link KafkaConsumerService.ConsumptionTask} will not be able to funnel the messages.
        */
       consumptionTask.setDataReceiver(topicPartition, consumedDataReceiver);
-      consumer.subscribe(consumedDataReceiver.destinationIdentifier(), topicPartition, lastReadPosition);
+      consumer.subscribe(consumedDataReceiver.destinationIdentifier(), topicPartition, lastReadPosition, inclusive);
       consumerPollTracker.recordSubscribed(topicPartition);
     }
   }

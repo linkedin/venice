@@ -54,7 +54,8 @@ public class SharedKafkaConsumerTest {
     PubSubTopicPartition nonExistentPubSubTopicPartition = new PubSubTopicPartitionImpl(nonExistingTopic1, 1);
     assignmentReturnedConsumer.add(nonExistentPubSubTopicPartition);
     when(consumer.getAssignment()).thenReturn(assignmentReturnedConsumer);
-    sharedConsumer.subscribe(nonExistingTopic1, nonExistentPubSubTopicPartition, PubSubSymbolicPosition.EARLIEST);
+    sharedConsumer
+        .subscribe(nonExistingTopic1, nonExistentPubSubTopicPartition, PubSubSymbolicPosition.EARLIEST, false);
 
     Map<PubSubTopicPartition, List<DefaultPubSubMessage>> pubSubMessagesReturnedByConsumer = new HashMap<>();
     doReturn(pubSubMessagesReturnedByConsumer).when(consumer).poll(anyLong());

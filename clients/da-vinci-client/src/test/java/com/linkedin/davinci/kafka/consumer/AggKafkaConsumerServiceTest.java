@@ -146,7 +146,8 @@ public class AggKafkaConsumerServiceTest {
             PUBSUB_URL,
             storeIngestionTask,
             partitionReplicaIngestionContext,
-            PubSubSymbolicPosition.EARLIEST);
+            PubSubSymbolicPosition.EARLIEST,
+            false);
 
     // regular pubsub url uses the default cluster id
     Assert.assertEquals(dataReceiver.getKafkaClusterId(), 0);
@@ -156,7 +157,8 @@ public class AggKafkaConsumerServiceTest {
         PUBSUB_URL_SEP,
         storeIngestionTask,
         partitionReplicaIngestionContext,
-        PubSubSymbolicPosition.EARLIEST);
+        PubSubSymbolicPosition.EARLIEST,
+        false);
     // pubsub url for sep topic uses a different cluster id
     Assert.assertEquals(dataReceiver.getKafkaClusterId(), 1);
 

@@ -219,7 +219,8 @@ public class KafkaConsumptionTest {
             localKafkaUrl,
             storeIngestionTask,
             partitionReplicaIngestionContext,
-            PubSubSymbolicPosition.EARLIEST);
+            PubSubSymbolicPosition.EARLIEST,
+            false);
     Assert
         .assertTrue(aggKafkaConsumerService.hasConsumerAssignedFor(localKafkaUrl, versionTopic, pubSubTopicPartition));
 
@@ -232,7 +233,8 @@ public class KafkaConsumptionTest {
             remoteKafkaUrl,
             storeIngestionTask,
             partitionReplicaIngestionContext,
-            PubSubSymbolicPosition.EARLIEST);
+            PubSubSymbolicPosition.EARLIEST,
+            false);
     Assert
         .assertTrue(aggKafkaConsumerService.hasConsumerAssignedFor(remoteKafkaUrl, versionTopic, pubSubTopicPartition));
 

@@ -9,7 +9,6 @@ import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
-import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubUnsubscribedTopicPartitionException;
@@ -36,7 +35,7 @@ import org.apache.logging.log4j.Logger;
  * This class is a synchronized version of {@link PubSubConsumerAdapter}.
  *
  * In addition to the existing API of {@link PubSubConsumerAdapter}, this class also adds specific functions used by
- * {@link KafkaConsumerService}, notably: {@link #subscribe(PubSubTopic, PubSubTopicPartition, PubSubPosition)} which keeps track of the
+ * {@link KafkaConsumerService}, notably: {@link #subscribe(PubSubTopic, PubSubTopicPartition, PubSubPosition, boolean)} which keeps track of the
  * mapping of which TopicPartition is used by which version-topic.
  *
  * It also provides some callbacks used by the {@link KafkaConsumerService} to react to certain changes, in a way that
@@ -154,12 +153,9 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
   synchronized void subscribe(
       PubSubTopic versionTopic,
       PubSubTopicPartition topicPartitionToSubscribe,
-      PubSubPosition lastReadPosition) {
+      PubSubPosition lastReadPosition,
+      boolean inclusive) {
     long delegateSubscribeStartTime = System.currentTimeMillis();
-    boolean inclusive = false;
-    if (lastReadPosition == PubSubSymbolicPosition.LATEST) {
-      inclusive = true;
-    }
     this.delegate.subscribe(topicPartitionToSubscribe, lastReadPosition, inclusive);
     PubSubTopic previousVersionTopic =
         subscribedTopicPartitionToVersionTopic.put(topicPartitionToSubscribe, versionTopic);

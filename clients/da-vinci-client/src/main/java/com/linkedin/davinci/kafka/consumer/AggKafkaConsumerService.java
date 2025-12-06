@@ -430,7 +430,8 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
       final String kafkaURL,
       StoreIngestionTask storeIngestionTask,
       PartitionReplicaIngestionContext partitionReplicaIngestionContext,
-      PubSubPosition lastOffset) {
+      PubSubPosition lastOffset,
+      boolean inclusive) {
     PubSubTopic versionTopic = storeIngestionTask.getVersionTopic();
     PubSubTopicPartition pubSubTopicPartition = partitionReplicaIngestionContext.getPubSubTopicPartition();
     AbstractKafkaConsumerService consumerService =
@@ -447,7 +448,8 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
         kafkaClusterUrlToIdMap.getOrDefault(kafkaURL, -1)); // same pubsub url but different id for sep topic
 
     versionTopicStoreIngestionTaskMapping.put(storeIngestionTask.getVersionTopic().getName(), storeIngestionTask);
-    consumerService.startConsumptionIntoDataReceiver(partitionReplicaIngestionContext, lastOffset, dataReceiver);
+    consumerService
+        .startConsumptionIntoDataReceiver(partitionReplicaIngestionContext, lastOffset, dataReceiver, inclusive);
     TopicManager topicManager = storeIngestionTask.getTopicManager(kafkaURL);
 
     /*
