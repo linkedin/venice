@@ -1,5 +1,7 @@
 package com.linkedin.venice.controller.kafka.consumer;
 
+import static com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION;
+
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controller.AdminTopicMetadataAccessor;
 import com.linkedin.venice.controller.ExecutionIdAccessor;
@@ -38,6 +40,7 @@ import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Pair;
+import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
@@ -81,6 +84,9 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     Exception exception;
     long executionId;
   }
+
+  private static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER =
+      RedundantExceptionFilter.getRedundantExceptionFilter();
 
   public static final int MAX_RETRIES_FOR_NONEXISTENT_STORE = 10;
 
@@ -902,7 +908,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     if (MessageType.PUT == messageType) {
       Put put = (Put) kafkaValue.payloadUnion;
       try {
-        adminOperation = deserializer.deserialize(put.putValue, put.schemaId);
+        adminOperation = deserializeAdminOperation(put);
         executionIdFromPayload = adminOperation.executionId;
       } catch (Exception e) {
         LOGGER.error("Failed to deserialize admin operation", e);
@@ -919,6 +925,25 @@ public class AdminConsumptionTask implements Runnable, Closeable {
       executionId = resolveExecutionId(executionIdFromHeader, executionIdFromPayload, adminOperation != null);
     }
     return new Pair<>(executionId, adminOperation);
+  }
+
+  private AdminOperation deserializeAdminOperation(Put put) {
+    boolean isMessageWithFutureProtocolVersion = put.schemaId > LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION;
+    if (admin.isAdminOperationSystemStoreEnabled() && isMessageWithFutureProtocolVersion) {
+      deserializer.fetchAndStoreSchemaIfAbsent(admin, put.schemaId);
+      AdminOperation adminOperation = deserializer.deserialize(put.putValue, put.schemaId);
+      stats.recordAdminMessagesWithFutureProtocolVersionCount();
+      String warningMessage = String.format(
+          "Deserialized admin operation with a newer protocol version. Schema id: %d, operation: %s",
+          put.schemaId,
+          adminOperation);
+
+      if (!REDUNDANT_LOGGING_FILTER.isRedundantException(warningMessage)) {
+        LOGGER.warn(warningMessage);
+      }
+      return adminOperation;
+    }
+    return deserializer.deserialize(put.putValue, put.schemaId);
   }
 
   private long resolveExecutionId(long fromHeader, long fromPayload, boolean payloadDeserialized) {
@@ -1265,5 +1290,10 @@ public class AdminConsumptionTask implements Runnable, Closeable {
   // Visible for testing
   long getConsumptionLagUpdateIntervalInMs() {
     return CONSUMPTION_LAG_UPDATE_INTERVAL_IN_MS;
+  }
+
+  // Visible for testing
+  AdminOperationSerializer getDeserializer() {
+    return deserializer;
   }
 }

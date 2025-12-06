@@ -44,6 +44,11 @@ public class AdminConsumptionStats extends AbstractVeniceStats {
    */
   final private Sensor adminMessageTotalLatencySensor;
 
+  /**
+   * The number of admin messages with future protocol version that deserialized with future schema from system store.
+   */
+  final private Sensor adminMessagesWithFutureProtocolVersionCountSensor;
+
   private PubSubPosition adminConsumptionFailedPosition;
   /**
    * A gauge reporting the total number of pending admin messages remaining in the internal queue at the end of each
@@ -96,6 +101,8 @@ public class AdminConsumptionStats extends AbstractVeniceStats {
     adminMessageAddVersionProcessLatencySensor =
         registerSensor("admin_message_add_version_process_latency_ms", new Avg(), new Max());
     adminMessageTotalLatencySensor = registerSensor("admin_message_total_latency_ms", new Avg(), new Max());
+    adminMessagesWithFutureProtocolVersionCountSensor =
+        registerSensor("admin_messages_with_future_protocol_version_count", new Count());
     registerSensor(
         new AsyncGauge((ignored, ignored2) -> this.adminConsumptionOffsetLag, "admin_consumption_offset_lag"));
     registerSensor(
@@ -165,5 +172,9 @@ public class AdminConsumptionStats extends AbstractVeniceStats {
 
   public void setMaxAdminConsumptionOffsetLag(long maxAdminConsumptionOffsetLag) {
     this.maxAdminConsumptionOffsetLag = maxAdminConsumptionOffsetLag;
+  }
+
+  public void recordAdminMessagesWithFutureProtocolVersionCount() {
+    adminMessagesWithFutureProtocolVersionCountSensor.record();
   }
 }

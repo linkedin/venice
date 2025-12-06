@@ -676,6 +676,10 @@ public class VeniceControllerClusterConfig {
   private final Set<String> activeActiveRealTimeSourceFabrics;
 
   private final boolean isSkipHybridStoreRTTopicCompactionPolicyUpdateEnabled;
+  /**
+   * Admin operation system store
+   */
+  private final boolean isAdminOperationSystemStoreEnabled;
 
   public VeniceControllerClusterConfig(VeniceProperties props) {
     this.props = props;
@@ -1276,6 +1280,8 @@ public class VeniceControllerClusterConfig {
         props.getBoolean(CONTROLLER_BACKUP_VERSION_REPLICA_REDUCTION_ENABLED, false);
     this.useMultiRegionRealTimeTopicSwitcher =
         props.getBoolean(ConfigKeys.CONTROLLER_USE_MULTI_REGION_REAL_TIME_TOPIC_SWITCHER_ENABLED, false);
+    this.isAdminOperationSystemStoreEnabled =
+        props.getBoolean(ConfigKeys.CONTROLLER_ADMIN_OPERATION_SYSTEM_STORE_ENABLED, false);
 
     this.logClusterConfig();
   }
@@ -2246,6 +2252,10 @@ public class VeniceControllerClusterConfig {
 
   public boolean isSkipHybridStoreRTTopicCompactionPolicyUpdateEnabled() {
     return isSkipHybridStoreRTTopicCompactionPolicyUpdateEnabled;
+  }
+
+  public boolean isAdminOperationSystemStoreEnabled() {
+    return isAdminOperationSystemStoreEnabled;
   }
 
   /**
