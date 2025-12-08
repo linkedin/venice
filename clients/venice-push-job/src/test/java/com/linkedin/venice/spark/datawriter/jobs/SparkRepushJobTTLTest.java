@@ -68,6 +68,97 @@ public class SparkRepushJobTTLTest {
     }
   }
 
+  /**
+   * Test that control messages (negative schema IDs like -10) are not filtered.
+   */
+  @Test
+  public void testControlMessageNotFiltered() throws IOException {
+    // Setup
+    Properties props = createBasicTTLProperties();
+    SparkKafkaInputTTLFilter filter = new SparkKafkaInputTTLFilter(new VeniceProperties(props));
+
+    try {
+      Row controlRow = createControlRow();
+
+      boolean shouldFilter = filter.shouldFilter(controlRow);
+
+      assertFalse(shouldFilter, "Control messages should not be filtered by TTL");
+    } finally {
+      filter.close();
+    }
+  }
+
+  /**
+   * Test edge case: null RMD payload throws exception (required for TTL filtering).
+   */
+  @Test(expectedExceptions = IllegalStateException.class, expectedExceptionsMessageRegExp = ".*doesn't contain required RMD field.*")
+  public void testNullRmdPayload() throws IOException {
+    // Setup
+    Properties props = createBasicTTLProperties();
+    SparkKafkaInputTTLFilter filter = new SparkKafkaInputTTLFilter(new VeniceProperties(props));
+
+    try {
+      // Create a PUT message with null RMD
+      Row rowWithNullRmd = new GenericRowWithSchema(
+          new Object[] { "region1", 0, 100L, MessageType.PUT.getValue(), 1, "key1".getBytes(), "value1".getBytes(), 1,
+              null },
+          RAW_PUBSUB_INPUT_TABLE_SCHEMA);
+
+      // Execute - null RMD should throw exception
+      filter.shouldFilter(rowWithNullRmd);
+    } finally {
+      filter.close();
+    }
+  }
+
+  /**
+   * Test that DELETE messages with empty RMD throw exception (same as PUT with empty RMD).
+   * This is expected behavior - RMD is required for TTL filtering.
+   */
+  @Test(expectedExceptions = IllegalStateException.class, expectedExceptionsMessageRegExp = ".*doesn't contain required RMD field.*")
+  public void testDeleteMessageWithEmptyRmd() throws IOException {
+    // Setup
+    Properties props = createBasicTTLProperties();
+    SparkKafkaInputTTLFilter filter = new SparkKafkaInputTTLFilter(new VeniceProperties(props));
+
+    try {
+      Row deleteRow = createDeleteRow("key1", 1, 1, new byte[0]);
+
+      filter.shouldFilter(deleteRow);
+    } finally {
+      filter.close();
+    }
+  }
+
+  /**
+   * Test that chunked records with different negative schema IDs are not filtered.
+   */
+  @Test
+  public void testMultipleChunkedSchemaIds() throws IOException {
+    // Setup
+    Properties props = createBasicTTLProperties();
+    SparkKafkaInputTTLFilter filter = new SparkKafkaInputTTLFilter(new VeniceProperties(props));
+
+    try {
+      // Test different chunk-related schema IDs
+      Row chunkRow1 = createChunkedRow("key1", "chunk1", -1);
+      Row chunkRow2 = createChunkedRow("key2", "chunk2", -2);
+      Row manifestRow = createChunkedRow("key3", "manifest", -20);
+
+      // Execute
+      boolean shouldFilter1 = filter.shouldFilter(chunkRow1);
+      boolean shouldFilter2 = filter.shouldFilter(chunkRow2);
+      boolean shouldFilter3 = filter.shouldFilter(manifestRow);
+
+      // Verify - all chunked records should NOT be filtered
+      assertFalse(shouldFilter1, "Chunk record should not be filtered");
+      assertFalse(shouldFilter2, "Chunk record should not be filtered");
+      assertFalse(shouldFilter3, "Manifest record should not be filtered");
+    } finally {
+      filter.close();
+    }
+  }
+
   private Properties createBasicTTLProperties() {
     Properties props = new Properties();
     props.setProperty(REPUSH_TTL_POLICY, String.valueOf(TTLResolutionPolicy.RT_WRITE_ONLY.getValue()));
@@ -91,6 +182,20 @@ public class SparkRepushJobTTLTest {
     return new GenericRowWithSchema(
         new Object[] { "region1", 0, 100L, MessageType.PUT.getValue(), negativeSchemaId, key.getBytes(),
             chunkData.getBytes(), -1, new byte[0] },
+        RAW_PUBSUB_INPUT_TABLE_SCHEMA);
+  }
+
+  private Row createDeleteRow(String key, int valueSchemaId, int rmdVersionId, byte[] rmdPayload) {
+    return new GenericRowWithSchema(
+        new Object[] { "region1", 0, 100L, MessageType.DELETE.getValue(), valueSchemaId, key.getBytes(), new byte[0],
+            rmdVersionId, rmdPayload },
+        RAW_PUBSUB_INPUT_TABLE_SCHEMA);
+  }
+
+  private Row createControlRow() {
+    return new GenericRowWithSchema(
+        new Object[] { "region1", 0, 100L, MessageType.CONTROL_MESSAGE.getValue(), -10, new byte[0], new byte[0], -1,
+            new byte[0] },
         RAW_PUBSUB_INPUT_TABLE_SCHEMA);
   }
 }
