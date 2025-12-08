@@ -20,6 +20,8 @@ public class SparkConstants {
   public static final String PARTITION_COLUMN_NAME = "__partition__";
   public static final String SCHEMA_ID_COLUMN_NAME = "__schema_id__";
   public static final String RMD_VERSION_ID_COLUMN_NAME = "__replication_metadata_version_id__";
+  public static final String OFFSET_COLUMN_NAME = "__offset__";
+  public static final String MESSAGE_TYPE_COLUMN_NAME = "__message_type__";
 
   public static final StructType DEFAULT_SCHEMA = new StructType(
       new StructField[] { new StructField(KEY_COLUMN_NAME, BinaryType, false, Metadata.empty()),
@@ -31,6 +33,24 @@ public class SparkConstants {
           new StructField(VALUE_COLUMN_NAME, BinaryType, true, Metadata.empty()),
           new StructField(RMD_COLUMN_NAME, BinaryType, true, Metadata.empty()),
           new StructField(PARTITION_COLUMN_NAME, IntegerType, false, Metadata.empty()) });
+
+  // Schema with schema IDs - used for Kafka repush with per-record schema tracking
+  public static final StructType DEFAULT_SCHEMA_WITH_SCHEMA_ID = new StructType(
+      new StructField[] { new StructField(KEY_COLUMN_NAME, BinaryType, false, Metadata.empty()),
+          new StructField(VALUE_COLUMN_NAME, BinaryType, true, Metadata.empty()),
+          new StructField(RMD_COLUMN_NAME, BinaryType, true, Metadata.empty()),
+          new StructField(SCHEMA_ID_COLUMN_NAME, IntegerType, false, Metadata.empty()),
+          new StructField(RMD_VERSION_ID_COLUMN_NAME, IntegerType, false, Metadata.empty()) });
+
+  // Schema for chunk assembly - includes offset and message_type needed for sorting and assembly
+  public static final StructType SCHEMA_FOR_CHUNK_ASSEMBLY = new StructType(
+      new StructField[] { new StructField(KEY_COLUMN_NAME, BinaryType, false, Metadata.empty()),
+          new StructField(VALUE_COLUMN_NAME, BinaryType, true, Metadata.empty()),
+          new StructField(RMD_COLUMN_NAME, BinaryType, true, Metadata.empty()),
+          new StructField(SCHEMA_ID_COLUMN_NAME, IntegerType, false, Metadata.empty()),
+          new StructField(RMD_VERSION_ID_COLUMN_NAME, IntegerType, false, Metadata.empty()),
+          new StructField(OFFSET_COLUMN_NAME, LongType, false, Metadata.empty()),
+          new StructField(MESSAGE_TYPE_COLUMN_NAME, IntegerType, false, Metadata.empty()) });
 
   /**
    * Configs with this prefix will be set when building the spark session. These will get applied to all Spark jobs that
