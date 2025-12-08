@@ -5,6 +5,8 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_BROKER_
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_FABRIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUBSUB_INPUT_SECONDARY_COMPARATOR_USE_LOCAL_LOGICAL_INDEX;
 
+import com.linkedin.venice.chunking.ChunkKeyValueTransformer;
+import com.linkedin.venice.chunking.ChunkKeyValueTransformerImpl;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterContext;
 import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
@@ -13,7 +15,9 @@ import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.vpj.VenicePushJobConstants;
 import com.linkedin.venice.vpj.pubsub.input.PubSubPartitionSplit;
+import org.apache.avro.Schema;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.spark.sql.catalyst.InternalRow;
@@ -28,9 +32,32 @@ public class SparkPubSubPartitionReaderFactory implements PartitionReaderFactory
   private static final long serialVersionUID = 1L;
 
   private final VeniceProperties jobConfig;
+  private final boolean isChunkingEnabled;
+  private final transient ChunkKeyValueTransformer keyTransformer;
 
   public SparkPubSubPartitionReaderFactory(final VeniceProperties jobConfig) {
     this.jobConfig = jobConfig;
+
+    // Determine if chunking is enabled by checking if source kafka input info is available
+    boolean chunkingEnabled = false;
+    ChunkKeyValueTransformer transformer = null;
+    try {
+      String keySchemaString = jobConfig.getString(VenicePushJobConstants.KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP, "");
+      if (!keySchemaString.isEmpty()) {
+        Schema keySchema = new Schema.Parser().parse(keySchemaString);
+        transformer = new ChunkKeyValueTransformerImpl(keySchema);
+        chunkingEnabled = true;
+        LOGGER.info("Chunking is enabled for Spark PubSub input with key schema");
+      } else {
+        LOGGER.info("Chunking is disabled for Spark PubSub input (no key schema found)");
+      }
+    } catch (Exception e) {
+      LOGGER.warn("Failed to initialize key transformer for chunking. Assuming chunking is disabled.", e);
+      throw new RuntimeException(e);
+    }
+
+    this.isChunkingEnabled = chunkingEnabled;
+    this.keyTransformer = transformer;
   }
 
   @Override
@@ -67,12 +94,15 @@ public class SparkPubSubPartitionReaderFactory implements PartitionReaderFactory
         inputPartition,
         pubSubConsumer,
         regionName,
-        shouldUseLocallyBuiltIndexAsOffset);
+        shouldUseLocallyBuiltIndexAsOffset,
+        isChunkingEnabled,
+        keyTransformer);
     LOGGER.info(
-        "Created SparkPubSubInputPartitionReader for topic-partition: {} with consumer: {} to read from region: {}",
+        "Created SparkPubSubInputPartitionReader for topic-partition: {} with consumer: {} to read from region: {} (chunking={})",
         topicPartition,
         consumerName,
-        regionName);
+        regionName,
+        isChunkingEnabled);
     return reader;
   }
 

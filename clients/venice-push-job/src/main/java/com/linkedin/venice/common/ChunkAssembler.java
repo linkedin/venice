@@ -1,4 +1,4 @@
-package com.linkedin.venice.hadoop.input.kafka.chunk;
+package com.linkedin.venice.common;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperValue;

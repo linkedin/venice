@@ -1,7 +1,7 @@
 package com.linkedin.venice.hadoop.input.kafka.ttl;
 
+import com.linkedin.venice.common.ChunkAssembler;
 import com.linkedin.venice.common.VeniceRmdTTLFilter;
-import com.linkedin.venice.hadoop.input.kafka.chunk.ChunkAssembler;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.IOException;
 import java.nio.ByteBuffer;
