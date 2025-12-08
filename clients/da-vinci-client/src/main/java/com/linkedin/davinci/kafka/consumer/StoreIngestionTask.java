@@ -1099,6 +1099,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return storagePartitionConfig;
   }
 
+  // TEST ONLY
+  void setSkipValidationForSeekableClientEnabled() {
+    this.skipValidationForSeekableClientEnabled = true;
+  }
+
   protected abstract boolean isHybridFollower(PartitionConsumptionState partitionConsumptionState);
 
   /**
@@ -3610,7 +3615,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         versionedDIVStats.recordSuccessMsg(storeName, versionNumber);
       }
     } catch (FatalDataValidationException fatalException) {
-      if (!partitionConsumptionState.isEndOfPushReceived()) {
+      if (skipValidationForSeekableClientEnabled) {
+        String msg = "Ignoring FatalDataValidationException in seeking client for replica: "
+            + consumerRecord.getTopicPartition();
+        if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
+          LOGGER.info(msg);
+        }
+      } else if (!partitionConsumptionState.isEndOfPushReceived()) {
         throw fatalException;
       } else {
         LOGGER.warn(
@@ -3926,7 +3937,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         isReadyToServe);
     // localKafkaServer doesn't have suffix but kafkaURL may have suffix,
     // and we don't want to pass the resolvedKafkaURL as it will be passed to data receiver for parsing cluster id
-    aggKafkaConsumerService.subscribeConsumerFor(kafkaURL, this, partitionReplicaIngestionContext, startPosition);
+    aggKafkaConsumerService.subscribeConsumerFor(
+        kafkaURL,
+        this,
+        partitionReplicaIngestionContext,
+        startPosition,
+        skipValidationForSeekableClientEnabled);
 
     // If the record transformer is enabled, consumption should be paused until RocksDB scan for all partitions
     // has completed. Otherwise, there will be resource contention.

@@ -1292,7 +1292,8 @@ public abstract class StoreIngestionTaskTest {
           partitionReplicaIngestionContext.getPubSubTopicPartition(),
           kafkaUrl,
           kafkaClusterId);
-      kafkaConsumerService.startConsumptionIntoDataReceiver(partitionReplicaIngestionContext, offset, dataReceiver);
+      kafkaConsumerService
+          .startConsumptionIntoDataReceiver(partitionReplicaIngestionContext, offset, dataReceiver, false);
 
       if (local) {
         localConsumedDataReceiver = dataReceiver;
@@ -1301,7 +1302,8 @@ public abstract class StoreIngestionTaskTest {
       }
 
       return null;
-    }).when(aggKafkaConsumerService).subscribeConsumerFor(anyString(), any(), any(), any(PubSubPosition.class));
+    }).when(aggKafkaConsumerService)
+        .subscribeConsumerFor(anyString(), any(), any(), any(PubSubPosition.class), anyBoolean());
 
     doAnswer(invocation -> {
       PubSubTopic versionTopic = invocation.getArgument(0, PubSubTopic.class);
@@ -2297,6 +2299,34 @@ public abstract class StoreIngestionTaskTest {
     }, aaConfig);
     config.setPollStrategy(pollStrategy);
     runTest(config);
+  }
+
+  @Test(dataProvider = "aaConfigProvider")
+  public void testIngoreFatalDivForSeekingClient(AAConfig aaConfig) throws Exception {
+    VeniceWriter veniceWriterForData = getCorruptedVeniceWriter(putValueToCorrupt, inMemoryLocalKafkaBroker);
+
+    localVeniceWriter.broadcastStartOfPush(new HashMap<>());
+    InMemoryPubSubPosition fooLastPosition = getPosition(veniceWriterForData.put(putKeyFoo, putValue, SCHEMA_ID));
+    getPosition(veniceWriterForData.put(putKeyBar, putValueToCorrupt, SCHEMA_ID));
+    veniceWriterForData.close();
+    localVeniceWriter.broadcastEndOfPush(new HashMap<>());
+
+    runTest(Utils.setOf(PARTITION_FOO, PARTITION_BAR), () -> {
+      storeIngestionTaskUnderTest.setSkipValidationForSeekableClientEnabled();
+      ArgumentCaptor<InMemoryPubSubPosition> positionCaptor = ArgumentCaptor.forClass(InMemoryPubSubPosition.class);
+      verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS))
+          .completed(eq(topic), eq(PARTITION_FOO), positionCaptor.capture(), eq("STANDBY"));
+      InMemoryPubSubPosition completedPosition = positionCaptor.getValue();
+
+      assertTrue(completedPosition.getInternalOffset() >= fooLastPosition.getInternalOffset());
+
+      verify(mockLogNotifier, never()).error(
+          eq(topic),
+          eq(PARTITION_BAR),
+          argThat(new NonEmptyStringMatcher()),
+          argThat(new ExceptionClassMatcher(CorruptDataException.class)));
+      verify(mockLogNotifier, never()).completed(eq(topic), eq(PARTITION_BAR), any());
+    }, aaConfig);
   }
 
   /**
@@ -3422,12 +3452,14 @@ public abstract class StoreIngestionTaskTest {
         inMemoryLocalKafkaBroker.getPubSubBrokerAddress(),
         storeIngestionTaskUnderTest,
         fooRtPartitionReplicaIngestionContext,
-        p0);
+        p0,
+        false);
     aggKafkaConsumerService.subscribeConsumerFor(
         inMemoryRemoteKafkaBroker.getPubSubBrokerAddress(),
         storeIngestionTaskUnderTest,
         fooRtPartitionReplicaIngestionContext,
-        p0);
+        p0,
+        false);
 
     VeniceWriter localRtWriter = getVeniceWriter(rtTopic, new MockInMemoryProducerAdapter(inMemoryLocalKafkaBroker));
     VeniceWriter remoteRtWriter = getVeniceWriter(rtTopic, new MockInMemoryProducerAdapter(inMemoryRemoteKafkaBroker));

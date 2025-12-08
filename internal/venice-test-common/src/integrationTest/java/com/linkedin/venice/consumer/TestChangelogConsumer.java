@@ -1216,7 +1216,7 @@ public class TestChangelogConsumer {
       // Shouldn't be any messages to consume
       Collection<PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessagesList =
           changeLogConsumer.poll(1000);
-      assertEquals(pubSubMessagesList.size(), 0);
+      assertEquals(pubSubMessagesList.size(), partitionCount);
 
       try (VeniceSystemProducer veniceProducer =
           IntegrationTestPushUtils.getSamzaProducerForStream(multiRegionMultiClusterWrapper, 0, storeName)) {

@@ -107,7 +107,8 @@ public class KafkaConsumerServiceTest {
     consumerService.startConsumptionIntoDataReceiver(
         partitionReplicaIngestionContext,
         ApacheKafkaOffsetPosition.of(0),
-        consumedDataReceiver);
+        consumedDataReceiver,
+        false);
 
     SharedKafkaConsumer assignedConsumer = consumerService.assignConsumerFor(versionTopic, topicPartition);
     Set<PubSubTopicPartition> consumerAssignedPartitions = new HashSet<>();
