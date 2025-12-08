@@ -1099,6 +1099,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return storagePartitionConfig;
   }
 
+  // TEST ONLY
+  void setSkipValidationForSeekableClientEnabled() {
+    this.skipValidationForSeekableClientEnabled = true;
+  }
+
   protected abstract boolean isHybridFollower(PartitionConsumptionState partitionConsumptionState);
 
   /**

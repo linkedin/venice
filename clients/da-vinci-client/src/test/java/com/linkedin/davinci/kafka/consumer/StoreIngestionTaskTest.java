@@ -2301,6 +2301,34 @@ public abstract class StoreIngestionTaskTest {
     runTest(config);
   }
 
+  @Test(dataProvider = "aaConfigProvider")
+  public void testIngoreFatalDivForSeekingClient(AAConfig aaConfig) throws Exception {
+    VeniceWriter veniceWriterForData = getCorruptedVeniceWriter(putValueToCorrupt, inMemoryLocalKafkaBroker);
+
+    localVeniceWriter.broadcastStartOfPush(new HashMap<>());
+    InMemoryPubSubPosition fooLastPosition = getPosition(veniceWriterForData.put(putKeyFoo, putValue, SCHEMA_ID));
+    getPosition(veniceWriterForData.put(putKeyBar, putValueToCorrupt, SCHEMA_ID));
+    veniceWriterForData.close();
+    localVeniceWriter.broadcastEndOfPush(new HashMap<>());
+
+    runTest(Utils.setOf(PARTITION_FOO, PARTITION_BAR), () -> {
+      storeIngestionTaskUnderTest.setSkipValidationForSeekableClientEnabled();
+      ArgumentCaptor<InMemoryPubSubPosition> positionCaptor = ArgumentCaptor.forClass(InMemoryPubSubPosition.class);
+      verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS))
+          .completed(eq(topic), eq(PARTITION_FOO), positionCaptor.capture(), eq("STANDBY"));
+      InMemoryPubSubPosition completedPosition = positionCaptor.getValue();
+
+      assertTrue(completedPosition.getInternalOffset() >= fooLastPosition.getInternalOffset());
+
+      verify(mockLogNotifier, never()).error(
+          eq(topic),
+          eq(PARTITION_BAR),
+          argThat(new NonEmptyStringMatcher()),
+          argThat(new ExceptionClassMatcher(CorruptDataException.class)));
+      verify(mockLogNotifier, never()).completed(eq(topic), eq(PARTITION_BAR), any());
+    }, aaConfig);
+  }
+
   /**
    * In this test, the {@link #PARTITION_FOO} will receive a well-formed message, while the {@link #PARTITION_BAR} will
    * receive a corrupt message. We expect the Notifier to report as such.
