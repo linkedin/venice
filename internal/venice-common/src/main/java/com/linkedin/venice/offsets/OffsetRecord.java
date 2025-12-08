@@ -501,8 +501,11 @@ public class OffsetRecord {
    * offset-based position if deserialization fails or the buffer is empty.
    *
    * <p>
-   * This method delegates to {@link PubSubUtil#deserializePositionWithOffsetFallback}
-   * to ensure consistent deserialization behavior across the codebase.
+   * This method checks the feature flag {@code SERVER_USE_CHECKPOINTED_PUBSUB_POSITION_WITH_FALLBACK}
+   * via {@link PubSubContext}. When the flag is disabled, it directly uses the numeric offset
+   * without attempting position deserialization. When enabled (default), it delegates to
+   * {@link PubSubUtil#deserializePositionWithOffsetFallback} to ensure consistent deserialization
+   * behavior across the codebase.
    * </p>
    *
    * @param wireFormatBytes byte buffer with serialized position data, may be {@code null}.
@@ -513,6 +516,10 @@ public class OffsetRecord {
    */
   @VisibleForTesting
   PubSubPosition deserializePositionWithOffsetFallback(ByteBuffer wireFormatBytes, long offset) {
+    if (pubSubContext != null && !pubSubContext.isUseCheckpointedPubSubPositionWithFallbackEnabled()) {
+      // When feature flag is disabled, use offset-only approach without attempting wire format deserialization
+      return PubSubUtil.fromKafkaOffset(offset);
+    }
     return PubSubUtil.deserializePositionWithOffsetFallback(wireFormatBytes, offset, pubSubPositionDeserializer);
   }
 }

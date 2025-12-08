@@ -4887,11 +4887,18 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       return PubSubSymbolicPosition.EARLIEST;
     }
     LeaderMetadata leaderMetadataFooter = consumerRecord.getValue().leaderMetadataFooter;
-    return deserializePositionWithOffsetFallback(
-        pubSubContext.getPubSubPositionDeserializer(),
-        consumerRecord.getTopicPartition(),
-        leaderMetadataFooter.upstreamPubSubPosition,
-        leaderMetadataFooter.upstreamOffset);
+
+    // Check config to determine whether to use upstreamPubSubPosition with fallback or just upstreamOffset
+    if (storeVersionConfig.isUseUpstreamPubSubPositionWithFallbackEnabled()) {
+      return deserializePositionWithOffsetFallback(
+          pubSubContext.getPubSubPositionDeserializer(),
+          consumerRecord.getTopicPartition(),
+          leaderMetadataFooter.upstreamPubSubPosition,
+          leaderMetadataFooter.upstreamOffset);
+    } else {
+      // Directly use upstreamOffset without attempting position deserialization
+      return PubSubUtil.fromKafkaOffset(leaderMetadataFooter.upstreamOffset);
+    }
   }
 
   // extract the upstream cluster id from the given consumer record's leader metadata.
