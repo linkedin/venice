@@ -4,6 +4,7 @@ import com.linkedin.alpini.base.concurrency.Executors;
 import com.linkedin.alpini.base.misc.ThreadPoolExecutor;
 import com.linkedin.davinci.blobtransfer.BlobTransferUtils;
 import com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferTableFormat;
+import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.venice.exceptions.VenicePeersConnectionException;
 import com.linkedin.venice.listener.VerifySslHandler;
@@ -44,6 +45,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Supplier;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -73,6 +75,7 @@ public class NettyFileTransferClient {
   // format: host -> timestamp of the last connection attempt
   private final VeniceConcurrentHashMap<String, Long> unconnectableHostsToTimestamp = new VeniceConcurrentHashMap<>();
   private final VeniceConcurrentHashMap<String, Long> connectedHostsToTimestamp = new VeniceConcurrentHashMap<>();
+  private final Supplier<VeniceNotifier> notifierSupplier;
 
   private final VerifySslHandler verifySsl = new VerifySslHandler();
 
@@ -85,10 +88,12 @@ public class NettyFileTransferClient {
       int blobReceiveTimeoutInMin,
       int blobReceiveReaderIdleTimeInSeconds,
       GlobalChannelTrafficShapingHandler globalChannelTrafficShapingHandler,
-      Optional<SSLFactory> sslFactory) {
+      Optional<SSLFactory> sslFactory,
+      Supplier<VeniceNotifier> notifierSupplier) {
     this.baseDir = baseDir;
     this.serverPort = serverPort;
     this.storageMetadataService = storageMetadataService;
+    this.notifierSupplier = notifierSupplier;
     this.peersConnectivityFreshnessInSeconds = peersConnectivityFreshnessInSeconds;
     this.blobReceiveTimeoutInMin = blobReceiveTimeoutInMin;
     this.blobReceiveReaderIdleTimeInSeconds = blobReceiveReaderIdleTimeInSeconds;
@@ -309,7 +314,8 @@ public class NettyFileTransferClient {
                   storeName,
                   version,
                   partition,
-                  requestedTableFormat));
+                  requestedTableFormat,
+                  notifierSupplier));
       // Send a GET request
       ChannelFuture requestFuture =
           ch.writeAndFlush(prepareRequest(storeName, version, partition, requestedTableFormat));

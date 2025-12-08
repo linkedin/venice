@@ -1,5 +1,6 @@
 package com.linkedin.davinci.consumer;
 
+import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
@@ -16,6 +17,7 @@ public class ImmutableChangeCapturePubSubMessage<K, V> implements PubSubMessage<
   private final boolean isEndOfBootstrap;
   private final int writerSchemaId;
   private final java.nio.ByteBuffer replicationMetadataPayload;
+  private final ControlMessage controlMessage;
 
   public ImmutableChangeCapturePubSubMessage(
       K key,
@@ -36,6 +38,7 @@ public class ImmutableChangeCapturePubSubMessage<K, V> implements PubSubMessage<
         isEndOfBootstrap,
         consumerSequenceId,
         -1,
+        null,
         null);
   }
 
@@ -50,6 +53,32 @@ public class ImmutableChangeCapturePubSubMessage<K, V> implements PubSubMessage<
       long consumerSequenceId,
       int writerSchemaId,
       java.nio.ByteBuffer replicationMetadataPayload) {
+    this(
+        key,
+        value,
+        topicPartition,
+        pubSubPosition,
+        timestamp,
+        payloadSize,
+        isEndOfBootstrap,
+        consumerSequenceId,
+        writerSchemaId,
+        replicationMetadataPayload,
+        null);
+  }
+
+  public ImmutableChangeCapturePubSubMessage(
+      K key,
+      V value,
+      PubSubTopicPartition topicPartition,
+      PubSubPosition pubSubPosition,
+      long timestamp,
+      int payloadSize,
+      boolean isEndOfBootstrap,
+      long consumerSequenceId,
+      int writerSchemaId,
+      java.nio.ByteBuffer replicationMetadataPayload,
+      ControlMessage controlMessage) {
     this.key = key;
     this.value = value;
     this.topicPartition = Objects.requireNonNull(topicPartition);
@@ -63,6 +92,7 @@ public class ImmutableChangeCapturePubSubMessage<K, V> implements PubSubMessage<
     this.isEndOfBootstrap = isEndOfBootstrap;
     this.writerSchemaId = writerSchemaId;
     this.replicationMetadataPayload = replicationMetadataPayload;
+    this.controlMessage = controlMessage;
   }
 
   @Override
@@ -106,6 +136,10 @@ public class ImmutableChangeCapturePubSubMessage<K, V> implements PubSubMessage<
 
   public java.nio.ByteBuffer getReplicationMetadataPayload() {
     return replicationMetadataPayload;
+  }
+
+  public ControlMessage getControlMessage() {
+    return controlMessage;
   }
 
   @Override

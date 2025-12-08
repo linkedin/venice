@@ -128,7 +128,6 @@ import com.linkedin.venice.controller.kafka.consumer.AdminMetadata;
 import com.linkedin.venice.controller.kafka.protocol.admin.AbortMigration;
 import com.linkedin.venice.controller.kafka.protocol.admin.AddVersion;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
-import com.linkedin.venice.controller.kafka.protocol.admin.ConfigureActiveActiveReplicationForCluster;
 import com.linkedin.venice.controller.kafka.protocol.admin.CreateStoragePersona;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteAllVersions;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteOldVersion;
@@ -231,7 +230,6 @@ import com.linkedin.venice.meta.StoreDataAudit;
 import com.linkedin.venice.meta.StoreGraveyard;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.StoreVersionInfo;
-import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.meta.ViewConfig;
@@ -272,6 +270,7 @@ import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.ReflectUtils;
+import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.RetryUtils;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.SystemTime;
@@ -2380,7 +2379,9 @@ public class VeniceParentHelixAdmin implements Admin {
       Version futureVersion = getStore(clusterName, storeName).getVersion(futureVersionBeforeRollForward);
       boolean onlyDeferredSwap =
           futureVersion.isVersionSwapDeferred() && StringUtils.isEmpty(futureVersion.getTargetSwapRegion());
-      if (onlyDeferredSwap) {
+      ConcurrentPushDetectionStrategy concurrentPushDetectionStrategy =
+          getMultiClusterConfigs().getControllerConfig(clusterName).getConcurrentPushDetectionStrategy();
+      if (onlyDeferredSwap && concurrentPushDetectionStrategy.isTopicWriteNeeded()) {
         LOGGER.info(
             "Truncating topic {} after child controllers tried to roll forward to not block new versions",
             kafkaTopic);
@@ -4427,13 +4428,19 @@ public class VeniceParentHelixAdmin implements Admin {
       boolean isTargetRegionPushWithDeferredSwap =
           isDeferredVersionSwap && !StringUtils.isEmpty(version.getTargetSwapRegion());
 
+      ConcurrentPushDetectionStrategy concurrentPushDetectionStrategy =
+          getMultiClusterConfigs().getControllerConfig(clusterName).getConcurrentPushDetectionStrategy();
       if ((failedBatchPush || nonIncPushBatchSuccess && !isDeferredVersionSwap || incPushEnabledBatchPushSuccess
           || isTargetRegionPushWithDeferredSwap)
           && !getMultiClusterConfigs().getCommonConfig().disableParentTopicTruncationUponCompletion()) {
-        LOGGER.info("Truncating kafka topic: {} with job status: {}", kafkaTopic, currentReturnStatus);
-        truncateKafkaTopic(kafkaTopic);
+        if (concurrentPushDetectionStrategy.isTopicWriteNeeded()) {
+          LOGGER.info("Truncating kafka topic: {} with job status: {}", kafkaTopic, currentReturnStatus);
+          truncateKafkaTopic(kafkaTopic);
+        }
         if (version != null && version.getPushType().isStreamReprocessing()) {
-          truncateKafkaTopic(Version.composeStreamReprocessingTopic(store.getName(), version.getNumber()));
+          String streamReprocessingTopic = Version.composeStreamReprocessingTopic(store.getName(), version.getNumber());
+          LOGGER.info("Truncating kafka topic: {} with job status: {}", streamReprocessingTopic, currentReturnStatus);
+          truncateKafkaTopic(streamReprocessingTopic);
         }
         currentReturnStatusDetails.append("Parent Kafka topic truncated");
       }
@@ -4793,7 +4800,11 @@ public class VeniceParentHelixAdmin implements Admin {
       if (maxErroredTopicNumToKeep == 0) {
         // Truncate Kafka topic
         LOGGER.info("Truncating topic when kill offline push job, topic: {}", kafkaTopic);
-        truncateKafkaTopic(kafkaTopic);
+        ConcurrentPushDetectionStrategy concurrentPushDetectionStrategy =
+            getMultiClusterConfigs().getControllerConfig(clusterName).getConcurrentPushDetectionStrategy();
+        if (concurrentPushDetectionStrategy.isTopicWriteNeeded()) {
+          truncateKafkaTopic(kafkaTopic);
+        }
         PubSubTopic correspondingStreamReprocessingTopic =
             pubSubTopicRepository.getTopic(Version.composeStreamReprocessingTopicFromVersionTopic(kafkaTopic));
         if (getTopicManager().containsTopic(correspondingStreamReprocessingTopic)) {
@@ -5477,30 +5488,6 @@ public class VeniceParentHelixAdmin implements Admin {
           storeName,
           clusterName);
     }
-  }
-
-  /**
-   * @see Admin#configureActiveActiveReplication(String, VeniceUserStoreType, Optional, boolean, Optional)
-   */
-  @Override
-  public void configureActiveActiveReplication(
-      String clusterName,
-      VeniceUserStoreType storeType,
-      Optional<String> storeName,
-      boolean enableNativeReplicationForCluster,
-      Optional<String> regionsFilter) {
-    ConfigureActiveActiveReplicationForCluster migrateClusterToActiveActiveReplication =
-        (ConfigureActiveActiveReplicationForCluster) AdminMessageType.CONFIGURE_ACTIVE_ACTIVE_REPLICATION_FOR_CLUSTER
-            .getNewInstance();
-    migrateClusterToActiveActiveReplication.clusterName = clusterName;
-    migrateClusterToActiveActiveReplication.storeType = storeType.toString();
-    migrateClusterToActiveActiveReplication.enabled = enableNativeReplicationForCluster;
-    migrateClusterToActiveActiveReplication.regionsFilter = regionsFilter.orElse(null);
-
-    AdminOperation message = new AdminOperation();
-    message.operationType = AdminMessageType.CONFIGURE_ACTIVE_ACTIVE_REPLICATION_FOR_CLUSTER.getValue();
-    message.payloadUnion = migrateClusterToActiveActiveReplication;
-    sendAdminMessageAndWaitForConsumed(clusterName, null, message);
   }
 
   /**
@@ -6328,6 +6315,19 @@ public class VeniceParentHelixAdmin implements Admin {
     }
 
     return result;
+  }
+
+  @Override
+  public boolean isDeferredVersionSwapForEmptyPushEnabled(String storeName) {
+    String cluster = discoverCluster(storeName);
+    return multiClusterConfigs.getControllerConfig(cluster).isDeferredVersionSwapForEmptyPushEnabled();
+  }
+
+  @Override
+  public String getDeferredVersionSwapRegionRollforwardOrder(String storeName) {
+    String cluster = discoverCluster(storeName);
+    String order = multiClusterConfigs.getControllerConfig(cluster).getDeferredVersionSwapRegionRollforwardOrder();
+    return RegionUtils.parseRegionRolloutOrderList(order).get(0);
   }
 
 }

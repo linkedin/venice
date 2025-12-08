@@ -365,8 +365,8 @@ public class RecordTransformerTest {
             valueSchema,
             internalRecordTransformerConfig);
     assertEquals(internalRecordTransformer.getStoreName(), storeName);
-    internalRecordTransformer.onStartVersionIngestion(true);
-    verify(clientRecordTransformer).onStartVersionIngestion(true);
+    internalRecordTransformer.onStartVersionIngestion(1, true);
+    verify(clientRecordTransformer).onStartVersionIngestion(1, true);
 
     assertEquals(internalRecordTransformer.getCountDownStartConsumptionLatchCount(), 1L);
     assertTrue(internalRecordTransformer.getStoreRecordsInDaVinci());

@@ -74,7 +74,7 @@ continues serving traffic. Once ready, Venice atomically swaps the future versio
 #### For Record Transformers:
 - Each version gets its own transformer instance
 - During a push, you'll have transformers for both current and future versions running in parallel 
-- Use `onStartVersionIngestion(isCurrentVersion)` to initialize resources
+- Use `onStartVersionIngestion(partitionId, isCurrentVersion)` to initialize resources
 - Use `onEndVersionIngestion(currentVersion)` to clean up when a version stops serving
 
 #### Best Practice: Separate Data by Version
@@ -94,37 +94,42 @@ Think of it as maintaining one database table per Venice store version.
 4. **Clean up old versions** once no longer needed
 
 See the example below:
+
 ```java
+AtomicBoolean setUpComplete = new AtomicBoolean();
 String tableName = getStoreName() + "_v" + getStoreVersion();
 String currentVersionViewName = getStoreName() + "_current_version";
 
 @Override
-public void onStartVersionIngestion(boolean isCurrentVersion) {
-    // Initialize resources for this version
-    if (!externalDB.containsTable(tableName)) {
-        externalDB.createTable(tableName);
-    }
+synchronized public void onStartVersionIngestion(int partitionId, boolean isCurrentVersion) {
+  if (setUpComplete.get()) {
+    return;
+  }
+  
+  // Initialize resources for this version
+  if (!externalDB.containsTable(tableName)) {
+    externalDB.createTable(tableName);
+  }
 
-    // Maintain pointer to current version
-    if (isCurrentVersion) {
-      externalDB.createOrReplaceView(currentViewName,
-          "SELECT * FROM " + tableName);
-    }
+  // Maintain pointer to current version
+  if (isCurrentVersion) {
+    externalDB.createOrReplaceView(currentViewName, "SELECT * FROM " + tableName);
+  }
+  setUpComplete.set(true);
 }
 
 @Override
 public void onEndVersionIngestion(int currentVersion) {
-    // Only clean up if this version is no longer serving
-    if (currentVersion != getStoreVersion()) {
-        String newCurrentTableName = getStoreName() + "_v" + currentVersion;
+  // Only clean up if this version is no longer serving
+  if (currentVersion != getStoreVersion()) {
+    String newCurrentTableName = getStoreName() + "_v" + currentVersion;
 
-        // Update view to point to new current version
-        externalDB.createOrReplaceView(currentViewName,
-            "SELECT * FROM " + newCurrentTableName);
-        
-        // Delete old version
-        externalDB.dropTable(tableName);
-    }
+    // Update view to point to new current version
+    externalDB.createOrReplaceView(currentViewName, "SELECT * FROM " + newCurrentTableName);
+
+    // Delete old version
+    externalDB.dropTable(tableName);
+  }
 }
 ```
 

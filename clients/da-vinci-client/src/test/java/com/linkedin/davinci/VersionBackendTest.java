@@ -29,7 +29,6 @@ import com.linkedin.venice.meta.SubscriptionBasedReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.ZKStore;
-import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreWriter;
 import com.linkedin.venice.utils.ComplementSet;
@@ -43,7 +42,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
@@ -209,9 +207,7 @@ public class VersionBackendTest {
     ComplementSet<Integer> complementSet = ComplementSet.newSet(partitionList);
 
     // First subscription
-    Map<Integer, Long> emptyTimestamps = new HashMap<>();
-    Map<Integer, PubSubPosition> emptyPositionMap = new HashMap<>();
-    versionBackend.subscribe(complementSet, emptyTimestamps, null, emptyPositionMap);
+    versionBackend.subscribe(complementSet, null);
 
     // Verify the latch count is set to 3 (number of partitions)
     verify(internalRecordTransformerConfig).setStartConsumptionLatchCount(3);
@@ -228,7 +224,7 @@ public class VersionBackendTest {
     // Test with overlapping partitions
     partitionList = Arrays.asList(2, 3, 4);
     complementSet = ComplementSet.newSet(partitionList);
-    versionBackend.subscribe(complementSet, emptyTimestamps, 0L, emptyPositionMap);
+    versionBackend.subscribe(complementSet, null);
 
     // Shouldn't try to start consumption on already subscribed partition (2)
     verify(mockIngestionBackend, never()).startConsumption(any(), eq(2), any());
@@ -239,7 +235,7 @@ public class VersionBackendTest {
     verify(internalRecordTransformerConfig, never()).setStartConsumptionLatchCount(anyInt());
 
     // Test empty subscription
-    versionBackend.subscribe(ComplementSet.emptySet(), emptyTimestamps, null, emptyPositionMap);
+    versionBackend.subscribe(ComplementSet.emptySet(), null);
     verify(mockIngestionBackend, never()).startConsumption(any(), eq(0), any());
     verify(internalRecordTransformerConfig, never()).setStartConsumptionLatchCount(anyInt());
   }

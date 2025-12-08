@@ -70,8 +70,11 @@ import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.etl.ETLValueSchemaTransformation;
+import com.linkedin.venice.exceptions.ConcurrentBatchPushException;
 import com.linkedin.venice.exceptions.UndefinedPropertyException;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.exceptions.VeniceStoreAclException;
+import com.linkedin.venice.hadoop.exceptions.VeniceSchemaMismatchException;
 import com.linkedin.venice.hadoop.exceptions.VeniceValidationException;
 import com.linkedin.venice.hadoop.mapreduce.datawriter.jobs.DataWriterMRJob;
 import com.linkedin.venice.hadoop.task.datawriter.DataWriterTaskTracker;
@@ -195,11 +198,42 @@ public class VenicePushJobTest {
   }
 
   @Test
+  public void testHandleVersionCreationACLError() {
+    VenicePushJob mockJob = getSpyVenicePushJob(new Properties(), null);
+    Throwable error = new VeniceStoreAclException("ACL error");
+    VersionCreationResponse response = new VersionCreationResponse();
+    response.setError(error);
+    mockJob.handleVersionCreationError(response);
+    verify(mockJob).updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.WRITE_ACL_FAILED);
+  }
+
+  @Test
+  public void testHandleVersionCreationConcurrentPushError() {
+    VenicePushJob mockJob = getSpyVenicePushJob(new Properties(), null);
+    Throwable error = new ConcurrentBatchPushException("Another push is in progress");
+    VersionCreationResponse response = new VersionCreationResponse();
+    response.setError(error);
+    mockJob.handleVersionCreationError(response);
+    verify(mockJob).updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.CONCURRENT_BATCH_PUSH);
+  }
+
+  @Test
   public void testVPJCheckInputUpdateSchema() {
     VenicePushJob vpj = mock(VenicePushJob.class);
     when(vpj.isUpdateSchema(anyString())).thenCallRealMethod();
     Assert.assertTrue(vpj.isUpdateSchema(NAME_RECORD_V1_UPDATE_SCHEMA.toString()));
     Assert.assertFalse(vpj.isUpdateSchema(NAME_RECORD_V1_SCHEMA.toString()));
+  }
+
+  @Test(expectedExceptions = VeniceSchemaMismatchException.class)
+  public void testValidateKeySchemaMismatch() {
+    String keySchema = "\"string\"";
+    String serverKeySchema = "\"int\"";
+    VenicePushJob vpj = getSpyVenicePushJob(new Properties(), null);
+    PushJobSetting setting = vpj.getPushJobSetting();
+    setting.storeKeySchema = AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation(serverKeySchema);
+    setting.keySchema = AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation(keySchema);
+    vpj.validateKeySchema(vpj.getPushJobSetting());
   }
 
   @Test

@@ -11,10 +11,13 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.davinci.blobtransfer.client.MetadataAggregator;
 import com.linkedin.davinci.blobtransfer.client.P2PFileTransferClientHandler;
 import com.linkedin.davinci.blobtransfer.client.P2PMetadataTransferHandler;
+import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.kafka.protocol.state.IncrementalPushReplicaStatus;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import io.netty.buffer.Unpooled;
@@ -38,6 +41,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Comparator;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutionException;
@@ -64,6 +69,7 @@ public class TestP2PFileTransferClientHandler {
 
   P2PFileTransferClientHandler clientFileHandler;
   P2PMetadataTransferHandler clientMetadataHandler;
+  VeniceNotifier veniceNotifier;
 
   @BeforeMethod
   public void setUp() throws IOException {
@@ -82,6 +88,7 @@ public class TestP2PFileTransferClientHandler {
             BlobTransferUtils.BlobTransferTableFormat.BLOCK_BASED_TABLE,
             checksumValidationExecutorService));
 
+    veniceNotifier = Mockito.mock(VeniceNotifier.class);
     clientMetadataHandler = Mockito.spy(
         new P2PMetadataTransferHandler(
             storageMetadataService,
@@ -89,7 +96,14 @@ public class TestP2PFileTransferClientHandler {
             TEST_STORE,
             TEST_VERSION,
             TEST_PARTITION,
-            BlobTransferUtils.BlobTransferTableFormat.BLOCK_BASED_TABLE));
+            BlobTransferUtils.BlobTransferTableFormat.BLOCK_BASED_TABLE,
+            () -> veniceNotifier));
+    Mockito.doNothing()
+        .when(veniceNotifier)
+        .startOfIncrementalPushReceived(Mockito.anyString(), Mockito.anyInt(), Mockito.any(), Mockito.anyString());
+    Mockito.doNothing()
+        .when(veniceNotifier)
+        .endOfIncrementalPushReceived(Mockito.anyString(), Mockito.anyInt(), Mockito.any(), Mockito.anyString());
 
     Mockito.doNothing().when(clientMetadataHandler).updateStorePartitionMetadata(Mockito.any(), Mockito.any());
 
@@ -97,7 +111,7 @@ public class TestP2PFileTransferClientHandler {
   }
 
   @AfterMethod
-  public void teardown() throws IOException {
+  public void tearDown() throws IOException {
     ch.close();
     Files.walk(baseDir).sorted(Comparator.reverseOrder()).forEach(path -> {
       try {
@@ -309,6 +323,15 @@ public class TestP2PFileTransferClientHandler {
         AvroProtocolDefinition.PARTITION_STATE.getSerializer();
     OffsetRecord offsetRecord = new OffsetRecord(partitionStateSerializer, DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING);
     offsetRecord.setOffsetLag(1000L);
+    Map<String, IncrementalPushReplicaStatus> incrementalPushInfo = new HashMap<>();
+    incrementalPushInfo.put(
+        "pushJobVersion1",
+        new IncrementalPushReplicaStatus(ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED.getValue(), 1000L));
+    incrementalPushInfo.put(
+        "pushJobVersion2",
+        new IncrementalPushReplicaStatus(ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED.getValue(), 2000L));
+    offsetRecord.setTrackingIncrementalPushStatus(incrementalPushInfo);
+
     expectedMetadata.setOffsetRecord(ByteBuffer.wrap(offsetRecord.toBytes()));
 
     ObjectMapper objectMapper = new ObjectMapper();

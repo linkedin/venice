@@ -75,7 +75,7 @@ public class TopicManager implements Closeable {
   private final PubSubTopicRepository pubSubTopicRepository;
   private final TopicManagerStats stats;
   private final TopicMetadataFetcher topicMetadataFetcher;
-  private AtomicBoolean isClosed = new AtomicBoolean(false);
+  private final AtomicBoolean isClosed = new AtomicBoolean(false);
 
   // TODO: Consider moving this cache to TopicMetadataFetcher
   // It's expensive to grab the topic config over and over again, and it changes infrequently.
@@ -98,6 +98,7 @@ public class TopicManager implements Closeable {
                 .setMetricsRepository(context.getMetricsRepository())
                 .setVeniceProperties(context.getPubSubProperties(pubSubClusterAddress))
                 .setAdminClientName("TopicManager")
+                .setStoreChangeNotifier(context.getStoreChangeNotifier())
                 .build());
     this.topicMetadataFetcher = new TopicMetadataFetcher(pubSubClusterAddress, context, stats, pubSubAdminAdapter);
     this.logger.info(
@@ -806,6 +807,9 @@ public class TopicManager implements Closeable {
    * In typical usage, {@code endPosition} is "last + 1", so the range is
    * {@code [startPosition, endPosition)}.
    *
+   * <p>If {@code startPosition} is {@link PubSubSymbolicPosition#EARLIEST}, this method will use
+   * the cached earliest position to optimize performance.
+   *
    * @param pubSubTopicPartition the topic-partition
    * @param endPosition the upper bound of the range
    * @param startPosition the lower bound of the range
@@ -821,7 +825,14 @@ public class TopicManager implements Closeable {
     Objects.requireNonNull(endPosition, "endPosition");
     Objects.requireNonNull(startPosition, "startPosition");
 
-    return topicMetadataFetcher.diffPosition(pubSubTopicPartition, endPosition, startPosition);
+    // Use cached earliest position when startPosition is EARLIEST to optimize performance.
+    // If it still resolves to EARLIEST, let diffPosition handle it.
+    PubSubPosition resolvedStartPosition = startPosition;
+    if (startPosition == PubSubSymbolicPosition.EARLIEST) {
+      resolvedStartPosition = topicMetadataFetcher.getEarliestPositionCached(pubSubTopicPartition);
+    }
+
+    return topicMetadataFetcher.diffPosition(pubSubTopicPartition, endPosition, resolvedStartPosition);
   }
 
   /**

@@ -52,6 +52,7 @@ import com.linkedin.venice.helix.HelixStoreGraveyard;
 import com.linkedin.venice.helix.SafeHelixDataAccessor;
 import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.ingestion.control.RealTimeTopicSwitcher;
+import com.linkedin.venice.meta.ConcurrentPushDetectionStrategy;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.MaterializedViewParameters;
@@ -1673,6 +1674,65 @@ public class TestVeniceHelixAdmin {
         expectThrows(VeniceException.class, () -> admin.checkStoreGraveyardForRecreation(clusterName, storeName));
 
     assertTrue(customException.getMessage().contains("Required waiting period: 3600 seconds"));
+  }
+
+  @Test
+  public void testShouldSkipTruncatingTopicForChildControllers() {
+    VeniceHelixAdmin admin = mock(VeniceHelixAdmin.class);
+    VeniceControllerClusterConfig config = mock(VeniceControllerClusterConfig.class);
+
+    Map<String, VeniceControllerClusterConfig> configMap = new HashMap<>();
+    configMap.put(clusterName, config);
+    doReturn(new VeniceControllerMultiClusterConfig(configMap)).when(admin).getMultiClusterConfigs();
+    doReturn(false).when(admin).isParent();
+    doCallRealMethod().when(admin).shouldSkipTruncatingTopic(clusterName);
+
+    boolean shouldSkip = admin.shouldSkipTruncatingTopic(clusterName);
+    verify(admin, times(1)).isParent();
+    assertFalse(shouldSkip);
+  }
+
+  @Test
+  public void testShouldSkipTruncatingTopicForParentControllersTopicWriteNeeded() {
+    VeniceHelixAdmin admin = mock(VeniceHelixAdmin.class);
+    VeniceControllerClusterConfig config = mock(VeniceControllerClusterConfig.class);
+    Map<String, VeniceControllerClusterConfig> configMap = new HashMap<>();
+    configMap.put(clusterName, config);
+    doReturn(new VeniceControllerMultiClusterConfig(configMap)).when(admin).getMultiClusterConfigs();
+    doReturn(true).when(admin).isParent();
+    doCallRealMethod().when(admin).shouldSkipTruncatingTopic(clusterName);
+
+    doReturn(ConcurrentPushDetectionStrategy.TOPIC_BASED_ONLY).when(config).getConcurrentPushDetectionStrategy();
+    boolean shouldSkip = admin.shouldSkipTruncatingTopic(clusterName);
+    verify(admin, times(1)).getMultiClusterConfigs();
+    verify(admin, times(1)).isParent();
+    assertFalse(shouldSkip);
+
+    doReturn(ConcurrentPushDetectionStrategy.DUAL).when(config).getConcurrentPushDetectionStrategy();
+    boolean shouldSkip2 = admin.shouldSkipTruncatingTopic(clusterName);
+    verify(admin, times(2)).getMultiClusterConfigs();
+    verify(admin, times(2)).isParent();
+    assertFalse(shouldSkip2);
+
+  }
+
+  @Test
+  public void testShouldSkipTruncatingTopicForParentControllersTopicWriteNotNeeded() {
+    VeniceHelixAdmin admin = mock(VeniceHelixAdmin.class);
+    VeniceControllerClusterConfig config = mock(VeniceControllerClusterConfig.class);
+    doReturn(ConcurrentPushDetectionStrategy.PARENT_VERSION_STATUS_ONLY).when(config)
+        .getConcurrentPushDetectionStrategy();
+    doReturn(true).when(admin).isParent();
+
+    Map<String, VeniceControllerClusterConfig> configMap = new HashMap<>();
+    configMap.put(clusterName, config);
+    doReturn(new VeniceControllerMultiClusterConfig(configMap)).when(admin).getMultiClusterConfigs();
+    doCallRealMethod().when(admin).shouldSkipTruncatingTopic(clusterName);
+
+    boolean shouldSkip = admin.shouldSkipTruncatingTopic(clusterName);
+    verify(admin, times(1)).getMultiClusterConfigs();
+    verify(admin, times(1)).isParent();
+    assertTrue(shouldSkip);
   }
 
 }

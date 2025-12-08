@@ -846,6 +846,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
                 Optional.of(LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION)));
     Store store = mock(Store.class);
     doReturn(store).when(internalAdmin).getStore(clusterName, pubSubTopic.getStoreName());
+    doReturn(ConcurrentPushDetectionStrategy.TOPIC_BASED_ONLY).when(config).getConcurrentPushDetectionStrategy();
 
     parentAdmin.initStorageCluster(clusterName);
     parentAdmin.killOfflinePush(clusterName, pubSubTopic.getName(), false);
@@ -1713,6 +1714,14 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
   @Test
   public void testGetExecutionStatus() {
+    Map<String, VeniceControllerClusterConfig> configMap = new HashMap<>();
+    configMap.put("IGNORED", config);
+    configMap.put("mycluster", config);
+    parentAdmin = new VeniceParentHelixAdmin(
+        internalAdmin,
+        new VeniceControllerMultiClusterConfig(configMap),
+        mock(MetricsRepository.class));
+
     Map<ExecutionStatus, ControllerClient> clientMap = getMockJobStatusQueryClient();
     JobStatusQueryResponse failResponse = new JobStatusQueryResponse();
     failResponse.setError("error");
@@ -3227,6 +3236,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
     doNothing().when(adminSpy)
         .sendAdminMessageAndWaitForConsumed(eq(clusterName), eq(storeName), any(AdminOperation.class));
+    doReturn(ConcurrentPushDetectionStrategy.TOPIC_BASED_ONLY).when(config).getConcurrentPushDetectionStrategy();
     doReturn(true).when(adminSpy).truncateKafkaTopic(Version.composeKafkaTopic(storeName, 5));
 
     Map<String, Integer> after = Collections.singletonMap("r1", 5);
@@ -3258,6 +3268,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
     doNothing().when(adminSpy)
         .sendAdminMessageAndWaitForConsumed(eq(clusterName), eq(storeName), any(AdminOperation.class));
+
+    doReturn(ConcurrentPushDetectionStrategy.TOPIC_BASED_ONLY).when(config).getConcurrentPushDetectionStrategy();
     doReturn(true).when(adminSpy).truncateKafkaTopic(anyString());
 
     for (Map.Entry<String, ControllerClient> entry: controllerClients.entrySet()) {

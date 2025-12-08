@@ -4,6 +4,7 @@ import static com.linkedin.davinci.blobtransfer.BlobTransferGlobalTrafficShaping
 
 import com.linkedin.davinci.blobtransfer.client.NettyFileTransferClient;
 import com.linkedin.davinci.blobtransfer.server.P2PBlobTransferService;
+import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.stats.AggVersionedBlobTransferStats;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
@@ -18,6 +19,7 @@ import com.linkedin.venice.utils.SslUtils;
 import io.netty.handler.traffic.GlobalChannelTrafficShapingHandler;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.function.Supplier;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -39,6 +41,7 @@ public class BlobTransferManagerBuilder {
   private Optional<BlobTransferAclHandler> aclHandler;
   private VeniceAdaptiveBlobTransferTrafficThrottler adaptiveBlobTransferWriteTrafficThrottler;
   private VeniceAdaptiveBlobTransferTrafficThrottler adaptiveBlobTransferReadTrafficThrottler;
+  private Supplier<VeniceNotifier> veniceNotifier;
 
   public BlobTransferManagerBuilder() {
   }
@@ -104,6 +107,11 @@ public class BlobTransferManagerBuilder {
     return this;
   }
 
+  public BlobTransferManagerBuilder setPushStatusNotifierSupplier(Supplier<VeniceNotifier> veniceNotifier) {
+    this.veniceNotifier = veniceNotifier;
+    return this;
+  }
+
   public BlobTransferManager<Void> build() {
     try {
       validateFields();
@@ -153,7 +161,8 @@ public class BlobTransferManagerBuilder {
               blobTransferConfig.getBlobReceiveTimeoutInMin(),
               blobTransferConfig.getBlobReceiveReaderIdleTimeInSeconds(),
               globalTrafficHandler,
-              sslFactory),
+              sslFactory,
+              veniceNotifier),
           blobFinder,
           blobTransferConfig.getBaseDir(),
           aggVersionedBlobTransferStats);

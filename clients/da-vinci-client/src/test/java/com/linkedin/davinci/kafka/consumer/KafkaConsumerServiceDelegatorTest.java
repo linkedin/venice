@@ -18,8 +18,10 @@ import com.linkedin.davinci.ingestion.consumption.ConsumedDataReceiver;
 import com.linkedin.davinci.stats.AggKafkaConsumerServiceStats;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterContext;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
+import com.linkedin.venice.pubsub.PubSubContext;
 import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
@@ -98,21 +100,21 @@ public class KafkaConsumerServiceDelegatorTest {
         topicPartitionForVT,
         PartitionReplicaIngestionContext.VersionRole.CURRENT,
         PartitionReplicaIngestionContext.WorkloadType.NON_AA_OR_WRITE_COMPUTE);
-    delegator.startConsumptionIntoDataReceiver(topicPartitionIngestionContextForVT, position0, dataReceiver);
+    delegator.startConsumptionIntoDataReceiver(topicPartitionIngestionContextForVT, position0, dataReceiver, false);
     PartitionReplicaIngestionContext topicPartitionIngestionContextForRT = new PartitionReplicaIngestionContext(
         versionTopic,
         topicPartitionForRT,
         PartitionReplicaIngestionContext.VersionRole.CURRENT,
         PartitionReplicaIngestionContext.WorkloadType.NON_AA_OR_WRITE_COMPUTE);
-    delegator.startConsumptionIntoDataReceiver(topicPartitionIngestionContextForRT, position0, dataReceiver);
+    delegator.startConsumptionIntoDataReceiver(topicPartitionIngestionContextForRT, position0, dataReceiver, false);
 
     // When dedicated consumer pool is disabled.
     reset(mockConfig);
     doReturn(KafkaConsumerServiceDelegator.ConsumerPoolStrategyType.DEFAULT).when(mockConfig)
         .getConsumerPoolStrategyType();
     delegator = new KafkaConsumerServiceDelegator(mockConfig, consumerServiceBuilder, isAAWCStoreFunc);
-    delegator.startConsumptionIntoDataReceiver(topicPartitionIngestionContextForVT, position0, dataReceiver);
-    delegator.startConsumptionIntoDataReceiver(topicPartitionIngestionContextForRT, position0, dataReceiver);
+    delegator.startConsumptionIntoDataReceiver(topicPartitionIngestionContextForVT, position0, dataReceiver, false);
+    delegator.startConsumptionIntoDataReceiver(topicPartitionIngestionContextForRT, position0, dataReceiver, false);
 
     reset(mockDefaultConsumerService);
     reset(mockDedicatedConsumerService);
@@ -235,14 +237,14 @@ public class KafkaConsumerServiceDelegatorTest {
       Map<PartitionReplicaIngestionContext, KafkaConsumerService> consumerServiceMap,
       PartitionReplicaIngestionContext partitionReplicaIngestionContext,
       ConsumedDataReceiver dataReceiver) {
-    delegator.startConsumptionIntoDataReceiver(partitionReplicaIngestionContext, position0, dataReceiver);
+    delegator.startConsumptionIntoDataReceiver(partitionReplicaIngestionContext, position0, dataReceiver, false);
     for (Map.Entry<PartitionReplicaIngestionContext, KafkaConsumerService> entry: consumerServiceMap.entrySet()) {
       if (entry.getKey().equals(partitionReplicaIngestionContext)) {
         verify(entry.getValue())
-            .startConsumptionIntoDataReceiver(partitionReplicaIngestionContext, position0, dataReceiver);
+            .startConsumptionIntoDataReceiver(partitionReplicaIngestionContext, position0, dataReceiver, false);
       } else {
         verify(entry.getValue(), never())
-            .startConsumptionIntoDataReceiver(partitionReplicaIngestionContext, position0, dataReceiver);
+            .startConsumptionIntoDataReceiver(partitionReplicaIngestionContext, position0, dataReceiver, false);
       }
     }
     for (KafkaConsumerService consumerService: consumerServiceMap.values()) {
@@ -280,9 +282,16 @@ public class KafkaConsumerServiceDelegatorTest {
     VeniceServerConfig mockVeniceServerConfig = mock(VeniceServerConfig.class);
     doReturn(PubSubPositionTypeRegistry.RESERVED_POSITION_TYPE_REGISTRY).when(mockVeniceServerConfig)
         .getPubSubPositionTypeRegistry();
+
+    PubSubClientsFactory mockPubSubClientsFactory = mock(PubSubClientsFactory.class);
+    doReturn(factory).when(mockPubSubClientsFactory).getConsumerAdapterFactory();
+
+    PubSubContext mockPubSubContext = mock(PubSubContext.class);
+    doReturn(pubSubDeserializer).when(mockPubSubContext).getPubSubMessageDeserializer();
+    doReturn(mockPubSubClientsFactory).when(mockPubSubContext).getPubSubClientsFactory();
+
     KafkaConsumerService consumerService = new PartitionWiseKafkaConsumerService(
         ConsumerPoolType.REGULAR_POOL,
-        factory,
         properties,
         1000l,
         versionNum + 2, // To simulate real production cases: consumers # >> version # per store.
@@ -293,13 +302,13 @@ public class KafkaConsumerServiceDelegatorTest {
         TimeUnit.MINUTES.toMillis(1),
         mock(StaleTopicChecker.class),
         false,
-        pubSubDeserializer,
         SystemTime.INSTANCE,
         mock(AggKafkaConsumerServiceStats.class),
         false,
         mock(ReadOnlyStoreRepository.class),
         false,
-        mockVeniceServerConfig);
+        mockVeniceServerConfig,
+        mockPubSubContext);
     String storeName = Utils.getUniqueString("test_consumer_service");
 
     Function<String, Boolean> isAAWCStoreFunc = vt -> true;
@@ -379,8 +388,11 @@ public class KafkaConsumerServiceDelegatorTest {
             consumerServiceDelegator.unSubscribe(versionTopic, pubSubTopicPartition);
             break;
           }
-          consumerServiceDelegator
-              .startConsumptionIntoDataReceiver(partitionReplicaIngestionContext, position0, consumedDataReceiver);
+          consumerServiceDelegator.startConsumptionIntoDataReceiver(
+              partitionReplicaIngestionContext,
+              position0,
+              consumedDataReceiver,
+              false);
           // Use low wait time to trigger unsubscribe and poll lock handoff.
           consumerServiceDelegator.assignConsumerFor(versionTopic, pubSubTopicPartition).setTimeoutMsOverride(1L);
           int versionNum =

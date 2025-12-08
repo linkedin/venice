@@ -87,6 +87,8 @@ class TopicMetadataFetcher implements Closeable {
   private final Map<PubSubTopic, ValueAndExpiryTime<Boolean>> topicExistenceCache = new VeniceConcurrentHashMap<>();
   private final Map<PubSubTopicPartition, ValueAndExpiryTime<PubSubPosition>> latestPositionCache =
       new VeniceConcurrentHashMap<>();
+  private final Map<PubSubTopicPartition, ValueAndExpiryTime<PubSubPosition>> earliestPositionCache =
+      new VeniceConcurrentHashMap<>();
   private final long cachedEntryTtlInNs;
   private final AtomicInteger consumerWaitListSize = new AtomicInteger(0);
 
@@ -111,7 +113,8 @@ class TopicMetadataFetcher implements Closeable {
             .setPubSubMessageDeserializer(pubSubMessageDeserializer)
             .setPubSubPositionTypeRegistry(topicManagerContext.getPubSubPositionTypeRegistry())
             .setPubSubTopicRepository(topicManagerContext.getPubSubTopicRepository())
-            .setMetricsRepository(topicManagerContext.getMetricsRepository());
+            .setMetricsRepository(topicManagerContext.getMetricsRepository())
+            .setStoreChangeNotifier(topicManagerContext.getStoreChangeNotifier());
     for (int i = 0; i < topicManagerContext.getTopicMetadataFetcherConsumerPoolSize(); i++) {
       pubSubConsumerContextBuilder.setConsumerName("TopicManager-" + i);
       PubSubConsumerAdapter pubSubConsumerAdapter = pubSubConsumerFactory.create(pubSubConsumerContextBuilder.build());
@@ -397,6 +400,13 @@ class TopicMetadataFetcher implements Closeable {
     }, retries, INITIAL_RETRY_DELAY, Duration.ofSeconds(5), Duration.ofMinutes(5), PUBSUB_RETRIABLE_FAILURES);
   }
 
+  CompletableFuture<PubSubPosition> getEarliestPositionNoRetry(PubSubTopicPartition pubSubTopicPartition) {
+    return CompletableFuture.supplyAsync(() -> {
+      validateTopicPartition(pubSubTopicPartition);
+      return getStartPositionsForPartition(pubSubTopicPartition);
+    }, threadPoolExecutor);
+  }
+
   CompletableFuture<PubSubPosition> getLatestPositionNoRetry(PubSubTopicPartition pubSubTopicPartition) {
     return CompletableFuture.supplyAsync(() -> {
       validateTopicPartition(pubSubTopicPartition);
@@ -409,6 +419,23 @@ class TopicMetadataFetcher implements Closeable {
       int retries) {
     return CompletableFuture
         .supplyAsync(() -> getLatestPositionWithRetries(pubSubTopicPartition, retries), threadPoolExecutor);
+  }
+
+  PubSubPosition getEarliestPositionCachedNonBlocking(PubSubTopicPartition pubSubTopicPartition) {
+    ValueAndExpiryTime<PubSubPosition> cachedValue;
+    cachedValue = earliestPositionCache.get(pubSubTopicPartition);
+    updateCacheAsync(
+        pubSubTopicPartition,
+        cachedValue,
+        earliestPositionCache,
+        () -> getEarliestPositionNoRetry(pubSubTopicPartition));
+    if (cachedValue == null) {
+      cachedValue = earliestPositionCache.get(pubSubTopicPartition);
+      if (cachedValue == null) {
+        return PubSubSymbolicPosition.EARLIEST;
+      }
+    }
+    return cachedValue.getValue();
   }
 
   PubSubPosition getLatestPositionCachedNonBlocking(PubSubTopicPartition pubSubTopicPartition) {
@@ -425,6 +452,25 @@ class TopicMetadataFetcher implements Closeable {
         return PubSubSymbolicPosition.LATEST;
       }
     }
+    return cachedValue.getValue();
+  }
+
+  PubSubPosition getEarliestPositionCached(PubSubTopicPartition pubSubTopicPartition) {
+    ValueAndExpiryTime<PubSubPosition> cachedValue;
+    try {
+      cachedValue = earliestPositionCache.computeIfAbsent(pubSubTopicPartition, k -> {
+        PubSubPosition earliestPosition = getStartPositionsForPartition(pubSubTopicPartition);
+        return new ValueAndExpiryTime<>(earliestPosition);
+      });
+    } catch (PubSubTopicDoesNotExistException | PubSubOpTimeoutException e) {
+      LOGGER.error("Failed to get start offset for topic-partition: {}", pubSubTopicPartition, e);
+      return PubSubSymbolicPosition.EARLIEST;
+    }
+    updateCacheAsync(
+        pubSubTopicPartition,
+        cachedValue,
+        earliestPositionCache,
+        () -> getEarliestPositionNoRetry(pubSubTopicPartition));
     return cachedValue.getValue();
   }
 
@@ -547,6 +593,7 @@ class TopicMetadataFetcher implements Closeable {
 
   void invalidateKey(PubSubTopicPartition pubSubTopicPartition) {
     latestPositionCache.remove(pubSubTopicPartition);
+    earliestPositionCache.remove(pubSubTopicPartition);
   }
 
   CompletableFuture<Void> invalidateKeyAsync(PubSubTopic pubSubTopic) {
@@ -692,6 +739,11 @@ class TopicMetadataFetcher implements Closeable {
   @VisibleForTesting
   Map<PubSubTopic, ValueAndExpiryTime<Boolean>> getTopicExistenceCache() {
     return topicExistenceCache;
+  }
+
+  @VisibleForTesting
+  Map<PubSubTopicPartition, ValueAndExpiryTime<PubSubPosition>> getEarliestPositionCache() {
+    return earliestPositionCache;
   }
 
   @VisibleForTesting

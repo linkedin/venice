@@ -29,22 +29,29 @@ class VersionSwapDataChangeListener<K, V> implements StoreDataChangedListener {
   private final String consumerName;
   private final BasicConsumerStats changeCaptureStats;
   protected final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+  private final boolean versionSwapByControlMessage;
 
   VersionSwapDataChangeListener(
       VeniceAfterImageConsumerImpl<K, V> consumer,
       NativeMetadataRepositoryViewAdapter storeRepository,
       String storeName,
       String consumerName,
-      BasicConsumerStats changeCaptureStats) {
+      BasicConsumerStats changeCaptureStats,
+      boolean versionSwapByControlMessage) {
     this.consumer = consumer;
     this.storeRepository = storeRepository;
     this.storeName = storeName;
     this.consumerName = consumerName;
     this.changeCaptureStats = changeCaptureStats;
+    this.versionSwapByControlMessage = versionSwapByControlMessage;
   }
 
   @Override
   public void handleStoreChanged(Store store) {
+    if (versionSwapByControlMessage) {
+      // No op, changelog consumer is configured to perform version swap by version swap messages.
+      return;
+    }
     synchronized (this) {
       for (int attempt = 1; attempt <= MAX_VERSION_SWAP_RETRIES; attempt++) {
         // store may be null as this is called by other repair tasks

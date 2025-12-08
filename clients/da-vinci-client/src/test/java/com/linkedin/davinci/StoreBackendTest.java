@@ -248,12 +248,8 @@ public class StoreBackendTest {
 
     int partition = 2;
     // Expecting to subscribe to the specified version (version1), which is neither current nor latest.
-    CompletableFuture subscribeResult = storeBackend.subscribe(
-        ComplementSet.of(partition),
-        Optional.of(version1),
-        Collections.emptyMap(),
-        null,
-        Collections.emptyMap());
+    CompletableFuture subscribeResult =
+        storeBackend.subscribe(ComplementSet.of(partition), Optional.of(version1), null);
     versionMap.get(version1.kafkaTopicName()).completePartition(partition);
     subscribeResult.get(3, TimeUnit.SECONDS);
     // Verify that subscribe selected the specified version as current.
@@ -275,29 +271,29 @@ public class StoreBackendTest {
   void testSubscribeVersionSpecific() throws Exception {
     when(backend.getStoreClientType(store.getName())).thenReturn(DaVinciBackend.ClientType.VERSION_SPECIFIC);
     storeBackend = spy(storeBackend);
+    int partitionCount = 3;
 
-    Version version3 = new VersionImpl(store.getName(), store.peekNextVersionNumber(), null, 15);
+    Version version3 = new VersionImpl(store.getName(), store.peekNextVersionNumber(), null, partitionCount);
     store.addVersion(version3);
     store.setCurrentVersion(version2.getNumber());
     backend.handleStoreChanged(storeBackend);
 
-    int partition = 2;
-    // Subscribe to the specified version (version1) with version-specific client
-    CompletableFuture subscribeResult = storeBackend.subscribe(
-        ComplementSet.of(partition),
-        Optional.of(version1),
-        Collections.emptyMap(),
-        null,
-        Collections.emptyMap());
-    versionMap.get(version1.kafkaTopicName()).completePartition(partition);
-    subscribeResult.get(3, TimeUnit.SECONDS);
-
+    for (int partitionId = 0; partitionId < partitionCount; partitionId++) {
+      // Subscribe to the specified version (version1) with version-specific client
+      CompletableFuture subscribeResult =
+          storeBackend.subscribe(ComplementSet.of(partitionId), Optional.of(version1), null);
+      versionMap.get(version1.kafkaTopicName()).completePartition(partitionId);
+      subscribeResult.get(3, TimeUnit.SECONDS);
+    }
     // Verify that subscribe selected the specified version as current
     try (ReferenceCounted<VersionBackend> versionRef = storeBackend.getDaVinciCurrentVersion()) {
       assertEquals(versionRef.get().getVersion().getNumber(), version1.getNumber());
     }
 
     verify(storeBackend, never()).trySubscribeDaVinciFutureVersion();
+
+    // Try to subscribe to a new version
+    assertThrows(VeniceException.class, () -> storeBackend.subscribe(ComplementSet.of(1), Optional.of(version3), null));
   }
 
   @Test

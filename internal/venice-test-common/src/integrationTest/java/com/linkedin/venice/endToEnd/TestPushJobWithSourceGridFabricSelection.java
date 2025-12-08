@@ -21,7 +21,6 @@ import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.Store;
-import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
@@ -29,7 +28,6 @@ import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import java.io.File;
 import java.util.List;
-import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import org.apache.avro.Schema;
@@ -46,7 +44,6 @@ public class TestPushJobWithSourceGridFabricSelection {
   private static final int NUMBER_OF_CHILD_DATACENTERS = 2;
   private static final int NUMBER_OF_CLUSTERS = 1;
   private String[] clusterNames;
-  private String parentControllerRegionName;
   private String[] dcNames;
 
   private List<VeniceMultiClusterWrapper> childDatacenters;
@@ -81,7 +78,6 @@ public class TestPushJobWithSourceGridFabricSelection {
     multiRegionMultiClusterWrapper =
         ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(optionsBuilder.build());
     childDatacenters = multiRegionMultiClusterWrapper.getChildRegions();
-    parentControllerRegionName = multiRegionMultiClusterWrapper.getParentRegionName() + ".parent";
     clusterNames = multiRegionMultiClusterWrapper.getClusterNames();
     dcNames = multiRegionMultiClusterWrapper.getChildRegionNames().toArray(new String[0]);
   }
@@ -103,18 +99,6 @@ public class TestPushJobWithSourceGridFabricSelection {
     String storeName = Utils.getUniqueString("store");
     String parentControllerUrls = multiRegionMultiClusterWrapper.getControllerConnectString();
 
-    // Enable A/A in parent region and 1 child region only
-    // The NR source fabric cluster level config is dc-0 by default.
-    try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerUrls)) {
-      Assert.assertFalse(
-          parentControllerClient
-              .configureActiveActiveReplicationForCluster(
-                  true,
-                  VeniceUserStoreType.BATCH_ONLY.toString(),
-                  Optional.of(String.join(",", parentControllerRegionName, dcNames[0])))
-              .isError());
-    }
-
     Properties props =
         IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, storeName);
     props.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
@@ -124,6 +108,8 @@ public class TestPushJobWithSourceGridFabricSelection {
     String valueSchemaStr = recordSchema.getField(DEFAULT_VALUE_FIELD_PROP).schema().toString();
 
     // Enable L/F and native replication features.
+    // Enable A/A in parent region and 1 child region only
+    // The NR source fabric cluster level config is dc-0 by default.
     UpdateStoreQueryParams updateStoreParams =
         new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
             .setPartitionCount(partitionCount)
@@ -131,6 +117,29 @@ public class TestPushJobWithSourceGridFabricSelection {
             .setNativeReplicationSourceFabric(dcNames[0]);
 
     createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, updateStoreParams).close();
+
+    updateStoreParams = new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true);
+    // get dc-0 and enable A/A replication to verify the push job source fabric selection later.
+    try (ControllerClient dc0ControllerClient = new ControllerClient(
+        clusterName,
+        multiRegionMultiClusterWrapper.getChildRegions().get(0).getControllerConnectString())) {
+      TestUtils.assertCommand(
+          dc0ControllerClient.updateStore(storeName, updateStoreParams),
+          "Failed to enable A/A replication on dc-0 from child controller");
+      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+        // Verify A/A replication is enabled on dc-0
+        Assert.assertTrue(dc0ControllerClient.getStore(storeName).getStore().isActiveActiveReplicationEnabled());
+      });
+    }
+
+    // verify A/A is not enabled on dc-1
+    try (ControllerClient dc1ControllerClient = new ControllerClient(
+        clusterName,
+        multiRegionMultiClusterWrapper.getChildRegions().get(1).getControllerConnectString())) {
+      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+        Assert.assertFalse(dc1ControllerClient.getStore(storeName).getStore().isActiveActiveReplicationEnabled());
+      });
+    }
 
     // Start a batch push specifying SOURCE_GRID_FABRIC as dc-1. This should be ignored as A/A is not enabled in all
     // region.
@@ -140,16 +149,12 @@ public class TestPushJobWithSourceGridFabricSelection {
       Assert.assertEquals(job.getKafkaUrl(), childDatacenters.get(0).getKafkaBrokerWrapper().getAddress());
     }
 
+    updateStoreParams = new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true);
     // Enable A/A in all regions now start another batch push. Verify the batch push source address is dc-1.
     try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerUrls)) {
-      // Enable hybrid config, Leader/Follower state model and A/A replication policy
-      Assert.assertFalse(
-          parentControllerClient
-              .configureActiveActiveReplicationForCluster(
-                  true,
-                  VeniceUserStoreType.BATCH_ONLY.toString(),
-                  Optional.of(String.join(",", parentControllerRegionName, dcNames[0], dcNames[1])))
-              .isError());
+      TestUtils.assertCommand(
+          parentControllerClient.updateStore(storeName, updateStoreParams),
+          "Failed to enable A/A replication on all regions from parent controller");
     }
 
     try (VenicePushJob job = new VenicePushJob("Test push job 2", props)) {

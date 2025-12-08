@@ -4,6 +4,7 @@ import static com.linkedin.venice.ConfigKeys.CLIENT_SYSTEM_STORE_REPOSITORY_REFR
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_DEFERRED_VERSION_SWAP_SERVICE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_DEFERRED_VERSION_SWAP_SLEEP_MS;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
+import static com.linkedin.venice.ConfigKeys.DEFERRED_VERSION_SWAP_FOR_EMPTY_PUSH_ENABLED;
 import static com.linkedin.venice.ConfigKeys.DEFERRED_VERSION_SWAP_REGION_ROLL_FORWARD_ORDER;
 import static com.linkedin.venice.ConfigKeys.LOCAL_REGION_NAME;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
@@ -11,6 +12,7 @@ import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V3_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUSH_LIST;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP;
+import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
 
 import com.linkedin.davinci.client.DaVinciClient;
@@ -20,6 +22,7 @@ import com.linkedin.venice.controller.MockStoreLifecycleHooks;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
+import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.hooks.StoreVersionLifecycleEventOutcome;
 import com.linkedin.venice.integration.utils.DaVinciTestContext;
 import com.linkedin.venice.integration.utils.ServiceFactory;
@@ -43,6 +46,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.IntStream;
@@ -71,6 +75,7 @@ public class TestDeferredVersionSwapWithSequentialRollout {
     controllerProps.put(CONTROLLER_DEFERRED_VERSION_SWAP_SLEEP_MS, 100);
     controllerProps.put(CONTROLLER_DEFERRED_VERSION_SWAP_SERVICE_ENABLED, true);
     controllerProps.put(DEFERRED_VERSION_SWAP_REGION_ROLL_FORWARD_ORDER, REGION1 + "," + REGION2 + "," + REGION3);
+    controllerProps.put(DEFERRED_VERSION_SWAP_FOR_EMPTY_PUSH_ENABLED, true);
     Properties serverProperties = new Properties();
 
     VeniceMultiRegionClusterCreateOptions.Builder optionsBuilder =
@@ -316,6 +321,59 @@ public class TestDeferredVersionSwapWithSequentialRollout {
       });
 
       client2.close();
+    }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testDeferredVersionSwapForEmptyPush() throws Exception {
+    File inputDir = getTempDataDirectory();
+    TestWriteUtils.writeSimpleAvroFileWithStringToV3Schema(inputDir, 100, 100);
+    // Setup job properties
+    String inputDirPath = "file://" + inputDir.getAbsolutePath();
+    String storeName = Utils.getUniqueString("testDeferredVersionSwap");
+    Properties props =
+        IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, storeName);
+    String keySchemaStr = "\"string\"";
+    UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setTargetRegionSwapWaitTime(1);
+    String parentControllerURLs = multiRegionMultiClusterWrapper.getControllerConnectString();
+
+    try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAMES[0], parentControllerURLs)) {
+      createStoreForJob(CLUSTER_NAMES[0], keySchemaStr, NAME_RECORD_V3_SCHEMA.toString(), props, storeParms).close();
+
+      parentControllerClient.emptyPush(storeName, "test", 100000);
+      TestUtils.waitForNonDeterministicAssertion(3, TimeUnit.MINUTES, () -> {
+        Map<String, Integer> coloVersions =
+            parentControllerClient.getStore(storeName).getStore().getColoToCurrentVersions();
+
+        coloVersions.forEach((colo, version) -> {
+          Assert.assertEquals((int) version, 1);
+        });
+      });
+
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+        StoreResponse parentStore = parentControllerClient.getStore(storeName);
+        Assert.assertNotNull(parentStore);
+        StoreInfo storeInfo = parentStore.getStore();
+        Assert.assertEquals(storeInfo.getVersion(1).get().getStatus(), VersionStatus.ONLINE);
+      });
+
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+        // Verify that we can create a new version
+        VersionCreationResponse versionCreationResponse = parentControllerClient.requestTopicForWrites(
+            storeName,
+            1000,
+            Version.PushType.BATCH,
+            Version.guidBasedDummyPushId(),
+            true,
+            true,
+            false,
+            Optional.empty(),
+            Optional.empty(),
+            Optional.empty(),
+            false,
+            -1);
+        assertFalse(versionCreationResponse.isError());
+      });
     }
   }
 

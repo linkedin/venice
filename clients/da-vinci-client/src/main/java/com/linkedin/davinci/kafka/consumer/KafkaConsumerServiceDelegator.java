@@ -184,9 +184,13 @@ public class KafkaConsumerServiceDelegator extends AbstractKafkaConsumerService 
   public void startConsumptionIntoDataReceiver(
       PartitionReplicaIngestionContext partitionReplicaIngestionContext,
       PubSubPosition lastReadPosition,
-      ConsumedDataReceiver<List<DefaultPubSubMessage>> consumedDataReceiver) {
-    assignKafkaConsumerServiceFor(partitionReplicaIngestionContext)
-        .startConsumptionIntoDataReceiver(partitionReplicaIngestionContext, lastReadPosition, consumedDataReceiver);
+      ConsumedDataReceiver<List<DefaultPubSubMessage>> consumedDataReceiver,
+      boolean inclusive) {
+    assignKafkaConsumerServiceFor(partitionReplicaIngestionContext).startConsumptionIntoDataReceiver(
+        partitionReplicaIngestionContext,
+        lastReadPosition,
+        consumedDataReceiver,
+        inclusive);
   }
 
   @Override
@@ -322,11 +326,13 @@ public class KafkaConsumerServiceDelegator extends AbstractKafkaConsumerService 
       PubSubTopicPartition pubSubTopicPartition = topicPartitionReplicaRole.getPubSubTopicPartition();
       PubSubTopic pubSubTopic = pubSubTopicPartition.getPubSubTopic();
       /**
-       * The logic to assign consumer service is with these 2 dimensions:
+       * The logic to assign consumer service is with these 3 dimensions:
        * 1. If the version role is current.
        * 2. If the workload type is active-active leader and write-computer leader.
+       * 3. If the replica is ready to serve.
        */
-      if (versionRole.equals(PartitionReplicaIngestionContext.VersionRole.CURRENT)) {
+      if (versionRole.equals(PartitionReplicaIngestionContext.VersionRole.CURRENT)
+          && topicPartitionReplicaRole.isReadyToServe()) {
         if (workloadType.equals(PartitionReplicaIngestionContext.WorkloadType.AA_OR_WRITE_COMPUTE)
             && pubSubTopic.isRealTime()) {
           return pubSubTopic.isSeparateRealTimeTopic()

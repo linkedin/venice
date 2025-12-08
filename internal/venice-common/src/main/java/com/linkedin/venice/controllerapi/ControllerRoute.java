@@ -85,7 +85,6 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORAGE_N
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORAGE_QUOTA_IN_BYTE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORES_TO_REPLICATE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_MIGRATION;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_TYPE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TOPIC;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TOPIC_COMPACTION_POLICY;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TO_BE_STOPPED_INSTANCES;
@@ -245,9 +244,7 @@ public enum ControllerRoute implements VeniceDimensionInterface {
   UPDATE_ACL("/update_acl", HttpMethod.POST, Arrays.asList(CLUSTER, NAME, ACCESS_PERMISSION)),
   GET_ACL("/get_acl", HttpMethod.GET, Arrays.asList(CLUSTER, NAME)),
   DELETE_ACL("/delete_acl", HttpMethod.GET, Arrays.asList(CLUSTER, NAME)),
-  CONFIGURE_ACTIVE_ACTIVE_REPLICATION_FOR_CLUSTER(
-      "/configure_active_active_replication_for_cluster", HttpMethod.POST, Arrays.asList(CLUSTER, STORE_TYPE, STATUS)
-  ), GET_DELETABLE_STORE_TOPICS("/get_deletable_store_topics", HttpMethod.GET, Collections.emptyList()),
+  GET_DELETABLE_STORE_TOPICS("/get_deletable_store_topics", HttpMethod.GET, Collections.emptyList()),
   GET_ALL_REPLICATION_METADATA_SCHEMAS(
       "/get_all_replication_metadata_schemas", HttpMethod.GET, Collections.singletonList(NAME)
   ),

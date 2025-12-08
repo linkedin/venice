@@ -398,4 +398,8 @@ public class VeniceControllerMultiClusterConfig {
   public PubSubTopicRepository getPubSubTopicRepository() {
     return pubSubTopicRepository;
   }
+
+  public int getStoreChangeNotifierThreadPoolSize() {
+    return getCommonConfig().getStoreChangeNotifierThreadPoolSize();
+  }
 }

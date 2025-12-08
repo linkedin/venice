@@ -26,7 +26,6 @@ import com.linkedin.venice.meta.StoreDataAudit;
 import com.linkedin.venice.meta.StoreGraveyard;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.UncompletedPartition;
-import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.persona.StoragePersona;
 import com.linkedin.venice.protocols.controller.PubSubPositionGrpcWireFormat;
@@ -573,6 +572,10 @@ public interface Admin extends AutoCloseable, Closeable {
     return 1;
   }
 
+  boolean isDeferredVersionSwapForEmptyPushEnabled(String store);
+
+  String getDeferredVersionSwapRegionRollforwardOrder(String store);
+
   List<Replica> getReplicas(String clusterName, String kafkaTopic);
 
   List<Replica> getReplicasOfStorageNode(String clusterName, String instanceId);
@@ -827,17 +830,6 @@ public interface Admin extends AutoCloseable, Closeable {
    * @return a list of clusters this controller is a leader of.
    */
   List<String> getClustersLeaderOf();
-
-  /**
-   * Enable/disable active active replications for certain stores (batch only, hybrid only, incremental push, hybrid or incremental push,
-   * all) in a cluster. If storeName is not empty, only the specified store might be updated.
-   */
-  void configureActiveActiveReplication(
-      String cluster,
-      VeniceUserStoreType storeType,
-      Optional<String> storeName,
-      boolean enableActiveActiveReplicationForCluster,
-      Optional<String> regionsFilter);
 
   /**
    * Check whether there are any resource left for the store creation in cluster: {@param clusterName}

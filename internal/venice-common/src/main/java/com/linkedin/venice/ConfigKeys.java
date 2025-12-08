@@ -2092,9 +2092,15 @@ public class ConfigKeys {
   // This is a config to set the reader idle timeout (in seconds) on the client side to handle scenarios where the
   // server shuts down before transfer completes.
   public static final String BLOB_RECEIVE_READER_IDLE_TIME_IN_SECONDS = "blob.receive.reader.idle.time.in.seconds";
-  // this is a config to decide the max allowed offset lag to use kafka, even if the blob transfer is enable.
+  // This is a config to decide the max allowed offset lag to use pubsub, even if the blob transfer is enable.
   public static final String BLOB_TRANSFER_DISABLED_OFFSET_LAG_THRESHOLD =
       "blob.transfer.disabled.offset.lag.threshold";
+  /**
+   * This is a config to decide the max allowed time lag to use pubsub, even if the blob transfer is enable.
+   * If the config is non-positive, this means the feature is disabled.
+   */
+  public static final String BLOB_TRANSFER_DISABLED_TIME_LAG_THRESHOLD_IN_MINUTES =
+      "blob.transfer.disabled.time.lag.threshold.in.minutes";
   // This is a freshness in sec to measure the connectivity between the peers,
   // if the connectivity is not fresh, then retry the connection.
   public static final String BLOB_TRANSFER_PEERS_CONNECTIVITY_FRESHNESS_IN_SECONDS =
@@ -2273,6 +2279,13 @@ public class ConfigKeys {
    */
   public static final String TIME_LAG_THRESHOLD_FOR_FAST_ONLINE_TRANSITION_IN_RESTART_MINUTES =
       "time.lag.threshold.for.fast.online.transition.in.restart.minutes";
+
+  /**
+   * This config controls the behavior to enable/disable offset lag calculation and persistence during offset record
+   * sync action. The intention is to gradually deprecate this behavior until all the usage is removed from Server and
+   * Da Vinci clients. After they are fully deprecate, this config and the checkpoint logic will all be removed.
+   */
+  public static final String OFFSET_LAG_CHECKPOINT_DURING_SYNC_ENABLED = "offset.lag.checkpoint.during.sync.enabled";
 
   /**
    * Enable offset collection for kafka topic partition from kafka consumer metrics.
@@ -2657,6 +2670,12 @@ public class ConfigKeys {
       "server.resubscription.triggered.by.version.ingestion.context.change.enabled";
 
   /**
+   * Server configs to configure the check interval of the topic partition re-subscription during ingestion.
+   */
+  public static final String SERVER_RESUBSCRIPTION_CHECK_INTERVAL_IN_SECONDS =
+      "server.resubscription.check.interval.in.seconds";
+
+  /**
    * Quota for AA/WC leader replica as we know AA/WC messages are expensive, so we would like to use the following throttler
    * to limit the resource usage.
    */
@@ -2726,6 +2745,34 @@ public class ConfigKeys {
 
   public static final String SERVER_INACTIVE_TOPIC_PARTITION_CHECKER_THRESHOLD_IN_SECONDS =
       "server.inactive.topic.partition.checker.threshold.in.seconds";
+
+  /**
+   * Config to enable/disable lag based replica auto-resubscribe feature.
+   * Default is false as we will plan to roll out step-by-step.
+   */
+  public static final String SERVER_LAG_BASED_REPLICA_AUTO_RESUBSCRIBE_ENABLED =
+      "server.lag.based.replica.auto.resubscribe.enabled";
+  /**
+   * Config to control the time lag threshold in seconds to trigger this auto-resubscribe feature.
+   * Default is 600s = 10 min.
+   */
+  public static final String SERVER_LAG_BASED_REPLICA_AUTO_RESUBSCRIBE_THRESHOLD_IN_SECONDS =
+      "server.lag.based.replica.auto.resubscribe.threshold.in.seconds";
+  /**
+   * Config to control the interval a replica is re-subscribed after previous attempt. This config intends to give replica
+   * sometime to auto-remediate the lag after re-subscription.
+   * Default is 300s = 5 min.
+   */
+  public static final String SERVER_LAG_BASED_REPLICA_AUTO_RESUBSCRIBE_INTERVAL_IN_SECONDS =
+      "server.lag.based.replica.auto.resubscribe.interval.in.seconds";
+  /**
+   * Config to control the maximum number of replicas can be resubscribed in one single store ingestion task check.
+   * This is to make sure in case resubscribe feature does not work as expected or encounter slowness during the process,
+   * the SIT thread will keep functioning and serve other requests.
+   * Default is 3.
+   */
+  public static final String SERVER_LAG_BASED_REPLICA_AUTO_RESUBSCRIBE_MAX_REPLICA_COUNT =
+      "server.lag.based.replica.auto.resubscribe.max.replica.count";
 
   /**
    * Whether to enable producer throughput optimization for realtime workload or not.
@@ -2819,6 +2866,12 @@ public class ConfigKeys {
    * Specifies the number of threads for DeferredVersionSwapService
    */
   public static final String DEFERRED_VERSION_SWAP_THREAD_POOL_SIZE = "deferred.version.swap.thread.pool.size";
+
+  /**
+   * Specifies whether deferred version swap is enabled for empty pushes
+   */
+  public static final String DEFERRED_VERSION_SWAP_FOR_EMPTY_PUSH_ENABLED =
+      "deferred.version.swap.for.empty.push.enabled";
 
   /**
    * Enables / disables allowing dvc clients to perform a target region push with deferred swap. When enabled, dvc clients
@@ -2994,4 +3047,18 @@ public class ConfigKeys {
    */
   public static final String CONTROLLER_USE_MULTI_REGION_REAL_TIME_TOPIC_SWITCHER_ENABLED =
       "controller.use.multi.region.real.time.topic.switcher.enabled";
+
+  /**
+   * Number of consecutive cycles to wait before removing a replica that does not have a corresponding entry in local
+   * customized view cache before removing it from lag monitor. e.g. if this config is set to 10, and we are using the
+   * default sleep interval of 60 seconds then we will only remove the replica from lag monitor after at least 600
+   * seconds without having any corresponding entry in customized view.
+   */
+  public static final String SERVER_LAG_MONITOR_CLEANUP_CYCLE = "server.lag.monitor.cleanup.cycle";
+
+  /**
+   * Thread pool size for the async store change notifier service that handles store metadata change events.
+   * Default is 1.
+   */
+  public static final String STORE_CHANGE_NOTIFIER_THREAD_POOL_SIZE = "store.change.notifier.thread.pool.size";
 }

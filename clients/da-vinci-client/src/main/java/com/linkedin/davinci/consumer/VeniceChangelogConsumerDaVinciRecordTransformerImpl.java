@@ -20,10 +20,12 @@ import com.linkedin.davinci.consumer.stats.BasicConsumerStats;
 import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.ClientConfig;
+import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubTopicImpl;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.PropertyBuilder;
@@ -38,6 +40,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedList;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ArrayBlockingQueue;
@@ -81,7 +84,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   private final ExecutorService completableFutureThreadPool =
       Executors.newFixedThreadPool(1, new DaemonThreadFactory("VeniceChangelogConsumerDaVinciRecordTransformerImpl"));
 
-  private final Set<Integer> subscribedPartitions = new HashSet<>();
+  private final Set<Integer> subscribedPartitions = VeniceConcurrentHashMap.newKeySet();
   private final ReentrantLock bufferLock = new ReentrantLock();
   private final Condition bufferIsFullCondition = bufferLock.newCondition();
   private BackgroundReporterThread backgroundReporterThread;
@@ -93,6 +96,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   private final long consumerSequenceIdStartingValue;
   private final boolean isVersionSpecificClient;
   private final VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory;
+  private final boolean includeControlMessages;
 
   public VeniceChangelogConsumerDaVinciRecordTransformerImpl(
       ChangelogClientConfig changelogClientConfig,
@@ -163,6 +167,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
     }
     this.consumerSequenceIdGeneratorMap = new VeniceConcurrentHashMap<>();
     this.consumerSequenceIdStartingValue = consumerSequenceIdStartingValue;
+    this.includeControlMessages = changelogClientConfig.shouldIncludeControlMessages();
   }
 
   private void startDaVinciClient() {
@@ -326,12 +331,11 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   }
 
   public CompletableFuture<Void> seekToTail(Set<Integer> partitions) {
-    // ToDo: Seek to latest
-    throw new VeniceClientException("seekToTail is not supported yet");
+    return daVinciClient.seekToTail(partitions);
   }
 
   public CompletableFuture<Void> seekToTail() {
-    return this.seekToTail(Collections.emptySet());
+    return daVinciClient.seekToTail();
   }
 
   public CompletableFuture<Void> seekToCheckpoint(Set<VeniceChangeCoordinate> checkpoints) {
@@ -410,18 +414,11 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
       int messagesPolled = drainedPubSubMessages.size();
 
       if (changelogClientConfig.shouldCompactMessages()) {
-        Map<K, PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> tempMap = new LinkedHashMap<>();
-        /*
-         * The behavior of LinkedHashMap is such that it maintains the order of insertion, but for values which are
-         * replaced, it's put in at the position of the first insertion. This isn't quite what we want, we want to keep
-         * only a single key (just as a map would), but we want to keep the position of the last insertion as well. So in
-         * order to do that, we remove the entry before inserting it.
-         */
-        for (PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate> message: drainedPubSubMessages) {
-          tempMap.remove(message.getKey());
-          tempMap.put(message.getKey(), message);
+        if (includeControlMessages) {
+          drainedPubSubMessages = compactPubSubMessagesWithControlMessage(drainedPubSubMessages);
+        } else {
+          drainedPubSubMessages = compactPubSubMessages(drainedPubSubMessages);
         }
-        drainedPubSubMessages = tempMap.values();
       }
 
       if (changeCaptureStats != null) {
@@ -443,6 +440,50 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   @Override
   public boolean isCaughtUp() {
     return isCaughtUp.get();
+  }
+
+  /**
+   * Compacts the given collection of PubSubMessages by retaining only the latest message for each unique key.
+   * This method assumes that there is no control message (with key=null and value=null) in the input collection.
+   */
+  private Collection<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> compactPubSubMessages(
+      Collection<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> messages) {
+    Map<K, PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> tempMap = new LinkedHashMap<>();
+    /*
+     * The behavior of LinkedHashMap is such that it maintains the order of insertion, but for values which are
+     * replaced, it's put in at the position of the first insertion. This isn't quite what we want, we want to keep
+     * only a single key (just as a map would), but we want to keep the position of the last insertion as well. So in
+     * order to do that, we remove the entry before inserting it.
+     */
+    for (PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate> message: messages) {
+      tempMap.remove(message.getKey());
+      tempMap.put(message.getKey(), message);
+    }
+    return tempMap.values();
+  }
+
+  /**
+   * Compacts the given collection of PubSubMessages by retaining only the latest message for each unique key,
+   * while preserving control messages (with key=null and value=null).
+   * This method will use more memory compared to compactPubSubMessages since it duplicates the input collection.
+   */
+  private Collection<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> compactPubSubMessagesWithControlMessage(
+      Collection<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> messages) {
+    Set<K> seenKeys = new HashSet<>();
+    LinkedList<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> compactedMessageList = new LinkedList<>();
+    // Iterate in reverse order to keep the latest message for each key
+    ArrayList<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> messageList = new ArrayList<>(messages);
+    for (int i = messageList.size() - 1; i >= 0; i--) {
+      PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate> message = messageList.get(i);
+      K key = message.getKey();
+      if (key == null || !seenKeys.contains(key)) {
+        compactedMessageList.addFirst(message);
+        if (key != null) {
+          seenKeys.add(key);
+        }
+      }
+    }
+    return compactedMessageList;
   }
 
   private VeniceProperties buildVeniceConfig() {
@@ -538,29 +579,30 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
     }
 
     @Override
-    public void onStartVersionIngestion(boolean isCurrentVersion) {
-      for (int partitionId: subscribedPartitions) {
-        if (isCurrentVersion || isVersionSpecificClient) {
-          /*
-           * This condition can occur when the application is starting up (due to a restart/deployment) or when the
-           * next current version begins ingestion while the previous version is still serving.
-           * In the first case, it is acceptable to immediately serve the current version.
-           * In the second case, we should not immediately serve the next current version. Doing so would result in
-           * sending all messages from SOP to nearline events that the user has already received.
-           * To avoid this, we should only serve the current version if no other version is currently being served.
-           * Once the next current version has consumed the version swap message, then it has caught up enough to be
-           * ready to serve.
-           */
-          partitionToVersionToServe.computeIfAbsent(partitionId, v -> getStoreVersion());
-        }
-
-        // Caching these objects, so we don't need to recreate them on every single message received
-        pubSubTopicPartitionMap
-            .put(partitionId, new PubSubTopicPartitionImpl(new PubSubTopicImpl(topicName), partitionId));
-
-        // Initialize heartbeat timestamp for the partition to avoid empty lag until first heartbeat arrives
-        currentVersionLastHeartbeat.putIfAbsent(partitionId, System.currentTimeMillis());
+    public void onStartVersionIngestion(int partitionId, boolean isCurrentVersion) {
+      if (isCurrentVersion || isVersionSpecificClient) {
+        /*
+         * This condition can occur when the application is starting up (due to a restart/deployment) or when the
+         * next current version begins ingestion while the previous version is still serving.
+         * In the first case, it is acceptable to immediately serve the current version.
+         * In the second case, we should not immediately serve the next current version. Doing so would result in
+         * sending all messages from SOP to nearline events that the user has already received.
+         * To avoid this, we should only serve the current version if no other version is currently being served.
+         * Once the next current version has consumed the version swap message, then it has caught up enough to be
+         * ready to serve.
+         *
+         * This can also occur when it is running in version specific mode, and no version swap will happen.
+         * In this case, just serve the currently subscribed version.
+         */
+        partitionToVersionToServe.computeIfAbsent(partitionId, v -> getStoreVersion());
       }
+
+      // Caching these objects, so we don't need to recreate them on every single message received
+      pubSubTopicPartitionMap
+          .putIfAbsent(partitionId, new PubSubTopicPartitionImpl(new PubSubTopicImpl(topicName), partitionId));
+
+      // Initialize heartbeat timestamp for the partition to avoid empty lag until first heartbeat arrives
+      currentVersionLastHeartbeat.putIfAbsent(partitionId, System.currentTimeMillis());
     }
 
     @Override
@@ -573,6 +615,9 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
       return new DaVinciRecordTransformerResult<>(DaVinciRecordTransformerResult.Result.UNCHANGED);
     }
 
+    /**
+     * Add ChangeCapturePubSubMessage to the buffer based on record metadata.
+     */
     public void addMessageToBuffer(
         K key,
         V value,
@@ -580,44 +625,80 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
         DaVinciRecordTransformerRecordMetadata recordMetadata) {
       if (partitionToVersionToServe.get(partitionId) == getStoreVersion()) {
         ChangeEvent<V> changeEvent = new ChangeEvent<>(null, value);
-        try {
-          pubSubMessages.put(
-              new ImmutableChangeCapturePubSubMessage<>(
-                  key,
-                  changeEvent,
-                  pubSubTopicPartitionMap.get(partitionId),
-                  recordMetadata.getPubSubPosition(),
-                  recordMetadata.getTimestamp(),
-                  recordMetadata.getPayloadSize(),
-                  isCaughtUp(),
-                  getNextConsumerSequenceId(partitionId),
-                  recordMetadata.getWriterSchemaId(),
-                  recordMetadata.getReplicationMetadataPayload()));
+        ImmutableChangeCapturePubSubMessage<K, ChangeEvent<V>> pubSubMessage =
+            new ImmutableChangeCapturePubSubMessage<>(
+                key,
+                changeEvent,
+                pubSubTopicPartitionMap.get(partitionId),
+                recordMetadata.getPubSubPosition(),
+                recordMetadata.getTimestamp(),
+                recordMetadata.getPayloadSize(),
+                isCaughtUp(),
+                getNextConsumerSequenceId(partitionId),
+                recordMetadata.getWriterSchemaId(),
+                recordMetadata.getReplicationMetadataPayload());
+        internalAddMessageToBuffer(partitionId, pubSubMessage);
+      }
+    }
 
-          /*
-           * pubSubMessages is full, signal to a poll thread awaiting on bufferFullCondition.
-           * Not signaling to all threads, because if multiple poll threads try to read pubSubMessages at
-           * the same time, all other poll threads besides the first reader will get any messages.
-           * Also, don't acquire the locker before inserting into pubSubMessages. If we acquire the lock before,
-           * and pubSubMessages is full, the put will be blocked, and we won't be able to release the lock. Leading
-           * to a deadlock. We also shouldn't signal before insertion either, because when the buffer is full multiple
-           * drainer threads will send a signal out at once. This leads to the original issue described at the
-           * beginning of this comment block.
-           */
-          if (pubSubMessages.remainingCapacity() == 0) {
-            bufferLock.lock();
-            try {
-              bufferIsFullCondition.signal();
-            } finally {
-              bufferLock.unlock();
-            }
+    /**
+     * Add ControlMessage to the buffer.
+     * Key and Value are both null. Details for control message are in controlMessage param.
+     */
+    public void addControlMessageToBuffer(int partitionId, PubSubPosition offset, ControlMessage controlMessage) {
+      if (partitionToVersionToServe.get(partitionId) == getStoreVersion()) {
+        ImmutableChangeCapturePubSubMessage<K, ChangeEvent<V>> pubSubMessage =
+            new ImmutableChangeCapturePubSubMessage<>(
+                null,
+                null,
+                pubSubTopicPartitionMap.get(partitionId),
+                offset,
+                0,
+                0,
+                false,
+                getNextConsumerSequenceId(partitionId),
+                -1,
+                null,
+                controlMessage);
+        internalAddMessageToBuffer(partitionId, pubSubMessage);
+      }
+    }
+
+    /**
+     * Internal method to add message to buffer.
+     */
+    private void internalAddMessageToBuffer(
+        int partitionId,
+        ImmutableChangeCapturePubSubMessage<K, ChangeEvent<V>> pubSubMessage) {
+      if (partitionToVersionToServe.get(partitionId) != getStoreVersion()) {
+        return;
+      }
+
+      try {
+        pubSubMessages.put(pubSubMessage);
+        /*
+         * pubSubMessages is full, signal to a poll thread awaiting on bufferFullCondition.
+         * Not signaling to all threads, because if multiple poll threads try to read pubSubMessages at
+         * the same time, all other poll threads besides the first reader will get any messages.
+         * Also, don't acquire the locker before inserting into pubSubMessages. If we acquire the lock before,
+         * and pubSubMessages is full, the put will be blocked, and we won't be able to release the lock. Leading
+         * to a deadlock. We also shouldn't signal before insertion either, because when the buffer is full multiple
+         * drainer threads will send a signal out at once. This leads to the original issue described at the
+         * beginning of this comment block.
+         */
+        if (pubSubMessages.remainingCapacity() == 0) {
+          bufferLock.lock();
+          try {
+            bufferIsFullCondition.signal();
+          } finally {
+            bufferLock.unlock();
           }
-
-          startLatch.countDown();
-        } catch (InterruptedException e) {
-          LOGGER.error("Thread was interrupted while putting a message into pubSubMessages", e);
-          Thread.currentThread().interrupt();
         }
+
+        startLatch.countDown();
+      } catch (InterruptedException e) {
+        LOGGER.error("Thread was interrupted while putting a message into pubSubMessages", e);
+        Thread.currentThread().interrupt();
       }
     }
 
@@ -641,6 +722,17 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
       // When value is null, it indicates it's a delete
       addMessageToBuffer(key.get(), null, partitionId, recordMetadata);
     };
+
+    /**
+     * If includeControlMessages is FALSE, or the client is NOT version specific, this method is a no-op.
+     * If includeControlMessages is true, AND the client is version specific, it adds the control message to the buffer.
+     */
+    public void onControlMessage(int partitionId, PubSubPosition offset, ControlMessage controlMessage) {
+      if (!isVersionSpecificClient || !includeControlMessages) {
+        return;
+      }
+      addControlMessageToBuffer(partitionId, offset, controlMessage);
+    }
 
     public void onVersionSwap(int currentVersion, int futureVersion, int partitionId) {
       /*

@@ -111,6 +111,7 @@ import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubUnsubscribedTopicPartitionException;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.pubsub.manager.TopicManagerRepository;
+import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.ChunkedValueManifestSerializer;
@@ -248,6 +249,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final TopicManagerRepository topicManagerRepository;
   /** Per-partition consumption state map */
   protected final ConcurrentMap<Integer, PartitionConsumptionState> partitionConsumptionStateMap;
+  private final ConcurrentMap<Integer, Long> partitionToPreviousResubscribeTimeMap = new VeniceConcurrentHashMap<>();
+  private final PriorityBlockingQueue<Integer> resubscribeRequestQueue = new PriorityBlockingQueue<>();
   private final AtomicInteger activeReplicaCount = new AtomicInteger(0);
   protected final AbstractStoreBufferService storeBufferService;
 
@@ -351,7 +354,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   // Total number of partition for this store version
   protected final int storeVersionPartitionCount;
 
-  private AtomicInteger pendingSubscriptionActionCount = new AtomicInteger(0);
+  private final AtomicInteger pendingSubscriptionActionCount = new AtomicInteger(0);
   private int subscribedCount = 0;
   private int forceUnSubscribedCount = 0;
 
@@ -414,6 +417,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private final List<AutoCloseable> thingsToClose = new ArrayList<>();
   private final Version version;
   private boolean skipValidationForSeekableClientEnabled = false;
+  private long lastResubscriptionCheckTimestamp = System.currentTimeMillis();
 
   public StoreIngestionTask(
       StorageService storageService,
@@ -610,15 +614,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       this.schemaIdToSchemaMap = new VeniceConcurrentHashMap<>();
 
       this.recordTransformerStats = internalRecordTransformerConfig.getRecordTransformerStats();
-
-      // onStartVersionIngestion called here instead of run() because this needs to finish running
-      // before bootstrapping starts
-      long startTime = System.nanoTime();
-      recordTransformer.onStartVersionIngestion(isCurrentVersion.getAsBoolean());
-      LOGGER.info(
-          "DaVinciRecordTransformer onStartVersionIngestion took {} ms for store version: {}",
-          LatencyUtils.getElapsedTimeFromNSToMS(startTime),
-          storeVersionName);
     } else {
       this.schemaIdToSchemaMap = null;
       this.recordTransformerConfig = null;
@@ -751,7 +746,37 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   void resubscribeForAllPartitions() throws InterruptedException {
     throwIfNotRunning();
     for (PartitionConsumptionState partitionConsumptionState: partitionConsumptionStateMap.values()) {
+      /**
+       * For completed current version replica, if we resubscribe during version role change, it will be resubscribed to
+       * correct high priority pool. We will mark {@link PartitionConsumptionState#hasResubscribedAfterBootstrapAsCurrentVersion}
+       * to true so that it won't be resubscribed again.
+       */
+      if (isCurrentVersion() && partitionConsumptionState.isComplete()
+          && !partitionConsumptionState.hasResubscribedAfterBootstrapAsCurrentVersion()) {
+        partitionConsumptionState.setHasResubscribedAfterBootstrapAsCurrentVersion(true);
+      }
       resubscribe(partitionConsumptionState);
+    }
+  }
+
+  void resubscribeForCompletedCurrentVersionPartition() throws InterruptedException {
+    throwIfNotRunning();
+    if (!isCurrentVersion()) {
+      return;
+    }
+    for (PartitionConsumptionState partitionConsumptionState: getPartitionConsumptionStateMap().values()) {
+      /**
+       * For bootstrapping current version replica which is completed but has not resubscribed yet, we will update the flag
+       * and resubscribe again to make sure it is landed into correct high priority pool.
+       */
+      if (partitionConsumptionState.isComplete()
+          && !partitionConsumptionState.hasResubscribedAfterBootstrapAsCurrentVersion()) {
+        LOGGER.info(
+            "Replica: {} becomes current serving replica, will trigger resubscription",
+            partitionConsumptionState.getReplicaId());
+        partitionConsumptionState.setHasResubscribedAfterBootstrapAsCurrentVersion(true);
+        resubscribe(partitionConsumptionState);
+      }
     }
   }
 
@@ -774,6 +799,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       recordTransformerOnRecoveryThreadPool.submit(() -> {
         try {
           long startTime = System.nanoTime();
+          recordTransformer.onStartVersionIngestion(partitionNumber, isCurrentVersion.getAsBoolean());
+          LOGGER.info(
+              "DaVinciRecordTransformer onStartVersionIngestion took {} ms for store version: {} and partition: {}",
+              LatencyUtils.getElapsedTimeFromNSToMS(startTime),
+              storeVersionName,
+              partitionNumber);
+
+          startTime = System.nanoTime();
           recordTransformer.internalOnRecovery(
               storageEngine,
               partitionNumber,
@@ -1064,6 +1097,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
 
     return storagePartitionConfig;
+  }
+
+  // TEST ONLY
+  void setSkipValidationForSeekableClientEnabled() {
+    this.skipValidationForSeekableClientEnabled = true;
   }
 
   protected abstract boolean isHybridFollower(PartitionConsumptionState partitionConsumptionState);
@@ -1612,6 +1650,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   protected void refreshIngestionContextIfChanged(Store store) throws InterruptedException {
+    if (LatencyUtils.getElapsedTimeFromMsToMs(lastResubscriptionCheckTimestamp) < SECONDS
+        .toMillis(serverConfig.getResubscriptionCheckIntervalInSeconds())) {
+      return;
+    }
+    lastResubscriptionCheckTimestamp = System.currentTimeMillis();
+
     if (!serverConfig.isResubscriptionTriggeredByVersionIngestionContextChangeEnabled() || !isHybridMode()
         || isSystemStore) {
       return;
@@ -1628,6 +1672,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     PartitionReplicaIngestionContext.WorkloadType newWorkloadType =
         PartitionReplicaIngestionContext.determineWorkloadType(isActiveActiveReplicationEnabled, isWriteComputeEnabled);
     if (newVersionRole.equals(versionRole) && newWorkloadType.equals(workloadType)) {
+      resubscribeForCompletedCurrentVersionPartition();
       return;
     }
 
@@ -1711,6 +1756,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         Store store = storeRepository.getStoreOrThrow(storeName);
         if (!skipAfterBatchPushUnsubEnabled) {
           refreshIngestionContextIfChanged(store);
+          maybeProcessResubscribeRequest();
           processConsumerActions(store);
           checkLongRunningTaskState();
           checkIngestionProgress(store);
@@ -2262,11 +2308,16 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
         // Subscribe to local version topic.
         PubSubPosition subscribePosition;
-        if (consumerAction.getPubSubPosition() != null && isDaVinciClient) {
+        if (consumerAction.getPubSubPosition() != null) {
+          if (recordTransformer == null) {
+            throw new VeniceException("seekToCheckpoint will not be supported for non-transformed client");
+          }
           skipValidationForSeekableClientEnabled = true;
           subscribePosition = consumerAction.getPubSubPosition();
-          LOGGER.info("Subscribed to user partition : {} position: {}", topicPartition, subscribePosition);
-
+          LOGGER.info("Subscribed to user given partition: {} position: {}", topicPartition, subscribePosition);
+          // report completion immediately for user seek subscription
+          partitionConsumptionStateMap.get(partition).lagHasCaughtUp();
+          reportCompleted(partitionConsumptionStateMap.get(partition), true);
         } else {
           subscribePosition = getLocalVtSubscribePosition(newPartitionConsumptionState);
           LOGGER.info("Subscribed to local: {} position: {}", topicPartition, subscribePosition);
@@ -2276,6 +2327,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             newPartitionConsumptionState,
             subscribePosition,
             localKafkaServer);
+
         LOGGER.info("Subscribed to: {} position: {}", topicPartition, subscribePosition);
         if (isGlobalRtDivEnabled()) {
           // TODO: remove. this is a temporary log for debugging while the feature is in its infancy
@@ -2828,6 +2880,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     offsetRecord.setDatabaseInfo(dbCheckpointingInfoReference.get());
     // Update key urn compression dictionary
     offsetRecord.setKeyUrnCompressionDict(pcs.getKeyUrnCompressionDict());
+    // Update the push job info
+    offsetRecord.setTrackingIncrementalPushStatus(pcs.getTrackingIncrementalPushStatus());
+
     storageMetadataService.put(this.kafkaVersionTopic, partition, offsetRecord);
     pcs.resetProcessedRecordSizeSinceLastSync();
     // TODO: update
@@ -2838,8 +2893,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   private void updateOffsetLagInMetadata(PartitionConsumptionState ps) {
-    // Measure and save real-time offset lag.
-    ps.getOffsetRecord().setOffsetLag(measureHybridOffsetLag(ps, false));
+    if (getServerConfig().isOffsetCheckpointDuringSyncEnabled()) {
+      // Measure and save real-time offset lag.
+      ps.getOffsetRecord().setOffsetLag(measureHybridOffsetLag(ps, false));
+    }
     // Measure and save real-time heartbeat timestamp.
     ps.getOffsetRecord().setHeartbeatTimestamp(measureHybridHeartbeatTimestamp(ps, false));
     ps.getOffsetRecord().setLastCheckpointTimestamp(System.currentTimeMillis());
@@ -2973,20 +3030,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   public abstract int getWriteComputeErrorCode();
 
   public abstract void updateLeaderTopicOnFollower(PartitionConsumptionState partitionConsumptionState);
-
-  /**
-   * Because of timing considerations, it is possible that some lag metrics could compute negative
-   * values. Negative lag does not make sense so the intent is to ease interpretation by applying a
-   * lower bound of zero on these metrics...
-   */
-  protected long minZeroLag(long value) {
-    if (value < 0) {
-      LOGGER.debug("Got a negative value for a lag metric. Will report zero.");
-      return 0;
-    } else {
-      return value;
-    }
-  }
 
   public boolean isHybridMode() {
     return hybridStoreConfig.isPresent();
@@ -3214,17 +3257,24 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   protected void processStartOfIncrementalPush(
       ControlMessage startOfIncrementalPush,
-      PartitionConsumptionState partitionConsumptionState) {
+      PartitionConsumptionState partitionConsumptionState,
+      long pubSubMessageTime) {
     CharSequence startVersion = ((StartOfIncrementalPush) startOfIncrementalPush.controlMessageUnion).version;
     if (!batchReportIncPushStatusEnabled || partitionConsumptionState.isComplete()) {
       ingestionNotificationDispatcher
           .reportStartOfIncrementalPushReceived(partitionConsumptionState, startVersion.toString());
     }
+
+    partitionConsumptionState.setTrackingIncrementalPushStatus(
+        startVersion.toString(),
+        ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED.getValue(),
+        pubSubMessageTime);
   }
 
   protected void processEndOfIncrementalPush(
       ControlMessage endOfIncrementalPush,
-      PartitionConsumptionState partitionConsumptionState) {
+      PartitionConsumptionState partitionConsumptionState,
+      long pubSubMessageTime) {
     CharSequence endVersion = ((EndOfIncrementalPush) endOfIncrementalPush.controlMessageUnion).version;
     if (!batchReportIncPushStatusEnabled || partitionConsumptionState.isComplete()) {
       ingestionNotificationDispatcher
@@ -3236,6 +3286,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           partitionConsumptionState.getReplicaId());
       partitionConsumptionState.addIncPushVersionToPendingReportList(endVersion.toString());
     }
+
+    partitionConsumptionState.setTrackingIncrementalPushStatus(
+        endVersion.toString(),
+        ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED.getValue(),
+        pubSubMessageTime);
   }
 
   /**
@@ -3271,6 +3326,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       ControlMessage controlMessage,
       int partition,
       PubSubPosition offset,
+      long pubSubMessageTime,
       PartitionConsumptionState partitionConsumptionState) {
     /**
      * If leader consumes control messages from topics other than version topic, it should produce
@@ -3297,6 +3353,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       case END_OF_PUSH:
         EndOfPush endOfPush = (EndOfPush) controlMessage.controlMessageUnion;
         processEndOfPush(kafkaMessageEnvelope, offset, partitionConsumptionState, endOfPush);
+        if (recordTransformer != null) {
+          recordTransformer.onControlMessage(partition, offset, controlMessage);
+        }
         break;
       case START_OF_SEGMENT:
         break;
@@ -3310,13 +3369,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           int futureVersion =
               Version.parseVersionFromVersionTopicName(versionSwap.getNewServingVersionTopic().toString());
           recordTransformer.onVersionSwap(currentVersion, futureVersion, partition);
+          recordTransformer.onControlMessage(partition, offset, controlMessage);
         }
         break;
       case START_OF_INCREMENTAL_PUSH:
-        processStartOfIncrementalPush(controlMessage, partitionConsumptionState);
+        processStartOfIncrementalPush(controlMessage, partitionConsumptionState, pubSubMessageTime);
         break;
       case END_OF_INCREMENTAL_PUSH:
-        processEndOfIncrementalPush(controlMessage, partitionConsumptionState);
+        processEndOfIncrementalPush(controlMessage, partitionConsumptionState, pubSubMessageTime);
         break;
       case TOPIC_SWITCH:
         TopicSwitch topicSwitch = (TopicSwitch) controlMessage.controlMessageUnion;
@@ -3413,6 +3473,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             controlMessage,
             consumerRecord.getTopicPartition().getPartitionNumber(),
             consumerRecord.getPosition(),
+            consumerRecord.getPubSubMessageTime(),
             partitionConsumptionState);
         try {
           if (controlMessage.controlMessageType == START_OF_SEGMENT.getValue()
@@ -3554,7 +3615,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         versionedDIVStats.recordSuccessMsg(storeName, versionNumber);
       }
     } catch (FatalDataValidationException fatalException) {
-      if (!partitionConsumptionState.isEndOfPushReceived()) {
+      if (skipValidationForSeekableClientEnabled) {
+        String msg = "Ignoring FatalDataValidationException in seeking client for replica: "
+            + consumerRecord.getTopicPartition();
+        if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
+          LOGGER.info(msg);
+        }
+      } else if (!partitionConsumptionState.isEndOfPushReceived()) {
         throw fatalException;
       } else {
         LOGGER.warn(
@@ -3815,7 +3882,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     int partitionId = partitionConsumptionState.getPartition();
     PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(topic, partitionId);
     aggKafkaConsumerService
-        .unsubscribeConsumerFor(versionTopic, topicPartition, serverConfig.getMaxWaitAfterUnsubscribeMs());
+        .unsubscribeConsumerFor(versionTopic, topicPartition, SharedKafkaConsumer.STATE_TRANSITION_MAX_WAIT_MS);
     LOGGER.info(
         "Consumer unsubscribed to topic-partition: {} for replica: {}. Took {} ms",
         topicPartition,
@@ -3858,11 +3925,24 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     // TODO: Move remote KafkaConsumerService creating operations into the aggKafkaConsumerService.
     aggKafkaConsumerService
         .createKafkaConsumerService(createKafkaConsumerProperties(kafkaProps, resolvedKafkaURL, consumeRemotely));
-    PartitionReplicaIngestionContext partitionReplicaIngestionContext =
-        new PartitionReplicaIngestionContext(versionTopic, pubSubTopicPartition, versionRole, workloadType);
+    PartitionConsumptionState pcs = pubSubTopicPartition == null
+        ? null
+        : partitionConsumptionStateMap.get(pubSubTopicPartition.getPartitionNumber());
+    boolean isReadyToServe = pcs != null && pcs.isComplete();
+    PartitionReplicaIngestionContext partitionReplicaIngestionContext = new PartitionReplicaIngestionContext(
+        versionTopic,
+        pubSubTopicPartition,
+        versionRole,
+        workloadType,
+        isReadyToServe);
     // localKafkaServer doesn't have suffix but kafkaURL may have suffix,
     // and we don't want to pass the resolvedKafkaURL as it will be passed to data receiver for parsing cluster id
-    aggKafkaConsumerService.subscribeConsumerFor(kafkaURL, this, partitionReplicaIngestionContext, startPosition);
+    aggKafkaConsumerService.subscribeConsumerFor(
+        kafkaURL,
+        this,
+        partitionReplicaIngestionContext,
+        startPosition,
+        skipValidationForSeekableClientEnabled);
 
     // If the record transformer is enabled, consumption should be paused until RocksDB scan for all partitions
     // has completed. Otherwise, there will be resource contention.
@@ -5067,13 +5147,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   boolean checkFastReadyToServeForReplica(PartitionConsumptionState pcs) {
     if (getHybridStoreConfig().isPresent() && pcs.getReadyToServeInOffsetRecord()) {
       /**
-       * If time lag relax check is enabled, we will only check heartbeat lag during restart.
-       * Otherwise, we will perform offset lag relax check. It will be fully deprecated when time lag is used
-       * everywhere in ready-to-serve check.
+       * If time lag for ready-to-serve is used and time lag relax check is enabled, we will only check heartbeat lag
+       * during restart.
+       * If time lag for ready-to-serve is disabled and offset lag relax check is enabled, we will perform offset lag
+       * relax check. It will be fully deprecated when time lag is used everywhere in ready-to-serve check.
        */
       if (isTimeLagRelaxEnabled() && getServerConfig().isUseHeartbeatLagForReadyToServeCheckEnabled()) {
         return checkFastReadyToServeWithPreviousTimeLag(pcs);
-      } else if (isOffsetLagDeltaRelaxEnabled()) {
+      } else if (isOffsetLagDeltaRelaxEnabled() && !getServerConfig().isUseHeartbeatLagForReadyToServeCheckEnabled()) {
         return checkFastReadyToServeWithPreviousOffsetLag(pcs);
       }
     }
@@ -5165,7 +5246,70 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
   }
 
+  void maybeProcessResubscribeRequest() {
+    int count = 0;
+    Integer partition;
+    while (count < getServerConfig().getLagBasedReplicaAutoResubscribeMaxReplicaCount()
+        && getResubscribeRequestQueue().peek() != null) {
+      partition = getResubscribeRequestQueue().poll();
+      long previousResubscribeTime = getPartitionToPreviousResubscribeTimeMap().getOrDefault(partition, 0L);
+      int allowedResubscribeIntervalInSeconds = getServerConfig().getLagBasedReplicaAutoResubscribeIntervalInSeconds();
+      if (System.currentTimeMillis() - previousResubscribeTime < SECONDS
+          .toMillis(allowedResubscribeIntervalInSeconds)) {
+        LOGGER.info(
+            "Skip resubscribe request for partition: {} of SIT: {} as it has been resubscribed recently at: {}",
+            partition,
+            getVersionTopic(),
+            previousResubscribeTime);
+        continue;
+      }
+      PartitionConsumptionState pcs = getPartitionConsumptionStateMap().get(partition);
+      if (pcs == null) {
+        LOGGER.warn(
+            "Replica: {} does not exist in pcs map for SIT of: {}, will not resubscribe.",
+            Utils.getReplicaId(versionTopic, partition),
+            getVersionTopic());
+        continue;
+      }
+      /**
+       * As of now, this feature intends to resolve ingestion performance issue introduced by consumer. We will rely on
+       * the error reset feature to handle the error replica properly.
+       */
+      if (pcs.isErrorReported()) {
+        LOGGER.warn("Replica: {} is already errored, will not resubscribe to repair.", pcs.getReplicaId());
+      }
+      try {
+        LOGGER.info("Resubscribing: {}", pcs.getReplicaId());
+        getPartitionToPreviousResubscribeTimeMap().put(partition, System.currentTimeMillis());
+        count++;
+        resubscribe(pcs);
+      } catch (Exception e) {
+        LOGGER.error("Caught exception when resubscribing for replica: {}", pcs.getReplicaId(), e);
+      }
+    }
+  }
+
   AbstractStoreBufferService getStoreBufferService() {
     return storeBufferService;
+  }
+
+  long getBootstrapTimeoutInMs() {
+    return bootstrapTimeoutInMs;
+  }
+
+  ReadOnlyStoreRepository getStoreRepository() {
+    return storeRepository;
+  }
+
+  String getLocalKafkaServer() {
+    return localKafkaServer;
+  }
+
+  ConcurrentMap<Integer, Long> getPartitionToPreviousResubscribeTimeMap() {
+    return partitionToPreviousResubscribeTimeMap;
+  }
+
+  PriorityBlockingQueue<Integer> getResubscribeRequestQueue() {
+    return resubscribeRequestQueue;
   }
 }

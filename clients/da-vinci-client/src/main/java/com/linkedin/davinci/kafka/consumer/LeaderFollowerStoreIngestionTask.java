@@ -613,14 +613,17 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     boolean pushTimeout = false;
     Set<Integer> timeoutPartitions = null;
     long checkStartTimeInNS = System.nanoTime();
-    for (PartitionConsumptionState partitionConsumptionState: partitionConsumptionStateMap.values()) {
+    for (PartitionConsumptionState partitionConsumptionState: getPartitionConsumptionStateMap().values()) {
       final int partition = partitionConsumptionState.getPartition();
 
       /**
-       * Check whether the push timeout
+       * Check whether the ingestion timeout for bootstrapping replicas.
+       * For future version, it should fail the push job.
+       * For current / backup version re-ingestion, it should report failure to the replica, but should keep other
+       * online replica continue serving and do not close ingestion task.
        */
       if (!partitionConsumptionState.isComplete() && LatencyUtils.getElapsedTimeFromMsToMs(
-          partitionConsumptionState.getConsumptionStartTimeInMs()) > this.bootstrapTimeoutInMs) {
+          partitionConsumptionState.getConsumptionStartTimeInMs()) > getBootstrapTimeoutInMs()) {
         if (!pushTimeout) {
           pushTimeout = true;
           timeoutPartitions = new HashSet<>();
@@ -769,27 +772,42 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           break;
 
         case STANDBY:
-          // no long running task for follower
+          // no long-running task for follower
           break;
       }
     }
-    if (emitMetrics.get()) {
+    if (isMetricsEmissionEnabled()) {
       hostLevelIngestionStats
           .recordCheckLongRunningTasksLatency(LatencyUtils.getElapsedTimeFromNSToMS(checkStartTimeInNS));
     }
 
     if (pushTimeout) {
       // Timeout
-      String errorMsg = "After waiting " + TimeUnit.MILLISECONDS.toHours(this.bootstrapTimeoutInMs)
-          + " hours, resource:" + storeName + " partitions:" + timeoutPartitions + " still can not complete ingestion.";
+      String errorMsg =
+          "After waiting " + TimeUnit.MILLISECONDS.toHours(getBootstrapTimeoutInMs()) + " hours, resource:"
+              + getStoreName() + " partitions:" + timeoutPartitions + " still can not complete ingestion.";
       LOGGER.error(errorMsg);
-      throw new VeniceTimeoutException(errorMsg);
+      VeniceException ex = new VeniceTimeoutException(errorMsg);
+      Store store = getStoreRepository().getStoreOrThrow(getStoreName());
+      int currentVersion = store.getCurrentVersion();
+      LOGGER.info("DEBUGGING: {} {}", currentVersion, getVersionNumber());
+      if (getVersionNumber() <= currentVersion) {
+        // For current / backup version, a replica's re-bootstrap timeout should not incur whole SIT closure.
+        for (int partition: timeoutPartitions) {
+          reportError(errorMsg, partition, ex);
+        }
+      } else {
+        throw ex;
+      }
     }
 
-    checkWhetherToCloseUnusedVeniceWriter(veniceWriter, veniceWriterForRealTime, partitionConsumptionStateMap, () -> {
-      veniceWriter =
-          Lazy.of(() -> constructVeniceWriter(veniceWriterFactory, getVersionTopic().getName(), version, true, 1));
-    }, getVersionTopic().getName());
+    checkWhetherToCloseUnusedVeniceWriter(
+        getVeniceWriter(),
+        getVeniceWriterForRealTime(),
+        getPartitionConsumptionStateMap(),
+        () -> veniceWriter =
+            Lazy.of(() -> constructVeniceWriter(veniceWriterFactory, getVersionTopic().getName(), version, true, 1)),
+        getVersionTopic().getName());
   }
 
   protected static boolean checkWhetherToCloseUnusedVeniceWriter(
@@ -1792,7 +1810,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
      * offset periodically and cache them; with this strategy, it is possible that partition could become 'ONLINE' at
      * most {@link com.linkedin.venice.pubsub.manager.TopicMetadataFetcher#ttlInNs} earlier.
      */
-    PubSubTopic leaderTopic = offsetRecord.getLeaderTopic(pubSubTopicRepository);
+    PubSubTopic leaderTopic = offsetRecord.getLeaderTopic(getPubSubTopicRepository());
     if (leaderTopic == null || !leaderTopic.isRealTime()) {
       /**
        * 1. Usually there is a batch-push or empty push for the hybrid store before replaying messages from real-time
@@ -1808,24 +1826,32 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       return Long.MAX_VALUE;
     }
 
-    // Followers and Davinci clients, use local VT to compute hybrid lag.
-    if (isDaVinciClient || partitionConsumptionState.getLeaderFollowerState().equals(STANDBY)) {
-      return measureLagWithCallToPubSub(
-          localKafkaServer,
-          partitionConsumptionState.getReplicaTopicPartition(),
-          partitionConsumptionState.getLatestProcessedVtPosition());
-    }
+    try {
+      // Followers and Davinci clients, use local VT to compute hybrid lag.
+      if (isDaVinciClient() || partitionConsumptionState.getLeaderFollowerState().equals(STANDBY)) {
+        return measureLagWithCallToPubSub(
+            getLocalKafkaServer(),
+            partitionConsumptionState.getReplicaTopicPartition(),
+            partitionConsumptionState.getLatestProcessedVtPosition());
+      }
 
-    // leaderTopic is the real-time topic now
-    String sourceRealTimeTopicKafkaURL;
-    Set<String> sourceRealTimeTopicKafkaURLs = getRealTimeDataSourceKafkaAddress(partitionConsumptionState);
-    if (sourceRealTimeTopicKafkaURLs.isEmpty()) {
-      throw new VeniceException("Expect a real-time source Kafka URL for " + partitionConsumptionState);
-    } else if (sourceRealTimeTopicKafkaURLs.size() == 1) {
-      sourceRealTimeTopicKafkaURL = sourceRealTimeTopicKafkaURLs.iterator().next();
-      return measureRtLagForSingleRegion(sourceRealTimeTopicKafkaURL, partitionConsumptionState, shouldLogLag);
-    } else {
-      return measureRtLagForMultiRegions(sourceRealTimeTopicKafkaURLs, partitionConsumptionState, shouldLogLag);
+      // leaderTopic is the real-time topic now
+      String sourceRealTimeTopicKafkaURL;
+      Set<String> sourceRealTimeTopicKafkaURLs = getRealTimeDataSourceKafkaAddress(partitionConsumptionState);
+      if (sourceRealTimeTopicKafkaURLs.isEmpty()) {
+        throw new VeniceException("Expect a real-time source Kafka URL for " + partitionConsumptionState);
+      } else if (sourceRealTimeTopicKafkaURLs.size() == 1) {
+        sourceRealTimeTopicKafkaURL = sourceRealTimeTopicKafkaURLs.iterator().next();
+        return measureRtLagForSingleRegion(sourceRealTimeTopicKafkaURL, partitionConsumptionState, shouldLogLag);
+      } else {
+        return measureRtLagForMultiRegions(sourceRealTimeTopicKafkaURLs, partitionConsumptionState, shouldLogLag);
+      }
+    } catch (Exception e) {
+      String msg = "Failed to measure Lag for replica: " + partitionConsumptionState.getReplicaId();
+      if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
+        LOGGER.error(msg, e);
+      }
+      return Long.MAX_VALUE;
     }
   }
 
@@ -2287,23 +2313,25 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
     if (partitionConsumptionState.getLeaderFollowerState().equals(LEADER)) {
       getHeartbeatMonitoringService().recordLeaderHeartbeat(
-          storeName,
-          versionNumber,
+          getStoreName(),
+          getVersionNumber(),
           partitionConsumptionState.getPartition(),
-          serverConfig.getKafkaClusterUrlToAliasMap().get(kafkaUrl),
-          consumerRecord.getValue().producerMetadata.messageTimestamp,
+          getServerConfig().getKafkaClusterUrlToAliasMap().get(kafkaUrl),
+          consumerRecord.getValue().getProducerMetadata().getMessageTimestamp(),
           partitionConsumptionState.isComplete());
     } else {
       getHeartbeatMonitoringService().recordFollowerHeartbeat(
-          storeName,
-          versionNumber,
+          getStoreName(),
+          getVersionNumber(),
           partitionConsumptionState.getPartition(),
-          isDaVinciClient() ? "" : serverConfig.getKafkaClusterUrlToAliasMap().get(kafkaUrl), // For Da Vinci there is
-                                                                                              // no kafkaUrl mapping
-                                                                                              // configured and the
-                                                                                              // local region is default
-                                                                                              // to empty.
-          consumerRecord.getValue().producerMetadata.messageTimestamp,
+          /**
+           * For Da Vinci there is no kafkaUrl mapping configured, we should refer to local region name setup in the
+           * Venice server config. This is consistent from the heartbeat lag calculation for ready-to-serve check.
+           */
+          isDaVinciClient()
+              ? getServerConfig().getRegionName()
+              : getServerConfig().getKafkaClusterUrlToAliasMap().get(kafkaUrl),
+          consumerRecord.getValue().getProducerMetadata().getMessageTimestamp(),
           partitionConsumptionState.isComplete());
     }
   }
@@ -4380,5 +4408,13 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
   private String logChange(boolean hasChanged) {
     return hasChanged ? "(changed)" : "(unchanged)";
+  }
+
+  Lazy<VeniceWriter<byte[], byte[], byte[]>> getVeniceWriter() {
+    return veniceWriter;
+  }
+
+  Lazy<VeniceWriter<byte[], byte[], byte[]>> getVeniceWriterForRealTime() {
+    return veniceWriterForRealTime;
   }
 }

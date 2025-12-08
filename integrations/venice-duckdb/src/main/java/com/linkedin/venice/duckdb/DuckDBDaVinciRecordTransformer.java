@@ -19,6 +19,7 @@ import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.logging.log4j.LogManager;
@@ -44,6 +45,7 @@ public class DuckDBDaVinciRecordTransformer
   private static final String duckDBFilePath = "my_database.duckdb";
   private static final String createViewStatementTemplate = "CREATE OR REPLACE VIEW \"%s\" AS SELECT * FROM \"%s\";";
   private static final String dropTableStatementTemplate = "DROP TABLE \"%s\";";
+  private final AtomicBoolean setUpComplete = new AtomicBoolean();
   private final String versionTableName;
   private final String duckDBUrl;
   private final Set<String> columnsToProject;
@@ -140,12 +142,17 @@ public class DuckDBDaVinciRecordTransformer
    * the existing table structure is compatible. If this is the current version,
    * it also creates a SQL view pointing to this table.
    *
+   * @param partitionId what partition is being subscribed
    * @param isCurrentVersion true if this is the active store version
    * @throws VeniceException if table creation fails or structure is incompatible
    * @throws RuntimeException if SQL operations fail
    */
   @Override
-  public void onStartVersionIngestion(boolean isCurrentVersion) {
+  synchronized public void onStartVersionIngestion(int partitionId, boolean isCurrentVersion) {
+    if (setUpComplete.get()) {
+      return;
+    }
+
     try (Connection connection = DriverManager.getConnection(duckDBUrl);
         Statement stmt = connection.createStatement()) {
       TableDefinition desiredTableDefinition = AvroToSQL.getTableDefinition(
@@ -173,6 +180,8 @@ public class DuckDBDaVinciRecordTransformer
         String createViewStatement = String.format(createViewStatementTemplate, getStoreName(), versionTableName);
         stmt.execute(createViewStatement);
       }
+
+      setUpComplete.set(true);
     } catch (SQLException e) {
       throw new RuntimeException(e);
     }

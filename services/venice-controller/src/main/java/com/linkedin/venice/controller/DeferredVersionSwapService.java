@@ -646,7 +646,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
           nextEligibleRegion);
       return null;
     } else if (VersionStatus.ONLINE.equals(version.getStatus())
-        && rolloutOrder.get(rolloutOrder.size() - 1).equals(nextEligibleRegion)) {
+        && regionToCurrentVersion.get(nextEligibleRegion) < targetVersionNum) {
       String message = "Continuing to roll forward" + kafkaTopicName + " because region " + nextEligibleRegion
           + " is ONLINE, " + "but the current version" + regionToCurrentVersion.get(nextEligibleRegion)
           + " is not the target version " + targetVersionNum;
@@ -1221,6 +1221,14 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       store.updateVersionStatus(targetVersionNum, status);
       if (status == ONLINE || status == PARTIALLY_ONLINE) {
         store.setCurrentVersion(targetVersionNum);
+
+        // For jobs that stop polling early or for pushes that don't poll (empty push), we need to truncate the parent
+        // VT here to unblock the next push
+        String kafkaTopicName = Version.composeKafkaTopic(storeName, targetVersionNum);
+        if (!veniceParentHelixAdmin.isTopicTruncated(kafkaTopicName)) {
+          LOGGER.info("Truncating parent VT for {}", kafkaTopicName);
+          veniceParentHelixAdmin.truncateKafkaTopic(Version.composeKafkaTopic(storeName, targetVersionNum));
+        }
       }
       repository.updateStore(store);
     } catch (Exception e) {
@@ -1247,11 +1255,6 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       return;
     }
 
-    LOGGER.info(
-        "Validating rollout regions {} for cluster: {} against regions {}",
-        rolloutRegions,
-        cluster,
-        validRegions);
     for (String region: rolloutRegions) {
       if (!validRegions.contains(region)) {
         throw new VeniceException(

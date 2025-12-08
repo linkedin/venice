@@ -57,13 +57,12 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
   public static final long DEFAULT_STALE_HEARTBEAT_LOG_THRESHOLD_MILLIS = TimeUnit.MINUTES.toMillis(10);
   public static final long INVALID_MESSAGE_TIMESTAMP = -1;
   public static final long INVALID_HEARTBEAT_LAG = Long.MAX_VALUE;
-
+  public static final int DEFAULT_LAG_MONITOR_CLEANUP_CYCLE = 5;
   private static final Logger LOGGER = LogManager.getLogger(HeartbeatMonitoringService.class);
-  private static final int DEFAULT_LAG_MONITOR_CLEANUP_CYCLE = 5;
   private final ReadOnlyStoreRepository metadataRepository;
   private final Thread reportingThread;
   private final Thread lagCleanupAndLoggingThread;
-
+  private final VeniceServerConfig serverConfig;
   private final Set<String> regionNames;
   private final String localRegionName;
 
@@ -76,6 +75,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
   private final Duration maxWaitForVersionInfo;
   private final CompletableFuture<HelixCustomizedViewOfflinePushRepository> customizedViewRepositoryFuture;
   private final String nodeId;
+  private final int lagMonitorCleanupCycle;
   private HelixCustomizedViewOfflinePushRepository customizedViewRepository;
   private KafkaStoreIngestionService kafkaStoreIngestionService;
 
@@ -107,6 +107,8 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
     this.heartbeatMonitoringServiceStats = heartbeatMonitoringServiceStats;
     this.customizedViewRepositoryFuture = customizedViewRepositoryFuture;
     this.nodeId = Utils.getHelixNodeIdentifier(serverConfig.getListenerHostname(), serverConfig.getListenerPort());
+    this.lagMonitorCleanupCycle = serverConfig.getLagMonitorCleanupCycle();
+    this.serverConfig = serverConfig;
   }
 
   private synchronized void initializeEntry(
@@ -617,14 +619,14 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
             .recordFollowerLag(storeName, version, region, heartbeatTs, isReadyToServe)));
   }
 
-  protected void checkAndMaybeLogHeartbeatDelayMap(
+  void checkAndMaybeLogHeartbeatDelayMap(
       Map<String, Map<Integer, Map<Integer, Map<String, HeartbeatTimeStampEntry>>>> heartbeatTimestamps) {
-    if (kafkaStoreIngestionService == null) {
+    if (getKafkaStoreIngestionService() == null) {
       // Service not initialized yet, skip logging
       return;
     }
     long currentTimestamp = System.currentTimeMillis();
-    boolean isLeader = heartbeatTimestamps == leaderHeartbeatTimeStamps;
+    boolean isLeader = heartbeatTimestamps == getLeaderHeartbeatTimeStamps();
     for (Map.Entry<String, Map<Integer, Map<Integer, Map<String, HeartbeatTimeStampEntry>>>> storeName: heartbeatTimestamps
         .entrySet()) {
       for (Map.Entry<Integer, Map<Integer, Map<String, HeartbeatTimeStampEntry>>> version: storeName.getValue()
@@ -644,11 +646,24 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
                   lag,
                   heartbeatTs,
                   currentTimestamp);
-              kafkaStoreIngestionService.attemptToPrintIngestionInfoFor(
+              getKafkaStoreIngestionService().attemptToPrintIngestionInfoFor(
                   storeName.getKey(),
                   version.getKey(),
                   partition.getKey(),
                   region.getKey());
+              /**
+               * Here we don't consider whether it is current version or not, as it will need extra logic to extract.
+               * In this layer, we will filter out untracked region (separated realtime region).
+               * We will delegate to KafkaStoreIngestionService to determine whether it takes this request as it has
+               * information about SIT current version.
+               */
+              if (getServerConfig().isLagBasedReplicaAutoResubscribeEnabled()
+                  && TimeUnit.SECONDS
+                      .toMillis(getServerConfig().getLagBasedReplicaAutoResubscribeThresholdInSeconds()) < lag
+                  && !Utils.isSeparateTopicRegion(region.getKey())) {
+                getKafkaStoreIngestionService()
+                    .maybeAddResubscribeRequest(storeName.getKey(), version.getKey(), partition.getKey());
+              }
             }
           }
         }
@@ -737,7 +752,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
               // See comments in {@link #addLeaderLagMonitor(Version, int)} for race condition explanations
               if (v == null) {
                 return 1;
-              } else if (v + 1 >= DEFAULT_LAG_MONITOR_CLEANUP_CYCLE) {
+              } else if (v + 1 >= lagMonitorCleanupCycle) {
                 removeLagMonitor(new VersionImpl(storeName.getKey(), version.getKey(), ""), partition.getKey());
                 LOGGER.warn(
                     "Removing lingering replica: {} from heartbeat monitoring service because it is no longer assigned to this node: {}",
@@ -760,13 +775,13 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
   }
 
   AggregatedHeartbeatLagEntry getMaxHeartbeatLag(
+      long currentTimestamp,
       Map<String, Map<Integer, Map<Integer, Map<String, HeartbeatTimeStampEntry>>>> heartbeatTimestamps) {
-    long currentTimestamp = System.currentTimeMillis();
     long minHeartbeatTimestampForCurrentVersion = Long.MAX_VALUE;
     long minHeartbeatTimestampForNonCurrentVersion = Long.MAX_VALUE;
     for (Map.Entry<String, Map<Integer, Map<Integer, Map<String, HeartbeatTimeStampEntry>>>> storeName: heartbeatTimestamps
         .entrySet()) {
-      Store store = metadataRepository.getStore(storeName.getKey());
+      Store store = getMetadataRepository().getStore(storeName.getKey());
       if (store == null) {
         LOGGER.debug("Store: {} not found in repository", storeName.getKey());
         continue;
@@ -777,7 +792,8 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
         for (Map.Entry<Integer, Map<String, HeartbeatTimeStampEntry>> partition: version.getValue().entrySet()) {
           for (Map.Entry<String, HeartbeatTimeStampEntry> region: partition.getValue().entrySet()) {
             long heartbeatTs = region.getValue().timestamp;
-            if (currentVersion == version.getKey()) {
+            // The current version heartbeat lag will only be tracking serving current version, not bootstrapping ones.
+            if (currentVersion == version.getKey() && region.getValue().readyToServe) {
               minHeartbeatTimestampForCurrentVersion = Math.min(minHeartbeatTimestampForCurrentVersion, heartbeatTs);
             } else {
               minHeartbeatTimestampForNonCurrentVersion =
@@ -793,11 +809,11 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
   }
 
   public AggregatedHeartbeatLagEntry getMaxLeaderHeartbeatLag() {
-    return getMaxHeartbeatLag(leaderHeartbeatTimeStamps);
+    return getMaxHeartbeatLag(System.currentTimeMillis(), leaderHeartbeatTimeStamps);
   }
 
   public AggregatedHeartbeatLagEntry getMaxFollowerHeartbeatLag() {
-    return getMaxHeartbeatLag(followerHeartbeatTimeStamps);
+    return getMaxHeartbeatLag(System.currentTimeMillis(), followerHeartbeatTimeStamps);
   }
 
   @FunctionalInterface
@@ -887,5 +903,13 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
 
   public void setKafkaStoreIngestionService(KafkaStoreIngestionService kafkaStoreIngestionService) {
     this.kafkaStoreIngestionService = kafkaStoreIngestionService;
+  }
+
+  KafkaStoreIngestionService getKafkaStoreIngestionService() {
+    return kafkaStoreIngestionService;
+  }
+
+  VeniceServerConfig getServerConfig() {
+    return serverConfig;
   }
 }
