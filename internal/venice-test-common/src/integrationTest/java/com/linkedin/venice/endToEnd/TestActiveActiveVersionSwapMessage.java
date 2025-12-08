@@ -434,7 +434,6 @@ public class TestActiveActiveVersionSwapMessage {
             pubSubMessagesMapAfterSeek.put((Integer) polledMessage.getKey().get("id"), null);
           }
         }
-        System.out.println(pubSubMessagesMapAfterSeek.size());
         assertEquals(pubSubMessagesMapAfterSeek.size(), 50);
       });
 
