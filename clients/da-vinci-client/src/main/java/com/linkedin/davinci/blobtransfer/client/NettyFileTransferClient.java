@@ -5,6 +5,7 @@ import com.linkedin.alpini.base.misc.ThreadPoolExecutor;
 import com.linkedin.davinci.blobtransfer.BlobTransferUtils;
 import com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferTableFormat;
 import com.linkedin.davinci.notifier.VeniceNotifier;
+import com.linkedin.davinci.stats.AggBlobTransferStats;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.venice.exceptions.VenicePeersConnectionException;
 import com.linkedin.venice.listener.VerifySslHandler;
@@ -78,6 +79,7 @@ public class NettyFileTransferClient {
   private final VeniceConcurrentHashMap<String, Long> unconnectableHostsToTimestamp = new VeniceConcurrentHashMap<>();
   private final VeniceConcurrentHashMap<String, Long> connectedHostsToTimestamp = new VeniceConcurrentHashMap<>();
   private final Supplier<VeniceNotifier> notifierSupplier;
+  private final AggBlobTransferStats aggBlobTransferStats;
 
   private final VerifySslHandler verifySsl = new VerifySslHandler();
 
@@ -90,6 +92,7 @@ public class NettyFileTransferClient {
       int blobReceiveTimeoutInMin,
       int blobReceiveReaderIdleTimeInSeconds,
       GlobalChannelTrafficShapingHandler globalChannelTrafficShapingHandler,
+      AggBlobTransferStats aggBlobTransferStats,
       Optional<SSLFactory> sslFactory,
       Supplier<VeniceNotifier> notifierSupplier) {
     this.baseDir = baseDir;
@@ -99,6 +102,7 @@ public class NettyFileTransferClient {
     this.peersConnectivityFreshnessInSeconds = peersConnectivityFreshnessInSeconds;
     this.blobReceiveTimeoutInMin = blobReceiveTimeoutInMin;
     this.blobReceiveReaderIdleTimeInSeconds = blobReceiveReaderIdleTimeInSeconds;
+    this.aggBlobTransferStats = aggBlobTransferStats;
 
     clientBootstrap = new Bootstrap();
     workerGroup = new NioEventLoopGroup();
@@ -308,6 +312,7 @@ public class NettyFileTransferClient {
                   version,
                   partition,
                   requestedTableFormat,
+                  aggBlobTransferStats,
                   checksumValidationExecutorService))
           .addLast(
               new P2PMetadataTransferHandler(

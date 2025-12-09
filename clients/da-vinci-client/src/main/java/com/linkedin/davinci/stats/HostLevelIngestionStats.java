@@ -46,6 +46,11 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
   // The aggregated records ingested rate for the entire host
   private final LongAdderRateGauge totalRecordsConsumedRate;
 
+  // The aggregated blob transfer sent byte rate for the entire host
+  private final LongAdderRateGauge totalBlobTransferBytesSentRate;
+  // The aggregated blob transfer received byte rate for the entire host
+  private final LongAdderRateGauge totalBlobTransferBytesReceivedRate;
+
   /*
    * Bytes read from Kafka by store ingestion task as a total. This metric includes bytes read for all store versions
    * allocated in a storage node reported with its uncompressed data size.
@@ -171,6 +176,17 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
 
     this.totalRecordsConsumedRate =
         registerOnlyTotalRate("records_consumed", totalStats, () -> totalStats.totalRecordsConsumedRate, time);
+
+    this.totalBlobTransferBytesSentRate = registerOnlyTotalRate(
+        "blob_transfer_bytes_sent",
+        totalStats,
+        () -> totalStats.totalBlobTransferBytesSentRate,
+        time);
+    this.totalBlobTransferBytesReceivedRate = registerOnlyTotalRate(
+        "blob_transfer_bytes_received",
+        totalStats,
+        () -> totalStats.totalBlobTransferBytesReceivedRate,
+        time);
 
     this.totalBytesReadFromKafkaAsUncompressedSizeRate = registerOnlyTotalRate(
         "bytes_read_from_kafka_as_uncompressed_size",
@@ -510,6 +526,14 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
   /** Record a host-level record consumption rate across all store versions */
   public void recordTotalRecordsConsumed() {
     totalRecordsConsumedRate.record();
+  }
+
+  public void recordTotalBlobTransferBytesSend(long bytes) {
+    totalBlobTransferBytesSentRate.record(bytes);
+  }
+
+  public void recordTotalBlobTransferBytesReceived(long bytes) {
+    totalBlobTransferBytesReceivedRate.record(bytes);
   }
 
   public void recordTotalBytesReadFromKafkaAsUncompressedSize(long bytes) {

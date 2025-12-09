@@ -1544,4 +1544,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     LOGGER.info("Added replica: {} to pending resubscribe queue.", Utils.getReplicaId(versionTopic, partition));
   }
 
+  public AggHostLevelIngestionStats getHostLevelIngestionStats() {
+    return hostLevelIngestionStats;
+  }
 }
