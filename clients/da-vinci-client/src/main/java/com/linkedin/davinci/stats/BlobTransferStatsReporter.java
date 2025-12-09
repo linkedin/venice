@@ -45,6 +45,16 @@ public class BlobTransferStatsReporter extends AbstractVeniceStatsReporter<BlobT
             BlobTransferStats.BLOB_TRANSFER_THROUGHPUT));
     registerSensor(
         new IngestionStatsGauge(this, () -> getStats().getBlobTransferTime(), BlobTransferStats.BLOB_TRANSFER_TIME));
+    registerSensor(
+        new IngestionStatsGauge(
+            this,
+            () -> getStats().getBlobTransferBytesReceived(),
+            BlobTransferStats.BLOB_TRANSFER_BYTES_RECEIVED));
+    registerSensor(
+        new IngestionStatsGauge(
+            this,
+            () -> getStats().getBlobTransferBytesSent(),
+            BlobTransferStats.BLOB_TRANSFER_BYTES_SENT));
   }
 
   protected static class IngestionStatsGauge extends AsyncGauge {
