@@ -108,6 +108,8 @@ public class AvroGenericDaVinciClientTest {
     when(mockSchemaRepository.getKeySchema(anyString())).thenReturn(new SchemaEntry(1, mockKeySchema));
     when(mockSchemaRepository.getSupersetOrLatestValueSchema(anyString())).thenReturn(mockValueSchemaEntry);
     when(mockBackend.getSchemaRepository()).thenReturn(mockSchemaRepository);
+    when(mockBackend.getStoreRepository()).thenReturn(mockStoreRepository);
+    when(mockStoreRepository.getStoreOrThrow(anyString())).thenReturn(mock(Store.class));
 
     // Use reflection to set the private static daVinciBackend field
     Field backendField = AvroGenericDaVinciClient.class.getDeclaredField("daVinciBackend");

@@ -942,6 +942,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
       if (daVinciConfig.isRecordTransformerEnabled()) {
         daVinciBackend.get().registerRecordTransformerConfig(getStoreName(), recordTransformerConfig);
       }
+
       ready.set(true);
       logger.info("Client is started successfully, storeName=" + getStoreName());
     } catch (Throwable e) {
