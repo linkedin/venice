@@ -231,7 +231,6 @@ public class DaVinciClientTest {
       // client should be able to read data
       assertEquals(client1.get(0).get(), 1);
 
-      // client should get exception when reads are disabled
       cluster.useControllerClient(controllerClient -> {
         ControllerResponse response = controllerClient.updateStore(
             storeName1,
@@ -240,16 +239,13 @@ public class DaVinciClientTest {
         assertFalse(response.isError(), response.getError());
       });
 
-      try {
-        client1.get(0).get();
-      } catch (StoreDisabledException e) {
-        // exception is expected;
-      } finally {
-        // Fail if no exception was thrown
-        if (Thread.currentThread().getStackTrace().length == 0) {
-          throw new AssertionError("Test failed: No StoreDisabledException was thrown");
-        }
-      }
+      // Wait for store update to propagate
+      TestUtils.waitForNonDeterministicAssertion(
+          1000 * backendConfig.getLong(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS),
+          TimeUnit.SECONDS,
+          () -> {
+            assertThrows(StoreDisabledException.class, () -> client1.get(0).get());
+          });
 
       // client should again be able to read data when reads are enabled back
       cluster.useControllerClient(controllerClient -> {
@@ -260,6 +256,8 @@ public class DaVinciClientTest {
         assertFalse(response.isError(), response.getError());
       });
 
+      // Wait for store update to propagate
+      Thread.sleep(1000 * backendConfig.getLong(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS));
       Assert.assertEquals(client1.get(0).get(), 1);
     }
   }

@@ -4,7 +4,6 @@ import static com.linkedin.venice.client.stats.BasicClientStats.CLIENT_METRIC_EN
 import static com.linkedin.venice.stats.ClientType.DAVINCI_CLIENT;
 import static com.linkedin.venice.stats.VeniceMetricsRepository.getVeniceMetricsRepository;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.mock;
@@ -83,8 +82,6 @@ public class StatsAvroGenericDaVinciClientTest {
     AvroGenericDaVinciClient mockClient = mock(AvroGenericDaVinciClient.class);
     DaVinciBackend mockBackend = mock(DaVinciBackend.class, RETURNS_DEEP_STUBS);
     when(mockClient.getStoreName()).thenReturn(storeName);
-    when(mockBackend.getCachedStore(anyString()).isEnableReads()).thenReturn(true);
-    when(mockBackend.getCachedStore(anyString()).isEnableWrites()).thenReturn(true);
     CompletableFuture<String> errorFuture = new CompletableFuture<>();
     errorFuture.completeExceptionally(new RuntimeException("mock_exception_thrown_by_async_future"));
     CompletableFuture<Map<String, String>> okFuture = new CompletableFuture<>();

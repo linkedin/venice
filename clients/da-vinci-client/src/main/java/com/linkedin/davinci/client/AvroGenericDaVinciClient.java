@@ -746,7 +746,11 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
   }
 
   void throwIfReadsDisabled() {
-    if (!getDaVinciBackend().getCachedStore(getStoreName()).isEnableReads()) {
+    Store store = getBackend().getStoreRepository().getStore(getStoreName());
+    if (store == null) {
+      throw new VeniceClientException("Store not found in repository: " + getStoreName());
+    }
+    if (!store.isEnableReads()) {
       throw new StoreDisabledException(getStoreName(), "read");
     }
   }
@@ -937,8 +941,6 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
         this.readerSchemaId = DO_NOT_USE_READER_SCHEMA_ID;
       }
 
-      Store store = getBackend().getStoreRepository().getStoreOrThrow(getStoreName());
-      daVinciBackend.get().putStoreInCache(getStoreName(), store);
       if (daVinciConfig.isRecordTransformerEnabled()) {
         daVinciBackend.get().registerRecordTransformerConfig(getStoreName(), recordTransformerConfig);
       }

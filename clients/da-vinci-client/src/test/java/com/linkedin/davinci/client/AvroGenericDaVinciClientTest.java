@@ -12,6 +12,7 @@ import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
@@ -47,8 +48,6 @@ import com.linkedin.venice.utils.VeniceProperties;
 import java.lang.reflect.Field;
 import java.security.AccessController;
 import java.security.PrivilegedAction;
-import java.security.PrivilegedActionException;
-import java.security.PrivilegedExceptionAction;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
@@ -59,11 +58,11 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
 import org.apache.avro.Schema;
 import org.apache.logging.log4j.LogManager;
+import org.mockito.MockedStatic;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -375,41 +374,21 @@ public class AvroGenericDaVinciClientTest {
   }
 
   @Test
-  public void putGetCachedStore() throws IllegalAccessException, PrivilegedActionException {
-    DaVinciBackend mockBackend = mock(DaVinciBackend.class);
-    Store mockStore = mock(Store.class);
-    Map<String, Store> cachedStores = new ConcurrentHashMap<>();
-
-    Field cachedStoreField = AccessController.doPrivileged((PrivilegedExceptionAction<Field>) () -> {
-      Field f = mockBackend.getClass().getDeclaredField("cachedStores");
-      f.setAccessible(true);
-      return f;
-    });
-    cachedStoreField.set(mockBackend, cachedStores);
-
-    doCallRealMethod().when(mockBackend).putStoreInCache(anyString(), any(Store.class));
-    doCallRealMethod().when(mockBackend).getCachedStore(anyString());
-
-    mockBackend.putStoreInCache("test_store", mockStore);
-    Assert.assertEquals(mockBackend.getCachedStore("test_store"), mockStore);
-  }
-
-  @Test
   public void testThrowIfReadsDisabled() {
     DaVinciBackend mockBackend = mock(DaVinciBackend.class);
+    SubscriptionBasedReadOnlyStoreRepository mockStoreRepo = mock(SubscriptionBasedReadOnlyStoreRepository.class);
     Store mockStore = mock(Store.class);
-    when(mockBackend.getCachedStore(anyString())).thenReturn(mockStore);
     when(mockStore.isEnableReads()).thenReturn(false);
+    when(mockStoreRepo.getStore("test_store")).thenReturn(mockStore);
+    when(mockBackend.getStoreRepository()).thenReturn(mockStoreRepo);
 
-    AvroGenericDaVinciClient<Integer, String> client = mock(AvroGenericDaVinciClient.class);
-    doCallRealMethod().when(client).getDaVinciBackend();
-    assertThrows(VeniceClientException.class, client::getDaVinciBackend);
-
-    doReturn(mockBackend).when(client).getDaVinciBackend();
-    doReturn("test_store").when(client).getStoreName();
-    doCallRealMethod().when(client).throwIfReadsDisabled();
-
-    assertThrows(StoreDisabledException.class, client::throwIfReadsDisabled);
+    try (MockedStatic<AvroGenericDaVinciClient> mockedStatic = mockStatic(AvroGenericDaVinciClient.class)) {
+      mockedStatic.when(AvroGenericDaVinciClient::getBackend).thenReturn(mockBackend);
+      AvroGenericDaVinciClient<Integer, String> client = mock(AvroGenericDaVinciClient.class);
+      doReturn("test_store").when(client).getStoreName();
+      doCallRealMethod().when(client).throwIfReadsDisabled();
+      assertThrows(StoreDisabledException.class, client::throwIfReadsDisabled);
+    }
   }
 
   @Test
