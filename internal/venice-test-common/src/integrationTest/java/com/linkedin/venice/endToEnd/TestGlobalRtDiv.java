@@ -15,6 +15,11 @@ import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJProps
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.runVPJ;
 import static com.linkedin.venice.utils.TestWriteUtils.STRING_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_BROKER_URL;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_COMBINER_ENABLED;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_MAX_RECORDS_PER_MAPPER;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_KAFKA;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_STORE_NAME_PROP;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotEquals;
@@ -88,6 +93,9 @@ public class TestGlobalRtDiv {
   private static final Logger LOGGER = LogManager.getLogger(TestGlobalRtDiv.class);
 
   private VeniceClusterWrapper venice;
+  private final String RT_BEFORE = "rt_before_";
+  private final String RT_AFTER = "rt_after_";
+  private final String VALUE_PREFIX = TestWriteUtils.DEFAULT_USER_DATA_VALUE_PREFIX;
 
   @BeforeClass
   public void setUp() {
@@ -123,7 +131,7 @@ public class TestGlobalRtDiv {
 
   /**
    * Data provider for parameterized server restart tests.
-   * 
+   *
    * @return Object[][] with the following parameters:
    *   - testName: String identifier for the test case
    *   - isHybridStore: boolean, true for hybrid store, false for batch store
@@ -151,7 +159,10 @@ public class TestGlobalRtDiv {
    * - testBatchStoreServerRestartAfterIngestion
    * - testHybridStoreServerRestartDuringBatchIngestion
    * - testHybridStoreServerRestartDuringRTConsumption
-   * 
+   *
+   * Additionally, it can perform a Kafka input re-push after the server restart test,
+   * similar to testRepush and testKafkaInputBatchJob in TestBatch.
+   *
    * @param testName String identifier for the test case
    * @param isHybridStore true for hybrid store, false for batch store
    * @param restartDuringIngestion true to restart during ingestion, false to restart after ingestion
@@ -172,13 +183,10 @@ public class TestGlobalRtDiv {
     String storeName = Utils.getUniqueString(testName.toLowerCase());
     int batchRecordCount = 100;
     int partitionCount = 1;
-    String BATCH_VALUE_PREFIX = TestWriteUtils.DEFAULT_USER_DATA_VALUE_PREFIX;
 
     // RT data parameters (only used for hybrid tests)
     int rtRecordCountBeforeRestart = 50;
     int rtRecordCountAfterRestart = 50;
-    String RT_VALUE_PREFIX_BEFORE = "rt_before_";
-    String RT_VALUE_PREFIX_AFTER = "rt_after_";
 
     // Use different key ranges for RT data to avoid overwrites
     int rtKeysStartBefore = 101; // Start after batch data (1-100)
@@ -242,7 +250,7 @@ public class TestGlobalRtDiv {
           });
 
           // Verify batch data
-          verifyAllDataCanBeQueried(client, 1, batchRecordCount, BATCH_VALUE_PREFIX);
+          verifyAllDataCanBeQueried(client, 1, batchRecordCount, VALUE_PREFIX);
           LOGGER.info("Batch data verified before server restart");
         }
 
@@ -250,10 +258,10 @@ public class TestGlobalRtDiv {
         if (isHybridStore && writeRtDataBeforeRestart && !restartDuringIngestion) {
           // Write RT data before restart
           LOGGER.info("Writing RT data before restart...");
-          writeRTData(rtTopicName, rtKeysStartBefore, rtKeysEndBefore, RT_VALUE_PREFIX_BEFORE, writerFactory);
+          writeRTData(rtTopicName, rtKeysStartBefore, rtKeysEndBefore, RT_BEFORE, writerFactory);
 
           // Verify RT data before restart
-          verifyAllDataCanBeQueried(client, rtKeysStartBefore, rtKeysEndBefore, RT_VALUE_PREFIX_BEFORE);
+          verifyAllDataCanBeQueried(client, rtKeysStartBefore, rtKeysEndBefore, RT_BEFORE);
           LOGGER.info("RT data before restart verified");
         }
 
@@ -280,7 +288,7 @@ public class TestGlobalRtDiv {
         if (isHybridStore && writeRtDataAfterRestart && !restartDuringIngestion) {
           // Write RT data while server is down
           LOGGER.info("Writing RT data while server is down...");
-          writeRTData(rtTopicName, rtKeysStartAfter, rtKeysEndAfter, RT_VALUE_PREFIX_AFTER, writerFactory);
+          writeRTData(rtTopicName, rtKeysStartAfter, rtKeysEndAfter, RT_AFTER, writerFactory);
         }
 
         // Restart the old leader server
@@ -310,7 +318,7 @@ public class TestGlobalRtDiv {
               try {
                 Object value = client.get(key).get();
                 assertNotNull(value, "Key " + i + " should not be missing! Data loss detected.");
-                assertEquals(value.toString(), BATCH_VALUE_PREFIX + key, "Value mismatch for key " + i);
+                assertEquals(value.toString(), VALUE_PREFIX + key, "Value mismatch for key " + i);
               } catch (Exception e) {
                 throw new VeniceException("Failed to get key " + i + ": " + e.getMessage(), e);
               }
@@ -322,29 +330,46 @@ public class TestGlobalRtDiv {
         if (isHybridStore && writeRtDataAfterRestart && restartDuringIngestion) {
           // Write RT data after restart
           LOGGER.info("Writing RT data after restart...");
-          writeRTData(rtTopicName, rtKeysStartBefore, rtKeysEndBefore, RT_VALUE_PREFIX_BEFORE, writerFactory);
+          writeRTData(rtTopicName, rtKeysStartBefore, rtKeysEndBefore, RT_BEFORE, writerFactory);
         }
 
         // Final verification of all data
-        verifyAllDataCanBeQueried(client, 1, batchRecordCount, BATCH_VALUE_PREFIX);
+        verifyAllDataCanBeQueried(client, 1, batchRecordCount, VALUE_PREFIX);
         LOGGER.info("Batch data verified after server restart");
 
         // Verify RT data if applicable
         if (isHybridStore && writeRtDataBeforeRestart && !restartDuringIngestion) {
-          verifyAllDataCanBeQueried(client, rtKeysStartBefore, rtKeysEndBefore, RT_VALUE_PREFIX_BEFORE);
+          verifyAllDataCanBeQueried(client, rtKeysStartBefore, rtKeysEndBefore, RT_BEFORE);
           LOGGER.info("RT data before restart verified after server restart");
         }
 
         if (isHybridStore && writeRtDataAfterRestart) {
           if (restartDuringIngestion) {
-            verifyAllDataCanBeQueried(client, rtKeysStartBefore, rtKeysEndBefore, RT_VALUE_PREFIX_BEFORE);
+            verifyAllDataCanBeQueried(client, rtKeysStartBefore, rtKeysEndBefore, RT_BEFORE);
           } else {
-            verifyAllDataCanBeQueried(client, rtKeysStartAfter, rtKeysEndAfter, RT_VALUE_PREFIX_AFTER);
+            verifyAllDataCanBeQueried(client, rtKeysStartAfter, rtKeysEndAfter, RT_AFTER);
           }
           LOGGER.info("RT data after restart verified");
         }
 
         LOGGER.info("Successfully completed parameterized test: {}", testName);
+
+        // Create properties for Kafka input re-push
+        LOGGER.info("Starting Kafka input re-push for test: {} store: {}", testName, storeName);
+        vpjProperties.setProperty(SOURCE_KAFKA, "true");
+        vpjProperties.setProperty(VENICE_STORE_NAME_PROP, storeName);
+        vpjProperties.setProperty(KAFKA_INPUT_BROKER_URL, venice.getPubSubBrokerWrapper().getAddress());
+        vpjProperties.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
+        vpjProperties.setProperty(KAFKA_INPUT_COMBINER_ENABLED, "true");
+
+        // Run the Kafka input re-push
+        runVPJ(vpjProperties, 2, controllerClient);
+
+        // Verify all data can be queried after re-push
+        verifyAllDataCanBeQueried(client, 1, batchRecordCount, VALUE_PREFIX);
+        LOGGER.info("Successfully verified all data after Kafka input re-push");
+
+        LOGGER.info("Successfully completed Kafka input re-push for test: {}", testName);
       } finally {
         if (pushJobThread != null) {
           pushJobThread.interrupt();
@@ -664,6 +689,42 @@ public class TestGlobalRtDiv {
       for (int j = startKey; j <= endKey; j++) {
         realTimeTopicWriter
             .put(stringSerializer.serialize(String.valueOf(j)), stringSerializer.serialize(valuePrefix + j), 1);
+      }
+    }
+  }
+
+  /**
+   * Performs a Kafka input re-push for the given store.
+   * This method simulates the functionality of the testRepush method in TestBatch.
+   *
+   * @param storeName The name of the store to re-push
+   * @param recordCount The number of records expected in the store
+   * @throws Exception If an error occurs during re-push
+   */
+  private void performKafkaInputRepush(String storeName, int recordCount, ControllerClient controllerClient)
+      throws Exception {
+    // Try both with and without combiner enabled
+    for (String combinerEnabled: new String[] { "true", "false" }) {
+      LOGGER.info("Performing Kafka input re-push with combiner={} for store: {}", combinerEnabled, storeName);
+
+      // Create properties for Kafka input re-push
+      Properties properties = new Properties();
+      properties.setProperty(SOURCE_KAFKA, "true");
+      properties.setProperty(VENICE_STORE_NAME_PROP, storeName);
+      properties.setProperty(KAFKA_INPUT_BROKER_URL, venice.getPubSubBrokerWrapper().getAddress());
+      properties.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
+      properties.setProperty(KAFKA_INPUT_COMBINER_ENABLED, combinerEnabled);
+
+      // Run the Kafka input re-push
+      runVPJ(properties, 1, controllerClient);
+
+      // Verify the data after re-push
+      try (AvroGenericStoreClient<Object, Object> client = ClientFactory.getAndStartGenericAvroClient(
+          ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(venice.getRandomRouterURL()))) {
+
+        // Verify all data can be queried
+        verifyAllDataCanBeQueried(client, 1, recordCount, VALUE_PREFIX);
+        LOGGER.info("Successfully verified all data after Kafka input re-push with combiner={}", combinerEnabled);
       }
     }
   }
