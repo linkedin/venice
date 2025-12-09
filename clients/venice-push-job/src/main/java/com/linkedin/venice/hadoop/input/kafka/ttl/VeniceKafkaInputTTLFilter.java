@@ -51,6 +51,6 @@ public class VeniceKafkaInputTTLFilter extends VeniceRmdTTLFilter<KafkaInputMapp
    */
   @Override
   protected boolean skipRmdRecord(final KafkaInputMapperValue input) {
-    return input.schemaId < 0; // TODO: handle. idk what to do here
+    return input.schemaId < 0;
   }
 }
