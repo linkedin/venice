@@ -762,6 +762,8 @@ public class LeaderFollowerStoreIngestionTaskTest {
     // Test case 4: When syncBytesInterval is 0 (disabled)
     doReturn(0L).when(mockIngestionTask).getSyncBytesInterval(any());
     assertFalse(mockIngestionTask.shouldSyncOffsetFromSnapshot(regularMessage, mockPartitionConsumptionState));
+
+    final DefaultPubSubMessage nonPutMessage = getMockMessage(4).getMessage();
   }
 
   @Test
