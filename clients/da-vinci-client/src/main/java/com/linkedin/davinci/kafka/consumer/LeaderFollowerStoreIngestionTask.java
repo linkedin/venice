@@ -2798,15 +2798,16 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   }
 
   /**
-   * Followers should sync the VT DIV to the OffsetRecord if the consumer sees a Global RT DIV message
-   * (sync only once for a Global RT DIV, which can either be one singular message or multiple chunks + one manifest.
-   * thus, the condition is to check that it's not a chunk) or if it sees a non-segment control message.
+   * Followers should sync the VT DIV to the OffsetRecord if the consumer sees a non-segment control message or a
+   * Global RT DIV message.
+   * Each Global RT DIV sync will create one singular Put or multiple Puts (chunks + one manifest + Deletes). Thus
+   * if we want to sync only once, checking if it's a singular Put or the manifest Put should only trigger once.
    */
   boolean shouldSyncOffsetFromSnapshot(DefaultPubSubMessage consumerRecord, PartitionConsumptionState pcs) {
     if (consumerRecord.getKey().isGlobalRtDiv()) {
-      Put put = (Put) consumerRecord.getValue().getPayloadUnion();
-      if (put.getSchemaId() != CHUNK_SCHEMA_ID) {
-        return true;
+      Object payloadUnion = consumerRecord.getValue().getPayloadUnion();
+      if (payloadUnion instanceof Put && ((Put) payloadUnion).getSchemaId() != CHUNK_SCHEMA_ID) {
+        return true; // Global RT DIV message can be multiple chunks + deletes, only sync on one Put (manifest or value)
       }
     }
     return isNonSegmentControlMessage(consumerRecord, null);

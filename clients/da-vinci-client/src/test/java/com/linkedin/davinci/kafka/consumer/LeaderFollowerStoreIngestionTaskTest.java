@@ -45,6 +45,7 @@ import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.exceptions.VeniceTimeoutException;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
+import com.linkedin.venice.kafka.protocol.Delete;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.LeaderMetadata;
 import com.linkedin.venice.kafka.protocol.ProducerMetadata;
@@ -668,7 +669,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
     Put mockPut = mock(Put.class);
     KafkaMessageEnvelope mockKme = globalRtDivMessage.getValue();
 
-    // The method should only return true for non-chunk Global RT DIV messages
+    // The method should only return true for non-chunked Global RT DIV messages
     assertFalse(mockIngestionTask.shouldSyncOffsetFromSnapshot(globalRtDivMessage, mockPartitionConsumptionState));
     doReturn(true).when(mockKey).isGlobalRtDiv();
     doReturn(mockPut).when(mockKme).getPayloadUnion();
@@ -678,6 +679,11 @@ public class LeaderFollowerStoreIngestionTaskTest {
     assertFalse(mockIngestionTask.shouldSyncOffsetFromSnapshot(globalRtDivMessage, mockPartitionConsumptionState));
     doReturn(AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion()).when(mockPut).getSchemaId();
     assertTrue(mockIngestionTask.shouldSyncOffsetFromSnapshot(globalRtDivMessage, mockPartitionConsumptionState));
+
+    // The method should not error when a non-Put value is passed in
+    Delete mockDelete = mock(Delete.class);
+    doReturn(mockDelete).when(mockKme).getPayloadUnion();
+    assertFalse(mockIngestionTask.shouldSyncOffsetFromSnapshot(globalRtDivMessage, mockPartitionConsumptionState));
 
     // Set up Control Message
     final DefaultPubSubMessage nonSegmentControlMessage = getMockMessage(2).getMessage();
