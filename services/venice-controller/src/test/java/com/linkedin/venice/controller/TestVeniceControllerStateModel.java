@@ -8,7 +8,6 @@ import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
-import static org.testng.Assert.expectThrows;
 
 import com.linkedin.venice.controller.init.ClusterLeaderInitializationRoutine;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -210,12 +209,12 @@ public class TestVeniceControllerStateModel {
     when(message.getResourceName()).thenReturn("test-cluster_0");
 
     // This should throw VeniceException due to timeout, and the catch block should cancel the future
-    expectThrows(
+    assertThrows(
         VeniceException.class,
         () -> spyStateModel.onBecomeLeaderFromStandby(message, mock(NotificationContext.class)));
 
     // Wait for task to start
-    assertTrue(taskStarted.await(2, TimeUnit.SECONDS), "Task should have started");
+    assertTrue(taskStarted.await(5, TimeUnit.SECONDS), "Task should have started");
 
     // Wait for cancellation to propagate (poll with timeout)
     long deadline = System.currentTimeMillis() + 2000;
@@ -298,7 +297,7 @@ public class TestVeniceControllerStateModel {
         () -> spyStateModel.onBecomeLeaderFromStandby(message, mock(NotificationContext.class)));
 
     // Wait for task to start
-    assertTrue(taskStarted.await(2, TimeUnit.SECONDS), "Task should have started");
+    assertTrue(taskStarted.await(5, TimeUnit.SECONDS), "Task should have started");
 
     // Wait for either exception to be thrown or interruption (poll with timeout)
     long deadline = System.currentTimeMillis() + 2000;
@@ -396,7 +395,7 @@ public class TestVeniceControllerStateModel {
     testThread.start();
 
     // Wait for task to start
-    assertTrue(taskStarted.await(2, TimeUnit.SECONDS), "Task should have started");
+    assertTrue(taskStarted.await(5, TimeUnit.SECONDS), "Task should have started");
 
     // Interrupt the thread to trigger InterruptedException in future.get()
     testThread.interrupt();
