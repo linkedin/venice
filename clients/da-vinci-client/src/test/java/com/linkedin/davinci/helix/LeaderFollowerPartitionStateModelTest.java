@@ -28,6 +28,7 @@ import com.linkedin.venice.helix.HelixPartitionStatusAccessor;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.VersionStatus;
+import com.linkedin.venice.utils.Utils;
 import java.util.concurrent.CompletableFuture;
 import org.apache.helix.NotificationContext;
 import org.apache.helix.model.Message;
@@ -202,13 +203,7 @@ public class LeaderFollowerPartitionStateModelTest {
         leaderFollowerPartitionStateModel.getOfflineTransitionTimestampMs(),
         -1L,
         "Case 3: First cycle timestamp should be reset");
-
-    try {
-      Thread.sleep(5); // Minimal sleep to ensure different timestamps
-    } catch (InterruptedException e) {
-      throw new RuntimeException(e);
-    }
-
+    Utils.sleep(5); // Minimal sleep to ensure different timestamps
     leaderFollowerPartitionStateModel.onBecomeOfflineFromStandby(offlineMessage, context);
     long timestamp2 = leaderFollowerPartitionStateModel.getOfflineTransitionTimestampMs();
     assertTrue(timestamp2 > timestamp1, "Case 3: Second cycle timestamp should be later than first");
@@ -239,11 +234,7 @@ public class LeaderFollowerPartitionStateModelTest {
     when(storeAndServerConfigs.getPartitionGracefulDropDelaySeconds()).thenReturn(2); // 2 seconds
 
     leaderFollowerPartitionStateModel.onBecomeOfflineFromStandby(offlineMessage1, context);
-    try {
-      Thread.sleep(500);
-    } catch (InterruptedException e) {
-      throw new RuntimeException(e);
-    }
+    Utils.sleep(500); // Sleep 500ms to simulate time spent offline
 
     long startTime1 = System.currentTimeMillis();
     leaderFollowerPartitionStateModel.onBecomeDroppedFromOffline(message1, context);
@@ -269,11 +260,7 @@ public class LeaderFollowerPartitionStateModelTest {
     when(storeAndServerConfigs.getPartitionGracefulDropDelaySeconds()).thenReturn(0); // 0 seconds delay
 
     leaderFollowerPartitionStateModel.onBecomeOfflineFromStandby(offlineMessage2, context);
-    try {
-      Thread.sleep(100);
-    } catch (InterruptedException e) {
-      throw new RuntimeException(e);
-    }
+    Utils.sleep(100); // Sleep 100ms to simulate time spent offline
 
     long startTime2 = System.currentTimeMillis();
     leaderFollowerPartitionStateModel.onBecomeDroppedFromOffline(message2, context);
