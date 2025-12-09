@@ -6,6 +6,7 @@ import com.linkedin.davinci.kafka.consumer.LeaderFollowerStoreIngestionTask;
 import com.linkedin.davinci.stats.ParticipantStateTransitionStats;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatLagMonitorAction;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
+import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.helix.HelixPartitionStatusAccessor;
@@ -55,6 +56,13 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
    * model, skip the action if it's invalid.
    */
   private final AtomicLong leaderSessionId = new AtomicLong(0L);
+
+  /**
+   * Tracks the timestamp (in milliseconds) when this partition last transitioned to OFFLINE state.
+   * This is used to calculate the actual time the partition has been offline for graceful drop delay.
+   * Value of -1 indicates the partition has not yet transitioned to OFFLINE state.
+   */
+  private volatile long offlineTransitionTimestampMs = -1L;
 
   private final LeaderFollowerIngestionProgressNotifier notifier;
   private final ParticipantStateTransitionStats stateTransitionStats;
@@ -150,13 +158,38 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
 
   @Transition(to = HelixState.OFFLINE_STATE, from = HelixState.STANDBY_STATE)
   public void onBecomeOfflineFromStandby(Message message, NotificationContext context) {
+    String replicaId = Utils.getReplicaId(message.getResourceName(), getPartition());
+    logger.info(
+        "Replica: {} transitioning from STANDBY to OFFLINE. Timestamp: {}ms, Message ID: {}, Session ID: {}",
+        replicaId,
+        offlineTransitionTimestampMs,
+        message.getMsgId(),
+        message.getTgtSessionId());
+
     heartbeatMonitoringService
         .updateLagMonitor(message.getResourceName(), getPartition(), HeartbeatLagMonitorAction.REMOVE_MONITOR);
-    executeStateTransition(message, context, () -> stopConsumption(true));
+
+    executeStateTransition(message, context, () -> {
+      logger.info("Replica: {} stopping consumption as part of STANDBY->OFFLINE transition", replicaId);
+      stopConsumption(true);
+      logger.info("Replica: {} successfully stopped consumption and entered OFFLINE state", replicaId);
+      // Capture the timestamp when partition becomes OFFLINE for graceful drop delay calculation
+      offlineTransitionTimestampMs = System.currentTimeMillis();
+    });
   }
 
   @Transition(to = HelixState.DROPPED_STATE, from = HelixState.OFFLINE_STATE)
   public void onBecomeDroppedFromOffline(Message message, NotificationContext context) {
+    String replicaId = Utils.getReplicaId(message.getResourceName(), getPartition());
+    long transitionStartTimeMs = System.currentTimeMillis();
+
+    logger.info(
+        "Replica: {} transitioning from OFFLINE to DROPPED. Transition start time: {}ms, Message ID: {}, Session ID: {}",
+        replicaId,
+        transitionStartTimeMs,
+        message.getMsgId(),
+        message.getTgtSessionId());
+
     heartbeatMonitoringService
         .updateLagMonitor(message.getResourceName(), getPartition(), HeartbeatLagMonitorAction.REMOVE_MONITOR);
     executeStateTransition(message, context, () -> {
@@ -164,41 +197,58 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
       try {
         isCurrentVersion = getStoreRepo().getStoreOrThrow(getStoreName()).getCurrentVersion() == getVersionNumber();
       } catch (VeniceNoStoreException e) {
-        logger.warn(
-            "Failed to determine if the resource is current version. Replica: {}",
-            Utils.getReplicaId(message.getResourceName(), getPartition()),
-            e);
+        logger.warn("Failed to determine if the resource is current version. Replica: {}", replicaId, e);
       }
       if (isCurrentVersion) {
         // Only do graceful drop for current version resources that are being queried
-        try {
-          this.stateTransitionStats.incrementThreadBlockedOnOfflineToDroppedTransitionCount();
-          // Gracefully drop partition to drain the requests to this partition
-          Thread.sleep(TimeUnit.SECONDS.toMillis(getStoreAndServerConfigs().getPartitionGracefulDropDelaySeconds()));
-        } catch (InterruptedException e) {
-          throw new VeniceException("Got interrupted while waiting for graceful drop delay of serving version", e);
-        } finally {
-          this.stateTransitionStats.decrementThreadBlockedOnOfflineToDroppedTransitionCount();
-        }
+        executeGracefulDropDelay(replicaId, transitionStartTimeMs);
+      } else {
+        logger.info("Replica: {} is not current version, skipping graceful drop delay entirely", replicaId);
       }
+
+      logger.info("Replica: {} initiating partition removal from storage", replicaId);
+      long dropStartMs = System.currentTimeMillis();
       CompletableFuture<Void> dropPartitionFuture = removePartitionFromStoreGracefully();
       boolean waitForDropPartition = !dropPartitionFuture.isDone();
       try {
         if (waitForDropPartition) {
+          logger.info(
+              "Replica: {} drop partition future not immediately complete, waiting up to {}ms",
+              replicaId,
+              WAIT_DROP_PARTITION_TIME_OUT_MS);
           this.stateTransitionStats.incrementThreadBlockedOnOfflineToDroppedTransitionCount();
         }
         dropPartitionFuture.get(WAIT_DROP_PARTITION_TIME_OUT_MS, TimeUnit.MILLISECONDS);
+        long dropElapsedMs = System.currentTimeMillis() - dropStartMs;
+        logger.info("Replica: {} successfully removed partition from storage in {}ms", replicaId, dropElapsedMs);
       } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+        long interruptedAfterMs = System.currentTimeMillis() - dropStartMs;
+        logger.error(
+            "Replica: {} got interrupted after {}ms while waiting for drop partition future to complete",
+            replicaId,
+            interruptedAfterMs,
+            e);
         throw new VeniceException("Got interrupted while waiting for drop partition future to complete", e);
       } catch (Exception e) {
+        long failedAfterMs = System.currentTimeMillis() - dropStartMs;
         logger.error(
-            "Exception while waiting for drop partition future during the transition from OFFLINE to DROPPED",
+            "Replica: {} exception after {}ms while waiting for drop partition future during OFFLINE->DROPPED transition",
+            replicaId,
+            failedAfterMs,
             e);
         throw new VeniceException("Got exception while waiting for drop partition future to complete", e);
       } finally {
         if (waitForDropPartition) {
           this.stateTransitionStats.decrementThreadBlockedOnOfflineToDroppedTransitionCount();
         }
+        // Reset the offline timestamp after transition completes
+        offlineTransitionTimestampMs = -1L;
+        long totalTransitionTimeMs = System.currentTimeMillis() - transitionStartTimeMs;
+        logger.info(
+            "Replica: {} completed OFFLINE->DROPPED transition. Total time: {}ms, Offline timestamp reset to -1",
+            replicaId,
+            totalTransitionTimeMs);
       }
     });
   }
@@ -220,6 +270,87 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
    * server checks whether the session id is still valid before processing
    * the consumer action.
    */
+
+  /**
+   * Returns the timestamp (in milliseconds) when this partition last transitioned to OFFLINE state.
+   * This method is primarily intended for testing to verify graceful drop timing behavior.
+   *
+   * @return timestamp in milliseconds when partition became OFFLINE, or -1 if not yet transitioned to OFFLINE
+   */
+  @VisibleForTesting
+  long getOfflineTransitionTimestampMs() {
+    return offlineTransitionTimestampMs;
+  }
+
+  /**
+   * Executes the graceful drop delay to allow in-flight requests to drain before dropping partition.
+   * Calculates the remaining wait time based on how long the partition has already been offline.
+   *
+   * @param replicaId The replica identifier for logging
+   * @param transitionStartTimeMs The timestamp when the transition started (for error logging)
+   */
+  private void executeGracefulDropDelay(String replicaId, long transitionStartTimeMs) {
+    long gracefulDropDelayMs =
+        TimeUnit.SECONDS.toMillis(getStoreAndServerConfigs().getPartitionGracefulDropDelaySeconds());
+    long remainingWaitMs = gracefulDropDelayMs;
+
+    if (offlineTransitionTimestampMs > 0) {
+      long elapsedSinceOfflineMs = System.currentTimeMillis() - offlineTransitionTimestampMs;
+      remainingWaitMs = Math.max(0, gracefulDropDelayMs - elapsedSinceOfflineMs);
+
+      logger.info(
+          "Replica: {} graceful drop calculation: offlineTimestamp: {}ms, currentTime: {}ms, "
+              + "elapsedSinceOffline: {}ms, configuredGracefulDelay: {}ms, remainingWait: {}ms",
+          replicaId,
+          offlineTransitionTimestampMs,
+          System.currentTimeMillis(),
+          elapsedSinceOfflineMs,
+          gracefulDropDelayMs,
+          remainingWaitMs);
+    } else {
+      logger.warn(
+          "Replica: {} has no recorded OFFLINE timestamp (value: {}). Using full graceful delay of {}ms. "
+              + "This may indicate the partition was already OFFLINE before this process started.",
+          replicaId,
+          offlineTransitionTimestampMs,
+          gracefulDropDelayMs);
+    }
+
+    if (remainingWaitMs > 0) {
+      try {
+        this.stateTransitionStats.incrementThreadBlockedOnOfflineToDroppedTransitionCount();
+        logger.info(
+            "Replica: {} sleeping for remaining graceful drop delay of {}ms to drain in-flight requests",
+            replicaId,
+            remainingWaitMs);
+        long sleepStartMs = System.currentTimeMillis();
+        Thread.sleep(remainingWaitMs);
+        long actualSleepMs = System.currentTimeMillis() - sleepStartMs;
+        logger.info(
+            "Replica: {} completed graceful drop delay. Requested: {}ms, Actual: {}ms",
+            replicaId,
+            remainingWaitMs,
+            actualSleepMs);
+      } catch (InterruptedException e) {
+        long interruptedAfterMs = System.currentTimeMillis() - transitionStartTimeMs;
+        logger.error(
+            "Replica: {} got interrupted after {}ms while waiting for remaining graceful drop delay of {}ms",
+            replicaId,
+            interruptedAfterMs,
+            remainingWaitMs,
+            e);
+        throw new VeniceException("Got interrupted while waiting for graceful drop delay of serving version", e);
+      } finally {
+        this.stateTransitionStats.decrementThreadBlockedOnOfflineToDroppedTransitionCount();
+      }
+    } else {
+      logger.info(
+          "Replica: {} skipping graceful drop delay sleep as partition has been offline long enough (remainingWait={}ms)",
+          replicaId,
+          remainingWaitMs);
+    }
+  }
+
   public static class LeaderSessionIdChecker {
     private final long assignedSessionId;
     private final AtomicLong latestSessionIdHandle;
