@@ -1,10 +1,10 @@
 package com.linkedin.venice.offsets;
 
+import static com.linkedin.venice.guid.GuidUtils.guidToUtf8;
 import static com.linkedin.venice.pubsub.PubSubUtil.fromKafkaOffset;
 
 import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.state.IncrementalPushReplicaStatus;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
@@ -202,11 +202,11 @@ public class OffsetRecord {
   }
 
   public synchronized void setProducerPartitionState(GUID producerGuid, ProducerPartitionState state) {
-    this.partitionState.producerStates.put(GuidUtils.guidToUtf8(producerGuid), state);
+    this.partitionState.producerStates.put(guidToUtf8(producerGuid), state);
   }
 
   public synchronized void removeProducerPartitionState(GUID producerGuid) {
-    this.partitionState.producerStates.remove(GuidUtils.guidToUtf8(producerGuid));
+    this.partitionState.producerStates.remove(guidToUtf8(producerGuid));
   }
 
   public synchronized Map<CharSequence, ProducerPartitionState> getProducerPartitionStateMap() {
@@ -219,14 +219,14 @@ public class OffsetRecord {
       ProducerPartitionState state) {
     partitionState.getRealtimeTopicProducerStates()
         .computeIfAbsent(kafkaUrl, url -> new VeniceConcurrentHashMap<>())
-        .put(GuidUtils.guidToUtf8(producerGuid), state);
+        .put(guidToUtf8(producerGuid), state);
   }
 
   public synchronized void removeRealTimeTopicProducerState(String kafkaUrl, GUID producerGuid) {
     if (partitionState.getRealtimeTopicProducerStates().get(kafkaUrl) == null) {
       return;
     }
-    partitionState.getRealtimeTopicProducerStates().get(kafkaUrl).remove(GuidUtils.guidToUtf8(producerGuid));
+    partitionState.getRealtimeTopicProducerStates().get(kafkaUrl).remove(guidToUtf8(producerGuid));
   }
 
   public synchronized ProducerPartitionState getRealTimeProducerState(String kafkaUrl, GUID producerGuid) {
@@ -234,7 +234,7 @@ public class OffsetRecord {
     if (map == null) {
       return null;
     }
-    return map.get(GuidUtils.guidToUtf8(producerGuid));
+    return map.get(guidToUtf8(producerGuid));
   }
 
   private Map<String, Map<CharSequence, ProducerPartitionState>> getRealTimeProducerState() {
@@ -242,7 +242,7 @@ public class OffsetRecord {
   }
 
   public synchronized ProducerPartitionState getProducerPartitionState(GUID producerGuid) {
-    return getProducerPartitionStateMap().get(GuidUtils.guidToUtf8(producerGuid));
+    return getProducerPartitionStateMap().get(guidToUtf8(producerGuid));
   }
 
   public void setDatabaseInfo(Map<String, String> databaseInfo) {
