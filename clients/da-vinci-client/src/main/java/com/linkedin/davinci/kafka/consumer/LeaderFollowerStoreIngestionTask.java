@@ -2793,7 +2793,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           record.getPosition(),
           vtDiv.getPartitionStates(PartitionTracker.VERSION_TOPIC).size());
     } catch (InterruptedException e) {
-      LOGGER.error("Unable to sync offset", e);
+      LOGGER.error("event=globalRtDiv Unable to sync Offset Record to update the latest consumed vt position", e);
     }
   }
 
