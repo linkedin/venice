@@ -160,9 +160,8 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
   public void onBecomeOfflineFromStandby(Message message, NotificationContext context) {
     String replicaId = Utils.getReplicaId(message.getResourceName(), getPartition());
     logger.info(
-        "Replica: {} transitioning from STANDBY to OFFLINE. Timestamp: {}ms, Message ID: {}, Session ID: {}",
+        "Replica: {} transitioning from STANDBY to OFFLINE. Message ID: {}, Session ID: {}",
         replicaId,
-        offlineTransitionTimestampMs,
         message.getMsgId(),
         message.getTgtSessionId());
 
@@ -201,7 +200,7 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
       }
       if (isCurrentVersion) {
         // Only do graceful drop for current version resources that are being queried
-        executeGracefulDropDelay(replicaId, transitionStartTimeMs);
+        executeGracefulDropDelayForCurrentVersionReplica(replicaId, transitionStartTimeMs);
       } else {
         logger.info("Replica: {} is not current version, skipping graceful drop delay entirely", replicaId);
       }
@@ -289,26 +288,27 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
    * @param replicaId The replica identifier for logging
    * @param transitionStartTimeMs The timestamp when the transition started (for error logging)
    */
-  private void executeGracefulDropDelay(String replicaId, long transitionStartTimeMs) {
+  private void executeGracefulDropDelayForCurrentVersionReplica(String replicaId, long transitionStartTimeMs) {
     long gracefulDropDelayMs =
         TimeUnit.SECONDS.toMillis(getStoreAndServerConfigs().getPartitionGracefulDropDelaySeconds());
     long remainingWaitMs = gracefulDropDelayMs;
 
     if (offlineTransitionTimestampMs > 0) {
-      long elapsedSinceOfflineMs = System.currentTimeMillis() - offlineTransitionTimestampMs;
+      long currentTimeMs = System.currentTimeMillis();
+      long elapsedSinceOfflineMs = currentTimeMs - offlineTransitionTimestampMs;
       remainingWaitMs = Math.max(0, gracefulDropDelayMs - elapsedSinceOfflineMs);
 
-      logger.info(
+      logger.debug(
           "Replica: {} graceful drop calculation: offlineTimestamp: {}ms, currentTime: {}ms, "
               + "elapsedSinceOffline: {}ms, configuredGracefulDelay: {}ms, remainingWait: {}ms",
           replicaId,
           offlineTransitionTimestampMs,
-          System.currentTimeMillis(),
+          currentTimeMs,
           elapsedSinceOfflineMs,
           gracefulDropDelayMs,
           remainingWaitMs);
     } else {
-      logger.warn(
+      logger.debug(
           "Replica: {} has no recorded OFFLINE timestamp (value: {}). Using full graceful delay of {}ms. "
               + "This may indicate the partition was already OFFLINE before this process started.",
           replicaId,
@@ -326,14 +326,15 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
         long sleepStartMs = System.currentTimeMillis();
         Thread.sleep(remainingWaitMs);
         long actualSleepMs = System.currentTimeMillis() - sleepStartMs;
-        logger.info(
+        logger.debug(
             "Replica: {} completed graceful drop delay. Requested: {}ms, Actual: {}ms",
             replicaId,
             remainingWaitMs,
             actualSleepMs);
       } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
         long interruptedAfterMs = System.currentTimeMillis() - transitionStartTimeMs;
-        logger.error(
+        logger.debug(
             "Replica: {} got interrupted after {}ms while waiting for remaining graceful drop delay of {}ms",
             replicaId,
             interruptedAfterMs,
