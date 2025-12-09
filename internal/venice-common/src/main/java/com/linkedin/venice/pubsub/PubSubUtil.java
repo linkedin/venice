@@ -382,12 +382,9 @@ public final class PubSubUtil {
 
     try {
       final PubSubPosition position = pubSubPositionDeserializer.toPosition(wireFormatBytes);
-      // Symbolic positions (EARLIEST, LATEST) should always be returned as-is
-      if (position == PubSubSymbolicPosition.EARLIEST || position == PubSubSymbolicPosition.LATEST) {
-        return position;
-      }
 
       // Guard against regressions: honor the caller-provided minimum offset.
+      // This applies to both symbolic and concrete positions.
       if (position.getNumericOffset() < offset) {
         LOGGER.info(
             "Deserialized position: {} is behind the provided offset: {}. Using offset-based position.",
@@ -396,6 +393,7 @@ public final class PubSubUtil {
         return fromKafkaOffset(offset);
       }
 
+      // If position is ahead of or equal to offset, return it as-is (including symbolic positions like LATEST)
       return position;
     } catch (RuntimeException e) {
       LOGGER.warn(
