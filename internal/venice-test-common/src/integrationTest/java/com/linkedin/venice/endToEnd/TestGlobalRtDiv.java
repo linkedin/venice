@@ -80,6 +80,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -118,6 +119,238 @@ public class TestGlobalRtDiv {
   @AfterClass
   public void cleanUp() {
     Utils.closeQuietlyWithErrorLogged(venice);
+  }
+
+  /**
+   * Data provider for parameterized server restart tests.
+   * 
+   * @return Object[][] with the following parameters:
+   *   - testName: String identifier for the test case
+   *   - isHybridStore: boolean, true for hybrid store, false for batch store
+   *   - restartDuringIngestion: boolean, true to restart during ingestion, false to restart after ingestion
+   *   - writeRtDataBeforeRestart: boolean, true to write RT data before server restart (hybrid only)
+   *   - writeRtDataAfterRestart: boolean, true to write RT data after server restart (hybrid only)
+   */
+  @DataProvider(name = "serverRestartTestParams")
+  public Object[][] serverRestartTestParams() {
+    return new Object[][] {
+        // testBatchStoreServerRestartDuringIngestion
+        { "BatchStoreServerRestartDuringIngestion", false, true, false, false },
+        // testBatchStoreServerRestartAfterIngestion
+        { "BatchStoreServerRestartAfterIngestion", false, false, false, false },
+        // testHybridStoreServerRestartDuringBatchIngestion
+        { "HybridStoreServerRestartDuringBatchIngestion", true, true, false, true },
+        // testHybridStoreServerRestartDuringRTConsumption
+        { "HybridStoreServerRestartDuringRTConsumption", true, false, true, true } };
+  }
+
+  /**
+   * Unified parameterized test for server restart scenarios.
+   * This test combines the functionality of:
+   * - testBatchStoreServerRestartDuringIngestion
+   * - testBatchStoreServerRestartAfterIngestion
+   * - testHybridStoreServerRestartDuringBatchIngestion
+   * - testHybridStoreServerRestartDuringRTConsumption
+   * 
+   * @param testName String identifier for the test case
+   * @param isHybridStore true for hybrid store, false for batch store
+   * @param restartDuringIngestion true to restart during ingestion, false to restart after ingestion
+   * @param writeRtDataBeforeRestart true to write RT data before server restart (hybrid only)
+   * @param writeRtDataAfterRestart true to write RT data after server restart (hybrid only)
+   */
+  @Test(timeOut = 180 * Time.MS_PER_SECOND, dataProvider = "serverRestartTestParams")
+  public void testServerRestart(
+      String testName,
+      boolean isHybridStore,
+      boolean restartDuringIngestion,
+      boolean writeRtDataBeforeRestart,
+      boolean writeRtDataAfterRestart) throws Exception {
+
+    LOGGER.info("Running parameterized test: {}", testName);
+
+    // Common test parameters
+    String storeName = Utils.getUniqueString(testName.toLowerCase());
+    int batchRecordCount = 100;
+    int partitionCount = 1;
+    String BATCH_VALUE_PREFIX = TestWriteUtils.DEFAULT_USER_DATA_VALUE_PREFIX;
+
+    // RT data parameters (only used for hybrid tests)
+    int rtRecordCountBeforeRestart = 50;
+    int rtRecordCountAfterRestart = 50;
+    String RT_VALUE_PREFIX_BEFORE = "rt_before_";
+    String RT_VALUE_PREFIX_AFTER = "rt_after_";
+
+    // Use different key ranges for RT data to avoid overwrites
+    int rtKeysStartBefore = 101; // Start after batch data (1-100)
+    int rtKeysEndBefore = rtKeysStartBefore + rtRecordCountBeforeRestart - 1;
+    int rtKeysStartAfter = rtKeysEndBefore + 1; // Start after rt_before keys
+    int rtKeysEndAfter = rtKeysStartAfter + rtRecordCountAfterRestart - 1;
+
+    // Setup for batch push
+    File inputDir = getTempDataDirectory();
+    String inputDirPath = "file://" + inputDir.getAbsolutePath();
+    Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir);
+    Properties vpjProperties = defaultVPJProps(venice, inputDirPath, storeName);
+
+    // Setup for RT writes (only used for hybrid tests)
+    PubSubBrokerWrapper brokerWrapper = venice.getPubSubBrokerWrapper();
+    Properties writerProperties = new Properties();
+    writerProperties.put(KAFKA_BOOTSTRAP_SERVERS, brokerWrapper.getAddress());
+    writerProperties.putAll(PubSubBrokerWrapper.getBrokerDetailsForClients(Collections.singletonList(brokerWrapper)));
+    PubSubProducerAdapterFactory producerFactory = brokerWrapper.getPubSubClientsFactory().getProducerAdapterFactory();
+    VeniceWriterFactory writerFactory = TestUtils
+        .getVeniceWriterFactory(writerProperties, producerFactory, brokerWrapper.getPubSubPositionTypeRegistry());
+
+    try (ControllerClient controllerClient = createStoreForJob(venice.getClusterName(), recordSchema, vpjProperties);
+        AvroGenericStoreClient<Object, Object> client = ClientFactory.getAndStartGenericAvroClient(
+            ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(venice.getRandomRouterURL()))) {
+
+      // Create store with appropriate configuration (batch or hybrid)
+      UpdateStoreQueryParams updateParams = new UpdateStoreQueryParams().setPartitionCount(partitionCount);
+      if (isHybridStore) {
+        updateParams.setHybridRewindSeconds(10L).setHybridOffsetLagThreshold(2L);
+      }
+      ControllerResponse response = controllerClient.updateStore(storeName, updateParams);
+      assertFalse(response.isError(), "Updating store should succeed");
+
+      StoreInfo storeInfo = TestUtils.assertCommand(controllerClient.getStore(storeName)).getStore();
+      String topicName = Version.composeKafkaTopic(storeName, 1);
+      String rtTopicName = isHybridStore ? Utils.getRealTimeTopicName(storeInfo) : null;
+
+      Thread pushJobThread = null;
+      try {
+        if (restartDuringIngestion) {
+          // Start push job in a separate thread for "during ingestion" tests
+          pushJobThread = new Thread(() -> runVPJ(vpjProperties, 1, controllerClient));
+          pushJobThread.start();
+
+          // Wait for ingestion to start
+          TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
+            HelixExternalViewRepository routingDataRepo = getRoutingDataRepository();
+            assertTrue(routingDataRepo.containsKafkaTopic(topicName), topicName + " should exist");
+            Instance leaderNode = routingDataRepo.getLeaderInstance(topicName, 0);
+            assertNotNull(leaderNode, "Leader should be assigned");
+          });
+        } else {
+          // Run push job and wait for completion for "after ingestion" tests
+          runVPJ(vpjProperties, 1, controllerClient);
+
+          // Wait for version to become current (after EOP)
+          TestUtils.waitForNonDeterministicCompletion(60, TimeUnit.SECONDS, () -> {
+            int currentVersion = controllerClient.getStore(storeName).getStore().getCurrentVersion();
+            return currentVersion == 1;
+          });
+
+          // Verify batch data
+          verifyAllDataCanBeQueried(client, 1, batchRecordCount, BATCH_VALUE_PREFIX);
+          LOGGER.info("Batch data verified before server restart");
+        }
+
+        // For hybrid tests with RT data before restart
+        if (isHybridStore && writeRtDataBeforeRestart && !restartDuringIngestion) {
+          // Write RT data before restart
+          LOGGER.info("Writing RT data before restart...");
+          writeRTData(rtTopicName, rtKeysStartBefore, rtKeysEndBefore, RT_VALUE_PREFIX_BEFORE, writerFactory);
+
+          // Verify RT data before restart
+          verifyAllDataCanBeQueried(client, rtKeysStartBefore, rtKeysEndBefore, RT_VALUE_PREFIX_BEFORE);
+          LOGGER.info("RT data before restart verified");
+        }
+
+        // Get the leader node
+        HelixExternalViewRepository routingDataRepo = getRoutingDataRepository();
+        Instance leaderNode = routingDataRepo.getLeaderInstance(topicName, 0);
+        assertNotNull(leaderNode, "Leader should exist");
+        LOGGER.info("Stopping leader server: {}", leaderNode.getNodeId());
+
+        // Stop the leader server
+        venice.stopVeniceServer(leaderNode.getPort());
+
+        // Wait for a new leader to be elected
+        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
+          Instance newLeader = routingDataRepo.getLeaderInstance(topicName, 0);
+          assertNotNull(newLeader, "New leader should be elected");
+          assertNotEquals(
+              newLeader.getNodeId(),
+              leaderNode.getNodeId(),
+              "New leader should be different from old leader");
+        });
+
+        // For hybrid tests with RT data during server down
+        if (isHybridStore && writeRtDataAfterRestart && !restartDuringIngestion) {
+          // Write RT data while server is down
+          LOGGER.info("Writing RT data while server is down...");
+          writeRTData(rtTopicName, rtKeysStartAfter, rtKeysEndAfter, RT_VALUE_PREFIX_AFTER, writerFactory);
+        }
+
+        // Restart the old leader server
+        LOGGER.info("Restarting old leader server: {}", leaderNode.getNodeId());
+        venice.restartVeniceServer(leaderNode.getPort());
+
+        // Wait for server to be fully operational
+        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
+          VeniceServerWrapper server = venice.getVeniceServers()
+              .stream()
+              .filter(s -> s.getPort() == leaderNode.getPort())
+              .findFirst()
+              .orElse(null);
+          assertNotNull(server, "Server should be found");
+          assertTrue(server.isRunning(), "Server should be running");
+        });
+
+        if (restartDuringIngestion) {
+          // For "during ingestion" tests, wait for push to complete
+          TestUtils.waitForNonDeterministicAssertion(120, TimeUnit.SECONDS, true, true, () -> {
+            int currentVersion = controllerClient.getStore(storeName).getStore().getCurrentVersion();
+            assertEquals(currentVersion, 1, "Current version should become 1");
+
+            // Verify batch data
+            for (int i = 1; i <= batchRecordCount; i++) {
+              String key = Integer.toString(i);
+              try {
+                Object value = client.get(key).get();
+                assertNotNull(value, "Key " + i + " should not be missing! Data loss detected.");
+                assertEquals(value.toString(), BATCH_VALUE_PREFIX + key, "Value mismatch for key " + i);
+              } catch (Exception e) {
+                throw new VeniceException("Failed to get key " + i + ": " + e.getMessage(), e);
+              }
+            }
+          });
+        }
+
+        // For hybrid tests with RT data after restart
+        if (isHybridStore && writeRtDataAfterRestart && restartDuringIngestion) {
+          // Write RT data after restart
+          LOGGER.info("Writing RT data after restart...");
+          writeRTData(rtTopicName, rtKeysStartBefore, rtKeysEndBefore, RT_VALUE_PREFIX_BEFORE, writerFactory);
+        }
+
+        // Final verification of all data
+        verifyAllDataCanBeQueried(client, 1, batchRecordCount, BATCH_VALUE_PREFIX);
+        LOGGER.info("Batch data verified after server restart");
+
+        // Verify RT data if applicable
+        if (isHybridStore && writeRtDataBeforeRestart && !restartDuringIngestion) {
+          verifyAllDataCanBeQueried(client, rtKeysStartBefore, rtKeysEndBefore, RT_VALUE_PREFIX_BEFORE);
+          LOGGER.info("RT data before restart verified after server restart");
+        }
+
+        if (isHybridStore && writeRtDataAfterRestart) {
+          if (restartDuringIngestion) {
+            verifyAllDataCanBeQueried(client, rtKeysStartBefore, rtKeysEndBefore, RT_VALUE_PREFIX_BEFORE);
+          } else {
+            verifyAllDataCanBeQueried(client, rtKeysStartAfter, rtKeysEndAfter, RT_VALUE_PREFIX_AFTER);
+          }
+          LOGGER.info("RT data after restart verified");
+        }
+
+        LOGGER.info("Successfully completed parameterized test: {}", testName);
+      } finally {
+        if (pushJobThread != null) {
+          pushJobThread.interrupt();
+        }
+      }
+    }
   }
 
   private static Properties createExtraProperties() {
@@ -437,404 +670,4 @@ public class TestGlobalRtDiv {
 
   // test VPJ then restart and then expected failure without code
   // look at test history chunking test
-
-  /**
-   * Test server restart during batch store ingestion (before EOP).
-   * This test verifies:
-   * 1. Batch data is being pushed to a batch store
-   * 2. During ingestion (before EOP), a server is stopped and restarted
-   * 3. All ingested data can be successfully queried after restart (no data loss)
-   */
-  @Test(timeOut = 180 * Time.MS_PER_SECOND)
-  public void testBatchStoreServerRestartDuringIngestion() throws Exception {
-    String storeName = Utils.getUniqueString("batch_store_restart_during_ingestion");
-    int recordCount = 100;
-    int partitionCount = 1;
-    String VALUE_PREFIX = TestWriteUtils.DEFAULT_USER_DATA_VALUE_PREFIX;
-
-    File inputDir = getTempDataDirectory();
-    String inputDirPath = "file://" + inputDir.getAbsolutePath();
-    Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir);
-    Properties vpjProperties = defaultVPJProps(venice, inputDirPath, storeName);
-
-    try (ControllerClient controllerClient = createStoreForJob(venice.getClusterName(), recordSchema, vpjProperties);
-        AvroGenericStoreClient<Object, Object> client = ClientFactory.getAndStartGenericAvroClient(
-            ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(venice.getRandomRouterURL()))) {
-
-      // Create a batch store (no hybrid config)
-      UpdateStoreQueryParams updateParams = new UpdateStoreQueryParams().setPartitionCount(partitionCount);
-      ControllerResponse response = controllerClient.updateStore(storeName, updateParams);
-      assertFalse(response.isError(), "Updating store should succeed");
-
-      String topicName = Version.composeKafkaTopic(storeName, 1);
-
-      // Start push job in a separate thread
-      Thread pushJobThread = new Thread(() -> runVPJ(vpjProperties, 1, controllerClient));
-      pushJobThread.start();
-
-      try {
-        // Wait for ingestion to start
-        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
-          HelixExternalViewRepository routingDataRepo = getRoutingDataRepository();
-          assertTrue(routingDataRepo.containsKafkaTopic(topicName), topicName + " should exist");
-          Instance leaderNode = routingDataRepo.getLeaderInstance(topicName, 0);
-          assertNotNull(leaderNode, "Leader should be assigned");
-        });
-
-        // Get the leader node
-        HelixExternalViewRepository routingDataRepo = getRoutingDataRepository();
-        Instance leaderNode = routingDataRepo.getLeaderInstance(topicName, 0);
-        LOGGER.info("Stopping leader server during batch ingestion: {}", leaderNode.getNodeId());
-
-        // Stop the leader server during ingestion (before EOP)
-        venice.stopVeniceServer(leaderNode.getPort());
-
-        // Wait for a new leader to be elected
-        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
-          Instance newLeader = routingDataRepo.getLeaderInstance(topicName, 0);
-          assertNotNull(newLeader, "New leader should be elected");
-          assertNotEquals(
-              newLeader.getNodeId(),
-              leaderNode.getNodeId(),
-              "New leader should be different from old leader");
-        });
-
-        // Restart the old leader server
-        LOGGER.info("Restarting old leader server: {}", leaderNode.getNodeId());
-        venice.restartVeniceServer(leaderNode.getPort());
-
-        // Wait for push to complete and verify all data can be queried (no data loss)
-        TestUtils.waitForNonDeterministicAssertion(120, TimeUnit.SECONDS, true, true, () -> {
-          int currentVersion = controllerClient.getStore(storeName).getStore().getCurrentVersion();
-          assertEquals(currentVersion, 1, "Current version should become 1");
-
-          // Verify all data is queryable
-          for (int i = 1; i <= recordCount; i++) {
-            String key = Integer.toString(i);
-            try {
-              Object value = client.get(key).get();
-              assertNotNull(value, "Key " + i + " should not be missing! Data loss detected.");
-              assertEquals(value.toString(), VALUE_PREFIX + key, "Value mismatch for key " + i);
-            } catch (Exception e) {
-              throw new VeniceException("Failed to get key " + i + ": " + e.getMessage(), e);
-            }
-          }
-        });
-        LOGGER.info("Successfully verified all data after server restart during batch ingestion");
-      } finally {
-        pushJobThread.interrupt();
-      }
-    }
-  }
-
-  /**
-   * Test server restart after batch store ingestion (after EOP).
-   * This test verifies:
-   * 1. Batch data is pushed to a batch store and push completes
-   * 2. After push completion (after EOP), a server is stopped and restarted
-   * 3. All ingested data can be successfully queried after restart (no data loss)
-   */
-  @Test(timeOut = 180 * Time.MS_PER_SECOND)
-  public void testBatchStoreServerRestartAfterIngestion() throws Exception {
-    String storeName = Utils.getUniqueString("batch_store_restart_after_ingestion");
-    int recordCount = 100;
-    int partitionCount = 1;
-    String VALUE_PREFIX = TestWriteUtils.DEFAULT_USER_DATA_VALUE_PREFIX;
-
-    File inputDir = getTempDataDirectory();
-    String inputDirPath = "file://" + inputDir.getAbsolutePath();
-    Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir);
-    Properties vpjProperties = defaultVPJProps(venice, inputDirPath, storeName);
-
-    try (ControllerClient controllerClient = createStoreForJob(venice.getClusterName(), recordSchema, vpjProperties);
-        AvroGenericStoreClient<Object, Object> client = ClientFactory.getAndStartGenericAvroClient(
-            ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(venice.getRandomRouterURL()))) {
-
-      // Create a batch store (no hybrid config)
-      UpdateStoreQueryParams updateParams = new UpdateStoreQueryParams().setPartitionCount(partitionCount);
-      ControllerResponse response = controllerClient.updateStore(storeName, updateParams);
-      assertFalse(response.isError(), "Updating store should succeed");
-
-      // Run push job and wait for completion
-      runVPJ(vpjProperties, 1, controllerClient);
-
-      String topicName = Version.composeKafkaTopic(storeName, 1);
-
-      // Wait for version to become current (after EOP)
-      TestUtils.waitForNonDeterministicCompletion(60, TimeUnit.SECONDS, () -> {
-        int currentVersion = controllerClient.getStore(storeName).getStore().getCurrentVersion();
-        return currentVersion == 1;
-      });
-
-      // Verify data before restart
-      verifyAllDataCanBeQueried(client, 1, recordCount, VALUE_PREFIX);
-      LOGGER.info("Data verified before server restart");
-
-      // Get the leader node after ingestion is complete
-      HelixExternalViewRepository routingDataRepo = getRoutingDataRepository();
-      Instance leaderNode = routingDataRepo.getLeaderInstance(topicName, 0);
-      assertNotNull(leaderNode, "Leader should exist after ingestion");
-      LOGGER.info("Stopping leader server after batch ingestion: {}", leaderNode.getNodeId());
-
-      // Stop the leader server after ingestion is complete (after EOP)
-      venice.stopVeniceServer(leaderNode.getPort());
-
-      // Wait for a new leader to be elected
-      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
-        Instance newLeader = routingDataRepo.getLeaderInstance(topicName, 0);
-        assertNotNull(newLeader, "New leader should be elected");
-        assertNotEquals(newLeader.getNodeId(), leaderNode.getNodeId(), "New leader should be different");
-      });
-
-      // Verify data is still accessible with one server down
-      verifyAllDataCanBeQueried(client, 1, recordCount, VALUE_PREFIX);
-      LOGGER.info("Data verified with one server down");
-
-      // Restart the old leader server
-      LOGGER.info("Restarting old leader server: {}", leaderNode.getNodeId());
-      venice.restartVeniceServer(leaderNode.getPort());
-
-      // Wait for server to be fully operational
-      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
-        VeniceServerWrapper server = venice.getVeniceServers()
-            .stream()
-            .filter(s -> s.getPort() == leaderNode.getPort())
-            .findFirst()
-            .orElse(null);
-        assertNotNull(server, "Server should be found");
-        assertTrue(server.isRunning(), "Server should be running");
-      });
-
-      // Verify all data can be queried after restart (no data loss)
-      verifyAllDataCanBeQueried(client, 1, recordCount, VALUE_PREFIX);
-      LOGGER.info("Successfully verified all data after server restart post batch ingestion");
-    }
-  }
-
-  /**
-   * Test server restart during hybrid store batch ingestion (before EOP).
-   * This test verifies:
-   * 1. Batch data is being pushed to a hybrid store
-   * 2. During batch ingestion (before EOP), a server is stopped and restarted
-   * 3. After restart, RT data is written
-   * 4. All ingested data (batch + RT) can be successfully queried (no data loss)
-   */
-  @Test(timeOut = 180 * Time.MS_PER_SECOND)
-  public void testHybridStoreServerRestartDuringBatchIngestion() throws Exception {
-    String storeName = Utils.getUniqueString("hybrid_store_restart_during_batch");
-    int batchRecordCount = 100;
-    int rtRecordCount = 50;
-    int partitionCount = 1;
-    String BATCH_VALUE_PREFIX = TestWriteUtils.DEFAULT_USER_DATA_VALUE_PREFIX;
-    String RT_VALUE_PREFIX = "rt_value_";
-
-    File inputDir = getTempDataDirectory();
-    String inputDirPath = "file://" + inputDir.getAbsolutePath();
-    Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir);
-    Properties vpjProperties = defaultVPJProps(venice, inputDirPath, storeName);
-
-    PubSubBrokerWrapper brokerWrapper = venice.getPubSubBrokerWrapper();
-    Properties writerProperties = new Properties();
-    writerProperties.put(KAFKA_BOOTSTRAP_SERVERS, brokerWrapper.getAddress());
-    writerProperties.putAll(PubSubBrokerWrapper.getBrokerDetailsForClients(Collections.singletonList(brokerWrapper)));
-    PubSubProducerAdapterFactory producerFactory = brokerWrapper.getPubSubClientsFactory().getProducerAdapterFactory();
-    VeniceWriterFactory writerFactory = TestUtils
-        .getVeniceWriterFactory(writerProperties, producerFactory, brokerWrapper.getPubSubPositionTypeRegistry());
-
-    try (ControllerClient controllerClient = createStoreForJob(venice.getClusterName(), recordSchema, vpjProperties);
-        AvroGenericStoreClient<Object, Object> client = ClientFactory.getAndStartGenericAvroClient(
-            ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(venice.getRandomRouterURL()))) {
-
-      // Create a hybrid store
-      UpdateStoreQueryParams updateParams = new UpdateStoreQueryParams().setHybridRewindSeconds(10L)
-          .setHybridOffsetLagThreshold(2L)
-          .setPartitionCount(partitionCount);
-      ControllerResponse response = controllerClient.updateStore(storeName, updateParams);
-      assertFalse(response.isError(), "Updating store should succeed");
-
-      StoreInfo storeInfo = TestUtils.assertCommand(controllerClient.getStore(storeName)).getStore();
-      String topicName = Version.composeKafkaTopic(storeName, 1);
-      String rtTopicName = Utils.getRealTimeTopicName(storeInfo);
-
-      // Start push job in a separate thread
-      Thread pushJobThread = new Thread(() -> runVPJ(vpjProperties, 1, controllerClient));
-      pushJobThread.start();
-
-      try {
-        // Wait for ingestion to start
-        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
-          HelixExternalViewRepository routingDataRepo = getRoutingDataRepository();
-          assertTrue(routingDataRepo.containsKafkaTopic(topicName), topicName + " should exist");
-          Instance leaderNode = routingDataRepo.getLeaderInstance(topicName, 0);
-          assertNotNull(leaderNode, "Leader should be assigned");
-        });
-
-        // Get the leader node
-        HelixExternalViewRepository routingDataRepo = getRoutingDataRepository();
-        Instance leaderNode = routingDataRepo.getLeaderInstance(topicName, 0);
-        LOGGER.info("Stopping leader server during hybrid batch ingestion: {}", leaderNode.getNodeId());
-
-        // Stop the leader server during batch ingestion (before EOP)
-        venice.stopVeniceServer(leaderNode.getPort());
-
-        // Wait for a new leader to be elected
-        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
-          Instance newLeader = routingDataRepo.getLeaderInstance(topicName, 0);
-          assertNotNull(newLeader, "New leader should be elected");
-          assertNotEquals(
-              newLeader.getNodeId(),
-              leaderNode.getNodeId(),
-              "New leader should be different from old leader");
-        });
-
-        // Restart the old leader server
-        LOGGER.info("Restarting old leader server: {}", leaderNode.getNodeId());
-        venice.restartVeniceServer(leaderNode.getPort());
-
-        // Wait for push to complete and verify batch data
-        TestUtils.waitForNonDeterministicAssertion(120, TimeUnit.SECONDS, true, true, () -> {
-          int currentVersion = controllerClient.getStore(storeName).getStore().getCurrentVersion();
-          assertEquals(currentVersion, 1, "Current version should become 1");
-
-          // Verify batch data is queryable
-          for (int i = 1; i <= batchRecordCount; i++) {
-            String key = Integer.toString(i);
-            Object value = client.get(key).get();
-            assertNotNull(value, "Key " + i + " should not be missing! Data loss detected.");
-            assertEquals(value.toString(), BATCH_VALUE_PREFIX + key, "Value mismatch for key " + i);
-          }
-        });
-        LOGGER.info("Batch data verified after server restart");
-
-        // Write RT data
-        LOGGER.info("Writing RT data...");
-        writeRTData(rtTopicName, 1, rtRecordCount, RT_VALUE_PREFIX, writerFactory);
-
-        // Verify all data (batch + RT) can be queried
-        verifyAllDataCanBeQueried(client, 1, batchRecordCount, BATCH_VALUE_PREFIX);
-        verifyAllDataCanBeQueried(client, 1, rtRecordCount, RT_VALUE_PREFIX);
-        LOGGER.info("Successfully verified all data (batch + RT) after server restart during hybrid batch ingestion");
-      } finally {
-        pushJobThread.interrupt();
-      }
-    }
-  }
-
-  /**
-   * Test server restart during hybrid store RT consumption (after EOP).
-   * This test verifies:
-   * 1. Batch data is pushed to a hybrid store and push completes
-   * 2. RT data is being written to the store
-   * 3. During RT consumption (after EOP), a server is stopped and restarted
-   * 4. More RT data is written after restart
-   * 5. All ingested data (batch + all RT) can be successfully queried (no data loss)
-   */
-  @Test(timeOut = 180 * Time.MS_PER_SECOND)
-  public void testHybridStoreServerRestartDuringRTConsumption() throws Exception {
-    String storeName = Utils.getUniqueString("hybrid_store_restart_during_rt");
-    int batchRecordCount = 100;
-    int rtRecordCountBeforeRestart = 50;
-    int rtRecordCountAfterRestart = 50;
-    int partitionCount = 1;
-    String BATCH_VALUE_PREFIX = TestWriteUtils.DEFAULT_USER_DATA_VALUE_PREFIX;
-    String RT_VALUE_PREFIX_BEFORE = "rt_before_";
-    String RT_VALUE_PREFIX_AFTER = "rt_after_";
-
-    // Use different key ranges for RT data to avoid overwrites
-    int rtKeysStartBefore = 101; // Start after batch data (1-100)
-    int rtKeysEndBefore = rtKeysStartBefore + rtRecordCountBeforeRestart - 1;
-    int rtKeysStartAfter = rtKeysEndBefore + 1; // Start after rt_before keys
-    int rtKeysEndAfter = rtKeysStartAfter + rtRecordCountAfterRestart - 1;
-
-    File inputDir = getTempDataDirectory();
-    String inputDirPath = "file://" + inputDir.getAbsolutePath();
-    Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir);
-    Properties vpjProperties = defaultVPJProps(venice, inputDirPath, storeName);
-
-    PubSubBrokerWrapper brokerWrapper = venice.getPubSubBrokerWrapper();
-    Properties writerProperties = new Properties();
-    writerProperties.put(KAFKA_BOOTSTRAP_SERVERS, brokerWrapper.getAddress());
-    writerProperties.putAll(PubSubBrokerWrapper.getBrokerDetailsForClients(Collections.singletonList(brokerWrapper)));
-    PubSubProducerAdapterFactory producerFactory = brokerWrapper.getPubSubClientsFactory().getProducerAdapterFactory();
-    VeniceWriterFactory writerFactory = TestUtils
-        .getVeniceWriterFactory(writerProperties, producerFactory, brokerWrapper.getPubSubPositionTypeRegistry());
-
-    try (ControllerClient controllerClient = createStoreForJob(venice.getClusterName(), recordSchema, vpjProperties);
-        AvroGenericStoreClient<Object, Object> client = ClientFactory.getAndStartGenericAvroClient(
-            ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(venice.getRandomRouterURL()))) {
-
-      // Create a hybrid store
-      UpdateStoreQueryParams updateParams = new UpdateStoreQueryParams().setHybridRewindSeconds(10L)
-          .setHybridOffsetLagThreshold(2L)
-          .setPartitionCount(partitionCount);
-      ControllerResponse response = controllerClient.updateStore(storeName, updateParams);
-      assertFalse(response.isError(), "Updating store should succeed");
-
-      StoreInfo storeInfo = TestUtils.assertCommand(controllerClient.getStore(storeName)).getStore();
-      String topicName = Version.composeKafkaTopic(storeName, 1);
-      String rtTopicName = Utils.getRealTimeTopicName(storeInfo);
-
-      // Run push job and wait for completion
-      runVPJ(vpjProperties, 1, controllerClient);
-
-      // Wait for version to become current (after EOP)
-      TestUtils.waitForNonDeterministicCompletion(60, TimeUnit.SECONDS, () -> {
-        int currentVersion = controllerClient.getStore(storeName).getStore().getCurrentVersion();
-        return currentVersion == 1;
-      });
-
-      // Verify batch data
-      verifyAllDataCanBeQueried(client, 1, batchRecordCount, BATCH_VALUE_PREFIX);
-      LOGGER.info("Batch data verified");
-
-      // Write RT data before restart (keys 101-150)
-      LOGGER.info("Writing RT data before restart...");
-      writeRTData(rtTopicName, rtKeysStartBefore, rtKeysEndBefore, RT_VALUE_PREFIX_BEFORE, writerFactory);
-
-      // Verify RT data before restart
-      verifyAllDataCanBeQueried(client, rtKeysStartBefore, rtKeysEndBefore, RT_VALUE_PREFIX_BEFORE);
-      LOGGER.info("RT data before restart verified");
-
-      // Get the leader node
-      HelixExternalViewRepository routingDataRepo = getRoutingDataRepository();
-      Instance leaderNode = routingDataRepo.getLeaderInstance(topicName, 0);
-      assertNotNull(leaderNode, "Leader should exist");
-      LOGGER.info("Stopping leader server during RT consumption: {}", leaderNode.getNodeId());
-
-      // Stop the leader server during RT consumption (after EOP)
-      venice.stopVeniceServer(leaderNode.getPort());
-
-      // Wait for a new leader to be elected
-      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
-        Instance newLeader = routingDataRepo.getLeaderInstance(topicName, 0);
-        assertNotNull(newLeader, "New leader should be elected");
-        assertNotEquals(newLeader.getNodeId(), leaderNode.getNodeId(), "New leader should be different");
-      });
-
-      // Write more RT data while server is down (keys 151-200)
-      LOGGER.info("Writing RT data while server is down...");
-      writeRTData(rtTopicName, rtKeysStartAfter, rtKeysEndAfter, RT_VALUE_PREFIX_AFTER, writerFactory);
-
-      // Restart the old leader server
-      LOGGER.info("Restarting old leader server: {}", leaderNode.getNodeId());
-      venice.restartVeniceServer(leaderNode.getPort());
-
-      // Wait for server to be fully operational
-      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
-        VeniceServerWrapper server = venice.getVeniceServers()
-            .stream()
-            .filter(s -> s.getPort() == leaderNode.getPort())
-            .findFirst()
-            .orElse(null);
-        assertNotNull(server, "Server should be found");
-        assertTrue(server.isRunning(), "Server should be running");
-      });
-
-      // Verify all data (batch + all RT) can be queried (no data loss)
-      verifyAllDataCanBeQueried(client, 1, batchRecordCount, BATCH_VALUE_PREFIX);
-      verifyAllDataCanBeQueried(client, rtKeysStartBefore, rtKeysEndBefore, RT_VALUE_PREFIX_BEFORE);
-      verifyAllDataCanBeQueried(client, rtKeysStartAfter, rtKeysEndAfter, RT_VALUE_PREFIX_AFTER);
-      LOGGER.info("Successfully verified all data (batch + all RT) after server restart during RT consumption");
-    }
-  }
 }
