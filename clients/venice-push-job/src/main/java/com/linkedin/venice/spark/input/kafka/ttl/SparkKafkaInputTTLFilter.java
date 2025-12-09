@@ -1,6 +1,6 @@
 package com.linkedin.venice.spark.input.kafka.ttl;
 
-import com.linkedin.venice.hadoop.input.kafka.ttl.VeniceRmdTTLFilter;
+import com.linkedin.venice.common.VeniceRmdTTLFilter;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.IOException;
 import java.io.Serializable;

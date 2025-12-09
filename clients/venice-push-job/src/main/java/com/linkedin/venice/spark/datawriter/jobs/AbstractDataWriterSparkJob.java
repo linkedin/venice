@@ -23,6 +23,7 @@ import static com.linkedin.venice.spark.SparkConstants.SPARK_DATA_WRITER_CONF_PR
 import static com.linkedin.venice.spark.SparkConstants.SPARK_LEADER_CONFIG;
 import static com.linkedin.venice.spark.SparkConstants.SPARK_SESSION_CONF_PREFIX;
 import static com.linkedin.venice.spark.SparkConstants.VALUE_COLUMN_NAME;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.ALLOW_DUPLICATE_KEY;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.BATCH_NUM_BYTES_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.COMPRESSION_METRIC_COLLECTION_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.COMPRESSION_STRATEGY;
