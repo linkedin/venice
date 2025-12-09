@@ -194,10 +194,6 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
         dropPartitionFuture.get(WAIT_DROP_PARTITION_TIME_OUT_MS, TimeUnit.MILLISECONDS);
       } catch (InterruptedException e) {
         Thread.currentThread().interrupt();
-        logger.error(
-            "Replica: {} got interrupted while waiting for drop partition future during OFFLINE->DROPPED transition",
-            replicaId,
-            e);
         throw new VeniceException("Got interrupted while waiting for drop partition future to complete", e);
       } catch (Exception e) {
         logger.error(
