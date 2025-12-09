@@ -140,7 +140,11 @@ public class UserSystemStoreLifeCycleHelper {
     admin.deleteAllVersionsInStore(clusterName, systemStoreName);
     pushMonitor.cleanupStoreStatus(systemStoreName);
     if (!isStoreMigrating) {
-      switch (VeniceSystemStoreType.getSystemStoreType(systemStoreName)) {
+      VeniceSystemStoreType storeType = VeniceSystemStoreType.getSystemStoreType(systemStoreName);
+      if (storeType == null) {
+        throw new VeniceException("Unknown system store type: " + systemStoreName);
+      }
+      switch (storeType) {
         case META_STORE:
           // Clean up venice writer before truncating RT topic
           metaStoreWriter.removeMetaStoreWriter(systemStoreName);
