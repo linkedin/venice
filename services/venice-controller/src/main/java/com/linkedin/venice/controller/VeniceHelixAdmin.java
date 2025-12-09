@@ -3653,11 +3653,25 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     if (clusterName.equals(destCluster)) {
       PubSubTopic versionTopic = pubSubTopicRepository.getTopic(Version.composeKafkaTopic(storeName, versionNumber));
       String migrationSourceCluster = storeConfig.getMigrationSrcCluster();
-      // If the topic doesn't exist, we don't know whether it's not created or already deleted, so we don't skip
-      return getTopicManager().containsTopic(versionTopic) && isTopicTruncated(versionTopic.getName()) ||
+      boolean topicExists = false;
+      try {
+        topicExists = getTopicManager().containsTopicWithRetries(versionTopic, 5);
+      } catch (Exception e) {
+        LOGGER.error("Failed to check topic existence for topic: {}", versionTopic.getName(), e);
+      }
+      // If the topic exists but truncated, skip it
+      if (topicExists && isTopicTruncated(versionTopic.getName())) {
+        LOGGER.info("Topic {} is truncated, skip migration", versionTopic.getName());
+        return true;
+      }
       // The topic doesn't exist and less/equal than the largest used version number in the source, it's deleted
-          !getTopicManager().containsTopic(versionTopic)
-              && (versionNumber <= getStoreInfo(storeName, migrationSourceCluster).getLargestUsedVersionNumber());
+      if (!topicExists
+          && versionNumber <= getStoreInfo(storeName, migrationSourceCluster).getLargestUsedVersionNumber()) {
+        LOGGER.info(
+            "Topic {} doesn't exist and less/equal than the largest used version number in the source, it's deleted",
+            versionTopic.getName());
+        return true;
+      }
     }
     return false;
   }
