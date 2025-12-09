@@ -3672,14 +3672,16 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             storeInfo.getVersion(versionNumber).get().getStatus());
         return true;
       }
-      // If the topic exist but already truncated, skip it
-      if (getTopicManager().containsTopicWithRetries(versionTopic, 5) && isTopicTruncated(versionTopic.getName())) {
+      // If the topic does not exist or already truncated, skip it
+      boolean topicExists = getTopicManager().containsTopicWithRetries(versionTopic, 5);
+      if (!topicExists || isTopicTruncated(versionTopic.getName())) {
         LOGGER.error(
-            "Skip adding version: {} for store: {} in cluster: {} because the corresponding VT is truncated and version status is {}",
+            "Skip adding version: {} for store: {} in cluster: {} because the corresponding VT is truncated and version status is {} or topic doesn't exist : {}",
             versionNumber,
             storeName,
             clusterName,
-            storeInfo.getVersion(versionNumber).get().getStatus());
+            storeInfo.getVersion(versionNumber).get().getStatus(),
+            topicExists);
         return true;
       }
     }
