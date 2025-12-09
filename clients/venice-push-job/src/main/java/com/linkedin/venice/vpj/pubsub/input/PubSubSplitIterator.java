@@ -57,8 +57,8 @@ public class PubSubSplitIterator implements AutoCloseable {
 
   // Total messages consumed from the broker, including control messages.
   private long readSoFar = 0;
-  // Control messages encountered and intentionally skipped.
-  private long controlMessagesSkipped = 0;
+  // Control and Global RT DIV messages encountered and intentionally skipped.
+  private long messagesSkipped = 0;
   // Data records actually delivered to the caller via {@link #next()}.
   private long recordsDelivered = 0;
 
@@ -164,9 +164,9 @@ public class PubSubSplitIterator implements AutoCloseable {
       readSoFar += 1;
 
       KafkaKey messageKey = pubSubMessage.getKey();
-      if (messageKey.isControlMessage()) {
-        // Skip control messages and record the skip.
-        controlMessagesSkipped += 1;
+      if (messageKey.isControlMessage() || messageKey.isGlobalRtDiv()) {
+        // Skip control / Global RT DIV messages and record the skip.
+        messagesSkipped += 1;
         continue;
       }
 
@@ -193,7 +193,7 @@ public class PubSubSplitIterator implements AutoCloseable {
           readSoFar,
           targetCount,
           recordsDelivered,
-          controlMessagesSkipped,
+          messagesSkipped,
           String.format("%.2f", progress * 100));
       lastLoggedProgress = progress;
     }
@@ -222,7 +222,7 @@ public class PubSubSplitIterator implements AutoCloseable {
           topicPartition,
           readSoFar,
           recordsDelivered,
-          controlMessagesSkipped);
+          messagesSkipped);
     }
   }
 
