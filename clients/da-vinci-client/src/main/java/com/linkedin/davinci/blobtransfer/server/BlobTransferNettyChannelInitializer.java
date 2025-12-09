@@ -3,6 +3,7 @@ package com.linkedin.davinci.blobtransfer.server;
 import com.linkedin.alpini.netty4.ssl.SslInitializer;
 import com.linkedin.davinci.blobtransfer.BlobSnapshotManager;
 import com.linkedin.davinci.blobtransfer.BlobTransferAclHandler;
+import com.linkedin.davinci.stats.AggBlobTransferStats;
 import com.linkedin.venice.listener.VerifySslHandler;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.SslUtils;
@@ -30,6 +31,7 @@ public class BlobTransferNettyChannelInitializer extends ChannelInitializer<Sock
       int blobTransferMaxTimeoutInMin,
       BlobSnapshotManager blobSnapshotManager,
       GlobalChannelTrafficShapingHandler globalChannelTrafficShapingHandler,
+      AggBlobTransferStats aggBlobTransferStats,
       Optional<SSLFactory> sslFactory,
       Optional<BlobTransferAclHandler> aclHandler,
       int maxAllowedConcurrentSnapshotUsers) {
@@ -40,6 +42,7 @@ public class BlobTransferNettyChannelInitializer extends ChannelInitializer<Sock
         baseDir,
         blobTransferMaxTimeoutInMin,
         blobSnapshotManager,
+        aggBlobTransferStats,
         maxAllowedConcurrentSnapshotUsers);
   }
 
