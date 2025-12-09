@@ -78,11 +78,9 @@ public class HelixVeniceClusterResources implements VeniceResource {
   private final Optional<DynamicAccessController> accessController;
   private final ExecutorService errorPartitionResetExecutorService = Executors.newSingleThreadExecutor();
   private final StoragePersonaRepository storagePersonaRepository;
-
   private ErrorPartitionResetTask errorPartitionResetTask = null;
-
-  final ExecutorService deadStoreStatsPreFetchService = Executors.newSingleThreadExecutor();
-  DeadStoreStatsPreFetchTask deadStoreStatsPreFetchTask = null;
+  private final ExecutorService deadStoreStatsPreFetchService = Executors.newSingleThreadExecutor();
+  private DeadStoreStatsPreFetchTask deadStoreStatsPreFetchTask = null;
   private final Optional<MetaStoreWriter> metaStoreWriter;
   private final VeniceAdminStats veniceAdminStats;
   private final VeniceHelixAdmin admin;
