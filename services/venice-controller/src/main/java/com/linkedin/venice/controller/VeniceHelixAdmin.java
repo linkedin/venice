@@ -3653,23 +3653,33 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     if (clusterName.equals(destCluster)) {
       PubSubTopic versionTopic = pubSubTopicRepository.getTopic(Version.composeKafkaTopic(storeName, versionNumber));
       String migrationSourceCluster = storeConfig.getMigrationSrcCluster();
-      boolean topicExists = false;
-      try {
-        topicExists = getTopicManager().containsTopicWithRetries(versionTopic, 5);
-      } catch (Exception e) {
-        LOGGER.error("Failed to check topic existence for topic: {}", versionTopic.getName(), e);
-      }
-      // If the topic exists but truncated, skip it
-      if (topicExists && isTopicTruncated(versionTopic.getName())) {
-        LOGGER.info("Topic {} is truncated, skip migration", versionTopic.getName());
+      StoreInfo storeInfo = getStoreInfo(storeName, migrationSourceCluster);
+      if (!storeInfo.getVersion(versionNumber).isPresent()) {
+        LOGGER.info(
+            "Skip adding version: {} for store: {} in cluster: {} because the version is not present in the source cluster",
+            versionNumber,
+            storeName,
+            clusterName);
         return true;
       }
-      // The topic doesn't exist and less/equal than the largest used version number in the source, it's deleted
-      if (!topicExists
-          && versionNumber <= getStoreInfo(storeName, migrationSourceCluster).getLargestUsedVersionNumber()) {
-        LOGGER.info(
-            "Topic {} doesn't exist and less/equal than the largest used version number in the source, it's deleted",
-            versionTopic.getName());
+      if (storeInfo.getVersion(versionNumber).get().getStatus() == KILLED
+          || storeInfo.getVersion(versionNumber).get().getStatus() == ERROR) {
+        LOGGER.warn(
+            "Skip adding version: {} for store: {} in cluster: {} because is status is {}",
+            versionNumber,
+            storeName,
+            clusterName,
+            storeInfo.getVersion(versionNumber).get().getStatus());
+        return true;
+      }
+      // If the topic exist but already truncated, skip it
+      if (getTopicManager().containsTopicWithRetries(versionTopic, 5) && isTopicTruncated(versionTopic.getName())) {
+        LOGGER.error(
+            "Skip adding version: {} for store: {} in cluster: {} because the corresponding VT is truncated and version status is {}",
+            versionNumber,
+            storeName,
+            clusterName,
+            storeInfo.getVersion(versionNumber).get().getStatus());
         return true;
       }
     }
