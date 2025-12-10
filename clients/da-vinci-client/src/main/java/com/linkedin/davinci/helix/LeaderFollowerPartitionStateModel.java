@@ -62,7 +62,7 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
    * This is used to calculate the actual time the partition has been offline for graceful drop delay.
    * Value of -1 indicates the partition has not yet transitioned to OFFLINE state.
    */
-  private volatile long offlineTransitionTimestampMs = -1L;
+  private volatile long lastOfflineTransitionTimestampMs = -1L;
 
   private final LeaderFollowerIngestionProgressNotifier notifier;
   private final ParticipantStateTransitionStats stateTransitionStats;
@@ -96,6 +96,7 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
 
   @Transition(to = HelixState.STANDBY_STATE, from = HelixState.OFFLINE_STATE)
   public void onBecomeStandbyFromOffline(Message message, NotificationContext context) {
+    lastOfflineTransitionTimestampMs = -1L;
     executeStateTransition(message, context, () -> {
       String resourceName = message.getResourceName();
       Store store = getStoreRepo().getStoreOrThrow(getStoreName());
@@ -164,7 +165,7 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
     executeStateTransition(message, context, () -> {
       stopConsumption(true);
       // Capture the timestamp when partition becomes OFFLINE for graceful drop delay calculation
-      offlineTransitionTimestampMs = System.currentTimeMillis();
+      lastOfflineTransitionTimestampMs = System.currentTimeMillis();
     });
   }
 
@@ -206,7 +207,7 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
           this.stateTransitionStats.decrementThreadBlockedOnOfflineToDroppedTransitionCount();
         }
         // Reset the offline timestamp after transition completes
-        offlineTransitionTimestampMs = -1L;
+        lastOfflineTransitionTimestampMs = -1L;
       }
     });
   }
@@ -231,7 +232,7 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
    */
   @VisibleForTesting
   long getOfflineTransitionTimestampMs() {
-    return offlineTransitionTimestampMs;
+    return lastOfflineTransitionTimestampMs;
   }
 
   /**
@@ -245,9 +246,9 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
         TimeUnit.SECONDS.toMillis(getStoreAndServerConfigs().getPartitionGracefulDropDelaySeconds());
     long remainingWaitMs = gracefulDropDelayMs;
 
-    if (offlineTransitionTimestampMs > 0) {
+    if (lastOfflineTransitionTimestampMs > 0) {
       long currentTimeMs = System.currentTimeMillis();
-      long elapsedSinceOfflineMs = currentTimeMs - offlineTransitionTimestampMs;
+      long elapsedSinceOfflineMs = currentTimeMs - lastOfflineTransitionTimestampMs;
       remainingWaitMs = Math.max(0, gracefulDropDelayMs - elapsedSinceOfflineMs);
     }
     if (remainingWaitMs <= 0) {
