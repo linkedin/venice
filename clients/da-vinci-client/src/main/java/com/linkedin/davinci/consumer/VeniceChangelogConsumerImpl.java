@@ -34,6 +34,7 @@ import com.linkedin.venice.compression.NoopCompressor;
 import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.exceptions.InvalidVeniceSchemaException;
+import com.linkedin.venice.exceptions.StoreDisabledException;
 import com.linkedin.venice.exceptions.StoreVersionNotFoundException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
@@ -45,6 +46,7 @@ import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubContext;
 import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
@@ -186,6 +188,8 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   protected final int totalRegionCount;
   protected final long versionSwapTimeoutInMs;
   protected final AtomicReference<CountDownLatch> onGoingVersionSwapSignal = new AtomicReference<>();
+  private volatile boolean readsEnabled = true;
+
   /**
    * Interaction of this field should acquire the subscriptionLock.writeLock()
    */
@@ -339,8 +343,25 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       this.specificValueClass = null;
       LOGGER.info("Using generic value deserializer");
     }
+    // readsEnabled = store.isEnableReads();
+    StoreDataChangedListener storeChangeListener = new StoreDataChangedListener() {
+      @Override
+      public void handleStoreChanged(Store store) {
+        System.out.println("Store changed: " + store.getName());
+        setEnableReads(store.isEnableReads());
+      }
+    };
+    this.storeRepository.registerStoreDataChangedListener(storeChangeListener);
 
     LOGGER.info("Start a change log consumer client for store: {}", storeName);
+  }
+
+  public void setEnableReads(boolean isEnableReads) {
+    readsEnabled = isEnableReads;
+  }
+
+  public boolean getEnableReads() {
+    return readsEnabled;
   }
 
   // Unit test only and read only
@@ -364,6 +385,9 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   }
 
   protected CompletableFuture<Void> internalSubscribe(Set<Integer> partitions, PubSubTopic topic) {
+    if (!getEnableReads()) {
+      throw new StoreDisabledException(getStore().getName(), "reads");
+    }
     return CompletableFuture.supplyAsync(() -> {
       try {
         for (int i = 0; i <= MAX_SUBSCRIBE_RETRIES; i++) {
@@ -822,6 +846,9 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       long timeoutInMs,
       String topicSuffix,
       boolean includeControlMessage) {
+    if (!getEnableReads()) {
+      throw new StoreDisabledException(getStore().getName(), "reads");
+    }
     Collection<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> pubSubMessages = new ArrayList<>();
     Map<PubSubTopicPartition, List<DefaultPubSubMessage>> messagesMap;
     boolean lockAcquired = false;
