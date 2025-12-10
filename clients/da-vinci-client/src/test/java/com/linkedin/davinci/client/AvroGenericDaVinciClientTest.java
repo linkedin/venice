@@ -21,6 +21,7 @@ import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.expectThrows;
 import static org.testng.Assert.fail;
 
 import com.linkedin.alpini.base.concurrency.Executors;
@@ -389,6 +390,21 @@ public class AvroGenericDaVinciClientTest {
       doCallRealMethod().when(client).throwIfReadsDisabled();
       assertThrows(StoreDisabledException.class, client::throwIfReadsDisabled);
     }
+  }
+
+  @Test
+  public void testGetDaVinciBackend() throws Exception {
+    Field backendField = AvroGenericDaVinciClient.class.getDeclaredField("daVinciBackend");
+    backendField.setAccessible(true);
+    backendField.set(null, null);
+
+    AvroGenericDaVinciClient<Integer, String> client = mock(AvroGenericDaVinciClient.class);
+    when(client.getStoreName()).thenReturn("test_store");
+    doCallRealMethod().when(client).getDaVinciBackend();
+
+    VeniceClientException exception = expectThrows(VeniceClientException.class, client::getDaVinciBackend);
+    assertTrue(exception.getMessage().contains("DaVinci backend is not initialized"));
+    assertTrue(exception.getMessage().contains("test_store"));
   }
 
   @Test
