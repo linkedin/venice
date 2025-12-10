@@ -3654,7 +3654,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       PubSubTopic versionTopic = pubSubTopicRepository.getTopic(Version.composeKafkaTopic(storeName, versionNumber));
       String migrationSourceCluster = storeConfig.getMigrationSrcCluster();
       StoreInfo storeInfo = getStoreInfo(storeName, migrationSourceCluster);
-      if (storeInfo.getLargestUsedVersionNumber() <= versionNumber) {
+      if (storeInfo.getLargestUsedVersionNumber() < versionNumber) {
         LOGGER.info(
             "Dont skip version {} being pushed during migration, the source cluster may not have processed it.",
             versionNumber);
