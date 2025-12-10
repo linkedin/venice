@@ -34,6 +34,7 @@ import com.linkedin.venice.compression.NoopCompressor;
 import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.exceptions.InvalidVeniceSchemaException;
+import com.linkedin.venice.exceptions.StoreDisabledException;
 import com.linkedin.venice.exceptions.StoreVersionNotFoundException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
@@ -343,6 +344,13 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     LOGGER.info("Start a change log consumer client for store: {}", storeName);
   }
 
+  public void throwIfReadsDisabled() {
+    Store store = getStore();
+    if (!store.isEnableReads()) {
+      throw new StoreDisabledException(store.getName(), "read");
+    }
+  }
+
   // Unit test only and read only
   VersionSwapMessageState getVersionSwapMessageState() {
     return this.versionSwapMessageState;
@@ -364,6 +372,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   }
 
   protected CompletableFuture<Void> internalSubscribe(Set<Integer> partitions, PubSubTopic topic) {
+    throwIfReadsDisabled();
     return CompletableFuture.supplyAsync(() -> {
       try {
         for (int i = 0; i <= MAX_SUBSCRIBE_RETRIES; i++) {
@@ -822,6 +831,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       long timeoutInMs,
       String topicSuffix,
       boolean includeControlMessage) {
+    throwIfReadsDisabled();
     Collection<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> pubSubMessages = new ArrayList<>();
     Map<PubSubTopicPartition, List<DefaultPubSubMessage>> messagesMap;
     boolean lockAcquired = false;

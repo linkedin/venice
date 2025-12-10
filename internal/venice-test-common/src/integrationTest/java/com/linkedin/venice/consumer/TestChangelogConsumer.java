@@ -8,6 +8,7 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_LINGER_MS;
 import static com.linkedin.venice.ConfigKeys.SERVER_AA_WC_WORKLOAD_PARALLEL_PROCESSING_ENABLED;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
+import static com.linkedin.venice.integration.utils.IntegrationTestUtils.pollChangeEventsFromSpecificChangeCaptureConsumer;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_PARENT_DATA_CENTER_REGION_NAME;
 import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.D2_SERVICE_NAME;
 import static com.linkedin.venice.stats.ClientType.CHANGE_DATA_CAPTURE_CLIENT;
@@ -59,6 +60,7 @@ import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.MultiStoreTopicsResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.endToEnd.TestChangelogValue;
+import com.linkedin.venice.exceptions.StoreDisabledException;
 import com.linkedin.venice.integration.utils.IntegrationTestUtils;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
@@ -186,6 +188,130 @@ public class TestChangelogConsumer {
     D2ClientUtils.shutdownClient(d2Client);
     multiRegionMultiClusterWrapper.close();
     TestView.resetCounters();
+  }
+
+  @Test(timeOut = TEST_TIMEOUT, priority = 3)
+  public void testDisabledStoreVeniceChangelogConsumer() throws Exception {
+    File inputDir = getTempDataDirectory();
+    Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToNameRecordV1Schema(inputDir);
+    String inputDirPath = "file://" + inputDir.getAbsolutePath();
+    String storeName = Utils.getUniqueString("store");
+    Properties props = TestWriteUtils.defaultVPJProps(
+        parentControllers.get(0).getControllerUrl(),
+        inputDirPath,
+        storeName,
+        clusterWrapper.getPubSubClientProperties());
+    String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
+    String valueSchemaStr = NAME_RECORD_V2_SCHEMA.toString();
+    UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true)
+        .setHybridRewindSeconds(500)
+        .setHybridOffsetLagThreshold(8)
+        .setChunkingEnabled(true)
+        .setNativeReplicationEnabled(true)
+        .setPartitionCount(3);
+    MetricsRepository metricsRepository =
+        getVeniceMetricsRepository(CHANGE_DATA_CAPTURE_CLIENT, CONSUMER_METRIC_ENTITIES, true);
+    ControllerClient setupControllerClient =
+        createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms);
+    TestUtils.assertCommand(
+        setupControllerClient
+            .retryableRequest(5, controllerClient1 -> setupControllerClient.updateStore(storeName, storeParms)));
+    // Registering real data schema as schema v2.
+    for (Schema schema: SCHEMA_HISTORY) {
+      TestUtils.assertCommand(
+          setupControllerClient.retryableRequest(
+              5,
+              controllerClient1 -> setupControllerClient.addValueSchema(storeName, schema.toString())),
+          "Failed to add schema: " + schema.toString() + " to store " + storeName);
+    }
+
+    IntegrationTestPushUtils.runVPJ(props);
+    ZkServerWrapper localZkServer = multiRegionMultiClusterWrapper.getChildRegions().get(0).getZkServerWrapper();
+    PubSubBrokerWrapper localKafka = multiRegionMultiClusterWrapper.getChildRegions().get(0).getPubSubBrokerWrapper();
+    Properties consumerProperties = new Properties();
+    String localKafkaUrl = localKafka.getAddress();
+    consumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, localKafkaUrl);
+    consumerProperties.put(CLUSTER_NAME, clusterName);
+    consumerProperties.put(ZOOKEEPER_ADDRESS, localZkServer.getAddress());
+    consumerProperties.putAll(multiRegionMultiClusterWrapper.getPubSubClientProperties());
+    ChangelogClientConfig globalChangelogClientConfig =
+        new ChangelogClientConfig().setConsumerProperties(consumerProperties)
+            .setControllerD2ServiceName(D2_SERVICE_NAME)
+            .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
+            .setD2Client(IntegrationTestPushUtils.getD2Client(localZkServer.getAddress()))
+            .setLocalD2ZkHosts(localZkServer.getAddress())
+            .setControllerRequestRetryCount(3)
+            .setVersionSwapDetectionIntervalTimeInSeconds(1L)
+            .setSpecificValue(TestChangelogValue.class)
+            .setBootstrapFileSystemPath(Utils.getUniqueString(inputDirPath));
+    VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =
+        new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig, metricsRepository);
+    VeniceChangelogConsumer<Utf8, TestChangelogValue> specificChangelogConsumer =
+        veniceChangelogConsumerClientFactory.getChangelogConsumer(storeName, "0", TestChangelogValue.class);
+
+    TestUtils.assertCommand(
+        setupControllerClient.retryableRequest(
+            5,
+            controllerClient1 -> setupControllerClient
+                .updateStore(storeName, new UpdateStoreQueryParams().setEnableReads(false))));
+
+    // Wait for store update to propagate
+    TestUtils.waitForNonDeterministicAssertion(
+        1000 * globalChangelogClientConfig.getVersionSwapDetectionIntervalTimeInSeconds(),
+        TimeUnit.SECONDS,
+        () -> Assert.assertThrows(StoreDisabledException.class, () -> specificChangelogConsumer.subscribeAll().get()));
+
+    TestUtils.assertCommand(
+        setupControllerClient.retryableRequest(
+            5,
+            controllerClient1 -> setupControllerClient
+                .updateStore(storeName, new UpdateStoreQueryParams().setEnableReads(true))));
+
+    specificChangelogConsumer.subscribeAll().get();
+
+    Map<String, PubSubMessage<Utf8, ChangeEvent<TestChangelogValue>, VeniceChangeCoordinate>> polledChangeEventsMap =
+        new HashMap<>();
+    List<PubSubMessage<Utf8, ChangeEvent<TestChangelogValue>, VeniceChangeCoordinate>> polledChangeEventsList =
+        new ArrayList<>();
+
+    TestUtils.assertCommand(
+        setupControllerClient.retryableRequest(
+            5,
+            controllerClient1 -> setupControllerClient
+                .updateStore(storeName, new UpdateStoreQueryParams().setEnableReads(false))));
+
+    // Wait for store update to propagate
+    TestUtils.waitForNonDeterministicAssertion(
+        1000 * globalChangelogClientConfig.getVersionSwapDetectionIntervalTimeInSeconds(),
+        TimeUnit.SECONDS,
+        () -> Assert.assertThrows(
+            StoreDisabledException.class,
+            () -> pollChangeEventsFromSpecificChangeCaptureConsumer(
+                polledChangeEventsMap,
+                polledChangeEventsList,
+                specificChangelogConsumer)));
+
+    TestUtils.assertCommand(
+        setupControllerClient.retryableRequest(
+            5,
+            controllerClient1 -> setupControllerClient
+                .updateStore(storeName, new UpdateStoreQueryParams().setEnableReads(true))));
+
+    TestUtils.waitForNonDeterministicAssertion(120, TimeUnit.SECONDS, true, () -> {
+      pollChangeEventsFromSpecificChangeCaptureConsumer(
+          polledChangeEventsMap,
+          polledChangeEventsList,
+          specificChangelogConsumer);
+      Assert.assertEquals(polledChangeEventsList.size(), 100);
+      Assert.assertTrue(specificChangelogConsumer.isCaughtUp());
+    });
+
+    Assert.assertTrue(
+        polledChangeEventsMap.get(Integer.toString(1)).getValue().getCurrentValue() instanceof SpecificRecord);
+    TestChangelogValue value = new TestChangelogValue();
+    value.firstName = "first_name_1";
+    value.lastName = "last_name_1";
+    Assert.assertEquals(polledChangeEventsMap.get(Integer.toString(1)).getValue().getCurrentValue(), value);
   }
 
   // This is a beefier test, so giving it a bit more time
