@@ -117,6 +117,8 @@ import static com.linkedin.venice.ConfigKeys.DEFAULT_PARTITION_SIZE;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_READ_STRATEGY;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_REPLICA_FACTOR;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_ROUTING_STRATEGY;
+import static com.linkedin.venice.ConfigKeys.DEFAULT_SYSTEM_STORE_VERSION_RETENTION_COUNT;
+import static com.linkedin.venice.ConfigKeys.DEFAULT_USER_STORE_VERSION_RETENTION_COUNT;
 import static com.linkedin.venice.ConfigKeys.DEFERRED_VERSION_SWAP_BUFFER_TIME;
 import static com.linkedin.venice.ConfigKeys.DEFERRED_VERSION_SWAP_FOR_EMPTY_PUSH_ENABLED;
 import static com.linkedin.venice.ConfigKeys.DEFERRED_VERSION_SWAP_REGION_ROLL_FORWARD_ORDER;
@@ -1283,8 +1285,10 @@ public class VeniceControllerClusterConfig {
     this.useMultiRegionRealTimeTopicSwitcher =
         props.getBoolean(ConfigKeys.CONTROLLER_USE_MULTI_REGION_REAL_TIME_TOPIC_SWITCHER_ENABLED, false);
 
-    this.userStoreVersionRetentionCount = props.getInt(USER_STORE_VERSION_RETENTION_COUNT, 5);
-    this.systemStoreVersionRetentionCount = props.getInt(SYSTEM_STORE_VERSION_RETENTION_COUNT, 5);
+    this.userStoreVersionRetentionCount =
+        props.getInt(USER_STORE_VERSION_RETENTION_COUNT, DEFAULT_USER_STORE_VERSION_RETENTION_COUNT);
+    this.systemStoreVersionRetentionCount =
+        props.getInt(SYSTEM_STORE_VERSION_RETENTION_COUNT, DEFAULT_SYSTEM_STORE_VERSION_RETENTION_COUNT);
 
     this.logClusterConfig();
   }
