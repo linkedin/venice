@@ -2337,19 +2337,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             subscribePosition,
             localKafkaServer);
 
-        LOGGER.info("Subscribed to: {} position: {}", topicPartition, subscribePosition);
-        if (isGlobalRtDivEnabled()) {
-          // TODO: remove. this is a temporary log for debugging while the feature is in its infancy
-          TopicManager topicManager = getTopicManager(localKafkaServer);
-          PubSubPosition endPosition = topicManager.getLatestPositionCached(topicPartition);
-          long diff = topicManager.diffPosition(topicPartition, endPosition, subscribePosition);
-          LOGGER.info(
-              "event=globalRtDiv Subscribed to: {} position: {} endPosition: {} diff: {}",
-              topicPartition,
-              subscribePosition,
-              endPosition,
-              diff);
-        }
+        TopicManager topicManager = getTopicManager(localKafkaServer);
+        int progressPercentage = topicManager.getProgressPercentage(topicPartition, subscribePosition);
+        LOGGER.info(
+            "Subscribed to: {} position: {} progress: {}%",
+            topicPartition,
+            subscribePosition,
+            progressPercentage);
         storageUtilizationManager.initPartition(partition);
         break;
       case UNSUBSCRIBE:
@@ -2894,10 +2888,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     storageMetadataService.put(this.kafkaVersionTopic, partition, offsetRecord);
     pcs.resetProcessedRecordSizeSinceLastSync();
-    // TODO: update
-    String msg = "Offset synced for replica: " + pcs.getReplicaId() + " - localVtOffset: {}";
+
+    String msg = "Offset synced for replica: " + pcs.getReplicaId() + " - localVtOffset: {} progress: {}";
     if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
-      LOGGER.info(msg, offsetRecord.getCheckpointedLocalVtPosition());
+      final PubSubTopicPartition topicPartition = pcs.getReplicaTopicPartition();
+      final PubSubPosition position = offsetRecord.getCheckpointedLocalVtPosition();
+      final int progressPercentage = getTopicManager(localKafkaServer).getProgressPercentage(topicPartition, position);
+      LOGGER.info(msg, position, progressPercentage);
     }
   }
 
