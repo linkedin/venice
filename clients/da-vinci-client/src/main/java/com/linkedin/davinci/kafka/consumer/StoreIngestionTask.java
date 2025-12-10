@@ -567,8 +567,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.bootstrapTimeoutInMs = pushTimeoutInMs;
     this.isIsolatedIngestion = isIsolatedIngestion;
     this.partitionCount = storeVersionPartitionCount;
-    this.ingestionNotificationDispatcher =
-        new IngestionNotificationDispatcher(notifiers, kafkaVersionTopic, isCurrentVersion);
     this.missingSOPCheckExecutor.execute(() -> waitForStateVersion(kafkaVersionTopic));
     this.cacheBackend = cacheBackend;
 
@@ -631,6 +629,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         serverConfig.isServerIngestionCheckpointDuringGracefulShutdownEnabled();
     this.metaStoreWriter = builder.getMetaStoreWriter();
 
+    Function<PartitionConsumptionState, Integer> progressPercentageFunction = pcs -> {
+      final PubSubPosition position = pcs.getLatestProcessedVtPosition();
+      final PubSubTopicPartition topicPartition = pcs.getReplicaTopicPartition();
+      return getTopicManager(localKafkaServer).getProgressPercentage(topicPartition, position);
+    };
+    this.ingestionNotificationDispatcher =
+        new IngestionNotificationDispatcher(notifiers, kafkaVersionTopic, isCurrentVersion, progressPercentageFunction);
     this.storageUtilizationManager = new StorageUtilizationManager(
         storageEngine,
         store,

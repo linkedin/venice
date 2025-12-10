@@ -11,6 +11,7 @@ import java.util.Map;
 import java.util.Queue;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
+import java.util.function.Function;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -26,6 +27,7 @@ class IngestionNotificationDispatcher {
   private final Queue<VeniceNotifier> notifiers;
   private final String topic;
   private final BooleanSupplier isCurrentVersion;
+  private final Function<PartitionConsumptionState, Integer> progressPercentageFunction;
 
   private long lastProgressReportTime = 0;
   // Contains the last reported Notification record for each partition.
@@ -34,12 +36,14 @@ class IngestionNotificationDispatcher {
   public IngestionNotificationDispatcher(
       Queue<VeniceNotifier> notifiers,
       String topic,
-      BooleanSupplier isCurrentVersion) {
+      BooleanSupplier isCurrentVersion,
+      Function<PartitionConsumptionState, Integer> progressPercentageFunction) {
     this.LOGGER =
         LogManager.getLogger(IngestionNotificationDispatcher.class.getSimpleName() + " for [ Topic: " + topic + " ] ");
     this.notifiers = notifiers;
     this.topic = topic;
     this.isCurrentVersion = isCurrentVersion;
+    this.progressPercentageFunction = progressPercentageFunction;
   }
 
   @FunctionalInterface
@@ -76,7 +80,12 @@ class IngestionNotificationDispatcher {
       }
     }
 
-    LOGGER.info("Reported {} to {} notifiers for PartitionConsumptionState: {}", reportType, notifiers.size(), pcs); // TODO:
+    LOGGER.info(
+        "Reported {} to {} notifiers for PartitionConsumptionState: {}, progress: {}%",
+        reportType,
+        notifiers.size(),
+        pcs,
+        progressPercentageFunction.apply(pcs));
   }
 
   void report(
