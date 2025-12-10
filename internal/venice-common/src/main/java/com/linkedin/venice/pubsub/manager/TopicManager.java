@@ -836,6 +836,22 @@ public class TopicManager implements Closeable {
   }
 
   /**
+   * Returns the percentage of records in the given topic-partition up to the specified position.
+   *
+   * @param pubSubTopicPartition the topic-partition
+   * @param position the position up to which records are counted
+   * @return the percentage of records up to the specified position (0-100)
+   */
+  public int getProgressPercentage(PubSubTopicPartition pubSubTopicPartition, PubSubPosition position) {
+    final long partitionSize = getNumRecordsInPartition(pubSubTopicPartition);
+    if (partitionSize <= 0) {
+      return 0; // sanity check to avoid divide-by-zero
+    }
+    final long recordsUntilPosition = countRecordsUntil(pubSubTopicPartition, position);
+    return (int) ((recordsUntilPosition * 100) / partitionSize);
+  }
+
+  /**
    * Get partition count for a given topic.
    * @param pubSubTopic  the topic to get partition count for
    * @return the number of partitions for the given topic
