@@ -4874,9 +4874,17 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
     LeaderMetadata leaderMetadataFooter = consumerRecord.getValue().leaderMetadataFooter;
 
-    // always return upstreamOffset instead of upstreamPubSubPosition
-    // till we fix all the issues in offset to pubsubPosition migration
-    return PubSubUtil.fromKafkaOffset(leaderMetadataFooter.upstreamOffset);
+    // Check config to determine whether to use upstreamPubSubPosition with fallback or just upstreamOffset
+    if (storeVersionConfig.isUseUpstreamPubSubPositionWithFallbackEnabled()) {
+      return deserializePositionWithOffsetFallback(
+          pubSubContext.getPubSubPositionDeserializer(),
+          consumerRecord.getTopicPartition(),
+          leaderMetadataFooter.upstreamPubSubPosition,
+          leaderMetadataFooter.upstreamOffset);
+    } else {
+      // Directly use upstreamOffset without attempting position deserialization
+      return PubSubUtil.fromKafkaOffset(leaderMetadataFooter.upstreamOffset);
+    }
   }
 
   // extract the upstream cluster id from the given consumer record's leader metadata.
@@ -5194,8 +5202,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     try {
       final PubSubPosition position = pubSubPositionDeserializer.toPosition(wireFormatBytes);
+
+      // Symbolic positions (EARLIEST, LATEST) should always be returned as-is
+      if (position == PubSubSymbolicPosition.EARLIEST || position == PubSubSymbolicPosition.LATEST) {
+        return position;
+      }
+
       // Guard against regressions: honor the caller-provided minimum offset.
-      if (offset > 0 && position.getNumericOffset() < offset) {
+      if (position.getNumericOffset() < offset) {
         String context = String.format(" for: %s/%s", topicPartition, versionTopic);
         if (!REDUNDANT_LOGGING_FILTER.isRedundantException(context)) {
           LOGGER.warn(
