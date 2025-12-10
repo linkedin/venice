@@ -57,6 +57,7 @@ import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.meta.SubscriptionBasedReadOnlyStoreRepository;
+import com.linkedin.venice.meta.SystemStoreAttributes;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
@@ -308,7 +309,8 @@ public class DaVinciBackend implements Closeable {
             ingestionService.getVeniceWriterFactory(),
             instanceName,
             valueSchemaEntry,
-            updateSchemaEntry);
+            updateSchemaEntry,
+            (this::getStore));
       }
 
       ingestionService.start();
@@ -557,6 +559,29 @@ public class DaVinciBackend implements Closeable {
 
   public SubscriptionBasedReadOnlyStoreRepository getStoreRepository() {
     return storeRepository;
+  }
+
+  /**
+   * Resolves and returns the store object for the given store name.
+   * For user system stores, this returns the SystemStoreAttributes from the parent user store.
+   * For regular stores and shared system stores, this returns the Store object directly.
+   */
+  public final Object getStore(String storeName) {
+    VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(storeName);
+    if (systemStoreType != null) {
+      // it is a user system store
+      String userStoreName = VeniceSystemStoreType.extractUserStoreName(storeName);
+      Store userStore = storeRepository.getStore(userStoreName);
+      Map<String, SystemStoreAttributes> systemStores = userStore.getSystemStores();
+      for (Map.Entry<String, SystemStoreAttributes> systemStoreEntries: systemStores.entrySet()) {
+        if (storeName.startsWith(systemStoreEntries.getKey())) {
+          return systemStoreEntries.getValue();
+        }
+      }
+      return null;
+    } else {
+      return storeRepository.getStore(storeName);
+    }
   }
 
   public ObjectCacheBackend getObjectCache() {
