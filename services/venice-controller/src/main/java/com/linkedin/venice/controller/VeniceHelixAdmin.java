@@ -3658,7 +3658,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         LOGGER.info(
             "Dont skip version {} being pushed during migration, the source cluster may not have processed it.",
             versionNumber);
-        return true;
+        return false;
       }
       if (!storeInfo.getVersion(versionNumber).isPresent()) {
         LOGGER.info(
