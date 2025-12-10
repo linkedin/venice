@@ -238,6 +238,11 @@ public class AbstractDataWriterSparkJobTest {
 
       return spark.createDataFrame(rowRDD, INVALID_SCHEMA);
     }
+
+    @Override
+    protected Dataset<Row> getKafkaInputDataFrame() {
+      return getSparkSession().emptyDataFrame();
+    }
   }
 
   private static class InvalidValueSchemaDataWriterSparkJob extends AbstractDataWriterSparkJob {
@@ -257,6 +262,11 @@ public class AbstractDataWriterSparkJobTest {
 
       return spark.createDataFrame(rowRDD, INVALID_SCHEMA);
     }
+
+    @Override
+    protected Dataset<Row> getKafkaInputDataFrame() {
+      return getSparkSession().emptyDataFrame();
+    }
   }
 
   private static class IncompleteFieldDataWriterSparkJob extends AbstractDataWriterSparkJob {
@@ -274,6 +284,11 @@ public class AbstractDataWriterSparkJobTest {
           .rdd();
 
       return spark.createDataFrame(rowRDD, INVALID_SCHEMA);
+    }
+
+    @Override
+    protected Dataset<Row> getKafkaInputDataFrame() {
+      return getSparkSession().emptyDataFrame();
     }
   }
 
@@ -294,6 +309,11 @@ public class AbstractDataWriterSparkJobTest {
 
       return spark.createDataFrame(rowRDD, INVALID_SCHEMA);
     }
+
+    @Override
+    protected Dataset<Row> getKafkaInputDataFrame() {
+      return getSparkSession().emptyDataFrame();
+    }
   }
 
   private static class MissingValueFieldDataWriterSparkJob extends AbstractDataWriterSparkJob {
@@ -312,6 +332,11 @@ public class AbstractDataWriterSparkJobTest {
           .rdd();
 
       return spark.createDataFrame(rowRDD, INVALID_SCHEMA);
+    }
+
+    @Override
+    protected Dataset<Row> getKafkaInputDataFrame() {
+      return getSparkSession().emptyDataFrame();
     }
   }
 
@@ -332,6 +357,11 @@ public class AbstractDataWriterSparkJobTest {
           .rdd();
 
       return spark.createDataFrame(rowRDD, INVALID_SCHEMA);
+    }
+
+    @Override
+    protected Dataset<Row> getKafkaInputDataFrame() {
+      return getSparkSession().emptyDataFrame();
     }
   }
 }

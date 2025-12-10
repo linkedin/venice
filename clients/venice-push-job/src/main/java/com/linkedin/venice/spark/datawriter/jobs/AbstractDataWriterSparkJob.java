@@ -15,6 +15,7 @@ import static com.linkedin.venice.spark.SparkConstants.DEFAULT_SCHEMA_WITH_PARTI
 import static com.linkedin.venice.spark.SparkConstants.DEFAULT_SPARK_CLUSTER;
 import static com.linkedin.venice.spark.SparkConstants.KEY_COLUMN_NAME;
 import static com.linkedin.venice.spark.SparkConstants.PARTITION_COLUMN_NAME;
+import static com.linkedin.venice.spark.SparkConstants.REPLICATION_METADATA_PAYLOAD;
 import static com.linkedin.venice.spark.SparkConstants.RMD_COLUMN_NAME;
 import static com.linkedin.venice.spark.SparkConstants.SPARK_CASE_SENSITIVE_CONFIG;
 import static com.linkedin.venice.spark.SparkConstants.SPARK_CLUSTER_CONFIG;
@@ -55,11 +56,11 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.ZSTD_DICTIONARY_CRE
 import static com.linkedin.venice.vpj.VenicePushJobConstants.ZSTD_DICTIONARY_CREATION_SUCCESS;
 
 import com.github.luben.zstd.Zstd;
+import com.google.common.collect.Iterators;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.hadoop.PushJobSetting;
 import com.linkedin.venice.hadoop.exceptions.VeniceInvalidInputException;
 import com.linkedin.venice.hadoop.input.kafka.ttl.TTLResolutionPolicy;
@@ -75,6 +76,7 @@ import com.linkedin.venice.spark.datawriter.recordprocessor.SparkLogicalTimestam
 import com.linkedin.venice.spark.datawriter.task.DataWriterAccumulators;
 import com.linkedin.venice.spark.datawriter.task.SparkDataWriterTaskTracker;
 import com.linkedin.venice.spark.datawriter.writer.SparkPartitionWriterFactory;
+import com.linkedin.venice.spark.input.kafka.ttl.SparkKafkaInputTTLFilter;
 import com.linkedin.venice.spark.utils.RmdPushUtils;
 import com.linkedin.venice.spark.utils.SparkPartitionUtils;
 import com.linkedin.venice.spark.utils.SparkScalaUtils;
@@ -90,6 +92,7 @@ import org.apache.logging.log4j.Logger;
 import org.apache.spark.SparkConf;
 import org.apache.spark.SparkContext;
 import org.apache.spark.api.java.JavaSparkContext;
+import org.apache.spark.api.java.function.MapPartitionsFunction;
 import org.apache.spark.broadcast.Broadcast;
 import org.apache.spark.sql.DataFrameReader;
 import org.apache.spark.sql.Dataset;
@@ -114,7 +117,6 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
 
   private VeniceProperties props;
   private PushJobSetting pushJobSetting;
-
   private String jobGroupId;
   private SparkSession sparkSession;
   private DataWriterAccumulators accumulatorsForDataWriterJob;
@@ -331,9 +333,95 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
 
   private Dataset<Row> getInputDataFrame() {
     if (pushJobSetting.isSourceKafka) {
-      throw new VeniceUnsupportedOperationException("Spark push job for repush workloads");
+      Dataset<Row> rawKafkaInput = getKafkaInputDataFrame();
+
+      // Apply TTL filter first on RAW_PUBSUB_INPUT_TABLE_SCHEMA (if enabled)
+      Dataset<Row> filteredInput = applyTTLFilter(rawKafkaInput);
+
+      // Transform to standard schema: select columns and rename RMD payload to rmd
+      // CAST is needed to change nullability from false (in RAW schema) to true (in DEFAULT_SCHEMA)
+      // because __replication_metadata_payload__ is non-nullable but rmd should be nullable
+      return filteredInput.selectExpr(
+          KEY_COLUMN_NAME, // key
+          VALUE_COLUMN_NAME, // value
+          "CAST(" + REPLICATION_METADATA_PAYLOAD + " AS BINARY) as " + RMD_COLUMN_NAME // rmd
+      );
+
     } else {
       return getUserInputDataFrame();
+    }
+  }
+
+  /**
+   * Get the input DataFrame from Kafka/PubSub source for repush workloads.
+   * This method reads from a Venice version topic (Kafka) and returns a DataFrame
+   * with the RAW_PUBSUB_INPUT_TABLE_SCHEMA.
+   *
+   * @return DataFrame containing the Kafka input data
+   */
+  protected abstract Dataset<Row> getKafkaInputDataFrame();
+
+  /**
+   * Apply TTL filtering to the Kafka input dataframe.
+   * This method filters out records that are older than the configured TTL threshold.
+   * The input dataframe must have the RAW_PUBSUB_INPUT_TABLE_SCHEMA
+   * (region, partition, offset, message_type, schema_id, key, value, rmd_version_id, rmd_payload).
+   *
+   * @param dataFrame Input dataframe with RAW_PUBSUB_INPUT_TABLE_SCHEMA
+   * @return Filtered dataframe (with stale records removed if TTL filtering is enabled)
+   */
+  protected Dataset<Row> applyTTLFilter(Dataset<Row> dataFrame) {
+    if (!pushJobSetting.repushTTLEnabled) {
+      LOGGER.info("TTL filtering is not enabled for this repush job");
+      return dataFrame;
+    }
+
+    LOGGER.info("Applying TTL filtering with start timestamp: {}", pushJobSetting.repushTTLStartTimeMs);
+
+    try (JavaSparkContext sparkContext = JavaSparkContext.fromSparkContext(sparkSession.sparkContext())) {
+      // Create properties for TTL filter
+      Properties filterProps = new Properties();
+      this.sparkSession.conf().getAll().foreach(entry -> filterProps.setProperty(entry._1, entry._2));
+
+      // Broadcast the filter configuration
+      Broadcast<Properties> broadcastFilterProps = sparkContext.broadcast(filterProps);
+
+      // Get schema for the encoder
+      StructType schema = dataFrame.schema();
+      ExpressionEncoder<Row> encoder = RowEncoder.apply(schema);
+
+      // Apply filter using mapPartitions for efficiency (one filter instance per partition)
+      dataFrame = dataFrame.mapPartitions((MapPartitionsFunction<Row, Row>) iterator -> {
+        SparkKafkaInputTTLFilter ttlFilter =
+            new SparkKafkaInputTTLFilter(new VeniceProperties(broadcastFilterProps.value()));
+        try {
+          // Filter rows in this partition
+          return Iterators.filter(iterator, row -> {
+            // shouldFilter returns true if record should be removed
+            // We negate to keep records that should NOT be filtered
+            boolean shouldRemove = ttlFilter.shouldFilter(row);
+
+            if (shouldRemove) {
+              // Increment counter for filtered records
+              accumulatorsForDataWriterJob.repushTtlFilteredRecordCounter.add(1);
+            }
+
+            return !shouldRemove; // Keep if NOT filtered
+          });
+        } catch (Exception e) {
+          LOGGER.error("Error during TTL filtering", e);
+          throw new VeniceException("TTL filtering failed", e);
+        } finally {
+          ttlFilter.close();
+        }
+      }, encoder);
+
+      LOGGER.info("TTL filtering applied successfully");
+      return dataFrame;
+
+    } catch (Exception e) {
+      LOGGER.error("Failed to apply TTL filter", e);
+      throw new VeniceException("Failed to apply TTL filter", e);
     }
   }
 
@@ -378,15 +466,18 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
 
     LOGGER.info("Triggering Spark job for data writer");
     try {
-      // Convert all rows to byte[], byte[] pairs (compressed if compression is enabled)
-      // We could have worked with "map", but because of spraying all PartitionWriters, we need to use "flatMap"
-      dataFrame = dataFrame
-          .map(
-              new SparkLogicalTimestampProcessor(
-                  RmdPushUtils.containsLogicalTimestamp(pushJobSetting),
-                  pushJobSetting.replicationMetadataSchemaString),
-              rowEncoder)
-          .flatMap(new SparkInputRecordProcessorFactory(broadcastProperties, accumulatorsForDataWriterJob), rowEncoder);
+      if (!pushJobSetting.isSourceKafka) {
+        // For HDFS input, convert all rows to byte[], byte[] pairs (compressed if compression is enabled)
+        dataFrame = dataFrame
+            .map(
+                new SparkLogicalTimestampProcessor(
+                    RmdPushUtils.containsLogicalTimestamp(pushJobSetting),
+                    pushJobSetting.replicationMetadataSchemaString),
+                rowEncoder)
+            .flatMap(
+                new SparkInputRecordProcessorFactory(broadcastProperties, accumulatorsForDataWriterJob),
+                rowEncoder);
+      }
 
       // TODO: Add map-side combiner to reduce the data size before shuffling
 
@@ -401,7 +492,7 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
 
       // Write the data to PubSub
       dataFrame = dataFrame.mapPartitions(
-          new SparkPartitionWriterFactory(broadcastProperties, accumulatorsForDataWriterJob),
+          createPartitionWriterFactory(broadcastProperties, accumulatorsForDataWriterJob),
           rowEncoderWithPartition);
 
       // For VPJ, we don't care about the output from the DAG. ".count()" is an action that will trigger execution of
@@ -424,6 +515,19 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
     if (!sparkContext.isStopped()) {
       sparkContext.cancelJobGroup(jobGroupId);
     }
+  }
+
+  /**
+   * Creates the partition writer factory. Can be overridden for testing purposes.
+   * @param broadcastProperties the broadcast job properties
+   * @param accumulators the data writer accumulators
+   * @return the partition writer factory
+   */
+  @VisibleForTesting
+  protected MapPartitionsFunction<Row, Row> createPartitionWriterFactory(
+      Broadcast<Properties> broadcastProperties,
+      DataWriterAccumulators accumulators) {
+    return new SparkPartitionWriterFactory(broadcastProperties, accumulators);
   }
 
   @Override
