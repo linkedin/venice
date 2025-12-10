@@ -693,42 +693,6 @@ public class TestGlobalRtDiv {
     }
   }
 
-  /**
-   * Performs a Kafka input re-push for the given store.
-   * This method simulates the functionality of the testRepush method in TestBatch.
-   *
-   * @param storeName The name of the store to re-push
-   * @param recordCount The number of records expected in the store
-   * @throws Exception If an error occurs during re-push
-   */
-  private void performKafkaInputRepush(String storeName, int recordCount, ControllerClient controllerClient)
-      throws Exception {
-    // Try both with and without combiner enabled
-    for (String combinerEnabled: new String[] { "true", "false" }) {
-      LOGGER.info("Performing Kafka input re-push with combiner={} for store: {}", combinerEnabled, storeName);
-
-      // Create properties for Kafka input re-push
-      Properties properties = new Properties();
-      properties.setProperty(SOURCE_KAFKA, "true");
-      properties.setProperty(VENICE_STORE_NAME_PROP, storeName);
-      properties.setProperty(KAFKA_INPUT_BROKER_URL, venice.getPubSubBrokerWrapper().getAddress());
-      properties.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
-      properties.setProperty(KAFKA_INPUT_COMBINER_ENABLED, combinerEnabled);
-
-      // Run the Kafka input re-push
-      runVPJ(properties, 1, controllerClient);
-
-      // Verify the data after re-push
-      try (AvroGenericStoreClient<Object, Object> client = ClientFactory.getAndStartGenericAvroClient(
-          ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(venice.getRandomRouterURL()))) {
-
-        // Verify all data can be queried
-        verifyAllDataCanBeQueried(client, 1, recordCount, VALUE_PREFIX);
-        LOGGER.info("Successfully verified all data after Kafka input re-push with combiner={}", combinerEnabled);
-      }
-    }
-  }
-
   // test VPJ then restart and then expected failure without code
   // look at test history chunking test
 }
