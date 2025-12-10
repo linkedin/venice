@@ -4,6 +4,7 @@ import static com.linkedin.venice.client.stats.BasicClientStats.CLIENT_METRIC_EN
 import static com.linkedin.venice.stats.ClientType.DAVINCI_CLIENT;
 import static com.linkedin.venice.stats.VeniceMetricsRepository.getVeniceMetricsRepository;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -11,6 +12,7 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 
+import com.linkedin.davinci.DaVinciBackend;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.utils.DataProviderUtils;
@@ -78,6 +80,8 @@ public class StatsAvroGenericDaVinciClientTest {
     String storeName = "test_store";
     Set<String> keys = new HashSet<>(Arrays.asList("key1", "key2", "key3"));
     AvroGenericDaVinciClient mockClient = mock(AvroGenericDaVinciClient.class);
+    DaVinciBackend mockBackend = mock(DaVinciBackend.class, RETURNS_DEEP_STUBS);
+    when(mockClient.getStoreName()).thenReturn(storeName);
     CompletableFuture<String> errorFuture = new CompletableFuture<>();
     errorFuture.completeExceptionally(new RuntimeException("mock_exception_thrown_by_async_future"));
     CompletableFuture<Map<String, String>> okFuture = new CompletableFuture<>();
@@ -90,6 +94,7 @@ public class StatsAvroGenericDaVinciClientTest {
         .thenThrow(new RuntimeException("mock_exception_by_function_directly"));
     doCallRealMethod().when(mockClient).batchGet(any());
     doCallRealMethod().when(mockClient).streamingBatchGet(any(), any());
+    when(mockClient.getDaVinciBackend()).thenReturn(mockBackend);
 
     VeniceMetricsRepository metricsRepository =
         getVeniceMetricsRepository(DAVINCI_CLIENT, CLIENT_METRIC_ENTITIES, true);
