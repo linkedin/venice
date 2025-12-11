@@ -2336,9 +2336,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         TopicManager topicManager = getTopicManager(localKafkaServer);
         int progressPercentage = topicManager.getProgressPercentage(topicPartition, subscribePosition);
         LOGGER.info(
-            "Subscribed to: {} position: {} progress: {}%",
+            "Subscribed to: {} position: {} latestPosition: {} progress: {}%",
             topicPartition,
             subscribePosition,
+            topicManager.getLatestPositionCached(topicPartition),
             progressPercentage);
         storageUtilizationManager.initPartition(partition);
         break;
