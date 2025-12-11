@@ -417,6 +417,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
         }
     }
 
+    logMessageIfNotRedundant("Skipping store as parent status is " + targetVersion.getStatus());
     return false;
   }
 
@@ -654,6 +655,9 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       return nextEligibleRegion;
     }
 
+    logMessageIfNotRedundant(
+        "Did not find next eligble region to roll forward in for " + kafkaTopicName + " for version " + targetVersionNum
+            + " and status " + version.getStatus());
     return null;
   }
 
@@ -916,6 +920,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
    * Marks a store as no longer being processed.
    */
   private void finishProcessingStore(String kafkaTopicName) {
+    logMessageIfNotRedundant("Finished processing store " + kafkaTopicName);
     storesBeingProcessed.remove(kafkaTopicName);
   }
 
@@ -960,6 +965,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
           }
 
           boolean sequentialRollForward = !StringUtils.isEmpty(rolloutOrderStr);
+          LOGGER.debug("Found eligible stores: {}", eligibleStoresToProcess);
           for (Store parentStore: eligibleStoresToProcess) {
             Version targetVersion = parentStore.getVersion(parentStore.getLargestUsedVersionNumber());
 
@@ -975,6 +981,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
             clusterExecutorService.submit(() -> {
               try {
                 if (sequentialRollForward) {
+                  logMessageIfNotRedundant("Submitting sequential roll forward for store: " + parentStore.getName());
                   performSequentialRollForward(
                       cluster,
                       parentStore,
