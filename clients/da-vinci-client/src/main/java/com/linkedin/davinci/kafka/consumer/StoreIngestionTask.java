@@ -1312,25 +1312,21 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       case QUEUED_TO_DRAINER:
         long queuePutStartTimeInNS = metricsEnabled ? System.nanoTime() : 0;
 
-        try {
-          // blocking call
-          storeBufferService.putConsumerRecord(
-              record,
-              this,
-              null,
-              topicPartition.getPartitionNumber(),
-              kafkaUrl,
-              beforeProcessingPerRecordTimestampNs);
-        } catch (Exception e) {
-          syncOffsetFromSnapshotIfNeeded(record, topicPartition); // latest consumed VT position (LCVP) in offset record
-          throw e;
-        }
+        // blocking call
+        storeBufferService.putConsumerRecord(
+            record,
+            this,
+            null,
+            topicPartition.getPartitionNumber(),
+            kafkaUrl,
+            beforeProcessingPerRecordTimestampNs);
 
         if (metricsEnabled) {
           elapsedTimeForPuttingIntoQueue.setValue(
               elapsedTimeForPuttingIntoQueue.getValue() + LatencyUtils.getElapsedTimeFromNSToMS(queuePutStartTimeInNS));
         }
 
+        syncOffsetFromSnapshotIfNeeded(record, topicPartition); // latest consumed VT position (LCVP) in offset record
         break;
       case PRODUCED_TO_KAFKA:
       case SKIPPED_MESSAGE:
