@@ -1,6 +1,6 @@
 package com.linkedin.venice;
 
-import static com.linkedin.venice.zk.VeniceZkPaths.ADMIN_TOPIC_METADATA;
+import static com.linkedin.venice.zk.VeniceZkPaths.ADMIN_TOPIC_METADATA_V2;
 import static com.linkedin.venice.zk.VeniceZkPaths.EXECUTION_IDS;
 import static com.linkedin.venice.zk.VeniceZkPaths.PARENT_OFFLINE_PUSHES;
 import static com.linkedin.venice.zk.VeniceZkPaths.ROUTERS;
@@ -132,7 +132,7 @@ public class TestZkCopier {
   }
 
   private void testContainsChildAsserts(TreeNode child) {
-    Assert.assertTrue(child.containsChild(ADMIN_TOPIC_METADATA));
+    Assert.assertTrue(child.containsChild(ADMIN_TOPIC_METADATA_V2));
     Assert.assertTrue(child.containsChild(EXECUTION_IDS));
     Assert.assertTrue(child.containsChild(PARENT_OFFLINE_PUSHES));
     Assert.assertTrue(child.containsChild(ROUTERS));
