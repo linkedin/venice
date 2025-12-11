@@ -2342,14 +2342,18 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             subscribePosition,
             localKafkaServer);
 
-        TopicManager topicManager = getTopicManager(localKafkaServer);
-        int progressPercentage = topicManager.getProgressPercentage(topicPartition, subscribePosition);
-        LOGGER.info(
-            "Subscribed to: {} position: {} latestPosition: {} progress: {}%",
-            topicPartition,
-            subscribePosition,
-            topicManager.getLatestPositionCached(topicPartition),
-            progressPercentage);
+        if (subscribePosition.isSymbolic()) { // no point in logging progress if it's earliest or latest position
+          LOGGER.info("Subscribed to: {} position: {}", topicPartition, subscribePosition);
+        } else {
+          TopicManager topicManager = getTopicManager(localKafkaServer);
+          int progressPercentage = topicManager.getProgressPercentage(topicPartition, subscribePosition);
+          LOGGER.info(
+              "Subscribed to: {} position: {} latestPosition: {} progress: {}%",
+              topicPartition,
+              subscribePosition,
+              topicManager.getLatestPositionCached(topicPartition),
+              progressPercentage);
+        }
         storageUtilizationManager.initPartition(partition);
         break;
       case UNSUBSCRIBE:
