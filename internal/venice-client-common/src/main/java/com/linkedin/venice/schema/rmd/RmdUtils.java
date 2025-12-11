@@ -155,16 +155,23 @@ public class RmdUtils {
     for (Schema.Field field: ((GenericRecord) timestampRecord).getSchema().getFields()) {
       // if the field is a record, then we need to iterate through the fields of the record
       if (field.schema().getType().equals(Schema.Type.RECORD)) {
-        lastUpdatedTimestamp = Math.max(
-            lastUpdatedTimestamp,
-            (Long) ((GenericRecord) ((GenericRecord) timestampRecord).get(field.name())).get(TOP_LEVEL_TS_FIELD_NAME));
-        for (long timestamp: (long[]) ((GenericRecord) ((GenericRecord) timestampRecord).get(field.name()))
-            .get(DELETED_ELEM_TS_FIELD_NAME)) {
-          lastUpdatedTimestamp = Math.max(lastUpdatedTimestamp, timestamp);
+        GenericRecord fieldRecord = (GenericRecord) ((GenericRecord) timestampRecord).get(field.name());
+        lastUpdatedTimestamp = Math.max(lastUpdatedTimestamp, (Long) fieldRecord.get(TOP_LEVEL_TS_FIELD_NAME));
+
+        // Handle DELETED_ELEM_TS_FIELD_NAME as a List/Collection
+        Object deletedTimestamps = fieldRecord.get(DELETED_ELEM_TS_FIELD_NAME);
+        if (deletedTimestamps instanceof List) {
+          for (Object ts: (List<?>) deletedTimestamps) {
+            lastUpdatedTimestamp = Math.max(lastUpdatedTimestamp, ((Number) ts).longValue());
+          }
         }
-        for (long timestamp: (long[]) ((GenericRecord) ((GenericRecord) timestampRecord).get(field.name()))
-            .get(ACTIVE_ELEM_TS_FIELD_NAME)) {
-          lastUpdatedTimestamp = Math.max(lastUpdatedTimestamp, timestamp);
+
+        // Handle ACTIVE_ELEM_TS_FIELD_NAME as a List/Collection
+        Object activeTimestamps = fieldRecord.get(ACTIVE_ELEM_TS_FIELD_NAME);
+        if (activeTimestamps instanceof List) {
+          for (Object ts: (List<?>) activeTimestamps) {
+            lastUpdatedTimestamp = Math.max(lastUpdatedTimestamp, ((Number) ts).longValue());
+          }
         }
       } else if (field.schema().getType().equals(Schema.Type.LONG)) {
         lastUpdatedTimestamp =
