@@ -1279,9 +1279,11 @@ public class VeniceParentHelixAdmin implements Admin {
       final int versionCount = versions.size();
       int storeVersionRetentionCount;
       if (store.isSystemStore()) {
-        storeVersionRetentionCount = multiClusterConfigs.getCommonConfig().getSystemStoreVersionRetentionCount();
+        storeVersionRetentionCount =
+            multiClusterConfigs.getControllerConfig(clusterName).getSystemStoreVersionRetentionCount();
       } else {
-        storeVersionRetentionCount = multiClusterConfigs.getCommonConfig().getUserStoreVersionRetentionCount();
+        storeVersionRetentionCount =
+            multiClusterConfigs.getControllerConfig(clusterName).getUserStoreVersionRetentionCount();
       }
       if (versionCount <= storeVersionRetentionCount) {
         return;
