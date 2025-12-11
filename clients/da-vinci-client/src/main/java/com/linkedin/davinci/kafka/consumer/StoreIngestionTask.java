@@ -630,6 +630,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.metaStoreWriter = builder.getMetaStoreWriter();
 
     Function<PartitionConsumptionState, Integer> progressPercentageFunction = pcs -> {
+      if (!serverConfig.isProgressPercentageEnabled()) {
+        return 0;
+      }
       final PubSubPosition position = pcs.getLatestProcessedVtPosition();
       final PubSubTopicPartition topicPartition = pcs.getReplicaTopicPartition();
       return getTopicManager(localKafkaServer).getProgressPercentage(topicPartition, position);
@@ -2342,9 +2345,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             subscribePosition,
             localKafkaServer);
 
-        if (subscribePosition.isSymbolic()) { // no point in logging progress if it's earliest or latest position
-          LOGGER.info("Subscribed to: {} position: {}", topicPartition, subscribePosition);
-        } else {
+        if (serverConfig.isProgressPercentageEnabled() && !subscribePosition.isSymbolic()) {
           TopicManager topicManager = getTopicManager(localKafkaServer);
           int progressPercentage = topicManager.getProgressPercentage(topicPartition, subscribePosition);
           LOGGER.info(
@@ -2353,6 +2354,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
               subscribePosition,
               topicManager.getLatestPositionCached(topicPartition),
               progressPercentage);
+        } else { // no point in logging progress if it's symbolic (earliest or latest position)
+          LOGGER.info("Subscribed to: {} position: {}", topicPartition, subscribePosition);
         }
         storageUtilizationManager.initPartition(partition);
         break;
@@ -2899,11 +2902,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     storageMetadataService.put(this.kafkaVersionTopic, partition, offsetRecord);
     pcs.resetProcessedRecordSizeSinceLastSync();
 
-    String msg = "Offset synced for replica: " + pcs.getReplicaId() + " - localVtOffset: {} progress: {}";
+    String msg = "Offset synced for replica: " + pcs.getReplicaId() + " - localVtPosition: {} progress: {}";
     if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
-      final PubSubTopicPartition topicPartition = pcs.getReplicaTopicPartition();
       final PubSubPosition position = offsetRecord.getCheckpointedLocalVtPosition();
-      final int progressPercentage = getTopicManager(localKafkaServer).getProgressPercentage(topicPartition, position);
+      int progressPercentage = 0;
+      if (serverConfig.isProgressPercentageEnabled()) {
+        final PubSubTopicPartition topicPartition = pcs.getReplicaTopicPartition();
+        progressPercentage = getTopicManager(localKafkaServer).getProgressPercentage(topicPartition, position);
+      }
       LOGGER.info(msg, position, progressPercentage);
     }
   }
