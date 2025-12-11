@@ -2,6 +2,7 @@ package com.linkedin.davinci.blobtransfer;
 
 import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.getThroughputPerPartition;
 
+import com.linkedin.alpini.base.misc.ThreadPoolExecutor;
 import com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferTableFormat;
 import com.linkedin.davinci.blobtransfer.client.NettyFileTransferClient;
 import com.linkedin.davinci.blobtransfer.server.P2PBlobTransferService;
@@ -14,6 +15,7 @@ import com.linkedin.venice.exceptions.VenicePeersConnectionException;
 import com.linkedin.venice.exceptions.VenicePeersNotFoundException;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.store.rocksdb.RocksDBUtils;
+import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.Utils;
 import java.io.InputStream;
 import java.time.Duration;
@@ -24,6 +26,9 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -49,6 +54,7 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
       "Replica {} peer {} does not have the requested blob. Exception: {}";
   private static final String FAILED_TO_FETCH_BLOB_MSG =
       "Replica {} failed to fetch blob from peer {}. Deleting partially downloaded blobs. Exception: {}";
+  private static final int MAX_CONCURRENT_BLOB_FETCH_REPLICAS = Math.max(1, Runtime.getRuntime().availableProcessors());
 
   private final P2PBlobTransferService blobTransferService;
   // netty client is responsible to make requests against other peers for blob fetching
@@ -58,6 +64,9 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
   // peer finder is responsible to find the peers that have the requested blob
   protected final BlobFinder peerFinder;
   private final String baseDir;
+  // Each replica issues exactly one blob-transfer request at a time.
+  // That request tries a chain of peers (one host after another until success or all peers fail).
+  private final ExecutorService replicaBlobFetchExecutor;
 
   public NettyP2PBlobTransferManager(
       P2PBlobTransferService blobTransferService,
@@ -70,6 +79,13 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
     this.peerFinder = peerFinder;
     this.baseDir = baseDir;
     this.aggVersionedBlobTransferStats = aggVersionedBlobTransferStats;
+    this.replicaBlobFetchExecutor = new ThreadPoolExecutor(
+        MAX_CONCURRENT_BLOB_FETCH_REPLICAS,
+        MAX_CONCURRENT_BLOB_FETCH_REPLICAS,
+        60L,
+        TimeUnit.SECONDS,
+        new LinkedBlockingQueue<>(),
+        new DaemonThreadFactory("Venice-BlobTransfer-Replica-Blob-Fetch-Executor"));
   }
 
   @Override
@@ -148,7 +164,7 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
     // Iterate through each peer and chain the futures
     for (String chosenHost: uniqueConnectablePeers) {
       // Chain the next operation to the previous future
-      chainOfPeersFuture = chainOfPeersFuture.thenCompose(v -> {
+      chainOfPeersFuture = chainOfPeersFuture.thenComposeAsync(v -> {
 
         if (resultFuture.isDone()) {
           // If the result future is already completed, skip the current peer
@@ -178,7 +194,7 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
               handlePeerFetchException(ex, chosenHost, storeName, version, partition, replicaId);
               return null;
             });
-      });
+      }, replicaBlobFetchExecutor);
     }
 
     // error case 2: all hosts have been tried and failed for blob transfer, falling back to Kafka for bootstrapping.
@@ -219,6 +235,7 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
     blobTransferService.close();
     nettyClient.close();
     peerFinder.close();
+    replicaBlobFetchExecutor.shutdown();
   }
 
   /**

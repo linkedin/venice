@@ -229,7 +229,7 @@ public class NettyFileTransferClient {
         }
         allConnections.complete(null);
       }
-    }, CONNECTION_TIMEOUT_IN_MINUTES, TimeUnit.MINUTES);
+    }, CONNECTION_TIMEOUT_IN_MINUTES * 2, TimeUnit.MINUTES);
 
     allConnections.join();
 
@@ -373,18 +373,42 @@ public class NettyFileTransferClient {
   }
 
   /**
-   * Connects to the host
+   * Connects to the host with a timeout
    */
   private Channel connectToHost(String host, String storeName, int version, int partition) {
+    ChannelFuture connectFuture = null;
+    String replicaId = Utils.getReplicaId(Version.composeKafkaTopic(storeName, version), partition);
     try {
-      return clientBootstrap.connect(host, serverPort).sync().channel();
+      connectFuture = clientBootstrap.connect(host, serverPort);
+
+      // Wait at most CONNECTION_ESTABLISHMENT_TIMEOUT_MS for the connect to finish
+      boolean completed =
+          connectFuture.awaitUninterruptibly(CONNECTION_ESTABLISHMENT_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+
+      if (!completed) {
+        if (!connectFuture.isDone()) {
+          connectFuture.cancel(true);
+        }
+        String errorMsg = String.format(
+            "Timed out after %d ms waiting to connect to host: %s for blob transfer for replica %s",
+            CONNECTION_ESTABLISHMENT_TIMEOUT_MS,
+            host,
+            replicaId);
+        LOGGER.error(errorMsg);
+        throw new VenicePeersConnectionException(errorMsg);
+      }
+
+      if (!connectFuture.isSuccess()) {
+        Throwable cause = connectFuture.cause();
+        String errorMsg =
+            String.format("Failed to connect to the host: %s for blob transfer for replica %s", host, replicaId);
+        LOGGER.error(errorMsg, cause);
+        throw new VenicePeersConnectionException(errorMsg, cause);
+      }
+      return connectFuture.channel();
     } catch (Exception e) {
-      String errorMsg = String.format(
-          "Failed to connect to the host: %s for blob transfer for store: %s, version: %d, partition: %d",
-          host,
-          storeName,
-          version,
-          partition);
+      String errorMsg =
+          String.format("Exception while connecting to host: %s for blob transfer for replica %s", host, replicaId);
       LOGGER.error(errorMsg, e);
       throw new VenicePeersConnectionException(errorMsg, e);
     }
