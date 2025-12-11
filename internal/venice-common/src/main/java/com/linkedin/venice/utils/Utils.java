@@ -442,6 +442,12 @@ public class Utils {
   }
 
   public static Map<Integer, Schema> getAllSchemasFromResources(AvroProtocolDefinition protocolDef) {
+    return getAllSchemasFromResources(protocolDef, protocolDef.getCurrentProtocolVersionSchema());
+  }
+
+  public static Map<Integer, Schema> getAllSchemasFromResources(
+      AvroProtocolDefinition protocolDef,
+      Schema compiledSchema) {
     final int SENTINEL_PROTOCOL_VERSION_USED_FOR_UNDETECTABLE_COMPILED_SCHEMA =
         InternalAvroSpecificSerializer.SENTINEL_PROTOCOL_VERSION_USED_FOR_UNDETECTABLE_COMPILED_SCHEMA;
     final int SENTINEL_PROTOCOL_VERSION_USED_FOR_UNVERSIONED_PROTOCOL =
@@ -461,7 +467,6 @@ public class Utils {
     }
 
     byte compiledProtocolVersion = SENTINEL_PROTOCOL_VERSION_USED_FOR_UNDETECTABLE_COMPILED_SCHEMA;
-    String className = protocolDef.getClassName();
     Map<Integer, Schema> protocolSchemaMap = new TreeMap<>();
     int initialVersion;
     if (currentProtocolVersion > 0) {
@@ -471,6 +476,7 @@ public class Utils {
     }
     final String sep = "/"; // TODO: Make sure that jar resources are always forward-slash delimited, even on Windows
     int version = initialVersion;
+    String className = protocolDef.getClassName();
     while (true) {
       String versionPath = "avro" + sep;
       if (currentProtocolVersion != SENTINEL_PROTOCOL_VERSION_USED_FOR_UNVERSIONED_PROTOCOL) {
@@ -480,7 +486,7 @@ public class Utils {
       try {
         Schema schema = Utils.getSchemaFromResource(versionPath);
         protocolSchemaMap.put(version, schema);
-        if (schema.equals(protocolDef.getCurrentProtocolVersionSchema())) {
+        if (schema.equals(compiledSchema)) {
           compiledProtocolVersion = (byte) version;
           break;
         }
@@ -523,7 +529,7 @@ public class Utils {
     if (intendedCurrentProtocol == null) {
       throw new VeniceException(
           "Failed to get schema for current version: " + currentProtocolVersion + " class: " + className);
-    } else if (!intendedCurrentProtocol.equals(protocolDef.getCurrentProtocolVersionSchema())) {
+    } else if (!intendedCurrentProtocol.equals(compiledSchema)) {
       throw new VeniceException(
           "The intended protocol version (" + currentProtocolVersion
               + ") does not match the compiled protocol version (" + compiledProtocolVersion + ").");

@@ -714,6 +714,17 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             AvroProtocolDefinition.SERVER_STORE_PROPERTIES_PAYLOAD,
             multiClusterConfigs,
             this));
+    if (isAdminOperationSystemStoreEnabled()) {
+      initRoutines.add(
+          new SystemSchemaInitializationRoutine(
+              AvroProtocolDefinition.ADMIN_OPERATION,
+              multiClusterConfigs,
+              this,
+              Optional.empty(),
+              Optional.empty(),
+              false,
+              AdminOperationSerializer.LATEST_SCHEMA));
+    }
 
     if (multiClusterConfigs.isZkSharedMetaSystemSchemaStoreAutoCreationEnabled()) {
       // Add routine to create zk shared metadata system store
@@ -1798,6 +1809,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           getReadWriteLiveClusterConfigRepository(clusterName);
       return clusterConfigRepository.getConfigs().isStoreMigrationAllowed();
     }
+  }
+
+  public boolean isAdminOperationSystemStoreEnabled() {
+    return multiClusterConfigs.getControllerConfig(multiClusterConfigs.getSystemSchemaClusterName())
+        .isAdminOperationSystemStoreEnabled();
   }
 
   /**
