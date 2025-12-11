@@ -567,6 +567,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.bootstrapTimeoutInMs = pushTimeoutInMs;
     this.isIsolatedIngestion = isIsolatedIngestion;
     this.partitionCount = storeVersionPartitionCount;
+    this.ingestionNotificationDispatcher = new IngestionNotificationDispatcher(
+        notifiers,
+        kafkaVersionTopic,
+        isCurrentVersion,
+        this::getProgressPercentage);
     this.missingSOPCheckExecutor.execute(() -> waitForStateVersion(kafkaVersionTopic));
     this.cacheBackend = cacheBackend;
 
@@ -629,16 +634,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         serverConfig.isServerIngestionCheckpointDuringGracefulShutdownEnabled();
     this.metaStoreWriter = builder.getMetaStoreWriter();
 
-    Function<PartitionConsumptionState, Integer> progressPercentageFunction = pcs -> {
-      if (!serverConfig.isProgressPercentageEnabled()) {
-        return 0;
-      }
-      final PubSubPosition position = pcs.getLatestProcessedVtPosition();
-      final PubSubTopicPartition topicPartition = pcs.getReplicaTopicPartition();
-      return getTopicManager(localKafkaServer).getProgressPercentage(topicPartition, position);
-    };
-    this.ingestionNotificationDispatcher =
-        new IngestionNotificationDispatcher(notifiers, kafkaVersionTopic, isCurrentVersion, progressPercentageFunction);
     this.storageUtilizationManager = new StorageUtilizationManager(
         storageEngine,
         store,
@@ -683,6 +678,16 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.parallelProcessingThreadPool = builder.getAAWCWorkLoadProcessingThreadPool();
     this.hostName = Utils.getHostName() + "_" + storeVersionConfig.getListenerPort();
     this.zkHelixAdmin = zkHelixAdmin;
+  }
+
+  @VisibleForTesting
+  int getProgressPercentage(PartitionConsumptionState pcs) {
+    if (!getServerConfig().isProgressPercentageEnabled()) {
+      return 0;
+    }
+    final PubSubPosition position = pcs.getLatestProcessedVtPosition();
+    final PubSubTopicPartition topicPartition = pcs.getReplicaTopicPartition();
+    return getTopicManager(localKafkaServer).getProgressPercentage(topicPartition, position);
   }
 
   /** Package-private on purpose, only intended for tests. Do not use for production use cases. */
@@ -2345,7 +2350,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             subscribePosition,
             localKafkaServer);
 
-        if (serverConfig.isProgressPercentageEnabled() && !subscribePosition.isSymbolic()) {
+        if (getServerConfig().isProgressPercentageEnabled() && !subscribePosition.isSymbolic()) {
           TopicManager topicManager = getTopicManager(localKafkaServer);
           int progressPercentage = topicManager.getProgressPercentage(topicPartition, subscribePosition);
           LOGGER.info(
@@ -2906,7 +2911,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
       final PubSubPosition position = offsetRecord.getCheckpointedLocalVtPosition();
       int progressPercentage = 0;
-      if (serverConfig.isProgressPercentageEnabled()) {
+      if (getServerConfig().isProgressPercentageEnabled()) {
         final PubSubTopicPartition topicPartition = pcs.getReplicaTopicPartition();
         progressPercentage = getTopicManager(localKafkaServer).getProgressPercentage(topicPartition, position);
       }
