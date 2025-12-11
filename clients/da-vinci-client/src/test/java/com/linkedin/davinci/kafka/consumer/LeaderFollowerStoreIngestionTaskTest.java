@@ -114,7 +114,8 @@ import org.testng.annotations.Test;
 
 public class LeaderFollowerStoreIngestionTaskTest {
   private static final PubSubTopicRepository TOPIC_REPOSITORY = new PubSubTopicRepository();
-  private static final int globalRtDivVersion = AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion();
+  private static final int GLOBAL_RT_DIV_VERSION =
+      AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion();
 
   private Store mockStore;
   private LeaderFollowerStoreIngestionTask leaderFollowerStoreIngestionTask;
@@ -607,7 +608,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
     byte[] valueBytes = ByteUtils.extractByteArray(compressor.decompress(ByteBuffer.wrap(compressedBytes)));
     InternalAvroSpecificSerializer<GlobalRtDivState> serializer =
         leaderFollowerStoreIngestionTask.globalRtDivStateSerializer;
-    GlobalRtDivState globalRtDiv = serializer.deserialize(valueBytes, globalRtDivVersion);
+    GlobalRtDivState globalRtDiv = serializer.deserialize(valueBytes, GLOBAL_RT_DIV_VERSION);
     assertNotNull(globalRtDiv);
 
     // Verify the callback has DivSnapshot (VT + RT DIV)
@@ -619,7 +620,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
     assertEquals(callbackPayload.getPartition(), partition);
     assertTrue(callbackPayload.getValue().payloadUnion instanceof Put);
     Put put = (Put) callbackPayload.getValue().payloadUnion;
-    assertEquals(put.getSchemaId(), globalRtDivVersion);
+    assertEquals(put.getSchemaId(), GLOBAL_RT_DIV_VERSION);
     assertNotNull(put.getPutValue());
 
     // Verify that completing the future from put() causes execSyncOffsetFromSnapshotAsync to be called
@@ -673,7 +674,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
     assertFalse(mockIngestionTask.shouldSyncOffsetFromSnapshot(globalRtDivMessage, mockPartitionConsumptionState));
     doReturn(true).when(mockKey).isGlobalRtDiv();
     doReturn(mockPut).when(mockKme).getPayloadUnion();
-    doReturn(globalRtDivVersion).when(mockPut).getSchemaId();
+    doReturn(GLOBAL_RT_DIV_VERSION).when(mockPut).getSchemaId();
     assertTrue(mockIngestionTask.shouldSyncOffsetFromSnapshot(globalRtDivMessage, mockPartitionConsumptionState));
     doReturn(AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion()).when(mockPut).getSchemaId();
     assertFalse(mockIngestionTask.shouldSyncOffsetFromSnapshot(globalRtDivMessage, mockPartitionConsumptionState));

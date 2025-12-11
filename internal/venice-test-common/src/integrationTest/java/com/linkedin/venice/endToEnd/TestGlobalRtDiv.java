@@ -362,7 +362,7 @@ public class TestGlobalRtDiv {
         vpjProperties.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
         vpjProperties.setProperty(KAFKA_INPUT_COMBINER_ENABLED, "true");
 
-        // Run the Kafka input re-push
+        // Run the Kafka input re-push and verify that a new version (ver = 2) is pushed successfully.
         runVPJ(vpjProperties, 2, controllerClient);
 
         // Verify all data can be queried after re-push
