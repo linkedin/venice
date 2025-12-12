@@ -2334,6 +2334,14 @@ public class ConfigKeys {
   public static final String CONCURRENT_INIT_ROUTINES_ENABLED = "concurrent.init.routines.enabled";
 
   /**
+   * Block the state transition until all initialization routines complete on the first execution. When enabled,
+   * the controller will wait for all init routines to finish before returning from the STANDBY -> LEADER state
+   * transition, but only the first time the controller becomes leader for a given cluster. Subsequent leadership
+   * transitions will execute routines asynchronously.
+   */
+  public static final String BLOCK_UNTIL_INIT_ROUTINES_COMPLETE = "block.until.init.routines.complete";
+
+  /**
    * A config to control graceful shutdown.
    * True: servers will flush all remain data in producers buffers and drainer queues, and persist all data including offset
    *       metadata and producer states into disk

@@ -2,6 +2,7 @@ package com.linkedin.venice.endToEnd;
 
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_BLOB_FILES_ENABLED;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
+import static com.linkedin.venice.ConfigKeys.BLOCK_UNTIL_INIT_ROUTINES_COMPLETE;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_MAX_NUMBER_OF_PARTITIONS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_ENABLED;
@@ -1513,6 +1514,7 @@ public class TestHybrid {
         for (int i = 0; i < keyCount; i++) {
           IntegrationTestPushUtils.sendStreamingRecord(producer, storeName, i, i);
         }
+        producer.flush("");
         producer.stop();
         TestUtils.waitForNonDeterministicAssertion(20, TimeUnit.SECONDS, true, true, () -> {
           for (int i = 0; i < keyCount; i++) {
@@ -1530,6 +1532,7 @@ public class TestHybrid {
         for (int i = keyCount; i < keyCount * 2; i++) {
           IntegrationTestPushUtils.sendStreamingRecord(producer, storeName, i, i);
         }
+        producer.flush("");
         producer.stop();
         TestUtils.waitForNonDeterministicAssertion(20, TimeUnit.SECONDS, true, true, () -> {
           for (int i = 0; i < keyCount * 2; i++) {
@@ -1700,6 +1703,7 @@ public class TestHybrid {
     extraProperties.setProperty(DEFAULT_MAX_NUMBER_OF_PARTITIONS, "5");
 
     // log compaction controller configs
+    extraProperties.put(BLOCK_UNTIL_INIT_ROUTINES_COMPLETE, true);
     extraProperties.setProperty(REPUSH_ORCHESTRATOR_CLASS_NAME, TestHybrid.TestRepushOrchestratorImpl.class.getName());
     extraProperties.setProperty(LOG_COMPACTION_ENABLED, "true");
     extraProperties.setProperty(LOG_COMPACTION_SCHEDULING_ENABLED, "true");

@@ -16,6 +16,7 @@ import static com.linkedin.venice.ConfigKeys.ADMIN_TOPIC_REPLICATION_FACTOR;
 import static com.linkedin.venice.ConfigKeys.ADMIN_TOPIC_SOURCE_REGION;
 import static com.linkedin.venice.ConfigKeys.AGGREGATE_REAL_TIME_SOURCE_REGION;
 import static com.linkedin.venice.ConfigKeys.ALLOW_CLUSTER_WIPE;
+import static com.linkedin.venice.ConfigKeys.BLOCK_UNTIL_INIT_ROUTINES_COMPLETE;
 import static com.linkedin.venice.ConfigKeys.CHILD_CLUSTER_ALLOWLIST;
 import static com.linkedin.venice.ConfigKeys.CHILD_CLUSTER_D2_PREFIX;
 import static com.linkedin.venice.ConfigKeys.CHILD_CLUSTER_D2_SERVICE_NAME;
@@ -418,6 +419,8 @@ public class VeniceControllerClusterConfig {
   private final boolean allowClusterWipe;
 
   private final boolean concurrentInitRoutinesEnabled;
+
+  private final boolean blockUntilInitRoutinesComplete;
 
   private final boolean controllerClusterHelixCloudEnabled;
   private final boolean storageClusterHelixCloudEnabled;
@@ -1066,6 +1069,7 @@ public class VeniceControllerClusterConfig {
     this.emergencySourceRegion = props.getString(EMERGENCY_SOURCE_REGION, "");
     this.allowClusterWipe = props.getBoolean(ALLOW_CLUSTER_WIPE, false);
     this.concurrentInitRoutinesEnabled = props.getBoolean(CONCURRENT_INIT_ROUTINES_ENABLED, false);
+    this.blockUntilInitRoutinesComplete = props.getBoolean(BLOCK_UNTIL_INIT_ROUTINES_COMPLETE, false);
     this.controllerClusterHelixCloudEnabled = props.getBoolean(CONTROLLER_CLUSTER_HELIX_CLOUD_ENABLED, false);
     this.storageClusterHelixCloudEnabled = props.getBoolean(CONTROLLER_STORAGE_CLUSTER_HELIX_CLOUD_ENABLED, false);
 
@@ -1961,6 +1965,10 @@ public class VeniceControllerClusterConfig {
 
   public boolean isConcurrentInitRoutinesEnabled() {
     return concurrentInitRoutinesEnabled;
+  }
+
+  public boolean isBlockUntilInitRoutinesComplete() {
+    return blockUntilInitRoutinesComplete;
   }
 
   public boolean isControllerClusterHelixCloudEnabled() {

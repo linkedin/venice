@@ -378,7 +378,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
           // VeniceClusterWrapper to tests.
           if (!veniceClusterWrapper.getVeniceControllers().isEmpty()) {
             final VeniceClusterWrapper finalClusterWrapper = veniceClusterWrapper;
-            TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.MINUTES, true, () -> {
+            TestUtils.waitForNonDeterministicAssertion(3, TimeUnit.MINUTES, true, () -> {
               try {
                 for (AvroProtocolDefinition avroProtocolDefinition: CLUSTER_LEADER_INITIALIZATION_ROUTINES) {
                   Store store = finalClusterWrapper.getLeaderVeniceController()
