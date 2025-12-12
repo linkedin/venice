@@ -53,8 +53,10 @@ import org.apache.logging.log4j.Logger;
 public class NettyFileTransferClient {
   private static final Logger LOGGER = LogManager.getLogger(NettyFileTransferClient.class);
   private static final int MAX_METADATA_CONTENT_LENGTH = 1024 * 1024 * 100;
-  private static final int CONNECTION_TIMEOUT_IN_MINUTES = 1;
-  // Maximum time that Netty will wait to establish the initial connection before failing.
+  private static final int ALL_HOSTS_CONNECTION_TIMEOUT_IN_MINUTES = 1;
+  // Total connection timeout (TCP connection and SSL handshake)
+  private static final int PER_HOST_CONNECTION_TIMEOUT_MS = 50 * 1000;
+  // Maximum time that Netty will wait to establish the initial connection before failing. (TCP connection)
   private static final int CONNECTION_ESTABLISHMENT_TIMEOUT_MS = 30 * 1000;
   // The default checksum threadpool size is the number of available processors.
   private static final int DEFAULT_CHECKSUM_VALIDATION_THREAD_POOL_SIZE = Runtime.getRuntime().availableProcessors();
@@ -229,7 +231,7 @@ public class NettyFileTransferClient {
         }
         allConnections.complete(null);
       }
-    }, CONNECTION_TIMEOUT_IN_MINUTES, TimeUnit.MINUTES);
+    }, ALL_HOSTS_CONNECTION_TIMEOUT_IN_MINUTES, TimeUnit.MINUTES);
 
     allConnections.join();
 
@@ -381,9 +383,8 @@ public class NettyFileTransferClient {
     try {
       connectFuture = clientBootstrap.connect(host, serverPort);
 
-      // Wait at most CONNECTION_ESTABLISHMENT_TIMEOUT_MS for the connect to finish
-      boolean completed =
-          connectFuture.awaitUninterruptibly(CONNECTION_ESTABLISHMENT_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+      // Wait at most PER_HOST_CONNECTION_TIMEOUT_MS for the connect to finish
+      boolean completed = connectFuture.awaitUninterruptibly(PER_HOST_CONNECTION_TIMEOUT_MS, TimeUnit.MILLISECONDS);
 
       if (!completed) {
         if (!connectFuture.isDone()) {
@@ -391,7 +392,7 @@ public class NettyFileTransferClient {
         }
         String errorMsg = String.format(
             "Timed out after %d ms waiting to connect to host: %s for blob transfer for replica %s",
-            CONNECTION_ESTABLISHMENT_TIMEOUT_MS,
+            PER_HOST_CONNECTION_TIMEOUT_MS,
             host,
             replicaId);
         LOGGER.error(errorMsg);
