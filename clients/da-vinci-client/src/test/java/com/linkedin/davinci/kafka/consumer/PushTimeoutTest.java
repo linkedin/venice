@@ -25,6 +25,8 @@ import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
+import com.linkedin.venice.pubsub.manager.TopicManager;
+import com.linkedin.venice.pubsub.manager.TopicManagerRepository;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.utils.ExceptionCaptorNotifier;
 import com.linkedin.venice.utils.ReferenceCounted;
@@ -61,12 +63,20 @@ public class PushTimeoutTest {
     ReadOnlySchemaRepository mockSchemaRepository = mock(ReadOnlySchemaRepository.class);
     doReturn(new SchemaEntry(1, "\"string\"")).when(mockSchemaRepository).getKeySchema(anyString());
 
+    TopicManagerRepository mockTopicManagerRepository = mock(TopicManagerRepository.class);
+    TopicManager mockTopicManager = mock(TopicManager.class);
+    doReturn(mockTopicManager).when(mockTopicManagerRepository).getLocalTopicManager();
+    doReturn(mockTopicManager).when(mockTopicManagerRepository).getTopicManager(anyString());
+
     StoreIngestionTaskFactory.Builder builder = TestUtils.getStoreIngestionTaskBuilder(storeName)
         .setLeaderFollowerNotifiersQueue(notifiers)
         .setServerConfig(mockVeniceServerConfig)
         .setHostLevelIngestionStats(mockAggStoreIngestionStats)
         .setSchemaRepository(mockSchemaRepository)
-        .setPubSubContext(new PubSubContext.Builder().setPubSubTopicRepository(pubSubTopicRepository).build());
+        .setPubSubContext(
+            new PubSubContext.Builder().setPubSubTopicRepository(pubSubTopicRepository)
+                .setTopicManagerRepository(mockTopicManagerRepository)
+                .build());
 
     StorageService storageService = mock(StorageService.class);
     doReturn(new ReferenceCounted<>(mock(DelegatingStorageEngine.class), se -> {})).when(storageService)

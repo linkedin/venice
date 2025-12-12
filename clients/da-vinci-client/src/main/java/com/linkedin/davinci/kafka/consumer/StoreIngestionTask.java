@@ -567,8 +567,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.bootstrapTimeoutInMs = pushTimeoutInMs;
     this.isIsolatedIngestion = isIsolatedIngestion;
     this.partitionCount = storeVersionPartitionCount;
-    this.ingestionNotificationDispatcher =
-        new IngestionNotificationDispatcher(notifiers, kafkaVersionTopic, isCurrentVersion);
+    this.ingestionNotificationDispatcher = new IngestionNotificationDispatcher(
+        notifiers,
+        kafkaVersionTopic,
+        isCurrentVersion,
+        this::getProgressPercentage);
     this.missingSOPCheckExecutor.execute(() -> waitForStateVersion(kafkaVersionTopic));
     this.cacheBackend = cacheBackend;
 
@@ -675,6 +678,16 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.parallelProcessingThreadPool = builder.getAAWCWorkLoadProcessingThreadPool();
     this.hostName = Utils.getHostName() + "_" + storeVersionConfig.getListenerPort();
     this.zkHelixAdmin = zkHelixAdmin;
+  }
+
+  @VisibleForTesting
+  int getProgressPercentage(PartitionConsumptionState pcs) {
+    if (!getServerConfig().isProgressPercentageEnabled()) {
+      return 0;
+    }
+    final PubSubPosition position = pcs.getLatestProcessedVtPosition();
+    final PubSubTopicPartition topicPartition = pcs.getReplicaTopicPartition();
+    return getTopicManager(localKafkaServer).getProgressPercentage(topicPartition, position);
   }
 
   /** Package-private on purpose, only intended for tests. Do not use for production use cases. */
@@ -2328,18 +2341,17 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             subscribePosition,
             localKafkaServer);
 
-        LOGGER.info("Subscribed to: {} position: {}", topicPartition, subscribePosition);
-        if (isGlobalRtDivEnabled()) {
-          // TODO: remove. this is a temporary log for debugging while the feature is in its infancy
+        if (getServerConfig().isProgressPercentageEnabled() && !subscribePosition.isSymbolic()) {
           TopicManager topicManager = getTopicManager(localKafkaServer);
-          PubSubPosition endPosition = topicManager.getLatestPositionCached(topicPartition);
-          long diff = topicManager.diffPosition(topicPartition, endPosition, subscribePosition);
+          int progressPercentage = topicManager.getProgressPercentage(topicPartition, subscribePosition);
           LOGGER.info(
-              "event=globalRtDiv Subscribed to: {} position: {} endPosition: {} diff: {}",
+              "Subscribed to: {} position: {} latestPosition: {} progress: {}%",
               topicPartition,
               subscribePosition,
-              endPosition,
-              diff);
+              topicManager.getLatestPositionCached(topicPartition),
+              progressPercentage);
+        } else { // no point in logging progress if it's symbolic (earliest or latest position)
+          LOGGER.info("Subscribed to: {} position: {}", topicPartition, subscribePosition);
         }
         storageUtilizationManager.initPartition(partition);
         break;
@@ -2885,10 +2897,16 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     storageMetadataService.put(this.kafkaVersionTopic, partition, offsetRecord);
     pcs.resetProcessedRecordSizeSinceLastSync();
-    // TODO: update
-    String msg = "Offset synced for replica: " + pcs.getReplicaId() + " - localVtOffset: {}";
+
+    String msg = "Offset synced for replica: " + pcs.getReplicaId() + " - localVtPosition: {} progress: {}";
     if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
-      LOGGER.info(msg, offsetRecord.getCheckpointedLocalVtPosition());
+      final PubSubPosition position = offsetRecord.getCheckpointedLocalVtPosition();
+      int progressPercentage = 0;
+      if (getServerConfig().isProgressPercentageEnabled()) {
+        final PubSubTopicPartition topicPartition = pcs.getReplicaTopicPartition();
+        progressPercentage = getTopicManager(localKafkaServer).getProgressPercentage(topicPartition, position);
+      }
+      LOGGER.info(msg, position, progressPercentage);
     }
   }
 
