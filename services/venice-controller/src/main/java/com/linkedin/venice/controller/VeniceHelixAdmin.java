@@ -3678,7 +3678,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             storeInfo.getVersion(versionNumber).get().getStatus());
         return true;
       }
-      // If the topic does not exist or already truncated, skip it
+      // If the topic does not exist it is deleted, If source cluster topic creation is slown during new push
+      // its captured in earlier check storeInfo.getLargestUsedVersionNumber() < versionNumber
+      // or if the topic is truncated, skip it
       boolean topicExists = getTopicManager().containsTopicWithRetries(versionTopic, 5);
       if (!topicExists || isTopicTruncated(versionTopic.getName())) {
         LOGGER.error(
