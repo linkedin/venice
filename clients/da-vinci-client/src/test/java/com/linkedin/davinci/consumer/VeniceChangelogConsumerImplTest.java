@@ -901,6 +901,7 @@ public class VeniceChangelogConsumerImplTest {
 
     messagesMap.put(topicPartition, messages);
     when(pubSubConsumer.poll(pollTimeoutMs)).thenReturn(messagesMap);
+    when(veniceChangelogConsumer.getEnableReads()).thenReturn(true);
 
     doCallRealMethod().when(veniceChangelogConsumer)
         .convertPubSubMessageToPubSubChangeEventMessage(pubSubMessage1, topicPartition);
@@ -923,6 +924,7 @@ public class VeniceChangelogConsumerImplTest {
   @Test
   public void testChunkingFailure() throws NoSuchFieldException, IllegalAccessException {
     VeniceChangelogConsumerImpl veniceChangelogConsumer = mock(VeniceChangelogConsumerImpl.class);
+    when(veniceChangelogConsumer.getEnableReads()).thenReturn(true);
 
     Field changelogClientConfigField = VeniceChangelogConsumerImpl.class.getDeclaredField("changelogClientConfig");
     changelogClientConfigField.setAccessible(true);
