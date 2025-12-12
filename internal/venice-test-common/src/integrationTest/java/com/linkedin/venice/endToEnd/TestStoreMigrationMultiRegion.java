@@ -1,8 +1,7 @@
 package com.linkedin.venice.endToEnd;
 
+import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.OFFLINE_JOB_START_TIMEOUT_MS;
-import static com.linkedin.venice.ConfigKeys.SERVER_HTTP2_INBOUND_ENABLED;
-import static com.linkedin.venice.ConfigKeys.SERVER_QUOTA_ENFORCEMENT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
@@ -70,14 +69,12 @@ public class TestStoreMigrationMultiRegion {
   @BeforeClass(timeOut = TEST_TIMEOUT)
   public void setUp() {
     Utils.thisIsLocalhost();
-    Properties parentControllerProperties = new Properties();
-    parentControllerProperties
-        .setProperty(TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS, String.valueOf(4000));
-    parentControllerProperties.setProperty(OFFLINE_JOB_START_TIMEOUT_MS, "180000");
+    Properties controllerProperties = new Properties();
+    controllerProperties.setProperty(TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS, String.valueOf(4000));
+    controllerProperties.setProperty(OFFLINE_JOB_START_TIMEOUT_MS, "180000");
 
     Properties serverProperties = new Properties();
-    serverProperties.put(SERVER_HTTP2_INBOUND_ENABLED, "true");
-    serverProperties.put(SERVER_QUOTA_ENFORCEMENT_ENABLED, "true");
+    serverProperties.put(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, false);
 
     // 1 parent controller, 2 child region, 2 clusters per child region, 2 servers per cluster
     // RF=2 to test both leader and follower SNs
@@ -86,13 +83,12 @@ public class TestStoreMigrationMultiRegion {
             .numberOfClusters(2)
             .numberOfParentControllers(1)
             .numberOfChildControllers(1)
-            .numberOfServers(2)
+            .numberOfServers(1)
             .numberOfRouters(1)
-            .replicationFactor(2)
-            .sslToStorageNodes(true)
+            .replicationFactor(1)
             .forkServer(false)
-            .parentControllerProperties(parentControllerProperties)
-            .childControllerProperties(null)
+            .parentControllerProperties(controllerProperties)
+            .childControllerProperties(controllerProperties)
             .serverProperties(serverProperties);
     twoLayerMultiRegionMultiClusterWrapper =
         ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(optionsBuilder.build());
