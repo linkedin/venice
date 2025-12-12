@@ -22,7 +22,7 @@ import static org.testng.Assert.assertTrue;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.ingestion.IngestionBackend;
-import com.linkedin.davinci.kafka.consumer.StoreIngestionService;
+import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatLagMonitorAction;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import com.linkedin.davinci.storage.StorageService;
@@ -100,7 +100,7 @@ public class StoreBackendTest {
     when(backend.getMetricsRepository()).thenReturn(metricsRepository);
     when(backend.getStoreRepository()).thenReturn(mock(SubscriptionBasedReadOnlyStoreRepository.class));
     when(backend.getStorageService()).thenReturn(storageService);
-    when(backend.getIngestionService()).thenReturn(mock(StoreIngestionService.class));
+    when(backend.getIngestionService()).thenReturn(mock(KafkaStoreIngestionService.class));
     when(backend.getVersionByTopicMap()).thenReturn(versionMap);
     when(backend.getVeniceLatestNonFaultyVersion(anyString(), anySet())).thenCallRealMethod();
     when(backend.getVeniceCurrentVersion(anyString())).thenCallRealMethod();
