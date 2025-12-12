@@ -18,7 +18,7 @@ import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
 import com.linkedin.davinci.client.InternalDaVinciRecordTransformerConfig;
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.ingestion.IngestionBackend;
-import com.linkedin.davinci.kafka.consumer.StoreIngestionService;
+import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.stats.AggVersionedDaVinciRecordTransformerStats;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import com.linkedin.davinci.storage.StorageService;
@@ -200,7 +200,7 @@ public class VersionBackendTest {
             recordTransformerConfig,
             mock(AggVersionedDaVinciRecordTransformerStats.class)));
     when(mockDaVinciBackend.getInternalRecordTransformerConfig(storeName)).thenReturn(internalRecordTransformerConfig);
-    when(mockDaVinciBackend.getIngestionService()).thenReturn(mock(StoreIngestionService.class));
+    when(mockDaVinciBackend.getIngestionService()).thenReturn(mock(KafkaStoreIngestionService.class));
     VersionBackend versionBackend = new VersionBackend(mockDaVinciBackend, version, mockStoreBackendStats);
 
     Collection<Integer> partitionList = Arrays.asList(0, 1, 2);
