@@ -94,7 +94,7 @@ public class PartitionConsumptionState {
    * getting caught up after a push.
    */
   private long lagCaughtUpTimeInMs;
-  private boolean completionReported;
+  private volatile boolean completionReported;
   private boolean isSubscribed;
   private boolean isDataRecoveryCompleted;
   private LeaderFollowerStateType leaderFollowerState;
