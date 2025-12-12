@@ -965,8 +965,8 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
           }
 
           boolean sequentialRollForward = !StringUtils.isEmpty(rolloutOrderStr);
-          LOGGER.debug("Found eligible stores: {}", eligibleStoresToProcess);
           for (Store parentStore: eligibleStoresToProcess) {
+            LOGGER.debug("Processing eligible store: {}", parentStore);
             Version targetVersion = parentStore.getVersion(parentStore.getLargestUsedVersionNumber());
 
             // Check if store is already being processed
