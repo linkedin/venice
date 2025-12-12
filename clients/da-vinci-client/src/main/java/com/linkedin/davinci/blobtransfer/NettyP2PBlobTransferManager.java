@@ -54,6 +54,7 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
       "Replica {} peer {} does not have the requested blob. Exception: {}";
   private static final String FAILED_TO_FETCH_BLOB_MSG =
       "Replica {} failed to fetch blob from peer {}. Deleting partially downloaded blobs. Exception: {}";
+  // TODO: make MAX_CONCURRENT_BLOB_FETCH_REPLICAS configurable for tuning higher throughput and memory consumption.
   private static final int MAX_CONCURRENT_BLOB_FETCH_REPLICAS = Math.max(1, Runtime.getRuntime().availableProcessors());
 
   private final P2PBlobTransferService blobTransferService;
@@ -140,6 +141,32 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
    *
    *  - Success case:
    *  1. If the blob is successfully fetched from a peer, an InputStream of the blob is returned.
+   *
+   *
+   * Implementation notes:
+   * - Uses thenComposeAsync (NOT thenCompose) to ensure callbacks execute on replicaBlobFetchExecutor
+   *   instead of Netty EventLoop threads. thenCompose runs callbacks on the completer's thread (often
+   *   EventLoop), which then blocks in connectToHost().awaitUninterruptibly(), causing EventLoop
+   *   self-deadlock as it waits for work only it can perform. thenComposeAsync prevents this by running
+   *   callbacks on a separate executor.
+   *
+   * - Why chainOfPeersFuture:
+   *   Builds a sequential async chain (chainOfPeersFuture) using a for-loop pattern. Alternative approaches
+   *   are not allowed due to correctness and async (VersionBackend#subscribe) requirements:
+   *   (1) Regular for loop with blocking calls: Only blocking calls can get the result of one peer transfer
+   *       and decide whether to move to the next host, but this would block the calling thread (potentially
+   *       an EventLoop or Helix thread), causing deadlock.
+   *       Example: for (host : peers) { result = get(host).get(); } // .get() blocks thread!
+   *   (2) Parallel submission (e.g., CompletableFuture.anyOf): Would attempt connections to all peers
+   *       simultaneously, causing multiple peers to write into the same partition folder concurrently with
+   *       different source files, corrupting the data. We need exactly one successful peer, so sequential
+   *       attempts with early exit are required for correctness.
+   *   (3) Manual callback chaining: Per-host result handling in thenAccept/exceptionally lambdas with
+   *       recursive calls to try the next host. While technically correct, this approach is
+   *       more complex, harder to read and maintain, and error-prone compared to the declarative for-loop
+   *       chain pattern.
+   *   The async chain pattern tries peers one at a time, exits early on first success.
+   *
    *
    * @param uniqueConnectablePeers the set of peers to process
    * @param storeName the name of the store
