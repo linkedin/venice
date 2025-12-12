@@ -229,7 +229,7 @@ public class NettyFileTransferClient {
         }
         allConnections.complete(null);
       }
-    }, CONNECTION_TIMEOUT_IN_MINUTES * 2, TimeUnit.MINUTES);
+    }, CONNECTION_TIMEOUT_IN_MINUTES, TimeUnit.MINUTES);
 
     allConnections.join();
 
