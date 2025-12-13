@@ -259,6 +259,9 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       return null;
     }
 
+    logMessageIfNotRedundant(
+        "Got version " + targetVersionNum + " with status " + version.get().getStatus() + " for store: " + storeName
+            + " in region " + region);
     return version.get();
   }
 
