@@ -329,7 +329,7 @@ public class DaVinciBackend implements Closeable {
         aggVersionedBlobTransferStats =
             new AggVersionedBlobTransferStats(metricsRepository, storeRepository, configLoader.getVeniceServerConfig());
         aggBlobTransferStats =
-            new AggBlobTransferStats(aggVersionedBlobTransferStats, getIngestionService().getHostLevelIngestionStats());
+            new AggBlobTransferStats(aggVersionedBlobTransferStats, ingestionService.getHostLevelIngestionStats());
         P2PBlobTransferConfig p2PBlobTransferConfig = new P2PBlobTransferConfig(
             configLoader.getVeniceServerConfig().getDvcP2pBlobTransferServerPort(),
             configLoader.getVeniceServerConfig().getDvcP2pBlobTransferClientPort(),
