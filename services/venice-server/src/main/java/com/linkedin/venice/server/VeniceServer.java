@@ -489,7 +489,7 @@ public class VeniceServer {
       aggVersionedBlobTransferStats = new AggVersionedBlobTransferStats(metricsRepository, metadataRepo, serverConfig);
       aggBlobTransferStats = new AggBlobTransferStats(
           aggVersionedBlobTransferStats,
-          getKafkaStoreIngestionService().getHostLevelIngestionStats());
+          kafkaStoreIngestionService.getHostLevelIngestionStats());
       P2PBlobTransferConfig p2PBlobTransferConfig = new P2PBlobTransferConfig(
           serverConfig.getDvcP2pBlobTransferServerPort(),
           serverConfig.getDvcP2pBlobTransferClientPort(),
