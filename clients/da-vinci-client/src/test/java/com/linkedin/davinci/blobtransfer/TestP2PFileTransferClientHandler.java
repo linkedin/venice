@@ -12,6 +12,7 @@ import com.linkedin.davinci.blobtransfer.client.MetadataAggregator;
 import com.linkedin.davinci.blobtransfer.client.P2PFileTransferClientHandler;
 import com.linkedin.davinci.blobtransfer.client.P2PMetadataTransferHandler;
 import com.linkedin.davinci.notifier.VeniceNotifier;
+import com.linkedin.davinci.stats.AggBlobTransferStats;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.state.IncrementalPushReplicaStatus;
@@ -66,6 +67,7 @@ public class TestP2PFileTransferClientHandler {
   CompletionStage<InputStream> inputStreamFuture;
   StorageMetadataService storageMetadataService;
   ExecutorService checksumValidationExecutorService;
+  AggBlobTransferStats blobTransferStats;
 
   P2PFileTransferClientHandler clientFileHandler;
   P2PMetadataTransferHandler clientMetadataHandler;
@@ -76,6 +78,7 @@ public class TestP2PFileTransferClientHandler {
     baseDir = Files.createTempDirectory("tmp");
     inputStreamFuture = new CompletableFuture<>();
     storageMetadataService = Mockito.mock(StorageMetadataService.class);
+    blobTransferStats = Mockito.mock(AggBlobTransferStats.class);
     checksumValidationExecutorService = Executors.newSingleThreadExecutor();
 
     clientFileHandler = Mockito.spy(
@@ -86,6 +89,7 @@ public class TestP2PFileTransferClientHandler {
             TEST_VERSION,
             TEST_PARTITION,
             BlobTransferUtils.BlobTransferTableFormat.BLOCK_BASED_TABLE,
+            blobTransferStats,
             checksumValidationExecutorService));
 
     veniceNotifier = Mockito.mock(VeniceNotifier.class);
