@@ -54,8 +54,6 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
       "Replica {} peer {} does not have the requested blob. Exception: {}";
   private static final String FAILED_TO_FETCH_BLOB_MSG =
       "Replica {} failed to fetch blob from peer {}. Deleting partially downloaded blobs. Exception: {}";
-  // TODO: make MAX_CONCURRENT_BLOB_FETCH_REPLICAS configurable for tuning higher throughput and memory consumption.
-  private static final int MAX_CONCURRENT_BLOB_FETCH_REPLICAS = Math.max(1, Runtime.getRuntime().availableProcessors());
 
   private final P2PBlobTransferService blobTransferService;
   // netty client is responsible to make requests against other peers for blob fetching
@@ -74,15 +72,16 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
       NettyFileTransferClient nettyClient,
       BlobFinder peerFinder,
       String baseDir,
-      AggVersionedBlobTransferStats aggVersionedBlobTransferStats) {
+      AggVersionedBlobTransferStats aggVersionedBlobTransferStats,
+      int maxConcurrentBlobReceiveReplicas) {
     this.blobTransferService = blobTransferService;
     this.nettyClient = nettyClient;
     this.peerFinder = peerFinder;
     this.baseDir = baseDir;
     this.aggVersionedBlobTransferStats = aggVersionedBlobTransferStats;
     this.replicaBlobFetchExecutor = new ThreadPoolExecutor(
-        MAX_CONCURRENT_BLOB_FETCH_REPLICAS,
-        MAX_CONCURRENT_BLOB_FETCH_REPLICAS,
+        maxConcurrentBlobReceiveReplicas,
+        maxConcurrentBlobReceiveReplicas,
         60L,
         TimeUnit.SECONDS,
         new LinkedBlockingQueue<>(),
