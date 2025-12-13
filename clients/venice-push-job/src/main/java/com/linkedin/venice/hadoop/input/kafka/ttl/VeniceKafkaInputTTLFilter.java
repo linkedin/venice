@@ -45,7 +45,7 @@ public class VeniceKafkaInputTTLFilter extends VeniceRmdTTLFilter<KafkaInputMapp
   }
 
   /**
-   * When schemeId is negative, it indicates a chunked record.
+   * When schemaId is negative, it indicates a chunked record.
    * Skip it and pass it to Reducer as chunk will only be re-assembled at Reducer.
    * @param input
    * @return

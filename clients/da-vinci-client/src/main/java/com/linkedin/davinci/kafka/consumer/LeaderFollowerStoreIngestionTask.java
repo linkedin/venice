@@ -2485,19 +2485,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         // Update the latest consumed VT position (LCVP) since we're consuming from the version topic
         if (isGlobalRtDivEnabled()) {
           getConsumerDiv().updateLatestConsumedVtPosition(partition, consumerRecord.getPosition());
-
-          if (shouldSyncOffsetFromSnapshot(consumerRecord, partitionConsumptionState)) {
-            PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(getVersionTopic(), partition);
-            PartitionTracker vtDiv = consumerDiv.cloneVtProducerStates(partition); // has latest consumed VT position
-            storeBufferService.execSyncOffsetFromSnapshotAsync(topicPartition, vtDiv, this);
-            // TODO: remove. this is a temporary log for debugging while the feature is in its infancy
-            int partitionStateMapSize = vtDiv.getPartitionStates(PartitionTracker.VERSION_TOPIC).size();
-            LOGGER.info(
-                "event=globalRtDiv Syncing LCVP for OffsetRecord topic-partition: {} position: {} size: {}",
-                topicPartition,
-                consumerRecord.getPosition(),
-                partitionStateMapSize);
-          }
+          // Only after the current message is queued to drainer
+          // The Offset Record's LCVP may be synced in syncOffsetFromSnapshotIfNeeded()
         }
 
         /**
@@ -2788,16 +2777,37 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
   }
 
+  void syncOffsetFromSnapshotIfNeeded(DefaultPubSubMessage record, PubSubTopicPartition topicPartition) {
+    int partition = topicPartition.getPartitionNumber();
+    if (!isGlobalRtDivEnabled() || !shouldSyncOffsetFromSnapshot(record, getPartitionConsumptionState(partition))) {
+      return; // without Global RT DIV enabled, the offset record is synced in the drainer in syncOffset()
+    }
+
+    try {
+      PartitionTracker vtDiv = consumerDiv.cloneVtProducerStates(partition); // has latest consumed VT position
+      storeBufferService.execSyncOffsetFromSnapshotAsync(topicPartition, vtDiv, this);
+      // TODO: remove. this is a temporary log for debugging while the feature is in its infancy
+      LOGGER.info(
+          "event=globalRtDiv Syncing LCVP for OffsetRecord topic-partition: {} position: {} size: {}",
+          topicPartition,
+          record.getPosition(),
+          vtDiv.getPartitionStates(PartitionTracker.VERSION_TOPIC).size());
+    } catch (InterruptedException e) {
+      LOGGER.error("event=globalRtDiv Unable to sync Offset Record to update the latest consumed vt position", e);
+    }
+  }
+
   /**
-   * Followers should sync the VT DIV to the OffsetRecord if the consumer sees a Global RT DIV message
-   * (sync only once for a Global RT DIV, which can either be one singular message or multiple chunks + one manifest.
-   * thus, the condition is to check that it's not a chunk) or if it sees a non-segment control message.
+   * Followers should sync the VT DIV to the OffsetRecord if the consumer sees a non-segment control message or a
+   * Global RT DIV message.
+   * Each Global RT DIV sync will create one singular Put or multiple Puts (chunks + one manifest + Deletes). Thus
+   * if we want to sync only once, checking if it's a singular Put or the manifest Put should only trigger once.
    */
   boolean shouldSyncOffsetFromSnapshot(DefaultPubSubMessage consumerRecord, PartitionConsumptionState pcs) {
     if (consumerRecord.getKey().isGlobalRtDiv()) {
-      Put put = (Put) consumerRecord.getValue().getPayloadUnion();
-      if (put.getSchemaId() != CHUNK_SCHEMA_ID) {
-        return true;
+      Object payloadUnion = consumerRecord.getValue().getPayloadUnion();
+      if (payloadUnion instanceof Put && ((Put) payloadUnion).getSchemaId() != CHUNK_SCHEMA_ID) {
+        return true; // Global RT DIV message can be multiple chunks + deletes, only sync on one Put (manifest or value)
       }
     }
     return isNonSegmentControlMessage(consumerRecord, null);
