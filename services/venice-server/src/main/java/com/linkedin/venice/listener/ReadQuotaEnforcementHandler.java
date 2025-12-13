@@ -334,9 +334,6 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
     }
     double thisNodeQuotaResponsibility = getNodeResponsibilityForQuota(partitionAssignment, thisNodeId);
     if (thisNodeQuotaResponsibility <= 0) {
-      LOGGER.warn(
-          "Routing data changed on quota enforcement handler with 0 replicas assigned to this node, removing quota for resource: {}",
-          topic);
       storeVersionRateLimiters.remove(topic);
       stats.getStoreStats(storeName).removeVersion(version);
       return;
