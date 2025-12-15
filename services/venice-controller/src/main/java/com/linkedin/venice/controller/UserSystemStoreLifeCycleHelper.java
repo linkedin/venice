@@ -140,7 +140,11 @@ public class UserSystemStoreLifeCycleHelper {
     admin.deleteAllVersionsInStore(clusterName, systemStoreName);
     pushMonitor.cleanupStoreStatus(systemStoreName);
     if (!isStoreMigrating) {
-      switch (VeniceSystemStoreType.getSystemStoreType(systemStoreName)) {
+      VeniceSystemStoreType storeType = VeniceSystemStoreType.getSystemStoreType(systemStoreName);
+      if (storeType == null) {
+        throw new VeniceException("Unknown system store type: " + systemStoreName);
+      }
+      switch (storeType) {
         case META_STORE:
           // Clean up venice writer before truncating RT topic
           metaStoreWriter.removeMetaStoreWriter(systemStoreName);
@@ -158,7 +162,10 @@ public class UserSystemStoreLifeCycleHelper {
         default:
           throw new VeniceException("Unknown system store type: " + systemStoreName);
       }
-      admin.truncateKafkaTopic(Utils.composeRealTimeTopic(systemStoreName));
+      // skip truncating system store RT topics if it's parent fabric as it's not created for parent fabric
+      if (!admin.isParent()) {
+        admin.truncateKafkaTopic(Utils.composeRealTimeTopic(systemStoreName));
+      }
     } else {
       LOGGER.info("The RT topic for: {} will not be deleted since the user store is migrating", systemStoreName);
     }
