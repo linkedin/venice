@@ -133,7 +133,11 @@ public class LeakedPushStatusCleanUpService extends AbstractVeniceService {
             PriorityQueue<Integer> versions = entry.getValue();
             List<String> leakedPushStatuses = new ArrayList<>();
             try {
-              final Store store = metadataRepository.getStoreOrThrow(storeName);
+              final Store store = metadataRepository.getStore(storeName);
+              if (store == null) {
+                LOGGER.warn("Store {} doesn't exist in metadata repo", storeName);
+                continue;
+              }
               int leakedPushStatusCounter = 0;
               while (!versions.isEmpty()) {
                 int version = versions.poll();
