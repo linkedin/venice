@@ -420,7 +420,9 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
         }
     }
 
-    logMessageIfNotRedundant("Skipping store as parent status is " + targetVersion.getStatus());
+    logMessageIfNotRedundant(
+        "Skipping store " + storeName + " as parent version " + targetVersionNum + " status is "
+            + targetVersion.getStatus());
     return false;
   }
 
