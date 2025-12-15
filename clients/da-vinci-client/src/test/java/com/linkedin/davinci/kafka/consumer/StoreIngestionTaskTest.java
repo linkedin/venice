@@ -5002,8 +5002,8 @@ public abstract class StoreIngestionTaskTest {
     StoreIngestionTaskTestConfig testConfig =
         new StoreIngestionTaskTestConfig(Collections.singleton(PARTITION_FOO), () -> {
           verify(mockAbstractStorageEngine, timeout(10000).times(1)).put(eq(PARTITION_FOO), any(), (ByteBuffer) any());
-          Utils.sleep(1000);
-          verify(zkHelixAdmin, atLeast(1)).setPartitionsToError(anyString(), anyString(), anyString(), anyList());
+          verify(zkHelixAdmin, timeout(1000).atLeast(1))
+              .setPartitionsToError(anyString(), anyString(), anyString(), anyList());
           verify(storeIngestionTaskUnderTest, times(1)).reportError(anyString(), anyInt(), any(VeniceException.class));
         }, AA_OFF);
     testConfig.setStoreVersionConfigOverride(configOverride -> {
@@ -5025,10 +5025,9 @@ public abstract class StoreIngestionTaskTest {
     doNothing().when(zkHelixAdmin).setPartitionsToError(anyString(), anyString(), anyString(), anyList());
     StoreIngestionTaskTestConfig testConfig =
         new StoreIngestionTaskTestConfig(Collections.singleton(PARTITION_FOO), () -> {
-          // pcs.completionReported();
           verify(mockAbstractStorageEngine, timeout(10000).times(1)).put(eq(PARTITION_FOO), any(), (ByteBuffer) any());
-          Utils.sleep(1000);
-          verify(zkHelixAdmin, atLeast(1)).setPartitionsToError(anyString(), anyString(), anyString(), anyList());
+          verify(zkHelixAdmin, timeout(1000).atLeast(1))
+              .setPartitionsToError(anyString(), anyString(), anyString(), anyList());
         }, AA_OFF);
     testConfig.setStoreVersionConfigOverride(configOverride -> {
       doReturn(true).when(configOverride).isResetErrorReplicaEnabled();
