@@ -2,6 +2,7 @@ package com.linkedin.venice.helix;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.ETLStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfig;
@@ -24,16 +25,18 @@ import java.util.Map;
 public class StoreJSONSerializer extends VeniceJsonSerializer<Store> {
   public StoreJSONSerializer() {
     super(Store.class);
-    addMixin(ZKStore.class, StoreSerializerMixin.class);
-    addMixin(Version.class, VersionSerializerMixin.class);
-    addMixin(HybridStoreConfig.class, HybridStoreConfigSerializerMixin.class);
-    addMixin(ETLStoreConfig.class, ETLStoreConfigSerializerMixin.class);
-    addMixin(PartitionerConfig.class, PartitionerConfigSerializerMixin.class);
-    addMixin(ViewConfig.class, ViewConfigSerializerMixin.class);
   }
 
-  private void addMixin(Class veniceClass, Class serializerClass) {
-    OBJECT_MAPPER.addMixIn(veniceClass, serializerClass);
+  @Override
+  protected ObjectMapper createObjectMapper() {
+    ObjectMapper mapper = super.createObjectMapper();
+    mapper.addMixIn(ZKStore.class, StoreSerializerMixin.class);
+    mapper.addMixIn(Version.class, VersionSerializerMixin.class);
+    mapper.addMixIn(HybridStoreConfig.class, HybridStoreConfigSerializerMixin.class);
+    mapper.addMixIn(ETLStoreConfig.class, ETLStoreConfigSerializerMixin.class);
+    mapper.addMixIn(PartitionerConfig.class, PartitionerConfigSerializerMixin.class);
+    mapper.addMixIn(ViewConfig.class, ViewConfigSerializerMixin.class);
+    return mapper;
   }
 
   /**
@@ -123,6 +126,6 @@ public class StoreJSONSerializer extends VeniceJsonSerializer<Store> {
     /**
      * This function will only deserialize into {@link ZKStore} implementation.
      */
-    return OBJECT_MAPPER.readValue(bytes, ZKStore.class);
+    return objectMapper.readValue(bytes, ZKStore.class);
   }
 }

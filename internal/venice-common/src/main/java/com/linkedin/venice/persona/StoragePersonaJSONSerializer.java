@@ -2,6 +2,7 @@ package com.linkedin.venice.persona;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.helix.VeniceJsonSerializer;
 import java.util.Set;
 
@@ -12,7 +13,13 @@ import java.util.Set;
 public class StoragePersonaJSONSerializer extends VeniceJsonSerializer<StoragePersona> {
   public StoragePersonaJSONSerializer() {
     super(StoragePersona.class);
-    OBJECT_MAPPER.addMixIn(StoragePersona.class, StoragePersonaSerializerMixin.class);
+  }
+
+  @Override
+  protected ObjectMapper createObjectMapper() {
+    ObjectMapper mapper = super.createObjectMapper();
+    mapper.addMixIn(StoragePersona.class, StoragePersonaSerializerMixin.class);
+    return mapper;
   }
 
   /** This class annotates the constructor for {@link StoragePersona} and serves as a property-based creator.

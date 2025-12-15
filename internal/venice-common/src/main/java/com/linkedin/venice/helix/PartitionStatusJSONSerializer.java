@@ -2,6 +2,7 @@ package com.linkedin.venice.helix;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.pushmonitor.PartitionStatus;
 import com.linkedin.venice.pushmonitor.ReplicaStatus;
 import com.linkedin.venice.pushmonitor.StatusSnapshot;
@@ -13,9 +14,15 @@ import com.linkedin.venice.pushmonitor.StatusSnapshot;
 public class PartitionStatusJSONSerializer extends VeniceJsonSerializer<PartitionStatus> {
   public PartitionStatusJSONSerializer() {
     super(PartitionStatus.class);
-    OBJECT_MAPPER.addMixIn(PartitionStatus.class, PartitionStatusSerializerMixin.class);
-    OBJECT_MAPPER.addMixIn(StatusSnapshot.class, OfflinePushStatusJSONSerializer.StatusSnapshotSerializerMixin.class);
-    OBJECT_MAPPER.addMixIn(ReplicaStatus.class, ReplicaStatusSerializerMixin.class);
+  }
+
+  @Override
+  protected ObjectMapper createObjectMapper() {
+    ObjectMapper mapper = super.createObjectMapper();
+    mapper.addMixIn(PartitionStatus.class, PartitionStatusSerializerMixin.class);
+    mapper.addMixIn(StatusSnapshot.class, OfflinePushStatusJSONSerializer.StatusSnapshotSerializerMixin.class);
+    mapper.addMixIn(ReplicaStatus.class, ReplicaStatusSerializerMixin.class);
+    return mapper;
   }
 
   public static class PartitionStatusSerializerMixin {
