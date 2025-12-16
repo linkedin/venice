@@ -1,6 +1,6 @@
 package com.linkedin.venice.message;
 
-import com.linkedin.venice.guid.DolGuidGenerator;
+import com.linkedin.venice.guid.DoLStampGuidGenerator;
 import com.linkedin.venice.guid.HeartbeatGuidV3Generator;
 import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
@@ -54,7 +54,7 @@ public class KafkaKey implements Measurable {
   public static final KafkaKey DOL_STAMP = new KafkaKey(
       MessageType.CONTROL_MESSAGE,
       ByteBuffer.allocate(CONTROL_MESSAGE_KAFKA_KEY_LENGTH)
-          .put(DolGuidGenerator.getInstance().getGuid().bytes())
+          .put(DoLStampGuidGenerator.getInstance().getGuid().bytes())
           .putInt(0) // segment number
           .putInt(0) // sequence number
           .array());

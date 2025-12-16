@@ -57,7 +57,7 @@ public class DolStamp {
     this.dolProduceFuture = dolProduceFuture;
   }
 
-  public boolean isReady() {
+  public boolean isDolComplete() {
     return dolProduced && dolConsumed;
   }
 
@@ -76,11 +76,12 @@ public class DolStamp {
   @Override
   public String toString() {
     String produceResult = "";
-    if (dolProduceFuture != null && dolProduceFuture.isDone()) {
+    if (dolProduceFuture != null && dolProduceFuture.isDone() && !dolProduceFuture.isCompletedExceptionally()) {
       try {
-        produceResult = ", offset=" + dolProduceFuture.get().getPubSubPosition();
+        produceResult = ", position=" + dolProduceFuture.get().getPubSubPosition();
       } catch (Exception e) {
-        // Ignore, keep empty
+        // Should not happen since we checked isDone() and !isCompletedExceptionally(), but handle defensively
+        produceResult = ", position=<error>";
       }
     }
     return "DolStamp{term=" + leadershipTerm + ", host=" + hostId + ", produced=" + dolProduced + ", consumed="

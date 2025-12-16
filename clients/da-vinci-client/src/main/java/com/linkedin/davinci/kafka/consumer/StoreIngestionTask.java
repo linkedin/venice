@@ -5261,16 +5261,21 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       partition = getResubscribeRequestQueue().poll();
       long previousResubscribeTime = getPartitionToPreviousResubscribeTimeMap().getOrDefault(partition, 0L);
       int allowedResubscribeIntervalInSeconds = getServerConfig().getLagBasedReplicaAutoResubscribeIntervalInSeconds();
-      if (System.currentTimeMillis() - previousResubscribeTime < SECONDS.toMillis(
-          allowedResubscribeIntervalInSeconds)) {
-        LOGGER.info("Skip resubscribe request for partition: {} of SIT: {} as it has been resubscribed recently at: {}",
-            partition, getVersionTopic(), previousResubscribeTime);
+      if (System.currentTimeMillis() - previousResubscribeTime < SECONDS
+          .toMillis(allowedResubscribeIntervalInSeconds)) {
+        LOGGER.info(
+            "Skip resubscribe request for partition: {} of SIT: {} as it has been resubscribed recently at: {}",
+            partition,
+            getVersionTopic(),
+            previousResubscribeTime);
         continue;
       }
       PartitionConsumptionState pcs = getPartitionConsumptionStateMap().get(partition);
       if (pcs == null) {
-        LOGGER.warn("Replica: {} does not exist in pcs map for SIT of: {}, will not resubscribe.",
-            Utils.getReplicaId(versionTopic, partition), getVersionTopic());
+        LOGGER.warn(
+            "Replica: {} does not exist in pcs map for SIT of: {}, will not resubscribe.",
+            Utils.getReplicaId(versionTopic, partition),
+            getVersionTopic());
         continue;
       }
       /**
@@ -5291,15 +5296,15 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
   }
 
-    /**
-   * Checks if the consumed message is a DoL (Declaration of Leadership) stamp and marks it as consumed
-   * if it matches the current DolStamp. This method is called during message consumption to detect when
-   * the leader replica has successfully consumed back its own DoL stamp, indicating it's fully caught up
-   * with the version topic and ready to switch to consuming from remote VT or RT.
-   *
-   * @param pcs the partition consumption state tracking DoL status
-   * @param dolPubSubMessage the consumed DoL PubSub message with leadership metadata
-   */
+  /**
+  * Checks if the consumed message is a DoL (Declaration of Leadership) stamp and marks it as consumed
+  * if it matches the current DolStamp. This method is called during message consumption to detect when
+  * the leader replica has successfully consumed back its own DoL stamp, indicating it's fully caught up
+  * with the version topic and ready to switch to consuming from remote VT or RT.
+  *
+  * @param pcs the partition consumption state tracking DoL status
+  * @param dolPubSubMessage the consumed DoL PubSub message with leadership metadata
+  */
   private void checkAndHandleDoLMessage(PartitionConsumptionState pcs, DefaultPubSubMessage dolPubSubMessage) {
     // Early exit if DoL mechanism is disabled via config or message key is not DoL stamp
     if (!shouldUseDolMechanism() || !Arrays.equals(dolPubSubMessage.getKey().getKey(), KafkaKey.DOL_STAMP.getKey())) {

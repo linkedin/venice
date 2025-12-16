@@ -990,13 +990,6 @@ public class PartitionConsumptionState {
           ? getDivRtCheckpointPosition(pubSubBrokerAddress)
           : getLatestProcessedRtPosition(pubSubBrokerAddress);
     } else {
-      LOGGER.info(
-          "### Getting leader position for replica: {}. Remote consumption enabled: {} remote: {} local: {}",
-          getReplicaTopicPartition(),
-          consumeRemotely(),
-          getLatestProcessedRemoteVtPosition(),
-          getLatestProcessedVtPosition());
-
       return consumeRemotely() ? getLatestProcessedRemoteVtPosition() : getLatestProcessedVtPosition();
     }
   }

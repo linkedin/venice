@@ -2148,7 +2148,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   }
 
   public boolean isUseCheckpointedPubSubPositionWithFallbackEnabled() {
-      return this.useCheckpointedPubSubPositionWithFallback;
+    return this.useCheckpointedPubSubPositionWithFallback;
   }
 
   public boolean isLeaderHandoverUseDoLMechanismEnabledForSystemStores() {

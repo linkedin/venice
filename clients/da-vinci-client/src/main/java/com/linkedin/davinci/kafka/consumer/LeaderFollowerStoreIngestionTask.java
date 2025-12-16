@@ -867,8 +867,15 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       return;
     }
     // Close any existing VeniceWriter partition session
-    veniceWriter.get().closePartition(partitionConsumptionState.getPartition());
-
+    try {
+      veniceWriter.get().closePartition(partitionConsumptionState.getPartition());
+    } catch (Exception e) {
+      LOGGER.error(
+          "Error closing VeniceWriter partition session for replica: {} before sending DoL stamp for term: {}",
+          partitionConsumptionState.getReplicaId(),
+          leadershipTerm,
+          e);
+    }
     DolStamp dolStamp = new DolStamp(leadershipTerm, veniceWriter.get().getWriterId());
     partitionConsumptionState.setDolState(dolStamp);
     LOGGER.info(
@@ -906,11 +913,11 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     public void onCompletion(PubSubProduceResult produceResult, Exception exception) {
       if (exception != null) {
         LOGGER.error(
-            "Failed to produce DoL message for replica: {} with term: {}",
+            "Failed to produce DoL message for replica: {} with term: {}. Clearing DoL state and falling back to legacy time-based mechanism.",
             pcs.getReplicaId(),
             leadershipTerm,
             exception);
-        // Clear DoL state on failure
+        // Clear DoL state on failure - this will cause canSwitchToLeaderTopic() to fall back to legacy mechanism
         pcs.clearDolState();
         return;
       }
@@ -936,32 +943,46 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   }
 
   /**
-   *  TODO: Replace this mechanism with loopback logic.
-   *  The leader replica should append a special message (e.g., Declaration of Leadership with term info)
-   *  at the end of the local version topic (VT), then wait until it consumes the message back from VT.
-   *  Only after this confirmation should it switch to consuming from the real-time (RT) topic.
-   *  This is part of the fast leadership handover project.
+   * Determines if the replica can switch to consuming from the leader topic (remote VT or RTs).
+   *
+   * <p>This method uses the Declaration of Leadership (DoL) mechanism when enabled. The leader replica
+   * appends a DoL message to the local version topic (VT) and waits until it consumes the message back,
+   * confirming it has fully caught up before switching topics.
+   *
+   * <p><b>Fallback Behavior:</b> If the DoL mechanism is enabled but the DoL state is null (which can happen
+   * if the DoL produce failed and was cleared in {@link DolStampProduceCallback#onCompletion}), this method
+   * falls through to the legacy time-based mechanism ({@link #canSwitchToLeaderTopicLegacy}).
+   * This ensures that leadership transition can still complete even if the DoL send fails, though it will
+   * take longer due to the time-based waiting period.
    */
   private boolean canSwitchToLeaderTopic(PartitionConsumptionState pcs) {
     // Check if DoL mechanism is enabled via config (system stores vs user stores)
     DolStamp dolStamp = pcs.getDolState();
     if (shouldUseDolMechanism() && dolStamp != null) {
       // Check if DoL state is ready (both produced and consumed)
-      if (dolStamp.isReady()) {
-        long dolLatencyMs = dolStamp.getLatencyMs();
-        LOGGER.info(
-            "DoL mechanism complete for replica: {} - unblocking switch to the leader topic. Total DoL latency: {} ms. DolStamp: {}",
-            pcs.getReplicaId(),
-            dolLatencyMs,
-            dolStamp);
-        // Clear DoL state as we're done with this transition
-        pcs.clearDolState();
-        return true;
+      if (!dolStamp.isDolComplete()) {
+        // DoL not ready yet, stay on local VT
+        LOGGER.debug("DoL mechanism not ready for replica: {} - DolStamp: {}", pcs.getReplicaId(), dolStamp);
+        return false;
       }
 
-      // DoL not ready yet, stay on local VT
-      LOGGER.debug("DoL mechanism not ready for replica: {} - DolStamp: {}", pcs.getReplicaId(), dolStamp);
-      return false;
+      // DoL is ready - for non-system stores, also verify legacy time-based checks as an additional safety layer
+      if (!isSystemStore && !canSwitchToLeaderTopicLegacy(pcs)) {
+        LOGGER.info(
+            "DoL mechanism complete for replica: {} but legacy time-based check not yet satisfied. Waiting for legacy check to pass.",
+            pcs.getReplicaId());
+        return false;
+      }
+
+      // All checks passed - log and clear DoL state
+      long dolLatencyMs = dolStamp.getLatencyMs();
+      LOGGER.info(
+          "DoL mechanism complete for replica: {} - unblocking switch to the leader topic. Total DoL latency: {} ms. DolStamp: {}",
+          pcs.getReplicaId(),
+          dolLatencyMs,
+          dolStamp);
+      pcs.clearDolState();
+      return true;
     } else {
       // Use legacy time-based mechanism
       return canSwitchToLeaderTopicLegacy(pcs);
@@ -1334,14 +1355,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   }
 
   private boolean isConsumingFromRemoteVersionTopic(PartitionConsumptionState partitionConsumptionState) {
-    // orint all three conditions for easier debugging
-    LOGGER.info(
-        "Checking remote VT consumption for replica: {}. EOP received: {}, isCurrentVersion: {}, nativeReplicationSourceVersionTopicKafkaURL: {}, localKafkaServer: {}",
-        partitionConsumptionState.getReplicaId(),
-        partitionConsumptionState.isEndOfPushReceived(),
-        isCurrentVersion.getAsBoolean(),
-        nativeReplicationSourceVersionTopicKafkaURL,
-        localKafkaServer);
     return !partitionConsumptionState.isEndOfPushReceived() && !isCurrentVersion.getAsBoolean()
     // Do not enable remote consumption for the source fabric leader. Otherwise, it will produce extra messages.
         && !Objects.equals(nativeReplicationSourceVersionTopicKafkaURL, localKafkaServer);
