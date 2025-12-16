@@ -1326,6 +1326,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
               elapsedTimeForPuttingIntoQueue.getValue() + LatencyUtils.getElapsedTimeFromNSToMS(queuePutStartTimeInNS));
         }
 
+        // Intentionally not protecting against exceptions thrown by putConsumerRecord()
+        // Only sync OffsetRecord if the message that triggered the sync was successfully enqueued into the drainer
         syncOffsetFromSnapshotIfNeeded(record, topicPartition); // latest consumed VT position (LCVP) in offset record
         break;
       case PRODUCED_TO_KAFKA:
