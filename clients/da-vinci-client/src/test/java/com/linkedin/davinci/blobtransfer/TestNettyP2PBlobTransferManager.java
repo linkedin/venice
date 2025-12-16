@@ -152,7 +152,13 @@ public class TestNettyP2PBlobTransferManager {
             sslFactory,
             () -> notifier));
     finder = mock(BlobFinder.class);
-    manager = new NettyP2PBlobTransferManager(server, client, finder, tmpPartitionDir.toString(), versionedBlobTransferStats, 5);
+    manager = new NettyP2PBlobTransferManager(
+        server,
+        client,
+        finder,
+        tmpPartitionDir.toString(),
+        versionedBlobTransferStats,
+        5);
     manager.start();
   }
 
@@ -526,8 +532,13 @@ public class TestNettyP2PBlobTransferManager {
         aclHandler,
         20);
 
-    NettyP2PBlobTransferManager newManager =
-        new NettyP2PBlobTransferManager(newServer, newClient, finder, tmpPartitionDir.toString(), versionedBlobTransferStats, 5);
+    NettyP2PBlobTransferManager newManager = new NettyP2PBlobTransferManager(
+        newServer,
+        newClient,
+        finder,
+        tmpPartitionDir.toString(),
+        versionedBlobTransferStats,
+        5);
     newManager.start();
 
     // Action
