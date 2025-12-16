@@ -31,7 +31,7 @@ jobs:
       - name: Build Javadoc
         run: ./gradlew  aggregateJavadoc
       - name: Deploy to GitHub Page
-        uses: JamesIves/github-pages-deploy-action@v4.6.1
+        uses: JamesIves/github-pages-deploy-action@v4.7.6
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           branch: javadoc
