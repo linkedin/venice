@@ -17,10 +17,12 @@ import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.tehuti.MockTehutiReporter;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
+import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMaps;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -96,6 +98,15 @@ public class AggVersionedBlobTransferStatsTest {
     stats.recordBlobTransferTimeInSec(storeName, 1, 20.0);
     Assert
         .assertEquals(reporter.query("." + storeName + "_total--blob_transfer_time.IngestionStatsGauge").value(), 20.0);
+    for (Map.Entry<String, ? extends Metric> metricEntry: metricsRepo.metrics().entrySet()) {
+      System.out.println(metricEntry.getKey() + " : " + metricEntry.getValue().value());
+    }
+    // Record blob transfer bytes received
+    stats.recordBlobTransferBytesReceived(storeName, 1, 1024);
+    Assert.assertEquals(
+        reporter.query("." + storeName + "_total--blob_transfer_bytes_received.Rate").value(),
+        1024 * 1.0);
+
   }
 
   private Store createStore(String storeName) {

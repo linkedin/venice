@@ -21,7 +21,7 @@ public class AggVersionedBlobTransferStats
     super(
         metricsRepository,
         metadataRepository,
-        () -> new BlobTransferStats(),
+        BlobTransferStats::new,
         BlobTransferStatsReporter::new,
         serverConfig.isUnregisterMetricForDeletedStoreEnabled());
   }
@@ -70,4 +70,13 @@ public class AggVersionedBlobTransferStats
   public void recordBlobTransferTimeInSec(String storeName, int version, double timeInSec) {
     recordVersionedAndTotalStat(storeName, version, stats -> stats.recordBlobTransferTimeInSec(timeInSec));
   }
+
+  public void recordBlobTransferBytesReceived(String storeName, int version, long value) {
+    recordVersionedAndTotalStat(storeName, version, stats -> stats.recordBlobTransferBytesReceived(value));
+  }
+
+  public void recordBlobTransferBytesSent(String storeName, int version, long value) {
+    recordVersionedAndTotalStat(storeName, version, stats -> stats.recordBlobTransferBytesSent(value));
+  }
+
 }
