@@ -257,7 +257,7 @@ public class TestChangelogConsumer {
 
     // Wait for store update to propagate
     TestUtils.waitForNonDeterministicAssertion(
-        1000 * globalChangelogClientConfig.getVersionSwapDetectionIntervalTimeInSeconds(),
+        globalChangelogClientConfig.getVersionSwapDetectionIntervalTimeInSeconds(),
         TimeUnit.SECONDS,
         () -> Assert.assertThrows(StoreDisabledException.class, () -> specificChangelogConsumer.subscribeAll().get()));
 
@@ -282,7 +282,7 @@ public class TestChangelogConsumer {
 
     // Wait for store update to propagate
     TestUtils.waitForNonDeterministicAssertion(
-        1000 * globalChangelogClientConfig.getVersionSwapDetectionIntervalTimeInSeconds(),
+        globalChangelogClientConfig.getVersionSwapDetectionIntervalTimeInSeconds(),
         TimeUnit.SECONDS,
         () -> Assert.assertThrows(
             StoreDisabledException.class,
