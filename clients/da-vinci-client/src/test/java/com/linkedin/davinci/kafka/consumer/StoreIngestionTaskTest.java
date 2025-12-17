@@ -5004,7 +5004,8 @@ public abstract class StoreIngestionTaskTest {
           verify(mockAbstractStorageEngine, timeout(10000).times(1)).put(eq(PARTITION_FOO), any(), (ByteBuffer) any());
           verify(zkHelixAdmin, timeout(1000).atLeast(1))
               .setPartitionsToError(anyString(), anyString(), anyString(), anyList());
-          verify(storeIngestionTaskUnderTest, times(1)).reportError(anyString(), anyInt(), any(VeniceException.class));
+          verify(storeIngestionTaskUnderTest, times(1))
+              .reportIngestionNotifier(any(PartitionConsumptionState.class), any(VeniceException.class));
         }, AA_OFF);
     testConfig.setStoreVersionConfigOverride(configOverride -> {
       doReturn(true).when(configOverride).isResetErrorReplicaEnabled();

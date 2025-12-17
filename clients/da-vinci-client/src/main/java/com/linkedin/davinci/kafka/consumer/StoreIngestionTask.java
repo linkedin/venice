@@ -1567,9 +1567,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
                 helixException);
             // If the replica is not completed, report error to release the latch to unblock pending ST
             if (!partitionConsumptionState.isCompletionReported()) {
-              List<PartitionConsumptionState> pcsList = new ArrayList<>();
-              pcsList.add(partitionConsumptionState);
-              ingestionNotificationDispatcher.reportError(pcsList, partitionException.getMessage(), partitionException);
+              reportIngestionNotifier(partitionConsumptionState, partitionException);
             }
           }
           LOGGER.error(
@@ -1595,6 +1593,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         }
       }
     });
+  }
+
+  void reportIngestionNotifier(PartitionConsumptionState partitionConsumptionState, Exception partitionException) {
+    List<PartitionConsumptionState> pcsList = new ArrayList<>();
+    pcsList.add(partitionConsumptionState);
+    ingestionNotificationDispatcher.reportError(pcsList, partitionException.getMessage(), partitionException);
   }
 
   protected void checkIngestionProgress(Store store) throws InterruptedException {
