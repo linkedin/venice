@@ -2,7 +2,6 @@ package com.linkedin.davinci.consumer;
 
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES;
 import static com.linkedin.venice.ConfigKeys.CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS;
-import static com.linkedin.venice.ConfigKeys.CLIENT_USE_REQUEST_BASED_METADATA_REPOSITORY;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
@@ -315,15 +314,14 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
         startTimestamp,
         consumerSequenceIdStartingValue);
 
-    Properties properties = new Properties();
-    properties.put(
-        CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS,
-        String.valueOf(changelogClientConfig.getVersionSwapDetectionIntervalTimeInSeconds()));
-    properties.put(
-        CLIENT_USE_REQUEST_BASED_METADATA_REPOSITORY,
-        String.valueOf(changelogClientConfig.isUseRequestBasedMetadataRepository()));
-    NativeMetadataRepository repository = NativeMetadataRepository
-        .getInstance(changelogClientConfig.getInnerClientConfig(), new VeniceProperties(properties), null);
+    changelogClientConfig.getConsumerProperties()
+        .put(
+            CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS,
+            String.valueOf(changelogClientConfig.getVersionSwapDetectionIntervalTimeInSeconds()));
+    NativeMetadataRepository repository = NativeMetadataRepository.getInstance(
+        changelogClientConfig.getInnerClientConfig(),
+        new VeniceProperties(changelogClientConfig.getConsumerProperties()),
+        null);
     repository.start();
     this.storeRepository = new NativeMetadataRepositoryViewAdapter(repository);
     this.rmdDeserializerCache = new RmdDeserializerCache<>(replicationMetadataSchemaRepository, storeName, 1, false);

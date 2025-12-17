@@ -165,7 +165,6 @@ public class TestVersionSpecificChangelogConsumer {
             .setLocalD2ZkHosts(localZkServer.getAddress())
             .setControllerRequestRetryCount(3)
             .setVersionSwapDetectionIntervalTimeInSeconds(3)
-            .setUseRequestBasedMetadataRepository(true)
             .setD2Client(d2Client)
             .setBootstrapFileSystemPath(Utils.getUniqueString(inputDirPath));
     VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =

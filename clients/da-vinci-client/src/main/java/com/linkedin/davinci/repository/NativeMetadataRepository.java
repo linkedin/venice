@@ -123,7 +123,7 @@ public abstract class NativeMetadataRepository
       VeniceProperties backendConfig,
       ICProvider icProvider) {
     NativeMetadataRepository nativeMetadataRepository;
-    if (backendConfig.getBoolean(CLIENT_USE_REQUEST_BASED_METADATA_REPOSITORY, false)) {
+    if (backendConfig.getBoolean(CLIENT_USE_REQUEST_BASED_METADATA_REPOSITORY, true)) {
       nativeMetadataRepository = new RequestBasedMetaRepository(clientConfig, backendConfig, icProvider);
     } else {
       nativeMetadataRepository = new ThinClientMetaStoreBasedRepository(clientConfig, backendConfig, icProvider);
