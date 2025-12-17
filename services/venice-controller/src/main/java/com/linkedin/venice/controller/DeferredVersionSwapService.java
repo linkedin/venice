@@ -13,6 +13,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoClusterException;
 import com.linkedin.venice.hooks.StoreLifecycleHooks;
 import com.linkedin.venice.hooks.StoreVersionLifecycleEventOutcome;
+import com.linkedin.venice.meta.ConcurrentPushDetectionStrategy;
 import com.linkedin.venice.meta.LifecycleHooksRecord;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.Store;
@@ -1225,7 +1226,11 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
         // For jobs that stop polling early or for pushes that don't poll (empty push), we need to truncate the parent
         // VT here to unblock the next push
         String kafkaTopicName = Version.composeKafkaTopic(storeName, targetVersionNum);
-        if (!veniceParentHelixAdmin.isTopicTruncated(kafkaTopicName)) {
+        ConcurrentPushDetectionStrategy strategy = veniceParentHelixAdmin.getVeniceHelixAdmin()
+            .getControllerConfig(clusterName)
+            .getConcurrentPushDetectionStrategy();
+        // skip truncating if the topic was not created based on ConcurrentPushDetectionStrategy
+        if (strategy.isTopicWriteNeeded() && !veniceParentHelixAdmin.isTopicTruncated(kafkaTopicName)) {
           LOGGER.info("Truncating parent VT for {}", kafkaTopicName);
           veniceParentHelixAdmin.truncateKafkaTopic(Version.composeKafkaTopic(storeName, targetVersionNum));
         }
