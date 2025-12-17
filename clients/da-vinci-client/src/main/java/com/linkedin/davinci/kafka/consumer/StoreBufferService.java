@@ -693,7 +693,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
   /**
    * Allows the ConsumptionTask to command the Drainer to sync the VT DIV to the OffsetRecord.
    */
-  private static class SyncVtDivNode extends QueueNode {
+  static class SyncVtDivNode extends QueueNode {
     private static final int PARTIAL_CLASS_OVERHEAD = getClassOverhead(SyncVtDivNode.class);
 
     private final PartitionTracker vtDivSnapshot;
@@ -859,7 +859,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
     }
   }
 
-  private static class FakePubSubMessage implements DefaultPubSubMessage {
+  static class FakePubSubMessage implements DefaultPubSubMessage {
     private static final int SHALLOW_CLASS_OVERHEAD = ClassSizeEstimator.getClassOverhead(FakePubSubMessage.class);
     private final PubSubTopicPartition topicPartition;
 
