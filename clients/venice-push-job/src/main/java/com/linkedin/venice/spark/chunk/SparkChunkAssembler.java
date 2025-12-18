@@ -12,6 +12,7 @@ import static com.linkedin.venice.spark.SparkConstants.VALUE_COLUMN_NAME;
 import com.linkedin.venice.common.ChunkAssembler;
 import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperValue;
 import com.linkedin.venice.hadoop.input.kafka.avro.MapperValueType;
+import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.spark.input.kafka.ttl.SparkChunkedPayloadTTLFilter;
@@ -174,9 +175,9 @@ public class SparkChunkAssembler implements Serializable {
       mapperValue.offset = row.getAs(OFFSET_COLUMN_NAME);
 
       int messageType = row.getAs(MESSAGE_TYPE_COLUMN_NAME);
-      if (messageType == 0) {
+      if (messageType == MessageType.PUT.getValue()) {
         mapperValue.valueType = MapperValueType.PUT;
-      } else if (messageType == 1) {
+      } else if (messageType == MessageType.DELETE.getValue()) {
         mapperValue.valueType = MapperValueType.DELETE;
       } else {
         throw new IllegalStateException(
