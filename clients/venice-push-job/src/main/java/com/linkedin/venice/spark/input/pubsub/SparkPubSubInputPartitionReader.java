@@ -2,7 +2,8 @@ package com.linkedin.venice.spark.input.pubsub;
 
 import static com.linkedin.venice.utils.Utils.EMPTY_BYTE_BUFFER;
 
-import com.linkedin.venice.annotation.VisibleForTesting;
+import com.linkedin.venice.chunking.ChunkKeyValueTransformer;
+import com.linkedin.venice.chunking.RawKeyBytesAndChunkedKeySuffix;
 import com.linkedin.venice.kafka.protocol.Delete;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
@@ -43,6 +44,8 @@ public class SparkPubSubInputPartitionReader implements PartitionReader<Internal
   private final PubSubSplitIterator pubSubSplitIterator;
   private final PubSubTopicPartition topicPartition;
   private final String region;
+  private final boolean isChunkingEnabled;
+  private final ChunkKeyValueTransformer keyTransformer;
 
   private GenericInternalRow currentRow;
 
@@ -50,23 +53,36 @@ public class SparkPubSubInputPartitionReader implements PartitionReader<Internal
       SparkPubSubInputPartition inputPartition,
       PubSubConsumerAdapter consumer,
       String region,
-      boolean useLogicalIndexOffset) {
-    this.topicPartition = inputPartition.getPubSubPartitionSplit().getPubSubTopicPartition();
-    this.region = region;
-    this.pubSubSplitIterator =
-        new PubSubSplitIterator(consumer, inputPartition.getPubSubPartitionSplit(), useLogicalIndexOffset);
+      boolean useLogicalIndexOffset,
+      boolean isChunkingEnabled,
+      ChunkKeyValueTransformer keyTransformer) {
+    this(
+        inputPartition,
+        region,
+        new PubSubSplitIterator(consumer, inputPartition.getPubSubPartitionSplit(), useLogicalIndexOffset),
+        isChunkingEnabled,
+        keyTransformer);
   }
 
   /**
-   * Test-only constructor that allows injection of a mock PubSubSplitIterator for testing.
+   * This is the common constructor that all other constructors delegate to.
+   *
+   * @param inputPartition the input partition to read from
+   * @param region the region name
+   * @param mockIterator the mock iterator for testing
+   * @param isChunkingEnabled whether chunking is enabled (pass false for non-chunking tests)
+   * @param keyTransformer the key transformer for chunking (pass null for non-chunking tests)
    */
-  @VisibleForTesting
   SparkPubSubInputPartitionReader(
       SparkPubSubInputPartition inputPartition,
       String region,
-      PubSubSplitIterator mockIterator) {
+      PubSubSplitIterator mockIterator,
+      boolean isChunkingEnabled,
+      ChunkKeyValueTransformer keyTransformer) {
     this.topicPartition = inputPartition.getPubSubPartitionSplit().getPubSubTopicPartition();
     this.region = region;
+    this.isChunkingEnabled = isChunkingEnabled;
+    this.keyTransformer = keyTransformer;
     this.pubSubSplitIterator = mockIterator;
   }
 
@@ -84,8 +100,7 @@ public class SparkPubSubInputPartitionReader implements PartitionReader<Internal
     KafkaMessageEnvelope pubSubMessageValue = pubSubMessage.getValue();
     MessageType pubSubMessageType = MessageType.valueOf(pubSubMessageValue);
 
-    // Spark row setup :
-    ByteBuffer key = ByteBuffer.wrap(pubSubMessageKey.getKey(), 0, pubSubMessageKey.getKeyLength());
+    // Spark row setup
     ByteBuffer value;
     int messageType;
     int schemaId;
@@ -116,15 +131,32 @@ public class SparkPubSubInputPartitionReader implements PartitionReader<Internal
                 + pubSubMessage.getPosition());
     }
 
+    // Key handling: if chunking is enabled, split the composite key to extract the raw user key
+    // All chunks of the same value share the same user key but have different chunked suffixes.
+    ByteBuffer key;
+    ByteBuffer chunkedKeySuffix = null;
+    if (isChunkingEnabled && keyTransformer != null) {
+      ChunkKeyValueTransformer.KeyType keyType = ChunkKeyValueTransformer.getKeyType(pubSubMessageType, schemaId);
+      RawKeyBytesAndChunkedKeySuffix parts = keyTransformer.splitChunkedKey(pubSubMessageKey.getKey(), keyType);
+      key = parts.getRawKeyBytes(); // Extract only the user key (suffix removed)
+      chunkedKeySuffix = parts.getChunkedKeySuffixBytes(); // Extract the suffix for chunk matching
+    } else {
+      // Non-chunked or chunking disabled: use the full key as-is
+      key = ByteBuffer.wrap(pubSubMessageKey.getKey(), 0, pubSubMessageKey.getKeyLength());
+    }
+
     /**
      *  See {@link com.linkedin.venice.spark.SparkConstants#RAW_PUBSUB_INPUT_TABLE_SCHEMA} for the schema definition.
      *  Enforce the region to be UTF8String for Spark compatibility and additionally handle ordering of columns per
      *  the schema.
+     *
+     *  Schema: region, partition, offset, message_type, schema_id, key, value, rmd_version_id, rmd_payload, chunked_key_suffix
      */
     currentRow = new GenericInternalRow(
         new Object[] { UTF8String.fromString(region), topicPartition.getPartitionNumber(), rec.getOffset(), messageType,
             schemaId, ByteUtils.extractByteArray(key), ByteUtils.extractByteArray(value), replicationMetadataVersionId,
-            ByteUtils.extractByteArray(replicationMetadataPayload) });
+            ByteUtils.extractByteArray(replicationMetadataPayload),
+            chunkedKeySuffix != null ? ByteUtils.extractByteArray(chunkedKeySuffix) : null });
 
     logProgressPercent();
     return true;

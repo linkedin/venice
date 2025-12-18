@@ -10,13 +10,21 @@ import static com.linkedin.venice.ConfigKeys.PUSH_JOB_GUID_MOST_SIGNIFICANT_BITS
 import static com.linkedin.venice.ConfigKeys.PUSH_JOB_VIEW_CONFIGS;
 import static com.linkedin.venice.guid.GuidUtils.DEFAULT_GUID_GENERATOR_IMPLEMENTATION;
 import static com.linkedin.venice.guid.GuidUtils.GUID_GENERATOR_IMPLEMENTATION;
+import static com.linkedin.venice.spark.SparkConstants.CHUNKED_KEY_SUFFIX_COLUMN_NAME;
 import static com.linkedin.venice.spark.SparkConstants.DEFAULT_SCHEMA;
 import static com.linkedin.venice.spark.SparkConstants.DEFAULT_SCHEMA_WITH_PARTITION;
+import static com.linkedin.venice.spark.SparkConstants.DEFAULT_SCHEMA_WITH_SCHEMA_ID;
 import static com.linkedin.venice.spark.SparkConstants.DEFAULT_SPARK_CLUSTER;
 import static com.linkedin.venice.spark.SparkConstants.KEY_COLUMN_NAME;
+import static com.linkedin.venice.spark.SparkConstants.MESSAGE_TYPE;
+import static com.linkedin.venice.spark.SparkConstants.MESSAGE_TYPE_COLUMN_NAME;
+import static com.linkedin.venice.spark.SparkConstants.OFFSET;
+import static com.linkedin.venice.spark.SparkConstants.OFFSET_COLUMN_NAME;
 import static com.linkedin.venice.spark.SparkConstants.PARTITION_COLUMN_NAME;
 import static com.linkedin.venice.spark.SparkConstants.REPLICATION_METADATA_PAYLOAD;
 import static com.linkedin.venice.spark.SparkConstants.RMD_COLUMN_NAME;
+import static com.linkedin.venice.spark.SparkConstants.RMD_VERSION_ID_COLUMN_NAME;
+import static com.linkedin.venice.spark.SparkConstants.SCHEMA_ID_COLUMN_NAME;
 import static com.linkedin.venice.spark.SparkConstants.SPARK_CASE_SENSITIVE_CONFIG;
 import static com.linkedin.venice.spark.SparkConstants.SPARK_CLUSTER_CONFIG;
 import static com.linkedin.venice.spark.SparkConstants.SPARK_DATA_WRITER_CONF_PREFIX;
@@ -69,6 +77,8 @@ import com.linkedin.venice.hadoop.task.datawriter.DataWriterTaskTracker;
 import com.linkedin.venice.jobs.DataWriterComputeJob;
 import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
 import com.linkedin.venice.schema.AvroSchemaParseUtils;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.spark.chunk.SparkChunkAssembler;
 import com.linkedin.venice.spark.datawriter.partition.PartitionSorter;
 import com.linkedin.venice.spark.datawriter.partition.VeniceSparkPartitioner;
 import com.linkedin.venice.spark.datawriter.recordprocessor.SparkInputRecordProcessorFactory;
@@ -84,6 +94,9 @@ import com.linkedin.venice.utils.AvroSchemaUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.Properties;
 import java.util.UUID;
 import org.apache.avro.Schema;
@@ -92,10 +105,13 @@ import org.apache.logging.log4j.Logger;
 import org.apache.spark.SparkConf;
 import org.apache.spark.SparkContext;
 import org.apache.spark.api.java.JavaSparkContext;
+import org.apache.spark.api.java.function.FlatMapGroupsFunction;
+import org.apache.spark.api.java.function.MapFunction;
 import org.apache.spark.api.java.function.MapPartitionsFunction;
 import org.apache.spark.broadcast.Broadcast;
 import org.apache.spark.sql.DataFrameReader;
 import org.apache.spark.sql.Dataset;
+import org.apache.spark.sql.Encoders;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.RuntimeConfig;
 import org.apache.spark.sql.SparkSession;
@@ -338,15 +354,26 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
       // Apply TTL filter first on RAW_PUBSUB_INPUT_TABLE_SCHEMA (if enabled)
       Dataset<Row> filteredInput = applyTTLFilter(rawKafkaInput);
 
-      // Transform to standard schema: select columns and rename RMD payload to rmd
-      // CAST is needed to change nullability from false (in RAW schema) to true (in DEFAULT_SCHEMA)
-      // because __replication_metadata_payload__ is non-nullable but rmd should be nullable
-      return filteredInput.selectExpr(
-          KEY_COLUMN_NAME, // key
-          VALUE_COLUMN_NAME, // value
-          "CAST(" + REPLICATION_METADATA_PAYLOAD + " AS BINARY) as " + RMD_COLUMN_NAME // rmd
-      );
-
+      // If chunking is enabled, keep offset, message_type, and chunked_key_suffix for chunk assembly
+      // Otherwise, just select the basic columns
+      if (pushJobSetting.sourceKafkaInputVersionInfo.isChunkingEnabled()) {
+        LOGGER.info("Chunking is enabled - selecting columns for chunk assembly");
+        return filteredInput.selectExpr(
+            KEY_COLUMN_NAME,
+            VALUE_COLUMN_NAME,
+            "CAST(" + REPLICATION_METADATA_PAYLOAD + " AS BINARY) as " + RMD_COLUMN_NAME,
+            SCHEMA_ID_COLUMN_NAME + " as " + SCHEMA_ID_COLUMN_NAME,
+            RMD_VERSION_ID_COLUMN_NAME + " as " + RMD_VERSION_ID_COLUMN_NAME,
+            OFFSET + " as " + OFFSET_COLUMN_NAME,
+            MESSAGE_TYPE + " as " + MESSAGE_TYPE_COLUMN_NAME,
+            CHUNKED_KEY_SUFFIX_COLUMN_NAME + " as " + CHUNKED_KEY_SUFFIX_COLUMN_NAME);
+      } else {
+        // Non-chunked: don't need offset/message_type or schema IDs
+        return filteredInput.selectExpr(
+            KEY_COLUMN_NAME,
+            VALUE_COLUMN_NAME,
+            "CAST(" + REPLICATION_METADATA_PAYLOAD + " AS BINARY) as " + RMD_COLUMN_NAME);
+      }
     } else {
       return getUserInputDataFrame();
     }
@@ -376,7 +403,11 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
       return dataFrame;
     }
 
-    LOGGER.info("Applying TTL filtering with start timestamp: {}", pushJobSetting.repushTTLStartTimeMs);
+    boolean isChunkingEnabled = pushJobSetting.sourceKafkaInputVersionInfo.isChunkingEnabled();
+    LOGGER.info(
+        "Applying TTL filtering with start timestamp: {} (chunking enabled: {})",
+        pushJobSetting.repushTTLStartTimeMs,
+        isChunkingEnabled);
 
     try (JavaSparkContext sparkContext = JavaSparkContext.fromSparkContext(sparkSession.sparkContext())) {
       // Create properties for TTL filter
@@ -397,6 +428,14 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
         try {
           // Filter rows in this partition
           return Iterators.filter(iterator, row -> {
+            int schemaId = row.getInt(4); // schema_id is at index 4 in RAW_PUBSUB_INPUT_TABLE_SCHEMA
+
+            // If chunking enabled, skip chunk/manifest records - they will be assembled first
+            if (isChunkingEnabled && (schemaId == AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion()
+                || schemaId == AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion())) {
+              return true; // Keep chunk/manifest records for assembly
+            }
+
             // shouldFilter returns true if record should be removed
             // We negate to keep records that should NOT be filtered
             boolean shouldRemove = ttlFilter.shouldFilter(row);
@@ -423,6 +462,69 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
       LOGGER.error("Failed to apply TTL filter", e);
       throw new VeniceException("Failed to apply TTL filter", e);
     }
+  }
+
+  /**
+   * Apply chunk assembly if chunking is enabled.
+   * Groups records by key, sorts by offset DESC, and assembles chunks into complete values/RMDs.
+   * If TTL filtering is enabled, the assembler also filters assembled records post-assembly.
+   *
+   * @param dataFrame Input with SCHEMA_FOR_CHUNK_ASSEMBLY (7 columns)
+   * @return DataFrame with DEFAULT_SCHEMA_WITH_SCHEMA_ID (5 columns - assembled records)
+   */
+  protected Dataset<Row> applyChunkAssembly(Dataset<Row> dataFrame) {
+    boolean isRmdChunkingEnabled = pushJobSetting.sourceKafkaInputVersionInfo.isRmdChunkingEnabled();
+    boolean isTTLEnabled = pushJobSetting.repushTTLEnabled;
+
+    LOGGER.info("Chunk assembly starting (TTL filtering: {}). Input schema: {}", isTTLEnabled, dataFrame.schema());
+
+    // Prepare TTL filter properties if enabled
+    VeniceProperties filterProps = null;
+    if (isTTLEnabled) {
+      Properties props = new Properties();
+      this.sparkSession.conf().getAll().foreach(entry -> props.setProperty(entry._1, entry._2));
+      filterProps = new VeniceProperties(props);
+    }
+    final VeniceProperties broadcastFilterProps = filterProps;
+
+    ExpressionEncoder<Row> encoder = RowEncoder.apply(DEFAULT_SCHEMA_WITH_SCHEMA_ID);
+
+    dataFrame = dataFrame
+        // Group by key
+        .groupByKey((MapFunction<Row, byte[]>) row -> row.getAs(KEY_COLUMN_NAME), Encoders.BINARY())
+        // For each key group, sort by offset DESC and assemble
+        .flatMapGroups((FlatMapGroupsFunction<byte[], Row, Row>) (keyBytes, rowsIterator) -> {
+          // Collect rows and sort by offset DESC (highest first)
+          List<Row> rowsList = new ArrayList<>();
+          rowsIterator.forEachRemaining(rowsList::add);
+
+          if (rowsList.isEmpty()) {
+            return Collections.emptyIterator();
+          }
+
+          // Sort by offset DESC
+          rowsList.sort((r1, r2) -> {
+            long offset1 = r1.getAs(OFFSET_COLUMN_NAME);
+            long offset2 = r2.getAs(OFFSET_COLUMN_NAME);
+            return Long.compare(offset2, offset1);
+          });
+
+          // Assemble chunks (and apply TTL filtering if enabled)
+          SparkChunkAssembler assembler =
+              new SparkChunkAssembler(isRmdChunkingEnabled, isTTLEnabled, broadcastFilterProps);
+          Row assembled = assembler.assembleChunks(keyBytes, rowsList.iterator());
+
+          if (assembled == null) {
+            // Latest record is DELETE, chunks incomplete, or filtered by TTL
+            accumulatorsForDataWriterJob.emptyRecordCounter.add(1);
+            return Collections.emptyIterator();
+          }
+
+          return Collections.singletonList(assembled).iterator();
+        }, encoder);
+
+    LOGGER.info("Chunk assembly completed. Output schema: {}", dataFrame.schema());
+    return dataFrame;
   }
 
   // Set configs for both SparkSession (data processing) and DataFrameReader (input format)
@@ -466,7 +568,19 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
 
     LOGGER.info("Triggering Spark job for data writer");
     try {
-      if (!pushJobSetting.isSourceKafka) {
+      if (pushJobSetting.isSourceKafka) {
+        // Apply chunk assembly if chunking is enabled
+        if (pushJobSetting.sourceKafkaInputVersionInfo.isChunkingEnabled()) {
+          LOGGER.info(
+              "Applying chunk assembly (RMD chunking: {})",
+              pushJobSetting.sourceKafkaInputVersionInfo.isRmdChunkingEnabled());
+          dataFrame = applyChunkAssembly(dataFrame);
+        }
+
+        // Drop schema ID columns (current behavior - no writer changes)
+        LOGGER.info("Dropping schema ID columns before writing");
+        dataFrame = dataFrame.drop(SCHEMA_ID_COLUMN_NAME, RMD_VERSION_ID_COLUMN_NAME);
+      } else {
         // For HDFS input, convert all rows to byte[], byte[] pairs (compressed if compression is enabled)
         dataFrame = dataFrame
             .map(
