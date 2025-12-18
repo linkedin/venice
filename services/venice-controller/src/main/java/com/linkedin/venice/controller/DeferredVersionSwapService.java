@@ -1226,9 +1226,8 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
         // For jobs that stop polling early or for pushes that don't poll (empty push), we need to truncate the parent
         // VT here to unblock the next push
         String kafkaTopicName = Version.composeKafkaTopic(storeName, targetVersionNum);
-        ConcurrentPushDetectionStrategy strategy = veniceParentHelixAdmin.getVeniceHelixAdmin()
-            .getControllerConfig(clusterName)
-            .getConcurrentPushDetectionStrategy();
+        ConcurrentPushDetectionStrategy strategy =
+            veniceControllerMultiClusterConfig.getControllerConfig(clusterName).getConcurrentPushDetectionStrategy();
         // skip truncating if the topic was not created based on ConcurrentPushDetectionStrategy
         if (strategy.isTopicWriteNeeded() && !veniceParentHelixAdmin.isTopicTruncated(kafkaTopicName)) {
           LOGGER.info("Truncating parent VT for {}", kafkaTopicName);
