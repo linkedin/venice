@@ -3,6 +3,7 @@ package com.linkedin.venice.consumer;
 import static com.linkedin.davinci.consumer.stats.BasicConsumerStats.CONSUMER_METRIC_ENTITIES;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CHILD_DATA_CENTER_KAFKA_URL_PREFIX;
+import static com.linkedin.venice.ConfigKeys.CLIENT_USE_REQUEST_BASED_METADATA_REPOSITORY;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_LINGER_MS;
@@ -953,6 +954,7 @@ public class TestChangelogConsumer {
     consumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, localKafkaUrl);
     consumerProperties.put(CLUSTER_NAME, clusterName);
     consumerProperties.put(ZOOKEEPER_ADDRESS, localZkServer.getAddress());
+    consumerProperties.put(CLIENT_USE_REQUEST_BASED_METADATA_REPOSITORY, true);
     ChangelogClientConfig globalChangelogClientConfig =
         new ChangelogClientConfig().setConsumerProperties(consumerProperties)
             .setControllerD2ServiceName(D2_SERVICE_NAME)
@@ -1068,7 +1070,6 @@ public class TestChangelogConsumer {
             .setLocalD2ZkHosts(localZkServer.getAddress())
             .setControllerRequestRetryCount(3)
             .setVersionSwapDetectionIntervalTimeInSeconds(180)
-            .setUseRequestBasedMetadataRepository(true)
             .setD2Client(d2Client)
             .setBootstrapFileSystemPath(Utils.getUniqueString(inputDirPath));
     VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =
@@ -1147,7 +1148,6 @@ public class TestChangelogConsumer {
             .setLocalD2ZkHosts(localZkServer.getAddress())
             .setControllerRequestRetryCount(3)
             .setVersionSwapDetectionIntervalTimeInSeconds(180)
-            .setUseRequestBasedMetadataRepository(true)
             .setD2Client(d2Client)
             .setBootstrapFileSystemPath(Utils.getUniqueString(inputDirPath))
             .setIsNewStatelessClientEnabled(true);
@@ -1223,7 +1223,6 @@ public class TestChangelogConsumer {
             .setLocalD2ZkHosts(localZkServer.getAddress())
             .setControllerRequestRetryCount(3)
             .setVersionSwapDetectionIntervalTimeInSeconds(3)
-            .setUseRequestBasedMetadataRepository(true)
             .setD2Client(d2Client)
             .setBootstrapFileSystemPath(Utils.getUniqueString(inputDirPath));
     VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =
@@ -1293,7 +1292,6 @@ public class TestChangelogConsumer {
             .setLocalD2ZkHosts(localZkServer.getAddress())
             .setControllerRequestRetryCount(3)
             .setVersionSwapDetectionIntervalTimeInSeconds(3)
-            .setUseRequestBasedMetadataRepository(true)
             .setD2Client(d2Client)
             .setBootstrapFileSystemPath(Utils.getUniqueString(inputDirPath));
     VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =
@@ -1404,7 +1402,6 @@ public class TestChangelogConsumer {
             .setLocalD2ZkHosts(localZkServer.getAddress())
             .setControllerRequestRetryCount(3)
             .setVersionSwapDetectionIntervalTimeInSeconds(3)
-            .setUseRequestBasedMetadataRepository(true)
             .setD2Client(d2Client)
             .setBootstrapFileSystemPath(Utils.getUniqueString(inputDirPath));
     VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =

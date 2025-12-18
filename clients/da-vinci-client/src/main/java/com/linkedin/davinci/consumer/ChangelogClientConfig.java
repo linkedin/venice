@@ -63,7 +63,6 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
 
   private Boolean isNewStatelessClientEnabled = false;
   private int maxBufferSize = 1000;
-  private boolean useRequestBasedMetadataRepository = false;
 
   /**
    * If non-null, {@link VeniceChangelogConsumer} will subscribe to a specific version of a Venice store.
@@ -308,15 +307,6 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
     return this;
   }
 
-  public boolean isUseRequestBasedMetadataRepository() {
-    return useRequestBasedMetadataRepository;
-  }
-
-  public ChangelogClientConfig setUseRequestBasedMetadataRepository(boolean useRequestBasedMetadataRepository) {
-    this.useRequestBasedMetadataRepository = useRequestBasedMetadataRepository;
-    return this;
-  }
-
   public boolean shouldSkipFailedToAssembleRecords() {
     return skipFailedToAssembleRecords;
   }
@@ -409,7 +399,6 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
         .setMaxBufferSize(config.getMaxBufferSize())
         .setSeekThreadPoolSize(config.getSeekThreadPoolSize())
         .setShouldSkipFailedToAssembleRecords(config.shouldSkipFailedToAssembleRecords())
-        .setUseRequestBasedMetadataRepository(config.isUseRequestBasedMetadataRepository())
         .setIncludeControlMessages(config.shouldIncludeControlMessages())
         .setInnerClientConfig(config.getInnerClientConfig())
         // Store version should not be cloned
