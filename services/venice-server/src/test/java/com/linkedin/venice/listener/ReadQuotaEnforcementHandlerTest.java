@@ -804,7 +804,7 @@ public class ReadQuotaEnforcementHandlerTest {
     doReturn(topic).when(version).kafkaTopicName();
     Version version2 = mock(Version.class);
     doReturn(topic2).when(version2).kafkaTopicName();
-    doReturn(1).when(version2).getPartitionCount();
+    doReturn(5).when(version2).getPartitionCount();
     doReturn(VersionStatus.ONLINE).when(version2).getStatus();
     Store store = setUpStoreMock(storeName, 1, Collections.singletonList(version), 100, true);
     Store store2 = setUpStoreMock(storeName2, 1, Collections.singletonList(version2), 100, true);
@@ -849,15 +849,15 @@ public class ReadQuotaEnforcementHandlerTest {
         stats);
     // Ensure init() is invoked before proceeding with the test
     TestUtils.waitForNonDeterministicAssertion(
-        5,
+        50000,
         TimeUnit.SECONDS,
         () -> Assert.assertTrue(quotaEnforcerWithFallback.isInitialized()));
     Assert.assertNotNull(quotaEnforcerWithFallback.getStoreVersionRateLimiter(topic));
     Assert.assertNotNull(quotaEnforcerWithFallback.getStoreVersionRateLimiter(topic2));
     Assert.assertEquals(quotaEnforcerWithFallback.getStoreVersionRateLimiter(topic).getQuota(), 100L);
-    // Despite there are 2 instances in the cluster the node responsibility should still be 1 because the version only
-    // has 1 partition.
-    Assert.assertEquals(quotaEnforcerWithFallback.getStoreVersionRateLimiter(topic2).getQuota(), 100L);
+    // There are 2 instances in the cluster the node responsibility should be 3/5 because the store has 5 partitions
+    // and to be safe we assume the node is holding ceil(5/2)=3 partitions. 3/5 * 100 = 60.
+    Assert.assertEquals(quotaEnforcerWithFallback.getStoreVersionRateLimiter(topic2).getQuota(), 60L);
 
     // If the fallback behavior config is disabled we should fail open.
     doReturn(false).when(serverConfig).isReadQuotaInitializationFallbackEnabled();

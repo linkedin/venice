@@ -454,7 +454,7 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
       LOGGER.info(
           "Store: {} read quota changed from {} to {}",
           store.getName(),
-          storeQuotaChangeMap.get(store.getName()),
+          previousStoreReadQuota,
           store.getReadQuotaInCU());
     }
     Set<String> toBeRemovedTopics = getStoreTopics(store.getName());
@@ -490,10 +490,9 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
            * Alternatively, EV/CV could also be lagging behind about a new version creation or after host restart. In
            * any case instead of failing the quota initialization we will go ahead and assume partitions are evenly
            * distributed and initialize the quota assuming the worst case scenario where the replicas on this host will
-           * be serving all traffic for those partitions. If the number of partition is lower than the number of
-           * instances then we ensure the instance will have enough quota to serve for an entire partition on its own.
-           * i.e. if store quota was Q and instance count is N and partition count is X then this instance will get
-           * Q/(min(N, X)) quota.
+           * be serving all traffic for those partitions (ceil(partition count / instance count)). If the number of
+           * partition is lower than the number of instances then we just need to ensure the instance will have enough
+           * quota to serve for an entire partition on its own (without any other replicas for that partition).
            */
           if (quotaInitializationFallbackEnabled) {
             LOGGER.warn(
@@ -505,8 +504,15 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
             // responsible for all traffic for this store.
             double thisNodeQuotaResponsibility = 1.0;
             if (instanceCount > 0) {
-              // Node responsibility should be 1 divided by partition count or instance count, whichever one is lower.
-              thisNodeQuotaResponsibility = 1.0 / (double) Math.min(instanceCount, version.getPartitionCount());
+              int partitionCount = version.getPartitionCount();
+              if (instanceCount >= partitionCount) {
+                // This instance should only be responsible for at most 1 partition
+                thisNodeQuotaResponsibility = 1.0 / (double) partitionCount;
+              } else {
+                // This instance could be responsible for multiple partitions, we should take the ceiling to be safe
+                thisNodeQuotaResponsibility =
+                    Math.ceil((double) partitionCount / (double) instanceCount) / (double) partitionCount;
+              }
             }
             computeNewRateLimiter(store.getName(), versionNumber, topic, quotaInRcu, thisNodeQuotaResponsibility, true);
           } else {
