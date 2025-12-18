@@ -3085,4 +3085,11 @@ public class ConfigKeys {
    */
   public static final String SYSTEM_STORE_VERSION_RETENTION_COUNT = "store.version.retention.count.system.store";
   public static final int DEFAULT_SYSTEM_STORE_VERSION_RETENTION_COUNT = 5;
+
+  /**
+   * Whether storage node read quota will fail-open if CV is unavailable during initialization or it will try to use
+   * cluster's instance count to calculate a placeholder/fallback value until CV is available.
+   */
+  public static final String SERVER_READ_QUOTA_INITIALIZATION_FALLBACK_ENABLED =
+      "server.read.quota.initialization.fallback.enabled";
 }

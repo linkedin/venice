@@ -175,6 +175,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_PUBSUB_CONSUMER_POLL_RETRY_T
 import static com.linkedin.venice.ConfigKeys.SERVER_QUOTA_ENFORCEMENT_CAPACITY_MULTIPLE;
 import static com.linkedin.venice.ConfigKeys.SERVER_QUOTA_ENFORCEMENT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_QUOTA_ENFORCEMENT_INTERVAL_IN_MILLIS;
+import static com.linkedin.venice.ConfigKeys.SERVER_READ_QUOTA_INITIALIZATION_FALLBACK_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_RECORD_LEVEL_METRICS_WHEN_BOOTSTRAPPING_CURRENT_VERSION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_REMOTE_CONSUMER_CONFIG_PREFIX;
 import static com.linkedin.venice.ConfigKeys.SERVER_REMOTE_INGESTION_REPAIR_SLEEP_INTERVAL_SECONDS;
@@ -691,6 +692,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   private final boolean parallelResourceShutdownEnabled;
   private final int lagMonitorCleanupCycle;
+  private final boolean readQuotaInitializationFallbackEnabled;
 
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     this(serverProperties, Collections.emptyMap());
@@ -1177,6 +1179,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
         serverProperties.getBoolean(SERVER_PARALLEL_RESOURCE_SHUTDOWN_ENABLED, false);
     this.lagMonitorCleanupCycle =
         serverProperties.getInt(SERVER_LAG_MONITOR_CLEANUP_CYCLE, DEFAULT_LAG_MONITOR_CLEANUP_CYCLE);
+    this.readQuotaInitializationFallbackEnabled =
+        serverProperties.getBoolean(SERVER_READ_QUOTA_INITIALIZATION_FALLBACK_ENABLED, true);
   }
 
   List<Double> extractThrottleLimitFactorsFor(VeniceProperties serverProperties, String configKey) {
@@ -2130,5 +2134,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public int getLagMonitorCleanupCycle() {
     return lagMonitorCleanupCycle;
+  }
+
+  public boolean isReadQuotaInitializationFallbackEnabled() {
+    return readQuotaInitializationFallbackEnabled;
   }
 }

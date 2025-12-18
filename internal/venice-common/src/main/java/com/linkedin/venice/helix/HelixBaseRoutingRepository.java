@@ -203,6 +203,12 @@ public abstract class HelixBaseRoutingRepository
     return resourceAssignment.getPartitionAssignment(resourceName).getExpectedNumberOfPartitions();
   }
 
+  public int getLiveInstancesCount() {
+    try (AutoCloseableLock ignore = AutoCloseableLock.of(liveInstancesMapLock)) {
+      return this.liveInstancesMap.size();
+    }
+  }
+
   @Override
   public boolean containsKafkaTopic(String kafkaTopic) {
     return resourceAssignment.containsResource(kafkaTopic);
