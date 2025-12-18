@@ -1565,10 +1565,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
                 "Got HelixException while trying to set replica status to ERROR for: {}",
                 getReplicaId(kafkaVersionTopic, exceptionPartition),
                 helixException);
-            // If the replica is not completed, report error to release the latch to unblock pending ST
-            if (!partitionConsumptionState.isCompletionReported()) {
-              reportIngestionNotifier(partitionConsumptionState, partitionException);
-            }
+            // report error to release the latch to unblock pending ST
+            reportIngestionNotifier(partitionConsumptionState, partitionException);
           }
           LOGGER.error(
               "Marking current version replica status to ERROR for replica: {}",
