@@ -18,8 +18,6 @@ import static org.testng.Assert.assertNotNull;
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.davinci.client.DaVinciConfig;
-import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
-import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.client.store.AbstractAvroStoreClient;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
@@ -41,7 +39,6 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
-import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.LifecycleHooksRecord;
 import com.linkedin.venice.meta.LifecycleHooksRecordImpl;
@@ -57,7 +54,6 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
-import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -93,7 +89,6 @@ public class TestDeferredVersionSwap {
       IntStream.range(0, NUMBER_OF_CLUSTERS).mapToObj(i -> "venice-cluster" + i).toArray(String[]::new);
   private static final int TEST_TIMEOUT = 120_000;
   private List<VeniceMultiClusterWrapper> childDatacenters;
-  private D2Client d2Client;
 
   @BeforeClass
   public void setUp() {
@@ -355,19 +350,13 @@ public class TestDeferredVersionSwap {
     // Create dvc client in target region
     List<VeniceMultiClusterWrapper> childDatacenters = multiRegionMultiClusterWrapper.getChildRegions();
     VeniceClusterWrapper cluster1 = childDatacenters.get(0).getClusters().get(CLUSTER_NAMES[0]);
-    D2Client d2Client1 = D2TestUtils.getAndStartD2Client(cluster1.getZk().getAddress());
-    VeniceProperties backendConfig1 = DaVinciTestContext.getDaVinciPropertyBuilder(cluster1.getZk().getAddress())
+    VeniceProperties backendConfig = DaVinciTestContext.getDaVinciPropertyBuilder(cluster1.getZk().getAddress())
         .put(DATA_BASE_PATH, Utils.getTempDataDirectory().getAbsolutePath())
         .put(LOCAL_REGION_NAME, REGION1)
         .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
         .build();
-    CachingDaVinciClientFactory factory1 = DaVinciTestContext.getCachingDaVinciClientFactory(
-        d2Client1,
-        VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
-        new MetricsRepository(),
-        backendConfig1,
-        cluster1);
-    DaVinciClient<Object, Object> client1 = factory1.getAndStartGenericAvroClient(storeName, new DaVinciConfig());
+    DaVinciClient<Object, Object> client1 =
+        ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster1, new DaVinciConfig(), backendConfig);
     client1.subscribeAll().get();
 
     // Check that v1 is ingested
@@ -400,24 +389,17 @@ public class TestDeferredVersionSwap {
       });
 
       // Close dvc client in target region
-      factory1.close();
-      D2ClientUtils.shutdownClient(d2Client1);
+      client1.close();
 
       // Create dvc client in non target region
       VeniceClusterWrapper cluster2 = childDatacenters.get(1).getClusters().get(CLUSTER_NAMES[0]);
-      D2Client d2Client2 = D2TestUtils.getAndStartD2Client(cluster2.getZk().getAddress());
       VeniceProperties backendConfig2 = DaVinciTestContext.getDaVinciPropertyBuilder(cluster2.getZk().getAddress())
           .put(DATA_BASE_PATH, Utils.getTempDataDirectory().getAbsolutePath())
           .put(LOCAL_REGION_NAME, REGION2)
           .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
           .build();
-      CachingDaVinciClientFactory factory2 = DaVinciTestContext.getCachingDaVinciClientFactory(
-          d2Client2,
-          VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
-          new MetricsRepository(),
-          backendConfig2,
-          cluster2);
-      DaVinciClient<Object, Object> client2 = factory2.getAndStartGenericAvroClient(storeName, new DaVinciConfig());
+      DaVinciClient<Object, Object> client2 =
+          ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster2, new DaVinciConfig(), backendConfig2);
       client2.subscribeAll().get();
 
       // Version should be swapped in all regions
@@ -437,8 +419,7 @@ public class TestDeferredVersionSwap {
         }
       });
 
-      factory2.close();
-      D2ClientUtils.shutdownClient(d2Client2);
+      client2.close();
     }
   }
 
