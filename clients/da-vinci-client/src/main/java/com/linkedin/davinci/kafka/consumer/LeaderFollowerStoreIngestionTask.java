@@ -3548,19 +3548,19 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   }
 
   private LeaderProducerCallback createGlobalRtDivCallback(
-      DefaultPubSubMessage previousMessage,
-      PartitionConsumptionState partitionConsumptionState,
+      DefaultPubSubMessage prevMessage,
+      PartitionConsumptionState pcs,
       int partition,
       String brokerUrl,
       long beforeProcessingRecordTimestampNs,
-      LeaderProducedRecordContext context,
+      LeaderProducedRecordContext prevContext,
       byte[] keyBytes,
       byte[] valueBytes,
       PubSubTopicPartition topicPartition,
       PartitionTracker vtDiv) {
     final int schemaId = AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion();
     KafkaKey divKey = new KafkaKey(MessageType.GLOBAL_RT_DIV, keyBytes);
-    KafkaMessageEnvelope divEnvelope = getVeniceWriter(partitionConsumptionState).get()
+    KafkaMessageEnvelope divEnvelope = getVeniceWriter(pcs).get()
         .getKafkaMessageEnvelope(
             MessageType.PUT,
             false,
@@ -3577,25 +3577,25 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         divKey,
         divEnvelope,
         topicPartition,
-        previousMessage.getPosition(),
+        prevMessage.getPosition(),
         System.currentTimeMillis(),
         divKey.getKeyLength() + valueBytes.length);
-    LeaderProducerCallback divCallback = createProducerCallback(
-        divMessage,
-        partitionConsumptionState,
-        LeaderProducedRecordContext
-            .newPutRecord(context.getConsumedKafkaClusterId(), context.getConsumedPosition(), keyBytes, put),
-        partition,
-        brokerUrl,
-        beforeProcessingRecordTimestampNs);
+    LeaderProducedRecordContext context = LeaderProducedRecordContext
+        .newPutRecord(prevContext.getConsumedKafkaClusterId(), prevContext.getConsumedPosition(), keyBytes, put);
+    LeaderProducerCallback divCallback =
+        createProducerCallback(divMessage, pcs, context, partition, brokerUrl, beforeProcessingRecordTimestampNs);
 
-    // After producing RT DIV to local VT, the VT DIV should be sent to the drainer to sync to the OffsetRecord
-    divCallback.setOnCompletionFunction(produceResult -> {
+    // After producing the RT DIV to local VT and LeaderProducerCallback.onCompletion() enqueuing RT DIV in the drainer,
+    // the VT DIV should be sent to the drainer to persist the LCVP onto disk by syncing the OffsetRecord
+    divCallback.setOnCompletionCallback(produceResult -> {
       try {
+        if (context.getPersistedToDBFuture().isCompletedExceptionally()) {
+          throw new InterruptedException("Skipping SyncVtDivNode because preceding record failed");
+        }
         vtDiv.updateLatestConsumedVtPosition(produceResult.getPubSubPosition()); // LCVP = produced position in local VT
         storeBufferService.execSyncOffsetFromSnapshotAsync(topicPartition, vtDiv, this);
       } catch (InterruptedException e) {
-        LOGGER.error("Failed to sync VT DIV to OffsetRecord for replica: {}", topicPartition, e);
+        LOGGER.error("event=globalRtDiv Failed to sync VT DIV to OffsetRecord for replica: {}", topicPartition, e);
       }
     });
 
