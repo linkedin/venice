@@ -681,13 +681,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   @VisibleForTesting
-  int getProgressPercentage(PartitionConsumptionState pcs) {
+  final int getProgressPercentage(PartitionConsumptionState pcs) {
     if (!getServerConfig().isProgressPercentageEnabled()) {
-      return 0;
+      return -1;
     }
-    final PubSubPosition position = pcs.getLatestProcessedVtPosition();
-    final PubSubTopicPartition topicPartition = pcs.getReplicaTopicPartition();
-    return getTopicManager(localKafkaServer).getProgressPercentage(topicPartition, position);
+    return getTopicManager(localKafkaServer)
+        .getProgressPercentage(pcs.getReplicaTopicPartition(), pcs.getLatestProcessedVtPosition());
   }
 
   /** Package-private on purpose, only intended for tests. Do not use for production use cases. */
@@ -2351,14 +2350,19 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             localKafkaServer);
 
         if (getServerConfig().isProgressPercentageEnabled() && !subscribePosition.isSymbolic()) {
-          TopicManager topicManager = getTopicManager(localKafkaServer);
-          int progressPercentage = topicManager.getProgressPercentage(topicPartition, subscribePosition);
-          LOGGER.info(
-              "Subscribed to: {} position: {} latestPosition: {} progress: {}%",
-              topicPartition,
-              subscribePosition,
-              topicManager.getLatestPositionCached(topicPartition),
-              progressPercentage);
+          try {
+            TopicManager topicManager = getTopicManager(localKafkaServer);
+            int progressPercentage = topicManager.getProgressPercentage(topicPartition, subscribePosition);
+            LOGGER.info(
+                "Subscribed to: {} position: {} latestPosition: {} progress: {}%",
+                topicPartition,
+                subscribePosition,
+                topicManager.getLatestPositionCached(topicPartition),
+                progressPercentage);
+          } catch (Exception e) {
+            // this log message is best-effort. there is no point in throwing an exception for the sake of this.
+            LOGGER.warn("Swallowed an exception when trying to determine progress for {}", topicPartition, e);
+          }
         } else { // no point in logging progress if it's symbolic (earliest or latest position)
           LOGGER.info("Subscribed to: {} position: {}", topicPartition, subscribePosition);
         }
@@ -2910,7 +2914,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     String msg = "Offset synced for replica: " + pcs.getReplicaId() + " - localVtPosition: {} progress: {}";
     if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
       final PubSubPosition position = offsetRecord.getCheckpointedLocalVtPosition();
-      int progressPercentage = 0;
+      int progressPercentage = -1;
       if (getServerConfig().isProgressPercentageEnabled()) {
         final PubSubTopicPartition topicPartition = pcs.getReplicaTopicPartition();
         progressPercentage = getTopicManager(localKafkaServer).getProgressPercentage(topicPartition, position);
@@ -4723,7 +4727,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
   }
 
-  public VeniceServerConfig getServerConfig() {
+  public final VeniceServerConfig getServerConfig() {
     return serverConfig;
   }
 
