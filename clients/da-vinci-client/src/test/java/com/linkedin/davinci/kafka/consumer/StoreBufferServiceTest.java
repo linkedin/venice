@@ -305,7 +305,7 @@ public class StoreBufferServiceTest {
     String kafkaUrl = "blah";
     DefaultPubSubMessage cr1 = new ImmutablePubSubMessage(key, value, pubSubTopicPartition1, mockPosition, 0, 0);
     DefaultPubSubMessage cr2 = new ImmutablePubSubMessage(key, value, pubSubTopicPartition2, mockPosition, 0, 0);
-    Exception e = new VeniceChecksumException("test_exception");
+    Exception e = new VeniceChecksumException("test_exception", partition1);
     doThrow(e).when(mockTask).processConsumerRecord(cr1, null, partition1, kafkaUrl, 0L);
 
     bufferService.putConsumerRecord(cr1, mockTask, null, partition1, kafkaUrl, 0L);

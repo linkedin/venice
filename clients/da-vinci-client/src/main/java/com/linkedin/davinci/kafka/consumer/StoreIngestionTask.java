@@ -1562,9 +1562,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
                     Collections.singletonList(HelixUtils.getPartitionName(kafkaVersionTopic, exceptionPartition)));
           } catch (HelixException helixException) {
             LOGGER.error(
-                "Got exception while marking replica status to ERROR for: {}",
+                "Got HelixException while trying to set replica status to ERROR for: {}",
                 getReplicaId(kafkaVersionTopic, exceptionPartition),
                 helixException);
+            // report error to release the latch to unblock pending ST
+            reportIngestionNotifier(partitionConsumptionState, partitionException);
           }
           LOGGER.error(
               "Marking current version replica status to ERROR for replica: {}",
@@ -1589,6 +1591,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         }
       }
     });
+  }
+
+  void reportIngestionNotifier(PartitionConsumptionState partitionConsumptionState, Exception partitionException) {
+    List<PartitionConsumptionState> pcsList = new ArrayList<>();
+    pcsList.add(partitionConsumptionState);
+    ingestionNotificationDispatcher.reportError(pcsList, partitionException.getMessage(), partitionException);
   }
 
   protected void checkIngestionProgress(Store store) throws InterruptedException {
@@ -1814,7 +1822,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
          * Current version can be killed if {@link AggKafkaConsumerService} discovers there are some issues with
          * the producing topics, and here will report metrics for such case.
          */
-        handleIngestionException(e);
+        handleIngestionException(e, -1);
       }
     } catch (VeniceChecksumException e) {
       /**
@@ -1829,11 +1837,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             ingestionTaskName,
             e);
       } else {
-        handleIngestionException(e);
+        handleIngestionException(e, e.getErrorPartitionId());
       }
     } catch (VeniceTimeoutException e) {
       versionedIngestionStats.setIngestionTaskPushTimeoutGauge(storeName, versionNumber);
-      handleIngestionException(e);
+      handleIngestionException(e, -1);
     } catch (Exception e) {
       // After reporting error to controller, controller will ignore the message from this replica if job is aborted.
       // So even this storage node recover eventually, controller will not confused.
@@ -1846,7 +1854,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         LOGGER.info("{} interrupted, skipping error reporting because server is shutting down", ingestionTaskName, e);
         return;
       }
-      handleIngestionException(e);
+      handleIngestionException(e, -1);
     } catch (Throwable t) {
       handleIngestionThrowable(t);
     } finally {
@@ -1934,7 +1942,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     syncOffset(pcs);
   }
 
-  private void handleIngestionException(Exception e) {
+  private void handleIngestionException(Exception e, int errorPartitionId) {
     // TODO: Remove the logged exception stack trace, once it's verified the downstream reporters all log it
     String errorType = e.getClass().getSimpleName();
     LOGGER.error("Ingestion failed for {} due to {}. Will propagate to reporters.", ingestionTaskName, errorType, e);
@@ -1949,7 +1957,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     LOGGER.error("Ingestion failed for {} due to {}. Will propagate to reporters.", ingestionTaskName, errorType, t);
     reportError(
         partitionConsumptionStateMap.values(),
-        errorPartitionId,
+        -1,
         "Caught non-exception Throwable during ingestion.",
         new VeniceException(t));
   }
@@ -1960,12 +1968,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       String message,
       Exception consumerEx) {
     if (pcsList.isEmpty()) {
-      ingestionNotificationDispatcher.reportError(partitionId, message, consumerEx);
+      ingestionNotificationDispatcher
+          .reportError(partitionId == -1 ? this.errorPartitionId : partitionId, message, consumerEx);
     } else {
       ingestionNotificationDispatcher.reportError(pcsList, message, consumerEx);
     }
     // Set the replica state to ERROR so that the controller can attempt to reset the partition.
-    if (isCurrentVersion.getAsBoolean() && !isDaVinciClient && resetErrorReplicaEnabled
+    if (partitionId != -1 && isCurrentVersion.getAsBoolean() && !isDaVinciClient && resetErrorReplicaEnabled
         && !(consumerEx instanceof VeniceTimeoutException)) {
       try {
         zkHelixAdmin.get()
@@ -4664,7 +4673,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       pcsList.add(partitionConsumptionStateMap.get(userPartition));
     }
     reportError(pcsList, userPartition, message, e);
-    ingestionNotificationDispatcher.reportError(pcsList, message, e);
   }
 
   public boolean isActiveActiveReplicationEnabled() {
