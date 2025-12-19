@@ -585,7 +585,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
     // Test when progress percentage is disabled
     doReturn(false).when(mockVeniceServerConfig).isProgressPercentageEnabled();
     progressPercentage = leaderFollowerStoreIngestionTask.getProgressPercentage(mockPcs);
-    assertEquals(0, progressPercentage, "Progress percentage should be 0 when disabled");
+    assertEquals(-1, progressPercentage, "Progress percentage should be -1 when disabled");
 
     // No additional calls to getProgressPercentage should be made
     verify(mockTopicManager, times(1)).getProgressPercentage(any(), any());
