@@ -837,18 +837,23 @@ public class TopicManager implements Closeable {
 
   /**
    * Returns the percentage of records in the given topic-partition up to the specified position.
-   *
-   * @param pubSubTopicPartition the topic-partition
    * @param position the position up to which records are counted
    * @return the percentage of records up to the specified position (0-100)
    */
-  public int getProgressPercentage(PubSubTopicPartition pubSubTopicPartition, PubSubPosition position) {
-    final long totalRecords = getNumRecordsInPartition(pubSubTopicPartition);
-    if (totalRecords <= 0) {
-      return 0; // sanity check to avoid divide-by-zero
+  public int getProgressPercentage(PubSubTopicPartition topicPartition, PubSubPosition position) {
+    int progressPercentage = 0;
+    try {
+      final long totalRecords = getNumRecordsInPartition(topicPartition);
+      if (totalRecords <= 0) {
+        return 0; // sanity check to avoid divide-by-zero
+      }
+      final long recordsUntilPosition = countRecordsUntil(topicPartition, position);
+      progressPercentage = (int) ((recordsUntilPosition * 100) / totalRecords);
+    } catch (Exception e) {
+      // this log message is best-effort. there is no point in throwing an exception for the sake of this.
+      logger.warn("Swallowed an exception when trying to determine progress for {}", topicPartition, e);
     }
-    final long recordsUntilPosition = countRecordsUntil(pubSubTopicPartition, position);
-    return (int) ((recordsUntilPosition * 100) / totalRecords);
+    return progressPercentage;
   }
 
   /**
