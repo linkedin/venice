@@ -50,6 +50,7 @@ import com.linkedin.venice.pubsub.PubSubContext;
 import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.PubSubUtil;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
@@ -1534,12 +1535,21 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
           if (localOffset == null) {
             localOffset = new ArrayList<>();
           }
-          List<Long> highWatermarkOffsets = versionSwap.localHighWatermarkPubSubPositions == null
-              ? new ArrayList<>()
-              : versionSwap.getLocalHighWatermarkPubSubPositions()
-                  .stream()
-                  .map(bb -> pubSubPositionDeserializer.toPosition(bb).getNumericOffset())
-                  .collect(Collectors.toList());
+          List<Long> highWatermarkOffsets;
+          if (versionSwap.localHighWatermarkPubSubPositions == null
+              || versionSwap.localHighWatermarkPubSubPositions.isEmpty()) {
+            highWatermarkOffsets = new ArrayList<>();
+          } else {
+            List<ByteBuffer> positions = versionSwap.getLocalHighWatermarkPubSubPositions();
+            List<Long> offsets = versionSwap.getLocalHighWatermarks();
+            highWatermarkOffsets = new ArrayList<>(positions.size());
+            for (int i = 0; i < positions.size(); i++) {
+              long fallbackOffset = (offsets != null && i < offsets.size()) ? offsets.get(i) : -1L;
+              PubSubPosition position = PubSubUtil
+                  .deserializePositionWithOffsetFallback(positions.get(i), fallbackOffset, pubSubPositionDeserializer);
+              highWatermarkOffsets.add(position.getNumericOffset());
+            }
+          }
           if (RmdUtils.hasOffsetAdvanced(localOffset, highWatermarkOffsets)) {
             currentVersionHighWatermarks
                 .putIfAbsent(pubSubTopicPartition.getPartitionNumber(), new ConcurrentHashMap<>());
