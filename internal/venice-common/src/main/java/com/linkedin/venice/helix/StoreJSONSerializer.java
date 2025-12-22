@@ -28,15 +28,13 @@ public class StoreJSONSerializer extends VeniceJsonSerializer<Store> {
   }
 
   @Override
-  protected ObjectMapper createObjectMapper() {
-    ObjectMapper mapper = super.createObjectMapper();
+  protected void configureObjectMapper(ObjectMapper mapper) {
     mapper.addMixIn(ZKStore.class, StoreSerializerMixin.class);
     mapper.addMixIn(Version.class, VersionSerializerMixin.class);
     mapper.addMixIn(HybridStoreConfig.class, HybridStoreConfigSerializerMixin.class);
     mapper.addMixIn(ETLStoreConfig.class, ETLStoreConfigSerializerMixin.class);
     mapper.addMixIn(PartitionerConfig.class, PartitionerConfigSerializerMixin.class);
     mapper.addMixIn(ViewConfig.class, ViewConfigSerializerMixin.class);
-    return mapper;
   }
 
   /**

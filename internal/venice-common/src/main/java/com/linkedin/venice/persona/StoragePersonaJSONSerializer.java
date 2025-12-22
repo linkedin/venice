@@ -16,10 +16,8 @@ public class StoragePersonaJSONSerializer extends VeniceJsonSerializer<StoragePe
   }
 
   @Override
-  protected ObjectMapper createObjectMapper() {
-    ObjectMapper mapper = super.createObjectMapper();
+  protected void configureObjectMapper(ObjectMapper mapper) {
     mapper.addMixIn(StoragePersona.class, StoragePersonaSerializerMixin.class);
-    return mapper;
   }
 
   /** This class annotates the constructor for {@link StoragePersona} and serves as a property-based creator.

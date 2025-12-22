@@ -35,13 +35,27 @@ public class VeniceJsonSerializer<T> implements VeniceSerializer<T> {
 
   /**
    * Creates a new ObjectMapper instance with default Venice configuration.
-   * Subclasses can override this to customize the ObjectMapper (e.g., add mixins).
+   * This is final to prevent it being called from constructor in an unsafe way.
+   * Subclasses should use configureObjectMapper() to customize the ObjectMapper.
    */
-  protected ObjectMapper createObjectMapper() {
+  protected final ObjectMapper createObjectMapper() {
     ObjectMapper mapper = ObjectMapperFactory.getInstance().copy();
     // Ignore unknown properties
     mapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+
+    // Allow subclasses to configure the mapper
+    configureObjectMapper(mapper);
+
     return mapper;
+  }
+
+  /**
+   * Configure the ObjectMapper with custom settings.
+   * Subclasses should override this method instead of createObjectMapper().
+   * @param mapper The ObjectMapper to configure
+   */
+  protected void configureObjectMapper(ObjectMapper mapper) {
+    // Default implementation does nothing
   }
 
   /**

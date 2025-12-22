@@ -19,8 +19,7 @@ public class SystemStoreJSONSerializer extends VeniceJsonSerializer<Serializable
   }
 
   @Override
-  protected ObjectMapper createObjectMapper() {
-    ObjectMapper mapper = super.createObjectMapper();
+  protected void configureObjectMapper(ObjectMapper mapper) {
     // Register mixins on this serializer's own ObjectMapper instance
     mapper.addMixIn(ZKStore.class, StoreJSONSerializer.StoreSerializerMixin.class);
     mapper.addMixIn(Version.class, StoreJSONSerializer.VersionSerializerMixin.class);
@@ -28,7 +27,6 @@ public class SystemStoreJSONSerializer extends VeniceJsonSerializer<Serializable
     mapper.addMixIn(ETLStoreConfig.class, StoreJSONSerializer.ETLStoreConfigSerializerMixin.class);
     mapper.addMixIn(PartitionerConfig.class, StoreJSONSerializer.PartitionerConfigSerializerMixin.class);
     mapper.addMixIn(SerializableSystemStore.class, SystemStoreSerializerMixin.class);
-    return mapper;
   }
 
   public static class SystemStoreSerializerMixin {

@@ -17,12 +17,10 @@ public class PartitionStatusJSONSerializer extends VeniceJsonSerializer<Partitio
   }
 
   @Override
-  protected ObjectMapper createObjectMapper() {
-    ObjectMapper mapper = super.createObjectMapper();
+  protected void configureObjectMapper(ObjectMapper mapper) {
     mapper.addMixIn(PartitionStatus.class, PartitionStatusSerializerMixin.class);
     mapper.addMixIn(StatusSnapshot.class, OfflinePushStatusJSONSerializer.StatusSnapshotSerializerMixin.class);
     mapper.addMixIn(ReplicaStatus.class, ReplicaStatusSerializerMixin.class);
-    return mapper;
   }
 
   public static class PartitionStatusSerializerMixin {

@@ -18,11 +18,9 @@ public class OfflinePushStatusJSONSerializer extends VeniceJsonSerializer<Offlin
   }
 
   @Override
-  protected ObjectMapper createObjectMapper() {
-    ObjectMapper mapper = super.createObjectMapper();
+  protected void configureObjectMapper(ObjectMapper mapper) {
     mapper.addMixIn(OfflinePushStatus.class, OfflinePushStatusSerializerMixin.class);
     mapper.addMixIn(StatusSnapshot.class, StatusSnapshotSerializerMixin.class);
-    return mapper;
   }
 
   public static class OfflinePushStatusSerializerMixin {

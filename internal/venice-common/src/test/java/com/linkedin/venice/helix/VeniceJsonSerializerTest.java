@@ -37,6 +37,8 @@ public class VeniceJsonSerializerTest {
 
   /**
    * Test that mixins registered on one serializer don't affect another.
+   * This reproduces the original bug where different serializers registering different mixins
+   * for the same class would interfere with each other on a shared ObjectMapper.
    */
   @Test
   public void testMixinIsolationBetweenSerializers() throws IOException {
@@ -56,39 +58,84 @@ public class VeniceJsonSerializerTest {
 
     Assert.assertEquals(deserializedA.field1, "value1");
     Assert.assertEquals(deserializedB.field1, "value1");
+
+    // Verify each serializer still has its own mixin registered (not overwritten)
+    Assert.assertNotNull(serializerA.getObjectMapper().findMixInClassFor(TestData.class));
+    Assert.assertNotNull(serializerB.getObjectMapper().findMixInClassFor(TestData.class));
+    Assert.assertEquals(
+        serializerA.getObjectMapper().findMixInClassFor(TestData.class),
+        TestSerializerWithMixinA.TestDataMixinA.class);
+    Assert.assertEquals(
+        serializerB.getObjectMapper().findMixInClassFor(TestData.class),
+        TestSerializerWithMixinB.TestDataMixinB.class);
   }
 
   /**
-   * Test concurrent serializer instantiation to ensure thread safety.
+   * Test concurrent serializer instantiation with different mixins to reproduce the original race condition.
+   * This test verifies that when multiple threads create serializers with different mixins concurrently,
+   * each serializer maintains its own mixin configuration without interference.
+   *
+   * Original bug: Multiple serializers registering different mixins on a shared static ObjectMapper
+   * would cause mixins to be lost or overwritten due to race conditions.
    */
   @Test
-  public void testConcurrentSerializerInstantiation() throws InterruptedException {
+  public void testConcurrentSerializerInstantiationWithDifferentMixins() throws InterruptedException {
     int threadCount = 20;
     int iterationsPerThread = 50;
     ExecutorService executor = Executors.newFixedThreadPool(threadCount);
     CountDownLatch startLatch = new CountDownLatch(1);
     CountDownLatch doneLatch = new CountDownLatch(threadCount);
     AtomicInteger successCount = new AtomicInteger(0);
+    AtomicInteger mixinACount = new AtomicInteger(0);
+    AtomicInteger mixinBCount = new AtomicInteger(0);
     List<Exception> exceptions = new ArrayList<>();
 
     for (int i = 0; i < threadCount; i++) {
+      final int threadId = i;
       executor.submit(() -> {
         try {
           // Wait for all threads to be ready
           startLatch.await();
 
-          // Create multiple serializers concurrently
+          // Alternate between creating serializers with different mixins
+          // This reproduces the race condition where different mixins are registered concurrently
           for (int j = 0; j < iterationsPerThread; j++) {
-            TestSerializer serializer = new TestSerializer();
-            TestData data = new TestData("field1_" + j, "field2_" + j);
+            TestData data = new TestData("field1_" + threadId + "_" + j, "field2_" + threadId + "_" + j);
 
-            // Serialize and deserialize
-            byte[] serialized = serializer.serialize(data, null);
-            TestData deserialized = serializer.deserialize(serialized, null);
+            if ((threadId + j) % 2 == 0) {
+              // Create serializer with MixinA
+              TestSerializerWithMixinA serializer = new TestSerializerWithMixinA();
 
-            // Verify correctness
-            if (data.field1.equals(deserialized.field1) && data.field2.equals(deserialized.field2)) {
-              successCount.incrementAndGet();
+              // Verify the mixin is correctly registered (not lost due to race condition)
+              Class<?> registeredMixin = serializer.getObjectMapper().findMixInClassFor(TestData.class);
+              if (registeredMixin != null && registeredMixin.equals(TestSerializerWithMixinA.TestDataMixinA.class)) {
+                mixinACount.incrementAndGet();
+              }
+
+              // Serialize and deserialize
+              byte[] serialized = serializer.serialize(data, null);
+              TestData deserialized = serializer.deserialize(serialized, null);
+
+              if (data.field1.equals(deserialized.field1) && data.field2.equals(deserialized.field2)) {
+                successCount.incrementAndGet();
+              }
+            } else {
+              // Create serializer with MixinB
+              TestSerializerWithMixinB serializer = new TestSerializerWithMixinB();
+
+              // Verify the mixin is correctly registered (not overwritten by MixinA)
+              Class<?> registeredMixin = serializer.getObjectMapper().findMixInClassFor(TestData.class);
+              if (registeredMixin != null && registeredMixin.equals(TestSerializerWithMixinB.TestDataMixinB.class)) {
+                mixinBCount.incrementAndGet();
+              }
+
+              // Serialize and deserialize
+              byte[] serialized = serializer.serialize(data, null);
+              TestData deserialized = serializer.deserialize(serialized, null);
+
+              if (data.field1.equals(deserialized.field1) && data.field2.equals(deserialized.field2)) {
+                successCount.incrementAndGet();
+              }
             }
           }
         } catch (Exception e) {
@@ -101,7 +148,7 @@ public class VeniceJsonSerializerTest {
       });
     }
 
-    // Start all threads at once
+    // Start all threads at once to maximize race condition probability
     startLatch.countDown();
 
     // Wait for completion
@@ -114,6 +161,19 @@ public class VeniceJsonSerializerTest {
         successCount.get(),
         threadCount * iterationsPerThread,
         "All serialization/deserialization operations should succeed");
+
+    // Verify that both mixins were correctly registered in their respective serializers
+    // If the old bug existed, some mixins would be lost/overwritten
+    int expectedMixinACount = (threadCount * iterationsPerThread + 1) / 2;
+    int expectedMixinBCount = (threadCount * iterationsPerThread) / 2;
+    Assert.assertEquals(
+        mixinACount.get(),
+        expectedMixinACount,
+        "All MixinA registrations should succeed (not lost due to race condition)");
+    Assert.assertEquals(
+        mixinBCount.get(),
+        expectedMixinBCount,
+        "All MixinB registrations should succeed (not overwritten by MixinA)");
   }
 
   /**
@@ -169,6 +229,13 @@ public class VeniceJsonSerializerTest {
       return (field1 == null ? other.field1 == null : field1.equals(other.field1))
           && (field2 == null ? other.field2 == null : field2.equals(other.field2));
     }
+
+    @Override
+    public int hashCode() {
+      int result = field1 != null ? field1.hashCode() : 0;
+      result = 31 * result + (field2 != null ? field2.hashCode() : 0);
+      return result;
+    }
   }
 
   public static class TestSerializer extends VeniceJsonSerializer<TestData> {
@@ -183,10 +250,8 @@ public class VeniceJsonSerializerTest {
     }
 
     @Override
-    protected ObjectMapper createObjectMapper() {
-      ObjectMapper mapper = super.createObjectMapper();
+    protected void configureObjectMapper(ObjectMapper mapper) {
       mapper.addMixIn(TestData.class, TestDataMixinA.class);
-      return mapper;
     }
 
     public static class TestDataMixinA {
@@ -202,10 +267,8 @@ public class VeniceJsonSerializerTest {
     }
 
     @Override
-    protected ObjectMapper createObjectMapper() {
-      ObjectMapper mapper = super.createObjectMapper();
+    protected void configureObjectMapper(ObjectMapper mapper) {
       mapper.addMixIn(TestData.class, TestDataMixinB.class);
-      return mapper;
     }
 
     public static class TestDataMixinB {

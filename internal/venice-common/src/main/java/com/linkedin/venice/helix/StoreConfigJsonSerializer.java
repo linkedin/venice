@@ -12,10 +12,8 @@ public class StoreConfigJsonSerializer extends VeniceJsonSerializer<StoreConfig>
   }
 
   @Override
-  protected ObjectMapper createObjectMapper() {
-    ObjectMapper mapper = super.createObjectMapper();
+  protected void configureObjectMapper(ObjectMapper mapper) {
     mapper.addMixIn(StoreConfig.class, StoreConfigSerializerMixin.class);
-    return mapper;
   }
 
   public static class StoreConfigSerializerMixin {
