@@ -18,12 +18,7 @@ public class StoreConfigJsonSerializer extends VeniceJsonSerializer<StoreConfig>
 
   public static class StoreConfigSerializerMixin {
     @JsonCreator
-    public StoreConfigSerializerMixin(
-        @JsonProperty("storeName") String storeName,
-        @JsonProperty("deleting") boolean deleting,
-        @JsonProperty("cluster") String cluster,
-        @JsonProperty("migrationSrcCluster") String migrationSrcCluster,
-        @JsonProperty("migrationDestCluster") String migrationDestCluster) {
+    public StoreConfigSerializerMixin(@JsonProperty("storeName") String storeName) {
     }
   }
 }
