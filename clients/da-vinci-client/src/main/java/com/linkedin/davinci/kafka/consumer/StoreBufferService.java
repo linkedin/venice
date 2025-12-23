@@ -336,17 +336,19 @@ public class StoreBufferService extends AbstractStoreBufferService {
     return syncOffsetCmd.getCmdExecutedFuture();
   }
 
+  /**
+   * lastRecordPersistedFuture indicates whether the last record was persisted successfully and will have two sources.
+   * 1. From the follower code path, it is lastQueuedRecordPersistedFuture from the PCS set in putConsumeRecord().
+   * 2. From the leader side, it is the persistedToDBFuture from the LeaderProducedRecordContext from when the
+   *    LeaderProducerCallback was created.
+   */
   public void execSyncOffsetFromSnapshotAsync(
       PubSubTopicPartition topicPartition,
       PartitionTracker vtDivSnapshot,
+      CompletableFuture<Void> lastRecordPersistedFuture,
       StoreIngestionTask ingestionTask) throws InterruptedException {
-    CompletableFuture<Void> lastFuture = new CompletableFuture<>();
-    PartitionConsumptionState pcs = ingestionTask.getPartitionConsumptionState(topicPartition.getPartitionNumber());
-    if (pcs != null && pcs.getLastQueuedRecordPersistedFuture() != null) {
-      lastFuture = pcs.getLastQueuedRecordPersistedFuture();
-    }
     DefaultPubSubMessage fakeRecord = new FakePubSubMessage(topicPartition);
-    SyncVtDivNode syncDivNode = new SyncVtDivNode(fakeRecord, vtDivSnapshot, lastFuture, ingestionTask);
+    SyncVtDivNode syncDivNode = new SyncVtDivNode(fakeRecord, vtDivSnapshot, lastRecordPersistedFuture, ingestionTask);
     getDrainerForConsumerRecord(fakeRecord, topicPartition.getPartitionNumber()).put(syncDivNode);
   }
 
@@ -697,20 +699,20 @@ public class StoreBufferService extends AbstractStoreBufferService {
     private static final int PARTIAL_CLASS_OVERHEAD = getClassOverhead(SyncVtDivNode.class);
 
     private final PartitionTracker vtDivSnapshot;
-    private final CompletableFuture<Void> lastQueuedRecordPersistedFuture;
+    private final CompletableFuture<Void> lastRecordPersistedFuture;
 
     public SyncVtDivNode(
         DefaultPubSubMessage consumerRecord,
         PartitionTracker vtDivSnapshot,
-        CompletableFuture<Void> lastQueuedRecordPersistedFuture,
+        CompletableFuture<Void> lastRecordPersistedFuture,
         StoreIngestionTask ingestionTask) {
       super(consumerRecord, ingestionTask, StringUtils.EMPTY, 0);
       this.vtDivSnapshot = vtDivSnapshot;
-      this.lastQueuedRecordPersistedFuture = lastQueuedRecordPersistedFuture;
+      this.lastRecordPersistedFuture = lastRecordPersistedFuture;
     }
 
     public void execute() {
-      if (lastQueuedRecordPersistedFuture.isCompletedExceptionally()) {
+      if (lastRecordPersistedFuture.isCompletedExceptionally()) {
         LOGGER.warn(
             "event=globalRtDiv Skipping SyncVtDivNode for {} because preceding record failed",
             getConsumerRecord().getTopicPartition());

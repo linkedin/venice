@@ -393,32 +393,27 @@ public class StoreBufferServiceTest {
     PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(pubSubTopic, partition);
 
     // Mock PartitionConsumptionState with a CompletableFuture
-    PartitionConsumptionState mockPcs = mock(PartitionConsumptionState.class);
-    CompletableFuture<Void> mockFuture = CompletableFuture.completedFuture(null);
+    CompletableFuture<Void> future = CompletableFuture.completedFuture(null);
     when(mockTask.getPartitionConsumptionState(partition)).thenReturn(null);
     bufferService.start();
 
     // Case 1: PCS is null -> updateAndSyncOffsetFromSnapshot() should be called
-    bufferService.execSyncOffsetFromSnapshotAsync(topicPartition, mockSnapshot, mockTask);
+    bufferService.execSyncOffsetFromSnapshotAsync(topicPartition, mockSnapshot, future, mockTask);
     verify(mockTask, timeout(TIMEOUT_IN_MS).times(1)).updateAndSyncOffsetFromSnapshot(mockSnapshot, topicPartition);
 
     // Case 2: Future is null
-    when(mockTask.getPartitionConsumptionState(partition)).thenReturn(mockPcs);
-    when(mockPcs.getLastQueuedRecordPersistedFuture()).thenReturn(null);
-    bufferService.execSyncOffsetFromSnapshotAsync(topicPartition, mockSnapshot, mockTask);
+    bufferService.execSyncOffsetFromSnapshotAsync(topicPartition, mockSnapshot, future, mockTask);
     verify(mockTask, timeout(TIMEOUT_IN_MS).times(2)).updateAndSyncOffsetFromSnapshot(mockSnapshot, topicPartition);
 
     // Case 3: Future is completed -> updateAndSyncOffsetFromSnapshot() is safe to be called
-    when(mockPcs.getLastQueuedRecordPersistedFuture()).thenReturn(mockFuture);
-    bufferService.execSyncOffsetFromSnapshotAsync(topicPartition, mockSnapshot, mockTask);
+    bufferService.execSyncOffsetFromSnapshotAsync(topicPartition, mockSnapshot, future, mockTask);
     verify(mockTask, timeout(TIMEOUT_IN_MS).times(3)).updateAndSyncOffsetFromSnapshot(mockSnapshot, topicPartition);
 
     // Case 4: Previous message's future is completed exceptionally -> updateAndSyncOffsetFromSnapshot() not be called
     clearInvocations(mockTask);
     CompletableFuture<Void> failedFuture = new CompletableFuture<>();
     failedFuture.completeExceptionally(new RuntimeException("Test exception"));
-    when(mockPcs.getLastQueuedRecordPersistedFuture()).thenReturn(failedFuture);
-    bufferService.execSyncOffsetFromSnapshotAsync(topicPartition, mockSnapshot, mockTask);
+    bufferService.execSyncOffsetFromSnapshotAsync(topicPartition, mockSnapshot, failedFuture, mockTask);
     verify(mockTask, never()).updateAndSyncOffsetFromSnapshot(mockSnapshot, topicPartition);
 
     bufferService.stop();

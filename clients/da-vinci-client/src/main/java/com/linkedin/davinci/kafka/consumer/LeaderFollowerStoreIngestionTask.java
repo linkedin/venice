@@ -2783,9 +2783,20 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       return; // without Global RT DIV enabled, the offset record is synced in the drainer in syncOffset()
     }
 
+    PartitionConsumptionState pcs = getPartitionConsumptionState(topicPartition.getPartitionNumber());
+    if (pcs == null || pcs.getLastQueuedRecordPersistedFuture() == null) {
+      LOGGER.warn(
+          "event=globalRtDiv No PCS or lastRecordPersistedFuture found for topic-partition: {}. "
+              + "Will not sync OffsetRecord without waiting for any record to be persisted",
+          topicPartition);
+      return;
+    }
+
     try {
       PartitionTracker vtDiv = consumerDiv.cloneVtProducerStates(partition); // has latest consumed VT position
-      storeBufferService.execSyncOffsetFromSnapshotAsync(topicPartition, vtDiv, this);
+      CompletableFuture<Void> lastFuture = pcs.getLastQueuedRecordPersistedFuture();
+      storeBufferService.execSyncOffsetFromSnapshotAsync(topicPartition, vtDiv, lastFuture, this);
+
       // TODO: remove. this is a temporary log for debugging while the feature is in its infancy
       LOGGER.info(
           "event=globalRtDiv Syncing LCVP for OffsetRecord topic-partition: {} position: {} size: {}",
@@ -3589,11 +3600,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     // the VT DIV should be sent to the drainer to persist the LCVP onto disk by syncing the OffsetRecord
     divCallback.setOnCompletionCallback(produceResult -> {
       try {
-        if (context.getPersistedToDBFuture().isCompletedExceptionally()) {
-          throw new InterruptedException("Skipping SyncVtDivNode because preceding record failed");
-        }
+        CompletableFuture<Void> lastRecordPersistedFuture = context.getPersistedToDBFuture();
         vtDiv.updateLatestConsumedVtPosition(produceResult.getPubSubPosition()); // LCVP = produced position in local VT
-        storeBufferService.execSyncOffsetFromSnapshotAsync(topicPartition, vtDiv, this);
+        storeBufferService.execSyncOffsetFromSnapshotAsync(topicPartition, vtDiv, lastRecordPersistedFuture, this);
       } catch (InterruptedException e) {
         LOGGER.error("event=globalRtDiv Failed to sync VT DIV to OffsetRecord for replica: {}", topicPartition, e);
       }
