@@ -29,6 +29,8 @@ import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.davinci.config.VeniceServerConfig;
+import com.linkedin.davinci.storage.StorageEngineRepository;
+import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoHelixResourceException;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
@@ -92,6 +94,7 @@ public class ReadQuotaEnforcementHandlerTest {
   private RouterRequest routerRequest;
   private VeniceServerGrpcHandler mockNextHandler;
   private VeniceServerConfig serverConfig;
+  private StorageEngineRepository storageEngineRepository;
 
   @BeforeMethod
   public void setUp() {
@@ -112,6 +115,7 @@ public class ReadQuotaEnforcementHandlerTest {
     // Reset the handlers to ensure we don't accidentally use handlers initialized in previous test
     quotaEnforcementHandler = null;
     grpcQuotaEnforcementHandler = null;
+    storageEngineRepository = mock(StorageEngineRepository.class);
   }
 
   private void initializeQuotaEnforcementHandlers() {
@@ -123,6 +127,7 @@ public class ReadQuotaEnforcementHandlerTest {
         serverConfig,
         storeRepository,
         CompletableFuture.completedFuture(customizedViewRepository),
+        storageEngineRepository,
         thisNodeId,
         aggStats,
         clock);
@@ -780,6 +785,7 @@ public class ReadQuotaEnforcementHandlerTest {
         serverConfig,
         mockStoreRepo,
         CompletableFuture.completedFuture(customizedViewRepository),
+        storageEngineRepository,
         thisNodeId,
         stats);
     // Ensure init() is invoked before proceeding with the test
@@ -828,6 +834,7 @@ public class ReadQuotaEnforcementHandlerTest {
         serverConfig,
         mockStoreRepo,
         CompletableFuture.completedFuture(customizedViewRepository),
+        storageEngineRepository,
         thisNodeId,
         stats);
     // Ensure init() is completed before proceeding with the test
@@ -837,14 +844,18 @@ public class ReadQuotaEnforcementHandlerTest {
     Assert.assertNotNull(quotaEnforcer.getStoreVersionRateLimiter(topic));
     Assert.assertEquals(quotaEnforcer.getStoreVersionRateLimiter(topic).getQuota(), 100L);
 
-    // If failure is due to CV unavailability the fallback behavior should be based on instance/partition count.
+    // If failure is due to CV unavailability the fallback behavior should be based on storage engine partition count
     doReturn(true).when(serverConfig).isReadQuotaInitializationFallbackEnabled();
     doThrow(new VeniceNoHelixResourceException(topic2)).when(customizedViewRepository).getPartitionAssignments(topic2);
-    doReturn(2).when(customizedViewRepository).getLiveInstancesCount();
+    StorageEngine mockStorageEngine = mock(StorageEngine.class);
+    // Only 1 partition, partition 0 is assigned to this node based on storage engine
+    doReturn(Collections.singleton(0)).when(mockStorageEngine).getPartitionIds();
+    doReturn(mockStorageEngine).when(storageEngineRepository).getLocalStorageEngine(topic2);
     final ReadQuotaEnforcementHandler quotaEnforcerWithFallback = new ReadQuotaEnforcementHandler(
         serverConfig,
         mockStoreRepo,
         CompletableFuture.completedFuture(customizedViewRepository),
+        storageEngineRepository,
         thisNodeId,
         stats);
     // Ensure init() is invoked before proceeding with the test
@@ -855,9 +866,9 @@ public class ReadQuotaEnforcementHandlerTest {
     Assert.assertNotNull(quotaEnforcerWithFallback.getStoreVersionRateLimiter(topic));
     Assert.assertNotNull(quotaEnforcerWithFallback.getStoreVersionRateLimiter(topic2));
     Assert.assertEquals(quotaEnforcerWithFallback.getStoreVersionRateLimiter(topic).getQuota(), 100L);
-    // There are 2 instances in the cluster the node responsibility should be 3/5 because the store has 5 partitions
-    // and to be safe we assume the node is holding ceil(5/2)=3 partitions. 3/5 * 100 = 60.
-    Assert.assertEquals(quotaEnforcerWithFallback.getStoreVersionRateLimiter(topic2).getQuota(), 60L);
+    // The node responsibility should be 1/5 because the store has 5 partitions and the instance was assigned only 1
+    // partition based on storage engine. 1/5 * 100 = 20.
+    Assert.assertEquals(quotaEnforcerWithFallback.getStoreVersionRateLimiter(topic2).getQuota(), 20L);
 
     // If the fallback behavior config is disabled we should fail open.
     doReturn(false).when(serverConfig).isReadQuotaInitializationFallbackEnabled();
@@ -866,6 +877,7 @@ public class ReadQuotaEnforcementHandlerTest {
         serverConfig,
         mockStoreRepo,
         CompletableFuture.completedFuture(customizedViewRepository),
+        storageEngineRepository,
         thisNodeId,
         failOpenStats);
     // Ensure init() is invoked before proceeding with the test
@@ -904,6 +916,7 @@ public class ReadQuotaEnforcementHandlerTest {
         serverConfig,
         mockStoreRepo,
         CompletableFuture.completedFuture(customizedViewRepository),
+        storageEngineRepository,
         thisNodeId,
         stats);
     // Ensure init() is completed before proceeding with the test

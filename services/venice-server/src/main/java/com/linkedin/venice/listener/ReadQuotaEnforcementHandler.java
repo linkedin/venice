@@ -4,6 +4,8 @@ import static com.linkedin.venice.throttle.EventThrottler.REJECT_STRATEGY;
 
 import com.linkedin.alpini.base.concurrency.Executors;
 import com.linkedin.davinci.config.VeniceServerConfig;
+import com.linkedin.davinci.storage.StorageEngineRepository;
+import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.venice.exceptions.VeniceNoHelixResourceException;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.listener.request.RouterRequest;
@@ -53,6 +55,8 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
   public static final String INVALID_REQUEST_RESOURCE_MSG = "Invalid request resource: ";
   private static final long WAIT_FOR_CUSTOMIZED_VIEW_TIMEOUT_SECONDS = 180;
   private static final String QUOTA_ENFORCEMENT_HANDLER_NAME = "ReadQuotaEnforcementHandler";
+  private static final String NO_RESOURCE_FOUND_MSG = "VeniceNoHelixResourceException";
+  private static final String EMPTY_PARTITION_ASSIGNMENT_MSG = "empty partition assignment";
   private final ConcurrentMap<String, VeniceRateLimiter> storeVersionRateLimiters = new VeniceConcurrentHashMap<>();
   private final ConcurrentMap<String, Long> storeQuotaChangeMap = new VeniceConcurrentHashMap<>();
   private final ReadOnlyStoreRepository storeRepository;
@@ -63,6 +67,10 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
   private final int enforcementCapacityMultiple; // Token bucket capacity is refill amount times this multiplier
   private final RateLimiterType storeVersionRateLimiterType;
   private final boolean quotaInitializationFallbackEnabled;
+  /**
+   * Used for quota allocation when global view of the partition/replica assignment is not available.
+   */
+  private final StorageEngineRepository storageEngineRepository;
 
   private HelixCustomizedViewOfflinePushRepository customizedViewRepository;
   private volatile boolean initializedVolatile = false;
@@ -72,15 +80,24 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
       VeniceServerConfig serverConfig,
       ReadOnlyStoreRepository storeRepository,
       CompletableFuture<HelixCustomizedViewOfflinePushRepository> customizedViewRepository,
+      StorageEngineRepository storageEngineRepository,
       String nodeId,
       AggServerQuotaUsageStats stats) {
-    this(serverConfig, storeRepository, customizedViewRepository, nodeId, stats, Clock.systemUTC());
+    this(
+        serverConfig,
+        storeRepository,
+        customizedViewRepository,
+        storageEngineRepository,
+        nodeId,
+        stats,
+        Clock.systemUTC());
   }
 
   public ReadQuotaEnforcementHandler(
       VeniceServerConfig serverConfig,
       ReadOnlyStoreRepository storeRepository,
       CompletableFuture<HelixCustomizedViewOfflinePushRepository> customizedViewRepository,
+      StorageEngineRepository storageEngineRepository,
       String nodeId,
       AggServerQuotaUsageStats stats,
       Clock clock) {
@@ -100,6 +117,7 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
         enforcementCapacityMultiple,
         clock);
     this.storeRepository = storeRepository;
+    this.storageEngineRepository = storageEngineRepository;
     this.stats = stats;
     ExecutorService asyncInitExecutor =
         Executors.newSingleThreadExecutor(new DaemonThreadFactory("server-read-quota-init-thread"));
@@ -322,16 +340,16 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
    * partition gets an even portion of quota, and for each partition divides the quota by the readyToServe instances.
    * Then sums the quota portions allocated to this node and creates a TokenBucket for the resource.
    *
-   * @param partitionAssignment Newest partitions assignments information including resource name and  all of instances assigned to this resource.
+   * @param partitionAssignment Latest partitions assignments information including resource name and all instances
+   *                            assigned with this resource.
    */
   private void updateQuota(PartitionAssignment partitionAssignment, boolean shouldLog) {
     String topic = partitionAssignment.getTopic();
     String storeName = Version.parseStoreFromKafkaTopicName(topic);
     int version = Version.parseVersionFromKafkaTopicName(topic);
+    Store store = storeRepository.getStore(storeName);
     if (partitionAssignment.getAllPartitions().isEmpty()) {
-      LOGGER.warn(
-          "QuotaEnforcementHandler updated with an empty partition map for topic: {}. Skipping update process",
-          topic);
+      handleQuotaUpdateWithoutPartitionAssignment(store, version, topic, EMPTY_PARTITION_ASSIGNMENT_MSG);
       return;
     }
     double thisNodeQuotaResponsibility = getNodeResponsibilityForQuota(partitionAssignment, thisNodeId);
@@ -340,7 +358,7 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
       stats.getStoreStats(storeName).removeVersion(version);
       return;
     }
-    long quotaInRcu = storeRepository.getStore(storeName).getReadQuotaInCU();
+    long quotaInRcu = store.getReadQuotaInCU();
     computeNewRateLimiter(storeName, version, topic, quotaInRcu, thisNodeQuotaResponsibility, shouldLog);
   }
 
@@ -482,44 +500,12 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
           backupVersion = versionNumber;
         }
       } catch (VeniceNoHelixResourceException e) {
-        Version version = store.getVersion(versionNumber);
-        if (version != null && version.getStatus().equals(VersionStatus.ONLINE)) {
-          /**
-           * Store metadata (version info) is maintained separately from EV/CV so there could be many ways a race could
-           * occur. e.g. the version is deleted and CV/EV reflected the change faster than store metadata.
-           * Alternatively, EV/CV could also be lagging behind about a new version creation or after host restart. In
-           * any case instead of failing the quota initialization we will go ahead and assume partitions are evenly
-           * distributed and initialize the quota assuming the worst case scenario where the replicas on this host will
-           * be serving all traffic for those partitions (ceil(partition count / instance count)). If the number of
-           * partition is lower than the number of instances then we just need to ensure the instance will have enough
-           * quota to serve for an entire partition on its own (without any other replicas for that partition).
-           */
-          if (quotaInitializationFallbackEnabled) {
-            LOGGER.warn(
-                "Unable to get partition assignment with CV repository for resource: {}, Will use fallback strategy to initialize the rate limiter",
-                topic);
-            long quotaInRcu = store.getReadQuotaInCU();
-            int instanceCount = customizedViewRepository.getLiveInstancesCount();
-            // If we somehow can't even get the accurate live instances count we will just assume this host is
-            // responsible for all traffic for this store.
-            double thisNodeQuotaResponsibility = 1.0;
-            if (instanceCount > 0) {
-              int partitionCount = version.getPartitionCount();
-              if (instanceCount >= partitionCount) {
-                // This instance should only be responsible for at most 1 partition
-                thisNodeQuotaResponsibility = 1.0 / (double) partitionCount;
-              } else {
-                // This instance could be responsible for multiple partitions, we should take the ceiling to be safe
-                thisNodeQuotaResponsibility =
-                    Math.ceil((double) partitionCount / (double) instanceCount) / (double) partitionCount;
-              }
-            }
-            computeNewRateLimiter(store.getName(), versionNumber, topic, quotaInRcu, thisNodeQuotaResponsibility, true);
-          } else {
-            LOGGER
-                .error("Unable to get partition assignment with CV repository for resource: {}, Will fail open", topic);
-          }
-        }
+        /**
+         * Store metadata (version info) is maintained separately from EV/CV so there could be many ways a race could
+         * occur. e.g. the version is deleted and CV/EV reflected the change faster than store metadata.
+         * Alternatively, EV/CV could also be lagging behind about a new version creation or after host restart.
+         */
+        handleQuotaUpdateWithoutPartitionAssignment(store, versionNumber, topic, NO_RESOURCE_FOUND_MSG);
       }
     }
     removeTopics(toBeRemovedTopics);
@@ -530,6 +516,46 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
       stats.setBackupVersion(store.getName(), backupVersion);
     }
     storeQuotaChangeMap.put(store.getName(), store.getReadQuotaInCU());
+  }
+
+  /**
+   * If partition assignment is not available for any reason(s) instead of failing quota initialization we will go ahead
+   * and update the quota based on local storage state. Leveraging {@link StorageEngineRepository} partition assignment
+   * information and assuming this replica will be responsible for all traffic for assigned partition(s).
+   */
+  private void handleQuotaUpdateWithoutPartitionAssignment(
+      Store store,
+      int versionNumber,
+      String topic,
+      String reason) {
+    Version version = store.getVersion(versionNumber);
+    if (version != null && version.getStatus().equals(VersionStatus.ONLINE)) {
+      if (quotaInitializationFallbackEnabled) {
+        LOGGER.warn(
+            "Unable to get partition assignment due to: {} for resource: {}, Will try to use fallback strategy to initialize the rate limiter",
+            reason,
+            topic);
+        long quotaInRcu = store.getReadQuotaInCU();
+        double thisNodeQuotaResponsibility = 0;
+        StorageEngine storageEngine = storageEngineRepository.getLocalStorageEngine(topic);
+        if (storageEngine != null) {
+          double assignedPartitionCount = storageEngine.getPartitionIds().size();
+          thisNodeQuotaResponsibility = assignedPartitionCount / (double) version.getPartitionCount();
+        }
+        LOGGER.info(
+            "Read quota fallback strategy calculated node responsibility of: {} for resource: {}",
+            thisNodeQuotaResponsibility,
+            topic);
+        if (thisNodeQuotaResponsibility <= 0) {
+          storeVersionRateLimiters.remove(topic);
+          stats.getStoreStats(store.getName()).removeVersion(versionNumber);
+        } else {
+          computeNewRateLimiter(store.getName(), versionNumber, topic, quotaInRcu, thisNodeQuotaResponsibility, true);
+        }
+      } else {
+        LOGGER.error("Unable to get partition assignment due to: {} for resource: {}, Will fail open", reason, topic);
+      }
+    }
   }
 
   private Set<String> getStoreTopics(String storeName) {
