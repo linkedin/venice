@@ -540,7 +540,9 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
         StorageEngine storageEngine = storageEngineRepository.getLocalStorageEngine(topic);
         if (storageEngine != null) {
           double assignedPartitionCount = storageEngine.getPartitionIds().size();
-          thisNodeQuotaResponsibility = assignedPartitionCount / (double) version.getPartitionCount();
+          double storeVersionPartitionCount = version.getPartitionCount();
+          thisNodeQuotaResponsibility =
+              storeVersionPartitionCount == 0 ? 0 : assignedPartitionCount / storeVersionPartitionCount;
         }
         LOGGER.info(
             "Read quota fallback strategy calculated node responsibility of: {} for resource: {}",
