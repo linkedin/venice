@@ -190,7 +190,7 @@ public class PartitionTracker {
         .stream()
         .collect(
             Collectors.toMap(
-                entry -> GuidUtils.getHexFromGuid(entry.getKey()),
+                entry -> GuidUtils.guidToUtf8(entry.getKey()),
                 entry -> entry.getValue().toProducerPartitionState()));
   }
 
