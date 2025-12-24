@@ -1,0 +1,34 @@
+/* Venice Documentation Custom Styles */
+/* Brand colors: Black and White */
+
+:root {
+  --venice-black: #000000;
+  --venice-white: #ffffff;
+}
+
+[data-md-color-scheme="slate"] {
+  --md-primary-fg-color: var(--venice-black);
+  --md-accent-fg-color: var(--venice-white);
+}
+
+[data-md-color-scheme="default"] {
+  --md-primary-fg-color: var(--venice-black);
+  --md-accent-fg-color: var(--venice-black);
+}
+
+.md-typeset table:not([class]) {
+  border-radius: 0.5rem;
+  overflow: hidden;
+}
+
+.md-button {
+  border-radius: 0.5rem;
+}
+
+.md-typeset code {
+  border-radius: 0.25rem;
+}
+
+.md-typeset pre > code {
+  border-radius: 0.5rem;
+}
