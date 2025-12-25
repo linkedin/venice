@@ -25,9 +25,6 @@ jobs:
           python-version: '3.11'
           cache: 'pip'
 
-      - name: Install dependencies
-        run: pip install -r requirements.txt
-
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
@@ -40,4 +37,6 @@ jobs:
           cp -r build/javadoc/* docs/javadoc/
 
       - name: Deploy
-        run: mkdocs gh-deploy --force --clean
+        run: |
+          pip install mkdocs-material 
+          mkdocs gh-deploy --force

@@ -88,13 +88,13 @@ dependencies, or Jekyll configs) and to share more significant documentation cha
 The docs are rendered and served by MkDocs with the Material theme. Install dependencies:
 
 ```bash
-pip install -r requirements-docs.txt
+pip install mkdocs-material 
 ```
 
 Then from the repository root, run:
 
 ```bash
-python3 -m mkdocs serve
+mkdocs serve
 ```
 
 Then navigate to `http://127.0.0.1:8000` and view the docs in your browser. MkDocs hot reloads changes to markdown files and configuration automatically. If you modify `mkdocs.yml`, the server will restart automatically.
