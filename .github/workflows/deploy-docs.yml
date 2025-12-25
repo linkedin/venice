@@ -17,6 +17,9 @@ jobs:
       - uses: actions/checkout@v4
       - name: Configure Git Credentials
         run: |
+          git remote set-head origin --auto
+          git remote add upstream https://github.com/linkedin/venice
+          git fetch upstream
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
       - uses: actions/setup-python@v5
@@ -34,12 +37,11 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      - name: Validate Gradle wrapper
+        uses: gradle/actions/wrapper-validation@v3
+
       - name: Generate Javadoc
-        run: |
-          git remote set-head origin --auto
-          git remote add upstream https://github.com/linkedin/venice
-          git fetch upstream
-          ./gradlew aggregateJavadoc
+        run: ./gradlew aggregateJavadoc
 
       - name: Copy Javadoc
         run: |
