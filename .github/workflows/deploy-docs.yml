@@ -30,4 +30,10 @@ jobs:
           restore-keys: |
             mkdocs-material-
       - run: pip install -r doc-requirements.txt
-      - run: mkdocs gh-deploy --force
+      - run: mkdocs build
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: 'site/'
+      - uses: actions/deploy-pages@v4
+        id: deployment
