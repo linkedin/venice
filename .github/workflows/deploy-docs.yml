@@ -30,4 +30,16 @@ jobs:
           restore-keys: |
             mkdocs-material-
       - run: pip install -r doc-requirements.txt
+      
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+      
+      - name: Generate Javadoc
+        run: ./gradlew aggregateJavadoc
+      
+      - name: Copy Javadoc
+        run: |
+          mkdir -p docs/javadoc
+          cp -r build/javadoc/* docs/javadoc/
+      
       - run: mkdocs gh-deploy --force
