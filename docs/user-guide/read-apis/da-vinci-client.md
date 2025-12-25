@@ -133,20 +133,21 @@ public void onEndVersionIngestion(int currentVersion) {
 - **Compatibility checks**: Implementation changes are automatically detected and local state is rebuilt to prevent stale data
 
 ### Featured Implementations
-
-- **VeniceChangelogConsumerDaVinciRecordTransformerImpl** ([source](https://github.com/linkedin/venice/blob/main/clients/da-vinci-client/src/main/java/com/linkedin/davinci/consumer/VeniceChangelogConsumerDaVinciRecordTransformerImpl.java))
-    - Powers the change data capture (CDC) client through the record transformer APIs.
-- **DuckDBDaVinciRecordTransformer** ([source](https://github.com/linkedin/venice/blob/main/integrations/venice-duckdb/src/main/java/com/linkedin/venice/duckdb/DuckDBDaVinciRecordTransformer.java))
-    - Streams Venice updates into DuckDB so teams can query feature data with SQL.
+- [VeniceChangelogConsumerDaVinciRecordTransformerImpl](https://github.com/linkedin/venice/blob/main/clients/da-vinci-client/src/main/java/com/linkedin/davinci/consumer/VeniceChangelogConsumerDaVinciRecordTransformerImpl.java):
+    - The new Venice Change Data Capture (CDC) client was built using the record transformer.
+- [DuckDBDaVinciRecordTransformer](https://github.com/linkedin/venice/blob/main/integrations/venice-duckdb/src/main/java/com/linkedin/venice/duckdb/DuckDBDaVinciRecordTransformer.java):
+    - Forwards Venice data to DuckDB, allowing you to query your Venice data via SQL.
 
 ### Configuration Options
 #### Required
-  - `setRecordTransformerFunction`: Factory that creates transformer instances for each store version.
+- `setRecordTransformerFunction`: Function that creates your transformer instances
 
 #### Optional
-  - `setKeyClass`: Deserialize keys into Avro `SpecificRecord` implementations.
-  - `setOutputValueClass` and `setOutputValueSchema`: Provide both when changing value types or using Avro `SpecificRecord` values.
-  - `setStoreRecordsInDaVinci` (default: `true`): Persist transformed data to Da Vinci’s local storage.
-  - `setAlwaysBootstrapFromVersionTopic` (default: `false`): Enable when `setStoreRecordsInDaVinci` is `false` and you rely on in-memory state.
-  - `setRecordTransformationEnabled` (default: `true`): Disable to bypass `transform` while leaving the transformer registered.
-  - `setRecordMetadataEnabled` (default: `false`): Include metadata via `DaVinciRecordTransformerRecordMetadata` for auditing.
+- `setKeyClass`: set this if you want to deserialize keys into Avro SpecificRecords.
+- `setOutputValueClass` + `setOutputValueSchema`: required together when changing value type/schema or using Avro
+  SpecificRecords for values.
+- `setStoreRecordsInDaVinci` (default: true): persist into Da Vinci’s local disk.
+- `setAlwaysBootstrapFromVersionTopic` (default: false): set this to true if `storeRecordsInDaVinci` is false, and
+you're storing records in memory without being backed by disk.
+- `setRecordTransformationEnabled` (default: true): set to false when returning `UNCHANGED` during `transform`.
+- `setRecordMetadataEnabled` (default: false): enable if you need the record metadata in DaVinciRecordTransformerRecordMetadata.
