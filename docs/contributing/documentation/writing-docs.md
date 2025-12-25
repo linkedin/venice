@@ -88,7 +88,7 @@ dependencies, or Jekyll configs) and to share more significant documentation cha
 The docs are rendered and served by MkDocs with the Material theme. Install dependencies:
 
 ```bash
-pip install mkdocs-material 
+pip install -r doc-requirements.txt 
 ```
 
 Then from the repository root, run:
