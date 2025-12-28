@@ -32,3 +32,18 @@
 .md-typeset pre > code {
   border-radius: 0.5rem;
 }
+
+/* Hide permalink icon by default, show only on heading hover */
+.md-typeset .headerlink {
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.md-typeset h1:hover .headerlink,
+.md-typeset h2:hover .headerlink,
+.md-typeset h3:hover .headerlink,
+.md-typeset h4:hover .headerlink,
+.md-typeset h5:hover .headerlink,
+.md-typeset h6:hover .headerlink {
+  opacity: 1;
+}

@@ -57,7 +57,7 @@ markdown_extensions:
   - md_in_html
   - tables
   - toc:
-      permalink: true
+      permalink: "#"
       toc_depth: 3
   - pymdownx.highlight:
       anchor_linenums: true
