@@ -48,9 +48,6 @@ theme:
 extra_css:
   - assets/style/extra.css
 
-extra_javascript:
-  - assets/js/extra.js
-
 markdown_extensions:
   - abbr
   - admonition
