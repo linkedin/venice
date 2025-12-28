@@ -1,7 +1,7 @@
 site_name: Venice
 site_url: https://venicedb.org
 site_description: Derived Data Platform for Planet-Scale Workloads
-site_author: Venice Team
+site_author: Venice
 repo_url: https://github.com/linkedin/venice
 repo_name: linkedin/venice
 edit_uri: edit/main/docs/
@@ -94,7 +94,7 @@ extra:
       link: https://blog.venicedb.org
 
 nav:
-  - Home: index.md
+  - Home: README.md
 
   - Getting Started:
     - getting-started/index.md

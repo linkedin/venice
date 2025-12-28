@@ -198,12 +198,13 @@ features like creating a data store, batch push, incremental push, and single ge
 Feel free to engage with the community using our:
 <!-- N.B.: The links are duplicated here between the icon and text, otherwise the blue link underline extends into the space, which does not look good. -->
 - [<img src="assets/icons/slack-icon.svg" width="15" />](http://slack.venicedb.org) [Slack workspace](http://slack.venicedb.org)
-  - Archived and publicly searchable on [Linen](http://linen.venicedb.org)
+    - Archived and publicly searchable on [Linen](http://linen.venicedb.org)
 - [<img src="assets/icons/linkedin-icon.svg" width="15" />](https://www.linkedin.com/groups/14129519/) [LinkedIn group](https://www.linkedin.com/groups/14129519/)
 - [<img src="assets/icons/github-icon.svg" width="15" />](https://github.com/linkedin/venice/issues) [GitHub issues](https://github.com/linkedin/venice/issues)
 - [<img src="assets/icons/github-icon.svg" width="15" />](./dev_guide/how_to/how_to.md) [Contributor's guide](./dev_guide/how_to/how_to.md)
 
 Follow us to hear more about the progress of the Venice project and community:
+
 - [<img src="assets/icons/hashnode-icon.svg" width="15" />](https://blog.venicedb.org) [Blog](https://blog.venicedb.org)
 - [<img src="assets/icons/bluesky-icon.svg" width="15" />](https://bsky.app/profile/venicedb.org) [Bluesky handle](https://bsky.app/profile/venicedb.org)
 - [<img src="assets/icons/linkedin-icon.svg" width="15" />](https://www.linkedin.com/company/venicedb) [LinkedIn page](https://www.linkedin.com/company/venicedb)

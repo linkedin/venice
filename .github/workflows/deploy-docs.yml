@@ -34,7 +34,7 @@ jobs:
           path: ~/.cache
           restore-keys: |
             mkdocs-material-
-      - run: pip install -r doc-requirements.txt
+      - run: pip install -r docs/doc-requirements.txt
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4

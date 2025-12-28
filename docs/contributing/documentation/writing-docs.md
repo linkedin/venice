@@ -21,7 +21,7 @@ structure coherent. That being said, even if unsure where some documentation bel
 
 ## Hierarchy
 
-Documentation hierarchy is configured in `mkdocs.yml` in the `nav:` section. Pages do not require front matter. The navigation structure is defined centrally:
+Documentation hierarchy is configured in `mkdocs.yml` in the `nav:` section. The navigation structure is defined centrally:
 
 ```yaml
 nav:
@@ -80,15 +80,15 @@ Here's a link to all the emojis available in README files: [Emoji Cheat Sheet](h
 ## Testing Doc Changes
 
 There are two ways to test doc changes, locally and on the public web. Local testing is convenient to iterate quickly,
-while public web testing is useful to make sure that nothing breaks (e.g., especially if changing styles, Ruby 
-dependencies, or Jekyll configs) and to share more significant documentation changes with PR reviewers.
+while public web testing is useful to make sure that nothing breaks (e.g., especially if changing styles, Python 
+dependencies, or MkDocs configs) and to share more significant documentation changes with PR reviewers.
 
 ### Testing Locally
 
 The docs are rendered and served by MkDocs with the Material theme. Install dependencies:
 
 ```bash
-pip install -r doc-requirements.txt 
+pip install -r docs/doc-requirements.txt 
 ```
 
 Then from the repository root, run:
@@ -97,9 +97,7 @@ Then from the repository root, run:
 mkdocs serve
 ```
 
-Then navigate to `http://127.0.0.1:8000` and view the docs in your browser. MkDocs hot reloads changes to markdown files and configuration automatically. If you modify `mkdocs.yml`, the server will restart automatically.
-
-For more options, see `docs/LOCAL_DEPLOYMENT.md`.
+Then navigate to [http://127.0.0.1:8000](http://127.0.0.1:8000) and view the docs in your browser. MkDocs hot reloads changes to markdown files and configuration automatically. If you modify `mkdocs.yml`, the server will restart automatically.
 
 ### Testing on the Public Web
 
@@ -107,8 +105,9 @@ A GitHub fork can have its own documentation. This can be setup by:
 
 1. Navigating to the fork's Settings > Pages, i.e.: `https://github.com/<username>/venice/settings/pages`
 2. Selecting which branch to publish the docs from
-3. Selecting "GitHub Actions" as the source (not "Deploy from a branch")
-4. Push changes to trigger the `deploy-docs.yml` workflow
-5. Navigate to your fork's docs at: `https://<username>.github.io/venice`
+3. Selecting "Deploy from a branch" as the source (not "GitHub Actions")
+4. Select branch "gh-pages" pointed at the root directory
+5. Push changes to trigger the `deploy-docs.yml` workflow
+6. Navigate to your fork's docs at: `https://<username>.github.io/venice`
 
 For significant doc changes, please follow this process and add a link inside the PR to the docs hosted in the PR author's own fork.
