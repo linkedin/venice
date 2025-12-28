@@ -32,19 +32,19 @@ The above makes Venice particularly suitable as the stateful component backing a
 AI applications feed the output of their ML training jobs into Venice and then query the data for use during online 
 inference workloads.
 
-# Overview
+## Overview
 Venice is a system which straddles the offline, nearline and online worlds, as illustrated below.
 
 ![High Level Architecture Diagram](assets/images/high_level_architecture.drawio.svg)
 
-## Dependency
+### Dependency
 
 You can add a dependency on Venice to any Java project as specified below. Note that, currently, Venice dependencies are
 not published on Maven Central and therefore require adding an extra repository definition. All published jars can be
 seen [here](https://linkedin.jfrog.io/ui/native/venice/com/linkedin/venice/). Usually, the project is released a few 
 times per week.
 
-### Gradle
+#### Gradle
 
 Add the following to your `build.gradle`:
 
@@ -62,7 +62,7 @@ dependencies {
 }
 ```
 
-### Maven
+#### Maven
 
 Add the following to your `pom.xml`:
 
@@ -91,7 +91,7 @@ Add the following to your `pom.xml`:
 
 ```
 
-## APIs
+### APIs
 From the user's perspective, Venice provides a variety of read and write APIs. These are fully decoupled from one 
 another, in the sense that no matter which write APIs are used, any of the read APIs are available.
 
@@ -104,7 +104,7 @@ The following diagram presents these APIs and summarizes the components coming i
 
 ![API Overview](assets/images/api_overview.drawio.svg)
 
-### Write Path
+#### Write Path
 
 The Venice write path can be broken down into three granularities: full dataset swap, insertion of many rows into an 
 existing dataset, and updates of some columns of some rows. All three granularities are supported by Hadoop and Samza.
@@ -118,7 +118,7 @@ supported by each platform:
 |  Insertion of some rows into an existing dataset |                        ✅                        |                          ✅                           |                             ✅                             |
 |             Updates to some columns of some rows |                        ✅                        |                          ✅                           |                             ✅                             |
 
-#### Hybrid Stores
+##### Hybrid Stores
 Moreover, the three granularities of write operations can all be mixed within a single dataset. A dataset which gets 
 full dataset swaps in addition to row insertion or row updates is called _hybrid_.
 
@@ -129,7 +129,7 @@ Leveraging this mechanism, it is possible to overlay the output of a stream proc
 job. If using partial updates, then it is possible to have some of the columns be updated in real-time and some in 
 batch, and these two sets of columns can either overlap or be disjoint, as desired.
 
-#### Write Compute
+##### Write Compute
 Write Compute includes two kinds of operations, which can be performed on the value associated with a given key:
 
 - **Partial update**: set the content of a field within the value.
@@ -138,7 +138,7 @@ Write Compute includes two kinds of operations, which can be performed on the va
 N.B.: Currently, write compute is only supported in conjunction with active-passive replication. Support for 
 active-active replication is under development. 
 
-### Read Path
+#### Read Path
 
 Venice supports the following read APIs:
 
@@ -154,7 +154,7 @@ Venice supports the following read APIs:
     vector provided as query param, and return the resulting vector.
   - **Collection count**: return the number of items in the collection stored in a given field.
 
-#### Client Modes
+##### Client Modes
 
 There are two main modes for accessing Venice data:
 
@@ -182,19 +182,19 @@ The table below summarizes the clients' characteristics:
 All of these clients share the same read APIs described above. This enables users to make changes to their 
 cost/performance tradeoff without needing to rewrite their applications.
 
-# Resources
+## Resources
 
 The _Open Sourcing Venice_ [blog](https://engineering.linkedin.com/blog/2022/open-sourcing-venice--linkedin-s-derived-data-platform)
 and [conference talk](https://www.youtube.com/watch?v=pJeg4V3JgYo) are good starting points to get an overview of what
 use cases and scale can Venice support. For more Venice posts, talks and podcasts, see our [Learn More](./resources/learn-more.md)
 page.
 
-## Getting Started
+### Getting Started
 Refer to the [Venice quickstart](./getting-started/index.md) to create your own Venice cluster and play around with some 
 features like creating a data store, batch push, incremental push, and single get. We recommend sticking to our latest 
 [stable release](https://blog.venicedb.org/stable-releases).
 
-## Community
+### Community
 Feel free to engage with the community using our:
 <!-- N.B.: The links are duplicated here between the icon and text, otherwise the blue link underline extends into the space, which does not look good. -->
 - [<img src="assets/icons/slack-icon.svg" width="15" />](http://slack.venicedb.org) [Slack workspace](http://slack.venicedb.org)
