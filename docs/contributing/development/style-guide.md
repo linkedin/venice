@@ -1,6 +1,5 @@
 
 # Style Guide
-{: .no_toc }
 
 This page describes some stylistic concerns which the development team cares about. Some of them are enforced by 
 automation, while others are guidelines of a more informal, or even philosophical, nature. More generally, we believe in 
@@ -16,12 +15,6 @@ encouraged to try to rectify them "in passing", even if the objective of the cod
 judgment call, and needs to be balanced by concerns like managing the risk of unintended regressions.
 
 For those who are new to the Java language, it may be useful to read this [introduction to Java](../architecture/java-internals.md).
-
-## Table of Contents
-{: .no_toc }
-
-- TOC
-{:toc}
 
 ## Automation
 

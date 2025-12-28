@@ -25,7 +25,7 @@ Documentation hierarchy is configured in `mkdocs.yml` in the `nav:` section. The
 
 ```yaml
 nav:
-  - Home: index.md
+  - Home: README.md
   - User Guide:
     - user-guide/index.md
     - Write APIs:
@@ -33,6 +33,7 @@ nav:
 ```
 
 To add a new page:
+
 1. Create the markdown file in the appropriate directory
 2. Add an entry to the `nav:` section in `mkdocs.yml`
 3. The page title is taken from the first `# Heading` in the markdown file
@@ -97,7 +98,7 @@ Then from the repository root, run:
 mkdocs serve
 ```
 
-Then navigate to [http://127.0.0.1:8000](http://127.0.0.1:8000) and view the docs in your browser. MkDocs hot reloads changes to markdown files and configuration automatically. If you modify `mkdocs.yml`, the server will restart automatically.
+Then navigate to [localhost:8000](http://localhost:8000) and view the docs in your browser. MkDocs hot reloads changes to markdown files and configuration automatically. If you modify `mkdocs.yml`, the server will restart automatically.
 
 ### Testing on the Public Web
 

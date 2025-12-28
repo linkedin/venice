@@ -102,15 +102,15 @@ The proposed API for this functionality is described in code here:
 
 [//]: # (Got to remove the /venice prefix before pushing to main on linkedin/venice, otherwise links will be broken...)
 
-* [StoreLifecycleHooks](/venice/javadoc/com/linkedin/venice/hooks/StoreLifecycleHooks.html), which is the main part of this 
+* **StoreLifecycleHooks**, which is the main part of this 
   proposal.
-* [StoreLifecycleEventOutcome](/venice/javadoc/com/linkedin/venice/hooks/StoreLifecycleEventOutcome.html), which is the signal
+* **StoreLifecycleEventOutcome**, which is the signal
   returned by some hooks to indicate that a given step should proceed or abort.
-* [StoreVersionLifecycleEventOutcome](/venice/javadoc/com/linkedin/venice/hooks/StoreVersionLifecycleEventOutcome.html), which
+* **StoreVersionLifecycleEventOutcome**, which
   is the signal returned by some other hooks which need more fine-grained control over the workflow. In addition to 
   proceeding and aborting, this also provides the option to wait, which tells the hooks framework to try invoking the 
   hook again later, and rollback, which tells the framework to rollback to the previous store-version in all regions.
-* [JobStatusQueryResponse](/venice/javadoc/com/linkedin/venice/controllerapi/JobStatusQueryResponse.html), which is the payload
+* **JobStatusQueryResponse**, which is the payload
   returned by the `/job` controller endpoint, is extended to include status update timestamps. This will be populated by
   the child controller to indicate the time when its own individual status last changed, and the parent controller will
   aggregate these into a map keyed by region. All hooks which return the `StoreVersionLifecycleEventOutcome` will have

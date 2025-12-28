@@ -8,7 +8,7 @@ provided by Venice team.
 
 
 #### Step 1: Install and set up Docker Engine and docker-compose
-    Follow https://docs.docker.com/engine/install/ to install docker and start docker engine
+Follow [https://docs.docker.com/engine/install/](https://docs.docker.com/engine/install/) to install docker and start docker engine
 
 
 
@@ -104,7 +104,7 @@ Note: If you change the store name from `test-store` to something else, you will
 
 #### Step 9: Exit from the venice-client container
 ```bash
-# type exit command on the terminal or use cntrl + c
+# type exit command on the terminal or use ctrl + c
 exit
 ```
 

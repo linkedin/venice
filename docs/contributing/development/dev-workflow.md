@@ -18,7 +18,7 @@ statement via GitHub issues first.
 The GitHub issue should contain the detailed problem statement.
 
 ## Pull Request
-1. Fork the GitHub repository at http://github.com/linkedin/venice if you haven't already
+1. Fork the GitHub repository at [http://github.com/linkedin/venice](http://github.com/linkedin/venice) if you haven't already
 2. Clone your fork, create a new branch, push commits to the branch
 3. Consider whether documentation or tests need to be added or updated as part of the change, and add them as needed (doc changes should be submitted along with code change in the same PR)
 4. Run all tests as described in the project's [Workspace setup guide](workspace-setup.md#run-the-test-suite).

@@ -9,7 +9,7 @@ provided by Venice team.
 
 
 #### Step 1: Install and set up Docker Engine and docker-compose
-    Follow https://docs.docker.com/engine/install/ to install docker and start docker engine
+Follow [https://docs.docker.com/engine/install/](https://docs.docker.com/engine/install/) to install docker and start docker engine
 
 
 #### Step 2: Download Venice quickstart Docker compose file
@@ -153,4 +153,4 @@ docker-compose -f docker-compose-single-dc-setup.yaml down
 ## Next steps
 Venice is a feature rich derived data store. It offers features such as write-compute, read-compute, streaming ingestion, multi data center active-active replication,
 deterministic conflict resolution, etc. To know more about such features please refer to the [User Guide](../user-guide/index.md) and reach out to
-the [Venice team](../resources/community.md).
+the [Venice team](../README.md#community).

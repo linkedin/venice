@@ -109,14 +109,14 @@ The following diagram presents these APIs and summarizes the components coming i
 The Venice write path can be broken down into three granularities: full dataset swap, insertion of many rows into an 
 existing dataset, and updates of some columns of some rows. All three granularities are supported by Hadoop and Samza.
 In addition, any service can asynchronously produce single row inserts and updates as well, using the 
-[Online Producer](./user_guide/write_api/online_producer.md) library. The table below summarizes the write operations 
+[Online Producer](./user-guide/write-apis/online-producer.md) library. The table below summarizes the write operations 
 supported by each platform:
 
-|                                                  | [Hadoop](./user_guide/write_api/push_job.md) | [Samza](./user_guide/write_api/stream_processor.md) | [Any Service](./user_guide/write_api/online_producer.md) |
-|-------------------------------------------------:|:--------------------------------------------:|:---------------------------------------------------:|:--------------------------------------------------------:|
-|                                Full dataset swap |                      ✅                       |                          ✅                          |                                                          |
-|  Insertion of some rows into an existing dataset |                      ✅                       |                          ✅                          |                            ✅                             |
-|             Updates to some columns of some rows |                      ✅                       |                          ✅                          |                            ✅                             |
+|                                                  | [Hadoop](./user-guide/write-apis/batch-push.md) | [Samza](./user-guide/write-apis/stream-processor.md) | [Any Service](./user-guide/write-apis/online-producer.md) |
+|-------------------------------------------------:|:-----------------------------------------------:|:----------------------------------------------------:|:---------------------------------------------------------:|
+|                                Full dataset swap |                        ✅                        |                          ✅                           |                                                           |
+|  Insertion of some rows into an existing dataset |                        ✅                        |                          ✅                           |                             ✅                             |
+|             Updates to some columns of some rows |                        ✅                        |                          ✅                           |                             ✅                             |
 
 #### Hybrid Stores
 Moreover, the three granularities of write operations can all be mixed within a single dataset. A dataset which gets 
@@ -186,11 +186,11 @@ cost/performance tradeoff without needing to rewrite their applications.
 
 The _Open Sourcing Venice_ [blog](https://engineering.linkedin.com/blog/2022/open-sourcing-venice--linkedin-s-derived-data-platform)
 and [conference talk](https://www.youtube.com/watch?v=pJeg4V3JgYo) are good starting points to get an overview of what
-use cases and scale can Venice support. For more Venice posts, talks and podcasts, see our [Learn More](./user_guide/learn_more.md)
+use cases and scale can Venice support. For more Venice posts, talks and podcasts, see our [Learn More](./resources/learn-more.md)
 page.
 
 ## Getting Started
-Refer to the [Venice quickstart](./quickstart/quickstart.md) to create your own Venice cluster and play around with some 
+Refer to the [Venice quickstart](./getting-started/index.md) to create your own Venice cluster and play around with some 
 features like creating a data store, batch push, incremental push, and single get. We recommend sticking to our latest 
 [stable release](https://blog.venicedb.org/stable-releases).
 
@@ -201,7 +201,7 @@ Feel free to engage with the community using our:
     - Archived and publicly searchable on [Linen](http://linen.venicedb.org)
 - [<img src="assets/icons/linkedin-icon.svg" width="15" />](https://www.linkedin.com/groups/14129519/) [LinkedIn group](https://www.linkedin.com/groups/14129519/)
 - [<img src="assets/icons/github-icon.svg" width="15" />](https://github.com/linkedin/venice/issues) [GitHub issues](https://github.com/linkedin/venice/issues)
-- [<img src="assets/icons/github-icon.svg" width="15" />](./dev_guide/how_to/how_to.md) [Contributor's guide](./dev_guide/how_to/how_to.md)
+- [<img src="assets/icons/github-icon.svg" width="15" />](./contributing/index.md) [Contributor's guide](./contributing/index.md)
 
 Follow us to hear more about the progress of the Venice project and community:
 

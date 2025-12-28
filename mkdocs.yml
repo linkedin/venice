@@ -106,6 +106,9 @@ nav:
     - Concepts:
       - user-guide/concepts/overview.md
       - user-guide/concepts/ttl.md
+    - Design Patterns:
+        - user-guide/design-patterns/index.md
+        - Merging Batch & Real-Time Data: user-guide/design-patterns/merging-batch-and-rt-data.md
     - Write APIs:
       - user-guide/write-apis/index.md
       - Batch Push: user-guide/write-apis/batch-push.md
@@ -114,9 +117,6 @@ nav:
     - Read APIs:
       - user-guide/read-apis/index.md
       - Da Vinci Client: user-guide/read-apis/da-vinci-client.md
-    - Design Patterns:
-      - user-guide/design-patterns/index.md
-      - Merging Batch & RT: user-guide/design-patterns/merging-batch-and-rt.md
 
   - Operations:
     - operations/index.md
@@ -157,5 +157,3 @@ nav:
 
   - Resources:
     - Learn More: resources/learn-more.md
-    - API Reference: resources/api-reference.md
-    - Community: resources/community.md

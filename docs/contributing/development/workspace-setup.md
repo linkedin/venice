@@ -21,11 +21,8 @@ Make sure to set the `JAVA_HOME` environment variable to the location of your JD
 How to do this will be dependent on your OS.
 
 ## Setting up the IDE
-We recommend using IntelliJ IDEA for development to take advantage of the debugger, and provide instructions for it.
+We recommend using [IntelliJ IDEA](https://www.jetbrains.com/idea/download/) for development to take advantage of the debugger, and provide instructions for it.
 However, any IDE of your choice should work.
-
-To get the free version of IntelliJ IDEA visit the [JetBrains website](https://www.jetbrains.com/idea/download/), and
-download the Community Edition version (not Ultimate). It should be the second download button on the page.
 
 To set up IntelliJ, run:
 ```shell

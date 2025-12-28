@@ -29,7 +29,7 @@ was produced is used as the logical timestamp during conflict resolution.
 ## Usage
 To create an instance of the producer, `OnlineProducerFactory` should be used since the interface for
 `OnlineVeniceProducer` is not yet considered stable and can introduce backward incompatible changes.
-```
+```java
 String storeName = "<store_name>";
 ClientConfig clientConfig = ClientConfig.defaultGenericClientConfig(storeName)
     .setVeniceURL("http://router.host:7777")

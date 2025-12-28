@@ -1,17 +1,10 @@
 # Java
-{: .no_toc }
 
 The Venice codebase is completely in Java, and therefore it is important to have at least a basic understanding of the 
 language and its runtime, the Java Virtual Machine (JVM). This page is not intended to be an in-depth resource on Java, 
 but might be a useful starting point for Java beginners. Links to more in-depth resources will be provided along the 
 way, and in cases where there are many distinct ways of using Java, guidance will be provided in terms of the Venice 
 project's expectations.
-
-## Table of Contents
-{: .no_toc }
-
-- TOC
-{:toc}
 
 ## Java in a Nutshell
 
