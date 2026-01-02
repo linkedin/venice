@@ -26,6 +26,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENABLE_WR
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENUM_SCHEMA_EVOLUTION_ALLOWED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ETLED_PROXY_USER_ACCOUNT;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ETL_STRATEGY;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.FLINK_VENICE_VIEWS_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.FUTURE_VERSION_ETL_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.GLOBAL_RT_DIV_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.HYBRID_STORE_DISK_QUOTA_ENABLED;
@@ -181,7 +182,8 @@ public class UpdateStoreQueryParams extends QueryParams {
                     .stream()
                     .collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().toString())))
             .setKeyUrnCompressionEnabled(srcStore.isKeyUrnCompressionEnabled())
-            .setKeyUrnFields(srcStore.getKeyUrnFields());
+            .setKeyUrnFields(srcStore.getKeyUrnFields())
+            .setFlinkVeniceViewsEnabled(srcStore.isFlinkVeniceViewsEnabled());
 
     if (srcStore.getReplicationMetadataVersionId() != -1) {
       updateStoreQueryParams.setReplicationMetadataVersionID(srcStore.getReplicationMetadataVersionId());
@@ -540,6 +542,14 @@ public class UpdateStoreQueryParams extends QueryParams {
 
   public Optional<Map<String, String>> getStoreViews() {
     return getStringMap(STORE_VIEW);
+  }
+
+  public UpdateStoreQueryParams setFlinkVeniceViewsEnabled(boolean flinkVeniceViewsEnabled) {
+    return putBoolean(FLINK_VENICE_VIEWS_ENABLED, flinkVeniceViewsEnabled);
+  }
+
+  public Optional<Boolean> getFlinkVeniceViewsEnabled() {
+    return getBoolean(FLINK_VENICE_VIEWS_ENABLED);
   }
 
   public UpdateStoreQueryParams setPushStreamSourceAddress(String pushStreamSourceAddress) {

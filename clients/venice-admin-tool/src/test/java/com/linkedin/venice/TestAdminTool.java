@@ -9,9 +9,7 @@ import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.when;
-import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertNotNull;
-import static org.testng.Assert.expectThrows;
+import static org.testng.Assert.*;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.linkedin.venice.AdminTool.ConsumerContext;
@@ -103,7 +101,8 @@ public class TestAdminTool {
         "true", "--venice-etl-strategy", "EXTERNAL_WITH_VENICE_TRIGGER", "--partitioner-params",
         "{\"" + K1 + "\":\"" + V1 + "\",\"" + K2 + "\":\"" + V2 + "\",\"" + K3 + "\":\"" + V3 + "\"}",
         "--store-lifecycle-hooks-list",
-        "[{\"storeLifecycleHooksClassName\":\"com.example.MyHook1\",\"storeLifecycleHooksParams\":{\"paramA\":\"valueA\",\"paramB\":\"valueB\"}},{\"storeLifecycleHooksClassName\":\"com.example.MyHook2\",\"storeLifecycleHooksParams\":{\"foo\":\"bar\"}}]" };
+        "[{\"storeLifecycleHooksClassName\":\"com.example.MyHook1\",\"storeLifecycleHooksParams\":{\"paramA\":\"valueA\",\"paramB\":\"valueB\"}},{\"storeLifecycleHooksClassName\":\"com.example.MyHook2\",\"storeLifecycleHooksParams\":{\"foo\":\"bar\"}}]",
+        "--flink-venice-views-enabled", "true" };
 
     CommandLine commandLine = AdminTool.getCommandLine(args);
     UpdateStoreQueryParams params = AdminTool.getUpdateStoreQueryParams(commandLine);
@@ -132,6 +131,8 @@ public class TestAdminTool {
     Assert.assertTrue(params.getStoreLifecycleHooks().isPresent());
     List<LifecycleHooksRecord> lifecycleHooksRecords = params.getStoreLifecycleHooks().get();
     assertEquals(lifecycleHooksRecords.size(), 2);
+    assertTrue(params.getFlinkVeniceViewsEnabled().isPresent());
+    assertTrue(params.getFlinkVeniceViewsEnabled().get());
   }
 
   @Test
