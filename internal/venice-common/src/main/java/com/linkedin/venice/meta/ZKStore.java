@@ -514,6 +514,16 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
   }
 
   @Override
+  public boolean isFlinkVeniceViewsEnabled() {
+    return this.storeProperties.flinkVeniceViewsEnabled;
+  }
+
+  @Override
+  public void setFlinkVeniceViewsEnabled(boolean flinkVeniceViewsEnabled) {
+    this.storeProperties.flinkVeniceViewsEnabled = flinkVeniceViewsEnabled;
+  }
+
+  @Override
   public boolean isHybrid() {
     return this.storeProperties.hybridConfig != null;
   }

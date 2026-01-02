@@ -3337,6 +3337,50 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     Assert.assertEquals(etlStoreConfigRecord.etlStrategy, VeniceETLStrategy.EXTERNAL_SERVICE.getValue());
   }
 
+  @Test
+  public void testUpdateStoreFlinkVeniceViewsEnable() {
+    String storeName = Utils.getUniqueString("testUpdateStoreFlinkVeniceViewsEnable");
+    Store store = TestUtils.createTestStore(storeName, "test", System.currentTimeMillis());
+    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
+
+    when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(null)
+        .thenReturn(
+            AdminTopicMetadataAccessor.generateMetadataMap(
+                Optional.of(1L),
+                Optional.of(-1L),
+                Optional.of(1L),
+                Optional.of(LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION)));
+
+    parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setFlinkVeniceViewsEnabled(true));
+
+    ArgumentCaptor<byte[]> keyCaptor = ArgumentCaptor.forClass(byte[].class);
+    ArgumentCaptor<byte[]> valueCaptor = ArgumentCaptor.forClass(byte[].class);
+    ArgumentCaptor<Integer> schemaCaptor = ArgumentCaptor.forClass(Integer.class);
+    verify(veniceWriter).put(
+        keyCaptor.capture(),
+        valueCaptor.capture(),
+        schemaCaptor.capture(),
+        any(),
+        any(),
+        anyLong(),
+        any(),
+        any(),
+        any(),
+        any());
+
+    byte[] keyBytes = keyCaptor.getValue();
+    byte[] valueBytes = valueCaptor.getValue();
+    int schemaId = schemaCaptor.getValue();
+    assertEquals(schemaId, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+    assertEquals(keyBytes.length, 0);
+
+    AdminOperation adminMessage = adminOperationSerializer.deserialize(ByteBuffer.wrap(valueBytes), schemaId);
+    assertEquals(adminMessage.operationType, AdminMessageType.UPDATE_STORE.getValue());
+
+    UpdateStore updateStore = (UpdateStore) adminMessage.payloadUnion;
+    assertTrue(updateStore.flinkVeniceViewsEnabled);
+  }
+
   private Store setupForStoreViewConfigUpdateTest(String storeName) {
     Store store = TestUtils.createTestStore(storeName, "test", System.currentTimeMillis());
     store.setActiveActiveReplicationEnabled(true);

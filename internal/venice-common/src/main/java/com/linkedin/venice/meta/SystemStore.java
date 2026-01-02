@@ -288,6 +288,16 @@ public class SystemStore extends AbstractStore {
   }
 
   @Override
+  public boolean isFlinkVeniceViewsEnabled() {
+    return zkSharedStore.isFlinkVeniceViewsEnabled();
+  }
+
+  @Override
+  public void setFlinkVeniceViewsEnabled(boolean flinkVeniceViewsEnabled) {
+    throwUnsupportedOperationException("setFlinkVeniceViewsEnabled");
+  }
+
+  @Override
   public boolean isHybrid() {
     return zkSharedStore.isHybrid();
   }

@@ -5855,6 +5855,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     Optional<List<LifecycleHooksRecord>> storeLifecycleHooks = params.getStoreLifecycleHooks();
     Optional<Boolean> keyUrnCompressionEnabled = params.getKeyUrnCompressionEnabled();
     Optional<List<String>> keyUrnFields = params.getKeyUrnFields();
+    Optional<Boolean> flinkVeniceViewsEnabled = params.getFlinkVeniceViewsEnabled();
 
     final Optional<HybridStoreConfig> newHybridStoreConfig;
     if (hybridRewindSeconds.isPresent() || hybridOffsetLagThreshold.isPresent() || hybridTimeLagThreshold.isPresent()
@@ -6218,6 +6219,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
       keyUrnFields.ifPresent(fields -> storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
         store.setKeyUrnFields(fields);
+        return store;
+      }));
+
+      flinkVeniceViewsEnabled.ifPresent(aBool -> storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
+        store.setFlinkVeniceViewsEnabled(aBool);
         return store;
       }));
 

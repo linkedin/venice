@@ -116,6 +116,10 @@ public interface Store {
 
   void setViewConfigs(Map<String, ViewConfig> viewConfigMap);
 
+  boolean isFlinkVeniceViewsEnabled();
+
+  void setFlinkVeniceViewsEnabled(boolean flinkVeniceViewsEnabled);
+
   boolean isHybrid();
 
   CompressionStrategy getCompressionStrategy();
