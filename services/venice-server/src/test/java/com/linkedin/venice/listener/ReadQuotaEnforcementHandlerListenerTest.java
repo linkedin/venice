@@ -12,6 +12,7 @@ import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.davinci.config.VeniceServerConfig;
+import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.OfflinePushStrategy;
@@ -49,6 +50,7 @@ import org.testng.annotations.Test;
 public class ReadQuotaEnforcementHandlerListenerTest {
   private String nodeId = "thisNodeId";
   private VeniceServerConfig serverConfig;
+  private StorageEngineRepository storageEngineRepository;
 
   @BeforeMethod
   public void setUp() {
@@ -56,6 +58,7 @@ public class ReadQuotaEnforcementHandlerListenerTest {
     when(serverConfig.getNodeCapacityInRcu()).thenReturn(100L);
     when(serverConfig.getQuotaEnforcementIntervalInMs()).thenReturn(1000);
     when(serverConfig.getQuotaEnforcementCapacityMultiple()).thenReturn(1);
+    storageEngineRepository = mock(StorageEngineRepository.class);
   }
 
   @Test
@@ -75,6 +78,7 @@ public class ReadQuotaEnforcementHandlerListenerTest {
         serverConfig,
         storeRepository,
         CompletableFuture.completedFuture(customizedViewRepository),
+        storageEngineRepository,
         nodeId,
         stats);
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> Assert.assertFalse(listeners.isEmpty()));
@@ -116,6 +120,7 @@ public class ReadQuotaEnforcementHandlerListenerTest {
         serverConfig,
         storeRepository,
         CompletableFuture.completedFuture(customizedViewRepository),
+        storageEngineRepository,
         nodeId,
         stats);
 
