@@ -753,7 +753,7 @@
             },
             {
               "name": "flinkVeniceViewsEnabled",
-              "doc": "Whether this store is enabled to use Flink-based Venice views",
+              "doc": "Whether this store is enabled to use Flink-based Venice Views",
               "type": "boolean",
               "default": false
             }

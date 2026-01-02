@@ -310,7 +310,7 @@
             {"name": "blobTransferInServerEnabled", "type": "string", "default": "NOT_SPECIFIED", "doc": "Flag to indicate if the blob transfer is allowed or not in server. Values can be 'NOT_SPECIFIED' as default, 'ENABLED', or 'DISABLED'."},
             {"name": "keyUrnCompressionEnabled", "type":  "boolean", "default":  false, "doc":  "Flag to control whether the key urn compression is enabled or not"},
             {"name": "keyUrnFields", "type": {"type": "array", "items": "string"}, "default": [], "doc": "List of fields in the key schema that will be eligible for key urn compression"},
-            {"name": "flinkVeniceViewsEnabled", "type": "boolean", "default": false, "doc": "Flag to indicate whether Flink Venice Views are enabled for this store."}
+            {"name": "flinkVeniceViewsEnabled", "type": "boolean", "default": false, "doc": "Flag to indicate whether Flink-based Venice Views are enabled for this store."}
           ]
         }
       ],
