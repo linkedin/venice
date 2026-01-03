@@ -93,6 +93,7 @@ public class StoreInfo {
     storeInfo.setLatestVersionPromoteToCurrentTimestamp(store.getLatestVersionPromoteToCurrentTimestamp());
     storeInfo.setKeyUrnCompressionEnabled(store.isKeyUrnCompressionEnabled());
     storeInfo.setKeyUrnFields(store.getKeyUrnFields());
+    storeInfo.setFlinkVeniceViewsEnabled(store.isFlinkVeniceViewsEnabled());
     return storeInfo;
   }
 

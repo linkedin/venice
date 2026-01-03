@@ -246,6 +246,7 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
     setStoreLifecycleHooks(store.getStoreLifecycleHooks());
     setKeyUrnCompressionEnabled(store.isKeyUrnCompressionEnabled());
     setKeyUrnFields(store.getKeyUrnFields());
+    setFlinkVeniceViewsEnabled(store.isFlinkVeniceViewsEnabled());
 
     for (Version storeVersion: store.getVersions()) {
       forceAddVersion(storeVersion.cloneVersion(), true);

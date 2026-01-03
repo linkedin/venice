@@ -182,7 +182,8 @@ public class UpdateStoreQueryParams extends QueryParams {
                     .stream()
                     .collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().toString())))
             .setKeyUrnCompressionEnabled(srcStore.isKeyUrnCompressionEnabled())
-            .setKeyUrnFields(srcStore.getKeyUrnFields());
+            .setKeyUrnFields(srcStore.getKeyUrnFields())
+            .setFlinkVeniceViewsEnabled(srcStore.isFlinkVeniceViewsEnabled());
 
     if (srcStore.getReplicationMetadataVersionId() != -1) {
       updateStoreQueryParams.setReplicationMetadataVersionID(srcStore.getReplicationMetadataVersionId());
