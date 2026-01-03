@@ -100,4 +100,15 @@ public class TestStoreInfo {
     assertEquals(ActivationState.ENABLED.name(), storeInfo.getBlobTransferInServerEnabled());
     assertTrue(storeInfo.isBlobTransferEnabled());
   }
+
+  @Test
+  public void testFlinkVeniceViewsEnabled() {
+    StoreInfo storeInfo = new StoreInfo();
+    // check default value
+    assertFalse(storeInfo.isFlinkVeniceViewsEnabled());
+    // setting value
+    storeInfo.setFlinkVeniceViewsEnabled(true);
+    // check updated value
+    assertTrue(storeInfo.isFlinkVeniceViewsEnabled());
+  }
 }

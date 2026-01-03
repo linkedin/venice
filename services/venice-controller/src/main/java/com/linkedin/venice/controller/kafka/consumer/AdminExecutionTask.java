@@ -512,6 +512,7 @@ public class AdminExecutionTask implements Callable<Void> {
         .setTargetRegionSwapWaitTime(message.targetSwapRegionWaitTime)
         .setIsDavinciHeartbeatReported(message.isDaVinciHeartBeatReported)
         .setGlobalRtDivEnabled(message.globalRtDivEnabled)
+        .setFlinkVeniceViewsEnabled(message.flinkVeniceViewsEnabled)
         .setEnumSchemaEvolutionAllowed(message.enumSchemaEvolutionAllowed)
         .setKeyUrnCompressionEnabled(message.keyUrnCompressionEnabled)
         .setKeyUrnFields(message.keyUrnFields.stream().map(Object::toString).collect(Collectors.toList()));
