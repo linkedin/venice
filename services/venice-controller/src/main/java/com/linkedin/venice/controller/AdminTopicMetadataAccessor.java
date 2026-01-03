@@ -44,6 +44,22 @@ public abstract class AdminTopicMetadataAccessor {
   }
 
   /**
+   * Generate AdminMetadata object with specified values (V2 format)
+   */
+  public static AdminMetadata generateAdminMetadata(
+      Optional<Long> localOffset,
+      Optional<Long> upstreamOffset,
+      Optional<Long> executionId,
+      Optional<Long> adminOperationProtocolVersion) {
+    AdminMetadata metadata = new AdminMetadata();
+    executionId.ifPresent(metadata::setExecutionId);
+    localOffset.ifPresent(metadata::setOffset);
+    upstreamOffset.ifPresent(metadata::setUpstreamOffset);
+    adminOperationProtocolVersion.ifPresent(metadata::setAdminOperationProtocolVersion);
+    return metadata;
+  }
+
+  /**
    * @return a pair of values to which the specified keys are mapped to {@linkplain AdminTopicMetadataAccessor#OFFSET_KEY}
    * and {@linkplain AdminTopicMetadataAccessor#UPSTREAM_OFFSET_KEY}.
    */
