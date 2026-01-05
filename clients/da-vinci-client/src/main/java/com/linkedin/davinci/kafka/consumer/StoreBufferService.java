@@ -712,10 +712,12 @@ public class StoreBufferService extends AbstractStoreBufferService {
     }
 
     public void execute() {
-      if (lastRecordPersistedFuture.isCompletedExceptionally()) {
+      if (!lastRecordPersistedFuture.isDone() || lastRecordPersistedFuture.isCompletedExceptionally()) {
         LOGGER.warn(
-            "event=globalRtDiv Skipping SyncVtDivNode for {} because preceding record failed",
-            getConsumerRecord().getTopicPartition());
+            "event=globalRtDiv Skipping SyncVtDivNode for {} because preceding record failed (done={} exception={})",
+            getConsumerRecord().getTopicPartition(),
+            lastRecordPersistedFuture.isDone(),
+            lastRecordPersistedFuture.isCompletedExceptionally());
         return;
       }
       getIngestionTask().updateAndSyncOffsetFromSnapshot(vtDivSnapshot, getConsumerRecord().getTopicPartition());
