@@ -1,10 +1,10 @@
 package com.linkedin.venice.offsets;
 
+import static com.linkedin.venice.guid.GuidUtils.guidToUtf8;
 import static com.linkedin.venice.pubsub.PubSubUtil.fromKafkaOffset;
 
 import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.state.IncrementalPushReplicaStatus;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
@@ -31,7 +31,6 @@ import javax.annotation.Nonnull;
 import org.apache.avro.generic.GenericDatumWriter;
 import org.apache.avro.io.ByteBufferToHexFormatJsonEncoder;
 import org.apache.avro.io.Encoder;
-import org.apache.avro.util.Utf8;
 import org.apache.commons.lang.Validate;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -396,17 +395,6 @@ public class OffsetRecord {
   public void setTrackingIncrementalPushStatus(
       Map<String, IncrementalPushReplicaStatus> trackingIncrementalPushStatus) {
     this.partitionState.trackingIncrementalPushStatus = trackingIncrementalPushStatus;
-  }
-
-  /**
-   * It may be useful to cache this mapping. TODO: Explore GC tuning later.
-   *
-   * @param guid to be converted
-   * @return a {@link Utf8} instance corresponding to the {@link GUID} that was passed in
-   */
-  CharSequence guidToUtf8(GUID guid) {
-    /** TODO: Consider replacing with {@link GuidUtils#getUtf8FromGuid(GUID)}, which might be more efficient. */
-    return new Utf8(GuidUtils.getCharSequenceFromGuid(guid));
   }
 
   @Override

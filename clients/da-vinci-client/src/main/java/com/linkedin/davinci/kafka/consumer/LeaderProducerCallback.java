@@ -27,7 +27,8 @@ public class LeaderProducerCallback implements ChunkAwareCallback {
   private static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER =
       RedundantExceptionFilter.getRedundantExceptionFilter();
   private static final Consumer<PubSubProduceResult> NO_OP = produceResult -> {};
-  private Consumer<PubSubProduceResult> onCompletionFunction = NO_OP;
+  private Consumer<PubSubProduceResult> onCompletionFunction = NO_OP; // ran before onCompletion() runs
+  private Consumer<PubSubProduceResult> onCompletionCallback = NO_OP; // ran after onCompletion() runs
 
   protected static final ChunkedValueManifestSerializer CHUNKED_VALUE_MANIFEST_SERIALIZER =
       new ChunkedValueManifestSerializer(false);
@@ -208,6 +209,7 @@ public class LeaderProducerCallback implements ChunkAwareCallback {
                   LatencyUtils.getElapsedTimeFromMsToMs(currentTimeForMetricsMs),
                   currentTimeForMetricsMs);
         }
+        this.onCompletionCallback.accept(produceResult);
       } catch (Exception oe) {
         boolean endOfPushReceived = partitionConsumptionState.isEndOfPushReceived();
         LOGGER.error(
@@ -355,6 +357,10 @@ public class LeaderProducerCallback implements ChunkAwareCallback {
 
   public void setOnCompletionFunction(Consumer<PubSubProduceResult> onCompletionFunction) {
     this.onCompletionFunction = onCompletionFunction;
+  }
+
+  public void setOnCompletionCallback(Consumer<PubSubProduceResult> onCompletionCallback) {
+    this.onCompletionCallback = onCompletionCallback;
   }
 
   // Visible for VeniceWriter unit test.
