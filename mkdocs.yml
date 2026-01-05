@@ -56,6 +56,7 @@ markdown_extensions:
   - footnotes
   - md_in_html
   - tables
+  - mdx_truly_sane_lists
   - toc:
       permalink: "#"
       toc_depth: 3

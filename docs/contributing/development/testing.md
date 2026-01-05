@@ -75,6 +75,7 @@ unit tests.
 #### Unit tests are added but the DiffCoverage report doesn't reflect my changes
 
 There are two possible reasons.
+
 1. **Jacoco report isn't up-to-date**. DiffCoverage report relies on the Jacoco Report to reflect the correct coverage. 
 If the Jacoco report isn't up-to-date, for example, executing the wrong command `./gradlew :clients:venice-push-job:diffCoverage` which
 misses the step of re-running unit tests and updating the Jacoco report, can cause this issue. 
@@ -91,6 +92,7 @@ That's usually due to your local branch and upstream is not up-to-date so when i
 `linkedin/venice` are mistakenly treated as your changes.
 
 Please do the followings:
+
 1. Go to your Github fork(https://github.com/<user>/venice) and sync the `main` branch with upstream `linkedin:main`
 2. Run `git fetch upstream` locally and pull the latest changes to your `main` branch
 3. Merge `main` branch to your feature branch.

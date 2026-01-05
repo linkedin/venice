@@ -13,11 +13,13 @@
 ### The Problem
 
 **Bootstrap Bottlenecks**
+
 - **Kafka-Only Recovery:** All nodes bootstrap exclusively from Kafka brokers
 - **Resource Intensive:** Time-consuming process during cluster recovery, inefficient for consuming messages from the PubSub system under high-update workloads
 - **Scalability Limits:** Broker capacity becomes recovery bottleneck
 
 **Real-World Impact**
+
 - Extended MTTR (Mean Time to Restore or Repair) during outages
 - Cascading broker overload
 - Slower cluster expansion
@@ -26,12 +28,14 @@
 ### 💡 The Solution
 
 **Direct P2P Transfer**
+
 - **Peer-to-Peer:** Direct node-to-node data transfer
 - **RocksDB Snapshots:** Consistent point-in-time data copies
 - **Intelligent Fallback:** Automatic Kafka Ingestion recovery on failure
 - **Low Risk:** Low Deployment Risk in DaVinci client
 
 **Key Benefits**
+
 - Faster node recovery and scaling
 - Reduced Kafka broker load
 
@@ -107,6 +111,7 @@ Step 5: Kafka Ingestion Fallback (Always Happens)
 ```
 
 **Step 1: Peer Discovery**
+
 - **Venice Server:** Query Helix CustomizedViewRepository for COMPLETED nodes
 - **DaVinci Application:** Query DaVinci push job report for ready-to-serve nodes
 
@@ -126,6 +131,7 @@ Server creates         Chunked transfer      Offset + Version State
 RocksDB snapshot      with MD5 validation     after files complete
 ```
 **Step 4: Completion**
+
 - **Success Path:** After validating all files, atomically rename the temp directory to the partition directory, then initiate Kafka ingestion to synchronize any remaining offset gap.
 - **Fallback Path:** If any error occurs, clean up the temp directory and retry with the next peer; if all peers fail, back to Kafka bootstrap from the beginning.
 
@@ -148,11 +154,13 @@ RocksDB snapshot      with MD5 validation     after files complete
 ### 🔍 Step 1: Peer Discovery
 
 **Venice Server:**
+
 - Query Helix CustomizedViewRepository
 - Find COMPLETED nodes
 - Filter by store/version/partition
 
 **DaVinci Application:**
+
 - Query DaVinci push job report
 - Find ready-to-serve nodes
 - Extract available peer list
@@ -185,18 +193,21 @@ For Each Peer (Shuffled List):
 ### 🚨 Error Handling Details in different Scenarios
 
 **Connection Failures (VenicePeersConnectionException)**
+
 - Network timeout
 - SSL handshake failure
 - Host unreachable
 - **Action:** Try next peer
 
 **File Not Found (VeniceBlobTransferFileNotFoundException)**
+
 - Snapshot missing
 - Stale snapshot
 - Server too busy, reject with 429 errors
 - **Action:** Try next peer
 
 **Transfer Errors (Data Integrity Issues)**
+
 - Checksum mismatch
 - File size mismatch
 - Network interruption: Server initiates deployment or shuts down unexpectedly
@@ -217,6 +228,7 @@ For Each Peer (Shuffled List):
 ### 🔄 Step 4: Kafka Fallback Strategy
 
 **Two-Phase Strategy:**
+
 - **Phase 1 - Blob Transfer:** Rapid bulk data transfer via P2P
 - **Phase 2 - Kafka Fill-Gap:** Even if blob transfer fails, deployment continues with Kafka ingestion
 
@@ -250,12 +262,14 @@ Incoming Request Pipeline:
 ### 📊 Step 2: Prepare Snapshot & Metadata
 
 **Snapshot Lifecycle:**
+
 - Check staleness (Configable TTL)
 - Verify concurrent user limits
 - Create a new snapshot if the existing one is stale or does not exist
 - Prepare partition metadata
 
 **Metadata Preparation:**
+
 - Serialization of StoreVersionState (enables synchronization of hybrid store configuration parameters)
 - OffsetRecord encapsulation (captures the snapshot’s offset for accurate state synchronization)
 - JSON metadata response
@@ -359,18 +373,21 @@ Network → ByteBuf → ByteBufInputStream → ReadableByteChannel → FileChann
 **Why This Ordering is Critical:**
 
 ❌ **Wrong Order (Metadata → Files → Complete):**
+
 - Client updates offset records immediately
 - If file transfer fails, offset state is corrupted
 - Need offset/SVS rollback mechanisms
 - Increased error handling complexity and risk
 
 ✅ **Correct Order (Files → Metadata → Complete):**
+
 - Files transferred and validated first
 - Metadata only sent after successful file transfer
 - Atomic state update on COMPLETE signal
 - Less risk consistency guarantee
 
 **Metadata Consistency Protocol:**
+
 - **Metadata:** OffsetRecord + StoreVersionState captured before snapshot creation time
 - **JSON Serialization:** Structured metadata transfer with size validation
 
@@ -399,6 +416,7 @@ Global Control Architecture:
 ### Adaptive Throttling System
 
 **Dynamic Rate Adjustment:**
+
 - Increment/Decrement: 20%
 - Range: 20% - 200% of base rate
 - Separate read/write throttlers
@@ -413,31 +431,37 @@ Global Control Architecture:
 📥 **Receiver/Client Feature Enablement Control**
 
 *Venice Server:*
+
 - Store Level: `blobTransferInServerEnabled`
 - Application Level: `blob.transfer.receiver.server.policy`
 
 *DaVinci Application:*
+
 - Store Level: `blobTransferEnabled`
 
 📤 **Sender/Server Feature Enablement Control**
 
 *All Applications:*
+
 - Application Level: `blob.transfer.manager.enabled`
 
 ### Performance Tuning Parameters
 
 🪜 **Thresholds**
+
 - **Offset Lag:** Skip blob transfer if not lagged enough
 - **Snapshot TTL:** Maintain snapshot freshness
 - **Snapshot Cleanup Interval:** Maintain disk storage
 
 🏎️ **Bandwidth Limits**
+
 - **Client Read:** Client side read bytes per sec
 - **Service Write:** Server write bytes per sec
 - **Adaptive Range:** 20% - 200% of base rate
 - **Max Concurrent Snapshot User:** Control server concurrent serve requests load
 
 ⏰ **Timeouts**
+
 - **Transfer Max:** Server side max timeout for transferring files
 - **Receive Max:** Client side max timeout for receiving files
 
@@ -448,24 +472,28 @@ Global Control Architecture:
 ### Venice Blob Transfer: Key Features & Benefits
 
 **🚀 Performance Excellence**
+
 - Intelligent peer discovery and selection
 - Fast failover with comprehensive error handling
 - High-performance Netty streaming architecture
 - Efficient file operations and adaptive chunking
 
 **🔒 Rock-Solid Reliability**
+
 - Consistent RocksDB snapshots with point-in-time guarantees
 - Comprehensive error handling and automatic cleanup
 - Data integrity validation with MD5 and size checks
 - Automatic Kafka fallback for 100% data coverage
 
 **🛡️ Security & Control**
+
 - End-to-end SSL/TLS encryption
 - Certificate-based ACL validation
 - Global traffic rate limiting and adaptive throttling
 - Comprehensive timeout and connection management
 
 **🔧 Operational Excellence**
+
 - Flexible multi-level configuration
 - Automated snapshot lifecycle management
 - Graceful degradation and low risk deployment
