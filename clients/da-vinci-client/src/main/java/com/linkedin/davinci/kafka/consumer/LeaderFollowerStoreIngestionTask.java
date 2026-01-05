@@ -622,8 +622,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
        * For current / backup version re-ingestion, it should report failure to the replica, but should keep other
        * online replica continue serving and do not close ingestion task.
        */
-      if (!partitionConsumptionState.isComplete() && LatencyUtils.getElapsedTimeFromMsToMs(
-          partitionConsumptionState.getConsumptionStartTimeInMs()) > getBootstrapTimeoutInMs()) {
+      if (!partitionConsumptionState.isComplete() && !partitionConsumptionState.isErrorReported()
+          && LatencyUtils.getElapsedTimeFromMsToMs(
+              partitionConsumptionState.getConsumptionStartTimeInMs()) > getBootstrapTimeoutInMs()) {
         if (!pushTimeout) {
           pushTimeout = true;
           timeoutPartitions = new HashSet<>();
@@ -785,12 +786,11 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       // Timeout
       String errorMsg =
           "After waiting " + TimeUnit.MILLISECONDS.toHours(getBootstrapTimeoutInMs()) + " hours, resource:"
-              + getStoreName() + " partitions:" + timeoutPartitions + " still can not complete ingestion.";
+              + getKafkaVersionTopic() + " partitions:" + timeoutPartitions + " still can not complete ingestion.";
       LOGGER.error(errorMsg);
       VeniceException ex = new VeniceTimeoutException(errorMsg);
       Store store = getStoreRepository().getStoreOrThrow(getStoreName());
       int currentVersion = store.getCurrentVersion();
-      LOGGER.info("DEBUGGING: {} {}", currentVersion, getVersionNumber());
       if (getVersionNumber() <= currentVersion) {
         // For current / backup version, a replica's re-bootstrap timeout should not incur whole SIT closure.
         for (int partition: timeoutPartitions) {
