@@ -3369,10 +3369,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         EndOfPush endOfPush = (EndOfPush) controlMessage.controlMessageUnion;
         processEndOfPush(kafkaMessageEnvelope, offset, partitionConsumptionState, endOfPush);
         if (recordTransformer != null) {
-          recordTransformer.onControlMessage(partition, offset, controlMessage);
+          recordTransformer.onControlMessage(partition, offset, controlMessage, pubSubMessageTime);
         }
         break;
       case START_OF_SEGMENT:
+        if (recordTransformer != null && Arrays.equals(kafkaKey.getKey(), KafkaKey.HEART_BEAT.getKey())) {
+          recordTransformer.onControlMessage(partition, offset, controlMessage, pubSubMessageTime);
+        }
         break;
       case END_OF_SEGMENT:
         break;
@@ -3384,7 +3387,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           int futureVersion =
               Version.parseVersionFromVersionTopicName(versionSwap.getNewServingVersionTopic().toString());
           recordTransformer.onVersionSwap(currentVersion, futureVersion, partition);
-          recordTransformer.onControlMessage(partition, offset, controlMessage);
+          recordTransformer.onControlMessage(partition, offset, controlMessage, pubSubMessageTime);
         }
         break;
       case START_OF_INCREMENTAL_PUSH:
@@ -4093,7 +4096,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
                         consumerRecord.getPosition(),
                         // Calculate payload size after chunk assembly
                         keyLen + assembledRecord.value().limit(),
-                        put.getReplicationMetadataPayload())
+                        put.getReplicationMetadataPayload(),
+                        put.getReplicationMetadataVersionId())
                     : null;
             transformerResult = recordTransformer
                 .transformAndProcessPut(lazyKey, lazyValue, producedPartition, recordTransformerRecordMetadata);
@@ -4168,8 +4172,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
                     ? new DaVinciRecordTransformerRecordMetadata(
                         consumerRecord.getPubSubMessageTime(),
                         consumerRecord.getPosition(),
-                        consumerRecord.getPayloadSize(),
-                        null)
+                        consumerRecord.getPayloadSize())
                     : null;
             recordTransformer.processDelete(lazyKey, producedPartition, recordTransformerRecordMetadata);
           } catch (Exception e) {

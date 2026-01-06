@@ -13,13 +13,10 @@ public class DaVinciRecordTransformerRecordMetadata {
   private final PubSubPosition pubSubPosition;
   private final int payloadSize;
   private final java.nio.ByteBuffer replicationMetadataPayload;
+  private final int replicationMetadataVersionId;
 
-  public DaVinciRecordTransformerRecordMetadata(
-      long timestamp,
-      PubSubPosition pubSubPosition,
-      int payloadSize,
-      java.nio.ByteBuffer replicationMetadataPayload) {
-    this(SENTINEL_WRITER_SCHEMA_ID, timestamp, pubSubPosition, payloadSize, replicationMetadataPayload);
+  public DaVinciRecordTransformerRecordMetadata(long timestamp, PubSubPosition pubSubPosition, int payloadSize) {
+    this(SENTINEL_WRITER_SCHEMA_ID, timestamp, pubSubPosition, payloadSize, null, SENTINEL_WRITER_SCHEMA_ID);
   }
 
   public DaVinciRecordTransformerRecordMetadata(
@@ -27,12 +24,14 @@ public class DaVinciRecordTransformerRecordMetadata {
       long timestamp,
       PubSubPosition pubSubPosition,
       int payloadSize,
-      java.nio.ByteBuffer replicationMetadataPayload) {
+      java.nio.ByteBuffer replicationMetadataPayload,
+      int replicationMetadataVersionId) {
     this.writerSchemaId = writerSchemaId;
     this.timestamp = timestamp;
     this.pubSubPosition = pubSubPosition;
     this.payloadSize = payloadSize;
     this.replicationMetadataPayload = replicationMetadataPayload;
+    this.replicationMetadataVersionId = replicationMetadataVersionId;
   }
 
   /**
@@ -72,5 +71,13 @@ public class DaVinciRecordTransformerRecordMetadata {
    */
   public java.nio.ByteBuffer getReplicationMetadataPayload() {
     return replicationMetadataPayload;
+  }
+
+  /**
+   * @return the corresponding replication metadata schema version id used to serialize the payload. If the payload is
+   * null the corresponding id will be -1.
+   */
+  public int getReplicationMetadataVersionId() {
+    return replicationMetadataVersionId;
   }
 }
