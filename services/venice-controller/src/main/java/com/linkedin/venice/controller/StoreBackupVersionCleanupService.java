@@ -31,6 +31,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 import org.apache.commons.io.IOUtils;
+import org.apache.helix.model.IdealState;
 import org.apache.http.HttpResponse;
 import org.apache.http.HttpStatus;
 import org.apache.http.client.config.RequestConfig;
@@ -54,7 +55,6 @@ import org.apache.logging.log4j.Logger;
  * to accommodate the delay between Controller and Router.
  */
 public class StoreBackupVersionCleanupService extends AbstractVeniceService {
-  private static final int MIN_REPLICA = 2;
   public static final String TYPE_CURRENT_VERSION = "current_version";
   private static final Logger LOGGER = LogManager.getLogger(StoreBackupVersionCleanupService.class);
   private static final ObjectMapper OBJECT_MAPPER = ObjectMapperFactory.getInstance();
@@ -82,6 +82,10 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
   private final CloseableHttpAsyncClient httpAsyncClient;
   private final long keepAliveDurationMs = TimeUnit.HOURS.toMillis(1);
   private final Time time;
+  private final int backupVersionMinActiveReplica;
+  private final int backupVersionMinActiveReplicaHighRF;
+  private final int backupVersionReplicaCount;
+  private final int backupVersionReplicaCountHighRF;
 
   public StoreBackupVersionCleanupService(
       VeniceHelixAdmin admin,
@@ -102,6 +106,10 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
     this.sleepInterval = multiClusterConfig.getBackupVersionCleanupSleepMs();
     this.defaultBackupVersionRetentionMs = multiClusterConfig.getBackupVersionDefaultRetentionMs();
     this.time = time;
+    this.backupVersionMinActiveReplica = multiClusterConfig.getBackupVersionMinActiveReplica();
+    this.backupVersionMinActiveReplicaHighRF = multiClusterConfig.getBackupVersionMinActiveReplicaHighRF();
+    this.backupVersionReplicaCount = multiClusterConfig.getBackupVersionReplicaCount();
+    this.backupVersionReplicaCountHighRF = multiClusterConfig.getBackupVersionReplicaCountHighRF();
     this.metricsRepository = metricsRepository;
     allClusters.forEach(clusterName -> {
       clusterNameCleanupStatsMap
@@ -273,17 +281,7 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
           if (version.getNumber() >= currentVersion) {
             continue;
           }
-
-          if (admin.updateIdealState(
-              clusterName,
-              Version.composeKafkaTopic(store.getName(), version.getNumber()),
-              MIN_REPLICA)) {
-            LOGGER.info(
-                "Store {} version {} is updated to ideal state to use {} replicas",
-                store.getName(),
-                version.getNumber(),
-                MIN_REPLICA);
-          }
+          updateReplicaCount(store, clusterName, version);
         }
       }
       return false;
@@ -367,6 +365,30 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
         storeName,
         clusterName);
     return true;
+  }
+
+  private void updateReplicaCount(Store store, String clusterName, Version version) {
+    IdealState idealState =
+        admin.getIdealState(clusterName, Version.composeKafkaTopic(store.getName(), version.getNumber()));
+    int replicaCount = Integer.parseInt(idealState.getReplicas());
+    int minActiveReplica = backupVersionMinActiveReplicaHighRF;
+    int backupReplicaCount = backupVersionReplicaCountHighRF;
+    // non high batch get clusters
+    if (replicaCount <= 4) {
+      minActiveReplica = backupVersionMinActiveReplica;
+      backupReplicaCount = backupVersionReplicaCount;
+    }
+    if (admin.updateIdealState(
+        clusterName,
+        Version.composeKafkaTopic(store.getName(), version.getNumber()),
+        minActiveReplica,
+        backupReplicaCount)) {
+      LOGGER.info(
+          "Store {} version {} is updated to ideal state to use {} replicas",
+          store.getName(),
+          version.getNumber(),
+          minActiveReplica);
+    }
   }
 
   private class StoreBackupVersionCleanupTask implements Runnable {
