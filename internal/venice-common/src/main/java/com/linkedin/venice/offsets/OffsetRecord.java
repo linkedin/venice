@@ -1,7 +1,7 @@
 package com.linkedin.venice.offsets;
 
 import static com.linkedin.venice.guid.GuidUtils.guidToUtf8;
-import static com.linkedin.venice.pubsub.PubSubUtil.fromKafkaOffset;
+
 import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.GUID;
