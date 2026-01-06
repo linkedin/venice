@@ -46,15 +46,15 @@ Please follow [Venice Workspace Setup](development/workspace-setup.md) and
    submitting a pull request. Large features which have never been
    discussed are unlikely to be accepted.
 
-## Contributor Sync Meeting 
+## Community Syncup Meeting 
 
-Venice does Contributor sync meeting for the contributors to come togather in a virtual meeting.
+Venice holds virtual meetings for the community to come together to syncup.
 
-1. Meeting Frequency : Bi-weekly on Wednesday at 8 AM Pacific, 11 AM Eastern, 5 PM Central Europe
-2. Meeting Co-ordination : Please join the #contributor-sync channel in the 
+1. Meeting Frequency: Bi-weekly on Monday at 9 AM Pacific, 12 PM Eastern, 6 PM Central Europe
+2. Meeting Co-ordination: Please join the #community-syncup channel in the 
      [public Venice Slack](http://slack.venicedb.org/) 
-3. Meeting Length : One hour 
-4. Agenda : 
+3. Meeting Length: One hour 
+4. Agenda: 
    1. Discuss Venice Improvement Proposals.
    2. Review and address concerns for any open pull requests.
    3. Open discussion.
