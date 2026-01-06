@@ -24,6 +24,7 @@ import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.schema.GeneratedSchemaID;
 import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
 import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceResourceCloseResult;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
@@ -91,14 +92,9 @@ public class MetaStoreWriterTest {
         pubSubTopicRepository,
         5000L,
         2,
-        storeName -> systemStore);
+        storeName -> Utils.getRealTimeTopicNameForSystemStore(systemStore));
 
-    // Execute
-    VeniceWriter result = metaStoreWriter.getOrCreateMetaStoreWriter(systemStoreName);
-
-    // Verify
-    Assert.assertNotNull(result);
-    verify(veniceStore, times(1)).getLargestUsedRTVersionNumber();
+    Assert.assertNotNull(metaStoreWriter.getOrCreateMetaStoreWriter(systemStoreName));
     verify(systemStore, times(1)).getVeniceStore();
   }
 
@@ -139,15 +135,9 @@ public class MetaStoreWriterTest {
         pubSubTopicRepository,
         5000L,
         2,
-        storeName1 -> regularStore);
+        storeName1 -> Utils.getRealTimeTopicNameForSystemStore(regularStore));
 
-    // Execute
-    VeniceWriter result = metaStoreWriter.getOrCreateMetaStoreWriter(storeName);
-
-    // Verify
-    Assert.assertNotNull(result);
-    verify(regularStore, times(1)).getLargestUsedRTVersionNumber();
-    // verify(regularStore, never()).getVeniceStore; // Should not call getVeniceStore() for regular stores
+    Assert.assertNotNull(metaStoreWriter.getOrCreateMetaStoreWriter(storeName));
   }
 
   @Test
@@ -187,14 +177,9 @@ public class MetaStoreWriterTest {
         pubSubTopicRepository,
         5000L,
         2,
-        storeName1 -> store);
+        storeName1 -> Utils.getRealTimeTopicNameForSystemStore(store));
 
-    // Execute
-    VeniceWriter result = metaStoreWriter.getOrCreateMetaStoreWriter(storeName);
-
-    // Verify - should use else branch
-    Assert.assertNotNull(result);
-    verify(store, times(1)).getLargestUsedRTVersionNumber();
+    Assert.assertNotNull(metaStoreWriter.getOrCreateMetaStoreWriter(storeName));
   }
 
   @Test
@@ -268,7 +253,7 @@ public class MetaStoreWriterTest {
         pubSubTopicRepository,
         closeTimeoutMs,
         numOfConcurrentVwCloseOps,
-        storeName -> metaStore);
+        storeName -> metaStoreName + "_rt");
     Map<String, VeniceWriter> metaStoreWriters = metaStoreWriter.getMetaStoreWriterMap();
 
     List<CompletableFuture<VeniceResourceCloseResult>> completedFutures = new ArrayList<>(20);

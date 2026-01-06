@@ -394,7 +394,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
           pubSubTopicRepository,
           serverConfig.getMetaStoreWriterCloseTimeoutInMS(),
           serverConfig.getMetaStoreWriterCloseConcurrency(),
-          storeName -> metadataRepo.getStore(storeName));
+          storeName -> Utils.getRealTimeTopicNameForSystemStore(metadataRepo.getStore(storeName)));
       metadataRepo.registerStoreDataChangedListener(new StoreDataChangedListener() {
         @Override
         public void handleStoreDeleted(Store store) {

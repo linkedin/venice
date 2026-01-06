@@ -667,7 +667,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         pubSubTopicRepository,
         commonConfig.getMetaStoreWriterCloseTimeoutInMS(),
         commonConfig.getMetaStoreWriterCloseConcurrency(),
-        storeName -> getStore(discoverCluster(storeName), storeName));
+        storeName -> Utils.getRealTimeTopicName(getStore(discoverCluster(storeName), storeName)));
     metaStoreReader = new MetaStoreReader(d2Client, commonConfig.getClusterDiscoveryD2ServiceName());
     pushStatusStoreReader = new PushStatusStoreReader(
         d2Client,

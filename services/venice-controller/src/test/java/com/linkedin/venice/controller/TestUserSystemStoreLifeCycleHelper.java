@@ -69,6 +69,7 @@ public class TestUserSystemStoreLifeCycleHelper {
   public void testDeleteMetaSystemStore() {
     // Test when running in child fabric - should truncate RT topic
     when(mockAdmin.isParent()).thenReturn(false);
+    when(mockStore.getName()).thenReturn(META_STORE_NAME);
     // Test deleting a META_STORE system store
     UserSystemStoreLifeCycleHelper.deleteSystemStore(
         mockAdmin,
@@ -92,6 +93,7 @@ public class TestUserSystemStoreLifeCycleHelper {
   public void testDeleteDaVinciPushStatusSystemStore() {
     // Test when running in child fabric - should truncate RT topic
     when(mockAdmin.isParent()).thenReturn(false);
+    when(mockStore.getName()).thenReturn(DAVINCI_STORE_NAME);
     // Test deleting a DAVINCI_PUSH_STATUS_STORE system store
     UserSystemStoreLifeCycleHelper.deleteSystemStore(
         mockAdmin,
@@ -115,6 +117,7 @@ public class TestUserSystemStoreLifeCycleHelper {
   public void testDeleteBatchJobHeartbeatSystemStore() {
     // Test when running in child fabric - should truncate RT topic
     when(mockAdmin.isParent()).thenReturn(false);
+    when(mockStore.getName()).thenReturn(HEARTBEAT_STORE_NAME);
     // Test deleting a BATCH_JOB_HEARTBEAT_STORE system store
     // This should log an error but not throw an exception
     UserSystemStoreLifeCycleHelper.deleteSystemStore(

@@ -6,6 +6,7 @@ import static com.linkedin.venice.meta.Version.DEFAULT_RT_VERSION_NUMBER;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
+import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.ErrorType;
@@ -746,6 +747,19 @@ public class Utils {
 
   public static String getSeparateRealTimeTopicName(StoreInfo storeInfo) {
     return getSeparateRealTimeTopicName(Utils.getRealTimeTopicName(storeInfo));
+  }
+
+  public static String getRealTimeTopicNameForSystemStore(Store systemStore) {
+    int largestUsedRTVersionNumber;
+    VeniceSystemStoreType type = VeniceSystemStoreType.getSystemStoreType(systemStore.getName());
+    if (type != null && systemStore.isSystemStore()) {
+      // systemStore is a user system store
+      largestUsedRTVersionNumber = ((SystemStore) systemStore).getVeniceStore().getLargestUsedRTVersionNumber();
+    } else {
+      // systemStore is a zkShared system store
+      largestUsedRTVersionNumber = systemStore.getLargestUsedRTVersionNumber();
+    }
+    return Utils.getRealTimeTopicName(systemStore, largestUsedRTVersionNumber);
   }
 
   public static int calculateTopicHashCode(PubSubTopic topic) {

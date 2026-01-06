@@ -467,8 +467,9 @@ public abstract class StoreIngestionTaskTest {
   private MockStoreVersionConfigs storeAndVersionConfigsUnderTest;
 
   private MetaStoreWriter mockMetaStoreWriter;
-  private Function<String, Store> mockStoreResolver;
+  private Function<String, String> mockStoreRealTimeTopicNameResolver;
   private Store mockMetaStore;
+  private String mockMetaStoreRealTimeTopicName;
 
   private static byte[] getRandomKey(Integer partition) {
     String randomString = Utils.getUniqueString("KeyForPartition" + partition);
@@ -591,9 +592,12 @@ public abstract class StoreIngestionTaskTest {
     kafkaClusterBasedRecordThrottler = new KafkaClusterBasedRecordThrottler(kafkaUrlToRecordsThrottler);
 
     mockMetaStoreWriter = mock(MetaStoreWriter.class);
-    mockStoreResolver = mock(Function.class);
+    mockStoreRealTimeTopicNameResolver = mock(Function.class);
     mockMetaStore = mock(Store.class);
-    mockMetaStoreWriter.storeResolver = mockStoreResolver;
+    when(mockMetaStore.getName()).thenReturn("metaStoreName");
+    when(mockMetaStore.getLargestUsedRTVersionNumber()).thenReturn(1);
+    mockMetaStoreRealTimeTopicName = Utils.getRealTimeTopicName(mockMetaStore);
+    mockMetaStoreWriter.realTimeTopicNameResolver = mockStoreRealTimeTopicNameResolver;
 
     mockTopicManager = mock(TopicManager.class);
     mockTopicManagerRepository = mock(TopicManagerRepository.class);
@@ -1489,15 +1493,16 @@ public abstract class StoreIngestionTaskTest {
     Store mockMetaStore = mock(Store.class);
     when(mockMetaStore.getName()).thenReturn(metaStoreName);
     when(mockMetaStore.getLargestUsedRTVersionNumber()).thenReturn(1);
+    String realTimeTopicName = Utils.getRealTimeTopicName(mockMetaStore);
 
     MetaStoreWriter mockMetaStoreWriter = mock(MetaStoreWriter.class);
-    Function<String, Store> mockStoreResolver = mock(Function.class);
-    mockMetaStoreWriter.storeResolver = mockStoreResolver;
+    Function<String, String> mockStoreRealTimeTopicNameResolver = mock(Function.class);
+    mockMetaStoreWriter.realTimeTopicNameResolver = mockStoreRealTimeTopicNameResolver;
 
     // Meta store exists
-    when(mockStoreResolver.apply(metaStoreName)).thenReturn(mockMetaStore);
+    when(mockStoreRealTimeTopicNameResolver.apply(metaStoreName)).thenReturn(realTimeTopicName);
 
-    PubSubTopic metaStoreRTTopic = pubSubTopicRepository.getTopic(Utils.getRealTimeTopicName(mockMetaStore));
+    PubSubTopic metaStoreRTTopic = pubSubTopicRepository.getTopic(realTimeTopicName);
     when(mockTopicManager.containsTopicWithRetries(metaStoreRTTopic, 5)).thenReturn(true);
 
     // Setup StoreIngestionTask with real metaStoreWriter
@@ -1506,7 +1511,7 @@ public abstract class StoreIngestionTaskTest {
 
     StoreIngestionTaskTestConfig config = new StoreIngestionTaskTestConfig(Utils.setOf(PARTITION_FOO), () -> {
       // Verify that the meta store was resolved
-      verify(mockStoreResolver, timeout(TEST_TIMEOUT_MS).atLeastOnce()).apply(metaStoreName);
+      verify(mockStoreRealTimeTopicNameResolver, timeout(TEST_TIMEOUT_MS).atLeastOnce()).apply(metaStoreName);
 
       // Verify that writeInUseValueSchema was called
       verify(mockMetaStoreWriter, timeout(TEST_TIMEOUT_MS))
@@ -1534,8 +1539,8 @@ public abstract class StoreIngestionTaskTest {
     int schemaId = 1;
 
     MetaStoreWriter mockMetaStoreWriter = mock(MetaStoreWriter.class);
-    Function<String, Store> mockStoreResolver = mock(Function.class);
-    mockMetaStoreWriter.storeResolver = mockStoreResolver;
+    Function<String, String> mockStoreResolver = mock(Function.class);
+    mockMetaStoreWriter.realTimeTopicNameResolver = mockStoreResolver;
 
     // Meta store does NOT exist
     when(mockStoreResolver.apply(metaStoreName)).thenReturn(null);
@@ -1573,16 +1578,17 @@ public abstract class StoreIngestionTaskTest {
     Store mockMetaStore = mock(Store.class);
     when(mockMetaStore.getName()).thenReturn(metaStoreName);
     when(mockMetaStore.getLargestUsedRTVersionNumber()).thenReturn(1);
+    String realTimeTopicName = Utils.getRealTimeTopicName(mockMetaStore);
 
     MetaStoreWriter mockMetaStoreWriter = mock(MetaStoreWriter.class);
-    Function<String, Store> mockStoreResolver = mock(Function.class);
-    mockMetaStoreWriter.storeResolver = mockStoreResolver;
+    Function<String, String> mockStoreRealTimeTopicNameResolver = mock(Function.class);
+    mockMetaStoreWriter.realTimeTopicNameResolver = mockStoreRealTimeTopicNameResolver;
 
     // Meta store exists
-    when(mockStoreResolver.apply(metaStoreName)).thenReturn(mockMetaStore);
+    when(mockStoreRealTimeTopicNameResolver.apply(metaStoreName)).thenReturn(realTimeTopicName);
 
     // But RT topic does NOT exist
-    PubSubTopic metaStoreRTTopic = pubSubTopicRepository.getTopic(Utils.getRealTimeTopicName(mockMetaStore));
+    PubSubTopic metaStoreRTTopic = pubSubTopicRepository.getTopic(realTimeTopicName);
     when(mockTopicManager.containsTopicWithRetries(metaStoreRTTopic, 5)).thenReturn(false);
 
     localVeniceWriter.broadcastStartOfPush(new HashMap<>());
@@ -1590,7 +1596,7 @@ public abstract class StoreIngestionTaskTest {
 
     StoreIngestionTaskTestConfig config = new StoreIngestionTaskTestConfig(Utils.setOf(PARTITION_FOO), () -> {
       // Verify that the meta store was resolved
-      verify(mockStoreResolver, timeout(TEST_TIMEOUT_MS).atLeastOnce()).apply(metaStoreName);
+      verify(mockStoreRealTimeTopicNameResolver, timeout(TEST_TIMEOUT_MS).atLeastOnce()).apply(metaStoreName);
 
       // Verify RT topic check was made
       verify(mockTopicManager, timeout(TEST_TIMEOUT_MS).atLeastOnce()).containsTopicWithRetries(metaStoreRTTopic, 5);
@@ -1618,8 +1624,8 @@ public abstract class StoreIngestionTaskTest {
     String systemStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeNameWithoutVersionInfo);
 
     MetaStoreWriter mockMetaStoreWriter = mock(MetaStoreWriter.class);
-    Function<String, Store> mockStoreResolver = mock(Function.class);
-    mockMetaStoreWriter.storeResolver = mockStoreResolver;
+    Function<String, String> mockStoreResolver = mock(Function.class);
+    mockMetaStoreWriter.realTimeTopicNameResolver = mockStoreResolver;
 
     localVeniceWriter.broadcastStartOfPush(new HashMap<>());
     localVeniceWriter.put(putKeyFoo, putValue, SCHEMA_ID).get();
@@ -1654,19 +1660,19 @@ public abstract class StoreIngestionTaskTest {
     String STORE_NAME = "testStore";
     String META_STORE_NAME = "venice_system_store_meta_store_testStore";
 
-    when(mockStoreResolver.apply(META_STORE_NAME)).thenReturn(mockMetaStore);
+    when(mockStoreRealTimeTopicNameResolver.apply(META_STORE_NAME)).thenReturn(mockMetaStoreRealTimeTopicName);
     when(mockMetaStore.getName()).thenReturn(META_STORE_NAME);
-    PubSubTopic metaStoreRTTopic = pubSubTopicRepository.getTopic(Utils.getRealTimeTopicName(mockMetaStore));
+    PubSubTopic metaStoreRTTopic = pubSubTopicRepository.getTopic(mockMetaStoreRealTimeTopicName);
     when(mockTopicManager.containsTopicWithRetries(metaStoreRTTopic, 5)).thenReturn(true);
 
     // Execute: Call the method that uses metaStoreWriter.storeResolver
     String resolvedMetaStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(STORE_NAME);
-    Store resolvedStore = mockStoreResolver.apply(resolvedMetaStoreName);
+    String realTimeTopicName = mockStoreRealTimeTopicNameResolver.apply(resolvedMetaStoreName);
 
     // Verify
-    assertNotNull(resolvedStore);
-    assertEquals(resolvedStore.getName(), META_STORE_NAME);
-    verify(mockStoreResolver, times(1)).apply(META_STORE_NAME);
+    assertNotNull(realTimeTopicName);
+    assertEquals(realTimeTopicName, mockMetaStoreRealTimeTopicName);
+    verify(mockStoreRealTimeTopicNameResolver, times(1)).apply(META_STORE_NAME);
   }
 
   @Test
@@ -1674,15 +1680,15 @@ public abstract class StoreIngestionTaskTest {
     // Setup - metaStore is null
     String STORE_NAME = "testStore";
     String META_STORE_NAME = "venice_system_store_meta_store_testStore";
-    when(mockStoreResolver.apply(META_STORE_NAME)).thenReturn(null);
+    when(mockStoreRealTimeTopicNameResolver.apply(META_STORE_NAME)).thenReturn(null);
 
     // Execute
     String resolvedMetaStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(STORE_NAME);
-    Store resolvedStore = mockStoreResolver.apply(resolvedMetaStoreName);
+    String realTimeTopicName = mockStoreRealTimeTopicNameResolver.apply(resolvedMetaStoreName);
 
     // Verify - should handle null gracefully
-    assertNull(resolvedStore);
-    verify(mockStoreResolver, times(1)).apply(META_STORE_NAME);
+    assertNull(realTimeTopicName);
+    verify(mockStoreRealTimeTopicNameResolver, times(1)).apply(META_STORE_NAME);
   }
 
   @Test
