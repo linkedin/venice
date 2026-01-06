@@ -310,7 +310,7 @@ public class DaVinciBackend implements Closeable {
             instanceName,
             valueSchemaEntry,
             updateSchemaEntry,
-            (this::getStore));
+            (this::getRealTimeTopicName));
       }
 
       ingestionService.start();
@@ -567,7 +567,7 @@ public class DaVinciBackend implements Closeable {
    * For user system stores, this returns the SystemStoreAttributes from the parent user store.
    * For regular stores and shared system stores, this returns the Store object directly.
    */
-  public final Object getStore(String storeName) {
+  private String getRealTimeTopicName(String storeName) {
     VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(storeName);
     if (systemStoreType != null) {
       // it is a user system store
@@ -576,12 +576,12 @@ public class DaVinciBackend implements Closeable {
       Map<String, SystemStoreAttributes> systemStores = userStore.getSystemStores();
       for (Map.Entry<String, SystemStoreAttributes> systemStoreEntries: systemStores.entrySet()) {
         if (storeName.startsWith(systemStoreEntries.getKey())) {
-          return systemStoreEntries.getValue();
+          return Utils.getRealTimeTopicName(systemStoreEntries.getValue());
         }
       }
       return null;
     } else {
-      return storeRepository.getStore(storeName);
+      return Utils.getRealTimeTopicName(storeRepository.getStore(storeName));
     }
   }
 

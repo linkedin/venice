@@ -1,12 +1,8 @@
 package com.linkedin.venice.pushstatushelper;
 
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
-import com.linkedin.venice.meta.Store;
-import com.linkedin.venice.meta.StoreInfo;
-import com.linkedin.venice.meta.SystemStoreAttributes;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
-import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
@@ -29,32 +25,24 @@ public class PushStatusStoreVeniceWriterCache implements AutoCloseable {
   private final Map<String, VeniceWriter> veniceWriters = new VeniceConcurrentHashMap<>();
   private final Schema valueSchema;
   private final Schema updateSchema;
-  private final Function<String, Object> storeResolver;
+  private final Function<String, String> rtNameResolver;
 
   // writerFactory Used for instantiating VeniceWriter
   public PushStatusStoreVeniceWriterCache(
       VeniceWriterFactory writerFactory,
       Schema valueSchema,
       Schema updateSchema,
-      Function<String, Object> storeResolver) {
+      Function<String, String> rtNameResolver) {
     this.writerFactory = writerFactory;
     this.valueSchema = valueSchema;
     this.updateSchema = updateSchema;
-    this.storeResolver = storeResolver;
+    this.rtNameResolver = rtNameResolver;
   }
 
   public VeniceWriter prepareVeniceWriter(String storeName) {
     return veniceWriters.computeIfAbsent(storeName, s -> {
-      Object store = storeResolver.apply(VeniceSystemStoreUtils.getDaVinciPushStatusStoreName(storeName));
-      String rtTopic;
+      String rtTopic = rtNameResolver.apply(VeniceSystemStoreUtils.getDaVinciPushStatusStoreName(storeName));
 
-      if (store instanceof Store) {
-        rtTopic = Utils.getRealTimeTopicName((Store) store);
-      } else if (store instanceof StoreInfo) {
-        rtTopic = Utils.getRealTimeTopicName((StoreInfo) store);
-      } else {
-        rtTopic = Utils.getRealTimeTopicName((SystemStoreAttributes) store);
-      }
       VeniceWriterOptions options = new VeniceWriterOptions.Builder(rtTopic)
           .setKeyPayloadSerializer(
               new VeniceAvroKafkaSerializer(

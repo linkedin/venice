@@ -56,7 +56,7 @@ public class PushStatusStoreWriter implements AutoCloseable {
       String instanceName,
       SchemaEntry valueSchemaEntry,
       DerivedSchemaEntry updateSchemaEntry,
-      Function<String, Object> storeResolver) {
+      Function<String, String> storeResolver) {
     this(
         new PushStatusStoreVeniceWriterCache(
             writerFactory,

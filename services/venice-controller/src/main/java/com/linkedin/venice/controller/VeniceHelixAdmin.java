@@ -683,7 +683,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           CONTROLLER_HEARTBEAT_INSTANCE_NAME,
           valueSchemaEntry,
           updateSchemaEntry,
-          storeName -> getStore(discoverCluster(storeName), storeName));
+          storeName -> Utils.getRealTimeTopicName(getStore(discoverCluster(storeName), storeName)));
     });
 
     clusterToLiveClusterConfigRepo = new VeniceConcurrentHashMap<>();

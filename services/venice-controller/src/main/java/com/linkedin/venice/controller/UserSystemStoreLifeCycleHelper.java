@@ -165,7 +165,7 @@ public class UserSystemStoreLifeCycleHelper {
           throw new VeniceException("Unknown system store type: " + systemStoreName);
       }
       // skip truncating system store RT topics if it's parent fabric as it's not created for parent fabric
-      if (!admin.isParent()) {
+      if (!admin.isParent() && systemStore != null) {
         admin.truncateKafkaTopic(Utils.getRealTimeTopicName(systemStore));
       }
     } else {

@@ -292,7 +292,7 @@ public class PushStatusStoreTest {
             "dummyInstance",
             valueSchemaEntry,
             updateSchemaEntry,
-            (storeName) -> controllerClient.getStore(storeName).getStore());
+            (storeName) -> Utils.getRealTimeTopicName(controllerClient.getStore(storeName).getStore()));
 
         // After deleting the inc push status belonging to just one partition we should expect
         // SOIP from the controller since other partition has replicas with EOIP status
