@@ -306,14 +306,6 @@ public final class PubSubUtil {
     }
   }
 
-  public static String getPubSubPositionString(
-      PubSubPositionDeserializer pubSubPositionDeserializer,
-      ByteBuffer pubSubPosition) {
-    return (pubSubPosition == null || !pubSubPosition.hasRemaining())
-        ? "<EMPTY>"
-        : pubSubPositionDeserializer.toPosition(pubSubPosition).toString();
-  }
-
   public static PubSubPositionGrpcWireFormat parsePositionParam(String positionWireFormatString) {
     String[] typeIdAndBase64WfBytes = getTypeIdAndBase64WfBytes(positionWireFormatString);
     return PubSubPositionGrpcWireFormat.newBuilder()
@@ -381,8 +373,7 @@ public final class PubSubUtil {
     }
 
     try {
-      final PubSubPosition position = pubSubPositionDeserializer.toPosition(wireFormatBytes);
-
+      PubSubPosition position = pubSubPositionDeserializer.toPosition(wireFormatBytes);
       // Guard against regressions: honor the caller-provided minimum offset.
       // This applies to both symbolic and concrete positions.
       if (position.getNumericOffset() < offset) {

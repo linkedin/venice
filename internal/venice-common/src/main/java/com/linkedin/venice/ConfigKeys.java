@@ -750,8 +750,7 @@ public class ConfigKeys {
    * This provides a safety mechanism to revert to offset-only behavior if position deserialization
    * causes issues in production.
    */
-  public static final String SERVER_USE_UPSTREAM_PUBSUB_POSITION_WITH_FALLBACK =
-      "server.use.upstream.pubsub.position.with.fallback";
+  public static final String SERVER_USE_UPSTREAM_PUBSUB_POSITIONS = "server.use.upstream.pubsub.positions";
 
   /**
    * Feature flag to control whether OffsetRecord should use PubSubPosition deserialization with offset fallback
@@ -763,8 +762,7 @@ public class ConfigKeys {
    * This provides a safety mechanism to revert to offset-only behavior if position deserialization
    * causes issues in production when reading checkpointed state.
    */
-  public static final String SERVER_USE_CHECKPOINTED_PUBSUB_POSITION_WITH_FALLBACK =
-      "server.use.checkpointed.pubsub.position.with.fallback";
+  public static final String SERVER_USE_CHECKPOINTED_PUBSUB_POSITIONS = "server.use.checkpointed.pubsub.positions";
 
   public static final String SERVER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS =
       "server.netty.graceful.shutdown.period.seconds";
