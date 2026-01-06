@@ -2174,7 +2174,7 @@ public class ConfigKeys {
    * When enabled, allows the use of the getProgressPercentage() method in TopicManager.
    * This is disabled by default as it can be expensive to compute.
    */
-  public static final String INGESTION_PROGRESS_LOGGING_ENABLED = "ingestion.progress.logging.enabled";
+  public static final String POSITIONAL_PROGRESS_LOGGING_ENABLED = "positional.progress.logging.enabled";
 
   /**
    * If the config value is non-negative, da-vinci client will batch push statues among all partitions into one single
