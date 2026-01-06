@@ -2653,6 +2653,7 @@ public class VenicePushJob implements AutoCloseable {
           if (versionSwapStartTimeMs == 0) {
             LOGGER.info("Starting to monitor version swap status for {}", pushJobSetting.topic);
             versionSwapStartTimeMs = System.currentTimeMillis();
+            updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.START_VERSION_SWAP);
           }
           StoreResponse parentStoreResponse = getStoreResponse(pushJobSetting.storeName, true);
 
