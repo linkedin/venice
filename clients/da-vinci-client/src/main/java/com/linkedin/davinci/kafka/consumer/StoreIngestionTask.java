@@ -571,7 +571,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         notifiers,
         kafkaVersionTopic,
         isCurrentVersion,
-        this::getProgressPercentage);
+        this::getIngestionProgressPercentage);
     this.missingSOPCheckExecutor.execute(() -> waitForStateVersion(kafkaVersionTopic));
     this.cacheBackend = cacheBackend;
 
@@ -681,12 +681,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   @VisibleForTesting
-  final int getProgressPercentage(PartitionConsumptionState pcs) {
-    if (!getServerConfig().isProgressPercentageEnabled()) {
+  final int getIngestionProgressPercentage(PartitionConsumptionState pcs) {
+    if (!getServerConfig().isIngestionProgressLoggingEnabled()) {
       return -1;
     }
     return getTopicManager(localKafkaServer)
-        .getProgressPercentage(pcs.getReplicaTopicPartition(), pcs.getLatestProcessedVtPosition());
+        .getIngestionProgressPercentage(pcs.getReplicaTopicPartition(), pcs.getLatestProcessedVtPosition());
   }
 
   /** Package-private on purpose, only intended for tests. Do not use for production use cases. */
@@ -2349,16 +2349,16 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             subscribePosition,
             localKafkaServer);
 
-        if (getServerConfig().isProgressPercentageEnabled() && !subscribePosition.isSymbolic()) {
+        if (getServerConfig().isIngestionProgressLoggingEnabled() && !subscribePosition.isSymbolic()) {
           try {
             TopicManager topicManager = getTopicManager(localKafkaServer);
-            int progressPercentage = topicManager.getProgressPercentage(topicPartition, subscribePosition);
+            int percentage = topicManager.getIngestionProgressPercentage(topicPartition, subscribePosition);
             LOGGER.info(
                 "Subscribed to: {} position: {} latestPosition: {} progress: {}%",
                 topicPartition,
                 subscribePosition,
                 topicManager.getLatestPositionCached(topicPartition),
-                progressPercentage);
+                percentage);
           } catch (Exception e) {
             // this log message is best-effort. there is no point in throwing an exception for the sake of this.
             LOGGER.warn("Swallowed an exception when trying to determine progress for {}", topicPartition, e);
@@ -2914,12 +2914,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     String msg = "Offset synced for replica: " + pcs.getReplicaId() + " - localVtPosition: {} progress: {}";
     if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
       final PubSubPosition position = offsetRecord.getCheckpointedLocalVtPosition();
-      int progressPercentage = -1;
-      if (getServerConfig().isProgressPercentageEnabled()) {
+      int percentage = -1;
+      if (getServerConfig().isIngestionProgressLoggingEnabled()) {
         final PubSubTopicPartition topicPartition = pcs.getReplicaTopicPartition();
-        progressPercentage = getTopicManager(localKafkaServer).getProgressPercentage(topicPartition, position);
+        percentage = getTopicManager(localKafkaServer).getIngestionProgressPercentage(topicPartition, position);
       }
-      LOGGER.info(msg, position, progressPercentage);
+      LOGGER.info(msg, position, percentage);
     }
   }
 

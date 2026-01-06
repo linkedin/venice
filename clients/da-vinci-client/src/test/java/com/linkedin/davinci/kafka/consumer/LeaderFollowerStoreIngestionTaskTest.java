@@ -558,7 +558,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
   }
 
   @Test
-  public void testGetProgressPercentage() throws InterruptedException {
+  public void testGetIngestionProgressPercentage() throws InterruptedException {
     setUp();
 
     // Mock the necessary components
@@ -570,25 +570,25 @@ public class LeaderFollowerStoreIngestionTaskTest {
     // Setup the mocks
     doReturn(mockPosition).when(mockPcs).getLatestProcessedVtPosition();
     doReturn(mockTopicPartition).when(mockPcs).getReplicaTopicPartition();
-    doReturn(true).when(mockVeniceServerConfig).isProgressPercentageEnabled();
+    doReturn(true).when(mockVeniceServerConfig).isIngestionProgressLoggingEnabled();
     doReturn(mockTopicManager).when(mockTopicManagerRepository).getTopicManager(anyString());
     doReturn(mockTopicManager).when(mockTopicManagerRepository).getLocalTopicManager();
-    doReturn(75).when(mockTopicManager).getProgressPercentage(mockTopicPartition, mockPosition);
+    doReturn(75).when(mockTopicManager).getIngestionProgressPercentage(mockTopicPartition, mockPosition);
 
     // Call the method under test
-    int progressPercentage = leaderFollowerStoreIngestionTask.getProgressPercentage(mockPcs);
+    int percentage = leaderFollowerStoreIngestionTask.getIngestionProgressPercentage(mockPcs);
 
     // Verify the result
-    assertEquals(75, progressPercentage, "Progress percentage should match the expected value");
-    verify(mockTopicManager).getProgressPercentage(mockTopicPartition, mockPosition);
+    assertEquals(75, percentage, "Ingestion progress percentage should match the expected value");
+    verify(mockTopicManager).getIngestionProgressPercentage(mockTopicPartition, mockPosition);
 
     // Test when progress percentage is disabled
-    doReturn(false).when(mockVeniceServerConfig).isProgressPercentageEnabled();
-    progressPercentage = leaderFollowerStoreIngestionTask.getProgressPercentage(mockPcs);
-    assertEquals(-1, progressPercentage, "Progress percentage should be -1 when disabled");
+    doReturn(false).when(mockVeniceServerConfig).isIngestionProgressLoggingEnabled();
+    percentage = leaderFollowerStoreIngestionTask.getIngestionProgressPercentage(mockPcs);
+    assertEquals(-1, percentage, "Ingestion progress percentage should be -1 when disabled");
 
     // No additional calls to getProgressPercentage should be made
-    verify(mockTopicManager, times(1)).getProgressPercentage(any(), any());
+    verify(mockTopicManager, times(1)).getIngestionProgressPercentage(any(), any());
   }
 
   @Test

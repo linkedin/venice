@@ -692,21 +692,21 @@ public class TopicManagerTest {
   }
 
   @Test
-  public void testGetProgressPercentage() throws ExecutionException, InterruptedException {
+  public void testGetIngestionProgressPercentage() throws ExecutionException, InterruptedException {
     PubSubTopic topic = getTopic();
     PubSubTopicPartition p0 = topicManager.getTopicPartitionInfo(topic).get(0).getTopicPartition();
 
     Map<PubSubTopicPartition, PubSubPosition> lastOffsets = topicManager.getEndPositionsForTopicWithRetries(topic);
     Map<PubSubTopicPartition, PubSubPosition> startOffsets = topicManager.getStartPositionsForTopicWithRetries(topic);
-    assertEquals(topicManager.getProgressPercentage(p0, startOffsets.get(p0)), 0); // no records so 0% progress
-    assertEquals(topicManager.getProgressPercentage(p0, lastOffsets.get(p0)), 0);
+    assertEquals(topicManager.getIngestionProgressPercentage(p0, startOffsets.get(p0)), 0); // no records so 0% progress
+    assertEquals(topicManager.getIngestionProgressPercentage(p0, lastOffsets.get(p0)), 0);
 
     produceRandomPubSubMessage(topic, true, System.currentTimeMillis());
     produceRandomPubSubMessage(topic, true, System.currentTimeMillis());
 
     lastOffsets = topicManager.getEndPositionsForTopicWithRetries(topic);
     startOffsets = topicManager.getStartPositionsForTopicWithRetries(topic);
-    assertEquals(topicManager.getProgressPercentage(p0, startOffsets.get(p0)), 0);
-    assertEquals(topicManager.getProgressPercentage(p0, lastOffsets.get(p0)), 100);
+    assertEquals(topicManager.getIngestionProgressPercentage(p0, startOffsets.get(p0)), 0);
+    assertEquals(topicManager.getIngestionProgressPercentage(p0, lastOffsets.get(p0)), 100);
   }
 }

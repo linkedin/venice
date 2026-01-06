@@ -27,7 +27,7 @@ class IngestionNotificationDispatcher {
   private final Queue<VeniceNotifier> notifiers;
   private final String topic;
   private final BooleanSupplier isCurrentVersion;
-  private final Function<PartitionConsumptionState, Integer> progressPercentageFunction;
+  private final Function<PartitionConsumptionState, Integer> ingestionProgressFunction; // returns a percentage (0-100)
 
   private long lastProgressReportTime = 0;
   // Contains the last reported Notification record for each partition.
@@ -37,13 +37,13 @@ class IngestionNotificationDispatcher {
       Queue<VeniceNotifier> notifiers,
       String topic,
       BooleanSupplier isCurrentVersion,
-      Function<PartitionConsumptionState, Integer> progressPercentageFunction) {
+      Function<PartitionConsumptionState, Integer> ingestionProgressFunction) {
     this.LOGGER =
         LogManager.getLogger(IngestionNotificationDispatcher.class.getSimpleName() + " for [ Topic: " + topic + " ] ");
     this.notifiers = notifiers;
     this.topic = topic;
     this.isCurrentVersion = isCurrentVersion;
-    this.progressPercentageFunction = progressPercentageFunction;
+    this.ingestionProgressFunction = ingestionProgressFunction;
   }
 
   @FunctionalInterface
@@ -85,7 +85,7 @@ class IngestionNotificationDispatcher {
         reportType,
         notifiers.size(),
         pcs,
-        progressPercentageFunction.apply(pcs));
+        ingestionProgressFunction.apply(pcs));
   }
 
   void report(
