@@ -97,7 +97,6 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.PubSubContext;
-import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.PubSubUtil;
@@ -4890,11 +4889,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     // Check config to determine whether to use upstreamPubSubPosition with fallback or just upstreamOffset
     if (storeVersionConfig.isUseUpstreamPubSubPositionWithFallbackEnabled()) {
-      return deserializePositionWithOffsetFallback(
-          pubSubContext.getPubSubPositionDeserializer(),
-          consumerRecord.getTopicPartition(),
+      return PubSubUtil.deserializePositionWithOffsetFallback(
           leaderMetadataFooter.upstreamPubSubPosition,
-          leaderMetadataFooter.upstreamOffset);
+          leaderMetadataFooter.upstreamOffset,
+          pubSubContext.getPubSubPositionDeserializer());
     } else {
       // Directly use upstreamOffset without attempting position deserialization
       return PubSubUtil.fromKafkaOffset(leaderMetadataFooter.upstreamOffset);
@@ -5202,55 +5200,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   @VisibleForTesting
   PubSubContext getPubSubContext() {
     return pubSubContext;
-  }
-
-  PubSubPosition deserializePositionWithOffsetFallback(
-      PubSubPositionDeserializer pubSubPositionDeserializer,
-      PubSubTopicPartition topicPartition,
-      ByteBuffer wireFormatBytes,
-      long offset) {
-    // Fast path: nothing to deserialize
-    if (wireFormatBytes == null || !wireFormatBytes.hasRemaining()) {
-      return PubSubUtil.fromKafkaOffset(offset);
-    }
-
-    try {
-      final PubSubPosition position = pubSubPositionDeserializer.toPosition(wireFormatBytes);
-
-      // Symbolic positions (EARLIEST, LATEST) should always be returned as-is
-      if (position == PubSubSymbolicPosition.EARLIEST || position == PubSubSymbolicPosition.LATEST) {
-        return position;
-      }
-
-      // Guard against regressions: honor the caller-provided minimum offset.
-      if (position.getNumericOffset() < offset) {
-        String context = String.format(" for: %s/%s", topicPartition, versionTopic);
-        if (!REDUNDANT_LOGGING_FILTER.isRedundantException(context)) {
-          LOGGER.warn(
-              "Deserialized position: {} is behind the provided offset: {}. Using offset-based position for: {}/{}",
-              position,
-              offset,
-              topicPartition,
-              versionTopic);
-        }
-        return PubSubUtil.fromKafkaOffset(offset);
-      }
-
-      return position;
-    } catch (Exception e) {
-      String context = String.format("%s/%s - %s", topicPartition, versionTopic, e.getMessage());
-      if (!REDUNDANT_LOGGING_FILTER.isRedundantException(context)) {
-        LOGGER.warn(
-            "Failed to deserialize PubSubPosition for: {}/{}. Using offset-based position (offset={}, bufferRem={}, bufferCap={}).",
-            topicPartition,
-            versionTopic,
-            offset,
-            wireFormatBytes.remaining(),
-            wireFormatBytes.capacity(),
-            e);
-      }
-      return PubSubUtil.fromKafkaOffset(offset);
-    }
   }
 
   /**

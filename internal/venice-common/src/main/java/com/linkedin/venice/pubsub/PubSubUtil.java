@@ -376,7 +376,8 @@ public final class PubSubUtil {
       PubSubPosition position = pubSubPositionDeserializer.toPosition(wireFormatBytes);
       // Guard against regressions: honor the caller-provided minimum offset.
       // This applies to both symbolic and concrete positions.
-      if (position.getNumericOffset() >= offset) {
+      if (position == PubSubSymbolicPosition.EARLIEST || position == PubSubSymbolicPosition.LATEST
+          || position.getNumericOffset() >= offset) {
         // If position is ahead of or equal to offset, return it as-is (including symbolic positions like LATEST)
         return position;
       }

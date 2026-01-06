@@ -563,4 +563,63 @@ public class PubSubUtilTest {
         () -> PubSubUtil.parsePositionWireFormat("1:invalid_base64!", deserializer));
     expectThrows(IllegalArgumentException.class, () -> PubSubUtil.parsePositionWireFormat("1:", deserializer));
   }
+
+  @Test
+  public void testDeserializePositionWithOffsetFallback() {
+    PubSubPositionDeserializer deserializer = PubSubPositionDeserializer.DEFAULT_DESERIALIZER;
+
+    // Case 1: Null ByteBuffer - should return offset-based position
+    PubSubPosition actualPosition = PubSubUtil.deserializePositionWithOffsetFallback(null, 100L, deserializer);
+    assertEquals(actualPosition.getNumericOffset(), 100L, "Null ByteBuffer should return offset-based position");
+
+    // Case 2: Empty ByteBuffer - should return offset-based position
+    actualPosition = PubSubUtil.deserializePositionWithOffsetFallback(ByteBuffer.allocate(0), 200L, deserializer);
+    assertEquals(actualPosition.getNumericOffset(), 200L, "Empty ByteBuffer should return offset-based position");
+
+    // Case 3: Invalid ByteBuffer - should return offset-based position
+    ByteBuffer invalidBuffer = ByteBuffer.wrap(new byte[] { 0x01, 0x02, 0x03 }); // Random invalid bytes
+    actualPosition = PubSubUtil.deserializePositionWithOffsetFallback(invalidBuffer, 300L, deserializer);
+    assertEquals(actualPosition.getNumericOffset(), 300L, "Invalid ByteBuffer should return offset-based position");
+
+    // Case 4: Valid ByteBuffer with position ahead of offset - should return deserialized position
+    ByteBuffer validBuffer = ApacheKafkaOffsetPosition.of(400L).toWireFormatBuffer();
+    actualPosition = PubSubUtil.deserializePositionWithOffsetFallback(validBuffer, 0L, deserializer);
+    assertEquals(actualPosition.getNumericOffset(), 400L, "Valid ByteBuffer should return deserialized position");
+
+    // Case 5: Valid ByteBuffer with position equal to offset - should return deserialized position
+    ByteBuffer equalBuffer = ApacheKafkaOffsetPosition.of(500L).toWireFormatBuffer();
+    actualPosition = PubSubUtil.deserializePositionWithOffsetFallback(equalBuffer, 500L, deserializer);
+    assertEquals(
+        actualPosition.getNumericOffset(),
+        500L,
+        "Position equal to offset should return deserialized position");
+
+    // Case 6: Valid ByteBuffer with position behind offset - should return offset-based position
+    ByteBuffer behindBuffer = ApacheKafkaOffsetPosition.of(100L).toWireFormatBuffer();
+    actualPosition = PubSubUtil.deserializePositionWithOffsetFallback(behindBuffer, 200L, deserializer);
+    assertEquals(actualPosition.getNumericOffset(), 200L, "Position behind offset should return offset-based position");
+
+    // Case 7: ByteBuffer has EARLIEST symbolic position - should return EARLIEST as-is
+    ByteBuffer earliestBuffer = PubSubSymbolicPosition.EARLIEST.toWireFormatBuffer();
+    actualPosition = PubSubUtil.deserializePositionWithOffsetFallback(earliestBuffer, 100L, deserializer);
+    assertEquals(actualPosition, PubSubSymbolicPosition.EARLIEST, "Should return EARLIEST symbolic position as-is");
+
+    // Case 8: ByteBuffer has LATEST symbolic position - should return LATEST as-is
+    ByteBuffer latestBuffer = PubSubSymbolicPosition.LATEST.toWireFormatBuffer();
+    actualPosition = PubSubUtil.deserializePositionWithOffsetFallback(latestBuffer, 100L, deserializer);
+    assertEquals(actualPosition, PubSubSymbolicPosition.LATEST, "Should return LATEST symbolic position as-is");
+
+    // Case 9: Large offset values
+    ByteBuffer largeBuffer = ApacheKafkaOffsetPosition.of(Long.MAX_VALUE - 1000L).toWireFormatBuffer();
+    actualPosition = PubSubUtil.deserializePositionWithOffsetFallback(largeBuffer, 0L, deserializer);
+    assertEquals(
+        actualPosition.getNumericOffset(),
+        Long.MAX_VALUE - 1000L,
+        "Should handle large offset values correctly");
+
+    // Case 10: Zero offset
+    ByteBuffer zeroBuffer = ApacheKafkaOffsetPosition.of(0L).toWireFormatBuffer();
+    actualPosition = PubSubUtil.deserializePositionWithOffsetFallback(zeroBuffer, 0L, deserializer);
+    assertEquals(actualPosition.getNumericOffset(), 0L, "Should handle zero offset correctly");
+  }
 }
