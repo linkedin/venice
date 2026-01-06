@@ -134,9 +134,9 @@ public void onEndVersionIngestion(int currentVersion) {
 
 ### Featured Implementations
 - [VeniceChangelogConsumerDaVinciRecordTransformerImpl](https://github.com/linkedin/venice/blob/main/clients/da-vinci-client/src/main/java/com/linkedin/davinci/consumer/VeniceChangelogConsumerDaVinciRecordTransformerImpl.java):
-    - The new Venice Change Data Capture (CDC) client was built using the record transformer.
+  - The new Venice Change Data Capture (CDC) client was built using the record transformer.
 - [DuckDBDaVinciRecordTransformer](https://github.com/linkedin/venice/blob/main/integrations/venice-duckdb/src/main/java/com/linkedin/venice/duckdb/DuckDBDaVinciRecordTransformer.java):
-    - Forwards Venice data to DuckDB, allowing you to query your Venice data via SQL.
+  - Forwards Venice data to DuckDB, allowing you to query your Venice data via SQL.
 
 ### Configuration Options
 #### Required
