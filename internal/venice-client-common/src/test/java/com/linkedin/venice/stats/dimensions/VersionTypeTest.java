@@ -19,7 +19,7 @@ public class VersionTypeTest extends VeniceDimensionInterfaceTest<VersionType> {
     return CollectionUtils.<VersionType, String>mapBuilder()
         .put(VersionType.CURRENT, "current")
         .put(VersionType.FUTURE, "future")
-        .put(VersionType.BACKUP, "backup")
+        .put(VersionType.OTHER, "other")
         .build();
   }
 }

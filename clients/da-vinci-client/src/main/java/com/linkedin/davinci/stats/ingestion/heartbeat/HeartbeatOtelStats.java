@@ -89,11 +89,7 @@ public class HeartbeatOtelStats {
     if (!emitOtelMetrics()) {
       return;
     }
-    // Classify version using cached current/future versions
     VersionType versionType = classifyVersion(version, currentVersion, futureVersion);
-    if (versionType == null) {
-      return;
-    }
 
     MetricEntityStateThreeEnums<VersionType, ReplicaType, ReplicaState> metricState = getOrCreateMetricState(region);
 
@@ -121,21 +117,20 @@ public class HeartbeatOtelStats {
   }
 
   /**
-   * Classifies a version as CURRENT, FUTURE, or BACKUP
+   * Classifies a version as CURRENT or FUTURE and all other versions are considered OTHER
    *
    * @param version The version number to classify
    * @param currentVersion The current serving version (cached)
    * @param futureVersion The future/upcoming version (cached)
-   * @return {@link VersionType} or null if version is invalid
+   * @return {@link VersionType}
    */
   private static VersionType classifyVersion(int version, int currentVersion, int futureVersion) {
     if (version == NON_EXISTING_VERSION) {
-      return null;
+      return VersionType.OTHER;
     }
 
-    // Return current/future and all other valid versions are considered backup for now
     return (version == currentVersion)
         ? VersionType.CURRENT
-        : ((version == futureVersion) ? VersionType.FUTURE : VersionType.BACKUP);
+        : ((version == futureVersion) ? VersionType.FUTURE : VersionType.OTHER);
   }
 }

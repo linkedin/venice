@@ -4,7 +4,9 @@ package com.linkedin.venice.stats.dimensions;
  * Dimension to represent the version type for versioned stats.
  */
 public enum VersionType implements VeniceDimensionInterface {
-  CURRENT, FUTURE, BACKUP;
+  CURRENT, FUTURE,
+  /** For any version that is neither current nor future */
+  OTHER;
 
   private final String versionType;
 
