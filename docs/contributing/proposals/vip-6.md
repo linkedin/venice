@@ -43,6 +43,7 @@ _Call out explicitly:_
 
 _This section should justify the necessity to address the problem mentioned above, in another way, 
 we could think about what will happen if we don’t solve the problem, and we could consider the following dimensions._
+
 1. New use cases.
 2. Customer experience
 3. Productivity improvement.

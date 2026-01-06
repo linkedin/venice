@@ -128,6 +128,7 @@ an asynchronous API to perform authentication checks.
 ## Development Milestones
 
 The implementation for this VIP introduces:
+
 - the Java API
 - the Controller implementation (loading the plugin and calling the API)
 - the Router implementation (loading the plugin and calling the API)
@@ -137,6 +138,7 @@ The implementation for this VIP introduces:
 ## Test Plan
 
 The implementation will be tested with unit tests and integration tests, main topics:
+
 - AuthenticationService plugin lifecycle (boostrap, initialization, close)
 - Verifying that the plugin is invoked by the Controller, Router and Server
 

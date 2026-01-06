@@ -5,11 +5,13 @@ operation is successful.
 
 ## Prerequisites
 To use the Online Producer, the store must meet some prerequisites:
+
 1. It must not have writes disabled
 2. It must be a hybrid store
 3. It must have a current version.
 
 In addition to the store-level prerequisites, the current version must meet the following prerequisites:
+
 1. It must be configured as hybrid; aka capable of receiving near-line writes
 2. It must specify either `ACTIVE_ACTIVE` or `NON_AGGREGATE` data-replication policies
 3. It must specify a partitioner that the writer application knows how to use
@@ -17,6 +19,7 @@ In addition to the store-level prerequisites, the current version must meet the 
 ## API
 Detailed Javadocs for the Online Producer API can be accessed [here](https://venicedb.org/javadoc/com/linkedin/venice/producer/VeniceProducer.html).
 All of these APIs have at least two versions - one that accepts a logical timestamp and one that doesn't.
+
 1. Logical timestamps (in ms) are what Venice backend will use to resolve conflicts in case multiple writes modify
 the same record. An update to Venice could be triggered due to some trigger that can be attributed to a specific
 point in time. In such cases, it might be beneficial for applications to mark their updates to Venice with that
