@@ -2171,6 +2171,12 @@ public class ConfigKeys {
       "use.da.vinci.specific.execution.status.for.error";
 
   /**
+   * When enabled, allows the use of the getProgressPercentage() method in TopicManager.
+   * This is disabled by default as it can be expensive to compute.
+   */
+  public static final String POSITIONAL_PROGRESS_LOGGING_ENABLED = "positional.progress.logging.enabled";
+
+  /**
    * If the config value is non-negative, da-vinci client will batch push statues among all partitions into one single
    * update events; DaVinciPushStatusUpdateTask will check the push status across all partitions in the same DaVinci
    * node, and decide whether to send a status update event. This config controls the interval between each check.
