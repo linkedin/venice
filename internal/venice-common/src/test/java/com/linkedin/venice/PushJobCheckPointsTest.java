@@ -26,6 +26,7 @@ public class PushJobCheckPointsTest extends VeniceEnumValueTest<PushJobCheckpoin
         .put(6, PushJobCheckpoints.START_VALIDATE_SCHEMA_AND_BUILD_DICT_MAP_JOB)
         .put(7, PushJobCheckpoints.VALIDATE_SCHEMA_AND_BUILD_DICT_MAP_JOB_COMPLETED)
         .put(8, PushJobCheckpoints.START_VERSION_SWAP)
+        .put(9, PushJobCheckpoints.COMPLETE_VERSION_SWAP)
         .put(-1, PushJobCheckpoints.QUOTA_EXCEEDED)
         .put(-2, PushJobCheckpoints.WRITE_ACL_FAILED)
         .put(-3, PushJobCheckpoints.DUP_KEY_WITH_DIFF_VALUE)
@@ -73,6 +74,7 @@ public class PushJobCheckPointsTest extends VeniceEnumValueTest<PushJobCheckpoin
         case DVC_INGESTION_ERROR_TOO_MANY_DEAD_INSTANCES:
         case DVC_INGESTION_ERROR_OTHER:
         case START_VERSION_SWAP:
+        case COMPLETE_VERSION_SWAP:
           assertFalse(PushJobCheckpoints.DEFAULT_PUSH_JOB_USER_ERROR_CHECKPOINTS.contains(checkpoint));
           break;
 

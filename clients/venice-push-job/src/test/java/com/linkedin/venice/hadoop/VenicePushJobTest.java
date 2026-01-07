@@ -1536,6 +1536,9 @@ public class VenicePushJobTest {
 
       // Verify that START_VERSION_SWAP checkpoint is called
       verify(pushJob).updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.START_VERSION_SWAP);
+
+      // Verify that COMPLETE_VERSION_SWAP checkpoint is called
+      verify(pushJob).updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.COMPLETE_VERSION_SWAP);
     }
   }
 

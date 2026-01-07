@@ -2693,6 +2693,7 @@ public class VenicePushJob implements AutoCloseable {
                 "Successfully pushed {} and it is being served in all regions. The version status is {}.",
                 pushJobSetting.topic,
                 parentVersionStatus);
+            updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.COMPLETE_VERSION_SWAP);
             return;
           }
 
