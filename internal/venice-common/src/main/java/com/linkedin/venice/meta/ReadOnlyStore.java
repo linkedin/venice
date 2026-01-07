@@ -1094,6 +1094,16 @@ public class ReadOnlyStore implements Store {
   }
 
   @Override
+  public boolean isFlinkVeniceViewsEnabled() {
+    return this.delegate.isFlinkVeniceViewsEnabled();
+  }
+
+  @Override
+  public void setFlinkVeniceViewsEnabled(boolean flinkVeniceViewsEnabled) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
   public void setViewConfigs(Map<String, ViewConfig> viewConfigList) {
     throw new UnsupportedOperationException();
   }

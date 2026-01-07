@@ -25,7 +25,8 @@ public class IngestionNotificationDispatcherTest {
     VeniceNotifier mockNotifier = mock(VeniceNotifier.class);
     Queue<VeniceNotifier> notifiers = new ArrayDeque<>();
     notifiers.add(mockNotifier);
-    IngestionNotificationDispatcher dispatcher = new IngestionNotificationDispatcher(notifiers, topic, () -> true);
+    IngestionNotificationDispatcher dispatcher =
+        new IngestionNotificationDispatcher(notifiers, topic, () -> true, pcs -> 0);
     PartitionConsumptionState psc = mock(PartitionConsumptionState.class);
 
     // Mock a hybrid partition already received the end of push.
@@ -60,7 +61,8 @@ public class IngestionNotificationDispatcherTest {
     VeniceNotifier mockNotifier = mock(VeniceNotifier.class);
     Queue<VeniceNotifier> notifiers = new ArrayDeque<>();
     notifiers.add(mockNotifier);
-    IngestionNotificationDispatcher dispatcher = new IngestionNotificationDispatcher(notifiers, topic, () -> true);
+    IngestionNotificationDispatcher dispatcher =
+        new IngestionNotificationDispatcher(notifiers, topic, () -> true, pcs -> 0);
     PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
     Mockito.doReturn(partitionId).when(pcs).getPartition();
     Mockito.doReturn(true).when(pcs).isHybrid();
@@ -77,7 +79,8 @@ public class IngestionNotificationDispatcherTest {
     VeniceNotifier mockNotifier = mock(VeniceNotifier.class);
     Queue<VeniceNotifier> notifiers = new ArrayDeque<>();
     notifiers.add(mockNotifier);
-    IngestionNotificationDispatcher dispatcher = new IngestionNotificationDispatcher(notifiers, topic, () -> true);
+    IngestionNotificationDispatcher dispatcher =
+        new IngestionNotificationDispatcher(notifiers, topic, () -> true, pcs -> 0);
     PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
     Mockito.doReturn(partitionId).when(pcs).getPartition();
     Mockito.doReturn(false).when(pcs).isHybrid();
