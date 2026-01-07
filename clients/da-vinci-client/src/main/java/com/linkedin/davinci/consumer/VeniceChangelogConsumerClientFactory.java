@@ -178,20 +178,29 @@ public class VeniceChangelogConsumerClientFactory {
     return getStatefulChangelogConsumer(storeName, null, valueClass, null);
   }
 
+  public <K, V> VeniceChangelogConsumer<K, V> getVersionSpecificChangelogConsumer(
+      String storeName,
+      int storeVersion,
+      boolean includeControlMessages) {
+    return getVersionSpecificChangelogConsumer(storeName, storeVersion, includeControlMessages, false);
+  }
+
   /**
    * Subscribes to a specific version of a Venice store. This is only intended for internal use.
    */
   public <K, V> VeniceChangelogConsumer<K, V> getVersionSpecificChangelogConsumer(
       String storeName,
       int storeVersion,
-      boolean includeControlMessages) {
+      boolean includeControlMessages,
+      boolean deserializeReplicationMetadata) {
     String consumerName = storeName + "v_" + storeVersion;
     return versionSpecificStoreClientMap.computeIfAbsent(consumerName, name -> {
       ChangelogClientConfig newStoreChangelogClientConfig =
           getNewStoreChangelogClientConfig(storeName).setStoreVersion(storeVersion)
               .setIsStateful(false)
               .setConsumerName(consumerName)
-              .setIncludeControlMessages(includeControlMessages);
+              .setIncludeControlMessages(includeControlMessages)
+              .setDeserializeReplicationMetadata(deserializeReplicationMetadata);
 
       return new VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>(newStoreChangelogClientConfig, this);
     });
@@ -201,7 +210,7 @@ public class VeniceChangelogConsumerClientFactory {
    * Creates a version specific changelog consumer without control messages.
    */
   public <K, V> VeniceChangelogConsumer<K, V> getVersionSpecificChangelogConsumer(String storeName, int storeVersion) {
-    return getVersionSpecificChangelogConsumer(storeName, storeVersion, false);
+    return getVersionSpecificChangelogConsumer(storeName, storeVersion, false, false);
   }
 
   private ChangelogClientConfig getNewStoreChangelogClientConfig(String storeName) {
