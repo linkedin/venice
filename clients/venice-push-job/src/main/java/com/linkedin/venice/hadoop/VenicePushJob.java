@@ -2694,6 +2694,7 @@ public class VenicePushJob implements AutoCloseable {
                 pushJobSetting.topic,
                 parentVersionStatus);
             updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.COMPLETE_VERSION_SWAP);
+            sendPushJobDetailsToController();
             return;
           }
 
