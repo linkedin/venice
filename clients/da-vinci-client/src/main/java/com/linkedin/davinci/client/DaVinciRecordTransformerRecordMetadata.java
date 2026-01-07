@@ -7,7 +7,7 @@ import com.linkedin.venice.pubsub.api.PubSubPosition;
  * Per record metadata wrapper for {@link DaVinciRecordTransformer}.
  */
 public class DaVinciRecordTransformerRecordMetadata {
-  public final static int SENTINEL_WRITER_SCHEMA_ID = -1;
+  public final static int UNSPECIFIED_SCHEMA_ID = -1;
   private final int writerSchemaId;
   private final long timestamp;
   private final PubSubPosition pubSubPosition;
@@ -16,7 +16,7 @@ public class DaVinciRecordTransformerRecordMetadata {
   private final int replicationMetadataVersionId;
 
   public DaVinciRecordTransformerRecordMetadata(long timestamp, PubSubPosition pubSubPosition, int payloadSize) {
-    this(SENTINEL_WRITER_SCHEMA_ID, timestamp, pubSubPosition, payloadSize, null, SENTINEL_WRITER_SCHEMA_ID);
+    this(UNSPECIFIED_SCHEMA_ID, timestamp, pubSubPosition, payloadSize, null, UNSPECIFIED_SCHEMA_ID);
   }
 
   public DaVinciRecordTransformerRecordMetadata(
@@ -36,7 +36,7 @@ public class DaVinciRecordTransformerRecordMetadata {
 
   /**
    * @return the schema ID that the record was written with if it's a PUT.
-   * If the record came from disk, or it's a DELETE, it will be {@link #SENTINEL_WRITER_SCHEMA_ID}.
+   * If the record came from disk, or it's a DELETE, it will be {@link #UNSPECIFIED_SCHEMA_ID}.
    */
   public int getWriterSchemaId() {
     return writerSchemaId;

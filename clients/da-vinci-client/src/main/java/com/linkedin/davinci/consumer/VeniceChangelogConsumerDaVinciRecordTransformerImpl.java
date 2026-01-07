@@ -643,7 +643,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
         GenericRecord deserializedReplicationMetadata = null;
         if (includeDeserializedReplicationMetadata && recordMetadata.getReplicationMetadataPayload() != null
             && recordMetadata
-                .getReplicationMetadataVersionId() != DaVinciRecordTransformerRecordMetadata.SENTINEL_WRITER_SCHEMA_ID) {
+                .getReplicationMetadataVersionId() != DaVinciRecordTransformerRecordMetadata.UNSPECIFIED_SCHEMA_ID) {
           // provide deserialized replication metadata, recordMetadata.getReplicationMetadataVersionId() will be useful
           // in the future when we evolve our RMD schema.
           RecordDeserializer<GenericRecord> deserializer = rmdDeserializerCache

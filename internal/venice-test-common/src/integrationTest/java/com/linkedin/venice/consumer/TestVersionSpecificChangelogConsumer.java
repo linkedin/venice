@@ -12,6 +12,7 @@ import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.D2_S
 import static com.linkedin.venice.stats.ClientType.CHANGE_DATA_CAPTURE_CLIENT;
 import static com.linkedin.venice.stats.VeniceMetricsRepository.getVeniceMetricsRepository;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRecord;
 import static com.linkedin.venice.utils.TestWriteUtils.STRING_SCHEMA;
 import static com.linkedin.venice.utils.Utils.getTempDataDirectory;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
@@ -40,8 +41,11 @@ import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptio
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
+import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.samza.VeniceSystemProducer;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
@@ -51,6 +55,7 @@ import com.linkedin.venice.view.TestView;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
@@ -176,7 +181,13 @@ public class TestVersionSpecificChangelogConsumer {
 
     // All data should be from version 1
     // there are 3 partitions, so we expect 3 control messages EOP
-    pollAndVerify(changeLogConsumer, 1, numKeys, createControlMessageCountMap(partitionCount, 0));
+    pollAndVerify(
+        changeLogConsumer,
+        1,
+        numKeys,
+        createControlMessageCountMap(partitionCount, 0),
+        partitionCount,
+        false);
 
     // Restart client to ensure it seeks to the beginning of the topic and all record metadata is available
     changeLogConsumer.close();
@@ -184,7 +195,13 @@ public class TestVersionSpecificChangelogConsumer {
 
     // All data should be from version 1
     // there are 3 partitions, so we expect 3 control messages EOP
-    pollAndVerify(changeLogConsumer, 1, numKeys, createControlMessageCountMap(partitionCount, 0));
+    pollAndVerify(
+        changeLogConsumer,
+        1,
+        numKeys,
+        createControlMessageCountMap(partitionCount, 0),
+        partitionCount,
+        false);
 
     // Push version 2
     version++;
@@ -192,20 +209,42 @@ public class TestVersionSpecificChangelogConsumer {
     IntegrationTestPushUtils.runVPJ(props);
 
     // Client should see VersionSwap control messages since new version is pushed
-    pollAndVerify(changeLogConsumer, 1, 0, createControlMessageCountMap(0, partitionCount));
+    pollAndVerify(changeLogConsumer, 1, 0, createControlMessageCountMap(0, partitionCount), partitionCount, true);
 
-    // Client shouldn't be able to poll anything, since it's still on version 1
-    assertEquals(changeLogConsumer.poll(1000).size(), 0);
+    // Client shouldn't be able to poll anything besides heartbeat messages, since it's still on version 1
+    int nonHeartbeatMessagesCount = 0;
+    Collection<PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> oldVersionMessages =
+        changeLogConsumer.poll(1000);
+    for (PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate> message: oldVersionMessages) {
+      if (message.getKey() != null) {
+        nonHeartbeatMessagesCount++;
+      } else {
+        ControlMessage controlMessage =
+            ((ImmutableChangeCapturePubSubMessage<Integer, ChangeEvent<Utf8>>) message).getControlMessage();
+        if (controlMessage.getControlMessageType() != ControlMessageType.START_OF_SEGMENT.getValue()) {
+          nonHeartbeatMessagesCount++;
+        }
+      }
+    }
+    assertEquals(nonHeartbeatMessagesCount, 0);
 
-    // Restart client
+    // Restart a new client
     changeLogConsumer.close();
-    changeLogConsumer.subscribeAll().get();
+    VeniceChangelogConsumer<Integer, Utf8> newChangeLogConsumer =
+        veniceChangelogConsumerClientFactory.getVersionSpecificChangelogConsumer(storeName, 1, true);
+    newChangeLogConsumer.subscribeAll().get();
 
     // all data should be from version 1
-    pollAndVerify(changeLogConsumer, 1, numKeys, createControlMessageCountMap(partitionCount, partitionCount));
+    pollAndVerify(
+        newChangeLogConsumer,
+        1,
+        numKeys,
+        createControlMessageCountMap(partitionCount, partitionCount),
+        partitionCount,
+        true);
 
     // Push version 3 with deferred version swap and subscribe to the future version
-    changeLogConsumer.close();
+    newChangeLogConsumer.close();
     version++;
     TestWriteUtils.writeSimpleAvroFileWithIntToStringSchema(inputDir, Integer.toString(version), numKeys);
     props.put(DEFER_VERSION_SWAP, true);
@@ -217,16 +256,107 @@ public class TestVersionSpecificChangelogConsumer {
 
     // Client should see version 3 data
     // 3 EOP for v3; and 3 VS for v1->v2
-    pollAndVerify(changeLogConsumer3, 3, numKeys, createControlMessageCountMap(partitionCount, partitionCount));
+    pollAndVerify(
+        changeLogConsumer3,
+        3,
+        numKeys,
+        createControlMessageCountMap(partitionCount, partitionCount),
+        partitionCount,
+        true);
+  }
+
+  @Test(timeOut = TEST_TIMEOUT, priority = 3)
+  public void testVersionSpecificWithDeserializedReplicationMetadata()
+      throws IOException, ExecutionException, InterruptedException {
+    File inputDir = getTempDataDirectory();
+    int version = 1;
+    int numKeys = 10;
+    Schema recordSchema =
+        TestWriteUtils.writeSimpleAvroFileWithIntToStringSchema(inputDir, Integer.toString(version), numKeys);
+    int partitionCount = 3;
+    String inputDirPath = "file://" + inputDir.getAbsolutePath();
+    String storeName = Utils.getUniqueString("testStore");
+    Properties props = TestWriteUtils.defaultVPJProps(
+        parentControllers.get(0).getControllerUrl(),
+        inputDirPath,
+        storeName,
+        clusterWrapper.getPubSubClientProperties());
+    String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
+    String valueSchemaStr = STRING_SCHEMA.toString();
+    UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true)
+        .setHybridRewindSeconds(500)
+        .setHybridOffsetLagThreshold(8)
+        .setChunkingEnabled(true)
+        .setNativeReplicationEnabled(true)
+        .setPartitionCount(partitionCount);
+    MetricsRepository metricsRepository =
+        getVeniceMetricsRepository(CHANGE_DATA_CAPTURE_CLIENT, CONSUMER_METRIC_ENTITIES, true);
+    createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms);
+    IntegrationTestPushUtils.runVPJ(props);
+    ZkServerWrapper localZkServer = multiRegionMultiClusterWrapper.getChildRegions().get(0).getZkServerWrapper();
+    PubSubBrokerWrapper localKafka = multiRegionMultiClusterWrapper.getChildRegions().get(0).getPubSubBrokerWrapper();
+    Properties consumerProperties = new Properties();
+    consumerProperties.putAll(multiRegionMultiClusterWrapper.getPubSubClientProperties());
+    String localKafkaUrl = localKafka.getAddress();
+    consumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, localKafkaUrl);
+    consumerProperties.put(CLUSTER_NAME, clusterName);
+    consumerProperties.put(ZOOKEEPER_ADDRESS, localZkServer.getAddress());
+    ChangelogClientConfig globalChangelogClientConfig =
+        new ChangelogClientConfig().setConsumerProperties(consumerProperties)
+            .setControllerD2ServiceName(D2_SERVICE_NAME)
+            .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
+            .setLocalD2ZkHosts(localZkServer.getAddress())
+            .setControllerRequestRetryCount(3)
+            .setVersionSwapDetectionIntervalTimeInSeconds(3)
+            .setD2Client(d2Client)
+            .setBootstrapFileSystemPath(Utils.getUniqueString(inputDirPath));
+    VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =
+        new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig, metricsRepository);
+    VeniceChangelogConsumer<Integer, Utf8> changeLogConsumer =
+        veniceChangelogConsumerClientFactory.getVersionSpecificChangelogConsumer(storeName, 1, true, true);
+    // Rewrite all the keys in near-line
+    try (VeniceSystemProducer veniceProducer = IntegrationTestPushUtils.getSamzaProducer(
+        childDatacenters.get(0).getClusters().get(CLUSTER_NAMES[0]),
+        storeName,
+        Version.PushType.STREAM)) {
+      veniceProducer.start();
+      for (int i = 1; i <= numKeys; ++i) {
+        String value = "near-line" + i;
+        sendStreamingRecord(veniceProducer, storeName, i, value, null);
+      }
+    }
+    changeLogConsumer.subscribeAll().get();
+    List<PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessages = new ArrayList<>();
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+      Collection<PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessagesList =
+          changeLogConsumer.poll(1000);
+      for (PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate> message: pubSubMessagesList) {
+        if (message.getKey() != null) {
+          pubSubMessages.add(message);
+        }
+      }
+      assertEquals(pubSubMessages.size(), numKeys * 2);
+    });
+    // The change events written from near-line should have valid and deserialized replication metadata
+    for (int i = numKeys; i < pubSubMessages.size(); i++) {
+      ImmutableChangeCapturePubSubMessage<Integer, ChangeEvent<Utf8>> message =
+          (ImmutableChangeCapturePubSubMessage<Integer, ChangeEvent<Utf8>>) pubSubMessages.get(i);
+      assertNotNull(message.getDeserializedReplicationMetadata());
+      long timestamp = (long) message.getDeserializedReplicationMetadata().get("timestamp");
+      assertTrue(timestamp > 0);
+    }
   }
 
   private void pollAndVerify(
       VeniceChangelogConsumer<Integer, Utf8> changeLogConsumer,
       int version,
       int expectedNumMessages,
-      HashMap<Integer, Integer> expectedControlMessagesCountPerType) throws InterruptedException {
+      HashMap<Integer, Integer> expectedControlMessagesCountPerType,
+      int partitionCount,
+      boolean verifyHeartbeatMessages) throws InterruptedException {
     Map<Integer, PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessagesMap = new HashMap();
     Map<Integer, PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> controlMessageMap = new HashMap();
+    Map<Integer, Long> heartbeatTimestampMap = new HashMap<>();
 
     int expectedTotalControlMessageCount =
         expectedControlMessagesCountPerType.values().stream().mapToInt(Integer::intValue).sum();
@@ -238,8 +368,15 @@ public class TestVersionSpecificChangelogConsumer {
         if (message.getKey() != null) {
           pubSubMessagesMap.put(message.getKey(), message);
         } else {
-          controlMessageMap.put(controlMessagesCount, message);
-          controlMessagesCount++;
+          // Validate heartbeat messages separately due to its non-deterministic nature
+          ControlMessage controlMessage =
+              ((ImmutableChangeCapturePubSubMessage<Integer, ChangeEvent<Utf8>>) message).getControlMessage();
+          if (controlMessage.getControlMessageType() == ControlMessageType.START_OF_SEGMENT.getValue()) {
+            heartbeatTimestampMap.put(message.getPartition(), message.getPubSubMessageTime());
+          } else {
+            controlMessageMap.put(controlMessagesCount, message);
+            controlMessagesCount++;
+          }
         }
       }
       assertEquals(pubSubMessagesMap.size(), expectedNumMessages);
@@ -271,6 +408,12 @@ public class TestVersionSpecificChangelogConsumer {
       }
     }
     assertEquals(createControlMessageCountMap(endOfPushCount, versionSwapCount), expectedControlMessagesCountPerType);
+    if (verifyHeartbeatMessages) {
+      assertEquals(heartbeatTimestampMap.size(), partitionCount);
+      for (long heartbeatTimestamp: heartbeatTimestampMap.values()) {
+        assertTrue(heartbeatTimestamp > 0);
+      }
+    }
   }
 
   private HashMap<Integer, Integer> createControlMessageCountMap(int endOfPushCount, int versionSwapCount) {
