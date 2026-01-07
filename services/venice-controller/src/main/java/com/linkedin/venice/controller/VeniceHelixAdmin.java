@@ -169,7 +169,6 @@ import com.linkedin.venice.meta.StoreGraveyard;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.StoreName;
 import com.linkedin.venice.meta.StoreVersionInfo;
-import com.linkedin.venice.meta.SystemStore;
 import com.linkedin.venice.meta.SystemStoreAttributes;
 import com.linkedin.venice.meta.VeniceETLStrategy;
 import com.linkedin.venice.meta.Version;
@@ -1253,14 +1252,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     /* If this store existed previously, we do not want to use the same RT topic name that was used by the previous
     store. To ensure this, increase largestUsedRTVersionNumber and new RT name will be different */
     if (config.isRealTimeTopicVersioningEnabled()) {
-      VeniceSystemStoreType type = VeniceSystemStoreType.getSystemStoreType(newStore.getName());
       int newNumber;
-      if (type == null && newStore.isSystemStore()) {
-        // Top-level shared ZK store
-        newNumber = largestUsedRTVersionNumber;
-      } else {
-        // User-level system store OR regular store
+      if (!newStore.isSystemStore() || VeniceSystemStoreUtils.isUserSystemStore(newStore.getName())) {
+        // user level system store OR regular store
         newNumber = largestUsedRTVersionNumber + 1;
+      } else {
+        // top level system store
+        newNumber = largestUsedRTVersionNumber;
       }
 
       newStore.setLargestUsedRTVersionNumber(newNumber);
@@ -3008,14 +3006,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       boolean versionSwapDeferred,
       int repushSourceVersion) {
     Store store = getStore(clusterName, storeName);
-    int largestUsedRTVersionNumber;
-    VeniceSystemStoreType type = VeniceSystemStoreType.getSystemStoreType(store.getName());
-    if (type != null && store.isSystemStore()) {
-      largestUsedRTVersionNumber = ((SystemStore) store).getVeniceStore().getLargestUsedRTVersionNumber();
-    } else {
-      largestUsedRTVersionNumber = store.getLargestUsedRTVersionNumber();
-    }
-
+    int largestUsedRTVersionNumber = Utils.largestUsedRTVersionNumber(store);
     return addVersion(
         clusterName,
         storeName,

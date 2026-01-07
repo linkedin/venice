@@ -6,7 +6,7 @@ import static com.linkedin.venice.meta.Version.DEFAULT_RT_VERSION_NUMBER;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
-import com.linkedin.venice.common.VeniceSystemStoreType;
+import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.ErrorType;
@@ -633,6 +633,21 @@ public class Utils {
     }
   }
 
+  public static int largestUsedRTVersionNumber(Store store) {
+    if (store.isSystemStore() && VeniceSystemStoreUtils.isUserSystemStore(store.getName())) {
+      // store is a user level system store
+      Store userStore = store instanceof SystemStore ? ((SystemStore) store).getVeniceStore() : store;
+      return userStore.getLargestUsedRTVersionNumber();
+    } else {
+      // store is a regular user store or a top level system store
+      return store.getLargestUsedRTVersionNumber();
+    }
+  }
+
+  public static String getRealTimeTopicName(Store store) {
+    return getRealTimeTopicName(store, largestUsedRTVersionNumber(store));
+  }
+
   /**
    * It follows the following order to search for real time topic name,
    * i) current store-version config, ii) store config, iii) other store-version configs, iv) default name
@@ -644,13 +659,6 @@ public class Utils {
         store.getCurrentVersion(),
         store.getHybridStoreConfig(),
         rtVersionNumber);
-  }
-
-  public static String getRealTimeTopicName(Store store) {
-    if (store instanceof SystemStore) {
-      return getRealTimeTopicName(store, ((SystemStore) store).getVeniceStore().getLargestUsedRTVersionNumber());
-    }
-    return getRealTimeTopicName(store, DEFAULT_RT_VERSION_NUMBER);
   }
 
   public static String getRealTimeTopicName(StoreInfo storeInfo) {
@@ -747,19 +755,6 @@ public class Utils {
 
   public static String getSeparateRealTimeTopicName(StoreInfo storeInfo) {
     return getSeparateRealTimeTopicName(Utils.getRealTimeTopicName(storeInfo));
-  }
-
-  public static String getRealTimeTopicNameForSystemStore(Store systemStore) {
-    int largestUsedRTVersionNumber;
-    VeniceSystemStoreType type = VeniceSystemStoreType.getSystemStoreType(systemStore.getName());
-    if (type != null && systemStore.isSystemStore()) {
-      // systemStore is a user system store
-      largestUsedRTVersionNumber = ((SystemStore) systemStore).getVeniceStore().getLargestUsedRTVersionNumber();
-    } else {
-      // systemStore is a zkShared system store
-      largestUsedRTVersionNumber = systemStore.getLargestUsedRTVersionNumber();
-    }
-    return Utils.getRealTimeTopicName(systemStore, largestUsedRTVersionNumber);
   }
 
   public static int calculateTopicHashCode(PubSubTopic topic) {

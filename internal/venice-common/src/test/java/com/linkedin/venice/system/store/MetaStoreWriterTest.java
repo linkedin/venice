@@ -92,7 +92,7 @@ public class MetaStoreWriterTest {
         pubSubTopicRepository,
         5000L,
         2,
-        storeName -> Utils.getRealTimeTopicNameForSystemStore(systemStore));
+        storeName -> Utils.getRealTimeTopicName(systemStore));
 
     Assert.assertNotNull(metaStoreWriter.getOrCreateMetaStoreWriter(systemStoreName));
     verify(systemStore, times(1)).getVeniceStore();
@@ -135,7 +135,7 @@ public class MetaStoreWriterTest {
         pubSubTopicRepository,
         5000L,
         2,
-        storeName1 -> Utils.getRealTimeTopicNameForSystemStore(regularStore));
+        storeName1 -> Utils.getRealTimeTopicName(regularStore));
 
     Assert.assertNotNull(metaStoreWriter.getOrCreateMetaStoreWriter(storeName));
   }
@@ -177,7 +177,7 @@ public class MetaStoreWriterTest {
         pubSubTopicRepository,
         5000L,
         2,
-        storeName1 -> Utils.getRealTimeTopicNameForSystemStore(store));
+        storeName1 -> Utils.getRealTimeTopicName(store));
 
     Assert.assertNotNull(metaStoreWriter.getOrCreateMetaStoreWriter(storeName));
   }

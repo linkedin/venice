@@ -45,6 +45,7 @@ import com.linkedin.venice.client.schema.StoreSchemaFetcher;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.common.VeniceSystemStoreType;
+import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.exceptions.DiskLimitExhaustedException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
@@ -564,12 +565,11 @@ public class DaVinciBackend implements Closeable {
 
   /**
    * Resolves and returns the store object for the given store name.
-   * For user system stores, this returns the SystemStoreAttributes from the parent user store.
-   * For regular stores and shared system stores, this returns the Store object directly.
+   * For user system stores, it finds the RT name from the SystemStoreAttributes of the parent user store.
+   * For regular user stores and top level system stores, it finds the RT name from the Store object directly.
    */
   private String getRealTimeTopicName(String storeName) {
-    VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(storeName);
-    if (systemStoreType != null) {
+    if (VeniceSystemStoreUtils.isUserSystemStore(storeName)) {
       // it is a user system store
       String userStoreName = VeniceSystemStoreType.extractUserStoreName(storeName);
       Store userStore = storeRepository.getStore(userStoreName);
