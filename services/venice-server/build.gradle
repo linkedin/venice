@@ -59,10 +59,12 @@ dependencies {
   implementation libraries.tehuti
   // It's necessary to pull in the most recent version of zkclient explicitly, otherwise Helix won't have it...
   implementation libraries.zkclient
+  implementation libraries.opentelemetryApi
 
   testImplementation libraries.fastUtil
   testImplementation project(':internal:alpini:router:alpini-router-api')
   testImplementation project(':services:venice-router')
+  testImplementation libraries.openTelemetryTestSdk
 }
 
 jar {

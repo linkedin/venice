@@ -1,6 +1,7 @@
 package com.linkedin.venice.stats;
 
 import com.linkedin.venice.stats.metrics.MetricEntity;
+import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
 import io.opentelemetry.sdk.metrics.export.MetricReader;
 import io.tehuti.metrics.JmxReporter;
 import io.tehuti.metrics.MetricsRepository;
@@ -62,12 +63,23 @@ public class VeniceMetricsRepository extends MetricsRepository implements Closea
       String metricPrefix,
       Collection<MetricEntity> metricEntities,
       Map<String, String> configs) {
-    VeniceMetricsRepository metricsRepository = new VeniceMetricsRepository(
-        new VeniceMetricsConfig.Builder().setServiceName(serviceName)
-            .setMetricPrefix(metricPrefix)
-            .setMetricEntities(metricEntities)
-            .extractAndSetOtelConfigs(configs)
-            .build());
+    return getVeniceMetricsRepository(serviceName, metricPrefix, metricEntities, configs, false);
+  }
+
+  public static VeniceMetricsRepository getVeniceMetricsRepository(
+      String serviceName,
+      String metricPrefix,
+      Collection<MetricEntity> metricEntities,
+      Map<String, String> configs,
+      boolean useSingleThreadedMetricsRepository) {
+    VeniceMetricsConfig.Builder configBuilder = new VeniceMetricsConfig.Builder().setServiceName(serviceName)
+        .setMetricPrefix(metricPrefix)
+        .setMetricEntities(metricEntities)
+        .extractAndSetOtelConfigs(configs);
+    if (useSingleThreadedMetricsRepository) {
+      configBuilder.setTehutiMetricConfig(MetricsRepositoryUtils.createDefaultSingleThreadedMetricConfig());
+    }
+    VeniceMetricsRepository metricsRepository = new VeniceMetricsRepository(configBuilder.build());
     metricsRepository.addReporter(new JmxReporter(serviceName));
     return metricsRepository;
   }

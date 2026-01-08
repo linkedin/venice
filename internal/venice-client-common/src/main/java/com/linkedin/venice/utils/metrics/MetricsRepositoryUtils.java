@@ -67,6 +67,10 @@ public class MetricsRepositoryUtils {
             .build());
   }
 
+  public static MetricConfig createDefaultSingleThreadedMetricConfig() {
+    return getMetricConfig(TimeUnit.MINUTES.toMillis(1), 100);
+  }
+
   public static MetricConfig getMetricConfig(
       long maxMetricsMeasurementTimeoutMs,
       long initialMetricsMeasurementTimeoutMs) {
