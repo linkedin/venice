@@ -738,6 +738,32 @@ public class ConfigKeys {
   public static final String SERVER_USE_METRICS_BASED_POSITION_IN_LAG_COMPUTATION =
       "server.use.metrics.based.position.in.lag.computation";
 
+  /**
+   * Controls whether to use upstreamPubSubPosition (with offset fallback) or upstreamOffset
+   * when deserializing positions from leader metadata during ingestion.
+   *
+   * Default: true (use upstreamPubSubPosition with fallback to upstreamOffset).
+   * When true, the server will attempt to deserialize the position from upstreamPubSubPosition
+   * and fall back to upstreamOffset if deserialization fails or the position is invalid.
+   * When false, the server will directly use upstreamOffset without attempting position deserialization.
+   *
+   * This provides a safety mechanism to revert to offset-only behavior if position deserialization
+   * causes issues in production.
+   */
+  public static final String SERVER_USE_UPSTREAM_PUBSUB_POSITIONS = "server.use.upstream.pubsub.positions";
+
+  /**
+   * Feature flag to control whether OffsetRecord should use PubSubPosition deserialization with offset fallback
+   * when reading checkpointed positions from PartitionState.
+   * When true (default), the server will attempt to deserialize PubSubPosition from wire format bytes
+   * and fall back to offset-based position if deserialization fails or the buffer is empty.
+   * When false, the server will directly use numeric offsets without attempting position deserialization.
+   *
+   * This provides a safety mechanism to revert to offset-only behavior if position deserialization
+   * causes issues in production when reading checkpointed state.
+   */
+  public static final String SERVER_USE_CHECKPOINTED_PUBSUB_POSITIONS = "server.use.checkpointed.pubsub.positions";
+
   public static final String SERVER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS =
       "server.netty.graceful.shutdown.period.seconds";
   public static final String SERVER_NETTY_WORKER_THREADS = "server.netty.worker.threads";

@@ -166,6 +166,7 @@ public class TestUtils {
       new PubSubContext.Builder().setPubSubTopicRepository(new PubSubTopicRepository())
           .setPubSubPositionDeserializer(PubSubPositionDeserializer.DEFAULT_DESERIALIZER)
           .setPubSubPositionTypeRegistry(PubSubPositionTypeRegistry.RESERVED_POSITION_TYPE_REGISTRY)
+          .setUseCheckpointedPubSubPositionWithFallback(true)
           .build();
   private static final Logger LOGGER = LogManager.getLogger(TestUtils.class);
 

@@ -859,7 +859,7 @@ public class TestPushJobWithNativeReplication {
             TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
               StoreResponse store = childControllerClient.getStore(storeName);
               Optional<Version> version = store.getStore().getVersion(2);
-              assertNotNull(version);
+              assertTrue(version.isPresent(), "Version 2 should exist in child datacenter");
               assertEquals(version.get().getStatus(), VersionStatus.KILLED);
             });
           }

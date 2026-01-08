@@ -65,7 +65,6 @@ import com.linkedin.venice.offsets.InMemoryStorageMetadataService;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.pubsub.PubSubContext;
-import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
 import com.linkedin.venice.pubsub.PubSubTopicImpl;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
@@ -899,47 +898,6 @@ public class LeaderFollowerStoreIngestionTaskTest {
       verify(mockLocalTopicManager, times(1)).diffPosition(any(), eq(endPosition), eq(vtPosition));
       verify(mockLocalTopicManager, never()).countRecordsUntil(any(), any());
     }
-  }
-
-  @Test(timeOut = 60_000)
-  public void testDeserializePositionWithOffsetFallback() throws InterruptedException {
-    setUp();
-
-    // Use DEFAULT_DESERIALIZER instead of mocking
-    PubSubPositionDeserializer deserializer = PubSubPositionDeserializer.DEFAULT_DESERIALIZER;
-    PubSubTopicPartition mockTopicPartition = mock(PubSubTopicPartition.class);
-    when(mockTopicPartition.toString()).thenReturn("test-topic_v1-0");
-
-    // Use doCallRealMethod to test the actual implementation
-    doCallRealMethod().when(leaderFollowerStoreIngestionTask)
-        .deserializePositionWithOffsetFallback(any(), any(), any(), anyLong());
-    // Case 1: Null ByteBuffer - should return offset-based position
-    PubSubPosition actualPosition = leaderFollowerStoreIngestionTask
-        .deserializePositionWithOffsetFallback(deserializer, mockTopicPartition, null, 100L);
-    assertEquals(actualPosition.getNumericOffset(), 100L, "Null ByteBuffer should return offset-based position");
-
-    // Case 2: Empty ByteBuffer - should return offset-based position
-    actualPosition = leaderFollowerStoreIngestionTask
-        .deserializePositionWithOffsetFallback(deserializer, mockTopicPartition, ByteBuffer.allocate(0), 200L);
-    assertEquals(actualPosition.getNumericOffset(), 200L, "Empty ByteBuffer should return offset-based position");
-
-    // Case 3: Invalid ByteBuffer - should return offset-based position
-    ByteBuffer invalidBuffer = ByteBuffer.wrap(new byte[] { 0x01, 0x02, 0x03 }); // Random invalid bytes
-    actualPosition = leaderFollowerStoreIngestionTask
-        .deserializePositionWithOffsetFallback(deserializer, mockTopicPartition, invalidBuffer, 300L);
-    assertEquals(actualPosition.getNumericOffset(), 300L, "Invalid ByteBuffer should return offset-based position");
-
-    // Case 4: Valid ByteBuffer - should return deserialized position
-    ByteBuffer validBuffer = ApacheKafkaOffsetPosition.of(400L).toWireFormatBuffer();
-    actualPosition = leaderFollowerStoreIngestionTask
-        .deserializePositionWithOffsetFallback(deserializer, mockTopicPartition, validBuffer, 0L);
-    assertEquals(actualPosition.getNumericOffset(), 400L, "Valid ByteBuffer should return deserialized position");
-
-    // Case 5: ByteBuffer has EARLIEST symbolic position and offset is 0
-    ByteBuffer earliestBuffer = PubSubSymbolicPosition.EARLIEST.toWireFormatBuffer();
-    actualPosition = leaderFollowerStoreIngestionTask
-        .deserializePositionWithOffsetFallback(deserializer, mockTopicPartition, earliestBuffer, 0L);
-    assertEquals(actualPosition, PubSubSymbolicPosition.EARLIEST, "Should return EARLIEST symbolic position");
   }
 
   @Test(timeOut = 60_000)

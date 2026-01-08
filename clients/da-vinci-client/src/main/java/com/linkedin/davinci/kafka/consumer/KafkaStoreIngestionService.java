@@ -377,6 +377,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         .setStoreChangeNotifier(asyncStoreChangeNotifier)
         .setPubSubMessageDeserializer(pubSubDeserializer)
         .setPubSubClientsFactory(pubSubClientsFactory)
+        .setUseCheckpointedPubSubPositionWithFallback(serverConfig.isUseCheckpointedPubSubPositionWithFallbackEnabled())
         .build();
 
     VeniceNotifier notifier = new LogNotifier();

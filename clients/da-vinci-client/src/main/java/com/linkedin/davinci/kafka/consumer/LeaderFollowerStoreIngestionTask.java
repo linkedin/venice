@@ -1114,13 +1114,19 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       Map<String, PubSubPosition> upstreamStartPositionByPubSubUrl) {
     // Update in-memory consumedUpstreamRTOffsetMap in case no RT record is consumed after the subscription
     final PubSubTopic leaderTopic = pcs.getOffsetRecord().getLeaderTopic(pubSubTopicRepository);
+    final PubSubTopicPartition leaderTopicPartition = pcs.getSourceTopicPartition(leaderTopic);
     if (leaderTopic != null && leaderTopic.isRealTime()) {
       upstreamStartPositionByPubSubUrl.forEach((kafkaURL, upstreamStartPosition) -> {
         PubSubPosition latestConsumedRtPosition =
             getLatestConsumedUpstreamPositionForHybridOffsetLagMeasurement(pcs, kafkaURL);
         // update latest consumed RT position if incoming upstream start position is greater
         // than the latest consumed RT position
-        if (upstreamStartPosition.getNumericOffset() > latestConsumedRtPosition.getNumericOffset()) {
+        if ((PubSubSymbolicPosition.EARLIEST.equals(latestConsumedRtPosition)
+            && !PubSubSymbolicPosition.EARLIEST.equals(upstreamStartPosition))
+            || getTopicManager(kafkaURL).diffPosition(
+                Utils.createPubSubTopicPartitionFromLeaderTopicPartition(kafkaURL, leaderTopicPartition),
+                upstreamStartPosition,
+                latestConsumedRtPosition) > 0) {
           updateLatestConsumedRtPositions(pcs, kafkaURL, upstreamStartPosition);
         }
       });
@@ -1600,7 +1606,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       final PubSubPosition newUpstreamPosition,
       final PubSubPosition previousUpstreamPosition,
       LeaderFollowerStoreIngestionTask ingestionTask) {
-    if (newUpstreamPosition.getNumericOffset() >= previousUpstreamPosition.getNumericOffset()) {
+    if (PubSubSymbolicPosition.EARLIEST.equals(previousUpstreamPosition)
+        || topicManager.diffPosition(pubSubTopicPartition, newUpstreamPosition, previousUpstreamPosition) >= 0) {
       return; // Rewind did not happen
     }
     if (!ingestionTask.isHybridMode()) {
@@ -2013,7 +2020,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         }
 
         PubSubPosition lastProcessedVtPos = partitionConsumptionState.getLatestProcessedVtPosition();
-        if (lastProcessedVtPos.getNumericOffset() >= record.getPosition().getNumericOffset()) {
+        if (!PubSubSymbolicPosition.EARLIEST.equals(lastProcessedVtPos) && topicManagerRepository.getLocalTopicManager()
+            .diffPosition(record.getTopicPartition(), lastProcessedVtPos, record.getPosition()) >= 0) {
           String message = partitionConsumptionState.getLeaderFollowerState() + " replica: "
               + partitionConsumptionState.getReplicaId() + " had already processed the record";
           if (!REDUNDANT_LOGGING_FILTER.isRedundantException(message)) {
@@ -3781,7 +3789,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       // If the GlobalRtDivState is not present, it could be acceptable if this could be the first leader to be elected
       // Object not existing could be problematic if this isn't the first leader (detected via nonzero leaderPosition)
       PubSubPosition leaderPosition = pcs.getLeaderPosition(brokerUrl, false);
-      if (leaderPosition.getNumericOffset() > 0) {
+      if (!PubSubSymbolicPosition.EARLIEST.equals(leaderPosition)) {
         LOGGER.warn(
             "Unable to retrieve Global RT DIV from storage engine for topic-partition: {} brokerUrl: {} leaderPosition: {}",
             topicPartition,

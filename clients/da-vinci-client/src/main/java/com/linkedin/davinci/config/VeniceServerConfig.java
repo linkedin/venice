@@ -211,8 +211,10 @@ import static com.linkedin.venice.ConfigKeys.SERVER_THROTTLER_FACTORS_FOR_NON_CU
 import static com.linkedin.venice.ConfigKeys.SERVER_THROTTLER_FACTORS_FOR_NON_CURRENT_VERSION_NON_AA_WC_LEADER;
 import static com.linkedin.venice.ConfigKeys.SERVER_THROTTLER_FACTORS_FOR_SEP_RT_LEADER;
 import static com.linkedin.venice.ConfigKeys.SERVER_UNSUB_AFTER_BATCHPUSH;
+import static com.linkedin.venice.ConfigKeys.SERVER_USE_CHECKPOINTED_PUBSUB_POSITIONS;
 import static com.linkedin.venice.ConfigKeys.SERVER_USE_HEARTBEAT_LAG_FOR_READY_TO_SERVE_CHECK_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_USE_METRICS_BASED_POSITION_IN_LAG_COMPUTATION;
+import static com.linkedin.venice.ConfigKeys.SERVER_USE_UPSTREAM_PUBSUB_POSITIONS;
 import static com.linkedin.venice.ConfigKeys.SERVER_ZSTD_DICT_COMPRESSION_LEVEL;
 import static com.linkedin.venice.ConfigKeys.SEVER_CALCULATE_QUOTA_USAGE_BASED_ON_PARTITIONS_ASSIGNMENT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SORTED_INPUT_DRAINER_SIZE;
@@ -676,6 +678,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   private final boolean validateSpecificSchemaEnabled;
   private final boolean useMetricsBasedPositionInLagComputation;
+  private final boolean useUpstreamPubSubPositionWithFallback;
+  private final boolean useCheckpointedPubSubPositionWithFallback;
   private final LogContext logContext;
   private final IngestionTaskReusableObjects.Strategy ingestionTaskReusableObjectsStrategy;
   private final boolean keyUrnCompressionEnabled;
@@ -1176,6 +1180,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
         serverProperties.getInt(SERVER_LAG_BASED_REPLICA_AUTO_RESUBSCRIBE_MAX_REPLICA_COUNT, 3);
     this.useMetricsBasedPositionInLagComputation =
         serverProperties.getBoolean(SERVER_USE_METRICS_BASED_POSITION_IN_LAG_COMPUTATION, false);
+    this.useUpstreamPubSubPositionWithFallback =
+        serverProperties.getBoolean(SERVER_USE_UPSTREAM_PUBSUB_POSITIONS, true);
+    this.useCheckpointedPubSubPositionWithFallback =
+        serverProperties.getBoolean(SERVER_USE_CHECKPOINTED_PUBSUB_POSITIONS, true);
     this.serverIngestionInfoLogLineLimit = serverProperties.getInt(SERVER_INGESTION_INFO_LOG_LINE_LIMIT, 20);
     this.parallelResourceShutdownEnabled =
         serverProperties.getBoolean(SERVER_PARALLEL_RESOURCE_SHUTDOWN_ENABLED, false);
@@ -2125,6 +2133,14 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public boolean isUseMetricsBasedPositionInLagComputationEnabled() {
     return this.useMetricsBasedPositionInLagComputation;
+  }
+
+  public boolean isUseUpstreamPubSubPositionWithFallbackEnabled() {
+    return this.useUpstreamPubSubPositionWithFallback;
+  }
+
+  public boolean isUseCheckpointedPubSubPositionWithFallbackEnabled() {
+    return this.useCheckpointedPubSubPositionWithFallback;
   }
 
   public int getServerIngestionInfoLogLineLimit() {
