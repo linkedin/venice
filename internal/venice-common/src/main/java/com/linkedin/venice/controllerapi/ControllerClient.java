@@ -1,81 +1,6 @@
 package com.linkedin.venice.controllerapi;
 
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.ACCESS_PERMISSION;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.ADMIN_OPERATION_PROTOCOL_VERSION;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.AMPLIFICATION_FACTOR;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.AUTO_STORE_MIGRATION_ABORT_ON_FAILURE;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.AUTO_STORE_MIGRATION_CURRENT_STEP;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.AUTO_STORE_MIGRATION_PAUSE_AFTER_STEP;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.BATCH_JOB_HEARTBEAT_ENABLED;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER_DEST;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.COMPRESSION_DICTIONARY;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.DATA_RECOVERY_COPY_ALL_VERSION_CONFIGS;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.DEFER_VERSION_SWAP;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.DERIVED_SCHEMA;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.DERIVED_SCHEMA_ID;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.DEST_FABRIC;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENABLE_DISABLED_REPLICAS;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.EXECUTION_ID;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.EXPECTED_ROUTER_COUNT;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.FABRIC;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.FABRIC_A;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.FABRIC_B;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.HEARTBEAT_TIMESTAMP;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.INCLUDE_SYSTEM_STORES;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.INCREMENTAL_PUSH_VERSION;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.IS_ABORT_MIGRATION_CLEANUP;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.IS_SYSTEM_STORE;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.IS_WRITE_COMPUTE_ENABLED;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.KAFKA_TOPIC_LOG_COMPACTION_ENABLED;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.KAFKA_TOPIC_MIN_IN_SYNC_REPLICA;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.KAFKA_TOPIC_RETENTION_IN_MS;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.KEY_SCHEMA;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.LOOK_BACK_MS;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.OPERATION;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.OWNER;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.PARTITIONERS;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.PARTITION_COUNT;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.PARTITION_DETAIL_ENABLED;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.PERSONA_NAME;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.PERSONA_OWNERS;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.PERSONA_QUOTA;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.PERSONA_STORES;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.POSITION;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.PUSH_IN_SORTED_ORDER;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.PUSH_JOB_ID;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.PUSH_STRATEGY;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.PUSH_TYPE;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.READ_OPERATION;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.READ_WRITE_OPERATION;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.REGIONS_FILTER;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.REMOTE_KAFKA_BOOTSTRAP_SERVERS;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.REPLICATION_METADATA_VERSION_ID;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.REPUSH_SOURCE_VERSION;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.REWIND_TIME_IN_SECONDS_OVERRIDE;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.SCHEMA_COMPAT_TYPE;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.SCHEMA_ID;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.SEND_START_OF_PUSH;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.SEPARATE_REAL_TIME_TOPIC_ENABLED;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.SKIP_DIV;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.SOURCE_FABRIC;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.SOURCE_FABRIC_VERSION_INCLUDED;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.SOURCE_GRID_FABRIC;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.STATUS;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORAGE_NODE_ID;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_CONFIG_NAME_FILTER;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_CONFIG_VALUE_FILTER;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_SIZE;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.TARGETED_REGIONS;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.TARGET_REGION_PUSH_WITH_DEFERRED_SWAP;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.TOPIC;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.TO_BE_STOPPED_INSTANCES;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.UPSTREAM_POSITION;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.VALUE_SCHEMA;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.VERSION;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.VOLDEMORT_STORE_NAME;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.WRITE_OPERATION;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
 import static com.linkedin.venice.meta.Version.PushType;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -323,7 +248,8 @@ public class ControllerClient implements Closeable {
         false,
         null,
         -1,
-        false);
+        false,
+        -1);
   }
 
   public VersionCreationResponse requestTopicForWrites(
@@ -356,7 +282,8 @@ public class ControllerClient implements Closeable {
         deferVersionSwap,
         null,
         -1,
-        false);
+        false,
+        -1);
   }
 
   /**
@@ -382,6 +309,7 @@ public class ControllerClient implements Closeable {
    * @param deferVersionSwap            whether to defer version swap after the push is done
    * @param targetedRegions             the list of regions that is separated by comma for targeted region push.
    * @param repushSourceVersion
+   * @param repushTtlSeconds
    * @return VersionCreationResponse includes topic and partitioning
    */
   public VersionCreationResponse requestTopicForWrites(
@@ -400,7 +328,8 @@ public class ControllerClient implements Closeable {
       boolean deferVersionSwap,
       String targetedRegions,
       int repushSourceVersion,
-      boolean pushToSeparateRealtimeTopic) {
+      boolean pushToSeparateRealtimeTopic,
+      int repushTtlSeconds) {
     QueryParams params = newParams().add(NAME, storeName)
         // TODO: Store size is not used anymore. Remove it after the next round of controller deployment.
         .add(STORE_SIZE, Long.toString(storeSize))
@@ -416,7 +345,8 @@ public class ControllerClient implements Closeable {
         .add(REWIND_TIME_IN_SECONDS_OVERRIDE, rewindTimeInSecondsOverride)
         .add(DEFER_VERSION_SWAP, deferVersionSwap)
         .add(REPUSH_SOURCE_VERSION, repushSourceVersion)
-        .add(SEPARATE_REAL_TIME_TOPIC_ENABLED, pushToSeparateRealtimeTopic);
+        .add(SEPARATE_REAL_TIME_TOPIC_ENABLED, pushToSeparateRealtimeTopic)
+        .add(REPUSH_TTL_SECONDS, repushTtlSeconds);
     if (StringUtils.isNotEmpty(targetedRegions)) {
       params.add(TARGETED_REGIONS, targetedRegions);
     }

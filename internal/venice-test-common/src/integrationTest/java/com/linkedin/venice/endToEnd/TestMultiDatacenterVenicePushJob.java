@@ -1,16 +1,23 @@
 package com.linkedin.venice.endToEnd;
 
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJProps;
 import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V3_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
+import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_ENABLE;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_SECONDS;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_KAFKA;
 
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
@@ -22,6 +29,7 @@ import java.util.List;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.IntStream;
+import org.apache.avro.Schema;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -128,6 +136,51 @@ public class TestMultiDatacenterVenicePushJob {
       for (ControllerClient childControllerClient: childControllerClients) {
         Assert.assertNotNull(childControllerClient.getStore(storeName).getStore().getHybridStoreConfig());
         Assert.assertEquals(childControllerClient.getStore(storeName).getStore().getCurrentVersion(), 1);
+      }
+    });
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testRepushTtlSecondsWithRepush() throws Exception {
+    // Setup input files
+    File inputDir = getTempDataDirectory();
+    String storeName = Utils.getUniqueString("testRepushTtlSecondsWithRepush");
+    Schema recordSchema = writeSimpleAvroFileWithStringToStringSchema(inputDir);
+    String inputDirPath = "file://" + inputDir.getAbsolutePath();
+
+    // Create store
+    Properties props = defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, storeName);
+    createStoreForJob(CLUSTER_NAMES[0], recordSchema, props);
+
+    TestUtils.assertCommand(
+        parentControllerClient.updateStore(
+            storeName,
+            new UpdateStoreQueryParams().setHybridOffsetLagThreshold(1)
+                .setHybridRewindSeconds(0)
+                .setActiveActiveReplicationEnabled(true)
+                .setNativeReplicationEnabled(true)
+                .setChunkingEnabled(true)
+                .setRmdChunkingEnabled(true)));
+
+    parentControllerClient.emptyPush(storeName, "test", 14033924);
+    TestUtils.waitForNonDeterministicPushCompletion(
+        Version.composeKafkaTopic(storeName, 1),
+        parentControllerClient,
+        30,
+        TimeUnit.SECONDS);
+
+    // Enable ttl re-push
+    props.setProperty(REPUSH_TTL_ENABLE, "true");
+    props.setProperty(SOURCE_KAFKA, "true");
+    props.setProperty(REPUSH_TTL_SECONDS, "1");
+    IntegrationTestPushUtils.runVPJ(props);
+
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+      for (ControllerClient childControllerClient: childControllerClients) {
+        StoreResponse response = childControllerClient.getStore(storeName);
+        Assert.assertFalse(response.isError());
+        Assert.assertEquals(response.getStore().getVersions().size(), 2);
+        Assert.assertEquals(response.getStore().getVersion(2).get().getRepushTtlSeconds(), 1);
       }
     });
   }

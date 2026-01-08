@@ -14,6 +14,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.PUSH_TYPE
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REMOTE_KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REPLICATION_METADATA_VERSION_ID;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REPUSH_SOURCE_VERSION;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.REPUSH_TTL_SECONDS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REWIND_TIME_IN_SECONDS_OVERRIDE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.SEND_START_OF_PUSH;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.SEPARATE_REAL_TIME_TOPIC_ENABLED;
@@ -120,6 +121,8 @@ public class CreateVersion extends AbstractRoute {
 
     // Retrieve certificate from request if ACL is enabled
     request.setCertificateInRequest(isAclEnabled ? getCertificate(httpRequest) : null);
+
+    request.setRepushTtlSeconds(Integer.parseInt(httpRequest.queryParamOrDefault(REPUSH_TTL_SECONDS, "-1")));
   }
 
   /**
@@ -283,6 +286,7 @@ public class CreateVersion extends AbstractRoute {
           "Please push data to Venice Parent Colo instead");
     }
     int computedPartitionCount = admin.calculateNumberOfPartitions(clusterName, storeName);
+    LOGGER.info("handleNonStreamPushType {}", request.getRepushTtlSeconds());
     final Version version = admin.incrementVersionIdempotent(
         clusterName,
         storeName,
@@ -299,7 +303,8 @@ public class CreateVersion extends AbstractRoute {
         Optional.ofNullable(request.getEmergencySourceRegion()),
         request.isDeferVersionSwap(),
         request.getTargetedRegions(),
-        request.getRepushSourceVersion());
+        request.getRepushSourceVersion(),
+        request.getRepushTtlSeconds());
 
     // Set the partition count
     response.setPartitions(version.getPartitionCount());
@@ -468,6 +473,7 @@ public class CreateVersion extends AbstractRoute {
 
         // populate the request object with optional parameters
         extractOptionalParamsFromRequestTopicRequest(request, requestTopicForPushRequest, isAclEnabled());
+        LOGGER.info("requestTopicForPushing ttl seconds: {}", requestTopicForPushRequest.getRepushTtlSeconds());
         // Invoke the handler to get the topic for pushing data
         handleRequestTopicForPushing(admin, requestTopicForPushRequest, responseObject);
       } catch (Throwable e) {
@@ -654,6 +660,7 @@ public class CreateVersion extends AbstractRoute {
             rewindTimeInSecondsOverride,
             replicationMetadataVersionId,
             false,
+            -1,
             -1);
         responseObject.setCluster(clusterName);
         responseObject.setName(storeName);
@@ -790,7 +797,8 @@ public class CreateVersion extends AbstractRoute {
               Optional.empty(),
               true,
               targetRegion,
-              -1);
+              -1,
+              -1); // TODO: need to pass in repush ttl seconds
         } else {
           version =
               admin.incrementVersionIdempotent(clusterName, storeName, pushJobId, partitionNum, replicationFactor);
