@@ -2,6 +2,7 @@ package com.linkedin.venice.views;
 
 import static com.linkedin.venice.views.ViewUtils.PARTITION_COUNT;
 
+import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.MaterializedViewParameters;
 import com.linkedin.venice.meta.PartitionerConfig;
@@ -68,6 +69,12 @@ public class MaterializedView extends VeniceView {
 
   @Override
   public String composeTopicName(int version) {
+    return Version.composeKafkaTopic(storeName, version) + VIEW_NAME_SEPARATOR + viewName
+        + MATERIALIZED_VIEW_TOPIC_SUFFIX;
+  }
+
+  @VisibleForTesting
+  public static String getMaterializedViewTopicName(String storeName, int version, String viewName) {
     return Version.composeKafkaTopic(storeName, version) + VIEW_NAME_SEPARATOR + viewName
         + MATERIALIZED_VIEW_TOPIC_SUFFIX;
   }
