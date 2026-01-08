@@ -17,6 +17,7 @@ import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hooks.StoreVersionLifecycleEventOutcome;
+import com.linkedin.venice.meta.ConcurrentPushDetectionStrategy;
 import com.linkedin.venice.meta.LifecycleHooksRecord;
 import com.linkedin.venice.meta.LifecycleHooksRecordImpl;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
@@ -82,6 +83,8 @@ public class TestDeferredVersionSwapService {
     doReturn("").when(clusterConfig).getDeferredVersionSwapRegionRollforwardOrder();
     doReturn(clusterConfig).when(veniceControllerMultiClusterConfig).getControllerConfig(clusterName);
     doReturn(1).when(clusterConfig).getDeferredVersionSwapThreadPoolSize();
+    doReturn(ConcurrentPushDetectionStrategy.PARENT_VERSION_STATUS_ONLY).when(clusterConfig)
+        .getConcurrentPushDetectionStrategy();
 
     childDatacenterToUrl.put(region1, "test");
     childDatacenterToUrl.put(region2, "test");
@@ -264,6 +267,7 @@ public class TestDeferredVersionSwapService {
     TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
       verify(admin, atLeast(1)).rollForwardToFutureVersion(clusterName, storeName, region2 + "," + region3);
       verify(store, atLeast(1)).updateVersionStatus(versionTwo, VersionStatus.ONLINE);
+      verify(admin, never()).truncateKafkaTopic(anyString());
     });
   }
 
@@ -527,6 +531,7 @@ public class TestDeferredVersionSwapService {
     TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
       verify(admin, atLeast(1)).rollForwardToFutureVersion(clusterName, storeName, region2 + "," + region3);
       verify(store, atLeast(1)).updateVersionStatus(versionTwo, VersionStatus.PARTIALLY_ONLINE);
+      verify(admin, never()).truncateKafkaTopic(anyString());
     });
   }
 
@@ -645,6 +650,7 @@ public class TestDeferredVersionSwapService {
 
     TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
       verify(store, atLeast(1)).updateVersionStatus(2, VersionStatus.ONLINE);
+      verify(admin, never()).truncateKafkaTopic(anyString());
     });
   }
 
