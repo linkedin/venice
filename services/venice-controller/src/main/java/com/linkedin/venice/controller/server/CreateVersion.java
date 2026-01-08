@@ -798,7 +798,7 @@ public class CreateVersion extends AbstractRoute {
               true,
               targetRegion,
               -1,
-              -1); // TODO: need to pass in repush ttl seconds
+              -1);
         } else {
           version =
               admin.incrementVersionIdempotent(clusterName, storeName, pushJobId, partitionNum, replicationFactor);
