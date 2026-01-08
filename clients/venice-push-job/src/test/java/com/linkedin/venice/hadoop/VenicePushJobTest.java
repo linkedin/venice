@@ -1497,6 +1497,51 @@ public class VenicePushJobTest {
     }
   }
 
+  /**
+   * Test that START_VERSION_SWAP checkpoint is invoked when target region push with deferred swap is enabled.
+   */
+  @Test
+  public void testVersionSwapCheckpoint() throws Exception {
+    Properties props = getVpjRequiredProperties();
+    props.put(KEY_FIELD_PROP, "id");
+    props.put(VALUE_FIELD_PROP, "name");
+    props.put(TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP, true);
+    props.put(TARGETED_REGION_PUSH_LIST, "dc-0");
+
+    // Create a version with ONLINE status to simulate successful version swap
+    Version version = new VersionImpl(TEST_STORE, 1);
+    version.setNumber(1);
+    version.setStatus(VersionStatus.ONLINE);
+
+    ControllerClient client = getClient(storeInfo -> {
+      storeInfo.setColoToCurrentVersions(new HashMap<String, Integer>() {
+        {
+          put("dc-0", 1);
+          put("dc-1", 1);
+        }
+      });
+      storeInfo.setVersions(Collections.singletonList(version));
+      storeInfo.setLargestUsedVersionNumber(1);
+      storeInfo.setTargetRegionSwapWaitTime(60); // 60 minutes wait time
+    });
+
+    try (VenicePushJob pushJob = getSpyVenicePushJob(props, client)) {
+      skipVPJValidation(pushJob);
+
+      // Mock job status query to return COMPLETED
+      JobStatusQueryResponse response = mockJobStatusQuery();
+      doReturn(response).when(client).queryOverallJobStatus(anyString(), any(), anyString(), anyBoolean());
+
+      pushJob.run();
+
+      // Verify that START_VERSION_SWAP checkpoint is called
+      verify(pushJob).updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.START_VERSION_SWAP);
+
+      // Verify that COMPLETE_VERSION_SWAP checkpoint is called
+      verify(pushJob).updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.COMPLETE_VERSION_SWAP);
+    }
+  }
+
   @Test
   public void testValidateRegularPushWithTTLRepush() {
     ControllerClient mockControllerClient = mock(ControllerClient.class);
