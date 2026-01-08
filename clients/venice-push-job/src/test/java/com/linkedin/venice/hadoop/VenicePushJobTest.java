@@ -95,6 +95,7 @@ import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.spark.datawriter.jobs.DataWriterSparkJob;
 import com.linkedin.venice.status.PushJobDetailsStatus;
 import com.linkedin.venice.status.protocol.PushJobDetails;
+import com.linkedin.venice.status.protocol.PushJobDetailsStatusTuple;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Time;
@@ -1539,6 +1540,19 @@ public class VenicePushJobTest {
 
       // Verify that COMPLETE_VERSION_SWAP checkpoint is called
       verify(pushJob).updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.COMPLETE_VERSION_SWAP);
+
+      // Get the actual PushJobDetails object
+      PushJobDetails pushJobDetails = pushJob.getPushJobDetails();
+
+      // Verify that COMPLETED status was added to overallStatus
+      boolean foundCompletedStatus = false;
+      for (PushJobDetailsStatusTuple statusTuple: pushJobDetails.overallStatus) {
+        if (statusTuple.status == PushJobDetailsStatus.COMPLETED.getValue()) {
+          foundCompletedStatus = true;
+          break;
+        }
+      }
+      assertTrue(foundCompletedStatus);
     }
   }
 
