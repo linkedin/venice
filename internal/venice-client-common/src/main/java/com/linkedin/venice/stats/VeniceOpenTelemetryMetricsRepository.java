@@ -81,86 +81,90 @@ public class VeniceOpenTelemetryMetricsRepository {
     emitOpenTelemetryMetrics = metricsConfig.emitOtelMetrics();
     emitTehutiMetrics = metricsConfig.emitTehutiMetrics();
     metricFormat = metricsConfig.getMetricNamingFormat();
+    this.metricPrefix = metricsConfig.getMetricPrefix();
+    validateMetricName(getMetricPrefix());
     if (!emitOpenTelemetryMetrics) {
       LOGGER.info("OpenTelemetry metrics are disabled");
       openTelemetry = null;
       return;
     }
-    this.metricPrefix = metricsConfig.getMetricPrefix();
-    validateMetricName(getMetricPrefix());
-    if (metricsConfig.useOpenTelemetryInitializedByApplication()) {
-      LOGGER.info("Using globally initialized OpenTelemetry for {}", metricsConfig.getServiceName());
-      openTelemetry = GlobalOpenTelemetry.get();
-      if (openTelemetry == null || openTelemetry.getMeterProvider() == null
-          || openTelemetry.getMeterProvider().equals(MeterProvider.noop())) {
-        // Fail fast if no global OpenTelemetry instance is initialized to avoid silent metric loss.
-        // When disabled, each Venice component will initialize its own OpenTelemetry instance,
-        // which can lead to multiple instances in the same application, especially when used as
-        // a library (common for Venice clients) when multiple such libraries initialized.
-        throw new VeniceException(
-            "OpenTelemetry is not initialized globally by the application: disable the configuration or "
-                + "initialize OpenTelemetry in the application before initializing venice");
-      }
-    } else {
-      LOGGER.info(
-          "OpenTelemetry initialization for {} started with config: {}",
-          metricsConfig.getServiceName(),
-          metricsConfig.toString());
-      try {
-        SdkMeterProviderBuilder builder = SdkMeterProvider.builder();
-
-        if (metricsConfig.exportOtelMetricsToEndpoint()) {
-          MetricExporter httpExporter = getOtlpHttpMetricExporter(metricsConfig);
-          builder.registerMetricReader(
-              PeriodicMetricReader.builder(httpExporter)
-                  .setInterval(metricsConfig.getExportOtelMetricsIntervalInSeconds(), TimeUnit.SECONDS)
-                  .build());
-        }
-
-        if (metricsConfig.exportOtelMetricsToLog()) {
-          // internal to test: Disabled by default
-          builder.registerMetricReader(
-              PeriodicMetricReader.builder(new LogBasedMetricExporter(metricsConfig))
-                  .setInterval(metricsConfig.getExportOtelMetricsIntervalInSeconds(), TimeUnit.SECONDS)
-                  .build());
-        }
-
-        if (metricsConfig.getOtelAdditionalMetricsReader() != null) {
-          // additional metrics reader apart from the above. For instance,
-          // an in-memory metric reader can be passed in for testing purposes.
-          builder.registerMetricReader(metricsConfig.getOtelAdditionalMetricsReader());
-        }
-
-        if (metricsConfig.useOtelExponentialHistogram()) {
-          setExponentialHistogramAggregation(builder, metricsConfig);
-        }
-
-        // Set resource to empty to avoid adding any default resource attributes. The receiver
-        // pipeline can choose to add the respective resource attributes if needed.
-        builder.setResource(Resource.empty());
-
-        sdkMeterProvider = builder.build();
-
-        // Register MeterProvider with the OpenTelemetry instance
-        openTelemetry = OpenTelemetrySdk.builder().setMeterProvider(sdkMeterProvider).build();
-        LOGGER.info(
-            "OpenTelemetry initialization for {} completed with config: {}",
-            metricsConfig.getServiceName(),
-            metricsConfig);
-      } catch (Exception e) {
-        String err = "OpenTelemetry initialization for " + metricsConfig.getServiceName() + " failed with config: "
-            + metricsConfig;
-        LOGGER.error(err, e);
-        throw new VeniceException(err, e);
-      }
-    }
-
+    this.openTelemetry = initializeOpenTelemetry(metricsConfig);
     this.meter = openTelemetry.getMeter(transformMetricName(getMetricPrefix(), metricFormat));
     this.recordFailureMetric = MetricEntityStateBase.create(
         CommonMetricsEntity.METRIC_RECORD_FAILURE.getMetricEntity(),
         this,
         Collections.EMPTY_MAP,
         Attributes.empty());
+  }
+
+  private OpenTelemetry initializeOpenTelemetry(VeniceMetricsConfig metricsConfig) {
+    OpenTelemetry otel;
+    if (metricsConfig.useOpenTelemetryInitializedByApplication()) {
+      LOGGER.info("Using globally initialized OpenTelemetry for {}", metricsConfig.getServiceName());
+      otel = GlobalOpenTelemetry.get();
+      if (otel == null || otel.getMeterProvider() == null || otel.getMeterProvider().equals(MeterProvider.noop())) {
+        LOGGER.warn(
+            "Global OpenTelemetry is not initialized properly. Falling back to local initialization for {}",
+            metricsConfig.getServiceName());
+      } else {
+        LOGGER.info("Successfully obtained globally initialized OpenTelemetry for {}", metricsConfig.getServiceName());
+        return otel;
+      }
+    }
+
+    LOGGER.info(
+        "OpenTelemetry initialization for {} started with config: {}",
+        metricsConfig.getServiceName(),
+        metricsConfig.toString());
+    try {
+      SdkMeterProviderBuilder builder = SdkMeterProvider.builder();
+
+      if (metricsConfig.exportOtelMetricsToEndpoint()) {
+        MetricExporter httpExporter = getOtlpHttpMetricExporter(metricsConfig);
+        builder.registerMetricReader(
+            PeriodicMetricReader.builder(httpExporter)
+                .setInterval(metricsConfig.getExportOtelMetricsIntervalInSeconds(), TimeUnit.SECONDS)
+                .build());
+      }
+
+      if (metricsConfig.exportOtelMetricsToLog()) {
+        // internal to test: Disabled by default
+        builder.registerMetricReader(
+            PeriodicMetricReader.builder(new LogBasedMetricExporter(metricsConfig))
+                .setInterval(metricsConfig.getExportOtelMetricsIntervalInSeconds(), TimeUnit.SECONDS)
+                .build());
+      }
+
+      if (metricsConfig.getOtelAdditionalMetricsReader() != null) {
+        // additional metrics reader apart from the above. For instance,
+        // an in-memory metric reader can be passed in for testing purposes.
+        builder.registerMetricReader(metricsConfig.getOtelAdditionalMetricsReader());
+      }
+
+      if (metricsConfig.useOtelExponentialHistogram()) {
+        setExponentialHistogramAggregation(builder, metricsConfig);
+      }
+
+      // Set resource to empty to avoid adding any default resource attributes. The receiver
+      // pipeline can choose to add the respective resource attributes if needed.
+      builder.setResource(Resource.empty());
+
+      sdkMeterProvider = builder.build();
+
+      // Register MeterProvider with the OpenTelemetry instance
+      otel = OpenTelemetrySdk.builder().setMeterProvider(sdkMeterProvider).build();
+      LOGGER.info(
+          "OpenTelemetry initialization for {} completed with config: {}",
+          metricsConfig.getServiceName(),
+          metricsConfig);
+    } catch (Exception e) {
+      String err = "OpenTelemetry initialization for " + metricsConfig.getServiceName() + " failed with config: "
+          + metricsConfig;
+      LOGGER.error(err, e);
+      throw new VeniceException(err, e);
+    }
+
+    return otel;
   }
 
   /**

@@ -411,16 +411,17 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
         otelMetricsRepositoryCase2.getOpenTelemetry().getMeterProvider(),
         otelMetricsRepositoryCase1.getOpenTelemetry().getMeterProvider());
 
-    // case 3: Global is not set and useOpenTelemetryInitializedByApplication is true: exception should be thrown
+    // case 3: Global is not set and useOpenTelemetryInitializedByApplication is true: fall back to local
+    // initialization
     GlobalOpenTelemetry.resetForTest();
-    try {
-      new VeniceOpenTelemetryMetricsRepository(mockMetricsConfig);
-      fail();
-    } catch (VeniceException e) {
-      assertTrue(
-          e.getMessage().contains("OpenTelemetry is not initialized globally by the application"),
-          e.getMessage());
-    }
+    VeniceOpenTelemetryMetricsRepository otelMetricsRepositoryCase3 =
+        new VeniceOpenTelemetryMetricsRepository(mockMetricsConfig);
+    assertNotNull(
+        otelMetricsRepositoryCase3.getSdkMeterProvider(),
+        "SdkMeterProvider should not be null when falling back to local initialization");
+    assertNotNull(
+        otelMetricsRepositoryCase3.getOpenTelemetry(),
+        "OpenTelemetry should not be null when falling back to local initialization");
 
     // reset
     when(mockMetricsConfig.useOpenTelemetryInitializedByApplication()).thenReturn(false);
