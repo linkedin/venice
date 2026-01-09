@@ -308,7 +308,7 @@ public class VeniceOpenTelemetryPerfTest {
    * Records OpenTelemetry and Tehuti metrics in separate loop iterations and measures their times separately
    * for comparison.
    */
-  @Test(/*groups = "flaky", */invocationCount = 10)
+  @Test(invocationCount = 10)
   public void testTehutiVsOtelMetricRecordingPerf() {
     int numLoops = 10000000; // 10M
     int numLoopsForWarmUp = 1000; // 1k
@@ -341,7 +341,7 @@ public class VeniceOpenTelemetryPerfTest {
    * Records both OpenTelemetry and Tehuti metrics in the same loop iteration and measures their times separately
    * and aggregates the total times for comparison to reduce the JVM/JIT optimizations impact on the measurements.
    */
-  @Test(/*groups = "flaky", */ invocationCount = 10)
+  @Test(invocationCount = 10)
   public void testTehutiVsOtelMetricRecordingPerfByRecordingBothMetricsInSameLoop() {
     int numLoops = 10000000; // 10M iterations
     int numLoopsForWarmUp = 1000; // 1k
