@@ -1,9 +1,8 @@
 package com.linkedin.venice.offsets;
 
-import static com.linkedin.venice.guid.GuidUtils.guidToUtf8;
-
 import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.state.IncrementalPushReplicaStatus;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;

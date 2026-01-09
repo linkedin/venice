@@ -2922,7 +2922,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     String msg = "Offset synced for replica: " + pcs.getReplicaId() + " - localVtPosition: {} progress: {}";
     if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
-      final PubSubPosition position = (isGlobalRtDivEnabled()) ? offsetRecord.getLatestConsumedVtPosition() : offsetRecord.getCheckpointedLocalVtPosition();
+      final PubSubPosition position = (isGlobalRtDivEnabled())
+          ? offsetRecord.getLatestConsumedVtPosition()
+          : offsetRecord.getCheckpointedLocalVtPosition();
       int percentage = -1;
       if (getServerConfig().isIngestionProgressLoggingEnabled()) {
         final PubSubTopicPartition topicPartition = pcs.getReplicaTopicPartition();
