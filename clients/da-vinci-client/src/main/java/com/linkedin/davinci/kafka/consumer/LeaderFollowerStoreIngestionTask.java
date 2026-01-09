@@ -328,7 +328,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       hasChangeCaptureView = false;
       hasComplexVenicePartitionerMaterializedView = false;
     }
-    LOGGER.info("View writers for store version: {}: {}", getKafkaVersionTopic(), viewWriters.keySet());
     this.storeDeserializerCache = new AvroStoreDeserializerCache(
         builder.getSchemaRepo(),
         getStoreName(),
@@ -3313,8 +3312,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         beforeProcessingRecordTimestampNs);
     // Write to views
     if (hasViewWriters()) {
-      LOGGER.info("hasViewWriters() is true");
-
       Put newPut = writeComputeResultWrapper.getNewPut();
       Map<String, Set<Integer>> viewPartitionMap = null;
       if (!partitionConsumptionState.isEndOfPushReceived()) {
@@ -4200,10 +4197,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       BiFunction<VeniceViewWriter, Set<Integer>, CompletableFuture<Void>> viewWriterRecordProcessor,
       Map<String, Set<Integer>> viewPartitionMap,
       Runnable versionTopicWrite) {
-    LOGGER.info(
-        "queueUpVersionTopicWritesWithViewWriters called for partition: {}",
-        partitionConsumptionState.getPartition());
-
     long preprocessingTime = System.currentTimeMillis();
     CompletableFuture<Void> currentVersionTopicWrite = new CompletableFuture<>();
     CompletableFuture[] viewWriterFutures = new CompletableFuture[this.viewWriters.size() + 1];
