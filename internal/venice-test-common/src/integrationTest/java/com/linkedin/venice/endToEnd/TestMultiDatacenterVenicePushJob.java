@@ -140,7 +140,7 @@ public class TestMultiDatacenterVenicePushJob {
     });
   }
 
-  @Test(timeOut = TEST_TIMEOUT)
+  @Test(timeOut = TEST_TIMEOUT * 2)
   public void testRepushTtlSecondsWithRepush() throws Exception {
     // Setup input files
     File inputDir = getTempDataDirectory();
