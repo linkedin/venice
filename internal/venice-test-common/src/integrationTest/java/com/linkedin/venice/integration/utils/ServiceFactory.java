@@ -1,6 +1,5 @@
 package com.linkedin.venice.integration.utils;
 
-import static com.linkedin.venice.ConfigKeys.CLIENT_USE_SYSTEM_STORE_REPOSITORY;
 import static com.linkedin.venice.ConfigKeys.D2_ZK_HOSTS_ADDRESS;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_MAX_ATTEMPT;
@@ -458,20 +457,6 @@ public class ServiceFactory {
         new AvroGenericDaVinciClient<>(daVinciConfig, clientConfig, daVinciPropertyBuilder.build(), Optional.empty());
     client.start();
     return client;
-  }
-
-  public static <K, V> DaVinciClient<K, V> getGenericAvroDaVinciClientWithoutMetaSystemStoreRepo(
-      String storeName,
-      String zkAddress,
-      String dataBasePath) {
-    Properties extraBackendConfig = new Properties();
-    extraBackendConfig.setProperty(DATA_BASE_PATH, dataBasePath);
-    extraBackendConfig.setProperty(CLIENT_USE_SYSTEM_STORE_REPOSITORY, String.valueOf(false));
-    return getGenericAvroDaVinciClient(
-        storeName,
-        zkAddress,
-        new DaVinciConfig(),
-        new VeniceProperties(extraBackendConfig));
   }
 
   public static <K, V> DaVinciClient<K, V> getGenericAvroDaVinciClientWithRetries(

@@ -653,8 +653,8 @@ public class TestParentControllerWithMultiDataCenter {
       StoreInfo storeInfo = parentControllerClient.getStore(storeName).getStore();
       String storeRT = Utils.getRealTimeTopicName(storeInfo);
       String pushStatusSystemStoreRT =
-          Utils.composeRealTimeTopic(VeniceSystemStoreUtils.getDaVinciPushStatusStoreName(storeName));
-      String metaSystemStoreRT = Utils.composeRealTimeTopic(VeniceSystemStoreUtils.getMetaStoreName(storeName));
+          Utils.composeRealTimeTopic(VeniceSystemStoreUtils.getDaVinciPushStatusStoreName(storeName), 1);
+      String metaSystemStoreRT = Utils.composeRealTimeTopic(VeniceSystemStoreUtils.getMetaStoreName(storeName), 1);
 
       // Ensure all the RT topics are created in all child datacenters
       TestUtils.waitForNonDeterministicAssertion(300, TimeUnit.SECONDS, false, true, () -> {

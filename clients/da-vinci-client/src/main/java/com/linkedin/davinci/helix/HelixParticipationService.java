@@ -361,7 +361,8 @@ public class HelixParticipationService extends AbstractVeniceService
         ingestionService.getVeniceWriterFactory(),
         instance.getNodeId(),
         valueSchemaEntry,
-        updateSchemaEntry);
+        updateSchemaEntry,
+        storeName -> Utils.getRealTimeTopicName(helixReadOnlyStoreRepository.getStore(storeName)));
 
     // Record replica status in Zookeeper.
     // Need to be started before connecting to ZK, otherwise some notification will not be sent by this notifier.

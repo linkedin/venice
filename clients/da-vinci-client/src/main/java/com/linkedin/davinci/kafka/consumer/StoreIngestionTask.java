@@ -4379,11 +4379,15 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         availableSchemaIds.set(schemaId, new Object());
         // TODO: Query metastore for existence of value schema id before doing an update. During bounce of large
         // cluster these metastore writes could be spiky
-        if (metaStoreWriter != null && !VeniceSystemStoreType.META_STORE.isSystemStore(storeName)) {
+        if (metaStoreWriter != null && !VeniceSystemStoreType.META_STORE.isSystemStore(storeName)
+            && !VeniceSystemStoreUtils.isSystemStore(storeName)) {
           String metaStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName);
-          PubSubTopic metaStoreRT = pubSubTopicRepository.getTopic(Utils.composeRealTimeTopic(metaStoreName));
-          if (getTopicManager(localKafkaServer).containsTopicWithRetries(metaStoreRT, 5)) {
-            metaStoreWriter.writeInUseValueSchema(storeName, versionNumber, schemaId);
+          String metaStoreRealTimeTopicName = metaStoreWriter.realTimeTopicNameResolver.apply(metaStoreName);
+          if (metaStoreRealTimeTopicName != null) {
+            PubSubTopic metaStoreRT = pubSubTopicRepository.getTopic(metaStoreRealTimeTopicName);
+            if (getTopicManager(localKafkaServer).containsTopicWithRetries(metaStoreRT, 5)) {
+              metaStoreWriter.writeInUseValueSchema(storeName, versionNumber, schemaId);
+            }
           }
         }
         return;

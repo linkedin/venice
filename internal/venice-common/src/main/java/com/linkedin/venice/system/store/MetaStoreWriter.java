@@ -20,7 +20,6 @@ import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
 import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
 import com.linkedin.venice.systemstore.schemas.StoreValueSchema;
 import com.linkedin.venice.systemstore.schemas.StoreValueSchemas;
-import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceResourceCloseResult;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.writer.VeniceWriter;
@@ -43,6 +42,7 @@ import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
@@ -77,6 +77,11 @@ public class MetaStoreWriter implements Closeable {
   private final PubSubTopicRepository pubSubTopicRepository;
   private final long closeTimeoutMs;
   private final int numOfConcurrentVwCloseOps;
+  /*
+   * Function to resolve store names to Store objects. Used to fetch system store metadata
+   * for determining the correct RT topic names.
+   */
+  public Function<String, String> realTimeTopicNameResolver;
 
   public MetaStoreWriter(
       TopicManager topicManager,
@@ -84,7 +89,8 @@ public class MetaStoreWriter implements Closeable {
       HelixReadOnlyZKSharedSchemaRepository schemaRepo,
       PubSubTopicRepository pubSubTopicRepository,
       long closeTimeoutMs,
-      int numOfConcurrentVwCloseOps) {
+      int numOfConcurrentVwCloseOps,
+      Function<String, String> realTimeTopicNameResolver) {
     /**
      * TODO: get the write compute schema from the constructor so that this class does not use {@link WriteComputeSchemaConverter}
      */
@@ -97,7 +103,8 @@ public class MetaStoreWriter implements Closeable {
                 AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.getCurrentProtocolVersionSchema()),
         pubSubTopicRepository,
         closeTimeoutMs,
-        numOfConcurrentVwCloseOps);
+        numOfConcurrentVwCloseOps,
+        realTimeTopicNameResolver);
   }
 
   MetaStoreWriter(
@@ -107,7 +114,8 @@ public class MetaStoreWriter implements Closeable {
       Schema derivedComputeSchema,
       PubSubTopicRepository pubSubTopicRepository,
       long closeTimeoutMs,
-      int numOfConcurrentVwCloseOps) {
+      int numOfConcurrentVwCloseOps,
+      Function<String, String> realTimeTopicNameResolver) {
     this.topicManager = topicManager;
     this.writerFactory = writerFactory;
     this.derivedComputeSchema = derivedComputeSchema;
@@ -115,6 +123,7 @@ public class MetaStoreWriter implements Closeable {
     this.pubSubTopicRepository = pubSubTopicRepository;
     this.closeTimeoutMs = closeTimeoutMs;
     this.numOfConcurrentVwCloseOps = numOfConcurrentVwCloseOps;
+    this.realTimeTopicNameResolver = realTimeTopicNameResolver;
   }
 
   /**
@@ -360,7 +369,8 @@ public class MetaStoreWriter implements Closeable {
 
   VeniceWriter getOrCreateMetaStoreWriter(String metaStoreName) {
     return metaStoreWriterMap.computeIfAbsent(metaStoreName, k -> {
-      PubSubTopic rtTopic = pubSubTopicRepository.getTopic(Utils.composeRealTimeTopic(metaStoreName));
+      String metaStoreRealTimeTopicName = realTimeTopicNameResolver.apply(metaStoreName);
+      PubSubTopic rtTopic = pubSubTopicRepository.getTopic(metaStoreRealTimeTopicName);
       if (!topicManager.containsTopicAndAllPartitionsAreOnline(rtTopic)) {
         throw new VeniceException("Realtime topic: " + rtTopic + " doesn't exist or some partitions are not online");
       }
@@ -405,7 +415,7 @@ public class MetaStoreWriter implements Closeable {
      * to write a Control Message to the RT topic, and it could hang if the topic doesn't exist.
      * This check is a best-effort since the race condition is still there between topic check and closing VeniceWriter.
      */
-    PubSubTopic rtTopic = pubSubTopicRepository.getTopic(Utils.composeRealTimeTopic(metaStoreName));
+    PubSubTopic rtTopic = pubSubTopicRepository.getTopic(realTimeTopicNameResolver.apply(metaStoreName));
     if (!topicManager.containsTopicAndAllPartitionsAreOnline(rtTopic)) {
       LOGGER.info(
           "RT topic: {} for meta system store: {} doesn't exist, will only close the internal producer without sending END_OF_SEGMENT control messages",

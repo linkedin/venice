@@ -45,6 +45,7 @@ import com.linkedin.venice.client.schema.StoreSchemaFetcher;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.common.VeniceSystemStoreType;
+import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.exceptions.DiskLimitExhaustedException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
@@ -57,6 +58,7 @@ import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.meta.SubscriptionBasedReadOnlyStoreRepository;
+import com.linkedin.venice.meta.SystemStoreAttributes;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
@@ -309,7 +311,8 @@ public class DaVinciBackend implements Closeable {
             ingestionService.getVeniceWriterFactory(),
             instanceName,
             valueSchemaEntry,
-            updateSchemaEntry);
+            updateSchemaEntry,
+            (this::getRealTimeTopicName));
       }
 
       ingestionService.start();
@@ -559,6 +562,28 @@ public class DaVinciBackend implements Closeable {
 
   public SubscriptionBasedReadOnlyStoreRepository getStoreRepository() {
     return storeRepository;
+  }
+
+  /**
+   * Resolves and returns the store object for the given store name.
+   * For user system stores, it finds the RT name from the SystemStoreAttributes of the parent user store.
+   * For regular user stores and top level system stores, it finds the RT name from the Store object directly.
+   */
+  private String getRealTimeTopicName(String storeName) {
+    if (VeniceSystemStoreUtils.isUserSystemStore(storeName)) {
+      // it is a user system store
+      String userStoreName = VeniceSystemStoreType.extractUserStoreName(storeName);
+      Store userStore = storeRepository.getStore(userStoreName);
+      Map<String, SystemStoreAttributes> systemStores = userStore.getSystemStores();
+      for (Map.Entry<String, SystemStoreAttributes> systemStoreEntries: systemStores.entrySet()) {
+        if (storeName.startsWith(systemStoreEntries.getKey())) {
+          return Utils.getRealTimeTopicName(systemStoreEntries.getValue());
+        }
+      }
+      return null;
+    } else {
+      return Utils.getRealTimeTopicName(storeRepository.getStore(storeName));
+    }
   }
 
   public ObjectCacheBackend getObjectCache() {

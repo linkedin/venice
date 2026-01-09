@@ -648,7 +648,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
 
     Exception notSystemStoreException = Assert.expectThrows(
         VeniceNoStoreException.class,
-        () -> veniceAdmin.ensureRealTimeTopicExistsForUserSystemStores(clusterName, metaStoreName));
+        () -> veniceAdmin.ensureRealTimeTopicExistsForUserSystemStores(clusterName, metaStoreName, 1));
     assertTrue(
         notSystemStoreException.getMessage().contains("does not exist in"),
         "Got unexpected error message: " + notSystemStoreException.getMessage());
@@ -663,7 +663,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
 
     Exception exception = Assert.expectThrows(
         VeniceException.class,
-        () -> veniceAdmin.ensureRealTimeTopicExistsForUserSystemStores(clusterName, storeName));
+        () -> veniceAdmin.ensureRealTimeTopicExistsForUserSystemStores(clusterName, storeName, 1));
     assertTrue(
         exception.getMessage().contains("not a user system store"),
         "Got unexpected error message: " + notSystemStoreException.getMessage());
@@ -677,7 +677,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
         TimeUnit.SECONDS,
         () -> !veniceAdmin.getTopicManager().containsTopic(pushStatusRealTimeTopic));
 
-    veniceAdmin.ensureRealTimeTopicExistsForUserSystemStores(clusterName, pushStatusStoreName);
+    veniceAdmin.ensureRealTimeTopicExistsForUserSystemStores(clusterName, pushStatusStoreName, 0);
     TestUtils.waitForNonDeterministicCompletion(
         30,
         TimeUnit.SECONDS,

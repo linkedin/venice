@@ -3,12 +3,12 @@ package com.linkedin.venice.pushstatushelper;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
-import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import com.linkedin.venice.writer.VeniceWriterOptions;
 import java.util.Map;
+import java.util.function.Function;
 import org.apache.avro.Schema;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -25,17 +25,24 @@ public class PushStatusStoreVeniceWriterCache implements AutoCloseable {
   private final Map<String, VeniceWriter> veniceWriters = new VeniceConcurrentHashMap<>();
   private final Schema valueSchema;
   private final Schema updateSchema;
+  private final Function<String, String> rtNameResolver;
 
   // writerFactory Used for instantiating VeniceWriter
-  public PushStatusStoreVeniceWriterCache(VeniceWriterFactory writerFactory, Schema valueSchema, Schema updateSchema) {
+  public PushStatusStoreVeniceWriterCache(
+      VeniceWriterFactory writerFactory,
+      Schema valueSchema,
+      Schema updateSchema,
+      Function<String, String> rtNameResolver) {
     this.writerFactory = writerFactory;
     this.valueSchema = valueSchema;
     this.updateSchema = updateSchema;
+    this.rtNameResolver = rtNameResolver;
   }
 
   public VeniceWriter prepareVeniceWriter(String storeName) {
     return veniceWriters.computeIfAbsent(storeName, s -> {
-      String rtTopic = Utils.composeRealTimeTopic(VeniceSystemStoreUtils.getDaVinciPushStatusStoreName(storeName));
+      String rtTopic = rtNameResolver.apply(VeniceSystemStoreUtils.getDaVinciPushStatusStoreName(storeName));
+
       VeniceWriterOptions options = new VeniceWriterOptions.Builder(rtTopic)
           .setKeyPayloadSerializer(
               new VeniceAvroKafkaSerializer(
