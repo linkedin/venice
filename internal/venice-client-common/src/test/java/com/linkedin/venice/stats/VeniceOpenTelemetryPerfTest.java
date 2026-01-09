@@ -31,7 +31,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Random;
+import java.util.concurrent.ThreadLocalRandom;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.mockito.Mockito;
@@ -39,8 +39,8 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
-public class VeniceOpenTelemetryAttributesPerfTest {
-  private final Logger LOGGER = LogManager.getLogger(VeniceOpenTelemetryAttributesPerfTest.class);
+public class VeniceOpenTelemetryPerfTest {
+  private final Logger LOGGER = LogManager.getLogger(VeniceOpenTelemetryPerfTest.class);
 
   // Marking this as flaky as we don't want to run this test in every build.
   @Test(groups = "flaky")
@@ -320,11 +320,9 @@ public class VeniceOpenTelemetryAttributesPerfTest {
 
     warmupMetrics(fixtures, numLoopsForWarmUp);
 
-    Random random = new Random();
-    int randomInd = random.nextInt(10);
     long otelDurationNs;
     long tehutiDurationNs;
-    if (randomInd % 2 == 0) {
+    if (ThreadLocalRandom.current().nextInt(10) % 2 == 0) {
       // run otel first and then tehuti
       otelDurationNs = runMetricBenchmark(fixtures, numLoops, fixtures.metricOtelOnly);
       tehutiDurationNs = runMetricBenchmark(fixtures, numLoops, fixtures.metricTehutiOnly);
