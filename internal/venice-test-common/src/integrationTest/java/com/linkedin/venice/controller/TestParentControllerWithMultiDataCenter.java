@@ -1020,7 +1020,8 @@ public class TestParentControllerWithMultiDataCenter {
             false,
             null,
             0,
-            false));
+            false,
+            -1));
   }
 
   private void emptyPushToStore(

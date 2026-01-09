@@ -2380,7 +2380,8 @@ public class VenicePushJob implements AutoCloseable {
             setting.deferVersionSwap,
             setting.targetedRegions,
             pushJobSetting.repushSourceVersion,
-            setting.pushToSeparateRealtimeTopicEnabled));
+            setting.pushToSeparateRealtimeTopicEnabled,
+            props.getInt(REPUSH_TTL_SECONDS, -1)));
     if (versionCreationResponse.isError()) {
       handleVersionCreationError(versionCreationResponse);
       throw new VeniceException(

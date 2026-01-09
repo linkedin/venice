@@ -398,6 +398,16 @@ public class VersionImpl implements Version {
   }
 
   @Override
+  public void setRepushTtlSeconds(int ttlSeconds) {
+    this.storeVersion.repushTtlSeconds = ttlSeconds;
+  }
+
+  @Override
+  public int getRepushTtlSeconds() {
+    return this.storeVersion.repushTtlSeconds;
+  }
+
+  @Override
   public int getRmdVersionId() {
     return this.storeVersion.timestampMetadataVersionId;
   }
@@ -557,6 +567,7 @@ public class VersionImpl implements Version {
     clonedVersion.setGlobalRtDivEnabled(isGlobalRtDivEnabled());
     clonedVersion.setKeyUrnCompressionEnabled(isKeyUrnCompressionEnabled());
     clonedVersion.setKeyUrnFields(getKeyUrnFields());
+    clonedVersion.setRepushTtlSeconds(getRepushTtlSeconds());
     return clonedVersion;
   }
 

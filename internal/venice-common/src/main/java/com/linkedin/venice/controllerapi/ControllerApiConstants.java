@@ -178,6 +178,8 @@ public class ControllerApiConstants {
 
   public static final String PARTITION_DETAIL_ENABLED = "partition_detail_enabled";
 
+  public static final String REPUSH_TTL_SECONDS = "repush_ttl_seconds";
+
   /**
    * How many records that one server could consume from Kafka at most in one second from the specified regions.
    * If the consume rate reached this quota, the consumption thread will be blocked until there is the available quota.

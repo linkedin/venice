@@ -690,6 +690,16 @@ public class ReadOnlyStore implements Store {
     }
 
     @Override
+    public void setRepushTtlSeconds(int ttlSeconds) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public int getRepushTtlSeconds() {
+      return this.delegate.getRepushTtlSeconds();
+    }
+
+    @Override
     public int getRmdVersionId() {
       return this.delegate.getRmdVersionId();
     }
@@ -1909,6 +1919,7 @@ public class ReadOnlyStore implements Store {
     storeVersion.setViews(convertViewConfigsStringMap(version.getViewConfigs()));
     storeVersion.setKeyUrnCompressionEnabled(version.isKeyUrnCompressionEnabled());
     storeVersion.setKeyUrnFields(version.getKeyUrnFields().stream().map(String::toString).collect(Collectors.toList()));
+    storeVersion.setRepushTtlSeconds(version.getRepushTtlSeconds());
 
     return storeVersion;
   }

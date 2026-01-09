@@ -212,7 +212,8 @@ public class CreateVersionTest {
             Optional.empty(),
             false,
             null,
-            0);
+            0,
+            -1);
 
     assertTrue(store.isHybrid());
     assertTrue(store.isIncrementalPushEnabled());
@@ -271,6 +272,7 @@ public class CreateVersionTest {
             Optional.empty(),
             false,
             null,
+            -1,
             -1);
 
     Assert.assertFalse(store.isHybrid());
@@ -325,7 +327,8 @@ public class CreateVersionTest {
             emergencySrcRegion,
             false,
             null,
-            0);
+            0,
+            -1);
 
     assertTrue(store.isHybrid());
     assertTrue(store.isIncrementalPushEnabled());
@@ -1088,7 +1091,8 @@ public class CreateVersionTest {
             Optional.ofNullable(request.getEmergencySourceRegion()),
             request.isDeferVersionSwap(),
             request.getTargetedRegions(),
-            request.getRepushSourceVersion())).thenReturn(version);
+            request.getRepushSourceVersion(),
+            request.getRepushTtlSeconds())).thenReturn(version);
 
     when(createVersion.getCompressionStrategy(version, "testStore_v1")).thenReturn(CompressionStrategy.NO_OP);
 
@@ -1129,7 +1133,8 @@ public class CreateVersionTest {
             Optional.ofNullable(request.getEmergencySourceRegion()),
             request.isDeferVersionSwap(),
             request.getTargetedRegions(),
-            request.getRepushSourceVersion());
+            request.getRepushSourceVersion(),
+            request.getRepushTtlSeconds());
 
     when(admin.whetherEnableBatchPushFromAdmin(clusterName, storeName)).thenReturn(true);
     VeniceException ex2 = expectThrows(

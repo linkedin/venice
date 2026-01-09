@@ -27,6 +27,7 @@ public class RequestTopicForPushRequest {
   private X509Certificate certificateInRequest = null;
   private String sourceGridFabric = null;
   private String emergencySourceRegion = null;
+  private int repushTtlSeconds = -1;
 
   public RequestTopicForPushRequest(String clusterName, String storeName, PushType pushType, String pushJobId) {
     if (clusterName == null || clusterName.isEmpty()) {
@@ -95,6 +96,10 @@ public class RequestTopicForPushRequest {
 
   public int getRepushSourceVersion() {
     return repushSourceVersion;
+  }
+
+  public int getRepushTtlSeconds() {
+    return repushTtlSeconds;
   }
 
   public Set<String> getPartitioners() {
@@ -174,5 +179,9 @@ public class RequestTopicForPushRequest {
 
   public void setSeparateRealTimeTopicEnabled(boolean separateRealTimeTopicEnabled) {
     this.separateRealTimeTopicEnabled = separateRealTimeTopicEnabled;
+  }
+
+  public void setRepushTtlSeconds(int repushTtlSeconds) {
+    this.repushTtlSeconds = repushTtlSeconds;
   }
 }

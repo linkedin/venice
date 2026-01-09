@@ -841,7 +841,8 @@ public class TestPushJobWithNativeReplication {
               false,
               null,
               1,
-              false);
+              false,
+              -1);
 
           // kill repush version
           parentControllerClient.killOfflinePushJob(Version.composeKafkaTopic(storeName, 2));
