@@ -16,7 +16,6 @@ import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.D2_S
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.getSamzaProducer;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRecord;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
-import static com.linkedin.venice.views.VeniceView.*;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
 import static org.testng.Assert.assertEquals;
@@ -515,7 +514,8 @@ public class TestFlinkMaterializedViewEndToEndWithMultipleConsumers {
             .assertEquals(controllerClient.getStore(storeName).getStore().getCurrentVersion(), expectedVersion));
   }
 
-  private static String getMaterializedViewTopicName(String storeName, int version, String viewName) {
-    return Version.composeKafkaTopic(storeName, version) + VIEW_NAME_SEPARATOR + viewName;
+  private String getMaterializedViewTopicName(String storeName, int version, String viewName) {
+    return Version.composeKafkaTopic(storeName, version) + MaterializedView.VIEW_NAME_SEPARATOR + viewName
+        + MaterializedView.MATERIALIZED_VIEW_TOPIC_SUFFIX;
   }
 }
