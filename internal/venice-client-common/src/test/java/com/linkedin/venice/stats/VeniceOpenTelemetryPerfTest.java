@@ -21,7 +21,7 @@ import io.opentelemetry.api.common.Attributes;
 import io.tehuti.metrics.MeasurableStat;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
-import io.tehuti.metrics.stats.OccurrenceRate;
+import io.tehuti.metrics.stats.Avg;
 import io.tehuti.metrics.stats.Rate;
 import java.lang.management.GarbageCollectorMXBean;
 import java.lang.management.ManagementFactory;
@@ -182,9 +182,9 @@ public class VeniceOpenTelemetryPerfTest {
     // Create MetricEntity
     MetricEntity callCountMetric = new MetricEntity(
         "call_count",
-        MetricType.COUNTER,
+        MetricType.HISTOGRAM,
         MetricUnit.NUMBER,
-        "Count of all requests during response handling along with response codes",
+        "Histogram",
         Utils.setOf(
             VeniceMetricsDimensions.VENICE_STORE_NAME,
             VeniceMetricsDimensions.VENICE_CLUSTER_NAME,
@@ -206,7 +206,7 @@ public class VeniceOpenTelemetryPerfTest {
     // Create metric with only Tehuti
     MetricsRepository tehutiOnlyRepository = new MetricsRepository();
     List<MeasurableStat> tehutiOnlyStats = new ArrayList<>();
-    tehutiOnlyStats.add(new OccurrenceRate());
+    tehutiOnlyStats.add(new Avg());
     tehutiOnlyStats.add(new Rate());
 
     MetricEntityStateThreeEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory> metricTehutiOnly =
