@@ -115,6 +115,7 @@ public class DaVinciBackend implements Closeable {
   // Per-store client tracking
   private final Map<String, ClientType> storeClientTypes = new VeniceConcurrentHashMap<>();
   private final Map<String, Integer> versionSpecificStoreVersions = new VeniceConcurrentHashMap<>();
+  private final Map<String, Integer> storeClientRefCounts = new VeniceConcurrentHashMap<>();
   private VeniceConfigLoader configLoader;
   private SubscriptionBasedReadOnlyStoreRepository storeRepository;
   private final ReadOnlySchemaRepository schemaRepository;
@@ -741,6 +742,9 @@ public class DaVinciBackend implements Closeable {
       }
     }
 
+    // Increment ref count for this store
+    storeClientRefCounts.merge(storeName, 1, Integer::sum);
+
     if (isVersionSpecific) {
       versionSpecificStoreVersions.put(storeName, storeVersion);
     }
@@ -749,9 +753,33 @@ public class DaVinciBackend implements Closeable {
   }
 
   public synchronized void unregisterStoreClient(String storeName, Integer storeVersion) {
-    storeClientTypes.remove(storeName);
-    if (storeVersion != null) {
-      versionSpecificStoreVersions.remove(storeName);
+    LOGGER.info("Unregistering store client: {} version: {}", storeName, storeVersion);
+
+    // Decrement ref count for this store
+    Integer currentCount = storeClientRefCounts.get(storeName);
+    if (currentCount == null) {
+      LOGGER.warn("Attempting to unregister store client for '{}' but no registration found", storeName);
+      return;
+    }
+
+    int newCount = currentCount - 1;
+
+    // Only remove tracking when the last client unregisters
+    if (newCount <= 0) {
+      storeClientRefCounts.remove(storeName);
+      storeClientTypes.remove(storeName);
+      if (storeVersion != null) {
+        versionSpecificStoreVersions.remove(storeName);
+      }
+
+      StoreBackend storeBackend = storeByNameMap.get(storeName);
+      if (storeBackend != null) {
+        // Stop ingestion tasks for this store without deleting store data
+        LOGGER.info("Closing StoreBackend for store: {}", storeName);
+        storeBackend.close();
+      }
+    } else {
+      storeClientRefCounts.put(storeName, newCount);
     }
   }
 
@@ -763,6 +791,11 @@ public class DaVinciBackend implements Closeable {
   @VisibleForTesting
   public Integer getVersionSpecificStoreVersion(String storeName) {
     return versionSpecificStoreVersions.get(storeName);
+  }
+
+  @VisibleForTesting
+  public Integer getStoreClientRefCount(String storeName) {
+    return storeClientRefCounts.get(storeName);
   }
 
   @VisibleForTesting
