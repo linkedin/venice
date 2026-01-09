@@ -1125,6 +1125,7 @@ public class VenicePushJob implements AutoCloseable {
           .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
       if (!viewConfigMap.isEmpty()) {
         pushJobSetting.materializedViewConfigFlatMap = ViewUtils.flatViewConfigMapString(viewConfigMap);
+        pushJobSetting.isFlinkMaterializedViewEnabled = storeResponse.getStore().isFlinkVeniceViewsEnabled();
       }
     } catch (Exception e) {
       throw new VeniceException("Failed to configure job properties with view configs", e);
