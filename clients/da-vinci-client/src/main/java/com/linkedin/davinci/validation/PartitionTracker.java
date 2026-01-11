@@ -210,10 +210,14 @@ public class PartitionTracker {
   /**
    * Clone the vtSegments and LCVP to the destination PartitionTracker. May be called concurrently.
    */
-  public void cloneVtProducerStates(PartitionTracker destProducerTracker) {
+  public void cloneVtProducerStates(PartitionTracker destProducerTracker, long maxAgeInMs) {
+    long earliestAllowableTimestamp = maxAgeInMs == DISABLED ? DISABLED : new Date().getTime() - maxAgeInMs;
     for (Map.Entry<GUID, Segment> entry: vtSegments.entrySet()) {
-      entry.getValue().getLastRecordProducerTimestamp();
-      destProducerTracker.setSegment(PartitionTracker.VERSION_TOPIC, entry.getKey(), new Segment(entry.getValue()));
+      if (entry.getValue().getLastRecordTimestamp() >= earliestAllowableTimestamp) {
+        destProducerTracker.setSegment(PartitionTracker.VERSION_TOPIC, entry.getKey(), new Segment(entry.getValue()));
+      } else {
+        vtSegments.remove(entry.getKey()); // The state is eligible to be cleared.
+      }
     }
     destProducerTracker.updateLatestConsumedVtPosition(latestConsumedVtPosition.get());
   }
@@ -221,16 +225,24 @@ public class PartitionTracker {
   /**
    * Clone the rtSegments to the destination PartitionTracker. Filter by brokerUrl. May be called concurrently.
    */
-  public void cloneRtProducerStates(PartitionTracker destProducerTracker, String brokerUrl) {
-    for (Map.Entry<String, VeniceConcurrentHashMap<GUID, Segment>> entry: rtSegments.entrySet()) {
-      if (!brokerUrl.isEmpty() && !brokerUrl.equals(entry.getKey())) {
-        continue; // filter by brokerUrl if specified
+  public void cloneRtProducerStates(PartitionTracker destProducerTracker, String brokerUrl, long maxAgeInMs) {
+    long earliestAllowableTimestamp = maxAgeInMs == DISABLED ? DISABLED : new Date().getTime() - maxAgeInMs;
+    for (Map.Entry<String, VeniceConcurrentHashMap<GUID, Segment>> broker2Segment: rtSegments.entrySet()) {
+      if (!brokerUrl.equals(broker2Segment.getKey())) {
+        continue; // filter by the specified brokerUrl
       }
-      for (Map.Entry<GUID, Segment> rtEntry: entry.getValue().entrySet()) {
-        destProducerTracker.setSegment(
-            TopicType.of(TopicType.REALTIME_TOPIC_TYPE, entry.getKey()),
-            rtEntry.getKey(),
-            new Segment(rtEntry.getValue()));
+
+      final VeniceConcurrentHashMap<GUID, Segment> rtEntries = broker2Segment.getValue();
+      for (Map.Entry<GUID, Segment> rtEntry: rtEntries.entrySet()) {
+        if (rtEntry.getValue().getLastRecordTimestamp() >= earliestAllowableTimestamp) {
+          TopicType realTimeTopicType = TopicType.of(TopicType.REALTIME_TOPIC_TYPE, broker2Segment.getKey());
+          destProducerTracker.setSegment(realTimeTopicType, rtEntry.getKey(), new Segment(rtEntry.getValue()));
+        } else {
+          rtEntries.remove(rtEntry.getKey()); // The state is eligible to be cleared.
+        }
+      }
+      if (broker2Segment.getValue().isEmpty()) {
+        rtSegments.remove(broker2Segment.getKey());
       }
     }
   }
@@ -748,14 +760,15 @@ public class PartitionTracker {
   }
 
   @VisibleForTesting
-  Map<String, Map<GUID, Segment>> getAllRtSegmentsForTesting() {
-    return rtSegments.entrySet()
-        .stream()
-        .collect(Collectors.toMap(Map.Entry::getKey, entry -> Collections.unmodifiableMap(entry.getValue())));
+  VeniceConcurrentHashMap<String, VeniceConcurrentHashMap<GUID, Segment>> getRtSegmentsForTesting() {
+    return rtSegments;
+    // return rtSegments.entrySet()
+    // .stream()
+    // .collect(Collectors.toMap(Map.Entry::getKey, entry -> Collections.unmodifiableMap(entry.getValue())));
   }
 
   @VisibleForTesting
-  Map<GUID, Segment> getVtSegmentsForTesting() {
+  VeniceConcurrentHashMap<GUID, Segment> getVtSegmentsForTesting() {
     return vtSegments;
   }
 

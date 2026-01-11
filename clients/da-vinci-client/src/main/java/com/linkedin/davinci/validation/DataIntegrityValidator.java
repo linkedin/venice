@@ -12,6 +12,7 @@ import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.utils.SparseConcurrentList;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.util.HashSet;
 import java.util.Map;
@@ -139,7 +140,7 @@ public class DataIntegrityValidator {
 
   public void cloneVtProducerStates(int partition, DataIntegrityValidator newValidator) {
     PartitionTracker destPartitionTracker = newValidator.registerPartition(partition);
-    registerPartition(partition).cloneVtProducerStates(destPartitionTracker);
+    registerPartition(partition).cloneVtProducerStates(destPartitionTracker, maxAgeInMs);
   }
 
   /**
@@ -147,8 +148,8 @@ public class DataIntegrityValidator {
    */
   public PartitionTracker cloneRtProducerStates(int partition, String brokerUrl) {
     PartitionTracker clonedPartitionTracker = partitionTrackerCreator.apply(partition);
-    final PartitionTracker existingPartitionTracker = registerPartition(partition);
-    existingPartitionTracker.cloneRtProducerStates(clonedPartitionTracker, brokerUrl); // for a single broker
+    final PartitionTracker oldPartitionTracker = registerPartition(partition);
+    oldPartitionTracker.cloneRtProducerStates(clonedPartitionTracker, brokerUrl, maxAgeInMs); // for a single broker
     return clonedPartitionTracker;
   }
 
@@ -157,8 +158,8 @@ public class DataIntegrityValidator {
    */
   public PartitionTracker cloneVtProducerStates(int partition) {
     PartitionTracker clonedPartitionTracker = partitionTrackerCreator.apply(partition);
-    final PartitionTracker existingPartitionTracker = registerPartition(partition);
-    existingPartitionTracker.cloneVtProducerStates(clonedPartitionTracker); // for a single broker
+    final PartitionTracker oldPartitionTracker = registerPartition(partition);
+    oldPartitionTracker.cloneVtProducerStates(clonedPartitionTracker, maxAgeInMs); // for a single broker
     return clonedPartitionTracker;
   }
 
@@ -215,7 +216,7 @@ public class DataIntegrityValidator {
       LOGGER.info("PartitionTracker is null for partition: {}", partition);
       return false;
     }
-    Map<String, Map<GUID, Segment>> rtSegments = partitionTracker.getAllRtSegmentsForTesting();
+    Map<String, VeniceConcurrentHashMap<GUID, Segment>> rtSegments = partitionTracker.getRtSegmentsForTesting();
     for (Map<GUID, Segment> segments: rtSegments.values()) {
       if (!segments.isEmpty()) {
         LOGGER.info("RT DIV state size: {}", segments.size());
