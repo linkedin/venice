@@ -781,7 +781,6 @@ public class TestPartitionTracker {
     // Clone the producer states for the expired broker. They should be removed on the source and not cloned to dest.
     partitionTracker.cloneRtProducerStates(destTracker, expiredBrokerUrl, MAX_AGE_IN_MS);
     Map<String, VeniceConcurrentHashMap<GUID, Segment>> allDestRtSegments = destTracker.getRtSegmentsForTesting();
-    VeniceConcurrentHashMap<GUID, Segment> destRtSegments = allDestRtSegments.get(brokerUrl);
     Arrays.asList(allSrcRtSegments, allDestRtSegments).forEach(rtSegments -> {
       assertFalse(rtSegments.containsKey(expiredBrokerUrl), "The expired broker entry should've been removed");
     });
