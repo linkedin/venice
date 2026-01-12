@@ -433,7 +433,7 @@ public class TestDeferredVersionSwapServiceWithSequentialRollout {
       // Verify error recording was called due to the failure
       verify(store, atLeastOnce()).updateVersionStatus(2, VersionStatus.PARTIALLY_ONLINE);
       verify(admin, never()).rollForwardToFutureVersion(clusterName, storeName, region3);
-      verify(admin, never()).truncateKafkaTopic(anyString(), anyInt());
+      verify(admin, never()).truncateKafkaTopic(anyString());
     });
   }
 
@@ -611,7 +611,7 @@ public class TestDeferredVersionSwapServiceWithSequentialRollout {
     TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
       // Verify that updateStore was called to mark parent version as ONLINE
       verify(store, atLeastOnce()).updateVersionStatus(versionTwo, VersionStatus.ONLINE);
-      verify(admin, times(1)).truncateKafkaTopic(anyString(), anyInt());
+      verify(admin, times(1)).truncateKafkaTopic(anyString());
     });
 
     // Verify error recording was not called
