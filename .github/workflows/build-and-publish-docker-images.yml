@@ -15,6 +15,9 @@ permissions:
 jobs:
   docker-build-and-push:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      DOCKER_TARGETS: "venice-controller venice-server venice-router venice-client"
 
     steps:
       - name: Login to GitHub Container Registry
@@ -49,20 +52,33 @@ jobs:
       # Step 4: Validate and check out the tag
       - name: Check out tag and validate
         id: validate_tag
+        env:
+          TAG: ${{ github.event.inputs.git_tag }}
         run: |
-          TAG="${{ github.event.inputs.git_tag }}"
-          if ! git rev-parse "refs/tags/$TAG" >/dev/null 2>&1; then
-            echo "Error: Tag '$TAG' does not exist."
-            # Emit an annotation warning that the tag was not valid
-            echo "::error title=Tag Validation Failed::The specified git tag '$TAG' does not exist in the repository."
+          set -euo pipefail
+          # Validate tag matches expected semantic version format (e.g., 0.4.676)
+          if [[ -z "$TAG" || ! "$TAG" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error title=Invalid tag::git_tag must match [0-9]+.[0-9]+.[0-9]+ (e.g. 0.4.676)"
             exit 1
           fi
 
-          # Check out the specified tag
-          git checkout "tags/$TAG"
+          # Verify the tag exists
+          if ! git rev-parse --verify --quiet "refs/tags/$TAG" >/dev/null 2>&1; then
+            echo "::error title=Tag Not Found::Tag '$TAG' does not exist. Available recent tags: $(git tag --sort=-creatordate | head -5 | tr '\n' ' ')"
+            exit 1
+          fi
+
+          # Resolve the tag to a commit SHA first (avoids passing a potentially option-looking ref to checkout)
+          COMMIT_SHA=$(git rev-parse "refs/tags/$TAG^{commit}")
+
+          # Check out the commit in detached HEAD safely
+          git -c advice.detachedHead=false checkout --detach "$COMMIT_SHA"
+
+          # Persist validated tag for later steps (already in correct format)
+          echo "DOCKER_TAG=$TAG" >> "$GITHUB_ENV"
 
           # Get latest commit information
-          COMMIT_SHA=$(git rev-parse HEAD)
+          # COMMIT_SHA already resolved above
           COMMIT_MSG=$(git log -1 --pretty=%B)
           COMMIT_DATE=$(git log -1 --pretty=%cd --date=format:"%Y-%m-%d %H:%M:%S")
 
@@ -70,15 +86,17 @@ jobs:
           echo "Latest commit date: $COMMIT_DATE"
 
           # Set outputs
-          echo "commit_sha=$COMMIT_SHA" >> $GITHUB_OUTPUT
-          echo "commit_date=$COMMIT_DATE" >> $GITHUB_OUTPUT
+          echo "commit_sha=$COMMIT_SHA" >> "$GITHUB_OUTPUT"
+          echo "commit_date=$COMMIT_DATE" >> "$GITHUB_OUTPUT"
 
       # Step 5: Run Docker image build and push script
       - name: Build Docker images
+        timeout-minutes: 45
         env:
-          TAG_VERSION: ${{ github.event.inputs.git_tag }}
+          TAG_VERSION: ${{ env.DOCKER_TAG }}
         run: |
-          # Pass the tag as the version
+          set -euo pipefail
+          echo "Building Docker images for tag: $TAG_VERSION"
           bash docker/build-venice-docker-images.sh "ghcr.io/${{ github.repository }}" "$TAG_VERSION"
 
       # Step 6: List generated Docker images
@@ -89,36 +107,46 @@ jobs:
 
       # Step 7: Verify that images were created
       - name: Verify Docker images were created
+        env:
+          TAG_VERSION: ${{ env.DOCKER_TAG }}
         run: |
-          TAG_VERSION="${{ github.event.inputs.git_tag }}"
-          TARGETS=("venice-controller" "venice-server" "venice-router" "venice-client")
+          set -euo pipefail
+          IFS=' ' read -ra TARGETS <<< "$DOCKER_TARGETS"
           for target in "${TARGETS[@]}"; do
             IMAGE_NAME="ghcr.io/${{ github.repository }}/$target:$TAG_VERSION"
             if ! docker inspect "$IMAGE_NAME" >/dev/null 2>&1; then
-              echo "Error: Docker image $IMAGE_NAME was not created."
+              echo "::error title=Image Not Found::Docker image $IMAGE_NAME was not created during build step"
               exit 1
-            else
-              echo "Docker image $IMAGE_NAME exists."
             fi
+            echo "✓ Verified: $IMAGE_NAME"
           done
 
       # Step 8: Publish Docker images to repo's GHCR
       - name: Push Docker images to repo's GHCR
         id: publish_images
+        env:
+          TAG_VERSION: ${{ env.DOCKER_TAG }}
         run: |
-          targets=("venice-controller" "venice-server" "venice-router" "venice-client")
-          TAG_VERSION="${{ github.event.inputs.git_tag }}"
-          TAG_VERSION=$(echo "$TAG_VERSION" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')  # Sanitize tag
+          set -euo pipefail
+          IFS=' ' read -ra targets <<< "$DOCKER_TARGETS"
           IMAGE_URLS=""
           for target in "${targets[@]}"; do
             IMAGE_NAME="ghcr.io/${{ github.repository }}/$target:$TAG_VERSION"
-            echo "Pushing image: $IMAGE_NAME"
-            docker push "$IMAGE_NAME"
-            # Append URL to list with clickable full URL
-            IMAGE_URLS+="- $target - [$IMAGE_NAME](https://$IMAGE_NAME)\n"
+            echo "Pushing: $IMAGE_NAME"
+            if docker push "$IMAGE_NAME"; then
+              echo "✓ Successfully pushed: $IMAGE_NAME"
+              IMAGE_URLS+="- $target - [$IMAGE_NAME](https://ghcr.io/${{ github.repository }}/$target:$TAG_VERSION)\n"
+            else
+              echo "::error title=Push Failed::Failed to push $IMAGE_NAME to registry"
+              exit 1
+            fi
           done
           # Save IMAGE_URLS to GITHUB_OUTPUT for later use in the workflow
-          echo -e "image_urls<<EOF\n$IMAGE_URLS\nEOF" >> $GITHUB_OUTPUT
+          {
+            echo "image_urls<<EOF"
+            echo -e "$IMAGE_URLS"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Display clickable image URLs
         run: |
@@ -128,13 +156,17 @@ jobs:
       # Step 9: Annotate workflow with Docker image metadata
       - name: Annotate workflow with Docker image metadata
         if: success()
+        env:
+          TAG_VERSION: ${{ env.DOCKER_TAG }}
         run: |
-          # Capture the current date and time for the published date
+          set -euo pipefail
           PUBLISHED_DATE=$(date +"%Y-%m-%d %H:%M:%S")
-          echo "**Docker Images Published:** ✅" >> $GITHUB_STEP_SUMMARY
-          echo "**Published Date:** $PUBLISHED_DATE" >> $GITHUB_STEP_SUMMARY
-          echo "**Git Tag Used:** ${{ github.event.inputs.git_tag }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Latest Commit SHA:** ${{ steps.validate_tag.outputs.commit_sha }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Latest Commit Date:** ${{ steps.validate_tag.outputs.commit_date }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Docker Image URLs:**" >> $GITHUB_STEP_SUMMARY
-          echo -e "${{ steps.publish_images.outputs.image_urls }}" >> $GITHUB_STEP_SUMMARY
+          {
+            echo "**Docker Images Published:** ✅"
+            echo "**Published Date:** $PUBLISHED_DATE"
+            echo "**Git Tag Used:** $TAG_VERSION"
+            echo "**Latest Commit SHA:** ${{ steps.validate_tag.outputs.commit_sha }}"
+            echo "**Latest Commit Date:** ${{ steps.validate_tag.outputs.commit_date }}"
+            echo "**Docker Image URLs:**"
+            echo -e "${{ steps.publish_images.outputs.image_urls }}"
+          } >> "$GITHUB_STEP_SUMMARY"
