@@ -527,6 +527,13 @@ public class ConfigKeys {
       "child.controller.admin.topic.consumption.enabled";
 
   /**
+   * Whether to enable admin operation system store or not.
+   * If yes, controller will register admin operation system store and process admin operations in rollback cases.
+   */
+  public static final String CONTROLLER_ADMIN_OPERATION_SYSTEM_STORE_ENABLED =
+      "controller.admin.operation.system.store.enabled";
+
+  /**
    * This config defines the source region of aggregate hybrid store real-time data when native replication is enabled
    */
   public static final String AGGREGATE_REAL_TIME_SOURCE_REGION = "aggregate.real.time.source.region";
@@ -2085,6 +2092,11 @@ public class ConfigKeys {
   // this is a config to decide the max allowed concurrent snapshot user per host level, it is used to limit how many
   // requests can be concurrently served for a host globally.
   public static final String BLOB_TRANSFER_MAX_CONCURRENT_SNAPSHOT_USER = "blob.transfer.max.concurrent.snapshot.user";
+  // this is a config to decide the max allowed concurrent blob receive replicas per host level, it is used to limit how
+  // many
+  // replicas can be concurrently receiving blobs for a host globally.
+  public static final String BLOB_TRANSFER_MAX_CONCURRENT_BLOB_RECEIVE_REPLICAS =
+      "blob.transfer.max.concurrent.blob.receive.replicas";
   // this is a config to decide max file transfer timeout time in minutes in server side.
   public static final String BLOB_TRANSFER_MAX_TIMEOUT_IN_MIN = "blob.transfer.max.timeout.in.min";
   // this is a config to decide the max file receive timeout time in minutes in client side.
@@ -3061,4 +3073,16 @@ public class ConfigKeys {
    * Default is 1.
    */
   public static final String STORE_CHANGE_NOTIFIER_THREAD_POOL_SIZE = "store.change.notifier.thread.pool.size";
+
+  /**
+   * User store version number to retain in Parent Controller to limit 'Store' ZNode size.
+   */
+  public static final String USER_STORE_VERSION_RETENTION_COUNT = "store.version.retention.count.user.store";
+  public static final int DEFAULT_USER_STORE_VERSION_RETENTION_COUNT = 5;
+
+  /**
+   * System store version number to retain in Parent Controller to limit 'Store' ZNode size.
+   */
+  public static final String SYSTEM_STORE_VERSION_RETENTION_COUNT = "store.version.retention.count.system.store";
+  public static final int DEFAULT_SYSTEM_STORE_VERSION_RETENTION_COUNT = 5;
 }

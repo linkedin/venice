@@ -714,6 +714,17 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             AvroProtocolDefinition.SERVER_STORE_PROPERTIES_PAYLOAD,
             multiClusterConfigs,
             this));
+    if (isAdminOperationSystemStoreEnabled()) {
+      initRoutines.add(
+          new SystemSchemaInitializationRoutine(
+              AvroProtocolDefinition.ADMIN_OPERATION,
+              multiClusterConfigs,
+              this,
+              Optional.empty(),
+              Optional.empty(),
+              false,
+              AdminOperationSerializer.LATEST_SCHEMA));
+    }
 
     if (multiClusterConfigs.isZkSharedMetaSystemSchemaStoreAutoCreationEnabled()) {
       // Add routine to create zk shared metadata system store
@@ -1798,6 +1809,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           getReadWriteLiveClusterConfigRepository(clusterName);
       return clusterConfigRepository.getConfigs().isStoreMigrationAllowed();
     }
+  }
+
+  public boolean isAdminOperationSystemStoreEnabled() {
+    return multiClusterConfigs.getControllerConfig(multiClusterConfigs.getSystemSchemaClusterName())
+        .isAdminOperationSystemStoreEnabled();
   }
 
   /**
@@ -3637,11 +3653,45 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     if (clusterName.equals(destCluster)) {
       PubSubTopic versionTopic = pubSubTopicRepository.getTopic(Version.composeKafkaTopic(storeName, versionNumber));
       String migrationSourceCluster = storeConfig.getMigrationSrcCluster();
-      // If the topic doesn't exist, we don't know whether it's not created or already deleted, so we don't skip
-      return getTopicManager().containsTopic(versionTopic) && isTopicTruncated(versionTopic.getName()) ||
-      // The topic doesn't exist and less/equal than the largest used version number in the source, it's deleted
-          !getTopicManager().containsTopic(versionTopic)
-              && (versionNumber <= getStoreInfo(storeName, migrationSourceCluster).getLargestUsedVersionNumber());
+      StoreInfo storeInfo = getStoreInfo(storeName, migrationSourceCluster);
+      if (storeInfo.getLargestUsedVersionNumber() < versionNumber) {
+        LOGGER.info(
+            "Dont skip version {} being pushed during migration, the source cluster may not have processed it.",
+            versionNumber);
+        return false;
+      }
+      if (!storeInfo.getVersion(versionNumber).isPresent()) {
+        LOGGER.info(
+            "Skip adding version: {} for store: {} in cluster: {} because the version is not present in the source cluster",
+            versionNumber,
+            storeName,
+            clusterName);
+        return true;
+      }
+      if (storeInfo.getVersion(versionNumber).get().getStatus() == KILLED
+          || storeInfo.getVersion(versionNumber).get().getStatus() == ERROR) {
+        LOGGER.warn(
+            "Skip adding version: {} for store: {} in cluster: {} because is status is {}",
+            versionNumber,
+            storeName,
+            clusterName,
+            storeInfo.getVersion(versionNumber).get().getStatus());
+        return true;
+      }
+      // If the topic does not exist it is deleted, If source cluster topic creation is slown during new push
+      // its captured in earlier check storeInfo.getLargestUsedVersionNumber() < versionNumber
+      // or if the topic is truncated, skip it
+      boolean topicExists = getTopicManager().containsTopicWithRetries(versionTopic, 5);
+      if (!topicExists || isTopicTruncated(versionTopic.getName())) {
+        LOGGER.error(
+            "Skip adding version: {} for store: {} in cluster: {} because the corresponding VT is truncated and version status is {} or topic doesn't exist : {}",
+            versionNumber,
+            storeName,
+            clusterName,
+            storeInfo.getVersion(versionNumber).get().getStatus(),
+            topicExists);
+        return true;
+      }
     }
     return false;
   }

@@ -154,7 +154,8 @@ public class TestAdminOperationWithPreviousVersion {
   static final int LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION = AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION;
   static final Schema LATEST_SCHEMA = AdminOperation.getClassSchema();
   static final int PREVIOUS_SCHEMA_ID_FOR_ADMIN_OPERATION = LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION - 1;
-  static final Schema PREVIOUS_SCHEMA = AdminOperationSerializer.getSchema(PREVIOUS_SCHEMA_ID_FOR_ADMIN_OPERATION);
+  static final Schema PREVIOUS_SCHEMA =
+      new AdminOperationSerializer().getSchema(PREVIOUS_SCHEMA_ID_FOR_ADMIN_OPERATION);
   private static final Set<String> NEW_UNION_ENTRIES = getNewUnionEntries();
 
   /**

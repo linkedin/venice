@@ -11,6 +11,7 @@ import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_CLIENT_READ_LIMIT_BYT
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_DISABLED_OFFSET_LAG_THRESHOLD;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_DISABLED_TIME_LAG_THRESHOLD_IN_MINUTES;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_MANAGER_ENABLED;
+import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_MAX_CONCURRENT_BLOB_RECEIVE_REPLICAS;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_MAX_CONCURRENT_SNAPSHOT_USER;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_MAX_TIMEOUT_IN_MIN;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_PEERS_CONNECTIVITY_FRESHNESS_IN_SECONDS;
@@ -627,6 +628,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final long blobTransferDisabledOffsetLagThreshold;
   private final int blobTransferDisabledTimeLagThresholdInMinutes;
   private final int snapshotCleanupIntervalInMins;
+  private final int maxConcurrentBlobReceiveReplicas;
   private final int dvcP2pBlobTransferServerPort;
   private final int dvcP2pBlobTransferClientPort;
   private final boolean daVinciCurrentVersionBootstrappingSpeedupEnabled;
@@ -734,6 +736,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     blobTransferServiceWriteLimitBytesPerSec =
         serverProperties.getSizeInBytes(BLOB_TRANSFER_SERVICE_WRITE_LIMIT_BYTES_PER_SEC, 157286400L);
     snapshotCleanupIntervalInMins = serverProperties.getInt(BLOB_TRANSFER_SNAPSHOT_CLEANUP_INTERVAL_IN_MINS, 120);
+    maxConcurrentBlobReceiveReplicas = serverProperties.getInt(BLOB_TRANSFER_MAX_CONCURRENT_BLOB_RECEIVE_REPLICAS, 20);
     blobTransferDisabledOffsetLagThreshold =
         serverProperties.getLong(BLOB_TRANSFER_DISABLED_OFFSET_LAG_THRESHOLD, 100000L);
     blobTransferDisabledTimeLagThresholdInMinutes =
@@ -1274,6 +1277,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public int getSnapshotCleanupIntervalInMins() {
     return snapshotCleanupIntervalInMins;
+  }
+
+  public int getMaxConcurrentBlobReceiveReplicas() {
+    return maxConcurrentBlobReceiveReplicas;
   }
 
   /**

@@ -758,23 +758,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           storeVersionName,
           rmdRecord);
     }
-
-    // TODO: This comparison doesn't work well for write compute+schema evolution (can spike up). VENG-8129
-    // this works fine for now however as we do not fully support A/A write compute operations (as we only do root
-    // timestamp comparisons).
-
-    List<Long> timestampsPostOperation = RmdUtils.extractTimestampFromRmd(rmdRecord);
-    for (int i = 0; i < timestampsPreOperation.size(); i++) {
-      if (timestampsPreOperation.get(i) > timestampsPostOperation.get(i)) {
-        // timestamps went backwards, raise an alert!
-        hostLevelIngestionStats.recordTimestampRegressionDCRError();
-        aggVersionedIngestionStats.recordTimestampRegressionDCRError(storeName, versionNumber);
-        LOGGER.error(
-            "Timestamp found to have gone backwards for {}!! Invalid replication metadata result: {}",
-            storeVersionName,
-            mergeConflictResult.getRmdRecord());
-      }
-    }
   }
 
   /**

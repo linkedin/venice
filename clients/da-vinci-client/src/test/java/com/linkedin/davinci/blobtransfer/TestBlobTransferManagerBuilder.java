@@ -49,7 +49,8 @@ public class TestBlobTransferManagerBuilder {
         2000000,
         2000000,
         2000000,
-        2);
+        2,
+        5);
 
     BlobTransferManager blobTransferManager = new BlobTransferManagerBuilder().setBlobTransferConfig(blobTransferConfig)
         .setClientConfig(clientConfig)
@@ -91,7 +92,8 @@ public class TestBlobTransferManagerBuilder {
         2000000,
         2000000,
         2000000,
-        2);
+        2,
+        5);
 
     // Case 1: expect exception is thrown due to both clientConfig and customizedViewFuture are not null
     try {
