@@ -10,6 +10,7 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 import com.linkedin.venice.controller.stats.DeferredVersionSwapStats;
@@ -418,7 +419,6 @@ public class TestDeferredVersionSwapServiceWithSequentialRollout {
 
     // Simulate failure on region2 rollout by making rollForwardToFutureVersion throw an exception when region2 appears
     doThrow(new VeniceException()).when(admin).rollForwardToFutureVersion(clusterName, storeName, region2);
-    doReturn(clusterConfig).when(veniceControllerMultiClusterConfig).getControllerConfig(clusterName);
     doReturn(ConcurrentPushDetectionStrategy.PARENT_VERSION_STATUS_ONLY).when(clusterConfig)
         .getConcurrentPushDetectionStrategy();
     // Create service
@@ -599,9 +599,7 @@ public class TestDeferredVersionSwapServiceWithSequentialRollout {
     String kafkaTopicName = Version.composeKafkaTopic(storeName, versionTwo);
     doReturn(offlinePushStatusInfoWithCompletedPush).when(admin).getOffLinePushStatus(clusterName, kafkaTopicName);
 
-    doReturn(clusterConfig).when(veniceControllerMultiClusterConfig).getControllerConfig(clusterName);
     doReturn(ConcurrentPushDetectionStrategy.TOPIC_BASED_ONLY).when(clusterConfig).getConcurrentPushDetectionStrategy();
-    doReturn(false).when(admin).isTopicTruncated(anyString());
 
     // Create service
     DeferredVersionSwapService deferredVersionSwapService =
@@ -613,7 +611,7 @@ public class TestDeferredVersionSwapServiceWithSequentialRollout {
     TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
       // Verify that updateStore was called to mark parent version as ONLINE
       verify(store, atLeastOnce()).updateVersionStatus(versionTwo, VersionStatus.ONLINE);
-      verify(admin, never()).truncateKafkaTopic(anyString(), anyInt());
+      verify(admin, times(1)).truncateKafkaTopic(anyString(), anyInt());
     });
 
     // Verify error recording was not called
