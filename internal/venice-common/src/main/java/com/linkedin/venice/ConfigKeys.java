@@ -527,6 +527,13 @@ public class ConfigKeys {
       "child.controller.admin.topic.consumption.enabled";
 
   /**
+   * Whether to enable admin operation system store or not.
+   * If yes, controller will register admin operation system store and process admin operations in rollback cases.
+   */
+  public static final String CONTROLLER_ADMIN_OPERATION_SYSTEM_STORE_ENABLED =
+      "controller.admin.operation.system.store.enabled";
+
+  /**
    * This config defines the source region of aggregate hybrid store real-time data when native replication is enabled
    */
   public static final String AGGREGATE_REAL_TIME_SOURCE_REGION = "aggregate.real.time.source.region";
@@ -730,6 +737,32 @@ public class ConfigKeys {
    */
   public static final String SERVER_USE_METRICS_BASED_POSITION_IN_LAG_COMPUTATION =
       "server.use.metrics.based.position.in.lag.computation";
+
+  /**
+   * Controls whether to use upstreamPubSubPosition (with offset fallback) or upstreamOffset
+   * when deserializing positions from leader metadata during ingestion.
+   *
+   * Default: true (use upstreamPubSubPosition with fallback to upstreamOffset).
+   * When true, the server will attempt to deserialize the position from upstreamPubSubPosition
+   * and fall back to upstreamOffset if deserialization fails or the position is invalid.
+   * When false, the server will directly use upstreamOffset without attempting position deserialization.
+   *
+   * This provides a safety mechanism to revert to offset-only behavior if position deserialization
+   * causes issues in production.
+   */
+  public static final String SERVER_USE_UPSTREAM_PUBSUB_POSITIONS = "server.use.upstream.pubsub.positions";
+
+  /**
+   * Feature flag to control whether OffsetRecord should use PubSubPosition deserialization with offset fallback
+   * when reading checkpointed positions from PartitionState.
+   * When true (default), the server will attempt to deserialize PubSubPosition from wire format bytes
+   * and fall back to offset-based position if deserialization fails or the buffer is empty.
+   * When false, the server will directly use numeric offsets without attempting position deserialization.
+   *
+   * This provides a safety mechanism to revert to offset-only behavior if position deserialization
+   * causes issues in production when reading checkpointed state.
+   */
+  public static final String SERVER_USE_CHECKPOINTED_PUBSUB_POSITIONS = "server.use.checkpointed.pubsub.positions";
 
   public static final String SERVER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS =
       "server.netty.graceful.shutdown.period.seconds";
@@ -2085,6 +2118,11 @@ public class ConfigKeys {
   // this is a config to decide the max allowed concurrent snapshot user per host level, it is used to limit how many
   // requests can be concurrently served for a host globally.
   public static final String BLOB_TRANSFER_MAX_CONCURRENT_SNAPSHOT_USER = "blob.transfer.max.concurrent.snapshot.user";
+  // this is a config to decide the max allowed concurrent blob receive replicas per host level, it is used to limit how
+  // many
+  // replicas can be concurrently receiving blobs for a host globally.
+  public static final String BLOB_TRANSFER_MAX_CONCURRENT_BLOB_RECEIVE_REPLICAS =
+      "blob.transfer.max.concurrent.blob.receive.replicas";
   // this is a config to decide max file transfer timeout time in minutes in server side.
   public static final String BLOB_TRANSFER_MAX_TIMEOUT_IN_MIN = "blob.transfer.max.timeout.in.min";
   // this is a config to decide the max file receive timeout time in minutes in client side.
@@ -2157,6 +2195,12 @@ public class ConfigKeys {
    */
   public static final String USE_DA_VINCI_SPECIFIC_EXECUTION_STATUS_FOR_ERROR =
       "use.da.vinci.specific.execution.status.for.error";
+
+  /**
+   * When enabled, allows the use of the getProgressPercentage() method in TopicManager.
+   * This is disabled by default as it can be expensive to compute.
+   */
+  public static final String POSITIONAL_PROGRESS_LOGGING_ENABLED = "positional.progress.logging.enabled";
 
   /**
    * If the config value is non-negative, da-vinci client will batch push statues among all partitions into one single
@@ -3061,4 +3105,23 @@ public class ConfigKeys {
    * Default is 1.
    */
   public static final String STORE_CHANGE_NOTIFIER_THREAD_POOL_SIZE = "store.change.notifier.thread.pool.size";
+
+  /**
+   * User store version number to retain in Parent Controller to limit 'Store' ZNode size.
+   */
+  public static final String USER_STORE_VERSION_RETENTION_COUNT = "store.version.retention.count.user.store";
+  public static final int DEFAULT_USER_STORE_VERSION_RETENTION_COUNT = 5;
+
+  /**
+   * System store version number to retain in Parent Controller to limit 'Store' ZNode size.
+   */
+  public static final String SYSTEM_STORE_VERSION_RETENTION_COUNT = "store.version.retention.count.system.store";
+  public static final int DEFAULT_SYSTEM_STORE_VERSION_RETENTION_COUNT = 5;
+
+  /**
+   * Whether storage node read quota will fail-open if CV is unavailable during initialization or it will try to use
+   * cluster's instance count to calculate a placeholder/fallback value until CV is available.
+   */
+  public static final String SERVER_READ_QUOTA_INITIALIZATION_FALLBACK_ENABLED =
+      "server.read.quota.initialization.fallback.enabled";
 }

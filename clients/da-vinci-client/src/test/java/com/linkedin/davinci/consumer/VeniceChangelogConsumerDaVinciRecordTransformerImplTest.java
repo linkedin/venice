@@ -78,7 +78,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
   private static final int value = 2;
   private static final Lazy<Integer> lazyValue = Lazy.of(() -> value);
   private static final DaVinciRecordTransformerRecordMetadata recordMetadata =
-      new DaVinciRecordTransformerRecordMetadata(-1, 0, PubSubSymbolicPosition.EARLIEST, -1, null);
+      new DaVinciRecordTransformerRecordMetadata(-1, 0, PubSubSymbolicPosition.EARLIEST, -1, null, -1);
 
   private Schema keySchema;
   private Schema valueSchema;

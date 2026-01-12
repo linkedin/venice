@@ -53,8 +53,10 @@ import org.apache.logging.log4j.Logger;
 public class NettyFileTransferClient {
   private static final Logger LOGGER = LogManager.getLogger(NettyFileTransferClient.class);
   private static final int MAX_METADATA_CONTENT_LENGTH = 1024 * 1024 * 100;
-  private static final int CONNECTION_TIMEOUT_IN_MINUTES = 1;
-  // Maximum time that Netty will wait to establish the initial connection before failing.
+  private static final int ALL_HOSTS_CONNECTION_TIMEOUT_IN_MINUTES = 1;
+  // Total connection timeout (TCP connection and SSL handshake)
+  private static final int PER_HOST_CONNECTION_TIMEOUT_MS = 50 * 1000;
+  // Maximum time that Netty will wait to establish the initial connection before failing. (TCP connection)
   private static final int CONNECTION_ESTABLISHMENT_TIMEOUT_MS = 30 * 1000;
   // The default checksum threadpool size is the number of available processors.
   private static final int DEFAULT_CHECKSUM_VALIDATION_THREAD_POOL_SIZE = Runtime.getRuntime().availableProcessors();
@@ -229,7 +231,7 @@ public class NettyFileTransferClient {
         }
         allConnections.complete(null);
       }
-    }, CONNECTION_TIMEOUT_IN_MINUTES, TimeUnit.MINUTES);
+    }, ALL_HOSTS_CONNECTION_TIMEOUT_IN_MINUTES, TimeUnit.MINUTES);
 
     allConnections.join();
 
@@ -373,18 +375,41 @@ public class NettyFileTransferClient {
   }
 
   /**
-   * Connects to the host
+   * Connects to the host with a timeout
    */
   private Channel connectToHost(String host, String storeName, int version, int partition) {
+    ChannelFuture connectFuture = null;
+    String replicaId = Utils.getReplicaId(Version.composeKafkaTopic(storeName, version), partition);
     try {
-      return clientBootstrap.connect(host, serverPort).sync().channel();
+      connectFuture = clientBootstrap.connect(host, serverPort);
+
+      // Wait at most PER_HOST_CONNECTION_TIMEOUT_MS for the connect to finish
+      boolean completed = connectFuture.awaitUninterruptibly(PER_HOST_CONNECTION_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+
+      if (!completed) {
+        if (!connectFuture.isDone()) {
+          connectFuture.cancel(true);
+        }
+        String errorMsg = String.format(
+            "Timed out after %d ms waiting to connect to host: %s for blob transfer for replica %s",
+            PER_HOST_CONNECTION_TIMEOUT_MS,
+            host,
+            replicaId);
+        LOGGER.error(errorMsg);
+        throw new VenicePeersConnectionException(errorMsg);
+      }
+
+      if (!connectFuture.isSuccess()) {
+        Throwable cause = connectFuture.cause();
+        String errorMsg =
+            String.format("Failed to connect to the host: %s for blob transfer for replica %s", host, replicaId);
+        LOGGER.error(errorMsg, cause);
+        throw new VenicePeersConnectionException(errorMsg, cause);
+      }
+      return connectFuture.channel();
     } catch (Exception e) {
-      String errorMsg = String.format(
-          "Failed to connect to the host: %s for blob transfer for store: %s, version: %d, partition: %d",
-          host,
-          storeName,
-          version,
-          partition);
+      String errorMsg =
+          String.format("Exception while connecting to host: %s for blob transfer for replica %s", host, replicaId);
       LOGGER.error(errorMsg, e);
       throw new VenicePeersConnectionException(errorMsg, e);
     }

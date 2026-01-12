@@ -30,6 +30,8 @@ public class P2PBlobTransferConfig {
   private final long blobTransferServiceWriteLimitBytesPerSec;
   // Interval in mins for snapshot manager to clean up old snapshots
   private final int snapshotCleanupIntervalInMins;
+  // Max concurrent replicas that is allowed to receive blob data simultaneously
+  private final int maxConcurrentBlobReceiveReplicas;
 
   public P2PBlobTransferConfig(
       int p2pTransferServerPort,
@@ -44,7 +46,8 @@ public class P2PBlobTransferConfig {
       int peersConnectivityFreshnessInSeconds,
       long blobTransferClientReadLimitBytesPerSec,
       long blobTransferServiceWriteLimitBytesPerSec,
-      int snapshotCleanupIntervalInMins) {
+      int snapshotCleanupIntervalInMins,
+      int maxConcurrentBlobReceiveReplicas) {
     this.p2pTransferServerPort = p2pTransferServerPort;
     this.p2pTransferClientPort = p2pTransferClientPort;
     this.baseDir = baseDir;
@@ -58,6 +61,7 @@ public class P2PBlobTransferConfig {
     this.blobTransferClientReadLimitBytesPerSec = blobTransferClientReadLimitBytesPerSec;
     this.blobTransferServiceWriteLimitBytesPerSec = blobTransferServiceWriteLimitBytesPerSec;
     this.snapshotCleanupIntervalInMins = snapshotCleanupIntervalInMins;
+    this.maxConcurrentBlobReceiveReplicas = maxConcurrentBlobReceiveReplicas;
   }
 
   public int getP2pTransferServerPort() {
@@ -110,5 +114,9 @@ public class P2PBlobTransferConfig {
 
   public int getSnapshotCleanupIntervalInMins() {
     return snapshotCleanupIntervalInMins;
+  }
+
+  public int getMaxConcurrentBlobReceiveReplicas() {
+    return maxConcurrentBlobReceiveReplicas;
   }
 }

@@ -18,6 +18,11 @@ public class SparkConstants {
 
   // Internal column names, hence begins with "_"
   public static final String PARTITION_COLUMN_NAME = "__partition__";
+  public static final String SCHEMA_ID_COLUMN_NAME = "__schema_id__";
+  public static final String RMD_VERSION_ID_COLUMN_NAME = "__replication_metadata_version_id__";
+  public static final String OFFSET_COLUMN_NAME = "__offset__";
+  public static final String MESSAGE_TYPE_COLUMN_NAME = "__message_type__";
+  public static final String CHUNKED_KEY_SUFFIX_COLUMN_NAME = "__chunked_key_suffix__";
 
   public static final StructType DEFAULT_SCHEMA = new StructType(
       new StructField[] { new StructField(KEY_COLUMN_NAME, BinaryType, false, Metadata.empty()),
@@ -29,6 +34,25 @@ public class SparkConstants {
           new StructField(VALUE_COLUMN_NAME, BinaryType, true, Metadata.empty()),
           new StructField(RMD_COLUMN_NAME, BinaryType, true, Metadata.empty()),
           new StructField(PARTITION_COLUMN_NAME, IntegerType, false, Metadata.empty()) });
+
+  // Schema with schema IDs - used for Kafka repush with per-record schema tracking
+  public static final StructType DEFAULT_SCHEMA_WITH_SCHEMA_ID = new StructType(
+      new StructField[] { new StructField(KEY_COLUMN_NAME, BinaryType, false, Metadata.empty()),
+          new StructField(VALUE_COLUMN_NAME, BinaryType, true, Metadata.empty()),
+          new StructField(RMD_COLUMN_NAME, BinaryType, true, Metadata.empty()),
+          new StructField(SCHEMA_ID_COLUMN_NAME, IntegerType, false, Metadata.empty()),
+          new StructField(RMD_VERSION_ID_COLUMN_NAME, IntegerType, false, Metadata.empty()) });
+
+  // Schema for chunk assembly - includes offset, message_type, and chunked_key_suffix needed for sorting and assembly
+  public static final StructType SCHEMA_FOR_CHUNK_ASSEMBLY = new StructType(
+      new StructField[] { new StructField(KEY_COLUMN_NAME, BinaryType, false, Metadata.empty()),
+          new StructField(VALUE_COLUMN_NAME, BinaryType, true, Metadata.empty()),
+          new StructField(RMD_COLUMN_NAME, BinaryType, true, Metadata.empty()),
+          new StructField(SCHEMA_ID_COLUMN_NAME, IntegerType, false, Metadata.empty()),
+          new StructField(RMD_VERSION_ID_COLUMN_NAME, IntegerType, false, Metadata.empty()),
+          new StructField(OFFSET_COLUMN_NAME, LongType, false, Metadata.empty()),
+          new StructField(MESSAGE_TYPE_COLUMN_NAME, IntegerType, false, Metadata.empty()),
+          new StructField(CHUNKED_KEY_SUFFIX_COLUMN_NAME, BinaryType, true, Metadata.empty()) });
 
   /**
    * Configs with this prefix will be set when building the spark session. These will get applied to all Spark jobs that
@@ -50,14 +74,20 @@ public class SparkConstants {
    */
   public static final String SPARK_DATA_WRITER_CONF_PREFIX = "spark.data.writer.conf.";
 
+  public static final String REPLICATION_METADATA_PAYLOAD = "__replication_metadata_payload__";
+  public static final String MESSAGE_TYPE = "__message_type__";
+  public static final String OFFSET = "__offset__";
+
   public static final StructType RAW_PUBSUB_INPUT_TABLE_SCHEMA = new StructType(
       new StructField[] { new StructField("__region__", StringType, false, Metadata.empty()),
-          new StructField("__partition__", IntegerType, false, Metadata.empty()),
-          new StructField("__offset__", LongType, true, Metadata.empty()), // offset in the topic
-          new StructField("__message_type__", IntegerType, false, Metadata.empty()), // enum of put/delete/update
-          new StructField("__schema_id__", IntegerType, false, Metadata.empty()),
+          new StructField(PARTITION_COLUMN_NAME, IntegerType, false, Metadata.empty()),
+          new StructField(OFFSET, LongType, true, Metadata.empty()), // offset in the topic
+          new StructField(MESSAGE_TYPE, IntegerType, false, Metadata.empty()), // enum of put/delete/update
+          new StructField(SCHEMA_ID_COLUMN_NAME, IntegerType, false, Metadata.empty()),
           new StructField(KEY_COLUMN_NAME, BinaryType, false, Metadata.empty()), // serialized key
           new StructField(VALUE_COLUMN_NAME, BinaryType, true, Metadata.empty()), // serialized value
-          new StructField("__replication_metadata_version_id__", IntegerType, false, Metadata.empty()),
-          new StructField("__replication_metadata_payload__", BinaryType, false, Metadata.empty()) });
+          new StructField(RMD_VERSION_ID_COLUMN_NAME, IntegerType, false, Metadata.empty()),
+          new StructField(REPLICATION_METADATA_PAYLOAD, BinaryType, false, Metadata.empty()),
+          // chunked key suffix (null if not chunked)
+          new StructField(CHUNKED_KEY_SUFFIX_COLUMN_NAME, BinaryType, true, Metadata.empty()) });
 }

@@ -27,6 +27,8 @@ import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.serialization.StoreDeserializerCache;
+import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.Utils;
@@ -57,6 +59,7 @@ import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Function;
 import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericRecord;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -97,6 +100,9 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   private final boolean isVersionSpecificClient;
   private final VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory;
   private final boolean includeControlMessages;
+  private final boolean includeDeserializedReplicationMetadata;
+  private final ReplicationMetadataSchemaRepository replicationMetadataSchemaRepository;
+  private final StoreDeserializerCache<GenericRecord> rmdDeserializerCache;
 
   public VeniceChangelogConsumerDaVinciRecordTransformerImpl(
       ChangelogClientConfig changelogClientConfig,
@@ -168,6 +174,15 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
     this.consumerSequenceIdGeneratorMap = new VeniceConcurrentHashMap<>();
     this.consumerSequenceIdStartingValue = consumerSequenceIdStartingValue;
     this.includeControlMessages = changelogClientConfig.shouldIncludeControlMessages();
+    this.includeDeserializedReplicationMetadata = changelogClientConfig.shouldDeserializeReplicationMetadata();
+    if (includeDeserializedReplicationMetadata) {
+      this.replicationMetadataSchemaRepository =
+          new ReplicationMetadataSchemaRepository(changelogClientConfig.getD2ControllerClient());
+      this.rmdDeserializerCache = new RmdDeserializerCache<>(replicationMetadataSchemaRepository, storeName, 1, false);
+    } else {
+      this.replicationMetadataSchemaRepository = null;
+      this.rmdDeserializerCache = null;
+    }
   }
 
   private void startDaVinciClient() {
@@ -625,6 +640,16 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
         DaVinciRecordTransformerRecordMetadata recordMetadata) {
       if (partitionToVersionToServe.get(partitionId) == getStoreVersion()) {
         ChangeEvent<V> changeEvent = new ChangeEvent<>(null, value);
+        GenericRecord deserializedReplicationMetadata = null;
+        if (includeDeserializedReplicationMetadata && recordMetadata.getReplicationMetadataPayload() != null
+            && recordMetadata
+                .getReplicationMetadataVersionId() != DaVinciRecordTransformerRecordMetadata.UNSPECIFIED_SCHEMA_ID) {
+          // provide deserialized replication metadata, recordMetadata.getReplicationMetadataVersionId() will be useful
+          // in the future when we evolve our RMD schema.
+          RecordDeserializer<GenericRecord> deserializer = rmdDeserializerCache
+              .getDeserializer(recordMetadata.getWriterSchemaId(), recordMetadata.getWriterSchemaId());
+          deserializedReplicationMetadata = deserializer.deserialize(recordMetadata.getReplicationMetadataPayload());
+        }
         ImmutableChangeCapturePubSubMessage<K, ChangeEvent<V>> pubSubMessage =
             new ImmutableChangeCapturePubSubMessage<>(
                 key,
@@ -636,7 +661,9 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
                 isCaughtUp(),
                 getNextConsumerSequenceId(partitionId),
                 recordMetadata.getWriterSchemaId(),
-                recordMetadata.getReplicationMetadataPayload());
+                recordMetadata.getReplicationMetadataPayload(),
+                null,
+                deserializedReplicationMetadata);
         internalAddMessageToBuffer(partitionId, pubSubMessage);
       }
     }
@@ -645,7 +672,11 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
      * Add ControlMessage to the buffer.
      * Key and Value are both null. Details for control message are in controlMessage param.
      */
-    public void addControlMessageToBuffer(int partitionId, PubSubPosition offset, ControlMessage controlMessage) {
+    public void addControlMessageToBuffer(
+        int partitionId,
+        PubSubPosition offset,
+        ControlMessage controlMessage,
+        long pubSubMessageTimestamp) {
       if (partitionToVersionToServe.get(partitionId) == getStoreVersion()) {
         ImmutableChangeCapturePubSubMessage<K, ChangeEvent<V>> pubSubMessage =
             new ImmutableChangeCapturePubSubMessage<>(
@@ -653,13 +684,14 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
                 null,
                 pubSubTopicPartitionMap.get(partitionId),
                 offset,
-                0,
+                pubSubMessageTimestamp,
                 0,
                 false,
                 getNextConsumerSequenceId(partitionId),
                 -1,
                 null,
-                controlMessage);
+                controlMessage,
+                null);
         internalAddMessageToBuffer(partitionId, pubSubMessage);
       }
     }
@@ -727,11 +759,15 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
      * If includeControlMessages is FALSE, or the client is NOT version specific, this method is a no-op.
      * If includeControlMessages is true, AND the client is version specific, it adds the control message to the buffer.
      */
-    public void onControlMessage(int partitionId, PubSubPosition offset, ControlMessage controlMessage) {
+    public void onControlMessage(
+        int partitionId,
+        PubSubPosition offset,
+        ControlMessage controlMessage,
+        long pubSubMessageTimestamp) {
       if (!isVersionSpecificClient || !includeControlMessages) {
         return;
       }
-      addControlMessageToBuffer(partitionId, offset, controlMessage);
+      addControlMessageToBuffer(partitionId, offset, controlMessage, pubSubMessageTimestamp);
     }
 
     public void onVersionSwap(int currentVersion, int futureVersion, int partitionId) {

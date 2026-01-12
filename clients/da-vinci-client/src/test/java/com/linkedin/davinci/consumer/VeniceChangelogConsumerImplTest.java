@@ -16,6 +16,7 @@ import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
+import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
@@ -185,6 +186,7 @@ public class VeniceChangelogConsumerImplTest {
     when(mockRepository.getValueSchema(storeName, 1)).thenReturn(new SchemaEntry(1, valueSchema));
     when(store.getVersionOrThrow(Mockito.anyInt())).thenReturn(mockVersion);
     when(store.getVersion(Mockito.anyInt())).thenReturn(mockVersion);
+    when(store.isEnableReads()).thenReturn(true);
 
     mockPubSubConsumer = mock(PubSubConsumerAdapter.class);
     oldVersionTopic = pubSubTopicRepository.getTopic(Version.composeKafkaTopic(storeName, 1));
@@ -315,6 +317,7 @@ public class VeniceChangelogConsumerImplTest {
     when(store.getPartitionCount()).thenReturn(2);
     when(mockRepository.getStore(anyString())).thenReturn(store);
     when(store.getVersion(Mockito.anyInt())).thenReturn(mockVersion);
+    when(store.isEnableReads()).thenReturn(true);
     veniceChangelogConsumer.setStoreRepository(mockRepository);
 
     Assert.assertEquals(veniceChangelogConsumer.getPartitionCount(), 2);
@@ -923,6 +926,7 @@ public class VeniceChangelogConsumerImplTest {
   @Test
   public void testChunkingFailure() throws NoSuchFieldException, IllegalAccessException {
     VeniceChangelogConsumerImpl veniceChangelogConsumer = mock(VeniceChangelogConsumerImpl.class);
+    doNothing().when(veniceChangelogConsumer).throwIfReadsDisabled();
 
     Field changelogClientConfigField = VeniceChangelogConsumerImpl.class.getDeclaredField("changelogClientConfig");
     changelogClientConfigField.setAccessible(true);
@@ -1038,6 +1042,9 @@ public class VeniceChangelogConsumerImplTest {
         PubSubMessageDeserializer.createDefaultDeserializer(),
         veniceChangelogConsumerClientFactory);
 
+    VeniceChangelogConsumerImpl<String, Utf8> spyConsumer = Mockito.spy(veniceChangelogConsumer);
+    doNothing().when(spyConsumer).throwIfReadsDisabled();
+
     /*
      * We make this test deterministic by making the first poll hold the lock longer than the second poll, to ensure
      * the second poll times out before it can acquire the lock. Thus, ensuring poll on the PubSubConsumer only gets
@@ -1058,7 +1065,7 @@ public class VeniceChangelogConsumerImplTest {
 
     // First poll task - will acquire the lock and hold it
     Callable<Void> firstPollTask = () -> {
-      veniceChangelogConsumer.poll(pollTimeoutMs * 4); // Long timeout to ensure it gets the lock
+      spyConsumer.poll(pollTimeoutMs * 4); // Long timeout to ensure it gets the lock
       return null;
     };
 
@@ -1066,7 +1073,7 @@ public class VeniceChangelogConsumerImplTest {
     Callable<Void> secondPollTask = () -> {
       // Wait for first poll to start, then try to poll with short timeout
       firstPollStarted.await();
-      veniceChangelogConsumer.poll(pollTimeoutMs / 2); // Short timeout to ensure it times out
+      spyConsumer.poll(pollTimeoutMs / 2); // Short timeout to ensure it times out
       return null;
     };
 
@@ -1141,6 +1148,7 @@ public class VeniceChangelogConsumerImplTest {
     when(delayedMockRepository.getValueSchema(storeName, 1)).thenReturn(new SchemaEntry(1, valueSchema));
     when(store.getVersionOrThrow(Mockito.anyInt())).thenReturn(mockVersion);
     when(store.getVersion(Mockito.anyInt())).thenReturn(mockVersion);
+    when(store.isEnableReads()).thenReturn(true);
 
     CountDownLatch subscribeStarted = new CountDownLatch(1);
 
@@ -1240,6 +1248,7 @@ public class VeniceChangelogConsumerImplTest {
     when(store.getVersion(1)).thenReturn(mockOldVersion);
     when(store.getVersionOrThrow(2)).thenReturn(mockNewVersion);
     when(store.getVersion(2)).thenReturn(mockNewVersion);
+    when(store.isEnableReads()).thenReturn(true);
     veniceChangeLogConsumer.setStoreRepository(mockRepository);
 
     // partition 0 has an irrelevant version swap and partition 1 has a relevant version swap

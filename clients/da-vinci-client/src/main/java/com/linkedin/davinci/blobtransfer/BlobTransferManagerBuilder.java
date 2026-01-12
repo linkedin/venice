@@ -165,7 +165,8 @@ public class BlobTransferManagerBuilder {
               veniceNotifier),
           blobFinder,
           blobTransferConfig.getBaseDir(),
-          aggVersionedBlobTransferStats);
+          aggVersionedBlobTransferStats,
+          blobTransferConfig.getMaxConcurrentBlobReceiveReplicas());
 
       // start the P2P blob transfer manager
       blobTransferManager.start();

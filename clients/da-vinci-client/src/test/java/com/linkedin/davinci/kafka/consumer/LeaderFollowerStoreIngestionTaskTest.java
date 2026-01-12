@@ -45,6 +45,7 @@ import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.exceptions.VeniceTimeoutException;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
+import com.linkedin.venice.kafka.protocol.Delete;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.LeaderMetadata;
 import com.linkedin.venice.kafka.protocol.ProducerMetadata;
@@ -64,7 +65,6 @@ import com.linkedin.venice.offsets.InMemoryStorageMetadataService;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.pubsub.PubSubContext;
-import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
 import com.linkedin.venice.pubsub.PubSubTopicImpl;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
@@ -113,6 +113,8 @@ import org.testng.annotations.Test;
 
 public class LeaderFollowerStoreIngestionTaskTest {
   private static final PubSubTopicRepository TOPIC_REPOSITORY = new PubSubTopicRepository();
+  private static final int GLOBAL_RT_DIV_VERSION =
+      AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion();
 
   private Store mockStore;
   private LeaderFollowerStoreIngestionTask leaderFollowerStoreIngestionTask;
@@ -558,6 +560,40 @@ public class LeaderFollowerStoreIngestionTaskTest {
   }
 
   @Test
+  public void testGetIngestionProgressPercentage() throws InterruptedException {
+    setUp();
+
+    // Mock the necessary components
+    PartitionConsumptionState mockPcs = mock(PartitionConsumptionState.class);
+    PubSubPosition mockPosition = mock(PubSubPosition.class);
+    PubSubTopicPartition mockTopicPartition = mock(PubSubTopicPartition.class);
+    TopicManager mockTopicManager = mock(TopicManager.class);
+
+    // Setup the mocks
+    doReturn(mockPosition).when(mockPcs).getLatestProcessedVtPosition();
+    doReturn(mockTopicPartition).when(mockPcs).getReplicaTopicPartition();
+    doReturn(true).when(mockVeniceServerConfig).isIngestionProgressLoggingEnabled();
+    doReturn(mockTopicManager).when(mockTopicManagerRepository).getTopicManager(anyString());
+    doReturn(mockTopicManager).when(mockTopicManagerRepository).getLocalTopicManager();
+    doReturn(75).when(mockTopicManager).getIngestionProgressPercentage(mockTopicPartition, mockPosition);
+
+    // Call the method under test
+    int percentage = leaderFollowerStoreIngestionTask.getIngestionProgressPercentage(mockPcs);
+
+    // Verify the result
+    assertEquals(75, percentage, "Ingestion progress percentage should match the expected value");
+    verify(mockTopicManager).getIngestionProgressPercentage(mockTopicPartition, mockPosition);
+
+    // Test when progress percentage is disabled
+    doReturn(false).when(mockVeniceServerConfig).isIngestionProgressLoggingEnabled();
+    percentage = leaderFollowerStoreIngestionTask.getIngestionProgressPercentage(mockPcs);
+    assertEquals(-1, percentage, "Ingestion progress percentage should be -1 when disabled");
+
+    // No additional calls to getProgressPercentage should be made
+    verify(mockTopicManager, times(1)).getIngestionProgressPercentage(any(), any());
+  }
+
+  @Test
   public void testSendGlobalRtDivMessage() throws InterruptedException, IOException {
     setUp();
     int partition = 1;
@@ -605,8 +641,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
     byte[] valueBytes = ByteUtils.extractByteArray(compressor.decompress(ByteBuffer.wrap(compressedBytes)));
     InternalAvroSpecificSerializer<GlobalRtDivState> serializer =
         leaderFollowerStoreIngestionTask.globalRtDivStateSerializer;
-    GlobalRtDivState globalRtDiv =
-        serializer.deserialize(valueBytes, AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion());
+    GlobalRtDivState globalRtDiv = serializer.deserialize(valueBytes, GLOBAL_RT_DIV_VERSION);
     assertNotNull(globalRtDiv);
 
     // Verify the callback has DivSnapshot (VT + RT DIV)
@@ -618,19 +653,20 @@ public class LeaderFollowerStoreIngestionTaskTest {
     assertEquals(callbackPayload.getPartition(), partition);
     assertTrue(callbackPayload.getValue().payloadUnion instanceof Put);
     Put put = (Put) callbackPayload.getValue().payloadUnion;
-    assertEquals(put.getSchemaId(), AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion());
+    assertEquals(put.getSchemaId(), GLOBAL_RT_DIV_VERSION);
     assertNotNull(put.getPutValue());
 
     // Verify that completing the future from put() causes execSyncOffsetFromSnapshotAsync to be called
     // and that produceResult should override the LCVP of the VT DIV sent to the drainer
-    verify(mockStoreBufferService, never()).execSyncOffsetFromSnapshotAsync(any(), any(), any());
+    verify(mockStoreBufferService, never()).execSyncOffsetFromSnapshotAsync(any(), any(), any(), any());
     PubSubProduceResult produceResult = mock(PubSubProduceResult.class);
     PubSubPosition specificPosition = InMemoryPubSubPosition.of(11L);
     when(produceResult.getPubSubPosition()).thenReturn(specificPosition);
     when(produceResult.getSerializedSize()).thenReturn(keyBytes.length + put.putValue.remaining());
     callback.onCompletion(produceResult, null);
     ArgumentCaptor<PartitionTracker> vtDivCaptor = ArgumentCaptor.forClass(PartitionTracker.class);
-    verify(mockStoreBufferService, times(1)).execSyncOffsetFromSnapshotAsync(any(), vtDivCaptor.capture(), any());
+    verify(mockStoreBufferService, times(1))
+        .execSyncOffsetFromSnapshotAsync(any(), vtDivCaptor.capture(), any(), any());
     assertEquals(vtDivCaptor.getValue().getLatestConsumedVtPosition(), specificPosition);
   }
 
@@ -668,16 +704,21 @@ public class LeaderFollowerStoreIngestionTaskTest {
     Put mockPut = mock(Put.class);
     KafkaMessageEnvelope mockKme = globalRtDivMessage.getValue();
 
-    // The method should only return true for non-chunk Global RT DIV messages
+    // The method should only return true for non-chunked Global RT DIV messages
     assertFalse(mockIngestionTask.shouldSyncOffsetFromSnapshot(globalRtDivMessage, mockPartitionConsumptionState));
     doReturn(true).when(mockKey).isGlobalRtDiv();
     doReturn(mockPut).when(mockKme).getPayloadUnion();
-    doReturn(AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion()).when(mockPut).getSchemaId();
+    doReturn(GLOBAL_RT_DIV_VERSION).when(mockPut).getSchemaId();
     assertTrue(mockIngestionTask.shouldSyncOffsetFromSnapshot(globalRtDivMessage, mockPartitionConsumptionState));
     doReturn(AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion()).when(mockPut).getSchemaId();
     assertFalse(mockIngestionTask.shouldSyncOffsetFromSnapshot(globalRtDivMessage, mockPartitionConsumptionState));
     doReturn(AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion()).when(mockPut).getSchemaId();
     assertTrue(mockIngestionTask.shouldSyncOffsetFromSnapshot(globalRtDivMessage, mockPartitionConsumptionState));
+
+    // The method should not error when a non-Put value is passed in
+    Delete mockDelete = mock(Delete.class);
+    doReturn(mockDelete).when(mockKme).getPayloadUnion();
+    assertFalse(mockIngestionTask.shouldSyncOffsetFromSnapshot(globalRtDivMessage, mockPartitionConsumptionState));
 
     // Set up Control Message
     final DefaultPubSubMessage nonSegmentControlMessage = getMockMessage(2).getMessage();
@@ -857,47 +898,6 @@ public class LeaderFollowerStoreIngestionTaskTest {
       verify(mockLocalTopicManager, times(1)).diffPosition(any(), eq(endPosition), eq(vtPosition));
       verify(mockLocalTopicManager, never()).countRecordsUntil(any(), any());
     }
-  }
-
-  @Test(timeOut = 60_000)
-  public void testDeserializePositionWithOffsetFallback() throws InterruptedException {
-    setUp();
-
-    // Use DEFAULT_DESERIALIZER instead of mocking
-    PubSubPositionDeserializer deserializer = PubSubPositionDeserializer.DEFAULT_DESERIALIZER;
-    PubSubTopicPartition mockTopicPartition = mock(PubSubTopicPartition.class);
-    when(mockTopicPartition.toString()).thenReturn("test-topic_v1-0");
-
-    // Use doCallRealMethod to test the actual implementation
-    doCallRealMethod().when(leaderFollowerStoreIngestionTask)
-        .deserializePositionWithOffsetFallback(any(), any(), any(), anyLong());
-    // Case 1: Null ByteBuffer - should return offset-based position
-    PubSubPosition actualPosition = leaderFollowerStoreIngestionTask
-        .deserializePositionWithOffsetFallback(deserializer, mockTopicPartition, null, 100L);
-    assertEquals(actualPosition.getNumericOffset(), 100L, "Null ByteBuffer should return offset-based position");
-
-    // Case 2: Empty ByteBuffer - should return offset-based position
-    actualPosition = leaderFollowerStoreIngestionTask
-        .deserializePositionWithOffsetFallback(deserializer, mockTopicPartition, ByteBuffer.allocate(0), 200L);
-    assertEquals(actualPosition.getNumericOffset(), 200L, "Empty ByteBuffer should return offset-based position");
-
-    // Case 3: Invalid ByteBuffer - should return offset-based position
-    ByteBuffer invalidBuffer = ByteBuffer.wrap(new byte[] { 0x01, 0x02, 0x03 }); // Random invalid bytes
-    actualPosition = leaderFollowerStoreIngestionTask
-        .deserializePositionWithOffsetFallback(deserializer, mockTopicPartition, invalidBuffer, 300L);
-    assertEquals(actualPosition.getNumericOffset(), 300L, "Invalid ByteBuffer should return offset-based position");
-
-    // Case 4: Valid ByteBuffer - should return deserialized position
-    ByteBuffer validBuffer = ApacheKafkaOffsetPosition.of(400L).toWireFormatBuffer();
-    actualPosition = leaderFollowerStoreIngestionTask
-        .deserializePositionWithOffsetFallback(deserializer, mockTopicPartition, validBuffer, 0L);
-    assertEquals(actualPosition.getNumericOffset(), 400L, "Valid ByteBuffer should return deserialized position");
-
-    // Case 5: ByteBuffer has EARLIEST symbolic position and offset is 0
-    ByteBuffer earliestBuffer = PubSubSymbolicPosition.EARLIEST.toWireFormatBuffer();
-    actualPosition = leaderFollowerStoreIngestionTask
-        .deserializePositionWithOffsetFallback(deserializer, mockTopicPartition, earliestBuffer, 0L);
-    assertEquals(actualPosition, PubSubSymbolicPosition.EARLIEST, "Should return EARLIEST symbolic position");
   }
 
   @Test(timeOut = 60_000)

@@ -13,7 +13,7 @@ public class StringToLongMapJSONSerializer extends VeniceJsonSerializer<Map> {
 
   @Override
   public Map<String, Long> deserialize(byte[] bytes, String path) throws IOException {
-    return OBJECT_MAPPER.readValue(bytes, new TypeReference<Map<String, Long>>() {
+    return objectMapper.readValue(bytes, new TypeReference<Map<String, Long>>() {
     });
   }
 }

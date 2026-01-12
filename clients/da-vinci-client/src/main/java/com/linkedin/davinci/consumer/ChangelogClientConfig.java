@@ -63,7 +63,6 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
 
   private Boolean isNewStatelessClientEnabled = false;
   private int maxBufferSize = 1000;
-  private boolean useRequestBasedMetadataRepository = false;
 
   /**
    * If non-null, {@link VeniceChangelogConsumer} will subscribe to a specific version of a Venice store.
@@ -105,6 +104,10 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
    * The config is only applicable to the version specific stateless changelog consumer.
    */
   private boolean includeControlMessages = false;
+  /**
+   * Whether to deserialize the replication metadata and provide it as a {@link org.apache.avro.generic.GenericRecord}
+   */
+  private boolean deserializeReplicationMetadata = false;
 
   public ChangelogClientConfig(String storeName) {
     this.innerClientConfig = new ClientConfig<>(storeName);
@@ -308,15 +311,6 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
     return this;
   }
 
-  public boolean isUseRequestBasedMetadataRepository() {
-    return useRequestBasedMetadataRepository;
-  }
-
-  public ChangelogClientConfig setUseRequestBasedMetadataRepository(boolean useRequestBasedMetadataRepository) {
-    this.useRequestBasedMetadataRepository = useRequestBasedMetadataRepository;
-    return this;
-  }
-
   public boolean shouldSkipFailedToAssembleRecords() {
     return skipFailedToAssembleRecords;
   }
@@ -409,8 +403,8 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
         .setMaxBufferSize(config.getMaxBufferSize())
         .setSeekThreadPoolSize(config.getSeekThreadPoolSize())
         .setShouldSkipFailedToAssembleRecords(config.shouldSkipFailedToAssembleRecords())
-        .setUseRequestBasedMetadataRepository(config.isUseRequestBasedMetadataRepository())
         .setIncludeControlMessages(config.shouldIncludeControlMessages())
+        .setDeserializeReplicationMetadata(config.shouldDeserializeReplicationMetadata())
         .setInnerClientConfig(config.getInnerClientConfig())
         // Store version should not be cloned
         .setStoreVersion(null)
@@ -447,12 +441,21 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
   /**
    * Get whether to pass through control messages to the user.
    */
-  protected Boolean shouldIncludeControlMessages() {
+  public Boolean shouldIncludeControlMessages() {
     return includeControlMessages;
   }
 
   public ChangelogClientConfig setIncludeControlMessages(Boolean includeControlMessages) {
     this.includeControlMessages = includeControlMessages;
+    return this;
+  }
+
+  public boolean shouldDeserializeReplicationMetadata() {
+    return deserializeReplicationMetadata;
+  }
+
+  public ChangelogClientConfig setDeserializeReplicationMetadata(boolean deserializeReplicationMetadata) {
+    this.deserializeReplicationMetadata = deserializeReplicationMetadata;
     return this;
   }
 

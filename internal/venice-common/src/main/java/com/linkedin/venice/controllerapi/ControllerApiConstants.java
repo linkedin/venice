@@ -123,6 +123,7 @@ public class ControllerApiConstants {
   public static final String STORE_VIEW_CLASS = "store_view_class";
   public static final String STORE_VIEW_PARAMS = "store_view_params";
   public static final String DISABLE_STORE_VIEW = "disable_store_view";
+  public static final String FLINK_VENICE_VIEWS_ENABLED = "flink_venice_views_enabled";
 
   public static final String NATIVE_REPLICATION_ENABLED = "native_replication_enabled";
   public static final String PUSH_STREAM_SOURCE_ADDRESS = "push_stream_source_address";
@@ -136,6 +137,8 @@ public class ControllerApiConstants {
   public static final String FUTURE_VERSION_ETL_ENABLED = "future_version_etl_enabled";
 
   public static final String ETLED_PROXY_USER_ACCOUNT = "etled_proxy_user_account";
+
+  public static final String ETL_STRATEGY = "etl_strategy";
 
   public static final String SKIP_DIV = "skip_div";
 

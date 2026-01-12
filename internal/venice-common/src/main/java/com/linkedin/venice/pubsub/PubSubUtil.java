@@ -21,9 +21,13 @@ import com.linkedin.venice.utils.VeniceProperties;
 import java.nio.ByteBuffer;
 import java.util.Base64;
 import java.util.Properties;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 public final class PubSubUtil {
+  private static final Logger LOGGER = LogManager.getLogger(PubSubUtil.class);
+
   public static String getPubSubBrokerAddress(Properties properties) {
     String brokerAddress = properties.getProperty(PUBSUB_BROKER_ADDRESS);
     if (brokerAddress == null) {
@@ -302,14 +306,6 @@ public final class PubSubUtil {
     }
   }
 
-  public static String getPubSubPositionString(
-      PubSubPositionDeserializer pubSubPositionDeserializer,
-      ByteBuffer pubSubPosition) {
-    return (pubSubPosition == null || !pubSubPosition.hasRemaining())
-        ? "<EMPTY>"
-        : pubSubPositionDeserializer.toPosition(pubSubPosition).toString();
-  }
-
   public static PubSubPositionGrpcWireFormat parsePositionParam(String positionWireFormatString) {
     String[] typeIdAndBase64WfBytes = getTypeIdAndBase64WfBytes(positionWireFormatString);
     return PubSubPositionGrpcWireFormat.newBuilder()
@@ -344,5 +340,59 @@ public final class PubSubUtil {
         .setTypeId(positionJsonWireFormat.getTypeId())
         .setBase64PositionBytes(positionJsonWireFormat.getBase64PositionBytes())
         .build();
+  }
+
+  /**
+   * Deserializes a PubSubPosition from wire format bytes with fallback to offset-based position.
+   *
+   * <p>This method attempts to deserialize a position from the provided wire format bytes.
+   * If deserialization fails or the buffer is empty, it falls back to creating an offset-based
+   * position using the provided offset value. This provides resilience against deserialization
+   * errors while ensuring a valid position is always returned.
+   *
+   * <p>Special handling:
+   * <ul>
+   *   <li>Symbolic positions (EARLIEST, LATEST) are always returned as-is</li>
+   *   <li>If the deserialized position is behind the provided offset, uses offset-based position</li>
+   *   <li>Empty or null buffers result in offset-based position</li>
+   *   <li>Deserialization errors result in offset-based position with warning logged</li>
+   * </ul>
+   *
+   * @param wireFormatBytes the serialized position bytes (can be null or empty)
+   * @param offset the fallback offset to use if deserialization fails or buffer is empty
+   * @param pubSubPositionDeserializer the deserializer to convert wire format to position
+   * @return a valid PubSubPosition, either deserialized or offset-based
+   */
+  public static PubSubPosition deserializePositionWithOffsetFallback(
+      ByteBuffer wireFormatBytes,
+      long offset,
+      PubSubPositionDeserializer pubSubPositionDeserializer) {
+    // Fast path: nothing to deserialize
+    if (wireFormatBytes == null || !wireFormatBytes.hasRemaining()) {
+      return fromKafkaOffset(offset);
+    }
+
+    try {
+      PubSubPosition position = pubSubPositionDeserializer.toPosition(wireFormatBytes);
+      // Guard against regressions: honor the caller-provided minimum offset.
+      // This applies to both symbolic and concrete positions.
+      if (position == PubSubSymbolicPosition.EARLIEST || position == PubSubSymbolicPosition.LATEST
+          || position.getNumericOffset() >= offset) {
+        // If position is ahead of or equal to offset, return it as-is (including symbolic positions like LATEST)
+        return position;
+      }
+      LOGGER.info(
+          "Deserialized position: {} is behind the provided offset: {}. Using offset-based position.",
+          position.getNumericOffset(),
+          offset);
+    } catch (RuntimeException e) {
+      LOGGER.warn(
+          "Failed to deserialize PubSubPosition. Using offset-based position (offset={}, bufferRem={}, bufferCap={}).",
+          offset,
+          wireFormatBytes.remaining(),
+          wireFormatBytes.capacity(),
+          e);
+    }
+    return fromKafkaOffset(offset);
   }
 }

@@ -93,6 +93,7 @@ public class StoreInfo {
     storeInfo.setLatestVersionPromoteToCurrentTimestamp(store.getLatestVersionPromoteToCurrentTimestamp());
     storeInfo.setKeyUrnCompressionEnabled(store.isKeyUrnCompressionEnabled());
     storeInfo.setKeyUrnFields(store.getKeyUrnFields());
+    storeInfo.setFlinkVeniceViewsEnabled(store.isFlinkVeniceViewsEnabled());
     return storeInfo;
   }
 
@@ -376,6 +377,7 @@ public class StoreInfo {
   private long getLatestVersionPromoteToCurrentTimestamp;
   private boolean keyUrnCompressionEnabled = false;
   private List<String> keyUrnFields = new ArrayList<>();
+  private boolean flinkVeniceViewsEnabled = false;
 
   public StoreInfo() {
   }
@@ -976,6 +978,14 @@ public class StoreInfo {
 
   public void setEnumSchemaEvolutionAllowed(boolean enumSchemaEvolutionAllowed) {
     this.enumSchemaEvolutionAllowed = enumSchemaEvolutionAllowed;
+  }
+
+  public boolean isFlinkVeniceViewsEnabled() {
+    return flinkVeniceViewsEnabled;
+  }
+
+  public void setFlinkVeniceViewsEnabled(boolean flinkVeniceViewsEnabled) {
+    this.flinkVeniceViewsEnabled = flinkVeniceViewsEnabled;
   }
 
   public List<LifecycleHooksRecord> getStoreLifecycleHooks() {

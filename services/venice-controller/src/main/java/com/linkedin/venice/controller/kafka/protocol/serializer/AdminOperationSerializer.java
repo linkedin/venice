@@ -1,10 +1,14 @@
 package com.linkedin.venice.controller.kafka.protocol.serializer;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
+import com.linkedin.venice.annotation.VisibleForTesting;
+import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
 import com.linkedin.venice.exceptions.VeniceProtocolException;
+import com.linkedin.venice.helix.HelixReadOnlyZKSharedSchemaRepository;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -18,7 +22,6 @@ import org.apache.avro.generic.GenericDatumWriter;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.BinaryDecoder;
 import org.apache.avro.io.Decoder;
-import org.apache.avro.io.DecoderFactory;
 import org.apache.avro.io.Encoder;
 import org.apache.avro.specific.SpecificDatumReader;
 
@@ -28,12 +31,20 @@ public class AdminOperationSerializer {
   public static final int LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION =
       AvroProtocolDefinition.ADMIN_OPERATION.getCurrentProtocolVersion();
 
-  private static final Schema LATEST_SCHEMA = AdminOperation.getClassSchema();
-
-  /** Used to generate decoders. */
-  private static final DecoderFactory DECODER_FACTORY = new DecoderFactory();
+  public static final Schema LATEST_SCHEMA = AdminOperation.getClassSchema();
 
   private static final Map<Integer, Schema> PROTOCOL_MAP = initProtocolMap();
+
+  private static final String ADMIN_OPERATION_SYSTEM_STORE_NAME =
+      AvroProtocolDefinition.ADMIN_OPERATION.getSystemStoreName();
+
+  /**
+   * Cache for schemas downloaded from system store schema repository.
+   * This map is separate from PROTOCOL_MAP to distinguish between built-in schemas and downloaded schemas.
+   * Built-in schemas are initialized at startup and are immutable.
+   * Downloaded schemas are downloaded from system store schema repository, and are mutable.
+   */
+  private static final Map<Integer, Schema> cacheSchemaMapFromSystemStore = new VeniceConcurrentHashMap<>();
 
   /**
    * Serialize AdminOperation object to bytes[] with the writer schema
@@ -103,10 +114,18 @@ public class AdminOperationSerializer {
   }
 
   /**
-   * Validate the AdminOperation message against the target schema.
+   * Validate the AdminOperation message against the target schema for serialization compatibility.
    * @throws VeniceProtocolException if the message does not conform to the target schema.
    */
-  public static void validate(AdminOperation message, int targetSchemaId) {
+  public void validate(AdminOperation message, int targetSchemaId) {
+    // We don't support serialization to future schema versions.
+    // Fail fast in this case.
+    if (targetSchemaId > LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION) {
+      throw new VeniceProtocolException(
+          "Target schema id: " + targetSchemaId + " is greater than the latest schema id: "
+              + LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION + ". We don't support serialization to future schema versions.");
+    }
+
     Schema targetSchema = getSchema(targetSchemaId);
     try {
       SemanticDetector.traverseAndValidate(message, LATEST_SCHEMA, targetSchema, "AdminOperation", null);
@@ -129,11 +148,46 @@ public class AdminOperationSerializer {
     }
   }
 
-  public static Schema getSchema(int schemaId) {
-    if (!PROTOCOL_MAP.containsKey(schemaId)) {
-      throw new VeniceProtocolException("Admin operation schema version: " + schemaId + " doesn't exist");
+  /**
+   * Get schema by schema id from either built-in protocol map or system store schema repository cache.
+   */
+  public Schema getSchema(int schemaId) {
+    if (PROTOCOL_MAP.containsKey(schemaId)) {
+      return PROTOCOL_MAP.get(schemaId);
     }
-    return PROTOCOL_MAP.get(schemaId);
+    if (cacheSchemaMapFromSystemStore.containsKey(schemaId)) {
+      return cacheSchemaMapFromSystemStore.get(schemaId);
+    }
+
+    throw new VeniceProtocolException("Admin operation schema version: " + schemaId + " doesn't exist");
+  }
+
+  /**
+   * Download schema from system store schema repository and add it to the protocol map if not already present.
+   * @throws VeniceProtocolException if the schema could not be found in the system store schema repository.
+   */
+  public void fetchAndStoreSchemaIfAbsent(VeniceHelixAdmin admin, int schemaId) {
+    // No need to download if the schema is already available.
+    if (PROTOCOL_MAP.containsKey(schemaId) || cacheSchemaMapFromSystemStore.containsKey(schemaId)) {
+      return;
+    }
+    HelixReadOnlyZKSharedSchemaRepository zkSharedSchemaRepository = admin.getReadOnlyZKSharedSchemaRepository();
+
+    boolean schemaExists = zkSharedSchemaRepository.hasValueSchema(ADMIN_OPERATION_SYSTEM_STORE_NAME, schemaId);
+
+    Schema schema = null;
+    if (schemaExists) {
+      schema = zkSharedSchemaRepository.getValueSchema(ADMIN_OPERATION_SYSTEM_STORE_NAME, schemaId).getSchema();
+    }
+
+    if (schema == null) {
+      String msg = "Failed to fetch schema id: " + schemaId + " from system store schema repository"
+          + (schemaExists ? " even though it exists." : " as it does not exist.");
+      throw new VeniceProtocolException(msg);
+    }
+
+    // Add the downloaded schema to the cache map
+    cacheSchemaMapFromSystemStore.put(schemaId, schema);
   }
 
   /**
@@ -153,5 +207,15 @@ public class AdminOperationSerializer {
               + writerSchemaId,
           e);
     }
+  }
+
+  @VisibleForTesting
+  public void addSchema(int schemaId, Schema schema) {
+    cacheSchemaMapFromSystemStore.put(schemaId, schema);
+  }
+
+  @VisibleForTesting
+  public void removeSchema(int schemaId) {
+    cacheSchemaMapFromSystemStore.remove(schemaId);
   }
 }

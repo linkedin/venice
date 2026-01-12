@@ -226,6 +226,16 @@ public class ReadOnlyStore implements Store {
     }
 
     @Override
+    public VeniceETLStrategy getETLStrategy() {
+      return this.delegate.getETLStrategy();
+    }
+
+    @Override
+    public void setETLStrategy(VeniceETLStrategy etlStrategy) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
     public ETLStoreConfig clone() {
       return this.delegate.clone();
     }
@@ -1084,6 +1094,16 @@ public class ReadOnlyStore implements Store {
   }
 
   @Override
+  public boolean isFlinkVeniceViewsEnabled() {
+    return this.delegate.isFlinkVeniceViewsEnabled();
+  }
+
+  @Override
+  public void setFlinkVeniceViewsEnabled(boolean flinkVeniceViewsEnabled) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
   public void setViewConfigs(Map<String, ViewConfig> viewConfigList) {
     throw new UnsupportedOperationException();
   }
@@ -1766,6 +1786,7 @@ public class ReadOnlyStore implements Store {
     storeETLConfig.setEtledUserProxyAccount(etlStoreConfig.getEtledUserProxyAccount());
     storeETLConfig.setRegularVersionETLEnabled(etlStoreConfig.isRegularVersionETLEnabled());
     storeETLConfig.setFutureVersionETLEnabled(etlStoreConfig.isFutureVersionETLEnabled());
+    storeETLConfig.setEtlStrategy(etlStoreConfig.getETLStrategy().getValue());
 
     return storeETLConfig;
   }

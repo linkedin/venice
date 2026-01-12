@@ -377,6 +377,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         .setStoreChangeNotifier(asyncStoreChangeNotifier)
         .setPubSubMessageDeserializer(pubSubDeserializer)
         .setPubSubClientsFactory(pubSubClientsFactory)
+        .setUseCheckpointedPubSubPositionWithFallback(serverConfig.isUseCheckpointedPubSubPositionWithFallbackEnabled())
         .build();
 
     VeniceNotifier notifier = new LogNotifier();
@@ -757,7 +758,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       // Create new store ingestion task atomically.
       AtomicBoolean createNewStoreIngestionTask = new AtomicBoolean(false);
       StoreIngestionTask storeIngestionTask = topicNameToIngestionTaskMap.compute(topic, (k, v) -> {
-        if ((v == null) || (!v.isIngestionTaskActive())) {
+        if (v == null || !v.isIngestionTaskActive()) {
           createNewStoreIngestionTask.set(true);
           return createStoreIngestionTask(veniceStore, partitionId);
         }

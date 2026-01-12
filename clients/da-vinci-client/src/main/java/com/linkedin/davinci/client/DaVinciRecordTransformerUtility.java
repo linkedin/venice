@@ -215,8 +215,7 @@ public class DaVinciRecordTransformerUtility<K, O> {
                        */
                       0,
                       PubSubSymbolicPosition.EARLIEST,
-                      keyBytes.length + valueBytes.length,
-                      null)
+                      keyBytes.length + valueBytes.length)
                   : null;
           recordTransformer.processPut(lazyKey, lazyValue, partitionId, recordTransformerRecordMetadata);
         }

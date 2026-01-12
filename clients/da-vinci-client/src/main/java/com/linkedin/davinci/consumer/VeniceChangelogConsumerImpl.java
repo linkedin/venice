@@ -2,7 +2,6 @@ package com.linkedin.davinci.consumer;
 
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES;
 import static com.linkedin.venice.ConfigKeys.CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS;
-import static com.linkedin.venice.ConfigKeys.CLIENT_USE_REQUEST_BASED_METADATA_REPOSITORY;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
@@ -34,6 +33,7 @@ import com.linkedin.venice.compression.NoopCompressor;
 import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.exceptions.InvalidVeniceSchemaException;
+import com.linkedin.venice.exceptions.StoreDisabledException;
 import com.linkedin.venice.exceptions.StoreVersionNotFoundException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
@@ -50,6 +50,7 @@ import com.linkedin.venice.pubsub.PubSubContext;
 import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.PubSubUtil;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
@@ -314,15 +315,14 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
         startTimestamp,
         consumerSequenceIdStartingValue);
 
-    Properties properties = new Properties();
-    properties.put(
-        CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS,
-        String.valueOf(changelogClientConfig.getVersionSwapDetectionIntervalTimeInSeconds()));
-    properties.put(
-        CLIENT_USE_REQUEST_BASED_METADATA_REPOSITORY,
-        String.valueOf(changelogClientConfig.isUseRequestBasedMetadataRepository()));
-    NativeMetadataRepository repository = NativeMetadataRepository
-        .getInstance(changelogClientConfig.getInnerClientConfig(), new VeniceProperties(properties), null);
+    changelogClientConfig.getConsumerProperties()
+        .put(
+            CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS,
+            String.valueOf(changelogClientConfig.getVersionSwapDetectionIntervalTimeInSeconds()));
+    NativeMetadataRepository repository = NativeMetadataRepository.getInstance(
+        changelogClientConfig.getInnerClientConfig(),
+        new VeniceProperties(changelogClientConfig.getConsumerProperties()),
+        null);
     repository.start();
     this.storeRepository = new NativeMetadataRepositoryViewAdapter(repository);
     this.rmdDeserializerCache = new RmdDeserializerCache<>(replicationMetadataSchemaRepository, storeName, 1, false);
@@ -341,6 +341,13 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     }
 
     LOGGER.info("Start a change log consumer client for store: {}", storeName);
+  }
+
+  public void throwIfReadsDisabled() {
+    Store store = getStore();
+    if (!store.isEnableReads()) {
+      throw new StoreDisabledException(store.getName(), "read");
+    }
   }
 
   // Unit test only and read only
@@ -364,6 +371,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   }
 
   protected CompletableFuture<Void> internalSubscribe(Set<Integer> partitions, PubSubTopic topic) {
+    throwIfReadsDisabled();
     return CompletableFuture.supplyAsync(() -> {
       try {
         for (int i = 0; i <= MAX_SUBSCRIBE_RETRIES; i++) {
@@ -822,6 +830,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       long timeoutInMs,
       String topicSuffix,
       boolean includeControlMessage) {
+    throwIfReadsDisabled();
     Collection<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> pubSubMessages = new ArrayList<>();
     Map<PubSubTopicPartition, List<DefaultPubSubMessage>> messagesMap;
     boolean lockAcquired = false;
@@ -1521,17 +1530,27 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
           // client should never go backwards.
           List<Long> localOffset = (List<Long>) currentVersionHighWatermarks
               .getOrDefault(pubSubTopicPartition.getPartitionNumber(), Collections.EMPTY_MAP)
-              .getOrDefault(upstreamPartition, Collections.EMPTY_LIST);
-          // safety checks
-          if (localOffset == null) {
-            localOffset = new ArrayList<>();
+              .getOrDefault(upstreamPartition, new ArrayList<>(4));
+
+          // Prefer position-based high watermarks if available, otherwise use legacy offset-based
+          List<ByteBuffer> positions = versionSwap.getLocalHighWatermarkPubSubPositions();
+          List<Long> highWatermarkOffsets;
+
+          if (positions != null && !positions.isEmpty()) {
+            List<Long> legacyOffsets = versionSwap.getLocalHighWatermarks();
+            highWatermarkOffsets = new ArrayList<>(positions.size());
+            for (int i = 0; i < positions.size(); i++) {
+              long fallbackOffset = (legacyOffsets != null && i < legacyOffsets.size()) ? legacyOffsets.get(i) : -1L;
+              PubSubPosition position = PubSubUtil
+                  .deserializePositionWithOffsetFallback(positions.get(i), fallbackOffset, pubSubPositionDeserializer);
+              highWatermarkOffsets.add(position.getNumericOffset());
+            }
+          } else {
+            highWatermarkOffsets = (versionSwap.getLocalHighWatermarks() != null)
+                ? versionSwap.getLocalHighWatermarks()
+                : Collections.emptyList();
           }
-          List<Long> highWatermarkOffsets = versionSwap.localHighWatermarkPubSubPositions == null
-              ? new ArrayList<>()
-              : versionSwap.getLocalHighWatermarkPubSubPositions()
-                  .stream()
-                  .map(bb -> pubSubPositionDeserializer.toPosition(bb).getNumericOffset())
-                  .collect(Collectors.toList());
+
           if (RmdUtils.hasOffsetAdvanced(localOffset, highWatermarkOffsets)) {
             currentVersionHighWatermarks
                 .putIfAbsent(pubSubTopicPartition.getPartitionNumber(), new ConcurrentHashMap<>());

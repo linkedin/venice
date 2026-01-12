@@ -857,7 +857,7 @@ public class VenicePushJob implements AutoCloseable {
 
       updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.JOB_STATUS_POLLING_COMPLETED);
       // Do not mark completed yet as for target region push it will be marked inside postValidationConsumption
-      if (!pushJobSetting.isTargetedRegionPushEnabled && !pushJobSetting.isTargetRegionPushWithDeferredSwapEnabled) {
+      if (!pushJobSetting.isTargetedRegionPushEnabled) {
         pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(PushJobDetailsStatus.COMPLETED.getValue()));
       }
       pushJobDetails.jobDurationInMs = LatencyUtils.getElapsedTimeFromMsToMs(pushJobSetting.jobStartTimeMs);
@@ -2653,6 +2653,7 @@ public class VenicePushJob implements AutoCloseable {
           if (versionSwapStartTimeMs == 0) {
             LOGGER.info("Starting to monitor version swap status for {}", pushJobSetting.topic);
             versionSwapStartTimeMs = System.currentTimeMillis();
+            updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.START_VERSION_SWAP);
           }
           StoreResponse parentStoreResponse = getStoreResponse(pushJobSetting.storeName, true);
 
@@ -2692,6 +2693,8 @@ public class VenicePushJob implements AutoCloseable {
                 "Successfully pushed {} and it is being served in all regions. The version status is {}.",
                 pushJobSetting.topic,
                 parentVersionStatus);
+            updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.COMPLETE_VERSION_SWAP);
+            sendPushJobDetailsToController();
             return;
           }
 

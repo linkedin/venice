@@ -27,6 +27,8 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENABLE_ST
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENABLE_WRITES;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENUM_SCHEMA_EVOLUTION_ALLOWED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ETLED_PROXY_USER_ACCOUNT;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.ETL_STRATEGY;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.FLINK_VENICE_VIEWS_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.FUTURE_VERSION_ETL_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.GLOBAL_RT_DIV_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.HYBRID_STORE_DISK_QUOTA_ENABLED;
@@ -230,6 +232,7 @@ import com.linkedin.venice.meta.StoreDataAudit;
 import com.linkedin.venice.meta.StoreGraveyard;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.StoreVersionInfo;
+import com.linkedin.venice.meta.VeniceETLStrategy;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.meta.ViewConfig;
@@ -334,8 +337,7 @@ import org.apache.logging.log4j.Logger;
 public class VeniceParentHelixAdmin implements Admin {
   private static final long SLEEP_INTERVAL_FOR_DATA_CONSUMPTION_IN_MS = 1000;
   private static final Logger LOGGER = LogManager.getLogger(VeniceParentHelixAdmin.class);
-  // Store version number to retain in Parent Controller to limit 'Store' ZNode size.
-  static final int STORE_VERSION_RETENTION_COUNT = 5;
+
   private static final StackTraceElement[] EMPTY_STACK_TRACE = new StackTraceElement[0];
 
   private static final long TOPIC_DELETION_DELAY_MS = 5 * Time.MS_PER_MINUTE;
@@ -702,7 +704,7 @@ public class VeniceParentHelixAdmin implements Admin {
 
         // Validate message before acquiring execution id
         int writerSchemaId = getWriterSchemaIdFromZK(clusterName);
-        AdminOperationSerializer.validate(message, writerSchemaId);
+        adminOperationSerializer.validate(message, writerSchemaId);
 
         // Acquire execution id, any exception thrown after this point will result to a missing execution id.
         AdminCommandExecutionTracker adminCommandExecutionTracker = adminCommandExecutionTrackers.get(clusterName);
@@ -1278,7 +1280,15 @@ public class VeniceParentHelixAdmin implements Admin {
       }
       List<Version> versions = store.getVersions();
       final int versionCount = versions.size();
-      if (versionCount <= STORE_VERSION_RETENTION_COUNT) {
+      int storeVersionRetentionCount;
+      if (store.isSystemStore()) {
+        storeVersionRetentionCount =
+            multiClusterConfigs.getControllerConfig(clusterName).getSystemStoreVersionRetentionCount();
+      } else {
+        storeVersionRetentionCount =
+            multiClusterConfigs.getControllerConfig(clusterName).getUserStoreVersionRetentionCount();
+      }
+      if (versionCount <= storeVersionRetentionCount) {
         return;
       }
       Map<String, Integer> currentVersionsMap = getCurrentVersionsForMultiColos(clusterName, storeName);
@@ -1286,7 +1296,7 @@ public class VeniceParentHelixAdmin implements Admin {
       clonedVersions.stream()
           .sorted()
           .filter(v -> !currentVersionsMap.containsValue(v.getNumber()))
-          .limit(versionCount - STORE_VERSION_RETENTION_COUNT)
+          .limit(versionCount - storeVersionRetentionCount)
           .forEach(v -> store.deleteVersion(v.getNumber()));
       storeRepo.updateStore(store);
     }
@@ -2650,6 +2660,7 @@ public class VeniceParentHelixAdmin implements Admin {
       Optional<Boolean> regularVersionETLEnabled = params.getRegularVersionETLEnabled();
       Optional<Boolean> futureVersionETLEnabled = params.getFutureVersionETLEnabled();
       Optional<String> etledUserProxyAccount = params.getETLedProxyUserAccount();
+      Optional<VeniceETLStrategy> etlStrategy = params.getETLStrategy();
       Optional<Boolean> nativeReplicationEnabled = params.getNativeReplicationEnabled();
       Optional<String> pushStreamSourceAddress = params.getPushStreamSourceAddress();
       Optional<Long> backupVersionRetentionMs = params.getBackupVersionRetentionMs();
@@ -2667,6 +2678,7 @@ public class VeniceParentHelixAdmin implements Admin {
       Optional<Integer> latestSupersetSchemaId = params.getLatestSupersetSchemaId();
       Optional<Boolean> unusedSchemaDeletionEnabled = params.getUnusedSchemaDeletionEnabled();
       Optional<List<LifecycleHooksRecord>> storeLifecycleHooks = params.getStoreLifecycleHooks();
+      Optional<Boolean> flinkVeniceViewsEnabled = params.getFlinkVeniceViewsEnabled();
 
       /**
        * Check whether parent controllers will only propagate the update configs to child controller, or all unchanged
@@ -2765,6 +2777,11 @@ public class VeniceParentHelixAdmin implements Admin {
             validateAndDecorateStoreViewConfigs(storeViewConfig.get(), currStore);
         setStore.views = StoreViewUtils.convertViewConfigMapToStoreViewRecordMap(validatedViewConfigs);
         updatedConfigsList.add(STORE_VIEW);
+      }
+
+      if (flinkVeniceViewsEnabled.isPresent()) {
+        setStore.flinkVeniceViewsEnabled = flinkVeniceViewsEnabled.get();
+        updatedConfigsList.add(FLINK_VENICE_VIEWS_ENABLED);
       }
 
       // Only update fields that are set, other fields will be read from the original store's partitioner config.
@@ -3016,11 +3033,13 @@ public class VeniceParentHelixAdmin implements Admin {
       regularVersionETLEnabled.map(addToUpdatedConfigList(updatedConfigsList, REGULAR_VERSION_ETL_ENABLED));
       futureVersionETLEnabled.map(addToUpdatedConfigList(updatedConfigsList, FUTURE_VERSION_ETL_ENABLED));
       etledUserProxyAccount.map(addToUpdatedConfigList(updatedConfigsList, ETLED_PROXY_USER_ACCOUNT));
+      etlStrategy.map(addToUpdatedConfigList(updatedConfigsList, ETL_STRATEGY));
       setStore.ETLStoreConfig = mergeNewSettingIntoOldETLStoreConfig(
           currStore,
           regularVersionETLEnabled,
           futureVersionETLEnabled,
-          etledUserProxyAccount);
+          etledUserProxyAccount,
+          etlStrategy);
 
       setStore.largestUsedVersionNumber =
           largestUsedVersionNumber.map(addToUpdatedConfigList(updatedConfigsList, LARGEST_USED_VERSION_NUMBER))
@@ -5276,7 +5295,8 @@ public class VeniceParentHelixAdmin implements Admin {
       Store store,
       Optional<Boolean> regularVersionETLEnabled,
       Optional<Boolean> futureVersionETLEnabled,
-      Optional<String> etledUserProxyAccount) {
+      Optional<String> etledUserProxyAccount,
+      Optional<VeniceETLStrategy> etlStrategy) {
     ETLStoreConfig etlStoreConfig = store.getEtlStoreConfig();
     /**
      * If etl enabled is true (either current version or future version), then account name must be specified in the command
@@ -5296,6 +5316,7 @@ public class VeniceParentHelixAdmin implements Admin {
         regularVersionETLEnabled.orElseGet(etlStoreConfig::isRegularVersionETLEnabled);
     etlStoreConfigRecord.futureVersionETLEnabled =
         futureVersionETLEnabled.orElseGet(etlStoreConfig::isFutureVersionETLEnabled);
+    etlStoreConfigRecord.etlStrategy = etlStrategy.orElseGet(etlStoreConfig::getETLStrategy).getValue();
     return etlStoreConfigRecord;
   }
 
@@ -6330,4 +6351,8 @@ public class VeniceParentHelixAdmin implements Admin {
     return RegionUtils.parseRegionRolloutOrderList(order).get(0);
   }
 
+  @VisibleForTesting
+  public AdminOperationSerializer getAdminOperationSerializer() {
+    return adminOperationSerializer;
+  }
 }

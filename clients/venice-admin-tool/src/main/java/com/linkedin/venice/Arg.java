@@ -159,6 +159,10 @@ public enum Arg {
       "etled-proxy-user-account", "epu", true,
       "if enabled ETL, the proxy user account for HDFS file directory where the ETLed snapshots will go."
   ),
+  VENICE_ETL_STRATEGY(
+      "venice-etl-strategy", "ves", true,
+      "ETL strategy for this store. Supported strategies are: EXTERNAL_SERVICE, EXTERNAL_WITH_VENICE_TRIGGER. Default is EXTERNAL_SERVICE."
+  ),
   BACKUP_VERSION_RETENTION_DAY(
       "backup-version-retention-day", "bvrd", true,
       "Backup version retention time in day after a new version is promoted to the current version, if not specified, Venice will use the configured retention as the default policy"
@@ -251,6 +255,7 @@ public enum Arg {
   ), VIEW_NAME("view-name", "vn", true, "Name of a store view"),
   VIEW_CLASS("view-class", "vc", true, "Name of a store view class"),
   VIEW_PARAMS("view-params", "vp", true, "Additional parameter map of a store view class"),
+  FLINK_VENICE_VIEWS_ENABLED("flink-venice-views-enabled", "fvve", true, "Enable flink-based views"),
   REMOVE_VIEW("remove-view", "rv", false, "Optional config to specify to disable certain store view"),
   PARTITION_DETAIL_ENABLED(
       "partition-detail-enabled", "pde", true, "A flag to indicate whether to retrieve partition details"

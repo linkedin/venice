@@ -565,59 +565,61 @@ public class PubSubUtilTest {
   }
 
   @Test
-  public void testGetPubSubPositionString() {
+  public void testDeserializePositionWithOffsetFallback() {
     PubSubPositionDeserializer deserializer = PubSubPositionDeserializer.DEFAULT_DESERIALIZER;
 
-    // Case 1: Null ByteBuffer should return "<EMPTY>"
-    String result = PubSubUtil.getPubSubPositionString(deserializer, null);
-    assertEquals(result, "<EMPTY>", "Null ByteBuffer should return <EMPTY>");
+    // Case 1: Null ByteBuffer - should return offset-based position
+    PubSubPosition actualPosition = PubSubUtil.deserializePositionWithOffsetFallback(null, 100L, deserializer);
+    assertEquals(actualPosition.getNumericOffset(), 100L, "Null ByteBuffer should return offset-based position");
 
-    // Case 2: Empty ByteBuffer (no remaining bytes) should return "<EMPTY>"
-    ByteBuffer emptyBuffer = ByteBuffer.allocate(0);
-    result = PubSubUtil.getPubSubPositionString(deserializer, emptyBuffer);
-    assertEquals(result, "<EMPTY>", "Empty ByteBuffer should return <EMPTY>");
+    // Case 2: Empty ByteBuffer - should return offset-based position
+    actualPosition = PubSubUtil.deserializePositionWithOffsetFallback(ByteBuffer.allocate(0), 200L, deserializer);
+    assertEquals(actualPosition.getNumericOffset(), 200L, "Empty ByteBuffer should return offset-based position");
 
-    // Case 3: ByteBuffer with position fully consumed (no remaining) should return "<EMPTY>"
-    ApacheKafkaOffsetPosition position = ApacheKafkaOffsetPosition.of(100L);
-    ByteBuffer consumedBuffer = position.toWireFormatBuffer();
-    // Consume all bytes by moving position to limit
-    consumedBuffer.position(consumedBuffer.limit());
-    result = PubSubUtil.getPubSubPositionString(deserializer, consumedBuffer);
-    assertEquals(result, "<EMPTY>", "ByteBuffer with no remaining bytes should return <EMPTY>");
+    // Case 3: Invalid ByteBuffer - should return offset-based position
+    ByteBuffer invalidBuffer = ByteBuffer.wrap(new byte[] { 0x01, 0x02, 0x03 }); // Random invalid bytes
+    actualPosition = PubSubUtil.deserializePositionWithOffsetFallback(invalidBuffer, 300L, deserializer);
+    assertEquals(actualPosition.getNumericOffset(), 300L, "Invalid ByteBuffer should return offset-based position");
 
-    // Case 4: Valid ByteBuffer with ApacheKafkaOffsetPosition data should deserialize and return toString()
-    ApacheKafkaOffsetPosition validPosition = ApacheKafkaOffsetPosition.of(12345L);
-    ByteBuffer validBuffer = validPosition.toWireFormatBuffer();
-    result = PubSubUtil.getPubSubPositionString(deserializer, validBuffer);
+    // Case 4: Valid ByteBuffer with position ahead of offset - should return deserialized position
+    ByteBuffer validBuffer = ApacheKafkaOffsetPosition.of(400L).toWireFormatBuffer();
+    actualPosition = PubSubUtil.deserializePositionWithOffsetFallback(validBuffer, 0L, deserializer);
+    assertEquals(actualPosition.getNumericOffset(), 400L, "Valid ByteBuffer should return deserialized position");
+
+    // Case 5: Valid ByteBuffer with position equal to offset - should return deserialized position
+    ByteBuffer equalBuffer = ApacheKafkaOffsetPosition.of(500L).toWireFormatBuffer();
+    actualPosition = PubSubUtil.deserializePositionWithOffsetFallback(equalBuffer, 500L, deserializer);
     assertEquals(
-        result,
-        validPosition.toString(),
-        "Valid ByteBuffer should deserialize and return position's toString()");
+        actualPosition.getNumericOffset(),
+        500L,
+        "Position equal to offset should return deserialized position");
 
-    // Case 5: Symbolic positions - EARLIEST
+    // Case 6: Valid ByteBuffer with position behind offset - should return offset-based position
+    ByteBuffer behindBuffer = ApacheKafkaOffsetPosition.of(100L).toWireFormatBuffer();
+    actualPosition = PubSubUtil.deserializePositionWithOffsetFallback(behindBuffer, 200L, deserializer);
+    assertEquals(actualPosition.getNumericOffset(), 200L, "Position behind offset should return offset-based position");
+
+    // Case 7: ByteBuffer has EARLIEST symbolic position - should return EARLIEST as-is
     ByteBuffer earliestBuffer = PubSubSymbolicPosition.EARLIEST.toWireFormatBuffer();
-    result = PubSubUtil.getPubSubPositionString(deserializer, earliestBuffer);
-    assertEquals(
-        result,
-        PubSubSymbolicPosition.EARLIEST.toString(),
-        "Should correctly deserialize EARLIEST symbolic position");
+    actualPosition = PubSubUtil.deserializePositionWithOffsetFallback(earliestBuffer, 100L, deserializer);
+    assertEquals(actualPosition, PubSubSymbolicPosition.EARLIEST, "Should return EARLIEST symbolic position as-is");
 
-    // Case 6: Symbolic positions - LATEST
+    // Case 8: ByteBuffer has LATEST symbolic position - should return LATEST as-is
     ByteBuffer latestBuffer = PubSubSymbolicPosition.LATEST.toWireFormatBuffer();
-    result = PubSubUtil.getPubSubPositionString(deserializer, latestBuffer);
-    assertEquals(
-        result,
-        PubSubSymbolicPosition.LATEST.toString(),
-        "Should correctly deserialize LATEST symbolic position");
+    actualPosition = PubSubUtil.deserializePositionWithOffsetFallback(latestBuffer, 100L, deserializer);
+    assertEquals(actualPosition, PubSubSymbolicPosition.LATEST, "Should return LATEST symbolic position as-is");
 
-    // Case 7: ByteBuffer with partial position data followed by limit
-    ApacheKafkaOffsetPosition partialPosition = ApacheKafkaOffsetPosition.of(777L);
-    byte[] wireFormatBytes = partialPosition.toWireFormatBytes();
-    // Create a buffer with extra capacity but only set limit to actual data
-    ByteBuffer bufferWithLimit = ByteBuffer.allocate(wireFormatBytes.length + 10);
-    bufferWithLimit.put(wireFormatBytes);
-    bufferWithLimit.flip(); // Set limit to current position and reset position to 0
-    result = PubSubUtil.getPubSubPositionString(deserializer, bufferWithLimit);
-    assertEquals(result, partialPosition.toString(), "Should correctly handle ByteBuffer with limit set");
+    // Case 9: Large offset values
+    ByteBuffer largeBuffer = ApacheKafkaOffsetPosition.of(Long.MAX_VALUE - 1000L).toWireFormatBuffer();
+    actualPosition = PubSubUtil.deserializePositionWithOffsetFallback(largeBuffer, 0L, deserializer);
+    assertEquals(
+        actualPosition.getNumericOffset(),
+        Long.MAX_VALUE - 1000L,
+        "Should handle large offset values correctly");
+
+    // Case 10: Zero offset
+    ByteBuffer zeroBuffer = ApacheKafkaOffsetPosition.of(0L).toWireFormatBuffer();
+    actualPosition = PubSubUtil.deserializePositionWithOffsetFallback(zeroBuffer, 0L, deserializer);
+    assertEquals(actualPosition.getNumericOffset(), 0L, "Should handle zero offset correctly");
   }
 }

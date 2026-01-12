@@ -2,6 +2,7 @@ package com.linkedin.davinci.blobtransfer;
 
 import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.getThroughputPerPartition;
 
+import com.linkedin.alpini.base.misc.ThreadPoolExecutor;
 import com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferTableFormat;
 import com.linkedin.davinci.blobtransfer.client.NettyFileTransferClient;
 import com.linkedin.davinci.blobtransfer.server.P2PBlobTransferService;
@@ -14,6 +15,7 @@ import com.linkedin.venice.exceptions.VenicePeersConnectionException;
 import com.linkedin.venice.exceptions.VenicePeersNotFoundException;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.store.rocksdb.RocksDBUtils;
+import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.Utils;
 import java.io.InputStream;
 import java.time.Duration;
@@ -24,6 +26,9 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -58,18 +63,29 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
   // peer finder is responsible to find the peers that have the requested blob
   protected final BlobFinder peerFinder;
   private final String baseDir;
+  // Each replica issues exactly one blob-transfer request at a time.
+  // That request tries a chain of peers (one host after another until success or all peers fail).
+  private final ExecutorService replicaBlobFetchExecutor;
 
   public NettyP2PBlobTransferManager(
       P2PBlobTransferService blobTransferService,
       NettyFileTransferClient nettyClient,
       BlobFinder peerFinder,
       String baseDir,
-      AggVersionedBlobTransferStats aggVersionedBlobTransferStats) {
+      AggVersionedBlobTransferStats aggVersionedBlobTransferStats,
+      int maxConcurrentBlobReceiveReplicas) {
     this.blobTransferService = blobTransferService;
     this.nettyClient = nettyClient;
     this.peerFinder = peerFinder;
     this.baseDir = baseDir;
     this.aggVersionedBlobTransferStats = aggVersionedBlobTransferStats;
+    this.replicaBlobFetchExecutor = new ThreadPoolExecutor(
+        maxConcurrentBlobReceiveReplicas,
+        maxConcurrentBlobReceiveReplicas,
+        60L,
+        TimeUnit.SECONDS,
+        new LinkedBlockingQueue<>(),
+        new DaemonThreadFactory("Venice-BlobTransfer-Replica-Blob-Fetch-Executor"));
   }
 
   @Override
@@ -125,6 +141,32 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
    *  - Success case:
    *  1. If the blob is successfully fetched from a peer, an InputStream of the blob is returned.
    *
+   *
+   * Implementation notes:
+   * - Uses thenComposeAsync (NOT thenCompose) to ensure callbacks execute on replicaBlobFetchExecutor
+   *   instead of Netty EventLoop threads. thenCompose runs callbacks on the completer's thread (often
+   *   EventLoop), which then blocks in connectToHost().awaitUninterruptibly(), causing EventLoop
+   *   self-deadlock as it waits for work only it can perform. thenComposeAsync prevents this by running
+   *   callbacks on a separate executor.
+   *
+   * - Why chainOfPeersFuture:
+   *   Builds a sequential async chain (chainOfPeersFuture) using a for-loop pattern. Alternative approaches
+   *   are not allowed due to correctness and async (VersionBackend#subscribe) requirements:
+   *   (1) Regular for loop with blocking calls: Only blocking calls can get the result of one peer transfer
+   *       and decide whether to move to the next host, but this would block the calling thread (potentially
+   *       an EventLoop or Helix thread), causing deadlock.
+   *       Example: for (host : peers) { result = get(host).get(); } // .get() blocks thread!
+   *   (2) Parallel submission (e.g., CompletableFuture.anyOf): Would attempt connections to all peers
+   *       simultaneously, causing multiple peers to write into the same partition folder concurrently with
+   *       different source files, corrupting the data. We need exactly one successful peer, so sequential
+   *       attempts with early exit are required for correctness.
+   *   (3) Manual callback chaining: Per-host result handling in thenAccept/exceptionally lambdas with
+   *       recursive calls to try the next host. While technically correct, this approach is
+   *       more complex, harder to read and maintain, and error-prone compared to the declarative for-loop
+   *       chain pattern.
+   *   The async chain pattern tries peers one at a time, exits early on first success.
+   *
+   *
    * @param uniqueConnectablePeers the set of peers to process
    * @param storeName the name of the store
    * @param version the version of the store
@@ -148,7 +190,7 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
     // Iterate through each peer and chain the futures
     for (String chosenHost: uniqueConnectablePeers) {
       // Chain the next operation to the previous future
-      chainOfPeersFuture = chainOfPeersFuture.thenCompose(v -> {
+      chainOfPeersFuture = chainOfPeersFuture.thenComposeAsync(v -> {
 
         if (resultFuture.isDone()) {
           // If the result future is already completed, skip the current peer
@@ -178,7 +220,7 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
               handlePeerFetchException(ex, chosenHost, storeName, version, partition, replicaId);
               return null;
             });
-      });
+      }, replicaBlobFetchExecutor);
     }
 
     // error case 2: all hosts have been tried and failed for blob transfer, falling back to Kafka for bootstrapping.
@@ -219,6 +261,7 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
     blobTransferService.close();
     nettyClient.close();
     peerFinder.close();
+    replicaBlobFetchExecutor.shutdown();
   }
 
   /**

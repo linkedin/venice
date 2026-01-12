@@ -42,8 +42,7 @@ public class ServerBlobFinder implements BlobFinder {
           version,
           partitionId);
       response.setErrorMessage(errorMsg + ".\n Error: " + e.getMessage());
-      LOGGER.error(errorMsg, e);
-
+      LOGGER.warn(errorMsg, e);
     }
 
     return response;
