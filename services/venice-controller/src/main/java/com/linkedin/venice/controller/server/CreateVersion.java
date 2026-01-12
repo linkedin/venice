@@ -286,7 +286,6 @@ public class CreateVersion extends AbstractRoute {
           "Please push data to Venice Parent Colo instead");
     }
     int computedPartitionCount = admin.calculateNumberOfPartitions(clusterName, storeName);
-    LOGGER.info("handleNonStreamPushType {}", request.getRepushTtlSeconds());
     final Version version = admin.incrementVersionIdempotent(
         clusterName,
         storeName,
@@ -473,7 +472,7 @@ public class CreateVersion extends AbstractRoute {
 
         // populate the request object with optional parameters
         extractOptionalParamsFromRequestTopicRequest(request, requestTopicForPushRequest, isAclEnabled());
-        LOGGER.info("requestTopicForPushing ttl seconds: {}", requestTopicForPushRequest.getRepushTtlSeconds());
+
         // Invoke the handler to get the topic for pushing data
         handleRequestTopicForPushing(admin, requestTopicForPushRequest, responseObject);
       } catch (Throwable e) {

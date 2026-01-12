@@ -385,7 +385,7 @@ public class ControllerClient implements Closeable {
    * @param deferVersionSwap            whether to defer version swap after the push is done
    * @param targetedRegions             the list of regions that is separated by comma for targeted region push.
    * @param repushSourceVersion
-   * @param repushTtlSeconds
+   * @param repushTtlSeconds            TTL in seconds for repush operation, or -1 if not applicable
    * @return VersionCreationResponse includes topic and partitioning
    */
   public VersionCreationResponse requestTopicForWrites(

@@ -1398,7 +1398,7 @@ public class AdminConsumptionTaskTest {
             "",
             0,
             DEFAULT_RT_VERSION_NUMBER,
-            -1);
+            0);
     // isLeaderController() is called once every consumption cycle (1000ms) and for every message processed in
     // AdminExecutionTask.
     // Provide a sufficient number of true -> false -> true to mimic a transfer of leaderShip and resubscribed behavior
@@ -1618,7 +1618,7 @@ public class AdminConsumptionTaskTest {
             "",
             0,
             DEFAULT_RT_VERSION_NUMBER,
-            -1);
+            0);
     Future<PubSubProduceResult> future = veniceWriter.put(
         emptyKeyBytes,
         getAddVersionMessage(clusterName, storeName, mockPushJobId, versionNumber, numberOfPartitions, 1L),
@@ -1780,7 +1780,7 @@ public class AdminConsumptionTaskTest {
           "dc-0",
           0,
           DEFAULT_RT_VERSION_NUMBER,
-          -1);
+          0);
     });
 
     task.close();
@@ -1827,7 +1827,7 @@ public class AdminConsumptionTaskTest {
           "dc-1",
           0,
           DEFAULT_RT_VERSION_NUMBER,
-          -1);
+          0);
     });
 
     task.close();
@@ -2076,7 +2076,7 @@ public class AdminConsumptionTaskTest {
         1,
         false,
         0,
-        -1);
+        0);
 
     task.close();
     executor.shutdown();

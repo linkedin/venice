@@ -252,7 +252,7 @@ public interface Admin extends AutoCloseable, Closeable {
         false,
         null,
         -1,
-        1);
+        -1);
   }
 
   default Version incrementVersionIdempotent(
@@ -288,7 +288,7 @@ public interface Admin extends AutoCloseable, Closeable {
         versionSwapDeferred,
         null,
         repushSourceVersion,
-        1);
+        -1);
   }
 
   Version incrementVersionIdempotent(
