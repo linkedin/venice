@@ -2,6 +2,7 @@ package com.linkedin.davinci.stats;
 
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
+import com.linkedin.venice.utils.Time;
 import io.tehuti.metrics.MetricsRepository;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -22,6 +23,22 @@ public class AggVersionedBlobTransferStats
         metricsRepository,
         metadataRepository,
         BlobTransferStats::new,
+        BlobTransferStatsReporter::new,
+        serverConfig.isUnregisterMetricForDeletedStoreEnabled());
+  }
+
+  /**
+   * Constructor for testing that allows injecting a Time instance.
+   */
+  public AggVersionedBlobTransferStats(
+      MetricsRepository metricsRepository,
+      ReadOnlyStoreRepository metadataRepository,
+      VeniceServerConfig serverConfig,
+      Time time) {
+    super(
+        metricsRepository,
+        metadataRepository,
+        () -> new BlobTransferStats(time),
         BlobTransferStatsReporter::new,
         serverConfig.isUnregisterMetricForDeletedStoreEnabled());
   }

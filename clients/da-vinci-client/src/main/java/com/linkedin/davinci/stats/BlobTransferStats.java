@@ -1,6 +1,8 @@
 package com.linkedin.davinci.stats;
 
 import com.linkedin.venice.stats.LongAdderRateGauge;
+import com.linkedin.venice.utils.SystemTime;
+import com.linkedin.venice.utils.Time;
 import io.tehuti.metrics.MetricConfig;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
@@ -41,11 +43,17 @@ public class BlobTransferStats {
   private Sensor blobTransferFileReceiveThroughputSensor;
   private Gauge blobTransferTimeGauge = new Gauge();
   private Sensor blobTransferTimeSensor;
-  private LongAdderRateGauge blobTransferBytesReceivedSensor = new LongAdderRateGauge();
-  private LongAdderRateGauge blobTransferBytesSentSensor = new LongAdderRateGauge();
+  private LongAdderRateGauge blobTransferBytesReceivedSensor;
+  private LongAdderRateGauge blobTransferBytesSentSensor;
 
   public BlobTransferStats() {
+    this(new SystemTime());
+  }
+
+  public BlobTransferStats(Time time) {
     localMetricRepository = new MetricsRepository(METRIC_CONFIG);
+    blobTransferBytesReceivedSensor = new LongAdderRateGauge(time);
+    blobTransferBytesSentSensor = new LongAdderRateGauge(time);
 
     blobTransferTotalNumResponsesSensor = localMetricRepository.sensor(BLOB_TRANSFER_TOTAL_NUM_RESPONSES);
     blobTransferTotalNumResponsesSensor.add(BLOB_TRANSFER_TOTAL_NUM_RESPONSES, blobTransferTotalNumResponsesCount);
