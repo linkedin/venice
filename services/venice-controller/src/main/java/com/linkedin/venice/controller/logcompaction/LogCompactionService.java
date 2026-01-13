@@ -13,6 +13,8 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.SynchronousQueue;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -40,7 +42,9 @@ public class LogCompactionService extends AbstractVeniceService {
   private final Admin admin;
   private final String clusterName;
   private final VeniceControllerClusterConfig clusterConfigs;
-  final ScheduledExecutorService executor;
+
+  private final ScheduledExecutorService scheduler;
+  private final ThreadPoolExecutor executor;
 
   public LogCompactionService(Admin admin, String clusterName, VeniceControllerClusterConfig clusterConfigs) {
     this.admin = admin;
@@ -48,13 +52,31 @@ public class LogCompactionService extends AbstractVeniceService {
 
     this.clusterConfigs = clusterConfigs;
 
-    executor = Executors.newScheduledThreadPool(clusterConfigs.getLogCompactionThreadCount());
+    scheduler = Executors.newSingleThreadScheduledExecutor();
+    executor = new ThreadPoolExecutor(
+        clusterConfigs.getLogCompactionThreadCount(),
+        clusterConfigs.getLogCompactionThreadCount(),
+        0L,
+        TimeUnit.MILLISECONDS,
+        new SynchronousQueue<>(),
+        (r, e) -> {
+          // Job rejection callback
+          // Drop task if queue is saturated
+          if (!e.isShutdown()) {
+            LOGGER.warn(
+                "Dropping log compaction task because executor is saturated. "
+                    + "ActiveThreads={}, QueueSize={}, PoolSize={}",
+                e.getActiveCount(),
+                e.getQueue().size(),
+                e.getPoolSize());
+          }
+        });
   }
 
   @Override
   public boolean startInner() throws Exception {
-    executor.scheduleAtFixedRate(
-        new LogCompactionTask(clusterName),
+    scheduler.scheduleWithFixedDelay(
+        () -> executor.execute(new LogCompactionTask(clusterName)),
         PRE_EXECUTION_DELAY_MS,
         clusterConfigs.getLogCompactionIntervalMS(),
         TimeUnit.MILLISECONDS);
@@ -67,6 +89,19 @@ public class LogCompactionService extends AbstractVeniceService {
 
   @Override
   public void stopInner() throws Exception {
+    scheduler.shutdown();
+    try {
+      if (!scheduler.awaitTermination(SCHEDULED_EXECUTOR_TIMEOUT_S, TimeUnit.SECONDS)) {
+        scheduler.shutdownNow();
+        LOGGER.info(
+            "Log compaction service scheduler shutdown timed out and is forcefully shutdown in cluster: {}",
+            clusterName);
+      }
+    } catch (InterruptedException e) {
+      scheduler.shutdownNow();
+      LOGGER.info("Log compaction service interrupted in cluster: {}", clusterName, e);
+    }
+
     executor.shutdown();
     try {
       if (!executor.awaitTermination(SCHEDULED_EXECUTOR_TIMEOUT_S, TimeUnit.SECONDS)) {
@@ -77,7 +112,7 @@ public class LogCompactionService extends AbstractVeniceService {
       }
     } catch (InterruptedException e) {
       executor.shutdownNow();
-      LOGGER.info("Log compaction service interrupted in cluster: {}", clusterName, e);
+      LOGGER.info("Log compaction executor interrupted in cluster: {}", clusterName, e);
     }
   }
 
