@@ -394,7 +394,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
           zkSharedSchemaRepository.get(),
           pubSubTopicRepository,
           serverConfig.getMetaStoreWriterCloseTimeoutInMS(),
-          serverConfig.getMetaStoreWriterCloseConcurrency());
+          serverConfig.getMetaStoreWriterCloseConcurrency(),
+          storeName -> Utils.getRealTimeTopicName(metadataRepo.getStore(storeName)));
       metadataRepo.registerStoreDataChangedListener(new StoreDataChangedListener() {
         @Override
         public void handleStoreDeleted(Store store) {
@@ -1487,7 +1488,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     return storeNameToInternalRecordTransformerConfig.get(storeName);
   }
 
-  public void attemptToPrintIngestionInfoFor(String storeName, Integer version, Integer partition, String regionName) {
+  public void attemptToPrintIngestionInfoFor(Store store, Integer version, Integer partition, String regionName) {
+    String storeName = store.getName();
     try {
       PubSubTopic versionTopic = pubSubTopicRepository.getTopic(Version.composeKafkaTopic(storeName, version));
       StoreIngestionTask storeIngestionTask = getStoreIngestionTask(versionTopic.getName());
@@ -1509,7 +1511,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       String infoPrefix = "isCurrentVersion: " + (storeIngestionTask.isCurrentVersion()) + "\n";
       if (storeIngestionTask.isHybridMode() && partitionConsumptionState.isEndOfPushReceived()
           && partitionConsumptionState.getLeaderFollowerState() == LeaderFollowerStateType.LEADER) {
-        ingestingTopic = pubSubTopicRepository.getTopic(Utils.composeRealTimeTopic(storeName));
+        ingestingTopic = pubSubTopicRepository.getTopic(Utils.getRealTimeTopicName(store));
       }
       PubSubTopicPartition ingestingTopicPartition = new PubSubTopicPartitionImpl(ingestingTopic, partition);
 

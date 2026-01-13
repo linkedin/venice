@@ -1,6 +1,5 @@
 package com.linkedin.venice.meta;
 
-import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_REAL_TIME_TOPIC_NAME;
 import static com.linkedin.venice.meta.Version.DEFAULT_RT_VERSION_NUMBER;
 
 import com.linkedin.venice.exceptions.StoreDisabledException;
@@ -174,12 +173,7 @@ public abstract class AbstractStore implements Store {
       HybridStoreConfig hybridStoreConfig = getHybridStoreConfig();
       if (hybridStoreConfig != null) {
         HybridStoreConfig clonedHybridStoreConfig = hybridStoreConfig.clone();
-        if (currentRTVersionNumber > DEFAULT_RT_VERSION_NUMBER) {
-          String newRealTimeTopicName = Utils.isRTVersioningApplicable(getName())
-              ? Utils.composeRealTimeTopic(getName(), currentRTVersionNumber)
-              : DEFAULT_REAL_TIME_TOPIC_NAME;
-          clonedHybridStoreConfig.setRealTimeTopicName(newRealTimeTopicName);
-        }
+        clonedHybridStoreConfig.setRealTimeTopicName(Utils.composeRealTimeTopic(getName(), currentRTVersionNumber));
         version.setHybridStoreConfig(clonedHybridStoreConfig);
       }
 

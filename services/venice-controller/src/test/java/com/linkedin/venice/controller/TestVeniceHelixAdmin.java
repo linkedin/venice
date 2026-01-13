@@ -162,8 +162,8 @@ public class TestVeniceHelixAdmin {
   @Test
   public void enforceRealTimeTopicCreationBeforeWritingToMetaSystemStore() {
     VeniceHelixAdmin veniceHelixAdmin = mock(VeniceHelixAdmin.class);
-    doNothing().when(veniceHelixAdmin).ensureRealTimeTopicExistsForUserSystemStores(anyString(), anyString());
-    doCallRealMethod().when(veniceHelixAdmin).setUpMetaStoreAndMayProduceSnapshot(anyString(), anyString());
+    doNothing().when(veniceHelixAdmin).ensureRealTimeTopicExistsForUserSystemStores(anyString(), anyString(), anyInt());
+    doCallRealMethod().when(veniceHelixAdmin).setUpMetaStoreAndMayProduceSnapshot(anyString(), anyString(), anyInt());
 
     InOrder inorder = inOrder(veniceHelixAdmin);
 
@@ -176,11 +176,11 @@ public class TestVeniceHelixAdmin {
     doReturn(store).when(repo).getStore(anyString());
     doReturn(Boolean.FALSE).when(store).isDaVinciPushStatusStoreEnabled();
 
-    veniceHelixAdmin.setUpMetaStoreAndMayProduceSnapshot(anyString(), anyString());
+    veniceHelixAdmin.setUpMetaStoreAndMayProduceSnapshot(anyString(), anyString(), anyInt());
 
     // Enforce that ensureRealTimeTopicExistsForUserSystemStores happens before storeMetadataUpdate. See the above
     // comments for the reasons.
-    inorder.verify(veniceHelixAdmin).ensureRealTimeTopicExistsForUserSystemStores(anyString(), anyString());
+    inorder.verify(veniceHelixAdmin).ensureRealTimeTopicExistsForUserSystemStores(anyString(), anyString(), anyInt());
     inorder.verify(veniceHelixAdmin).storeMetadataUpdate(anyString(), anyString(), any());
   }
 
@@ -371,10 +371,11 @@ public class TestVeniceHelixAdmin {
     // Case 1: Store does not exist
     doReturn(null).when(veniceHelixAdmin).getStore(clusterName, storeName);
     doNothing().when(veniceHelixAdmin).checkControllerLeadershipFor(clusterName);
-    doCallRealMethod().when(veniceHelixAdmin).ensureRealTimeTopicExistsForUserSystemStores(anyString(), anyString());
+    doCallRealMethod().when(veniceHelixAdmin)
+        .ensureRealTimeTopicExistsForUserSystemStores(anyString(), anyString(), anyInt());
     Exception notFoundException = expectThrows(
         VeniceException.class,
-        () -> veniceHelixAdmin.ensureRealTimeTopicExistsForUserSystemStores(clusterName, storeName));
+        () -> veniceHelixAdmin.ensureRealTimeTopicExistsForUserSystemStores(clusterName, storeName, 1));
     assertTrue(
         notFoundException.getMessage().contains("does not exist in"),
         "Actual message: " + notFoundException.getMessage());
@@ -383,7 +384,7 @@ public class TestVeniceHelixAdmin {
     doReturn(userStore).when(veniceHelixAdmin).getStore(clusterName, storeName);
     Exception notUserSystemStoreException = expectThrows(
         VeniceException.class,
-        () -> veniceHelixAdmin.ensureRealTimeTopicExistsForUserSystemStores(clusterName, storeName));
+        () -> veniceHelixAdmin.ensureRealTimeTopicExistsForUserSystemStores(clusterName, storeName, 1));
     assertTrue(
         notUserSystemStoreException.getMessage().contains("is not a user system store"),
         "Actual message: " + notUserSystemStoreException.getMessage());
@@ -394,7 +395,7 @@ public class TestVeniceHelixAdmin {
     doReturn(Collections.emptyList()).when(systemStore).getVersions();
     doReturn(systemStore).when(veniceHelixAdmin).getStore(clusterName, systemStoreName);
     doReturn(true).when(topicManager).containsTopic(any(PubSubTopic.class));
-    veniceHelixAdmin.ensureRealTimeTopicExistsForUserSystemStores(clusterName, systemStoreName);
+    veniceHelixAdmin.ensureRealTimeTopicExistsForUserSystemStores(clusterName, systemStoreName, 1);
     verify(topicManager, times(1)).containsTopic(any(PubSubTopic.class));
 
     HelixVeniceClusterResources veniceClusterResources = mock(HelixVeniceClusterResources.class);
@@ -407,7 +408,7 @@ public class TestVeniceHelixAdmin {
     topicManager = mock(TopicManager.class);
     doReturn(topicManager).when(veniceHelixAdmin).getTopicManager();
     doReturn(false).doReturn(true).when(topicManager).containsTopic(any(PubSubTopic.class));
-    veniceHelixAdmin.ensureRealTimeTopicExistsForUserSystemStores(clusterName, systemStoreName);
+    veniceHelixAdmin.ensureRealTimeTopicExistsForUserSystemStores(clusterName, systemStoreName, 1);
     verify(topicManager, times(2)).containsTopic(any(PubSubTopic.class));
     verify(topicManager, never()).createTopic(
         any(PubSubTopic.class),
@@ -424,7 +425,7 @@ public class TestVeniceHelixAdmin {
     when(veniceHelixAdmin.getControllerConfig(clusterName)).thenReturn(clusterConfig);
     doReturn(0).when(systemStore).getPartitionCount();
     doReturn(false).when(topicManager).containsTopic(any(PubSubTopic.class));
-    veniceHelixAdmin.ensureRealTimeTopicExistsForUserSystemStores(clusterName, systemStoreName); // should not throw
+    veniceHelixAdmin.ensureRealTimeTopicExistsForUserSystemStores(clusterName, systemStoreName, 1); // should not throw
     ArgumentCaptor<Integer> partitionCountArgumentCaptor = ArgumentCaptor.forClass(Integer.class);
     verify(topicManager, times(1)).createTopic(
         any(PubSubTopic.class),
@@ -444,7 +445,7 @@ public class TestVeniceHelixAdmin {
     doReturn(false).when(topicManager).containsTopic(any(PubSubTopic.class));
     doReturn(null).when(systemStore).getVersion(anyInt());
     doReturn(5).when(systemStore).getPartitionCount();
-    veniceHelixAdmin.ensureRealTimeTopicExistsForUserSystemStores(clusterName, systemStoreName);
+    veniceHelixAdmin.ensureRealTimeTopicExistsForUserSystemStores(clusterName, systemStoreName, 1);
     verify(topicManager, times(1)).createTopic(
         any(PubSubTopic.class),
         partitionCountArgumentCaptor.capture(),
@@ -462,7 +463,7 @@ public class TestVeniceHelixAdmin {
     doReturn(false).when(topicManager).containsTopic(any(PubSubTopic.class));
     doReturn(version).when(systemStore).getVersion(anyInt());
     doReturn(10).when(version).getPartitionCount();
-    veniceHelixAdmin.ensureRealTimeTopicExistsForUserSystemStores(clusterName, systemStoreName);
+    veniceHelixAdmin.ensureRealTimeTopicExistsForUserSystemStores(clusterName, systemStoreName, 1);
     partitionCountArgumentCaptor = ArgumentCaptor.forClass(Integer.class);
     verify(topicManager, times(1)).createTopic(
         any(PubSubTopic.class),

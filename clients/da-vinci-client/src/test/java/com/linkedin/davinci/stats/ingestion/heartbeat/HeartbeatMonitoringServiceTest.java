@@ -42,6 +42,7 @@ import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
+import java.lang.reflect.Field;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -816,7 +817,7 @@ public class HeartbeatMonitoringServiceTest {
   }
 
   @Test
-  public void testTriggerAutoResubscribe() {
+  public void testTriggerAutoResubscribe() throws Exception {
     String store = "foo";
     int version = 100;
     int partition = 123;
@@ -831,6 +832,11 @@ public class HeartbeatMonitoringServiceTest {
 
     HeartbeatMonitoringService heartbeatMonitoringService = mock(HeartbeatMonitoringService.class);
     KafkaStoreIngestionService kafkaStoreIngestionService = mock(KafkaStoreIngestionService.class);
+    ReadOnlyStoreRepository metadataRepository = mock(ReadOnlyStoreRepository.class);
+    doReturn(mock(Store.class)).when(metadataRepository).getStore(store);
+    Field metadataRepositoryField = HeartbeatMonitoringService.class.getDeclaredField("metadataRepository");
+    metadataRepositoryField.setAccessible(true);
+    metadataRepositoryField.set(heartbeatMonitoringService, metadataRepository);
     VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
     doReturn(serverConfig).when(heartbeatMonitoringService).getServerConfig();
     doReturn(kafkaStoreIngestionService).when(heartbeatMonitoringService).getKafkaStoreIngestionService();
