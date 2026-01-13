@@ -33,6 +33,7 @@ import org.apache.avro.Schema;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -140,8 +141,38 @@ public class TestMultiDatacenterVenicePushJob {
     });
   }
 
-  @Test(timeOut = TEST_TIMEOUT * 2)
-  public void testRepushTtlSecondsWithRepush() throws Exception {
+  @DataProvider(name = "testRepushTtlSecondsWithRepushDataProvider")
+  public Object[][] testRepushTtlSecondsWithRepushDataProvider() {
+    UpdateStoreQueryParams hybridProps = new UpdateStoreQueryParams().setHybridOffsetLagThreshold(1)
+        .setHybridRewindSeconds(0)
+        .setActiveActiveReplicationEnabled(true)
+        .setNativeReplicationEnabled(true)
+        .setChunkingEnabled(true)
+        .setRmdChunkingEnabled(true);
+
+    UpdateStoreQueryParams hybridPropsWithInvalidRewind = new UpdateStoreQueryParams().setHybridOffsetLagThreshold(1)
+        .setHybridRewindSeconds(-1)
+        .setActiveActiveReplicationEnabled(true)
+        .setNativeReplicationEnabled(true)
+        .setChunkingEnabled(true)
+        .setRmdChunkingEnabled(true);
+
+    UpdateStoreQueryParams batchProps = new UpdateStoreQueryParams().setChunkingEnabled(true);
+
+    return new Object[][] { { "1", hybridProps, true, false }, // Hybrid + Valid TTL + TTL Repush
+        { "-1", hybridPropsWithInvalidRewind, true, false }, // Hybrid + Valid TTL + TTL Repush + -1 rewind
+        { "-1", hybridProps, false, false }, // Batch Push + Hybrid Store
+        { "-1", batchProps, false, false }, // Batch store + Batch Push
+        { "-1", batchProps, false, true }, // Batch store + Repush
+    };
+  }
+
+  @Test(timeOut = TEST_TIMEOUT * 2, dataProvider = "testRepushTtlSecondsWithRepushDataProvider")
+  public void testRepushTtlSecondsWithRepush(
+      String ttlRepushSeconds,
+      UpdateStoreQueryParams additionalProps,
+      boolean isTTLRepush,
+      boolean isRepush) throws Exception {
     // Setup input files
     File inputDir = getTempDataDirectory();
     String storeName = Utils.getUniqueString("testRepushTtlSecondsWithRepush");
@@ -152,15 +183,7 @@ public class TestMultiDatacenterVenicePushJob {
     Properties props = defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, storeName);
     createStoreForJob(CLUSTER_NAMES[0], recordSchema, props);
 
-    TestUtils.assertCommand(
-        parentControllerClient.updateStore(
-            storeName,
-            new UpdateStoreQueryParams().setHybridOffsetLagThreshold(1)
-                .setHybridRewindSeconds(0)
-                .setActiveActiveReplicationEnabled(true)
-                .setNativeReplicationEnabled(true)
-                .setChunkingEnabled(true)
-                .setRmdChunkingEnabled(true)));
+    TestUtils.assertCommand(parentControllerClient.updateStore(storeName, additionalProps));
 
     parentControllerClient.emptyPush(storeName, "test", 14033924);
     TestUtils.waitForNonDeterministicPushCompletion(
@@ -170,9 +193,14 @@ public class TestMultiDatacenterVenicePushJob {
         TimeUnit.SECONDS);
 
     // Enable ttl re-push
-    props.setProperty(REPUSH_TTL_ENABLE, "true");
-    props.setProperty(SOURCE_KAFKA, "true");
-    props.setProperty(REPUSH_TTL_SECONDS, "1");
+    if (isTTLRepush) {
+      props.setProperty(REPUSH_TTL_ENABLE, "true");
+      props.setProperty(SOURCE_KAFKA, "true");
+      props.setProperty(REPUSH_TTL_SECONDS, ttlRepushSeconds);
+    } else if (isRepush) {
+      props.setProperty(SOURCE_KAFKA, "true");
+    }
+
     IntegrationTestPushUtils.runVPJ(props);
 
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
@@ -180,7 +208,9 @@ public class TestMultiDatacenterVenicePushJob {
         StoreResponse response = childControllerClient.getStore(storeName);
         Assert.assertFalse(response.isError());
         Assert.assertEquals(response.getStore().getVersions().size(), 2);
-        Assert.assertEquals(response.getStore().getVersion(2).get().getRepushTtlSeconds(), 1);
+        Assert.assertEquals(
+            response.getStore().getVersion(2).get().getRepushTtlSeconds(),
+            Integer.parseInt(ttlRepushSeconds));
       }
     });
   }
