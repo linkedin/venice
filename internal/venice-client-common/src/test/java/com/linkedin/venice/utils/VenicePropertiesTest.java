@@ -448,4 +448,22 @@ public class VenicePropertiesTest {
     assertEquals(veniceProperties.getSizeInBytes("size.trailing"), expectedSize);
     assertEquals(veniceProperties.getSizeInBytes("size.both"), expectedSize);
   }
+
+  @Test
+  public void testGetStringCanReturnNull() {
+    // Test that getString() can return null when the key exists but maps to a null value
+    Map<String, String> props = new HashMap<>();
+    props.put("existing.key", "value");
+    props.put("null.key", null); // Key exists but value is null
+    VeniceProperties veniceProperties = new VeniceProperties(props);
+
+    // Case 1: Key exists with non-null value
+    assertEquals(veniceProperties.getString("existing.key"), "value");
+
+    // Case 2: Key exists but value is null - getString() should return null
+    Assert.assertNull(veniceProperties.getString("null.key"));
+
+    // Case 3: Key doesn't exist - should throw UndefinedPropertyException
+    expectThrows(UndefinedPropertyException.class, () -> veniceProperties.getString("missing.key"));
+  }
 }
