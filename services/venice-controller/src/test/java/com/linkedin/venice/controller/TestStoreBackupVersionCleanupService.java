@@ -245,6 +245,27 @@ public class TestStoreBackupVersionCleanupService {
   }
 
   @Test
+  public void testCleanupBackupVersion_StoreRollbackWasExecutedErrorFutureVersions() {
+    Map<Integer, VersionStatus> versions = new HashMap<>();
+    versions.put(1, VersionStatus.ONLINE);
+    versions.put(2, VersionStatus.ERROR);
+    versions.put(3, VersionStatus.ONLINE);
+    Store storeWithRollback = mockStore(-1, System.currentTimeMillis() - DEFAULT_RETENTION_MS * 2, versions, 3);
+    Assert.assertTrue(service.cleanupBackupVersion(storeWithRollback, CLUSTER_NAME));
+    TestUtils.waitForNonDeterministicAssertion(
+        1,
+        TimeUnit.SECONDS,
+        () -> verify(admin, atLeast(1)).deleteOldVersionInStore(CLUSTER_NAME, storeWithRollback.getName(), 2));
+    Store storeWithRollback1 = mockStore(-1, System.currentTimeMillis() - DEFAULT_RETENTION_MS * 2, versions, 1);
+    Assert.assertTrue(service.cleanupBackupVersion(storeWithRollback1, CLUSTER_NAME));
+    TestUtils.waitForNonDeterministicAssertion(
+        1,
+        TimeUnit.SECONDS,
+        () -> verify(admin, atLeast(1)).deleteOldVersionInStore(CLUSTER_NAME, storeWithRollback1.getName(), 2));
+
+  }
+
+  @Test
   public void testCleanupBackupVersion_OldCurrentVersion() {
     Map<Integer, VersionStatus> versions = new HashMap<>();
     versions.put(1, VersionStatus.ONLINE);
@@ -430,10 +451,10 @@ public class TestStoreBackupVersionCleanupService {
     versions.put(2, VersionStatus.KILLED);
     versions.put(3, VersionStatus.KILLED);
     Store store = mockStore(-1, System.currentTimeMillis() - DEFAULT_RETENTION_MS * 2, versions, 1);
-    Assert.assertFalse(service.cleanupBackupVersion(store, CLUSTER_NAME));
+    Assert.assertTrue(service.cleanupBackupVersion(store, CLUSTER_NAME));
     verify(admin, never()).deleteOldVersionInStore(CLUSTER_NAME, store.getName(), 1);
-    verify(admin, never()).deleteOldVersionInStore(CLUSTER_NAME, store.getName(), 2);
-    verify(admin, never()).deleteOldVersionInStore(CLUSTER_NAME, store.getName(), 3);
+    verify(admin, atLeast(1)).deleteOldVersionInStore(CLUSTER_NAME, store.getName(), 2);
+    verify(admin, atLeast(1)).deleteOldVersionInStore(CLUSTER_NAME, store.getName(), 3);
   }
 
   @Test

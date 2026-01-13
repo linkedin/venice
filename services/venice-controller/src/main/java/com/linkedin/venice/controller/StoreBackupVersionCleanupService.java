@@ -300,9 +300,8 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
     }
 
     // First, consider any versions that can be deleted (invalid status: error or killed) and are not in use
-    List<Version> readyToBeRemovedVersions = versions.stream()
-        .filter(v -> v.getNumber() < currentVersion && VersionStatus.canDelete(v.getStatus()))
-        .collect(Collectors.toList());
+    List<Version> readyToBeRemovedVersions =
+        versions.stream().filter(v -> VersionStatus.canDelete(v.getStatus())).collect(Collectors.toList());
 
     // This will delete backup versions which satisfy any of the following conditions
     // 1. Current version is from a repush, the version is from the chain of repushes into current version.
