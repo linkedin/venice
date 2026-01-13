@@ -541,7 +541,7 @@ idea {
 }
 
 task integrationTestJar(type: Jar) {
-  classifier 'integrationTest'
+  archiveClassifier = 'integrationTest'
   from sourceSets.integrationTest.output
 }
 

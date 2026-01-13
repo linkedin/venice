@@ -8,10 +8,10 @@ plugins {
   id 'idea'
   id 'java'
   id 'maven-publish'
-  id 'com.diffplug.spotless' version '6.12.0'
+  id 'com.diffplug.spotless' version '8.1.0'
   id 'com.dorongold.task-tree' version '2.1.0'
   id 'com.github.johnrengelman.shadow' version '7.1.2' apply false
-  id 'com.github.spotbugs' version '4.8.0' apply false
+  id 'com.github.spotbugs' version '6.4.8' apply false
   id 'org.gradle.test-retry' version '1.6.0' apply false
   id 'com.form.diff-coverage' version '0.9.5' apply false
   id 'me.champeau.jmh' version '0.6.7' apply false
@@ -141,7 +141,7 @@ ext.libraries = [
     slf4jSimple: 'org.slf4j:slf4j-simple:1.7.36',
     snappy: 'org.iq80.snappy:snappy:0.4',
     spark: 'com.sparkjava:spark-core:2.9.4', // Spark-Java Rest framework
-    spotbugs: 'com.github.spotbugs:spotbugs:4.5.2',
+    spotbugs: 'com.github.spotbugs:spotbugs:4.9.8',
     tehuti: 'io.tehuti:tehuti:0.12.5',
     testcontainers: 'org.testcontainers:testcontainers:1.18.0',
     testng: 'org.testng:testng:6.14.3',
@@ -367,9 +367,9 @@ subprojects {
   }
   sourceSets.main.java.srcDir(compileAvro)
 
-  tasks.withType(SpotBugsTask) {
-    effort = 'max'
-    reportLevel = 'low'
+  tasks.withType(SpotBugsTask).configureEach {
+    effort = com.github.spotbugs.snom.Effort.valueOf('MAX')
+    reportLevel = com.github.spotbugs.snom.Confidence.valueOf('LOW')
     includeFilter = file(
       project.hasProperty('spotallbugs') ?
         "$rootDir/gradle/spotbugs/include-all.xml" :
@@ -380,27 +380,47 @@ subprojects {
     showStackTraces = false
     reports ({
       xml {
-        enabled = project.hasProperty('spotbugs.xml') || project.hasProperty('spotbugs.reports.all')
+        required = project.hasProperty('spotbugs.xml') || project.hasProperty('spotbugs.reports.all')
       }
       html {
-        enabled = !reports.getByName('XML').enabled || project.hasProperty('spotbugs.reports.all')
+        required = !reports.xml.required.get() || project.hasProperty('spotbugs.reports.all')
         stylesheet = 'fancy-hist.xsl'
       }
     })
+
+    // Configure sourceDirs to include generated sources
+    def genSourcesConfig = providers.provider {
+      sourceSets.findByName(baseName)?.output?.generatedSourcesDirs ?: files()
+    }
+    sourceDirs.from(genSourcesConfig)
+
+    // Ensure all compile and runtime dependencies are available for SpotBugs analysis
+    def sourceSetName = baseName.replaceFirst('spotbugs', '')
+    if (sourceSetName && sourceSets.findByName(sourceSetName)) {
+      def sourceSet = sourceSets.getByName(sourceSetName)
+      auxClassPaths.from(sourceSet.compileClasspath, sourceSet.runtimeClasspath)
+    }
+
     doFirst {
-      sourceDirs += sourceSets.getByName(baseName).output.generatedSourcesDirs
-      def generatedSources = sourceDirs.sum { dir ->
-        dir.path =~ "^$buildDir/generated/sources/" ?
-          fileTree(dir: dir, include: '**/*.java').collect { dir.relativePath(it) } : []
+      // Exclude generated classes from SpotBugs analysis to reduce noise
+      // Generated sources are included via sourceDirs configuration above
+      def genSourcesDirs = sourceDirs.files.findAll { dir ->
+        dir.path.contains(layout.buildDirectory.get().asFile.path + File.separator + "generated" + File.separator + "sources")
       }
-      if (generatedSources) {
-        def generatedClasses = generatedSources*.replaceFirst('.java$', '').sum {
-          [ it + '.class', it + '\$*.class' ]
+      if (!genSourcesDirs.isEmpty()) {
+        def generatedJavaFiles = genSourcesDirs.collectMany { dir ->
+          fileTree(dir: dir, include: '**/*.java').collect { file ->
+            dir.toPath().relativize(file.toPath()).toString().replace('\\', '/')
+          }
         }
-        classes = classDirs.asFileTree.matching { exclude generatedClasses }
-        auxClassPaths += classDirs.asFileTree.matching { include generatedClasses }.each {
-          // Muted to reduce noise, but can be uncommented to debug exclusions
-          // println "Excluding generated class ${project.relativePath(it)}"
+        if (!generatedJavaFiles.isEmpty()) {
+          def generatedClassPatterns = generatedJavaFiles.collectMany { javaFile ->
+            def classBase = javaFile.replaceFirst('\\.java$', '')
+            [classBase + '.class', classBase + '$*.class']
+          }
+          // Exclude generated classes from main analysis
+          classes = classDirs.asFileTree.matching { exclude generatedClassPatterns }
+          // Generated classes are automatically available in auxClassPaths via compile classpath
         }
       }
     }
@@ -515,8 +535,8 @@ subprojects {
       dependsOn test // tests are required to run before generating the report
 
       reports {
-        xml.enabled = true
-        html.enabled = true
+        xml.required = true
+        html.required = true
       }
     }
 
@@ -594,7 +614,7 @@ subprojects {
   }
 
   task testJar(type: Jar) {
-    classifier 'tests'
+    archiveClassifier = 'tests'
     from sourceSets.test.output
   }
 
