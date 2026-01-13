@@ -200,4 +200,195 @@ public class VenicePropertiesTest {
     String emptyResult = VeniceProperties.mapToString(emptyMap);
     assertEquals(emptyResult, "");
   }
+
+  @Test
+  public void testGetLongWithEmptyString() {
+    // Test getLong with default value when property is empty string
+    Properties properties = new Properties();
+    properties.put("empty.long", "");
+    properties.put("whitespace.long", "   ");
+    properties.put("valid.long", "12345");
+    VeniceProperties veniceProperties = new VeniceProperties(properties);
+
+    // Empty string should return default value
+    assertEquals(veniceProperties.getLong("empty.long", 999L), 999L);
+
+    // Whitespace-only string should return default value
+    assertEquals(veniceProperties.getLong("whitespace.long", 888L), 888L);
+
+    // Valid value should be parsed
+    assertEquals(veniceProperties.getLong("valid.long", 999L), 12345L);
+
+    // Missing property should return default value
+    assertEquals(veniceProperties.getLong("missing.long", 777L), 777L);
+  }
+
+  @Test
+  public void testGetLongWithoutDefaultThrowsOnEmptyString() {
+    // Test getLong without default value when property is empty string
+    Properties properties = new Properties();
+    properties.put("empty.long", "");
+    properties.put("whitespace.long", "  ");
+    VeniceProperties veniceProperties = new VeniceProperties(properties);
+
+    // Empty string should throw VeniceException
+    VeniceException ex1 = expectThrows(VeniceException.class, () -> veniceProperties.getLong("empty.long"));
+    Assert.assertTrue(ex1.getMessage().contains("empty value"));
+
+    // Whitespace-only string should throw VeniceException
+    VeniceException ex2 = expectThrows(VeniceException.class, () -> veniceProperties.getLong("whitespace.long"));
+    Assert.assertTrue(ex2.getMessage().contains("empty value"));
+
+    // Missing property should throw UndefinedPropertyException
+    expectThrows(UndefinedPropertyException.class, () -> veniceProperties.getLong("missing.long"));
+  }
+
+  @Test
+  public void testGetIntWithEmptyString() {
+    // Test getInt with default value when property is empty string
+    Properties properties = new Properties();
+    properties.put("empty.int", "");
+    properties.put("whitespace.int", "   ");
+    properties.put("valid.int", "42");
+    VeniceProperties veniceProperties = new VeniceProperties(properties);
+
+    // Empty string should return default value
+    assertEquals(veniceProperties.getInt("empty.int", 100), 100);
+
+    // Whitespace-only string should return default value
+    assertEquals(veniceProperties.getInt("whitespace.int", 200), 200);
+
+    // Valid value should be parsed
+    assertEquals(veniceProperties.getInt("valid.int", 100), 42);
+
+    // Missing property should return default value
+    assertEquals(veniceProperties.getInt("missing.int", 300), 300);
+  }
+
+  @Test
+  public void testGetIntWithoutDefaultThrowsOnEmptyString() {
+    // Test getInt without default value when property is empty string
+    Properties properties = new Properties();
+    properties.put("empty.int", "");
+    properties.put("whitespace.int", "  ");
+    VeniceProperties veniceProperties = new VeniceProperties(properties);
+
+    // Empty string should throw VeniceException
+    VeniceException ex1 = expectThrows(VeniceException.class, () -> veniceProperties.getInt("empty.int"));
+    Assert.assertTrue(ex1.getMessage().contains("empty value"));
+
+    // Whitespace-only string should throw VeniceException
+    VeniceException ex2 = expectThrows(VeniceException.class, () -> veniceProperties.getInt("whitespace.int"));
+    Assert.assertTrue(ex2.getMessage().contains("empty value"));
+
+    // Missing property should throw UndefinedPropertyException
+    expectThrows(UndefinedPropertyException.class, () -> veniceProperties.getInt("missing.int"));
+  }
+
+  @Test
+  public void testGetOptionalIntWithEmptyString() {
+    // Test getOptionalInt when property is empty string
+    Properties properties = new Properties();
+    properties.put("empty.int", "");
+    properties.put("whitespace.int", "   ");
+    properties.put("valid.int", "123");
+    VeniceProperties veniceProperties = new VeniceProperties(properties);
+
+    // Empty string should return Optional.empty()
+    Assert.assertFalse(veniceProperties.getOptionalInt("empty.int").isPresent());
+
+    // Whitespace-only string should return Optional.empty()
+    Assert.assertFalse(veniceProperties.getOptionalInt("whitespace.int").isPresent());
+
+    // Valid value should be present
+    Assert.assertTrue(veniceProperties.getOptionalInt("valid.int").isPresent());
+    assertEquals(veniceProperties.getOptionalInt("valid.int").get(), Integer.valueOf(123));
+
+    // Missing property should return Optional.empty()
+    Assert.assertFalse(veniceProperties.getOptionalInt("missing.int").isPresent());
+  }
+
+  @Test
+  public void testGetDoubleWithEmptyString() {
+    // Test getDouble with default value when property is empty string
+    Properties properties = new Properties();
+    properties.put("empty.double", "");
+    properties.put("whitespace.double", "   ");
+    properties.put("valid.double", "3.15");
+    VeniceProperties veniceProperties = new VeniceProperties(properties);
+
+    // Empty string should return default value
+    assertEquals(veniceProperties.getDouble("empty.double", 1.5), 1.5);
+
+    // Whitespace-only string should return default value
+    assertEquals(veniceProperties.getDouble("whitespace.double", 2.5), 2.5);
+
+    // Valid value should be parsed
+    assertEquals(veniceProperties.getDouble("valid.double", 1.5), 3.15);
+
+    // Missing property should return default value
+    assertEquals(veniceProperties.getDouble("missing.double", 4.5), 4.5);
+  }
+
+  @Test
+  public void testGetDoubleWithoutDefaultThrowsOnEmptyString() {
+    // Test getDouble without default value when property is empty string
+    Properties properties = new Properties();
+    properties.put("empty.double", "");
+    properties.put("whitespace.double", "  ");
+    VeniceProperties veniceProperties = new VeniceProperties(properties);
+
+    // Empty string should throw VeniceException
+    VeniceException ex1 = expectThrows(VeniceException.class, () -> veniceProperties.getDouble("empty.double"));
+    Assert.assertTrue(ex1.getMessage().contains("empty value"));
+
+    // Whitespace-only string should throw VeniceException
+    VeniceException ex2 = expectThrows(VeniceException.class, () -> veniceProperties.getDouble("whitespace.double"));
+    Assert.assertTrue(ex2.getMessage().contains("empty value"));
+
+    // Missing property should throw UndefinedPropertyException
+    expectThrows(UndefinedPropertyException.class, () -> veniceProperties.getDouble("missing.double"));
+  }
+
+  @Test
+  public void testGetSizeInBytesWithEmptyString() {
+    // Test getSizeInBytes with default value when property is empty string
+    Properties properties = new Properties();
+    properties.put("empty.size", "");
+    properties.put("whitespace.size", "   ");
+    properties.put("valid.size", "10MB");
+    VeniceProperties veniceProperties = new VeniceProperties(properties);
+
+    // Empty string should return default value
+    assertEquals(veniceProperties.getSizeInBytes("empty.size", 1024L), 1024L);
+
+    // Whitespace-only string should return default value
+    assertEquals(veniceProperties.getSizeInBytes("whitespace.size", 2048L), 2048L);
+
+    // Valid value should be parsed
+    assertEquals(veniceProperties.getSizeInBytes("valid.size", 1024L), 10 * 1024 * 1024L);
+
+    // Missing property should return default value
+    assertEquals(veniceProperties.getSizeInBytes("missing.size", 4096L), 4096L);
+  }
+
+  @Test
+  public void testGetSizeInBytesWithoutDefaultThrowsOnEmptyString() {
+    // Test getSizeInBytes without default value when property is empty string
+    Properties properties = new Properties();
+    properties.put("empty.size", "");
+    properties.put("whitespace.size", "  ");
+    VeniceProperties veniceProperties = new VeniceProperties(properties);
+
+    // Empty string should throw VeniceException
+    VeniceException ex1 = expectThrows(VeniceException.class, () -> veniceProperties.getSizeInBytes("empty.size"));
+    Assert.assertTrue(ex1.getMessage().contains("empty value"));
+
+    // Whitespace-only string should throw VeniceException
+    VeniceException ex2 = expectThrows(VeniceException.class, () -> veniceProperties.getSizeInBytes("whitespace.size"));
+    Assert.assertTrue(ex2.getMessage().contains("empty value"));
+
+    // Missing property should throw UndefinedPropertyException
+    expectThrows(UndefinedPropertyException.class, () -> veniceProperties.getSizeInBytes("missing.size"));
+  }
 }

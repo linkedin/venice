@@ -126,7 +126,7 @@ public class AsyncStoreChangeNotifier implements StoreDataChangedListener, AutoC
     String uniqueTaskId = generateUniqueTaskId(clientId);
     taskRegistry.put(uniqueTaskId, tasks);
 
-    LOGGER.info("Registered tasks with ID: {} (client: {})", uniqueTaskId, clientId);
+    LOGGER.debug("Registered tasks with ID: {} (client: {})", uniqueTaskId, clientId);
     return uniqueTaskId;
   }
 
@@ -399,7 +399,7 @@ public class AsyncStoreChangeNotifier implements StoreDataChangedListener, AutoC
     try {
       notificationExecutor.submit(() -> {
         try {
-          LOGGER.info("Executing task {} for {} event: {}", taskId, eventType.name(), context);
+          LOGGER.debug("Executing task {} for {} event: {}", taskId, eventType.name(), context);
           taskRunnable.run();
         } catch (Exception e) {
           // Catch all exceptions to prevent one task failure from affecting others
