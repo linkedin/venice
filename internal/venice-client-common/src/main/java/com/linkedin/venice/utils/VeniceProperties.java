@@ -345,7 +345,7 @@ public class VeniceProperties implements Serializable {
       if (value == null || value.trim().isEmpty()) {
         return defaultValue;
       }
-      return Long.parseLong(value);
+      return Long.parseLong(value.trim());
     } else {
       return defaultValue;
     }
@@ -357,7 +357,7 @@ public class VeniceProperties implements Serializable {
       if (value == null || value.trim().isEmpty()) {
         throw new VeniceException("Property " + name + " is defined but has an empty value");
       }
-      return Long.parseLong(value);
+      return Long.parseLong(value.trim());
     } else {
       throw new UndefinedPropertyException(name);
     }
@@ -369,7 +369,7 @@ public class VeniceProperties implements Serializable {
       if (value == null || value.trim().isEmpty()) {
         return defaultValue;
       }
-      return Integer.parseInt(value);
+      return Integer.parseInt(value.trim());
     } else {
       return defaultValue;
     }
@@ -381,7 +381,7 @@ public class VeniceProperties implements Serializable {
       if (value == null || value.trim().isEmpty()) {
         throw new VeniceException("Property " + name + " is defined but has an empty value");
       }
-      return Integer.parseInt(value);
+      return Integer.parseInt(value.trim());
     } else {
       throw new UndefinedPropertyException(name);
     }
@@ -393,7 +393,7 @@ public class VeniceProperties implements Serializable {
       if (value == null || value.trim().isEmpty()) {
         return Optional.empty();
       }
-      return Optional.of(Integer.parseInt(value));
+      return Optional.of(Integer.parseInt(value.trim()));
     } else {
       return Optional.empty();
     }
@@ -405,7 +405,7 @@ public class VeniceProperties implements Serializable {
       if (value == null || value.trim().isEmpty()) {
         return defaultValue;
       }
-      return Double.parseDouble(value);
+      return Double.parseDouble(value.trim());
     } else {
       return defaultValue;
     }
@@ -417,7 +417,7 @@ public class VeniceProperties implements Serializable {
       if (value == null || value.trim().isEmpty()) {
         throw new VeniceException("Property " + name + " is defined but has an empty value");
       }
-      return Double.parseDouble(value);
+      return Double.parseDouble(value.trim());
     } else {
       throw new UndefinedPropertyException(name);
     }
@@ -429,7 +429,7 @@ public class VeniceProperties implements Serializable {
       if (value == null || value.trim().isEmpty()) {
         return defaultValue;
       }
-      return convertSizeFromLiteral(value);
+      return convertSizeFromLiteral(value.trim());
     } else {
       return defaultValue;
     }
@@ -444,25 +444,25 @@ public class VeniceProperties implements Serializable {
     if (bytes == null || bytes.trim().isEmpty()) {
       throw new VeniceException("Property " + name + " is defined but has an empty value");
     }
-    return convertSizeFromLiteral(bytes);
+    return convertSizeFromLiteral(bytes.trim());
   }
 
   public static long convertSizeFromLiteral(String size) {
     String sizeLc = size.toLowerCase().trim();
     if (sizeLc.endsWith("kb")) {
-      return Long.parseLong(size.substring(0, size.length() - 2)) * 1024;
+      return Long.parseLong(sizeLc.substring(0, sizeLc.length() - 2)) * 1024;
     } else if (sizeLc.endsWith("k")) {
-      return Long.parseLong(size.substring(0, size.length() - 1)) * 1024;
+      return Long.parseLong(sizeLc.substring(0, sizeLc.length() - 1)) * 1024;
     } else if (sizeLc.endsWith("mb")) {
-      return Long.parseLong(size.substring(0, size.length() - 2)) * 1024 * 1024;
+      return Long.parseLong(sizeLc.substring(0, sizeLc.length() - 2)) * 1024 * 1024;
     } else if (sizeLc.endsWith("m")) {
-      return Long.parseLong(size.substring(0, size.length() - 1)) * 1024 * 1024;
+      return Long.parseLong(sizeLc.substring(0, sizeLc.length() - 1)) * 1024 * 1024;
     } else if (sizeLc.endsWith("gb")) {
-      return Long.parseLong(size.substring(0, size.length() - 2)) * 1024 * 1024 * 1024;
+      return Long.parseLong(sizeLc.substring(0, sizeLc.length() - 2)) * 1024 * 1024 * 1024;
     } else if (sizeLc.endsWith("g")) {
-      return Long.parseLong(size.substring(0, size.length() - 1)) * 1024 * 1024 * 1024;
+      return Long.parseLong(sizeLc.substring(0, sizeLc.length() - 1)) * 1024 * 1024 * 1024;
     } else {
-      return Long.parseLong(size);
+      return Long.parseLong(sizeLc);
     }
   }
 

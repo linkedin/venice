@@ -391,4 +391,61 @@ public class VenicePropertiesTest {
     // Missing property should throw UndefinedPropertyException
     expectThrows(UndefinedPropertyException.class, () -> veniceProperties.getSizeInBytes("missing.size"));
   }
+
+  @Test
+  public void testNumericParsingWithLeadingTrailingWhitespace() {
+    // Test that numeric parsing handles leading/trailing whitespace correctly
+    Properties properties = new Properties();
+    properties.put("long.leading", "  12345");
+    properties.put("long.trailing", "12345  ");
+    properties.put("long.both", "  12345  ");
+    properties.put("int.leading", "  42");
+    properties.put("int.trailing", "42  ");
+    properties.put("int.both", "  42  ");
+    properties.put("double.leading", "  3.15");
+    properties.put("double.trailing", "3.15  ");
+    properties.put("double.both", "  3.15  ");
+    properties.put("size.leading", "  10MB");
+    properties.put("size.trailing", "10MB  ");
+    properties.put("size.both", "  10MB  ");
+    VeniceProperties veniceProperties = new VeniceProperties(properties);
+
+    // Test getLong with whitespace
+    assertEquals(veniceProperties.getLong("long.leading", 0L), 12345L);
+    assertEquals(veniceProperties.getLong("long.trailing", 0L), 12345L);
+    assertEquals(veniceProperties.getLong("long.both", 0L), 12345L);
+    assertEquals(veniceProperties.getLong("long.leading"), 12345L);
+    assertEquals(veniceProperties.getLong("long.trailing"), 12345L);
+    assertEquals(veniceProperties.getLong("long.both"), 12345L);
+
+    // Test getInt with whitespace
+    assertEquals(veniceProperties.getInt("int.leading", 0), 42);
+    assertEquals(veniceProperties.getInt("int.trailing", 0), 42);
+    assertEquals(veniceProperties.getInt("int.both", 0), 42);
+    assertEquals(veniceProperties.getInt("int.leading"), 42);
+    assertEquals(veniceProperties.getInt("int.trailing"), 42);
+    assertEquals(veniceProperties.getInt("int.both"), 42);
+
+    // Test getOptionalInt with whitespace
+    assertEquals(veniceProperties.getOptionalInt("int.leading").get(), Integer.valueOf(42));
+    assertEquals(veniceProperties.getOptionalInt("int.trailing").get(), Integer.valueOf(42));
+    assertEquals(veniceProperties.getOptionalInt("int.both").get(), Integer.valueOf(42));
+
+    // Test getDouble with whitespace
+    assertEquals(veniceProperties.getDouble("double.leading", 0.0), 3.15, 0.001);
+    assertEquals(veniceProperties.getDouble("double.trailing", 0.0), 3.15, 0.001);
+    assertEquals(veniceProperties.getDouble("double.both", 0.0), 3.15, 0.001);
+    assertEquals(veniceProperties.getDouble("double.leading"), 3.15, 0.001);
+    assertEquals(veniceProperties.getDouble("double.trailing"), 3.15, 0.001);
+    assertEquals(veniceProperties.getDouble("double.both"), 3.15, 0.001);
+
+    // Test getSizeInBytes with whitespace
+    long expectedSize = 10 * 1024 * 1024; // 10MB
+    assertEquals(veniceProperties.getSizeInBytes("size.leading", 0L), expectedSize);
+    assertEquals(veniceProperties.getSizeInBytes("size.trailing", 0L), expectedSize);
+    assertEquals(veniceProperties.getSizeInBytes("size.both", 0L), expectedSize);
+    assertEquals(veniceProperties.getSizeInBytes("size.leading"), expectedSize);
+    assertEquals(veniceProperties.getSizeInBytes("size.trailing"), expectedSize);
+    assertEquals(veniceProperties.getSizeInBytes("size.both"), expectedSize);
+  }
 }
