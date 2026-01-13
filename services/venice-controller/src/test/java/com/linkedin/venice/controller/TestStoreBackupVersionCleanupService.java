@@ -245,6 +245,21 @@ public class TestStoreBackupVersionCleanupService {
   }
 
   @Test
+  public void testCleanupBackupVersion_OldCurrentVersion() {
+    Map<Integer, VersionStatus> versions = new HashMap<>();
+    versions.put(1, VersionStatus.ONLINE);
+    versions.put(2, VersionStatus.ONLINE);
+    versions.put(3, VersionStatus.ONLINE);
+    // current version 3, should delete oldest backup version 1
+    Store storeWithRollback = mockStore(-1, System.currentTimeMillis() + DEFAULT_RETENTION_MS, versions, 3);
+    Assert.assertTrue(service.cleanupBackupVersion(storeWithRollback, CLUSTER_NAME));
+    TestUtils.waitForNonDeterministicAssertion(
+        1,
+        TimeUnit.SECONDS,
+        () -> verify(admin, atLeast(1)).deleteOldVersionInStore(CLUSTER_NAME, storeWithRollback.getName(), 1));
+  }
+
+  @Test
   public void testCleanupBackupVersion_OnlyOneBackupVersion() {
     // Test that a store with only one backup version (two versions total) doesn't get cleaned up
     Map<Integer, VersionStatus> versions = new HashMap<>();

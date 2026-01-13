@@ -330,7 +330,7 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
       }
 
       // Keep at least 1 backup version until we are past the retention period.
-      if (isCurrentVersionRepushed && readyToBeRemovedVersions.size() >= versions.size() - 1 && !pastRetention) {
+      if (readyToBeRemovedVersions.size() >= versions.size() - 1 && !pastRetention) {
         readyToBeRemovedVersions.remove(0); // choose the newest version
         if (readyToBeRemovedVersions.isEmpty()) {
           return false;
