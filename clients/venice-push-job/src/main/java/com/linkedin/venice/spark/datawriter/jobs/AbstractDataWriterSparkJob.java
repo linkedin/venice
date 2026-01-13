@@ -21,6 +21,7 @@ import static com.linkedin.venice.spark.SparkConstants.MESSAGE_TYPE_COLUMN_NAME;
 import static com.linkedin.venice.spark.SparkConstants.OFFSET;
 import static com.linkedin.venice.spark.SparkConstants.OFFSET_COLUMN_NAME;
 import static com.linkedin.venice.spark.SparkConstants.PARTITION_COLUMN_NAME;
+import static com.linkedin.venice.spark.SparkConstants.RAW_PUBSUB_INPUT_TABLE_SCHEMA;
 import static com.linkedin.venice.spark.SparkConstants.REPLICATION_METADATA_PAYLOAD;
 import static com.linkedin.venice.spark.SparkConstants.RMD_COLUMN_NAME;
 import static com.linkedin.venice.spark.SparkConstants.RMD_VERSION_ID_COLUMN_NAME;
@@ -96,6 +97,7 @@ import com.linkedin.venice.writer.VeniceWriter;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Properties;
 import java.util.UUID;
@@ -123,6 +125,7 @@ import org.apache.spark.sql.types.DataTypes;
 import org.apache.spark.sql.types.StructField;
 import org.apache.spark.sql.types.StructType;
 import org.apache.spark.util.AccumulatorV2;
+import org.apache.spark.util.LongAccumulator;
 
 
 /**
@@ -354,11 +357,22 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
       // Apply TTL filter first on RAW_PUBSUB_INPUT_TABLE_SCHEMA (if enabled)
       Dataset<Row> filteredInput = applyTTLFilter(rawKafkaInput);
 
+      // Only apply explicit compaction if chunking is DISABLED.
+      // If chunking is enabled, applyChunkAssembly will handle both assembly and deduplication.
+      Dataset<Row> processedInput;
+      if (!pushJobSetting.sourceKafkaInputVersionInfo.isChunkingEnabled()) {
+        LOGGER.info("Applying compaction to non-chunked Kafka input.");
+        processedInput = applyCompaction(filteredInput);
+      } else {
+        LOGGER.info("Skipping explicit compaction as chunking is enabled. Deduplication will happen during assembly.");
+        processedInput = filteredInput;
+      }
+
       // If chunking is enabled, keep offset, message_type, and chunked_key_suffix for chunk assembly
       // Otherwise, just select the basic columns
       if (pushJobSetting.sourceKafkaInputVersionInfo.isChunkingEnabled()) {
         LOGGER.info("Chunking is enabled - selecting columns for chunk assembly");
-        return filteredInput.selectExpr(
+        return processedInput.selectExpr(
             KEY_COLUMN_NAME,
             VALUE_COLUMN_NAME,
             "CAST(" + REPLICATION_METADATA_PAYLOAD + " AS BINARY) as " + RMD_COLUMN_NAME,
@@ -369,7 +383,7 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
             CHUNKED_KEY_SUFFIX_COLUMN_NAME + " as " + CHUNKED_KEY_SUFFIX_COLUMN_NAME);
       } else {
         // Non-chunked: don't need offset/message_type or schema IDs
-        return filteredInput.selectExpr(
+        return processedInput.selectExpr(
             KEY_COLUMN_NAME,
             VALUE_COLUMN_NAME,
             "CAST(" + REPLICATION_METADATA_PAYLOAD + " AS BINARY) as " + RMD_COLUMN_NAME);
@@ -465,6 +479,77 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
   }
 
   /**
+   * Apply compaction to the Kafka input dataframe.
+   * For each key, keep only the record with the highest offset.
+   *
+   * @param dataFrame Input dataframe with RAW_PUBSUB_INPUT_TABLE_SCHEMA
+   * @return Compacted dataframe with duplicate keys removed
+   */
+  protected Dataset<Row> applyCompaction(Dataset<Row> dataFrame) {
+    if (!pushJobSetting.isSourceKafka) {
+      // Compaction only applies to Kafka input (repush)
+      return dataFrame;
+    }
+
+    LOGGER.info("Applying compaction to Kafka input. Input schema: {}", dataFrame.schema());
+
+    ExpressionEncoder<Row> encoder = RowEncoder.apply(RAW_PUBSUB_INPUT_TABLE_SCHEMA);
+
+    // Extract accumulators to local variables to avoid serialization issues
+    final LongAccumulator totalDupKeyAcc = accumulatorsForDataWriterJob.totalDuplicateKeyCounter;
+    final LongAccumulator dupKeyDistinctValueAcc = accumulatorsForDataWriterJob.duplicateKeyWithDistinctValueCounter;
+    final LongAccumulator dupKeyIdenticalValueAcc = accumulatorsForDataWriterJob.duplicateKeyWithIdenticalValueCounter;
+
+    dataFrame = dataFrame
+        // Group by key
+        .groupByKey((MapFunction<Row, byte[]>) row -> row.getAs(KEY_COLUMN_NAME), Encoders.BINARY())
+        // For each key group, keep only the latest record (highest offset)
+        .flatMapGroups((FlatMapGroupsFunction<byte[], Row, Row>) (keyBytes, rowsIterator) -> {
+          List<Row> rowsList = new ArrayList<>();
+          rowsIterator.forEachRemaining(rowsList::add);
+
+          if (rowsList.isEmpty()) {
+            return Collections.emptyIterator();
+          }
+
+          // Track duplicate keys
+          if (rowsList.size() > 1) {
+            totalDupKeyAcc.add(1);
+
+            // Check if values are identical or distinct
+            boolean hasDistinctValues = false;
+            byte[] firstValue = rowsList.get(0).getAs(VALUE_COLUMN_NAME);
+            for (int i = 1; i < rowsList.size(); i++) {
+              byte[] currentValue = rowsList.get(i).getAs(VALUE_COLUMN_NAME);
+              if (!java.util.Arrays.equals(firstValue, currentValue)) {
+                hasDistinctValues = true;
+                break;
+              }
+            }
+
+            if (hasDistinctValues) {
+              dupKeyDistinctValueAcc.add(1);
+            } else {
+              dupKeyIdenticalValueAcc.add(1);
+            }
+          }
+
+          // Sort by offset DESC and keep the first (latest) record
+          Row latestRecord =
+              rowsList.stream().max(Comparator.comparingLong(r -> (long) r.getAs(OFFSET_COLUMN_NAME))).orElse(null);
+
+          if (latestRecord == null) {
+            return Collections.emptyIterator();
+          }
+
+          return Collections.singletonList(latestRecord).iterator();
+        }, encoder);
+
+    LOGGER.info("Compaction completed. Output schema: {}", dataFrame.schema());
+    return dataFrame;
+  }
+
+  /**
    * Apply chunk assembly if chunking is enabled.
    * Groups records by key, sorts by offset DESC, and assembles chunks into complete values/RMDs.
    * If TTL filtering is enabled, the assembler also filters assembled records post-assembly.
@@ -536,6 +621,11 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
   @Override
   public DataWriterTaskTracker getTaskTracker() {
     return taskTracker;
+  }
+
+  @VisibleForTesting
+  protected DataWriterAccumulators getAccumulatorsForDataWriterJob() {
+    return accumulatorsForDataWriterJob;
   }
 
   // This is a part of the public API. Do not remove.
@@ -662,6 +752,7 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
     logAccumulatorValue(accumulatorsForDataWriterJob.sprayAllPartitionsTriggeredCount);
     logAccumulatorValue(accumulatorsForDataWriterJob.partitionWriterCloseCounter);
     logAccumulatorValue(accumulatorsForDataWriterJob.repushTtlFilteredRecordCounter);
+    logAccumulatorValue(accumulatorsForDataWriterJob.totalDuplicateKeyCounter);
     logAccumulatorValue(accumulatorsForDataWriterJob.writeAclAuthorizationFailureCounter);
     logAccumulatorValue(accumulatorsForDataWriterJob.recordTooLargeFailureCounter);
     logAccumulatorValue(accumulatorsForDataWriterJob.duplicateKeyWithIdenticalValueCounter);

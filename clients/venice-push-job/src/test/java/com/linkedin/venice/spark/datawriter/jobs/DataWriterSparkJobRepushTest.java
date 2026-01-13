@@ -5,8 +5,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_BROKER_
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PARTITION_COUNT;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TOPIC_PROP;
-import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.*;
 
 import com.linkedin.venice.hadoop.PushJobSetting;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
@@ -95,6 +94,74 @@ public class DataWriterSparkJobRepushTest {
     assertTrue(Arrays.equals(record2.key, "test-key-2".getBytes()), "Second key should match");
     assertTrue(Arrays.equals(record2.value, "test-value-2".getBytes()), "Second value should match");
     assertTrue(Arrays.equals(record2.rmd, "rmd".getBytes()), "Second RMD should match");
+  }
+
+  /**
+   * Test compaction (deduplication) with duplicate keys.
+   * Verifies that only the record with the highest offset is kept for each key.
+   */
+  @Test
+  public void testCompactionWithDuplicateKeys() {
+    String testName = "testCompactionWithDuplicateKeys";
+    TestSparkPartitionWriter.clearCapturedRecords(testName);
+
+    TestDataWriterSparkJobWithDuplicates job = new TestDataWriterSparkJobWithDuplicates(testName);
+    currentTestJob = job;
+
+    Properties props = createDefaultTestProperties();
+
+    PushJobSetting setting = new PushJobSetting();
+    setting.isSourceKafka = true;
+    setting.kafkaInputTopic = "test_store_v1";
+    setting.kafkaInputBrokerUrl = "localhost:9092";
+    setting.repushTTLEnabled = false;
+    setting.topic = "test_store_v1";
+    setting.kafkaUrl = "localhost:9092";
+    setting.partitionerClass = DefaultVenicePartitioner.class.getName();
+    setting.partitionCount = 1;
+
+    setting.sourceKafkaInputVersionInfo = new VersionImpl("test_store", 1, "test-push-id");
+
+    job.configure(new VeniceProperties(props), setting);
+
+    job.runComputeJob();
+
+    // Verify compaction metrics
+    DataWriterAccumulators accumulators = job.getAccumulators();
+    assertEquals(
+        (long) accumulators.totalDuplicateKeyCounter.value(),
+        2L,
+        "Should track 2 duplicate keys (key1 and key2)");
+    assertEquals(
+        (long) accumulators.duplicateKeyWithIdenticalValueCounter.value(),
+        1L,
+        "Should track 1 duplicate with identical values (key1)");
+    assertEquals(
+        (long) accumulators.duplicateKeyWithDistinctValueCounter.value(),
+        1L,
+        "Should track 1 duplicate with distinct values (key2)");
+
+    // Verify output: should have only 3 records (one per unique key)
+    List<TestSparkPartitionWriter.TestRecord> capturedRecords = TestSparkPartitionWriter.getCapturedRecords(testName);
+    assertEquals(capturedRecords.size(), 3, "Should have 3 records after compaction (one per unique key)");
+
+    // Verify key1: should have the latest value (offset 200)
+    TestSparkPartitionWriter.TestRecord key1Record =
+        capturedRecords.stream().filter(r -> Arrays.equals(r.key, "key1".getBytes())).findFirst().orElse(null);
+    assertNotNull(key1Record, "Should find key1");
+    assertTrue(Arrays.equals(key1Record.value, "value1".getBytes()), "key1 should have value1 (identical values)");
+
+    // Verify key2: should have the latest value (offset 300, value3)
+    TestSparkPartitionWriter.TestRecord key2Record =
+        capturedRecords.stream().filter(r -> Arrays.equals(r.key, "key2".getBytes())).findFirst().orElse(null);
+    assertNotNull(key2Record, "Should find key2");
+    assertTrue(Arrays.equals(key2Record.value, "value3".getBytes()), "key2 should have value3 (latest value)");
+
+    // Verify key3: no duplicates, should pass through
+    TestSparkPartitionWriter.TestRecord key3Record =
+        capturedRecords.stream().filter(r -> Arrays.equals(r.key, "key3".getBytes())).findFirst().orElse(null);
+    assertNotNull(key3Record, "Should find key3");
+    assertTrue(Arrays.equals(key3Record.value, "value3".getBytes()), "key3 should have value3");
   }
 
   /**
@@ -203,7 +270,7 @@ public class DataWriterSparkJobRepushTest {
       Dataset<Row> outputDF = job.testableApplyTTLFilter(inputDF);
 
       // Verify the transformation was applied (outputDF is not null and is a different object)
-      assertTrue(outputDF != null, "TTL filter should return a DataFrame");
+      assertNotNull(outputDF, "TTL filter should return a DataFrame");
       // Don't call count() to avoid Spark execution issues in test environment
       // The transformation setup itself provides code coverage
 
@@ -217,7 +284,7 @@ public class DataWriterSparkJobRepushTest {
   private Row createChunkedRow(String key, String chunkData, int negativeSchemaId, long offset) {
     return new GenericRowWithSchema(
         new Object[] { "region1", 0, offset, MessageType.PUT.getValue(), negativeSchemaId, key.getBytes(),
-            chunkData.getBytes(), -1, new byte[0] },
+            chunkData.getBytes(), -1, new byte[0], null },
         RAW_PUBSUB_INPUT_TABLE_SCHEMA);
   }
 
@@ -236,14 +303,14 @@ public class DataWriterSparkJobRepushTest {
   private Row createPutRow(String key, String value, long offset) {
     return new GenericRowWithSchema(
         new Object[] { "region1", 0, offset, MessageType.PUT.getValue(), 1, key.getBytes(), value.getBytes(), 1,
-            "rmd".getBytes() },
+            "rmd".getBytes(), null },
         RAW_PUBSUB_INPUT_TABLE_SCHEMA);
   }
 
   private Row createDeleteRow(String key, long offset) {
     return new GenericRowWithSchema(
         new Object[] { "region1", 0, offset, MessageType.DELETE.getValue(), 1, key.getBytes(), new byte[0], 1,
-            "rmd".getBytes() },
+            "rmd".getBytes(), null },
         RAW_PUBSUB_INPUT_TABLE_SCHEMA);
   }
 
@@ -325,6 +392,42 @@ public class DataWriterSparkJobRepushTest {
 
     public Dataset<Row> testableApplyTTLFilter(Dataset<Row> dataFrame) {
       return super.applyTTLFilter(dataFrame);
+    }
+  }
+
+  /**
+   * Test job that provides input data with duplicate keys to test compaction.
+   */
+  private class TestDataWriterSparkJobWithDuplicates extends TestDataWriterSparkJob {
+    TestDataWriterSparkJobWithDuplicates(String testName) {
+      super(testName);
+    }
+
+    @Override
+    protected Dataset<Row> getKafkaInputDataFrame() {
+      // Create test data with duplicates:
+      // key1: 2 duplicates with identical values (offsets 100, 200)
+      // key2: 3 duplicates with distinct values (offsets 150, 250, 300)
+      // key3: no duplicates (offset 400)
+      List<Row> testData = Arrays.asList(
+          // key1 duplicates (identical values)
+          createPutRow("key1", "value1", 100L),
+          createPutRow("key1", "value1", 200L), // latest
+
+          // key2 duplicates (distinct values)
+          createPutRow("key2", "value1", 150L),
+          createPutRow("key2", "value2", 250L),
+          createPutRow("key2", "value3", 300L), // latest
+
+          // key3 (no duplicates)
+          createPutRow("key3", "value3", 400L));
+
+      return getSparkSession().createDataFrame(testData, RAW_PUBSUB_INPUT_TABLE_SCHEMA);
+    }
+
+    // Expose accumulators for testing
+    public DataWriterAccumulators getAccumulators() {
+      return getAccumulatorsForDataWriterJob();
     }
   }
 

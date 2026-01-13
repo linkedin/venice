@@ -101,7 +101,7 @@ public class SparkRepushJobTTLTest {
       // Create a PUT message with null RMD
       Row rowWithNullRmd = new GenericRowWithSchema(
           new Object[] { "region1", 0, 100L, MessageType.PUT.getValue(), 1, "key1".getBytes(), "value1".getBytes(), 1,
-              null },
+              null, null },
           RAW_PUBSUB_INPUT_TABLE_SCHEMA);
 
       // Execute - null RMD should throw exception
@@ -174,28 +174,28 @@ public class SparkRepushJobTTLTest {
   private Row createPutRow(String key, String value, int schemaId, byte[] rmdPayload) {
     return new GenericRowWithSchema(
         new Object[] { "region1", 0, 100L, MessageType.PUT.getValue(), schemaId, key.getBytes(), value.getBytes(), 1,
-            rmdPayload },
+            rmdPayload, null },
         RAW_PUBSUB_INPUT_TABLE_SCHEMA);
   }
 
   private Row createChunkedRow(String key, String chunkData, int negativeSchemaId) {
     return new GenericRowWithSchema(
         new Object[] { "region1", 0, 100L, MessageType.PUT.getValue(), negativeSchemaId, key.getBytes(),
-            chunkData.getBytes(), -1, new byte[0] },
+            chunkData.getBytes(), -1, new byte[0], null },
         RAW_PUBSUB_INPUT_TABLE_SCHEMA);
   }
 
   private Row createDeleteRow(String key, int valueSchemaId, int rmdVersionId, byte[] rmdPayload) {
     return new GenericRowWithSchema(
         new Object[] { "region1", 0, 100L, MessageType.DELETE.getValue(), valueSchemaId, key.getBytes(), new byte[0],
-            rmdVersionId, rmdPayload },
+            rmdVersionId, rmdPayload, null },
         RAW_PUBSUB_INPUT_TABLE_SCHEMA);
   }
 
   private Row createControlRow() {
     return new GenericRowWithSchema(
         new Object[] { "region1", 0, 100L, MessageType.CONTROL_MESSAGE.getValue(), -10, new byte[0], new byte[0], -1,
-            new byte[0] },
+            new byte[0], null },
         RAW_PUBSUB_INPUT_TABLE_SCHEMA);
   }
 }
