@@ -342,10 +342,14 @@ public class VeniceProperties implements Serializable {
   public long getLong(String name, long defaultValue) {
     if (containsKey(name)) {
       String value = get(name);
-      if (value == null || value.trim().isEmpty()) {
+      if (value == null) {
         return defaultValue;
       }
-      return Long.parseLong(value.trim());
+      String trimmedValue = value.trim();
+      if (trimmedValue.isEmpty()) {
+        return defaultValue;
+      }
+      return Long.parseLong(trimmedValue);
     } else {
       return defaultValue;
     }
@@ -354,10 +358,14 @@ public class VeniceProperties implements Serializable {
   public long getLong(String name) {
     if (containsKey(name)) {
       String value = get(name);
-      if (value == null || value.trim().isEmpty()) {
+      if (value == null) {
         throw new VeniceException("Property " + name + " is defined but has an empty value");
       }
-      return Long.parseLong(value.trim());
+      String trimmedValue = value.trim();
+      if (trimmedValue.isEmpty()) {
+        throw new VeniceException("Property " + name + " is defined but has an empty value");
+      }
+      return Long.parseLong(trimmedValue);
     } else {
       throw new UndefinedPropertyException(name);
     }
@@ -366,10 +374,14 @@ public class VeniceProperties implements Serializable {
   public int getInt(String name, int defaultValue) {
     if (containsKey(name)) {
       String value = get(name);
-      if (value == null || value.trim().isEmpty()) {
+      if (value == null) {
         return defaultValue;
       }
-      return Integer.parseInt(value.trim());
+      String trimmedValue = value.trim();
+      if (trimmedValue.isEmpty()) {
+        return defaultValue;
+      }
+      return Integer.parseInt(trimmedValue);
     } else {
       return defaultValue;
     }
@@ -378,10 +390,14 @@ public class VeniceProperties implements Serializable {
   public int getInt(String name) {
     if (containsKey(name)) {
       String value = get(name);
-      if (value == null || value.trim().isEmpty()) {
+      if (value == null) {
         throw new VeniceException("Property " + name + " is defined but has an empty value");
       }
-      return Integer.parseInt(value.trim());
+      String trimmedValue = value.trim();
+      if (trimmedValue.isEmpty()) {
+        throw new VeniceException("Property " + name + " is defined but has an empty value");
+      }
+      return Integer.parseInt(trimmedValue);
     } else {
       throw new UndefinedPropertyException(name);
     }
@@ -390,10 +406,14 @@ public class VeniceProperties implements Serializable {
   public Optional<Integer> getOptionalInt(String name) {
     if (containsKey(name)) {
       String value = get(name);
-      if (value == null || value.trim().isEmpty()) {
+      if (value == null) {
         return Optional.empty();
       }
-      return Optional.of(Integer.parseInt(value.trim()));
+      String trimmedValue = value.trim();
+      if (trimmedValue.isEmpty()) {
+        return Optional.empty();
+      }
+      return Optional.of(Integer.parseInt(trimmedValue));
     } else {
       return Optional.empty();
     }
@@ -402,10 +422,14 @@ public class VeniceProperties implements Serializable {
   public double getDouble(String name, double defaultValue) {
     if (containsKey(name)) {
       String value = get(name);
-      if (value == null || value.trim().isEmpty()) {
+      if (value == null) {
         return defaultValue;
       }
-      return Double.parseDouble(value.trim());
+      String trimmedValue = value.trim();
+      if (trimmedValue.isEmpty()) {
+        return defaultValue;
+      }
+      return Double.parseDouble(trimmedValue);
     } else {
       return defaultValue;
     }
@@ -414,10 +438,14 @@ public class VeniceProperties implements Serializable {
   public double getDouble(String name) {
     if (containsKey(name)) {
       String value = get(name);
-      if (value == null || value.trim().isEmpty()) {
+      if (value == null) {
         throw new VeniceException("Property " + name + " is defined but has an empty value");
       }
-      return Double.parseDouble(value.trim());
+      String trimmedValue = value.trim();
+      if (trimmedValue.isEmpty()) {
+        throw new VeniceException("Property " + name + " is defined but has an empty value");
+      }
+      return Double.parseDouble(trimmedValue);
     } else {
       throw new UndefinedPropertyException(name);
     }
@@ -426,10 +454,14 @@ public class VeniceProperties implements Serializable {
   public long getSizeInBytes(String name, long defaultValue) {
     if (containsKey(name)) {
       String value = get(name);
-      if (value == null || value.trim().isEmpty()) {
+      if (value == null) {
         return defaultValue;
       }
-      return convertSizeFromLiteral(value.trim());
+      String trimmedValue = value.trim();
+      if (trimmedValue.isEmpty()) {
+        return defaultValue;
+      }
+      return convertSizeFromLiteral(trimmedValue);
     } else {
       return defaultValue;
     }
@@ -441,10 +473,14 @@ public class VeniceProperties implements Serializable {
     }
 
     String bytes = get(name);
-    if (bytes == null || bytes.trim().isEmpty()) {
+    if (bytes == null) {
       throw new VeniceException("Property " + name + " is defined but has an empty value");
     }
-    return convertSizeFromLiteral(bytes.trim());
+    String trimmedBytes = bytes.trim();
+    if (trimmedBytes.isEmpty()) {
+      throw new VeniceException("Property " + name + " is defined but has an empty value");
+    }
+    return convertSizeFromLiteral(trimmedBytes);
   }
 
   public static long convertSizeFromLiteral(String size) {
