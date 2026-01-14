@@ -2,6 +2,8 @@ package com.linkedin.venice.controller.logcompaction;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.contains;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -16,7 +18,11 @@ import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.TestUtils;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.RejectedExecutionHandler;
+import java.util.concurrent.SynchronousQueue;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import org.apache.logging.log4j.Logger;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
@@ -63,4 +69,22 @@ public class LogCompactionServiceTest {
     });
     logCompactionService.stopInner();
   }
+
+  @Test
+  public void testDropAndLogWhenExecutorActive() {
+    Logger mockLogger = mock(Logger.class);
+
+    RejectedExecutionHandler handler = LogCompactionService.createDropAndLogPolicy(mockLogger);
+
+    ThreadPoolExecutor executor = mock(ThreadPoolExecutor.class);
+    when(executor.isShutdown()).thenReturn(false);
+    when(executor.getActiveCount()).thenReturn(2);
+    when(executor.getPoolSize()).thenReturn(4);
+    when(executor.getQueue()).thenReturn(new SynchronousQueue<>());
+
+    handler.rejectedExecution(mock(Runnable.class), executor);
+
+    verify(mockLogger).warn(contains("Dropping log compaction task"), eq(2), eq(0), eq(4));
+  }
+
 }
