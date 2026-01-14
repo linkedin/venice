@@ -2,14 +2,15 @@ package com.linkedin.venice.stats;
 
 import static com.linkedin.venice.stats.dimensions.HttpResponseStatusCodeCategory.getVeniceHttpResponseStatusCodeCategory;
 import static com.linkedin.venice.stats.dimensions.HttpResponseStatusEnum.transformHttpResponseStatusToHttpResponseStatusEnum;
-import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.stats.dimensions.HttpResponseStatusCodeCategory;
 import com.linkedin.venice.stats.dimensions.HttpResponseStatusEnum;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
 import com.linkedin.venice.stats.metrics.MetricEntity;
+import com.linkedin.venice.stats.metrics.MetricEntityStateBase;
 import com.linkedin.venice.stats.metrics.MetricEntityStateThreeEnums;
 import com.linkedin.venice.stats.metrics.MetricType;
 import com.linkedin.venice.stats.metrics.MetricUnit;
@@ -23,24 +24,93 @@ import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.Avg;
 import io.tehuti.metrics.stats.Rate;
-import java.lang.management.GarbageCollectorMXBean;
-import java.lang.management.ManagementFactory;
 import java.text.NumberFormat;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.atomic.AtomicLong;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.mockito.Mockito;
-import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
 public class VeniceOpenTelemetryPerfTest {
-  private final Logger LOGGER = LogManager.getLogger(VeniceOpenTelemetryPerfTest.class);
+  private static final Logger LOGGER = LogManager.getLogger(VeniceOpenTelemetryPerfTest.class);
+
+  private static String formatNumber(long number) {
+    return NumberFormat.getNumberInstance(Locale.US).format(number);
+  }
+
+  private static Map<VeniceMetricsDimensions, String> createBaseDimensions() {
+    Map<VeniceMetricsDimensions, String> dimensions = new HashMap<>();
+    dimensions.put(VeniceMetricsDimensions.VENICE_STORE_NAME, "test_store");
+    dimensions.put(VeniceMetricsDimensions.VENICE_CLUSTER_NAME, "test_cluster");
+    return dimensions;
+  }
+
+  private static void printBenchmarkResults(
+      String approach1Name,
+      long approach1DurationNs,
+      String approach2Name,
+      long approach2DurationNs,
+      int totalOperations) {
+    LOGGER.info("========== Results ==========");
+    LOGGER.info(approach1Name + ":");
+    LOGGER.info(
+        String.format(
+            "  Total: %s ms | Avg: %.2f ns/op | Throughput: %s ops/s",
+            formatNumber(approach1DurationNs / 1_000_000),
+            (double) approach1DurationNs / totalOperations,
+            formatNumber((long) totalOperations * 1_000_000_000L / approach1DurationNs)));
+
+    LOGGER.info(approach2Name + ":");
+    LOGGER.info(
+        String.format(
+            "  Total: %s ms | Avg: %.2f ns/op | Throughput: %s ops/s",
+            formatNumber(approach2DurationNs / 1_000_000),
+            (double) approach2DurationNs / totalOperations,
+            formatNumber((long) totalOperations * 1_000_000_000L / approach2DurationNs)));
+
+    double ratio = (double) approach1DurationNs / approach2DurationNs;
+    LOGGER.info(
+        String.format(
+            "Comparison: %s is %.2fx %s than %s",
+            approach1Name,
+            Math.abs(ratio),
+            ratio > 1 ? "slower" : "faster",
+            approach2Name));
+  }
+
+  private static void assertPerformanceThreshold(
+      long actualDurationNs,
+      long baselineDurationNs,
+      double maxAllowedRatio,
+      String errorMessage) {
+    double performanceRatio = (double) actualDurationNs / baselineDurationNs;
+    assertTrue(
+        performanceRatio <= maxAllowedRatio,
+        String.format(
+            "%s Actual ratio: %.2f (%.1f%% slower)",
+            errorMessage,
+            performanceRatio,
+            (performanceRatio - 1.0) * 100));
+  }
+
+  private VeniceOpenTelemetryMetricsRepository createOtelRepository() {
+    io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader inMemoryReader =
+        io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader.create();
+
+    VeniceMetricsConfig config = new VeniceMetricsConfig.Builder().setServiceName("venice-perf-test")
+        .setMetricPrefix("test")
+        .setEmitOtelMetrics(true)
+        .emitTehutiMetrics(false)
+        .setUseOtelExponentialHistogram(false)
+        .build();
+    config.setOtelAdditionalMetricsReader(inMemoryReader);
+    return new VeniceOpenTelemetryMetricsRepository(config);
+  }
 
   // Marking this as flaky as we don't want to run this test in every build.
   @Test(groups = "flaky")
@@ -52,10 +122,7 @@ public class VeniceOpenTelemetryPerfTest {
 
     List<MetricEntityStateThreeEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory>> metricList =
         new ArrayList<>();
-    VeniceMetricsConfig mockMetricsConfig = Mockito.mock(VeniceMetricsConfig.class);
-    when(mockMetricsConfig.emitOtelMetrics()).thenReturn(true);
-    when(mockMetricsConfig.getMetricNamingFormat()).thenReturn(VeniceOpenTelemetryMetricNamingFormat.SNAKE_CASE);
-    VeniceOpenTelemetryMetricsRepository otelRepository = new VeniceOpenTelemetryMetricsRepository(mockMetricsConfig);
+    VeniceOpenTelemetryMetricsRepository otelRepository = createOtelRepository();
     Map<VeniceMetricsDimensions, String> baseMetricDimensionsMap = new HashMap<>();
     baseMetricDimensionsMap.put(VeniceMetricsDimensions.VENICE_CLUSTER_NAME, "test_cluster");
     baseMetricDimensionsMap.put(VeniceMetricsDimensions.VENICE_REQUEST_METHOD, "multi_get_streaming");
@@ -83,8 +150,6 @@ public class VeniceOpenTelemetryPerfTest {
         HttpResponseStatus.PRECONDITION_FAILED, HttpResponseStatus.TOO_MANY_REQUESTS };
     VeniceResponseStatusCategory[] responseCategories = VeniceResponseStatusCategory.values();
 
-    // Print JVM/JDK information
-    printJvmInfo();
     long startTimeInit = System.currentTimeMillis();
     for (int i = 0; i < numStores; i++) {
       baseMetricDimensionsMap.put(VeniceMetricsDimensions.VENICE_STORE_NAME, "test_store_medium_sized_name" + i);
@@ -99,7 +164,6 @@ public class VeniceOpenTelemetryPerfTest {
     }
     long endTimeInit = System.currentTimeMillis();
 
-    // Start test
     for (int i = 0; i < iterations; i++) {
       int j = RandomGenUtils.getRandomIntWithin(metricList.size());
       MetricEntityStateThreeEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory> metricEntityState =
@@ -118,7 +182,6 @@ public class VeniceOpenTelemetryPerfTest {
         assertEquals(attributes.size(), 6);
       }
     }
-    // end test
     long endTimeGettingAttributesDuringRuntime = System.currentTimeMillis();
     LOGGER.info("Attribution creation enabled: " + createAttributes);
     LOGGER.info("Number of loops: " + formatNumber(iterations));
@@ -129,57 +192,23 @@ public class VeniceOpenTelemetryPerfTest {
     LOGGER.info(
         "Average time per loop: "
             + formatNumber((int) ((endTimeGettingAttributesDuringRuntime - endTimeInit) / iterations)) + " ms");
-
-    for (GarbageCollectorMXBean gcBean: ManagementFactory.getGarbageCollectorMXBeans()) {
-      LOGGER.info(
-          "Garbage Collector: " + gcBean.getName() + ", Collections: " + gcBean.getCollectionCount() + ", Time: "
-              + gcBean.getCollectionTime() + " ms");
-    }
   }
 
-  private String formatNumber(int number) {
-    return NumberFormat.getNumberInstance(Locale.US).format(number);
-  }
+  /**
+   * Compares performance of recording metrics using Tehuti vs OpenTelemetry.
+   * There perf data is very close, so to reduce flakiness, this test asserts that
+   * Otel should be alteast 80% as fast as Tehuti.
+   */
+  @Test
+  public void testTehutiVsOtelMetricRecordingPerf() {
+    int numLoops = 10000000; // 10M iterations
+    int numLoopsForWarmUp = 1000; // 1k
 
-  private String formatNumber(long number) {
-    return NumberFormat.getNumberInstance(Locale.US).format(number);
-  }
+    // Setup test fixtures
+    VeniceOpenTelemetryMetricsRepository otelRepository = createOtelRepository();
+    Map<VeniceMetricsDimensions, String> baseDimensions = createBaseDimensions();
+    baseDimensions.put(VeniceMetricsDimensions.VENICE_REQUEST_METHOD, "multi_get_streaming");
 
-  private static class TestFixtures {
-    final MetricEntityStateThreeEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory> metricOtelOnly;
-    final MetricEntityStateThreeEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory> metricTehutiOnly;
-    final HttpResponseStatusEnum[] statusEnums;
-    final HttpResponseStatusCodeCategory[] statusCategories;
-    final VeniceResponseStatusCategory[] veniceCategories;
-
-    TestFixtures(
-        MetricEntityStateThreeEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory> metricOtelOnly,
-        MetricEntityStateThreeEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory> metricTehutiOnly,
-        HttpResponseStatusEnum[] statusEnums,
-        HttpResponseStatusCodeCategory[] statusCategories,
-        VeniceResponseStatusCategory[] veniceCategories) {
-      this.metricOtelOnly = metricOtelOnly;
-      this.metricTehutiOnly = metricTehutiOnly;
-      this.statusEnums = statusEnums;
-      this.statusCategories = statusCategories;
-      this.veniceCategories = veniceCategories;
-    }
-  }
-
-  private TestFixtures createTestFixtures() {
-    // Setup OpenTelemetry repository
-    VeniceMetricsConfig mockMetricsConfig = Mockito.mock(VeniceMetricsConfig.class);
-    when(mockMetricsConfig.emitOtelMetrics()).thenReturn(true);
-    when(mockMetricsConfig.getMetricNamingFormat()).thenReturn(VeniceOpenTelemetryMetricNamingFormat.SNAKE_CASE);
-    VeniceOpenTelemetryMetricsRepository otelRepository = new VeniceOpenTelemetryMetricsRepository(mockMetricsConfig);
-
-    // Setup base dimensions
-    Map<VeniceMetricsDimensions, String> baseDimensionsMap = new HashMap<>();
-    baseDimensionsMap.put(VeniceMetricsDimensions.VENICE_STORE_NAME, "test_store");
-    baseDimensionsMap.put(VeniceMetricsDimensions.VENICE_CLUSTER_NAME, "test_cluster");
-    baseDimensionsMap.put(VeniceMetricsDimensions.VENICE_REQUEST_METHOD, "multi_get_streaming");
-
-    // Create MetricEntity
     MetricEntity callCountMetric = new MetricEntity(
         "call_count",
         MetricType.HISTOGRAM,
@@ -193,189 +222,149 @@ public class VeniceOpenTelemetryPerfTest {
             VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE_CATEGORY,
             VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY));
 
-    // Create metric with only OpenTelemetry
+    // Create OTel-only metric
     MetricEntityStateThreeEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory> metricOtelOnly =
         MetricEntityStateThreeEnums.create(
             callCountMetric,
             otelRepository,
-            baseDimensionsMap,
+            baseDimensions,
             HttpResponseStatusEnum.class,
             HttpResponseStatusCodeCategory.class,
             VeniceResponseStatusCategory.class);
 
-    // Create metric with only Tehuti
-    MetricsRepository tehutiOnlyRepository = new MetricsRepository();
-    List<MeasurableStat> tehutiOnlyStats = new ArrayList<>();
-    tehutiOnlyStats.add(new Avg());
-    tehutiOnlyStats.add(new Rate());
-
+    // Create Tehuti-only metric
+    MetricsRepository tehutiRepository = new MetricsRepository();
+    List<MeasurableStat> tehutiStats = new ArrayList<>();
+    tehutiStats.add(new Avg());
+    tehutiStats.add(new Rate());
     MetricEntityStateThreeEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory> metricTehutiOnly =
-        MetricEntityStateThreeEnums.create(
-            callCountMetric,
-            null, // No OTel repository
-            (name, stats) -> {
-              Sensor sensor = tehutiOnlyRepository.sensor(name);
-              for (MeasurableStat stat: stats) {
-                sensor.add(name + "." + stat.getClass().getSimpleName(), stat);
-              }
-              return sensor;
-            },
-            new TehutiMetricNameEnum() {
-              @Override
-              public String getMetricName() {
-                return "call_count_tehuti_only";
-              }
-            },
-            tehutiOnlyStats,
-            baseDimensionsMap,
+        MetricEntityStateThreeEnums.create(callCountMetric, null, (name, stats) -> {
+          Sensor sensor = tehutiRepository.sensor(name);
+          for (MeasurableStat stat: stats) {
+            sensor.add(name + "." + stat.getClass().getSimpleName(), stat);
+          }
+          return sensor;
+        }, new TehutiMetricNameEnum() {
+          @Override
+          public String getMetricName() {
+            return "call_count_tehuti_only";
+          }
+        },
+            tehutiStats,
+            baseDimensions,
             HttpResponseStatusEnum.class,
             HttpResponseStatusCodeCategory.class,
             VeniceResponseStatusCategory.class);
 
-    // Pre-generate random dimension combinations for consistent testing
+    // Pre-generate dimension combinations
     HttpResponseStatusEnum[] statusEnums = { HttpResponseStatusEnum.OK, HttpResponseStatusEnum.BAD_REQUEST,
         HttpResponseStatusEnum.INTERNAL_SERVER_ERROR, HttpResponseStatusEnum.NOT_FOUND };
-
     HttpResponseStatusCodeCategory[] statusCategories = { HttpResponseStatusCodeCategory.SUCCESS,
         HttpResponseStatusCodeCategory.CLIENT_ERROR, HttpResponseStatusCodeCategory.SERVER_ERROR };
-
     VeniceResponseStatusCategory[] veniceCategories = VeniceResponseStatusCategory.values();
 
-    return new TestFixtures(metricOtelOnly, metricTehutiOnly, statusEnums, statusCategories, veniceCategories);
-  }
+    LOGGER.info("Starting benchmark with " + formatNumber(numLoops) + " loops...");
 
-  private void warmupMetrics(TestFixtures fixtures, int numLoopsForWarmUp) {
-    LOGGER.info("Warming up...");
+    // Warmup
     for (int i = 0; i < numLoopsForWarmUp; i++) {
-      HttpResponseStatusEnum status = fixtures.statusEnums[i % fixtures.statusEnums.length];
-      HttpResponseStatusCodeCategory category = fixtures.statusCategories[i % fixtures.statusCategories.length];
-      VeniceResponseStatusCategory veniceCategory = fixtures.veniceCategories[i % fixtures.veniceCategories.length];
-      fixtures.metricOtelOnly.record(1L, status, category, veniceCategory);
-      fixtures.metricTehutiOnly.record(1L, status, category, veniceCategory);
+      HttpResponseStatusEnum status = statusEnums[i % statusEnums.length];
+      HttpResponseStatusCodeCategory category = statusCategories[i % statusCategories.length];
+      VeniceResponseStatusCategory veniceCategory = veniceCategories[i % veniceCategories.length];
+      metricOtelOnly.record(1L, status, category, veniceCategory);
+      metricTehutiOnly.record(1L, status, category, veniceCategory);
     }
-    LOGGER.info("Warm up completed.");
-  }
-
-  private void printResults(long otelDurationNs, long tehutiDurationNs, int numLoops) {
-    LOGGER.info("========== Results ==========");
-    LOGGER.info("OpenTelemetry Metrics:");
-    LOGGER.info("  Total time: " + formatNumber((int) (otelDurationNs / 1_000_000)) + " ms");
-    LOGGER.info("  Average time per record: " + String.format("%.2f", (double) otelDurationNs / numLoops) + " ns");
-    LOGGER.info("  Records per second: " + formatNumber((long) numLoops * 1_000_000_000L / otelDurationNs));
-
-    LOGGER.info("Tehuti Metrics:");
-    LOGGER.info("  Total time: " + formatNumber((int) (tehutiDurationNs / 1_000_000)) + " ms");
-    LOGGER.info("  Average time per record: " + String.format("%.2f", (double) tehutiDurationNs / numLoops) + " ns");
-    LOGGER.info("  Records per second: " + formatNumber((long) numLoops * 1_000_000_000L / tehutiDurationNs));
-
-    LOGGER.info("Comparison:");
-    double ratio = (double) otelDurationNs / tehutiDurationNs;
-    LOGGER.info(
-        "  OpenTelemetry is " + String.format("%.2fx", ratio) + (ratio > 1 ? " slower" : " faster") + " than Tehuti");
-    LOGGER.info("  Difference: " + formatNumber((int) Math.abs(otelDurationNs - tehutiDurationNs) / 1_000_000) + " ms");
-  }
-
-  private void printGCStats() {
-    LOGGER.info("========== Garbage Collection Stats ==========");
-    for (GarbageCollectorMXBean gcBean: ManagementFactory.getGarbageCollectorMXBeans()) {
-      LOGGER.info("  " + gcBean.getName() + ":");
-      LOGGER.info("    Collections: " + gcBean.getCollectionCount());
-      LOGGER.info("    Time: " + gcBean.getCollectionTime() + " ms");
-    }
-  }
-
-  private void printJvmInfo() {
-    LOGGER
-        .info("JVM/JDK: " + System.getProperty("java.runtime.name") + " " + System.getProperty("java.runtime.version"));
-  }
-
-  private long runMetricBenchmark(
-      TestFixtures fixtures,
-      int numLoops,
-      MetricEntityStateThreeEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory> metric) {
-    long startTime = System.nanoTime();
-    for (int i = 0; i < numLoops; i++) {
-      HttpResponseStatusEnum status = fixtures.statusEnums[i % fixtures.statusEnums.length];
-      HttpResponseStatusCodeCategory category = fixtures.statusCategories[i % fixtures.statusCategories.length];
-      VeniceResponseStatusCategory veniceCategory = fixtures.veniceCategories[i % fixtures.veniceCategories.length];
-      metric.record(1L, status, category, veniceCategory);
-    }
-    long endTime = System.nanoTime();
-    return endTime - startTime;
-  }
-
-  /**
-   * Records OpenTelemetry and Tehuti metrics in separate loop iterations and measures their times separately
-   * for comparison.
-   */
-  @Test(invocationCount = 10)
-  public void testTehutiVsOtelMetricRecordingPerf() {
-    int numLoops = 10000000; // 10M
-    int numLoopsForWarmUp = 1000; // 1k
-
-    TestFixtures fixtures = createTestFixtures();
-
-    printJvmInfo();
-    LOGGER.info("Number of loops: " + formatNumber(numLoops));
-
-    warmupMetrics(fixtures, numLoopsForWarmUp);
-
-    long otelDurationNs;
-    long tehutiDurationNs;
-    if (ThreadLocalRandom.current().nextInt(10) % 2 == 0) {
-      // run otel first and then tehuti
-      otelDurationNs = runMetricBenchmark(fixtures, numLoops, fixtures.metricOtelOnly);
-      tehutiDurationNs = runMetricBenchmark(fixtures, numLoops, fixtures.metricTehutiOnly);
-    } else {
-      // run tehuti first and then otel
-      tehutiDurationNs = runMetricBenchmark(fixtures, numLoops, fixtures.metricTehutiOnly);
-      otelDurationNs = runMetricBenchmark(fixtures, numLoops, fixtures.metricOtelOnly);
-    }
-
-    printResults(otelDurationNs, tehutiDurationNs, numLoops);
-    printGCStats();
-    Assert.assertTrue(otelDurationNs < tehutiDurationNs, "OpenTelemetry should be faster than Tehuti");
-  }
-
-  /**
-   * Records both OpenTelemetry and Tehuti metrics in the same loop iteration and measures their times separately
-   * and aggregates the total times for comparison to reduce the JVM/JIT optimizations impact on the measurements.
-   */
-  @Test(invocationCount = 10)
-  public void testTehutiVsOtelMetricRecordingPerfByRecordingBothMetricsInSameLoop() {
-    int numLoops = 10000000; // 10M iterations
-    int numLoopsForWarmUp = 1000; // 1k
-
-    TestFixtures fixtures = createTestFixtures();
-
-    printJvmInfo();
-    LOGGER.info("Number of loops: " + formatNumber(numLoops));
-
-    warmupMetrics(fixtures, numLoopsForWarmUp);
 
     long totalOtelTimeNs = 0;
     long totalTehutiTimeNs = 0;
 
     for (int i = 0; i < numLoops; i++) {
-      HttpResponseStatusEnum status = fixtures.statusEnums[i % fixtures.statusEnums.length];
-      HttpResponseStatusCodeCategory category = fixtures.statusCategories[i % fixtures.statusCategories.length];
-      VeniceResponseStatusCategory veniceCategory = fixtures.veniceCategories[i % fixtures.veniceCategories.length];
+      HttpResponseStatusEnum status = statusEnums[i % statusEnums.length];
+      HttpResponseStatusCodeCategory category = statusCategories[i % statusCategories.length];
+      VeniceResponseStatusCategory veniceCategory = veniceCategories[i % veniceCategories.length];
 
       // Measure OpenTelemetry call
       long startOtel = System.nanoTime();
-      fixtures.metricOtelOnly.record(1L, status, category, veniceCategory);
+      metricOtelOnly.record(1L, status, category, veniceCategory);
       long endOtel = System.nanoTime();
       totalOtelTimeNs += (endOtel - startOtel);
 
       // Measure Tehuti call
       long startTehuti = System.nanoTime();
-      fixtures.metricTehutiOnly.record(1L, status, category, veniceCategory);
+      metricTehutiOnly.record(1L, status, category, veniceCategory);
       long endTehuti = System.nanoTime();
       totalTehutiTimeNs += (endTehuti - startTehuti);
     }
 
-    printResults(totalOtelTimeNs, totalTehutiTimeNs, numLoops);
-    printGCStats();
-    Assert.assertTrue(totalOtelTimeNs < totalTehutiTimeNs, "OpenTelemetry should be faster than Tehuti");
+    printBenchmarkResults("OpenTelemetry", totalOtelTimeNs, "Tehuti", totalTehutiTimeNs, numLoops);
+    assertPerformanceThreshold(
+        totalOtelTimeNs,
+        totalTehutiTimeNs,
+        1.2,
+        "OpenTelemetry should be at least 80% as fast as Tehuti.");
+  }
+
+  /**
+   * Compares performance of AtomicLong increment/decrement operations vs OpenTelemetry UpDownCounter
+   * to measure which approach is faster for tracking gauge-like metrics.
+   *
+   * AtomicLong is expected to be significantly faster than OpenTelemetry UpDownCounter.
+   */
+  @Test
+  public void testAtomicLongVsOtelUpDownCounterPerf() {
+    int numLoops = 10000000; // 10M iterations
+    int numLoopsForWarmUp = 10000; // 10k
+
+    VeniceOpenTelemetryMetricsRepository otelRepository = createOtelRepository();
+    Map<VeniceMetricsDimensions, String> baseDimensionsMap = createBaseDimensions();
+
+    MetricEntity upDownCounterMetric = new MetricEntity(
+        "active_connections",
+        MetricType.UP_DOWN_COUNTER,
+        MetricUnit.NUMBER,
+        "Tracks active connections",
+        Utils.setOf(VeniceMetricsDimensions.VENICE_STORE_NAME, VeniceMetricsDimensions.VENICE_CLUSTER_NAME));
+
+    Attributes baseAttributes = otelRepository.createAttributes(upDownCounterMetric, baseDimensionsMap);
+    MetricEntityStateBase otelUpDownCounter =
+        MetricEntityStateBase.create(upDownCounterMetric, otelRepository, baseDimensionsMap, baseAttributes);
+    AtomicLong atomicCounter = new AtomicLong(0);
+
+    LOGGER.info("Starting benchmark with " + formatNumber(numLoops) + " loops...");
+
+    // Warmup
+    for (int i = 0; i < numLoopsForWarmUp; i++) {
+      otelUpDownCounter.record(2L);
+      atomicCounter.incrementAndGet();
+      otelUpDownCounter.record(-1L);
+      atomicCounter.decrementAndGet();
+    }
+
+    long totalAtomicTimeNs = 0;
+    long totalOtelTimeNs = 0;
+
+    for (int i = 0; i < numLoops; i++) {
+      // Measure AtomicLong operations
+      long startAtomic = System.nanoTime();
+      atomicCounter.incrementAndGet();
+      atomicCounter.decrementAndGet();
+      long endAtomic = System.nanoTime();
+      totalAtomicTimeNs += (endAtomic - startAtomic);
+
+      // Measure OpenTelemetry UpDownCounter operations
+      long startOtel = System.nanoTime();
+      otelUpDownCounter.record(2L);
+      otelUpDownCounter.record(-1L);
+      long endOtel = System.nanoTime();
+      totalOtelTimeNs += (endOtel - startOtel);
+    }
+
+    int totalOperations = numLoops * 2; // increment + decrement per loop
+    printBenchmarkResults(
+        "AtomicLong",
+        totalAtomicTimeNs,
+        "OpenTelemetry UpDownCounter",
+        totalOtelTimeNs,
+        totalOperations);
+    assertTrue(totalAtomicTimeNs < totalOtelTimeNs, "AtomicLong should be faster than OpenTelemetry UpDownCounter");
   }
 }
