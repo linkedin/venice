@@ -417,16 +417,11 @@ public class TestStoreBackupVersionCleanupService {
     try {
       StoreBackupVersionCleanupService.setWaitTimeDeleteRepushSourceVersion(100000L);
       Assert.assertFalse(service.cleanupBackupVersion(repushedStore, CLUSTER_NAME), "No versions should be removed");
-      // for (int v = minRepushedVersion; v < maxRepushedVersion; v++) {
-      // verify(admin).deleteOldVersionInStore(CLUSTER_NAME, repushedStore.getName(), v);
-      // }
     } finally {
       StoreBackupVersionCleanupService.setWaitTimeDeleteRepushSourceVersion(REPUSH_WAIT_TIME); // service can run again
       doReturn(0L).when(repushedStore).getLatestVersionPromoteToCurrentTimestamp();
     }
-
     // Versions 2..9 should be deleted, but not Version 1 or Version 10
-
     Assert.assertTrue(service.cleanupBackupVersion(repushedStore, CLUSTER_NAME));
     verify(admin, never()).deleteOldVersionInStore(CLUSTER_NAME, repushedStore.getName(), 1);
     for (int v = minRepushedVersion; v < maxRepushedVersion - 1; v++) { // version 2, 3, 4, ..., 9
