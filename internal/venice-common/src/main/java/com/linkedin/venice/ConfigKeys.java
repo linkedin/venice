@@ -2469,7 +2469,7 @@ public class ConfigKeys {
   public static final String SERVER_SSL_HANDSHAKE_QUEUE_CAPACITY = "server.ssl.handshake.queue.capacity";
 
   /**
-   * Number of threads for online Venice producer controlling the number of concurrent write operations.
+   * Number of threads for online Venice producer controlling the number of concurrent processing operations.
    */
   public static final String CLIENT_PRODUCER_THREAD_NUM = "client.producer.thread.num";
 
