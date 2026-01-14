@@ -66,6 +66,7 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
 
   private SchemaReader schemaReader;
   private ThreadPoolExecutor producerExecutor;
+  private ThreadPoolExecutor writerExecutor; // Single-threaded executor to maintain write order
   private VeniceWriter<byte[], byte[], byte[]> veniceWriter;
 
   private RecordSerializer<Object> keySerializer;
@@ -103,6 +104,9 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
     if (metricsRepository != null) {
       new ThreadPoolStats(metricsRepository, producerExecutor, "client_producer_thread_pool");
     }
+    // Single-threaded executor to ensure write operations maintain order
+    this.writerExecutor = ThreadPoolFactory
+        .createThreadPool(1, "ClientProducerWriter", Integer.MAX_VALUE, BlockingQueueType.LINKED_BLOCKING_QUEUE);
     this.keySerializer = getSerializer(schemaReader.getKeySchema());
 
     VersionCreationResponse versionCreationResponse = requestTopic();
@@ -198,7 +202,11 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
     }
 
     producerMetrics.recordPutRequest();
-    return CompletableFuture.supplyAsync(() -> {
+
+    // Step 1: Pre-process in parallel (schema fetching and serialization)
+    // This can happen concurrently across multiple threads for performance
+    CompletableFuture<PreparedPutData> preprocessFuture = CompletableFuture.supplyAsync(() -> {
+      final Instant preProcessingStartTime = Instant.now();
       Schema valueSchema;
       try {
         valueSchema = getSchemaFromObject(value);
@@ -206,7 +214,7 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
         producerMetrics.recordFailedRequest();
         throw e;
       }
-      // Might block
+      // Might block - this is the expensive part we want to parallelize
       int valueSchemaId;
       Exception schemaReadException = null;
       try {
@@ -222,31 +230,78 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
                 + ". This might be transient if the schema has been registered recently.",
             schemaReadException);
       }
-      final CompletableFuture<Void> completableFuture = new CompletableFuture<>();
-      final Instant sendStartTime = Instant.now();
-      final PubSubProducerCallback callback = getPubSubProducerCallback(
-          sendStartTime,
-          completableFuture,
-          "Failed to write the requested data to the PubSub system");
 
       byte[] keyBytes = keySerializer.serialize(key);
       byte[] valueBytes = getSerializer(valueSchema).serialize(value);
 
+      // Record preprocessing latency
+      Duration preprocessingDuration = Duration.between(preProcessingStartTime, Instant.now());
+      producerMetrics.recordPreprocessingLatency(preprocessingDuration.toMillis());
+
+      return new PreparedPutData(keyBytes, valueBytes, valueSchemaId, logicalTime);
+    }, producerExecutor);
+
+    // Step 2: Submit write task to single-threaded executor IMMEDIATELY to maintain order
+    // The write task waits for preprocessing to complete, then performs the write
+    // This ensures veniceWriter.put() calls happen in the order requests were received
+    return CompletableFuture.supplyAsync(() -> {
+      PreparedPutData preparedData;
       try {
-        veniceWriter.put(keyBytes, valueBytes, valueSchemaId, logicalTime, callback);
+        // Wait for preprocessing to complete
+        preparedData = preprocessFuture.get();
+      } catch (InterruptedException | ExecutionException e) {
+        throw new VeniceException(e);
+      }
+
+      final CompletableFuture<Void> writeFuture = new CompletableFuture<>();
+      final Instant sendStartTime = Instant.now();
+      final PubSubProducerCallback callback = (PubSubProduceResult produceResult, Exception exception) -> {
+        Duration sendDuration = Duration.between(sendStartTime, Instant.now());
+        if (exception == null) {
+          producerMetrics.recordSuccessfulRequestWithLatency(sendDuration.toMillis());
+          writeFuture.complete(null);
+        } else {
+          producerMetrics.recordFailedRequest();
+          LOGGER.error("Failed to write the requested data to the PubSub system", exception);
+          writeFuture.completeExceptionally(exception);
+        }
+      };
+
+      try {
+        veniceWriter.put(
+            preparedData.keyBytes,
+            preparedData.valueBytes,
+            preparedData.valueSchemaId,
+            preparedData.logicalTime,
+            callback);
       } catch (Exception e) {
         callback.onCompletion(null, e);
         throw e;
       }
 
       try {
-        completableFuture.get();
+        writeFuture.get();
       } catch (InterruptedException | ExecutionException e) {
         throw new VeniceException(e);
       }
 
       return DURABLE_WRITE;
-    }, producerExecutor);
+    }, writerExecutor);
+  }
+
+  // Helper class to hold prepared data from preprocessing
+  private static class PreparedPutData {
+    final byte[] keyBytes;
+    final byte[] valueBytes;
+    final int valueSchemaId;
+    final long logicalTime;
+
+    PreparedPutData(byte[] keyBytes, byte[] valueBytes, int valueSchemaId, long logicalTime) {
+      this.keyBytes = keyBytes;
+      this.valueBytes = valueBytes;
+      this.valueSchemaId = valueSchemaId;
+      this.logicalTime = logicalTime;
+    }
   }
 
   private PubSubProducerCallback getPubSubProducerCallback(
@@ -295,31 +350,69 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
     }
 
     producerMetrics.recordDeleteRequest();
-    return CompletableFuture.supplyAsync(() -> {
-      final CompletableFuture<Void> completableFuture = new CompletableFuture<>();
-      final Instant sendStartTime = Instant.now();
-      final PubSubProducerCallback callback = getPubSubProducerCallback(
-          sendStartTime,
-          completableFuture,
-          "Failed to write the delete operation to the PubSub system");
 
+    // Step 1: Pre-process in parallel (key serialization)
+    CompletableFuture<PreparedDeleteData> preprocessFuture = CompletableFuture.supplyAsync(() -> {
+      final Instant preProcessingStartTime = Instant.now();
       byte[] keyBytes = keySerializer.serialize(key);
 
+      // Record preprocessing latency
+      Duration preprocessingDuration = Duration.between(preProcessingStartTime, Instant.now());
+      producerMetrics.recordPreprocessingLatency(preprocessingDuration.toMillis());
+
+      return new PreparedDeleteData(keyBytes, logicalTime);
+    }, producerExecutor);
+
+    // Step 2: Submit write task to single-threaded executor IMMEDIATELY to maintain order
+    return CompletableFuture.supplyAsync(() -> {
+      PreparedDeleteData preparedData;
       try {
-        veniceWriter.delete(keyBytes, logicalTime, callback);
+        // Wait for preprocessing to complete
+        preparedData = preprocessFuture.get();
+      } catch (InterruptedException | ExecutionException e) {
+        throw new VeniceException(e);
+      }
+
+      final CompletableFuture<Void> writeFuture = new CompletableFuture<>();
+      final Instant sendStartTime = Instant.now();
+      final PubSubProducerCallback callback = (PubSubProduceResult produceResult, Exception exception) -> {
+        Duration sendDuration = Duration.between(sendStartTime, Instant.now());
+        if (exception == null) {
+          producerMetrics.recordSuccessfulRequestWithLatency(sendDuration.toMillis());
+          writeFuture.complete(null);
+        } else {
+          producerMetrics.recordFailedRequest();
+          LOGGER.error("Failed to write the delete operation to the PubSub system", exception);
+          writeFuture.completeExceptionally(exception);
+        }
+      };
+
+      try {
+        veniceWriter.delete(preparedData.keyBytes, preparedData.logicalTime, callback);
       } catch (Exception e) {
         callback.onCompletion(null, e);
         throw e;
       }
 
       try {
-        completableFuture.get();
+        writeFuture.get();
       } catch (InterruptedException | ExecutionException e) {
         throw new VeniceException(e);
       }
 
       return DURABLE_WRITE;
-    }, producerExecutor);
+    }, writerExecutor);
+  }
+
+  // Helper class to hold prepared data from delete preprocessing
+  private static class PreparedDeleteData {
+    final byte[] keyBytes;
+    final long logicalTime;
+
+    PreparedDeleteData(byte[] keyBytes, long logicalTime) {
+      this.keyBytes = keyBytes;
+      this.logicalTime = logicalTime;
+    }
   }
 
   @Override
@@ -346,7 +439,10 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
     }
 
     producerMetrics.recordUpdateRequest();
-    return CompletableFuture.supplyAsync(() -> {
+
+    // Step 1: Pre-process in parallel (schema fetching, building update record, serialization)
+    CompletableFuture<PreparedUpdateData> preprocessFuture = CompletableFuture.supplyAsync(() -> {
+      final Instant preProcessingStartTime = Instant.now();
       // Caching to avoid race conditions during processing of the function
       DerivedSchemaEntry updateSchemaEntry = schemaReader.getLatestUpdateSchema();
 
@@ -371,40 +467,83 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
       updateFunction.accept(updateBuilder);
       GenericRecord updateRecord = updateBuilder.build();
 
-      final CompletableFuture<Void> completableFuture = new CompletableFuture<>();
-      final Instant sendStartTime = Instant.now();
-      final AtomicBoolean callbackTriggered = new AtomicBoolean();
-      final PubSubProducerCallback callback = getPubSubProducerCallback(
-          sendStartTime,
-          completableFuture,
-          "Failed to write the partial update record to the PubSub system");
-
       byte[] keyBytes = keySerializer.serialize(key);
       byte[] updateBytes = getSerializer(updateSchema).serialize(updateRecord);
 
+      // Record preprocessing latency
+      Duration preprocessingDuration = Duration.between(preProcessingStartTime, Instant.now());
+      producerMetrics.recordPreprocessingLatency(preprocessingDuration.toMillis());
+
+      return new PreparedUpdateData(
+          keyBytes,
+          updateBytes,
+          updateSchemaEntry.getValueSchemaID(),
+          updateSchemaEntry.getId(),
+          logicalTime);
+    }, producerExecutor);
+
+    // Step 2: Submit write task to single-threaded executor IMMEDIATELY to maintain order
+    return CompletableFuture.supplyAsync(() -> {
+      PreparedUpdateData preparedData;
+      try {
+        // Wait for preprocessing to complete
+        preparedData = preprocessFuture.get();
+      } catch (InterruptedException | ExecutionException e) {
+        throw new VeniceException(e);
+      }
+
+      final CompletableFuture<Void> writeFuture = new CompletableFuture<>();
+      final Instant sendStartTime = Instant.now();
+      final PubSubProducerCallback callback = (PubSubProduceResult produceResult, Exception exception) -> {
+        Duration sendDuration = Duration.between(sendStartTime, Instant.now());
+        if (exception == null) {
+          producerMetrics.recordSuccessfulRequestWithLatency(sendDuration.toMillis());
+          writeFuture.complete(null);
+        } else {
+          producerMetrics.recordFailedRequest();
+          LOGGER.error("Failed to write the partial update record to the PubSub system", exception);
+          writeFuture.completeExceptionally(exception);
+        }
+      };
+
       try {
         veniceWriter.update(
-            keyBytes,
-            updateBytes,
-            updateSchemaEntry.getValueSchemaID(),
-            updateSchemaEntry.getId(),
+            preparedData.keyBytes,
+            preparedData.updateBytes,
+            preparedData.valueSchemaId,
+            preparedData.derivedSchemaId,
             callback,
-            logicalTime);
+            preparedData.logicalTime);
       } catch (Exception e) {
-        if (!callbackTriggered.get()) {
-          callback.onCompletion(null, e);
-        }
+        callback.onCompletion(null, e);
         throw e;
       }
 
       try {
-        completableFuture.get();
+        writeFuture.get();
       } catch (InterruptedException | ExecutionException e) {
         throw new VeniceException(e);
       }
 
       return DURABLE_WRITE;
-    }, producerExecutor);
+    }, writerExecutor);
+  }
+
+  // Helper class to hold prepared data from update preprocessing
+  private static class PreparedUpdateData {
+    final byte[] keyBytes;
+    final byte[] updateBytes;
+    final int valueSchemaId;
+    final int derivedSchemaId;
+    final long logicalTime;
+
+    PreparedUpdateData(byte[] keyBytes, byte[] updateBytes, int valueSchemaId, int derivedSchemaId, long logicalTime) {
+      this.keyBytes = keyBytes;
+      this.updateBytes = updateBytes;
+      this.valueSchemaId = valueSchemaId;
+      this.derivedSchemaId = derivedSchemaId;
+      this.logicalTime = logicalTime;
+    }
   }
 
   /**
@@ -440,6 +579,14 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
         producerExecutor.awaitTermination(60, TimeUnit.SECONDS);
       } catch (InterruptedException e) {
         LOGGER.warn("Caught InterruptedException while closing the Venice producer ExecutorService", e);
+      }
+    }
+    if (writerExecutor != null) {
+      writerExecutor.shutdownNow();
+      try {
+        writerExecutor.awaitTermination(60, TimeUnit.SECONDS);
+      } catch (InterruptedException e) {
+        LOGGER.warn("Caught InterruptedException while closing the Venice producer writer ExecutorService", e);
       }
     }
 

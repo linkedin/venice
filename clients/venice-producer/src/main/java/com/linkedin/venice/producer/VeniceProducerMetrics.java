@@ -19,6 +19,7 @@ public class VeniceProducerMetrics extends AbstractVeniceStats {
   private Sensor successOperationSensor = null;
   private Sensor failedOperationSensor = null;
   private Sensor produceLatencySensor = null;
+  private Sensor preprocessingLatencySensor = null;
   private Sensor pendingOperationSensor = null;
 
   private final AtomicInteger pendingOperationCounter = new AtomicInteger(0);
@@ -39,6 +40,10 @@ public class VeniceProducerMetrics extends AbstractVeniceStats {
       produceLatencySensor = registerSensor(
           produceLatencySensorName,
           TehutiUtils.getPercentileStat(getName() + AbstractVeniceStats.DELIMITER + produceLatencySensorName));
+      String preprocessingLatencySensorName = "preprocessing_latency";
+      preprocessingLatencySensor = registerSensor(
+          preprocessingLatencySensorName,
+          TehutiUtils.getPercentileStat(getName() + AbstractVeniceStats.DELIMITER + preprocessingLatencySensorName));
 
       pendingOperationSensor = registerSensor("pending_write_operation", new Min(), new Max());
     } else {
@@ -86,6 +91,12 @@ public class VeniceProducerMetrics extends AbstractVeniceStats {
     if (enableMetrics) {
       failedOperationSensor.record();
       pendingOperationSensor.record(pendingOperationCounter.decrementAndGet());
+    }
+  }
+
+  public void recordPreprocessingLatency(long latencyMs) {
+    if (enableMetrics) {
+      preprocessingLatencySensor.record(latencyMs);
     }
   }
 }
