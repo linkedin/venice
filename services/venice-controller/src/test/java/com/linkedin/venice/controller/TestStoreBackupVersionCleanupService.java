@@ -271,10 +271,37 @@ public class TestStoreBackupVersionCleanupService {
     versions.put(1, VersionStatus.ONLINE);
     versions.put(2, VersionStatus.ONLINE);
     versions.put(3, VersionStatus.ONLINE);
-    // current version 3, should delete oldest backup version 1
+    // current version 3, should not delete any as its not past retention
     Store storeWithRollback = mockStore(-1, System.currentTimeMillis() + DEFAULT_RETENTION_MS, versions, 3);
+    Assert.assertFalse(service.cleanupBackupVersion(storeWithRollback, CLUSTER_NAME));
+
+    // current version 3, should delete version 1 as its past retention
+    storeWithRollback = mockStore(-1, System.currentTimeMillis() - DEFAULT_RETENTION_MS, versions, 3);
     Assert.assertTrue(service.cleanupBackupVersion(storeWithRollback, CLUSTER_NAME));
     verify(admin, atLeast(1)).deleteOldVersionInStore(CLUSTER_NAME, storeWithRollback.getName(), 1);
+    verify(admin, never()).deleteOldVersionInStore(CLUSTER_NAME, storeWithRollback.getName(), 2);
+
+    // current version is 1, will not delete anything as future versions are not currently deleted in this task.
+    storeWithRollback = mockStore(-1, System.currentTimeMillis() - DEFAULT_RETENTION_MS, versions, 1);
+    Assert.assertFalse(service.cleanupBackupVersion(storeWithRollback, CLUSTER_NAME));
+
+    // current version is 2, will delete version 1 as version 3 is larger than 2
+    storeWithRollback = mockStore(-1, System.currentTimeMillis() - DEFAULT_RETENTION_MS, versions, 2);
+    Assert.assertTrue(service.cleanupBackupVersion(storeWithRollback, CLUSTER_NAME));
+    verify(admin, atLeast(1)).deleteOldVersionInStore(CLUSTER_NAME, storeWithRollback.getName(), 1);
+    verify(admin, never()).deleteOldVersionInStore(CLUSTER_NAME, storeWithRollback.getName(), 2);
+
+    // only 2 versions, not past retention will not delete any
+    versions.remove(2);
+    storeWithRollback = mockStore(-1, System.currentTimeMillis() + DEFAULT_RETENTION_MS, versions, 3);
+    Assert.assertFalse(service.cleanupBackupVersion(storeWithRollback, CLUSTER_NAME));
+
+    // only 2 versions, past retention, delete the oldest version
+    storeWithRollback = mockStore(-1, System.currentTimeMillis() - DEFAULT_RETENTION_MS, versions, 3);
+    Assert.assertTrue(service.cleanupBackupVersion(storeWithRollback, CLUSTER_NAME));
+    verify(admin, atLeast(1)).deleteOldVersionInStore(CLUSTER_NAME, storeWithRollback.getName(), 1);
+    verify(admin, never()).deleteOldVersionInStore(CLUSTER_NAME, storeWithRollback.getName(), 3);
+
   }
 
   @Test
