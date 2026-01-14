@@ -799,6 +799,7 @@ public class TestAdminOperationWithPreviousVersion {
           -1,
           1,
           false,
+          -1,
           -1);
       assertNotNull(veniceAdmin.getStore(clusterName, storeName).getVersion(1));
       assertEquals(

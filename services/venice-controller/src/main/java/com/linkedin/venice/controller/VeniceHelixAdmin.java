@@ -2463,7 +2463,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       long rewindTimeInSecondsOverride,
       int replicationMetadataVersionId,
       boolean versionSwapDeferred,
-      int repushSourceVersion) {
+      int repushSourceVersion,
+      int repushTtlSeconds) {
     addVersionAndStartIngestion(
         clusterName,
         storeName,
@@ -2477,7 +2478,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         versionSwapDeferred,
         null,
         repushSourceVersion,
-        DEFAULT_RT_VERSION_NUMBER);
+        DEFAULT_RT_VERSION_NUMBER,
+        repushTtlSeconds);
   }
 
   /**
@@ -2498,7 +2500,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       boolean versionSwapDeferred,
       String targetedRegions,
       int repushSourceVersion,
-      int currentRTVersionNumber) {
+      int currentRTVersionNumber,
+      int repushTtlSeconds) {
     Store store = getStore(clusterName, storeName);
     if (store == null) {
       throw new VeniceNoStoreException(storeName, clusterName);
@@ -2550,7 +2553,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         versionSwapDeferred,
         targetedRegions,
         repushSourceVersion,
-        currentRTVersionNumber);
+        currentRTVersionNumber,
+        repushTtlSeconds);
   }
 
   /**
@@ -2649,7 +2653,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       boolean versionSwapDeferred,
       String targetedRegions,
       int repushSourceVersion,
-      int largestUsedRTVersionNumber) {
+      int largestUsedRTVersionNumber,
+      int repushTtlSeconds) {
     return addVersion(
         clusterName,
         storeName,
@@ -2671,7 +2676,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         versionSwapDeferred,
         targetedRegions,
         repushSourceVersion,
-        largestUsedRTVersionNumber);
+        largestUsedRTVersionNumber,
+        repushTtlSeconds);
   }
 
   /**
@@ -2986,7 +2992,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       int replicationMetadataVersionId,
       Optional<String> emergencySourceRegion,
       boolean versionSwapDeferred,
-      int repushSourceVersion) {
+      int repushSourceVersion,
+      int repushTtlSeconds) {
     return addVersion(
         clusterName,
         storeName,
@@ -3008,7 +3015,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         versionSwapDeferred,
         null,
         repushSourceVersion,
-        getStore(clusterName, storeName).getLargestUsedRTVersionNumber());
+        getStore(clusterName, storeName).getLargestUsedRTVersionNumber(),
+        repushTtlSeconds);
   }
 
   private Optional<Version> getVersionFromSourceCluster(
@@ -3091,7 +3099,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       boolean versionSwapDeferred,
       String targetedRegions,
       int repushSourceVersion,
-      int currentRTVersionNumber) {
+      int currentRTVersionNumber,
+      int repushTtlSeconds) {
     AddVersionLatencyStats addVersionLatencyStats = addVersionLatencyStatsMap.get(clusterName);
     HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
     MaintenanceSignal maintenanceSignal =
@@ -3263,6 +3272,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
             if (isRepush && repushSourceVersion > NON_EXISTING_VERSION) {
               version.setRepushSourceVersion(repushSourceVersion);
+            }
+
+            boolean isTtlRepush = Version.isPushIdTTLRePush(pushJobId);
+            if (isTtlRepush) {
+              version.setRepushTtlSeconds(repushTtlSeconds);
             }
 
             if (versionSwapDeferred && StringUtils.isNotEmpty(targetedRegions)) {
@@ -3728,7 +3742,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       Optional<String> emergencySourceRegion,
       boolean versionSwapDeferred,
       String targetedRegions,
-      int repushSourceVersion) {
+      int repushSourceVersion,
+      int repushTtlSeconds) {
     if (StringUtils.isNotEmpty(targetedRegions)) {
       /**
        * only parent controller should handle this request. See {@link VeniceParentHelixAdmin#incrementVersionIdempotent}
@@ -3760,7 +3775,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             replicationMetadataVersionId,
             emergencySourceRegion,
             versionSwapDeferred,
-            repushSourceVersion).getSecond();
+            repushSourceVersion,
+            repushTtlSeconds).getSecond();
   }
 
   /**
