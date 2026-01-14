@@ -347,11 +347,8 @@ public class VeniceProperties implements Serializable {
    * @return The trimmed value if it's non-null and non-empty, null otherwise
    */
   private String getTrimmedValueOrNull(String name) {
-    if (!containsKey(name)) {
-      return null;
-    }
-    String value = get(name);
-    // Value can be null if explicitly stored as null in the underlying map
+    String value = props.get(name);
+    // Value can be null if key doesn't exist or if explicitly stored as null in the underlying map
     if (value == null || value.trim().isEmpty()) {
       return null;
     }
@@ -364,11 +361,11 @@ public class VeniceProperties implements Serializable {
   }
 
   public long getLong(String name) {
-    if (!containsKey(name)) {
-      throw new UndefinedPropertyException(name);
-    }
     String trimmedValue = getTrimmedValueOrNull(name);
     if (trimmedValue == null) {
+      if (!containsKey(name)) {
+        throw new UndefinedPropertyException(name);
+      }
       throw new VeniceException("Property " + name + " is defined but has an empty value");
     }
     return Long.parseLong(trimmedValue);
@@ -380,11 +377,11 @@ public class VeniceProperties implements Serializable {
   }
 
   public int getInt(String name) {
-    if (!containsKey(name)) {
-      throw new UndefinedPropertyException(name);
-    }
     String trimmedValue = getTrimmedValueOrNull(name);
     if (trimmedValue == null) {
+      if (!containsKey(name)) {
+        throw new UndefinedPropertyException(name);
+      }
       throw new VeniceException("Property " + name + " is defined but has an empty value");
     }
     return Integer.parseInt(trimmedValue);
@@ -401,11 +398,11 @@ public class VeniceProperties implements Serializable {
   }
 
   public double getDouble(String name) {
-    if (!containsKey(name)) {
-      throw new UndefinedPropertyException(name);
-    }
     String trimmedValue = getTrimmedValueOrNull(name);
     if (trimmedValue == null) {
+      if (!containsKey(name)) {
+        throw new UndefinedPropertyException(name);
+      }
       throw new VeniceException("Property " + name + " is defined but has an empty value");
     }
     return Double.parseDouble(trimmedValue);
@@ -417,11 +414,11 @@ public class VeniceProperties implements Serializable {
   }
 
   public long getSizeInBytes(String name) {
-    if (!containsKey(name)) {
-      throw new UndefinedPropertyException(name);
-    }
     String trimmedValue = getTrimmedValueOrNull(name);
     if (trimmedValue == null) {
+      if (!containsKey(name)) {
+        throw new UndefinedPropertyException(name);
+      }
       throw new VeniceException("Property " + name + " is defined but has an empty value");
     }
     return convertSizeFromLiteral(trimmedValue);
