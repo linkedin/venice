@@ -106,12 +106,11 @@ public class NettyFileTransferClient {
     clientBootstrap.channel(NioSocketChannel.class);
     clientBootstrap.option(ChannelOption.SO_KEEPALIVE, true);
     clientBootstrap.option(ChannelOption.CONNECT_TIMEOUT_MILLIS, CONNECTION_ESTABLISHMENT_TIMEOUT_MS);
-    // Increase the receiver buffer size to 4MB.
-    clientBootstrap.option(ChannelOption.SO_RCVBUF, 4 << 20);
+    // Increase the receiver buffer size to 1MB.
+    clientBootstrap.option(ChannelOption.SO_RCVBUF, 1 << 20);
     // Use adaptive receiver buffer allocator to dynamically adjust the receiver buffer size.
-    clientBootstrap.option(
-        ChannelOption.RCVBUF_ALLOCATOR,
-        new AdaptiveRecvByteBufAllocator(64 * 1024, 1024 * 1024, 4 * 1024 * 1024));
+    clientBootstrap
+        .option(ChannelOption.RCVBUF_ALLOCATOR, new AdaptiveRecvByteBufAllocator(64 * 1024, 512 * 1024, 1 << 20));
     clientBootstrap.handler(new ChannelInitializer<SocketChannel>() {
       @Override
       public void initChannel(SocketChannel ch) {
