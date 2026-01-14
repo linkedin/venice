@@ -308,22 +308,29 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
     // 2. Current version is from a repush, but still a lingering version older than retention period.
     // 3. Current version is not repush and is older than retention, delete any versions < current version.
     if (readyToBeRemovedVersions.isEmpty()) {
-      long retentionThreshold = store.getLatestVersionPromoteToCurrentTimestamp() + minBackupVersionCleanupDelay;
       int repushSourceVersion = store.getVersionOrThrow(currentVersion).getRepushSourceVersion();
       boolean isCurrentVersionRepushed = repushSourceVersion > NON_EXISTING_VERSION;
-      boolean pastRetention = time.getMilliseconds() > retentionThreshold;
-      if (!pastRetention) {
+      long minRetentionThreshold = store.getLatestVersionPromoteToCurrentTimestamp() + minBackupVersionCleanupDelay;
+      long defaultRetentionThreshold =
+          store.getLatestVersionPromoteToCurrentTimestamp() + defaultBackupVersionRetentionMs;
+      boolean pastDefaultRetention = time.getMilliseconds() > defaultRetentionThreshold;
+      boolean pastMinRetention = time.getMilliseconds() > minRetentionThreshold;
+      HashSet<Integer> repushChainVersions = new HashSet<>(); // all versions repushed into the current version
+
+      if (!pastMinRetention) {
         return false;
       }
-      HashSet<Integer> repushChainVersions = new HashSet<>(); // all versions repushed into the current version
       readyToBeRemovedVersions = versions.stream()
           .sorted((v1, v2) -> Integer.compare(v2.getNumber(), v1.getNumber())) // sort in descending order
           .filter(v -> {
-            if (!isCurrentVersionRepushed) {
+            // always delete past default retention and less than current version
+            if (!isCurrentVersionRepushed || pastDefaultRetention) {
               return v.getNumber() < currentVersion;
             }
-            repushChainVersions.add(v.getRepushSourceVersion()); // descending order, so source can only appear later
-            return v.getNumber() < currentVersion && (repushChainVersions.contains(v.getNumber()) || pastRetention);
+            if (v.getRepushSourceVersion() > NON_EXISTING_VERSION) {
+              repushChainVersions.add(v.getRepushSourceVersion()); // descending order, so source can only appear later
+            }
+            return v.getNumber() < currentVersion && repushChainVersions.contains(v.getNumber());
           })
           .collect(Collectors.toList());
 
@@ -331,9 +338,12 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
         return false;
       }
 
-      // Delete one backup version only when we are past the min retention period.
       if (readyToBeRemovedVersions.size() > 1) {
-        readyToBeRemovedVersions.remove(0); // choose the newest version
+        if (isCurrentVersionRepushed) { // keep the oldest
+          readyToBeRemovedVersions.remove(readyToBeRemovedVersions.size() - 1);
+        } else {
+          readyToBeRemovedVersions.remove(0); // keep the newest version
+        }
         if (readyToBeRemovedVersions.isEmpty()) {
           return false;
         }

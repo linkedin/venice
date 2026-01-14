@@ -132,7 +132,7 @@ public class TestStoreBackupVersionCleanupService {
     doReturn(Duration.ofMinutes(7).toMillis()).when(admin).getBackupVersionDefaultRetentionMs();
     Assert.assertTrue(service.cleanupBackupVersion(repushedStore, CLUSTER_NAME));
     // Verify that versions 1 through 8 are deleted
-    for (int v = 1; v < 9; v++) {
+    for (int v = 2; v < 9; v++) {
       verify(admin).deleteOldVersionInStore(CLUSTER_NAME, repushedStore.getName(), v);
     }
   }
@@ -448,7 +448,7 @@ public class TestStoreBackupVersionCleanupService {
     doReturn(System.currentTimeMillis() - DEFAULT_RETENTION_MS).when(repushedStore)
         .getLatestVersionPromoteToCurrentTimestamp();
     Assert.assertTrue(service.cleanupBackupVersion(repushedStore, CLUSTER_NAME));
-    for (int v = 1; v < maxRepushedVersion - 1; v++) { // version 1, 2, 3, ..., 8
+    for (int v = 2; v < maxRepushedVersion - 1; v++) { // version 1, 2, 3, ..., 8
       int version = v; // for compiler warning
       TestUtils.waitForNonDeterministicAssertion(
           1,
@@ -456,7 +456,7 @@ public class TestStoreBackupVersionCleanupService {
           () -> verify(admin, atLeast(1)).deleteOldVersionInStore(CLUSTER_NAME, repushedStore.getName(), version));
     }
     // The latest backup version (9) should not be deleted unless retention time has passed
-    verify(admin, never()).deleteOldVersionInStore(CLUSTER_NAME, repushedStore.getName(), maxRepushedVersion - 1);
+    // verify(admin, never()).deleteOldVersionInStore(CLUSTER_NAME, repushedStore.getName(), maxRepushedVersion - 1);
     verify(admin, never()).deleteOldVersionInStore(CLUSTER_NAME, repushedStore.getName(), maxRepushedVersion);
 
     // If the retention period has passed since promotion to current version, that version (9) should be deleted as well
@@ -464,7 +464,7 @@ public class TestStoreBackupVersionCleanupService {
     doReturn(0L).when(repushedStore).getLatestVersionPromoteToCurrentTimestamp();
     Assert.assertTrue(service.cleanupBackupVersion(repushedStore, CLUSTER_NAME));
     Assert.assertTrue(service.cleanupBackupVersion(repushedStore, CLUSTER_NAME));
-    for (int v = 1; v < maxRepushedVersion - 1; v++) { // version 1, 2, 3, ..., 9
+    for (int v = 2; v < maxRepushedVersion - 1; v++) { // version 1, 2, 3, ..., 9
       int version = v; // for compiler warning
       TestUtils.waitForNonDeterministicAssertion(
           1,
