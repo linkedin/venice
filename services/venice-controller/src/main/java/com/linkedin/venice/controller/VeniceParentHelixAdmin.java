@@ -3412,6 +3412,8 @@ public class VeniceParentHelixAdmin implements Admin {
         return store.getMaxNearlineRecordSizeBytes();
       case KEY_URN_COMPRESSION_ENABLED:
         return store.isKeyUrnCompressionEnabled();
+      case KEY_URN_FIELDS:
+        return store.getKeyUrnFields();
       case ACTIVE_ACTIVE_REPLICATION_ENABLED:
         return store.isActiveActiveReplicationEnabled();
       case SEPARATE_REAL_TIME_TOPIC_ENABLED:
@@ -3434,6 +3436,44 @@ public class VeniceParentHelixAdmin implements Admin {
         return store.isGlobalRtDivEnabled();
       case ENUM_SCHEMA_EVOLUTION_ALLOWED:
         return store.isEnumSchemaEvolutionAllowed();
+      case BACKUP_STRATEGY:
+        return store.getBackupStrategy();
+      case ETLED_PROXY_USER_ACCOUNT:
+      case ETL_STRATEGY:
+      case FUTURE_VERSION_ETL_ENABLED:
+      case REGULAR_VERSION_ETL_ENABLED:
+        return store.getEtlStoreConfig();
+      case FLINK_VENICE_VIEWS_ENABLED:
+        return store.isFlinkVeniceViewsEnabled();
+      case ENABLE_STORE_MIGRATION:
+        return store.isMigrating();
+      case LARGEST_USED_VERSION_NUMBER:
+        return store.getLargestUsedVersionNumber();
+      case LARGEST_USED_RT_VERSION_NUMBER:
+        return store.getLargestUsedRTVersionNumber();
+      case LATEST_SUPERSET_SCHEMA_ID:
+        return store.getLatestSuperSetValueSchemaId();
+      case UNUSED_SCHEMA_DELETION_ENABLED:
+        return store.isUnusedSchemaDeletionEnabled();
+      case REPLICATION_METADATA_PROTOCOL_VERSION_ID:
+        return store.getRmdVersion();
+      // For hybrid store config
+      case REWIND_TIME_IN_SECONDS:
+      case OFFSET_LAG_TO_GO_ONLINE:
+      case TIME_LAG_TO_GO_ONLINE:
+      case DATA_REPLICATION_POLICY:
+      case BUFFER_REPLAY_POLICY:
+        // For partitioner config
+      case PARTITIONER_CLASS:
+      case PARTITIONER_PARAMS:
+      case AMPLIFICATION_FACTOR:
+        return store.getPartitionerConfig();
+      // For store views
+      case STORE_VIEW:
+        return store.getViewConfigs();
+      // For store lifecycle hooks
+      case STORE_LIFECYCLE_HOOKS_LIST:
+        return store.getStoreLifecycleHooks();
     }
     return "";
   }
