@@ -3303,6 +3303,18 @@ public class VeniceParentHelixAdmin implements Admin {
             .generateSupersetSchemaFromSchemas(getValueSchemas(clusterName, storeName));
       }
 
+      // Log configs for the current store before update is applied
+      if (!updatedConfigsList.isEmpty()) {
+        Map<String, Object> beforeMap = new HashMap<>();
+
+        for (CharSequence configName: updatedConfigsList) {
+          String configNameStr = configName.toString();
+          beforeMap.put(configNameStr, getStoreConfigValue(currStore, configNameStr));
+        }
+
+        LOGGER.info("updateStore for {} in cluster {} - original values: {}", storeName, clusterName, beforeMap);
+      }
+
       AdminOperation message = new AdminOperation();
       message.operationType = AdminMessageType.UPDATE_STORE.getValue();
       message.payloadUnion = setStore;
@@ -3328,6 +3340,102 @@ public class VeniceParentHelixAdmin implements Admin {
     } finally {
       releaseAdminMessageLock(clusterName, storeName);
     }
+  }
+
+  /**
+   * Helper method to get store config value by name
+   * @param store The store object
+   * @param configName The name of the config
+   * @return The value of the config
+   */
+  private Object getStoreConfigValue(Store store, String configName) {
+    switch (configName) {
+      case OWNER:
+        return store.getOwner();
+      case PARTITION_COUNT:
+        return store.getPartitionCount();
+      case ENABLE_READS:
+        return store.isEnableReads();
+      case ENABLE_WRITES:
+        return store.isEnableWrites();
+      case STORAGE_QUOTA_IN_BYTE:
+        return store.getStorageQuotaInByte();
+      case READ_QUOTA_IN_CU:
+        return store.getReadQuotaInCU();
+      case REPLICATION_FACTOR:
+        return store.getReplicationFactor();
+      case NATIVE_REPLICATION_ENABLED:
+        return store.isNativeReplicationEnabled();
+      case PUSH_STREAM_SOURCE_ADDRESS:
+        return store.getPushStreamSourceAddress();
+      case NATIVE_REPLICATION_SOURCE_FABRIC:
+        return store.getNativeReplicationSourceFabric();
+      case ACCESS_CONTROLLED:
+        return store.isAccessControlled();
+      case COMPRESSION_STRATEGY:
+        return store.getCompressionStrategy();
+      case CLIENT_DECOMPRESSION_ENABLED:
+        return store.getClientDecompressionEnabled();
+      case CHUNKING_ENABLED:
+        return store.isChunkingEnabled();
+      case RMD_CHUNKING_ENABLED:
+        return store.isRmdChunkingEnabled();
+      case BATCH_GET_LIMIT:
+        return store.getBatchGetLimit();
+      case NUM_VERSIONS_TO_PRESERVE:
+        return store.getNumVersionsToPreserve();
+      case INCREMENTAL_PUSH_ENABLED:
+        return store.isIncrementalPushEnabled();
+      case WRITE_COMPUTATION_ENABLED:
+        return store.isWriteComputationEnabled();
+      case READ_COMPUTATION_ENABLED:
+        return store.isReadComputationEnabled();
+      case BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS:
+        return store.getBootstrapToOnlineTimeoutInHours();
+      case HYBRID_STORE_DISK_QUOTA_ENABLED:
+        return store.isHybridStoreDiskQuotaEnabled();
+      case BACKUP_VERSION_RETENTION_MS:
+        return store.getBackupVersionRetentionMs();
+      case STORAGE_NODE_READ_QUOTA_ENABLED:
+        return store.isStorageNodeReadQuotaEnabled();
+      case COMPACTION_ENABLED:
+        return store.isCompactionEnabled();
+      case COMPACTION_THRESHOLD_MILLISECONDS:
+        return store.getCompactionThresholdMilliseconds();
+      case MIN_COMPACTION_LAG_SECONDS:
+        return store.getMinCompactionLagSeconds();
+      case MAX_COMPACTION_LAG_SECONDS:
+        return store.getMaxCompactionLagSeconds();
+      case MAX_RECORD_SIZE_BYTES:
+        return store.getMaxRecordSizeBytes();
+      case MAX_NEARLINE_RECORD_SIZE_BYTES:
+        return store.getMaxNearlineRecordSizeBytes();
+      case KEY_URN_COMPRESSION_ENABLED:
+        return store.isKeyUrnCompressionEnabled();
+      case ACTIVE_ACTIVE_REPLICATION_ENABLED:
+        return store.isActiveActiveReplicationEnabled();
+      case SEPARATE_REAL_TIME_TOPIC_ENABLED:
+        return store.isSeparateRealTimeTopicEnabled();
+      case BLOB_TRANSFER_ENABLED:
+        return store.isBlobTransferEnabled();
+      case BLOB_TRANSFER_IN_SERVER_ENABLED:
+        return store.getBlobTransferInServerEnabled();
+      case NEARLINE_PRODUCER_COMPRESSION_ENABLED:
+        return store.isNearlineProducerCompressionEnabled();
+      case NEARLINE_PRODUCER_COUNT_PER_WRITER:
+        return store.getNearlineProducerCountPerWriter();
+      case TARGET_SWAP_REGION:
+        return store.getTargetSwapRegion();
+      case TARGET_SWAP_REGION_WAIT_TIME:
+        return store.getTargetSwapRegionWaitTime();
+      case IS_DAVINCI_HEARTBEAT_REPORTED:
+        return store.getIsDavinciHeartbeatReported();
+      case GLOBAL_RT_DIV_ENABLED:
+        return store.isGlobalRtDivEnabled();
+      case ENUM_SCHEMA_EVOLUTION_ALLOWED:
+        return store.isEnumSchemaEvolutionAllowed();
+    }
+    return "";
   }
 
   private Map<String, ViewConfig> validateAndDecorateStoreViewConfigs(Map<String, String> stringMap, Store store) {
