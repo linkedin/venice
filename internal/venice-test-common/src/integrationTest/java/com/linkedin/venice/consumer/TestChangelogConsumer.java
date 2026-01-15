@@ -1385,6 +1385,7 @@ public class TestChangelogConsumer {
         .setPartitionCount(3);
     MetricsRepository metricsRepository =
         getVeniceMetricsRepository(CHANGE_DATA_CAPTURE_CLIENT, CONSUMER_METRIC_ENTITIES, true);
+
     createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms);
     IntegrationTestPushUtils.runVPJ(props);
     ZkServerWrapper localZkServer = multiRegionMultiClusterWrapper.getChildRegions().get(0).getZkServerWrapper();

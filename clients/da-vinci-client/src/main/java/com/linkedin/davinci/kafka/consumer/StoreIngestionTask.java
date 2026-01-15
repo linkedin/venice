@@ -812,10 +812,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           long startTime = System.nanoTime();
           recordTransformer.onStartVersionIngestion(partitionNumber, isCurrentVersion.getAsBoolean());
           LOGGER.info(
-              "DaVinciRecordTransformer onStartVersionIngestion took {} ms for store version: {} and partition: {}",
+              "DaVinciRecordTransformer onStartVersionIngestion took {} ms for replica: {}",
               LatencyUtils.getElapsedTimeFromNSToMS(startTime),
-              storeVersionName,
-              partitionNumber);
+              getReplicaId(topicPartition));
 
           startTime = System.nanoTime();
           recordTransformer.internalOnRecovery(
