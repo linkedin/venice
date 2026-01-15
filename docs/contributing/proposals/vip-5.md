@@ -1,31 +1,30 @@
-
 # VIP-5: Facet Counting
 
-* **Status**: _Accepted_
-* **Author(s)**: _Felix GV_
-* **Pull Request**: [PR 1612](https://github.com/linkedin/venice/pull/1612)
-* **Release**: _N/A_
+- **Status**: _Accepted_
+- **Author(s)**: _Felix GV_
+- **Pull Request**: [PR 1612](https://github.com/linkedin/venice/pull/1612)
+- **Release**: _N/A_
 
 ## Introduction
 
-Facet Counting is a type of aggregation query popular in the search domain. It provides information about the 
+Facet Counting is a type of aggregation query popular in the search domain. It provides information about the
 cardinality of values for the fields of documents of interest.
 
 Given that search is one of the types of derived data workloads in which Venice already participates (i.e., the Da Vinci
-Client can serve as a search solution's forward index component), there is demand from Venice users to increase the 
+Client can serve as a search solution's forward index component), there is demand from Venice users to increase the
 scope of capabilities such that Facet Counting can also be performed natively by Venice.
 
-This document introduces the domain, and suggests a roadmap for implementing this capability in various phases, 
+This document introduces the domain, and suggests a roadmap for implementing this capability in various phases,
 including on the client-side and server-side.
 
-## Problem Statement 
+## Problem Statement
 
 This section dives deeper in defining what Facet Counting is, and how to integrate it into Venice.
 
-Before diving into specifics, it may be useful to provide an analogy in order to make a general observation: _the 
+Before diving into specifics, it may be useful to provide an analogy in order to make a general observation: _the
 proposal in this VIP has similarities and differences compared to Read Compute_. Read Compute, as it exists today, is a
 record-wise (or we could say: row-wise) operation, meaning that for a given input record there is exactly one output
-record. This type of workload is very natural to push down into the server-side, in such way that the work is split 
+record. This type of workload is very natural to push down into the server-side, in such way that the work is split
 across many servers and the client can retrieve the various output records individually. The use cases presented here
 also have a portion of work which is executable on a per-record basis, and therefore has the potential of being pushed
 down to the server-side, however, given that they are "aggregation queries", there is also a final processing step which
@@ -33,11 +32,12 @@ must be performed in some central location (e.g., in the client). The work can t
 
 ### Facet Counting Use Cases
 
-Let's define what Facet Counting is, with a series of examples from simple to more complex, using SQL to explain it 
+Let's define what Facet Counting is, with a series of examples from simple to more complex, using SQL to explain it
 (although SQL is just a convenient way to express query semantics, but is not part of this proposal).
 
-These are functioning SQL queries that have been run on a DuckDB database populated by Venice's own Push Job Details 
-[system store](../../operations/data-management/system-stores.md). This system store's Avro schema can be seen here: [key](https://github.com/linkedin/venice/blob/main/internal/venice-common/src/main/resources/avro/PushJobStatusRecordKey/v1/PushJobStatusRecordKey.avsc),
+These are functioning SQL queries that have been run on a DuckDB database populated by Venice's own Push Job Details
+[system store](../../operations/data-management/system-stores.md). This system store's Avro schema can be seen here:
+[key](https://github.com/linkedin/venice/blob/main/internal/venice-common/src/main/resources/avro/PushJobStatusRecordKey/v1/PushJobStatusRecordKey.avsc),
 [value](https://github.com/linkedin/venice/blob/main/internal/venice-common/src/main/resources/avro/PushJobDetails/v4/PushJobDetails.avsc).
 The SQL schema for the table is also included below, though only a subset of these columns are used in the examples:
 
@@ -96,8 +96,8 @@ LIMIT    5;
 
 #### Facet Counting by Buckets Within a Column
 
-Another example would be to group not by values, but by buckets. An example of this would be to have buckets for 
-"last 24h", "last week", "last 30 days".
+Another example would be to group not by values, but by buckets. An example of this would be to have buckets for "last
+24h", "last week", "last 30 days".
 
 ```sql
 SET VARIABLE most_recent_job_time = (SELECT MAX(reportTimestamp) FROM current_version);
@@ -136,27 +136,27 @@ ORDER BY cnt;
 
 #### Facet Counting on Multiple Columns
 
-Finally, a common example of Facet Counting would be to perform the same as above, but for multiple columns, all at 
-once. In real scenarios, there could be hundreds of columns included, but to keep things simple we will do only two 
+Finally, a common example of Facet Counting would be to perform the same as above, but for multiple columns, all at
+once. In real scenarios, there could be hundreds of columns included, but to keep things simple we will do only two
 columns counted by values and one column counted by bucket:
 
 ```sql
 SELECT * FROM (
     SELECT   'clusterName' AS col,
-             clusterName AS value_or_bucket, 
-             COUNT(clusterName) AS cnt 
-    FROM     current_version 
-    GROUP BY clusterName 
-    ORDER BY cnt 
-    DESC     LIMIT 5) 
+             clusterName AS value_or_bucket,
+             COUNT(clusterName) AS cnt
+    FROM     current_version
+    GROUP BY clusterName
+    ORDER BY cnt
+    DESC     LIMIT 5)
 UNION
 SELECT * FROM (
-    SELECT   'storeName' AS col, 
-             storeName AS value_or_bucket, 
-             COUNT(storeName) AS cnt 
-    FROM     current_version 
-    GROUP BY storeName 
-    ORDER BY cnt 
+    SELECT   'storeName' AS col,
+             storeName AS value_or_bucket,
+             COUNT(storeName) AS cnt
+    FROM     current_version
+    GROUP BY storeName
+    ORDER BY cnt
     DESC     LIMIT 5)
 UNION
 SELECT * FROM (
@@ -205,13 +205,13 @@ ORDER BY col, cnt DESC;
 #### Filtering
 
 The above examples all demonstrate Facet Counting being performed on a full table. And while that is feasible, it can be
-a costly proposition. In practice, a more common scenario is to perform Facet Counting on a subset of rows of the 
+a costly proposition. In practice, a more common scenario is to perform Facet Counting on a subset of rows of the
 dataset. In the case of this proposal, the goal is to provide the ability to perform Facet Counting on some pre-defined
 keys within the Venice dataset.
 
 ### Where to Perform the Counting?
 
-There are a variety of locations where the counting could be performed: client, router, server. Ultimately, it is 
+There are a variety of locations where the counting could be performed: client, router, server. Ultimately, it is
 probably ideal to have the ability to perform it in all three locations, and to decide by configuration what mode the
 system will operate in, so that we have the most operational flexibility. That, however, does not mean that we need to
 implement all of these in order to start getting value from the project (see Development Milestones).
@@ -219,33 +219,33 @@ implement all of these in order to start getting value from the project (see Dev
 #### Client-side Computation
 
 There is already support for performing Read Compute on the client-side, which is useful as a fallback in cases where
-server-side Read Compute is disabled for the queried store. Similarly, the ability to perform server-side Facet Counting 
-should be enabled via a store config, and the client should be capable of gracefully degrading to client-side compute
-if the server-side is disabled. This is important so that users can make use of the API no matter what the server-side
+server-side Read Compute is disabled for the queried store. Similarly, the ability to perform server-side Facet Counting
+should be enabled via a store config, and the client should be capable of gracefully degrading to client-side compute if
+the server-side is disabled. This is important so that users can make use of the API no matter what the server-side
 settings are, and configs then become a lever for shifting work across components, rather than a functional blocker.
 
 #### Server-side Computation
 
 The appeal of supporting server-side computations for Facet Counting is the same as for Read Compute:
 
-1. The response sizes should be much smaller, thus saving on network bandwidth and improving the overall end-to-end 
+1. The response sizes should be much smaller, thus saving on network bandwidth and improving the overall end-to-end
    performance.
-2. Moreover, the work can be partitioned across many servers, each of which would need to do just a fraction of the 
+2. Moreover, the work can be partitioned across many servers, each of which would need to do just a fraction of the
    total.
 
 The difference with currently supported Read Compute queries is that, given that Facet Counting is an aggregation query,
 there still needs to be some amount of work performed in the component which receives the subset of results from each
-server. In the case of the Fast Client, this final step must be performed on the FC itself. In the case of the Thin 
+server. In the case of the Fast Client, this final step must be performed on the FC itself. In the case of the Thin
 Client, it could be performed either on the TC or on the Router.
 
 #### Router-side Computation
 
-As mentioned above, for Thin Clients performing Facet Counting queries on a store where server-side computation is 
-enabled, the final step of the query processing could be done either on the client-side or router-side. From a 
+As mentioned above, for Thin Clients performing Facet Counting queries on a store where server-side computation is
+enabled, the final step of the query processing could be done either on the client-side or router-side. From a
 functional standpoint, either way works, but from an efficiency standpoint, it may be better to do it on the router-side
-to further reduce network bandwidth (between router and client). That being said, given that latency-sensitive 
+to further reduce network bandwidth (between router and client). That being said, given that latency-sensitive
 applications ought to onboard to the Fast Client anyway, there may be diminishing returns in expending effort to support
-router-side computation. Therefore, this milestone can be scheduled last, and it may be acceptable to not implement it 
+router-side computation. Therefore, this milestone can be scheduled last, and it may be acceptable to not implement it
 at all.
 
 ## Scope
@@ -266,7 +266,7 @@ The following is out of scope:
 ## Project Justification
 
 The goal of this project is to make Venice more amenable to leverage in a variety of derived data use cases. This can
-help users minimize the complexity of juggling multiple independent systems, leading to productivity and operability 
+help users minimize the complexity of juggling multiple independent systems, leading to productivity and operability
 improvements for them.
 
 While it is already possible for users to manually implement Facet Counting on data retrieved via Batch Get (which would
@@ -303,9 +303,11 @@ public interface ComputeAggregationRequestBuilder<K> extends ExecutableRequestBu
    * @param <T> The type of the fields to apply the bucket predicates to.
    */
   <T> ComputeAggregationRequestBuilder<K> countGroupByBucket(
-          Map<String, Predicate<T>> bucketNameToPredicate,
-          String... fieldNames);
+    Map<String, Predicate<T>> bucketNameToPredicate,
+    String... fieldNames
+  );
 }
+
 ```
 
 Responses could be accessed using the following container:
@@ -324,15 +326,17 @@ public interface ComputeAggregationResponse {
    */
   Map<String, Integer> getBucketNameToCount(String fieldName);
 }
+
 ```
 
 Using the proposed API to achieve the `Facet Counting on Multiple Columns` use case above would look like this:
 
 ```java
 public class VIP5Example {
+
   public void vip(AvroGenericReadComputeStoreClient<GenericRecord, GenericRecord> client, Set<GenericRecord> keySet) {
     // Note that the computeAggregation() API is not added in this PR, and will be added once initial support is built
-     ComputeAggregationRequestBuilder<GenericRecord> requestBuilder = client.computeAggregation();
+    ComputeAggregationRequestBuilder<GenericRecord> requestBuilder = client.computeAggregation();
 
     // Using the Predicate API to define the filtering criteria of each bucket
     long currentTime = System.currentTimeMillis();
@@ -340,30 +344,31 @@ public class VIP5Example {
     bucketByTimeRanges.put("last_24h", LongPredicate.greaterThan(currentTime - 1 * Time.MS_PER_DAY));
     bucketByTimeRanges.put("last_week", LongPredicate.greaterThan(currentTime - 7 * Time.MS_PER_DAY));
     bucketByTimeRanges.put("last_30_days", LongPredicate.greaterThan(currentTime - 30 * Time.MS_PER_DAY));
-    
+
     // Facet count for multiple columns, including both grouped by value and grouped by buckets
-     ComputeAggregationRequestBuilder<GenericRecord> requestBuilder = requestBuilder
-            .countGroupByValue(5, "clusterName", "storeName")
-            .countGroupByBucket(bucketByTimeRanges, "reportTimestamp");
+    ComputeAggregationRequestBuilder<GenericRecord> requestBuilder = requestBuilder
+      .countGroupByValue(5, "clusterName", "storeName")
+      .countGroupByBucket(bucketByTimeRanges, "reportTimestamp");
 
     // Specify filter to specific keys in order to execute the query
     CompletableFuture<ComputeAggregationResponse> facetCountResponse = requestBuilder.execute(keySet);
   }
 }
+
 ```
 
-As we can see, the proposed DSL is significantly more succinct than the equivalent SQL. That is because although SQL can 
+As we can see, the proposed DSL is significantly more succinct than the equivalent SQL. That is because although SQL can
 be made to do nearly anything, Facet Counting of multiple columns in a single query is not a common use case.
 
 ## Proposed Design
 
-The client-side computation is very similar to Read Compute and therefore fairly straightforward. Essentially, the 
+The client-side computation is very similar to Read Compute and therefore fairly straightforward. Essentially, the
 client would retrieve the values for the keys of interest via Batch Get, then perform the computation locally.
 
 Regarding server-side computation, it could be achieved either by extending the current `/compute` endpoint on servers,
 or as a new endpoint. Given that there are significant differences between the two, it may be tedious to cram the two of
-them into the same endpoint. Moreover, since there is no need for the time being to combine Read Compute and Facet 
-Counting for the same set of keys as part of a single query, there is no incentive for now to incur this complexity 
+them into the same endpoint. Moreover, since there is no need for the time being to combine Read Compute and Facet
+Counting for the same set of keys as part of a single query, there is no incentive for now to incur this complexity
 cost. If, in the future, it becomes necessary to combine these types of queries together, then the architecture can be
 further evolved at that point.
 
@@ -372,18 +377,18 @@ The Facet Counting endpoint would need to have its own wire protocol, similar to
 1. Start by listing the computation details (encoded from what was specified in `ComputeAggregationRequestBuilder`).
 2. Then list all the keys to query and compute on.
 
-It is necessary to support protocol evolution, but being separate from Read Compute, these two can evolve on separate 
+It is necessary to support protocol evolution, but being separate from Read Compute, these two can evolve on separate
 tracks.
 
 ## Development Milestones
 
-1. Start with client-side support, so that users can start using the API as soon as possible, and that it works 
+1. Start with client-side support, so that users can start using the API as soon as possible, and that it works
    regardless of store and server settings.
 2. Then implement the wire protocol and server-side support.
 
 ### Future Work
 
-Although this is out of scope from the current proposal, it is interesting to note that having the scaffolding in place 
+Although this is out of scope from the current proposal, it is interesting to note that having the scaffolding in place
 to perform aggregation queries opens up the door to performing other kinds of aggregations besides counting, e.g., min,
 max, average, sum, or other functions...
 
@@ -392,7 +397,7 @@ max, average, sum, or other functions...
 This functionality requires the full scope of test methodologies: unit and integration tests, followed by collaboration
 with early adopter users to integrate and gradually ramp.
 
-## References 
+## References
 
 1. [Facet Counting in Lucene](https://lucene.apache.org/core/4_1_0/facet/org/apache/lucene/facet/doc-files/userguide.html#facet_features)
 

@@ -1,11 +1,11 @@
-
 # Documentation Guideline
 
-We use GitHub Pages to host Venice documentation with MkDocs Material theme. Documentation is built automatically by GitHub Actions when changes are pushed to the `main` branch.
+We use GitHub Pages to host Venice documentation with MkDocs Material theme. Documentation is built automatically by
+GitHub Actions when changes are pushed to the `main` branch.
 
 ## General
 
-It is strongly encouraged that any code change which affects the validity of information in the docs also include 
+It is strongly encouraged that any code change which affects the validity of information in the docs also include
 updates to the docs, so that both are kept in sync atomically.
 
 Experimental functionalities and future plans are also worth documenting, though they must be clearly marked as such, so
@@ -21,15 +21,16 @@ structure coherent. That being said, even if unsure where some documentation bel
 
 ## Hierarchy
 
-Documentation hierarchy is configured in `mkdocs.yml` in the `nav:` section. The navigation structure is defined centrally:
+Documentation hierarchy is configured in `mkdocs.yml` in the `nav:` section. The navigation structure is defined
+centrally:
 
 ```yaml
 nav:
   - Home: README.md
   - User Guide:
-    - user-guide/index.md
-    - Write APIs:
-      - user-guide/write-apis/batch-push.md
+      - user-guide/index.md
+      - Write APIs:
+          - user-guide/write-apis/batch-push.md
 ```
 
 To add a new page:
@@ -47,27 +48,28 @@ done, and to avoid certain anti-patterns.
 
 ### Text-based Assets
 
-For text-based assets (which are preferred whenever feasible), we wish to check them into source control. This should 
-include both the displayable asset (e.g. in SVG format) and the source file from which the displayable asset was 
-generated (e.g. in XML format). This makes the docs self-contained, and enables contributors to edit the assets over 
+For text-based assets (which are preferred whenever feasible), we wish to check them into source control. This should
+include both the displayable asset (e.g. in SVG format) and the source file from which the displayable asset was
+generated (e.g. in XML format). This makes the docs self-contained, and enables contributors to edit the assets over
 time.
 
-Diagrams conforming to these guidelines can be placed under the `/docs/assets/images` path of the repo, and then 
+Diagrams conforming to these guidelines can be placed under the `/docs/assets/images` path of the repo, and then
 embedded in the docs with a relative link like this:
 
 ```markdown
 ![](../../assets/images/vip_3_read_path.drawio.svg)
 ```
 
-The [draw.io](https://draw.io) service makes it easy to generate such assets. If using [PlantUML](https://plantuml.com/starting), 
-it's recommended to generate diagrams into svg format by following this [guide](https://plantuml.com/svg).
+The [draw.io](https://draw.io) service makes it easy to generate such assets. If using
+[PlantUML](https://plantuml.com/starting), it's recommended to generate diagrams into svg format by following this
+[guide](https://plantuml.com/svg).
 
 ### Binary Assets
 
-For binary assets (e.g. PNG, BMP, JPG, etc.), we do NOT wish to check them into source control. Instead, they should be 
-linked from an external source. This can be done in GitHub itself. Within the Pull Request that proposes the doc change, 
-the contributor can insert images in the PR's description or comments, and then take the URL GitHub generated for it. 
-Then the modified files included in the PR can be edited to link to that image, and the PR updated. Externally hosted 
+For binary assets (e.g. PNG, BMP, JPG, etc.), we do NOT wish to check them into source control. Instead, they should be
+linked from an external source. This can be done in GitHub itself. Within the Pull Request that proposes the doc change,
+the contributor can insert images in the PR's description or comments, and then take the URL GitHub generated for it.
+Then the modified files included in the PR can be edited to link to that image, and the PR updated. Externally hosted
 images can be embedded with an absolute link like this:
 
 ```markdown
@@ -76,12 +78,13 @@ images can be embedded with an absolute link like this:
 
 ## Emojis
 
-Here's a link to all the emojis available in README files: [Emoji Cheat Sheet](https://github.com/ikatyang/emoji-cheat-sheet/blob/master/README.md). 
+Here's a link to all the emojis available in README files:
+[Emoji Cheat Sheet](https://github.com/ikatyang/emoji-cheat-sheet/blob/master/README.md).
 
 ## Testing Doc Changes
 
 There are two ways to test doc changes, locally and on the public web. Local testing is convenient to iterate quickly,
-while public web testing is useful to make sure that nothing breaks (e.g., especially if changing styles, Python 
+while public web testing is useful to make sure that nothing breaks (e.g., especially if changing styles, Python
 dependencies, or MkDocs configs) and to share more significant documentation changes with PR reviewers.
 
 ### Testing Locally
@@ -89,7 +92,7 @@ dependencies, or MkDocs configs) and to share more significant documentation cha
 The docs are rendered and served by MkDocs with the Material theme. Install dependencies:
 
 ```bash
-pip install -r docs/doc-requirements.txt 
+pip install -r docs/doc-requirements.txt
 ```
 
 Then from the repository root, run:
@@ -98,7 +101,8 @@ Then from the repository root, run:
 mkdocs serve
 ```
 
-Then navigate to [localhost:8000](http://localhost:8000) and view the docs in your browser. MkDocs hot reloads changes to markdown files and configuration automatically. If you modify `mkdocs.yml`, the server will restart automatically.
+Then navigate to [localhost:8000](http://localhost:8000) and view the docs in your browser. MkDocs hot reloads changes
+to markdown files and configuration automatically. If you modify `mkdocs.yml`, the server will restart automatically.
 
 ### Testing on the Public Web
 
@@ -111,4 +115,5 @@ A GitHub fork can have its own documentation. This can be setup by:
 5. Push changes to trigger the `deploy-docs.yml` workflow
 6. Navigate to your fork's docs at: `https://<username>.github.io/venice`
 
-For significant doc changes, please follow this process and add a link inside the PR to the docs hosted in the PR author's own fork.
+For significant doc changes, please follow this process and add a link inside the PR to the docs hosted in the PR
+author's own fork.

@@ -3,16 +3,19 @@
 Venice is a derived data platform that bridges the offline, nearline, and online worlds. Before diving into the
 quickstarts, understanding these core concepts will help you get the most out of Venice.
 
-**Prefer video?** Watch the [Open-Sourcing Venice conference talk](https://www.youtube.com/watch?v=pJeg4V3JgYo) for a comprehensive overview of Venice's architecture, use cases, and real-world deployment at LinkedIn scale.
+**Prefer video?** Watch the [Open-Sourcing Venice conference talk](https://www.youtube.com/watch?v=pJeg4V3JgYo) for a
+comprehensive overview of Venice's architecture, use cases, and real-world deployment at LinkedIn scale.
 
 ## Core Concepts
 
 ### Stores & Versions
+
 - A **store** is a dataset (like a table or collection)
 - Each store consists of immutable **versions** that enable zero-downtime updates
 - When you push new data, Venice creates a new version and atomically swaps read traffic
 
 ### Partitions & Replication
+
 - Data is horizontally partitioned for scalability
 - Each partition is replicated across multiple nodes for availability
 - Supports **active-active replication** between regions with CRDT-based conflict resolution
@@ -30,11 +33,11 @@ Venice supports three write granularities that can be mixed:
 
 Choose your performance/cost tradeoff:
 
-| Client Type | Network Hops | Latency (p99) | State Footprint |
-|-------------|--------------|---------------|-----------------|
-| **Thin Client** | 2 | < 10ms | Stateless |
-| **Fast Client** | 1 | < 2ms | Minimal (routing metadata) |
-| **Da Vinci Client** | 0 | < 1ms (SSD) or < 10μs (RAM) | Full dataset locally |
+| Client Type         | Network Hops | Latency (p99)               | State Footprint            |
+| ------------------- | ------------ | --------------------------- | -------------------------- |
+| **Thin Client**     | 2            | < 10ms                      | Stateless                  |
+| **Fast Client**     | 1            | < 2ms                       | Minimal (routing metadata) |
+| **Da Vinci Client** | 0            | < 1ms (SSD) or < 10μs (RAM) | Full dataset locally       |
 
 All clients support the same APIs: single get, batch get, and read compute operations.
 

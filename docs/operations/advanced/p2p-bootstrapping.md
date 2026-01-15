@@ -1,10 +1,8 @@
-
-
 # Venice P2P Transfer Bootstrapping Architecture
 
 **High-Performance Peer-to-Peer Data Bootstrap**
 
-*Accelerating Venice Node Deployment Through Direct Peer-to-Peer RocksDB Snapshot Transfer*
+_Accelerating Venice Node Deployment Through Direct Peer-to-Peer RocksDB Snapshot Transfer_
 
 ---
 
@@ -15,7 +13,8 @@
 **Bootstrap Bottlenecks**
 
 - **Kafka-Only Recovery:** All nodes bootstrap exclusively from Kafka brokers
-- **Resource Intensive:** Time-consuming process during cluster recovery, inefficient for consuming messages from the PubSub system under high-update workloads
+- **Resource Intensive:** Time-consuming process during cluster recovery, inefficient for consuming messages from the
+  PubSub system under high-update workloads
 - **Scalability Limits:** Broker capacity becomes recovery bottleneck
 
 **Real-World Impact**
@@ -38,7 +37,6 @@
 
 - Faster node recovery and scaling
 - Reduced Kafka broker load
-
 
 ---
 
@@ -64,32 +62,32 @@ Step 1: Peer Discovery
                                       └─────────────┘
 
 Step 2: Sequential Host Attempts
-┌─────────────┐  T1:Try Host 1  ┌─────────────┐ 
-│ Client Node │ ──────────────> │ Server A    │ 
-│             │ <── FAIL ────── │ (No Data/   │                 
-└─────────────┘                 │  Busy)      │                
-                                └─────────────┘                 
-                 T2:Try Host 2  ┌─────────────┐  
-                ──────────────> │ Server B    │ 
+┌─────────────┐  T1:Try Host 1  ┌─────────────┐
+│ Client Node │ ──────────────> │ Server A    │
+│             │ <── FAIL ────── │ (No Data/   │
+└─────────────┘                 │  Busy)      │
+                                └─────────────┘
+                 T2:Try Host 2  ┌─────────────┐
+                ──────────────> │ Server B    │
                 <── FAIL ────── │ Table Format│
-                                │  not Match  │              
-                                └─────────────┘       
+                                │  not Match  │
+                                └─────────────┘
 
-                 T3:Try Host 3  ┌─────────────┐  
-                ──────────────> │ Server C    │ 
-                                │ (Not busy,  │               
-                                │Format Match)│              
-                                └─────────────┘     
-                                         
-Step 3: Start Transfer                   
-┌────────────────┐                       
-│ Client Node    │ 
+                 T3:Try Host 3  ┌─────────────┐
+                ──────────────> │ Server C    │
+                                │ (Not busy,  │
+                                │Format Match)│
+                                └─────────────┘
+
+Step 3: Start Transfer
+┌────────────────┐
+│ Client Node    │
 │                │
 │  Receives:     │ <── 1.1 File: file1.sst ────────── ┌─────────────┐
 │  1. Files      │ <── 1.2 File: file2.sst ────────── │ Server C    │
 │                │ <── 1.3 File: MANIFEST_00 ──────── │             │
 │  2. Metadata   │ <── 2. Metadata ────────────────── └─────────────┘
-│  3. COMPLETE   │ <── 3. COMPLETE Flag ───────────── 
+│  3. COMPLETE   │ <── 3. COMPLETE Flag ─────────────
 └────────────────┘
 
 Step 4: Client Processing after recevie COMPLETE flag
@@ -116,6 +114,7 @@ Step 5: Kafka Ingestion Fallback (Always Happens)
 - **DaVinci Application:** Query DaVinci push job report for ready-to-serve nodes
 
 **Step 2: P2P Transfer in Client Side**
+
 ```
 Connectivity Check ────> Peer Selection ────> Sequential Request
       ↓                         ↓                      ↓
@@ -124,16 +123,20 @@ check with caching      connectable hosts      success or exhaust
 ```
 
 **Step 3: Data Transfer**
+
 ```
 Snapshot Creation ────> File Streaming ────>  Metadata Sync
        ↓                       ↓                  ↓
 Server creates         Chunked transfer      Offset + Version State
 RocksDB snapshot      with MD5 validation     after files complete
 ```
+
 **Step 4: Completion**
 
-- **Success Path:** After validating all files, atomically rename the temp directory to the partition directory, then initiate Kafka ingestion to synchronize any remaining offset gap.
-- **Fallback Path:** If any error occurs, clean up the temp directory and retry with the next peer; if all peers fail, back to Kafka bootstrap from the beginning.
+- **Success Path:** After validating all files, atomically rename the temp directory to the partition directory, then
+  initiate Kafka ingestion to synchronize any remaining offset gap.
+- **Fallback Path:** If any error occurs, clean up the temp directory and retry with the next peer; if all peers fail,
+  back to Kafka bootstrap from the beginning.
 
 ### Key Components
 
@@ -141,7 +144,6 @@ RocksDB snapshot      with MD5 validation     after files complete
 - **NettyP2PBlobTransferManager** - P2P transfer coordinator
 - **BlobSnapshotManager** - Server-side snapshot lifecycle
 - **NettyFileTransferClient** - High-performance client
-
 
 ## 📥 Client-Side Process
 
@@ -166,13 +168,14 @@ RocksDB snapshot      with MD5 validation     after files complete
 - Extract available peer list
 
 ### 🔗 Step 2: Connectivity Checking
+
 Smart Caching Strategy due to large peer sets:
 
 ```
 ┌─────────────┐   ┌─────────────┐   ┌─────────────────────┐   ┌─────────────┐
 │ Purge Stale │ → │ Filter Bad  │ → │ Check Hosts in      │ → │ Update Cache│
 │ Records     │   │ Hosts       │   │Parallel Connectivity│   │ Results     │
-└─────────────┘   └─────────────┘   └─────────────────────┘   └─────────────┘                          
+└─────────────┘   └─────────────┘   └─────────────────────┘   └─────────────┘
 ```
 
 - **Parallel Testing:** Multiple host connections simultaneously
@@ -188,7 +191,6 @@ For Each Peer (Shuffled List):
 │    HTTP GET     │   │  File Chunks    │   │  Metadata       │   │ COMPLETE_FLAG   │   │      MD5        │   │ to Partition Dir│
 └─────────────────┘   └─────────────────┘   └─────────────────┘   └─────────────────┘   └─────────────────┘   └─────────────────┘
 ```
-
 
 ### 🚨 Error Handling Details in different Scenarios
 
@@ -232,7 +234,8 @@ For Each Peer (Shuffled List):
 - **Phase 1 - Blob Transfer:** Rapid bulk data transfer via P2P
 - **Phase 2 - Kafka Fill-Gap:** Even if blob transfer fails, deployment continues with Kafka ingestion
 
-**Zero-Risk Design:** After a successful blob transfer, Kafka ingestion always follows to synchronize any data between the snapshot offset and the latest offset, guaranteeing full deployment.
+**Zero-Risk Design:** After a successful blob transfer, Kafka ingestion always follows to synchronize any data between
+the snapshot offset and the latest offset, guaranteeing full deployment.
 
 ---
 
@@ -247,6 +250,7 @@ For Each Peer (Shuffled List):
 ### ☑️ Step 1: Request Reception & Validation
 
 Incoming Request Pipeline:
+
 ```
 ┌─────────────┐    ┌─────────────┐    ┌─────────────┐    ┌─────────────┐
 │ HTTP GET    │    │ Parse URI   │    │ Validate    │    │ Check       │
@@ -278,8 +282,6 @@ Incoming Request Pipeline:
 
 **Server-Side Adaptive Chunking Algorithm:**
 
-
-
 ```
 Step 1: File Preparation
 ┌─────────────────────────┐   ┌─────────────────────────┐   ┌─────────────────────────┐   ┌─────────────────────────┐   ┌─────────────────────────┐
@@ -291,13 +293,13 @@ Step 1: File Preparation
 └─────────────────────────┘   └─────────────────────────┘   └─────────────────────────┘   └─────────────────────────┘   └─────────────────────────┘
 
 Step 2: Adaptive Chunking Strategy
-┌─────────────────────────┐   ┌─────────────────────────┐   ┌─────────────────────────┐   
-│   Calculate Optimal     │   │   Create Chunked        │   │   Wrap for HTTP         │   
-│     Chunk Size          │   │    File Handler         │   │     Streaming           │  
-│ 16KB - 2MB              │ → │                         │ → │                         │ 
-│ Determine best chunk    │   │ Set up memory-efficient │   │ Prepare for HTTP        │ 
-│ size based on file      │   │ streaming mechanism     │   │ chunked transfer        │ 
-└─────────────────────────┘   └─────────────────────────┘   └─────────────────────────┘   
+┌─────────────────────────┐   ┌─────────────────────────┐   ┌─────────────────────────┐
+│   Calculate Optimal     │   │   Create Chunked        │   │   Wrap for HTTP         │
+│     Chunk Size          │   │    File Handler         │   │     Streaming           │
+│ 16KB - 2MB              │ → │                         │ → │                         │
+│ Determine best chunk    │   │ Set up memory-efficient │   │ Prepare for HTTP        │
+│ size based on file      │   │ streaming mechanism     │   │ chunked transfer        │
+└─────────────────────────┘   └─────────────────────────┘   └─────────────────────────┘
 
 Step 3: Efficient File Streaming
 ┌─────────────────────────┐   ┌─────────────────────────┐   ┌─────────────────────────┐   ┌─────────────────────────┐
@@ -311,9 +313,6 @@ Step 3: Efficient File Streaming
 ```
 
 **Client-Side High-Performance Reception:**
-
-
-
 
 ```
 Step 1: File Setup
@@ -345,6 +344,7 @@ Step 3: Complete File
 └─────────────────────────┘   └─────────────────────────┘   └─────────────────────────┘
 
 ```
+
 ```
 Data Flow Transformation at Convert to Channel
 
@@ -361,6 +361,7 @@ Network → ByteBuf → ByteBufInputStream → ReadableByteChannel → FileChann
 ### 📊 Step 4: Metadata Transfer & Completion Protocol
 
 **Critical Ordering for Data Consistency:**
+
 ```
 ┌─────────────┐   ┌─────────────┐   ┌─────────────┐   ┌─────────────┐
 │ 1. Prepare  │   │ 2. Transfer │   │ 3. Send     │   │ 4. Send     │
@@ -392,11 +393,13 @@ Network → ByteBuf → ByteBufInputStream → ReadableByteChannel → FileChann
 - **JSON Serialization:** Structured metadata transfer with size validation
 
 ---
+
 ## 🌐 Traffic Control
 
 ### 🚥 Global Traffic Shaping
 
-**Shared Rate Limiting:** Single GlobalChannelTrafficShapingHandler instance controls bandwidth across ALL blob transfer channels globally
+**Shared Rate Limiting:** Single GlobalChannelTrafficShapingHandler instance controls bandwidth across ALL blob transfer
+channels globally
 
 ### Traffic Management Strategy
 
@@ -430,18 +433,18 @@ Global Control Architecture:
 
 📥 **Receiver/Client Feature Enablement Control**
 
-*Venice Server:*
+_Venice Server:_
 
 - Store Level: `blobTransferInServerEnabled`
 - Application Level: `blob.transfer.receiver.server.policy`
 
-*DaVinci Application:*
+_DaVinci Application:_
 
 - Store Level: `blobTransferEnabled`
 
 📤 **Sender/Server Feature Enablement Control**
 
-*All Applications:*
+_All Applications:_
 
 - Application Level: `blob.transfer.manager.enabled`
 
@@ -498,4 +501,5 @@ Global Control Architecture:
 - Automated snapshot lifecycle management
 - Graceful degradation and low risk deployment
 
-**Result: Faster node recovery, reduced infrastructure load, improved cluster scalability with enterprise-grade reliability**
+**Result: Faster node recovery, reduced infrastructure load, improved cluster scalability with enterprise-grade
+reliability**
