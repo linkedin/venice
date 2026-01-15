@@ -80,4 +80,9 @@ public class NoOpReadResponseStats implements ReadResponseStats {
   public void incrementMultiChunkLargeValueCount() {
 
   }
+
+  @Override
+  public void incrementKeyNotFoundCount() {
+
+  }
 }
