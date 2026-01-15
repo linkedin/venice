@@ -2659,8 +2659,7 @@ public class VenicePushJob implements AutoCloseable {
           StoreResponse parentStoreResponse = getStoreResponse(pushJobSetting.storeName, true);
 
           StoreInfo parentStoreInfo = parentStoreResponse.getStore();
-          int versionNum = Version.parseVersionFromKafkaTopicName(topicToMonitor);
-          Optional<Version> parentVersionFromStore = parentStoreInfo.getVersion(versionNum);
+          Optional<Version> parentVersionFromStore = parentStoreInfo.getVersion(pushJobSetting.version);
           if (!parentVersionFromStore.isPresent()) {
             LOGGER.warn("Failed to get parent version for store: {}", pushJobSetting.storeName);
             fetchParentVersionRetryCount++;
@@ -2709,7 +2708,10 @@ public class VenicePushJob implements AutoCloseable {
                     + " minutes, version swap is still not complete.");
           }
 
-          LOGGER.info("Version status is {} and version swap is not complete yet", parentVersion.getStatus());
+          LOGGER.info(
+              "Version status is {} for {} and version swap is not complete yet",
+              parentVersion.getStatus(),
+              pushJobSetting.version);
         } else if (isTargetedRegionPush) {
           LOGGER.info("Successfully pushed {} to targeted region {}", pushJobSetting.topic, targetedRegions);
           return;
