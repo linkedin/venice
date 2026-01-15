@@ -94,7 +94,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   private long backgroundReporterThreadSleepIntervalSeconds = 60L;
   private final BasicConsumerStats changeCaptureStats;
   private final AtomicBoolean isCaughtUp = new AtomicBoolean(false);
-  private final ConcurrentHashMap<Integer, Long> currentVersionLastHeartbeat = new ConcurrentHashMap<>();
+  private final ConcurrentHashMap<Integer, Long> currentVersionLastHeartbeat = new VeniceConcurrentHashMap<>();
   private final VeniceConcurrentHashMap<Integer, AtomicLong> consumerSequenceIdGeneratorMap;
   private final long consumerSequenceIdStartingValue;
   private final boolean isVersionSpecificClient;
@@ -120,7 +120,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
     daVinciConfig.setStorageClass(StorageClass.DISK);
     ClientConfig innerClientConfig = changelogClientConfig.getInnerClientConfig();
     this.pubSubMessages = new ArrayBlockingQueue<>(changelogClientConfig.getMaxBufferSize());
-    this.partitionToVersionToServe = new ConcurrentHashMap<>();
+    this.partitionToVersionToServe = new VeniceConcurrentHashMap<>();
     this.isVersionSpecificClient = changelogClientConfig.getStoreVersion() != null;
     this.veniceChangelogConsumerClientFactory = veniceChangelogConsumerClientFactory;
 
@@ -580,7 +580,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
 
   public class DaVinciRecordTransformerChangelogConsumer extends DaVinciRecordTransformer<K, V, V> {
     private final String topicName;
-    private final Map<Integer, PubSubTopicPartition> pubSubTopicPartitionMap = new HashMap<>();
+    private final Map<Integer, PubSubTopicPartition> pubSubTopicPartitionMap = new VeniceConcurrentHashMap<>();
 
     public DaVinciRecordTransformerChangelogConsumer(
         String storeName,
