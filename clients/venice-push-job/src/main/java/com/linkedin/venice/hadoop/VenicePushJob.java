@@ -2659,8 +2659,8 @@ public class VenicePushJob implements AutoCloseable {
           StoreResponse parentStoreResponse = getStoreResponse(pushJobSetting.storeName, true);
 
           StoreInfo parentStoreInfo = parentStoreResponse.getStore();
-          int latestUsedVersionNumber = parentStoreInfo.getLargestUsedVersionNumber();
-          Optional<Version> parentVersionFromStore = parentStoreInfo.getVersion(latestUsedVersionNumber);
+          int versionNum = Version.parseVersionFromKafkaTopicName(topicToMonitor);
+          Optional<Version> parentVersionFromStore = parentStoreInfo.getVersion(versionNum);
           if (!parentVersionFromStore.isPresent()) {
             LOGGER.warn("Failed to get parent version for store: {}", pushJobSetting.storeName);
             fetchParentVersionRetryCount++;
