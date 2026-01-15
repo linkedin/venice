@@ -1,6 +1,6 @@
 # Operations Guide
 
-Documentation for Venice operators.
+Documentation for operating Venice.
 
 ## Sections
 
