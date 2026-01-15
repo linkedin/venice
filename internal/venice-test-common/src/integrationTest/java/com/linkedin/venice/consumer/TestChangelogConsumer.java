@@ -268,7 +268,10 @@ public class TestChangelogConsumer {
             controllerClient1 -> setupControllerClient
                 .updateStore(storeName, new UpdateStoreQueryParams().setEnableReads(true))));
 
-    specificChangelogConsumer.subscribeAll().get();
+    // Wait for store update to propagate before subscribing
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+      specificChangelogConsumer.subscribeAll().get();
+    });
 
     Map<String, PubSubMessage<Utf8, ChangeEvent<TestChangelogValue>, VeniceChangeCoordinate>> polledChangeEventsMap =
         new HashMap<>();

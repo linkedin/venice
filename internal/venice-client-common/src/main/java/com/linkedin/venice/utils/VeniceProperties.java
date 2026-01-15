@@ -339,95 +339,107 @@ public class VeniceProperties implements Serializable {
     }
   }
 
-  public long getLong(String name, long defaultValue) {
-    if (containsKey(name)) {
-      return Long.parseLong(get(name));
-    } else {
-      return defaultValue;
+  /**
+   * Helper method to get a trimmed, non-empty string value or return null.
+   * This centralizes the null and empty string handling logic for numeric parsing methods.
+   *
+   * @param name The property name
+   * @return The trimmed value if it's non-null and non-empty, null otherwise
+   */
+  private String getTrimmedValueOrNull(String name) {
+    String value = props.get(name);
+    // Value can be null if key doesn't exist or if explicitly stored as null in the underlying map
+    if (value == null || value.trim().isEmpty()) {
+      return null;
     }
+    return value.trim();
+  }
+
+  public long getLong(String name, long defaultValue) {
+    String trimmedValue = getTrimmedValueOrNull(name);
+    return trimmedValue != null ? Long.parseLong(trimmedValue) : defaultValue;
   }
 
   public long getLong(String name) {
-    if (containsKey(name)) {
-      return Long.parseLong(get(name));
-    } else {
-      throw new UndefinedPropertyException(name);
+    String trimmedValue = getTrimmedValueOrNull(name);
+    if (trimmedValue == null) {
+      if (!containsKey(name)) {
+        throw new UndefinedPropertyException(name);
+      }
+      throw new VeniceException("Property " + name + " is defined but has an empty value");
     }
+    return Long.parseLong(trimmedValue);
   }
 
   public int getInt(String name, int defaultValue) {
-    if (containsKey(name)) {
-      return Integer.parseInt(get(name));
-    } else {
-      return defaultValue;
-    }
+    String trimmedValue = getTrimmedValueOrNull(name);
+    return trimmedValue != null ? Integer.parseInt(trimmedValue) : defaultValue;
   }
 
   public int getInt(String name) {
-    if (containsKey(name)) {
-      return Integer.parseInt(get(name));
-    } else {
-      throw new UndefinedPropertyException(name);
+    String trimmedValue = getTrimmedValueOrNull(name);
+    if (trimmedValue == null) {
+      if (!containsKey(name)) {
+        throw new UndefinedPropertyException(name);
+      }
+      throw new VeniceException("Property " + name + " is defined but has an empty value");
     }
+    return Integer.parseInt(trimmedValue);
   }
 
   public Optional<Integer> getOptionalInt(String name) {
-    if (containsKey(name)) {
-      return Optional.of(Integer.parseInt(get(name)));
-    } else {
-      return Optional.empty();
-    }
+    String trimmedValue = getTrimmedValueOrNull(name);
+    return trimmedValue != null ? Optional.of(Integer.parseInt(trimmedValue)) : Optional.empty();
   }
 
   public double getDouble(String name, double defaultValue) {
-    if (containsKey(name)) {
-      return Double.parseDouble(get(name));
-    } else {
-      return defaultValue;
-    }
+    String trimmedValue = getTrimmedValueOrNull(name);
+    return trimmedValue != null ? Double.parseDouble(trimmedValue) : defaultValue;
   }
 
   public double getDouble(String name) {
-    if (containsKey(name)) {
-      return Double.parseDouble(get(name));
-    } else {
-      throw new UndefinedPropertyException(name);
+    String trimmedValue = getTrimmedValueOrNull(name);
+    if (trimmedValue == null) {
+      if (!containsKey(name)) {
+        throw new UndefinedPropertyException(name);
+      }
+      throw new VeniceException("Property " + name + " is defined but has an empty value");
     }
+    return Double.parseDouble(trimmedValue);
   }
 
   public long getSizeInBytes(String name, long defaultValue) {
-    if (containsKey(name)) {
-      return getSizeInBytes(name);
-    } else {
-      return defaultValue;
-    }
+    String trimmedValue = getTrimmedValueOrNull(name);
+    return trimmedValue != null ? convertSizeFromLiteral(trimmedValue) : defaultValue;
   }
 
   public long getSizeInBytes(String name) {
-    if (!containsKey(name)) {
-      throw new UndefinedPropertyException(name);
+    String trimmedValue = getTrimmedValueOrNull(name);
+    if (trimmedValue == null) {
+      if (!containsKey(name)) {
+        throw new UndefinedPropertyException(name);
+      }
+      throw new VeniceException("Property " + name + " is defined but has an empty value");
     }
-
-    String bytes = get(name);
-    return convertSizeFromLiteral(bytes);
+    return convertSizeFromLiteral(trimmedValue);
   }
 
   public static long convertSizeFromLiteral(String size) {
     String sizeLc = size.toLowerCase().trim();
     if (sizeLc.endsWith("kb")) {
-      return Long.parseLong(size.substring(0, size.length() - 2)) * 1024;
+      return Long.parseLong(sizeLc.substring(0, sizeLc.length() - 2)) * 1024;
     } else if (sizeLc.endsWith("k")) {
-      return Long.parseLong(size.substring(0, size.length() - 1)) * 1024;
+      return Long.parseLong(sizeLc.substring(0, sizeLc.length() - 1)) * 1024;
     } else if (sizeLc.endsWith("mb")) {
-      return Long.parseLong(size.substring(0, size.length() - 2)) * 1024 * 1024;
+      return Long.parseLong(sizeLc.substring(0, sizeLc.length() - 2)) * 1024 * 1024;
     } else if (sizeLc.endsWith("m")) {
-      return Long.parseLong(size.substring(0, size.length() - 1)) * 1024 * 1024;
+      return Long.parseLong(sizeLc.substring(0, sizeLc.length() - 1)) * 1024 * 1024;
     } else if (sizeLc.endsWith("gb")) {
-      return Long.parseLong(size.substring(0, size.length() - 2)) * 1024 * 1024 * 1024;
+      return Long.parseLong(sizeLc.substring(0, sizeLc.length() - 2)) * 1024 * 1024 * 1024;
     } else if (sizeLc.endsWith("g")) {
-      return Long.parseLong(size.substring(0, size.length() - 1)) * 1024 * 1024 * 1024;
+      return Long.parseLong(sizeLc.substring(0, sizeLc.length() - 1)) * 1024 * 1024 * 1024;
     } else {
-      return Long.parseLong(size);
+      return Long.parseLong(sizeLc);
     }
   }
 
