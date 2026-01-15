@@ -261,7 +261,8 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
       Version version = store.getVersion(getStoreVersion());
 
       if (version == null) {
-        logger.info("Version {} not found for store {}, refreshing repository", getStoreVersion(), getStoreName());
+        getClientLogger()
+            .info("Version {} not found for store {}, refreshing repository", getStoreVersion(), getStoreName());
         getBackend().getStoreRepository().refreshOneStore(getStoreName());
         store = getBackend().getStoreRepository().getStoreOrThrow(getStoreName());
         version = store.getVersion(getStoreVersion());
