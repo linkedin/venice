@@ -52,7 +52,7 @@ data in other DCs.
 ### Time to Live (TTL)
 It's usually required to evict stale entries from the store in order to achieve GDPR compliance or other business requirements.
 The repush with TTL functionality will replay and scan through the entries in the current version, 
-and use store-level rewind time as TTL time to evict stale records based on the write timestamp. See [TTL](../../user-guide/concepts/ttl.md)
+and use store-level rewind time as TTL time to evict stale records based on the write timestamp. See [TTL](ttl.md)
 for the comparison among various TTL options.
 
 ## Usage
@@ -99,7 +99,7 @@ To specify whether to enable TTL for the repush job. If unspecified, it defaults
 ```
 repush.ttl.enable = true
 ```
-More details on how to configure TTL can be found in the [TTL](../../user-guide/concepts/ttl.md) guide.
+More details on how to configure TTL can be found in the [TTL](ttl.md) guide.
 
 ## Future Work
 

@@ -96,17 +96,15 @@ nav:
 
   - Getting Started:
     - getting-started/index.md
-    - Single Datacenter: getting-started/quickstart-single-dc.md
-    - Multi Datacenter: getting-started/quickstart-multi-dc.md
+    - Learn Venice:
+      - Architecture Overview: getting-started/learn-venice/architecture-overview.md
+      - Merging Batch & Real-Time Data: getting-started/learn-venice/merging-batch-and-rt-data.md
+    - Deployments:
+      - Single Datacenter: getting-started/deployments/quickstart-single-dc.md
+      - Multi Datacenter: getting-started/deployments/quickstart-multi-dc.md
 
   - User Guide:
     - user-guide/index.md
-    - Concepts:
-      - user-guide/concepts/overview.md
-      - user-guide/concepts/ttl.md
-    - Design Patterns:
-        - user-guide/design-patterns/index.md
-        - Merging Batch & Real-Time Data: user-guide/design-patterns/merging-batch-and-rt-data.md
     - Write APIs:
       - user-guide/write-apis/index.md
       - Batch Push: user-guide/write-apis/batch-push.md
@@ -120,6 +118,7 @@ nav:
     - operations/index.md
     - Data Management:
       - Repush: operations/data-management/repush.md
+      - TTL: operations/data-management/ttl.md
       - System Stores: operations/data-management/system-stores.md
     - Advanced:
       - P2P Bootstrapping: operations/advanced/p2p-bootstrapping.md

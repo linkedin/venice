@@ -59,7 +59,7 @@ Let's create a venice store:
 ```
 
 #### Step 6: Push data to the store
-Venice supports multiple ways to write data to the store. For more details, please refer to [Write APIs](../user-guide/write-apis/index.md).
+Venice supports multiple ways to write data to the store. For more details, please refer to [Write APIs](../../user-guide/write-apis/index.md).
 In this example, we will use batch push mode and push 100 records.
 ```
 key: 1 to 100
@@ -152,5 +152,5 @@ docker-compose -f docker-compose-single-dc-setup.yaml down
 
 ## Next steps
 Venice is a feature rich derived data store. It offers features such as write-compute, read-compute, streaming ingestion, multi data center active-active replication,
-deterministic conflict resolution, etc. To know more about such features please refer to the [User Guide](../user-guide/index.md) and reach out to
-the [Venice team](../README.md#community).
+deterministic conflict resolution, etc. To know more about such features please refer to the [User Guide](../../user-guide/index.md) and reach out to
+the [Venice team](../../README.md#community).

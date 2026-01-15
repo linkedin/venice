@@ -49,7 +49,7 @@ The process works in the following way:
    General comments can be made as general comment in the PR. There are two other ways for an interactive
    discussion. 
    1. Venice Community [Slack Channel](http://slack.venicedb.org/), Create a slack channel with #VIP-xxx
-   2. Venice Contributor Sync Meeting, see details [here](../contributing.md#contributor-sync-meeting) at Contributor Sync Meeting
+   2. Venice Contributor Sync Meeting, see details [here](../contributing.md#community-syncup-meeting) at Contributor Sync Meeting
 4. Depending on the outcome of the discussion, the status could move to **ACCEPTED** or **REJECTED**, or it could stay 
    in **DISCUSSION** stage (e.g. if we agree tentatively on the broad strokes, but there are still action items to 
    refine certain aspects). At the end of this, the PR gets merged, and at that point the VIP will appear in the 
