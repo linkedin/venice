@@ -168,7 +168,6 @@ public class KeyNotFoundMetricIntegrationTest {
 
   private static double getMaxOrZero(String metricName, VeniceClusterWrapper veniceCluster) {
     double value = MetricsUtils.getMax(metricName, veniceCluster.getVeniceServers());
-    // MetricsUtils#getMax returns Double.MIN_VALUE when the metric doesn't exist yet.
     return value == Double.MIN_VALUE ? 0.0 : value;
   }
 }
