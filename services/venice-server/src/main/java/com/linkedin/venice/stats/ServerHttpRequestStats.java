@@ -9,7 +9,6 @@ import io.tehuti.metrics.stats.Max;
 import io.tehuti.metrics.stats.Min;
 import io.tehuti.metrics.stats.OccurrenceRate;
 import io.tehuti.metrics.stats.Rate;
-import io.tehuti.metrics.stats.Total;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Supplier;
@@ -185,12 +184,8 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
     } else {
       requestKeyCountSensor = null;
     }
-    keyNotFoundSensor = registerPerStoreAndTotal(
-        "key_not_found",
-        totalStats,
-        () -> totalStats.keyNotFoundSensor,
-        new Rate(),
-        new Total());
+    keyNotFoundSensor =
+        registerPerStoreAndTotal("key_not_found", totalStats, () -> totalStats.keyNotFoundSensor, new Rate());
     requestSizeInBytesSensor = registerPerStoreAndTotal(
         "request_size_in_bytes",
         totalStats,

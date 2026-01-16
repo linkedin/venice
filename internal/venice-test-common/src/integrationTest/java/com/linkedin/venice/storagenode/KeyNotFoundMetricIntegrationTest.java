@@ -62,112 +62,71 @@ public class KeyNotFoundMetricIntegrationTest {
 
   @Test(singleThreaded = true)
   public void testKeyNotFoundMetric() {
-    final String singleGetMetricName = "." + storeName + "--key_not_found.Total";
-    final String multiGetMetricName = "." + storeName + "--multiget_key_not_found.Total";
-    final String computeMetricName = "." + storeName + "--compute_key_not_found.Total";
-    final String totalSingleGetMetricName = ".total--key_not_found.Total";
-    final String totalMultiGetMetricName = ".total--multiget_key_not_found.Total";
-    final String totalComputeMetricName = ".total--compute_key_not_found.Total";
-
-    // Single Get
+    // Single Get - Key Found
     try {
       client.get("key1").get();
     } catch (Exception e) {
       Assert.fail("Get failed", e);
     }
 
-    final double singleGetNotFoundTotalBefore = getMaxOrZero(singleGetMetricName, veniceCluster);
-    final double totalSingleGetNotFoundTotalBefore = getMaxOrZero(totalSingleGetMetricName, veniceCluster);
-
+    // Single Get - Key Not Found
     try {
       client.get("key2").get();
     } catch (Exception e) {
       Assert.fail("Get failed", e);
     }
 
-    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
-      double singleGetNotFoundTotalAfter = getMaxOrZero(singleGetMetricName, veniceCluster);
-      double totalSingleGetNotFoundTotalAfter = getMaxOrZero(totalSingleGetMetricName, veniceCluster);
-
-      Assert.assertEquals(
-          singleGetNotFoundTotalAfter - singleGetNotFoundTotalBefore,
-          1.0,
-          "Expected exactly 1 key_not_found increment for single get. Metric: " + singleGetMetricName);
-      Assert.assertEquals(
-          totalSingleGetNotFoundTotalAfter - totalSingleGetNotFoundTotalBefore,
-          1.0,
-          "Expected exactly 1 key_not_found increment for total single get. Metric: " + totalSingleGetMetricName);
-    });
-
-    // Multi Get
-    Set<String> foundOnlyKeys = new HashSet<>();
-    foundOnlyKeys.add("key1");
+    // Multi Get - 1 Key Found, 1 Key Not Found
+    Set<String> keys = new HashSet<>();
+    keys.add("key1");
+    keys.add("key3");
     try {
-      client.batchGet(foundOnlyKeys).get();
+      client.batchGet(keys).get();
     } catch (Exception e) {
       Assert.fail("Batch Get failed", e);
     }
 
-    final double multiGetNotFoundTotalBefore = getMaxOrZero(multiGetMetricName, veniceCluster);
-    final double totalMultiGetNotFoundTotalBefore = getMaxOrZero(totalMultiGetMetricName, veniceCluster);
-
-    Set<String> keysWithMissing = new HashSet<>();
-    keysWithMissing.add("key1");
-    keysWithMissing.add("key3");
+    // Compute - 1 Key Found, 1 Key Not Found
     try {
-      client.batchGet(keysWithMissing).get();
-    } catch (Exception e) {
-      Assert.fail("Batch Get failed", e);
-    }
-
-    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
-      double multiGetNotFoundTotalAfter = getMaxOrZero(multiGetMetricName, veniceCluster);
-      double totalMultiGetNotFoundTotalAfter = getMaxOrZero(totalMultiGetMetricName, veniceCluster);
-
-      Assert.assertEquals(
-          multiGetNotFoundTotalAfter - multiGetNotFoundTotalBefore,
-          1.0,
-          "Expected exactly 1 multiget_key_not_found increment for multi-get. Metric: " + multiGetMetricName);
-      Assert.assertEquals(
-          totalMultiGetNotFoundTotalAfter - totalMultiGetNotFoundTotalBefore,
-          1.0,
-          "Expected exactly 1 multiget_key_not_found increment for total multi-get. Metric: "
-              + totalMultiGetMetricName);
-    });
-
-    // Compute
-    try {
-      client.compute().project("name").execute(foundOnlyKeys).get();
+      client.compute().project("name").execute(keys).get();
     } catch (Exception e) {
       Assert.fail("Compute failed", e);
     }
 
-    final double computeNotFoundTotalBefore = getMaxOrZero(computeMetricName, veniceCluster);
-    final double totalComputeNotFoundTotalBefore = getMaxOrZero(totalComputeMetricName, veniceCluster);
-
-    try {
-      client.compute().project("name").execute(keysWithMissing).get();
-    } catch (Exception e) {
-      Assert.fail("Compute failed", e);
-    }
+    String singleGetMetricName = "." + storeName + "--key_not_found.Rate";
+    String multiGetMetricName = "." + storeName + "--multiget_key_not_found.Rate";
+    String computeMetricName = "." + storeName + "--compute_key_not_found.Rate";
+    String totalSingleGetMetricName = ".total--key_not_found.Rate";
+    String totalMultiGetMetricName = ".total--multiget_key_not_found.Rate";
+    String totalComputeMetricName = ".total--compute_key_not_found.Rate";
 
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
-      double computeNotFoundTotalAfter = getMaxOrZero(computeMetricName, veniceCluster);
-      double totalComputeNotFoundTotalAfter = getMaxOrZero(totalComputeMetricName, veniceCluster);
+      double singleGetNotFoundRate = MetricsUtils.getMax(singleGetMetricName, veniceCluster.getVeniceServers());
+      double multiGetNotFoundRate = MetricsUtils.getMax(multiGetMetricName, veniceCluster.getVeniceServers());
+      double computeNotFoundRate = MetricsUtils.getMax(computeMetricName, veniceCluster.getVeniceServers());
+      double totalSingleGetNotFoundRate =
+          MetricsUtils.getMax(totalSingleGetMetricName, veniceCluster.getVeniceServers());
+      double totalMultiGetNotFoundRate = MetricsUtils.getMax(totalMultiGetMetricName, veniceCluster.getVeniceServers());
+      double totalComputeNotFoundRate = MetricsUtils.getMax(totalComputeMetricName, veniceCluster.getVeniceServers());
 
-      Assert.assertEquals(
-          computeNotFoundTotalAfter - computeNotFoundTotalBefore,
-          1.0,
-          "Expected exactly 1 compute_key_not_found increment for compute. Metric: " + computeMetricName);
-      Assert.assertEquals(
-          totalComputeNotFoundTotalAfter - totalComputeNotFoundTotalBefore,
-          1.0,
-          "Expected exactly 1 compute_key_not_found increment for total compute. Metric: " + totalComputeMetricName);
+      Assert.assertTrue(
+          singleGetNotFoundRate > 0,
+          "Single Get key_not_found metric should be positive. Metric: " + singleGetMetricName);
+      Assert.assertTrue(
+          multiGetNotFoundRate > 0,
+          "Multi Get key_not_found metric should be positive. Metric: " + multiGetMetricName);
+      Assert.assertTrue(
+          computeNotFoundRate > 0,
+          "Compute key_not_found metric should be positive. Metric: " + computeMetricName);
+      Assert.assertTrue(
+          totalSingleGetNotFoundRate > 0,
+          "Total Single Get key_not_found metric should be positive. Metric: " + totalSingleGetMetricName);
+      Assert.assertTrue(
+          totalMultiGetNotFoundRate > 0,
+          "Total Multi Get key_not_found metric should be positive. Metric: " + totalMultiGetMetricName);
+      Assert.assertTrue(
+          totalComputeNotFoundRate > 0,
+          "Total Compute key_not_found metric should be positive. Metric: " + totalComputeMetricName);
     });
-  }
-
-  private static double getMaxOrZero(String metricName, VeniceClusterWrapper veniceCluster) {
-    double value = MetricsUtils.getMax(metricName, veniceCluster.getVeniceServers());
-    return value == Double.MIN_VALUE ? 0.0 : value;
   }
 }
