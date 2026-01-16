@@ -2828,8 +2828,13 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       if (payloadUnion instanceof Put && ((Put) payloadUnion).getSchemaId() != CHUNK_SCHEMA_ID) {
         return true; // Global RT DIV message can be multiple chunks + deletes, only sync on one Put (manifest or value)
       }
+    } else if (isNonSegmentControlMessage(consumerRecord, null)) {
+      return true; // sync when processing most control messages
     }
-    return isNonSegmentControlMessage(consumerRecord, null);
+
+    // must be greater than the interval in shouldSendGlobalRtDiv() to not interfere
+    final long syncBytesInterval = getSyncBytesInterval(pcs); // size-based sync condition
+    return syncBytesInterval > 0 && (pcs.getProcessedRecordSizeSinceLastSync() >= 2 * syncBytesInterval);
   }
 
   /**
