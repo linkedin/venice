@@ -67,8 +67,8 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_REGION_NAME:
           assertEquals(dimension.getDimensionName(format), "venice.region.name");
           break;
-        case VENICE_VERSION_TYPE:
-          assertEquals(dimension.getDimensionName(format), "venice.version.type");
+        case VENICE_VERSION_ROLE:
+          assertEquals(dimension.getDimensionName(format), "venice.version.role");
           break;
         case VENICE_REPLICA_TYPE:
           assertEquals(dimension.getDimensionName(format), "venice.replica.type");
@@ -141,8 +141,8 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_REGION_NAME:
           assertEquals(dimension.getDimensionName(format), "venice.region.name");
           break;
-        case VENICE_VERSION_TYPE:
-          assertEquals(dimension.getDimensionName(format), "venice.version.type");
+        case VENICE_VERSION_ROLE:
+          assertEquals(dimension.getDimensionName(format), "venice.version.role");
           break;
         case VENICE_REPLICA_TYPE:
           assertEquals(dimension.getDimensionName(format), "venice.replica.type");
@@ -215,8 +215,8 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_REGION_NAME:
           assertEquals(dimension.getDimensionName(format), "Venice.Region.Name");
           break;
-        case VENICE_VERSION_TYPE:
-          assertEquals(dimension.getDimensionName(format), "Venice.Version.Type");
+        case VENICE_VERSION_ROLE:
+          assertEquals(dimension.getDimensionName(format), "Venice.Version.Role");
           break;
         case VENICE_REPLICA_TYPE:
           assertEquals(dimension.getDimensionName(format), "Venice.Replica.Type");

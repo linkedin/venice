@@ -2,6 +2,7 @@ package com.linkedin.davinci.kafka.consumer;
 
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.stats.dimensions.VersionRole;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -21,10 +22,6 @@ public class PartitionReplicaIngestionContext {
   private final VersionRole versionRole;
   private final WorkloadType workloadType;
   private final boolean isReadyToServe;
-
-  public enum VersionRole {
-    CURRENT, BACKUP, FUTURE
-  }
 
   // TODO: Add more workload types if needed, here we only care about active active or write compute workload.
   public enum WorkloadType {

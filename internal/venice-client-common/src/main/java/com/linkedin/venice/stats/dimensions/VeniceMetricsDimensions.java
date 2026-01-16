@@ -64,8 +64,8 @@ public enum VeniceMetricsDimensions {
   /** Region/datacenter name */
   VENICE_REGION_NAME("venice.region.name"),
 
-  /** {@link VersionType} */
-  VENICE_VERSION_TYPE("venice.version.type"),
+  /** {@link VersionRole} */
+  VENICE_VERSION_ROLE("venice.version.role"),
 
   /** {@link ReplicaType} */
   VENICE_REPLICA_TYPE("venice.replica.type"),

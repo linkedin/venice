@@ -5,7 +5,7 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REPLICA_STATE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REPLICA_TYPE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
-import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_VERSION_TYPE;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_VERSION_ROLE;
 import static com.linkedin.venice.utils.Utils.setOf;
 
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
@@ -30,7 +30,7 @@ public enum ServerMetricEntity implements ModuleMetricEntityInterface {
           VENICE_STORE_NAME,
           VENICE_CLUSTER_NAME,
           VENICE_REGION_NAME,
-          VENICE_VERSION_TYPE,
+          VENICE_VERSION_ROLE,
           VENICE_REPLICA_TYPE,
           VENICE_REPLICA_STATE)
   );

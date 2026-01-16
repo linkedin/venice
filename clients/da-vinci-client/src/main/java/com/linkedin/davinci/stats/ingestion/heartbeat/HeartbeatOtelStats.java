@@ -11,7 +11,7 @@ import com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository;
 import com.linkedin.venice.stats.dimensions.ReplicaState;
 import com.linkedin.venice.stats.dimensions.ReplicaType;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
-import com.linkedin.venice.stats.dimensions.VersionType;
+import com.linkedin.venice.stats.dimensions.VersionRole;
 import com.linkedin.venice.stats.metrics.MetricEntity;
 import com.linkedin.venice.stats.metrics.MetricEntityStateThreeEnums;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -33,7 +33,7 @@ public class HeartbeatOtelStats {
   private final Map<VeniceMetricsDimensions, String> baseDimensionsMap;
 
   // Per-region metric entity states
-  private final Map<String, MetricEntityStateThreeEnums<VersionType, ReplicaType, ReplicaState>> metricsByRegion;
+  private final Map<String, MetricEntityStateThreeEnums<VersionRole, ReplicaType, ReplicaState>> metricsByRegion;
 
   private static class VersionInfo {
     private final int currentVersion;
@@ -97,18 +97,18 @@ public class HeartbeatOtelStats {
     if (!emitOtelMetrics()) {
       return;
     }
-    VersionType versionType = classifyVersion(version, this.versionInfo);
+    VersionRole versionRole = classifyVersion(version, this.versionInfo);
 
-    MetricEntityStateThreeEnums<VersionType, ReplicaType, ReplicaState> metricState = getOrCreateMetricState(region);
+    MetricEntityStateThreeEnums<VersionRole, ReplicaType, ReplicaState> metricState = getOrCreateMetricState(region);
 
     // Records to OTel metrics only
-    metricState.record(delayMs, versionType, replicaType, replicaState);
+    metricState.record(delayMs, versionRole, replicaType, replicaState);
   }
 
   /**
    * Gets or creates a metric entity state for a specific region.
    */
-  private MetricEntityStateThreeEnums<VersionType, ReplicaType, ReplicaState> getOrCreateMetricState(String region) {
+  private MetricEntityStateThreeEnums<VersionRole, ReplicaType, ReplicaState> getOrCreateMetricState(String region) {
     return metricsByRegion.computeIfAbsent(region, r -> {
       // Add region to base dimensions
       Map<VeniceMetricsDimensions, String> regionBaseDimensions = new HashMap<>(baseDimensionsMap);
@@ -118,7 +118,7 @@ public class HeartbeatOtelStats {
           INGESTION_HEARTBEAT_DELAY.getMetricEntity(),
           otelRepository,
           regionBaseDimensions,
-          VersionType.class,
+          VersionRole.class,
           ReplicaType.class,
           ReplicaState.class);
     });
@@ -129,15 +129,15 @@ public class HeartbeatOtelStats {
    *
    * @param version The version number to classify
    * @param versionInfo The current/future version (cached)
-   * @return {@link VersionType}
+   * @return {@link VersionRole}
    */
-  static VersionType classifyVersion(int version, VersionInfo versionInfo) {
+  static VersionRole classifyVersion(int version, VersionInfo versionInfo) {
     if (version == versionInfo.currentVersion) {
-      return VersionType.CURRENT;
+      return VersionRole.CURRENT;
     } else if (version == versionInfo.futureVersion) {
-      return VersionType.FUTURE;
+      return VersionRole.FUTURE;
     }
-    return VersionType.BACKUP;
+    return VersionRole.BACKUP;
   }
 
   @VisibleForTesting

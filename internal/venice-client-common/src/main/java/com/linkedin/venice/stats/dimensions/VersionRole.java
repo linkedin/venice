@@ -1,15 +1,15 @@
 package com.linkedin.venice.stats.dimensions;
 
 /**
- * Dimension to represent the version type for versioned stats.
+ * Role of a store's version: Backup/Current/Future.
  */
-public enum VersionType implements VeniceDimensionInterface {
+public enum VersionRole implements VeniceDimensionInterface {
   BACKUP, CURRENT, FUTURE;
 
-  private final String versionType;
+  private final String versionRole;
 
-  VersionType() {
-    this.versionType = name().toLowerCase();
+  VersionRole() {
+    this.versionRole = name().toLowerCase();
   }
 
   /**
@@ -18,11 +18,11 @@ public enum VersionType implements VeniceDimensionInterface {
    */
   @Override
   public VeniceMetricsDimensions getDimensionName() {
-    return VeniceMetricsDimensions.VENICE_VERSION_TYPE;
+    return VeniceMetricsDimensions.VENICE_VERSION_ROLE;
   }
 
   @Override
   public String getDimensionValue() {
-    return this.versionType;
+    return this.versionRole;
   }
 }

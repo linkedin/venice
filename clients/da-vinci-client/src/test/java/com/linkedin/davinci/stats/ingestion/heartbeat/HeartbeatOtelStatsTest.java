@@ -8,7 +8,7 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REPLICA_STATE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REPLICA_TYPE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
-import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_VERSION_TYPE;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_VERSION_ROLE;
 import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateExponentialHistogramPointData;
 import static org.testng.Assert.*;
 
@@ -16,7 +16,7 @@ import com.linkedin.venice.stats.VeniceMetricsConfig;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.stats.dimensions.ReplicaState;
 import com.linkedin.venice.stats.dimensions.ReplicaType;
-import com.linkedin.venice.stats.dimensions.VersionType;
+import com.linkedin.venice.stats.dimensions.VersionRole;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import io.tehuti.metrics.MetricsRepository;
@@ -97,7 +97,7 @@ public class HeartbeatOtelStatsTest {
     // Verify metric was recorded with CURRENT version type
     validateHeartbeatMetric(
         REGION_US_WEST,
-        VersionType.CURRENT,
+        VersionRole.CURRENT,
         ReplicaType.LEADER,
         ReplicaState.READY_TO_SERVE,
         100.0,
@@ -118,7 +118,7 @@ public class HeartbeatOtelStatsTest {
 
     validateHeartbeatMetric(
         REGION_US_WEST,
-        VersionType.CURRENT,
+        VersionRole.CURRENT,
         ReplicaType.LEADER,
         ReplicaState.READY_TO_SERVE,
         (double) delay,
@@ -139,7 +139,7 @@ public class HeartbeatOtelStatsTest {
 
     validateHeartbeatMetric(
         REGION_US_WEST,
-        VersionType.FUTURE,
+        VersionRole.FUTURE,
         ReplicaType.FOLLOWER,
         ReplicaState.CATCHING_UP,
         (double) delay,
@@ -160,7 +160,7 @@ public class HeartbeatOtelStatsTest {
 
     validateHeartbeatMetric(
         REGION_US_WEST,
-        VersionType.BACKUP,
+        VersionRole.BACKUP,
         ReplicaType.FOLLOWER,
         ReplicaState.READY_TO_SERVE,
         (double) delay,
@@ -182,7 +182,7 @@ public class HeartbeatOtelStatsTest {
     // Verify metric was recorded with BACKUP version type
     validateHeartbeatMetric(
         REGION_US_WEST,
-        VersionType.BACKUP,
+        VersionRole.BACKUP,
         ReplicaType.LEADER,
         ReplicaState.READY_TO_SERVE,
         100.0,
@@ -212,7 +212,7 @@ public class HeartbeatOtelStatsTest {
     // Verify both regions recorded metrics
     validateHeartbeatMetric(
         REGION_US_WEST,
-        VersionType.CURRENT,
+        VersionRole.CURRENT,
         ReplicaType.LEADER,
         ReplicaState.READY_TO_SERVE,
         100.0,
@@ -220,7 +220,7 @@ public class HeartbeatOtelStatsTest {
 
     validateHeartbeatMetric(
         REGION_US_EAST,
-        VersionType.CURRENT,
+        VersionRole.CURRENT,
         ReplicaType.LEADER,
         ReplicaState.READY_TO_SERVE,
         200.0,
@@ -256,7 +256,7 @@ public class HeartbeatOtelStatsTest {
     // Verify aggregate metrics (min=100, max=200, sum=450, count=3)
     validateHeartbeatMetric(
         REGION_US_WEST,
-        VersionType.CURRENT,
+        VersionRole.CURRENT,
         ReplicaType.LEADER,
         ReplicaState.READY_TO_SERVE,
         100.0, // min
@@ -265,14 +265,14 @@ public class HeartbeatOtelStatsTest {
         3); // count
   }
 
-  @DataProvider(name = "versionTypeProvider")
-  public Object[][] versionTypeProvider() {
-    return new Object[][] { { VersionType.CURRENT, CURRENT_VERSION }, { VersionType.FUTURE, FUTURE_VERSION },
-        { VersionType.BACKUP, BACKUP_VERSION } };
+  @DataProvider(name = "versionRoleProvider")
+  public Object[][] versionRoleProvider() {
+    return new Object[][] { { VersionRole.CURRENT, CURRENT_VERSION }, { VersionRole.FUTURE, FUTURE_VERSION },
+        { VersionRole.BACKUP, BACKUP_VERSION } };
   }
 
-  @Test(dataProvider = "versionTypeProvider")
-  public void testAllVersionTypes(VersionType expectedVersionType, int version) {
+  @Test(dataProvider = "versionRoleProvider")
+  public void testAllVersionRoles(VersionRole expectedVersionRole, int version) {
     heartbeatOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
 
     heartbeatOtelStats.recordHeartbeatDelayOtelMetrics(
@@ -284,7 +284,7 @@ public class HeartbeatOtelStatsTest {
 
     validateHeartbeatMetric(
         REGION_US_WEST,
-        expectedVersionType,
+        expectedVersionRole,
         ReplicaType.LEADER,
         ReplicaState.READY_TO_SERVE,
         100.0,
@@ -307,7 +307,7 @@ public class HeartbeatOtelStatsTest {
         ReplicaState.READY_TO_SERVE,
         100L);
 
-    validateHeartbeatMetric(REGION_US_WEST, VersionType.CURRENT, replicaType, ReplicaState.READY_TO_SERVE, 100.0, 1);
+    validateHeartbeatMetric(REGION_US_WEST, VersionRole.CURRENT, replicaType, ReplicaState.READY_TO_SERVE, 100.0, 1);
   }
 
   @DataProvider(name = "replicaStateProvider")
@@ -322,7 +322,7 @@ public class HeartbeatOtelStatsTest {
     heartbeatOtelStats
         .recordHeartbeatDelayOtelMetrics(CURRENT_VERSION, REGION_US_WEST, ReplicaType.FOLLOWER, replicaState, 100L);
 
-    validateHeartbeatMetric(REGION_US_WEST, VersionType.CURRENT, ReplicaType.FOLLOWER, replicaState, 100.0, 1);
+    validateHeartbeatMetric(REGION_US_WEST, VersionRole.CURRENT, ReplicaType.FOLLOWER, replicaState, 100.0, 1);
   }
 
   @Test
@@ -340,7 +340,7 @@ public class HeartbeatOtelStatsTest {
 
     validateHeartbeatMetric(
         REGION_US_WEST,
-        VersionType.CURRENT,
+        VersionRole.CURRENT,
         ReplicaType.LEADER,
         ReplicaState.READY_TO_SERVE,
         100.0,
@@ -360,7 +360,7 @@ public class HeartbeatOtelStatsTest {
     // Verify version 1 is now classified as BACKUP
     validateHeartbeatMetric(
         REGION_US_WEST,
-        VersionType.BACKUP,
+        VersionRole.BACKUP,
         ReplicaType.LEADER,
         ReplicaState.READY_TO_SERVE,
         150.0,
@@ -409,7 +409,7 @@ public class HeartbeatOtelStatsTest {
 
     validateHeartbeatMetric(
         REGION_US_WEST,
-        VersionType.BACKUP,
+        VersionRole.BACKUP,
         ReplicaType.LEADER,
         ReplicaState.READY_TO_SERVE,
         100.0,
@@ -430,7 +430,7 @@ public class HeartbeatOtelStatsTest {
 
     validateHeartbeatMetric(
         REGION_US_WEST,
-        VersionType.CURRENT,
+        VersionRole.CURRENT,
         ReplicaType.FOLLOWER,
         ReplicaState.READY_TO_SERVE,
         0.0,
@@ -452,7 +452,7 @@ public class HeartbeatOtelStatsTest {
 
     validateHeartbeatMetric(
         REGION_US_WEST,
-        VersionType.CURRENT,
+        VersionRole.CURRENT,
         ReplicaType.FOLLOWER,
         ReplicaState.CATCHING_UP,
         (double) largeDelay,
@@ -464,14 +464,14 @@ public class HeartbeatOtelStatsTest {
     heartbeatOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
     assertSame(
         HeartbeatOtelStats.classifyVersion(NON_EXISTING_VERSION, heartbeatOtelStats.getVersionInfo()),
-        VersionType.BACKUP);
+        VersionRole.BACKUP);
     assertSame(
         HeartbeatOtelStats.classifyVersion(CURRENT_VERSION, heartbeatOtelStats.getVersionInfo()),
-        VersionType.CURRENT);
+        VersionRole.CURRENT);
     assertSame(
         HeartbeatOtelStats.classifyVersion(FUTURE_VERSION, heartbeatOtelStats.getVersionInfo()),
-        VersionType.FUTURE);
-    assertSame(HeartbeatOtelStats.classifyVersion(10, heartbeatOtelStats.getVersionInfo()), VersionType.BACKUP);
+        VersionRole.FUTURE);
+    assertSame(HeartbeatOtelStats.classifyVersion(10, heartbeatOtelStats.getVersionInfo()), VersionRole.BACKUP);
   }
 
   @Test
@@ -503,7 +503,7 @@ public class HeartbeatOtelStatsTest {
     // Verify each combination has its own metric
     validateHeartbeatMetric(
         REGION_US_WEST,
-        VersionType.CURRENT,
+        VersionRole.CURRENT,
         ReplicaType.LEADER,
         ReplicaState.READY_TO_SERVE,
         100.0,
@@ -511,7 +511,7 @@ public class HeartbeatOtelStatsTest {
 
     validateHeartbeatMetric(
         REGION_US_WEST,
-        VersionType.FUTURE,
+        VersionRole.FUTURE,
         ReplicaType.FOLLOWER,
         ReplicaState.CATCHING_UP,
         200.0,
@@ -519,7 +519,7 @@ public class HeartbeatOtelStatsTest {
 
     validateHeartbeatMetric(
         REGION_US_EAST,
-        VersionType.BACKUP,
+        VersionRole.BACKUP,
         ReplicaType.LEADER,
         ReplicaState.READY_TO_SERVE,
         300.0,
@@ -532,7 +532,7 @@ public class HeartbeatOtelStatsTest {
    */
   private void validateHeartbeatMetric(
       String region,
-      VersionType versionType,
+      VersionRole versionRole,
       ReplicaType replicaType,
       ReplicaState replicaState,
       double expectedValue,
@@ -540,7 +540,7 @@ public class HeartbeatOtelStatsTest {
     // For single recordings, min/max/sum are all the same value
     validateHeartbeatMetric(
         region,
-        versionType,
+        versionRole,
         replicaType,
         replicaState,
         expectedValue,
@@ -554,7 +554,7 @@ public class HeartbeatOtelStatsTest {
    */
   private void validateHeartbeatMetric(
       String region,
-      VersionType versionType,
+      VersionRole versionRole,
       ReplicaType replicaType,
       ReplicaState replicaState,
       double expectedMin,
@@ -565,7 +565,7 @@ public class HeartbeatOtelStatsTest {
         .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), STORE_NAME)
         .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), CLUSTER_NAME)
         .put(VENICE_REGION_NAME.getDimensionNameInDefaultFormat(), region)
-        .put(VENICE_VERSION_TYPE.getDimensionNameInDefaultFormat(), versionType.getDimensionValue())
+        .put(VENICE_VERSION_ROLE.getDimensionNameInDefaultFormat(), versionRole.getDimensionValue())
         .put(VENICE_REPLICA_TYPE.getDimensionNameInDefaultFormat(), replicaType.getDimensionValue())
         .put(VENICE_REPLICA_STATE.getDimensionNameInDefaultFormat(), replicaState.getDimensionValue())
         .build();
