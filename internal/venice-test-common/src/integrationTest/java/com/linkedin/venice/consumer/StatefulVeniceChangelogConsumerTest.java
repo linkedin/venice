@@ -15,6 +15,7 @@ import static com.linkedin.venice.CommonConfigKeys.SSL_TRUSTSTORE_TYPE;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_ACL_ENABLED;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_MANAGER_ENABLED;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_SSL_ENABLED;
+import static com.linkedin.venice.ConfigKeys.BLOCK_UNTIL_INIT_ROUTINES_COMPLETE;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_P2P_BLOB_TRANSFER_CLIENT_PORT;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_P2P_BLOB_TRANSFER_SERVER_PORT;
@@ -120,6 +121,7 @@ public class StatefulVeniceChangelogConsumerTest {
     clusterConfig.put(PUSH_STATUS_STORE_ENABLED, true);
     clusterConfig.put(DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS, 3);
     clusterConfig.put(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, false);
+    clusterConfig.put(BLOCK_UNTIL_INIT_ROUTINES_COMPLETE, true);
 
     VeniceClusterCreateOptions options = new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
         .numberOfServers(1)
