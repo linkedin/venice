@@ -10,9 +10,7 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_VERSION_TYPE;
 import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateExponentialHistogramPointData;
-import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertFalse;
-import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.*;
 
 import com.linkedin.venice.stats.VeniceMetricsConfig;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
@@ -459,6 +457,21 @@ public class HeartbeatOtelStatsTest {
         ReplicaState.CATCHING_UP,
         (double) largeDelay,
         1);
+  }
+
+  @Test
+  public void testClassifyVersionWithNonExistingVersionInputReturnsOther() {
+    heartbeatOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
+    assertSame(
+        HeartbeatOtelStats.classifyVersion(NON_EXISTING_VERSION, heartbeatOtelStats.getVersionInfo()),
+        VersionType.OTHER);
+    assertSame(
+        HeartbeatOtelStats.classifyVersion(CURRENT_VERSION, heartbeatOtelStats.getVersionInfo()),
+        VersionType.CURRENT);
+    assertSame(
+        HeartbeatOtelStats.classifyVersion(FUTURE_VERSION, heartbeatOtelStats.getVersionInfo()),
+        VersionType.FUTURE);
+    assertSame(HeartbeatOtelStats.classifyVersion(10, heartbeatOtelStats.getVersionInfo()), VersionType.OTHER);
   }
 
   @Test

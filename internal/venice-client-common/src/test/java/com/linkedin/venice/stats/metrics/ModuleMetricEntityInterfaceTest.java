@@ -32,7 +32,7 @@ public class ModuleMetricEntityInterfaceTest {
 
   @Test
   public void testSingleEnum() {
-    Collection<MetricEntity> metrics = ModuleMetricEntityInterface.getUniqueMetricEntities(SingleEnum.class);
+    Collection<MetricEntity> metrics = ModuleMetricEntityInterface.getUniqueMetricEntities(SingleEnumForTest.class);
 
     assertEquals(metrics.size(), 1);
     MetricEntity m = metrics.iterator().next();
@@ -81,12 +81,12 @@ public class ModuleMetricEntityInterfaceTest {
     }
   }
 
-  private enum SingleEnum implements ModuleMetricEntityInterface {
+  public enum SingleEnumForTest implements ModuleMetricEntityInterface {
     ENUM_ONE(new MetricEntity("enum_one", MetricType.COUNTER, MetricUnit.NUMBER, TEST_DESC, TEST_DIMENSIONS));
 
     private final MetricEntity metric;
 
-    SingleEnum(MetricEntity m) {
+    SingleEnumForTest(MetricEntity m) {
       this.metric = m;
     }
 

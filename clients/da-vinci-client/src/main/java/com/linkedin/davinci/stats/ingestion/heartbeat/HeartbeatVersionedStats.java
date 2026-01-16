@@ -108,10 +108,10 @@ public class HeartbeatVersionedStats extends AbstractVeniceAggVersionedStats<Hea
   @Override
   protected void onVersionInfoUpdated(String storeName, int currentVersion, int futureVersion) {
     // Update OTel stats version cache when versions change
-    HeartbeatOtelStats otelStats = otelStatsMap.get(storeName);
-    if (otelStats != null) {
-      otelStats.updateVersionInfo(currentVersion, futureVersion);
-    }
+    otelStatsMap.computeIfPresent(storeName, (store, stats) -> {
+      stats.updateVersionInfo(currentVersion, futureVersion);
+      return stats;
+    });
   }
 
   boolean isStoreAssignedToThisNode(String store) {

@@ -4,6 +4,7 @@ import static com.linkedin.davinci.stats.ServerMetricEntity.INGESTION_HEARTBEAT_
 import static com.linkedin.venice.meta.Store.NON_EXISTING_VERSION;
 import static com.linkedin.venice.stats.metrics.ModuleMetricEntityInterface.getUniqueMetricEntities;
 
+import com.google.common.annotations.VisibleForTesting;
 import com.linkedin.davinci.stats.ServerMetricEntity;
 import com.linkedin.venice.stats.OpenTelemetryMetricsSetup;
 import com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository;
@@ -34,9 +35,17 @@ public class HeartbeatOtelStats {
   // Per-region metric entity states
   private final Map<String, MetricEntityStateThreeEnums<VersionType, ReplicaType, ReplicaState>> metricsByRegion;
 
-  // version info to avoid map lookups in hot path
-  private volatile int currentVersion = NON_EXISTING_VERSION;
-  private volatile int futureVersion = NON_EXISTING_VERSION;
+  private static class VersionInfo {
+    private final int currentVersion;
+    private final int futureVersion;
+
+    VersionInfo(int currentVersion, int futureVersion) {
+      this.currentVersion = currentVersion;
+      this.futureVersion = futureVersion;
+    }
+  }
+
+  private volatile VersionInfo versionInfo = new VersionInfo(NON_EXISTING_VERSION, NON_EXISTING_VERSION);
 
   public HeartbeatOtelStats(MetricsRepository metricsRepository, String storeName, String clusterName) {
     this.metricsByRegion = new VeniceConcurrentHashMap<>();
@@ -66,8 +75,7 @@ public class HeartbeatOtelStats {
    * @param futureVersion The future/upcoming version
    */
   public void updateVersionInfo(int currentVersion, int futureVersion) {
-    this.currentVersion = currentVersion;
-    this.futureVersion = futureVersion;
+    this.versionInfo = new VersionInfo(currentVersion, futureVersion);
   }
 
   /**
@@ -89,7 +97,7 @@ public class HeartbeatOtelStats {
     if (!emitOtelMetrics()) {
       return;
     }
-    VersionType versionType = classifyVersion(version, currentVersion, futureVersion);
+    VersionType versionType = classifyVersion(version, this.versionInfo);
 
     MetricEntityStateThreeEnums<VersionType, ReplicaType, ReplicaState> metricState = getOrCreateMetricState(region);
 
@@ -120,17 +128,21 @@ public class HeartbeatOtelStats {
    * Classifies a version as CURRENT or FUTURE and all other versions are considered OTHER
    *
    * @param version The version number to classify
-   * @param currentVersion The current serving version (cached)
-   * @param futureVersion The future/upcoming version (cached)
+   * @param versionInfo The current/future version (cached)
    * @return {@link VersionType}
    */
-  private static VersionType classifyVersion(int version, int currentVersion, int futureVersion) {
+  static VersionType classifyVersion(int version, VersionInfo versionInfo) {
     if (version == NON_EXISTING_VERSION) {
       return VersionType.OTHER;
     }
 
-    return (version == currentVersion)
+    return (version == versionInfo.currentVersion)
         ? VersionType.CURRENT
-        : ((version == futureVersion) ? VersionType.FUTURE : VersionType.OTHER);
+        : ((version == versionInfo.futureVersion) ? VersionType.FUTURE : VersionType.OTHER);
+  }
+
+  @VisibleForTesting
+  public VersionInfo getVersionInfo() {
+    return versionInfo;
   }
 }
