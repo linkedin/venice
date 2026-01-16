@@ -30,7 +30,7 @@ public class HeartbeatOtelStatsTest {
   private static final String CLUSTER_NAME = "test_cluster";
   private static final String REGION_US_WEST = "us-west";
   private static final String REGION_US_EAST = "us-east";
-  private static final int OTHER_VERSION = 1;
+  private static final int BACKUP_VERSION = 1;
   private static final int CURRENT_VERSION = 2;
   private static final int FUTURE_VERSION = 3;
   private static final String TEST_PREFIX = "test_prefix";
@@ -147,12 +147,12 @@ public class HeartbeatOtelStatsTest {
   }
 
   @Test
-  public void testRecordHeartbeatDelayOtelMetricsForOtherVersion() {
+  public void testRecordHeartbeatDelayOtelMetricsForBackupVersion() {
     heartbeatOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
 
     long delay = 300L;
     heartbeatOtelStats.recordHeartbeatDelayOtelMetrics(
-        OTHER_VERSION,
+        BACKUP_VERSION,
         REGION_US_WEST,
         ReplicaType.FOLLOWER,
         ReplicaState.READY_TO_SERVE,
@@ -160,7 +160,7 @@ public class HeartbeatOtelStatsTest {
 
     validateHeartbeatMetric(
         REGION_US_WEST,
-        VersionType.OTHER,
+        VersionType.BACKUP,
         ReplicaType.FOLLOWER,
         ReplicaState.READY_TO_SERVE,
         (double) delay,
@@ -171,7 +171,7 @@ public class HeartbeatOtelStatsTest {
   public void testRecordHeartbeatDelayOtelMetricsForNonExistingVersion() {
     heartbeatOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
 
-    // Record with NON_EXISTING_VERSION - should be classified as OTHER
+    // Record with NON_EXISTING_VERSION - should be classified as BACKUP
     heartbeatOtelStats.recordHeartbeatDelayOtelMetrics(
         NON_EXISTING_VERSION,
         REGION_US_WEST,
@@ -179,10 +179,10 @@ public class HeartbeatOtelStatsTest {
         ReplicaState.READY_TO_SERVE,
         100L);
 
-    // Verify metric was recorded with OTHER version type
+    // Verify metric was recorded with BACKUP version type
     validateHeartbeatMetric(
         REGION_US_WEST,
-        VersionType.OTHER,
+        VersionType.BACKUP,
         ReplicaType.LEADER,
         ReplicaState.READY_TO_SERVE,
         100.0,
@@ -268,7 +268,7 @@ public class HeartbeatOtelStatsTest {
   @DataProvider(name = "versionTypeProvider")
   public Object[][] versionTypeProvider() {
     return new Object[][] { { VersionType.CURRENT, CURRENT_VERSION }, { VersionType.FUTURE, FUTURE_VERSION },
-        { VersionType.OTHER, OTHER_VERSION } };
+        { VersionType.BACKUP, BACKUP_VERSION } };
   }
 
   @Test(dataProvider = "versionTypeProvider")
@@ -346,10 +346,10 @@ public class HeartbeatOtelStatsTest {
         100.0,
         1);
 
-    // Update version info - version 1 is now other
-    heartbeatOtelStats.updateVersionInfo(FUTURE_VERSION, OTHER_VERSION);
+    // Update version info - version 1 is now backup
+    heartbeatOtelStats.updateVersionInfo(FUTURE_VERSION, BACKUP_VERSION);
 
-    // Record for version 1 again - should now be OTHER
+    // Record for version 1 again - should now be BACKUP
     heartbeatOtelStats.recordHeartbeatDelayOtelMetrics(
         CURRENT_VERSION,
         REGION_US_WEST,
@@ -357,10 +357,10 @@ public class HeartbeatOtelStatsTest {
         ReplicaState.READY_TO_SERVE,
         150L);
 
-    // Verify version 1 is now classified as OTHER
+    // Verify version 1 is now classified as BACKUP
     validateHeartbeatMetric(
         REGION_US_WEST,
-        VersionType.OTHER,
+        VersionType.BACKUP,
         ReplicaType.LEADER,
         ReplicaState.READY_TO_SERVE,
         150.0,
@@ -399,7 +399,7 @@ public class HeartbeatOtelStatsTest {
     // Set both current and future as NON_EXISTING_VERSION
     heartbeatOtelStats.updateVersionInfo(NON_EXISTING_VERSION, NON_EXISTING_VERSION);
 
-    // Try to record for a valid version - should be classified as OTHER
+    // Try to record for a valid version - should be classified as BACKUP
     heartbeatOtelStats.recordHeartbeatDelayOtelMetrics(
         CURRENT_VERSION,
         REGION_US_WEST,
@@ -409,7 +409,7 @@ public class HeartbeatOtelStatsTest {
 
     validateHeartbeatMetric(
         REGION_US_WEST,
-        VersionType.OTHER,
+        VersionType.BACKUP,
         ReplicaType.LEADER,
         ReplicaState.READY_TO_SERVE,
         100.0,
@@ -460,18 +460,18 @@ public class HeartbeatOtelStatsTest {
   }
 
   @Test
-  public void testClassifyVersionWithNonExistingVersionInputReturnsOther() {
+  public void testClassifyVersionWithNonExistingVersionInputReturnsBackup() {
     heartbeatOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
     assertSame(
         HeartbeatOtelStats.classifyVersion(NON_EXISTING_VERSION, heartbeatOtelStats.getVersionInfo()),
-        VersionType.OTHER);
+        VersionType.BACKUP);
     assertSame(
         HeartbeatOtelStats.classifyVersion(CURRENT_VERSION, heartbeatOtelStats.getVersionInfo()),
         VersionType.CURRENT);
     assertSame(
         HeartbeatOtelStats.classifyVersion(FUTURE_VERSION, heartbeatOtelStats.getVersionInfo()),
         VersionType.FUTURE);
-    assertSame(HeartbeatOtelStats.classifyVersion(10, heartbeatOtelStats.getVersionInfo()), VersionType.OTHER);
+    assertSame(HeartbeatOtelStats.classifyVersion(10, heartbeatOtelStats.getVersionInfo()), VersionType.BACKUP);
   }
 
   @Test
@@ -494,7 +494,7 @@ public class HeartbeatOtelStatsTest {
         200L);
 
     heartbeatOtelStats.recordHeartbeatDelayOtelMetrics(
-        OTHER_VERSION,
+        BACKUP_VERSION,
         REGION_US_EAST,
         ReplicaType.LEADER,
         ReplicaState.READY_TO_SERVE,
@@ -519,7 +519,7 @@ public class HeartbeatOtelStatsTest {
 
     validateHeartbeatMetric(
         REGION_US_EAST,
-        VersionType.OTHER,
+        VersionType.BACKUP,
         ReplicaType.LEADER,
         ReplicaState.READY_TO_SERVE,
         300.0,

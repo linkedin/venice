@@ -84,7 +84,7 @@ public class ModuleMetricEntityInterfaceTest {
   public enum SingleEnumForTest implements ModuleMetricEntityInterface {
     ENUM_ONE(new MetricEntity("enum_one", MetricType.COUNTER, MetricUnit.NUMBER, TEST_DESC, TEST_DIMENSIONS));
 
-    private final MetricEntity metric;
+    private final transient MetricEntity metric;
 
     SingleEnumForTest(MetricEntity m) {
       this.metric = m;
@@ -100,7 +100,7 @@ public class ModuleMetricEntityInterfaceTest {
     ENUM_ONE(new MetricEntity("enum_one", MetricType.COUNTER, MetricUnit.NUMBER, TEST_DESC, TEST_DIMENSIONS)),
     ENUM_TWO(new MetricEntity("enum_two", MetricType.HISTOGRAM, MetricUnit.MILLISECOND, TEST_DESC, TEST_DIMENSIONS));
 
-    private final MetricEntity metric;
+    private final transient MetricEntity metric;
 
     TwoDistinctEnum(MetricEntity m) {
       this.metric = m;
@@ -116,7 +116,7 @@ public class ModuleMetricEntityInterfaceTest {
     ENUM_ONE(new MetricEntity("enum_dup", MetricType.COUNTER, MetricUnit.NUMBER, TEST_DESC, TEST_DIMENSIONS)),
     ENUM_TWO(new MetricEntity("enum_dup", MetricType.COUNTER, MetricUnit.NUMBER, TEST_DESC, TEST_DIMENSIONS));
 
-    private final MetricEntity metric;
+    private final transient MetricEntity metric;
 
     DuplicateEnum(MetricEntity m) {
       this.metric = m;
@@ -136,7 +136,7 @@ public class ModuleMetricEntityInterfaceTest {
         new MetricEntity("enum_conflict", MetricType.HISTOGRAM, MetricUnit.NUMBER, TEST_DESC, TEST_DIMENSIONS)
     );
 
-    private final MetricEntity metric;
+    private final transient MetricEntity metric;
 
     ConflictEnum(MetricEntity m) {
       this.metric = m;

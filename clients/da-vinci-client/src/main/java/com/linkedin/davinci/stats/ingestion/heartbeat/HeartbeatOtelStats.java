@@ -125,20 +125,19 @@ public class HeartbeatOtelStats {
   }
 
   /**
-   * Classifies a version as CURRENT or FUTURE and all other versions are considered OTHER
+   * Classifies a version as CURRENT or FUTURE or BACKUP
    *
    * @param version The version number to classify
    * @param versionInfo The current/future version (cached)
    * @return {@link VersionType}
    */
   static VersionType classifyVersion(int version, VersionInfo versionInfo) {
-    if (version == NON_EXISTING_VERSION) {
-      return VersionType.OTHER;
+    if (version == versionInfo.currentVersion) {
+      return VersionType.CURRENT;
+    } else if (version == versionInfo.futureVersion) {
+      return VersionType.FUTURE;
     }
-
-    return (version == versionInfo.currentVersion)
-        ? VersionType.CURRENT
-        : ((version == versionInfo.futureVersion) ? VersionType.FUTURE : VersionType.OTHER);
+    return VersionType.BACKUP;
   }
 
   @VisibleForTesting

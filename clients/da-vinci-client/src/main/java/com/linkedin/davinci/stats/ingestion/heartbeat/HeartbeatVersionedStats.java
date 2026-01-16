@@ -1,5 +1,6 @@
 package com.linkedin.davinci.stats.ingestion.heartbeat;
 
+import com.google.common.annotations.VisibleForTesting;
 import com.linkedin.davinci.stats.AbstractVeniceAggVersionedStats;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
@@ -20,6 +21,9 @@ public class HeartbeatVersionedStats extends AbstractVeniceAggVersionedStats<Hea
   private final Map<String, HeartbeatOtelStats> otelStatsMap;
   private final String clusterName;
 
+  // Time supplier for testability: defaults to System.currentTimeMillis()
+  private Supplier<Long> currentTimeSupplier = System::currentTimeMillis;
+
   public HeartbeatVersionedStats(
       MetricsRepository metricsRepository,
       ReadOnlyStoreRepository metadataRepository,
@@ -37,7 +41,7 @@ public class HeartbeatVersionedStats extends AbstractVeniceAggVersionedStats<Hea
 
   public void recordLeaderLag(String storeName, int version, String region, long heartbeatTs) {
     // Calculate current time and delay once for both Tehuti and OTel metrics
-    long currentTime = System.currentTimeMillis();
+    long currentTime = currentTimeSupplier.get();
     long delay = currentTime - heartbeatTs;
 
     // Tehuti metrics
@@ -59,7 +63,7 @@ public class HeartbeatVersionedStats extends AbstractVeniceAggVersionedStats<Hea
       long heartbeatTs,
       boolean isReadyToServe) {
     // Calculate current time and delay once for all metrics
-    long currentTime = System.currentTimeMillis();
+    long currentTime = currentTimeSupplier.get();
     long delay = currentTime - heartbeatTs;
 
     // If the partition is ready to serve, report it's lag to the main lag metric. Otherwise, report it
@@ -134,5 +138,15 @@ public class HeartbeatVersionedStats extends AbstractVeniceAggVersionedStats<Hea
       stats.updateVersionInfo(getCurrentVersion(storeName), getFutureVersion(storeName));
       return stats;
     });
+  }
+
+  @VisibleForTesting
+  HeartbeatStat getStatsForTesting(String storeName, int version) {
+    return getStats(storeName, version);
+  }
+
+  @VisibleForTesting
+  void setCurrentTimeSupplier(Supplier<Long> timeSupplier) {
+    this.currentTimeSupplier = timeSupplier;
   }
 }
