@@ -1411,6 +1411,7 @@ public class VenicePushJobTest {
       vpj.run();
       PushJobSetting pushJobSetting = vpj.getPushJobSetting();
       Assert.assertNull(pushJobSetting.materializedViewConfigFlatMap);
+      Assert.assertFalse(pushJobSetting.isFlinkMaterializedViewEnabled);
     }
     Map<String, ViewConfig> viewConfigs = new HashMap<>();
     MaterializedViewParameters.Builder builder =
@@ -1437,6 +1438,7 @@ public class VenicePushJobTest {
       skipVPJValidation(vpj);
       vpj.run();
       PushJobSetting pushJobSetting = vpj.getPushJobSetting();
+      Assert.assertFalse(pushJobSetting.isFlinkMaterializedViewEnabled);
       Assert.assertNotNull(pushJobSetting.materializedViewConfigFlatMap);
       Map<String, ViewConfig> viewConfigMap =
           ViewUtils.parseViewConfigMapString(pushJobSetting.materializedViewConfigFlatMap);
