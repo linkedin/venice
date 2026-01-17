@@ -34,7 +34,7 @@ import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import com.linkedin.venice.stats.dimensions.VersionRole;
+import com.linkedin.venice.server.VersionRole;
 import com.linkedin.venice.utils.RandomAccessDaemonThreadFactory;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.TestUtils;

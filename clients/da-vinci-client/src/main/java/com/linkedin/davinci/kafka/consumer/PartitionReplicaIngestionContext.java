@@ -2,7 +2,7 @@ package com.linkedin.davinci.kafka.consumer;
 
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import com.linkedin.venice.stats.dimensions.VersionRole;
+import com.linkedin.venice.server.VersionRole;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
