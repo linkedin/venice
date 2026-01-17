@@ -31,6 +31,7 @@ import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.stats.dimensions.VersionRole;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
@@ -98,13 +99,13 @@ public class KafkaConsumerServiceDelegatorTest {
     PartitionReplicaIngestionContext topicPartitionIngestionContextForVT = new PartitionReplicaIngestionContext(
         versionTopic,
         topicPartitionForVT,
-        PartitionReplicaIngestionContext.VersionRole.CURRENT,
+        VersionRole.CURRENT,
         PartitionReplicaIngestionContext.WorkloadType.NON_AA_OR_WRITE_COMPUTE);
     delegator.startConsumptionIntoDataReceiver(topicPartitionIngestionContextForVT, position0, dataReceiver, false);
     PartitionReplicaIngestionContext topicPartitionIngestionContextForRT = new PartitionReplicaIngestionContext(
         versionTopic,
         topicPartitionForRT,
-        PartitionReplicaIngestionContext.VersionRole.CURRENT,
+        VersionRole.CURRENT,
         PartitionReplicaIngestionContext.WorkloadType.NON_AA_OR_WRITE_COMPUTE);
     delegator.startConsumptionIntoDataReceiver(topicPartitionIngestionContextForRT, position0, dataReceiver, false);
 
@@ -161,24 +162,24 @@ public class KafkaConsumerServiceDelegatorTest {
     PartitionReplicaIngestionContext tpForCurrentAAWCLeader = new PartitionReplicaIngestionContext(
         versionTopic,
         new PubSubTopicPartitionImpl(rtTopic, PARTITION_ID),
-        PartitionReplicaIngestionContext.VersionRole.CURRENT,
+        VersionRole.CURRENT,
         PartitionReplicaIngestionContext.WorkloadType.AA_OR_WRITE_COMPUTE);
     PartitionReplicaIngestionContext tpForCurrentAAWCFollower = new PartitionReplicaIngestionContext(
         versionTopic,
         new PubSubTopicPartitionImpl(versionTopic, PARTITION_ID),
-        PartitionReplicaIngestionContext.VersionRole.CURRENT,
+        VersionRole.CURRENT,
         PartitionReplicaIngestionContext.WorkloadType.AA_OR_WRITE_COMPUTE);
 
     PubSubTopic futureVersionTopic = TOPIC_REPOSITORY.getTopic("test_store_v2");
     PartitionReplicaIngestionContext tpForNonCurrentAAWCLeader = new PartitionReplicaIngestionContext(
         versionTopic,
         new PubSubTopicPartitionImpl(rtTopic, PARTITION_ID),
-        PartitionReplicaIngestionContext.VersionRole.FUTURE,
+        VersionRole.FUTURE,
         PartitionReplicaIngestionContext.WorkloadType.AA_OR_WRITE_COMPUTE);
     PartitionReplicaIngestionContext tpForNonCurrentAAWCFollower = new PartitionReplicaIngestionContext(
         versionTopic,
         new PubSubTopicPartitionImpl(futureVersionTopic, PARTITION_ID),
-        PartitionReplicaIngestionContext.VersionRole.BACKUP,
+        VersionRole.BACKUP,
         PartitionReplicaIngestionContext.WorkloadType.AA_OR_WRITE_COMPUTE);
 
     doReturn(true).when(mockConfig).isResubscriptionTriggeredByVersionIngestionContextChangeEnabled();
@@ -334,7 +335,7 @@ public class KafkaConsumerServiceDelegatorTest {
       PartitionReplicaIngestionContext partitionReplicaIngestionContext = new PartitionReplicaIngestionContext(
           versionTopicForStoreName3,
           realTimeTopicPartition,
-          PartitionReplicaIngestionContext.VersionRole.CURRENT,
+          VersionRole.CURRENT,
           PartitionReplicaIngestionContext.WorkloadType.AA_OR_WRITE_COMPUTE);
       ConsumedDataReceiver consumedDataReceiver = mock(ConsumedDataReceiver.class);
       when(consumedDataReceiver.destinationIdentifier()).thenReturn(versionTopicForStoreName3);

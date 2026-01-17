@@ -3,6 +3,7 @@ package com.linkedin.venice;
 import com.linkedin.venice.pubsub.PubSubConstants;
 import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerConfig;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig;
+import com.linkedin.venice.stats.dimensions.VersionRole;
 
 
 public class ConfigKeys {
@@ -2708,7 +2709,7 @@ public class ConfigKeys {
   /**
    * Server configs to enable the topic partition re-subscription during ingestion to let bottom ingestion service aware
    * of store version's ingestion context changed (workload type {#@link PartitionReplicaIngestionContext.WorkloadType} or
-   * {#@link VersionRole.WorkloadType} version role changed).
+   * {@link VersionRole} version role changed).
    */
   public static final String SERVER_RESUBSCRIPTION_TRIGGERED_BY_VERSION_INGESTION_CONTEXT_CHANGE_ENABLED =
       "server.resubscription.triggered.by.version.ingestion.context.change.enabled";

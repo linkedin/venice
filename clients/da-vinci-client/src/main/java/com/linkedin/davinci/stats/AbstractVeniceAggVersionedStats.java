@@ -33,6 +33,10 @@ public abstract class AbstractVeniceAggVersionedStats<STATS, STATS_REPORTER exte
   private final Map<String, VeniceVersionedStats<STATS, STATS_REPORTER>> aggStats;
   private final boolean unregisterMetricForDeletedStoreEnabled;
 
+  protected MetricsRepository getMetricsRepository() {
+    return metricsRepository;
+  }
+
   public AbstractVeniceAggVersionedStats(
       MetricsRepository metricsRepository,
       ReadOnlyStoreRepository metadataRepository,
@@ -135,6 +139,9 @@ public abstract class AbstractVeniceAggVersionedStats<STATS, STATS_REPORTER exte
       versionedStats.setFutureVersion(futureVersion);
     }
 
+    // Notify subclasses that version info has changed
+    onVersionInfoUpdated(storeName, versionedStats.getCurrentVersion(), versionedStats.getFutureVersion());
+
     /**
      * Since versions are changed, update the total stats accordingly.
      */
@@ -185,5 +192,17 @@ public abstract class AbstractVeniceAggVersionedStats<STATS, STATS_REPORTER exte
    */
   protected void updateTotalStats(String storeName) {
     // no-op
+  }
+
+  /**
+   * Hook method called when version info is updated for a store.
+   * Subclasses can override this to react to version changes.
+   *
+   * @param storeName The store whose version info changed
+   * @param currentVersion The new current version
+   * @param futureVersion The new future version
+   */
+  protected void onVersionInfoUpdated(String storeName, int currentVersion, int futureVersion) {
+    // no-op by default
   }
 }

@@ -267,10 +267,11 @@ public abstract class OpenTelemetryDataTestUtils {
     assertEquals(histogramPointData.getMax(), expectedMax, "Histogram max value should be " + expectedMax);
     assertEquals(histogramPointData.getCount(), expectedCount, "Histogram count should be " + expectedCount);
     assertEquals(histogramPointData.getSum(), expectedSum, "Histogram sum should be " + expectedSum);
+    long expectedNumPositiveBuckets = (expectedMin > 0 || expectedMax > 0) ? expectedCount : 0;
     assertEquals(
         histogramPointData.getPositiveBuckets().getTotalCount(),
-        expectedCount,
-        "Histogram positive buckets total count should be " + expectedCount);
+        expectedNumPositiveBuckets,
+        "Histogram positive buckets total count should be " + expectedNumPositiveBuckets);
     assertEquals(histogramPointData.getAttributes(), expectedAttributes, "Histogram attributes should match");
   }
 

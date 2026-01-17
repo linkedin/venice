@@ -1,5 +1,6 @@
 package com.linkedin.venice.integration.utils;
 
+import static com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatOtelStats.SERVER_METRIC_ENTITIES;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_OPTIONS_USE_DIRECT_READS;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
@@ -46,6 +47,7 @@ import static com.linkedin.venice.ConfigKeys.SYSTEM_SCHEMA_CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.SYSTEM_SCHEMA_INITIALIZATION_AT_START_TIME_ENABLED;
 import static com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper.addKafkaClusterIDMappingToServerConfigs;
 import static com.linkedin.venice.meta.PersistenceType.ROCKS_DB;
+import static com.linkedin.venice.stats.VeniceMetricsConfig.OTEL_VENICE_METRICS_ENABLED;
 
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.ingestion.utils.IngestionTaskReusableObjects;
@@ -59,6 +61,7 @@ import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.server.VeniceServer;
 import com.linkedin.venice.server.VeniceServerContext;
 import com.linkedin.venice.servicediscovery.ServiceDiscoveryAnnouncer;
+import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.tehuti.MetricsAware;
 import com.linkedin.venice.tehuti.MockTehutiReporter;
 import com.linkedin.venice.utils.ForkedJavaProcess;
@@ -69,6 +72,7 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
+import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
@@ -99,6 +103,7 @@ import org.testng.Assert;
 public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware {
   private static final Logger LOGGER = LogManager.getLogger(VeniceServerWrapper.class);
   public static final String SERVICE_NAME = VeniceComponent.SERVER.getName();
+  private static final String SERVICE_METRIC_PREFIX = "server";
 
   /**
    *  Possible config options which are not included in {@link com.linkedin.venice.ConfigKeys}.
@@ -288,7 +293,8 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
               SERVER_INGESTION_TASK_REUSABLE_OBJECTS_STRATEGY,
               IngestionTaskReusableObjects.Strategy.SINGLETON_THREAD_LOCAL)
           .put(SERVER_RESUBSCRIPTION_CHECK_INTERVAL_IN_SECONDS, 1)
-          .put(SERVER_DELETE_UNASSIGNED_PARTITIONS_ON_STARTUP, serverDeleteUnassignedPartitionsOnStartup);
+          .put(SERVER_DELETE_UNASSIGNED_PARTITIONS_ON_STARTUP, serverDeleteUnassignedPartitionsOnStartup)
+          .put(OTEL_VENICE_METRICS_ENABLED, Boolean.TRUE.toString());
       if (sslToKafka) {
         serverPropsBuilder.put(PUBSUB_SECURITY_PROTOCOL_LEGACY, PubSubSecurityProtocol.SSL.name());
         serverPropsBuilder.put(KafkaTestUtils.getLocalCommonKafkaSSLConfig(SslUtils.getTlsConfiguration()));
@@ -361,7 +367,7 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
 
         VeniceServerContext.Builder serverContextBuilder =
             new VeniceServerContext.Builder().setVeniceConfigLoader(veniceConfigLoader)
-                .setMetricsRepository(MetricsRepositoryUtils.createSingleThreadedMetricsRepository())
+                .setMetricsRepository(getVeniceMetricRepositoryForServer(serverProps))
                 .setSslFactory(sslFactory)
                 .setClientConfigForConsumer(consumerClientConfig)
                 .setServiceDiscoveryAnnouncers(d2Servers)
@@ -525,7 +531,7 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
 
     this.veniceServer = new TestVeniceServer(
         new VeniceServerContext.Builder().setVeniceConfigLoader(config)
-            .setMetricsRepository(MetricsRepositoryUtils.createSingleThreadedMetricsRepository())
+            .setMetricsRepository(getVeniceMetricRepositoryForServer(serverProps))
             .setD2Client(D2TestUtils.getAndStartD2Client(zkAddress))
             .setSslFactory(sslFactory)
             .setClientConfigForConsumer(consumerClientConfig)
@@ -557,6 +563,18 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
         .setRegionName(regionName)
         .setInstanceName(Utils.getHelixNodeIdentifier(getHost(), getPort()))
         .build();
+  }
+
+  private static VeniceMetricsRepository getVeniceMetricRepositoryForServer(VeniceProperties serverProps) {
+    InMemoryMetricReader inMemoryMetricReader = InMemoryMetricReader.create();
+    VeniceMetricsRepository veniceMetricsRepository = VeniceMetricsRepository.getVeniceMetricsRepository(
+        SERVICE_NAME,
+        SERVICE_METRIC_PREFIX,
+        SERVER_METRIC_ENTITIES,
+        serverProps.getAsMap(),
+        true);
+    veniceMetricsRepository.getVeniceMetricsConfig().setOtelAdditionalMetricsReader(inMemoryMetricReader);
+    return veniceMetricsRepository;
   }
 
   public static void main(String args[]) throws Exception {

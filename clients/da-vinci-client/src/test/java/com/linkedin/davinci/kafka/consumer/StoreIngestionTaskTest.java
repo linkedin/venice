@@ -203,6 +203,7 @@ import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordSerializer;
+import com.linkedin.venice.stats.dimensions.VersionRole;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.unit.matchers.ExceptionClassMatcher;
 import com.linkedin.venice.unit.matchers.NonEmptyStringMatcher;
@@ -3441,7 +3442,7 @@ public abstract class StoreIngestionTaskTest {
     PartitionReplicaIngestionContext fooRtPartitionReplicaIngestionContext = new PartitionReplicaIngestionContext(
         pubSubTopic,
         fooRtPartition,
-        PartitionReplicaIngestionContext.VersionRole.CURRENT,
+        VersionRole.CURRENT,
         PartitionReplicaIngestionContext.WorkloadType.NON_AA_OR_WRITE_COMPUTE);
     inMemoryLocalKafkaBroker.createTopic(rtTopic, partitionCount);
     inMemoryRemoteKafkaBroker.createTopic(rtTopic, partitionCount);
@@ -4455,14 +4456,14 @@ public abstract class StoreIngestionTaskTest {
             topicPartitionOffset.getPubSubTopicPartition(),
             topicPartitionOffset.getPubSubPosition());
         if (pubSubTopicPartition.getPubSubTopic().isVersionTopic() && resubscriptionOffsetForVT.contains(position)) {
-          storeIngestionTaskUnderTest.setVersionRole(PartitionReplicaIngestionContext.VersionRole.BACKUP);
+          storeIngestionTaskUnderTest.setVersionRole(VersionRole.BACKUP);
           resubscriptionLatch.countDown();
           LOGGER.info(
               "Trigger re-subscription after consuming message for {} at position {} ",
               pubSubTopicPartition,
               position);
         } else if (pubSubTopicPartition.getPubSubTopic().isRealTime() && resubscriptionOffsetForRT.contains(position)) {
-          storeIngestionTaskUnderTest.setVersionRole(PartitionReplicaIngestionContext.VersionRole.BACKUP);
+          storeIngestionTaskUnderTest.setVersionRole(VersionRole.BACKUP);
           resubscriptionLatch.countDown();
           LOGGER.info(
               "Trigger re-subscription after consuming message for {} at position {}.",
@@ -4684,7 +4685,7 @@ public abstract class StoreIngestionTaskTest {
             null));
 
     // Simulate the version has been deleted.
-    ingestionTask.setVersionRole(PartitionReplicaIngestionContext.VersionRole.BACKUP);
+    ingestionTask.setVersionRole(VersionRole.BACKUP);
     doReturn(null).when(store).getVersion(eq(1));
     ingestionTask.refreshIngestionContextIfChanged(store);
     verify(ingestionTask, never()).resubscribeForAllPartitions();
