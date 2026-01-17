@@ -2,6 +2,7 @@ package com.linkedin.davinci.stats;
 
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
+import com.linkedin.venice.utils.Time;
 import io.tehuti.metrics.MetricsRepository;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -21,7 +22,23 @@ public class AggVersionedBlobTransferStats
     super(
         metricsRepository,
         metadataRepository,
-        () -> new BlobTransferStats(),
+        BlobTransferStats::new,
+        BlobTransferStatsReporter::new,
+        serverConfig.isUnregisterMetricForDeletedStoreEnabled());
+  }
+
+  /**
+   * Constructor for testing that allows injecting a Time instance.
+   */
+  public AggVersionedBlobTransferStats(
+      MetricsRepository metricsRepository,
+      ReadOnlyStoreRepository metadataRepository,
+      VeniceServerConfig serverConfig,
+      Time time) {
+    super(
+        metricsRepository,
+        metadataRepository,
+        () -> new BlobTransferStats(time),
         BlobTransferStatsReporter::new,
         serverConfig.isUnregisterMetricForDeletedStoreEnabled());
   }
@@ -70,4 +87,13 @@ public class AggVersionedBlobTransferStats
   public void recordBlobTransferTimeInSec(String storeName, int version, double timeInSec) {
     recordVersionedAndTotalStat(storeName, version, stats -> stats.recordBlobTransferTimeInSec(timeInSec));
   }
+
+  public void recordBlobTransferBytesReceived(String storeName, int version, long value) {
+    recordVersionedAndTotalStat(storeName, version, stats -> stats.recordBlobTransferBytesReceived(value));
+  }
+
+  public void recordBlobTransferBytesSent(String storeName, int version, long value) {
+    recordVersionedAndTotalStat(storeName, version, stats -> stats.recordBlobTransferBytesSent(value));
+  }
+
 }

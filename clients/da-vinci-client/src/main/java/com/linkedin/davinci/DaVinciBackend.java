@@ -24,9 +24,9 @@ import com.linkedin.davinci.ingestion.IsolatedIngestionBackend;
 import com.linkedin.davinci.ingestion.main.MainIngestionStorageMetadataService;
 import com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
-import com.linkedin.davinci.kafka.consumer.StoreIngestionService;
 import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.repository.VeniceMetadataRepositoryBuilder;
+import com.linkedin.davinci.stats.AggBlobTransferStats;
 import com.linkedin.davinci.stats.AggVersionedBlobTransferStats;
 import com.linkedin.davinci.stats.AggVersionedStorageEngineStats;
 import com.linkedin.davinci.stats.HeartbeatMonitoringServiceStats;
@@ -139,6 +139,7 @@ public class DaVinciBackend implements Closeable {
   private final boolean writeBatchingPushStatus;
   private final HeartbeatMonitoringService heartbeatMonitoringService;
   private AggVersionedBlobTransferStats aggVersionedBlobTransferStats;
+  private AggBlobTransferStats aggBlobTransferStats;
 
   public DaVinciBackend(
       ClientConfig clientConfig,
@@ -327,7 +328,8 @@ public class DaVinciBackend implements Closeable {
       if (BlobTransferUtils.isBlobTransferManagerEnabled(backendConfig, isIsolatedIngestion())) {
         aggVersionedBlobTransferStats =
             new AggVersionedBlobTransferStats(metricsRepository, storeRepository, configLoader.getVeniceServerConfig());
-
+        aggBlobTransferStats =
+            new AggBlobTransferStats(aggVersionedBlobTransferStats, ingestionService.getHostLevelIngestionStats());
         P2PBlobTransferConfig p2PBlobTransferConfig = new P2PBlobTransferConfig(
             configLoader.getVeniceServerConfig().getDvcP2pBlobTransferServerPort(),
             configLoader.getVeniceServerConfig().getDvcP2pBlobTransferClientPort(),
@@ -351,13 +353,14 @@ public class DaVinciBackend implements Closeable {
             .setStorageMetadataService(storageMetadataService)
             .setReadOnlyStoreRepository(readOnlyStoreRepository)
             .setStorageEngineRepository(storageService.getStorageEngineRepository())
-            .setAggVersionedBlobTransferStats(aggVersionedBlobTransferStats)
+            .setAggBlobTransferStats(aggBlobTransferStats)
             .setBlobTransferSSLFactory(BlobTransferUtils.createSSLFactoryForBlobTransferInDVC(configLoader))
             .setBlobTransferAclHandler(BlobTransferUtils.createAclHandler(configLoader))
             .setPushStatusNotifierSupplier(() -> ingestionListener)
             .build();
       } else {
         aggVersionedBlobTransferStats = null;
+        aggBlobTransferStats = null;
         blobTransferManager = null;
       }
 
@@ -573,7 +576,7 @@ public class DaVinciBackend implements Closeable {
     return storageService;
   }
 
-  final StoreIngestionService getIngestionService() {
+  final KafkaStoreIngestionService getIngestionService() {
     return ingestionService;
   }
 

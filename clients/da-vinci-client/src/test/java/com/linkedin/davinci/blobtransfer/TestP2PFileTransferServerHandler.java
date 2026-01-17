@@ -10,6 +10,7 @@ import static org.mockito.ArgumentMatchers.any;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.davinci.blobtransfer.server.P2PFileTransferServerHandler;
+import com.linkedin.davinci.stats.AggBlobTransferStats;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.store.StorageEngine;
@@ -55,6 +56,7 @@ public class TestP2PFileTransferServerHandler {
   P2PFileTransferServerHandler serverHandler;
   BlobSnapshotManager blobSnapshotManager;
   StorageEngineRepository storageEngineRepository;
+  AggBlobTransferStats blobTransferStats;
   int maxAllowedConcurrentSnapshotUsers = 20;
 
   @BeforeMethod
@@ -63,12 +65,13 @@ public class TestP2PFileTransferServerHandler {
     blobTransferMaxTimeoutInMin = 30;
     storageMetadataService = Mockito.mock(StorageMetadataService.class);
     storageEngineRepository = Mockito.mock(StorageEngineRepository.class);
-
+    blobTransferStats = Mockito.mock(AggBlobTransferStats.class);
     blobSnapshotManager = Mockito.spy(new BlobSnapshotManager(storageEngineRepository, storageMetadataService));
     serverHandler = new P2PFileTransferServerHandler(
         baseDir.toString(),
         blobTransferMaxTimeoutInMin,
         blobSnapshotManager,
+        blobTransferStats,
         maxAllowedConcurrentSnapshotUsers);
     ch = new EmbeddedChannel(serverHandler);
   }

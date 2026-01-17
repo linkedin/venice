@@ -17,6 +17,7 @@ import com.linkedin.davinci.kafka.consumer.AdaptiveThrottlerSignalService;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.kafka.consumer.RemoteIngestionRepairService;
 import com.linkedin.davinci.repository.VeniceMetadataRepositoryBuilder;
+import com.linkedin.davinci.stats.AggBlobTransferStats;
 import com.linkedin.davinci.stats.AggVersionedBlobTransferStats;
 import com.linkedin.davinci.stats.AggVersionedStorageEngineStats;
 import com.linkedin.davinci.stats.HeartbeatMonitoringServiceStats;
@@ -129,6 +130,7 @@ public class VeniceServer {
   private ServerReadMetadataRepository serverReadMetadataRepository;
   private BlobTransferManager<Void> blobTransferManager;
   private AggVersionedBlobTransferStats aggVersionedBlobTransferStats;
+  private AggBlobTransferStats aggBlobTransferStats;
   private Lazy<ZKHelixAdmin> zkHelixAdmin;
 
   private final Optional<D2Client> d2Client;
@@ -485,7 +487,9 @@ public class VeniceServer {
      */
     if (BlobTransferUtils.isBlobTransferManagerEnabled(serverConfig, false)) {
       aggVersionedBlobTransferStats = new AggVersionedBlobTransferStats(metricsRepository, metadataRepo, serverConfig);
-
+      aggBlobTransferStats = new AggBlobTransferStats(
+          aggVersionedBlobTransferStats,
+          kafkaStoreIngestionService.getHostLevelIngestionStats());
       P2PBlobTransferConfig p2PBlobTransferConfig = new P2PBlobTransferConfig(
           serverConfig.getDvcP2pBlobTransferServerPort(),
           serverConfig.getDvcP2pBlobTransferClientPort(),
@@ -535,14 +539,13 @@ public class VeniceServer {
           .setStorageMetadataService(storageMetadataService)
           .setReadOnlyStoreRepository(metadataRepo)
           .setStorageEngineRepository(storageService.getStorageEngineRepository())
-          .setAggVersionedBlobTransferStats(aggVersionedBlobTransferStats)
+          .setAggBlobTransferStats(aggBlobTransferStats)
           .setBlobTransferSSLFactory(sslFactory)
           .setBlobTransferAclHandler(BlobTransferUtils.createAclHandler(veniceConfigLoader))
           .setAdaptiveBlobTransferWriteTrafficThrottler(writeThrottler)
           .setAdaptiveBlobTransferReadTrafficThrottler(readThrottler)
-          .setPushStatusNotifierSupplier(() -> {
-            return helixParticipationService != null ? helixParticipationService.getPushStatusNotifier() : null;
-          })
+          .setPushStatusNotifierSupplier(
+              () -> helixParticipationService != null ? helixParticipationService.getPushStatusNotifier() : null)
           .build();
     } else {
       aggVersionedBlobTransferStats = null;
