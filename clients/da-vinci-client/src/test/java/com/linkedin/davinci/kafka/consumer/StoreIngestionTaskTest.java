@@ -203,7 +203,7 @@ import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordSerializer;
-import com.linkedin.venice.stats.dimensions.VersionRole;
+import com.linkedin.venice.server.VersionRole;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.unit.matchers.ExceptionClassMatcher;
 import com.linkedin.venice.unit.matchers.NonEmptyStringMatcher;

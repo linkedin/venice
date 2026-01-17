@@ -7,7 +7,7 @@ import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import com.linkedin.venice.stats.dimensions.VersionRole;
+import com.linkedin.venice.server.VersionRole;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.ArrayList;
 import java.util.Collections;

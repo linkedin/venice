@@ -1,4 +1,8 @@
-package com.linkedin.venice.stats.dimensions;
+package com.linkedin.venice.server;
+
+import com.linkedin.venice.stats.dimensions.VeniceDimensionInterface;
+import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
+
 
 /**
  * Role of a store's version: Backup/Current/Future.

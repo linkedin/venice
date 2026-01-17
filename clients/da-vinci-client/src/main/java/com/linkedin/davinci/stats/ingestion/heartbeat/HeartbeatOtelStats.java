@@ -6,12 +6,12 @@ import static com.linkedin.venice.stats.metrics.ModuleMetricEntityInterface.getU
 
 import com.google.common.annotations.VisibleForTesting;
 import com.linkedin.davinci.stats.ServerMetricEntity;
+import com.linkedin.venice.server.VersionRole;
 import com.linkedin.venice.stats.OpenTelemetryMetricsSetup;
 import com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository;
 import com.linkedin.venice.stats.dimensions.ReplicaState;
 import com.linkedin.venice.stats.dimensions.ReplicaType;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
-import com.linkedin.venice.stats.dimensions.VersionRole;
 import com.linkedin.venice.stats.metrics.MetricEntity;
 import com.linkedin.venice.stats.metrics.MetricEntityStateThreeEnums;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
