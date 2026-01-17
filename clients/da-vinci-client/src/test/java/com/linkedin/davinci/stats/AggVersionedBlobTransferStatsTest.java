@@ -1,4 +1,4 @@
-package com.linkedin.venice.stats;
+package com.linkedin.davinci.stats;
 
 import static java.lang.Double.NaN;
 import static org.mockito.Mockito.any;
@@ -6,7 +6,6 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 
 import com.linkedin.davinci.config.VeniceServerConfig;
-import com.linkedin.davinci.stats.AggVersionedBlobTransferStats;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
@@ -14,6 +13,7 @@ import com.linkedin.venice.meta.ReadStrategy;
 import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.ZKStore;
+import com.linkedin.venice.stats.LongAdderRateGauge;
 import com.linkedin.venice.tehuti.MockTehutiReporter;
 import com.linkedin.venice.utils.TestMockTime;
 import com.linkedin.venice.utils.Time;
