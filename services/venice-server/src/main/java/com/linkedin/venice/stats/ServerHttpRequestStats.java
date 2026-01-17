@@ -28,6 +28,7 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
   private final Sensor databaseLookupLatencyForLargeValueSensor;
   private final Sensor multiChunkLargeValueCountSensor;
   private final Sensor requestKeyCountSensor;
+  private final Sensor keyNotFoundSensor;
   private final Sensor requestSizeInBytesSensor;
   private final Sensor storageExecutionHandlerSubmissionWaitTime;
   private final Sensor storageExecutionQueueLenSensor;
@@ -183,6 +184,8 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
     } else {
       requestKeyCountSensor = null;
     }
+    keyNotFoundSensor =
+        registerPerStoreAndTotal("key_not_found", totalStats, () -> totalStats.keyNotFoundSensor, new Rate());
     requestSizeInBytesSensor = registerPerStoreAndTotal(
         "request_size_in_bytes",
         totalStats,
@@ -355,6 +358,10 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
     if (requestKeyCountSensor != null) {
       requestKeyCountSensor.record(keyCount);
     }
+  }
+
+  public void recordKeyNotFoundCount(int count) {
+    keyNotFoundSensor.record(count);
   }
 
   public void recordRequestSizeInBytes(int requestSizeInBytes) {

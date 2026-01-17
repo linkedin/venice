@@ -107,10 +107,17 @@ public class AggServerHttpRequestStatsTest {
     computeServerStatsFoo.recordCosineSimilarityCount(10);
     computeServerStatsFoo.recordHadamardProduct(10);
     computeServerStatsFoo.recordCountOperator(10);
+    computeServerStatsFoo.recordKeyNotFoundCount(5);
 
     Assert.assertTrue(
         reporter.query("." + STORE_FOO + "--success_request.OccurrenceRate").value() > 0,
         "success_request rate should be positive");
+    Assert.assertTrue(
+        reporter.query("." + STORE_FOO + "--compute_key_not_found.Rate").value() > 0,
+        "compute_key_not_found rate should be positive");
+    Assert.assertTrue(
+        reporter.query(".total--compute_key_not_found.Rate").value() > 0,
+        "total compute_key_not_found rate should be positive");
     Assert.assertTrue(
         reporter.query(".total--error_request.OccurrenceRate").value() > 0,
         "error_request rate should be positive");

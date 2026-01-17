@@ -45,4 +45,6 @@ public interface ReadResponseStats {
   void setStorageExecutionQueueLen(int storageExecutionQueueLen);
 
   void incrementMultiChunkLargeValueCount();
+
+  void incrementKeyNotFoundCount();
 }
