@@ -5,7 +5,6 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_PRODUCER_DELIVERY_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_PRODUCER_REQUEST_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_PRODUCER_RETRIES_CONFIG;
 import static com.linkedin.venice.ConfigKeys.PARTITIONER_CLASS;
-import static com.linkedin.venice.ConfigKeys.PUSH_JOB_FLINK_MATERIALIZED_VIEW_ENABLED;
 import static com.linkedin.venice.ConfigKeys.PUSH_JOB_GUID_LEAST_SIGNIFICANT_BITS;
 import static com.linkedin.venice.ConfigKeys.PUSH_JOB_GUID_MOST_SIGNIFICANT_BITS;
 import static com.linkedin.venice.ConfigKeys.PUSH_JOB_VIEW_CONFIGS;
@@ -301,9 +300,6 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
 
     if (pushJobSetting.materializedViewConfigFlatMap != null) {
       jobConf.set(PUSH_JOB_VIEW_CONFIGS, pushJobSetting.materializedViewConfigFlatMap);
-      jobConf.set(
-          PUSH_JOB_FLINK_MATERIALIZED_VIEW_ENABLED,
-          Boolean.toString(pushJobSetting.isFlinkMaterializedViewEnabled));
       jobConf.set(VALUE_SCHEMA_DIR, pushJobSetting.valueSchemaDir);
       jobConf.set(RMD_SCHEMA_DIR, pushJobSetting.rmdSchemaDir);
     }

@@ -1410,7 +1410,6 @@ public class VenicePushJobTest {
       vpj.run();
       PushJobSetting pushJobSetting = vpj.getPushJobSetting();
       Assert.assertNull(pushJobSetting.materializedViewConfigFlatMap);
-      Assert.assertFalse(pushJobSetting.isFlinkMaterializedViewEnabled);
     }
     Map<String, ViewConfig> viewConfigs = new HashMap<>();
     MaterializedViewParameters.Builder builder =
@@ -1437,7 +1436,6 @@ public class VenicePushJobTest {
       skipVPJValidation(vpj);
       vpj.run();
       PushJobSetting pushJobSetting = vpj.getPushJobSetting();
-      Assert.assertFalse(pushJobSetting.isFlinkMaterializedViewEnabled);
       Assert.assertNotNull(pushJobSetting.materializedViewConfigFlatMap);
       Map<String, ViewConfig> viewConfigMap =
           ViewUtils.parseViewConfigMapString(pushJobSetting.materializedViewConfigFlatMap);
@@ -1445,6 +1443,51 @@ public class VenicePushJobTest {
       Assert.assertEquals(viewConfigMap.size(), 1);
       Assert.assertTrue(viewConfigMap.containsKey("testView"));
       Assert.assertEquals(viewConfigMap.get("testView").getViewClassName(), MaterializedView.class.getCanonicalName());
+    }
+  }
+
+  @Test
+  public void testConfigureWithMaterializedViewConfigsWithFlinkVeniceViewsEnabled() throws Exception {
+    Properties properties = getVpjRequiredProperties();
+    properties.put(KEY_FIELD_PROP, "id");
+    properties.put(VALUE_FIELD_PROP, "name");
+    JobStatusQueryResponse response = mockJobStatusQuery();
+    ControllerClient client = getClient();
+    doReturn(response).when(client).queryOverallJobStatus(anyString(), any(), eq(null), anyBoolean());
+    try (final VenicePushJob vpj = getSpyVenicePushJob(properties, client)) {
+      skipVPJValidation(vpj);
+      vpj.run();
+      PushJobSetting pushJobSetting = vpj.getPushJobSetting();
+      Assert.assertNull(pushJobSetting.materializedViewConfigFlatMap);
+    }
+    Map<String, ViewConfig> viewConfigs = new HashMap<>();
+    MaterializedViewParameters.Builder builder =
+        new MaterializedViewParameters.Builder("testView").setPartitionCount(12)
+            .setPartitioner(DefaultVenicePartitioner.class.getCanonicalName());
+    viewConfigs.put("testView", new ViewConfigImpl(MaterializedView.class.getCanonicalName(), builder.build()));
+    viewConfigs
+        .put("dummyView", new ViewConfigImpl(ChangeCaptureView.class.getCanonicalName(), Collections.emptyMap()));
+    Version version = new VersionImpl(TEST_STORE, 1, TEST_PUSH);
+    version.setViewConfigs(viewConfigs);
+    client = getClient(storeInfo -> {
+      storeInfo.setViewConfigs(viewConfigs);
+      storeInfo.setVersions(Collections.singletonList(version));
+      storeInfo.setFlinkVeniceViewsEnabled(true); // Enable Flink Venice Views at store level
+    }, true);
+    doReturn(response).when(client).queryOverallJobStatus(anyString(), any(), eq(null), anyBoolean());
+    MultiSchemaResponse valueSchemaResponse = getMultiSchemaResponse();
+    MultiSchemaResponse.Schema[] schemas = new MultiSchemaResponse.Schema[1];
+    schemas[0] = getBasicSchema();
+    valueSchemaResponse.setSchemas(schemas);
+    doReturn(valueSchemaResponse).when(client).getAllValueSchema(TEST_STORE);
+    doReturn(getMultiSchemaResponse()).when(client).getAllReplicationMetadataSchemas(TEST_STORE);
+    doReturn(getKeySchemaResponse()).when(client).getKeySchema(TEST_STORE);
+    try (final VenicePushJob vpj = getSpyVenicePushJob(properties, client)) {
+      skipVPJValidation(vpj);
+      vpj.run();
+      PushJobSetting pushJobSetting = vpj.getPushJobSetting();
+      Assert.assertNull(pushJobSetting.materializedViewConfigFlatMap); // Should be null since Flink Venice Views is
+                                                                       // enabled
     }
   }
 

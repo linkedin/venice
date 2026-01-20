@@ -2839,7 +2839,6 @@ public class ConfigKeys {
   public static final String CONTROLLER_ENABLE_HYBRID_STORE_PARTITION_COUNT_UPDATE =
       "controller.enable.hybrid.store.partition.count.update";
   public static final String PUSH_JOB_VIEW_CONFIGS = "push.job.view.configs";
-  public static final String PUSH_JOB_FLINK_MATERIALIZED_VIEW_ENABLED = "push.job.flink.materialized.view.enabled";
 
   /**
    * The maximum number of entries (per type) to be cached in the {@link com.linkedin.venice.meta.NameRepository}.

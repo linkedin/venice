@@ -1,6 +1,5 @@
 package com.linkedin.venice.hadoop.task.datawriter;
 
-import static com.linkedin.venice.ConfigKeys.PUSH_JOB_FLINK_MATERIALIZED_VIEW_ENABLED;
 import static com.linkedin.venice.ConfigKeys.PUSH_JOB_GUID_LEAST_SIGNIFICANT_BITS;
 import static com.linkedin.venice.ConfigKeys.PUSH_JOB_GUID_MOST_SIGNIFICANT_BITS;
 import static com.linkedin.venice.ConfigKeys.PUSH_JOB_VIEW_CONFIGS;
@@ -452,8 +451,7 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
             .setMaxRecordSizeBytes(Integer.parseInt(maxRecordSizeBytesStr))
             .build();
     String flatViewConfigMapString = props.getString(PUSH_JOB_VIEW_CONFIGS, "");
-    boolean isFlinkMaterializedViewEnabled = props.getBoolean(PUSH_JOB_FLINK_MATERIALIZED_VIEW_ENABLED, false);
-    if (!flatViewConfigMapString.isEmpty() && !isFlinkMaterializedViewEnabled) {
+    if (!flatViewConfigMapString.isEmpty()) {
       mainWriter = veniceWriterFactoryFactory.createVeniceWriter(options);
       return createCompositeVeniceWriter(
           veniceWriterFactoryFactory,

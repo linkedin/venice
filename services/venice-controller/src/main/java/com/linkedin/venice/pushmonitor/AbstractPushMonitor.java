@@ -979,9 +979,9 @@ public abstract class AbstractPushMonitor
         }
       }
 
-      boolean isFlinkVeniceViewsEnabled = store.isFlinkVeniceViewsEnabled();
       if (isEOPReceivedInAllPartitions) {
         // Check whether to send EOP for materialized view topic(s)
+        boolean isFlinkVeniceViewsEnabled = store.isFlinkVeniceViewsEnabled();
         for (ViewConfig rawView: viewConfigMap.values()) {
           if (MaterializedView.class.getCanonicalName().equals(rawView.getViewClassName())
               && !isFlinkVeniceViewsEnabled) {
