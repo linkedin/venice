@@ -65,6 +65,7 @@ import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 import org.apache.logging.log4j.Logger;
 
@@ -89,6 +90,8 @@ public class AdminExecutionTask implements Callable<Void> {
   private final ConcurrentHashMap<String, Long> lastSucceededExecutionIdMap;
   private final long lastPersistedExecutionId;
 
+  private final ConcurrentHashMap<String, AtomicInteger> inflightThreadsByStore;
+
   AdminExecutionTask(
       Logger LOGGER,
       String clusterName,
@@ -100,7 +103,8 @@ public class AdminExecutionTask implements Callable<Void> {
       ExecutionIdAccessor executionIdAccessor,
       boolean isParentController,
       AdminConsumptionStats stats,
-      String regionName) {
+      String regionName,
+      ConcurrentHashMap<String, AtomicInteger> inflightThreadsByStore) {
     this.LOGGER = LOGGER;
     this.clusterName = clusterName;
     this.storeName = storeName;
@@ -112,10 +116,41 @@ public class AdminExecutionTask implements Callable<Void> {
     this.isParentController = isParentController;
     this.stats = stats;
     this.regionName = regionName;
+    this.inflightThreadsByStore = inflightThreadsByStore;
   }
 
   @Override
   public Void call() {
+    inflightThreadsByStore.compute(storeName, (k, counter) -> {
+
+      if (counter == null) {
+        counter = new AtomicInteger(0);
+      }
+      int currentInFlightStartCount = counter.incrementAndGet();
+      if (currentInFlightStartCount > 1) {
+        if (currentInFlightStartCount == 2) {
+          // increase the violation count only when the in-flight count for the store goes to 2
+          stats.recordViolationStoresCount(true);
+        }
+        LOGGER.warn(
+            "There are {} in-flight threads processing admin messages for store: {} in the cluster {}. Current thread: {} - {}",
+            currentInFlightStartCount,
+            storeName,
+            clusterName,
+            Thread.currentThread().getId(),
+            Thread.currentThread().getName());
+      }
+
+      LOGGER.debug(
+          "The thread id={}, name={} is processing admin messages for store: {} in cluster: {}. Current in-flight threads for this store: {}",
+          Thread.currentThread().getId(),
+          Thread.currentThread().getName(),
+          storeName,
+          clusterName,
+          currentInFlightStartCount);
+      return counter;
+    });
+
     try {
       while (!internalTopic.isEmpty()) {
         if (!admin.isLeaderControllerFor(clusterName)) {
@@ -143,6 +178,7 @@ public class AdminExecutionTask implements Callable<Void> {
             Math.max(0, completionTimestamp - adminOperationWrapper.getProducerTimestamp()));
         internalTopic.remove();
       }
+
     } catch (Exception e) {
       // Retry of the admin operation is handled automatically by keeping the failed admin operation inside the queue.
       // The queue with the problematic operation will be delegated and retried by the worker thread in the next cycle.
@@ -159,6 +195,27 @@ public class AdminExecutionTask implements Callable<Void> {
         LOGGER.error("Error {}", logMessage, e);
       }
       throw e;
+    } finally {
+      inflightThreadsByStore.computeIfPresent(storeName, (k, counter) -> {
+        int currentInFlightEndCount = counter.decrementAndGet();
+        if (currentInFlightEndCount == 1) {
+          // reduce the violation count only when the in-flight count for the store drops to 1
+          stats.recordViolationStoresCount(false);
+        }
+        LOGGER.debug(
+            "The thread id={}, name={} finished processing admin messages for store: {} in cluster: {}. Current in-flight threads for this store: {}",
+            Thread.currentThread().getId(),
+            Thread.currentThread().getName(),
+            storeName,
+            clusterName,
+            currentInFlightEndCount);
+        if (currentInFlightEndCount == 1) {
+          // remove the entry if there is no in-flight thread for the store
+          return null;
+        } else {
+          return counter;
+        }
+      });
     }
     return null;
   }

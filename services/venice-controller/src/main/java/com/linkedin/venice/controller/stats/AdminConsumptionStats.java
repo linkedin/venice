@@ -9,6 +9,7 @@ import io.tehuti.metrics.stats.Avg;
 import io.tehuti.metrics.stats.Count;
 import io.tehuti.metrics.stats.Max;
 import io.tehuti.metrics.stats.Min;
+import java.util.concurrent.atomic.AtomicInteger;
 
 
 public class AdminConsumptionStats extends AbstractVeniceStats {
@@ -48,8 +49,12 @@ public class AdminConsumptionStats extends AbstractVeniceStats {
    * The number of admin messages with future protocol version that deserialized with future schema from system store.
    */
   final private Sensor adminMessagesWithFutureProtocolVersionCountSensor;
-
   private PubSubPosition adminConsumptionFailedPosition;
+
+  /**
+   * The number of stores that have multiple threads working on their store operations concurrently.
+   */
+  final private AtomicInteger concurrentStoresCountGauge = new AtomicInteger(0);
   /**
    * A gauge reporting the total number of pending admin messages remaining in the internal queue at the end of each
    * consumption cycle. Pending messages could be caused by blocked admin operations or insufficient resources.
@@ -103,6 +108,8 @@ public class AdminConsumptionStats extends AbstractVeniceStats {
     adminMessageTotalLatencySensor = registerSensor("admin_message_total_latency_ms", new Avg(), new Max());
     adminMessagesWithFutureProtocolVersionCountSensor =
         registerSensor("admin_messages_with_future_protocol_version_count", new Count());
+
+    registerSensor(new AsyncGauge((ignored, ignored2) -> concurrentStoresCountGauge.get(), "violation_stores_count"));
     registerSensor(
         new AsyncGauge((ignored, ignored2) -> this.adminConsumptionOffsetLag, "admin_consumption_offset_lag"));
     registerSensor(
@@ -176,5 +183,14 @@ public class AdminConsumptionStats extends AbstractVeniceStats {
 
   public void recordAdminMessagesWithFutureProtocolVersionCount() {
     adminMessagesWithFutureProtocolVersionCountSensor.record();
+  }
+
+  public void recordViolationStoresCount(boolean increment) {
+    if (increment) {
+      this.concurrentStoresCountGauge.incrementAndGet();
+    } else {
+      this.concurrentStoresCountGauge.decrementAndGet();
+    }
+
   }
 }
