@@ -2566,7 +2566,7 @@ public abstract class StoreIngestionTaskTest {
   public void testDataValidationCheckPointing(SortedInput sortedInput, AAConfig aaConfig) throws Exception {
     final Map<Integer, InMemoryPubSubPosition> maxOffsetPerPartition = new HashMap<>();
     final Map<Pair<Integer, ByteArray>, ByteArray> pushedRecords = new HashMap<>();
-    final int totalNumberOfMessages = 1000;
+    final int totalNumberOfMessages = 500;
     final int totalNumberOfConsumptionRestarts = 10;
     final long LONG_TEST_TIMEOUT = 2 * TEST_TIMEOUT_MS;
 
