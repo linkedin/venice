@@ -268,6 +268,7 @@ import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
 import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
 import com.linkedin.venice.utils.AvroSchemaUtils;
 import com.linkedin.venice.utils.CollectionUtils;
+import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.Pair;
@@ -2231,6 +2232,7 @@ public class VeniceParentHelixAdmin implements Admin {
       String storeName,
       Map<String, ControllerClient> controllerClients) {
     Map<String, Integer> result = new HashMap<>();
+    long startTimeInMillis = System.currentTimeMillis();
     for (Map.Entry<String, ControllerClient> entry: controllerClients.entrySet()) {
       String region = entry.getKey();
       ControllerClient controllerClient = entry.getValue();
@@ -2246,6 +2248,10 @@ public class VeniceParentHelixAdmin implements Admin {
         result.put(region, response.getStore().getCurrentVersion());
       }
     }
+
+    getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName)
+        .getVeniceAdminStats()
+        .recordGetCurrentVersionForMultiRegionsLatency(LatencyUtils.getElapsedTimeFromMsToMs(startTimeInMillis));
     return result;
   }
 
