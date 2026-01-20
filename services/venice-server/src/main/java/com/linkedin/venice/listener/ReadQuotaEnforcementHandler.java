@@ -545,7 +545,7 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
               storeVersionPartitionCount == 0 ? 0 : assignedPartitionCount / storeVersionPartitionCount;
         }
         LOGGER.info(
-            "Read quota fallrecordIngestionFailureback strategy calculated node responsibility of: {} for resource: {}",
+            "Read quota fallback strategy calculated node responsibility of: {} for resource: {}",
             thisNodeQuotaResponsibility,
             topic);
         if (thisNodeQuotaResponsibility <= 0) {
