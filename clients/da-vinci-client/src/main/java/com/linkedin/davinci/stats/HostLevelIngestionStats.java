@@ -528,10 +528,22 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
     totalRecordsConsumedRate.record();
   }
 
+  /**
+   * Records the total number of bytes sent during blob transfer operations at the host level.
+   * This metric aggregates blob transfer send operations across all store versions on the host.
+   *
+   * @param bytes the number of bytes sent
+   */
   public void recordTotalBlobTransferBytesSend(long bytes) {
     totalBlobTransferBytesSentRate.record(bytes);
   }
 
+  /**
+   * Records the total number of bytes received during blob transfer operations at the host level.
+   * This metric aggregates blob transfer receive operations across all store versions on the host.
+   *
+   * @param bytes the number of bytes received
+   */
   public void recordTotalBlobTransferBytesReceived(long bytes) {
     totalBlobTransferBytesReceivedRate.record(bytes);
   }
