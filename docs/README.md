@@ -140,9 +140,6 @@ Write Compute includes two kinds of operations, which can be performed on the va
 - **Partial update**: set the content of a field within the value.
 - **Collection merging**: add or remove entries in a set or map.
 
-N.B.: Currently, write compute is only supported in conjunction with active-passive replication. Support for
-active-active replication is under development.
-
 #### Read Path
 
 Venice supports the following read APIs:
