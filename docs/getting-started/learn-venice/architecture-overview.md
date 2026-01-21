@@ -39,7 +39,14 @@ workloads.
 
 ### Write Modes
 
-Venice supports three write modes.
+Venice supports three write modes with different platform support:
+
+| Write Mode       | Supported Platforms                  | Store Requirement |
+| :--------------- | :----------------------------------- | :---------------- |
+| Batch Push       | Hadoop, Spark                        | All stores        |
+| Incremental Push | Hadoop, Spark (via Venice Push Job)  | Hybrid stores     |
+| Streaming Writes | Kafka, Samza, Flink, Online Producer | Hybrid stores     |
+| Write Compute    | Any (with Incremental/Streaming)     | Hybrid stores     |
 
 #### Batch Push
 

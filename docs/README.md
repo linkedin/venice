@@ -33,20 +33,20 @@ The above makes Venice particularly suitable as the stateful component backing a
 [Feathr](https://github.com/feathr-ai/feathr). AI applications feed the output of their ML training jobs into Venice and
 then query the data for use during online inference workloads.
 
-## Overview
+# Overview
 
 Venice is a system which straddles the offline, nearline and online worlds, as illustrated below.
 
 ![High Level Architecture Diagram](assets/images/high_level_architecture.drawio.svg)
 
-### Dependency
+## Dependency
 
 You can add a dependency on Venice to any Java project as specified below. Note that, currently, Venice dependencies are
 not published on Maven Central and therefore require adding an extra repository definition. All published jars can be
 seen [here](https://linkedin.jfrog.io/ui/native/venice/com/linkedin/venice/). Usually, the project is released a few
 times per week.
 
-#### Gradle
+### Gradle
 
 Add the following to your `build.gradle`:
 
@@ -64,7 +64,7 @@ dependencies {
 }
 ```
 
-#### Maven
+### Maven
 
 Add the following to your `pom.xml`:
 
@@ -93,7 +93,7 @@ Add the following to your `pom.xml`:
 
 ```
 
-### APIs
+## APIs
 
 From the user's perspective, Venice provides a variety of read and write APIs. These are fully decoupled from one
 another, in the sense that no matter which write APIs are used, any of the read APIs are available.
@@ -107,82 +107,41 @@ The following diagram presents these APIs and summarizes the components coming i
 
 ![API Overview](assets/images/api_overview.drawio.svg)
 
-#### Write Path
+### Write Path
 
-The Venice write path can be broken down into three granularities: full dataset swap, insertion of many rows into an
-existing dataset, and updates of some columns of some rows. All three granularities are supported by Hadoop and Samza.
-In addition, any service can asynchronously produce single row inserts and updates as well, using the
-[Online Producer](./user-guide/write-apis/online-producer.md) library. The table below summarizes the write operations
-supported by each platform:
+Venice supports flexible data ingestion:
 
-|                                                 | [Hadoop](./user-guide/write-apis/batch-push.md) | [Samza](./user-guide/write-apis/stream-processor.md) | [Any Service](./user-guide/write-apis/online-producer.md) |
-| ----------------------------------------------: | :---------------------------------------------: | :--------------------------------------------------: | :-------------------------------------------------------: |
-|                               Full dataset swap |                       ✅                        |                          ✅                          |                                                           |
-| Insertion of some rows into an existing dataset |                       ✅                        |                          ✅                          |                            ✅                             |
-|            Updates to some columns of some rows |                       ✅                        |                          ✅                          |                            ✅                             |
+- **Batch Push**: Full dataset replacement from Hadoop, Spark
+- **Incremental Push**: Bulk additions without full replacement
+- **Streaming Writes**: Real-time updates via Kafka, Samza, Flink, or the
+  [Online Producer](./user-guide/write-apis/online-producer.md)
+- **Write Compute**: Partial updates and collection merging for efficiency
+- **Hybrid Stores**: Mix batch and streaming with configurable rewind time
 
-##### Hybrid Stores
+### Read Path
 
-Moreover, the three granularities of write operations can all be mixed within a single dataset. A dataset which gets
-full dataset swaps in addition to row insertion or row updates is called _hybrid_.
+Venice provides multiple read APIs and client options:
 
-As part of configuring a store to be _hybrid_, an important concept is the _rewind time_, which defines how far back
-should recent real-time writes be rewound and applied on top of the new generation of the dataset getting swapped in.
+**Read APIs**:
 
-Leveraging this mechanism, it is possible to overlay the output of a stream processing job on top of that of a batch
-job. If using partial updates, then it is possible to have some of the columns be updated in real-time and some in
-batch, and these two sets of columns can either overlap or be disjoint, as desired.
+- Single get, batch get
+- Read compute with server-side operations (dot product, cosine similarity, field projection)
 
-##### Write Compute
+**Client Types**:
 
-Write Compute includes two kinds of operations, which can be performed on the value associated with a given key:
+- **Thin Client**: Stateless, 2 network hops, < 10ms latency
+- **Fast Client**: Partition-aware, 1 network hop, < 2ms latency
+- **Da Vinci Client**: Stateful local cache, 0 network hops, < 1ms latency
 
-- **Partial update**: set the content of a field within the value.
-- **Collection merging**: add or remove entries in a set or map.
+All clients share the same APIs, enabling flexible cost/performance optimization without code changes.
 
-#### Read Path
+**Change Data Capture (CDC)**: Stream all data changes (inserts, updates, deletes) for use cases like ML feature
+retrieval and client-side indexing.
 
-Venice supports the following read APIs:
+---
 
-- **Single get**: get the value associated with a single key
-- **Batch get**: get the values associated with a set of keys
-- **Read compute**: project some fields and/or compute some function on the fields of values associated with a set of
-  keys. When using the read compute DSL, the following functions are currently supported:
-  - **Dot product**: perform a dot product on the float vector stored in a given field, against another float vector
-    provided as query param, and return the resulting scalar.
-  - **Cosine similarity**: perform a cosine similarity on the float vector stored in a given field, against another
-    float vector provided as query param, and return the resulting scalar.
-  - **Hadamard product**: perform a Hadamard product on the float vector stored in a given field, against another float
-    vector provided as query param, and return the resulting vector.
-  - **Collection count**: return the number of items in the collection stored in a given field.
-
-##### Client Modes
-
-There are two main modes for accessing Venice data:
-
-- **Classical Venice** (stateless): You can perform remote queries against Venice's distributed backend service. If
-  using read compute operations in this mode, the queries are pushed down to the backend and only the computation
-  results are returned to the client. There are two clients capable of such remote queries:
-  - **Thin Client**: This is the simplest client, which sends requests to the router tier, which itself sends requests
-    to the server tier.
-  - **Fast Client**: This client is partitioning-aware, and can therefore send requests directly to the correct server
-    instance, skipping the routing tier. Note that this client is still under development and may not be as stable nor
-    at functional parity with the Thin Client.
-- **Da Vinci** (stateful): Alternatively, you can eagerly load some or all partitions of the dataset and perform queries
-  against the resulting local cache. Future updates to the data continue to be streamed in and applied to the local
-  cache.
-
-The table below summarizes the clients' characteristics:
-
-|                              | Network Hops | Typical latency (p99) |         State Footprint          |
-| ---------------------------: | :----------: | :-------------------: | :------------------------------: |
-|                  Thin Client |      2       |   < 10 milliseconds   |            Stateless             |
-|                  Fast Client |      1       |   < 2 milliseconds    | Minimal (routing metadata only)  |
-|  Da Vinci Client (RAM + SSD) |      0       |    < 1 millisecond    | Bounded RAM, full dataset on SSD |
-| Da Vinci Client (all-in-RAM) |      0       |   < 10 microseconds   |       Full dataset in RAM        |
-
-All of these clients share the same read APIs described above. This enables users to make changes to their
-cost/performance tradeoff without needing to rewrite their applications.
+For a comprehensive guide to Venice's architecture, write modes, client characteristics, and capabilities, see the
+[Architecture Overview](./getting-started/learn-venice/architecture-overview.md).
 
 ## Resources
 
