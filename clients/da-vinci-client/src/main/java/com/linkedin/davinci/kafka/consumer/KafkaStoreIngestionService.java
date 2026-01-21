@@ -1480,6 +1480,11 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   }
 
   @VisibleForTesting
+  public ParticipantStoreConsumptionTask getParticipantStoreConsumptionTask() {
+    return participantStoreConsumptionTask;
+  }
+
+  @VisibleForTesting
   protected Map<String, StoreIngestionTask> getTopicNameToIngestionTaskMap() {
     return topicNameToIngestionTaskMap;
   }

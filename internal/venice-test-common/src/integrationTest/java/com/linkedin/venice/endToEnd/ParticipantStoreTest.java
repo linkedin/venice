@@ -117,14 +117,22 @@ public class ParticipantStoreTest {
 
       // Verify participant store consumption stats
       // (not sure why these are flaky, but they are, so we're putting them in the non-deterministic assertion loop...)
-      Map<String, ? extends Metric> metrics =
-          veniceLocalCluster.getVeniceServers().iterator().next().getMetricsRepository().metrics();
+      VeniceServerWrapper serverWrapper = veniceLocalCluster.getVeniceServers().iterator().next();
+      Map<String, ? extends Metric> serverMetrics = serverWrapper.getMetricsRepository().metrics();
       // Verify the metric increased by exactly 1.0 (delta-based checking for test isolation)
       assertEquals(
-          getMetric(metrics, metricPrefix + "--killed_push_jobs.Count").value(),
+          getMetric(serverMetrics, metricPrefix + "--killed_push_jobs.Count").value(),
           initialKilledPushJobCount + 1.0);
-      assertTrue(getMetric(metrics, metricPrefix + "--kill_push_job_latency.Avg").value() > 0);
-      assertTrue(getMetric(metrics, ".venice-client_" + requestMetricExample).value() > 0);
+      assertTrue(getMetric(serverMetrics, metricPrefix + "--kill_push_job_latency.Avg").value() > 0);
+
+      // Client metrics are in a separate metrics repository (cloned for participant store client)
+      Map<String, ? extends Metric> clientMetrics = serverWrapper.getVeniceServer()
+          .getKafkaStoreIngestionService()
+          .getParticipantStoreConsumptionTask()
+          .getClientConfig()
+          .getMetricsRepository()
+          .metrics();
+      assertTrue(getMetric(clientMetrics, ".venice-client_" + requestMetricExample).value() > 0);
     });
   }
 

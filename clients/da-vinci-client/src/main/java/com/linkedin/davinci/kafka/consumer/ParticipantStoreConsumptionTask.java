@@ -1,5 +1,6 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import com.google.common.annotations.VisibleForTesting;
 import com.linkedin.davinci.stats.ParticipantStoreConsumptionStats;
 import com.linkedin.venice.client.store.AvroSpecificStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
@@ -209,5 +210,10 @@ public class ParticipantStoreConsumptionTask implements Runnable, Closeable {
     isClosing.set(true);
     clientMap.values().forEach(Utils::closeQuietlyWithErrorLogged);
     LOGGER.info("Closed {}", getClass().getSimpleName());
+  }
+
+  @VisibleForTesting
+  public ClientConfig<ParticipantMessageValue> getClientConfig() {
+    return clientConfig;
   }
 }
