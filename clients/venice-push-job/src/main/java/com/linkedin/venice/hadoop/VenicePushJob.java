@@ -1119,11 +1119,12 @@ public class VenicePushJob implements AutoCloseable {
           c -> c.getStore(pushJobSetting.storeName));
       Map<String, ViewConfig> viewConfigMap =
           storeResponse.getStore().getVersion(pushJobSetting.version).get().getViewConfigs();
+      boolean isFlinkVeniceViewsEnabled = storeResponse.getStore().isFlinkVeniceViewsEnabled();
       viewConfigMap = viewConfigMap.entrySet()
           .stream()
           .filter(vc -> Objects.equals(vc.getValue().getViewClassName(), MaterializedView.class.getCanonicalName()))
           .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
-      if (!viewConfigMap.isEmpty()) {
+      if (!viewConfigMap.isEmpty() && !isFlinkVeniceViewsEnabled) {
         pushJobSetting.materializedViewConfigFlatMap = ViewUtils.flatViewConfigMapString(viewConfigMap);
       }
     } catch (Exception e) {

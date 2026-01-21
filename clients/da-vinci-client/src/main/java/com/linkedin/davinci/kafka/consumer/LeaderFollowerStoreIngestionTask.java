@@ -303,7 +303,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
 
     this.kafkaClusterIdToUrlMap = serverConfig.getKafkaClusterIdToUrlMap();
-    if (builder.getVeniceViewWriterFactory() != null && !store.getViewConfigs().isEmpty()) {
+    if (builder.getVeniceViewWriterFactory() != null && !store.getViewConfigs().isEmpty()
+        && !store.isFlinkVeniceViewsEnabled()) {
       viewWriters = builder.getVeniceViewWriterFactory()
           .buildStoreViewWriters(
               store,
