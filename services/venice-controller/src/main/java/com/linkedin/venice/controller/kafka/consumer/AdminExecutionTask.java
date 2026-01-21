@@ -219,16 +219,9 @@ public class AdminExecutionTask implements Callable<Void> {
    */
   @VisibleForTesting
   public void taskOnFinish(String storeName) {
-    AtomicInteger currentInFlightEndCount = inflightThreadsByStore.computeIfPresent(storeName, (k, counter) -> {
-      int remaining = counter.decrementAndGet();
-      if (remaining <= 0) {
-        // remove the entry if there is no in-flight thread for the store
-        return null;
-      }
-      return counter;
-    });
-    if (currentInFlightEndCount != null) {
-      if (currentInFlightEndCount.get() == 1) {
+    inflightThreadsByStore.computeIfPresent(storeName, (k, counter) -> {
+      int currentInFlightEndCount = counter.decrementAndGet();
+      if (currentInFlightEndCount == 1) {
         // reduce the violation count only when the in-flight count for the store drops to 1
         stats.recordDecrementViolationStoresCount();
       }
@@ -239,7 +232,13 @@ public class AdminExecutionTask implements Callable<Void> {
           storeName,
           clusterName,
           currentInFlightEndCount);
-    }
+
+      if (currentInFlightEndCount == 0) {
+        // remove the entry if there is no in-flight thread for the store
+        return null;
+      }
+      return counter;
+    });
   }
 
   private void processMessage(AdminOperation adminOperation) {
