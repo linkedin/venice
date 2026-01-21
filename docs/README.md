@@ -153,8 +153,9 @@ cases and scale can Venice support. For more Venice posts, talks and podcasts, s
 
 ### Getting Started
 
-Refer to the [Venice quickstart](./getting-started/index.md) to create your own Venice cluster and play around with some
-features like creating a data store, batch push, incremental push, and single get. We recommend sticking to our latest
+Start with the [Getting Started guide](./getting-started/index.md) to learn Venice concepts and deploy your first
+cluster. The guide covers architecture fundamentals and provides quickstart instructions for both single and
+multi-datacenter deployments. We recommend sticking to our latest
 [stable release](https://blog.venicedb.org/stable-releases).
 
 ### Community
