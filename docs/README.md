@@ -33,7 +33,7 @@ The above makes Venice particularly suitable as the stateful component backing a
 [Feathr](https://github.com/feathr-ai/feathr). AI applications feed the output of their ML training jobs into Venice and
 then query the data for use during online inference workloads.
 
-# Overview
+## Overview
 
 Venice is a system which straddles the offline, nearline and online worlds, as illustrated below.
 
