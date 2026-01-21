@@ -62,8 +62,12 @@ public class VeniceOpenTelemetryMetricsRepository {
   public static final RedundantLogFilter REDUNDANT_LOG_FILTER = RedundantLogFilter.getRedundantLogFilter();
   public static final String DEFAULT_METRIC_PREFIX = "venice.";
   private final VeniceMetricsConfig metricsConfig;
-  private SdkMeterProvider sdkMeterProvider = null;
+
+  /** OpenTelemetry instance: Either created or retrieved from GlobalOpenTelemetry set by the application */
   private final OpenTelemetry openTelemetry;
+  /** SdkMeterProvider that is used to create the OpenTelemetry instance */
+  private SdkMeterProvider sdkMeterProvider = null;
+
   private final boolean emitOpenTelemetryMetrics;
   private final boolean emitTehutiMetrics;
   private final VeniceOpenTelemetryMetricNamingFormat metricFormat;
@@ -95,6 +99,61 @@ public class VeniceOpenTelemetryMetricsRepository {
         this,
         Collections.EMPTY_MAP,
         Attributes.empty());
+  }
+
+  /**
+   * Private constructor for creating a child instance that shares the same OpenTelemetry SDK
+   * but uses a different metric prefix. This avoids reinitializing the OpenTelemetry SDK.
+   *
+   * <p>When adding new fields to this class, you MUST update this constructor to properly
+   * initialize the new field. Fields fall into three categories:</p>
+   * <ol>
+   *   <li><b>Shared from parent:</b> Fields that should be copied from parent (e.g., metricsConfig,
+   *       openTelemetry, emitOpenTelemetryMetrics)</li>
+   *   <li><b>Child-specific:</b> Fields that should have new values for child (e.g., metricPrefix,
+   *       meter, instrument maps)</li>
+   *   <li><b>Ownership flags:</b> Fields indicating resource ownership (e.g., sdkMeterProvider
+   *       should be null for child)</li>
+   * </ol>
+   * <p>A unit test {@code testCloneWithNewMetricPrefixCopiesAllRequiredFields} in
+   * {@code VeniceOpenTelemetryMetricsRepositoryTest} uses reflection to verify all fields are
+   * properly initialized.</p>
+   *
+   * @param parent The parent repository to share OpenTelemetry instance from
+   * @param newMetricPrefix The new metric prefix to use for this child instance
+   */
+  private VeniceOpenTelemetryMetricsRepository(VeniceOpenTelemetryMetricsRepository parent, String newMetricPrefix) {
+    this.metricsConfig = parent.metricsConfig;
+    this.emitOpenTelemetryMetrics = parent.emitOpenTelemetryMetrics;
+    this.emitTehutiMetrics = parent.emitTehutiMetrics;
+    this.metricFormat = parent.metricFormat;
+    this.metricPrefix = newMetricPrefix;
+    this.openTelemetry = parent.openTelemetry;
+    this.sdkMeterProvider = null; // Child does not own the provider
+    validateMetricName(getMetricPrefix());
+
+    if (emitOpenTelemetryMetrics && openTelemetry != null) {
+      // Create a new Meter with the new prefix
+      this.meter = openTelemetry.getMeter(transformMetricName(getMetricPrefix(), metricFormat));
+      this.recordFailureMetric = MetricEntityStateBase.create(
+          CommonMetricsEntity.METRIC_RECORD_FAILURE.getMetricEntity(),
+          this,
+          Collections.EMPTY_MAP,
+          Attributes.empty());
+    }
+    LOGGER.info("Created child VeniceOpenTelemetryMetricsRepository with metric prefix: {}", newMetricPrefix);
+  }
+
+  /**
+   * Creates a new repository that shares the same OpenTelemetry SDK instance
+   * but uses a different metric prefix. This is useful for emitting metrics with a
+   * different prefix (e.g., "participant_store_client") without reinitializing OpenTelemetry.
+   *
+   * @param newMetricPrefix The metric prefix to use for the child repository
+   * @return A new VeniceOpenTelemetryMetricsRepository instance with the specified prefix
+   */
+  public VeniceOpenTelemetryMetricsRepository cloneWithNewMetricPrefix(String newMetricPrefix) {
+    return new VeniceOpenTelemetryMetricsRepository(this, newMetricPrefix);
   }
 
   private OpenTelemetry initializeOpenTelemetry(VeniceMetricsConfig metricsConfig) {
