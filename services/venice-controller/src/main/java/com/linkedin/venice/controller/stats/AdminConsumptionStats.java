@@ -109,7 +109,8 @@ public class AdminConsumptionStats extends AbstractVeniceStats {
     adminMessagesWithFutureProtocolVersionCountSensor =
         registerSensor("admin_messages_with_future_protocol_version_count", new Count());
 
-    registerSensor(new AsyncGauge((ignored, ignored2) -> concurrentStoresCountGauge.get(), "violation_stores_count"));
+    registerSensor(
+        new AsyncGauge((ignored, ignored2) -> concurrentStoresCountGauge.get(), "concurrent_store_processing_count"));
     registerSensor(
         new AsyncGauge((ignored, ignored2) -> this.adminConsumptionOffsetLag, "admin_consumption_offset_lag"));
     registerSensor(

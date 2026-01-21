@@ -179,6 +179,11 @@ public class AdminExecutionTask implements Callable<Void> {
     return this.storeName;
   }
 
+  /**
+   * Record the number of threads processing admin messages for the same store in parallel. If there is more than 1 thread
+   * processing admin messages for the same store in parallel, record a violation.
+   * @param storeName
+   */
   @VisibleForTesting
   public void taskOnStart(String storeName) {
     int currentInFlightStartCount =
@@ -207,6 +212,11 @@ public class AdminExecutionTask implements Callable<Void> {
         currentInFlightStartCount);
   }
 
+  /**
+   * Decrement the number of threads processing admin messages for the same store in parallel. If the number of threads
+   * processing admin messages for the same store reduce to 1, decrease the violation count.
+   * @param storeName
+   */
   @VisibleForTesting
   public void taskOnFinish(String storeName) {
     AtomicInteger currentInFlightEndCount = inflightThreadsByStore.computeIfPresent(storeName, (k, counter) -> {
