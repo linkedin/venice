@@ -182,40 +182,43 @@ public class AdminExecutionTask implements Callable<Void> {
   /**
    * Record the number of threads processing admin messages for the same store in parallel. If there is more than 1 thread
    * processing admin messages for the same store in parallel, record a violation.
-   * @param storeName
+   * @param storeName the name of the store being processed
    */
   @VisibleForTesting
   public void taskOnStart(String storeName) {
-    int currentInFlightStartCount =
-        inflightThreadsByStore.computeIfAbsent(storeName, k -> new AtomicInteger(0)).incrementAndGet();
-
-    if (currentInFlightStartCount > 1) {
-      if (currentInFlightStartCount == 2) {
-        // increase the violation count only when the in-flight count for the store goes to 2
-        stats.recordIncrementViolationStoresCount();
+    inflightThreadsByStore.compute(storeName, (k, counter) -> {
+      if (counter == null) {
+        counter = new AtomicInteger(0);
       }
-      LOGGER.warn(
-          "There are {} in-flight threads processing admin messages for store: {} in the cluster {}. Current thread: {} - {}",
-          currentInFlightStartCount,
+      int currentInFlightStartCount = counter.incrementAndGet();
+      if (currentInFlightStartCount > 1) {
+        if (currentInFlightStartCount == 2) {
+          // increase the violation count only when the in-flight count for the store goes to 2
+          stats.recordIncrementViolationStoresCount();
+        }
+        LOGGER.warn(
+            "There are {} in-flight threads processing admin messages for store: {} in the cluster {}. Current thread: {} - {}",
+            currentInFlightStartCount,
+            storeName,
+            clusterName,
+            Thread.currentThread().getId(),
+            Thread.currentThread().getName());
+      }
+      LOGGER.debug(
+          "The thread id={}, name={} is processing admin messages for store: {} in cluster: {}. Current in-flight threads for this store: {}",
+          Thread.currentThread().getId(),
+          Thread.currentThread().getName(),
           storeName,
           clusterName,
-          Thread.currentThread().getId(),
-          Thread.currentThread().getName());
-    }
-
-    LOGGER.debug(
-        "The thread id={}, name={} is processing admin messages for store: {} in cluster: {}. Current in-flight threads for this store: {}",
-        Thread.currentThread().getId(),
-        Thread.currentThread().getName(),
-        storeName,
-        clusterName,
-        currentInFlightStartCount);
+          currentInFlightStartCount);
+      return counter;
+    });
   }
 
   /**
    * Decrement the number of threads processing admin messages for the same store in parallel. If the number of threads
    * processing admin messages for the same store reduce to 1, decrease the violation count.
-   * @param storeName
+   * @param storeName the name of the store being processed
    */
   @VisibleForTesting
   public void taskOnFinish(String storeName) {
