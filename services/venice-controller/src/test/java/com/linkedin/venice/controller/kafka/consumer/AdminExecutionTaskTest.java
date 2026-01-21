@@ -2,7 +2,6 @@ package com.linkedin.venice.controller.kafka.consumer;
 
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -149,7 +148,6 @@ public class AdminExecutionTaskTest {
     CountDownLatch verificationDoneLatch = new CountDownLatch(1);
     CountDownLatch completionLatch = new CountDownLatch(2);
 
-    AtomicInteger observedCounterValueDuringConcurrency = new AtomicInteger(0);
     AtomicReference<Exception> exceptionRef = new AtomicReference<>();
 
     // Mock admin to introduce controlled delays
@@ -159,14 +157,14 @@ public class AdminExecutionTaskTest {
         // Thread 1 (slow): Signal that it has started and incremented counter to 1
         thread1StartedLatch.countDown();
         // Wait for thread 2 to start and observe the counter
-        verificationDoneLatch.await(10, java.util.concurrent.TimeUnit.SECONDS);
+        assertTrue(verificationDoneLatch.await(10, java.util.concurrent.TimeUnit.SECONDS));
       } else if (threadName.equals("fast-thread")) {
         // Thread 2 (fast): Wait for thread 1 to start first
-        thread1StartedLatch.await(10, java.util.concurrent.TimeUnit.SECONDS);
+        assertTrue(thread1StartedLatch.await(10, java.util.concurrent.TimeUnit.SECONDS));
         // Signal that we can now check the counter (both threads are running)
         thread2CanCheckCounterLatch.countDown();
         // Wait for verification to complete
-        verificationDoneLatch.await(10, java.util.concurrent.TimeUnit.SECONDS);
+        assertTrue(verificationDoneLatch.await(10, java.util.concurrent.TimeUnit.SECONDS));
       }
       return true;
     });
@@ -234,7 +232,6 @@ public class AdminExecutionTaskTest {
     // Verify that the counter value is 2
     AtomicInteger counter = inflightThreadsByStore.get(storeName);
     assertNotNull(counter, "Counter should exist when both threads are running");
-    observedCounterValueDuringConcurrency.set(counter.get());
     assertEquals(counter.get(), 2, "Counter should be 2 when both threads are executing concurrently");
 
     // Release both threads to complete
@@ -251,12 +248,6 @@ public class AdminExecutionTaskTest {
     // Verify completion
     assertTrue(completed, "Both threads should complete within timeout");
 
-    // Verify: We observed counter value of 2 during concurrent execution
-    assertEquals(
-        observedCounterValueDuringConcurrency.get(),
-        2,
-        "Should have observed counter value of 2 during concurrent execution");
-
     // Verify: After both threads finish, the counter should be cleaned up (back to 0/null)
     assertNull(inflightThreadsByStore.get(storeName), "Counter should be removed after both threads complete");
 
@@ -264,153 +255,6 @@ public class AdminExecutionTaskTest {
     // (when the second thread started and saw counter = 1)
     verify(mockStats, times(1)).recordViolationStoresCount(eq(true));
     verify(mockStats, times(1)).recordViolationStoresCount(eq(false));
-
-    // Verify: Both queues should be empty
-    assertEquals(queue1.size(), 0, "Queue 1 should be empty");
-    assertEquals(queue2.size(), 0, "Queue 2 should be empty");
-  }
-
-  /**
-   * Test that explicitly verifies the inflight counter reaches 2 when two threads are executing concurrently.
-   * This test uses a barrier pattern to ensure:
-   * 1. Thread 1 starts and increments counter to 1
-   * 2. Thread 1 pauses at a barrier
-   * 3. Thread 2 starts and increments counter to 2
-   * 4. We explicitly check that counter == 2
-   * 5. Both threads complete and counter is cleaned up
-   */
-  @Test
-  public void testInflightCounterReachesTwoWithConcurrentExecution() throws Exception {
-    // Setup: Create two separate queues for two tasks
-    Queue<AdminOperationWrapper> queue1 = new ConcurrentLinkedQueue<>();
-    Queue<AdminOperationWrapper> queue2 = new ConcurrentLinkedQueue<>();
-
-    // Add messages to both queues
-    queue1.add(createMockAdminOperationWrapper(1L));
-    queue2.add(createMockAdminOperationWrapper(2L));
-
-    // Latches to control execution flow
-    java.util.concurrent.CountDownLatch thread1IncrementedLatch = new java.util.concurrent.CountDownLatch(1);
-    java.util.concurrent.CountDownLatch thread2IncrementedLatch = new java.util.concurrent.CountDownLatch(1);
-    java.util.concurrent.CountDownLatch verificationDoneLatch = new java.util.concurrent.CountDownLatch(1);
-    java.util.concurrent.CountDownLatch completionLatch = new java.util.concurrent.CountDownLatch(2);
-
-    java.util.concurrent.atomic.AtomicInteger observedCounterValue = new java.util.concurrent.atomic.AtomicInteger(0);
-    java.util.concurrent.atomic.AtomicReference<Exception> exceptionRef =
-        new java.util.concurrent.atomic.AtomicReference<>();
-
-    // Mock admin to introduce controlled delays
-    when(mockAdmin.isLeaderControllerFor(clusterName)).thenAnswer(invocation -> {
-      String threadName = Thread.currentThread().getName();
-      if (threadName.equals("thread-1")) {
-        // Thread 1: Signal that it has incremented the counter
-        thread1IncrementedLatch.countDown();
-        // Wait for verification to complete before proceeding
-        verificationDoneLatch.await(10, java.util.concurrent.TimeUnit.SECONDS);
-      } else if (threadName.equals("thread-2")) {
-        // Thread 2: Signal that it has incremented the counter
-        thread2IncrementedLatch.countDown();
-        // Wait for verification to complete before proceeding
-        verificationDoneLatch.await(10, java.util.concurrent.TimeUnit.SECONDS);
-      }
-      return true;
-    });
-    when(mockAdmin.hasStore(clusterName, storeName)).thenReturn(false);
-
-    // Create two tasks for the same store
-    AdminExecutionTask task1 = new AdminExecutionTask(
-        mockLogger,
-        clusterName,
-        storeName,
-        lastSucceededExecutionIdMap,
-        lastPersistedExecutionId,
-        queue1,
-        mockAdmin,
-        mockExecutionIdAccessor,
-        isParentController,
-        mockStats,
-        regionName,
-        inflightThreadsByStore);
-
-    AdminExecutionTask task2 = new AdminExecutionTask(
-        mockLogger,
-        clusterName,
-        storeName,
-        lastSucceededExecutionIdMap,
-        lastPersistedExecutionId,
-        queue2,
-        mockAdmin,
-        mockExecutionIdAccessor,
-        isParentController,
-        mockStats,
-        regionName,
-        inflightThreadsByStore);
-
-    // Thread 1
-    Thread thread1 = new Thread(() -> {
-      try {
-        task1.call();
-      } catch (Exception e) {
-        exceptionRef.set(e);
-      } finally {
-        completionLatch.countDown();
-      }
-    }, "thread-1");
-
-    // Thread 2
-    Thread thread2 = new Thread(() -> {
-      try {
-        // Wait for thread 1 to increment the counter first
-        thread1IncrementedLatch.await(10, java.util.concurrent.TimeUnit.SECONDS);
-        task2.call();
-      } catch (Exception e) {
-        exceptionRef.set(e);
-      } finally {
-        completionLatch.countDown();
-      }
-    }, "thread-2");
-
-    // Start both threads
-    thread1.start();
-    thread2.start();
-
-    // Wait for both threads to have incremented the counter
-    boolean thread1Ready = thread1IncrementedLatch.await(5, java.util.concurrent.TimeUnit.SECONDS);
-    boolean thread2Ready = thread2IncrementedLatch.await(5, java.util.concurrent.TimeUnit.SECONDS);
-
-    assertEquals(thread1Ready, true, "Thread 1 should have incremented the counter");
-    assertEquals(thread2Ready, true, "Thread 2 should have incremented the counter");
-
-    // At this point, both threads have incremented the counter
-    // Verify that the counter value is 2
-    AtomicInteger counter = inflightThreadsByStore.get(storeName);
-    assertNotNull(counter, "Counter should exist when both threads are running");
-    observedCounterValue.set(counter.get());
-    assertEquals(counter.get(), 2, "Counter should be 2 when both threads are executing concurrently");
-
-    // Release both threads to complete
-    verificationDoneLatch.countDown();
-
-    // Wait for both threads to complete
-    boolean completed = completionLatch.await(10, java.util.concurrent.TimeUnit.SECONDS);
-
-    // Check if any exception occurred
-    if (exceptionRef.get() != null) {
-      throw exceptionRef.get();
-    }
-
-    // Verify completion
-    assertEquals(completed, true, "Both threads should complete within timeout");
-
-    // Verify: After both threads finish, the counter should be cleaned up
-    assertNull(inflightThreadsByStore.get(storeName), "Counter should be removed after both threads complete");
-
-    // Verify: We observed counter value of 2
-    assertEquals(observedCounterValue.get(), 2, "Should have observed counter value of 2");
-
-    // Verify: Violation stats should have been recorded
-    verify(mockStats, atLeastOnce()).recordViolationStoresCount(eq(true));
-    verify(mockStats, atLeastOnce()).recordViolationStoresCount(eq(false));
 
     // Verify: Both queues should be empty
     assertEquals(queue1.size(), 0, "Queue 1 should be empty");
