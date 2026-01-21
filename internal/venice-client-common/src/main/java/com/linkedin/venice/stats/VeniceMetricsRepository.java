@@ -50,6 +50,22 @@ public class VeniceMetricsRepository extends MetricsRepository implements Closea
     return veniceMetricsConfig;
   }
 
+  /**
+   * Creates a child repository that shares the same OpenTelemetry SDK instance
+   * but uses a different metric prefix. This is useful for emitting metrics with a
+   * different prefix (e.g., "participant_store_client") without reinitializing OpenTelemetry.
+   *
+   * @param newMetricPrefix The metric prefix to use for the child repository
+   * @return A new VeniceMetricsRepository instance with the specified prefix
+   */
+  public VeniceMetricsRepository cloneWithNewMetricPrefix(String newMetricPrefix) {
+    return new VeniceMetricsRepository(
+        veniceMetricsConfig,
+        openTelemetryMetricsRepository != null
+            ? openTelemetryMetricsRepository.cloneWithNewMetricPrefix(newMetricPrefix)
+            : null);
+  }
+
   @Override
   public void close() {
     super.close();

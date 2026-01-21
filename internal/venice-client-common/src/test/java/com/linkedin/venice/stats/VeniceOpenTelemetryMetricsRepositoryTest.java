@@ -8,6 +8,7 @@ import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertNotSame;
 import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertTrue;
@@ -31,7 +32,10 @@ import io.opentelemetry.api.metrics.LongGauge;
 import io.opentelemetry.api.metrics.LongUpDownCounter;
 import io.opentelemetry.api.metrics.ObservableLongGauge;
 import io.opentelemetry.sdk.metrics.export.MetricExporter;
+import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -451,4 +455,135 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
     assertFalse(repository.emitOpenTelemetryMetrics(), "OTel metrics should be disabled");
     assertTrue(repository.emitTehutiMetrics(), "Tehuti metrics should be enabled independently");
   }
+
+  /**
+   * This test uses reflection to verify that all non-static fields in VeniceOpenTelemetryMetricsRepository
+   * are properly initialized in the child constructor. This helps catch cases where new fields are added
+   * but the child constructor is not updated.
+   *
+   * <p>When this test fails after adding a new field, you need to:</p>
+   * <ol>
+   *   <li>Update the child constructor to properly initialize the new field</li>
+   *   <li>If the field should intentionally be different in child (like instrument maps),
+   *       add it to {@code FIELDS_EXPECTED_TO_DIFFER}</li>
+   *   <li>If the field is intentionally null in child (like sdkMeterProvider),
+   *       add it to {@code FIELDS_EXPECTED_NULL_IN_CHILD}</li>
+   * </ol>
+   */
+  @Test
+  public void testCloneWithNewMetricPrefixCopiesAllRequiredFields() throws IllegalAccessException {
+    // Fields that are expected to have different values in child vs parent
+    Set<String> FIELDS_EXPECTED_TO_DIFFER = new HashSet<>(
+        Arrays.asList(
+            "metricPrefix", // Child has different prefix
+            "meter", // Child has its own meter
+            "recordFailureMetric", // Child creates its own failure metric
+            "histogramMap", // Child has its own instrument maps
+            "counterMap",
+            "upDownCounterMap",
+            "gaugeMap",
+            "asyncGaugeMap"));
+
+    // Fields that are expected to be null in child
+    Set<String> FIELDS_EXPECTED_NULL_IN_CHILD = new HashSet<>(Arrays.asList("sdkMeterProvider"));
+
+    // Get all declared fields (including private)
+    Field[] fields = VeniceOpenTelemetryMetricsRepository.class.getDeclaredFields();
+
+    // Modify parent's primitive values so child won't accidentally match it
+    for (Field field: fields) {
+      if (Modifier.isStatic(field.getModifiers()) || Modifier.isFinal(field.getModifiers())) {
+        continue;
+      }
+      field.setAccessible(true);
+      String fieldName = field.getName();
+
+      // Skip fields that are expected to differ or be null in child
+      if (FIELDS_EXPECTED_TO_DIFFER.contains(fieldName) || FIELDS_EXPECTED_NULL_IN_CHILD.contains(fieldName)) {
+        continue;
+      }
+
+      Class<?> type = field.getType();
+      if (type == boolean.class) {
+        field.setBoolean(metricsRepository, !field.getBoolean(metricsRepository));
+      } else if (type == int.class) {
+        field.setInt(metricsRepository, field.getInt(metricsRepository) + 1);
+      } else if (type == long.class) {
+        field.setLong(metricsRepository, field.getLong(metricsRepository) + 1);
+      } else if (type == double.class) {
+        field.setDouble(metricsRepository, field.getDouble(metricsRepository) + 1.0);
+      }
+    }
+
+    String childPrefix = "reflection_test_prefix";
+    VeniceOpenTelemetryMetricsRepository childRepository = metricsRepository.cloneWithNewMetricPrefix(childPrefix);
+
+    for (Field field: fields) {
+      if (Modifier.isStatic(field.getModifiers())) {
+        continue;
+      }
+
+      field.setAccessible(true);
+      String fieldName = field.getName();
+      Object parentValue = field.get(metricsRepository);
+      Object childValue = field.get(childRepository);
+
+      if (FIELDS_EXPECTED_NULL_IN_CHILD.contains(fieldName)) {
+        assertNull(childValue, "Field '" + fieldName + "' should be null in child repository");
+      } else if (FIELDS_EXPECTED_TO_DIFFER.contains(fieldName)) {
+        if (parentValue != null && childValue != null) {
+          assertNotSame(parentValue, childValue, "Field '" + fieldName + "' should be different in child");
+        }
+      } else {
+        // All other fields should be copied from parent
+        if (parentValue == null) {
+          assertNull(childValue, "Field '" + fieldName + "' should be null in child when parent is null");
+        } else if (field.getType().isPrimitive()) {
+          assertEquals(
+              childValue,
+              parentValue,
+              "Primitive field '" + fieldName + "' should have same value in child as parent");
+        } else {
+          assertTrue(
+              childValue == parentValue || childValue.equals(parentValue),
+              "Field '" + fieldName + "' should be shared or equal between parent and child. ");
+        }
+      }
+    }
+
+    childRepository.close();
+  }
+
+  /**
+   * Test that child repository works correctly when OTel metrics are disabled.
+   */
+  @Test
+  public void testCloneWithNewMetricPrefixWhenOtelDisabled() {
+    when(mockMetricsConfig.emitOtelMetrics()).thenReturn(false);
+    VeniceOpenTelemetryMetricsRepository parentWithOtelDisabled =
+        new VeniceOpenTelemetryMetricsRepository(mockMetricsConfig);
+
+    assertNull(parentWithOtelDisabled.getMeter(), "Parent meter should be null when OTel disabled");
+
+    VeniceOpenTelemetryMetricsRepository childRepository =
+        parentWithOtelDisabled.cloneWithNewMetricPrefix("disabled_child");
+
+    assertNotNull(childRepository, "Child repository should not be null even when OTel disabled");
+    assertNull(childRepository.getMeter(), "Child meter should be null when OTel disabled");
+    assertFalse(childRepository.emitOpenTelemetryMetrics(), "Child should have OTel disabled");
+    assertEquals(childRepository.emitTehutiMetrics(), parentWithOtelDisabled.emitTehutiMetrics());
+
+    parentWithOtelDisabled.close();
+  }
+
+  /**
+   * Test that closing a child repository doesn't affect the parent.
+   */
+  @Test
+  public void testChildCloseDoesNotAffectParent() {
+    VeniceOpenTelemetryMetricsRepository childRepository = metricsRepository.cloneWithNewMetricPrefix("child");
+    childRepository.close();
+    assertNotNull(metricsRepository.getSdkMeterProvider(), "Parent should still be functional after child close");
+  }
+
 }

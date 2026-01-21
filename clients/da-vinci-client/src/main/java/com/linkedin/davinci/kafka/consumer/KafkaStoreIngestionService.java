@@ -82,6 +82,7 @@ import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.service.ICProvider;
+import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.system.store.ControllerClientBackedSystemSchemaInitializer;
 import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.throttle.EventThrottler;
@@ -542,6 +543,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         .build();
   }
 
+  private static final String PARTICIPANT_STORE_CLIENT_METRIC_PREFIX = "participant_store_client";
+
   @VisibleForTesting
   ParticipantStoreConsumptionTask initializeParticipantStoreConsumptionTask(
       VeniceServerConfig serverConfig,
@@ -558,11 +561,21 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       return null;
     }
 
+    MetricsRepository participantStoreMetricsRepository;
+    if (metricsRepository instanceof VeniceMetricsRepository) {
+      // Use a child metrics repository with a different prefix for participant store client metrics
+      // to distinguish them from server metrics
+      participantStoreMetricsRepository = ((VeniceMetricsRepository) metricsRepository)
+          .cloneWithNewMetricPrefix(PARTICIPANT_STORE_CLIENT_METRIC_PREFIX);
+    } else {
+      participantStoreMetricsRepository = metricsRepository;
+    }
+
     return new ParticipantStoreConsumptionTask(
         this,
         clusterInfoProvider,
         new ParticipantStoreConsumptionStats(metricsRepository, serverConfig.getClusterName()),
-        ClientConfig.cloneConfig(clientConfig.get()).setMetricsRepository(metricsRepository),
+        ClientConfig.cloneConfig(clientConfig.get()).setMetricsRepository(participantStoreMetricsRepository),
         serverConfig.getParticipantMessageConsumptionDelayMs(),
         icProvider);
   }
@@ -1464,6 +1477,11 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   @VisibleForTesting
   public KafkaValueSerializer getKafkaValueSerializer() {
     return kafkaValueSerializer;
+  }
+
+  @VisibleForTesting
+  public ParticipantStoreConsumptionTask getParticipantStoreConsumptionTask() {
+    return participantStoreConsumptionTask;
   }
 
   @VisibleForTesting
