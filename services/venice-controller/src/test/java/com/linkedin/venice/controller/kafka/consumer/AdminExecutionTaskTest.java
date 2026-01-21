@@ -1,13 +1,14 @@
 package com.linkedin.venice.controller.kafka.consumer;
 
-import static org.mockito.ArgumentMatchers.anyBoolean;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-import static org.testng.Assert.*;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertNull;
+import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.controller.ExecutionIdAccessor;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
@@ -85,7 +86,8 @@ public class AdminExecutionTaskTest {
 
     // Verify: The inflight counter should have been incremented and then decremented back to 0
     assertNull(inflightThreadsByStore.get(storeName), "Counter should be removed when it reaches 0");
-    verify(mockStats, never()).recordViolationStoresCount(anyBoolean());
+    verify(mockStats, never()).recordIncrementViolationStoresCount();
+    verify(mockStats, never()).recordDecrementViolationStoresCount();
   }
 
   /**
@@ -115,9 +117,9 @@ public class AdminExecutionTaskTest {
     task.call();
 
     // Verify: Violation should be recorded when counter goes from 1 to 2
-    verify(mockStats, times(1)).recordViolationStoresCount(eq(true));
+    verify(mockStats, times(1)).recordIncrementViolationStoresCount();
     // And decremented when it goes from 2 to 1
-    verify(mockStats, times(1)).recordViolationStoresCount(eq(false));
+    verify(mockStats, times(1)).recordDecrementViolationStoresCount();
     // Counter should be back to 1
     assertEquals(inflightThreadsByStore.get(storeName).get(), 1);
   }
@@ -253,8 +255,8 @@ public class AdminExecutionTaskTest {
 
     // Verify: Violation stats should have been recorded at least once
     // (when the second thread started and saw counter = 1)
-    verify(mockStats, times(1)).recordViolationStoresCount(eq(true));
-    verify(mockStats, times(1)).recordViolationStoresCount(eq(false));
+    verify(mockStats, times(1)).recordIncrementViolationStoresCount();
+    verify(mockStats, times(1)).recordDecrementViolationStoresCount();
 
     // Verify: Both queues should be empty
     assertEquals(queue1.size(), 0, "Queue 1 should be empty");

@@ -181,44 +181,46 @@ public class AdminExecutionTask implements Callable<Void> {
 
   @VisibleForTesting
   public void taskOnStart(String storeName) {
-    inflightThreadsByStore.compute(storeName, (k, counter) -> {
+    int currentInFlightStartCount =
+        inflightThreadsByStore.computeIfAbsent(storeName, k -> new AtomicInteger(0)).incrementAndGet();
 
-      if (counter == null) {
-        counter = new AtomicInteger(0);
+    if (currentInFlightStartCount > 1) {
+      if (currentInFlightStartCount == 2) {
+        // increase the violation count only when the in-flight count for the store goes to 2
+        stats.recordIncrementViolationStoresCount();
       }
-      int currentInFlightStartCount = counter.incrementAndGet();
-      if (currentInFlightStartCount > 1) {
-        if (currentInFlightStartCount == 2) {
-          // increase the violation count only when the in-flight count for the store goes to 2
-          stats.recordViolationStoresCount(true);
-        }
-        LOGGER.warn(
-            "There are {} in-flight threads processing admin messages for store: {} in the cluster {}. Current thread: {} - {}",
-            currentInFlightStartCount,
-            storeName,
-            clusterName,
-            Thread.currentThread().getId(),
-            Thread.currentThread().getName());
-      }
-
-      LOGGER.debug(
-          "The thread id={}, name={} is processing admin messages for store: {} in cluster: {}. Current in-flight threads for this store: {}",
-          Thread.currentThread().getId(),
-          Thread.currentThread().getName(),
+      LOGGER.warn(
+          "There are {} in-flight threads processing admin messages for store: {} in the cluster {}. Current thread: {} - {}",
+          currentInFlightStartCount,
           storeName,
           clusterName,
-          currentInFlightStartCount);
-      return counter;
-    });
+          Thread.currentThread().getId(),
+          Thread.currentThread().getName());
+    }
+
+    LOGGER.debug(
+        "The thread id={}, name={} is processing admin messages for store: {} in cluster: {}. Current in-flight threads for this store: {}",
+        Thread.currentThread().getId(),
+        Thread.currentThread().getName(),
+        storeName,
+        clusterName,
+        currentInFlightStartCount);
   }
 
   @VisibleForTesting
   public void taskOnFinish(String storeName) {
-    inflightThreadsByStore.computeIfPresent(storeName, (k, counter) -> {
-      int currentInFlightEndCount = counter.decrementAndGet();
-      if (currentInFlightEndCount == 1) {
+    AtomicInteger currentInFlightEndCount = inflightThreadsByStore.computeIfPresent(storeName, (k, counter) -> {
+      int remaining = counter.decrementAndGet();
+      if (remaining <= 0) {
+        // remove the entry if there is no in-flight thread for the store
+        return null;
+      }
+      return counter;
+    });
+    if (currentInFlightEndCount != null) {
+      if (currentInFlightEndCount.get() == 1) {
         // reduce the violation count only when the in-flight count for the store drops to 1
-        stats.recordViolationStoresCount(false);
+        stats.recordDecrementViolationStoresCount();
       }
       LOGGER.debug(
           "The thread id={}, name={} finished processing admin messages for store: {} in cluster: {}. Current in-flight threads for this store: {}",
@@ -227,13 +229,7 @@ public class AdminExecutionTask implements Callable<Void> {
           storeName,
           clusterName,
           currentInFlightEndCount);
-      if (currentInFlightEndCount == 0) {
-        // remove the entry if there is no in-flight thread for the store
-        return null;
-      } else {
-        return counter;
-      }
-    });
+    }
   }
 
   private void processMessage(AdminOperation adminOperation) {
