@@ -41,17 +41,18 @@ workloads.
 
 Venice supports three write modes with different platform support:
 
-| Write Mode       | Supported Platforms                  | Store Requirement |
-| :--------------- | :----------------------------------- | :---------------- |
-| Batch Push       | Hadoop, Spark                        | All stores        |
-| Incremental Push | Hadoop, Spark (via Venice Push Job)  | Hybrid stores     |
-| Streaming Writes | Kafka, Samza, Flink, Online Producer | Hybrid stores     |
-| Write Compute    | Any (with Incremental/Streaming)     | Hybrid stores     |
+| Write Mode       | Supported Platforms                 |
+| :--------------- | :---------------------------------- |
+| Batch Push       | Hadoop, Spark                       |
+| Incremental Push | Hadoop, Spark (via Venice Push Job) |
+| Streaming Writes | Samza, Flink, Online Producer       |
+| Write Compute    | Any (with Incremental/Streaming)    |
 
 #### Batch Push
 
-Full dataset replacement from batch jobs (Hadoop, Spark, etc.). Creates a new version, loads data in background, then
-atomically swaps read traffic for zero-downtime updates. Works with all store types.
+Full dataset replacement from [batch jobs](../../user-guide/write-apis/batch-push.md) (Hadoop, Spark, etc.). Creates a
+new version, loads data in background, then atomically swaps read traffic for zero-downtime updates. Works with all
+store types.
 
 #### Incremental Push
 
@@ -60,8 +61,9 @@ additions without full dataset replacement. **Requires hybrid stores**.
 
 #### Streaming Writes
 
-Real-time updates via Kafka, Samza, Flink, or Online Producer. Writes go to all existing versions (backup, current,
-future) to maintain consistency. **Requires hybrid stores**.
+Real-time updates via Kafka, Samza, Flink, or [Online Producer](../../user-guide/write-apis/online-producer.md). Writes
+go to all existing versions (backup, current, future) to maintain consistency. See
+[stream processor guide](../../user-guide/write-apis/stream-processor.md) for details. **Requires hybrid stores**.
 
 #### Write Compute Operations
 
