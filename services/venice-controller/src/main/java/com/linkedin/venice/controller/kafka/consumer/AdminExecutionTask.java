@@ -123,7 +123,6 @@ public class AdminExecutionTask implements Callable<Void> {
   @Override
   public Void call() {
     taskOnStart(storeName);
-
     try {
       while (!internalTopic.isEmpty()) {
         if (!admin.isLeaderControllerFor(clusterName)) {
@@ -195,14 +194,14 @@ public class AdminExecutionTask implements Callable<Void> {
         if (currentInFlightStartCount == 2) {
           // increase the violation count only when the in-flight count for the store goes to 2
           stats.recordIncrementViolationStoresCount();
+          LOGGER.warn(
+              "There are {} in-flight threads processing admin messages for store: {} in the cluster {}. Current thread: {} - {}",
+              currentInFlightStartCount,
+              storeName,
+              clusterName,
+              Thread.currentThread().getId(),
+              Thread.currentThread().getName());
         }
-        LOGGER.warn(
-            "There are {} in-flight threads processing admin messages for store: {} in the cluster {}. Current thread: {} - {}",
-            currentInFlightStartCount,
-            storeName,
-            clusterName,
-            Thread.currentThread().getId(),
-            Thread.currentThread().getName());
       }
       LOGGER.debug(
           "The thread id={}, name={} is processing admin messages for store: {} in cluster: {}. Current in-flight threads for this store: {}",
@@ -211,6 +210,7 @@ public class AdminExecutionTask implements Callable<Void> {
           storeName,
           clusterName,
           currentInFlightStartCount);
+
       return counter;
     });
   }

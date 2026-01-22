@@ -19,9 +19,11 @@ import com.linkedin.venice.controller.kafka.protocol.enums.SchemaType;
 import com.linkedin.venice.controller.stats.AdminConsumptionStats;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import java.util.Queue;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.apache.logging.log4j.Logger;
@@ -34,7 +36,6 @@ public class AdminExecutionTaskTest {
   private VeniceHelixAdmin mockAdmin;
   private ExecutionIdAccessor mockExecutionIdAccessor;
   private AdminConsumptionStats mockStats;
-  private Queue<AdminOperationWrapper> internalTopic;
   private ConcurrentHashMap<String, Long> lastSucceededExecutionIdMap;
   private ConcurrentHashMap<String, AtomicInteger> inflightThreadsByStore;
   private String clusterName;
@@ -49,7 +50,6 @@ public class AdminExecutionTaskTest {
     mockAdmin = mock(VeniceHelixAdmin.class);
     mockExecutionIdAccessor = mock(ExecutionIdAccessor.class);
     mockStats = mock(AdminConsumptionStats.class);
-    internalTopic = new ConcurrentLinkedQueue<>();
     lastSucceededExecutionIdMap = new ConcurrentHashMap<>();
     inflightThreadsByStore = new ConcurrentHashMap<>();
     clusterName = "test-cluster";
@@ -66,6 +66,9 @@ public class AdminExecutionTaskTest {
   public void testNoViolationInflightCounter() {
     // Setup: Create a task with an empty queue (will exit immediately)
     when(mockAdmin.isLeaderControllerFor(clusterName)).thenReturn(true);
+    // Add a message to the queue so the task has something to process
+    Queue<AdminOperationWrapper> internalTopic = new ConcurrentLinkedQueue<>();
+    internalTopic.add(createMockAdminOperationWrapper(1L));
 
     AdminExecutionTask task = new AdminExecutionTask(
         mockLogger,
@@ -88,16 +91,28 @@ public class AdminExecutionTaskTest {
     assertNull(inflightThreadsByStore.get(storeName), "Counter should be removed when it reaches 0");
     verify(mockStats, never()).recordIncrementViolationStoresCount();
     verify(mockStats, never()).recordDecrementViolationStoresCount();
+
+    assertTrue(internalTopic.isEmpty(), "The internal topic queue should be empty after processing.");
   }
 
   /**
-   * Test when there are more than one thread working on the same store
+   * Test when there is a new store operation and no violation occurs in inflight counter. The task fails with an exception.
    */
   @Test
-  public void testViolationWhenMultipleThreads() {
-    // Setup: Simulate that another thread is already processing this store
-    inflightThreadsByStore.put(storeName, new AtomicInteger(1));
-    when(mockAdmin.isLeaderControllerFor(clusterName)).thenReturn(true);
+  public void testNoViolationInflightCounterWithCancellationException() throws Exception {
+    // Add a message to the queue so the task has something to process
+    Queue<AdminOperationWrapper> internalTopic = new ConcurrentLinkedQueue<>();
+    internalTopic.add(createMockAdminOperationWrapper(1L));
+
+    CountDownLatch threadStartedLatch = new CountDownLatch(1);
+    AtomicReference<Exception> threadException = new AtomicReference<>();
+    CountDownLatch completionLatch = new CountDownLatch(1);
+
+    // Setup: Mock admin to throw exception when processing
+    when(mockAdmin.isLeaderControllerFor(clusterName)).thenAnswer(invocation -> {
+      threadStartedLatch.countDown();
+      throw new CancellationException("Task was cancelled");
+    });
 
     AdminExecutionTask task = new AdminExecutionTask(
         mockLogger,
@@ -114,59 +129,80 @@ public class AdminExecutionTaskTest {
         inflightThreadsByStore);
 
     // Execute
-    task.call();
+    Thread thread = new Thread(() -> {
+      try {
+        task.call();
+      } catch (Exception e) {
+        threadException.set(e);
+      } finally {
+        completionLatch.countDown();
+      }
+    }, "thread-with-exception");
 
-    // Verify: Violation should be recorded when counter goes from 1 to 2
-    verify(mockStats, times(1)).recordIncrementViolationStoresCount();
-    // And decremented when it goes from 2 to 1
-    verify(mockStats, times(1)).recordDecrementViolationStoresCount();
-    // Counter should be back to 1
-    assertEquals(inflightThreadsByStore.get(storeName).get(), 1);
+    thread.start();
+    boolean threadReady = threadStartedLatch.await(5, TimeUnit.SECONDS);
+    assertTrue(threadReady, "The thread should have started");
+
+    // Wait for thread to complete
+    boolean completed = completionLatch.await(5, TimeUnit.SECONDS);
+    assertTrue(completed, "The thread should complete within timeout");
+
+    assertNotNull(threadException.get(), "Thread should have thrown an exception");
+    assertTrue(
+        threadException.get() instanceof CancellationException,
+        "Thread should have thrown CancellationException");
+
+    // Verify: The inflight counter should have been incremented and then decremented back to 0
+    assertNull(inflightThreadsByStore.get(storeName), "Counter should be removed when there is exception");
+    verify(mockStats, never()).recordIncrementViolationStoresCount();
+    verify(mockStats, never()).recordDecrementViolationStoresCount();
+
+    assertEquals(internalTopic.size(), 1, "The internal topic queue should have operation after exception.");
   }
 
   /**
-   * Test concurrent execution of multiple tasks on the same store to verify thread-safe counter updates.
-   * This test spawns two threads that execute tasks for the same store simultaneously and verifies:
-   * 1. The inflight counter correctly tracks concurrent threads (goes up to 2)
-   * 2. Violation stats are recorded when multiple threads are detected
-   * 3. The counter is properly decremented and cleaned up after both threads finish
-   *
-   * Thread 1 is intentionally slowed down to ensure both threads are running concurrently,
-   * allowing us to observe the counter value of 2.
+   * Test concurrent execution where one thread gets a CancellationException.
+   * This test verifies that:
+   * 1. Two threads start processing the same store (counter reaches 2)
+   * 2. One thread throws a CancellationException
+   * 3. The counter is properly decremented even when exception occurs
+   * 4. The other thread continues and completes successfully
+   * 5. Violation stats are correctly recorded and cleaned up
    */
   @Test
-  public void testConcurrentTaskExecutionUpdatesInflightCounterCorrectly() throws Exception {
-    // Setup: Create two separate queues for two tasks
-    Queue<AdminOperationWrapper> queue1 = new ConcurrentLinkedQueue<>();
-    Queue<AdminOperationWrapper> queue2 = new ConcurrentLinkedQueue<>();
+  public void testConcurrentExecutionWithCancellationException() throws Exception {
+    // Add messages
+    Queue<AdminOperationWrapper> internalTopic = new ConcurrentLinkedQueue<>();
+    internalTopic.add(createMockAdminOperationWrapper(1L));
+    internalTopic.add(createMockAdminOperationWrapper(2L));
 
-    // Add messages to both queues
-    queue1.add(createMockAdminOperationWrapper(1L));
-    queue2.add(createMockAdminOperationWrapper(2L));
-
-    // Latches to control execution flow and observe concurrent state
+    // Latches to control execution flow
     CountDownLatch thread1StartedLatch = new CountDownLatch(1);
-    CountDownLatch thread2CanCheckCounterLatch = new CountDownLatch(1);
+    CountDownLatch thread2StartedLatch = new CountDownLatch(1);
     CountDownLatch verificationDoneLatch = new CountDownLatch(1);
     CountDownLatch completionLatch = new CountDownLatch(2);
 
-    AtomicReference<Exception> exceptionRef = new AtomicReference<>();
+    AtomicReference<Exception> thread1Exception = new AtomicReference<>();
+    AtomicReference<Exception> thread2Exception = new AtomicReference<>();
 
-    // Mock admin to introduce controlled delays
+    // Mock admin to introduce controlled delays and throw exception for thread 1
     when(mockAdmin.isLeaderControllerFor(clusterName)).thenAnswer(invocation -> {
       String threadName = Thread.currentThread().getName();
-      if (threadName.equals("slow-thread")) {
-        // Thread 1 (slow): Signal that it has started and incremented counter to 1
+      if (threadName.equals("thread-with-exception")) {
+        // Thread 1: Signal that it has started
         thread1StartedLatch.countDown();
-        // Wait for thread 2 to start and observe the counter
-        assertTrue(verificationDoneLatch.await(10, java.util.concurrent.TimeUnit.SECONDS));
-      } else if (threadName.equals("fast-thread")) {
-        // Thread 2 (fast): Wait for thread 1 to start first
-        assertTrue(thread1StartedLatch.await(10, java.util.concurrent.TimeUnit.SECONDS));
-        // Signal that we can now check the counter (both threads are running)
-        thread2CanCheckCounterLatch.countDown();
-        // Wait for verification to complete
-        assertTrue(verificationDoneLatch.await(10, java.util.concurrent.TimeUnit.SECONDS));
+        // // Wait for thread 2 to start
+        assertTrue(thread2StartedLatch.await(5, java.util.concurrent.TimeUnit.SECONDS));
+        // Throw CancellationException
+        throw new CancellationException("Task was cancelled");
+      } else if (threadName.equals("thread-normal")) {
+        // Thread 2: Wait for thread 1 to start first
+        assertTrue(thread1StartedLatch.await(5, java.util.concurrent.TimeUnit.SECONDS));
+        // Signal that thread 2 has started
+        thread2StartedLatch.countDown();
+        // Wait for verification
+        assertTrue(verificationDoneLatch.await(5, java.util.concurrent.TimeUnit.SECONDS));
+        return true;
       }
       return true;
     });
@@ -178,7 +214,7 @@ public class AdminExecutionTaskTest {
         storeName,
         lastSucceededExecutionIdMap,
         lastPersistedExecutionId,
-        queue1,
+        internalTopic,
         mockAdmin,
         mockExecutionIdAccessor,
         isParentController,
@@ -192,7 +228,7 @@ public class AdminExecutionTaskTest {
         storeName,
         lastSucceededExecutionIdMap,
         lastPersistedExecutionId,
-        queue2,
+        internalTopic,
         mockAdmin,
         mockExecutionIdAccessor,
         isParentController,
@@ -200,67 +236,70 @@ public class AdminExecutionTaskTest {
         regionName,
         inflightThreadsByStore);
 
-    // Thread 1 (slow thread)
+    // Thread 1 (will throw CancellationException)
     Thread thread1 = new Thread(() -> {
       try {
         task1.call();
       } catch (Exception e) {
-        exceptionRef.set(e);
+        thread1Exception.set(e);
       } finally {
         completionLatch.countDown();
       }
-    }, "slow-thread");
+    }, "thread-with-exception");
 
-    // Thread 2 (fast thread)
+    // Thread 2 (normal execution)
     Thread thread2 = new Thread(() -> {
       try {
         task2.call();
       } catch (Exception e) {
-        exceptionRef.set(e);
+        thread2Exception.set(e);
       } finally {
         completionLatch.countDown();
       }
-    }, "fast-thread");
+    }, "thread-normal");
 
     // Start both threads
     thread1.start();
     thread2.start();
 
-    // Wait for both threads to be in their paused state (both have incremented the counter)
-    boolean thread2Ready = thread2CanCheckCounterLatch.await(5, java.util.concurrent.TimeUnit.SECONDS);
-    assertTrue(thread2Ready, "Thread 2 should have started and both threads should be paused");
+    // Wait for both threads to have started
+    boolean thread1Ready = thread1StartedLatch.await(5, java.util.concurrent.TimeUnit.SECONDS);
+    boolean thread2Ready = thread2StartedLatch.await(5, java.util.concurrent.TimeUnit.SECONDS);
 
-    // At this point, both threads have incremented the counter and are paused
-    // Verify that the counter value is 2
+    assertTrue(thread1Ready, "Thread 1 should have started");
+    assertTrue(thread2Ready, "Thread 2 should have started");
+
+    // At this point, both threads have incremented the counter
+    // Verify that the counter value is 2 before exception occurs
     AtomicInteger counter = inflightThreadsByStore.get(storeName);
     assertNotNull(counter, "Counter should exist when both threads are running");
     assertEquals(counter.get(), 2, "Counter should be 2 when both threads are executing concurrently");
 
-    // Release both threads to complete
+    // Release thread 2 to complete
     verificationDoneLatch.countDown();
 
-    // Wait for both threads to complete (with timeout)
-    boolean completed = completionLatch.await(10, java.util.concurrent.TimeUnit.SECONDS);
-
-    // Check if any exception occurred
-    if (exceptionRef.get() != null) {
-      throw exceptionRef.get();
-    }
-
-    // Verify completion
+    // Wait for both threads to complete
+    boolean completed = completionLatch.await(5, TimeUnit.SECONDS);
     assertTrue(completed, "Both threads should complete within timeout");
 
-    // Verify: After both threads finish, the counter should be cleaned up (back to 0/null)
+    // Verify: Thread 1 should have CancellationException
+    assertNotNull(thread1Exception.get(), "Thread 1 should have thrown an exception");
+    assertTrue(
+        thread1Exception.get() instanceof CancellationException,
+        "Thread 1 should have thrown CancellationException");
+
+    // Verify: Thread 2 should complete successfully without exception
+    assertNull(thread2Exception.get(), "Thread 2 should not have thrown an exception");
+
+    // Verify: After both threads finish, the counter should be cleaned up
+    // Even though one thread threw an exception, the finally block should decrement the counter
     assertNull(inflightThreadsByStore.get(storeName), "Counter should be removed after both threads complete");
 
-    // Verify: Violation stats should have been recorded at least once
-    // (when the second thread started and saw counter = 1)
+    // Verify: Violation stats should have been recorded
+    // Increment when counter went from 1 to 2, decrement when it went from 2 to 1 (after exception)
     verify(mockStats, times(1)).recordIncrementViolationStoresCount();
     verify(mockStats, times(1)).recordDecrementViolationStoresCount();
 
-    // Verify: Both queues should be empty
-    assertEquals(queue1.size(), 0, "Queue 1 should be empty");
-    assertEquals(queue2.size(), 0, "Queue 2 should be empty");
   }
 
   /**
