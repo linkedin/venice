@@ -83,21 +83,6 @@ public class VeniceOpenTelemetryPerfTest {
             approach2Name));
   }
 
-  private static void assertPerformanceThreshold(
-      long actualDurationNs,
-      long baselineDurationNs,
-      double maxAllowedRatio,
-      String errorMessage) {
-    double performanceRatio = (double) actualDurationNs / baselineDurationNs;
-    assertTrue(
-        performanceRatio <= maxAllowedRatio,
-        String.format(
-            "%s Actual ratio: %.2f (%.1f%% slower)",
-            errorMessage,
-            performanceRatio,
-            (performanceRatio - 1.0) * 100));
-  }
-
   private VeniceOpenTelemetryMetricsRepository createOtelRepository() {
     io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader inMemoryReader =
         io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader.create();
@@ -196,13 +181,14 @@ public class VeniceOpenTelemetryPerfTest {
 
   /**
    * Compares performance of recording metrics using Tehuti vs OpenTelemetry.
-   * There perf data is very close, so to reduce flakiness, this test asserts that
-   * Otel should be alteast 80% as fast as Tehuti.
+   * Otel should be faster than tehuti.
    */
   @Test
   public void testTehutiVsOtelMetricRecordingPerf() {
-    int numLoops = 10000000; // 10M iterations
     int numLoopsForWarmUp = 1000; // 1k
+    // 100k iterations x 1k internal loops = 100M total recordings per approach
+    int numLoops = 100000;
+    int numInternalLoops = 1000;
 
     // Setup test fixtures
     VeniceOpenTelemetryMetricsRepository otelRepository = createOtelRepository();
@@ -282,25 +268,25 @@ public class VeniceOpenTelemetryPerfTest {
       HttpResponseStatusCodeCategory category = statusCategories[i % statusCategories.length];
       VeniceResponseStatusCategory veniceCategory = veniceCategories[i % veniceCategories.length];
 
-      // Measure OpenTelemetry call
-      long startOtel = System.nanoTime();
-      metricOtelOnly.record(1L, status, category, veniceCategory);
-      long endOtel = System.nanoTime();
-      totalOtelTimeNs += (endOtel - startOtel);
-
       // Measure Tehuti call
       long startTehuti = System.nanoTime();
-      metricTehutiOnly.record(1L, status, category, veniceCategory);
+      for (int j = 0; j < numInternalLoops; j++) {
+        metricTehutiOnly.record(1L, status, category, veniceCategory);
+      }
       long endTehuti = System.nanoTime();
       totalTehutiTimeNs += (endTehuti - startTehuti);
+
+      // Measure OpenTelemetry call
+      long startOtel = System.nanoTime();
+      for (int j = 0; j < numInternalLoops; j++) {
+        metricOtelOnly.record(1L, status, category, veniceCategory);
+      }
+      long endOtel = System.nanoTime();
+      totalOtelTimeNs += (endOtel - startOtel);
     }
 
     printBenchmarkResults("OpenTelemetry", totalOtelTimeNs, "Tehuti", totalTehutiTimeNs, numLoops);
-    assertPerformanceThreshold(
-        totalOtelTimeNs,
-        totalTehutiTimeNs,
-        1.2,
-        "OpenTelemetry should be at least 80% as fast as Tehuti.");
+    assertTrue(totalOtelTimeNs < totalTehutiTimeNs, "OpenTelemetry should be faster than Tehuti");
   }
 
   /**
@@ -311,8 +297,10 @@ public class VeniceOpenTelemetryPerfTest {
    */
   @Test
   public void testAtomicLongVsOtelUpDownCounterPerf() {
-    int numLoops = 10000000; // 10M iterations
-    int numLoopsForWarmUp = 10000; // 10k
+    int numLoopsForWarmUp = 1000; // 1k
+    // 100k iterations x 1k internal loops = 100M total recordings per approach
+    int numLoops = 100000;
+    int numInternalLoops = 1000;
 
     VeniceOpenTelemetryMetricsRepository otelRepository = createOtelRepository();
     Map<VeniceMetricsDimensions, String> baseDimensionsMap = createBaseDimensions();
@@ -345,15 +333,19 @@ public class VeniceOpenTelemetryPerfTest {
     for (int i = 0; i < numLoops; i++) {
       // Measure AtomicLong operations
       long startAtomic = System.nanoTime();
-      atomicCounter.incrementAndGet();
-      atomicCounter.decrementAndGet();
+      for (int j = 0; j < numInternalLoops; j++) {
+        atomicCounter.incrementAndGet();
+        atomicCounter.decrementAndGet();
+      }
       long endAtomic = System.nanoTime();
       totalAtomicTimeNs += (endAtomic - startAtomic);
 
       // Measure OpenTelemetry UpDownCounter operations
       long startOtel = System.nanoTime();
-      otelUpDownCounter.record(2L);
-      otelUpDownCounter.record(-1L);
+      for (int j = 0; j < numInternalLoops; j++) {
+        otelUpDownCounter.record(2L);
+        otelUpDownCounter.record(-1L);
+      }
       long endOtel = System.nanoTime();
       totalOtelTimeNs += (endOtel - startOtel);
     }
