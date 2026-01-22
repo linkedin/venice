@@ -258,7 +258,7 @@
                     {"name": "keyUrnFields", "type": {"type": "array", "items": "string"}, "default": [], "doc": "List of fields in the key schema that will be eligible for key urn compression"},
                     {"name": "repushTtlSeconds", "type": "int", "default": -1, "doc": "For store version created from repush, indicates the time-to-live in seconds set during the repush"},
                     {"name": "blobDbEnabled", "type": "string", "default": "NOT_SPECIFIED", "doc": "Flag to indicate if the RocksDB BlobDB feature is enabled or not. Values can be 'NOT_SPECIFIED' (default, follows cluster level config), 'ENABLED', or 'DISABLED'."},
-                    {"name": "previousCurrentVersion", "type": "string", "default": "", "doc": "Comma seperated string of the previous current versions of the store for a version"}]
+                    {"name": "previousCurrentVersion", "type": "int", "default": "", "doc": "Int representing the previous current version before the current version was marked current"}]
                 }
               },
               "default": []
