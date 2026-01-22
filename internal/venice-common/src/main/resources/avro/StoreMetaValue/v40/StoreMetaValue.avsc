@@ -34,8 +34,6 @@
             {"name": "largestUsedVersionNumber", "type": "int", "default": 0, "doc": "The largest version number ever used before for this store."},
             {"name": "largestUsedRTVersionNumber", "type": "int", "default": 0, "doc": "The largest version number for the real time topic ever used before for this store."},
             {"name": "readQuotaInCU", "type": "long", "default": 0, "doc": "Quota for read request hit this store. Measurement is capacity unit."},
-            {"name": "throughputQuotaInBytes", "type": "long", "default": -1, "doc": "The maximum throughput measured in bytes a store can produce for each of its version. Default -1 means no limit."},
-            {"name": "throughputQuotaInRecords", "type": "long", "default": -1, "doc": "The maximum throughput measured in records a store can produce for each of its version. Default -1 means no limit."},
             {
               "name": "hybridConfig",
               "doc": "Properties related to Hybrid Store behavior. If absent (null), then the store is not hybrid.",
@@ -258,7 +256,10 @@
                     {"name": "blobTransferInServerEnabled", "type": "string", "default": "NOT_SPECIFIED", "doc": "Flag to indicate if the blob transfer is allowed or not in server. Values can be 'NOT_SPECIFIED' as default, 'ENABLED', or 'DISABLED'."},
                     {"name": "keyUrnCompressionEnabled", "type":  "boolean", "default":  false, "doc":  "Flag to control whether the key urn compression is enabled or not"},
                     {"name": "keyUrnFields", "type": {"type": "array", "items": "string"}, "default": [], "doc": "List of fields in the key schema that will be eligible for key urn compression"},
-                    {"name": "repushTtlSeconds", "type": "int", "default": -1, "doc": "For store version created from repush, indicates the time-to-live in seconds set during the repush"}]
+                    {"name": "repushTtlSeconds", "type": "int", "default": -1, "doc": "For store version created from repush, indicates the time-to-live in seconds set during the repush"},
+                    {"name": "blobDbEnabled", "type": "string", "default": "NOT_SPECIFIED", "doc": "Flag to indicate if the RocksDB BlobDB feature is enabled or not. Values can be 'NOT_SPECIFIED' (default, follows cluster level config), 'ENABLED', or 'DISABLED'."},
+                    {"name": "previousCurrentVersion", "type": "int", "default": -1, "doc": "Int representing the previous current version before the current version was marked current"}
+                  ]
                 }
               },
               "default": []
@@ -312,7 +313,11 @@
             {"name": "blobTransferInServerEnabled", "type": "string", "default": "NOT_SPECIFIED", "doc": "Flag to indicate if the blob transfer is allowed or not in server. Values can be 'NOT_SPECIFIED' as default, 'ENABLED', or 'DISABLED'."},
             {"name": "keyUrnCompressionEnabled", "type":  "boolean", "default":  false, "doc":  "Flag to control whether the key urn compression is enabled or not"},
             {"name": "keyUrnFields", "type": {"type": "array", "items": "string"}, "default": [], "doc": "List of fields in the key schema that will be eligible for key urn compression"},
-            {"name": "flinkVeniceViewsEnabled", "type": "boolean", "default": false, "doc": "Flag to indicate whether Flink-based Venice Views are enabled for this store."}
+            {"name": "flinkVeniceViewsEnabled", "type": "boolean", "default": false, "doc": "Flag to indicate whether Flink-based Venice Views are enabled for this store."},
+            {"name": "throughputQuotaInBytes", "type": "long", "default": -1, "doc": "The maximum throughput measured in bytes that clients can produce into one store. Default -1 means no limit."},
+            {"name": "throughputQuotaInRecords", "type": "long", "default": -1, "doc": "The maximum throughput measured in records that clients can produce into one store. Default -1 means no limit."},
+            {"name": "blobDbEnabled", "type": "string", "default": "NOT_SPECIFIED", "doc": "Flag to indicate if the RocksDB BlobDB feature is enabled or not. Values can be 'NOT_SPECIFIED' (default, follows cluster level config), 'ENABLED', or 'DISABLED'."},
+            {"name": "previousCurrentVersion", "type": "int", "default": -1, "doc": "Int representing the previous current version before the current version was marked current"}
           ]
         }
       ],
