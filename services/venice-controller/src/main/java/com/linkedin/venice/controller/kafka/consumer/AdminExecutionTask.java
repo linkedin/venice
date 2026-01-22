@@ -193,7 +193,7 @@ public class AdminExecutionTask implements Callable<Void> {
       if (currentInFlightStartCount > 1) {
         if (currentInFlightStartCount == 2) {
           // increase the violation count only when the in-flight count for the store goes to 2
-          stats.recordIncrementViolationStoresCount();
+          stats.recordIncrementConcurrentStoresCount();
           LOGGER.warn(
               "There are {} in-flight threads processing admin messages for store: {} in the cluster {}. Current thread: {} - {}",
               currentInFlightStartCount,
@@ -226,7 +226,7 @@ public class AdminExecutionTask implements Callable<Void> {
       int currentInFlightEndCount = counter.decrementAndGet();
       if (currentInFlightEndCount == 1) {
         // reduce the violation count only when the in-flight count for the store drops to 1
-        stats.recordDecrementViolationStoresCount();
+        stats.recordDecrementConcurrentStoresCount();
       }
       LOGGER.debug(
           "The thread id={}, name={} finished processing admin messages for store: {} in cluster: {}. Current in-flight threads for this store: {}",

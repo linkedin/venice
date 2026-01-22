@@ -186,11 +186,11 @@ public class AdminConsumptionStats extends AbstractVeniceStats {
     adminMessagesWithFutureProtocolVersionCountSensor.record();
   }
 
-  public void recordIncrementViolationStoresCount() {
+  public void recordIncrementConcurrentStoresCount() {
     this.concurrentStoresCountGauge.incrementAndGet();
   }
 
-  public void recordDecrementViolationStoresCount() {
+  public void recordDecrementConcurrentStoresCount() {
     this.concurrentStoresCountGauge.decrementAndGet();
   }
 }
