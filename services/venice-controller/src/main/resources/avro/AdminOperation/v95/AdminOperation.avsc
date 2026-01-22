@@ -759,13 +759,13 @@
             },
             {
               "name": "throughputQuotaInBytes",
-              "doc": "The maximum throughput measured in bytes a store can produce for each of its version",
+              "doc": "The maximum throughput measured in bytes a store can produce for each of its version. Default -1 means no limit.",
               "type": "long",
               "default": -1
             },
             {
               "name": "throughputQuotaInRecords",
-              "doc": "The maximum throughput measured in records a store can produce for each of its version",
+              "doc": "The maximum throughput measured in records a store can produce for each of its version. Default -1 means no limit.",
               "type": "long",
               "default": -1
             }
