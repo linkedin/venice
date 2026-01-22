@@ -112,7 +112,10 @@ nav:
       - Online Producer: user-guide/write-apis/online-producer.md
     - Read APIs:
       - user-guide/read-apis/index.md
+      - Thin Client: user-guide/read-apis/thin-client.md
+      - Fast Client: user-guide/read-apis/fast-client.md
       - Da Vinci Client: user-guide/read-apis/da-vinci-client.md
+      - Change Data Capture: user-guide/read-apis/cdc.md
 
   - Operations:
     - operations/index.md

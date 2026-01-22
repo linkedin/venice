@@ -48,8 +48,8 @@ correct behavior anyway (e.g. potentially at the cost of efficiency, such as the
 regenerate the state).
 
 For enums which are going to be communicated across processes or across lifetimes of the same process, consider using
-[VeniceEnumValue](http://venicedb.org/javadoc/com/linkedin/venice/utils/VeniceEnumValue.html),
-[EnumUtils](http://venicedb.org/javadoc/com/linkedin/venice/utils/EnumUtils.html) and related unit test classes, which
+[VeniceEnumValue](https://venicedb.org/javadoc/com/linkedin/venice/utils/VeniceEnumValue.html),
+[EnumUtils](https://venicedb.org/javadoc/com/linkedin/venice/utils/EnumUtils.html) and related unit test classes, which
 provide a structure to minimize the chance that we mistakenly change the mapping of numeric ID -> enum value.
 
 ### JavaDoc

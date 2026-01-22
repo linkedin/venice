@@ -1,8 +1,16 @@
 # Operations Guide
 
-Documentation for operating Venice.
+This guide covers operational tasks for Venice administrators and operators.
 
-## Sections
+## Data Management
 
-- [Data Management](data-management/repush.md) - Repush, TTL, and system stores
-- [Advanced](advanced/p2p-bootstrapping.md) - P2P bootstrapping and data integrity
+- [Repush](data-management/repush.md) - Re-ingest data from source of truth to repair inconsistencies or apply schema
+  changes
+- [TTL](data-management/ttl.md) - Configure time-to-live to automatically expire old records
+- [System Stores](data-management/system-stores.md) - Internal stores used by Venice for metadata and coordination
+
+## Advanced Topics
+
+- [P2P Bootstrapping](advanced/p2p-bootstrapping.md) - Peer-to-peer data transfer for faster server and client
+  bootstrapping
+- [Data Integrity](advanced/data-integrity.md) - Verify data consistency and detect corruption

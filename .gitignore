@@ -30,6 +30,7 @@ integrations/venice-duckdb/classHash*.txt
 .windsurf/
 .github/copilot-instructions.md
 .github/instructions/
+CLAUDE.md
 
 
 # Stuff related to running the docs server locally
