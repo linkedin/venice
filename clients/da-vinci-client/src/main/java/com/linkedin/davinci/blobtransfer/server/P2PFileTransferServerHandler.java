@@ -15,6 +15,8 @@ import com.linkedin.davinci.blobtransfer.BlobSnapshotManager;
 import com.linkedin.davinci.blobtransfer.BlobTransferPartitionMetadata;
 import com.linkedin.davinci.blobtransfer.BlobTransferPayload;
 import com.linkedin.davinci.blobtransfer.BlobTransferUtils;
+import com.linkedin.davinci.stats.AggBlobTransferStats;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.request.RequestHelper;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.Utils;
@@ -64,6 +66,7 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
   private final BlobSnapshotManager blobSnapshotManager;
   // Global counter for all active transfer requests across all topics and partitions
   private final AtomicInteger globalConcurrentTransferRequests = new AtomicInteger(0);
+  private final AggBlobTransferStats aggBlobTransferStats;
   private static final AttributeKey<BlobTransferPayload> BLOB_TRANSFER_REQUEST =
       AttributeKey.valueOf("blobTransferRequest");
   private static final AttributeKey<AtomicBoolean> SUCCESS_COUNTED =
@@ -73,10 +76,12 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
       String baseDir,
       int blobTransferMaxTimeoutInMin,
       BlobSnapshotManager blobSnapshotManager,
+      AggBlobTransferStats aggBlobTransferStats,
       int maxAllowedConcurrentSnapshotUsers) {
     this.baseDir = baseDir;
     this.blobTransferMaxTimeoutInMin = blobTransferMaxTimeoutInMin;
     this.blobSnapshotManager = blobSnapshotManager;
+    this.aggBlobTransferStats = aggBlobTransferStats;
     this.maxAllowedConcurrentSnapshotUsers = maxAllowedConcurrentSnapshotUsers;
   }
 
@@ -194,7 +199,7 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
         return;
       }
       // send file
-      sendFile(file, ctx, replicaInfo);
+      sendFile(file, ctx, blobTransferRequest, replicaInfo);
     }
 
     sendMetadata(ctx, transferPartitionMetadata);
@@ -262,7 +267,11 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
     ctx.close();
   }
 
-  private void sendFile(File file, ChannelHandlerContext ctx, String replicaInfo) throws IOException {
+  private void sendFile(
+      File file,
+      ChannelHandlerContext ctx,
+      BlobTransferPayload blobTransferPayload,
+      String replicaInfo) throws IOException {
     LOGGER.info(
         "Sending file: {} for replica {} to host {}.",
         file.getName(),
@@ -289,6 +298,14 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
 
     sendFileFuture.addListener(future -> {
       if (future.isSuccess()) {
+        /**
+         * Note: This does not record the real-time byte rate of files sent. If we want to pursue more accurate read metric,
+         * we will need to overwrite the {@link HttpChunkedInput} above to intercept the traffic and record the byte rate.
+         */
+        aggBlobTransferStats.recordBlobTransferBytesSent(
+            blobTransferPayload.getStoreName(),
+            Version.parseVersionFromKafkaTopicName(blobTransferPayload.getTopicName()),
+            length);
         LOGGER.info(
             "Sent file: {} successfully for replica: {} to host: {}",
             file.getName(),
