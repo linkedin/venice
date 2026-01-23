@@ -48,7 +48,23 @@ public class MetricEntityStateGeneric extends MetricEntityState {
         registerTehutiSensorFn,
         tehutiMetricNameEnum,
         tehutiMetricStats);
+    validateMetricType(metricEntity);
     validateRequiredDimensions(metricEntity, baseDimensionsMap);
+  }
+
+  /**
+   * MetricEntityStateGeneric does not support ASYNC_COUNTER_FOR_HIGH_PERF_CASES because it doesn't cache
+   * MetricAttributesData and cannot provide the getAllMetricAttributesData() iteration required for
+   * observable counter reporting. Use one of the enum-based MetricEntityState subclasses for
+   * ASYNC_COUNTER_FOR_HIGH_PERF_CASES metrics.
+   */
+  private void validateMetricType(MetricEntity metricEntity) {
+    if (metricEntity.getMetricType() == MetricType.ASYNC_COUNTER_FOR_HIGH_PERF_CASES) {
+      throw new IllegalArgumentException(
+          "MetricEntityStateGeneric does not support ASYNC_COUNTER_FOR_HIGH_PERF_CASES metric type. "
+              + "Use MetricEntityStateOneEnum, MetricEntityStateTwoEnums, etc. for metric: "
+              + metricEntity.getMetricName());
+    }
   }
 
   /** Factory method to keep the API consistent with other subclasses like {@link MetricEntityStateOneEnum} */
@@ -152,5 +168,16 @@ public class MetricEntityStateGeneric extends MetricEntityState {
     } catch (IllegalArgumentException e) {
       getOtelRepository().recordFailureMetric(getMetricEntity(), e);
     }
+  }
+
+  @Override
+  /**
+   * MetricEntityStateGeneric does not support ASYNC_COUNTER_FOR_HIGH_PERF_CASES because it doesn't cache
+   * MetricAttributesData and cannot provide the getAllMetricAttributesData() iteration required for
+   * observable counter reporting. Use one of the enum-based MetricEntityState subclasses for
+   * ASYNC_COUNTER_FOR_HIGH_PERF_CASES metrics.
+   */
+  protected Iterable<MetricAttributesData> getAllMetricAttributesData() {
+    return null;
   }
 }

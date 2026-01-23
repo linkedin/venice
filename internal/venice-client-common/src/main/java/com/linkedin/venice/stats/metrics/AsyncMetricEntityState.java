@@ -108,7 +108,10 @@ public abstract class AsyncMetricEntityState {
     if (asyncCallback != null && !metricEntity.getMetricType().isAsyncMetric()) {
       throw new IllegalArgumentException(
           "Async callback is provided, but the metric type is not async for metric: " + metricEntity.getMetricName());
-    } else if (asyncCallback == null && metricEntity.getMetricType().isAsyncMetric()) {
+    } else if (metricEntity.getMetricType().isAsyncMetric() && asyncCallback == null
+        && metricEntity.getMetricType() != MetricType.ASYNC_COUNTER_FOR_HIGH_PERF_CASES) {
+      // ASYNC_COUNTER_FOR_HIGH_PERF_CASES is also async but handles its callback registration
+      // internally via registerObservableLongCounter(), so it doesn't need a callback passed in here.
       throw new IllegalArgumentException(
           "Async callback is not provided, but the metric type is async for metric: " + metricEntity.getMetricName());
     }

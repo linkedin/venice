@@ -26,7 +26,9 @@ import io.opentelemetry.api.metrics.LongUpDownCounter;
 import io.opentelemetry.api.metrics.LongUpDownCounterBuilder;
 import io.opentelemetry.api.metrics.Meter;
 import io.opentelemetry.api.metrics.MeterProvider;
+import io.opentelemetry.api.metrics.ObservableLongCounter;
 import io.opentelemetry.api.metrics.ObservableLongGauge;
+import io.opentelemetry.api.metrics.ObservableLongMeasurement;
 import io.opentelemetry.exporter.otlp.http.metrics.OtlpHttpMetricExporter;
 import io.opentelemetry.exporter.otlp.http.metrics.OtlpHttpMetricExporterBuilder;
 import io.opentelemetry.sdk.OpenTelemetrySdk;
@@ -236,6 +238,8 @@ public class VeniceOpenTelemetryMetricsRepository {
   private final VeniceConcurrentHashMap<String, LongUpDownCounter> upDownCounterMap = new VeniceConcurrentHashMap<>();
   private final VeniceConcurrentHashMap<String, LongGauge> gaugeMap = new VeniceConcurrentHashMap<>();
   private final VeniceConcurrentHashMap<String, ObservableLongGauge> asyncGaugeMap = new VeniceConcurrentHashMap<>();
+  private final VeniceConcurrentHashMap<String, ObservableLongCounter> asyncCounterMap =
+      new VeniceConcurrentHashMap<>();
 
   MetricExporter getOtlpHttpMetricExporter(VeniceMetricsConfig metricsConfig) {
     OtlpHttpMetricExporterBuilder exporterBuilder =
@@ -433,6 +437,14 @@ public class VeniceOpenTelemetryMetricsRepository {
       case ASYNC_GAUGE:
         return createAsyncLongGauge(metricEntity, asyncCallback, attributes);
 
+      case ASYNC_COUNTER_FOR_HIGH_PERF_CASES:
+        /**
+         * Observable Counter is registered separately after the MetricEntityState is constructed
+         * because the callback needs access to the MetricEntityState's subclass's metricAttributesData map.
+         * See registerObservableLongCounter method.
+         */
+        return null;
+
       default:
         throw new VeniceException("Unknown metric type: " + metricType);
     }
@@ -441,6 +453,39 @@ public class VeniceOpenTelemetryMetricsRepository {
   @VisibleForTesting
   public Object createInstrument(MetricEntity metricEntity) {
     return createInstrument(metricEntity, null, null);
+  }
+
+  /**
+   * Registers an Observable Long Counter that reads accumulated values from a callback.
+   * This method should be called after the MetricEntityState is fully constructed,
+   * as the callback needs access to the metricAttributesData map.
+   *
+   * <p>For {@link MetricType#ASYNC_COUNTER_FOR_HIGH_PERF_CASES} metrics, the callback is invoked during
+   * OpenTelemetry's metric collection cycle. The callback should iterate over all
+   * accumulated values and report them via the provided {@link ObservableLongMeasurement}.
+   *
+   * @param metricEntity the metric entity definition
+   * @param reportCallback callback that reports all accumulated values to the measurement
+   * @return the created ObservableLongCounter, or null if OTel metrics are disabled
+   */
+  public ObservableLongCounter registerObservableLongCounter(
+      MetricEntity metricEntity,
+      @Nonnull java.util.function.Consumer<ObservableLongMeasurement> reportCallback) {
+    if (!emitOpenTelemetryMetrics()) {
+      return null;
+    }
+    if (metricEntity.getMetricType() != MetricType.ASYNC_COUNTER_FOR_HIGH_PERF_CASES) {
+      throw new IllegalArgumentException(
+          "registerObservableLongCounter should only be called for ASYNC_COUNTER_FOR_HIGH_PERF_CASES metrics, but got: "
+              + metricEntity.getMetricType() + " for metric: " + metricEntity.getMetricName());
+    }
+    return asyncCounterMap.computeIfAbsent(metricEntity.getMetricName(), key -> {
+      String fullMetricName = getFullMetricName(metricEntity);
+      return meter.counterBuilder(fullMetricName)
+          .setUnit(metricEntity.getUnit().name())
+          .setDescription(getMetricDescription(metricEntity, metricsConfig))
+          .buildWithCallback(reportCallback::accept);
+    });
   }
 
   public String getDimensionName(VeniceMetricsDimensions dimension) {

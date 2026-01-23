@@ -16,14 +16,19 @@ import static org.testng.Assert.fail;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.read.RequestType;
+import com.linkedin.venice.stats.dimensions.HttpResponseStatusCodeCategory;
+import com.linkedin.venice.stats.dimensions.HttpResponseStatusEnum;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.stats.metrics.AsyncMetricEntityState;
 import com.linkedin.venice.stats.metrics.AsyncMetricEntityStateBase;
+import com.linkedin.venice.stats.metrics.MetricAttributesData;
 import com.linkedin.venice.stats.metrics.MetricEntity;
 import com.linkedin.venice.stats.metrics.MetricEntityState;
 import com.linkedin.venice.stats.metrics.MetricEntityStateBase;
+import com.linkedin.venice.stats.metrics.MetricEntityStateThreeEnums;
 import com.linkedin.venice.stats.metrics.MetricType;
 import com.linkedin.venice.stats.metrics.MetricUnit;
+import com.linkedin.venice.utils.OpenTelemetryDataTestUtils;
 import io.opentelemetry.api.GlobalOpenTelemetry;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.metrics.DoubleHistogram;
@@ -32,6 +37,7 @@ import io.opentelemetry.api.metrics.LongGauge;
 import io.opentelemetry.api.metrics.LongUpDownCounter;
 import io.opentelemetry.api.metrics.ObservableLongGauge;
 import io.opentelemetry.sdk.metrics.export.MetricExporter;
+import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 import java.util.ArrayList;
@@ -52,6 +58,7 @@ import org.testng.annotations.Test;
 public class VeniceOpenTelemetryMetricsRepositoryTest {
   private VeniceOpenTelemetryMetricsRepository metricsRepository;
   private static final String TEST_PREFIX = "test_prefix";
+  private static final String TEST_STORE_NAME = "test_store";
 
   private VeniceMetricsConfig mockMetricsConfig;
 
@@ -174,6 +181,15 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
 
       Object instrument = metricsRepository.createInstrument(metricEntity, () -> 10, baseAttributes);
 
+      // ASYNC_COUNTER_FOR_HIGH_PERF_CASES returns null from createInstrument because it is registered
+      // separately via registerObservableLongCounter() after MetricEntityState construction
+      if (metricType == MetricType.ASYNC_COUNTER_FOR_HIGH_PERF_CASES) {
+        assertNull(
+            instrument,
+            "Instrument should be null for ASYNC_COUNTER_FOR_HIGH_PERF_CASES (registered separately)");
+        continue;
+      }
+
       assertNotNull(instrument, "Instrument should not be null for metric type: " + metricType);
 
       AsyncMetricEntityState metricEntityState;
@@ -197,28 +213,28 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
           assertTrue(
               instrument instanceof DoubleHistogram,
               "Instrument should be a DoubleHistogram for metric type: " + metricType);
-          metricEntityStateBase.recordOtelMetric(value, attributes);
+          metricEntityStateBase.recordOtelMetric(value, new MetricAttributesData(attributes));
           break;
         case COUNTER:
           metricEntityStateBase = (MetricEntityStateBase) metricEntityState;
           assertTrue(
               instrument instanceof LongCounter,
               "Instrument should be a LongCounter for metric type: " + metricType);
-          metricEntityStateBase.recordOtelMetric(value, attributes);
+          metricEntityStateBase.recordOtelMetric(value, new MetricAttributesData(attributes));
           break;
         case UP_DOWN_COUNTER:
           metricEntityStateBase = (MetricEntityStateBase) metricEntityState;
           assertTrue(
               instrument instanceof LongUpDownCounter,
               "Instrument should be a LongUpDownCounter for metric type: " + metricType);
-          metricEntityStateBase.recordOtelMetric(value, attributes);
+          metricEntityStateBase.recordOtelMetric(value, new MetricAttributesData(attributes));
           break;
         case GAUGE:
           metricEntityStateBase = (MetricEntityStateBase) metricEntityState;
           assertTrue(
               instrument instanceof LongGauge,
               "Instrument should be a LongGauge for metric type: " + metricType);
-          metricEntityStateBase.recordOtelMetric(value, attributes);
+          metricEntityStateBase.recordOtelMetric(value, new MetricAttributesData(attributes));
           break;
 
         case ASYNC_GAUGE:
@@ -584,6 +600,164 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
     VeniceOpenTelemetryMetricsRepository childRepository = metricsRepository.cloneWithNewMetricPrefix("child");
     childRepository.close();
     assertNotNull(metricsRepository.getSdkMeterProvider(), "Parent should still be functional after child close");
+  }
+
+  private MetricEntity createAsyncCounterMetricEntity(String metricName) {
+    Set<VeniceMetricsDimensions> dimensionsSet = new HashSet<>();
+    dimensionsSet.add(VeniceMetricsDimensions.VENICE_STORE_NAME);
+    dimensionsSet.add(VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE);
+    dimensionsSet.add(VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE_CATEGORY);
+    dimensionsSet.add(VeniceMetricsDimensions.VENICE_REQUEST_METHOD);
+
+    return new MetricEntity(
+        metricName,
+        MetricType.ASYNC_COUNTER_FOR_HIGH_PERF_CASES,
+        MetricUnit.NUMBER,
+        "Test async counter metric",
+        dimensionsSet);
+  }
+
+  private MetricEntityStateThreeEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, RequestType> createAsyncCounterMetricState(
+      MetricEntity metricEntity,
+      VeniceOpenTelemetryMetricsRepository otelRepo) {
+    Map<VeniceMetricsDimensions, String> baseDimensionsMap = new HashMap<>();
+    baseDimensionsMap.put(VeniceMetricsDimensions.VENICE_STORE_NAME, TEST_STORE_NAME);
+
+    return MetricEntityStateThreeEnums.create(
+        metricEntity,
+        otelRepo,
+        baseDimensionsMap,
+        HttpResponseStatusEnum.class,
+        HttpResponseStatusCodeCategory.class,
+        RequestType.class);
+  }
+
+  /**
+   * Test ASYNC_COUNTER_FOR_HIGH_PERF_CASES metric type with MetricEntityStateThreeEnums.
+   * Verifies that:
+   * 1. createInstrument returns null for ASYNC_COUNTER_FOR_HIGH_PERF_CASES (registered separately)
+   * 2. MetricEntityStateThreeEnums properly creates MetricAttributesData with LongAdder
+   * 3. Recording values accumulates in the LongAdder
+   * 4. Observable counter is registered via registerObservableLongCounter
+   */
+  @Test
+  public void testAsyncCounterMetricType() {
+    MetricEntity metricEntity = createAsyncCounterMetricEntity("test_async_counter");
+
+    // Verify createInstrument returns null for ASYNC_COUNTER_FOR_HIGH_PERF_CASES
+    Object instrument = metricsRepository.createInstrument(metricEntity);
+    assertNull(instrument, "createInstrument should return null for ASYNC_COUNTER_FOR_HIGH_PERF_CASES");
+
+    MetricEntityStateThreeEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, RequestType> metricState =
+        createAsyncCounterMetricState(metricEntity, metricsRepository);
+
+    assertNotNull(metricState, "MetricEntityStateThreeEnums should be created");
+    assertTrue(metricState.isObservableCounter(), "Should be marked as observable counter");
+
+    // Record some values with different dimension combinations
+    metricState.record(10L, HttpResponseStatusEnum.OK, HttpResponseStatusCodeCategory.SUCCESS, RequestType.SINGLE_GET);
+    metricState.record(20L, HttpResponseStatusEnum.OK, HttpResponseStatusCodeCategory.SUCCESS, RequestType.SINGLE_GET);
+    metricState.record(
+        5L,
+        HttpResponseStatusEnum.INTERNAL_SERVER_ERROR,
+        HttpResponseStatusCodeCategory.SERVER_ERROR,
+        RequestType.MULTI_GET);
+
+    // Verify MetricAttributesData was created with LongAdder
+    MetricAttributesData data1 = metricState.getMetricAttributesDataEnumMap()
+        .get(HttpResponseStatusEnum.OK)
+        .get(HttpResponseStatusCodeCategory.SUCCESS)
+        .get(RequestType.SINGLE_GET);
+    assertNotNull(data1, "MetricAttributesData should exist for recorded dimensions");
+    assertNotNull(data1.getAttributes(), "MetricAttributesData should have Attributes");
+    assertTrue(data1.hasAdder(), "MetricAttributesData should have a LongAdder for ASYNC_COUNTER_FOR_HIGH_PERF_CASES");
+
+    MetricAttributesData data2 = metricState.getMetricAttributesDataEnumMap()
+        .get(HttpResponseStatusEnum.INTERNAL_SERVER_ERROR)
+        .get(HttpResponseStatusCodeCategory.SERVER_ERROR)
+        .get(RequestType.MULTI_GET);
+    assertNotNull(data2, "MetricAttributesData should exist for second dimension combination");
+    assertNotNull(data1.getAttributes(), "MetricAttributesData should have Attributes");
+    assertTrue(data2.hasAdder(), "MetricAttributesData should have a LongAdder for ASYNC_COUNTER_FOR_HIGH_PERF_CASES");
+
+    // Verify accumulated values (30 for first combination, 5 for second)
+    assertEquals(data1.sumThenReset(), 30L, "Should have accumulated 10 + 20 = 30");
+    assertEquals(data2.sumThenReset(), 5L, "Should have accumulated 5");
+
+    // After sumThenReset, values should be 0
+    assertEquals(data1.sumThenReset(), 0L, "Should be 0 after reset");
+    assertEquals(data2.sumThenReset(), 0L, "Should be 0 after reset");
+  }
+
+  /**
+   * Test ASYNC_COUNTER_FOR_HIGH_PERF_CASES metric type end-to-end using InMemoryMetricReader.
+   * This test verifies that the observable counter callback properly reports
+   * accumulated values to OpenTelemetry's metric collection system.
+   */
+  @Test
+  public void testAsyncCounterMetricTypeWithInMemoryReader() {
+    InMemoryMetricReader inMemoryMetricReader = InMemoryMetricReader.create();
+
+    VeniceMetricsConfig config = new VeniceMetricsConfig.Builder().setServiceName("test_service")
+        .setMetricPrefix(TEST_PREFIX)
+        .setEmitOtelMetrics(true)
+        .setExportOtelMetricsToEndpoint(false)
+        .setUseOtelExponentialHistogram(false)
+        .setOtelAdditionalMetricsReader(inMemoryMetricReader)
+        .build();
+
+    VeniceOpenTelemetryMetricsRepository otelRepo = new VeniceOpenTelemetryMetricsRepository(config);
+
+    try {
+      String metricName = "test_async_counter_inmemory";
+      MetricEntity metricEntity = createAsyncCounterMetricEntity(metricName);
+      MetricEntityStateThreeEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, RequestType> metricState =
+          createAsyncCounterMetricState(metricEntity, otelRepo);
+
+      // Build expected attributes for OK/SUCCESS/SINGLE_GET combination
+      Attributes okSuccessAttributes =
+          new OpenTelemetryDataTestUtils.OpenTelemetryAttributesBuilder().setStoreName(TEST_STORE_NAME)
+              .setHttpStatus(HttpResponseStatusEnum.OK)
+              .setRequestType(RequestType.SINGLE_GET)
+              .build();
+
+      // Build expected attributes for INTERNAL_SERVER_ERROR/SERVER_ERROR/MULTI_GET combination
+      Attributes errorAttributes =
+          new OpenTelemetryDataTestUtils.OpenTelemetryAttributesBuilder().setStoreName(TEST_STORE_NAME)
+              .setHttpStatus(HttpResponseStatusEnum.INTERNAL_SERVER_ERROR)
+              .setRequestType(RequestType.MULTI_GET)
+              .build();
+
+      // Record and validate OK/SUCCESS/SINGLE_GET combination (100 + 50 = 150)
+      // Note: Each collectAllMetrics() call triggers sumThenReset(), so we validate one combination at a time
+      metricState
+          .record(100L, HttpResponseStatusEnum.OK, HttpResponseStatusCodeCategory.SUCCESS, RequestType.SINGLE_GET);
+      metricState
+          .record(50L, HttpResponseStatusEnum.OK, HttpResponseStatusCodeCategory.SUCCESS, RequestType.SINGLE_GET);
+      OpenTelemetryDataTestUtils
+          .validateObservableCounterValue(inMemoryMetricReader, 150L, okSuccessAttributes, metricName, TEST_PREFIX);
+
+      // Record and validate INTERNAL_SERVER_ERROR/SERVER_ERROR/MULTI_GET combination (25)
+      metricState.record(
+          25L,
+          HttpResponseStatusEnum.INTERNAL_SERVER_ERROR,
+          HttpResponseStatusCodeCategory.SERVER_ERROR,
+          RequestType.MULTI_GET);
+      OpenTelemetryDataTestUtils
+          .validateObservableCounterValue(inMemoryMetricReader, 25L, errorAttributes, metricName, TEST_PREFIX);
+
+      // Record more values and validate again to verify reset behavior
+      metricState
+          .record(200L, HttpResponseStatusEnum.OK, HttpResponseStatusCodeCategory.SUCCESS, RequestType.SINGLE_GET);
+
+      // After collection, the value should reflect only the new recording (200)
+      // because sumThenReset() resets the LongAdder after each collection
+      OpenTelemetryDataTestUtils
+          .validateObservableCounterValue(inMemoryMetricReader, 200L, okSuccessAttributes, metricName, TEST_PREFIX);
+
+    } finally {
+      otelRepo.close();
+    }
   }
 
 }

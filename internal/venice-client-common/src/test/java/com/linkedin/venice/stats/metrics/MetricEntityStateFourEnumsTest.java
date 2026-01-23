@@ -71,7 +71,7 @@ public class MetricEntityStateFourEnumsTest extends MetricEntityStateEnumTestBas
             MetricEntityStateTest.DimensionEnum3.class,
             MetricEntityStateTest.DimensionEnum4.class);
     assertNotNull(metricEntityState);
-    assertNull(metricEntityState.getAttributesEnumMap());
+    assertNull(metricEntityState.getMetricAttributesDataEnumMap());
     for (MetricEntityStateTest.DimensionEnum1 enum1: MetricEntityStateTest.DimensionEnum1.values()) {
       for (MetricEntityStateTest.DimensionEnum2 enum2: MetricEntityStateTest.DimensionEnum2.values()) {
         for (MetricEntityStateTest.DimensionEnum3 enum3: MetricEntityStateTest.DimensionEnum3.values()) {
@@ -95,7 +95,7 @@ public class MetricEntityStateFourEnumsTest extends MetricEntityStateEnumTestBas
             MetricEntityStateTest.DimensionEnum3.class,
             MetricEntityStateTest.DimensionEnum4.class);
     assertNotNull(metricEntityState);
-    assertEquals(metricEntityState.getAttributesEnumMap().size(), 0);
+    assertEquals(metricEntityState.getMetricAttributesDataEnumMap().size(), 0);
   }
 
   @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = ".*has no constants.*")
@@ -311,24 +311,24 @@ public class MetricEntityStateFourEnumsTest extends MetricEntityStateEnumTestBas
       MetricEntityStateTest.DimensionEnum3 dimension3,
       MetricEntityStateTest.DimensionEnum4 dimension4,
       Attributes attributes) {
-    EnumMap<MetricEntityStateTest.DimensionEnum1, EnumMap<MetricEntityStateTest.DimensionEnum2, EnumMap<MetricEntityStateTest.DimensionEnum3, EnumMap<MetricEntityStateTest.DimensionEnum4, Attributes>>>> attributesEnumMap =
-        metricEntityState.getAttributesEnumMap();
+    EnumMap<MetricEntityStateTest.DimensionEnum1, EnumMap<MetricEntityStateTest.DimensionEnum2, EnumMap<MetricEntityStateTest.DimensionEnum3, EnumMap<MetricEntityStateTest.DimensionEnum4, MetricAttributesData>>>> metricAttributesDataEnumMap =
+        metricEntityState.getMetricAttributesDataEnumMap();
     // verify whether the attributes are cached
-    assertNotNull(attributesEnumMap);
-    assertEquals(attributesEnumMap.size(), attributesEnumMapSize);
+    assertNotNull(metricAttributesDataEnumMap);
+    assertEquals(metricAttributesDataEnumMap.size(), attributesEnumMapSize);
 
-    EnumMap<MetricEntityStateTest.DimensionEnum2, EnumMap<MetricEntityStateTest.DimensionEnum3, EnumMap<MetricEntityStateTest.DimensionEnum4, Attributes>>> mapE2 =
-        attributesEnumMap.get(dimension1);
+    EnumMap<MetricEntityStateTest.DimensionEnum2, EnumMap<MetricEntityStateTest.DimensionEnum3, EnumMap<MetricEntityStateTest.DimensionEnum4, MetricAttributesData>>> mapE2 =
+        metricAttributesDataEnumMap.get(dimension1);
     assertNotNull(mapE2);
     assertEquals(mapE2.size(), 1);
-    EnumMap<MetricEntityStateTest.DimensionEnum3, EnumMap<MetricEntityStateTest.DimensionEnum4, Attributes>> mapE3 =
+    EnumMap<MetricEntityStateTest.DimensionEnum3, EnumMap<MetricEntityStateTest.DimensionEnum4, MetricAttributesData>> mapE3 =
         mapE2.get(dimension2);
     assertNotNull(mapE3);
     assertEquals(mapE3.size(), 1);
-    EnumMap<MetricEntityStateTest.DimensionEnum4, Attributes> mapE4 = mapE3.get(dimension3);
+    EnumMap<MetricEntityStateTest.DimensionEnum4, MetricAttributesData> mapE4 = mapE3.get(dimension3);
     assertNotNull(mapE4);
     assertEquals(mapE4.size(), 1);
-    assertEquals(mapE4.get(dimension4), attributes);
+    assertEquals(mapE4.get(dimension4).getAttributes(), attributes);
   }
 
   @Test

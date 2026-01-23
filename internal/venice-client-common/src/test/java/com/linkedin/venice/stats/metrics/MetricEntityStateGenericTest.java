@@ -97,7 +97,7 @@ public class MetricEntityStateGenericTest {
     metricEntityState.setOtelMetric(longCounter);
 
     Attributes attributes = Attributes.builder().put("key", "value").build();
-    metricEntityState.recordOtelMetric(10, attributes);
+    metricEntityState.recordOtelMetric(10, new MetricAttributesData(attributes));
 
     verify(longCounter, times(1)).add(10, attributes);
   }
@@ -183,6 +183,12 @@ public class MetricEntityStateGenericTest {
     } catch (IllegalArgumentException e) {
       assertTrue(e.getMessage().contains("Dimension value cannot be null or empty for key"), e.getMessage());
     }
+  }
+
+  @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = ".*does not support ASYNC_COUNTER_FOR_HIGH_PERF_CASES.*")
+  public void testAsyncCounterNotSupported() {
+    when(mockMetricEntity.getMetricType()).thenReturn(MetricType.ASYNC_COUNTER_FOR_HIGH_PERF_CASES);
+    MetricEntityStateGeneric.create(mockMetricEntity, mockOtelRepository, baseDimensionsMap);
   }
 
   @Test
