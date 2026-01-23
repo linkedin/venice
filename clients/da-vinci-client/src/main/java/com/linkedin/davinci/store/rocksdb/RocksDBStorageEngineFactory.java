@@ -188,6 +188,22 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
     this.memtableSize = rocksDBServerConfig.getRocksDBMemtableSizeInBytes();
     try {
       this.sstFileManager = new SstFileManager(this.env);
+
+      // Configure deletion rate limiting to prevent I/O saturation during store cleanup
+      long deleteRateBytesPerSecond = rocksDBServerConfig.getSstFileManagerDeleteRateBytesPerSecond();
+      if (deleteRateBytesPerSecond > 0) {
+        this.sstFileManager.setDeleteRateBytesPerSecond(deleteRateBytesPerSecond);
+        LOGGER
+            .info("Configured SstFileManager deletion rate limit: {} MB/sec", deleteRateBytesPerSecond / (1024 * 1024));
+      } else {
+        LOGGER.info("SstFileManager deletion rate limiting is disabled (deleteRateBytesPerSecond = 0)");
+      }
+
+      // Configure max trash-to-DB ratio
+      double maxTrashRatio = rocksDBServerConfig.getSstFileManagerMaxTrashDBRatio();
+      this.sstFileManager.setMaxTrashDBRatio(maxTrashRatio);
+      LOGGER.info("Configured SstFileManager max trash DB ratio: {}", maxTrashRatio);
+
     } catch (RocksDBException e) {
       throw new VeniceException("Failed to create the shared SstFileManager", e);
     }
