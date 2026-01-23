@@ -2345,6 +2345,43 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
   }
 
+  /**
+   * Record a regular data record timestamp to the heartbeat monitoring service.
+   * Only records if record-level timestamp tracking is enabled.
+   */
+  protected void recordRecordReceived(
+      PartitionConsumptionState partitionConsumptionState,
+      DefaultPubSubMessage consumerRecord,
+      String kafkaUrl) {
+    if (getHeartbeatMonitoringService() == null) {
+      // Not enabled!
+      return;
+    }
+    if (partitionConsumptionState.getLeaderFollowerState().equals(LEADER)) {
+      getHeartbeatMonitoringService().recordLeaderRecordTimestamp(
+          getStoreName(),
+          getVersionNumber(),
+          partitionConsumptionState.getPartition(),
+          getServerConfig().getKafkaClusterUrlToAliasMap().get(kafkaUrl),
+          consumerRecord.getValue().getProducerMetadata().getMessageTimestamp(),
+          partitionConsumptionState.isComplete());
+    } else {
+      getHeartbeatMonitoringService().recordFollowerRecordTimestamp(
+          getStoreName(),
+          getVersionNumber(),
+          partitionConsumptionState.getPartition(),
+          /**
+           * For Da Vinci there is no kafkaUrl mapping configured, we should refer to local region name setup in the
+           * Venice server config. This is consistent from the heartbeat lag calculation for ready-to-serve check.
+           */
+          isDaVinciClient()
+              ? getServerConfig().getRegionName()
+              : getServerConfig().getKafkaClusterUrlToAliasMap().get(kafkaUrl),
+          consumerRecord.getValue().getProducerMetadata().getMessageTimestamp(),
+          partitionConsumptionState.isComplete());
+    }
+  }
+
   @Override
   protected Iterable<DefaultPubSubMessage> validateAndFilterOutDuplicateMessagesFromLeaderTopic(
       Iterable<DefaultPubSubMessage> records,

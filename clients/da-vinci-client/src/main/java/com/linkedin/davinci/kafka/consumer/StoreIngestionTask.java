@@ -2817,6 +2817,17 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     // No Op
   }
 
+  /**
+   * Hook for recording regular data record timestamps. Override in subclasses that support
+   * record-level timestamp tracking.
+   */
+  protected void recordRecordReceived(
+      PartitionConsumptionState partitionConsumptionState,
+      DefaultPubSubMessage consumerRecord,
+      String kafkaUrl) {
+    // No Op
+  }
+
   boolean shouldSendGlobalRtDiv(DefaultPubSubMessage record, PartitionConsumptionState pcs, String brokerUrl) {
     if (!isGlobalRtDivEnabled() || record.getKey().isControlMessage()) {
       return false;
@@ -3539,6 +3550,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             partitionConsumptionState,
             leaderProducedRecordContext,
             currentTimeMs);
+        // Record regular record timestamp for heartbeat monitoring if enabled
+        try {
+          recordRecordReceived(partitionConsumptionState, consumerRecord, kafkaUrl);
+        } catch (Exception e) {
+          LOGGER.error("Failed to record regular record timestamp: ", e);
+        }
         if (recordLevelMetricEnabled.get()) {
           recordNearlineLocalBrokerToReadyToServerLatency(
               storeName,

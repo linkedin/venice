@@ -14,11 +14,12 @@ import java.util.function.Supplier;
 
 
 public class HeartbeatVersionedStats extends AbstractVeniceAggVersionedStats<HeartbeatStat, HeartbeatStatReporter> {
-  private final Map<String, Map<Integer, Map<Integer, Map<String, HeartbeatTimeStampEntry>>>> leaderMonitors;
-  private final Map<String, Map<Integer, Map<Integer, Map<String, HeartbeatTimeStampEntry>>>> followerMonitors;
+  private final Map<String, Map<Integer, Map<Integer, Map<String, IngestionTimestampEntry>>>> leaderMonitors;
+  private final Map<String, Map<Integer, Map<Integer, Map<String, IngestionTimestampEntry>>>> followerMonitors;
 
   // OpenTelemetry metrics per store
   private final Map<String, HeartbeatOtelStats> otelStatsMap;
+  private final Map<String, RecordOtelStats> recordOtelStatsMap;
   private final String clusterName;
 
   // Time supplier for testability: defaults to System.currentTimeMillis()
@@ -29,14 +30,15 @@ public class HeartbeatVersionedStats extends AbstractVeniceAggVersionedStats<Hea
       ReadOnlyStoreRepository metadataRepository,
       Supplier<HeartbeatStat> statsInitiator,
       StatsSupplier<HeartbeatStatReporter> reporterSupplier,
-      Map<String, Map<Integer, Map<Integer, Map<String, HeartbeatTimeStampEntry>>>> leaderMonitors,
-      Map<String, Map<Integer, Map<Integer, Map<String, HeartbeatTimeStampEntry>>>> followerMonitors,
+      Map<String, Map<Integer, Map<Integer, Map<String, IngestionTimestampEntry>>>> leaderMonitors,
+      Map<String, Map<Integer, Map<Integer, Map<String, IngestionTimestampEntry>>>> followerMonitors,
       String clusterName) {
     super(metricsRepository, metadataRepository, statsInitiator, reporterSupplier, true);
     this.leaderMonitors = leaderMonitors;
     this.followerMonitors = followerMonitors;
     this.clusterName = clusterName;
     this.otelStatsMap = new VeniceConcurrentHashMap<>();
+    this.recordOtelStatsMap = new VeniceConcurrentHashMap<>();
   }
 
   public void recordLeaderLag(String storeName, int version, String region, long heartbeatTs) {
@@ -92,6 +94,55 @@ public class HeartbeatVersionedStats extends AbstractVeniceAggVersionedStats<Hea
         catchingUpDelay);
   }
 
+  public void recordLeaderRecordLag(String storeName, int version, String region, long recordTs) {
+    // Calculate current time and delay once for both Tehuti and OTel metrics
+    long currentTime = currentTimeSupplier.get();
+    long delay = currentTime - recordTs;
+
+    // Tehuti metrics
+    getStats(storeName, version).recordReadyToServeLeaderRecordLag(region, delay, currentTime);
+
+    // OTel metrics
+    getOrCreateRecordOtelStats(storeName).recordRecordDelayOtelMetrics(
+        version,
+        region,
+        ReplicaType.LEADER,
+        ReplicaState.READY_TO_SERVE, // Leaders are always ready to serve
+        delay);
+  }
+
+  public void recordFollowerRecordLag(
+      String storeName,
+      int version,
+      String region,
+      long recordTs,
+      boolean isReadyToServe) {
+    // Calculate current time and delay once for all metrics
+    long currentTime = currentTimeSupplier.get();
+    long delay = currentTime - recordTs;
+
+    // If the partition is ready to serve, report it's lag to the main lag metric. Otherwise, report it
+    // to the catch up metric.
+    // The metric which isn't updated is squelched by reporting delay=0 (to appear caught up and mute alerts)
+    long readyToServeDelay = isReadyToServe ? delay : 0;
+    long catchingUpDelay = isReadyToServe ? 0 : delay;
+
+    // Record to both Tehuti sensors (one gets actual delay, other gets 0 for squelching)
+    getStats(storeName, version).recordReadyToServeFollowerRecordLag(region, readyToServeDelay, currentTime);
+    getStats(storeName, version).recordCatchingUpFollowerRecordLag(region, catchingUpDelay, currentTime);
+
+    // Record to both OTel dimensions (one gets actual delay, other gets 0 for squelching)
+    RecordOtelStats otelStats = getOrCreateRecordOtelStats(storeName);
+    otelStats.recordRecordDelayOtelMetrics(
+        version,
+        region,
+        ReplicaType.FOLLOWER,
+        ReplicaState.READY_TO_SERVE,
+        readyToServeDelay);
+    otelStats
+        .recordRecordDelayOtelMetrics(version, region, ReplicaType.FOLLOWER, ReplicaState.CATCHING_UP, catchingUpDelay);
+  }
+
   @Override
   public synchronized void loadAllStats() {
     // No-op
@@ -116,6 +167,10 @@ public class HeartbeatVersionedStats extends AbstractVeniceAggVersionedStats<Hea
       stats.updateVersionInfo(currentVersion, futureVersion);
       return stats;
     });
+    recordOtelStatsMap.computeIfPresent(storeName, (store, stats) -> {
+      stats.updateVersionInfo(currentVersion, futureVersion);
+      return stats;
+    });
   }
 
   boolean isStoreAssignedToThisNode(String store) {
@@ -134,6 +189,19 @@ public class HeartbeatVersionedStats extends AbstractVeniceAggVersionedStats<Hea
   private HeartbeatOtelStats getOrCreateOtelStats(String storeName) {
     return otelStatsMap.computeIfAbsent(storeName, key -> {
       HeartbeatOtelStats stats = new HeartbeatOtelStats(getMetricsRepository(), storeName, clusterName);
+      // Initialize version cache with current values
+      stats.updateVersionInfo(getCurrentVersion(storeName), getFutureVersion(storeName));
+      return stats;
+    });
+  }
+
+  /**
+   * Gets or creates record-level OTel stats for a store.
+   * Version info will be initialized via onVersionInfoUpdated() callback.
+   */
+  private RecordOtelStats getOrCreateRecordOtelStats(String storeName) {
+    return recordOtelStatsMap.computeIfAbsent(storeName, key -> {
+      RecordOtelStats stats = new RecordOtelStats(getMetricsRepository(), storeName, clusterName);
       // Initialize version cache with current values
       stats.updateVersionInfo(getCurrentVersion(storeName), getFutureVersion(storeName));
       return stats;

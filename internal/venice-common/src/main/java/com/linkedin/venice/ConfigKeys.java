@@ -2518,6 +2518,14 @@ public class ConfigKeys {
   public static final String SERVER_INGESTION_HEARTBEAT_INTERVAL_MS = "server.ingestion.heartbeat.interval.ms";
 
   /**
+   * Enable record-level timestamp tracking in heartbeat monitoring service.
+   * When enabled, the monitoring service will track timestamps for all records processed during
+   * ingestion, not just heartbeat control messages. This provides more granular visibility into
+   * ingestion progress and lag at the expense of additional memory and CPU overhead.
+   */
+  public static final String SERVER_RECORD_LEVEL_TIMESTAMP_ENABLED = "server.record.level.timestamp.enabled";
+
+  /**
    * Follower replicas and DavinciClient will only consider heartbeats received within
    * this time window to mark themselves as completed. This is to avoid the cases that
    * the follower replica is marked completed based on the old heartbeat messages from

@@ -86,9 +86,9 @@ public class HeartbeatMonitoringServiceTest {
     doCallRealMethod().when(heartbeatMonitoringService)
         .getReplicaFollowerHeartbeatLag(any(), anyString(), anyInt(), anyBoolean(), anyLong());
 
-    Map<String, Map<Integer, Map<Integer, Map<String, HeartbeatTimeStampEntry>>>> leaderMap =
+    Map<String, Map<Integer, Map<Integer, Map<String, IngestionTimestampEntry>>>> leaderMap =
         new VeniceConcurrentHashMap<>();
-    Map<String, Map<Integer, Map<Integer, Map<String, HeartbeatTimeStampEntry>>>> followerMap =
+    Map<String, Map<Integer, Map<Integer, Map<String, IngestionTimestampEntry>>>> followerMap =
         new VeniceConcurrentHashMap<>();
     doReturn(leaderMap).when(heartbeatMonitoringService).getLeaderHeartbeatTimeStamps();
     doReturn(followerMap).when(heartbeatMonitoringService).getFollowerHeartbeatTimeStamps();
@@ -108,15 +108,15 @@ public class HeartbeatMonitoringServiceTest {
     leaderMap.get(store)
         .get(version)
         .get(partition)
-        .put("dc-0", new HeartbeatTimeStampEntry(currentTime - TimeUnit.MINUTES.toMillis(5), true, true));
+        .put("dc-0", new IngestionTimestampEntry(currentTime - TimeUnit.MINUTES.toMillis(5), true, true));
     leaderMap.get(store)
         .get(version)
         .get(partition)
-        .put("dc-1", new HeartbeatTimeStampEntry(currentTime - TimeUnit.MINUTES.toMillis(10), true, true));
+        .put("dc-1", new IngestionTimestampEntry(currentTime - TimeUnit.MINUTES.toMillis(10), true, true));
     leaderMap.get(store)
         .get(version)
         .get(partition)
-        .put("dc-1_sep", new HeartbeatTimeStampEntry(currentTime - TimeUnit.MINUTES.toMillis(100), true, true));
+        .put("dc-1_sep", new IngestionTimestampEntry(currentTime - TimeUnit.MINUTES.toMillis(100), true, true));
 
     // Check valid leader lag
     long lag = heartbeatMonitoringService.getReplicaLeaderMaxHeartbeatLag(pcs, store, version, true);
@@ -129,7 +129,7 @@ public class HeartbeatMonitoringServiceTest {
     leaderMap.get(store)
         .get(version)
         .get(partition)
-        .put("dc-2", new HeartbeatTimeStampEntry(currentTime - TimeUnit.MINUTES.toMillis(20), false, false));
+        .put("dc-2", new IngestionTimestampEntry(currentTime - TimeUnit.MINUTES.toMillis(20), false, false));
     lag = heartbeatMonitoringService.getReplicaLeaderMaxHeartbeatLag(pcs, store, version, true);
     Assert.assertEquals(lag, Long.MAX_VALUE);
     timestamp = heartbeatMonitoringService.getReplicaLeaderMinHeartbeatTimestamp(pcs, store, version, true);
@@ -149,7 +149,7 @@ public class HeartbeatMonitoringServiceTest {
     followerMap.get(store)
         .get(version)
         .get(partition)
-        .put("dc-1", new HeartbeatTimeStampEntry(currentTime - TimeUnit.MINUTES.toMillis(10), true, true));
+        .put("dc-1", new IngestionTimestampEntry(currentTime - TimeUnit.MINUTES.toMillis(10), true, true));
 
     // Check valid follower lag
     lag = heartbeatMonitoringService.getReplicaFollowerHeartbeatLag(pcs, store, version, true);
@@ -161,7 +161,7 @@ public class HeartbeatMonitoringServiceTest {
     followerMap.get(store)
         .get(version)
         .get(partition)
-        .put("dc-0", new HeartbeatTimeStampEntry(currentTime - TimeUnit.MINUTES.toMillis(20), true, true));
+        .put("dc-0", new IngestionTimestampEntry(currentTime - TimeUnit.MINUTES.toMillis(20), true, true));
     lag = heartbeatMonitoringService.getReplicaFollowerHeartbeatLag(pcs, store, version, true);
     Assert.assertTrue(lag >= TimeUnit.MINUTES.toMillis(10));
     Assert.assertTrue(lag < TimeUnit.MINUTES.toMillis(20));
@@ -171,7 +171,7 @@ public class HeartbeatMonitoringServiceTest {
     followerMap.get(store)
         .get(version)
         .get(partition)
-        .put("dc-1", new HeartbeatTimeStampEntry(currentTime - TimeUnit.MINUTES.toMillis(10), true, false));
+        .put("dc-1", new IngestionTimestampEntry(currentTime - TimeUnit.MINUTES.toMillis(10), true, false));
     lag = heartbeatMonitoringService.getReplicaFollowerHeartbeatLag(pcs, store, version, true);
     Assert.assertEquals(lag, Long.MAX_VALUE);
     timestamp = heartbeatMonitoringService.getReplicaFollowerHeartbeatTimestamp(pcs, store, version, true);
@@ -188,7 +188,7 @@ public class HeartbeatMonitoringServiceTest {
     HeartbeatMonitoringService heartbeatMonitoringService = mock(HeartbeatMonitoringService.class);
     doCallRealMethod().when(heartbeatMonitoringService)
         .getHeartbeatInfoFromMap(anyMap(), anyString(), anyLong(), anyString(), anyInt(), anyBoolean());
-    Map<String, Map<Integer, Map<Integer, Map<String, HeartbeatTimeStampEntry>>>> leaderMap =
+    Map<String, Map<Integer, Map<Integer, Map<String, IngestionTimestampEntry>>>> leaderMap =
         new VeniceConcurrentHashMap<>();
     String store = "testStore";
     int version = 1;
@@ -198,7 +198,7 @@ public class HeartbeatMonitoringServiceTest {
     leaderMap.put(store, new VeniceConcurrentHashMap<>());
     leaderMap.get(store).put(version, new VeniceConcurrentHashMap<>());
     leaderMap.get(store).get(version).put(partition, new VeniceConcurrentHashMap<>());
-    leaderMap.get(store).get(version).get(partition).put(region, new HeartbeatTimeStampEntry(timestamp, true, true));
+    leaderMap.get(store).get(version).get(partition).put(region, new IngestionTimestampEntry(timestamp, true, true));
     Assert.assertEquals(
         heartbeatMonitoringService
             .getHeartbeatInfoFromMap(
@@ -378,8 +378,8 @@ public class HeartbeatMonitoringServiceTest {
     heartbeatMonitoringService.recordFollowerHeartbeat(TEST_STORE, 1, 3, REMOTE_FABRIC, baseTimeStamp + 1001L, true);
 
     // bogus heartbeats
-    heartbeatMonitoringService.recordLeaderHeartbeat(TEST_STORE, 2, 0, LOCAL_FABRIC, baseTimeStamp + 1002L, true);
-    heartbeatMonitoringService.recordLeaderHeartbeat(TEST_STORE, 3, 0, LOCAL_FABRIC, baseTimeStamp + 1002L, true);
+    heartbeatMonitoringService.recordFollowerHeartbeat(TEST_STORE, 2, 0, LOCAL_FABRIC, baseTimeStamp + 1002L, true);
+    heartbeatMonitoringService.recordFollowerHeartbeat(TEST_STORE, 3, 0, LOCAL_FABRIC, baseTimeStamp + 1002L, true);
 
     Assert.assertEquals(heartbeatMonitoringService.getFollowerHeartbeatTimeStamps().size(), 1);
     // We only expect two entries as version 1 is a non-hybrid version
@@ -399,14 +399,14 @@ public class HeartbeatMonitoringServiceTest {
         .get(TEST_STORE)
         .get(futureVersion.getNumber())
         .get(1)
-        .get(LOCAL_FABRIC).timestamp;
+        .get(LOCAL_FABRIC).heartbeatTimestamp;
     Assert.assertTrue(value >= baseTimeStamp + 1001L);
 
     value = heartbeatMonitoringService.getFollowerHeartbeatTimeStamps()
         .get(TEST_STORE)
         .get(futureVersion.getNumber())
         .get(1)
-        .get(REMOTE_FABRIC).timestamp;
+        .get(REMOTE_FABRIC).heartbeatTimestamp;
     Assert.assertTrue(value >= baseTimeStamp + 1001L);
 
     // Leader state transitions
@@ -487,13 +487,13 @@ public class HeartbeatMonitoringServiceTest {
         .get(TEST_STORE)
         .get(futureVersion.getNumber())
         .get(1)
-        .get(REMOTE_FABRIC).timestamp;
+        .get(REMOTE_FABRIC).heartbeatTimestamp;
     Assert.assertEquals((long) value, baseTimeStamp + 1003L);
     value = heartbeatMonitoringService.getFollowerHeartbeatTimeStamps()
         .get(TEST_STORE)
         .get(currentVersion.getNumber())
         .get(1)
-        .get(REMOTE_FABRIC).timestamp;
+        .get(REMOTE_FABRIC).heartbeatTimestamp;
     Assert.assertEquals((long) value, baseTimeStamp + 1003L);
 
     // Drop/Error some
@@ -783,12 +783,12 @@ public class HeartbeatMonitoringServiceTest {
     String storeName = "foo";
     doReturn(store).when(metadataRepo).getStore(storeName);
 
-    Map<String, Map<Integer, Map<Integer, Map<String, HeartbeatTimeStampEntry>>>> heartbeatTimestamps =
+    Map<String, Map<Integer, Map<Integer, Map<String, IngestionTimestampEntry>>>> heartbeatTimestamps =
         new VeniceConcurrentHashMap<>();
-    HeartbeatTimeStampEntry entry1 = new HeartbeatTimeStampEntry(1000L, false, false);
-    HeartbeatTimeStampEntry entry2 = new HeartbeatTimeStampEntry(2000L, true, false);
-    HeartbeatTimeStampEntry entry3 = new HeartbeatTimeStampEntry(3000L, false, true);
-    HeartbeatTimeStampEntry entry4 = new HeartbeatTimeStampEntry(4000L, true, true);
+    IngestionTimestampEntry entry1 = new IngestionTimestampEntry(1000L, false, false);
+    IngestionTimestampEntry entry2 = new IngestionTimestampEntry(2000L, true, false);
+    IngestionTimestampEntry entry3 = new IngestionTimestampEntry(3000L, false, true);
+    IngestionTimestampEntry entry4 = new IngestionTimestampEntry(4000L, true, true);
 
     heartbeatTimestamps.put(storeName, new VeniceConcurrentHashMap<>());
     heartbeatTimestamps.get(storeName).put(1, new VeniceConcurrentHashMap<>());
@@ -806,7 +806,7 @@ public class HeartbeatMonitoringServiceTest {
     Assert.assertEquals(aggregatedHeartbeatLagEntry.getNonCurrentVersionHeartbeatLag(), 9000L);
 
     // Add a more stale entry in non-current version.
-    HeartbeatTimeStampEntry entry5 = new HeartbeatTimeStampEntry(100L, true, true);
+    IngestionTimestampEntry entry5 = new IngestionTimestampEntry(100L, true, true);
     heartbeatTimestamps.get(storeName).put(2, new VeniceConcurrentHashMap<>());
     heartbeatTimestamps.get(storeName).get(2).put(0, new VeniceConcurrentHashMap<>());
     heartbeatTimestamps.get(storeName).get(2).get(0).put("dc1", entry5);
@@ -821,9 +821,9 @@ public class HeartbeatMonitoringServiceTest {
     int version = 100;
     int partition = 123;
     String region = "dc1";
-    Map<String, Map<Integer, Map<Integer, Map<String, HeartbeatTimeStampEntry>>>> heartbeatTimestamps = new HashMap<>();
-    HeartbeatTimeStampEntry entry =
-        new HeartbeatTimeStampEntry(System.currentTimeMillis() - TimeUnit.MINUTES.toMillis(15), true, true);
+    Map<String, Map<Integer, Map<Integer, Map<String, IngestionTimestampEntry>>>> heartbeatTimestamps = new HashMap<>();
+    IngestionTimestampEntry entry =
+        new IngestionTimestampEntry(System.currentTimeMillis() - TimeUnit.MINUTES.toMillis(15), true, true);
     heartbeatTimestamps.put(store, new HashMap<>());
     heartbeatTimestamps.get(store).put(version, new HashMap<>());
     heartbeatTimestamps.get(store).get(version).put(partition, new HashMap<>());
@@ -852,5 +852,265 @@ public class HeartbeatMonitoringServiceTest {
     heartbeatTimestamps.get(store).get(version).get(partition).put(region, entry);
     heartbeatMonitoringService.checkAndMaybeLogHeartbeatDelayMap(heartbeatTimestamps);
     verify(kafkaStoreIngestionService, times(1)).maybeAddResubscribeRequest(eq(store), eq(version), eq(partition));
+  }
+
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testRecordLevelTimestampTracking(boolean recordLevelTimestampEnabled) {
+    // Setup
+    HybridStoreConfig hybridStoreConfig = new HybridStoreConfigImpl(1L, 1L, 1L, BufferReplayPolicy.REWIND_FROM_SOP);
+    Version version = new VersionImpl(TEST_STORE, 1, "1");
+    version.setHybridStoreConfig(hybridStoreConfig);
+    version.setActiveActiveReplicationEnabled(true);
+
+    Store mockStore = mock(Store.class);
+    when(mockStore.getName()).thenReturn(TEST_STORE);
+    when(mockStore.getHybridStoreConfig()).thenReturn(hybridStoreConfig);
+    when(mockStore.getVersion(1)).thenReturn(version);
+
+    MetricsRepository mockMetricsRepository = new MetricsRepository();
+    ReadOnlyStoreRepository mockReadOnlyRepository = mock(ReadOnlyStoreRepository.class);
+    when(mockReadOnlyRepository.getStoreOrThrow(TEST_STORE)).thenReturn(mockStore);
+    when(mockReadOnlyRepository.waitVersion(eq(TEST_STORE), eq(1), any(), anyLong()))
+        .thenReturn(new StoreVersionInfo(mockStore, version));
+
+    Set<String> regions = new HashSet<>();
+    regions.add(LOCAL_FABRIC);
+    regions.add(REMOTE_FABRIC);
+
+    VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
+    when(serverConfig.getRegionNames()).thenReturn(regions);
+    when(serverConfig.getRegionName()).thenReturn(LOCAL_FABRIC);
+    when(serverConfig.getServerMaxWaitForVersionInfo()).thenReturn(Duration.ofSeconds(5));
+    when(serverConfig.getListenerHostname()).thenReturn("localhost");
+    when(serverConfig.getListenerPort()).thenReturn(123);
+    when(serverConfig.getLagMonitorCleanupCycle()).thenReturn(5);
+    when(serverConfig.isRecordLevelTimestampEnabled()).thenReturn(recordLevelTimestampEnabled);
+
+    CompletableFuture<HelixCustomizedViewOfflinePushRepository> mockCVRepositoryFuture = new CompletableFuture<>();
+
+    HeartbeatMonitoringService heartbeatMonitoringService = new HeartbeatMonitoringService(
+        mockMetricsRepository,
+        mockReadOnlyRepository,
+        serverConfig,
+        null,
+        mockCVRepositoryFuture);
+
+    // Add leader lag monitor - this initializes the map structures
+    String versionTopic = Version.composeKafkaTopic(TEST_STORE, 1);
+    heartbeatMonitoringService.updateLagMonitor(versionTopic, 0, HeartbeatLagMonitorAction.SET_LEADER_MONITOR);
+
+    // Record heartbeat control message at time 1000
+    long heartbeatTime = 1000L;
+    heartbeatMonitoringService.recordLeaderHeartbeat(TEST_STORE, 1, 0, LOCAL_FABRIC, heartbeatTime, true);
+
+    // Verify entry exists and get initial values
+    IngestionTimestampEntry entry1 =
+        heartbeatMonitoringService.getLeaderHeartbeatTimeStamps().get(TEST_STORE).get(1).get(0).get(LOCAL_FABRIC);
+    Assert.assertNotNull(entry1);
+    long heartbeatTs1 = entry1.heartbeatTimestamp;
+    long recordTs1 = entry1.recordTimestamp;
+
+    // After recordLeaderHeartbeat, timestamps should reflect the heartbeat
+    Assert.assertTrue(heartbeatTs1 >= heartbeatTime, "Heartbeat timestamp should be at least the provided value");
+
+    // Record data records with timestamps 1500, 1200, 1800
+    heartbeatMonitoringService.recordLeaderRecordTimestamp(TEST_STORE, 1, 0, LOCAL_FABRIC, 1500L, true);
+    heartbeatMonitoringService.recordLeaderRecordTimestamp(TEST_STORE, 1, 0, LOCAL_FABRIC, 1200L, true);
+    heartbeatMonitoringService.recordLeaderRecordTimestamp(TEST_STORE, 1, 0, LOCAL_FABRIC, 1800L, true);
+
+    IngestionTimestampEntry entry2 =
+        heartbeatMonitoringService.getLeaderHeartbeatTimeStamps().get(TEST_STORE).get(1).get(0).get(LOCAL_FABRIC);
+
+    if (recordLevelTimestampEnabled) {
+      // When config is enabled:
+      // - heartbeatTimestamp should remain unchanged (not updated by record timestamps)
+      // - recordTimestamp should be max of all records: >= 1800
+      Assert.assertEquals(
+          entry2.heartbeatTimestamp,
+          heartbeatTs1,
+          "Heartbeat timestamp should not be updated by records");
+      Assert.assertTrue(
+          entry2.recordTimestamp >= 1800L,
+          "Record timestamp should be at least 1800 (max of all record timestamps)");
+    } else {
+      // When config is disabled, recordLeaderRecordTimestamp calls should be no-op
+      Assert.assertEquals(entry2.heartbeatTimestamp, heartbeatTs1);
+      Assert.assertEquals(entry2.recordTimestamp, recordTs1); // Should be unchanged
+    }
+
+    // Record another heartbeat at time 2000
+    heartbeatMonitoringService.recordLeaderHeartbeat(TEST_STORE, 1, 0, LOCAL_FABRIC, 2000L, true);
+
+    IngestionTimestampEntry entry3 =
+        heartbeatMonitoringService.getLeaderHeartbeatTimeStamps().get(TEST_STORE).get(1).get(0).get(LOCAL_FABRIC);
+
+    // Heartbeat updated - should be at least 2000
+    Assert.assertTrue(entry3.heartbeatTimestamp >= 2000L);
+
+    if (recordLevelTimestampEnabled) {
+      // Record timestamp should be max(2000, previous record ts)
+      Assert.assertTrue(entry3.recordTimestamp >= 2000L);
+    } else {
+      // Both should be updated together
+      Assert.assertTrue(entry3.recordTimestamp >= 2000L);
+    }
+  }
+
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testFollowerRecordLevelTimestampTracking(boolean recordLevelTimestampEnabled) {
+    // Setup similar to leader test
+    HybridStoreConfig hybridStoreConfig = new HybridStoreConfigImpl(1L, 1L, 1L, BufferReplayPolicy.REWIND_FROM_SOP);
+    Version version = new VersionImpl(TEST_STORE, 1, "1");
+    version.setHybridStoreConfig(hybridStoreConfig);
+
+    Store mockStore = mock(Store.class);
+    when(mockStore.getName()).thenReturn(TEST_STORE);
+    when(mockStore.getHybridStoreConfig()).thenReturn(hybridStoreConfig);
+    when(mockStore.getVersion(1)).thenReturn(version);
+
+    MetricsRepository mockMetricsRepository = new MetricsRepository();
+    ReadOnlyStoreRepository mockReadOnlyRepository = mock(ReadOnlyStoreRepository.class);
+    when(mockReadOnlyRepository.getStoreOrThrow(TEST_STORE)).thenReturn(mockStore);
+    when(mockReadOnlyRepository.waitVersion(eq(TEST_STORE), eq(1), any(), anyLong()))
+        .thenReturn(new StoreVersionInfo(mockStore, version));
+
+    Set<String> regions = new HashSet<>();
+    regions.add(LOCAL_FABRIC);
+
+    VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
+    when(serverConfig.getRegionNames()).thenReturn(regions);
+    when(serverConfig.getRegionName()).thenReturn(LOCAL_FABRIC);
+    when(serverConfig.getServerMaxWaitForVersionInfo()).thenReturn(Duration.ofSeconds(5));
+    when(serverConfig.getListenerHostname()).thenReturn("localhost");
+    when(serverConfig.getListenerPort()).thenReturn(123);
+    when(serverConfig.getLagMonitorCleanupCycle()).thenReturn(5);
+    when(serverConfig.isRecordLevelTimestampEnabled()).thenReturn(recordLevelTimestampEnabled);
+
+    CompletableFuture<HelixCustomizedViewOfflinePushRepository> mockCVRepositoryFuture = new CompletableFuture<>();
+
+    HeartbeatMonitoringService heartbeatMonitoringService = new HeartbeatMonitoringService(
+        mockMetricsRepository,
+        mockReadOnlyRepository,
+        serverConfig,
+        null,
+        mockCVRepositoryFuture);
+
+    // Add follower lag monitor
+    String versionTopic = Version.composeKafkaTopic(TEST_STORE, 1);
+    heartbeatMonitoringService.updateLagMonitor(versionTopic, 0, HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR);
+
+    // Record follower heartbeat at time 1000
+    long heartbeatTime = 1000L;
+    heartbeatMonitoringService.recordFollowerHeartbeat(TEST_STORE, 1, 0, LOCAL_FABRIC, heartbeatTime, true);
+
+    // Verify initial state
+    IngestionTimestampEntry entry1 =
+        heartbeatMonitoringService.getFollowerHeartbeatTimeStamps().get(TEST_STORE).get(1).get(0).get(LOCAL_FABRIC);
+    long heartbeatTs1 = entry1.heartbeatTimestamp;
+    long recordTs1 = entry1.recordTimestamp;
+
+    // Record data records
+    heartbeatMonitoringService.recordFollowerRecordTimestamp(TEST_STORE, 1, 0, LOCAL_FABRIC, 1500L, true);
+    heartbeatMonitoringService.recordFollowerRecordTimestamp(TEST_STORE, 1, 0, LOCAL_FABRIC, 1300L, true);
+
+    IngestionTimestampEntry entry2 =
+        heartbeatMonitoringService.getFollowerHeartbeatTimeStamps().get(TEST_STORE).get(1).get(0).get(LOCAL_FABRIC);
+
+    if (recordLevelTimestampEnabled) {
+      Assert.assertEquals(entry2.heartbeatTimestamp, heartbeatTs1, "Heartbeat timestamp should not change");
+      Assert.assertTrue(entry2.recordTimestamp >= 1500L, "Record timestamp should be at least 1500");
+    } else {
+      Assert.assertEquals(entry2.heartbeatTimestamp, heartbeatTs1);
+      Assert.assertEquals(entry2.recordTimestamp, recordTs1); // Should be unchanged
+    }
+  }
+
+  /**
+   * Tests that recordTimestamp always considers the heartbeat timestamp when calculating the max.
+   * Verifies that when a data record with an older timestamp arrives after a heartbeat with a newer
+   * timestamp, the recordTimestamp doesn't decrease.
+   */
+  @Test
+  public void testRecordTimestampConsidersHeartbeatTimestamp() {
+    // Setup store and config
+    HybridStoreConfig hybridStoreConfig = new HybridStoreConfigImpl(1L, 1L, 1L, BufferReplayPolicy.REWIND_FROM_SOP);
+    Version version = new VersionImpl(TEST_STORE, 1, "push1");
+    version.setHybridStoreConfig(hybridStoreConfig);
+    version.setActiveActiveReplicationEnabled(true);
+
+    Store mockStore = mock(Store.class);
+    when(mockStore.getName()).thenReturn(TEST_STORE);
+    when(mockStore.getHybridStoreConfig()).thenReturn(hybridStoreConfig);
+    when(mockStore.getVersion(1)).thenReturn(version);
+
+    MetricsRepository mockMetricsRepository = new MetricsRepository();
+    ReadOnlyStoreRepository mockReadOnlyRepository = mock(ReadOnlyStoreRepository.class);
+    when(mockReadOnlyRepository.getStoreOrThrow(TEST_STORE)).thenReturn(mockStore);
+    when(mockReadOnlyRepository.waitVersion(eq(TEST_STORE), eq(1), any(), anyLong()))
+        .thenReturn(new StoreVersionInfo(mockStore, version));
+
+    Set<String> regions = new HashSet<>();
+    regions.add(LOCAL_FABRIC);
+
+    VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
+    when(serverConfig.getRegionNames()).thenReturn(regions);
+    when(serverConfig.getRegionName()).thenReturn(LOCAL_FABRIC);
+    when(serverConfig.getServerMaxWaitForVersionInfo()).thenReturn(Duration.ofSeconds(5));
+    when(serverConfig.getListenerHostname()).thenReturn("localhost");
+    when(serverConfig.getListenerPort()).thenReturn(123);
+    when(serverConfig.getLagMonitorCleanupCycle()).thenReturn(5);
+    when(serverConfig.isRecordLevelTimestampEnabled()).thenReturn(true);
+
+    CompletableFuture<HelixCustomizedViewOfflinePushRepository> mockCVRepositoryFuture = new CompletableFuture<>();
+
+    HeartbeatMonitoringService heartbeatMonitoringService = new HeartbeatMonitoringService(
+        mockMetricsRepository,
+        mockReadOnlyRepository,
+        serverConfig,
+        null,
+        mockCVRepositoryFuture);
+
+    // Add leader lag monitor
+    String versionTopic = Version.composeKafkaTopic(TEST_STORE, 1);
+    heartbeatMonitoringService.updateLagMonitor(versionTopic, 0, HeartbeatLagMonitorAction.SET_LEADER_MONITOR);
+
+    // Record heartbeat at a high timestamp
+    long highTimestamp = System.currentTimeMillis() + 5000L;
+    heartbeatMonitoringService.recordLeaderHeartbeat(TEST_STORE, 1, 0, LOCAL_FABRIC, highTimestamp, true);
+
+    IngestionTimestampEntry entryAfterHeartbeat =
+        heartbeatMonitoringService.getLeaderHeartbeatTimeStamps().get(TEST_STORE).get(1).get(0).get(LOCAL_FABRIC);
+    Assert.assertNotNull(entryAfterHeartbeat, "Entry should be initialized after recordLeaderHeartbeat");
+    long heartbeatTs = entryAfterHeartbeat.heartbeatTimestamp;
+    long recordTsAfterHeartbeat = entryAfterHeartbeat.recordTimestamp;
+
+    Assert.assertTrue(
+        recordTsAfterHeartbeat >= highTimestamp,
+        "Record timestamp should be at least the heartbeat timestamp");
+    Assert.assertTrue(recordTsAfterHeartbeat >= heartbeatTs, "Record timestamp should be >= heartbeat timestamp");
+
+    // Record a data record with a LOWER timestamp than the heartbeat
+    long lowTimestamp = System.currentTimeMillis() + 1000L;
+    Assert.assertTrue(lowTimestamp < highTimestamp, "Test setup: low timestamp should be less than high timestamp");
+
+    heartbeatMonitoringService.recordLeaderRecordTimestamp(TEST_STORE, 1, 0, LOCAL_FABRIC, lowTimestamp, true);
+
+    IngestionTimestampEntry entryAfterRecord =
+        heartbeatMonitoringService.getLeaderHeartbeatTimeStamps().get(TEST_STORE).get(1).get(0).get(LOCAL_FABRIC);
+
+    // Verify recordTimestamp did NOT decrease - it should still be >= the heartbeat timestamp
+    Assert.assertEquals(
+        entryAfterRecord.recordTimestamp,
+        recordTsAfterHeartbeat,
+        "Record timestamp should not decrease when a lower data record timestamp arrives");
+    Assert.assertTrue(
+        entryAfterRecord.recordTimestamp >= heartbeatTs,
+        "Record timestamp should always be >= heartbeat timestamp");
+
+    // Verify heartbeat timestamp unchanged
+    Assert.assertEquals(
+        entryAfterRecord.heartbeatTimestamp,
+        heartbeatTs,
+        "Heartbeat timestamp should not change for data records");
   }
 }
