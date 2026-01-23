@@ -7,6 +7,9 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.PARTITION_COUNT;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TOPIC_PROP;
 import static org.testng.Assert.*;
 
+import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.compression.CompressorFactory;
+import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.hadoop.PushJobSetting;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.meta.Version;
@@ -14,8 +17,10 @@ import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.spark.datawriter.task.DataWriterAccumulators;
 import com.linkedin.venice.spark.datawriter.writer.TestSparkPartitionWriter;
+import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.File;
+import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.util.Arrays;
 import java.util.Iterator;
@@ -288,6 +293,46 @@ public class DataWriterSparkJobRepushTest {
         RAW_PUBSUB_INPUT_TABLE_SCHEMA);
   }
 
+  /**
+   * Test compression re-encoding in the Spark pipeline.
+   * Source: GZIP, Target: NO_OP
+   */
+  @Test
+  public void testCompressionReencoding() throws Exception {
+    String testName = "testCompressionReencoding";
+    TestSparkPartitionWriter.clearCapturedRecords(testName);
+
+    CompressorFactory compressorFactory = new CompressorFactory();
+    VeniceCompressor gzipCompressor = compressorFactory.getCompressor(CompressionStrategy.GZIP);
+    String originalValue = "original-uncompressed-value";
+    byte[] compressedValue =
+        ByteUtils.extractByteArray(gzipCompressor.compress(ByteBuffer.wrap(originalValue.getBytes()), 0));
+
+    TestDataWriterSparkJobWithCompression job = new TestDataWriterSparkJobWithCompression(testName, compressedValue);
+    currentTestJob = job;
+
+    PushJobSetting setting = new PushJobSetting();
+    setting.isSourceKafka = true;
+    setting.kafkaInputTopic = "test_store_v1";
+    setting.kafkaInputBrokerUrl = "localhost:9092";
+    setting.sourceVersionCompressionStrategy = CompressionStrategy.GZIP;
+    setting.topicCompressionStrategy = CompressionStrategy.NO_OP;
+    setting.topic = "test_store_v1";
+    setting.kafkaUrl = "localhost:9092";
+    setting.partitionerClass = DefaultVenicePartitioner.class.getName();
+    setting.partitionCount = 1;
+    setting.sourceKafkaInputVersionInfo = new VersionImpl("test_store", 1, "test-push-id");
+
+    job.configure(new VeniceProperties(createDefaultTestProperties()), setting);
+    job.runComputeJob();
+
+    List<TestSparkPartitionWriter.TestRecord> capturedRecords = TestSparkPartitionWriter.getCapturedRecords(testName);
+    assertEquals(capturedRecords.size(), 1);
+
+    // Target is NO_OP, so value should be uncompressed
+    assertEquals(new String(capturedRecords.get(0).value), originalValue);
+  }
+
   private Properties createDefaultTestProperties() {
     Properties props = new Properties();
     props.setProperty(KAFKA_INPUT_TOPIC, "test_store_v1");
@@ -382,6 +427,25 @@ public class DataWriterSparkJobRepushTest {
     }
   }
 
+  private class TestDataWriterSparkJobWithCompression extends TestDataWriterSparkJob {
+    private final byte[] compressedValue;
+
+    TestDataWriterSparkJobWithCompression(String testName, byte[] compressedValue) {
+      super(testName);
+      this.compressedValue = compressedValue;
+    }
+
+    @Override
+    protected Dataset<Row> getKafkaInputDataFrame() {
+      List<Row> mockRows = Arrays.asList(
+          new GenericRowWithSchema(
+              new Object[] { "region1", 0, 100L, MessageType.PUT.getValue(), 1, "key1".getBytes(), compressedValue, 1,
+                  "rmd".getBytes(), null },
+              RAW_PUBSUB_INPUT_TABLE_SCHEMA));
+      return getSparkSession().createDataFrame(mockRows, RAW_PUBSUB_INPUT_TABLE_SCHEMA);
+    }
+  }
+
   /**
    * Testable subclass that exposes applyTTLFilter for direct testing.
    */
@@ -431,11 +495,11 @@ public class DataWriterSparkJobRepushTest {
     }
   }
 
-  private void deleteDirectory(java.io.File directory) {
+  private void deleteDirectory(File directory) {
     if (directory != null && directory.exists()) {
-      java.io.File[] files = directory.listFiles();
+      File[] files = directory.listFiles();
       if (files != null) {
-        for (java.io.File file: files) {
+        for (File file: files) {
           if (file.isDirectory()) {
             deleteDirectory(file);
           } else {

@@ -80,6 +80,7 @@ import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
 import com.linkedin.venice.schema.AvroSchemaParseUtils;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.spark.chunk.SparkChunkAssembler;
+import com.linkedin.venice.spark.datawriter.compression.SparkCompressionReencoder;
 import com.linkedin.venice.spark.datawriter.partition.PartitionSorter;
 import com.linkedin.venice.spark.datawriter.partition.VeniceSparkPartitioner;
 import com.linkedin.venice.spark.datawriter.recordprocessor.SparkInputRecordProcessorFactory;
@@ -612,6 +613,47 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
     return dataFrame;
   }
 
+  /**
+   * Apply compression re-encoding if the source and destination compression strategies are different.
+   * This is only applicable for repush workloads (isSourceKafka = true).
+   *
+   * @param dataFrame Input dataframe
+   * @return Dataframe with values re-compressed if needed
+   */
+  protected Dataset<Row> applyCompressionReencoding(Dataset<Row> dataFrame) {
+    if (!pushJobSetting.isSourceKafka) {
+      return dataFrame;
+    }
+
+    CompressionStrategy sourceStrategy = pushJobSetting.sourceVersionCompressionStrategy;
+    CompressionStrategy destStrategy = pushJobSetting.topicCompressionStrategy;
+    byte[] sourceDict = pushJobSetting.sourceDictionary;
+    byte[] destDict = pushJobSetting.topicDictionary;
+
+    // Optimization: if strategies and dictionaries are the same, skip the map stage
+    if (sourceStrategy == destStrategy && java.util.Arrays.equals(sourceDict, destDict)) {
+      LOGGER.info("Source and destination compression are identical ({}). Skipping re-encoding.", sourceStrategy);
+      return dataFrame;
+    }
+
+    LOGGER.info("Applying compression re-encoding: {} -> {}", sourceStrategy, destStrategy);
+    ExpressionEncoder<Row> encoder = RowEncoder.apply(dataFrame.schema());
+    int valueIdx = dataFrame.schema().fieldIndex(VALUE_COLUMN_NAME);
+    StructType schema = dataFrame.schema();
+
+    return dataFrame.mapPartitions((MapPartitionsFunction<Row, Row>) iterator -> {
+      SparkCompressionReencoder reencoder =
+          new SparkCompressionReencoder(sourceStrategy, destStrategy, sourceDict, destDict, schema, valueIdx);
+      return Iterators.transform(iterator, row -> {
+        try {
+          return reencoder.reencode(row);
+        } catch (IOException e) {
+          throw new VeniceException("Failed to re-encode compression", e);
+        }
+      });
+    }, encoder);
+  }
+
   // Set configs for both SparkSession (data processing) and DataFrameReader (input format)
   protected void setInputConf(SparkSession session, DataFrameReader dataFrameReader, String key, String value) {
     session.conf().set(key, value);
@@ -666,6 +708,9 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
               pushJobSetting.sourceKafkaInputVersionInfo.isRmdChunkingEnabled());
           dataFrame = applyChunkAssembly(dataFrame);
         }
+
+        // Apply compression re-encoding if needed (source vs destination compression)
+        dataFrame = applyCompressionReencoding(dataFrame);
 
         // Drop schema ID columns (current behavior - no writer changes)
         LOGGER.info("Dropping schema ID columns before writing");

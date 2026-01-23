@@ -759,7 +759,25 @@ public class VenicePushJob implements AutoCloseable {
       }
 
       Optional<ByteBuffer> optionalCompressionDictionary = getCompressionDictionary();
+      if (optionalCompressionDictionary.isPresent()) {
+        pushJobSetting.topicDictionary = ByteUtils.extractByteArray(optionalCompressionDictionary.get());
+      }
+
       if (pushJobSetting.isSourceKafka) {
+        if (pushJobSetting.sourceVersionCompressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
+          LOGGER.info("Source version uses ZSTD_WITH_DICT. Fetching source dictionary.");
+          Properties kafkaConsumerProperties = new Properties();
+          if (pushJobSetting.enableSSL) {
+            kafkaConsumerProperties.putAll(this.sslProperties.get());
+          }
+          kafkaConsumerProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, pushJobSetting.kafkaInputBrokerUrl);
+          ByteBuffer sourceDict = DictionaryUtils
+              .readDictionaryFromKafka(pushJobSetting.kafkaInputTopic, new VeniceProperties(kafkaConsumerProperties));
+          if (sourceDict != null) {
+            pushJobSetting.sourceDictionary = ByteUtils.extractByteArray(sourceDict);
+          }
+        }
+
         if (pushJobSetting.sourceKafkaInputVersionInfo.getHybridStoreConfig() != null
             && pushJobSetting.rewindTimeInSecondsOverride == NOT_SET) {
           pushJobSetting.rewindTimeInSecondsOverride = DEFAULT_RE_PUSH_REWIND_IN_SECONDS_OVERRIDE;
