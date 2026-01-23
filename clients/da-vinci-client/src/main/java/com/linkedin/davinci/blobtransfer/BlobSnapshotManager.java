@@ -435,15 +435,19 @@ public class BlobSnapshotManager {
       }
 
       LOGGER.info("Cleaning up stale snapshot for topic {} partition {}", topicName, partitionId);
-      cleanupSnapshot(topicName, partitionId);
+
+      try {
+        cleanupSnapshot(topicName, partitionId);
+      } catch (PersistenceFailureException e) {
+        LOGGER.warn(
+            "Failed to clean up snapshot for topic {} partition {} due to partition no longer exists, only removing from tracking.",
+            topicName,
+            partitionId);
+      }
+
       removeTrackingValues(topicName, partitionId);
 
       LOGGER.info("Successfully cleaned up snapshot for topic {} partition {}", topicName, partitionId);
-    } catch (PersistenceFailureException e) {
-      LOGGER.warn(
-          "Failed to clean up snapshot for topic {} partition {} due to partition no longer exists.",
-          topicName,
-          partitionId);
     } catch (Exception e) {
       LOGGER.error("Failed to clean up snapshot for topic {} partition {}", topicName, partitionId, e);
     }
