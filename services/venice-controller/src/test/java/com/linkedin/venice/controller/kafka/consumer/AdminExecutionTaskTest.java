@@ -1,9 +1,6 @@
 package com.linkedin.venice.controller.kafka.consumer;
 
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
@@ -89,8 +86,6 @@ public class AdminExecutionTaskTest {
 
     // Verify: The inflight counter should have been incremented and then decremented back to 0
     assertNull(inflightThreadsByStore.get(storeName), "Counter should be removed when it reaches 0");
-    verify(mockStats, never()).recordIncrementConcurrentStoresCount();
-    verify(mockStats, never()).recordDecrementConcurrentStoresCount();
 
     assertTrue(internalTopic.isEmpty(), "The internal topic queue should be empty after processing.");
   }
@@ -154,8 +149,6 @@ public class AdminExecutionTaskTest {
 
     // Verify: The inflight counter should have been incremented and then decremented back to 0
     assertNull(inflightThreadsByStore.get(storeName), "Counter should be removed when there is exception");
-    verify(mockStats, never()).recordIncrementConcurrentStoresCount();
-    verify(mockStats, never()).recordDecrementConcurrentStoresCount();
 
     assertEquals(internalTopic.size(), 1, "The internal topic queue should have operation after exception.");
   }
@@ -294,12 +287,6 @@ public class AdminExecutionTaskTest {
     // Verify: After both threads finish, the counter should be cleaned up
     // Even though one thread threw an exception, the finally block should decrement the counter
     assertNull(inflightThreadsByStore.get(storeName), "Counter should be removed after both threads complete");
-
-    // Verify: Violation stats should have been recorded
-    // Increment when counter went from 1 to 2, decrement when it went from 2 to 1 (after exception)
-    verify(mockStats, times(1)).recordIncrementConcurrentStoresCount();
-    verify(mockStats, times(1)).recordDecrementConcurrentStoresCount();
-
   }
 
   /**
