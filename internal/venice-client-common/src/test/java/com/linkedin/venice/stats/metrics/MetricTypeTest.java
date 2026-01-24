@@ -270,7 +270,35 @@ public class MetricTypeTest {
           break;
         case ASYNC_GAUGE:
         case ASYNC_COUNTER_FOR_HIGH_PERF_CASES:
+        case ASYNC_UP_DOWN_COUNTER_FOR_HIGH_PERF_CASES:
           assertTrue(metricType.isAsyncMetric(), "MetricType " + metricType + " should be async");
+          break;
+
+        default:
+          fail("Unknown MetricType " + metricType);
+      }
+    }
+  }
+
+  @Test
+  public void testIsObservableCounterType() {
+    for (MetricType metricType: MetricType.values()) {
+      switch (metricType) {
+        case ASYNC_COUNTER_FOR_HIGH_PERF_CASES:
+        case ASYNC_UP_DOWN_COUNTER_FOR_HIGH_PERF_CASES:
+          assertTrue(
+              metricType.isObservableCounterType(),
+              "MetricType " + metricType + " should be observable counter type");
+          break;
+        case HISTOGRAM:
+        case MIN_MAX_COUNT_SUM_AGGREGATIONS:
+        case COUNTER:
+        case UP_DOWN_COUNTER:
+        case GAUGE:
+        case ASYNC_GAUGE:
+          assertFalse(
+              metricType.isObservableCounterType(),
+              "MetricType " + metricType + " should not be observable counter type");
           break;
 
         default:

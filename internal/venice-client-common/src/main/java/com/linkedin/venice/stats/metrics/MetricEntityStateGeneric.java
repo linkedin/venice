@@ -53,15 +53,16 @@ public class MetricEntityStateGeneric extends MetricEntityState {
   }
 
   /**
-   * MetricEntityStateGeneric does not support ASYNC_COUNTER_FOR_HIGH_PERF_CASES because it doesn't cache
+   * MetricEntityStateGeneric does not support async counter types because it doesn't cache
    * MetricAttributesData and cannot provide the getAllMetricAttributesData() iteration required for
    * observable counter reporting. Use one of the enum-based MetricEntityState subclasses for
-   * ASYNC_COUNTER_FOR_HIGH_PERF_CASES metrics.
+   * ASYNC_COUNTER_FOR_HIGH_PERF_CASES or ASYNC_UP_DOWN_COUNTER_FOR_HIGH_PERF_CASES metrics.
    */
   private void validateMetricType(MetricEntity metricEntity) {
-    if (metricEntity.getMetricType() == MetricType.ASYNC_COUNTER_FOR_HIGH_PERF_CASES) {
+    MetricType metricType = metricEntity.getMetricType();
+    if (metricType.isObservableCounterType()) {
       throw new IllegalArgumentException(
-          "MetricEntityStateGeneric does not support ASYNC_COUNTER_FOR_HIGH_PERF_CASES metric type. "
+          "MetricEntityStateGeneric does not support " + metricType + " metric type. "
               + "Use MetricEntityStateOneEnum, MetricEntityStateTwoEnums, etc. for metric: "
               + metricEntity.getMetricName());
     }

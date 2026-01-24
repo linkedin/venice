@@ -47,7 +47,7 @@ public abstract class MetricEntityState extends AsyncMetricEntityState {
         null,
         null);
     MetricType metricType = metricEntity.getMetricType();
-    this.isObservableCounter = metricType == MetricType.ASYNC_COUNTER_FOR_HIGH_PERF_CASES;
+    this.isObservableCounter = metricType.isObservableCounterType();
     this.otelDoubleRecordingStrategy = createOtelDoubleRecordingStrategy(metricType);
     this.otelLongRecordingStrategy = createOtelLongRecordingStrategy(metricType);
   }
@@ -60,12 +60,25 @@ public abstract class MetricEntityState extends AsyncMetricEntityState {
   protected abstract Iterable<MetricAttributesData> getAllMetricAttributesData();
 
   /**
-   * Registers the Observable Counter with the OTel repository if this metric is an ASYNC_COUNTER_FOR_HIGH_PERF_CASES.
+   * Registers the Observable Counter with the OTel repository if this metric uses async recording.
+   * Supports both ASYNC_COUNTER_FOR_HIGH_PERF_CASES and ASYNC_UP_DOWN_COUNTER_FOR_HIGH_PERF_CASES.
    * This must be called by subclasses after their constructor completes and the metricAttributesData map is initialized.
    */
   protected final void registerObservableCounterIfNeeded() {
-    if (isObservableCounter && emitOpenTelemetryMetrics() && getOtelRepository() != null) {
-      setOtelMetric(getOtelRepository().registerObservableLongCounter(getMetricEntity(), this::reportToMeasurement));
+    if (!isObservableCounter || !emitOpenTelemetryMetrics() || getOtelRepository() == null) {
+      return;
+    }
+    switch (getMetricEntity().getMetricType()) {
+      case ASYNC_COUNTER_FOR_HIGH_PERF_CASES:
+        setOtelMetric(getOtelRepository().registerObservableLongCounter(getMetricEntity(), this::reportToMeasurement));
+        break;
+      case ASYNC_UP_DOWN_COUNTER_FOR_HIGH_PERF_CASES:
+        setOtelMetric(
+            getOtelRepository().registerObservableLongUpDownCounter(getMetricEntity(), this::reportToMeasurement));
+        break;
+      default:
+        throw new IllegalStateException(
+            "Unexpected metric type for observable counter registration: " + getMetricEntity().getMetricType());
     }
   }
 
@@ -112,6 +125,7 @@ public abstract class MetricEntityState extends AsyncMetricEntityState {
   private ObjLongConsumer<MetricAttributesData> createOtelLongRecordingStrategy(MetricType metricType) {
     switch (metricType) {
       case ASYNC_COUNTER_FOR_HIGH_PERF_CASES:
+      case ASYNC_UP_DOWN_COUNTER_FOR_HIGH_PERF_CASES:
         return (holder, value) -> holder.add(value);
       case COUNTER:
         return (holder, value) -> ((LongCounter) otelMetric).add(value, holder.getAttributes());

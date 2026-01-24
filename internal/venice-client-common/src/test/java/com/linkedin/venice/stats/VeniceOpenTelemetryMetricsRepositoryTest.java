@@ -181,12 +181,10 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
 
       Object instrument = metricsRepository.createInstrument(metricEntity, () -> 10, baseAttributes);
 
-      // ASYNC_COUNTER_FOR_HIGH_PERF_CASES returns null from createInstrument because it is registered
-      // separately via registerObservableLongCounter() after MetricEntityState construction
-      if (metricType == MetricType.ASYNC_COUNTER_FOR_HIGH_PERF_CASES) {
-        assertNull(
-            instrument,
-            "Instrument should be null for ASYNC_COUNTER_FOR_HIGH_PERF_CASES (registered separately)");
+      // Observable counter types return null from createInstrument because they are registered separately
+      // via registerObservableLongCounter/UpDownCounter() after MetricEntityState construction
+      if (metricType.isObservableCounterType()) {
+        assertNull(instrument, "Instrument should be null for " + metricType + " (registered separately)");
         continue;
       }
 
@@ -758,6 +756,86 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
     } finally {
       otelRepo.close();
     }
+  }
+
+  private MetricEntity createAsyncUpDownCounterMetricEntity(String metricName) {
+    Set<VeniceMetricsDimensions> dimensionsSet = new HashSet<>();
+    dimensionsSet.add(VeniceMetricsDimensions.VENICE_STORE_NAME);
+    dimensionsSet.add(VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE);
+    dimensionsSet.add(VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE_CATEGORY);
+    dimensionsSet.add(VeniceMetricsDimensions.VENICE_REQUEST_METHOD);
+
+    return new MetricEntity(
+        metricName,
+        MetricType.ASYNC_UP_DOWN_COUNTER_FOR_HIGH_PERF_CASES,
+        MetricUnit.NUMBER,
+        "Test async up-down counter metric",
+        dimensionsSet);
+  }
+
+  private MetricEntityStateThreeEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, RequestType> createAsyncUpDownCounterMetricState(
+      MetricEntity metricEntity,
+      VeniceOpenTelemetryMetricsRepository otelRepo) {
+    Map<VeniceMetricsDimensions, String> baseDimensionsMap = new HashMap<>();
+    baseDimensionsMap.put(VeniceMetricsDimensions.VENICE_STORE_NAME, TEST_STORE_NAME);
+
+    return MetricEntityStateThreeEnums.create(
+        metricEntity,
+        otelRepo,
+        baseDimensionsMap,
+        HttpResponseStatusEnum.class,
+        HttpResponseStatusCodeCategory.class,
+        RequestType.class);
+  }
+
+  /**
+   * Test ASYNC_UP_DOWN_COUNTER_FOR_HIGH_PERF_CASES metric type with MetricEntityStateThreeEnums.
+   * Verifies that:
+   * 1. createInstrument returns null for ASYNC_UP_DOWN_COUNTER_FOR_HIGH_PERF_CASES (registered separately)
+   * 2. MetricEntityStateThreeEnums properly creates MetricAttributesData with LongAdder
+   * 3. Recording values accumulates in the LongAdder (supports both positive and negative)
+   * 4. Observable up-down counter is registered via registerObservableLongUpDownCounter
+   */
+  @Test
+  public void testAsyncUpDownCounterMetricType() {
+    MetricEntity metricEntity = createAsyncUpDownCounterMetricEntity("test_async_up_down_counter");
+
+    // Verify createInstrument returns null for ASYNC_UP_DOWN_COUNTER_FOR_HIGH_PERF_CASES
+    Object instrument = metricsRepository.createInstrument(metricEntity);
+    assertNull(instrument, "createInstrument should return null for ASYNC_UP_DOWN_COUNTER_FOR_HIGH_PERF_CASES");
+
+    MetricEntityStateThreeEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, RequestType> metricState =
+        createAsyncUpDownCounterMetricState(metricEntity, metricsRepository);
+
+    assertNotNull(metricState, "MetricEntityStateThreeEnums should be created");
+    assertTrue(metricState.isObservableCounter(), "Should be marked as observable counter");
+
+    // Record some positive and negative values to test up-down behavior
+    metricState.record(10L, HttpResponseStatusEnum.OK, HttpResponseStatusCodeCategory.SUCCESS, RequestType.SINGLE_GET);
+    metricState.record(20L, HttpResponseStatusEnum.OK, HttpResponseStatusCodeCategory.SUCCESS, RequestType.SINGLE_GET);
+    metricState.record(-5L, HttpResponseStatusEnum.OK, HttpResponseStatusCodeCategory.SUCCESS, RequestType.SINGLE_GET);
+
+    // Verify MetricAttributesData was created with LongAdder
+    MetricAttributesData data1 = metricState.getMetricAttributesDataEnumMap()
+        .get(HttpResponseStatusEnum.OK)
+        .get(HttpResponseStatusCodeCategory.SUCCESS)
+        .get(RequestType.SINGLE_GET);
+    assertNotNull(data1, "MetricAttributesData should exist for recorded dimensions");
+    assertNotNull(data1.getAttributes(), "MetricAttributesData should have Attributes");
+    assertTrue(
+        data1.hasAdder(),
+        "MetricAttributesData should have a LongAdder for ASYNC_UP_DOWN_COUNTER_FOR_HIGH_PERF_CASES");
+
+    // Verify accumulated values (10 + 20 - 5 = 25)
+    assertEquals(data1.sumThenReset(), 25L, "Should have accumulated 10 + 20 - 5 = 25");
+
+    // After sumThenReset, values should be 0
+    assertEquals(data1.sumThenReset(), 0L, "Should be 0 after reset");
+
+    // Test negative-only accumulation
+    metricState
+        .record(-100L, HttpResponseStatusEnum.OK, HttpResponseStatusCodeCategory.SUCCESS, RequestType.SINGLE_GET);
+    assertEquals(data1.sumThenReset(), -100L, "Should support negative accumulation");
   }
 
 }

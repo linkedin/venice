@@ -9,7 +9,8 @@ import java.util.concurrent.atomic.LongAdder;
  * for each of that attributes for high-throughput metric recording scenarios.
  *
  * <p>This class is used by {@link MetricEntityState} subclasses to cache both the attributes
- * and the accumulator for {@link MetricType#ASYNC_COUNTER_FOR_HIGH_PERF_CASES} metrics. For other metric types,
+ * and the accumulator for observable counter metrics ({@link MetricType#ASYNC_COUNTER_FOR_HIGH_PERF_CASES}
+ * and {@link MetricType#ASYNC_UP_DOWN_COUNTER_FOR_HIGH_PERF_CASES}). For other metric types,
  * only the attributes are used and the adder remains null.
  *
  * <p>The {@link LongAdder} provides high-throughput recording capability by minimizing contention
@@ -21,7 +22,7 @@ public class MetricAttributesData {
   private final LongAdder adder;
 
   /**
-   * Creates a MetricAttributesData with only attributes (for non-ASYNC_COUNTER_FOR_HIGH_PERF_CASES metrics).
+   * Creates a MetricAttributesData with only attributes (for non-observable-counter metrics).
    *
    * @param attributes the OpenTelemetry attributes for this metric dimension combination
    */
@@ -57,7 +58,7 @@ public class MetricAttributesData {
   /**
    * Adds the given value to the internal LongAdder.
    * This is a fast operation optimized for high contention scenarios.
-   * Only call this for ASYNC_COUNTER_FOR_HIGH_PERF_CASES metrics where adder is guaranteed non-null.
+   * Only call this for observable counter metrics where adder is guaranteed non-null.
    *
    * @param value the value to add
    */
@@ -68,7 +69,7 @@ public class MetricAttributesData {
   /**
    * Returns the current sum and resets the adder to zero.
    * This is typically called during OpenTelemetry's metric collection callback.
-   * Only call this for ASYNC_COUNTER_FOR_HIGH_PERF_CASES metrics where adder is guaranteed non-null.
+   * Only call this for observable counter metrics where adder is guaranteed non-null.
    *
    * @return the sum before reset
    */
