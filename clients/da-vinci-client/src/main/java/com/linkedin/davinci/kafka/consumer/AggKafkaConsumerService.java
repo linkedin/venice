@@ -409,13 +409,34 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
                 serverConfig.isUnregisterMetricForDeletedStoreEnabled(),
                 serverConfig,
                 pubSubContext,
-                crossTpProcessingPool),
+                getCrossTpProcessingPoolForPoolType(poolType)),
             isAAOrWCEnabledFunc));
 
     if (!consumerService.isRunning()) {
       consumerService.start();
     }
     return consumerService;
+  }
+
+  /**
+   * Returns the cross-TP processing pool for the given pool type based on configuration.
+   * If {@code crossTpParallelProcessingCurrentVersionAAWCLeaderOnly} is true, only
+   * {@code ConsumerPoolType.CURRENT_VERSION_AA_WC_LEADER_POOL} will receive the pool.
+   * Otherwise, all pool types receive the pool when cross-TP parallel processing is enabled.
+   *
+   * @param poolType the consumer pool type
+   * @return the cross-TP processing pool if applicable, null otherwise
+   */
+  private ThreadPoolExecutor getCrossTpProcessingPoolForPoolType(ConsumerPoolType poolType) {
+    if (crossTpProcessingPool == null) {
+      return null;
+    }
+    if (serverConfig.isCrossTpParallelProcessingCurrentVersionAAWCLeaderOnly()) {
+      // Only enable for CURRENT_VERSION_AA_WC_LEADER_POOL
+      return poolType == ConsumerPoolType.CURRENT_VERSION_AA_WC_LEADER_POOL ? crossTpProcessingPool : null;
+    }
+    // Enable for all pool types
+    return crossTpProcessingPool;
   }
 
   public boolean hasConsumerAssignedFor(

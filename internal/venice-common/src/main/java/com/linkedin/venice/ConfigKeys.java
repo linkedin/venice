@@ -2787,6 +2787,17 @@ public class ConfigKeys {
       "server.cross.tp.parallel.processing.thread.pool.size";
 
   /**
+   * When enabled, cross-TP parallel processing will only be applied to the
+   * {@code ConsumerPoolType.CURRENT_VERSION_AA_WC_LEADER_POOL} consumer pool.
+   * This is useful for limiting parallel processing to the most critical pool type
+   * while keeping other pools using sequential processing.
+   *
+   * Default: false (when cross-TP parallel processing is enabled, it applies to all pools)
+   */
+  public static final String SERVER_CROSS_TP_PARALLEL_PROCESSING_CURRENT_VERSION_AA_WC_LEADER_ONLY =
+      "server.cross.tp.parallel.processing.current.version.aa.wc.leader.only";
+
+  /**
    * Please find more details here: {@link com.linkedin.venice.reliability.LoadController}.
    */
   public static final String SERVER_LOAD_CONTROLLER_ENABLED = "server.load.controller.enabled";
