@@ -444,10 +444,10 @@ public class RocksDBServerConfig {
                                                                                                                     // default
     this.autoTunedRateLimiterEnabled = props.getBoolean(ROCKSDB_AUTO_TUNED_RATE_LIMITER_ENABLED, false);
 
-    // SstFileManager deletion rate limiting - disabled by default (0) for backward compatibility
-    // Recommended: 64 MB/s (67108864) for nodes with 'discard' mount option
+    // 0 means disable the rate limiting for file deletion.
     this.sstFileManagerDeleteRateBytesPerSecond =
         props.getSizeInBytes(ROCKSDB_SST_FILE_MANAGER_DELETE_RATE_BYTES_PER_SECOND, 0L);
+    // By default, the ratio is set to 0.25 in the SSTFileManager of RocksDB.
     this.sstFileManagerMaxTrashDBRatio = props.getDouble(ROCKSDB_SST_FILE_MANAGER_MAX_TRASH_DB_RATIO, 0.25); // 25%
                                                                                                              // default
     this.level0FileNumCompactionTrigger = props.getInt(ROCKSDB_LEVEL0_FILE_NUM_COMPACTION_TRIGGER, 40);
