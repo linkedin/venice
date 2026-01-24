@@ -5,6 +5,7 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.ingestion.consumption.ConsumedDataReceiver;
+import com.linkedin.davinci.stats.CrossTpProcessingStats;
 import com.linkedin.davinci.stats.StuckConsumerRepairStats;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.VeniceJsonSerializer;
@@ -36,7 +37,9 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.Executors;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
@@ -79,6 +82,8 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
   private final ReadOnlyStoreRepository metadataRepository;
 
   private final StuckConsumerRepairStats stuckConsumerStats;
+  private final ThreadPoolExecutor crossTpProcessingPool;
+  private final CrossTpProcessingStats crossTpProcessingStats;
 
   private final static String STUCK_CONSUMER_MSG =
       "Didn't find any suspicious ingestion task, and please contact developers to investigate it further";
@@ -143,6 +148,23 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
     this.isAAOrWCEnabledFunc = isAAOrWCEnabledFunc;
     this.pubSubPropertiesSupplier = pubSubPropertiesSupplier;
     this.pubSubContext = pubSubContext;
+
+    // Create single shared thread pool for cross-TP parallel processing if enabled
+    if (serverConfig.isCrossTpParallelProcessingEnabled()) {
+      int poolSize = serverConfig.getCrossTpParallelProcessingThreadPoolSize();
+      this.crossTpProcessingPool = new ThreadPoolExecutor(
+          poolSize,
+          poolSize,
+          0L,
+          TimeUnit.MILLISECONDS,
+          new LinkedBlockingQueue<>(),
+          new DaemonThreadFactory("cross-tp-parallel-processing", serverConfig.getLogContext()));
+      this.crossTpProcessingStats = new CrossTpProcessingStats(metricsRepository, crossTpProcessingPool);
+      LOGGER.info("Cross-TP parallel processing enabled with shared thread pool size: {}", poolSize);
+    } else {
+      this.crossTpProcessingPool = null;
+      this.crossTpProcessingStats = null;
+    }
     LOGGER.info("Successfully initialized AggKafkaConsumerService");
   }
 
@@ -162,6 +184,19 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
     }
     if (this.stuckConsumerRepairExecutorService != null) {
       this.stuckConsumerRepairExecutorService.shutdownNow();
+    }
+    // Shutdown cross-TP processing pool if it was created
+    if (crossTpProcessingPool != null) {
+      crossTpProcessingPool.shutdown();
+      try {
+        if (!crossTpProcessingPool.awaitTermination(1, TimeUnit.SECONDS)) {
+          crossTpProcessingPool.shutdownNow();
+        }
+        LOGGER.info("crossTpProcessingPool shutdown completed.");
+      } catch (InterruptedException e) {
+        crossTpProcessingPool.shutdownNow();
+        Thread.currentThread().interrupt();
+      }
     }
   }
 
@@ -373,7 +408,8 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
                 metadataRepository,
                 serverConfig.isUnregisterMetricForDeletedStoreEnabled(),
                 serverConfig,
-                pubSubContext),
+                pubSubContext,
+                crossTpProcessingPool),
             isAAOrWCEnabledFunc));
 
     if (!consumerService.isRunning()) {

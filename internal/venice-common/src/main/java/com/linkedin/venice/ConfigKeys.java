@@ -2766,6 +2766,27 @@ public class ConfigKeys {
       "server.aa.wc.ingestion.storage.lookup.thread.pool.size";
 
   /**
+   * Enable cross-TP (topic-partition) parallel processing in the ConsumptionTask.
+   * When enabled, records from different topic-partitions in a single poll batch will be processed
+   * in parallel instead of sequentially. This can improve throughput when one slow TP would
+   * otherwise block all others in the same poll batch.
+   *
+   * Default: false (sequential processing, current behavior)
+   */
+  public static final String SERVER_CROSS_TP_PARALLEL_PROCESSING_ENABLED =
+      "server.cross.tp.parallel.processing.enabled";
+
+  /**
+   * Thread pool size for cross-TP parallel processing.
+   * This controls the maximum number of topic-partitions that can be processed concurrently
+   * within a single poll batch.
+   *
+   * Default: 4
+   */
+  public static final String SERVER_CROSS_TP_PARALLEL_PROCESSING_THREAD_POOL_SIZE =
+      "server.cross.tp.parallel.processing.thread.pool.size";
+
+  /**
    * Please find more details here: {@link com.linkedin.venice.reliability.LoadController}.
    */
   public static final String SERVER_LOAD_CONTROLLER_ENABLED = "server.load.controller.enabled";
