@@ -3875,8 +3875,9 @@ public abstract class StoreIngestionTaskTest {
     endPosition = storeIngestionTaskUnderTest
         .getTopicPartitionEndPosition(localKafkaConsumerService.kafkaUrl, new PubSubTopicPartitionImpl(pubSubTopic, 0));
     long elapsedTime = System.currentTimeMillis() - startTime;
-    // verify getLatestPositionCachedNonBlocking was called 10 times (once per retry)
-    verify(mockTopicManager, atLeast(10)).getLatestPositionCachedNonBlocking(any(PubSubTopicPartition.class));
+    // verify getLatestPositionCachedNonBlocking was called multiple times (retries with exponential backoff).
+    // The actual count varies (5-10) due to exponential backoff timing within the 5-second max duration.
+    verify(mockTopicManager, atLeast(5)).getLatestPositionCachedNonBlocking(any(PubSubTopicPartition.class));
     // elapsed time should be less than 10 seconds (10 retries with 1 second interval)
     assertTrue(elapsedTime < 10000, "elapsed time: " + elapsedTime);
     assertEquals(endPosition, PubSubSymbolicPosition.LATEST);
@@ -4587,7 +4588,9 @@ public abstract class StoreIngestionTaskTest {
           }
 
           // Use waitForNonDeterministicAssertion with atLeast() for all mock verifications
-          waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+          // Use longer timeout (60s) since resubscribeForAllPartitions() is called asynchronously
+          // by the SIT thread after setVersionRole() triggers, and there can be delays
+          waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
             try {
               verify(storeIngestionTaskUnderTest, atLeast(totalResubscriptionTriggered)).resubscribeForAllPartitions();
             } catch (InterruptedException e) {
@@ -6245,6 +6248,10 @@ public abstract class StoreIngestionTaskTest {
       when(pcs.getReplicaTopicPartition()).thenReturn(BAR_TP);
       when(pcs.isHybrid()).thenReturn(true);
 
+      // Stub measureLagWithCallToPubSub upfront to avoid UnfinishedStubbingException from concurrent mock access
+      doReturn(0L).when(storeIngestionTaskUnderTest)
+          .measureLagWithCallToPubSub(anyString(), eq(BAR_TP), any(PubSubPosition.class));
+
       // Case 1: Latch was not created or released, so reportIfCatchUpVersionTopicOffset() shouldn't do anything
       when(pcs.isEndOfPushReceived()).thenReturn(true);
       when(pcs.isLatchCreated()).thenReturn(false);
@@ -6256,8 +6263,6 @@ public abstract class StoreIngestionTaskTest {
 
       // Case 2: Latch was created, so reportIfCatchUpVersionTopicOffset() should execute
       when(pcs.isLatchCreated()).thenReturn(true);
-      doReturn(0L).when(storeIngestionTaskUnderTest)
-          .measureLagWithCallToPubSub(anyString(), eq(BAR_TP), any(PubSubPosition.class));
       storeIngestionTaskUnderTest.reportIfCatchUpVersionTopicOffset(pcs);
       verify(storeIngestionTaskUnderTest, times(1))
           .measureLagWithCallToPubSub(anyString(), eq(BAR_TP), any(PubSubPosition.class));

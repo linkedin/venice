@@ -82,7 +82,7 @@ public class KafkaConsumerServiceDelegator extends AbstractKafkaConsumerService 
     } else {
       consumerPoolStrategy = new DefaultConsumerPoolStrategy();
     }
-    LOGGER.info("Initializing Consumer Service Delegator with Consumer pool strategy: " + consumerPoolStrategyType);
+    LOGGER.info("Initializing Consumer Service Delegator with Consumer pool strategy: {}", consumerPoolStrategyType);
 
     this.consumerServices = consumerPoolStrategy.getConsumerServices();
   }
