@@ -5,6 +5,7 @@ import com.linkedin.venice.stats.dimensions.VeniceDimensionInterface;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import io.opentelemetry.api.common.Attributes;
 import io.tehuti.metrics.MeasurableStat;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.EnumMap;
 import java.util.List;
@@ -17,7 +18,7 @@ import javax.annotation.Nonnull;
  */
 public class MetricEntityStateFourEnums<E1 extends Enum<E1> & VeniceDimensionInterface, E2 extends Enum<E2> & VeniceDimensionInterface, E3 extends Enum<E3> & VeniceDimensionInterface, E4 extends Enum<E4> & VeniceDimensionInterface>
     extends MetricEntityState {
-  private final EnumMap<E1, EnumMap<E2, EnumMap<E3, EnumMap<E4, Attributes>>>> attributesEnumMap;
+  private final EnumMap<E1, EnumMap<E2, EnumMap<E3, EnumMap<E4, MetricAttributesData>>>> metricAttributesDataEnumMap;
 
   private final Class<E1> enumTypeClass1;
   private final Class<E2> enumTypeClass2;
@@ -77,7 +78,8 @@ public class MetricEntityStateFourEnums<E1 extends Enum<E1> & VeniceDimensionInt
     this.enumTypeClass2 = enumTypeClass2;
     this.enumTypeClass3 = enumTypeClass3;
     this.enumTypeClass4 = enumTypeClass4;
-    this.attributesEnumMap = createAttributesEnumMap();
+    this.metricAttributesDataEnumMap = createMetricAttributesDataEnumMap();
+    registerObservableCounterIfNeeded();
   }
 
   /** Factory method with named parameters to ensure the passed in enumTypeClass are in the same order as E */
@@ -125,9 +127,10 @@ public class MetricEntityStateFourEnums<E1 extends Enum<E1> & VeniceDimensionInt
   }
 
   /**
-   * Creates an EnumMap of {@link Attributes} which will be used to lazy initialize the Attributes
+   * Creates an EnumMap of {@link MetricAttributesData} which will be used to lazy initialize the
+   * Attributes and optionally a LongAdder for ASYNC_COUNTER_FOR_HIGH_PERF_CASES metrics.
    */
-  private EnumMap<E1, EnumMap<E2, EnumMap<E3, EnumMap<E4, Attributes>>>> createAttributesEnumMap() {
+  private EnumMap<E1, EnumMap<E2, EnumMap<E3, EnumMap<E4, MetricAttributesData>>>> createMetricAttributesDataEnumMap() {
     if (!emitOpenTelemetryMetrics()) {
       return null;
     }
@@ -136,19 +139,19 @@ public class MetricEntityStateFourEnums<E1 extends Enum<E1> & VeniceDimensionInt
   }
 
   /**
-   * Manages the nested EnumMap structure for lazy initialization of Attributes.
-   * The structure is a Four-level nested EnumMap:
-   * EnumMap<E1, EnumMap<E2, EnumMap<E3, EnumMap<E4, Attributes>>>>.
-   * This allows efficient retrieval of Attributes based on Four enum dimensions (E1, E2, E3, E4).
+   * Manages the nested EnumMap structure for lazy initialization of MetricAttributesData.
+   * The structure is a four-level nested EnumMap:
+   * EnumMap<E1, EnumMap<E2, EnumMap<E3, EnumMap<E4, MetricAttributesData>>>>.
+   * This allows efficient retrieval of state based on four enum dimensions (E1, E2, E3, E4).
    *
-   * For thread safety considerations, refer {@link MetricEntityStateOneEnum#getAttributes}.
+   * For thread safety considerations, refer {@link MetricEntityStateOneEnum#getMetricAttributesData}.
    */
-  public Attributes getAttributes(E1 dimension1, E2 dimension2, E3 dimension3, E4 dimension4) {
+  private MetricAttributesData getMetricAttributesData(E1 dimension1, E2 dimension2, E3 dimension3, E4 dimension4) {
     if (!emitOpenTelemetryMetrics()) {
       return null;
     }
 
-    Attributes attributes = attributesEnumMap.computeIfAbsent(dimension1, k -> {
+    return metricAttributesDataEnumMap.computeIfAbsent(dimension1, k -> {
       validateInputDimension(k);
       return new EnumMap<>(enumTypeClass2);
     }).computeIfAbsent(dimension2, k -> {
@@ -159,24 +162,17 @@ public class MetricEntityStateFourEnums<E1 extends Enum<E1> & VeniceDimensionInt
       return new EnumMap<>(enumTypeClass4);
     }).computeIfAbsent(dimension4, k -> {
       validateInputDimension(k);
-      return createAttributes(dimension1, dimension2, dimension3, dimension4);
+      Attributes attrs = createAttributes(dimension1, dimension2, dimension3, dimension4);
+      return new MetricAttributesData(attrs, isObservableCounter());
     });
-
-    if (attributes == null) {
-      throw new IllegalArgumentException(
-          "No Attributes found for dimensions: " + dimension1 + "," + dimension2 + "," + dimension3 + "," + dimension4
-              + " for metric Entity: " + getMetricEntity().getMetricName());
-    }
-    return attributes;
   }
 
-  public void record(
-      long value,
-      @Nonnull E1 dimension1,
-      @Nonnull E2 dimension2,
-      @Nonnull E3 dimension3,
-      @Nonnull E4 dimension4) {
-    super.record(value, getAttributes(dimension1, dimension2, dimension3, dimension4));
+  /**
+   * Returns the Attributes for the given dimensions.
+   */
+  public Attributes getAttributes(E1 dimension1, E2 dimension2, E3 dimension3, E4 dimension4) {
+    MetricAttributesData holder = getMetricAttributesData(dimension1, dimension2, dimension3, dimension4);
+    return holder != null ? holder.getAttributes() : null;
   }
 
   public void record(
@@ -185,11 +181,37 @@ public class MetricEntityStateFourEnums<E1 extends Enum<E1> & VeniceDimensionInt
       @Nonnull E2 dimension2,
       @Nonnull E3 dimension3,
       @Nonnull E4 dimension4) {
-    super.record(value, getAttributes(dimension1, dimension2, dimension3, dimension4));
+    super.record(value, getMetricAttributesData(dimension1, dimension2, dimension3, dimension4));
+  }
+
+  public void record(
+      long value,
+      @Nonnull E1 dimension1,
+      @Nonnull E2 dimension2,
+      @Nonnull E3 dimension3,
+      @Nonnull E4 dimension4) {
+    super.record(value, getMetricAttributesData(dimension1, dimension2, dimension3, dimension4));
+  }
+
+  @Override
+  protected Iterable<MetricAttributesData> getAllMetricAttributesData() {
+    if (metricAttributesDataEnumMap == null) {
+      return null;
+    }
+
+    List<MetricAttributesData> allData = new ArrayList<>();
+    for (EnumMap<E2, EnumMap<E3, EnumMap<E4, MetricAttributesData>>> level2Map: metricAttributesDataEnumMap.values()) {
+      for (EnumMap<E3, EnumMap<E4, MetricAttributesData>> level3Map: level2Map.values()) {
+        for (EnumMap<E4, MetricAttributesData> level4Map: level3Map.values()) {
+          allData.addAll(level4Map.values());
+        }
+      }
+    }
+    return allData;
   }
 
   /** visible for testing */
-  public EnumMap<E1, EnumMap<E2, EnumMap<E3, EnumMap<E4, Attributes>>>> getAttributesEnumMap() {
-    return attributesEnumMap;
+  public EnumMap<E1, EnumMap<E2, EnumMap<E3, EnumMap<E4, MetricAttributesData>>>> getMetricAttributesDataEnumMap() {
+    return metricAttributesDataEnumMap;
   }
 }

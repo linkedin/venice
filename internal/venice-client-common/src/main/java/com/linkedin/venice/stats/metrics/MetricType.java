@@ -29,6 +29,16 @@ public enum MetricType {
   COUNTER(false),
 
   /**
+   * Use this instead of {@link #COUNTER} when recording happens at very high frequency
+   * in hot path. <p>
+   * Uses {@link java.util.concurrent.atomic.LongAdder} internally for fast recording,
+   * and OpenTelemetry's {@link io.opentelemetry.api.metrics.ObservableLongCounter}
+   * reads the accumulated values during metrics collection.
+   * <p>
+   */
+  ASYNC_COUNTER_FOR_HIGH_PERF_CASES(true),
+
+  /**
    * For UpDownCounter: A counter that supports positive and negative increments.
    * Useful when counts can increase or decrease over time.
    */

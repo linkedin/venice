@@ -7,7 +7,6 @@ import io.tehuti.metrics.MeasurableStat;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import org.apache.commons.lang.Validate;
 
 
 /**
@@ -16,7 +15,7 @@ import org.apache.commons.lang.Validate;
  * constructor and used during every record() call.
  */
 public class MetricEntityStateBase extends MetricEntityState {
-  private final Attributes attributes;
+  private final MetricAttributesData metricAttributesData;
 
   /** should not be called directly, call {@link #create} instead */
   private MetricEntityStateBase(
@@ -47,11 +46,15 @@ public class MetricEntityStateBase extends MetricEntityState {
     // directly using the Attributes as multiple MetricEntityState can reuse the same base attributes object.
     // If we want to fully abstract the Attribute creation inside these classes, we can create it here instead.
     if (emitOpenTelemetryMetrics()) {
-      Validate.notNull(
-          baseAttributes,
-          "Base attributes cannot be null for MetricEntityStateBase for metric: " + metricEntity.getMetricName());
+      if (baseAttributes == null) {
+        throw new IllegalArgumentException(
+            "Base attributes cannot be null for MetricEntityStateBase for metric: " + metricEntity.getMetricName());
+      }
+      this.metricAttributesData = new MetricAttributesData(baseAttributes, isObservableCounter());
+      registerObservableCounterIfNeeded();
+    } else {
+      this.metricAttributesData = null;
     }
-    this.attributes = baseAttributes;
   }
 
   /** Factory method to keep the API consistent with other subclasses like {@link MetricEntityStateOneEnum} */
@@ -82,16 +85,24 @@ public class MetricEntityStateBase extends MetricEntityState {
         baseAttributes);
   }
 
-  public void record(long value) {
-    super.record(value, attributes);
+  public void record(double value) {
+    super.record(value, metricAttributesData);
   }
 
-  public void record(double value) {
-    super.record(value, attributes);
+  public void record(long value) {
+    super.record(value, metricAttributesData);
+  }
+
+  @Override
+  protected Iterable<MetricAttributesData> getAllMetricAttributesData() {
+    if (metricAttributesData == null) {
+      return null;
+    }
+    return Collections.singletonList(metricAttributesData);
   }
 
   /** visibility for testing */
   public Attributes getAttributes() {
-    return attributes;
+    return metricAttributesData != null ? metricAttributesData.getAttributes() : null;
   }
 }

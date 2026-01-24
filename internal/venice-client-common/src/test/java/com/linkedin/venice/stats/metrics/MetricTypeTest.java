@@ -269,6 +269,7 @@ public class MetricTypeTest {
           assertFalse(metricType.isAsyncMetric(), "MetricType " + metricType + " should not be async");
           break;
         case ASYNC_GAUGE:
+        case ASYNC_COUNTER_FOR_HIGH_PERF_CASES:
           assertTrue(metricType.isAsyncMetric(), "MetricType " + metricType + " should be async");
           break;
 

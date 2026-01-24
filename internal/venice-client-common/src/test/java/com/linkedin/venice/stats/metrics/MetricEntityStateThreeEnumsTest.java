@@ -77,7 +77,7 @@ public class MetricEntityStateThreeEnumsTest extends MetricEntityStateEnumTestBa
             MetricEntityStateTest.DimensionEnum2.class,
             MetricEntityStateTest.DimensionEnum3.class);
     assertNotNull(metricEntityState);
-    assertNull(metricEntityState.getAttributesEnumMap());
+    assertNull(metricEntityState.getMetricAttributesDataEnumMap());
     for (MetricEntityStateTest.DimensionEnum1 enum1: MetricEntityStateTest.DimensionEnum1.values()) {
       for (MetricEntityStateTest.DimensionEnum2 enum2: MetricEntityStateTest.DimensionEnum2.values()) {
         for (MetricEntityStateTest.DimensionEnum3 enum3: MetricEntityStateTest.DimensionEnum3.values()) {
@@ -98,7 +98,7 @@ public class MetricEntityStateThreeEnumsTest extends MetricEntityStateEnumTestBa
             MetricEntityStateTest.DimensionEnum2.class,
             MetricEntityStateTest.DimensionEnum3.class);
     assertNotNull(metricEntityState);
-    assertEquals(metricEntityState.getAttributesEnumMap().size(), 0);
+    assertEquals(metricEntityState.getMetricAttributesDataEnumMap().size(), 0);
   }
 
   @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = ".*has no constants.*")
@@ -287,19 +287,19 @@ public class MetricEntityStateThreeEnumsTest extends MetricEntityStateEnumTestBa
       MetricEntityStateTest.DimensionEnum2 dimension2,
       MetricEntityStateTest.DimensionEnum3 dimension3,
       Attributes attributes) {
-    EnumMap<MetricEntityStateTest.DimensionEnum1, EnumMap<MetricEntityStateTest.DimensionEnum2, EnumMap<MetricEntityStateTest.DimensionEnum3, Attributes>>> attributesEnumMap =
-        metricEntityState.getAttributesEnumMap();
+    EnumMap<MetricEntityStateTest.DimensionEnum1, EnumMap<MetricEntityStateTest.DimensionEnum2, EnumMap<MetricEntityStateTest.DimensionEnum3, MetricAttributesData>>> metricAttributesDataEnumMap =
+        metricEntityState.getMetricAttributesDataEnumMap();
     // verify whether the attributes are cached
-    assertNotNull(attributesEnumMap);
-    assertEquals(attributesEnumMap.size(), attributesEnumMapSize);
-    EnumMap<MetricEntityStateTest.DimensionEnum2, EnumMap<MetricEntityStateTest.DimensionEnum3, Attributes>> mapE2 =
-        attributesEnumMap.get(dimension1);
+    assertNotNull(metricAttributesDataEnumMap);
+    assertEquals(metricAttributesDataEnumMap.size(), attributesEnumMapSize);
+    EnumMap<MetricEntityStateTest.DimensionEnum2, EnumMap<MetricEntityStateTest.DimensionEnum3, MetricAttributesData>> mapE2 =
+        metricAttributesDataEnumMap.get(dimension1);
     assertNotNull(mapE2);
     assertEquals(mapE2.size(), 1);
-    EnumMap<MetricEntityStateTest.DimensionEnum3, Attributes> mapE3 = mapE2.get(dimension2);
+    EnumMap<MetricEntityStateTest.DimensionEnum3, MetricAttributesData> mapE3 = mapE2.get(dimension2);
     assertNotNull(mapE3);
     assertEquals(mapE3.size(), 1);
-    assertEquals(mapE3.get(dimension3), attributes);
+    assertEquals(mapE3.get(dimension3).getAttributes(), attributes);
   }
 
   @Test
@@ -402,8 +402,8 @@ public class MetricEntityStateThreeEnumsTest extends MetricEntityStateEnumTestBa
         }
       }
     }
-    EnumMap<HttpResponseStatusEnum, EnumMap<HttpResponseStatusCodeCategory, EnumMap<RequestType, Attributes>>> attributesEnumMapForComparison =
-        metricEntityStateForComparison.getAttributesEnumMap();
+    EnumMap<HttpResponseStatusEnum, EnumMap<HttpResponseStatusCodeCategory, EnumMap<RequestType, MetricAttributesData>>> metricAttributesDataEnumMapForComparison =
+        metricEntityStateForComparison.getMetricAttributesDataEnumMap();
 
     // create a new metric keeping everything the same to concurrently access for testing
     MetricEntityStateThreeEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, RequestType> metricEntityStateForTest =
@@ -459,7 +459,9 @@ public class MetricEntityStateThreeEnumsTest extends MetricEntityStateEnumTestBa
                 for (RequestType enum3: RequestType.values()) {
                   Attributes attributes = metricEntityStateForTest.getAttributes(enum1, enum2, enum3);
                   assertNotNull(attributes);
-                  assertEquals(attributes, attributesEnumMapForComparison.get(enum1).get(enum2).get(enum3));
+                  assertEquals(
+                      attributes,
+                      metricAttributesDataEnumMapForComparison.get(enum1).get(enum2).get(enum3).getAttributes());
                 }
               }
             }
@@ -481,15 +483,15 @@ public class MetricEntityStateThreeEnumsTest extends MetricEntityStateEnumTestBa
     executor.awaitTermination(5, TimeUnit.SECONDS);
 
     // Verify the end result
-    EnumMap<HttpResponseStatusEnum, EnumMap<HttpResponseStatusCodeCategory, EnumMap<RequestType, Attributes>>> attributesEnumMapForTest =
-        metricEntityStateForTest.getAttributesEnumMap();
+    EnumMap<HttpResponseStatusEnum, EnumMap<HttpResponseStatusCodeCategory, EnumMap<RequestType, MetricAttributesData>>> metricAttributesDataEnumMapForTest =
+        metricEntityStateForTest.getMetricAttributesDataEnumMap();
 
     for (HttpResponseStatusEnum enum1: HttpResponseStatusEnum.values()) {
       for (HttpResponseStatusCodeCategory enum2: HttpResponseStatusCodeCategory.values()) {
         for (RequestType enum3: RequestType.values()) {
           assertEquals(
-              attributesEnumMapForTest.get(enum1).get(enum2).get(enum3),
-              attributesEnumMapForComparison.get(enum1).get(enum2).get(enum3));
+              metricAttributesDataEnumMapForTest.get(enum1).get(enum2).get(enum3).getAttributes(),
+              metricAttributesDataEnumMapForComparison.get(enum1).get(enum2).get(enum3).getAttributes());
         }
       }
     }
