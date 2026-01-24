@@ -15,6 +15,7 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
+import java.util.concurrent.ExecutorService;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -57,7 +58,8 @@ public class PartitionWiseKafkaConsumerService extends KafkaConsumerService {
       final ReadOnlyStoreRepository metadataRepository,
       final boolean isUnregisterMetricForDeletedStoreEnabled,
       final VeniceServerConfig veniceServerConfig,
-      final PubSubContext pubSubContext) {
+      final PubSubContext pubSubContext,
+      final ExecutorService crossTpProcessingPool) {
     this(
         poolType,
         consumerProperties,
@@ -77,7 +79,8 @@ public class PartitionWiseKafkaConsumerService extends KafkaConsumerService {
         isUnregisterMetricForDeletedStoreEnabled,
         PartitionWiseKafkaConsumerService.class.toString(),
         veniceServerConfig,
-        pubSubContext);
+        pubSubContext,
+        crossTpProcessingPool);
   }
 
   PartitionWiseKafkaConsumerService(
@@ -99,7 +102,8 @@ public class PartitionWiseKafkaConsumerService extends KafkaConsumerService {
       final boolean isUnregisterMetricForDeletedStoreEnabled,
       final String loggerNamePrefix,
       final VeniceServerConfig veniceServerConfig,
-      final PubSubContext pubSubContext) {
+      final PubSubContext pubSubContext,
+      final ExecutorService crossTpProcessingPool) {
     super(
         poolType,
         consumerProperties,
@@ -118,7 +122,8 @@ public class PartitionWiseKafkaConsumerService extends KafkaConsumerService {
         metadataRepository,
         isUnregisterMetricForDeletedStoreEnabled,
         veniceServerConfig,
-        pubSubContext);
+        pubSubContext,
+        crossTpProcessingPool);
     this.LOGGER = LogManager.getLogger(loggerNamePrefix + " [" + kafkaUrlForLogger + "]");
   }
 

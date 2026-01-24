@@ -188,7 +188,8 @@ public class KafkaConsumerServiceTest {
         mock(ReadOnlyStoreRepository.class),
         false,
         mockVeniceServerConfig,
-        mockPubSubContext) {
+        mockPubSubContext,
+        null) {
       @Override
       protected SharedKafkaConsumer pickConsumerForPartition(
           PubSubTopic versionTopic,
@@ -257,7 +258,8 @@ public class KafkaConsumerServiceTest {
         mock(ReadOnlyStoreRepository.class),
         false,
         mockVeniceServerConfig,
-        mockPubSubContext);
+        mockPubSubContext,
+        null);
     consumerService.start();
 
     PubSubConsumerAdapter consumerForT1P0 = consumerService
@@ -437,7 +439,8 @@ public class KafkaConsumerServiceTest {
         mock(ReadOnlyStoreRepository.class),
         false,
         mockVeniceServerConfig,
-        mockPubSubContext) {
+        mockPubSubContext,
+        null) {
       @Override
       protected SharedKafkaConsumer pickConsumerForPartition(
           PubSubTopic versionTopic,

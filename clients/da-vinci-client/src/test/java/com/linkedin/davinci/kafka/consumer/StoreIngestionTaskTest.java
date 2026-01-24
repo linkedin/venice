@@ -1214,7 +1214,8 @@ public abstract class StoreIngestionTaskTest {
         mock(ReadOnlyStoreRepository.class),
         false,
         veniceServerConfig,
-        mockPubSubContext);
+        mockPubSubContext,
+        null);
     localKafkaConsumerService.start();
 
     Properties remoteKafkaProps = new Properties();
@@ -1237,7 +1238,8 @@ public abstract class StoreIngestionTaskTest {
         mock(ReadOnlyStoreRepository.class),
         false,
         veniceServerConfig,
-        mockPubSubContext);
+        mockPubSubContext,
+        null);
     remoteKafkaConsumerService.start();
 
     prepareAggKafkaConsumerServiceMock();
