@@ -339,8 +339,16 @@ public class VeniceProperties implements Serializable {
     }
   }
 
+  private boolean containsNonBlankValue(String name) {
+    if (!containsKey(name)) {
+      return false;
+    }
+    String value = get(name);
+    return value != null && !value.trim().isEmpty();
+  }
+
   public long getLong(String name, long defaultValue) {
-    if (containsKey(name)) {
+    if (containsNonBlankValue(name)) {
       return Long.parseLong(get(name));
     } else {
       return defaultValue;
@@ -356,7 +364,7 @@ public class VeniceProperties implements Serializable {
   }
 
   public int getInt(String name, int defaultValue) {
-    if (containsKey(name)) {
+    if (containsNonBlankValue(name)) {
       return Integer.parseInt(get(name));
     } else {
       return defaultValue;
@@ -380,7 +388,7 @@ public class VeniceProperties implements Serializable {
   }
 
   public double getDouble(String name, double defaultValue) {
-    if (containsKey(name)) {
+    if (containsNonBlankValue(name)) {
       return Double.parseDouble(get(name));
     } else {
       return defaultValue;

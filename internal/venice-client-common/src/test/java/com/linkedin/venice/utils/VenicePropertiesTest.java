@@ -186,6 +186,47 @@ public class VenicePropertiesTest {
   }
 
   @Test
+  public void testGetNumericWithEmptyOrWhitespaceReturnsDefault() {
+    // Case 1: Empty string and null values should return defaults
+    Map<String, String> props = new HashMap<>();
+    props.put("null.long", null);
+    props.put("empty.long", "");
+    props.put("empty.int", "");
+    props.put("empty.double", "");
+    VeniceProperties veniceProperties = new VeniceProperties(props);
+
+    assertEquals(veniceProperties.getLong("null.long", 100L), 100L);
+    assertEquals(veniceProperties.getLong("empty.long", 100L), 100L);
+    assertEquals(veniceProperties.getInt("empty.int", 42), 42);
+    assertEquals(veniceProperties.getDouble("empty.double", Math.PI), Math.PI);
+
+    // Case 2: Whitespace-only values should return defaults
+    props.put("whitespace.long", "   ");
+    props.put("whitespace.int", "\t");
+    props.put("whitespace.double", "  \n  ");
+    VeniceProperties whitespaceProps = new VeniceProperties(props);
+
+    assertEquals(whitespaceProps.getLong("whitespace.long", 200L), 200L);
+    assertEquals(whitespaceProps.getInt("whitespace.int", 84), 84);
+    assertEquals(whitespaceProps.getDouble("whitespace.double", 2 * Math.PI), 2 * Math.PI);
+
+    // Case 3: Valid values should still be parsed correctly
+    props.put("valid.long", "999");
+    props.put("valid.int", "123");
+    props.put("valid.double", "1.5");
+    VeniceProperties validProps = new VeniceProperties(props);
+
+    assertEquals(validProps.getLong("valid.long", 0L), 999L);
+    assertEquals(validProps.getInt("valid.int", 0), 123);
+    assertEquals(validProps.getDouble("valid.double", 0.0), 1.5);
+
+    // Case 4: Missing keys should return defaults
+    assertEquals(veniceProperties.getLong("missing.key", 500L), 500L);
+    assertEquals(veniceProperties.getInt("missing.key", 50), 50);
+    assertEquals(veniceProperties.getDouble("missing.key", 5.0), 5.0);
+  }
+
+  @Test
   public void testMapToString() {
     Map<String, String> map = new HashMap<>();
     map.put("key1", "value1");
