@@ -6,6 +6,7 @@ import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
 import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
+import com.linkedin.venice.kafka.protocol.LeaderMetadata;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
@@ -82,9 +83,10 @@ public class DumpAdminMessages {
           AdminOperation adminMessage = deserializer.deserialize(put.putValue, put.schemaId);
           String operationType = AdminMessageType.valueOf(adminMessage).name();
           String publishTimeStamp = dateFormat.format(new Date(messageEnvelope.producerMetadata.messageTimestamp));
+          LeaderMetadata leaderMetadata = messageEnvelope.leaderMetadataFooter;
           // Log message as it is received
           LOGGER.info(
-              "Position:{}; Type:{}; SchemaId:{}; Timestamp:{}; ProducerMd:(guid:{},seg:{},seq:{},mts:{},lts:{}); Operation:{}",
+              "Position:{}; Type:{}; SchemaId:{}; Timestamp:{}; ProducerMd:(guid:{},seg:{},seq:{},mts:{},lts:{}); LeaderMd:(host:{}); Operation:{}",
               record.getPosition(),
               operationType,
               put.schemaId,
@@ -94,6 +96,7 @@ public class DumpAdminMessages {
               messageEnvelope.producerMetadata.messageSequenceNumber,
               messageEnvelope.producerMetadata.messageTimestamp,
               messageEnvelope.producerMetadata.logicalTimestamp,
+              leaderMetadata == null ? "-" : leaderMetadata.hostName,
               adminMessage);
           curMsgCnt++;
         }
