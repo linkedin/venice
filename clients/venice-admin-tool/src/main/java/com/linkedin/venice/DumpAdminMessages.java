@@ -4,6 +4,7 @@ import com.linkedin.venice.controller.kafka.AdminTopicUtils;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
 import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
+import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
@@ -83,12 +84,16 @@ public class DumpAdminMessages {
           String publishTimeStamp = dateFormat.format(new Date(messageEnvelope.producerMetadata.messageTimestamp));
           // Log message as it is received
           LOGGER.info(
-              "Position:{}; Type:{}; SchemaId:{}; Timestamp:{}; ProducerMd:{}; Operation:{}",
+              "Position:{}; Type:{}; SchemaId:{}; Timestamp:{}; ProducerMd:(guid:{},seg:{},seq:{},mts:{},lts:{}); Operation:{}",
               record.getPosition(),
               operationType,
               put.schemaId,
               publishTimeStamp,
-              messageEnvelope.producerMetadata,
+              GuidUtils.getHexFromGuid(messageEnvelope.producerMetadata.producerGUID),
+              messageEnvelope.producerMetadata.segmentNumber,
+              messageEnvelope.producerMetadata.messageSequenceNumber,
+              messageEnvelope.producerMetadata.messageTimestamp,
+              messageEnvelope.producerMetadata.logicalTimestamp,
               adminMessage);
           curMsgCnt++;
         }
