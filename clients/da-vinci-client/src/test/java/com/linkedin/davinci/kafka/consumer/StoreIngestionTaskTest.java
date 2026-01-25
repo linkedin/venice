@@ -495,7 +495,7 @@ public abstract class StoreIngestionTaskTest {
   public void suiteSetUp() throws Exception {
     final Sensor mockSensor = mock(Sensor.class);
     doReturn(mockSensor).when(mockMetricRepo).sensor(anyString(), any());
-    taskPollingService = Executors.newFixedThreadPool(1);
+    taskPollingService = Executors.newFixedThreadPool(1, new DaemonThreadFactory("SIT"));
     storeBufferService = new StoreBufferService(
         3,
         10000,
@@ -1610,12 +1610,12 @@ public abstract class StoreIngestionTaskTest {
        *       the issue as the rate of flakiness is low. But there does seem to be something going on here...
        */
       if (enableRecordLevelMetricForCurrentVersionBootstrapping) {
-        verify(mockStoreIngestionStats, times(3)).recordTotalBytesConsumed(anyLong());
+        verify(mockStoreIngestionStats, timeout(TEST_TIMEOUT_MS).times(3)).recordTotalBytesConsumed(anyLong());
       } else {
         // When record level metric is disabled for current version bootstrapping, the store ingestion stats
-        verify(mockStoreIngestionStats, times(2)).recordTotalBytesConsumed(anyLong());
+        verify(mockStoreIngestionStats, timeout(TEST_TIMEOUT_MS).times(2)).recordTotalBytesConsumed(anyLong());
       }
-      verify(mockStoreIngestionStats, times(3)).recordTotalRecordsConsumed();
+      verify(mockStoreIngestionStats, timeout(TEST_TIMEOUT_MS).times(3)).recordTotalRecordsConsumed();
 
     }, AA_OFF);
     config.setHybridStoreConfig(Optional.of(hybridStoreConfig)).setExtraServerProperties(extraProps);
@@ -2260,7 +2260,7 @@ public abstract class StoreIngestionTaskTest {
    * including a corrupt message followed by a missing message and a good one.
    * We expect the Notifier to not report any errors after the EOP.
    */
-  @Test(dataProvider = "aaConfigProvider")
+  @Test(dataProvider = "aaConfigProvider", timeOut = 60_000)
   public void testDIVErrorMessagesNotFailFastAfterEOP(AAConfig aaConfig) throws Exception {
     VeniceWriter veniceWriterCorrupted = getCorruptedVeniceWriter(putValueToCorrupt, inMemoryLocalKafkaBroker);
 
@@ -5011,7 +5011,7 @@ public abstract class StoreIngestionTaskTest {
           verify(mockAbstractStorageEngine, timeout(10000).times(1)).put(eq(PARTITION_FOO), any(), (ByteBuffer) any());
           verify(zkHelixAdmin, timeout(1000).atLeast(1))
               .setPartitionsToError(anyString(), anyString(), anyString(), anyList());
-          verify(storeIngestionTaskUnderTest, times(1))
+          verify(storeIngestionTaskUnderTest, timeout(TEST_TIMEOUT_MS).times(1))
               .reportIngestionNotifier(any(PartitionConsumptionState.class), any(VeniceException.class));
         }, AA_OFF);
     testConfig.setStoreVersionConfigOverride(configOverride -> {
@@ -6238,19 +6238,16 @@ public abstract class StoreIngestionTaskTest {
     localVeniceWriter.put(putKeyFoo, putValue, EXISTING_SCHEMA_ID, PUT_KEY_FOO_TIMESTAMP, null).get();
     localVeniceWriter.broadcastEndOfPush(new HashMap<>());
 
-    runTest(Collections.singleton(PARTITION_FOO), () -> {
+    // Use a test config so we can stub the spy BEFORE the task starts (avoiding UnfinishedStubbingException)
+    final PubSubTopicPartition BAR_TP = new PubSubTopicPartitionImpl(pubSubTopic, PARTITION_BAR);
+    StoreIngestionTaskTestConfig config = new StoreIngestionTaskTestConfig(Collections.singleton(PARTITION_FOO), () -> {
       // Wait for a real PCS to be populated after topic subscription in processCommonConsumerAction()
       verify(mockStoreIngestionStats, timeout(TEST_TIMEOUT_MS).times(1)).recordTotalRecordsConsumed();
 
       // Intentionally use a mock PCS with a different partition to avoid the SIT test interfering with the test
       PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
-      final PubSubTopicPartition BAR_TP = new PubSubTopicPartitionImpl(pubSubTopic, PARTITION_BAR);
       when(pcs.getReplicaTopicPartition()).thenReturn(BAR_TP);
       when(pcs.isHybrid()).thenReturn(true);
-
-      // Stub measureLagWithCallToPubSub upfront to avoid UnfinishedStubbingException from concurrent mock access
-      doReturn(0L).when(storeIngestionTaskUnderTest)
-          .measureLagWithCallToPubSub(anyString(), eq(BAR_TP), any(PubSubPosition.class));
 
       // Case 1: Latch was not created or released, so reportIfCatchUpVersionTopicOffset() shouldn't do anything
       when(pcs.isEndOfPushReceived()).thenReturn(true);
@@ -6274,6 +6271,15 @@ public abstract class StoreIngestionTaskTest {
       verify(storeIngestionTaskUnderTest, times(1))
           .measureLagWithCallToPubSub(anyString(), eq(BAR_TP), any(PubSubPosition.class));
     }, AA_OFF);
+
+    // Stub measureLagWithCallToPubSub BEFORE starting consumption to avoid UnfinishedStubbingException
+    // from concurrent mock access by the SIT thread
+    config.setBeforeStartingConsumption(() -> {
+      doReturn(0L).when(storeIngestionTaskUnderTest)
+          .measureLagWithCallToPubSub(anyString(), any(PubSubTopicPartition.class), any(PubSubPosition.class));
+    });
+
+    runTest(config);
   }
 
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)

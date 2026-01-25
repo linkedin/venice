@@ -19,7 +19,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.function.IntConsumer;
 import java.util.function.Supplier;
 import org.apache.logging.log4j.LogManager;
@@ -113,7 +115,11 @@ class ConsumptionTask implements Runnable {
     try {
       while (running) {
         try {
-          waitForNextCycleIfNeeded(addSomeDelay);
+          if (addSomeDelay) {
+            synchronized (this) {
+              wait(readCycleDelayMs);
+            }
+          }
           if (!running) {
             break;
           }
@@ -154,39 +160,13 @@ class ConsumptionTask implements Runnable {
   }
 
   /**
-   * Waits for the configured delay if needed. Uses wait() to allow early wakeup by stop() or setDataReceiver().
-   * The wait is placed in a while loop to handle spurious wakeups correctly.
-   *
-   * <p>This method returns normally in two cases:
-   * <ul>
-   *   <li>The full delay has elapsed</li>
-   *   <li>The task is stopped (running becomes false) - caller should check running flag after return</li>
-   * </ul>
-   *
-   * @param shouldDelay whether to wait before the next cycle
-   * @throws InterruptedException if the thread is interrupted while waiting
-   */
-  private void waitForNextCycleIfNeeded(boolean shouldDelay) throws InterruptedException {
-    if (shouldDelay) {
-      synchronized (this) {
-        long waitStartTime = System.currentTimeMillis();
-        long remainingWaitTime = readCycleDelayMs;
-        while (running && remainingWaitTime > 0) {
-          wait(remainingWaitTime);
-          remainingWaitTime = readCycleDelayMs - (System.currentTimeMillis() - waitStartTime);
-        }
-      }
-    }
-  }
-
-  /**
-   * Processes pending unsubscriptions by removing partitions from data receiver map,
-   * notifying receivers of topic deletion, and updating the poll tracker.
-   * The set is cleared by the cleaner at the start and can be reused for collecting
-   * partitions with missing receivers during poll processing.
-   *
-   * @param topicPartitionsToUnsub reusable set (cleared by cleaner, populated with partitions to unsubscribe)
-   */
+  * Processes pending unsubscriptions by removing partitions from data receiver map,
+  * notifying receivers of topic deletion, and updating the poll tracker.
+  * The set is cleared by the cleaner at the start and can be reused for collecting
+  * partitions with missing receivers during poll processing.
+  *
+  * @param topicPartitionsToUnsub reusable set (cleared by cleaner, populated with partitions to unsubscribe)
+  */
   private void processAndClearUnsubscriptions(Set<PubSubTopicPartition> topicPartitionsToUnsub) {
     cleaner.getTopicPartitionsToUnsubscribe(topicPartitionsToUnsub);
     for (PubSubTopicPartition topicPartitionToUnSub: topicPartitionsToUnsub) {
@@ -390,10 +370,24 @@ class ConsumptionTask implements Runnable {
    * - Writing messages to the receiver
    * - Exception handling
    *
+   * <p><b>Exception Handling Contract:</b> This method catches all exceptions internally and stores
+   * them in {@link TpProcessingResult#setError(Exception)}. It is guaranteed to never throw an
+   * exception to the caller. This contract is critical for parallel processing in
+   * {@link #processAllTopicPartitions}, where this method is executed via
+   * {@link CompletableFuture#supplyAsync}. If this method were to throw,
+   * the future would complete exceptionally, causing {@link CompletableFuture#join()}
+   * to throw a {@link CompletionException}. By catching all exceptions here,
+   * we ensure that errors are handled uniformly through the result object rather than through
+   * exception propagation.
+   *
+   * <p>Note: Framework-level exceptions (e.g., {@link RejectedExecutionException}
+   * from the thread pool) are not caught here and would cause the future to complete exceptionally.
+   * Such exceptions indicate a severe system issue and should propagate to fail fast.
+   *
    * @param pubSubTopicPartition the topic-partition being processed
    * @param messages the messages to process
    * @param pollTimestamp the timestamp when the poll completed
-   * @return the processing result containing counts, sizes, and any errors
+   * @return the processing result containing counts, sizes, and any errors (never null)
    */
   private TpProcessingResult processTopicPartition(
       PubSubTopicPartition pubSubTopicPartition,

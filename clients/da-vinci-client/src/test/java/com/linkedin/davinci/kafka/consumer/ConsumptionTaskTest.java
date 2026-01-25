@@ -29,6 +29,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.IntConsumer;
 import java.util.function.Supplier;
+
+import com.linkedin.venice.utils.DaemonThreadFactory;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
@@ -47,7 +49,7 @@ public class ConsumptionTaskTest {
 
   @BeforeMethod
   public void setUp() {
-    crossTpProcessingPool = Executors.newFixedThreadPool(4);
+    crossTpProcessingPool = Executors.newFixedThreadPool(4, new DaemonThreadFactory("ConsumptionTaskTest"));
     mockAggStats = mock(AggKafkaConsumerServiceStats.class);
     mockStoreStats = mock(KafkaConsumerServiceStats.class);
     when(mockAggStats.getStoreStats(any())).thenReturn(mockStoreStats);
