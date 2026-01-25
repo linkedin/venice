@@ -5304,8 +5304,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   *
   * @param pcs the partition consumption state tracking DoL status
   * @param dolPubSubMessage the consumed DoL PubSub message with leadership metadata
+  *
+  * Package-private for testing.
   */
-  private void checkAndHandleDoLMessage(PartitionConsumptionState pcs, DefaultPubSubMessage dolPubSubMessage) {
+  void checkAndHandleDoLMessage(PartitionConsumptionState pcs, DefaultPubSubMessage dolPubSubMessage) {
     // Early exit if DoL mechanism is disabled via config or message key is not DoL stamp
     if (!shouldUseDolMechanism() || !Arrays.equals(dolPubSubMessage.getKey().getKey(), KafkaKey.DOL_STAMP.getKey())) {
       return;

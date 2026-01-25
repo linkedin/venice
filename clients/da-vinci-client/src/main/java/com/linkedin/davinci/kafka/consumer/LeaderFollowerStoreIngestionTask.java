@@ -899,8 +899,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
   /**
    * Callback to handle DoL message produce completion.
+   * Package-private for testing.
    */
-  private static class DolStampProduceCallback implements PubSubProducerCallback {
+  static class DolStampProduceCallback implements PubSubProducerCallback {
     private final PartitionConsumptionState pcs;
     private final long leadershipTerm;
 

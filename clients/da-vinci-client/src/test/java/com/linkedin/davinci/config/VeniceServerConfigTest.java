@@ -7,6 +7,8 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_FETCH_THROTTLER_FACTORS_PER_SECOND;
 import static com.linkedin.venice.ConfigKeys.PARTICIPANT_MESSAGE_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_FORKED_PROCESS_JVM_ARGUMENT_LIST;
+import static com.linkedin.venice.ConfigKeys.SERVER_LEADER_HANDOVER_USE_DOL_MECHANISM_FOR_SYSTEM_STORES;
+import static com.linkedin.venice.ConfigKeys.SERVER_LEADER_HANDOVER_USE_DOL_MECHANISM_FOR_USER_STORES;
 import static com.linkedin.venice.ConfigKeys.SERVER_THROTTLER_FACTORS_FOR_AA_WC_LEADER;
 import static com.linkedin.venice.ConfigKeys.SERVER_THROTTLER_FACTORS_FOR_CURRENT_VERSION_AA_WC_LEADER;
 import static com.linkedin.venice.ConfigKeys.SERVER_THROTTLER_FACTORS_FOR_CURRENT_VERSION_NON_AA_WC_LEADER;
@@ -122,5 +124,35 @@ public class VeniceServerConfigTest {
     props.put(PARTICIPANT_MESSAGE_STORE_ENABLED, "false");
     config = new VeniceServerConfig(new VeniceProperties(props));
     assertFalse(config.isParticipantMessageStoreEnabled());
+  }
+
+  @Test
+  public void testLeaderHandoverDoLMechanismConfigs() {
+    Properties props = populatedBasicProperties();
+
+    // Test default values (both should be false by default)
+    VeniceServerConfig config = new VeniceServerConfig(new VeniceProperties(props));
+    assertFalse(config.isLeaderHandoverUseDoLMechanismEnabledForSystemStores());
+    assertFalse(config.isLeaderHandoverUseDoLMechanismEnabledForUserStores());
+
+    // Test enabling DoL for system stores only
+    props.put(SERVER_LEADER_HANDOVER_USE_DOL_MECHANISM_FOR_SYSTEM_STORES, "true");
+    config = new VeniceServerConfig(new VeniceProperties(props));
+    assertTrue(config.isLeaderHandoverUseDoLMechanismEnabledForSystemStores());
+    assertFalse(config.isLeaderHandoverUseDoLMechanismEnabledForUserStores());
+
+    // Test enabling DoL for user stores only
+    props.put(SERVER_LEADER_HANDOVER_USE_DOL_MECHANISM_FOR_SYSTEM_STORES, "false");
+    props.put(SERVER_LEADER_HANDOVER_USE_DOL_MECHANISM_FOR_USER_STORES, "true");
+    config = new VeniceServerConfig(new VeniceProperties(props));
+    assertFalse(config.isLeaderHandoverUseDoLMechanismEnabledForSystemStores());
+    assertTrue(config.isLeaderHandoverUseDoLMechanismEnabledForUserStores());
+
+    // Test enabling DoL for both system and user stores
+    props.put(SERVER_LEADER_HANDOVER_USE_DOL_MECHANISM_FOR_SYSTEM_STORES, "true");
+    props.put(SERVER_LEADER_HANDOVER_USE_DOL_MECHANISM_FOR_USER_STORES, "true");
+    config = new VeniceServerConfig(new VeniceProperties(props));
+    assertTrue(config.isLeaderHandoverUseDoLMechanismEnabledForSystemStores());
+    assertTrue(config.isLeaderHandoverUseDoLMechanismEnabledForUserStores());
   }
 }
