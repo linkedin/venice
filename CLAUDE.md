@@ -94,3 +94,32 @@ Example: `[server][da-vinci] Use dedicated thread to persist data to storage eng
 - Netty 4.1.74
 - ZooKeeper 3.6.3
 - TestNG 6.14.3
+
+## Metrics Architecture
+
+Venice uses dual metrics: **Tehuti** (legacy Kafka-style) and **OpenTelemetry** (modern dimensional). Full documentation: `docs/metrics-categorization.md`
+
+### Metric Entity Files (OTel)
+- `RouterMetricEntity` - Router request/retry metrics (`services/venice-router/.../stats/`)
+- `ServerMetricEntity` - Server ingestion metrics (`clients/da-vinci-client/.../stats/`)
+- `ControllerMetricEntity` - Control plane metrics (`services/venice-controller/.../stats/`)
+- `ClientMetricEntity` / `BasicClientMetricEntity` - Thin client metrics (`clients/venice-thin-client/.../stats/`)
+- `FastClientMetricEntity` / `ClusterMetricEntity` - Fast client metrics (`clients/venice-client/.../fastclient/stats/`)
+- `RoutingMetricEntity` - Helix group routing (`internal/venice-client-common/.../stats/routing/`)
+- `RetryManagerMetricEntity` - Retry rate limiting (`internal/venice-common/.../stats/`)
+- `BasicConsumerMetricEntity` - Changelog consumer (`clients/da-vinci-client/.../consumer/stats/`)
+
+### Key Stats Classes (Tehuti)
+- `HostLevelIngestionStats` - Ingestion throughput, leader/follower consumption, DCR metrics
+- `ServerHttpRequestStats` - Server read latency, storage engine query, read compute
+- `BlobTransferStats` - Blob transfer throughput
+
+### Metrics by Category
+- **Read Path**: `call_count`, `call_time`, `storage_engine_query_latency`, `read_compute_*`
+- **Write/Ingestion**: `bytes_consumed`, `records_consumed`, `leader_*`, `follower_*`, `storage_engine_put_latency`
+- **Hybrid/RT**: `{region}_rt_bytes_consumed`, `storage_quota_used`, `ingestion.replication.heartbeat.delay`
+- **DCR (Active-Active)**: `update_ignored_dcr`, `tombstone_creation_dcr`, `timestamp_regression_dcr_error`
+- **Retry**: `retry_count`, `allowed_retry_count`, `retry.rate_limit.*`
+
+### Standard Dimensions
+`venice.store.name`, `venice.cluster.name`, `venice.request.method`, `http.response.status_code`, `venice.response.status_code_category`, `venice.region.name`, `venice.version.role`
