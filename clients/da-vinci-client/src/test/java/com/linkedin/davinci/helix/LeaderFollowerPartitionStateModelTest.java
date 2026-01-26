@@ -28,6 +28,7 @@ import com.linkedin.davinci.stats.ParticipantStateTransitionStats;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatLagMonitorAction;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import com.linkedin.davinci.store.AbstractStorageEngineTest;
+import com.linkedin.davinci.store.AbstractStoragePartition;
 import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.davinci.store.rocksdb.RocksDBServerConfig;
 import com.linkedin.davinci.store.rocksdb.RocksDBStorageEngineFactory;
@@ -37,6 +38,7 @@ import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
+import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -361,6 +363,9 @@ public class LeaderFollowerPartitionStateModelTest {
    * OFFLINE->DROPPED state transition (backup version deletion).
    * This test creates a real storage engine with data, then triggers the OFFLINE->DROPPED
    * state transition and verifies that the deletion is throttled according to the configured rate.
+   *
+   * This test also creates a snapshot (simulating blob transfer scenario) to verify that
+   * rate limiting works correctly even when hard links exist.
    */
   @Test(groups = { "integration" })
   public void testOfflineToDroppedTransitionHonorsRateLimiting() throws Exception {
@@ -409,6 +414,22 @@ public class LeaderFollowerPartitionStateModelTest {
       // Verify data was written
       File storeDir = new File(factory.getRocksDBPath(testTopic, testPartition)).getParentFile();
       assertTrue(storeDir.exists(), "Store directory should exist before deletion");
+
+      // Sync/flush data to disk before creating snapshot
+      AbstractStoragePartition partition = storeEngine.getPartitionOrThrow(testPartition);
+      partition.sync();
+
+      // Create a snapshot to simulate blob transfer scenario
+      // This creates hard links to the SST files, helping test the case where
+      // snapshot exists during backup version deletion
+      partition.createSnapshot();
+
+      // Verify snapshot was created
+      // Note: serverConfig.getRocksDBPath() returns dataBasePath + "/rocksdb"
+      String rocksDBBasePath = serverConfig.getRocksDBPath();
+      String snapshotPath = RocksDBUtils.composeSnapshotDir(rocksDBBasePath, testTopic, testPartition);
+      File partitionSnapshotDir = new File(snapshotPath);
+      assertTrue(partitionSnapshotDir.exists(), "Snapshot directory should exist before deletion");
 
       // Setup: Create a mock ingestion backend that uses the real storage service
       KafkaStoreIngestionService mockIngestionService = mock(KafkaStoreIngestionService.class);
@@ -462,15 +483,22 @@ public class LeaderFollowerPartitionStateModelTest {
       long elapsedTime = System.currentTimeMillis() - startTime;
 
       // Verify: Deletion should be throttled (should take ~10 seconds for 200 MB at 20 MB/s)
+      // This validates that rate limiting works even when a snapshot exists (hard links scenario)
       double elapsedTimeSec = elapsedTime / 1000.0;
       assertTrue(
           elapsedTimeSec >= 8.0,
           String.format(
-              "Deletion during OFFLINE->DROPPED should be throttled (>= 8 seconds), but took %.2f seconds",
+              "Deletion during OFFLINE->DROPPED should be throttled (>= 8 seconds), but took %.2f seconds. "
+                  + "This test includes snapshot creation to verify rate limiting works with hard links.",
               elapsedTimeSec));
 
       // Verify: Store directory should be deleted
       assertFalse(storeDir.exists(), "Store directory should be deleted after OFFLINE->DROPPED transition");
+
+      // Verify: Snapshot directory should also be deleted
+      assertFalse(
+          partitionSnapshotDir.exists(),
+          "Snapshot directory should be deleted after OFFLINE->DROPPED transition");
 
     } finally {
       factory.close();
