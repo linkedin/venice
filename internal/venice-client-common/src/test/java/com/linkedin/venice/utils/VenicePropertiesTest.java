@@ -211,7 +211,7 @@ public class VenicePropertiesTest {
     assertEquals(whitespaceProps.getDouble("whitespace.double", 2 * Math.PI), 2 * Math.PI);
 
     // Case 3: Valid values should still be parsed correctly
-    props.put("valid.long", "999");
+    props.put("valid.long", "999 ");
     props.put("valid.int", "123");
     props.put("valid.double", "1.5");
     VeniceProperties validProps = new VeniceProperties(props);

@@ -339,20 +339,20 @@ public class VeniceProperties implements Serializable {
     }
   }
 
-  private boolean containsNonBlankValue(String name) {
-    if (!containsKey(name)) {
-      return false;
+  /** Returns parsed value if present and non-blank, otherwise returns defaultValue. */
+  private <T> T getParsedValue(String name, T defaultValue, Function<String, T> parser) {
+    String value = props.get(name);
+    if (value != null) {
+      String trimmed = value.trim();
+      if (!trimmed.isEmpty()) {
+        return parser.apply(trimmed);
+      }
     }
-    String value = get(name);
-    return value != null && !value.trim().isEmpty();
+    return defaultValue;
   }
 
   public long getLong(String name, long defaultValue) {
-    if (containsNonBlankValue(name)) {
-      return Long.parseLong(get(name));
-    } else {
-      return defaultValue;
-    }
+    return getParsedValue(name, defaultValue, Long::parseLong);
   }
 
   public long getLong(String name) {
@@ -364,11 +364,7 @@ public class VeniceProperties implements Serializable {
   }
 
   public int getInt(String name, int defaultValue) {
-    if (containsNonBlankValue(name)) {
-      return Integer.parseInt(get(name));
-    } else {
-      return defaultValue;
-    }
+    return getParsedValue(name, defaultValue, Integer::parseInt);
   }
 
   public int getInt(String name) {
@@ -388,11 +384,7 @@ public class VeniceProperties implements Serializable {
   }
 
   public double getDouble(String name, double defaultValue) {
-    if (containsNonBlankValue(name)) {
-      return Double.parseDouble(get(name));
-    } else {
-      return defaultValue;
-    }
+    return getParsedValue(name, defaultValue, Double::parseDouble);
   }
 
   public double getDouble(String name) {
