@@ -45,6 +45,17 @@ public enum MetricType {
   UP_DOWN_COUNTER(false),
 
   /**
+   * Use this instead of {@link #UP_DOWN_COUNTER} when recording happens at very high frequency
+   * in hot path. <p>
+   * Uses {@link java.util.concurrent.atomic.LongAdder} internally for fast recording,
+   * and OpenTelemetry's {@link io.opentelemetry.api.metrics.ObservableLongUpDownCounter}
+   * reads the accumulated values during metrics collection.
+   * Supports both positive and negative values.
+   * <p>
+   */
+  ASYNC_UP_DOWN_COUNTER_FOR_HIGH_PERF_CASES(true),
+
+  /**
    * {@link io.opentelemetry.api.metrics.LongGauge}: Emits the absolute value of the metric value.
    */
   GAUGE(false),
@@ -63,5 +74,13 @@ public enum MetricType {
 
   public boolean isAsyncMetric() {
     return isAsyncMetric;
+  }
+
+  /**
+   * Checks if this metric type is an observable counter type that uses LongAdder internally
+   * for high-performance recording.
+   */
+  public boolean isObservableCounterType() {
+    return this == ASYNC_COUNTER_FOR_HIGH_PERF_CASES || this == ASYNC_UP_DOWN_COUNTER_FOR_HIGH_PERF_CASES;
   }
 }

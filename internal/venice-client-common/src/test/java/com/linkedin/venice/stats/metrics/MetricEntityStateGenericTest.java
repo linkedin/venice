@@ -191,6 +191,12 @@ public class MetricEntityStateGenericTest {
     MetricEntityStateGeneric.create(mockMetricEntity, mockOtelRepository, baseDimensionsMap);
   }
 
+  @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = ".*does not support ASYNC_UP_DOWN_COUNTER_FOR_HIGH_PERF_CASES.*")
+  public void testAsyncUpDownCounterNotSupported() {
+    when(mockMetricEntity.getMetricType()).thenReturn(MetricType.ASYNC_UP_DOWN_COUNTER_FOR_HIGH_PERF_CASES);
+    MetricEntityStateGeneric.create(mockMetricEntity, mockOtelRepository, baseDimensionsMap);
+  }
+
   @Test
   public void testValidateRequiredDimensions() {
     Map<VeniceMetricsDimensions, String> baseDimensionsMap = new HashMap<>();
