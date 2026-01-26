@@ -141,9 +141,14 @@ public class TestZKStore {
 
     assertVersionsEquals(store, 1, Arrays.asList(version1, version3), "error version should be deleted");
 
+    // current version is in the middle, delete 1 and 3
+    version3.setStatus(VersionStatus.ONLINE);
+    assertVersionsEquals(store, 1, Arrays.asList(version1, version3), "version 1 and 3 should be deleted");
+
     Version version4 = new VersionImpl(store.getName(), 4);
     store.addVersion(version4);
     version4.setStatus(VersionStatus.ERROR);
+    version3.setStatus(VersionStatus.ERROR);
 
     assertVersionsEquals(store, 2, Arrays.asList(version3, version4), "error versions should be deleted.");
     assertVersionsEquals(
