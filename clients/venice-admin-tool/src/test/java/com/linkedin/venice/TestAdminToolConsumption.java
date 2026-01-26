@@ -70,9 +70,9 @@ public class TestAdminToolConsumption {
     messagesMap.put(pubSubTopicPartition, pubSubMessageList);
     ApacheKafkaConsumerAdapter apacheKafkaConsumer = mock(ApacheKafkaConsumerAdapter.class);
     when(apacheKafkaConsumer.poll(anyLong())).thenReturn(messagesMap, Collections.EMPTY_MAP);
-    List<DumpAdminMessages.AdminOperationInfo> adminOperationInfos = DumpAdminMessages
+    int processedCount = DumpAdminMessages
         .dumpAdminMessages(apacheKafkaConsumer, "cluster1", ApacheKafkaOffsetPosition.of(0L), dumpedMessageNum);
-    Assert.assertEquals(adminOperationInfos.size(), dumpedMessageNum);
+    Assert.assertEquals(processedCount, dumpedMessageNum);
   }
 
   private List<DefaultPubSubMessage> prepareAdminPubSubMessageList(

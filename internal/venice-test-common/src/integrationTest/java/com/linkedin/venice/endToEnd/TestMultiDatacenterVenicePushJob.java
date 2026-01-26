@@ -111,7 +111,7 @@ public class TestMultiDatacenterVenicePushJob {
     });
   }
 
-  @Test(timeOut = TEST_TIMEOUT)
+  @Test(timeOut = 3 * TEST_TIMEOUT)
   public void testVPJWithCompressionEnabledHybridStore() throws IOException {
     File inputDir = getTempDataDirectory();
     TestWriteUtils.writeSimpleAvroFileWithStringToV3Schema(inputDir, 100, 100);

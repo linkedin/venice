@@ -1818,12 +1818,13 @@ public class AdminTool {
     ConsumerContext context = createConsumerContext(cmd);
     PubSubPosition startingPosition = parsePositionFromArgs(cmd, context.getPositionDeserializer(), true);
     LOGGER.info("Dump admin messages with starting position: {}", startingPosition);
-    List<DumpAdminMessages.AdminOperationInfo> adminMessages = DumpAdminMessages.dumpAdminMessages(
-        getConsumer(pubSubClientsFactory, context),
-        getRequiredArgument(cmd, Arg.CLUSTER),
-        startingPosition,
-        Integer.parseInt(getRequiredArgument(cmd, Arg.MESSAGE_COUNT)));
-    printObject(adminMessages);
+    try (PubSubConsumerAdapter consumer = getConsumer(pubSubClientsFactory, context)) {
+      DumpAdminMessages.dumpAdminMessages(
+          consumer,
+          getRequiredArgument(cmd, Arg.CLUSTER),
+          startingPosition,
+          Integer.parseInt(getRequiredArgument(cmd, Arg.MESSAGE_COUNT)));
+    }
   }
 
   private static void dumpControlMessages(CommandLine cmd, PubSubClientsFactory pubSubClientsFactory) {
@@ -3841,7 +3842,7 @@ public class AdminTool {
     // Load consumer properties and set bootstrap servers
     Properties consumerProps = loadProperties(cmd, Arg.KAFKA_CONSUMER_CONFIG_FILE);
     String pubSubBrokerUrl = getRequiredArgument(cmd, Arg.KAFKA_BOOTSTRAP_SERVERS);
-    consumerProps = DumpAdminMessages.getPubSubConsumerProperties(pubSubBrokerUrl, consumerProps);
+    PubSubUtil.addPubSubBrokerAddress(consumerProps, pubSubBrokerUrl);
 
     // Create all necessary dependencies
     VeniceProperties veniceProperties = new VeniceProperties(consumerProps);
