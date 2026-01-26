@@ -1810,8 +1810,9 @@ public class VeniceParentHelixAdmin implements Admin {
         return version;
       }
 
-      boolean isExistingPushJobARepush = Version.isPushIdRePush(existingPushJobId);
-      boolean isIncomingPushJobARepush = Version.isPushIdRePush(pushJobId);
+      boolean isExistingPushJobARepush =
+          Version.isPushIdRePush(existingPushJobId) || Version.isPushIdTTLRePush(existingPushJobId);
+      boolean isIncomingPushJobARepush = Version.isPushIdRePush(pushJobId) || Version.isPushIdTTLRePush(pushJobId);
 
       // If version swap is enabled, do not check for lingering push as user may swap at much later time.
       if (!version.isVersionSwapDeferred() && getLingeringStoreVersionChecker()
@@ -1842,6 +1843,8 @@ public class VeniceParentHelixAdmin implements Admin {
         // to be used.
 
         // Kill the existing job if incoming push type is not an inc push and also not a repush job.
+        // This includes both regular repushes and TTL repushes (compliance repushes).
+        // User-initiated pushes should be able to kill compliance repushes (DEPEND-92712).
         LOGGER.info(
             "Found running repush job with push id: {} and incoming push is a batch job or stream reprocessing "
                 + "job with push id: {}. Killing the repush job for store: {}",
