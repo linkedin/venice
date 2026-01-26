@@ -3,7 +3,10 @@ package com.linkedin.venice.controller.stats;
 import com.linkedin.venice.stats.AbstractVeniceStats;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
+import io.tehuti.metrics.stats.Avg;
 import io.tehuti.metrics.stats.Count;
+import io.tehuti.metrics.stats.Max;
+import io.tehuti.metrics.stats.Min;
 
 
 public class VeniceAdminStats extends AbstractVeniceStats {
@@ -33,6 +36,8 @@ public class VeniceAdminStats extends AbstractVeniceStats {
    */
   private final Sensor failedSerializingAdminOperationMessageCount;
 
+  private final Sensor getCurrentVersionForMultiRegionsLatencySensor;
+
   public VeniceAdminStats(MetricsRepository metricsRepository, String name) {
     super(metricsRepository, name);
 
@@ -44,6 +49,9 @@ public class VeniceAdminStats extends AbstractVeniceStats {
         registerSensorIfAbsent("successful_started_user_incremental_push_parent_admin_count", new Count());
     failedSerializingAdminOperationMessageCount =
         registerSensorIfAbsent("failed_serializing_admin_operation_message_count", new Count());
+
+    getCurrentVersionForMultiRegionsLatencySensor =
+        registerSensor("get_current_version_from_multi_colo_ms", new Avg(), new Min(), new Max());
   }
 
   public void recordUnexpectedTopicAbsenceCount() {
@@ -60,5 +68,9 @@ public class VeniceAdminStats extends AbstractVeniceStats {
 
   public void recordFailedSerializingAdminOperationMessageCount() {
     failedSerializingAdminOperationMessageCount.record();
+  }
+
+  public void recordGetCurrentVersionForMultiRegionsLatency(long latencyInMs) {
+    getCurrentVersionForMultiRegionsLatencySensor.record(latencyInMs);
   }
 }
