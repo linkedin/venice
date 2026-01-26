@@ -1,6 +1,7 @@
 package com.linkedin.davinci.stats.ingestion.heartbeat;
 
 import static com.linkedin.davinci.stats.ServerMetricEntity.INGESTION_HEARTBEAT_DELAY;
+import static com.linkedin.davinci.stats.ServerMetricEntity.INGESTION_RECORD_DELAY;
 import static com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatOtelStats.SERVER_METRIC_ENTITIES;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REGION_NAME;
@@ -57,8 +58,8 @@ public class HeartbeatVersionedStatsTest {
   private VeniceMetricsRepository metricsRepository;
   private ReadOnlyStoreRepository mockMetadataRepository;
   private HeartbeatVersionedStats heartbeatVersionedStats;
-  private Map<String, Map<Integer, Map<Integer, Map<String, HeartbeatTimeStampEntry>>>> leaderMonitors;
-  private Map<String, Map<Integer, Map<Integer, Map<String, HeartbeatTimeStampEntry>>>> followerMonitors;
+  private Map<String, Map<Integer, Map<Integer, Map<String, IngestionTimestampEntry>>>> leaderMonitors;
+  private Map<String, Map<Integer, Map<Integer, Map<String, IngestionTimestampEntry>>>> followerMonitors;
   private Set<String> regions;
 
   @BeforeMethod
@@ -193,6 +194,79 @@ public class HeartbeatVersionedStatsTest {
         expectedSum,
         buildAttributes(replicaType, replicaState),
         INGESTION_HEARTBEAT_DELAY.getMetricEntity().getMetricName(),
+        TEST_PREFIX);
+  }
+
+  @Test
+  public void testRecordLeaderRecordLag() {
+    heartbeatVersionedStats.setCurrentTimeSupplier(() -> FIXED_CURRENT_TIME);
+
+    // Record multiple leader record lags (delays: 100ms, 200ms, 150ms)
+    heartbeatVersionedStats.recordLeaderRecordLag(STORE_NAME, CURRENT_VERSION, REGION, FIXED_CURRENT_TIME - 100);
+    heartbeatVersionedStats.recordLeaderRecordLag(STORE_NAME, CURRENT_VERSION, REGION, FIXED_CURRENT_TIME - 200);
+    heartbeatVersionedStats.recordLeaderRecordLag(STORE_NAME, CURRENT_VERSION, REGION, FIXED_CURRENT_TIME - 150);
+
+    // Verify Tehuti accumulated correctly
+    HeartbeatStat tehutiStats = heartbeatVersionedStats.getStatsForTesting(STORE_NAME, CURRENT_VERSION);
+    assertEquals(tehutiStats.getReadyToServeLeaderRecordLag(REGION).getMax(), 200.0, "Tehuti max should be 200ms");
+
+    // Verify OTel accumulated correctly (min=100, max=200, count=3, sum=450)
+    validateRecordOtelHistogram(ReplicaType.LEADER, ReplicaState.READY_TO_SERVE, 100.0, 200.0, 3, 450.0);
+  }
+
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testRecordFollowerRecordLag(boolean isReadyToServe) {
+    heartbeatVersionedStats.setCurrentTimeSupplier(() -> FIXED_CURRENT_TIME);
+
+    // Record multiple follower record lags (delays: 100ms, 200ms, 150ms)
+    heartbeatVersionedStats
+        .recordFollowerRecordLag(STORE_NAME, CURRENT_VERSION, REGION, FIXED_CURRENT_TIME - 100, isReadyToServe);
+    heartbeatVersionedStats
+        .recordFollowerRecordLag(STORE_NAME, CURRENT_VERSION, REGION, FIXED_CURRENT_TIME - 200, isReadyToServe);
+    heartbeatVersionedStats
+        .recordFollowerRecordLag(STORE_NAME, CURRENT_VERSION, REGION, FIXED_CURRENT_TIME - 150, isReadyToServe);
+
+    // Verify Tehuti metrics
+    HeartbeatStat tehutiStats = heartbeatVersionedStats.getStatsForTesting(STORE_NAME, CURRENT_VERSION);
+    double readyToServeMax = tehutiStats.getReadyToServeFollowerRecordLag(REGION).getMax();
+    double catchingUpMax = tehutiStats.getCatchingUpFollowerRecordLag(REGION).getMax();
+
+    // Active metric should have max=200ms, squelched metric should be 0
+    assertEquals(readyToServeMax, isReadyToServe ? 200.0 : 0.0);
+    assertEquals(catchingUpMax, isReadyToServe ? 0.0 : 200.0);
+
+    // Verify OTel metrics: active has min=100, max=200, count=3, sum=450; squelched has all 0s
+    validateRecordOtelHistogram(
+        ReplicaType.FOLLOWER,
+        ReplicaState.READY_TO_SERVE,
+        isReadyToServe ? 100.0 : 0.0,
+        isReadyToServe ? 200.0 : 0.0,
+        3,
+        isReadyToServe ? 450.0 : 0.0);
+    validateRecordOtelHistogram(
+        ReplicaType.FOLLOWER,
+        ReplicaState.CATCHING_UP,
+        isReadyToServe ? 0.0 : 100.0,
+        isReadyToServe ? 0.0 : 200.0,
+        3,
+        isReadyToServe ? 0.0 : 450.0);
+  }
+
+  private void validateRecordOtelHistogram(
+      ReplicaType replicaType,
+      ReplicaState replicaState,
+      double expectedMin,
+      double expectedMax,
+      int expectedCount,
+      double expectedSum) {
+    validateExponentialHistogramPointData(
+        inMemoryMetricReader,
+        expectedMin,
+        expectedMax,
+        expectedCount,
+        expectedSum,
+        buildAttributes(replicaType, replicaState),
+        INGESTION_RECORD_DELAY.getMetricEntity().getMetricName(),
         TEST_PREFIX);
   }
 }
