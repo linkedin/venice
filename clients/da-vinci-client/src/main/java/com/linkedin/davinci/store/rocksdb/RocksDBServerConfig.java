@@ -217,6 +217,24 @@ public class RocksDBServerConfig {
    */
   public static final String ROCKSDB_WRITE_QUOTA_BYTES_PER_SECOND = "rocksdb.write.quota.bytes.per.second";
   public static final String ROCKSDB_AUTO_TUNED_RATE_LIMITER_ENABLED = "rocksdb.auto.tuned.rate.limited.enabled";
+
+  /**
+   * SstFileManager deletion rate limiting configuration.
+   * Check the following links for more details:
+   * https://github.com/facebook/rocksdb/wiki/Managing-Disk-Space-Utilization
+   * This is used to throttle file deletion operations during store cleanup to prevent I/O saturation
+   * Set to 0 to disable throttling.
+   */
+  public static final String ROCKSDB_SST_FILE_MANAGER_DELETE_RATE_BYTES_PER_SECOND =
+      "rocksdb.sst.file.manager.delete.rate.bytes.per.second";
+
+  /**
+   * Maximum trash-to-DB ratio for SstFileManager.
+   * When deletion rate limiting is enabled, this ratio determines when to start deleting files without rate limiting
+   */
+  public static final String ROCKSDB_SST_FILE_MANAGER_MAX_TRASH_DB_RATIO =
+      "rocksdb.sst.file.manager.max.trash.db.ratio";
+
   public static final String ROCKSDB_ATOMIC_FLUSH_ENABLED = "rocksdb.atomic.flush.enabled";
   public static final String ROCKSDB_SEPARATE_RMD_CACHE_ENABLED = "rocksdb.separate.rmd.cache.enabled";
   public static final String ROCKSDB_BLOCK_BASE_FORMAT_VERSION = "rocksdb.block.base.format.version";
@@ -300,6 +318,9 @@ public class RocksDBServerConfig {
 
   private final long writeQuotaBytesPerSecond;
   private final boolean autoTunedRateLimiterEnabled;
+
+  private final long sstFileManagerDeleteRateBytesPerSecond;
+  private final double sstFileManagerMaxTrashDBRatio;
 
   private final int level0FileNumCompactionTrigger;
   private final int level0SlowdownWritesTrigger;
@@ -422,6 +443,13 @@ public class RocksDBServerConfig {
                                                                                                                     // by
                                                                                                                     // default
     this.autoTunedRateLimiterEnabled = props.getBoolean(ROCKSDB_AUTO_TUNED_RATE_LIMITER_ENABLED, false);
+
+    // 0 means disable the rate limiting for file deletion.
+    this.sstFileManagerDeleteRateBytesPerSecond =
+        props.getSizeInBytes(ROCKSDB_SST_FILE_MANAGER_DELETE_RATE_BYTES_PER_SECOND, 0L);
+    // By default, the ratio is set to 0.25 in the SSTFileManager of RocksDB.
+    this.sstFileManagerMaxTrashDBRatio = props.getDouble(ROCKSDB_SST_FILE_MANAGER_MAX_TRASH_DB_RATIO, 0.25); // 25%
+                                                                                                             // default
     this.level0FileNumCompactionTrigger = props.getInt(ROCKSDB_LEVEL0_FILE_NUM_COMPACTION_TRIGGER, 40);
     this.level0SlowdownWritesTrigger = props.getInt(ROCKSDB_LEVEL0_SLOWDOWN_WRITES_TRIGGER, 60);
     this.level0StopWritesTrigger = props.getInt(ROCKSDB_LEVEL0_STOPS_WRITES_TRIGGER, 80);
@@ -644,6 +672,14 @@ public class RocksDBServerConfig {
 
   public boolean isAutoTunedRateLimiterEnabled() {
     return autoTunedRateLimiterEnabled;
+  }
+
+  public long getSstFileManagerDeleteRateBytesPerSecond() {
+    return sstFileManagerDeleteRateBytesPerSecond;
+  }
+
+  public double getSstFileManagerMaxTrashDBRatio() {
+    return sstFileManagerMaxTrashDBRatio;
   }
 
   public boolean isPutReuseByteBufferEnabled() {
