@@ -110,6 +110,8 @@ import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.protocols.controller.ClusterStoreGrpcInfo;
+import com.linkedin.venice.protocols.controller.ListStoresGrpcRequest;
+import com.linkedin.venice.protocols.controller.ListStoresGrpcResponse;
 import com.linkedin.venice.protocols.controller.ValidateStoreDeletedGrpcRequest;
 import com.linkedin.venice.protocols.controller.ValidateStoreDeletedGrpcResponse;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
@@ -139,13 +141,23 @@ public class StoresRoutes extends AbstractRoute {
   private static final Logger LOGGER = LogManager.getLogger(StoresRoutes.class);
 
   private final PubSubTopicRepository pubSubTopicRepository;
+  private final StoreRequestHandler storeRequestHandler;
 
   public StoresRoutes(
       boolean sslEnabled,
       Optional<DynamicAccessController> accessController,
       PubSubTopicRepository pubSubTopicRepository) {
+    this(sslEnabled, accessController, pubSubTopicRepository, null);
+  }
+
+  public StoresRoutes(
+      boolean sslEnabled,
+      Optional<DynamicAccessController> accessController,
+      PubSubTopicRepository pubSubTopicRepository,
+      StoreRequestHandler storeRequestHandler) {
     super(sslEnabled, accessController);
     this.pubSubTopicRepository = pubSubTopicRepository;
+    this.storeRequestHandler = storeRequestHandler;
   }
 
   /**
@@ -153,6 +165,47 @@ public class StoresRoutes extends AbstractRoute {
    * to run this command.
    * @see Admin#getAllStores(String)
    */
+  public Route getAllStores(Admin admin, StoreRequestHandler requestHandler) {
+    return new VeniceRouteHandler<MultiStoreResponse>(MultiStoreResponse.class) {
+      @Override
+      public void internalHandle(Request request, MultiStoreResponse veniceResponse) {
+        AdminSparkServer.validateParams(request, LIST_STORES.getParams(), admin);
+        String clusterName = request.queryParams(CLUSTER);
+        veniceResponse.setCluster(clusterName);
+        veniceResponse.setName(request.queryParams(NAME));
+
+        // Build gRPC request from HTTP parameters
+        ListStoresGrpcRequest.Builder grpcRequestBuilder =
+            ListStoresGrpcRequest.newBuilder().setClusterName(clusterName);
+
+        String includeSystemStores = request.queryParams(INCLUDE_SYSTEM_STORES);
+        if (includeSystemStores != null) {
+          grpcRequestBuilder.setIncludeSystemStores(Boolean.parseBoolean(includeSystemStores));
+        }
+
+        String storeConfigNameFilter = request.queryParamOrDefault(STORE_CONFIG_NAME_FILTER, null);
+        if (storeConfigNameFilter != null) {
+          grpcRequestBuilder.setStoreConfigNameFilter(storeConfigNameFilter);
+        }
+
+        String storeConfigValueFilter = request.queryParamOrDefault(STORE_CONFIG_VALUE_FILTER, null);
+        if (storeConfigValueFilter != null) {
+          grpcRequestBuilder.setStoreConfigValueFilter(storeConfigValueFilter);
+        }
+
+        ListStoresGrpcResponse grpcResponse = requestHandler.listStores(grpcRequestBuilder.build());
+        veniceResponse.setStores(grpcResponse.getStoreNamesList().toArray(new String[0]));
+      }
+    };
+  }
+
+  /**
+   * No ACL check; any user can try to list stores. If we get abused in future, we should only allow Venice admins
+   * to run this command.
+   * @see Admin#getAllStores(String)
+   * @deprecated Use {@link #getAllStores(Admin, StoreRequestHandler)} instead
+   */
+  @Deprecated
   public Route getAllStores(Admin admin) {
     return new VeniceRouteHandler<MultiStoreResponse>(MultiStoreResponse.class) {
       @Override
