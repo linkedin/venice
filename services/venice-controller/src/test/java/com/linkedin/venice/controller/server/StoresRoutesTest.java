@@ -21,6 +21,7 @@ import com.linkedin.venice.controllerapi.ControllerApiConstants;
 import com.linkedin.venice.controllerapi.MultiStoreInfoResponse;
 import com.linkedin.venice.controllerapi.MultiStoreStatusResponse;
 import com.linkedin.venice.controllerapi.RepushJobResponse;
+import com.linkedin.venice.controllerapi.StoreDeletedValidationResponse;
 import com.linkedin.venice.controllerapi.StoreMigrationResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.SystemStoreHeartbeatResponse;
@@ -34,6 +35,9 @@ import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.ZKStore;
+import com.linkedin.venice.protocols.controller.ClusterStoreGrpcInfo;
+import com.linkedin.venice.protocols.controller.ValidateStoreDeletedGrpcRequest;
+import com.linkedin.venice.protocols.controller.ValidateStoreDeletedGrpcResponse;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import java.util.Arrays;
@@ -498,5 +502,92 @@ public class StoresRoutesTest {
         .readValue(getDeadStoresRoute.handle(request4, mock(Response.class)).toString(), MultiStoreInfoResponse.class);
     Assert.assertEquals(response4.getCluster(), TEST_CLUSTER);
     Assert.assertEquals(response4.getStoreInfoList().size(), 1);
+  }
+
+  @Test
+  public void testValidateStoreDeleted() throws Exception {
+    Admin mockAdmin = mock(VeniceParentHelixAdmin.class);
+    StoreRequestHandler mockRequestHandler = mock(StoreRequestHandler.class);
+    doReturn(true).when(mockAdmin).isLeaderControllerFor(TEST_CLUSTER);
+
+    Request request = mock(Request.class);
+    doReturn(TEST_CLUSTER).when(request).queryParams(eq(ControllerApiConstants.CLUSTER));
+    doReturn(TEST_STORE_NAME).when(request).queryParams(eq(ControllerApiConstants.STORE_NAME));
+
+    // Mock queryMap for error handling
+    QueryParamsMap queryParamsMap = mock(QueryParamsMap.class);
+    Map<String, String[]> queryMap = new HashMap<>(2);
+    queryMap.put(ControllerApiConstants.CLUSTER, new String[] { TEST_CLUSTER });
+    queryMap.put(ControllerApiConstants.STORE_NAME, new String[] { TEST_STORE_NAME });
+    doReturn(queryMap).when(queryParamsMap).toMap();
+    doReturn(queryParamsMap).when(request).queryMap();
+
+    ClusterStoreGrpcInfo storeInfo =
+        ClusterStoreGrpcInfo.newBuilder().setClusterName(TEST_CLUSTER).setStoreName(TEST_STORE_NAME).build();
+
+    Route validateStoreDeletedRoute = new StoresRoutes(false, Optional.empty(), pubSubTopicRepository)
+        .validateStoreDeleted(mockAdmin, mockRequestHandler);
+
+    // Case 1: Store is deleted (storeDeleted=true, no reason)
+    ValidateStoreDeletedGrpcResponse deletedResponse =
+        ValidateStoreDeletedGrpcResponse.newBuilder().setStoreInfo(storeInfo).setStoreDeleted(true).build();
+    when(mockRequestHandler.validateStoreDeleted(any(ValidateStoreDeletedGrpcRequest.class)))
+        .thenReturn(deletedResponse);
+
+    StoreDeletedValidationResponse response = ObjectMapperFactory.getInstance()
+        .readValue(
+            validateStoreDeletedRoute.handle(request, mock(Response.class)).toString(),
+            StoreDeletedValidationResponse.class);
+    Assert.assertFalse(response.isError());
+    Assert.assertEquals(response.getCluster(), TEST_CLUSTER);
+    Assert.assertEquals(response.getName(), TEST_STORE_NAME);
+    Assert.assertTrue(response.isStoreDeleted());
+    Assert.assertNull(response.getReason());
+
+    // Case 2: Store is not deleted (storeDeleted=false, with reason)
+    String reason = "Store config still exists in ZooKeeper";
+    ValidateStoreDeletedGrpcResponse notDeletedResponse = ValidateStoreDeletedGrpcResponse.newBuilder()
+        .setStoreInfo(storeInfo)
+        .setStoreDeleted(false)
+        .setReason(reason)
+        .build();
+    when(mockRequestHandler.validateStoreDeleted(any(ValidateStoreDeletedGrpcRequest.class)))
+        .thenReturn(notDeletedResponse);
+
+    response = ObjectMapperFactory.getInstance()
+        .readValue(
+            validateStoreDeletedRoute.handle(request, mock(Response.class)).toString(),
+            StoreDeletedValidationResponse.class);
+    Assert.assertFalse(response.isError());
+    Assert.assertEquals(response.getCluster(), TEST_CLUSTER);
+    Assert.assertEquals(response.getName(), TEST_STORE_NAME);
+    Assert.assertFalse(response.isStoreDeleted());
+    Assert.assertEquals(response.getReason(), reason);
+
+    // Case 3: Store is not deleted without reason (edge case)
+    ValidateStoreDeletedGrpcResponse notDeletedNoReasonResponse =
+        ValidateStoreDeletedGrpcResponse.newBuilder().setStoreInfo(storeInfo).setStoreDeleted(false).build();
+    when(mockRequestHandler.validateStoreDeleted(any(ValidateStoreDeletedGrpcRequest.class)))
+        .thenReturn(notDeletedNoReasonResponse);
+
+    response = ObjectMapperFactory.getInstance()
+        .readValue(
+            validateStoreDeletedRoute.handle(request, mock(Response.class)).toString(),
+            StoreDeletedValidationResponse.class);
+    Assert.assertFalse(response.isError());
+    Assert.assertFalse(response.isStoreDeleted());
+    Assert.assertNull(response.getReason());
+
+    // Case 4: Handler throws exception
+    String errorMessage = "Failed to validate store deletion";
+    when(mockRequestHandler.validateStoreDeleted(any(ValidateStoreDeletedGrpcRequest.class)))
+        .thenThrow(new VeniceException(errorMessage));
+
+    response = ObjectMapperFactory.getInstance()
+        .readValue(
+            validateStoreDeletedRoute.handle(request, mock(Response.class)).toString(),
+            StoreDeletedValidationResponse.class);
+    Assert.assertTrue(response.isError());
+    Assert.assertTrue(response.getError().contains(errorMessage));
   }
 }

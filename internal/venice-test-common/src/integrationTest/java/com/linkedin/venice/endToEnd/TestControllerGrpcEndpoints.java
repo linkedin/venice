@@ -25,6 +25,8 @@ import com.linkedin.venice.protocols.controller.LeaderControllerGrpcResponse;
 import com.linkedin.venice.protocols.controller.StoreGrpcServiceGrpc;
 import com.linkedin.venice.protocols.controller.StoreMigrationCheckGrpcRequest;
 import com.linkedin.venice.protocols.controller.StoreMigrationCheckGrpcResponse;
+import com.linkedin.venice.protocols.controller.ValidateStoreDeletedGrpcRequest;
+import com.linkedin.venice.protocols.controller.ValidateStoreDeletedGrpcResponse;
 import com.linkedin.venice.protocols.controller.VeniceControllerGrpcServiceGrpc;
 import com.linkedin.venice.protocols.controller.VeniceControllerGrpcServiceGrpc.VeniceControllerGrpcServiceBlockingStub;
 import com.linkedin.venice.security.SSLFactory;
@@ -168,21 +170,84 @@ public class TestControllerGrpcEndpoints {
   }
 
   @Test(timeOut = TIMEOUT_MS)
-  public void testIsStoreMigrationAllowedGrpcEndpoint() {
+  public void testValidateStoreDeletedGrpcEndpoint() {
+    String storeName = Utils.getUniqueString("test_validate_deleted_store");
     String controllerGrpcUrl = veniceCluster.getLeaderVeniceController().getControllerGrpcUrl();
     ManagedChannel channel = Grpc.newChannelBuilder(controllerGrpcUrl, InsecureChannelCredentials.create()).build();
-    ClusterAdminOpsGrpcServiceGrpc.ClusterAdminOpsGrpcServiceBlockingStub blockingStub =
-        ClusterAdminOpsGrpcServiceGrpc.newBlockingStub(channel);
+    StoreGrpcServiceGrpc.StoreGrpcServiceBlockingStub storeBlockingStub = StoreGrpcServiceGrpc.newBlockingStub(channel);
 
-    StoreMigrationCheckGrpcRequest request =
-        StoreMigrationCheckGrpcRequest.newBuilder().setClusterName(veniceCluster.getClusterName()).build();
+    ClusterStoreGrpcInfo storeGrpcInfo = ClusterStoreGrpcInfo.newBuilder()
+        .setClusterName(veniceCluster.getClusterName())
+        .setStoreName(storeName)
+        .build();
 
-    StoreMigrationCheckGrpcResponse response = blockingStub.isStoreMigrationAllowed(request);
+    // Step 1: Validate store deleted before creation - should return true (store doesn't exist)
+    ValidateStoreDeletedGrpcRequest validateRequest =
+        ValidateStoreDeletedGrpcRequest.newBuilder().setStoreInfo(storeGrpcInfo).build();
+    ValidateStoreDeletedGrpcResponse validateResponse = storeBlockingStub.validateStoreDeleted(validateRequest);
+    assertNotNull(validateResponse, "Response should not be null");
+    assertEquals(validateResponse.getStoreInfo().getStoreName(), storeName);
+    assertEquals(validateResponse.getStoreInfo().getClusterName(), veniceCluster.getClusterName());
 
+    // Step 2: Create the store
+    CreateStoreGrpcRequest createStoreGrpcRequest = CreateStoreGrpcRequest.newBuilder()
+        .setStoreInfo(storeGrpcInfo)
+        .setOwner("owner")
+        .setKeySchema(DEFAULT_KEY_SCHEMA)
+        .setValueSchema("\"string\"")
+        .build();
+    CreateStoreGrpcResponse createResponse = storeBlockingStub.createStore(createStoreGrpcRequest);
+    assertNotNull(createResponse, "Response should not be null");
+    assertEquals(createResponse.getStoreInfo().getStoreName(), storeName);
+
+    // Step 3: Validate store deleted after creation - should return false (store exists)
+    validateResponse = storeBlockingStub.validateStoreDeleted(validateRequest);
+    assertNotNull(validateResponse, "Response should not be null");
+    assertFalse(validateResponse.getStoreDeleted(), "Store should not be marked as deleted");
+
+    // Step 4: Delete the store using controller client
+    veniceCluster.useControllerClient(controllerClient -> {
+      TestUtils.assertCommand(controllerClient.disableAndDeleteStore(storeName));
+    });
+
+    // Step 5: Validate store deleted after deletion - should return true
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+      ValidateStoreDeletedGrpcResponse response = storeBlockingStub.validateStoreDeleted(validateRequest);
+      assertNotNull(response, "Response should not be null");
+      Assert.assertTrue(response.getStoreDeleted(), "Store should be marked as deleted after deletion");
+    });
+  }
+
+  @Test(timeOut = TIMEOUT_MS)
+  public void testValidateStoreDeletedOverSecureGrpcChannel() {
+    String storeName = Utils.getUniqueString("test_validate_deleted_secure");
+    String controllerSecureGrpcUrl = veniceCluster.getLeaderVeniceController().getControllerSecureGrpcUrl();
+    ChannelCredentials credentials = GrpcUtils.buildChannelCredentials(sslFactory);
+    ManagedChannel channel = Grpc.newChannelBuilder(controllerSecureGrpcUrl, credentials).build();
+    StoreGrpcServiceGrpc.StoreGrpcServiceBlockingStub storeBlockingStub = StoreGrpcServiceGrpc.newBlockingStub(channel);
+
+    ClusterStoreGrpcInfo storeGrpcInfo = ClusterStoreGrpcInfo.newBuilder()
+        .setClusterName(veniceCluster.getClusterName())
+        .setStoreName(storeName)
+        .build();
+    ValidateStoreDeletedGrpcRequest validateRequest =
+        ValidateStoreDeletedGrpcRequest.newBuilder().setStoreInfo(storeGrpcInfo).build();
+
+    // Case 1: User not in allowlist for the resource - should get permission denied
+    mockDynamicAccessController.removeResourceFromAllowList(storeName);
+    assertFalse(
+        mockDynamicAccessController.isAllowlistUsers(null, storeName, Method.GET.name()),
+        "User should not be in allowlist");
+    StatusRuntimeException exception = Assert
+        .expectThrows(StatusRuntimeException.class, () -> storeBlockingStub.validateStoreDeleted(validateRequest));
+    assertEquals(exception.getStatus().getCode(), io.grpc.Status.Code.PERMISSION_DENIED);
+
+    // Case 2: User in allowlist - should succeed
+    mockDynamicAccessController.addResourceToAllowList(storeName);
+    ValidateStoreDeletedGrpcResponse response = storeBlockingStub.validateStoreDeleted(validateRequest);
     assertNotNull(response, "Response should not be null");
-    assertEquals(response.getClusterName(), veniceCluster.getClusterName());
-    // Default cluster config should allow store migration
-    assertTrue(response.getStoreMigrationAllowed(), "Store migration should be allowed by default");
+    assertEquals(response.getStoreInfo().getStoreName(), storeName);
+    assertEquals(response.getStoreInfo().getClusterName(), veniceCluster.getClusterName());
   }
 
   private static class MockDynamicAccessController extends NoOpDynamicAccessController {
