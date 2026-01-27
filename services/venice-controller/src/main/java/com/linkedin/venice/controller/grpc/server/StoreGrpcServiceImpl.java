@@ -19,6 +19,8 @@ import com.linkedin.venice.protocols.controller.StoreGrpcServiceGrpc;
 import com.linkedin.venice.protocols.controller.StoreGrpcServiceGrpc.StoreGrpcServiceImplBase;
 import com.linkedin.venice.protocols.controller.UpdateAclForStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.UpdateAclForStoreGrpcResponse;
+import com.linkedin.venice.protocols.controller.ValidateStoreDeletedGrpcRequest;
+import com.linkedin.venice.protocols.controller.ValidateStoreDeletedGrpcResponse;
 import io.grpc.Context;
 import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
@@ -108,5 +110,23 @@ public class StoreGrpcServiceImpl extends StoreGrpcServiceImplBase {
           }
           return responseBuilder.build();
         }, responseObserver, request);
+  }
+
+  @Override
+  public void validateStoreDeleted(
+      ValidateStoreDeletedGrpcRequest grpcRequest,
+      StreamObserver<ValidateStoreDeletedGrpcResponse> responseObserver) {
+    LOGGER.debug("Received validateStoreDeleted with args: {}", grpcRequest);
+    String clusterName = grpcRequest.getStoreInfo().getClusterName();
+    String storeName = grpcRequest.getStoreInfo().getStoreName();
+    handleRequest(StoreGrpcServiceGrpc.getValidateStoreDeletedMethod(), () -> {
+      if (!isAllowListUser(accessManager, storeName, Context.current())) {
+        throw new VeniceUnauthorizedAccessException(
+            ACL_CHECK_FAILURE_WARN_MESSAGE_PREFIX
+                + StoreGrpcServiceGrpc.getValidateStoreDeletedMethod().getFullMethodName() + " on resource: "
+                + storeName);
+      }
+      return storeRequestHandler.validateStoreDeleted(grpcRequest);
+    }, responseObserver, clusterName, storeName);
   }
 }

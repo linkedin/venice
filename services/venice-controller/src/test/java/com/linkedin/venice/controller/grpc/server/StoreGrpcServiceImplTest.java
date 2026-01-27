@@ -30,6 +30,8 @@ import com.linkedin.venice.protocols.controller.StoreGrpcServiceGrpc;
 import com.linkedin.venice.protocols.controller.StoreGrpcServiceGrpc.StoreGrpcServiceBlockingStub;
 import com.linkedin.venice.protocols.controller.UpdateAclForStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.UpdateAclForStoreGrpcResponse;
+import com.linkedin.venice.protocols.controller.ValidateStoreDeletedGrpcRequest;
+import com.linkedin.venice.protocols.controller.ValidateStoreDeletedGrpcResponse;
 import com.linkedin.venice.protocols.controller.VeniceControllerGrpcErrorInfo;
 import io.grpc.ManagedChannel;
 import io.grpc.Server;
@@ -265,5 +267,111 @@ public class StoreGrpcServiceImplTest {
     assertEquals(response.getStoreInfo(), request, "Store info should match");
     assertTrue(response.getHasLingeringResources(), "Lingering resources should be true");
     assertTrue(response.getDescription().isEmpty(), "Description should be empty");
+  }
+
+  @Test
+  public void testValidateStoreDeletedReturnsSuccessfulResponseWhenStoreIsDeleted() {
+    when(controllerAccessManager.isAllowListUser(anyString(), any())).thenReturn(true);
+    ClusterStoreGrpcInfo storeInfo =
+        ClusterStoreGrpcInfo.newBuilder().setClusterName(TEST_CLUSTER).setStoreName(TEST_STORE).build();
+    ValidateStoreDeletedGrpcRequest request =
+        ValidateStoreDeletedGrpcRequest.newBuilder().setStoreInfo(storeInfo).build();
+    ValidateStoreDeletedGrpcResponse response =
+        ValidateStoreDeletedGrpcResponse.newBuilder().setStoreInfo(storeInfo).setStoreDeleted(true).build();
+    when(storeRequestHandler.validateStoreDeleted(any(ValidateStoreDeletedGrpcRequest.class))).thenReturn(response);
+
+    ValidateStoreDeletedGrpcResponse actualResponse = blockingStub.validateStoreDeleted(request);
+
+    assertNotNull(actualResponse, "Response should not be null");
+    assertEquals(actualResponse.getStoreInfo(), storeInfo, "Store info should match");
+    assertTrue(actualResponse.getStoreDeleted(), "Store should be marked as deleted");
+    assertFalse(actualResponse.hasReason(), "Reason should not be set when store is deleted");
+  }
+
+  @Test
+  public void testValidateStoreDeletedReturnsSuccessfulResponseWhenStoreIsNotDeleted() {
+    when(controllerAccessManager.isAllowListUser(anyString(), any())).thenReturn(true);
+    ClusterStoreGrpcInfo storeInfo =
+        ClusterStoreGrpcInfo.newBuilder().setClusterName(TEST_CLUSTER).setStoreName(TEST_STORE).build();
+    ValidateStoreDeletedGrpcRequest request =
+        ValidateStoreDeletedGrpcRequest.newBuilder().setStoreInfo(storeInfo).build();
+    String reason = "Store config still exists in ZooKeeper";
+    ValidateStoreDeletedGrpcResponse response = ValidateStoreDeletedGrpcResponse.newBuilder()
+        .setStoreInfo(storeInfo)
+        .setStoreDeleted(false)
+        .setReason(reason)
+        .build();
+    when(storeRequestHandler.validateStoreDeleted(any(ValidateStoreDeletedGrpcRequest.class))).thenReturn(response);
+
+    ValidateStoreDeletedGrpcResponse actualResponse = blockingStub.validateStoreDeleted(request);
+
+    assertNotNull(actualResponse, "Response should not be null");
+    assertEquals(actualResponse.getStoreInfo(), storeInfo, "Store info should match");
+    assertFalse(actualResponse.getStoreDeleted(), "Store should be marked as not deleted");
+    assertTrue(actualResponse.hasReason(), "Reason should be set when store is not deleted");
+    assertEquals(actualResponse.getReason(), reason, "Reason should match");
+  }
+
+  @Test
+  public void testValidateStoreDeletedReturnsErrorResponse() {
+    when(controllerAccessManager.isAllowListUser(anyString(), any())).thenReturn(true);
+    ClusterStoreGrpcInfo storeInfo =
+        ClusterStoreGrpcInfo.newBuilder().setClusterName(TEST_CLUSTER).setStoreName(TEST_STORE).build();
+    ValidateStoreDeletedGrpcRequest request =
+        ValidateStoreDeletedGrpcRequest.newBuilder().setStoreInfo(storeInfo).build();
+    when(storeRequestHandler.validateStoreDeleted(any(ValidateStoreDeletedGrpcRequest.class)))
+        .thenThrow(new VeniceException("Failed to validate store deletion"));
+
+    StatusRuntimeException e =
+        expectThrows(StatusRuntimeException.class, () -> blockingStub.validateStoreDeleted(request));
+
+    assertNotNull(e.getStatus(), "Status should not be null");
+    assertEquals(e.getStatus().getCode(), Status.INTERNAL.getCode());
+    VeniceControllerGrpcErrorInfo errorInfo = GrpcRequestResponseConverter.parseControllerGrpcError(e);
+    assertNotNull(errorInfo, "Error info should not be null");
+    assertEquals(errorInfo.getErrorType(), ControllerGrpcErrorType.GENERAL_ERROR);
+    assertTrue(errorInfo.getErrorMessage().contains("Failed to validate store deletion"));
+  }
+
+  @Test
+  public void testValidateStoreDeletedReturnsBadRequestForInvalidArgument() {
+    when(controllerAccessManager.isAllowListUser(anyString(), any())).thenReturn(true);
+    ClusterStoreGrpcInfo storeInfo =
+        ClusterStoreGrpcInfo.newBuilder().setClusterName(TEST_CLUSTER).setStoreName(TEST_STORE).build();
+    ValidateStoreDeletedGrpcRequest request =
+        ValidateStoreDeletedGrpcRequest.newBuilder().setStoreInfo(storeInfo).build();
+    when(storeRequestHandler.validateStoreDeleted(any(ValidateStoreDeletedGrpcRequest.class)))
+        .thenThrow(new IllegalArgumentException("Cluster name is mandatory parameter"));
+
+    StatusRuntimeException e =
+        expectThrows(StatusRuntimeException.class, () -> blockingStub.validateStoreDeleted(request));
+
+    assertNotNull(e.getStatus(), "Status should not be null");
+    assertEquals(e.getStatus().getCode(), Status.INVALID_ARGUMENT.getCode());
+    VeniceControllerGrpcErrorInfo errorInfo = GrpcRequestResponseConverter.parseControllerGrpcError(e);
+    assertNotNull(errorInfo, "Error info should not be null");
+    assertEquals(errorInfo.getErrorType(), ControllerGrpcErrorType.BAD_REQUEST);
+    assertTrue(errorInfo.getErrorMessage().contains("Cluster name is mandatory parameter"));
+  }
+
+  @Test
+  public void testValidateStoreDeletedReturnsPermissionDenied() {
+    when(controllerAccessManager.isAllowListUser(anyString(), any())).thenReturn(false);
+    ClusterStoreGrpcInfo storeInfo =
+        ClusterStoreGrpcInfo.newBuilder().setClusterName(TEST_CLUSTER).setStoreName(TEST_STORE).build();
+    ValidateStoreDeletedGrpcRequest request =
+        ValidateStoreDeletedGrpcRequest.newBuilder().setStoreInfo(storeInfo).build();
+
+    StatusRuntimeException e =
+        expectThrows(StatusRuntimeException.class, () -> blockingStub.validateStoreDeleted(request));
+
+    assertNotNull(e.getStatus(), "Status should not be null");
+    assertEquals(e.getStatus().getCode(), Status.PERMISSION_DENIED.getCode());
+    VeniceControllerGrpcErrorInfo errorInfo = GrpcRequestResponseConverter.parseControllerGrpcError(e);
+    assertNotNull(errorInfo, "Error info should not be null");
+    assertEquals(errorInfo.getErrorType(), ControllerGrpcErrorType.UNAUTHORIZED);
+    assertTrue(
+        errorInfo.getErrorMessage().contains("Only admin users are allowed to run"),
+        "Actual: " + errorInfo.getErrorMessage());
   }
 }
