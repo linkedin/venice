@@ -1,6 +1,8 @@
 package com.linkedin.venice.controller.grpc.server;
 
 import com.linkedin.venice.controller.server.SchemaRequestHandler;
+import com.linkedin.venice.protocols.controller.GetKeySchemaGrpcRequest;
+import com.linkedin.venice.protocols.controller.GetKeySchemaGrpcResponse;
 import com.linkedin.venice.protocols.controller.GetValueSchemaGrpcRequest;
 import com.linkedin.venice.protocols.controller.GetValueSchemaGrpcResponse;
 import com.linkedin.venice.protocols.controller.SchemaGrpcServiceGrpc;
@@ -27,6 +29,20 @@ public class SchemaGrpcServiceImpl extends SchemaGrpcServiceImplBase {
     ControllerGrpcServerUtils.handleRequest(
         SchemaGrpcServiceGrpc.getGetValueSchemaMethod(),
         () -> schemaRequestHandler.getValueSchema(request),
+        responseObserver,
+        request.getStoreInfo());
+  }
+
+  /**
+   * Retrieves the key schema for a store.
+   * No ACL check is required for this operation as it only reads store metadata.
+   */
+  @Override
+  public void getKeySchema(GetKeySchemaGrpcRequest request, StreamObserver<GetKeySchemaGrpcResponse> responseObserver) {
+    LOGGER.debug("Received getKeySchema with args: {}", request);
+    ControllerGrpcServerUtils.handleRequest(
+        SchemaGrpcServiceGrpc.getGetKeySchemaMethod(),
+        () -> schemaRequestHandler.getKeySchema(request),
         responseObserver,
         request.getStoreInfo());
   }

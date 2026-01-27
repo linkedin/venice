@@ -2,7 +2,10 @@ package com.linkedin.venice.controller.server;
 
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.ControllerRequestHandlerDependencies;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.protocols.controller.ClusterStoreGrpcInfo;
+import com.linkedin.venice.protocols.controller.GetKeySchemaGrpcRequest;
+import com.linkedin.venice.protocols.controller.GetKeySchemaGrpcResponse;
 import com.linkedin.venice.protocols.controller.GetValueSchemaGrpcRequest;
 import com.linkedin.venice.protocols.controller.GetValueSchemaGrpcResponse;
 import com.linkedin.venice.schema.SchemaEntry;
@@ -45,6 +48,28 @@ public class SchemaRequestHandler {
         .setStoreInfo(storeInfo)
         .setSchemaId(valueSchemaEntry.getId())
         .setSchemaStr(valueSchemaEntry.getSchema().toString())
+        .build();
+  }
+
+  /**
+   * Retrieves the key schema for a store.
+   * @param request the request containing cluster and store name
+   * @return response containing the key schema id and schema string
+   */
+  public GetKeySchemaGrpcResponse getKeySchema(GetKeySchemaGrpcRequest request) {
+    ClusterStoreGrpcInfo storeInfo = request.getStoreInfo();
+    ControllerRequestParamValidator.validateClusterStoreInfo(storeInfo);
+    String clusterName = storeInfo.getClusterName();
+    String storeName = storeInfo.getStoreName();
+    LOGGER.info("Getting key schema for store: {} in cluster: {}", storeName, clusterName);
+    SchemaEntry keySchemaEntry = admin.getKeySchema(clusterName, storeName);
+    if (keySchemaEntry == null) {
+      throw new VeniceException("Key schema doesn't exist for store: " + storeName);
+    }
+    return GetKeySchemaGrpcResponse.newBuilder()
+        .setStoreInfo(storeInfo)
+        .setSchemaId(keySchemaEntry.getId())
+        .setSchemaStr(keySchemaEntry.getSchema().toString())
         .build();
   }
 }

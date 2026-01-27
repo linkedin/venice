@@ -29,6 +29,8 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.protocols.controller.ClusterStoreGrpcInfo;
+import com.linkedin.venice.protocols.controller.GetKeySchemaGrpcRequest;
+import com.linkedin.venice.protocols.controller.GetKeySchemaGrpcResponse;
 import com.linkedin.venice.protocols.controller.GetValueSchemaGrpcRequest;
 import com.linkedin.venice.protocols.controller.GetValueSchemaGrpcResponse;
 import com.linkedin.venice.schema.GeneratedSchemaID;
@@ -70,14 +72,20 @@ public class SchemaRoutes extends AbstractRoute {
       try {
         // No ACL check on getting store metadata
         AdminSparkServer.validateParams(request, GET_KEY_SCHEMA.getParams(), admin);
-        responseObject.setCluster(request.queryParams(CLUSTER));
-        responseObject.setName(request.queryParams(NAME));
-        SchemaEntry keySchemaEntry = admin.getKeySchema(responseObject.getCluster(), responseObject.getName());
-        if (keySchemaEntry == null) {
-          throw new VeniceException("Key schema doesn't exist for store: " + responseObject.getName());
-        }
-        responseObject.setId(keySchemaEntry.getId());
-        responseObject.setSchemaStr(keySchemaEntry.getSchema().toString());
+        String clusterName = request.queryParams(CLUSTER);
+        String storeName = request.queryParams(NAME);
+
+        // Convert HTTP request to gRPC request
+        ClusterStoreGrpcInfo storeInfo =
+            ClusterStoreGrpcInfo.newBuilder().setClusterName(clusterName).setStoreName(storeName).build();
+        GetKeySchemaGrpcRequest grpcRequest = GetKeySchemaGrpcRequest.newBuilder().setStoreInfo(storeInfo).build();
+
+        // Call the handler and convert the response
+        GetKeySchemaGrpcResponse grpcResponse = schemaRequestHandler.getKeySchema(grpcRequest);
+        responseObject.setCluster(clusterName);
+        responseObject.setName(storeName);
+        responseObject.setId(grpcResponse.getSchemaId());
+        responseObject.setSchemaStr(grpcResponse.getSchemaStr());
       } catch (Throwable e) {
         responseObject.setError(e);
         AdminSparkServer.handleError(new VeniceException(e), request, response);

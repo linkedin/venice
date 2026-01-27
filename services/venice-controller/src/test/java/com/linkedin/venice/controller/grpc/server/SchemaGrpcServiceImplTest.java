@@ -13,6 +13,8 @@ import com.linkedin.venice.controller.server.SchemaRequestHandler;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.protocols.controller.ClusterStoreGrpcInfo;
 import com.linkedin.venice.protocols.controller.ControllerGrpcErrorType;
+import com.linkedin.venice.protocols.controller.GetKeySchemaGrpcRequest;
+import com.linkedin.venice.protocols.controller.GetKeySchemaGrpcResponse;
 import com.linkedin.venice.protocols.controller.GetValueSchemaGrpcRequest;
 import com.linkedin.venice.protocols.controller.GetValueSchemaGrpcResponse;
 import com.linkedin.venice.protocols.controller.SchemaGrpcServiceGrpc;
@@ -147,5 +149,58 @@ public class SchemaGrpcServiceImplTest {
     assertNotNull(errorInfo, "Error info should not be null");
     assertEquals(errorInfo.getErrorType(), ControllerGrpcErrorType.GENERAL_ERROR);
     assertTrue(errorInfo.getErrorMessage().contains("Internal error fetching schema"));
+  }
+
+  @Test
+  public void testGetKeySchemaReturnsSuccessfulResponse() {
+    ClusterStoreGrpcInfo storeInfo =
+        ClusterStoreGrpcInfo.newBuilder().setClusterName(TEST_CLUSTER).setStoreName(TEST_STORE).build();
+    GetKeySchemaGrpcRequest request = GetKeySchemaGrpcRequest.newBuilder().setStoreInfo(storeInfo).build();
+    GetKeySchemaGrpcResponse response =
+        GetKeySchemaGrpcResponse.newBuilder().setStoreInfo(storeInfo).setSchemaId(1).setSchemaStr("\"string\"").build();
+    when(schemaRequestHandler.getKeySchema(any(GetKeySchemaGrpcRequest.class))).thenReturn(response);
+
+    GetKeySchemaGrpcResponse actualResponse = blockingStub.getKeySchema(request);
+
+    assertNotNull(actualResponse, "Response should not be null");
+    assertEquals(actualResponse.getStoreInfo(), storeInfo, "Store info should match");
+    assertEquals(actualResponse.getSchemaId(), 1, "Schema ID should match");
+    assertEquals(actualResponse.getSchemaStr(), "\"string\"", "Schema string should match");
+  }
+
+  @Test
+  public void testGetKeySchemaReturnsErrorResponse() {
+    ClusterStoreGrpcInfo storeInfo =
+        ClusterStoreGrpcInfo.newBuilder().setClusterName(TEST_CLUSTER).setStoreName(TEST_STORE).build();
+    GetKeySchemaGrpcRequest request = GetKeySchemaGrpcRequest.newBuilder().setStoreInfo(storeInfo).build();
+    when(schemaRequestHandler.getKeySchema(any(GetKeySchemaGrpcRequest.class)))
+        .thenThrow(new VeniceException("Key schema doesn't exist for store: " + TEST_STORE));
+
+    StatusRuntimeException e = expectThrows(StatusRuntimeException.class, () -> blockingStub.getKeySchema(request));
+
+    assertNotNull(e.getStatus(), "Status should not be null");
+    assertEquals(e.getStatus().getCode(), Status.INTERNAL.getCode());
+    VeniceControllerGrpcErrorInfo errorInfo = GrpcRequestResponseConverter.parseControllerGrpcError(e);
+    assertNotNull(errorInfo, "Error info should not be null");
+    assertEquals(errorInfo.getErrorType(), ControllerGrpcErrorType.GENERAL_ERROR);
+    assertTrue(errorInfo.getErrorMessage().contains("Key schema doesn't exist for store"));
+  }
+
+  @Test
+  public void testGetKeySchemaReturnsBadRequestForInvalidArgument() {
+    ClusterStoreGrpcInfo storeInfo =
+        ClusterStoreGrpcInfo.newBuilder().setClusterName(TEST_CLUSTER).setStoreName(TEST_STORE).build();
+    GetKeySchemaGrpcRequest request = GetKeySchemaGrpcRequest.newBuilder().setStoreInfo(storeInfo).build();
+    when(schemaRequestHandler.getKeySchema(any(GetKeySchemaGrpcRequest.class)))
+        .thenThrow(new IllegalArgumentException("Cluster name is mandatory parameter"));
+
+    StatusRuntimeException e = expectThrows(StatusRuntimeException.class, () -> blockingStub.getKeySchema(request));
+
+    assertNotNull(e.getStatus(), "Status should not be null");
+    assertEquals(e.getStatus().getCode(), Status.INVALID_ARGUMENT.getCode());
+    VeniceControllerGrpcErrorInfo errorInfo = GrpcRequestResponseConverter.parseControllerGrpcError(e);
+    assertNotNull(errorInfo, "Error info should not be null");
+    assertEquals(errorInfo.getErrorType(), ControllerGrpcErrorType.BAD_REQUEST);
+    assertTrue(errorInfo.getErrorMessage().contains("Cluster name is mandatory parameter"));
   }
 }
