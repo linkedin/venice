@@ -201,17 +201,6 @@ public class AggVersionedIngestionStats
         stat -> stat.recordNearlineProducerToLocalBrokerLatency(value, timestamp));
   }
 
-  public void recordNearlineLocalBrokerToReadyToServeLatency(
-      String storeName,
-      int version,
-      double value,
-      long timestamp) {
-    recordVersionedAndTotalStat(
-        storeName,
-        version,
-        stat -> stat.recordNearlineLocalBrokerToReadyToServeLatency(value, timestamp));
-  }
-
   public void recordMaxIdleTime(String storeName, int version, long idleTimeMs) {
     getStats(storeName, version).recordIdleTime(idleTimeMs);
   }
