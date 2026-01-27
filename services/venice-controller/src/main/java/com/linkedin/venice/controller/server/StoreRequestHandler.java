@@ -13,12 +13,15 @@ import com.linkedin.venice.protocols.controller.DeleteAclForStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.DeleteAclForStoreGrpcResponse;
 import com.linkedin.venice.protocols.controller.GetAclForStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.GetAclForStoreGrpcResponse;
+import com.linkedin.venice.protocols.controller.GetValueSchemaGrpcRequest;
+import com.linkedin.venice.protocols.controller.GetValueSchemaGrpcResponse;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcRequest;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcResponse;
 import com.linkedin.venice.protocols.controller.UpdateAclForStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.UpdateAclForStoreGrpcResponse;
 import com.linkedin.venice.protocols.controller.ValidateStoreDeletedGrpcRequest;
 import com.linkedin.venice.protocols.controller.ValidateStoreDeletedGrpcResponse;
+import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.systemstore.schemas.StoreProperties;
 import java.util.ArrayList;
 import java.util.List;
@@ -254,5 +257,30 @@ public class StoreRequestHandler {
 
     LOGGER.info("Found {} stores in cluster: {}", selectedStoreNames.size(), clusterName);
     return ListStoresGrpcResponse.newBuilder().setClusterName(clusterName).addAllStoreNames(selectedStoreNames).build();
+  }
+
+  /**
+   * Retrieves the value schema for a store by schema ID.
+   * @param request the request containing cluster name, store name, and schema ID
+   * @return response containing the value schema string
+   */
+  public GetValueSchemaGrpcResponse getValueSchema(GetValueSchemaGrpcRequest request) {
+    ClusterStoreGrpcInfo storeInfo = request.getStoreInfo();
+    ControllerRequestParamValidator.validateClusterStoreInfo(storeInfo);
+    String clusterName = storeInfo.getClusterName();
+    String storeName = storeInfo.getStoreName();
+    int schemaId = request.getSchemaId();
+    LOGGER
+        .info("Getting value schema for store: {} in cluster: {} with schema id: {}", storeName, clusterName, schemaId);
+    SchemaEntry valueSchemaEntry = admin.getValueSchema(clusterName, storeName, schemaId);
+    if (valueSchemaEntry == null) {
+      throw new IllegalArgumentException(
+          "Value schema for schema id: " + schemaId + " of store: " + storeName + " doesn't exist");
+    }
+    return GetValueSchemaGrpcResponse.newBuilder()
+        .setStoreInfo(storeInfo)
+        .setSchemaId(valueSchemaEntry.getId())
+        .setSchemaStr(valueSchemaEntry.getSchema().toString())
+        .build();
   }
 }

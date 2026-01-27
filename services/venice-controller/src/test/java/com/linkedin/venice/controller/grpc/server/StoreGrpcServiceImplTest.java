@@ -25,6 +25,8 @@ import com.linkedin.venice.protocols.controller.DeleteAclForStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.DeleteAclForStoreGrpcResponse;
 import com.linkedin.venice.protocols.controller.GetAclForStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.GetAclForStoreGrpcResponse;
+import com.linkedin.venice.protocols.controller.GetValueSchemaGrpcRequest;
+import com.linkedin.venice.protocols.controller.GetValueSchemaGrpcResponse;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcRequest;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcResponse;
 import com.linkedin.venice.protocols.controller.ResourceCleanupCheckGrpcResponse;
@@ -444,5 +446,84 @@ public class StoreGrpcServiceImplTest {
     assertNotNull(actualResponse, "Response should not be null");
     assertEquals(actualResponse.getClusterName(), TEST_CLUSTER, "Cluster name should match");
     assertEquals(actualResponse.getStoreNamesCount(), 1, "Should have 1 store after filtering");
+  }
+
+  @Test
+  public void testGetValueSchemaReturnsSuccessfulResponse() {
+    ClusterStoreGrpcInfo storeInfo =
+        ClusterStoreGrpcInfo.newBuilder().setClusterName(TEST_CLUSTER).setStoreName(TEST_STORE).build();
+    GetValueSchemaGrpcRequest request =
+        GetValueSchemaGrpcRequest.newBuilder().setStoreInfo(storeInfo).setSchemaId(1).build();
+    GetValueSchemaGrpcResponse expectedResponse = GetValueSchemaGrpcResponse.newBuilder()
+        .setStoreInfo(storeInfo)
+        .setSchemaId(1)
+        .setSchemaStr(VALUE_SCHEMA)
+        .build();
+    when(storeRequestHandler.getValueSchema(any(GetValueSchemaGrpcRequest.class))).thenReturn(expectedResponse);
+
+    GetValueSchemaGrpcResponse actualResponse = blockingStub.getValueSchema(request);
+
+    assertNotNull(actualResponse, "Response should not be null");
+    assertEquals(actualResponse.getStoreInfo().getClusterName(), TEST_CLUSTER, "Cluster name should match");
+    assertEquals(actualResponse.getStoreInfo().getStoreName(), TEST_STORE, "Store name should match");
+    assertEquals(actualResponse.getSchemaId(), 1, "Schema ID should match");
+    assertEquals(actualResponse.getSchemaStr(), VALUE_SCHEMA, "Schema string should match");
+  }
+
+  @Test
+  public void testGetValueSchemaReturnsErrorWhenSchemaNotFound() {
+    ClusterStoreGrpcInfo storeInfo =
+        ClusterStoreGrpcInfo.newBuilder().setClusterName(TEST_CLUSTER).setStoreName(TEST_STORE).build();
+    GetValueSchemaGrpcRequest request =
+        GetValueSchemaGrpcRequest.newBuilder().setStoreInfo(storeInfo).setSchemaId(99).build();
+    when(storeRequestHandler.getValueSchema(any(GetValueSchemaGrpcRequest.class)))
+        .thenThrow(new IllegalArgumentException("Value schema for schema id: 99 of store: test-store doesn't exist"));
+
+    StatusRuntimeException e = expectThrows(StatusRuntimeException.class, () -> blockingStub.getValueSchema(request));
+
+    assertNotNull(e.getStatus(), "Status should not be null");
+    assertEquals(e.getStatus().getCode(), Status.INVALID_ARGUMENT.getCode());
+    VeniceControllerGrpcErrorInfo errorInfo = GrpcRequestResponseConverter.parseControllerGrpcError(e);
+    assertNotNull(errorInfo, "Error info should not be null");
+    assertEquals(errorInfo.getErrorType(), ControllerGrpcErrorType.BAD_REQUEST);
+    assertTrue(errorInfo.getErrorMessage().contains("Value schema for schema id: 99"));
+  }
+
+  @Test
+  public void testGetValueSchemaReturnsErrorForInvalidInput() {
+    ClusterStoreGrpcInfo storeInfo =
+        ClusterStoreGrpcInfo.newBuilder().setClusterName("").setStoreName(TEST_STORE).build();
+    GetValueSchemaGrpcRequest request =
+        GetValueSchemaGrpcRequest.newBuilder().setStoreInfo(storeInfo).setSchemaId(1).build();
+    when(storeRequestHandler.getValueSchema(any(GetValueSchemaGrpcRequest.class)))
+        .thenThrow(new IllegalArgumentException("Cluster name is mandatory parameter"));
+
+    StatusRuntimeException e = expectThrows(StatusRuntimeException.class, () -> blockingStub.getValueSchema(request));
+
+    assertNotNull(e.getStatus(), "Status should not be null");
+    assertEquals(e.getStatus().getCode(), Status.INVALID_ARGUMENT.getCode());
+    VeniceControllerGrpcErrorInfo errorInfo = GrpcRequestResponseConverter.parseControllerGrpcError(e);
+    assertNotNull(errorInfo, "Error info should not be null");
+    assertEquals(errorInfo.getErrorType(), ControllerGrpcErrorType.BAD_REQUEST);
+    assertTrue(errorInfo.getErrorMessage().contains("Cluster name is mandatory parameter"));
+  }
+
+  @Test
+  public void testGetValueSchemaReturnsGeneralError() {
+    ClusterStoreGrpcInfo storeInfo =
+        ClusterStoreGrpcInfo.newBuilder().setClusterName(TEST_CLUSTER).setStoreName(TEST_STORE).build();
+    GetValueSchemaGrpcRequest request =
+        GetValueSchemaGrpcRequest.newBuilder().setStoreInfo(storeInfo).setSchemaId(1).build();
+    when(storeRequestHandler.getValueSchema(any(GetValueSchemaGrpcRequest.class)))
+        .thenThrow(new VeniceException("Internal error fetching schema"));
+
+    StatusRuntimeException e = expectThrows(StatusRuntimeException.class, () -> blockingStub.getValueSchema(request));
+
+    assertNotNull(e.getStatus(), "Status should not be null");
+    assertEquals(e.getStatus().getCode(), Status.INTERNAL.getCode());
+    VeniceControllerGrpcErrorInfo errorInfo = GrpcRequestResponseConverter.parseControllerGrpcError(e);
+    assertNotNull(errorInfo, "Error info should not be null");
+    assertEquals(errorInfo.getErrorType(), ControllerGrpcErrorType.GENERAL_ERROR);
+    assertTrue(errorInfo.getErrorMessage().contains("Internal error fetching schema"));
   }
 }

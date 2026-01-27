@@ -14,6 +14,8 @@ import com.linkedin.venice.protocols.controller.DeleteAclForStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.DeleteAclForStoreGrpcResponse;
 import com.linkedin.venice.protocols.controller.GetAclForStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.GetAclForStoreGrpcResponse;
+import com.linkedin.venice.protocols.controller.GetValueSchemaGrpcRequest;
+import com.linkedin.venice.protocols.controller.GetValueSchemaGrpcResponse;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcRequest;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcResponse;
 import com.linkedin.venice.protocols.controller.ResourceCleanupCheckGrpcResponse;
@@ -146,5 +148,18 @@ public class StoreGrpcServiceImpl extends StoreGrpcServiceImplBase {
         responseObserver,
         clusterName,
         null);
+  }
+
+  @Override
+  public void getValueSchema(
+      GetValueSchemaGrpcRequest request,
+      StreamObserver<GetValueSchemaGrpcResponse> responseObserver) {
+    LOGGER.debug("Received getValueSchema with args: {}", request);
+    // No ACL check on getting store metadata (same as HTTP endpoint)
+    ControllerGrpcServerUtils.handleRequest(
+        StoreGrpcServiceGrpc.getGetValueSchemaMethod(),
+        () -> storeRequestHandler.getValueSchema(request),
+        responseObserver,
+        request.getStoreInfo());
   }
 }

@@ -307,7 +307,7 @@ public class AdminSparkServer extends AbstractVeniceService {
     CreateVersion createVersion = new CreateVersion(sslEnabled, accessController, this.checkReadMethodForKafka);
     CreateStore createStoreRoute = new CreateStore(sslEnabled, accessController);
     NodesAndReplicas nodesAndReplicas = new NodesAndReplicas(sslEnabled, accessController);
-    SchemaRoutes schemaRoutes = new SchemaRoutes(sslEnabled, accessController);
+    SchemaRoutes schemaRoutes = new SchemaRoutes(sslEnabled, accessController, requestHandler.getStoreRequestHandler());
     AdminCommandExecutionRoutes adminCommandExecutionRoutes =
         new AdminCommandExecutionRoutes(sslEnabled, accessController);
     RoutersClusterConfigRoutes routersClusterConfigRoutes =

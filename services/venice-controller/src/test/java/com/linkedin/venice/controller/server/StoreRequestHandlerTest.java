@@ -22,14 +22,18 @@ import com.linkedin.venice.protocols.controller.DeleteAclForStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.DeleteAclForStoreGrpcResponse;
 import com.linkedin.venice.protocols.controller.GetAclForStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.GetAclForStoreGrpcResponse;
+import com.linkedin.venice.protocols.controller.GetValueSchemaGrpcRequest;
+import com.linkedin.venice.protocols.controller.GetValueSchemaGrpcResponse;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcRequest;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcResponse;
 import com.linkedin.venice.protocols.controller.UpdateAclForStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.UpdateAclForStoreGrpcResponse;
+import com.linkedin.venice.schema.SchemaEntry;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
+import org.apache.avro.Schema;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
@@ -357,5 +361,57 @@ public class StoreRequestHandlerTest {
     ListStoresGrpcResponse response = storeRequestHandler.listStores(request);
 
     assertEquals(response.getStoreNamesCount(), 0);
+  }
+
+  @Test
+  public void testGetValueSchemaSuccess() {
+    GetValueSchemaGrpcRequest request = GetValueSchemaGrpcRequest.newBuilder()
+        .setStoreInfo(ClusterStoreGrpcInfo.newBuilder().setClusterName("testCluster").setStoreName("testStore").build())
+        .setSchemaId(1)
+        .build();
+
+    Schema avroSchema = Schema.create(Schema.Type.STRING);
+    SchemaEntry schemaEntry = new SchemaEntry(1, avroSchema);
+    when(admin.getValueSchema("testCluster", "testStore", 1)).thenReturn(schemaEntry);
+
+    GetValueSchemaGrpcResponse response = storeRequestHandler.getValueSchema(request);
+
+    verify(admin, times(1)).getValueSchema("testCluster", "testStore", 1);
+    assertEquals(response.getStoreInfo().getClusterName(), "testCluster");
+    assertEquals(response.getStoreInfo().getStoreName(), "testStore");
+    assertEquals(response.getSchemaId(), 1);
+    assertEquals(response.getSchemaStr(), avroSchema.toString());
+  }
+
+  @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = "Value schema for schema id: 99 of store: testStore doesn't exist")
+  public void testGetValueSchemaNotFound() {
+    GetValueSchemaGrpcRequest request = GetValueSchemaGrpcRequest.newBuilder()
+        .setStoreInfo(ClusterStoreGrpcInfo.newBuilder().setClusterName("testCluster").setStoreName("testStore").build())
+        .setSchemaId(99)
+        .build();
+
+    when(admin.getValueSchema("testCluster", "testStore", 99)).thenReturn(null);
+
+    storeRequestHandler.getValueSchema(request);
+  }
+
+  @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = "Cluster name is mandatory parameter")
+  public void testGetValueSchemaMissingClusterName() {
+    GetValueSchemaGrpcRequest request = GetValueSchemaGrpcRequest.newBuilder()
+        .setStoreInfo(ClusterStoreGrpcInfo.newBuilder().setStoreName("testStore").build())
+        .setSchemaId(1)
+        .build();
+
+    storeRequestHandler.getValueSchema(request);
+  }
+
+  @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = "Store name is mandatory parameter")
+  public void testGetValueSchemaMissingStoreName() {
+    GetValueSchemaGrpcRequest request = GetValueSchemaGrpcRequest.newBuilder()
+        .setStoreInfo(ClusterStoreGrpcInfo.newBuilder().setClusterName("testCluster").build())
+        .setSchemaId(1)
+        .build();
+
+    storeRequestHandler.getValueSchema(request);
   }
 }
