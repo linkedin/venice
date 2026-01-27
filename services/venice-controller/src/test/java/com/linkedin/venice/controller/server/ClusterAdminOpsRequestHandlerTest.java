@@ -22,6 +22,8 @@ import com.linkedin.venice.protocols.controller.AdminCommandExecutionStatusGrpcR
 import com.linkedin.venice.protocols.controller.AdminTopicGrpcMetadata;
 import com.linkedin.venice.protocols.controller.AdminTopicMetadataGrpcRequest;
 import com.linkedin.venice.protocols.controller.AdminTopicMetadataGrpcResponse;
+import com.linkedin.venice.protocols.controller.IsStoreMigrationAllowedGrpcRequest;
+import com.linkedin.venice.protocols.controller.IsStoreMigrationAllowedGrpcResponse;
 import com.linkedin.venice.protocols.controller.LastSuccessfulAdminCommandExecutionGrpcRequest;
 import com.linkedin.venice.protocols.controller.LastSuccessfulAdminCommandExecutionGrpcResponse;
 import com.linkedin.venice.protocols.controller.PubSubPositionGrpcWireFormat;
@@ -315,5 +317,46 @@ public class ClusterAdminOpsRequestHandlerTest {
     assertTrue(
         exception.getMessage()
             .contains("Admin operation protocol version is required and must be -1 or greater than 0"));
+  }
+
+  @Test
+  public void testIsStoreMigrationAllowedReturnsTrue() {
+    String clusterName = "test-cluster";
+
+    when(mockAdmin.isStoreMigrationAllowed(clusterName)).thenReturn(true);
+
+    IsStoreMigrationAllowedGrpcRequest request =
+        IsStoreMigrationAllowedGrpcRequest.newBuilder().setClusterName(clusterName).build();
+
+    IsStoreMigrationAllowedGrpcResponse response = handler.isStoreMigrationAllowed(request);
+
+    assertNotNull(response);
+    assertEquals(response.getClusterName(), clusterName);
+    assertTrue(response.getStoreMigrationAllowed());
+  }
+
+  @Test
+  public void testIsStoreMigrationAllowedReturnsFalse() {
+    String clusterName = "test-cluster";
+
+    when(mockAdmin.isStoreMigrationAllowed(clusterName)).thenReturn(false);
+
+    IsStoreMigrationAllowedGrpcRequest request =
+        IsStoreMigrationAllowedGrpcRequest.newBuilder().setClusterName(clusterName).build();
+
+    IsStoreMigrationAllowedGrpcResponse response = handler.isStoreMigrationAllowed(request);
+
+    assertNotNull(response);
+    assertEquals(response.getClusterName(), clusterName);
+    assertFalse(response.getStoreMigrationAllowed());
+  }
+
+  @Test
+  public void testIsStoreMigrationAllowedInvalidCluster() {
+    IsStoreMigrationAllowedGrpcRequest request =
+        IsStoreMigrationAllowedGrpcRequest.newBuilder().setClusterName("").build();
+
+    Exception exception = expectThrows(IllegalArgumentException.class, () -> handler.isStoreMigrationAllowed(request));
+    assertEquals(exception.getMessage(), "Cluster name is required for checking if store migration is allowed");
   }
 }
