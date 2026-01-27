@@ -48,7 +48,7 @@ Venice uses Apache Helix for cluster management and ZooKeeper as the underlying 
    - **Resources**: Store versions (e.g., `test-store_v1`)
 
 2. **Venice Controller Cluster** (`venice-controllers`)
-   - **Purpose**: Select Venice logical leader per storage cluster (this is different form storage clusters)
+   - **Purpose**: Select Venice logical leader per storage cluster (this is different from storage clusters)
    - **Participants**: Venice controllers
    - **Resources**: Venice cluster names (e.g., `venice-0`, `venice-1`)
    - **Note**: Each resource has one partition with replication for fault tolerance
@@ -318,8 +318,10 @@ OfflinePushes/
 ```
 
 **Data Structure**:
-- **Root node** (`OfflinePushStatus`): kafkaTopic, numberOfPartition, replicationFactor, strategy, currentStatus, statusHistory[],
+- **Root node** (`OfflinePushStatus`): kafkaTopic, numberOfPartition, replicationFactor, strategy, currentStatus, statusHistory[]
 - **Partition nodes** (`PartitionStatus`): partitionId, replicaStatuses[] with instanceId, currentStatus, statusHistory[]
+
+**Status Values**: STARTED, END_OF_PUSH_RECEIVED, PROGRESS, TOPIC_SWITCH_RECEIVED, COMPLETED
 
 **Accessor**: `VeniceOfflinePushMonitorAccessor`
 
@@ -362,9 +364,9 @@ See [Store-Specific Metadata](#4-store-specific-metadata) for details.
 |------|---------|
 | `CONFIGS/` | Helix configuration for cluster, participants, resources |
 | `CONTROLLER/` | Helix controller leadership for this storage cluster |
-| `CUSTOMIZEDVIEW/` | Aggregated customized state (used for push monitoring) |
-| `EXTERNALVIEW/` | Current partition-to-instance assignments |
-| `IDEALSTATES/` | Desired partition-to-instance assignments |
+| `CUSTOMIZEDVIEW/` | Aggregated customized state (used for push monitoring). Path: `CUSTOMIZEDVIEW/OFFLINE_PUSH/<resource>`. Format: mapFields with `<resource>_<partition>` → {`<instanceId>`: `<status>`} |
+| `EXTERNALVIEW/` | Current (actual) partition-to-instance assignments. mapFields: `<resource>_<partition>` → {`<instanceId>`: `LEADER`/`STANDBY`/`OFFLINE`} |
+| `IDEALSTATES/` | Desired partition-to-instance assignments. simpleFields: NUM_PARTITIONS, REPLICAS, STATE_MODEL_DEF_REF (LeaderStandby), REBALANCE_STRATEGY. mapFields: `<resource>_<partition>` → {`<instanceId>`: `LEADER`/`STANDBY`} |
 | `INSTANCES/` | Registered storage node participants |
 | `LIVEINSTANCES/` | Currently connected storage nodes (ephemeral) |
 | `PROPERTYSTORE/` | Generic Helix property store |
