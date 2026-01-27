@@ -15,6 +15,8 @@ import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.MultiStoreTopicsResponse;
 import com.linkedin.venice.controllerapi.StoreMigrationResponse;
 import com.linkedin.venice.controllerapi.UpdateClusterConfigQueryParams;
+import com.linkedin.venice.protocols.controller.IsStoreMigrationAllowedGrpcRequest;
+import com.linkedin.venice.protocols.controller.IsStoreMigrationAllowedGrpcResponse;
 import com.linkedin.venice.utils.Utils;
 import java.util.Map;
 import java.util.Optional;
@@ -60,14 +62,19 @@ public class ClusterRoutes extends AbstractRoute {
    * No ACL check; any user is allowed to check whether store migration is allowed for a specific cluster.
    * @see Admin#isStoreMigrationAllowed(String)
    */
-  public Route isStoreMigrationAllowed(Admin admin) {
+  public Route isStoreMigrationAllowed(Admin admin, ClusterAdminOpsRequestHandler requestHandler) {
     return new VeniceRouteHandler<StoreMigrationResponse>(StoreMigrationResponse.class) {
       @Override
       public void internalHandle(Request request, StoreMigrationResponse veniceResponse) {
         AdminSparkServer.validateParams(request, STORE_MIGRATION_ALLOWED.getParams(), admin);
         String clusterName = request.queryParams(CLUSTER);
-        veniceResponse.setCluster(clusterName);
-        veniceResponse.setStoreMigrationAllowed(admin.isStoreMigrationAllowed(clusterName));
+
+        IsStoreMigrationAllowedGrpcRequest grpcRequest =
+            IsStoreMigrationAllowedGrpcRequest.newBuilder().setClusterName(clusterName).build();
+        IsStoreMigrationAllowedGrpcResponse grpcResponse = requestHandler.isStoreMigrationAllowed(grpcRequest);
+
+        veniceResponse.setCluster(grpcResponse.getClusterName());
+        veniceResponse.setStoreMigrationAllowed(grpcResponse.getStoreMigrationAllowed());
       }
     };
   }

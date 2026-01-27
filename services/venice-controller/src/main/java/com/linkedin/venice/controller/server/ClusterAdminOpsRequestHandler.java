@@ -12,6 +12,8 @@ import com.linkedin.venice.protocols.controller.AdminCommandExecutionStatusGrpcR
 import com.linkedin.venice.protocols.controller.AdminTopicGrpcMetadata;
 import com.linkedin.venice.protocols.controller.AdminTopicMetadataGrpcRequest;
 import com.linkedin.venice.protocols.controller.AdminTopicMetadataGrpcResponse;
+import com.linkedin.venice.protocols.controller.IsStoreMigrationAllowedGrpcRequest;
+import com.linkedin.venice.protocols.controller.IsStoreMigrationAllowedGrpcResponse;
 import com.linkedin.venice.protocols.controller.LastSuccessfulAdminCommandExecutionGrpcRequest;
 import com.linkedin.venice.protocols.controller.LastSuccessfulAdminCommandExecutionGrpcResponse;
 import com.linkedin.venice.protocols.controller.UpdateAdminOperationProtocolVersionGrpcRequest;
@@ -168,5 +170,18 @@ public class ClusterAdminOpsRequestHandler {
         .setClusterName(clusterName)
         .setAdminOperationProtocolVersion(adminOperationProtocolVersion);
     return AdminTopicMetadataGrpcResponse.newBuilder().setMetadata(adminMetadataBuilder.build()).build();
+  }
+
+  public IsStoreMigrationAllowedGrpcResponse isStoreMigrationAllowed(IsStoreMigrationAllowedGrpcRequest request) {
+    String clusterName = request.getClusterName();
+    if (StringUtils.isBlank(clusterName)) {
+      throw new IllegalArgumentException("Cluster name is required for checking store migration allowed");
+    }
+    LOGGER.info("Checking if store migration is allowed for cluster: {}", clusterName);
+    boolean storeMigrationAllowed = admin.isStoreMigrationAllowed(clusterName);
+    return IsStoreMigrationAllowedGrpcResponse.newBuilder()
+        .setClusterName(clusterName)
+        .setStoreMigrationAllowed(storeMigrationAllowed)
+        .build();
   }
 }

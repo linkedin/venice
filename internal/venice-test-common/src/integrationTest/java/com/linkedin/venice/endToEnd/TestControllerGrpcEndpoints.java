@@ -13,11 +13,14 @@ import com.linkedin.venice.grpc.GrpcUtils;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.protocols.controller.ClusterAdminOpsGrpcServiceGrpc;
 import com.linkedin.venice.protocols.controller.ClusterStoreGrpcInfo;
 import com.linkedin.venice.protocols.controller.CreateStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.CreateStoreGrpcResponse;
 import com.linkedin.venice.protocols.controller.DiscoverClusterGrpcRequest;
 import com.linkedin.venice.protocols.controller.DiscoverClusterGrpcResponse;
+import com.linkedin.venice.protocols.controller.IsStoreMigrationAllowedGrpcRequest;
+import com.linkedin.venice.protocols.controller.IsStoreMigrationAllowedGrpcResponse;
 import com.linkedin.venice.protocols.controller.LeaderControllerGrpcRequest;
 import com.linkedin.venice.protocols.controller.LeaderControllerGrpcResponse;
 import com.linkedin.venice.protocols.controller.StoreGrpcServiceGrpc;
@@ -161,6 +164,26 @@ public class TestControllerGrpcEndpoints {
       StoreResponse storeResponse = TestUtils.assertCommand(controllerClient.getStore(storeName));
       assertNotNull(storeResponse.getStore(), "Store should not be null");
     });
+  }
+
+  /**
+   * Test isStoreMigrationAllowed gRPC endpoint.
+   * This endpoint doesn't require ACL check - any user can query it.
+   */
+  @Test(timeOut = TIMEOUT_MS)
+  public void testIsStoreMigrationAllowedGrpcEndpoint() {
+    String controllerGrpcUrl = veniceCluster.getLeaderVeniceController().getControllerGrpcUrl();
+    ManagedChannel channel = Grpc.newChannelBuilder(controllerGrpcUrl, InsecureChannelCredentials.create()).build();
+    ClusterAdminOpsGrpcServiceGrpc.ClusterAdminOpsGrpcServiceBlockingStub clusterAdminOpsStub =
+        ClusterAdminOpsGrpcServiceGrpc.newBlockingStub(channel);
+
+    IsStoreMigrationAllowedGrpcRequest request =
+        IsStoreMigrationAllowedGrpcRequest.newBuilder().setClusterName(veniceCluster.getClusterName()).build();
+
+    IsStoreMigrationAllowedGrpcResponse response = clusterAdminOpsStub.isStoreMigrationAllowed(request);
+    assertNotNull(response, "Response should not be null");
+    assertEquals(response.getClusterName(), veniceCluster.getClusterName());
+    // The actual value depends on cluster config, just verify we get a response
   }
 
   private static class MockDynamicAccessController extends NoOpDynamicAccessController {

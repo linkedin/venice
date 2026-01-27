@@ -395,7 +395,9 @@ public class AdminSparkServer extends AbstractVeniceService {
 
     httpService.get(
         STORE_MIGRATION_ALLOWED.getPath(),
-        new VeniceParentControllerRegionStateHandler(admin, clusterRoutes.isStoreMigrationAllowed(admin)));
+        new VeniceParentControllerRegionStateHandler(
+            admin,
+            clusterRoutes.isStoreMigrationAllowed(admin, requestHandler.getClusterAdminOpsRequestHandler())));
     httpService.post(
         MIGRATE_STORE.getPath(),
         new VeniceParentControllerRegionStateHandler(admin, storesRoutes.migrateStore(admin)));
