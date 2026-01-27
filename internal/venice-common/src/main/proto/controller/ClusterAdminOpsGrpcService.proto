@@ -15,6 +15,9 @@ service ClusterAdminOpsGrpcService {
   rpc getAdminTopicMetadata(AdminTopicMetadataGrpcRequest) returns (AdminTopicMetadataGrpcResponse) {}
   rpc updateAdminTopicMetadata(UpdateAdminTopicMetadataGrpcRequest) returns (AdminTopicMetadataGrpcResponse) {}
   rpc updateAdminOperationProtocolVersion(UpdateAdminOperationProtocolVersionGrpcRequest) returns (AdminTopicMetadataGrpcResponse) {}
+
+  // StoreMigration
+  rpc isStoreMigrationAllowed(IsStoreMigrationAllowedGrpcRequest) returns (IsStoreMigrationAllowedGrpcResponse) {}
 }
 
 
@@ -72,4 +75,13 @@ message AdminTopicGrpcMetadata {
 message PubSubPositionGrpcWireFormat {
   int32 typeId = 1;
   string base64PositionBytes = 2;
+}
+
+message IsStoreMigrationAllowedGrpcRequest {
+  string clusterName = 1;
+}
+
+message IsStoreMigrationAllowedGrpcResponse {
+  string clusterName = 1;
+  bool storeMigrationAllowed = 2;
 }
