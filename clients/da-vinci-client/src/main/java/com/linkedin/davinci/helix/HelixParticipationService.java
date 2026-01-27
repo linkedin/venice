@@ -429,13 +429,20 @@ public class HelixParticipationService extends AbstractVeniceService
     // Get all hosted stores
     currentLogger.info("Started resetting all instance CV states");
     Map<String, Set<Integer>> storePartitionMapping = storageService.getStoreAndUserPartitionsMapping();
-    storePartitionMapping.forEach((storeName, partitionIds) -> {
+
+    // TODO: remove the log
+    currentLogger.info("Total number of stores in storePartitionMapping: {}", storePartitionMapping.size());
+    storePartitionMapping.entrySet().stream().limit(10).forEach(entry -> {
+      String storeName = entry.getKey();
+      Set<Integer> partitionIds = entry.getValue();
       currentLogger.info(
-          "Resetting store: {}, total partitions: {}, first 10 partitions: {}",
+          "Store: {}, Total partitions: {}, First 10 partitions: {}",
           storeName,
           partitionIds.size(),
           partitionIds.stream().limit(10).collect(java.util.stream.Collectors.toList()));
+    });
 
+    storePartitionMapping.forEach((storeName, partitionIds) -> {
       partitionIds.forEach(partitionId -> {
         try {
           accessor.deleteReplicaStatus(storeName, partitionId);
