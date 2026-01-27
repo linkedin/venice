@@ -14,6 +14,8 @@ import com.linkedin.venice.protocols.controller.DeleteAclForStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.DeleteAclForStoreGrpcResponse;
 import com.linkedin.venice.protocols.controller.GetAclForStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.GetAclForStoreGrpcResponse;
+import com.linkedin.venice.protocols.controller.GetKeySchemaGrpcRequest;
+import com.linkedin.venice.protocols.controller.GetKeySchemaGrpcResponse;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcRequest;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcResponse;
 import com.linkedin.venice.protocols.controller.ResourceCleanupCheckGrpcResponse;
@@ -146,5 +148,19 @@ public class StoreGrpcServiceImpl extends StoreGrpcServiceImplBase {
         responseObserver,
         clusterName,
         null);
+  }
+
+  /**
+   * Retrieves the key schema for a store.
+   * No ACL check is required for this operation as it only reads store metadata.
+   */
+  @Override
+  public void getKeySchema(GetKeySchemaGrpcRequest request, StreamObserver<GetKeySchemaGrpcResponse> responseObserver) {
+    LOGGER.debug("Received getKeySchema with args: {}", request);
+    ControllerGrpcServerUtils.handleRequest(
+        StoreGrpcServiceGrpc.getGetKeySchemaMethod(),
+        () -> storeRequestHandler.getKeySchema(request),
+        responseObserver,
+        request.getStoreInfo());
   }
 }

@@ -28,6 +28,9 @@ import com.linkedin.venice.exceptions.InvalidVeniceSchemaException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.protocols.controller.ClusterStoreGrpcInfo;
+import com.linkedin.venice.protocols.controller.GetKeySchemaGrpcRequest;
+import com.linkedin.venice.protocols.controller.GetKeySchemaGrpcResponse;
 import com.linkedin.venice.schema.GeneratedSchemaID;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
@@ -53,7 +56,9 @@ public class SchemaRoutes extends AbstractRoute {
   /**
    * Route to handle retrieving key schema request.
    * @see Admin#getKeySchema(String, String)
+   * @deprecated Use {@link #getKeySchema(Admin, StoreRequestHandler)} instead.
    */
+  @Deprecated
   public Route getKeySchema(Admin admin) {
     return (request, response) -> {
       SchemaResponse responseObject = new SchemaResponse();
@@ -69,6 +74,39 @@ public class SchemaRoutes extends AbstractRoute {
         }
         responseObject.setId(keySchemaEntry.getId());
         responseObject.setSchemaStr(keySchemaEntry.getSchema().toString());
+      } catch (Throwable e) {
+        responseObject.setError(e);
+        AdminSparkServer.handleError(new VeniceException(e), request, response);
+      }
+      return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
+    };
+  }
+
+  /**
+   * Route to handle retrieving key schema request using gRPC handler.
+   * @see Admin#getKeySchema(String, String)
+   */
+  public Route getKeySchema(Admin admin, StoreRequestHandler storeRequestHandler) {
+    return (request, response) -> {
+      SchemaResponse responseObject = new SchemaResponse();
+      response.type(HttpConstants.JSON);
+      try {
+        // No ACL check on getting store metadata
+        AdminSparkServer.validateParams(request, GET_KEY_SCHEMA.getParams(), admin);
+        String clusterName = request.queryParams(CLUSTER);
+        String storeName = request.queryParams(NAME);
+
+        // Convert HTTP request to gRPC request
+        ClusterStoreGrpcInfo storeInfo =
+            ClusterStoreGrpcInfo.newBuilder().setClusterName(clusterName).setStoreName(storeName).build();
+        GetKeySchemaGrpcRequest grpcRequest = GetKeySchemaGrpcRequest.newBuilder().setStoreInfo(storeInfo).build();
+
+        // Call the handler and convert the response
+        GetKeySchemaGrpcResponse grpcResponse = storeRequestHandler.getKeySchema(grpcRequest);
+        responseObject.setCluster(clusterName);
+        responseObject.setName(storeName);
+        responseObject.setId(grpcResponse.getSchemaId());
+        responseObject.setSchemaStr(grpcResponse.getSchemaStr());
       } catch (Throwable e) {
         responseObject.setError(e);
         AdminSparkServer.handleError(new VeniceException(e), request, response);

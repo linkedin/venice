@@ -19,6 +19,8 @@ import com.linkedin.venice.protocols.controller.CreateStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.CreateStoreGrpcResponse;
 import com.linkedin.venice.protocols.controller.DiscoverClusterGrpcRequest;
 import com.linkedin.venice.protocols.controller.DiscoverClusterGrpcResponse;
+import com.linkedin.venice.protocols.controller.GetKeySchemaGrpcRequest;
+import com.linkedin.venice.protocols.controller.GetKeySchemaGrpcResponse;
 import com.linkedin.venice.protocols.controller.LeaderControllerGrpcRequest;
 import com.linkedin.venice.protocols.controller.LeaderControllerGrpcResponse;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcRequest;
@@ -314,6 +316,40 @@ public class TestControllerGrpcEndpoints {
           store.startsWith("venice_system_store") || store.contains("push_status"),
           "Store list should not contain system stores: " + store);
     }
+  }
+
+  @Test(timeOut = TIMEOUT_MS)
+  public void testGetKeySchemaGrpcEndpoint() {
+    String storeName = Utils.getUniqueString("test_get_key_schema_store");
+    String controllerGrpcUrl = veniceCluster.getLeaderVeniceController().getControllerGrpcUrl();
+    ManagedChannel channel = Grpc.newChannelBuilder(controllerGrpcUrl, InsecureChannelCredentials.create()).build();
+    StoreGrpcServiceGrpc.StoreGrpcServiceBlockingStub storeBlockingStub = StoreGrpcServiceGrpc.newBlockingStub(channel);
+
+    ClusterStoreGrpcInfo storeGrpcInfo = ClusterStoreGrpcInfo.newBuilder()
+        .setClusterName(veniceCluster.getClusterName())
+        .setStoreName(storeName)
+        .build();
+
+    // Step 1: Create the store
+    CreateStoreGrpcRequest createStoreGrpcRequest = CreateStoreGrpcRequest.newBuilder()
+        .setStoreInfo(storeGrpcInfo)
+        .setOwner("owner")
+        .setKeySchema(DEFAULT_KEY_SCHEMA)
+        .setValueSchema("\"string\"")
+        .build();
+    CreateStoreGrpcResponse createResponse = storeBlockingStub.createStore(createStoreGrpcRequest);
+    assertNotNull(createResponse, "Response should not be null");
+    assertEquals(createResponse.getStoreInfo().getStoreName(), storeName);
+
+    // Step 2: Get key schema using gRPC endpoint
+    GetKeySchemaGrpcRequest getKeySchemaRequest =
+        GetKeySchemaGrpcRequest.newBuilder().setStoreInfo(storeGrpcInfo).build();
+    GetKeySchemaGrpcResponse getKeySchemaResponse = storeBlockingStub.getKeySchema(getKeySchemaRequest);
+    assertNotNull(getKeySchemaResponse, "Response should not be null");
+    assertEquals(getKeySchemaResponse.getStoreInfo().getStoreName(), storeName);
+    assertEquals(getKeySchemaResponse.getStoreInfo().getClusterName(), veniceCluster.getClusterName());
+    assertEquals(getKeySchemaResponse.getSchemaStr(), DEFAULT_KEY_SCHEMA);
+    assertEquals(getKeySchemaResponse.getSchemaId(), 1);
   }
 
   private static class MockDynamicAccessController extends NoOpDynamicAccessController {

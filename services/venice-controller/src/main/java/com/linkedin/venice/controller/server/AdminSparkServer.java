@@ -475,7 +475,9 @@ public class AdminSparkServer extends AbstractVeniceService {
     // Operations for key schema/value schema
     httpService.get(
         GET_KEY_SCHEMA.getPath(),
-        new VeniceParentControllerRegionStateHandler(admin, schemaRoutes.getKeySchema(admin)));
+        new VeniceParentControllerRegionStateHandler(
+            admin,
+            schemaRoutes.getKeySchema(admin, requestHandler.getStoreRequestHandler())));
     httpService.post(
         ADD_VALUE_SCHEMA.getPath(),
         new VeniceParentControllerRegionStateHandler(admin, schemaRoutes.addValueSchema(admin)));

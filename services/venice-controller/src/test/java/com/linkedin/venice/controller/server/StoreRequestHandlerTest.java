@@ -22,14 +22,18 @@ import com.linkedin.venice.protocols.controller.DeleteAclForStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.DeleteAclForStoreGrpcResponse;
 import com.linkedin.venice.protocols.controller.GetAclForStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.GetAclForStoreGrpcResponse;
+import com.linkedin.venice.protocols.controller.GetKeySchemaGrpcRequest;
+import com.linkedin.venice.protocols.controller.GetKeySchemaGrpcResponse;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcRequest;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcResponse;
 import com.linkedin.venice.protocols.controller.UpdateAclForStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.UpdateAclForStoreGrpcResponse;
+import com.linkedin.venice.schema.SchemaEntry;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
+import org.apache.avro.Schema;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
@@ -357,5 +361,56 @@ public class StoreRequestHandlerTest {
     ListStoresGrpcResponse response = storeRequestHandler.listStores(request);
 
     assertEquals(response.getStoreNamesCount(), 0);
+  }
+
+  @Test
+  public void testGetKeySchemaSuccess() {
+    GetKeySchemaGrpcRequest request = GetKeySchemaGrpcRequest.newBuilder()
+        .setStoreInfo(ClusterStoreGrpcInfo.newBuilder().setClusterName("testCluster").setStoreName("testStore").build())
+        .build();
+
+    Schema schema = Schema.parse("\"string\"");
+    SchemaEntry schemaEntry = new SchemaEntry(1, schema);
+    when(admin.getKeySchema("testCluster", "testStore")).thenReturn(schemaEntry);
+
+    GetKeySchemaGrpcResponse response = storeRequestHandler.getKeySchema(request);
+
+    verify(admin, times(1)).getKeySchema("testCluster", "testStore");
+    assertEquals(response.getStoreInfo().getClusterName(), "testCluster");
+    assertEquals(response.getStoreInfo().getStoreName(), "testStore");
+    assertEquals(response.getSchemaId(), 1);
+    assertEquals(response.getSchemaStr(), "\"string\"");
+  }
+
+  @Test
+  public void testGetKeySchemaWhenSchemaDoesNotExist() {
+    GetKeySchemaGrpcRequest request = GetKeySchemaGrpcRequest.newBuilder()
+        .setStoreInfo(ClusterStoreGrpcInfo.newBuilder().setClusterName("testCluster").setStoreName("testStore").build())
+        .build();
+
+    when(admin.getKeySchema("testCluster", "testStore")).thenReturn(null);
+
+    VeniceException e = expectThrows(VeniceException.class, () -> storeRequestHandler.getKeySchema(request));
+
+    verify(admin, times(1)).getKeySchema("testCluster", "testStore");
+    assertTrue(e.getMessage().contains("Key schema doesn't exist for store: testStore"));
+  }
+
+  @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = ".*[Cc]luster.*")
+  public void testGetKeySchemaWithMissingClusterName() {
+    GetKeySchemaGrpcRequest request = GetKeySchemaGrpcRequest.newBuilder()
+        .setStoreInfo(ClusterStoreGrpcInfo.newBuilder().setStoreName("testStore").build())
+        .build();
+
+    storeRequestHandler.getKeySchema(request);
+  }
+
+  @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = ".*[Ss]tore.*")
+  public void testGetKeySchemaWithMissingStoreName() {
+    GetKeySchemaGrpcRequest request = GetKeySchemaGrpcRequest.newBuilder()
+        .setStoreInfo(ClusterStoreGrpcInfo.newBuilder().setClusterName("testCluster").build())
+        .build();
+
+    storeRequestHandler.getKeySchema(request);
   }
 }
