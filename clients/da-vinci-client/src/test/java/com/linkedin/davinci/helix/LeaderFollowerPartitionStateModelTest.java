@@ -16,20 +16,37 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
 
+import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
+import com.linkedin.davinci.ingestion.DefaultIngestionBackend;
 import com.linkedin.davinci.ingestion.IngestionBackend;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.stats.ParticipantStateTransitionStats;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatLagMonitorAction;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
+import com.linkedin.davinci.store.AbstractStorageEngineTest;
+import com.linkedin.davinci.store.AbstractStoragePartition;
+import com.linkedin.davinci.store.StorageEngine;
+import com.linkedin.davinci.store.rocksdb.RocksDBServerConfig;
+import com.linkedin.davinci.store.rocksdb.RocksDBStorageEngineFactory;
 import com.linkedin.venice.helix.HelixPartitionStatusAccessor;
+import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
+import com.linkedin.venice.store.rocksdb.RocksDBUtils;
+import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.VeniceProperties;
+import java.io.File;
+import java.nio.ByteBuffer;
+import java.util.Random;
 import java.util.concurrent.CompletableFuture;
+import org.apache.commons.io.FileUtils;
 import org.apache.helix.NotificationContext;
 import org.apache.helix.model.Message;
 import org.testng.annotations.BeforeMethod;
@@ -339,6 +356,158 @@ public class LeaderFollowerPartitionStateModelTest {
     // Verify timestamp is reset
     long resetTimestamp = leaderFollowerPartitionStateModel.getOfflineTransitionTimestampMs();
     assertEquals(resetTimestamp, -1L, "Timestamp should be reset to -1 after transition");
+  }
+
+  /**
+   * Integration test that verifies RocksDB deletion rate limiting is honored during
+   * OFFLINE->DROPPED state transition (backup version deletion).
+   * This test creates a real storage engine with data, then triggers the OFFLINE->DROPPED
+   * state transition and verifies that the deletion is throttled according to the configured rate.
+   *
+   * This test also creates a snapshot (simulating blob transfer scenario) to verify that
+   * rate limiting works correctly even when hard links exist.
+   */
+  @Test(groups = { "integration" })
+  public void testOfflineToDroppedTransitionHonorsRateLimiting() throws Exception {
+    // Setup: Create a real storage engine with rate limiting
+    String testDataPath = Utils.getUniqueTempPath();
+    long deletionRateBytesPerSec = 20L * 1024 * 1024; // 20 MB/s
+
+    VeniceProperties veniceServerProperties = new PropertyBuilder()
+        .put(AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB).toProperties())
+        .put("data.base.path", testDataPath)
+        .put(
+            RocksDBServerConfig.ROCKSDB_SST_FILE_MANAGER_DELETE_RATE_BYTES_PER_SECOND,
+            String.valueOf(deletionRateBytesPerSec))
+        .build();
+
+    VeniceServerConfig serverConfig = new VeniceServerConfig(veniceServerProperties);
+    RocksDBStorageEngineFactory factory = new RocksDBStorageEngineFactory(serverConfig);
+
+    try {
+      // Create a storage engine with ~200 MB of data
+      final String testStoreName = "test_store_rate_limit";
+      final int testVersion = 1;
+      final String testTopic = Version.composeKafkaTopic(testStoreName, testVersion);
+      final int testPartition = 0;
+
+      VeniceStoreVersionConfig testStoreConfig =
+          new VeniceStoreVersionConfig(testTopic, veniceServerProperties, PersistenceType.ROCKS_DB);
+      StorageEngine storeEngine = factory.getStorageEngine(testStoreConfig);
+      storeEngine.addStoragePartitionIfAbsent(testPartition);
+
+      // Write ~200 MB of data to generate SST files
+      long targetDataSizeBytes = 200L * 1024 * 1024; // 200 MB
+      long valueSizeBytes = 50 * 1024; // 50 KB per value
+      long numRecords = targetDataSizeBytes / valueSizeBytes;
+
+      Random random = new Random(42);
+      byte[] valueBytes = new byte[(int) valueSizeBytes];
+
+      for (int i = 0; i < numRecords; i++) {
+        String keyString = "key_" + i;
+        byte[] keyBytes = keyString.getBytes();
+        random.nextBytes(valueBytes);
+        storeEngine.put(testPartition, keyBytes, ByteBuffer.wrap(valueBytes));
+      }
+
+      // Verify data was written
+      File storeDir = new File(factory.getRocksDBPath(testTopic, testPartition)).getParentFile();
+      assertTrue(storeDir.exists(), "Store directory should exist before deletion");
+
+      // Sync/flush data to disk before creating snapshot
+      AbstractStoragePartition partition = storeEngine.getPartitionOrThrow(testPartition);
+      partition.sync();
+
+      // Create a snapshot to simulate blob transfer scenario
+      // This creates hard links to the SST files, helping test the case where
+      // snapshot exists during backup version deletion
+      partition.createSnapshot();
+
+      // Verify snapshot was created
+      // Note: serverConfig.getRocksDBPath() returns dataBasePath + "/rocksdb"
+      String rocksDBBasePath = serverConfig.getRocksDBPath();
+      String snapshotPath = RocksDBUtils.composeSnapshotDir(rocksDBBasePath, testTopic, testPartition);
+      File partitionSnapshotDir = new File(snapshotPath);
+      assertTrue(partitionSnapshotDir.exists(), "Snapshot directory should exist before deletion");
+
+      // Setup: Create a mock ingestion backend that uses the real storage service
+      KafkaStoreIngestionService mockIngestionService = mock(KafkaStoreIngestionService.class);
+      DefaultIngestionBackend realIngestionBackend = mock(DefaultIngestionBackend.class);
+
+      // When dropStoragePartitionGracefully is called, actually delete the partition
+      when(realIngestionBackend.dropStoragePartitionGracefully(any(), eq(testPartition), anyInt()))
+          .thenAnswer(invocation -> {
+            // Simulate the actual deletion by calling factory.removeStorageEngine
+            factory.removeStorageEngine(storeEngine);
+            return CompletableFuture.completedFuture(null);
+          });
+
+      when(realIngestionBackend.getStoreIngestionService()).thenReturn(mockIngestionService);
+      when(realIngestionBackend.stopConsumption(any(), anyInt())).thenReturn(CompletableFuture.completedFuture(null));
+
+      // Setup: Create state model with real backend
+      VeniceStoreVersionConfig stateModelConfig = mock(VeniceStoreVersionConfig.class);
+      when(stateModelConfig.getStopConsumptionTimeoutInSeconds()).thenReturn(60);
+      when(stateModelConfig.getPartitionGracefulDropDelaySeconds()).thenReturn(0); // No graceful drop delay
+
+      ReadOnlyStoreRepository mockMetadataRepo = mock(ReadOnlyStoreRepository.class);
+      Store mockStore = mock(Store.class);
+      when(mockStore.getCurrentVersion()).thenReturn(testVersion + 1); // Not current version
+      doReturn(mockStore).when(mockMetadataRepo).getStoreOrThrow(anyString());
+
+      ParticipantStateTransitionStats mockStats = mock(ParticipantStateTransitionStats.class);
+      HeartbeatMonitoringService mockHeartbeatService = mock(HeartbeatMonitoringService.class);
+      CompletableFuture<HelixPartitionStatusAccessor> mockAccessorFuture =
+          CompletableFuture.completedFuture(mock(HelixPartitionStatusAccessor.class));
+
+      LeaderFollowerPartitionStateModel stateModel = new LeaderFollowerPartitionStateModel(
+          realIngestionBackend,
+          stateModelConfig,
+          testPartition,
+          mock(LeaderFollowerIngestionProgressNotifier.class),
+          mockMetadataRepo,
+          mockAccessorFuture,
+          "testInstance",
+          mockStats,
+          mockHeartbeatService,
+          testTopic);
+
+      // Execute: Trigger OFFLINE->DROPPED state transition
+      Message message = mock(Message.class);
+      when(message.getResourceName()).thenReturn(testTopic);
+      NotificationContext context = mock(NotificationContext.class);
+
+      long startTime = System.currentTimeMillis();
+      stateModel.onBecomeDroppedFromOffline(message, context);
+      long elapsedTime = System.currentTimeMillis() - startTime;
+
+      // Verify: Deletion should be throttled (should take ~10 seconds for 200 MB at 20 MB/s)
+      // This validates that rate limiting works even when a snapshot exists (hard links scenario)
+      double elapsedTimeSec = elapsedTime / 1000.0;
+      assertTrue(
+          elapsedTimeSec >= 8.0,
+          String.format(
+              "Deletion during OFFLINE->DROPPED should be throttled (>= 8 seconds), but took %.2f seconds. "
+                  + "This test includes snapshot creation to verify rate limiting works with hard links.",
+              elapsedTimeSec));
+
+      // Verify: Store directory should be deleted
+      assertFalse(storeDir.exists(), "Store directory should be deleted after OFFLINE->DROPPED transition");
+
+      // Verify: Snapshot directory should also be deleted
+      assertFalse(
+          partitionSnapshotDir.exists(),
+          "Snapshot directory should be deleted after OFFLINE->DROPPED transition");
+
+    } finally {
+      factory.close();
+      try {
+        FileUtils.deleteDirectory(new File(testDataPath));
+      } catch (Exception e) {
+        System.err.println("Failed to cleanup test directory: " + testDataPath + ", error: " + e.getMessage());
+      }
+    }
   }
 
 }
