@@ -68,7 +68,6 @@ import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.AdminCommandExecutionTracker;
-import com.linkedin.venice.controller.StoreDeletedValidation;
 import com.linkedin.venice.controller.VeniceControllerClusterConfig;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controller.VeniceParentHelixAdmin;
@@ -110,6 +109,9 @@ import com.linkedin.venice.meta.StoreDataAudit;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.ZKStore;
+import com.linkedin.venice.protocols.controller.ClusterStoreGrpcInfo;
+import com.linkedin.venice.protocols.controller.ValidateStoreDeletedGrpcRequest;
+import com.linkedin.venice.protocols.controller.ValidateStoreDeletedGrpcResponse;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
@@ -1274,7 +1276,7 @@ public class StoresRoutes extends AbstractRoute {
   /**
    * @see Admin#validateStoreDeleted(String, String)
    */
-  public Route validateStoreDeleted(Admin admin) {
+  public Route validateStoreDeleted(Admin admin, StoreRequestHandler requestHandler) {
     return new VeniceRouteHandler<StoreDeletedValidationResponse>(StoreDeletedValidationResponse.class) {
       @Override
       public void internalHandle(Request request, StoreDeletedValidationResponse veniceResponse) {
@@ -1285,12 +1287,19 @@ public class StoresRoutes extends AbstractRoute {
         AdminSparkServer.validateParams(request, VALIDATE_STORE_DELETED.getParams(), admin);
         String clusterName = request.queryParams(CLUSTER);
         String storeName = request.queryParams(STORE_NAME);
-        veniceResponse.setCluster(clusterName);
-        veniceResponse.setName(storeName);
 
-        StoreDeletedValidation result = admin.validateStoreDeleted(clusterName, storeName);
-        veniceResponse.setStoreDeleted(result.isDeleted());
-        veniceResponse.setReason(result.getError());
+        ClusterStoreGrpcInfo storeInfo =
+            ClusterStoreGrpcInfo.newBuilder().setClusterName(clusterName).setStoreName(storeName).build();
+        ValidateStoreDeletedGrpcRequest grpcRequest =
+            ValidateStoreDeletedGrpcRequest.newBuilder().setStoreInfo(storeInfo).build();
+        ValidateStoreDeletedGrpcResponse grpcResponse = requestHandler.validateStoreDeleted(grpcRequest);
+
+        veniceResponse.setCluster(grpcResponse.getStoreInfo().getClusterName());
+        veniceResponse.setName(grpcResponse.getStoreInfo().getStoreName());
+        veniceResponse.setStoreDeleted(grpcResponse.getStoreDeleted());
+        if (grpcResponse.hasReason()) {
+          veniceResponse.setReason(grpcResponse.getReason());
+        }
       }
     };
   }
