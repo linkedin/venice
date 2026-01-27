@@ -23,10 +23,10 @@ import com.linkedin.venice.protocols.controller.AdminTopicMetadataGrpcRequest;
 import com.linkedin.venice.protocols.controller.AdminTopicMetadataGrpcResponse;
 import com.linkedin.venice.protocols.controller.ClusterAdminOpsGrpcServiceGrpc;
 import com.linkedin.venice.protocols.controller.ClusterAdminOpsGrpcServiceGrpc.ClusterAdminOpsGrpcServiceBlockingStub;
-import com.linkedin.venice.protocols.controller.IsStoreMigrationAllowedGrpcRequest;
-import com.linkedin.venice.protocols.controller.IsStoreMigrationAllowedGrpcResponse;
 import com.linkedin.venice.protocols.controller.LastSuccessfulAdminCommandExecutionGrpcRequest;
 import com.linkedin.venice.protocols.controller.LastSuccessfulAdminCommandExecutionGrpcResponse;
+import com.linkedin.venice.protocols.controller.StoreMigrationCheckGrpcRequest;
+import com.linkedin.venice.protocols.controller.StoreMigrationCheckGrpcResponse;
 import com.linkedin.venice.protocols.controller.UpdateAdminOperationProtocolVersionGrpcRequest;
 import com.linkedin.venice.protocols.controller.UpdateAdminTopicMetadataGrpcRequest;
 import com.linkedin.venice.protocols.controller.VeniceControllerGrpcErrorInfo;
@@ -218,16 +218,16 @@ public class ClusterAdminOpsGrpcServiceImplTest {
 
   @Test
   public void testIsStoreMigrationAllowedSuccess() {
-    IsStoreMigrationAllowedGrpcResponse response = IsStoreMigrationAllowedGrpcResponse.newBuilder()
+    StoreMigrationCheckGrpcResponse response = StoreMigrationCheckGrpcResponse.newBuilder()
         .setClusterName(TEST_CLUSTER)
         .setStoreMigrationAllowed(true)
         .build();
-    doReturn(response).when(requestHandler).isStoreMigrationAllowed(any(IsStoreMigrationAllowedGrpcRequest.class));
+    doReturn(response).when(requestHandler).isStoreMigrationAllowed(any(StoreMigrationCheckGrpcRequest.class));
 
-    IsStoreMigrationAllowedGrpcRequest request =
-        IsStoreMigrationAllowedGrpcRequest.newBuilder().setClusterName(TEST_CLUSTER).build();
+    StoreMigrationCheckGrpcRequest request =
+        StoreMigrationCheckGrpcRequest.newBuilder().setClusterName(TEST_CLUSTER).build();
 
-    IsStoreMigrationAllowedGrpcResponse actualResponse = blockingStub.isStoreMigrationAllowed(request);
+    StoreMigrationCheckGrpcResponse actualResponse = blockingStub.isStoreMigrationAllowed(request);
     assertNotNull(actualResponse);
     assertEquals(actualResponse.getClusterName(), TEST_CLUSTER);
     assertTrue(actualResponse.getStoreMigrationAllowed());
@@ -235,16 +235,16 @@ public class ClusterAdminOpsGrpcServiceImplTest {
 
   @Test
   public void testIsStoreMigrationAllowedReturnsFalse() {
-    IsStoreMigrationAllowedGrpcResponse response = IsStoreMigrationAllowedGrpcResponse.newBuilder()
+    StoreMigrationCheckGrpcResponse response = StoreMigrationCheckGrpcResponse.newBuilder()
         .setClusterName(TEST_CLUSTER)
         .setStoreMigrationAllowed(false)
         .build();
-    doReturn(response).when(requestHandler).isStoreMigrationAllowed(any(IsStoreMigrationAllowedGrpcRequest.class));
+    doReturn(response).when(requestHandler).isStoreMigrationAllowed(any(StoreMigrationCheckGrpcRequest.class));
 
-    IsStoreMigrationAllowedGrpcRequest request =
-        IsStoreMigrationAllowedGrpcRequest.newBuilder().setClusterName(TEST_CLUSTER).build();
+    StoreMigrationCheckGrpcRequest request =
+        StoreMigrationCheckGrpcRequest.newBuilder().setClusterName(TEST_CLUSTER).build();
 
-    IsStoreMigrationAllowedGrpcResponse actualResponse = blockingStub.isStoreMigrationAllowed(request);
+    StoreMigrationCheckGrpcResponse actualResponse = blockingStub.isStoreMigrationAllowed(request);
     assertNotNull(actualResponse);
     assertEquals(actualResponse.getClusterName(), TEST_CLUSTER);
     assertFalse(actualResponse.getStoreMigrationAllowed());
@@ -252,11 +252,11 @@ public class ClusterAdminOpsGrpcServiceImplTest {
 
   @Test
   public void testIsStoreMigrationAllowedError() {
-    IsStoreMigrationAllowedGrpcRequest request =
-        IsStoreMigrationAllowedGrpcRequest.newBuilder().setClusterName(TEST_CLUSTER).build();
+    StoreMigrationCheckGrpcRequest request =
+        StoreMigrationCheckGrpcRequest.newBuilder().setClusterName(TEST_CLUSTER).build();
 
     doThrow(new VeniceException("Error")).when(requestHandler)
-        .isStoreMigrationAllowed(any(IsStoreMigrationAllowedGrpcRequest.class));
+        .isStoreMigrationAllowed(any(StoreMigrationCheckGrpcRequest.class));
 
     StatusRuntimeException e =
         expectThrows(StatusRuntimeException.class, () -> blockingStub.isStoreMigrationAllowed(request));

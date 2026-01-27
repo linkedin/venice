@@ -20,11 +20,11 @@ import com.linkedin.venice.protocols.controller.CreateStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.CreateStoreGrpcResponse;
 import com.linkedin.venice.protocols.controller.DiscoverClusterGrpcRequest;
 import com.linkedin.venice.protocols.controller.DiscoverClusterGrpcResponse;
-import com.linkedin.venice.protocols.controller.IsStoreMigrationAllowedGrpcRequest;
-import com.linkedin.venice.protocols.controller.IsStoreMigrationAllowedGrpcResponse;
 import com.linkedin.venice.protocols.controller.LeaderControllerGrpcRequest;
 import com.linkedin.venice.protocols.controller.LeaderControllerGrpcResponse;
 import com.linkedin.venice.protocols.controller.StoreGrpcServiceGrpc;
+import com.linkedin.venice.protocols.controller.StoreMigrationCheckGrpcRequest;
+import com.linkedin.venice.protocols.controller.StoreMigrationCheckGrpcResponse;
 import com.linkedin.venice.protocols.controller.VeniceControllerGrpcServiceGrpc;
 import com.linkedin.venice.protocols.controller.VeniceControllerGrpcServiceGrpc.VeniceControllerGrpcServiceBlockingStub;
 import com.linkedin.venice.security.SSLFactory;
@@ -174,10 +174,10 @@ public class TestControllerGrpcEndpoints {
     ClusterAdminOpsGrpcServiceGrpc.ClusterAdminOpsGrpcServiceBlockingStub blockingStub =
         ClusterAdminOpsGrpcServiceGrpc.newBlockingStub(channel);
 
-    IsStoreMigrationAllowedGrpcRequest request =
-        IsStoreMigrationAllowedGrpcRequest.newBuilder().setClusterName(veniceCluster.getClusterName()).build();
+    StoreMigrationCheckGrpcRequest request =
+        StoreMigrationCheckGrpcRequest.newBuilder().setClusterName(veniceCluster.getClusterName()).build();
 
-    IsStoreMigrationAllowedGrpcResponse response = blockingStub.isStoreMigrationAllowed(request);
+    StoreMigrationCheckGrpcResponse response = blockingStub.isStoreMigrationAllowed(request);
 
     assertNotNull(response, "Response should not be null");
     assertEquals(response.getClusterName(), veniceCluster.getClusterName());

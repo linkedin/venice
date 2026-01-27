@@ -22,11 +22,11 @@ import com.linkedin.venice.protocols.controller.AdminCommandExecutionStatusGrpcR
 import com.linkedin.venice.protocols.controller.AdminTopicGrpcMetadata;
 import com.linkedin.venice.protocols.controller.AdminTopicMetadataGrpcRequest;
 import com.linkedin.venice.protocols.controller.AdminTopicMetadataGrpcResponse;
-import com.linkedin.venice.protocols.controller.IsStoreMigrationAllowedGrpcRequest;
-import com.linkedin.venice.protocols.controller.IsStoreMigrationAllowedGrpcResponse;
 import com.linkedin.venice.protocols.controller.LastSuccessfulAdminCommandExecutionGrpcRequest;
 import com.linkedin.venice.protocols.controller.LastSuccessfulAdminCommandExecutionGrpcResponse;
 import com.linkedin.venice.protocols.controller.PubSubPositionGrpcWireFormat;
+import com.linkedin.venice.protocols.controller.StoreMigrationCheckGrpcRequest;
+import com.linkedin.venice.protocols.controller.StoreMigrationCheckGrpcResponse;
 import com.linkedin.venice.protocols.controller.UpdateAdminOperationProtocolVersionGrpcRequest;
 import com.linkedin.venice.protocols.controller.UpdateAdminTopicMetadataGrpcRequest;
 import com.linkedin.venice.pubsub.PubSubUtil;
@@ -325,10 +325,10 @@ public class ClusterAdminOpsRequestHandlerTest {
 
     when(mockAdmin.isStoreMigrationAllowed(clusterName)).thenReturn(true);
 
-    IsStoreMigrationAllowedGrpcRequest request =
-        IsStoreMigrationAllowedGrpcRequest.newBuilder().setClusterName(clusterName).build();
+    StoreMigrationCheckGrpcRequest request =
+        StoreMigrationCheckGrpcRequest.newBuilder().setClusterName(clusterName).build();
 
-    IsStoreMigrationAllowedGrpcResponse response = handler.isStoreMigrationAllowed(request);
+    StoreMigrationCheckGrpcResponse response = handler.isStoreMigrationAllowed(request);
 
     assertNotNull(response);
     assertEquals(response.getClusterName(), clusterName);
@@ -341,10 +341,10 @@ public class ClusterAdminOpsRequestHandlerTest {
 
     when(mockAdmin.isStoreMigrationAllowed(clusterName)).thenReturn(false);
 
-    IsStoreMigrationAllowedGrpcRequest request =
-        IsStoreMigrationAllowedGrpcRequest.newBuilder().setClusterName(clusterName).build();
+    StoreMigrationCheckGrpcRequest request =
+        StoreMigrationCheckGrpcRequest.newBuilder().setClusterName(clusterName).build();
 
-    IsStoreMigrationAllowedGrpcResponse response = handler.isStoreMigrationAllowed(request);
+    StoreMigrationCheckGrpcResponse response = handler.isStoreMigrationAllowed(request);
 
     assertNotNull(response);
     assertEquals(response.getClusterName(), clusterName);
@@ -353,8 +353,7 @@ public class ClusterAdminOpsRequestHandlerTest {
 
   @Test
   public void testIsStoreMigrationAllowedInvalidCluster() {
-    IsStoreMigrationAllowedGrpcRequest request =
-        IsStoreMigrationAllowedGrpcRequest.newBuilder().setClusterName("").build();
+    StoreMigrationCheckGrpcRequest request = StoreMigrationCheckGrpcRequest.newBuilder().setClusterName("").build();
 
     Exception exception = expectThrows(IllegalArgumentException.class, () -> handler.isStoreMigrationAllowed(request));
     assertEquals(exception.getMessage(), "Cluster name is required for checking if store migration is allowed");

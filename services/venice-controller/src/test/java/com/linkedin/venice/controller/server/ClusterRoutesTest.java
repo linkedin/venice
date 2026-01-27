@@ -18,8 +18,8 @@ import com.linkedin.venice.controllerapi.ControllerApiConstants;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.StoreMigrationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.protocols.controller.IsStoreMigrationAllowedGrpcRequest;
-import com.linkedin.venice.protocols.controller.IsStoreMigrationAllowedGrpcResponse;
+import com.linkedin.venice.protocols.controller.StoreMigrationCheckGrpcRequest;
+import com.linkedin.venice.protocols.controller.StoreMigrationCheckGrpcResponse;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import java.util.HashMap;
 import java.util.Map;
@@ -77,12 +77,11 @@ public class ClusterRoutesTest {
     doReturn(paramsMap).when(request).queryMap();
     doReturn(TEST_CLUSTER).when(request).queryParams(eq(ControllerApiConstants.CLUSTER));
 
-    IsStoreMigrationAllowedGrpcResponse grpcResponse = IsStoreMigrationAllowedGrpcResponse.newBuilder()
+    StoreMigrationCheckGrpcResponse grpcResponse = StoreMigrationCheckGrpcResponse.newBuilder()
         .setClusterName(TEST_CLUSTER)
         .setStoreMigrationAllowed(true)
         .build();
-    doReturn(grpcResponse).when(mockRequestHandler)
-        .isStoreMigrationAllowed(any(IsStoreMigrationAllowedGrpcRequest.class));
+    doReturn(grpcResponse).when(mockRequestHandler).isStoreMigrationAllowed(any(StoreMigrationCheckGrpcRequest.class));
 
     Route route = new ClusterRoutes(false, Optional.empty()).isStoreMigrationAllowed(mockAdmin, mockRequestHandler);
 
@@ -105,12 +104,11 @@ public class ClusterRoutesTest {
     doReturn(paramsMap).when(request).queryMap();
     doReturn(TEST_CLUSTER).when(request).queryParams(eq(ControllerApiConstants.CLUSTER));
 
-    IsStoreMigrationAllowedGrpcResponse grpcResponse = IsStoreMigrationAllowedGrpcResponse.newBuilder()
+    StoreMigrationCheckGrpcResponse grpcResponse = StoreMigrationCheckGrpcResponse.newBuilder()
         .setClusterName(TEST_CLUSTER)
         .setStoreMigrationAllowed(false)
         .build();
-    doReturn(grpcResponse).when(mockRequestHandler)
-        .isStoreMigrationAllowed(any(IsStoreMigrationAllowedGrpcRequest.class));
+    doReturn(grpcResponse).when(mockRequestHandler).isStoreMigrationAllowed(any(StoreMigrationCheckGrpcRequest.class));
 
     Route route = new ClusterRoutes(false, Optional.empty()).isStoreMigrationAllowed(mockAdmin, mockRequestHandler);
 
@@ -134,7 +132,7 @@ public class ClusterRoutesTest {
     doReturn(TEST_CLUSTER).when(request).queryParams(eq(ControllerApiConstants.CLUSTER));
 
     doThrow(new VeniceException("Error checking migration allowed")).when(mockRequestHandler)
-        .isStoreMigrationAllowed(any(IsStoreMigrationAllowedGrpcRequest.class));
+        .isStoreMigrationAllowed(any(StoreMigrationCheckGrpcRequest.class));
 
     Route route = new ClusterRoutes(false, Optional.empty()).isStoreMigrationAllowed(mockAdmin, mockRequestHandler);
 

@@ -15,11 +15,11 @@ import com.linkedin.venice.protocols.controller.AdminCommandExecutionStatusGrpcR
 import com.linkedin.venice.protocols.controller.AdminTopicGrpcMetadata;
 import com.linkedin.venice.protocols.controller.AdminTopicMetadataGrpcRequest;
 import com.linkedin.venice.protocols.controller.AdminTopicMetadataGrpcResponse;
-import com.linkedin.venice.protocols.controller.IsStoreMigrationAllowedGrpcRequest;
-import com.linkedin.venice.protocols.controller.IsStoreMigrationAllowedGrpcResponse;
 import com.linkedin.venice.protocols.controller.LastSuccessfulAdminCommandExecutionGrpcRequest;
 import com.linkedin.venice.protocols.controller.LastSuccessfulAdminCommandExecutionGrpcResponse;
 import com.linkedin.venice.protocols.controller.PubSubPositionGrpcWireFormat;
+import com.linkedin.venice.protocols.controller.StoreMigrationCheckGrpcRequest;
+import com.linkedin.venice.protocols.controller.StoreMigrationCheckGrpcResponse;
 import com.linkedin.venice.protocols.controller.UpdateAdminOperationProtocolVersionGrpcRequest;
 import com.linkedin.venice.protocols.controller.UpdateAdminTopicMetadataGrpcRequest;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
@@ -182,14 +182,14 @@ public class ClusterAdminOpsRequestHandler {
     return AdminTopicMetadataGrpcResponse.newBuilder().setMetadata(adminMetadataBuilder.build()).build();
   }
 
-  public IsStoreMigrationAllowedGrpcResponse isStoreMigrationAllowed(IsStoreMigrationAllowedGrpcRequest request) {
+  public StoreMigrationCheckGrpcResponse isStoreMigrationAllowed(StoreMigrationCheckGrpcRequest request) {
     String clusterName = request.getClusterName();
     if (StringUtils.isBlank(clusterName)) {
       throw new IllegalArgumentException("Cluster name is required for checking if store migration is allowed");
     }
     LOGGER.info("Checking if store migration is allowed for cluster: {}", clusterName);
     boolean isAllowed = admin.isStoreMigrationAllowed(clusterName);
-    return IsStoreMigrationAllowedGrpcResponse.newBuilder()
+    return StoreMigrationCheckGrpcResponse.newBuilder()
         .setClusterName(clusterName)
         .setStoreMigrationAllowed(isAllowed)
         .build();

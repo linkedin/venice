@@ -17,7 +17,7 @@ service ClusterAdminOpsGrpcService {
   rpc updateAdminOperationProtocolVersion(UpdateAdminOperationProtocolVersionGrpcRequest) returns (AdminTopicMetadataGrpcResponse) {}
 
   // StoreMigration
-  rpc isStoreMigrationAllowed(IsStoreMigrationAllowedGrpcRequest) returns (IsStoreMigrationAllowedGrpcResponse) {}
+  rpc isStoreMigrationAllowed(StoreMigrationCheckGrpcRequest) returns (StoreMigrationCheckGrpcResponse) {}
 }
 
 
@@ -77,11 +77,11 @@ message PubSubPositionGrpcWireFormat {
   string base64PositionBytes = 2;
 }
 
-message IsStoreMigrationAllowedGrpcRequest {
+message StoreMigrationCheckGrpcRequest {
   string clusterName = 1;
 }
 
-message IsStoreMigrationAllowedGrpcResponse {
+message StoreMigrationCheckGrpcResponse {
   string clusterName = 1;
   bool storeMigrationAllowed = 2;
 }
