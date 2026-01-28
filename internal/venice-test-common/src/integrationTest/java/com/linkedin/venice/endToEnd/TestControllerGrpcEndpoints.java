@@ -21,6 +21,8 @@ import com.linkedin.venice.protocols.controller.DiscoverClusterGrpcRequest;
 import com.linkedin.venice.protocols.controller.DiscoverClusterGrpcResponse;
 import com.linkedin.venice.protocols.controller.LeaderControllerGrpcRequest;
 import com.linkedin.venice.protocols.controller.LeaderControllerGrpcResponse;
+import com.linkedin.venice.protocols.controller.ListChildClustersGrpcRequest;
+import com.linkedin.venice.protocols.controller.ListChildClustersGrpcResponse;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcRequest;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcResponse;
 import com.linkedin.venice.protocols.controller.StoreGrpcServiceGrpc;
@@ -314,6 +316,25 @@ public class TestControllerGrpcEndpoints {
           store.startsWith("venice_system_store") || store.contains("push_status"),
           "Store list should not contain system stores: " + store);
     }
+  }
+
+  @Test(timeOut = TIMEOUT_MS)
+  public void testListChildClustersGrpcEndpoint() {
+    String controllerGrpcUrl = veniceCluster.getLeaderVeniceController().getControllerGrpcUrl();
+    ManagedChannel channel = Grpc.newChannelBuilder(controllerGrpcUrl, InsecureChannelCredentials.create()).build();
+    VeniceControllerGrpcServiceBlockingStub blockingStub = VeniceControllerGrpcServiceGrpc.newBlockingStub(channel);
+
+    // Test listChildClusters - for a non-parent controller, it should return empty maps
+    ListChildClustersGrpcRequest request =
+        ListChildClustersGrpcRequest.newBuilder().setClusterName(veniceCluster.getClusterName()).build();
+
+    ListChildClustersGrpcResponse response = blockingStub.listChildClusters(request);
+    assertNotNull(response, "Response should not be null");
+    assertEquals(response.getClusterName(), veniceCluster.getClusterName(), "Cluster name should match");
+    // Non-parent controllers return empty maps
+    assertEquals(response.getChildDataCenterControllerUrlMapCount(), 0, "URL map should be empty for non-parent");
+    assertEquals(response.getChildDataCenterControllerD2MapCount(), 0, "D2 map should be empty for non-parent");
+    assertFalse(response.hasD2ServiceName(), "D2 service name should not be set for non-parent");
   }
 
   private static class MockDynamicAccessController extends NoOpDynamicAccessController {
