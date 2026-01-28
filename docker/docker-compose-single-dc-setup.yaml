@@ -27,7 +27,7 @@ services:
         retries: 5
 
   venice-controller:
-    image: venicedb/venice-controller:0.4.340
+    image: venicedb/venice-controller:0.4.455
     container_name: venice-controller
     hostname: venice-controller
     depends_on:
@@ -41,7 +41,7 @@ services:
         retries: 5
 
   venice-server:
-    image: venicedb/venice-server:0.4.340
+    image: venicedb/venice-server:0.4.455
     container_name: venice-server
     hostname: venice-server
     depends_on:
@@ -55,7 +55,7 @@ services:
         retries: 5
 
   venice-router:
-    image: venicedb/venice-router:0.4.340
+    image: venicedb/venice-router:0.4.455
     container_name: venice-router
     hostname: venice-router
     depends_on:
@@ -69,7 +69,7 @@ services:
         retries: 5
 
   venice-client:
-    image: venicedb/venice-client:0.4.340
+    image: venicedb/venice-client:0.4.455
     container_name: venice-client
     hostname: venice-client
     tty: true
@@ -81,7 +81,7 @@ services:
     build:
       args:
         spark_version: 3.1.2
-    image: venicedb/venice-client-jupyter:0.4.340
+    image: venicedb/venice-client-jupyter:0.4.455
     container_name: venice-client-jupyter
     hostname: venice-client-jupyter
     ports:
