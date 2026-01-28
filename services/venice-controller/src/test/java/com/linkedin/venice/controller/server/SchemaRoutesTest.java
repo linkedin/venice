@@ -5,22 +5,30 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.SCHEMA_COMPAT_TYPE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.SCHEMA_ID;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VALUE_SCHEMA;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.controller.Admin;
+import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.protocols.controller.ClusterStoreGrpcInfo;
+import com.linkedin.venice.protocols.controller.GetKeySchemaGrpcRequest;
+import com.linkedin.venice.protocols.controller.GetKeySchemaGrpcResponse;
 import com.linkedin.venice.schema.GeneratedSchemaID;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
+import com.linkedin.venice.utils.ObjectMapperFactory;
 import java.util.Optional;
 import org.testng.annotations.Test;
 import spark.Request;
@@ -104,4 +112,74 @@ public class SchemaRoutesTest {
     verify(response, times(0)).status(anyInt()); // no error
   }
 
+  @Test
+  public void testGetKeySchemaWithHandler() throws Exception {
+    String cluster = "cluster_name";
+    String store = "store_name";
+
+    Admin admin = mock(Admin.class);
+    StoreRequestHandler storeRequestHandler = mock(StoreRequestHandler.class);
+    Request request = mock(Request.class);
+    Response response = mock(Response.class);
+
+    doReturn(cluster).when(request).queryParams(CLUSTER);
+    doReturn(store).when(request).queryParams(NAME);
+
+    doReturn(true).when(admin).isLeaderControllerFor(cluster);
+
+    ClusterStoreGrpcInfo storeInfo =
+        ClusterStoreGrpcInfo.newBuilder().setClusterName(cluster).setStoreName(store).build();
+    GetKeySchemaGrpcResponse grpcResponse =
+        GetKeySchemaGrpcResponse.newBuilder().setStoreInfo(storeInfo).setSchemaId(1).setSchemaStr("\"string\"").build();
+    when(storeRequestHandler.getKeySchema(any(GetKeySchemaGrpcRequest.class))).thenReturn(grpcResponse);
+
+    SchemaRoutes schemaRoutes = new SchemaRoutes(false, Optional.empty(), storeRequestHandler);
+    Route route = schemaRoutes.getKeySchemaWithHandler(admin);
+    String result = (String) route.handle(request, response);
+
+    verify(response, times(0)).status(anyInt()); // no error
+    verify(storeRequestHandler, times(1)).getKeySchema(any(GetKeySchemaGrpcRequest.class));
+
+    ObjectMapper mapper = ObjectMapperFactory.getInstance();
+    SchemaResponse schemaResponse = mapper.readValue(result, SchemaResponse.class);
+    assertEquals(schemaResponse.getCluster(), cluster);
+    assertEquals(schemaResponse.getName(), store);
+    assertEquals(schemaResponse.getId(), 1);
+    assertEquals(schemaResponse.getSchemaStr(), "\"string\"");
+  }
+
+  @Test
+  public void testGetKeySchemaWithHandlerWhenSchemaNotFound() throws Exception {
+    String cluster = "cluster_name";
+    String store = "store_name";
+
+    Admin admin = mock(Admin.class);
+    StoreRequestHandler storeRequestHandler = mock(StoreRequestHandler.class);
+    Request request = mock(Request.class);
+    Response response = mock(Response.class);
+
+    doReturn(cluster).when(request).queryParams(CLUSTER);
+    doReturn(store).when(request).queryParams(NAME);
+
+    // Mock queryMap to avoid NullPointerException in handleError
+    spark.QueryParamsMap queryParamsMap = mock(spark.QueryParamsMap.class);
+    when(request.queryMap()).thenReturn(queryParamsMap);
+    when(queryParamsMap.toMap()).thenReturn(new java.util.HashMap<>());
+
+    doReturn(true).when(admin).isLeaderControllerFor(cluster);
+
+    when(storeRequestHandler.getKeySchema(any(GetKeySchemaGrpcRequest.class)))
+        .thenThrow(new VeniceException("Key schema doesn't exist for store: " + store));
+
+    SchemaRoutes schemaRoutes = new SchemaRoutes(false, Optional.empty(), storeRequestHandler);
+    Route route = schemaRoutes.getKeySchemaWithHandler(admin);
+    String result = (String) route.handle(request, response);
+
+    verify(storeRequestHandler, times(1)).getKeySchema(any(GetKeySchemaGrpcRequest.class));
+
+    ObjectMapper mapper = ObjectMapperFactory.getInstance();
+    SchemaResponse schemaResponse = mapper.readValue(result, SchemaResponse.class);
+    assertTrue(schemaResponse.isError());
+    assertTrue(schemaResponse.getError().contains("Key schema doesn't exist for store"));
+  }
 }
