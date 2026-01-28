@@ -12,6 +12,8 @@ import com.linkedin.venice.protocols.controller.CreateStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.CreateStoreGrpcResponse;
 import com.linkedin.venice.protocols.controller.DeleteAclForStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.DeleteAclForStoreGrpcResponse;
+import com.linkedin.venice.protocols.controller.EnableStoreGrpcRequest;
+import com.linkedin.venice.protocols.controller.EnableStoreGrpcResponse;
 import com.linkedin.venice.protocols.controller.GetAclForStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.GetAclForStoreGrpcResponse;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcRequest;
@@ -146,5 +148,26 @@ public class StoreGrpcServiceImpl extends StoreGrpcServiceImplBase {
         responseObserver,
         clusterName,
         null);
+  }
+
+  /**
+   * Enable or disable store read/write abilities.
+   * ACL check required; only allowlist users can enable/disable stores.
+   */
+  @Override
+  public void enableStore(
+      EnableStoreGrpcRequest grpcRequest,
+      StreamObserver<EnableStoreGrpcResponse> responseObserver) {
+    LOGGER.debug("Received enableStore with args: {}", grpcRequest);
+    String clusterName = grpcRequest.getStoreInfo().getClusterName();
+    String storeName = grpcRequest.getStoreInfo().getStoreName();
+    handleRequest(StoreGrpcServiceGrpc.getEnableStoreMethod(), () -> {
+      if (!isAllowListUser(accessManager, storeName, Context.current())) {
+        throw new VeniceUnauthorizedAccessException(
+            ACL_CHECK_FAILURE_WARN_MESSAGE_PREFIX + StoreGrpcServiceGrpc.getEnableStoreMethod().getFullMethodName()
+                + " on resource: " + storeName);
+      }
+      return storeRequestHandler.enableStore(grpcRequest);
+    }, responseObserver, clusterName, storeName);
   }
 }

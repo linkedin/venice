@@ -109,8 +109,11 @@ import com.linkedin.venice.meta.StoreDataAudit;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.protocols.controller.ClusterStoreGrpcInfo;
+import com.linkedin.venice.protocols.controller.EnableStoreGrpcRequest;
+import com.linkedin.venice.protocols.controller.EnableStoreGrpcResponse;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcRequest;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcResponse;
+import com.linkedin.venice.protocols.controller.StoreEnableOperation;
 import com.linkedin.venice.protocols.controller.ValidateStoreDeletedGrpcRequest;
 import com.linkedin.venice.protocols.controller.ValidateStoreDeletedGrpcResponse;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
@@ -747,23 +750,38 @@ public class StoresRoutes extends AbstractRoute {
           return;
         }
         AdminSparkServer.validateParams(request, ENABLE_STORE.getParams(), admin);
-        String cluster = request.queryParams(CLUSTER);
+        String clusterName = request.queryParams(CLUSTER);
         String storeName = request.queryParams(NAME);
         String operation = request.queryParams(OPERATION);
         boolean status = Utils.parseBooleanOrThrow(request.queryParams(STATUS), "storeAccessStatus");
 
-        veniceResponse.setCluster(cluster);
-        veniceResponse.setName(storeName);
-
+        // Convert operation string to enum
+        StoreEnableOperation grpcOperation;
         if (operation.equals(READ_OPERATION)) {
-          admin.setStoreReadability(cluster, storeName, status);
-        } else if ((operation.equals(WRITE_OPERATION))) {
-          admin.setStoreWriteability(cluster, storeName, status);
+          grpcOperation = StoreEnableOperation.STORE_ENABLE_OPERATION_READ;
+        } else if (operation.equals(WRITE_OPERATION)) {
+          grpcOperation = StoreEnableOperation.STORE_ENABLE_OPERATION_WRITE;
         } else if (operation.equals(READ_WRITE_OPERATION)) {
-          admin.setStoreReadWriteability(cluster, storeName, status);
+          grpcOperation = StoreEnableOperation.STORE_ENABLE_OPERATION_READ_WRITE;
         } else {
           throw new VeniceException(OPERATION + " parameter:" + operation + " is invalid.");
         }
+
+        // Build gRPC request
+        ClusterStoreGrpcInfo storeInfo =
+            ClusterStoreGrpcInfo.newBuilder().setClusterName(clusterName).setStoreName(storeName).build();
+        EnableStoreGrpcRequest grpcRequest = EnableStoreGrpcRequest.newBuilder()
+            .setStoreInfo(storeInfo)
+            .setOperation(grpcOperation)
+            .setStatus(status)
+            .build();
+
+        // Call handler
+        EnableStoreGrpcResponse grpcResponse = storeRequestHandler.enableStore(grpcRequest);
+
+        // Map response back to HTTP
+        veniceResponse.setCluster(grpcResponse.getStoreInfo().getClusterName());
+        veniceResponse.setName(grpcResponse.getStoreInfo().getStoreName());
       }
     };
   }

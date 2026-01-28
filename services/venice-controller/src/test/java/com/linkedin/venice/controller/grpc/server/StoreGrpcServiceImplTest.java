@@ -23,11 +23,14 @@ import com.linkedin.venice.protocols.controller.CreateStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.CreateStoreGrpcResponse;
 import com.linkedin.venice.protocols.controller.DeleteAclForStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.DeleteAclForStoreGrpcResponse;
+import com.linkedin.venice.protocols.controller.EnableStoreGrpcRequest;
+import com.linkedin.venice.protocols.controller.EnableStoreGrpcResponse;
 import com.linkedin.venice.protocols.controller.GetAclForStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.GetAclForStoreGrpcResponse;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcRequest;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcResponse;
 import com.linkedin.venice.protocols.controller.ResourceCleanupCheckGrpcResponse;
+import com.linkedin.venice.protocols.controller.StoreEnableOperation;
 import com.linkedin.venice.protocols.controller.StoreGrpcServiceGrpc;
 import com.linkedin.venice.protocols.controller.StoreGrpcServiceGrpc.StoreGrpcServiceBlockingStub;
 import com.linkedin.venice.protocols.controller.UpdateAclForStoreGrpcRequest;
@@ -444,5 +447,94 @@ public class StoreGrpcServiceImplTest {
     assertNotNull(actualResponse, "Response should not be null");
     assertEquals(actualResponse.getClusterName(), TEST_CLUSTER, "Cluster name should match");
     assertEquals(actualResponse.getStoreNamesCount(), 1, "Should have 1 store after filtering");
+  }
+
+  @Test
+  public void testEnableStoreReturnsSuccessfulResponse() {
+    when(controllerAccessManager.isAllowListUser(anyString(), any())).thenReturn(true);
+    ClusterStoreGrpcInfo storeInfo =
+        ClusterStoreGrpcInfo.newBuilder().setClusterName(TEST_CLUSTER).setStoreName(TEST_STORE).build();
+    EnableStoreGrpcRequest request = EnableStoreGrpcRequest.newBuilder()
+        .setStoreInfo(storeInfo)
+        .setOperation(StoreEnableOperation.STORE_ENABLE_OPERATION_READ)
+        .setStatus(true)
+        .build();
+    EnableStoreGrpcResponse expectedResponse = EnableStoreGrpcResponse.newBuilder().setStoreInfo(storeInfo).build();
+    when(storeRequestHandler.enableStore(any(EnableStoreGrpcRequest.class))).thenReturn(expectedResponse);
+
+    EnableStoreGrpcResponse actualResponse = blockingStub.enableStore(request);
+
+    assertNotNull(actualResponse, "Response should not be null");
+    assertEquals(actualResponse.getStoreInfo().getClusterName(), TEST_CLUSTER, "Cluster name should match");
+    assertEquals(actualResponse.getStoreInfo().getStoreName(), TEST_STORE, "Store name should match");
+  }
+
+  @Test
+  public void testEnableStoreReturnsErrorResponse() {
+    when(controllerAccessManager.isAllowListUser(anyString(), any())).thenReturn(true);
+    ClusterStoreGrpcInfo storeInfo =
+        ClusterStoreGrpcInfo.newBuilder().setClusterName(TEST_CLUSTER).setStoreName(TEST_STORE).build();
+    EnableStoreGrpcRequest request = EnableStoreGrpcRequest.newBuilder()
+        .setStoreInfo(storeInfo)
+        .setOperation(StoreEnableOperation.STORE_ENABLE_OPERATION_READ)
+        .setStatus(true)
+        .build();
+    when(storeRequestHandler.enableStore(any(EnableStoreGrpcRequest.class)))
+        .thenThrow(new VeniceException("Failed to enable store"));
+
+    StatusRuntimeException e = expectThrows(StatusRuntimeException.class, () -> blockingStub.enableStore(request));
+
+    assertNotNull(e.getStatus(), "Status should not be null");
+    assertEquals(e.getStatus().getCode(), Status.INTERNAL.getCode());
+    VeniceControllerGrpcErrorInfo errorInfo = GrpcRequestResponseConverter.parseControllerGrpcError(e);
+    assertNotNull(errorInfo, "Error info should not be null");
+    assertEquals(errorInfo.getErrorType(), ControllerGrpcErrorType.GENERAL_ERROR);
+    assertTrue(errorInfo.getErrorMessage().contains("Failed to enable store"));
+  }
+
+  @Test
+  public void testEnableStoreReturnsPermissionDenied() {
+    when(controllerAccessManager.isAllowListUser(anyString(), any())).thenReturn(false);
+    ClusterStoreGrpcInfo storeInfo =
+        ClusterStoreGrpcInfo.newBuilder().setClusterName(TEST_CLUSTER).setStoreName(TEST_STORE).build();
+    EnableStoreGrpcRequest request = EnableStoreGrpcRequest.newBuilder()
+        .setStoreInfo(storeInfo)
+        .setOperation(StoreEnableOperation.STORE_ENABLE_OPERATION_READ)
+        .setStatus(true)
+        .build();
+
+    StatusRuntimeException e = expectThrows(StatusRuntimeException.class, () -> blockingStub.enableStore(request));
+
+    assertNotNull(e.getStatus(), "Status should not be null");
+    assertEquals(e.getStatus().getCode(), Status.PERMISSION_DENIED.getCode());
+    VeniceControllerGrpcErrorInfo errorInfo = GrpcRequestResponseConverter.parseControllerGrpcError(e);
+    assertNotNull(errorInfo, "Error info should not be null");
+    assertEquals(errorInfo.getErrorType(), ControllerGrpcErrorType.UNAUTHORIZED);
+    assertTrue(
+        errorInfo.getErrorMessage().contains("Only admin users are allowed to run"),
+        "Actual: " + errorInfo.getErrorMessage());
+  }
+
+  @Test
+  public void testEnableStoreReturnsBadRequestForInvalidArgument() {
+    when(controllerAccessManager.isAllowListUser(anyString(), any())).thenReturn(true);
+    ClusterStoreGrpcInfo storeInfo =
+        ClusterStoreGrpcInfo.newBuilder().setClusterName(TEST_CLUSTER).setStoreName(TEST_STORE).build();
+    EnableStoreGrpcRequest request = EnableStoreGrpcRequest.newBuilder()
+        .setStoreInfo(storeInfo)
+        .setOperation(StoreEnableOperation.STORE_ENABLE_OPERATION_UNSPECIFIED)
+        .setStatus(true)
+        .build();
+    when(storeRequestHandler.enableStore(any(EnableStoreGrpcRequest.class)))
+        .thenThrow(new IllegalArgumentException("Operation type is required for enable store"));
+
+    StatusRuntimeException e = expectThrows(StatusRuntimeException.class, () -> blockingStub.enableStore(request));
+
+    assertNotNull(e.getStatus(), "Status should not be null");
+    assertEquals(e.getStatus().getCode(), Status.INVALID_ARGUMENT.getCode());
+    VeniceControllerGrpcErrorInfo errorInfo = GrpcRequestResponseConverter.parseControllerGrpcError(e);
+    assertNotNull(errorInfo, "Error info should not be null");
+    assertEquals(errorInfo.getErrorType(), ControllerGrpcErrorType.BAD_REQUEST);
+    assertTrue(errorInfo.getErrorMessage().contains("Operation type is required for enable store"));
   }
 }
