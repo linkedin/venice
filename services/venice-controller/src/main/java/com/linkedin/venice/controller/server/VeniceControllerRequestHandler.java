@@ -24,6 +24,7 @@ public class VeniceControllerRequestHandler {
   private final VeniceControllerAccessManager accessManager;
   private final StoreRequestHandler storeRequestHandler;
   private final ClusterAdminOpsRequestHandler clusterAdminOpsRequestHandler;
+  private final JobRequestHandler jobRequestHandler;
 
   public VeniceControllerRequestHandler(ControllerRequestHandlerDependencies dependencies) {
     this.admin = dependencies.getAdmin();
@@ -31,6 +32,7 @@ public class VeniceControllerRequestHandler {
     this.accessManager = dependencies.getControllerAccessManager();
     this.storeRequestHandler = new StoreRequestHandler(dependencies);
     this.clusterAdminOpsRequestHandler = new ClusterAdminOpsRequestHandler(dependencies);
+    this.jobRequestHandler = new JobRequestHandler(dependencies);
   }
 
   // visibility: package-private
@@ -48,6 +50,10 @@ public class VeniceControllerRequestHandler {
 
   public ClusterAdminOpsRequestHandler getClusterAdminOpsRequestHandler() {
     return clusterAdminOpsRequestHandler;
+  }
+
+  public JobRequestHandler getJobRequestHandler() {
+    return jobRequestHandler;
   }
 
   /**
