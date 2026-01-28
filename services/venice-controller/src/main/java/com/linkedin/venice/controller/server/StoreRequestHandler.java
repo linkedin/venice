@@ -13,6 +13,8 @@ import com.linkedin.venice.protocols.controller.DeleteAclForStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.DeleteAclForStoreGrpcResponse;
 import com.linkedin.venice.protocols.controller.GetAclForStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.GetAclForStoreGrpcResponse;
+import com.linkedin.venice.protocols.controller.GetClusterHealthStoresGrpcRequest;
+import com.linkedin.venice.protocols.controller.GetClusterHealthStoresGrpcResponse;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcRequest;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcResponse;
 import com.linkedin.venice.protocols.controller.UpdateAclForStoreGrpcRequest;
@@ -22,6 +24,7 @@ import com.linkedin.venice.protocols.controller.ValidateStoreDeletedGrpcResponse
 import com.linkedin.venice.systemstore.schemas.StoreProperties;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.apache.avro.Schema;
 import org.apache.commons.lang.StringUtils;
@@ -254,5 +257,26 @@ public class StoreRequestHandler {
 
     LOGGER.info("Found {} stores in cluster: {}", selectedStoreNames.size(), clusterName);
     return ListStoresGrpcResponse.newBuilder().setClusterName(clusterName).addAllStoreNames(selectedStoreNames).build();
+  }
+
+  /**
+   * Gets the health status of all stores in the specified cluster.
+   * @param request the request containing cluster name
+   * @return response containing the map of store names to their statuses
+   */
+  public GetClusterHealthStoresGrpcResponse getClusterHealthStores(GetClusterHealthStoresGrpcRequest request) {
+    String clusterName = request.getClusterName();
+    if (StringUtils.isBlank(clusterName)) {
+      throw new IllegalArgumentException("Cluster name is required");
+    }
+
+    LOGGER.info("Getting health status for all stores in cluster: {}", clusterName);
+    Map<String, String> storeStatusMap = admin.getAllStoreStatuses(clusterName);
+    LOGGER.info("Found {} stores with health status in cluster: {}", storeStatusMap.size(), clusterName);
+
+    return GetClusterHealthStoresGrpcResponse.newBuilder()
+        .setClusterName(clusterName)
+        .putAllStoreStatusMap(storeStatusMap)
+        .build();
   }
 }
