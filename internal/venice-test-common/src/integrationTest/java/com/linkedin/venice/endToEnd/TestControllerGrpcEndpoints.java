@@ -19,13 +19,14 @@ import com.linkedin.venice.protocols.controller.CreateStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.CreateStoreGrpcResponse;
 import com.linkedin.venice.protocols.controller.DiscoverClusterGrpcRequest;
 import com.linkedin.venice.protocols.controller.DiscoverClusterGrpcResponse;
-import com.linkedin.venice.protocols.controller.GetClusterHealthStoresGrpcRequest;
-import com.linkedin.venice.protocols.controller.GetClusterHealthStoresGrpcResponse;
+import com.linkedin.venice.protocols.controller.GetStoreStatusRequest;
+import com.linkedin.venice.protocols.controller.GetStoreStatusResponse;
 import com.linkedin.venice.protocols.controller.LeaderControllerGrpcRequest;
 import com.linkedin.venice.protocols.controller.LeaderControllerGrpcResponse;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcRequest;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcResponse;
 import com.linkedin.venice.protocols.controller.StoreGrpcServiceGrpc;
+import com.linkedin.venice.protocols.controller.StoreStatusEntry;
 import com.linkedin.venice.protocols.controller.ValidateStoreDeletedGrpcRequest;
 import com.linkedin.venice.protocols.controller.ValidateStoreDeletedGrpcResponse;
 import com.linkedin.venice.protocols.controller.VeniceControllerGrpcServiceGrpc;
@@ -40,6 +41,8 @@ import io.grpc.InsecureChannelCredentials;
 import io.grpc.ManagedChannel;
 import io.grpc.StatusRuntimeException;
 import java.security.cert.X509Certificate;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -319,7 +322,7 @@ public class TestControllerGrpcEndpoints {
   }
 
   @Test(timeOut = TIMEOUT_MS)
-  public void testGetClusterHealthStoresGrpcEndpoint() {
+  public void testGetStoreStatusGrpcEndpoint() {
     String storeName1 = Utils.getUniqueString("test_health_stores_1");
     String storeName2 = Utils.getUniqueString("test_health_stores_2");
     String controllerGrpcUrl = veniceCluster.getLeaderVeniceController().getControllerGrpcUrl();
@@ -353,29 +356,27 @@ public class TestControllerGrpcEndpoints {
     CreateStoreGrpcResponse createResponse2 = storeBlockingStub.createStore(createStoreRequest2);
     assertNotNull(createResponse2, "Response should not be null");
 
-    // Step 2: Get cluster health stores
-    GetClusterHealthStoresGrpcRequest healthRequest =
-        GetClusterHealthStoresGrpcRequest.newBuilder().setClusterName(veniceCluster.getClusterName()).build();
+    // Step 2: Get store status
+    GetStoreStatusRequest statusRequest =
+        GetStoreStatusRequest.newBuilder().setClusterName(veniceCluster.getClusterName()).build();
 
-    GetClusterHealthStoresGrpcResponse healthResponse = storeBlockingStub.getClusterHealthStores(healthRequest);
-    assertNotNull(healthResponse, "Response should not be null");
-    assertEquals(healthResponse.getClusterName(), veniceCluster.getClusterName());
+    GetStoreStatusResponse statusResponse = storeBlockingStub.getStoreStatus(statusRequest);
+    assertNotNull(statusResponse, "Response should not be null");
+    assertEquals(statusResponse.getClusterName(), veniceCluster.getClusterName());
 
-    // Verify the stores we created are in the status map
-    assertTrue(
-        healthResponse.getStoreStatusMapMap().containsKey(storeName1),
-        "Store status map should contain " + storeName1);
-    assertTrue(
-        healthResponse.getStoreStatusMapMap().containsKey(storeName2),
-        "Store status map should contain " + storeName2);
+    // Convert to map for easier assertion
+    Map<String, String> storeStatusMap = new HashMap<>();
+    for (StoreStatusEntry entry: statusResponse.getStoreStatusesList()) {
+      storeStatusMap.put(entry.getStoreName(), entry.getStatus());
+    }
+
+    // Verify the stores we created are in the status list
+    assertTrue(storeStatusMap.containsKey(storeName1), "Store status should contain " + storeName1);
+    assertTrue(storeStatusMap.containsKey(storeName2), "Store status should contain " + storeName2);
 
     // Verify the statuses are not null/empty
-    assertNotNull(
-        healthResponse.getStoreStatusMapMap().get(storeName1),
-        "Status for " + storeName1 + " should not be null");
-    assertNotNull(
-        healthResponse.getStoreStatusMapMap().get(storeName2),
-        "Status for " + storeName2 + " should not be null");
+    assertNotNull(storeStatusMap.get(storeName1), "Status for " + storeName1 + " should not be null");
+    assertNotNull(storeStatusMap.get(storeName2), "Status for " + storeName2 + " should not be null");
   }
 
   private static class MockDynamicAccessController extends NoOpDynamicAccessController {

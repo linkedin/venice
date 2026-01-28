@@ -109,10 +109,11 @@ import com.linkedin.venice.meta.StoreDataAudit;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.protocols.controller.ClusterStoreGrpcInfo;
-import com.linkedin.venice.protocols.controller.GetClusterHealthStoresGrpcRequest;
-import com.linkedin.venice.protocols.controller.GetClusterHealthStoresGrpcResponse;
+import com.linkedin.venice.protocols.controller.GetStoreStatusRequest;
+import com.linkedin.venice.protocols.controller.GetStoreStatusResponse;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcRequest;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcResponse;
+import com.linkedin.venice.protocols.controller.StoreStatusEntry;
 import com.linkedin.venice.protocols.controller.ValidateStoreDeletedGrpcRequest;
 import com.linkedin.venice.protocols.controller.ValidateStoreDeletedGrpcResponse;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
@@ -231,12 +232,16 @@ public class StoresRoutes extends AbstractRoute {
         AdminSparkServer.validateParams(request, CLUSTER_HEALTH_STORES.getParams(), admin);
         String clusterName = request.queryParams(CLUSTER);
 
-        GetClusterHealthStoresGrpcRequest grpcRequest =
-            GetClusterHealthStoresGrpcRequest.newBuilder().setClusterName(clusterName).build();
-        GetClusterHealthStoresGrpcResponse grpcResponse = storeRequestHandler.getClusterHealthStores(grpcRequest);
+        GetStoreStatusRequest grpcRequest = GetStoreStatusRequest.newBuilder().setClusterName(clusterName).build();
+        GetStoreStatusResponse grpcResponse = storeRequestHandler.getStoreStatus(grpcRequest);
 
         veniceResponse.setCluster(grpcResponse.getClusterName());
-        veniceResponse.setStoreStatusMap(grpcResponse.getStoreStatusMapMap());
+        // Convert repeated StoreStatusEntry to Map for HTTP response
+        Map<String, String> storeStatusMap = new HashMap<>();
+        for (StoreStatusEntry entry: grpcResponse.getStoreStatusesList()) {
+          storeStatusMap.put(entry.getStoreName(), entry.getStatus());
+        }
+        veniceResponse.setStoreStatusMap(storeStatusMap);
       }
     };
   }

@@ -13,10 +13,11 @@ import com.linkedin.venice.protocols.controller.DeleteAclForStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.DeleteAclForStoreGrpcResponse;
 import com.linkedin.venice.protocols.controller.GetAclForStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.GetAclForStoreGrpcResponse;
-import com.linkedin.venice.protocols.controller.GetClusterHealthStoresGrpcRequest;
-import com.linkedin.venice.protocols.controller.GetClusterHealthStoresGrpcResponse;
+import com.linkedin.venice.protocols.controller.GetStoreStatusRequest;
+import com.linkedin.venice.protocols.controller.GetStoreStatusResponse;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcRequest;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcResponse;
+import com.linkedin.venice.protocols.controller.StoreStatusEntry;
 import com.linkedin.venice.protocols.controller.UpdateAclForStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.UpdateAclForStoreGrpcResponse;
 import com.linkedin.venice.protocols.controller.ValidateStoreDeletedGrpcRequest;
@@ -262,9 +263,9 @@ public class StoreRequestHandler {
   /**
    * Gets the health status of all stores in the specified cluster.
    * @param request the request containing cluster name
-   * @return response containing the map of store names to their statuses
+   * @return response containing the list of store status entries
    */
-  public GetClusterHealthStoresGrpcResponse getClusterHealthStores(GetClusterHealthStoresGrpcRequest request) {
+  public GetStoreStatusResponse getStoreStatus(GetStoreStatusRequest request) {
     String clusterName = request.getClusterName();
     if (StringUtils.isBlank(clusterName)) {
       throw new IllegalArgumentException("Cluster name is required");
@@ -274,9 +275,13 @@ public class StoreRequestHandler {
     Map<String, String> storeStatusMap = admin.getAllStoreStatuses(clusterName);
     LOGGER.info("Found {} stores with health status in cluster: {}", storeStatusMap.size(), clusterName);
 
-    return GetClusterHealthStoresGrpcResponse.newBuilder()
-        .setClusterName(clusterName)
-        .putAllStoreStatusMap(storeStatusMap)
-        .build();
+    GetStoreStatusResponse.Builder responseBuilder = GetStoreStatusResponse.newBuilder().setClusterName(clusterName);
+
+    for (Map.Entry<String, String> entry: storeStatusMap.entrySet()) {
+      responseBuilder.addStoreStatuses(
+          StoreStatusEntry.newBuilder().setStoreName(entry.getKey()).setStatus(entry.getValue()).build());
+    }
+
+    return responseBuilder.build();
   }
 }

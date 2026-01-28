@@ -25,13 +25,14 @@ import com.linkedin.venice.protocols.controller.DeleteAclForStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.DeleteAclForStoreGrpcResponse;
 import com.linkedin.venice.protocols.controller.GetAclForStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.GetAclForStoreGrpcResponse;
-import com.linkedin.venice.protocols.controller.GetClusterHealthStoresGrpcRequest;
-import com.linkedin.venice.protocols.controller.GetClusterHealthStoresGrpcResponse;
+import com.linkedin.venice.protocols.controller.GetStoreStatusRequest;
+import com.linkedin.venice.protocols.controller.GetStoreStatusResponse;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcRequest;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcResponse;
 import com.linkedin.venice.protocols.controller.ResourceCleanupCheckGrpcResponse;
 import com.linkedin.venice.protocols.controller.StoreGrpcServiceGrpc;
 import com.linkedin.venice.protocols.controller.StoreGrpcServiceGrpc.StoreGrpcServiceBlockingStub;
+import com.linkedin.venice.protocols.controller.StoreStatusEntry;
 import com.linkedin.venice.protocols.controller.UpdateAclForStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.UpdateAclForStoreGrpcResponse;
 import com.linkedin.venice.protocols.controller.ValidateStoreDeletedGrpcRequest;
@@ -451,72 +452,67 @@ public class StoreGrpcServiceImplTest {
   }
 
   @Test
-  public void testGetClusterHealthStoresReturnsSuccessfulResponse() {
-    GetClusterHealthStoresGrpcRequest request =
-        GetClusterHealthStoresGrpcRequest.newBuilder().setClusterName(TEST_CLUSTER).build();
-    Map<String, String> storeStatusMap = new HashMap<>();
-    storeStatusMap.put("store1", "ONLINE");
-    storeStatusMap.put("store2", "DEGRADED");
-    storeStatusMap.put("store3", "UNAVAILABLE");
-    GetClusterHealthStoresGrpcResponse expectedResponse = GetClusterHealthStoresGrpcResponse.newBuilder()
+  public void testGetStoreStatusReturnsSuccessfulResponse() {
+    GetStoreStatusRequest request = GetStoreStatusRequest.newBuilder().setClusterName(TEST_CLUSTER).build();
+    GetStoreStatusResponse expectedResponse = GetStoreStatusResponse.newBuilder()
         .setClusterName(TEST_CLUSTER)
-        .putAllStoreStatusMap(storeStatusMap)
+        .addStoreStatuses(StoreStatusEntry.newBuilder().setStoreName("store1").setStatus("ONLINE").build())
+        .addStoreStatuses(StoreStatusEntry.newBuilder().setStoreName("store2").setStatus("DEGRADED").build())
+        .addStoreStatuses(StoreStatusEntry.newBuilder().setStoreName("store3").setStatus("UNAVAILABLE").build())
         .build();
-    when(storeRequestHandler.getClusterHealthStores(any(GetClusterHealthStoresGrpcRequest.class)))
-        .thenReturn(expectedResponse);
+    when(storeRequestHandler.getStoreStatus(any(GetStoreStatusRequest.class))).thenReturn(expectedResponse);
 
-    GetClusterHealthStoresGrpcResponse actualResponse = blockingStub.getClusterHealthStores(request);
-
-    assertNotNull(actualResponse, "Response should not be null");
-    assertEquals(actualResponse.getClusterName(), TEST_CLUSTER, "Cluster name should match");
-    assertEquals(actualResponse.getStoreStatusMapCount(), 3, "Should have 3 stores");
-    assertEquals(actualResponse.getStoreStatusMapMap().get("store1"), "ONLINE", "store1 should be ONLINE");
-    assertEquals(actualResponse.getStoreStatusMapMap().get("store2"), "DEGRADED", "store2 should be DEGRADED");
-    assertEquals(actualResponse.getStoreStatusMapMap().get("store3"), "UNAVAILABLE", "store3 should be UNAVAILABLE");
-  }
-
-  @Test
-  public void testGetClusterHealthStoresReturnsEmptyMapWhenNoStores() {
-    GetClusterHealthStoresGrpcRequest request =
-        GetClusterHealthStoresGrpcRequest.newBuilder().setClusterName(TEST_CLUSTER).build();
-    GetClusterHealthStoresGrpcResponse expectedResponse =
-        GetClusterHealthStoresGrpcResponse.newBuilder().setClusterName(TEST_CLUSTER).build();
-    when(storeRequestHandler.getClusterHealthStores(any(GetClusterHealthStoresGrpcRequest.class)))
-        .thenReturn(expectedResponse);
-
-    GetClusterHealthStoresGrpcResponse actualResponse = blockingStub.getClusterHealthStores(request);
+    GetStoreStatusResponse actualResponse = blockingStub.getStoreStatus(request);
 
     assertNotNull(actualResponse, "Response should not be null");
     assertEquals(actualResponse.getClusterName(), TEST_CLUSTER, "Cluster name should match");
-    assertEquals(actualResponse.getStoreStatusMapCount(), 0, "Should have 0 stores");
+    assertEquals(actualResponse.getStoreStatusesCount(), 3, "Should have 3 stores");
+    // Convert to map for easier assertion
+    Map<String, String> statusMap = new HashMap<>();
+    for (StoreStatusEntry entry: actualResponse.getStoreStatusesList()) {
+      statusMap.put(entry.getStoreName(), entry.getStatus());
+    }
+    assertEquals(statusMap.get("store1"), "ONLINE", "store1 should be ONLINE");
+    assertEquals(statusMap.get("store2"), "DEGRADED", "store2 should be DEGRADED");
+    assertEquals(statusMap.get("store3"), "UNAVAILABLE", "store3 should be UNAVAILABLE");
   }
 
   @Test
-  public void testGetClusterHealthStoresReturnsErrorResponse() {
-    GetClusterHealthStoresGrpcRequest request =
-        GetClusterHealthStoresGrpcRequest.newBuilder().setClusterName(TEST_CLUSTER).build();
-    when(storeRequestHandler.getClusterHealthStores(any(GetClusterHealthStoresGrpcRequest.class)))
-        .thenThrow(new VeniceException("Failed to get cluster health stores"));
+  public void testGetStoreStatusReturnsEmptyListWhenNoStores() {
+    GetStoreStatusRequest request = GetStoreStatusRequest.newBuilder().setClusterName(TEST_CLUSTER).build();
+    GetStoreStatusResponse expectedResponse = GetStoreStatusResponse.newBuilder().setClusterName(TEST_CLUSTER).build();
+    when(storeRequestHandler.getStoreStatus(any(GetStoreStatusRequest.class))).thenReturn(expectedResponse);
 
-    StatusRuntimeException e =
-        expectThrows(StatusRuntimeException.class, () -> blockingStub.getClusterHealthStores(request));
+    GetStoreStatusResponse actualResponse = blockingStub.getStoreStatus(request);
+
+    assertNotNull(actualResponse, "Response should not be null");
+    assertEquals(actualResponse.getClusterName(), TEST_CLUSTER, "Cluster name should match");
+    assertEquals(actualResponse.getStoreStatusesCount(), 0, "Should have 0 stores");
+  }
+
+  @Test
+  public void testGetStoreStatusReturnsErrorResponse() {
+    GetStoreStatusRequest request = GetStoreStatusRequest.newBuilder().setClusterName(TEST_CLUSTER).build();
+    when(storeRequestHandler.getStoreStatus(any(GetStoreStatusRequest.class)))
+        .thenThrow(new VeniceException("Failed to get store status"));
+
+    StatusRuntimeException e = expectThrows(StatusRuntimeException.class, () -> blockingStub.getStoreStatus(request));
 
     assertNotNull(e.getStatus(), "Status should not be null");
     assertEquals(e.getStatus().getCode(), Status.INTERNAL.getCode());
     VeniceControllerGrpcErrorInfo errorInfo = GrpcRequestResponseConverter.parseControllerGrpcError(e);
     assertNotNull(errorInfo, "Error info should not be null");
     assertEquals(errorInfo.getErrorType(), ControllerGrpcErrorType.GENERAL_ERROR);
-    assertTrue(errorInfo.getErrorMessage().contains("Failed to get cluster health stores"));
+    assertTrue(errorInfo.getErrorMessage().contains("Failed to get store status"));
   }
 
   @Test
-  public void testGetClusterHealthStoresReturnsBadRequestForMissingClusterName() {
-    GetClusterHealthStoresGrpcRequest request = GetClusterHealthStoresGrpcRequest.newBuilder().build();
-    when(storeRequestHandler.getClusterHealthStores(any(GetClusterHealthStoresGrpcRequest.class)))
+  public void testGetStoreStatusReturnsBadRequestForMissingClusterName() {
+    GetStoreStatusRequest request = GetStoreStatusRequest.newBuilder().build();
+    when(storeRequestHandler.getStoreStatus(any(GetStoreStatusRequest.class)))
         .thenThrow(new IllegalArgumentException("Cluster name is required"));
 
-    StatusRuntimeException e =
-        expectThrows(StatusRuntimeException.class, () -> blockingStub.getClusterHealthStores(request));
+    StatusRuntimeException e = expectThrows(StatusRuntimeException.class, () -> blockingStub.getStoreStatus(request));
 
     assertNotNull(e.getStatus(), "Status should not be null");
     assertEquals(e.getStatus().getCode(), Status.INVALID_ARGUMENT.getCode());

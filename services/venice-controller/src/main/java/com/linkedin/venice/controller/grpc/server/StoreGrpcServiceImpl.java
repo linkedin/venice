@@ -14,8 +14,8 @@ import com.linkedin.venice.protocols.controller.DeleteAclForStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.DeleteAclForStoreGrpcResponse;
 import com.linkedin.venice.protocols.controller.GetAclForStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.GetAclForStoreGrpcResponse;
-import com.linkedin.venice.protocols.controller.GetClusterHealthStoresGrpcRequest;
-import com.linkedin.venice.protocols.controller.GetClusterHealthStoresGrpcResponse;
+import com.linkedin.venice.protocols.controller.GetStoreStatusRequest;
+import com.linkedin.venice.protocols.controller.GetStoreStatusResponse;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcRequest;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcResponse;
 import com.linkedin.venice.protocols.controller.ResourceCleanupCheckGrpcResponse;
@@ -155,14 +155,14 @@ public class StoreGrpcServiceImpl extends StoreGrpcServiceImplBase {
    * No ACL check; any user can query store health statuses.
    */
   @Override
-  public void getClusterHealthStores(
-      GetClusterHealthStoresGrpcRequest grpcRequest,
-      StreamObserver<GetClusterHealthStoresGrpcResponse> responseObserver) {
-    LOGGER.debug("Received getClusterHealthStores with args: {}", grpcRequest);
+  public void getStoreStatus(
+      GetStoreStatusRequest grpcRequest,
+      StreamObserver<GetStoreStatusResponse> responseObserver) {
+    LOGGER.debug("Received getStoreStatus with args: {}", grpcRequest);
     String clusterName = grpcRequest.getClusterName();
     handleRequest(
-        StoreGrpcServiceGrpc.getGetClusterHealthStoresMethod(),
-        () -> storeRequestHandler.getClusterHealthStores(grpcRequest),
+        StoreGrpcServiceGrpc.getGetStoreStatusMethod(),
+        () -> storeRequestHandler.getStoreStatus(grpcRequest),
         responseObserver,
         clusterName,
         null);
