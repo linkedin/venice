@@ -3,6 +3,7 @@ package com.linkedin.venice.controller.server;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.controller.Admin;
@@ -12,6 +13,10 @@ import com.linkedin.venice.protocols.controller.DiscoverClusterGrpcRequest;
 import com.linkedin.venice.protocols.controller.DiscoverClusterGrpcResponse;
 import com.linkedin.venice.protocols.controller.LeaderControllerGrpcRequest;
 import com.linkedin.venice.protocols.controller.LeaderControllerGrpcResponse;
+import com.linkedin.venice.protocols.controller.ListChildClustersGrpcRequest;
+import com.linkedin.venice.protocols.controller.ListChildClustersGrpcResponse;
+import java.util.HashMap;
+import java.util.Map;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
@@ -83,5 +88,84 @@ public class VeniceControllerRequestHandlerTest {
   public void testIsSslEnabled() {
     boolean sslEnabled = requestHandler.isSslEnabled();
     assertTrue(sslEnabled);
+  }
+
+  @Test
+  public void testListChildClustersForParentController() {
+    String clusterName = "testCluster";
+    ListChildClustersGrpcRequest request =
+        ListChildClustersGrpcRequest.newBuilder().setClusterName(clusterName).build();
+
+    Map<String, String> childUrlMap = new HashMap<>();
+    childUrlMap.put("dc1", "http://dc1-controller:8080");
+    childUrlMap.put("dc2", "http://dc2-controller:8080");
+
+    Map<String, String> childD2Map = new HashMap<>();
+    childD2Map.put("dc1", "d2://dc1-controller");
+    childD2Map.put("dc2", "d2://dc2-controller");
+
+    when(admin.isParent()).thenReturn(true);
+    when(admin.getChildDataCenterControllerUrlMap(clusterName)).thenReturn(childUrlMap);
+    when(admin.getChildDataCenterControllerD2Map(clusterName)).thenReturn(childD2Map);
+    when(admin.getChildControllerD2ServiceName(clusterName)).thenReturn("VeniceController");
+
+    ListChildClustersGrpcResponse response = requestHandler.listChildClusters(request);
+
+    assertEquals(response.getClusterName(), clusterName);
+    assertEquals(response.getChildDataCenterControllerUrlMapCount(), 2);
+    assertEquals(response.getChildDataCenterControllerUrlMapMap().get("dc1"), "http://dc1-controller:8080");
+    assertEquals(response.getChildDataCenterControllerUrlMapMap().get("dc2"), "http://dc2-controller:8080");
+    assertEquals(response.getChildDataCenterControllerD2MapCount(), 2);
+    assertEquals(response.getChildDataCenterControllerD2MapMap().get("dc1"), "d2://dc1-controller");
+    assertEquals(response.getChildDataCenterControllerD2MapMap().get("dc2"), "d2://dc2-controller");
+    assertTrue(response.hasD2ServiceName());
+    assertEquals(response.getD2ServiceName(), "VeniceController");
+  }
+
+  @Test
+  public void testListChildClustersForChildController() {
+    String clusterName = "testCluster";
+    ListChildClustersGrpcRequest request =
+        ListChildClustersGrpcRequest.newBuilder().setClusterName(clusterName).build();
+
+    when(admin.isParent()).thenReturn(false);
+
+    ListChildClustersGrpcResponse response = requestHandler.listChildClusters(request);
+
+    assertEquals(response.getClusterName(), clusterName);
+    assertEquals(response.getChildDataCenterControllerUrlMapCount(), 0);
+    assertEquals(response.getChildDataCenterControllerD2MapCount(), 0);
+    assertFalse(response.hasD2ServiceName());
+  }
+
+  @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = "Cluster name is required")
+  public void testListChildClustersMissingClusterName() {
+    ListChildClustersGrpcRequest request = ListChildClustersGrpcRequest.newBuilder().build();
+    requestHandler.listChildClusters(request);
+  }
+
+  @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = "Cluster name is required")
+  public void testListChildClustersEmptyClusterName() {
+    ListChildClustersGrpcRequest request = ListChildClustersGrpcRequest.newBuilder().setClusterName("").build();
+    requestHandler.listChildClusters(request);
+  }
+
+  @Test
+  public void testListChildClustersWithNullMaps() {
+    String clusterName = "testCluster";
+    ListChildClustersGrpcRequest request =
+        ListChildClustersGrpcRequest.newBuilder().setClusterName(clusterName).build();
+
+    when(admin.isParent()).thenReturn(true);
+    when(admin.getChildDataCenterControllerUrlMap(clusterName)).thenReturn(null);
+    when(admin.getChildDataCenterControllerD2Map(clusterName)).thenReturn(null);
+    when(admin.getChildControllerD2ServiceName(clusterName)).thenReturn(null);
+
+    ListChildClustersGrpcResponse response = requestHandler.listChildClusters(request);
+
+    assertEquals(response.getClusterName(), clusterName);
+    assertEquals(response.getChildDataCenterControllerUrlMapCount(), 0);
+    assertEquals(response.getChildDataCenterControllerD2MapCount(), 0);
+    assertFalse(response.hasD2ServiceName());
   }
 }
