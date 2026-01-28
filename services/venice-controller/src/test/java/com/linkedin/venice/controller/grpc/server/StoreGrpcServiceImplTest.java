@@ -25,6 +25,8 @@ import com.linkedin.venice.protocols.controller.DeleteAclForStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.DeleteAclForStoreGrpcResponse;
 import com.linkedin.venice.protocols.controller.GetAclForStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.GetAclForStoreGrpcResponse;
+import com.linkedin.venice.protocols.controller.ListStoresGrpcRequest;
+import com.linkedin.venice.protocols.controller.ListStoresGrpcResponse;
 import com.linkedin.venice.protocols.controller.ResourceCleanupCheckGrpcResponse;
 import com.linkedin.venice.protocols.controller.StoreGrpcServiceGrpc;
 import com.linkedin.venice.protocols.controller.StoreGrpcServiceGrpc.StoreGrpcServiceBlockingStub;
@@ -39,6 +41,7 @@ import io.grpc.Status;
 import io.grpc.StatusRuntimeException;
 import io.grpc.inprocess.InProcessChannelBuilder;
 import io.grpc.inprocess.InProcessServerBuilder;
+import java.util.Arrays;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -373,5 +376,73 @@ public class StoreGrpcServiceImplTest {
     assertTrue(
         errorInfo.getErrorMessage().contains("Only admin users are allowed to run"),
         "Actual: " + errorInfo.getErrorMessage());
+  }
+
+  @Test
+  public void testListStoresReturnsSuccessfulResponse() {
+    ListStoresGrpcRequest request = ListStoresGrpcRequest.newBuilder().setClusterName(TEST_CLUSTER).build();
+    ListStoresGrpcResponse expectedResponse = ListStoresGrpcResponse.newBuilder()
+        .setClusterName(TEST_CLUSTER)
+        .addAllStoreNames(Arrays.asList("store1", "store2", "store3"))
+        .build();
+    when(storeRequestHandler.listStores(any(ListStoresGrpcRequest.class))).thenReturn(expectedResponse);
+
+    ListStoresGrpcResponse actualResponse = blockingStub.listStores(request);
+
+    assertNotNull(actualResponse, "Response should not be null");
+    assertEquals(actualResponse.getClusterName(), TEST_CLUSTER, "Cluster name should match");
+    assertEquals(actualResponse.getStoreNamesCount(), 3, "Should have 3 stores");
+    assertEquals(actualResponse.getStoreNames(0), "store1", "First store should be store1");
+    assertEquals(actualResponse.getStoreNames(1), "store2", "Second store should be store2");
+    assertEquals(actualResponse.getStoreNames(2), "store3", "Third store should be store3");
+  }
+
+  @Test
+  public void testListStoresReturnsErrorResponse() {
+    ListStoresGrpcRequest request = ListStoresGrpcRequest.newBuilder().setClusterName(TEST_CLUSTER).build();
+    when(storeRequestHandler.listStores(any(ListStoresGrpcRequest.class)))
+        .thenThrow(new VeniceException("Failed to list stores"));
+
+    StatusRuntimeException e = expectThrows(StatusRuntimeException.class, () -> blockingStub.listStores(request));
+
+    assertNotNull(e.getStatus(), "Status should not be null");
+    assertEquals(e.getStatus().getCode(), Status.INTERNAL.getCode());
+    VeniceControllerGrpcErrorInfo errorInfo = GrpcRequestResponseConverter.parseControllerGrpcError(e);
+    assertNotNull(errorInfo, "Error info should not be null");
+    assertEquals(errorInfo.getErrorType(), ControllerGrpcErrorType.GENERAL_ERROR);
+    assertTrue(errorInfo.getErrorMessage().contains("Failed to list stores"));
+  }
+
+  @Test
+  public void testListStoresReturnsBadRequestForMissingClusterName() {
+    ListStoresGrpcRequest request = ListStoresGrpcRequest.newBuilder().build();
+    when(storeRequestHandler.listStores(any(ListStoresGrpcRequest.class)))
+        .thenThrow(new IllegalArgumentException("Cluster name is required"));
+
+    StatusRuntimeException e = expectThrows(StatusRuntimeException.class, () -> blockingStub.listStores(request));
+
+    assertNotNull(e.getStatus(), "Status should not be null");
+    assertEquals(e.getStatus().getCode(), Status.INVALID_ARGUMENT.getCode());
+    VeniceControllerGrpcErrorInfo errorInfo = GrpcRequestResponseConverter.parseControllerGrpcError(e);
+    assertNotNull(errorInfo, "Error info should not be null");
+    assertEquals(errorInfo.getErrorType(), ControllerGrpcErrorType.BAD_REQUEST);
+    assertTrue(errorInfo.getErrorMessage().contains("Cluster name is required"));
+  }
+
+  @Test
+  public void testListStoresWithFilters() {
+    ListStoresGrpcRequest request =
+        ListStoresGrpcRequest.newBuilder().setClusterName(TEST_CLUSTER).setIncludeSystemStores(false).build();
+    ListStoresGrpcResponse expectedResponse = ListStoresGrpcResponse.newBuilder()
+        .setClusterName(TEST_CLUSTER)
+        .addAllStoreNames(Arrays.asList("store1"))
+        .build();
+    when(storeRequestHandler.listStores(any(ListStoresGrpcRequest.class))).thenReturn(expectedResponse);
+
+    ListStoresGrpcResponse actualResponse = blockingStub.listStores(request);
+
+    assertNotNull(actualResponse, "Response should not be null");
+    assertEquals(actualResponse.getClusterName(), TEST_CLUSTER, "Cluster name should match");
+    assertEquals(actualResponse.getStoreNamesCount(), 1, "Should have 1 store after filtering");
   }
 }

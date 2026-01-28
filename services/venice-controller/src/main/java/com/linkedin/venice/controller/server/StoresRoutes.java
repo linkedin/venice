@@ -108,8 +108,9 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataAudit;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.protocols.controller.ClusterStoreGrpcInfo;
+import com.linkedin.venice.protocols.controller.ListStoresGrpcRequest;
+import com.linkedin.venice.protocols.controller.ListStoresGrpcResponse;
 import com.linkedin.venice.protocols.controller.ValidateStoreDeletedGrpcRequest;
 import com.linkedin.venice.protocols.controller.ValidateStoreDeletedGrpcResponse;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
@@ -117,7 +118,6 @@ import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.stats.dimensions.StoreRepushTriggerSource;
-import com.linkedin.venice.systemstore.schemas.StoreProperties;
 import com.linkedin.venice.utils.Utils;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -127,7 +127,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
-import org.apache.avro.Schema;
 import org.apache.http.HttpStatus;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -139,13 +138,23 @@ public class StoresRoutes extends AbstractRoute {
   private static final Logger LOGGER = LogManager.getLogger(StoresRoutes.class);
 
   private final PubSubTopicRepository pubSubTopicRepository;
+  private final StoreRequestHandler storeRequestHandler;
 
   public StoresRoutes(
       boolean sslEnabled,
       Optional<DynamicAccessController> accessController,
       PubSubTopicRepository pubSubTopicRepository) {
+    this(sslEnabled, accessController, pubSubTopicRepository, null);
+  }
+
+  public StoresRoutes(
+      boolean sslEnabled,
+      Optional<DynamicAccessController> accessController,
+      PubSubTopicRepository pubSubTopicRepository,
+      StoreRequestHandler storeRequestHandler) {
     super(sslEnabled, accessController);
     this.pubSubTopicRepository = pubSubTopicRepository;
+    this.storeRequestHandler = storeRequestHandler;
   }
 
   /**
@@ -158,117 +167,31 @@ public class StoresRoutes extends AbstractRoute {
       @Override
       public void internalHandle(Request request, MultiStoreResponse veniceResponse) {
         AdminSparkServer.validateParams(request, LIST_STORES.getParams(), admin);
-        veniceResponse.setCluster(request.queryParams(CLUSTER));
+        String clusterName = request.queryParams(CLUSTER);
+        veniceResponse.setCluster(clusterName);
         veniceResponse.setName(request.queryParams(NAME));
 
-        // Potentially filter out the system stores
+        // Build gRPC request from HTTP parameters
+        ListStoresGrpcRequest.Builder grpcRequestBuilder =
+            ListStoresGrpcRequest.newBuilder().setClusterName(clusterName);
+
         String includeSystemStores = request.queryParams(INCLUDE_SYSTEM_STORES);
-        // If the param is not provided, the default is to include them
-        boolean excludeSystemStores = (includeSystemStores != null && !Boolean.parseBoolean(includeSystemStores));
-        Optional<String> storeConfigNameFilter =
-            Optional.ofNullable(request.queryParamOrDefault(STORE_CONFIG_NAME_FILTER, null));
-        Optional<String> storeConfigValueFilter =
-            Optional.ofNullable(request.queryParamOrDefault(STORE_CONFIG_VALUE_FILTER, null));
-        if (storeConfigNameFilter.isPresent() ^ storeConfigValueFilter.isPresent()) {
-          throw new VeniceException(
-              "Missing parameter: "
-                  + (storeConfigNameFilter.isPresent() ? "store_config_value_filter" : "store_config_name_filter"));
-        }
-        boolean isDataReplicationPolicyConfigFilter = false;
-        Schema.Field configFilterField = null;
-        if (storeConfigNameFilter.isPresent()) {
-          configFilterField = StoreProperties.getClassSchema().getField(storeConfigNameFilter.get());
-          if (configFilterField == null) {
-            isDataReplicationPolicyConfigFilter = storeConfigNameFilter.get().equalsIgnoreCase("dataReplicationPolicy");
-            if (!isDataReplicationPolicyConfigFilter) {
-              throw new VeniceException(
-                  "The config name filter " + storeConfigNameFilter.get() + " is not a valid store config.");
-            }
-          }
+        if (includeSystemStores != null) {
+          grpcRequestBuilder.setIncludeSystemStores(Boolean.parseBoolean(includeSystemStores));
         }
 
-        List<Store> storeList = admin.getAllStores(veniceResponse.getCluster());
-        List<Store> selectedStoreList;
-        if (excludeSystemStores || storeConfigNameFilter.isPresent()) {
-          selectedStoreList = new ArrayList<>();
-          for (Store store: storeList) {
-            if (excludeSystemStores && store.isSystemStore()) {
-              continue;
-            }
-            if (storeConfigValueFilter.isPresent()) {
-              boolean configValueMatch = false;
-              if (isDataReplicationPolicyConfigFilter) {
-                if (!store.isHybrid() || store.getHybridStoreConfig().getDataReplicationPolicy() == null) {
-                  continue;
-                }
-                configValueMatch = store.getHybridStoreConfig()
-                    .getDataReplicationPolicy()
-                    .name()
-                    .equalsIgnoreCase(storeConfigValueFilter.get());
-              } else {
-                ZKStore cloneStore = new ZKStore(store);
-                Object configValue = cloneStore.dataModel().get(storeConfigNameFilter.get());
-                if (configValue == null) {
-                  // If the store doesn't have the config, it fails the match
-                  continue;
-                }
-                // Compare based on schema type
-                Schema fieldSchema = configFilterField.schema();
-                switch (fieldSchema.getType()) {
-                  case BOOLEAN:
-                    configValueMatch = Boolean.valueOf(storeConfigValueFilter.get()).equals((Boolean) configValue);
-                    break;
-                  case INT:
-                    configValueMatch = Integer.valueOf(storeConfigValueFilter.get()).equals((Integer) configValue);
-                    break;
-                  case LONG:
-                    configValueMatch = Long.valueOf(storeConfigValueFilter.get()).equals((Long) configValue);
-                    break;
-                  case FLOAT:
-                    configValueMatch = Float.valueOf(storeConfigValueFilter.get()).equals(configValue);
-                    break;
-                  case DOUBLE:
-                    configValueMatch = Double.valueOf(storeConfigValueFilter.get()).equals(configValue);
-                    break;
-                  case STRING:
-                    configValueMatch = storeConfigValueFilter.get().equals(configValue);
-                    break;
-                  case ENUM:
-                    configValueMatch = storeConfigValueFilter.get().equals(configValue.toString());
-                    break;
-                  case UNION:
-                    /**
-                     * For union field, return match as long as the union field is not null
-                     */
-                    configValueMatch = (configValue != null);
-                    break;
-                  case ARRAY:
-                  case MAP:
-                  case FIXED:
-                  case BYTES:
-                  case RECORD:
-                  case NULL:
-                  default:
-                    throw new VeniceException(
-                        "Store config filtering for Schema type " + fieldSchema.getType().toString()
-                            + " is not supported");
-                }
-              }
-              if (!configValueMatch) {
-                continue;
-              }
-            }
-            selectedStoreList.add(store);
-          }
-        } else {
-          selectedStoreList = storeList;
+        String storeConfigNameFilter = request.queryParamOrDefault(STORE_CONFIG_NAME_FILTER, null);
+        if (storeConfigNameFilter != null) {
+          grpcRequestBuilder.setStoreConfigNameFilter(storeConfigNameFilter);
         }
 
-        String[] storeNameList = new String[selectedStoreList.size()];
-        for (int i = 0; i < selectedStoreList.size(); i++) {
-          storeNameList[i] = selectedStoreList.get(i).getName();
+        String storeConfigValueFilter = request.queryParamOrDefault(STORE_CONFIG_VALUE_FILTER, null);
+        if (storeConfigValueFilter != null) {
+          grpcRequestBuilder.setStoreConfigValueFilter(storeConfigValueFilter);
         }
-        veniceResponse.setStores(storeNameList);
+
+        ListStoresGrpcResponse grpcResponse = storeRequestHandler.listStores(grpcRequestBuilder.build());
+        veniceResponse.setStores(grpcResponse.getStoreNamesList().toArray(new String[0]));
       }
     };
   }
@@ -1276,7 +1199,7 @@ public class StoresRoutes extends AbstractRoute {
   /**
    * @see Admin#validateStoreDeleted(String, String)
    */
-  public Route validateStoreDeleted(Admin admin, StoreRequestHandler requestHandler) {
+  public Route validateStoreDeleted(Admin admin) {
     return new VeniceRouteHandler<StoreDeletedValidationResponse>(StoreDeletedValidationResponse.class) {
       @Override
       public void internalHandle(Request request, StoreDeletedValidationResponse veniceResponse) {
@@ -1292,7 +1215,7 @@ public class StoresRoutes extends AbstractRoute {
             ClusterStoreGrpcInfo.newBuilder().setClusterName(clusterName).setStoreName(storeName).build();
         ValidateStoreDeletedGrpcRequest grpcRequest =
             ValidateStoreDeletedGrpcRequest.newBuilder().setStoreInfo(storeInfo).build();
-        ValidateStoreDeletedGrpcResponse grpcResponse = requestHandler.validateStoreDeleted(grpcRequest);
+        ValidateStoreDeletedGrpcResponse grpcResponse = storeRequestHandler.validateStoreDeleted(grpcRequest);
 
         veniceResponse.setCluster(grpcResponse.getStoreInfo().getClusterName());
         veniceResponse.setName(grpcResponse.getStoreInfo().getStoreName());

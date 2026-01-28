@@ -5,6 +5,7 @@ import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.DEFAULT
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.acl.NoOpDynamicAccessController;
 import com.linkedin.venice.authorization.Method;
@@ -20,6 +21,8 @@ import com.linkedin.venice.protocols.controller.DiscoverClusterGrpcRequest;
 import com.linkedin.venice.protocols.controller.DiscoverClusterGrpcResponse;
 import com.linkedin.venice.protocols.controller.LeaderControllerGrpcRequest;
 import com.linkedin.venice.protocols.controller.LeaderControllerGrpcResponse;
+import com.linkedin.venice.protocols.controller.ListStoresGrpcRequest;
+import com.linkedin.venice.protocols.controller.ListStoresGrpcResponse;
 import com.linkedin.venice.protocols.controller.StoreGrpcServiceGrpc;
 import com.linkedin.venice.protocols.controller.ValidateStoreDeletedGrpcRequest;
 import com.linkedin.venice.protocols.controller.ValidateStoreDeletedGrpcResponse;
@@ -244,6 +247,73 @@ public class TestControllerGrpcEndpoints {
     assertNotNull(response, "Response should not be null");
     assertEquals(response.getStoreInfo().getStoreName(), storeName);
     assertEquals(response.getStoreInfo().getClusterName(), veniceCluster.getClusterName());
+  }
+
+  @Test(timeOut = TIMEOUT_MS)
+  public void testListStoresGrpcEndpoint() {
+    String storeName1 = Utils.getUniqueString("test_list_stores_1");
+    String storeName2 = Utils.getUniqueString("test_list_stores_2");
+    String controllerGrpcUrl = veniceCluster.getLeaderVeniceController().getControllerGrpcUrl();
+    ManagedChannel channel = Grpc.newChannelBuilder(controllerGrpcUrl, InsecureChannelCredentials.create()).build();
+    StoreGrpcServiceGrpc.StoreGrpcServiceBlockingStub storeBlockingStub = StoreGrpcServiceGrpc.newBlockingStub(channel);
+
+    // Step 1: Create two stores
+    CreateStoreGrpcRequest createStoreRequest1 = CreateStoreGrpcRequest.newBuilder()
+        .setStoreInfo(
+            ClusterStoreGrpcInfo.newBuilder()
+                .setClusterName(veniceCluster.getClusterName())
+                .setStoreName(storeName1)
+                .build())
+        .setOwner("owner")
+        .setKeySchema(DEFAULT_KEY_SCHEMA)
+        .setValueSchema("\"string\"")
+        .build();
+    CreateStoreGrpcResponse createResponse1 = storeBlockingStub.createStore(createStoreRequest1);
+    assertNotNull(createResponse1, "Response should not be null");
+
+    CreateStoreGrpcRequest createStoreRequest2 = CreateStoreGrpcRequest.newBuilder()
+        .setStoreInfo(
+            ClusterStoreGrpcInfo.newBuilder()
+                .setClusterName(veniceCluster.getClusterName())
+                .setStoreName(storeName2)
+                .build())
+        .setOwner("owner")
+        .setKeySchema(DEFAULT_KEY_SCHEMA)
+        .setValueSchema("\"string\"")
+        .build();
+    CreateStoreGrpcResponse createResponse2 = storeBlockingStub.createStore(createStoreRequest2);
+    assertNotNull(createResponse2, "Response should not be null");
+
+    // Step 2: List all stores in the cluster
+    ListStoresGrpcRequest listStoresRequest =
+        ListStoresGrpcRequest.newBuilder().setClusterName(veniceCluster.getClusterName()).build();
+
+    ListStoresGrpcResponse listStoresResponse = storeBlockingStub.listStores(listStoresRequest);
+    assertNotNull(listStoresResponse, "Response should not be null");
+    assertEquals(listStoresResponse.getClusterName(), veniceCluster.getClusterName());
+    assertTrue(listStoresResponse.getStoreNamesList().contains(storeName1), "Store list should contain " + storeName1);
+    assertTrue(listStoresResponse.getStoreNamesList().contains(storeName2), "Store list should contain " + storeName2);
+
+    // Step 3: List stores excluding system stores
+    ListStoresGrpcRequest listStoresNoSystemRequest = ListStoresGrpcRequest.newBuilder()
+        .setClusterName(veniceCluster.getClusterName())
+        .setIncludeSystemStores(false)
+        .build();
+
+    ListStoresGrpcResponse listStoresNoSystemResponse = storeBlockingStub.listStores(listStoresNoSystemRequest);
+    assertNotNull(listStoresNoSystemResponse, "Response should not be null");
+    assertTrue(
+        listStoresNoSystemResponse.getStoreNamesList().contains(storeName1),
+        "Store list should contain " + storeName1);
+    assertTrue(
+        listStoresNoSystemResponse.getStoreNamesList().contains(storeName2),
+        "Store list should contain " + storeName2);
+    // Verify no system stores are in the list
+    for (String store: listStoresNoSystemResponse.getStoreNamesList()) {
+      assertFalse(
+          store.startsWith("venice_system_store") || store.contains("push_status"),
+          "Store list should not contain system stores: " + store);
+    }
   }
 
   private static class MockDynamicAccessController extends NoOpDynamicAccessController {

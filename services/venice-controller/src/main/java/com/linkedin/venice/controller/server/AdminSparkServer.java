@@ -300,7 +300,8 @@ public class AdminSparkServer extends AbstractVeniceService {
     // Build all different routes
     ControllerRoutes controllerRoutes =
         new ControllerRoutes(sslEnabled, accessController, pubSubTopicRepository, requestHandler);
-    StoresRoutes storesRoutes = new StoresRoutes(sslEnabled, accessController, pubSubTopicRepository);
+    StoresRoutes storesRoutes =
+        new StoresRoutes(sslEnabled, accessController, pubSubTopicRepository, requestHandler.getStoreRequestHandler());
     JobRoutes jobRoutes = new JobRoutes(sslEnabled, accessController);
     SkipAdminRoute skipAdminRoute = new SkipAdminRoute(sslEnabled, accessController);
     CreateVersion createVersion = new CreateVersion(sslEnabled, accessController, this.checkReadMethodForKafka);
@@ -708,9 +709,7 @@ public class AdminSparkServer extends AbstractVeniceService {
         new VeniceParentControllerRegionStateHandler(admin, storesRoutes.getInUseSchemaIds(admin)));
     httpService.get(
         VALIDATE_STORE_DELETED.getPath(),
-        new VeniceParentControllerRegionStateHandler(
-            admin,
-            storesRoutes.validateStoreDeleted(admin, requestHandler.getStoreRequestHandler())));
+        new VeniceParentControllerRegionStateHandler(admin, storesRoutes.validateStoreDeleted(admin)));
 
     httpService.post(
         CLEANUP_INSTANCE_CUSTOMIZED_STATES.getPath(),
