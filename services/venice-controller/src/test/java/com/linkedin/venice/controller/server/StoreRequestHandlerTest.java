@@ -20,10 +20,13 @@ import com.linkedin.venice.protocols.controller.CreateStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.CreateStoreGrpcResponse;
 import com.linkedin.venice.protocols.controller.DeleteAclForStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.DeleteAclForStoreGrpcResponse;
+import com.linkedin.venice.protocols.controller.EnableStoreGrpcRequest;
+import com.linkedin.venice.protocols.controller.EnableStoreGrpcResponse;
 import com.linkedin.venice.protocols.controller.GetAclForStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.GetAclForStoreGrpcResponse;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcRequest;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcResponse;
+import com.linkedin.venice.protocols.controller.StoreEnableOperation;
 import com.linkedin.venice.protocols.controller.UpdateAclForStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.UpdateAclForStoreGrpcResponse;
 import java.util.Arrays;
@@ -357,5 +360,81 @@ public class StoreRequestHandlerTest {
     ListStoresGrpcResponse response = storeRequestHandler.listStores(request);
 
     assertEquals(response.getStoreNamesCount(), 0);
+  }
+
+  @Test
+  public void testEnableStoreReadOperation() {
+    ClusterStoreGrpcInfo storeInfo =
+        ClusterStoreGrpcInfo.newBuilder().setClusterName("testCluster").setStoreName("testStore").build();
+    EnableStoreGrpcRequest request = EnableStoreGrpcRequest.newBuilder()
+        .setStoreInfo(storeInfo)
+        .setOperation(StoreEnableOperation.STORE_ENABLE_OPERATION_READ)
+        .setStatus(true)
+        .build();
+
+    EnableStoreGrpcResponse response = storeRequestHandler.enableStore(request);
+
+    verify(admin, times(1)).setStoreReadability("testCluster", "testStore", true);
+    assertEquals(response.getStoreInfo().getClusterName(), "testCluster");
+    assertEquals(response.getStoreInfo().getStoreName(), "testStore");
+  }
+
+  @Test
+  public void testEnableStoreWriteOperation() {
+    ClusterStoreGrpcInfo storeInfo =
+        ClusterStoreGrpcInfo.newBuilder().setClusterName("testCluster").setStoreName("testStore").build();
+    EnableStoreGrpcRequest request = EnableStoreGrpcRequest.newBuilder()
+        .setStoreInfo(storeInfo)
+        .setOperation(StoreEnableOperation.STORE_ENABLE_OPERATION_WRITE)
+        .setStatus(false)
+        .build();
+
+    EnableStoreGrpcResponse response = storeRequestHandler.enableStore(request);
+
+    verify(admin, times(1)).setStoreWriteability("testCluster", "testStore", false);
+    assertEquals(response.getStoreInfo().getClusterName(), "testCluster");
+    assertEquals(response.getStoreInfo().getStoreName(), "testStore");
+  }
+
+  @Test
+  public void testEnableStoreReadWriteOperation() {
+    ClusterStoreGrpcInfo storeInfo =
+        ClusterStoreGrpcInfo.newBuilder().setClusterName("testCluster").setStoreName("testStore").build();
+    EnableStoreGrpcRequest request = EnableStoreGrpcRequest.newBuilder()
+        .setStoreInfo(storeInfo)
+        .setOperation(StoreEnableOperation.STORE_ENABLE_OPERATION_READ_WRITE)
+        .setStatus(true)
+        .build();
+
+    EnableStoreGrpcResponse response = storeRequestHandler.enableStore(request);
+
+    verify(admin, times(1)).setStoreReadWriteability("testCluster", "testStore", true);
+    assertEquals(response.getStoreInfo().getClusterName(), "testCluster");
+    assertEquals(response.getStoreInfo().getStoreName(), "testStore");
+  }
+
+  @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = "Operation type is required for enable store")
+  public void testEnableStoreUnspecifiedOperation() {
+    ClusterStoreGrpcInfo storeInfo =
+        ClusterStoreGrpcInfo.newBuilder().setClusterName("testCluster").setStoreName("testStore").build();
+    EnableStoreGrpcRequest request = EnableStoreGrpcRequest.newBuilder()
+        .setStoreInfo(storeInfo)
+        .setOperation(StoreEnableOperation.STORE_ENABLE_OPERATION_UNSPECIFIED)
+        .setStatus(true)
+        .build();
+
+    storeRequestHandler.enableStore(request);
+  }
+
+  @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = ".*Cluster name is mandatory parameter.*")
+  public void testEnableStoreMissingClusterName() {
+    ClusterStoreGrpcInfo storeInfo = ClusterStoreGrpcInfo.newBuilder().setStoreName("testStore").build();
+    EnableStoreGrpcRequest request = EnableStoreGrpcRequest.newBuilder()
+        .setStoreInfo(storeInfo)
+        .setOperation(StoreEnableOperation.STORE_ENABLE_OPERATION_READ)
+        .setStatus(true)
+        .build();
+
+    storeRequestHandler.enableStore(request);
   }
 }
