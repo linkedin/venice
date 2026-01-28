@@ -11,10 +11,13 @@ import com.linkedin.venice.protocols.controller.CreateStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.CreateStoreGrpcResponse;
 import com.linkedin.venice.protocols.controller.DeleteAclForStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.DeleteAclForStoreGrpcResponse;
+import com.linkedin.venice.protocols.controller.EnableStoreGrpcRequest;
+import com.linkedin.venice.protocols.controller.EnableStoreGrpcResponse;
 import com.linkedin.venice.protocols.controller.GetAclForStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.GetAclForStoreGrpcResponse;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcRequest;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcResponse;
+import com.linkedin.venice.protocols.controller.StoreEnableOperation;
 import com.linkedin.venice.protocols.controller.UpdateAclForStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.UpdateAclForStoreGrpcResponse;
 import com.linkedin.venice.protocols.controller.ValidateStoreDeletedGrpcRequest;
@@ -254,5 +257,47 @@ public class StoreRequestHandler {
 
     LOGGER.info("Found {} stores in cluster: {}", selectedStoreNames.size(), clusterName);
     return ListStoresGrpcResponse.newBuilder().setClusterName(clusterName).addAllStoreNames(selectedStoreNames).build();
+  }
+
+  /**
+   * Enable or disable store read/write abilities.
+   * @param request the request containing cluster, store name, operation type, and status
+   * @return response with cluster and store info
+   */
+  public EnableStoreGrpcResponse enableStore(EnableStoreGrpcRequest request) {
+    ClusterStoreGrpcInfo storeInfo = request.getStoreInfo();
+    ControllerRequestParamValidator.validateClusterStoreInfo(storeInfo);
+    String clusterName = storeInfo.getClusterName();
+    String storeName = storeInfo.getStoreName();
+    StoreEnableOperation operation = request.getOperation();
+    boolean status = request.getStatus();
+
+    if (operation == StoreEnableOperation.STORE_ENABLE_OPERATION_UNSPECIFIED) {
+      throw new IllegalArgumentException("Operation type is required for enable store");
+    }
+
+    LOGGER.info(
+        "Enable store for store: {} in cluster: {} with operation: {} and status: {}",
+        storeName,
+        clusterName,
+        operation,
+        status);
+
+    switch (operation) {
+      case STORE_ENABLE_OPERATION_READ:
+        admin.setStoreReadability(clusterName, storeName, status);
+        break;
+      case STORE_ENABLE_OPERATION_WRITE:
+        admin.setStoreWriteability(clusterName, storeName, status);
+        break;
+      case STORE_ENABLE_OPERATION_READ_WRITE:
+        admin.setStoreReadWriteability(clusterName, storeName, status);
+        break;
+      default:
+        throw new VeniceException("Invalid operation type: " + operation);
+    }
+
+    LOGGER.info("Successfully updated store: {} in cluster: {} with operation: {}", storeName, clusterName, operation);
+    return EnableStoreGrpcResponse.newBuilder().setStoreInfo(storeInfo).build();
   }
 }

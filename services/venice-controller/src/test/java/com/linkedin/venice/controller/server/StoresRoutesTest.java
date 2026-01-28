@@ -18,6 +18,7 @@ import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controller.VeniceParentHelixAdmin;
 import com.linkedin.venice.controllerapi.ControllerApiConstants;
+import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.MultiStoreInfoResponse;
 import com.linkedin.venice.controllerapi.MultiStoreResponse;
 import com.linkedin.venice.controllerapi.MultiStoreStatusResponse;
@@ -37,6 +38,8 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.protocols.controller.ClusterStoreGrpcInfo;
+import com.linkedin.venice.protocols.controller.EnableStoreGrpcRequest;
+import com.linkedin.venice.protocols.controller.EnableStoreGrpcResponse;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcRequest;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcResponse;
 import com.linkedin.venice.protocols.controller.ValidateStoreDeletedGrpcRequest;
@@ -686,5 +689,91 @@ public class StoresRoutesTest {
     Assert.assertFalse(response.isError());
     Assert.assertEquals(response.getStores().length, 1);
     Assert.assertEquals(response.getStores()[0], "user-store");
+  }
+
+  @Test
+  public void testEnableStore() throws Exception {
+    Admin mockAdmin = mock(VeniceParentHelixAdmin.class);
+    StoreRequestHandler mockRequestHandler = mock(StoreRequestHandler.class);
+    doReturn(true).when(mockAdmin).isLeaderControllerFor(TEST_CLUSTER);
+
+    Request request = mock(Request.class);
+    doReturn(TEST_CLUSTER).when(request).queryParams(eq(ControllerApiConstants.CLUSTER));
+    doReturn(TEST_STORE_NAME).when(request).queryParams(eq(ControllerApiConstants.NAME));
+
+    // Mock queryMap for error handling
+    QueryParamsMap queryParamsMap = mock(QueryParamsMap.class);
+    Map<String, String[]> queryMap = new HashMap<>(4);
+    queryMap.put(ControllerApiConstants.CLUSTER, new String[] { TEST_CLUSTER });
+    queryMap.put(ControllerApiConstants.NAME, new String[] { TEST_STORE_NAME });
+    queryMap.put(ControllerApiConstants.OPERATION, new String[] { "read" });
+    queryMap.put(ControllerApiConstants.STATUS, new String[] { "true" });
+    doReturn(queryMap).when(queryParamsMap).toMap();
+    doReturn(queryParamsMap).when(request).queryMap();
+
+    ClusterStoreGrpcInfo storeInfo =
+        ClusterStoreGrpcInfo.newBuilder().setClusterName(TEST_CLUSTER).setStoreName(TEST_STORE_NAME).build();
+
+    Route enableStoreRoute =
+        new StoresRoutes(false, Optional.empty(), pubSubTopicRepository, mockRequestHandler).enableStore(mockAdmin);
+
+    // Case 1: Enable read operation with status=true
+    doReturn("read").when(request).queryParams(eq(ControllerApiConstants.OPERATION));
+    doReturn("true").when(request).queryParams(eq(ControllerApiConstants.STATUS));
+    EnableStoreGrpcResponse grpcResponse = EnableStoreGrpcResponse.newBuilder().setStoreInfo(storeInfo).build();
+    when(mockRequestHandler.enableStore(any(EnableStoreGrpcRequest.class))).thenReturn(grpcResponse);
+
+    ControllerResponse response = ObjectMapperFactory.getInstance()
+        .readValue(enableStoreRoute.handle(request, mock(Response.class)).toString(), ControllerResponse.class);
+    Assert.assertFalse(response.isError());
+    Assert.assertEquals(response.getCluster(), TEST_CLUSTER);
+    Assert.assertEquals(response.getName(), TEST_STORE_NAME);
+
+    // Case 2: Enable write operation with status=false
+    doReturn("write").when(request).queryParams(eq(ControllerApiConstants.OPERATION));
+    doReturn("false").when(request).queryParams(eq(ControllerApiConstants.STATUS));
+    queryMap.put(ControllerApiConstants.OPERATION, new String[] { "write" });
+    queryMap.put(ControllerApiConstants.STATUS, new String[] { "false" });
+    when(mockRequestHandler.enableStore(any(EnableStoreGrpcRequest.class))).thenReturn(grpcResponse);
+
+    response = ObjectMapperFactory.getInstance()
+        .readValue(enableStoreRoute.handle(request, mock(Response.class)).toString(), ControllerResponse.class);
+    Assert.assertFalse(response.isError());
+    Assert.assertEquals(response.getCluster(), TEST_CLUSTER);
+    Assert.assertEquals(response.getName(), TEST_STORE_NAME);
+
+    // Case 3: Enable read-write operation with status=true
+    doReturn("readwrite").when(request).queryParams(eq(ControllerApiConstants.OPERATION));
+    doReturn("true").when(request).queryParams(eq(ControllerApiConstants.STATUS));
+    queryMap.put(ControllerApiConstants.OPERATION, new String[] { "readwrite" });
+    queryMap.put(ControllerApiConstants.STATUS, new String[] { "true" });
+    when(mockRequestHandler.enableStore(any(EnableStoreGrpcRequest.class))).thenReturn(grpcResponse);
+
+    response = ObjectMapperFactory.getInstance()
+        .readValue(enableStoreRoute.handle(request, mock(Response.class)).toString(), ControllerResponse.class);
+    Assert.assertFalse(response.isError());
+    Assert.assertEquals(response.getCluster(), TEST_CLUSTER);
+    Assert.assertEquals(response.getName(), TEST_STORE_NAME);
+
+    // Case 4: Invalid operation throws exception
+    doReturn("invalid").when(request).queryParams(eq(ControllerApiConstants.OPERATION));
+    queryMap.put(ControllerApiConstants.OPERATION, new String[] { "invalid" });
+
+    response = ObjectMapperFactory.getInstance()
+        .readValue(enableStoreRoute.handle(request, mock(Response.class)).toString(), ControllerResponse.class);
+    Assert.assertTrue(response.isError());
+    Assert.assertTrue(response.getError().contains("invalid"));
+
+    // Case 5: Handler throws exception
+    doReturn("read").when(request).queryParams(eq(ControllerApiConstants.OPERATION));
+    queryMap.put(ControllerApiConstants.OPERATION, new String[] { "read" });
+    String errorMessage = "Failed to enable store";
+    when(mockRequestHandler.enableStore(any(EnableStoreGrpcRequest.class)))
+        .thenThrow(new VeniceException(errorMessage));
+
+    response = ObjectMapperFactory.getInstance()
+        .readValue(enableStoreRoute.handle(request, mock(Response.class)).toString(), ControllerResponse.class);
+    Assert.assertTrue(response.isError());
+    Assert.assertTrue(response.getError().contains(errorMessage));
   }
 }

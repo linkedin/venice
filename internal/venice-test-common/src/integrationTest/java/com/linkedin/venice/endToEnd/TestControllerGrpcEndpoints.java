@@ -20,6 +20,8 @@ import com.linkedin.venice.protocols.controller.CreateStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.CreateStoreGrpcResponse;
 import com.linkedin.venice.protocols.controller.DiscoverClusterGrpcRequest;
 import com.linkedin.venice.protocols.controller.DiscoverClusterGrpcResponse;
+import com.linkedin.venice.protocols.controller.EnableStoreGrpcRequest;
+import com.linkedin.venice.protocols.controller.EnableStoreGrpcResponse;
 import com.linkedin.venice.protocols.controller.GetValueSchemaGrpcRequest;
 import com.linkedin.venice.protocols.controller.GetValueSchemaGrpcResponse;
 import com.linkedin.venice.protocols.controller.LeaderControllerGrpcRequest;
@@ -27,6 +29,7 @@ import com.linkedin.venice.protocols.controller.LeaderControllerGrpcResponse;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcRequest;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcResponse;
 import com.linkedin.venice.protocols.controller.SchemaGrpcServiceGrpc;
+import com.linkedin.venice.protocols.controller.StoreEnableOperation;
 import com.linkedin.venice.protocols.controller.StoreGrpcServiceGrpc;
 import com.linkedin.venice.protocols.controller.StoreMigrationCheckGrpcRequest;
 import com.linkedin.venice.protocols.controller.StoreMigrationCheckGrpcResponse;
@@ -384,6 +387,59 @@ public class TestControllerGrpcEndpoints {
     StatusRuntimeException exception = Assert
         .expectThrows(StatusRuntimeException.class, () -> schemaBlockingStub.getValueSchema(invalidSchemaRequest));
     assertEquals(exception.getStatus().getCode(), io.grpc.Status.Code.INVALID_ARGUMENT);
+  }
+
+  @Test(timeOut = TIMEOUT_MS)
+  public void testEnableStoreGrpcEndpoint() {
+    String storeName = Utils.getUniqueString("test_enable_store");
+    String controllerGrpcUrl = veniceCluster.getLeaderVeniceController().getControllerGrpcUrl();
+    ManagedChannel channel = Grpc.newChannelBuilder(controllerGrpcUrl, InsecureChannelCredentials.create()).build();
+    StoreGrpcServiceGrpc.StoreGrpcServiceBlockingStub storeBlockingStub = StoreGrpcServiceGrpc.newBlockingStub(channel);
+
+    // Step 1: Create a store first
+    ClusterStoreGrpcInfo storeGrpcInfo = ClusterStoreGrpcInfo.newBuilder()
+        .setClusterName(veniceCluster.getClusterName())
+        .setStoreName(storeName)
+        .build();
+    CreateStoreGrpcRequest createStoreRequest = CreateStoreGrpcRequest.newBuilder()
+        .setStoreInfo(storeGrpcInfo)
+        .setOwner("owner")
+        .setKeySchema(DEFAULT_KEY_SCHEMA)
+        .setValueSchema("\"string\"")
+        .build();
+    CreateStoreGrpcResponse createResponse = storeBlockingStub.createStore(createStoreRequest);
+    assertNotNull(createResponse, "Create store response should not be null");
+
+    // Step 2: Test enable store read operation
+    EnableStoreGrpcRequest enableReadRequest = EnableStoreGrpcRequest.newBuilder()
+        .setStoreInfo(storeGrpcInfo)
+        .setOperation(StoreEnableOperation.STORE_ENABLE_OPERATION_READ)
+        .setStatus(false)
+        .build();
+    EnableStoreGrpcResponse enableReadResponse = storeBlockingStub.enableStore(enableReadRequest);
+    assertNotNull(enableReadResponse, "Enable store response should not be null");
+    assertEquals(enableReadResponse.getStoreInfo().getClusterName(), veniceCluster.getClusterName());
+    assertEquals(enableReadResponse.getStoreInfo().getStoreName(), storeName);
+
+    // Step 3: Test enable store write operation
+    EnableStoreGrpcRequest enableWriteRequest = EnableStoreGrpcRequest.newBuilder()
+        .setStoreInfo(storeGrpcInfo)
+        .setOperation(StoreEnableOperation.STORE_ENABLE_OPERATION_WRITE)
+        .setStatus(false)
+        .build();
+    EnableStoreGrpcResponse enableWriteResponse = storeBlockingStub.enableStore(enableWriteRequest);
+    assertNotNull(enableWriteResponse, "Enable store response should not be null");
+    assertEquals(enableWriteResponse.getStoreInfo().getStoreName(), storeName);
+
+    // Step 4: Test enable store read-write operation
+    EnableStoreGrpcRequest enableReadWriteRequest = EnableStoreGrpcRequest.newBuilder()
+        .setStoreInfo(storeGrpcInfo)
+        .setOperation(StoreEnableOperation.STORE_ENABLE_OPERATION_READ_WRITE)
+        .setStatus(true)
+        .build();
+    EnableStoreGrpcResponse enableReadWriteResponse = storeBlockingStub.enableStore(enableReadWriteRequest);
+    assertNotNull(enableReadWriteResponse, "Enable store response should not be null");
+    assertEquals(enableReadWriteResponse.getStoreInfo().getStoreName(), storeName);
   }
 
   private static class MockDynamicAccessController extends NoOpDynamicAccessController {
