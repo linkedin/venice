@@ -109,6 +109,8 @@ import com.linkedin.venice.meta.StoreDataAudit;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.protocols.controller.ClusterStoreGrpcInfo;
+import com.linkedin.venice.protocols.controller.DeleteStoreGrpcRequest;
+import com.linkedin.venice.protocols.controller.DeleteStoreGrpcResponse;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcRequest;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcResponse;
 import com.linkedin.venice.protocols.controller.ValidateStoreDeletedGrpcRequest;
@@ -571,22 +573,24 @@ public class StoresRoutes extends AbstractRoute {
           String storeName = request.queryParams(NAME);
           boolean abortMigratingStore =
               Utils.parseBooleanOrFalse(request.queryParams(IS_ABORT_MIGRATION_CLEANUP), IS_ABORT_MIGRATION_CLEANUP);
-          veniceResponse.setCluster(clusterName);
-          veniceResponse.setName(storeName);
 
-          Optional<AdminCommandExecutionTracker> adminCommandExecutionTracker =
-              admin.getAdminCommandExecutionTracker(clusterName);
+          // Build gRPC request from HTTP parameters
+          ClusterStoreGrpcInfo storeInfo =
+              ClusterStoreGrpcInfo.newBuilder().setClusterName(clusterName).setStoreName(storeName).build();
+          DeleteStoreGrpcRequest.Builder grpcRequestBuilder =
+              DeleteStoreGrpcRequest.newBuilder().setStoreInfo(storeInfo);
+          if (abortMigratingStore) {
+            grpcRequestBuilder.setIsAbortMigrationCleanup(true);
+          }
 
-          if (adminCommandExecutionTracker.isPresent()) {
-            // Lock the tracker to get the execution id for the last admin command.
-            // It will not make our performance worse, because we lock the whole cluster while handling the admin
-            // operation in parent admin.
-            synchronized (adminCommandExecutionTracker) {
-              admin.deleteStore(clusterName, storeName, abortMigratingStore, Store.IGNORE_VERSION, false);
-              veniceResponse.setExecutionId(adminCommandExecutionTracker.get().getLastExecutionId());
-            }
-          } else {
-            admin.deleteStore(clusterName, storeName, abortMigratingStore, Store.IGNORE_VERSION, false);
+          // Call handler
+          DeleteStoreGrpcResponse grpcResponse = storeRequestHandler.deleteStore(grpcRequestBuilder.build());
+
+          // Map response back to HTTP
+          veniceResponse.setCluster(grpcResponse.getStoreInfo().getClusterName());
+          veniceResponse.setName(grpcResponse.getStoreInfo().getStoreName());
+          if (grpcResponse.hasExecutionId()) {
+            veniceResponse.setExecutionId(grpcResponse.getExecutionId());
           }
         } catch (Throwable e) {
           veniceResponse.setError(e);

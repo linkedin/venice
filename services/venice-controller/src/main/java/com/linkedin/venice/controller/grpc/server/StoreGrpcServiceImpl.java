@@ -12,6 +12,8 @@ import com.linkedin.venice.protocols.controller.CreateStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.CreateStoreGrpcResponse;
 import com.linkedin.venice.protocols.controller.DeleteAclForStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.DeleteAclForStoreGrpcResponse;
+import com.linkedin.venice.protocols.controller.DeleteStoreGrpcRequest;
+import com.linkedin.venice.protocols.controller.DeleteStoreGrpcResponse;
 import com.linkedin.venice.protocols.controller.GetAclForStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.GetAclForStoreGrpcResponse;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcRequest;
@@ -146,5 +148,26 @@ public class StoreGrpcServiceImpl extends StoreGrpcServiceImplBase {
         responseObserver,
         clusterName,
         null);
+  }
+
+  /**
+   * Deletes a store from a cluster.
+   * Only allowlist users are allowed to delete stores.
+   */
+  @Override
+  public void deleteStore(
+      DeleteStoreGrpcRequest grpcRequest,
+      StreamObserver<DeleteStoreGrpcResponse> responseObserver) {
+    LOGGER.debug("Received deleteStore with args: {}", grpcRequest);
+    String clusterName = grpcRequest.getStoreInfo().getClusterName();
+    String storeName = grpcRequest.getStoreInfo().getStoreName();
+    handleRequest(StoreGrpcServiceGrpc.getDeleteStoreMethod(), () -> {
+      if (!isAllowListUser(accessManager, storeName, Context.current())) {
+        throw new VeniceUnauthorizedAccessException(
+            ACL_CHECK_FAILURE_WARN_MESSAGE_PREFIX + StoreGrpcServiceGrpc.getDeleteStoreMethod().getFullMethodName()
+                + " on resource: " + storeName);
+      }
+      return storeRequestHandler.deleteStore(grpcRequest);
+    }, responseObserver, clusterName, storeName);
   }
 }

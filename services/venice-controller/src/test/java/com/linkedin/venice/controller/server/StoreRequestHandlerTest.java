@@ -10,6 +10,7 @@ import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
 
 import com.linkedin.venice.controller.Admin;
+import com.linkedin.venice.controller.AdminCommandExecutionTracker;
 import com.linkedin.venice.controller.ControllerRequestHandlerDependencies;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.DataReplicationPolicy;
@@ -20,6 +21,8 @@ import com.linkedin.venice.protocols.controller.CreateStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.CreateStoreGrpcResponse;
 import com.linkedin.venice.protocols.controller.DeleteAclForStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.DeleteAclForStoreGrpcResponse;
+import com.linkedin.venice.protocols.controller.DeleteStoreGrpcRequest;
+import com.linkedin.venice.protocols.controller.DeleteStoreGrpcResponse;
 import com.linkedin.venice.protocols.controller.GetAclForStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.GetAclForStoreGrpcResponse;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcRequest;
@@ -357,5 +360,87 @@ public class StoreRequestHandlerTest {
     ListStoresGrpcResponse response = storeRequestHandler.listStores(request);
 
     assertEquals(response.getStoreNamesCount(), 0);
+  }
+
+  @Test
+  public void testDeleteStoreSuccess() {
+    DeleteStoreGrpcRequest request = DeleteStoreGrpcRequest.newBuilder()
+        .setStoreInfo(ClusterStoreGrpcInfo.newBuilder().setClusterName("testCluster").setStoreName("testStore").build())
+        .build();
+
+    when(admin.getAdminCommandExecutionTracker("testCluster")).thenReturn(Optional.empty());
+
+    DeleteStoreGrpcResponse response = storeRequestHandler.deleteStore(request);
+
+    verify(admin, times(1)).deleteStore("testCluster", "testStore", false, Store.IGNORE_VERSION, false);
+    assertEquals(response.getStoreInfo().getClusterName(), "testCluster");
+    assertEquals(response.getStoreInfo().getStoreName(), "testStore");
+    assertTrue(!response.hasExecutionId());
+  }
+
+  @Test
+  public void testDeleteStoreWithAbortMigrationCleanup() {
+    DeleteStoreGrpcRequest request = DeleteStoreGrpcRequest.newBuilder()
+        .setStoreInfo(ClusterStoreGrpcInfo.newBuilder().setClusterName("testCluster").setStoreName("testStore").build())
+        .setIsAbortMigrationCleanup(true)
+        .build();
+
+    when(admin.getAdminCommandExecutionTracker("testCluster")).thenReturn(Optional.empty());
+
+    DeleteStoreGrpcResponse response = storeRequestHandler.deleteStore(request);
+
+    verify(admin, times(1)).deleteStore("testCluster", "testStore", true, Store.IGNORE_VERSION, false);
+    assertEquals(response.getStoreInfo().getClusterName(), "testCluster");
+    assertEquals(response.getStoreInfo().getStoreName(), "testStore");
+  }
+
+  @Test
+  public void testDeleteStoreWithExecutionTracker() {
+    DeleteStoreGrpcRequest request = DeleteStoreGrpcRequest.newBuilder()
+        .setStoreInfo(ClusterStoreGrpcInfo.newBuilder().setClusterName("testCluster").setStoreName("testStore").build())
+        .build();
+
+    AdminCommandExecutionTracker tracker = mock(AdminCommandExecutionTracker.class);
+    when(tracker.getLastExecutionId()).thenReturn(12345L);
+    when(admin.getAdminCommandExecutionTracker("testCluster")).thenReturn(Optional.of(tracker));
+
+    DeleteStoreGrpcResponse response = storeRequestHandler.deleteStore(request);
+
+    verify(admin, times(1)).deleteStore("testCluster", "testStore", false, Store.IGNORE_VERSION, false);
+    assertEquals(response.getStoreInfo().getClusterName(), "testCluster");
+    assertEquals(response.getStoreInfo().getStoreName(), "testStore");
+    assertTrue(response.hasExecutionId());
+    assertEquals(response.getExecutionId(), 12345L);
+  }
+
+  @Test(expectedExceptions = VeniceException.class)
+  public void testDeleteStoreThrowsException() {
+    DeleteStoreGrpcRequest request = DeleteStoreGrpcRequest.newBuilder()
+        .setStoreInfo(ClusterStoreGrpcInfo.newBuilder().setClusterName("testCluster").setStoreName("testStore").build())
+        .build();
+
+    when(admin.getAdminCommandExecutionTracker("testCluster")).thenReturn(Optional.empty());
+    doThrow(new VeniceException("Failed to delete store")).when(admin)
+        .deleteStore("testCluster", "testStore", false, Store.IGNORE_VERSION, false);
+
+    storeRequestHandler.deleteStore(request);
+  }
+
+  @Test(expectedExceptions = IllegalArgumentException.class)
+  public void testDeleteStoreMissingClusterName() {
+    DeleteStoreGrpcRequest request = DeleteStoreGrpcRequest.newBuilder()
+        .setStoreInfo(ClusterStoreGrpcInfo.newBuilder().setStoreName("testStore").build())
+        .build();
+
+    storeRequestHandler.deleteStore(request);
+  }
+
+  @Test(expectedExceptions = IllegalArgumentException.class)
+  public void testDeleteStoreMissingStoreName() {
+    DeleteStoreGrpcRequest request = DeleteStoreGrpcRequest.newBuilder()
+        .setStoreInfo(ClusterStoreGrpcInfo.newBuilder().setClusterName("testCluster").build())
+        .build();
+
+    storeRequestHandler.deleteStore(request);
   }
 }
