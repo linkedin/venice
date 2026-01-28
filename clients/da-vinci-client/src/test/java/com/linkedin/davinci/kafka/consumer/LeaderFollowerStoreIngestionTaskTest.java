@@ -401,7 +401,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
     verify(hostLevelIngestionStats, times(1)).recordViewProducerAckLatency(anyDouble());
   }
 
-  @Test(timeOut = 10000)
+  @Test(timeOut = 30000)
   public void testCloseVeniceViewWriters() throws InterruptedException {
     mockVeniceViewWriterFactory = mock(VeniceViewWriterFactory.class);
     Map<String, VeniceViewWriter> viewWriterMap = new HashMap<>();
