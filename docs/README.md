@@ -113,7 +113,7 @@ Venice supports flexible data ingestion:
 
 - **Batch Push**: Full dataset replacement from Hadoop, Spark
 - **Incremental Push**: Bulk additions without full replacement
-- **Streaming Writes**: Real-time updates via Kafka, Samza, Flink, or the
+- **Streaming Writes**: Real-time updates via Apache Samza or the
   [Online Producer](./user-guide/write-apis/online-producer.md)
 - **Write Compute**: Partial updates and collection merging for efficiency
 - **Hybrid Stores**: Mix batch and streaming with configurable rewind time
