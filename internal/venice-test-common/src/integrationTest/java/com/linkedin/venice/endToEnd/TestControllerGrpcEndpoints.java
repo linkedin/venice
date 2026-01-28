@@ -219,6 +219,24 @@ public class TestControllerGrpcEndpoints {
   }
 
   @Test(timeOut = TIMEOUT_MS)
+  public void testIsStoreMigrationAllowedGrpcEndpoint() {
+    String controllerGrpcUrl = veniceCluster.getLeaderVeniceController().getControllerGrpcUrl();
+    ManagedChannel channel = Grpc.newChannelBuilder(controllerGrpcUrl, InsecureChannelCredentials.create()).build();
+    ClusterAdminOpsGrpcServiceGrpc.ClusterAdminOpsGrpcServiceBlockingStub blockingStub =
+        ClusterAdminOpsGrpcServiceGrpc.newBlockingStub(channel);
+
+    StoreMigrationCheckGrpcRequest request =
+        StoreMigrationCheckGrpcRequest.newBuilder().setClusterName(veniceCluster.getClusterName()).build();
+
+    StoreMigrationCheckGrpcResponse response = blockingStub.isStoreMigrationAllowed(request);
+
+    assertNotNull(response, "Response should not be null");
+    assertEquals(response.getClusterName(), veniceCluster.getClusterName());
+    // By default, store migration is allowed in test clusters
+    assertTrue(response.getStoreMigrationAllowed(), "Store migration should be allowed by default");
+  }
+
+  @Test(timeOut = TIMEOUT_MS)
   public void testValidateStoreDeletedOverSecureGrpcChannel() {
     String storeName = Utils.getUniqueString("test_validate_deleted_secure");
     String controllerSecureGrpcUrl = veniceCluster.getLeaderVeniceController().getControllerSecureGrpcUrl();
