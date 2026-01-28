@@ -120,7 +120,6 @@ import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.stats.dimensions.StoreRepushTriggerSource;
-import com.linkedin.venice.systemstore.schemas.StoreProperties;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.Utils;
 import java.util.ArrayList;
@@ -279,7 +278,7 @@ public class StoresRoutes extends AbstractRoute {
   /**
    * @see Admin#getStore(String, String)
    */
-  public Route getStore(Admin admin, StoreRequestHandler requestHandler) {
+  public Route getStore(Admin admin) {
     return new VeniceRouteHandler<StoreResponse>(StoreResponse.class) {
       @Override
       public void internalHandle(Request request, StoreResponse veniceResponse) {
@@ -292,7 +291,7 @@ public class StoresRoutes extends AbstractRoute {
             ClusterStoreGrpcInfo.newBuilder().setClusterName(clusterName).setStoreName(storeName).build();
         GetStoreGrpcRequest grpcRequest = GetStoreGrpcRequest.newBuilder().setStoreInfo(storeGrpcInfo).build();
 
-        GetStoreGrpcResponse grpcResponse = requestHandler.getStore(grpcRequest);
+        GetStoreGrpcResponse grpcResponse = storeRequestHandler.getStore(grpcRequest);
 
         veniceResponse.setCluster(grpcResponse.getStoreInfo().getClusterName());
         veniceResponse.setName(grpcResponse.getStoreInfo().getStoreName());
