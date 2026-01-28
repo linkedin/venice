@@ -114,9 +114,32 @@ public class DefaultIngestionBackend implements IngestionBackend {
           storeConfig,
           svsSupplier);
 
-      bootstrapFuture.whenComplete((result, throwable) -> {
+      boolean isDaVinciClient = storeIngestionService.isDaVinciClient();
+
+      if (isDaVinciClient) {
+        // DaVinci client: Use asynchronous behavior
+        bootstrapFuture.whenComplete((result, throwable) -> {
+          runnable.run();
+        });
+      } else {
+        // Server: Use blocking behavior to prevent race conditions
+        // Wait for blob transfer to complete synchronously to ensure SUBSCRIBE is queued
+        // before the state transition completes, preventing race with subsequent UNSUBSCRIBE
+        bootstrapFuture.toCompletableFuture().join();
+
+        // Check if partition was dropped during blob transfer
+        StorageEngine storageEngine = storageService.getStorageEngine(
+            Version.composeKafkaTopic(storeAndVersion.getStore().getName(), storeAndVersion.getVersion().getNumber()));
+        if (storageEngine == null || !storageEngine.containsPartition(partition)) {
+          LOGGER.warn(
+              "Partition {} of store {} was dropped during blob transfer. Skipping startConsumption.",
+              partition,
+              storeVersion);
+          return;
+        }
+
         runnable.run();
-      });
+      }
     }
   }
 
