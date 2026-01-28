@@ -1,0 +1,44 @@
+syntax = 'proto3';
+package com.linkedin.venice.protocols.controller;
+
+
+import "controller/ControllerGrpcRequestContext.proto";
+
+option java_multiple_files = true;
+
+service JobGrpcService {
+  rpc getJobStatus(GetJobStatusGrpcRequest) returns (GetJobStatusGrpcResponse);
+}
+
+message GetJobStatusGrpcRequest {
+  ClusterStoreGrpcInfo storeInfo = 1;
+  int32 version = 2;
+  optional string incrementalPushVersion = 3;
+  optional string targetedRegions = 4;
+  optional bool isTargetRegionPushWithDeferredSwap = 5;
+  optional string region = 6;
+}
+
+message GetJobStatusGrpcResponse {
+  ClusterStoreGrpcInfo storeInfo = 1;
+  int32 version = 2;
+  string status = 3;
+  optional string statusDetails = 4;
+  optional int64 statusUpdateTimestamp = 5;
+  map<string, string> extraInfo = 6;
+  map<string, string> extraDetails = 7;
+  map<string, int64> extraInfoUpdateTimestamp = 8;
+  repeated UncompletedPartitionGrpc uncompletedPartitions = 9;
+}
+
+message UncompletedPartitionGrpc {
+  int32 partitionId = 1;
+  repeated UncompletedReplicaGrpc uncompletedReplicas = 2;
+}
+
+message UncompletedReplicaGrpc {
+  string instanceId = 1;
+  string status = 2;
+  int64 currentOffset = 3;
+  optional string statusDetails = 4;
+}

@@ -21,13 +21,24 @@ import com.linkedin.venice.controllerapi.IncrementalPushVersionsResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.routes.PushJobStatusUploadResponse;
 import com.linkedin.venice.exceptions.ErrorType;
+import com.linkedin.venice.meta.UncompletedPartition;
+import com.linkedin.venice.meta.UncompletedReplica;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.protocols.controller.ClusterStoreGrpcInfo;
+import com.linkedin.venice.protocols.controller.GetJobStatusGrpcRequest;
+import com.linkedin.venice.protocols.controller.GetJobStatusGrpcResponse;
+import com.linkedin.venice.protocols.controller.UncompletedPartitionGrpc;
+import com.linkedin.venice.protocols.controller.UncompletedReplicaGrpc;
+import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.status.protocol.PushJobStatusRecordKey;
 import com.linkedin.venice.utils.Utils;
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.apache.http.HttpStatus;
 import org.apache.logging.log4j.LogManager;
@@ -39,9 +50,14 @@ public class JobRoutes extends AbstractRoute {
   private static final Logger LOGGER = LogManager.getLogger(JobRoutes.class);
   private final InternalAvroSpecificSerializer<PushJobDetails> pushJobDetailsSerializer =
       AvroProtocolDefinition.PUSH_JOB_DETAILS.getSerializer();
+  private final JobRequestHandler jobRequestHandler;
 
-  public JobRoutes(boolean sslEnabled, Optional<DynamicAccessController> accessController) {
+  public JobRoutes(
+      boolean sslEnabled,
+      Optional<DynamicAccessController> accessController,
+      JobRequestHandler jobRequestHandler) {
     super(sslEnabled, accessController);
+    this.jobRequestHandler = jobRequestHandler;
   }
 
   /**
@@ -62,15 +78,28 @@ public class JobRoutes extends AbstractRoute {
         boolean isTargetRegionPushWithDeferredSwap =
             Boolean.parseBoolean(request.queryParams(TARGET_REGION_PUSH_WITH_DEFERRED_SWAP));
         String region = AdminSparkServer.getOptionalParameterValue(request, FABRIC);
-        responseObject = populateJobStatus(
-            cluster,
-            store,
-            versionNumber,
-            admin,
-            Optional.ofNullable(incrementalPushVersion),
-            region,
-            targetedRegions,
-            isTargetRegionPushWithDeferredSwap);
+
+        // Convert to gRPC request
+        ClusterStoreGrpcInfo storeInfo =
+            ClusterStoreGrpcInfo.newBuilder().setClusterName(cluster).setStoreName(store).build();
+        GetJobStatusGrpcRequest.Builder grpcRequestBuilder =
+            GetJobStatusGrpcRequest.newBuilder().setStoreInfo(storeInfo).setVersion(versionNumber);
+        if (incrementalPushVersion != null) {
+          grpcRequestBuilder.setIncrementalPushVersion(incrementalPushVersion);
+        }
+        if (targetedRegions != null) {
+          grpcRequestBuilder.setTargetedRegions(targetedRegions);
+        }
+        grpcRequestBuilder.setIsTargetRegionPushWithDeferredSwap(isTargetRegionPushWithDeferredSwap);
+        if (region != null) {
+          grpcRequestBuilder.setRegion(region);
+        }
+
+        // Call handler
+        GetJobStatusGrpcResponse grpcResponse = jobRequestHandler.getJobStatus(grpcRequestBuilder.build());
+
+        // Map response back to HTTP
+        responseObject = mapGrpcResponseToHttp(grpcResponse);
       } catch (Throwable e) {
         responseObject.setError(e);
         AdminSparkServer.handleError(e, request, response);
@@ -79,37 +108,56 @@ public class JobRoutes extends AbstractRoute {
     };
   }
 
-  JobStatusQueryResponse populateJobStatus(
-      String cluster,
-      String store,
-      int versionNumber,
-      Admin admin,
-      Optional<String> incrementalPushVersion,
-      String region,
-      String targetedRegions,
-      boolean isTargetRegionPushWithDeferredSwap) {
+  /**
+   * Maps the gRPC response to the HTTP response format.
+   */
+  JobStatusQueryResponse mapGrpcResponseToHttp(GetJobStatusGrpcResponse grpcResponse) {
     JobStatusQueryResponse responseObject = new JobStatusQueryResponse();
+    responseObject.setCluster(grpcResponse.getStoreInfo().getClusterName());
+    responseObject.setName(grpcResponse.getStoreInfo().getStoreName());
+    responseObject.setVersion(grpcResponse.getVersion());
+    responseObject.setStatus(grpcResponse.getStatus());
 
-    String kafkaTopicName = Version.composeKafkaTopic(store, versionNumber);
+    if (grpcResponse.hasStatusDetails()) {
+      responseObject.setStatusDetails(grpcResponse.getStatusDetails());
+    }
+    if (grpcResponse.hasStatusUpdateTimestamp()) {
+      responseObject.setStatusUpdateTimestamp(grpcResponse.getStatusUpdateTimestamp());
+    }
 
-    Admin.OfflinePushStatusInfo offlineJobStatus = admin.getOffLinePushStatus(
-        cluster,
-        kafkaTopicName,
-        incrementalPushVersion,
-        region,
-        targetedRegions,
-        isTargetRegionPushWithDeferredSwap);
-    responseObject.setStatus(offlineJobStatus.getExecutionStatus().toString());
-    responseObject.setStatusUpdateTimestamp(offlineJobStatus.getStatusUpdateTimestamp());
-    responseObject.setStatusDetails(offlineJobStatus.getStatusDetails());
-    responseObject.setExtraInfo(offlineJobStatus.getExtraInfo());
-    responseObject.setExtraInfoUpdateTimestamp(offlineJobStatus.getExtraInfoUpdateTimestamp());
-    responseObject.setExtraDetails(offlineJobStatus.getExtraDetails());
-    responseObject.setUncompletedPartitions(offlineJobStatus.getUncompletedPartitions());
+    Map<String, String> extraInfo = grpcResponse.getExtraInfoMap();
+    if (!extraInfo.isEmpty()) {
+      responseObject.setExtraInfo(extraInfo);
+    }
 
-    responseObject.setCluster(cluster);
-    responseObject.setName(store);
-    responseObject.setVersion(versionNumber);
+    Map<String, String> extraDetails = grpcResponse.getExtraDetailsMap();
+    if (!extraDetails.isEmpty()) {
+      responseObject.setExtraDetails(extraDetails);
+    }
+
+    Map<String, Long> extraInfoUpdateTimestamp = grpcResponse.getExtraInfoUpdateTimestampMap();
+    if (!extraInfoUpdateTimestamp.isEmpty()) {
+      responseObject.setExtraInfoUpdateTimestamp(extraInfoUpdateTimestamp);
+    }
+
+    List<UncompletedPartitionGrpc> grpcPartitions = grpcResponse.getUncompletedPartitionsList();
+    if (!grpcPartitions.isEmpty()) {
+      List<UncompletedPartition> partitions = new ArrayList<>();
+      for (UncompletedPartitionGrpc grpcPartition: grpcPartitions) {
+        List<UncompletedReplica> replicas = new ArrayList<>();
+        for (UncompletedReplicaGrpc grpcReplica: grpcPartition.getUncompletedReplicasList()) {
+          UncompletedReplica replica = new UncompletedReplica(
+              grpcReplica.getInstanceId(),
+              ExecutionStatus.valueOf(grpcReplica.getStatus()),
+              grpcReplica.getCurrentOffset(),
+              grpcReplica.hasStatusDetails() ? grpcReplica.getStatusDetails() : null);
+          replicas.add(replica);
+        }
+        partitions.add(new UncompletedPartition(grpcPartition.getPartitionId(), replicas));
+      }
+      responseObject.setUncompletedPartitions(partitions);
+    }
+
     return responseObject;
   }
 
