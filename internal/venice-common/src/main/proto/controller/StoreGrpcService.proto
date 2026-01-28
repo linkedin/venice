@@ -14,6 +14,7 @@ service StoreGrpcService {
   rpc checkResourceCleanupForStoreCreation(ClusterStoreGrpcInfo) returns (ResourceCleanupCheckGrpcResponse) {}
   rpc validateStoreDeleted(ValidateStoreDeletedGrpcRequest) returns (ValidateStoreDeletedGrpcResponse);
   rpc listStores(ListStoresGrpcRequest) returns (ListStoresGrpcResponse);
+  rpc getRepushInfo(GetRepushInfoGrpcRequest) returns (GetRepushInfoGrpcResponse);
 }
 
 message CreateStoreGrpcRequest {
@@ -82,4 +83,30 @@ message ListStoresGrpcRequest {
 message ListStoresGrpcResponse {
   string clusterName = 1;
   repeated string storeNames = 2;
+}
+
+message GetRepushInfoGrpcRequest {
+  ClusterStoreGrpcInfo storeInfo = 1;
+  optional string fabric = 2;
+}
+
+message GetRepushInfoGrpcResponse {
+  ClusterStoreGrpcInfo storeInfo = 1;
+  RepushInfoGrpc repushInfo = 2;
+}
+
+message RepushInfoGrpc {
+  string kafkaBrokerUrl = 1;
+  optional VersionGrpc version = 2;
+  optional string systemSchemaClusterD2ServiceName = 3;
+  optional string systemSchemaClusterD2ZkHost = 4;
+}
+
+message VersionGrpc {
+  int32 number = 1;
+  int64 createdTime = 2;
+  int32 status = 3; // VersionStatus enum ordinal
+  string pushJobId = 4;
+  int32 partitionCount = 5;
+  int32 replicationFactor = 6;
 }

@@ -109,8 +109,11 @@ import com.linkedin.venice.meta.StoreDataAudit;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.protocols.controller.ClusterStoreGrpcInfo;
+import com.linkedin.venice.protocols.controller.GetRepushInfoGrpcRequest;
+import com.linkedin.venice.protocols.controller.GetRepushInfoGrpcResponse;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcRequest;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcResponse;
+import com.linkedin.venice.protocols.controller.RepushInfoGrpc;
 import com.linkedin.venice.protocols.controller.ValidateStoreDeletedGrpcRequest;
 import com.linkedin.venice.protocols.controller.ValidateStoreDeletedGrpcResponse;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
@@ -253,7 +256,7 @@ public class StoresRoutes extends AbstractRoute {
   /**
    * @see Admin#getRepushInfo(String, String, Optional)
    */
-  public Route getRepushInfo(Admin admin) {
+  public Route getRepushInfo(Admin admin, StoreRequestHandler requestHandler) {
     return new VeniceRouteHandler<RepushInfoResponse>(RepushInfoResponse.class) {
       @Override
       public void internalHandle(Request request, RepushInfoResponse veniceResponse) {
@@ -262,9 +265,25 @@ public class StoresRoutes extends AbstractRoute {
         String storeName = request.queryParams(NAME);
         String fabricName = request.queryParams(FABRIC);
 
+        // Convert to gRPC request
+        ClusterStoreGrpcInfo storeInfo =
+            ClusterStoreGrpcInfo.newBuilder().setClusterName(clusterName).setStoreName(storeName).build();
+        GetRepushInfoGrpcRequest.Builder grpcRequestBuilder =
+            GetRepushInfoGrpcRequest.newBuilder().setStoreInfo(storeInfo);
+        if (fabricName != null) {
+          grpcRequestBuilder.setFabric(fabricName);
+        }
+        GetRepushInfoGrpcRequest grpcRequest = grpcRequestBuilder.build();
+
+        // Call handler
+        GetRepushInfoGrpcResponse grpcResponse = requestHandler.getRepushInfo(grpcRequest);
+
+        // Map response back to HTTP
         veniceResponse.setCluster(clusterName);
         veniceResponse.setName(storeName);
 
+        // Convert proto RepushInfo back to Java RepushInfo for HTTP response
+        RepushInfoGrpc repushInfoProto = grpcResponse.getRepushInfo();
         RepushInfo repushInfo = admin.getRepushInfo(clusterName, storeName, Optional.ofNullable(fabricName));
 
         veniceResponse.setRepushInfo(repushInfo);
