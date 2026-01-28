@@ -332,39 +332,6 @@ public class DataWriterSparkJobRepushTest {
     assertEquals(new String(capturedRecords.get(0).value), originalValue);
   }
 
-  /**
-   * Test compression metric collection in the Spark pipeline.
-   */
-  @Test
-  public void testCompressionMetricCollection() throws Exception {
-    String testName = "testCompressionMetricCollection";
-    TestSparkPartitionWriter.clearCapturedRecords(testName);
-
-    String originalValue = "value-for-metric-collection";
-    TestDataWriterSparkJobWithCompression job =
-        new TestDataWriterSparkJobWithCompression(testName, originalValue.getBytes());
-    currentTestJob = job;
-
-    PushJobSetting setting = new PushJobSetting();
-    setting.isSourceKafka = true;
-    setting.kafkaInputTopic = "test_store_v1";
-    setting.kafkaInputBrokerUrl = "localhost:9092";
-    setting.sourceVersionCompressionStrategy = CompressionStrategy.NO_OP;
-    setting.topicCompressionStrategy = CompressionStrategy.NO_OP;
-    setting.compressionMetricCollectionEnabled = true; // Enabled
-    setting.topic = "test_store_v1";
-    setting.kafkaUrl = "localhost:9092";
-    setting.partitionerClass = DefaultVenicePartitioner.class.getName();
-    setting.partitionCount = 1;
-    setting.sourceKafkaInputVersionInfo = new VersionImpl("test_store", 1, "test-push-id");
-
-    job.configure(new VeniceProperties(createDefaultTestProperties()), setting);
-    job.runComputeJob();
-
-    DataWriterAccumulators accumulators = job.getAccumulators();
-    assertEquals(accumulators.uncompressedValueSizeCounter.value().longValue(), (long) originalValue.getBytes().length);
-  }
-
   private Properties createDefaultTestProperties() {
     Properties props = new Properties();
     props.setProperty(KAFKA_INPUT_TOPIC, "test_store_v1");

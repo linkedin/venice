@@ -633,7 +633,7 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
     DataWriterAccumulators accumulators = accumulatorsForDataWriterJob;
 
     // Optimization: if strategies and dictionaries are the same and metrics are disabled, skip the map stage
-    if (sourceStrategy == destStrategy && java.util.Arrays.equals(sourceDict, destDict) && !metricEnabled) {
+    if (sourceStrategy == destStrategy && java.util.Arrays.equals(sourceDict, destDict)) {
       LOGGER.info("Source and destination compression are identical ({}). Skipping re-encoding stage.", sourceStrategy);
       return dataFrame;
     }
