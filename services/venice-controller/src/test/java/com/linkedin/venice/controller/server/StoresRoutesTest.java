@@ -528,8 +528,9 @@ public class StoresRoutesTest {
     ClusterStoreGrpcInfo storeInfo =
         ClusterStoreGrpcInfo.newBuilder().setClusterName(TEST_CLUSTER).setStoreName(TEST_STORE_NAME).build();
 
-    Route validateStoreDeletedRoute = new StoresRoutes(false, Optional.empty(), pubSubTopicRepository)
-        .validateStoreDeleted(mockAdmin, mockRequestHandler);
+    Route validateStoreDeletedRoute =
+        new StoresRoutes(false, Optional.empty(), pubSubTopicRepository, mockRequestHandler)
+            .validateStoreDeleted(mockAdmin);
 
     // Case 1: Store is deleted (storeDeleted=true, no reason)
     ValidateStoreDeletedGrpcResponse deletedResponse =
@@ -624,7 +625,7 @@ public class StoresRoutesTest {
     when(mockRequestHandler.listStores(any(ListStoresGrpcRequest.class))).thenReturn(grpcResponse);
 
     Route getAllStoresRoute =
-        new StoresRoutes(false, Optional.empty(), pubSubTopicRepository).getAllStores(mockAdmin, mockRequestHandler);
+        new StoresRoutes(false, Optional.empty(), pubSubTopicRepository, mockRequestHandler).getAllStores(mockAdmin);
     MultiStoreResponse response = ObjectMapperFactory.getInstance()
         .readValue(getAllStoresRoute.handle(request, mock(Response.class)).toString(), MultiStoreResponse.class);
     Assert.assertFalse(response.isError());
@@ -679,7 +680,7 @@ public class StoresRoutesTest {
     when(mockRequestHandler.listStores(any(ListStoresGrpcRequest.class))).thenReturn(grpcResponse);
 
     Route getAllStoresRoute =
-        new StoresRoutes(false, Optional.empty(), pubSubTopicRepository).getAllStores(mockAdmin, mockRequestHandler);
+        new StoresRoutes(false, Optional.empty(), pubSubTopicRepository, mockRequestHandler).getAllStores(mockAdmin);
     MultiStoreResponse response = ObjectMapperFactory.getInstance()
         .readValue(getAllStoresRoute.handle(request, mock(Response.class)).toString(), MultiStoreResponse.class);
     Assert.assertFalse(response.isError());

@@ -162,7 +162,7 @@ public class StoresRoutes extends AbstractRoute {
    * to run this command.
    * @see Admin#getAllStores(String)
    */
-  public Route getAllStores(Admin admin, StoreRequestHandler requestHandler) {
+  public Route getAllStores(Admin admin) {
     return new VeniceRouteHandler<MultiStoreResponse>(MultiStoreResponse.class) {
       @Override
       public void internalHandle(Request request, MultiStoreResponse veniceResponse) {
@@ -190,7 +190,7 @@ public class StoresRoutes extends AbstractRoute {
           grpcRequestBuilder.setStoreConfigValueFilter(storeConfigValueFilter);
         }
 
-        ListStoresGrpcResponse grpcResponse = requestHandler.listStores(grpcRequestBuilder.build());
+        ListStoresGrpcResponse grpcResponse = storeRequestHandler.listStores(grpcRequestBuilder.build());
         veniceResponse.setStores(grpcResponse.getStoreNamesList().toArray(new String[0]));
       }
     };
@@ -1199,7 +1199,7 @@ public class StoresRoutes extends AbstractRoute {
   /**
    * @see Admin#validateStoreDeleted(String, String)
    */
-  public Route validateStoreDeleted(Admin admin, StoreRequestHandler requestHandler) {
+  public Route validateStoreDeleted(Admin admin) {
     return new VeniceRouteHandler<StoreDeletedValidationResponse>(StoreDeletedValidationResponse.class) {
       @Override
       public void internalHandle(Request request, StoreDeletedValidationResponse veniceResponse) {
@@ -1215,7 +1215,7 @@ public class StoresRoutes extends AbstractRoute {
             ClusterStoreGrpcInfo.newBuilder().setClusterName(clusterName).setStoreName(storeName).build();
         ValidateStoreDeletedGrpcRequest grpcRequest =
             ValidateStoreDeletedGrpcRequest.newBuilder().setStoreInfo(storeInfo).build();
-        ValidateStoreDeletedGrpcResponse grpcResponse = requestHandler.validateStoreDeleted(grpcRequest);
+        ValidateStoreDeletedGrpcResponse grpcResponse = storeRequestHandler.validateStoreDeleted(grpcRequest);
 
         veniceResponse.setCluster(grpcResponse.getStoreInfo().getClusterName());
         veniceResponse.setName(grpcResponse.getStoreInfo().getStoreName());

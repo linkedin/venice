@@ -330,9 +330,7 @@ public class AdminSparkServer extends AbstractVeniceService {
         new VeniceParentControllerRegionStateHandler(admin, controllerRoutes.getChildControllers(admin)));
     httpService.get(
         LIST_STORES.getPath(),
-        new VeniceParentControllerRegionStateHandler(
-            admin,
-            storesRoutes.getAllStores(admin, requestHandler.getStoreRequestHandler())));
+        new VeniceParentControllerRegionStateHandler(admin, storesRoutes.getAllStores(admin)));
     httpService.get(
         CLEAN_EXECUTION_IDS.getPath(),
         new VeniceParentControllerRegionStateHandler(admin, storesRoutes.cleanExecutionIds(admin)));
@@ -711,9 +709,7 @@ public class AdminSparkServer extends AbstractVeniceService {
         new VeniceParentControllerRegionStateHandler(admin, storesRoutes.getInUseSchemaIds(admin)));
     httpService.get(
         VALIDATE_STORE_DELETED.getPath(),
-        new VeniceParentControllerRegionStateHandler(
-            admin,
-            storesRoutes.validateStoreDeleted(admin, requestHandler.getStoreRequestHandler())));
+        new VeniceParentControllerRegionStateHandler(admin, storesRoutes.validateStoreDeleted(admin)));
 
     httpService.post(
         CLEANUP_INSTANCE_CUSTOMIZED_STATES.getPath(),
