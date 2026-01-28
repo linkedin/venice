@@ -28,9 +28,11 @@ import java.io.File;
 import java.util.Arrays;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 import org.apache.logging.log4j.LogManager;
@@ -49,6 +51,8 @@ public class DefaultIngestionBackend implements IngestionBackend {
   private final Map<String, AtomicReference<StorageEngine>> topicStorageEngineReferenceMap =
       new VeniceConcurrentHashMap<>();
   private final BlobTransferManager blobTransferManager;
+  // Track active blob transfers to coordinate with stopConsumption
+  private final Map<String, CompletableFuture<Void>> activeBlobTransfers = new VeniceConcurrentHashMap<>();
 
   public DefaultIngestionBackend(
       StorageMetadataService storageMetadataService,
@@ -61,6 +65,22 @@ public class DefaultIngestionBackend implements IngestionBackend {
     this.storageService = storageService;
     this.blobTransferManager = blobTransferManager;
     this.serverConfig = serverConfig;
+  }
+
+  /**
+   * Generate a unique key for tracking blob transfers per partition
+   */
+  private String getBlobTransferKey(String storeVersion, int partition) {
+    return storeVersion + "_" + partition;
+  }
+
+  /**
+   * Check if a blob transfer is currently active for the given partition
+   */
+  public boolean isBlobTransferActive(String storeVersion, int partition) {
+    String transferKey = getBlobTransferKey(storeVersion, partition);
+    CompletableFuture<Void> future = activeBlobTransfers.get(transferKey);
+    return future != null && !future.isDone();
   }
 
   @Override
@@ -104,6 +124,11 @@ public class DefaultIngestionBackend implements IngestionBackend {
               ? BlobTransferTableFormat.PLAIN_TABLE
               : BlobTransferTableFormat.BLOCK_BASED_TABLE;
 
+      // Create a completable future to track this blob transfer
+      String transferKey = getBlobTransferKey(storeVersion, partition);
+      CompletableFuture<Void> trackedFuture = new CompletableFuture<>();
+      activeBlobTransfers.put(transferKey, trackedFuture);
+
       CompletionStage<Void> bootstrapFuture = bootstrapFromBlobs(
           storeAndVersion.getStore(),
           storeAndVersion.getVersion().getNumber(),
@@ -115,7 +140,24 @@ public class DefaultIngestionBackend implements IngestionBackend {
           svsSupplier);
 
       bootstrapFuture.whenComplete((result, throwable) -> {
-        runnable.run();
+        try {
+          // Check if partition was dropped during transfer
+          if (activeBlobTransfers.containsKey(transferKey)) {
+            LOGGER.info(
+                "Blob transfer completed for {}, starting Kafka consumption",
+                Utils.getReplicaId(storeVersion, partition));
+            runnable.run();
+            trackedFuture.complete(null);
+          } else {
+            LOGGER.warn(
+                "Partition {} was dropped during blob transfer, skipping Kafka consumption startup",
+                Utils.getReplicaId(storeVersion, partition));
+            trackedFuture.cancel(false);
+          }
+        } finally {
+          // Always clean up tracking
+          activeBlobTransfers.remove(transferKey);
+        }
       });
     }
   }
@@ -410,6 +452,38 @@ public class DefaultIngestionBackend implements IngestionBackend {
 
   @Override
   public CompletableFuture<Void> stopConsumption(VeniceStoreVersionConfig storeConfig, int partition) {
+    String storeVersion = storeConfig.getStoreVersionName();
+    String transferKey = getBlobTransferKey(storeVersion, partition);
+
+    // Check if blob transfer is active for this partition
+    CompletableFuture<Void> blobTransferFuture = activeBlobTransfers.remove(transferKey);
+
+    if (blobTransferFuture != null && !blobTransferFuture.isDone()) {
+      LOGGER.info(
+          "Blob transfer in progress for {}, waiting for completion or cancellation",
+          Utils.getReplicaId(storeVersion, partition));
+
+      // Cancel the blob transfer callback (prevents startConsumption after drop)
+      blobTransferFuture.cancel(true);
+
+      // Wait for blob transfer to actually finish (with timeout)
+      try {
+        blobTransferFuture.get(30, TimeUnit.SECONDS);
+      } catch (TimeoutException e) {
+        LOGGER.warn(
+            "Blob transfer for {} did not complete within 30s, proceeding with stop",
+            Utils.getReplicaId(storeVersion, partition));
+      } catch (CancellationException e) {
+        LOGGER.info("Blob transfer for {} was cancelled successfully", Utils.getReplicaId(storeVersion, partition));
+      } catch (Exception e) {
+        LOGGER.error(
+            "Error waiting for blob transfer to complete for {}",
+            Utils.getReplicaId(storeVersion, partition),
+            e);
+      }
+    }
+
+    // Now proceed with normal Kafka stopConsumption
     return getStoreIngestionService().stopConsumption(storeConfig, partition);
   }
 
@@ -434,6 +508,38 @@ public class DefaultIngestionBackend implements IngestionBackend {
       int partition,
       int timeoutInSeconds,
       boolean removeEmptyStorageEngine) {
+    // First, wait for any active blob transfers to complete
+    String storeVersion = storeConfig.getStoreVersionName();
+    String transferKey = getBlobTransferKey(storeVersion, partition);
+    CompletableFuture<Void> blobTransferFuture = activeBlobTransfers.remove(transferKey);
+
+    if (blobTransferFuture != null && !blobTransferFuture.isDone()) {
+      LOGGER.info(
+          "Blob transfer in progress for {}, waiting for completion before dropping partition",
+          Utils.getReplicaId(storeVersion, partition));
+
+      // Cancel the blob transfer callback (prevents startConsumption after drop)
+      blobTransferFuture.cancel(true);
+
+      // Wait for blob transfer to actually finish (with timeout)
+      try {
+        blobTransferFuture.get(30, TimeUnit.SECONDS);
+        LOGGER
+            .info("Blob transfer for {} completed/cancelled successfully", Utils.getReplicaId(storeVersion, partition));
+      } catch (TimeoutException e) {
+        LOGGER.warn(
+            "Blob transfer for {} did not complete within 30s, proceeding with drop",
+            Utils.getReplicaId(storeVersion, partition));
+      } catch (CancellationException e) {
+        LOGGER.info("Blob transfer for {} was cancelled successfully", Utils.getReplicaId(storeVersion, partition));
+      } catch (Exception e) {
+        LOGGER.error(
+            "Error waiting for blob transfer to complete for {}",
+            Utils.getReplicaId(storeVersion, partition),
+            e);
+      }
+    }
+
     // Stop consumption of the partition.
     final int waitIntervalInSecond = 1;
     final int maxRetry = timeoutInSeconds / waitIntervalInSecond;
