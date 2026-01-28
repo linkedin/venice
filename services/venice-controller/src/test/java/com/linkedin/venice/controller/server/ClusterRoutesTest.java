@@ -83,7 +83,7 @@ public class ClusterRoutesTest {
         .build();
     doReturn(grpcResponse).when(mockRequestHandler).isStoreMigrationAllowed(any(StoreMigrationCheckGrpcRequest.class));
 
-    Route route = new ClusterRoutes(false, Optional.empty()).isStoreMigrationAllowed(mockAdmin, mockRequestHandler);
+    Route route = new ClusterRoutes(false, Optional.empty(), mockRequestHandler).isStoreMigrationAllowed(mockAdmin);
 
     StoreMigrationResponse response = ObjectMapperFactory.getInstance()
         .readValue(route.handle(request, mock(Response.class)).toString(), StoreMigrationResponse.class);
@@ -110,7 +110,7 @@ public class ClusterRoutesTest {
         .build();
     doReturn(grpcResponse).when(mockRequestHandler).isStoreMigrationAllowed(any(StoreMigrationCheckGrpcRequest.class));
 
-    Route route = new ClusterRoutes(false, Optional.empty()).isStoreMigrationAllowed(mockAdmin, mockRequestHandler);
+    Route route = new ClusterRoutes(false, Optional.empty(), mockRequestHandler).isStoreMigrationAllowed(mockAdmin);
 
     StoreMigrationResponse response = ObjectMapperFactory.getInstance()
         .readValue(route.handle(request, mock(Response.class)).toString(), StoreMigrationResponse.class);
@@ -134,7 +134,7 @@ public class ClusterRoutesTest {
     doThrow(new VeniceException("Error checking migration allowed")).when(mockRequestHandler)
         .isStoreMigrationAllowed(any(StoreMigrationCheckGrpcRequest.class));
 
-    Route route = new ClusterRoutes(false, Optional.empty()).isStoreMigrationAllowed(mockAdmin, mockRequestHandler);
+    Route route = new ClusterRoutes(false, Optional.empty(), mockRequestHandler).isStoreMigrationAllowed(mockAdmin);
 
     StoreMigrationResponse response = ObjectMapperFactory.getInstance()
         .readValue(route.handle(request, mock(Response.class)).toString(), StoreMigrationResponse.class);

@@ -313,7 +313,8 @@ public class AdminSparkServer extends AbstractVeniceService {
         new RoutersClusterConfigRoutes(sslEnabled, accessController);
     MigrationRoutes migrationRoutes = new MigrationRoutes(sslEnabled, accessController);
     VersionRoute versionRoute = new VersionRoute(sslEnabled, accessController);
-    ClusterRoutes clusterRoutes = new ClusterRoutes(sslEnabled, accessController);
+    ClusterRoutes clusterRoutes =
+        new ClusterRoutes(sslEnabled, accessController, requestHandler.getClusterAdminOpsRequestHandler());
     NewClusterBuildOutRoutes newClusterBuildOutRoutes = new NewClusterBuildOutRoutes(sslEnabled, accessController);
     DataRecoveryRoutes dataRecoveryRoutes = new DataRecoveryRoutes(sslEnabled, accessController);
     AdminTopicMetadataRoutes adminTopicMetadataRoutes = new AdminTopicMetadataRoutes(sslEnabled, accessController);
@@ -405,9 +406,7 @@ public class AdminSparkServer extends AbstractVeniceService {
 
     httpService.get(
         STORE_MIGRATION_ALLOWED.getPath(),
-        new VeniceParentControllerRegionStateHandler(
-            admin,
-            clusterRoutes.isStoreMigrationAllowed(admin, requestHandler.getClusterAdminOpsRequestHandler())));
+        new VeniceParentControllerRegionStateHandler(admin, clusterRoutes.isStoreMigrationAllowed(admin)));
     httpService.post(
         MIGRATE_STORE.getPath(),
         new VeniceParentControllerRegionStateHandler(admin, storesRoutes.migrateStore(admin)));

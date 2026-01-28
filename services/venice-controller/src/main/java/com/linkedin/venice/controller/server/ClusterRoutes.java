@@ -27,8 +27,18 @@ import spark.Route;
 
 
 public class ClusterRoutes extends AbstractRoute {
+  private final ClusterAdminOpsRequestHandler clusterAdminOpsRequestHandler;
+
   public ClusterRoutes(boolean sslEnabled, Optional<DynamicAccessController> accessController) {
+    this(sslEnabled, accessController, null);
+  }
+
+  public ClusterRoutes(
+      boolean sslEnabled,
+      Optional<DynamicAccessController> accessController,
+      ClusterAdminOpsRequestHandler clusterAdminOpsRequestHandler) {
     super(sslEnabled, accessController);
+    this.clusterAdminOpsRequestHandler = clusterAdminOpsRequestHandler;
   }
 
   /**
@@ -86,7 +96,7 @@ public class ClusterRoutes extends AbstractRoute {
    * No ACL check; any user is allowed to check whether store migration is allowed for a specific cluster.
    * @see Admin#isStoreMigrationAllowed(String)
    */
-  public Route isStoreMigrationAllowed(Admin admin, ClusterAdminOpsRequestHandler requestHandler) {
+  public Route isStoreMigrationAllowed(Admin admin) {
     return new VeniceRouteHandler<StoreMigrationResponse>(StoreMigrationResponse.class) {
       @Override
       public void internalHandle(Request request, StoreMigrationResponse veniceResponse) {
@@ -97,7 +107,8 @@ public class ClusterRoutes extends AbstractRoute {
         StoreMigrationCheckGrpcRequest grpcRequest =
             StoreMigrationCheckGrpcRequest.newBuilder().setClusterName(clusterName).build();
 
-        StoreMigrationCheckGrpcResponse grpcResponse = requestHandler.isStoreMigrationAllowed(grpcRequest);
+        StoreMigrationCheckGrpcResponse grpcResponse =
+            clusterAdminOpsRequestHandler.isStoreMigrationAllowed(grpcRequest);
 
         veniceResponse.setStoreMigrationAllowed(grpcResponse.getStoreMigrationAllowed());
       }
