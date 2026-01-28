@@ -386,6 +386,9 @@ public class TestControllerGrpcEndpoints {
     assertEquals(exception.getStatus().getCode(), io.grpc.Status.Code.INVALID_ARGUMENT);
   }
 
+  // TODO: Integration test for getRepushInfo - requires store with specific configuration (hybrid/incremental)
+  // Unit tests in StoreRequestHandlerTest, StoreGrpcServiceImplTest, and StoresRoutesTest provide coverage
+
   private static class MockDynamicAccessController extends NoOpDynamicAccessController {
     private final Set<String> resourcesInAllowList = ConcurrentHashMap.newKeySet();
 

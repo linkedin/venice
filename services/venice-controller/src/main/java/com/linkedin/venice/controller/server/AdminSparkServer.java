@@ -601,7 +601,9 @@ public class AdminSparkServer extends AbstractVeniceService {
         new VeniceParentControllerRegionStateHandler(admin, jobRoutes.getOngoingIncrementalPushVersions(admin)));
     httpService.get(
         GET_REPUSH_INFO.getPath(),
-        new VeniceParentControllerRegionStateHandler(admin, storesRoutes.getRepushInfo(admin)));
+        new VeniceParentControllerRegionStateHandler(
+            admin,
+            storesRoutes.getRepushInfo(admin, requestHandler.getStoreRequestHandler())));
     httpService.get(
         COMPARE_STORE.getPath(),
         new VeniceParentControllerRegionStateHandler(admin, storesRoutes.compareStore(admin)));
