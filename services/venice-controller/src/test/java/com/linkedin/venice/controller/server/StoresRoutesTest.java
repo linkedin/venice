@@ -329,10 +329,11 @@ public class StoresRoutesTest {
         GetStoreGrpcResponse.newBuilder().setStoreInfo(grpcStoreInfo).setStoreInfoJson(storeInfoJson).build();
     when(mockRequestHandler.getStore(any(GetStoreGrpcRequest.class))).thenReturn(grpcResponse);
 
-    final StoresRoutes storesRoutes = new StoresRoutes(false, Optional.empty(), pubSubTopicRepository);
+    final StoresRoutes storesRoutes =
+        new StoresRoutes(false, Optional.empty(), pubSubTopicRepository, mockRequestHandler);
     final StoreResponse response = ObjectMapperFactory.getInstance()
         .readValue(
-            storesRoutes.getStore(mockAdmin, mockRequestHandler).handle(request, mock(Response.class)).toString(),
+            storesRoutes.getStore(mockAdmin).handle(request, mock(Response.class)).toString(),
             StoreResponse.class);
     Assert.assertFalse(response.isError());
     Assert.assertEquals(response.getStore().getMaxRecordSizeBytes(), testMaxRecordSizeBytesValue);
@@ -361,10 +362,11 @@ public class StoresRoutesTest {
     String errorMessage = "Store not found";
     when(mockRequestHandler.getStore(any(GetStoreGrpcRequest.class))).thenThrow(new VeniceException(errorMessage));
 
-    final StoresRoutes storesRoutes = new StoresRoutes(false, Optional.empty(), pubSubTopicRepository);
+    final StoresRoutes storesRoutes =
+        new StoresRoutes(false, Optional.empty(), pubSubTopicRepository, mockRequestHandler);
     final StoreResponse response = ObjectMapperFactory.getInstance()
         .readValue(
-            storesRoutes.getStore(mockAdmin, mockRequestHandler).handle(request, mock(Response.class)).toString(),
+            storesRoutes.getStore(mockAdmin).handle(request, mock(Response.class)).toString(),
             StoreResponse.class);
     Assert.assertTrue(response.isError());
     Assert.assertTrue(response.getError().contains(errorMessage));
