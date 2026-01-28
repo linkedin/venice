@@ -49,14 +49,14 @@ import spark.Route;
 
 
 public class SchemaRoutes extends AbstractRoute {
-  private final StoreRequestHandler storeRequestHandler;
+  private final SchemaRequestHandler schemaRequestHandler;
 
   public SchemaRoutes(
       boolean sslEnabled,
       Optional<DynamicAccessController> accessController,
-      StoreRequestHandler storeRequestHandler) {
+      SchemaRequestHandler schemaRequestHandler) {
     super(sslEnabled, accessController);
-    this.storeRequestHandler = storeRequestHandler;
+    this.schemaRequestHandler = schemaRequestHandler;
   }
 
   /**
@@ -218,7 +218,7 @@ public class SchemaRoutes extends AbstractRoute {
         GetValueSchemaGrpcRequest grpcRequest =
             GetValueSchemaGrpcRequest.newBuilder().setStoreInfo(storeInfo).setSchemaId(schemaId).build();
 
-        GetValueSchemaGrpcResponse grpcResponse = storeRequestHandler.getValueSchema(grpcRequest);
+        GetValueSchemaGrpcResponse grpcResponse = schemaRequestHandler.getValueSchema(grpcRequest);
 
         responseObject.setCluster(clusterName);
         responseObject.setName(storeName);

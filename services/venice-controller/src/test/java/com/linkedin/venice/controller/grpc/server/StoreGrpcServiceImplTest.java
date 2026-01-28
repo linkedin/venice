@@ -14,6 +14,7 @@ import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
 
 import com.linkedin.venice.controller.grpc.GrpcRequestResponseConverter;
+import com.linkedin.venice.controller.server.SchemaRequestHandler;
 import com.linkedin.venice.controller.server.StoreRequestHandler;
 import com.linkedin.venice.controller.server.VeniceControllerAccessManager;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -59,6 +60,7 @@ public class StoreGrpcServiceImplTest {
   private Server grpcServer;
   private ManagedChannel grpcChannel;
   private StoreRequestHandler storeRequestHandler;
+  private SchemaRequestHandler schemaRequestHandler;
   private StoreGrpcServiceBlockingStub blockingStub;
   private VeniceControllerAccessManager controllerAccessManager;
 
@@ -66,6 +68,7 @@ public class StoreGrpcServiceImplTest {
   public void setUp() throws Exception {
     controllerAccessManager = mock(VeniceControllerAccessManager.class);
     storeRequestHandler = mock(StoreRequestHandler.class);
+    schemaRequestHandler = mock(SchemaRequestHandler.class);
 
     // Create a unique server name for the in-process server
     String serverName = InProcessServerBuilder.generateName();
@@ -73,7 +76,7 @@ public class StoreGrpcServiceImplTest {
     // Start the gRPC server in-process
     grpcServer = InProcessServerBuilder.forName(serverName)
         .directExecutor()
-        .addService(new StoreGrpcServiceImpl(storeRequestHandler, controllerAccessManager))
+        .addService(new StoreGrpcServiceImpl(storeRequestHandler, schemaRequestHandler, controllerAccessManager))
         .build()
         .start();
 
@@ -459,7 +462,7 @@ public class StoreGrpcServiceImplTest {
         .setSchemaId(1)
         .setSchemaStr(VALUE_SCHEMA)
         .build();
-    when(storeRequestHandler.getValueSchema(any(GetValueSchemaGrpcRequest.class))).thenReturn(expectedResponse);
+    when(schemaRequestHandler.getValueSchema(any(GetValueSchemaGrpcRequest.class))).thenReturn(expectedResponse);
 
     GetValueSchemaGrpcResponse actualResponse = blockingStub.getValueSchema(request);
 
@@ -476,7 +479,7 @@ public class StoreGrpcServiceImplTest {
         ClusterStoreGrpcInfo.newBuilder().setClusterName(TEST_CLUSTER).setStoreName(TEST_STORE).build();
     GetValueSchemaGrpcRequest request =
         GetValueSchemaGrpcRequest.newBuilder().setStoreInfo(storeInfo).setSchemaId(99).build();
-    when(storeRequestHandler.getValueSchema(any(GetValueSchemaGrpcRequest.class)))
+    when(schemaRequestHandler.getValueSchema(any(GetValueSchemaGrpcRequest.class)))
         .thenThrow(new IllegalArgumentException("Value schema for schema id: 99 of store: test-store doesn't exist"));
 
     StatusRuntimeException e = expectThrows(StatusRuntimeException.class, () -> blockingStub.getValueSchema(request));
@@ -495,7 +498,7 @@ public class StoreGrpcServiceImplTest {
         ClusterStoreGrpcInfo.newBuilder().setClusterName("").setStoreName(TEST_STORE).build();
     GetValueSchemaGrpcRequest request =
         GetValueSchemaGrpcRequest.newBuilder().setStoreInfo(storeInfo).setSchemaId(1).build();
-    when(storeRequestHandler.getValueSchema(any(GetValueSchemaGrpcRequest.class)))
+    when(schemaRequestHandler.getValueSchema(any(GetValueSchemaGrpcRequest.class)))
         .thenThrow(new IllegalArgumentException("Cluster name is mandatory parameter"));
 
     StatusRuntimeException e = expectThrows(StatusRuntimeException.class, () -> blockingStub.getValueSchema(request));
@@ -514,7 +517,7 @@ public class StoreGrpcServiceImplTest {
         ClusterStoreGrpcInfo.newBuilder().setClusterName(TEST_CLUSTER).setStoreName(TEST_STORE).build();
     GetValueSchemaGrpcRequest request =
         GetValueSchemaGrpcRequest.newBuilder().setStoreInfo(storeInfo).setSchemaId(1).build();
-    when(storeRequestHandler.getValueSchema(any(GetValueSchemaGrpcRequest.class)))
+    when(schemaRequestHandler.getValueSchema(any(GetValueSchemaGrpcRequest.class)))
         .thenThrow(new VeniceException("Internal error fetching schema"));
 
     StatusRuntimeException e = expectThrows(StatusRuntimeException.class, () -> blockingStub.getValueSchema(request));

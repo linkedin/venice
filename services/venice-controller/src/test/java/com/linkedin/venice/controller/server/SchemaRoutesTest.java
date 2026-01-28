@@ -37,11 +37,11 @@ import spark.Route;
 
 
 public class SchemaRoutesTest {
-  private StoreRequestHandler storeRequestHandler;
+  private SchemaRequestHandler schemaRequestHandler;
 
   @BeforeMethod
   public void setUp() {
-    storeRequestHandler = mock(StoreRequestHandler.class);
+    schemaRequestHandler = mock(SchemaRequestHandler.class);
   }
 
   @Test
@@ -53,7 +53,7 @@ public class SchemaRoutesTest {
     Admin admin = mock(Admin.class);
     when(admin.getValueSchemaId(cluster, store, schemaStr)).thenReturn(SchemaData.INVALID_VALUE_SCHEMA_ID);
     when(admin.getStore(cluster, store)).thenReturn(null);
-    SchemaRoutes schemaRoutes = new SchemaRoutes(false, Optional.empty(), storeRequestHandler);
+    SchemaRoutes schemaRoutes = new SchemaRoutes(false, Optional.empty(), schemaRequestHandler);
     try {
       schemaRoutes.populateSchemaResponseForValueOrDerivedSchemaID(admin, cluster, store, schemaStr);
     } catch (VeniceNoStoreException e) {
@@ -113,7 +113,7 @@ public class SchemaRoutesTest {
     doReturn(new SchemaEntry(schemaId, schemaStr)).when(admin)
         .addValueSchema(cluster, store, schemaStr, schemaId, schemaCompatType);
 
-    SchemaRoutes schemaRoutes = new SchemaRoutes(false, Optional.empty(), storeRequestHandler);
+    SchemaRoutes schemaRoutes = new SchemaRoutes(false, Optional.empty(), schemaRequestHandler);
     Route route = schemaRoutes.addValueSchema(admin);
     route.handle(request, response);
     verify(response, times(0)).status(anyInt()); // no error
@@ -142,13 +142,13 @@ public class SchemaRoutesTest {
         .setSchemaId(schemaId)
         .setSchemaStr(schemaStr)
         .build();
-    when(storeRequestHandler.getValueSchema(any(GetValueSchemaGrpcRequest.class))).thenReturn(grpcResponse);
+    when(schemaRequestHandler.getValueSchema(any(GetValueSchemaGrpcRequest.class))).thenReturn(grpcResponse);
 
-    SchemaRoutes schemaRoutes = new SchemaRoutes(false, Optional.empty(), storeRequestHandler);
+    SchemaRoutes schemaRoutes = new SchemaRoutes(false, Optional.empty(), schemaRequestHandler);
     Route route = schemaRoutes.getValueSchema(admin);
     String result = (String) route.handle(request, response);
 
-    verify(storeRequestHandler, times(1)).getValueSchema(any(GetValueSchemaGrpcRequest.class));
+    verify(schemaRequestHandler, times(1)).getValueSchema(any(GetValueSchemaGrpcRequest.class));
     verify(response, times(0)).status(anyInt()); // no error
     assertTrue(result.contains("\"schemaStr\":\"\\\"string\\\"\""), "Response should contain the schema string");
     assertTrue(result.contains("\"id\":1"), "Response should contain the schema ID");
@@ -178,14 +178,14 @@ public class SchemaRoutesTest {
     doReturn(queryMapResult).when(paramsMap).toMap();
     doReturn(paramsMap).when(request).queryMap();
 
-    when(storeRequestHandler.getValueSchema(any(GetValueSchemaGrpcRequest.class)))
+    when(schemaRequestHandler.getValueSchema(any(GetValueSchemaGrpcRequest.class)))
         .thenThrow(new IllegalArgumentException("Value schema for schema id: 99 of store: store_name doesn't exist"));
 
-    SchemaRoutes schemaRoutes = new SchemaRoutes(false, Optional.empty(), storeRequestHandler);
+    SchemaRoutes schemaRoutes = new SchemaRoutes(false, Optional.empty(), schemaRequestHandler);
     Route route = schemaRoutes.getValueSchema(admin);
     String result = (String) route.handle(request, response);
 
-    verify(storeRequestHandler, times(1)).getValueSchema(any(GetValueSchemaGrpcRequest.class));
+    verify(schemaRequestHandler, times(1)).getValueSchema(any(GetValueSchemaGrpcRequest.class));
     assertTrue(
         result.contains("Value schema for schema id: 99 of store: store_name doesn't exist"),
         "Response should contain error message");
