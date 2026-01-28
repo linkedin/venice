@@ -1,5 +1,8 @@
 package com.linkedin.davinci.stats;
 
+import com.linkedin.venice.stats.LongAdderRateGauge;
+import com.linkedin.venice.utils.SystemTime;
+import com.linkedin.venice.utils.Time;
 import io.tehuti.metrics.MetricConfig;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
@@ -25,6 +28,8 @@ public class BlobTransferStats {
   // The blob file receiving throughput (in MB/sec) and time (in sec)
   protected static final String BLOB_TRANSFER_THROUGHPUT = "blob_transfer_file_receive_throughput";
   protected static final String BLOB_TRANSFER_TIME = "blob_transfer_time";
+  protected static final String BLOB_TRANSFER_BYTES_RECEIVED = "blob_transfer_bytes_received";
+  protected static final String BLOB_TRANSFER_BYTES_SENT = "blob_transfer_bytes_sent";
 
   private static final MetricConfig METRIC_CONFIG = new MetricConfig();
   private final MetricsRepository localMetricRepository;
@@ -38,9 +43,17 @@ public class BlobTransferStats {
   private Sensor blobTransferFileReceiveThroughputSensor;
   private Gauge blobTransferTimeGauge = new Gauge();
   private Sensor blobTransferTimeSensor;
+  private LongAdderRateGauge blobTransferBytesReceivedSensor;
+  private LongAdderRateGauge blobTransferBytesSentSensor;
 
   public BlobTransferStats() {
+    this(new SystemTime());
+  }
+
+  public BlobTransferStats(Time time) {
     localMetricRepository = new MetricsRepository(METRIC_CONFIG);
+    blobTransferBytesReceivedSensor = new LongAdderRateGauge(time);
+    blobTransferBytesSentSensor = new LongAdderRateGauge(time);
 
     blobTransferTotalNumResponsesSensor = localMetricRepository.sensor(BLOB_TRANSFER_TOTAL_NUM_RESPONSES);
     blobTransferTotalNumResponsesSensor.add(BLOB_TRANSFER_TOTAL_NUM_RESPONSES, blobTransferTotalNumResponsesCount);
@@ -57,6 +70,9 @@ public class BlobTransferStats {
 
     blobTransferTimeSensor = localMetricRepository.sensor(BLOB_TRANSFER_TIME);
     blobTransferTimeSensor.add(BLOB_TRANSFER_TIME, blobTransferTimeGauge);
+
+    registerSensor(localMetricRepository, BLOB_TRANSFER_BYTES_RECEIVED, blobTransferBytesReceivedSensor);
+    registerSensor(localMetricRepository, BLOB_TRANSFER_BYTES_SENT, blobTransferBytesSentSensor);
   }
 
   /**
@@ -137,5 +153,26 @@ public class BlobTransferStats {
     } else {
       return blobTransferTimeGauge.measure(METRIC_CONFIG, System.currentTimeMillis());
     }
+  }
+
+  public double getBlobTransferBytesReceived() {
+    return blobTransferBytesReceivedSensor.getRate();
+  }
+
+  public void recordBlobTransferBytesReceived(long value) {
+    blobTransferBytesReceivedSensor.record(value);
+  }
+
+  public double getBlobTransferBytesSent() {
+    return blobTransferBytesSentSensor.getRate();
+  }
+
+  public void recordBlobTransferBytesSent(long value) {
+    blobTransferBytesSentSensor.record(value);
+  }
+
+  void registerSensor(MetricsRepository localMetricRepository, String sensorName, LongAdderRateGauge gauge) {
+    Sensor sensor = localMetricRepository.sensor(sensorName);
+    sensor.add(sensorName + "_rate", gauge);
   }
 }

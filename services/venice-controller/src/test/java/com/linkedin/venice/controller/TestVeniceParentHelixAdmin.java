@@ -910,7 +910,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             false,
             null,
             -1,
-            DEFAULT_RT_VERSION_NUMBER);
+            DEFAULT_RT_VERSION_NUMBER,
+            -1);
     doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
     doReturn(0).when(store).getLargestUsedRTVersionNumber();
     try (PartialMockVeniceParentHelixAdmin partialMockParentAdmin =
@@ -950,7 +951,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           false,
           null,
           -1,
-          DEFAULT_RT_VERSION_NUMBER);
+          DEFAULT_RT_VERSION_NUMBER,
+          -1);
       verify(zkClient, times(2)).readData(zkMetadataNodePath, null);
     }
   }
@@ -1079,6 +1081,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           Optional.empty(),
           false,
           null,
+          -1,
           -1);
       verify(internalAdmin, never()).addVersionAndTopicOnly(
           clusterName,
@@ -1099,7 +1102,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           false,
           null,
           -1,
-          DEFAULT_RT_VERSION_NUMBER);
+          DEFAULT_RT_VERSION_NUMBER,
+          -1);
       assertEquals(newVersion, version);
     }
   }
@@ -1143,7 +1147,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             false,
             null,
             -1,
-            DEFAULT_RT_VERSION_NUMBER);
+            DEFAULT_RT_VERSION_NUMBER,
+            -1);
     try (PartialMockVeniceParentHelixAdmin partialMockParentAdmin =
         new PartialMockVeniceParentHelixAdmin(internalAdmin, config)) {
       partialMockParentAdmin.setOfflineJobStatus(ExecutionStatus.NEW);
@@ -1177,6 +1182,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           Optional.empty(),
           false,
           null,
+          -1,
           -1);
       verify(zkClient, times(2)).readData(zkMetadataNodePath, null);
     }
@@ -1254,7 +1260,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             false,
             null,
             -1,
-            DEFAULT_RT_VERSION_NUMBER);
+            DEFAULT_RT_VERSION_NUMBER,
+            -1);
     try (PartialMockVeniceParentHelixAdmin partialMockParentAdmin =
         spy(new PartialMockVeniceParentHelixAdmin(internalAdmin, config))) {
       Version newVersion = partialMockParentAdmin.incrementVersionIdempotent(
@@ -1273,6 +1280,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           Optional.empty(),
           false,
           null,
+          -1,
           -1);
       verify(partialMockParentAdmin, never()).sendAddVersionAdminMessage(
           clusterName,
@@ -1344,6 +1352,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             Optional.empty(),
             false,
             null,
+            -1,
             -1);
 
     Version version2 = new VersionImpl(storeName, 2, incomingPushId);
@@ -1367,7 +1376,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             false,
             null,
             -1,
-            DEFAULT_RT_VERSION_NUMBER);
+            DEFAULT_RT_VERSION_NUMBER,
+            -1);
 
     HelixVeniceClusterResources mockHelixVeniceClusterResources = mock(HelixVeniceClusterResources.class);
     doReturn(mockHelixVeniceClusterResources).when(mockInternalAdmin).getHelixVeniceClusterResources(clusterName);
@@ -1389,6 +1399,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         Optional.empty(),
         false,
         null,
+        -1,
         -1);
 
     verify(mockParentAdmin, times(1)).killOfflinePush(clusterName, version.kafkaTopicName(), true);
@@ -1450,6 +1461,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             Optional.empty(),
             false,
             null,
+            -1,
             -1);
 
     Version version2 = new VersionImpl(storeName, 2, incomingPushId);
@@ -1473,7 +1485,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             false,
             null,
             -1,
-            DEFAULT_RT_VERSION_NUMBER);
+            DEFAULT_RT_VERSION_NUMBER,
+            -1);
 
     HelixVeniceClusterResources mockHelixVeniceClusterResources = mock(HelixVeniceClusterResources.class);
     doReturn(mockHelixVeniceClusterResources).when(mockInternalAdmin).getHelixVeniceClusterResources(clusterName);
@@ -1497,6 +1510,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             Optional.empty(),
             false,
             null,
+            -1,
             -1));
 
     verify(mockParentAdmin, never()).killOfflinePush(clusterName, version.kafkaTopicName(), true);
@@ -1558,6 +1572,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             Optional.empty(),
             false,
             null,
+            -1,
             -1);
 
     HelixVeniceClusterResources mockHelixVeniceClusterResources = mock(HelixVeniceClusterResources.class);
@@ -1580,6 +1595,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         Optional.empty(),
         false,
         null,
+        -1,
         -1);
 
     verify(mockParentAdmin, never()).killOfflinePush(clusterName, version.kafkaTopicName(), true);
@@ -2765,7 +2781,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
               false,
               null,
               -1,
-              DEFAULT_RT_VERSION_NUMBER);
+              DEFAULT_RT_VERSION_NUMBER,
+              -1);
 
       VeniceWriter veniceWriter = mock(VeniceWriter.class);
       partialMockParentAdmin.setVeniceWriterForCluster(clusterName, veniceWriter);
@@ -2807,6 +2824,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
               Optional.empty(),
               false,
               null,
+              -1,
               -1);
           Assert.fail("Incremental push should fail if the previous batch push is not in COMPLETE state.");
           verify(zkClient, times(2)).readData(zkMetadataNodePath, null);
@@ -2834,6 +2852,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
                 Optional.empty(),
                 false,
                 null,
+                -1,
                 -1),
             newVersion,
             "Unexpected new version returned by incrementVersionIdempotent");
@@ -2871,7 +2890,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             false,
             null,
             -1,
-            DEFAULT_RT_VERSION_NUMBER);
+            DEFAULT_RT_VERSION_NUMBER,
+            -1);
     doReturn(new Pair<>(true, storeBVersion)).when(internalAdmin)
         .addVersionAndTopicOnly(
             clusterName,
@@ -2892,7 +2912,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             false,
             null,
             -1,
-            DEFAULT_RT_VERSION_NUMBER);
+            DEFAULT_RT_VERSION_NUMBER,
+            -1);
     doReturn(new Exception("test")).when(internalAdmin).getLastExceptionForStore(clusterName, storeA);
     doReturn(store).when(internalAdmin).getStore(clusterName, storeA);
     doReturn(store).when(internalAdmin).getStore(clusterName, storeB);
@@ -3116,6 +3137,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           null,
           false,
           "invalidRegion",
+          -1,
           -1);
       Assert.fail("Test should fail, but doesn't");
     } catch (VeniceException e) {
@@ -3335,6 +3357,50 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     Assert.assertEquals(etlStoreConfigRecord.etledUserProxyAccount.toString(), etlUserProxyAccount);
     Assert.assertFalse(etlStoreConfigRecord.futureVersionETLEnabled);
     Assert.assertEquals(etlStoreConfigRecord.etlStrategy, VeniceETLStrategy.EXTERNAL_SERVICE.getValue());
+  }
+
+  @Test
+  public void testUpdateStoreFlinkVeniceViewsEnable() {
+    String storeName = Utils.getUniqueString("testUpdateStoreFlinkVeniceViewsEnable");
+    Store store = TestUtils.createTestStore(storeName, "test", System.currentTimeMillis());
+    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
+
+    when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(null)
+        .thenReturn(
+            AdminTopicMetadataAccessor.generateMetadataMap(
+                Optional.of(1L),
+                Optional.of(-1L),
+                Optional.of(1L),
+                Optional.of(LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION)));
+
+    parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setFlinkVeniceViewsEnabled(true));
+
+    ArgumentCaptor<byte[]> keyCaptor = ArgumentCaptor.forClass(byte[].class);
+    ArgumentCaptor<byte[]> valueCaptor = ArgumentCaptor.forClass(byte[].class);
+    ArgumentCaptor<Integer> schemaCaptor = ArgumentCaptor.forClass(Integer.class);
+    verify(veniceWriter).put(
+        keyCaptor.capture(),
+        valueCaptor.capture(),
+        schemaCaptor.capture(),
+        any(),
+        any(),
+        anyLong(),
+        any(),
+        any(),
+        any(),
+        any());
+
+    byte[] keyBytes = keyCaptor.getValue();
+    byte[] valueBytes = valueCaptor.getValue();
+    int schemaId = schemaCaptor.getValue();
+    assertEquals(schemaId, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+    assertEquals(keyBytes.length, 0);
+
+    AdminOperation adminMessage = adminOperationSerializer.deserialize(ByteBuffer.wrap(valueBytes), schemaId);
+    assertEquals(adminMessage.operationType, AdminMessageType.UPDATE_STORE.getValue());
+
+    UpdateStore updateStore = (UpdateStore) adminMessage.payloadUnion;
+    assertTrue(updateStore.flinkVeniceViewsEnabled);
   }
 
   private Store setupForStoreViewConfigUpdateTest(String storeName) {

@@ -62,10 +62,13 @@ import com.linkedin.venice.utils.ComplementSet;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.ReferenceCounted;
+import com.linkedin.venice.utils.RetryUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.nio.ByteBuffer;
+import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -253,13 +256,24 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
       return Optional.empty();
     }
 
-    Store store = getBackend().getStoreRepository().getStoreOrThrow(getStoreName());
-    Version version = store.getVersion(getStoreVersion());
+    return RetryUtils.executeWithMaxAttempt(() -> {
+      Store store = getBackend().getStoreRepository().getStoreOrThrow(getStoreName());
+      Version version = store.getVersion(getStoreVersion());
 
-    if (version == null) {
-      throw new VeniceClientException("Version: " + getStoreVersion() + " does not exist for store: " + getStoreName());
-    }
-    return Optional.of(version);
+      if (version == null) {
+        getClientLogger()
+            .info("Version {} not found for store {}, refreshing repository", getStoreVersion(), getStoreName());
+        getBackend().getStoreRepository().refreshOneStore(getStoreName());
+        store = getBackend().getStoreRepository().getStoreOrThrow(getStoreName());
+        version = store.getVersion(getStoreVersion());
+
+        if (version == null) {
+          throw new VeniceClientException(
+              "Version: " + getStoreVersion() + " does not exist for store: " + getStoreName());
+        }
+      }
+      return Optional.of(version);
+    }, 3, Duration.ofSeconds(1), Collections.singletonList(VeniceClientException.class));
   }
 
   protected CompletableFuture<Void> seekToTail() {

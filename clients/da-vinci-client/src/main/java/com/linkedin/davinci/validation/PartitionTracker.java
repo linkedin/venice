@@ -1,7 +1,7 @@
 package com.linkedin.davinci.validation;
 
 import static com.linkedin.davinci.validation.DataIntegrityValidator.DISABLED;
-import static com.linkedin.venice.pubsub.PubSubUtil.getPubSubPositionString;
+import static com.linkedin.venice.pubsub.PubSubUtil.deserializePositionWithOffsetFallback;
 
 import com.linkedin.venice.annotation.Threadsafe;
 import com.linkedin.venice.annotation.VisibleForTesting;
@@ -190,7 +190,7 @@ public class PartitionTracker {
         .stream()
         .collect(
             Collectors.toMap(
-                entry -> GuidUtils.getHexFromGuid(entry.getKey()),
+                entry -> GuidUtils.guidToUtf8(entry.getKey()),
                 entry -> entry.getValue().toProducerPartitionState()));
   }
 
@@ -901,9 +901,10 @@ public class PartitionTracker {
       if (consumerRecord.getValue().leaderMetadataFooter != null) {
         sb.append("; LeaderMetadata { upstream position: ")
             .append(
-                getPubSubPositionString(
-                    pubSubPositionDeserializer,
-                    consumerRecord.getValue().leaderMetadataFooter.upstreamPubSubPosition))
+                deserializePositionWithOffsetFallback(
+                    consumerRecord.getValue().leaderMetadataFooter.upstreamPubSubPosition,
+                    consumerRecord.getValue().leaderMetadataFooter.upstreamOffset,
+                    pubSubPositionDeserializer))
             .append("; upstream pub sub cluster ID: ")
             .append(consumerRecord.getValue().leaderMetadataFooter.upstreamKafkaClusterId)
             .append("; producer host name: ")

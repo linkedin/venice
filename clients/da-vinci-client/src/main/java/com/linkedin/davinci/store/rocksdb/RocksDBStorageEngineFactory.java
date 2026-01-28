@@ -19,6 +19,7 @@ import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.store.rocksdb.RocksDBUtils;
+import com.linkedin.venice.utils.ByteUtils;
 import java.io.File;
 import java.io.IOException;
 import java.util.Arrays;
@@ -188,6 +189,23 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
     this.memtableSize = rocksDBServerConfig.getRocksDBMemtableSizeInBytes();
     try {
       this.sstFileManager = new SstFileManager(this.env);
+
+      // Configure deletion rate limiting to prevent I/O saturation during store cleanup
+      long deleteRateBytesPerSecond = rocksDBServerConfig.getSstFileManagerDeleteRateBytesPerSecond();
+      if (deleteRateBytesPerSecond > 0) {
+        this.sstFileManager.setDeleteRateBytesPerSecond(deleteRateBytesPerSecond);
+        LOGGER.info(
+            "Configured SstFileManager deletion rate limit: {} MB/sec",
+            deleteRateBytesPerSecond / ByteUtils.BYTES_PER_MB);
+      } else {
+        LOGGER.info("SstFileManager deletion rate limiting is disabled (deleteRateBytesPerSecond = 0)");
+      }
+
+      // Configure max trash-to-DB ratio
+      double maxTrashRatio = rocksDBServerConfig.getSstFileManagerMaxTrashDBRatio();
+      this.sstFileManager.setMaxTrashDBRatio(maxTrashRatio);
+      LOGGER.info("Configured SstFileManager max trash DB ratio: {}", maxTrashRatio);
+
     } catch (RocksDBException e) {
       throw new VeniceException("Failed to create the shared SstFileManager", e);
     }

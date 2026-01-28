@@ -95,6 +95,7 @@ import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.spark.datawriter.jobs.DataWriterSparkJob;
 import com.linkedin.venice.status.PushJobDetailsStatus;
 import com.linkedin.venice.status.protocol.PushJobDetails;
+import com.linkedin.venice.status.protocol.PushJobDetailsStatusTuple;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Time;
@@ -1447,6 +1448,51 @@ public class VenicePushJobTest {
   }
 
   @Test
+  public void testConfigureWithMaterializedViewConfigsWithFlinkVeniceViewsEnabled() throws Exception {
+    Properties properties = getVpjRequiredProperties();
+    properties.put(KEY_FIELD_PROP, "id");
+    properties.put(VALUE_FIELD_PROP, "name");
+    JobStatusQueryResponse response = mockJobStatusQuery();
+    ControllerClient client = getClient();
+    doReturn(response).when(client).queryOverallJobStatus(anyString(), any(), eq(null), anyBoolean());
+    try (final VenicePushJob vpj = getSpyVenicePushJob(properties, client)) {
+      skipVPJValidation(vpj);
+      vpj.run();
+      PushJobSetting pushJobSetting = vpj.getPushJobSetting();
+      Assert.assertNull(pushJobSetting.materializedViewConfigFlatMap);
+    }
+    Map<String, ViewConfig> viewConfigs = new HashMap<>();
+    MaterializedViewParameters.Builder builder =
+        new MaterializedViewParameters.Builder("testView").setPartitionCount(12)
+            .setPartitioner(DefaultVenicePartitioner.class.getCanonicalName());
+    viewConfigs.put("testView", new ViewConfigImpl(MaterializedView.class.getCanonicalName(), builder.build()));
+    viewConfigs
+        .put("dummyView", new ViewConfigImpl(ChangeCaptureView.class.getCanonicalName(), Collections.emptyMap()));
+    Version version = new VersionImpl(TEST_STORE, 1, TEST_PUSH);
+    version.setViewConfigs(viewConfigs);
+    client = getClient(storeInfo -> {
+      storeInfo.setViewConfigs(viewConfigs);
+      storeInfo.setVersions(Collections.singletonList(version));
+      storeInfo.setFlinkVeniceViewsEnabled(true); // Enable Flink Venice Views at store level
+    }, true);
+    doReturn(response).when(client).queryOverallJobStatus(anyString(), any(), eq(null), anyBoolean());
+    MultiSchemaResponse valueSchemaResponse = getMultiSchemaResponse();
+    MultiSchemaResponse.Schema[] schemas = new MultiSchemaResponse.Schema[1];
+    schemas[0] = getBasicSchema();
+    valueSchemaResponse.setSchemas(schemas);
+    doReturn(valueSchemaResponse).when(client).getAllValueSchema(TEST_STORE);
+    doReturn(getMultiSchemaResponse()).when(client).getAllReplicationMetadataSchemas(TEST_STORE);
+    doReturn(getKeySchemaResponse()).when(client).getKeySchema(TEST_STORE);
+    try (final VenicePushJob vpj = getSpyVenicePushJob(properties, client)) {
+      skipVPJValidation(vpj);
+      vpj.run();
+      PushJobSetting pushJobSetting = vpj.getPushJobSetting();
+      Assert.assertNull(pushJobSetting.materializedViewConfigFlatMap); // Should be null since Flink Venice Views is
+                                                                       // enabled
+    }
+  }
+
+  @Test
   public void testTargetedRegionPushWithDeferredSwapConfigValidation() throws Exception {
     Properties props = getVpjRequiredProperties();
     props.put(TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP, false);
@@ -1494,6 +1540,64 @@ public class VenicePushJobTest {
 
     try (VenicePushJob pushJob = getSpyVenicePushJob(props, client)) {
       pushJob.run();
+    }
+  }
+
+  /**
+   * Test that START_VERSION_SWAP checkpoint is invoked when target region push with deferred swap is enabled.
+   */
+  @Test
+  public void testVersionSwapCheckpoint() throws Exception {
+    Properties props = getVpjRequiredProperties();
+    props.put(KEY_FIELD_PROP, "id");
+    props.put(VALUE_FIELD_PROP, "name");
+    props.put(TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP, true);
+    props.put(TARGETED_REGION_PUSH_LIST, "dc-0");
+
+    // Create a version with ONLINE status to simulate successful version swap
+    Version version = new VersionImpl(TEST_STORE, 1);
+    version.setNumber(1);
+    version.setStatus(VersionStatus.ONLINE);
+
+    ControllerClient client = getClient(storeInfo -> {
+      storeInfo.setColoToCurrentVersions(new HashMap<String, Integer>() {
+        {
+          put("dc-0", 1);
+          put("dc-1", 1);
+        }
+      });
+      storeInfo.setVersions(Collections.singletonList(version));
+      storeInfo.setLargestUsedVersionNumber(1);
+      storeInfo.setTargetRegionSwapWaitTime(60); // 60 minutes wait time
+    });
+
+    try (VenicePushJob pushJob = getSpyVenicePushJob(props, client)) {
+      skipVPJValidation(pushJob);
+
+      // Mock job status query to return COMPLETED
+      JobStatusQueryResponse response = mockJobStatusQuery();
+      doReturn(response).when(client).queryOverallJobStatus(anyString(), any(), anyString(), anyBoolean());
+
+      pushJob.run();
+
+      // Verify that START_VERSION_SWAP checkpoint is called
+      verify(pushJob).updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.START_VERSION_SWAP);
+
+      // Verify that COMPLETE_VERSION_SWAP checkpoint is called
+      verify(pushJob).updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.COMPLETE_VERSION_SWAP);
+
+      // Get the actual PushJobDetails object
+      PushJobDetails pushJobDetails = pushJob.getPushJobDetails();
+
+      // Verify that COMPLETED status was added to overallStatus
+      boolean foundCompletedStatus = false;
+      for (PushJobDetailsStatusTuple statusTuple: pushJobDetails.overallStatus) {
+        if (statusTuple.status == PushJobDetailsStatus.COMPLETED.getValue()) {
+          foundCompletedStatus = true;
+          break;
+        }
+      }
+      assertTrue(foundCompletedStatus);
     }
   }
 
@@ -1602,7 +1706,8 @@ public class VenicePushJobTest {
               anyBoolean(),
               any(),
               anyInt(),
-              anyBoolean());
+              anyBoolean(),
+              anyInt());
     }
 
     return versionCreationResponse;

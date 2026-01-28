@@ -239,33 +239,65 @@ public class DaVinciBackendTest {
 
   @Test
   public void testRegisterStoreClients() {
+    StoreBackend mockStoreBackend = mock(StoreBackend.class);
+    backend.addStoreBackend(STORE_NAME, mockStoreBackend);
+
+    String versionSpecificStoreName = "test-store-1";
+    StoreBackend mockVersionSpecificStoreBackend = mock(StoreBackend.class);
+    backend.addStoreBackend(versionSpecificStoreName, mockVersionSpecificStoreBackend);
+
+    String storeName2 = "test-store-2";
+    StoreBackend mockStoreBackend2 = mock(StoreBackend.class);
+    backend.addStoreBackend(storeName2, mockStoreBackend2);
+
     // Register regular client
     backend.registerStoreClient(STORE_NAME, null);
     assertEquals(backend.getStoreClientType(STORE_NAME), DaVinciBackend.ClientType.REGULAR);
+    assertEquals(backend.getStoreClientRefCount(STORE_NAME), Integer.valueOf(1));
 
     // Register version-specific client
-    String versionSpecificStoreName = "test-store-1";
     Integer storeVersion = 1;
     backend.registerStoreClient(versionSpecificStoreName, storeVersion);
     assertEquals(backend.getStoreClientType(versionSpecificStoreName), DaVinciBackend.ClientType.VERSION_SPECIFIC);
     assertEquals(backend.getVersionSpecificStoreVersion(versionSpecificStoreName), storeVersion);
+    assertEquals(backend.getStoreClientRefCount(versionSpecificStoreName), Integer.valueOf(1));
 
     // Register another regular client
-    String storeName2 = "test-store-2";
     backend.registerStoreClient(storeName2, null);
     assertEquals(backend.getStoreClientType(storeName2), DaVinciBackend.ClientType.REGULAR);
+    assertEquals(backend.getStoreClientRefCount(storeName2), Integer.valueOf(1));
 
-    // Register same version-specific client twice
+    // Register same version-specific client again
     backend.registerStoreClient(versionSpecificStoreName, storeVersion);
     assertEquals(backend.getVersionSpecificStoreVersion(versionSpecificStoreName), storeVersion);
     assertEquals(backend.getStoreClientType(versionSpecificStoreName), DaVinciBackend.ClientType.VERSION_SPECIFIC);
+    assertEquals(backend.getStoreClientRefCount(versionSpecificStoreName), Integer.valueOf(2));
 
-    // Unregister clients and verify state cleanup
+    // Unregister regular client
     backend.unregisterStoreClient(STORE_NAME, null);
-    backend.unregisterStoreClient(versionSpecificStoreName, storeVersion);
     assertNull(backend.getStoreClientType(STORE_NAME));
+    assertNull(backend.getStoreClientRefCount(STORE_NAME));
+    verify(mockStoreBackend).close();
+
+    // Unregister versionSpecificStoreName
+    backend.unregisterStoreClient(versionSpecificStoreName, storeVersion);
+    assertEquals(backend.getStoreClientRefCount(versionSpecificStoreName), Integer.valueOf(1));
+    assertEquals(backend.getStoreClientType(versionSpecificStoreName), DaVinciBackend.ClientType.VERSION_SPECIFIC);
+    assertEquals(backend.getVersionSpecificStoreVersion(versionSpecificStoreName), storeVersion);
+    verify(mockVersionSpecificStoreBackend, never()).close();
+
+    // Unregister versionSpecificStoreName again, cleanup should happen
+    backend.unregisterStoreClient(versionSpecificStoreName, storeVersion);
     assertNull(backend.getStoreClientType(versionSpecificStoreName));
+    assertNull(backend.getStoreClientRefCount(versionSpecificStoreName));
     assertNull(backend.getVersionSpecificStoreVersion(versionSpecificStoreName));
+    verify(mockVersionSpecificStoreBackend).close();
+
+    // Unregister other regular client and cleanup
+    backend.unregisterStoreClient(storeName2, null);
+    assertNull(backend.getStoreClientType(storeName2));
+    assertNull(backend.getStoreClientRefCount(storeName2));
+    verify(mockStoreBackend2).close();
   }
 
   @Test

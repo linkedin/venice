@@ -203,6 +203,7 @@ import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordSerializer;
+import com.linkedin.venice.server.VersionRole;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.unit.matchers.ExceptionClassMatcher;
 import com.linkedin.venice.unit.matchers.NonEmptyStringMatcher;
@@ -2380,7 +2381,7 @@ public abstract class StoreIngestionTaskTest {
       ArgumentCaptor<PubSubPosition> positionCaptor = ArgumentCaptor.forClass(PubSubPosition.class);
       verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS))
           .completed(eq(topic), eq(PARTITION_FOO), positionCaptor.capture(), eq("STANDBY"));
-      assertEquals(positionCaptor.getValue().getNumericOffset(), p100.getNumericOffset());
+      assertEquals(positionCaptor.getValue(), p100);
     }, aaConfig);
     config.setBeforeStartingConsumption(
         () -> doReturn(getOffsetRecord(p100, true, pubSubContext)).when(mockStorageMetadataService)
@@ -2401,7 +2402,7 @@ public abstract class StoreIngestionTaskTest {
       ArgumentCaptor<PubSubPosition> positionCaptor = ArgumentCaptor.forClass(PubSubPosition.class);
       verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS))
           .completed(eq(topic), eq(PARTITION_FOO), positionCaptor.capture(), eq("STANDBY"));
-      assertEquals(positionCaptor.getValue().getNumericOffset(), p100.getNumericOffset());
+      assertEquals(positionCaptor.getValue(), p100);
       verify(aggKafkaConsumerService, timeout(TEST_TIMEOUT_MS))
           .batchUnsubscribeConsumerFor(pubSubTopic, Collections.singleton(fooTopicPartition));
       verify(aggKafkaConsumerService, never()).unsubscribeConsumerFor(pubSubTopic, barTopicPartition);
@@ -2434,7 +2435,7 @@ public abstract class StoreIngestionTaskTest {
       ArgumentCaptor<PubSubPosition> positionCaptor = ArgumentCaptor.forClass(PubSubPosition.class);
       verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS))
           .completed(eq(topic), eq(PARTITION_FOO), positionCaptor.capture(), eq("STANDBY"));
-      assertEquals(positionCaptor.getValue().getNumericOffset(), p10.getNumericOffset());
+      assertEquals(positionCaptor.getValue(), p10);
     }, aaConfig);
     config.setBeforeStartingConsumption(() -> {
       Store mockStore = mock(Store.class);
@@ -2630,11 +2631,12 @@ public abstract class StoreIngestionTaskTest {
             long offset = entry.getValue().getInternalOffset();
             LOGGER.info("Verifying completed was called for partition {} and offset {} or greater.", partition, offset);
 
-            ArgumentCaptor<PubSubPosition> positionCaptor = ArgumentCaptor.forClass(PubSubPosition.class);
+            ArgumentCaptor<InMemoryPubSubPosition> positionCaptor =
+                ArgumentCaptor.forClass(InMemoryPubSubPosition.class);
             verify(mockLogNotifier, timeout(LONG_TEST_TIMEOUT).atLeastOnce())
                 .completed(eq(topic), eq(partition), positionCaptor.capture(), eq("STANDBY"));
-            PubSubPosition completedPosition = positionCaptor.getValue();
-            assertTrue(completedPosition.getNumericOffset() >= offset);
+            InMemoryPubSubPosition completedPosition = positionCaptor.getValue();
+            assertTrue(completedPosition.getInternalOffset() >= offset);
           });
 
       // After this, all asynchronous processing should be finished, so there's no need for time outs anymore.
@@ -3440,7 +3442,7 @@ public abstract class StoreIngestionTaskTest {
     PartitionReplicaIngestionContext fooRtPartitionReplicaIngestionContext = new PartitionReplicaIngestionContext(
         pubSubTopic,
         fooRtPartition,
-        PartitionReplicaIngestionContext.VersionRole.CURRENT,
+        VersionRole.CURRENT,
         PartitionReplicaIngestionContext.WorkloadType.NON_AA_OR_WRITE_COMPUTE);
     inMemoryLocalKafkaBroker.createTopic(rtTopic, partitionCount);
     inMemoryRemoteKafkaBroker.createTopic(rtTopic, partitionCount);
@@ -4454,14 +4456,14 @@ public abstract class StoreIngestionTaskTest {
             topicPartitionOffset.getPubSubTopicPartition(),
             topicPartitionOffset.getPubSubPosition());
         if (pubSubTopicPartition.getPubSubTopic().isVersionTopic() && resubscriptionOffsetForVT.contains(position)) {
-          storeIngestionTaskUnderTest.setVersionRole(PartitionReplicaIngestionContext.VersionRole.BACKUP);
+          storeIngestionTaskUnderTest.setVersionRole(VersionRole.BACKUP);
           resubscriptionLatch.countDown();
           LOGGER.info(
               "Trigger re-subscription after consuming message for {} at position {} ",
               pubSubTopicPartition,
               position);
         } else if (pubSubTopicPartition.getPubSubTopic().isRealTime() && resubscriptionOffsetForRT.contains(position)) {
-          storeIngestionTaskUnderTest.setVersionRole(PartitionReplicaIngestionContext.VersionRole.BACKUP);
+          storeIngestionTaskUnderTest.setVersionRole(VersionRole.BACKUP);
           resubscriptionLatch.countDown();
           LOGGER.info(
               "Trigger re-subscription after consuming message for {} at position {}.",
@@ -4683,7 +4685,7 @@ public abstract class StoreIngestionTaskTest {
             null));
 
     // Simulate the version has been deleted.
-    ingestionTask.setVersionRole(PartitionReplicaIngestionContext.VersionRole.BACKUP);
+    ingestionTask.setVersionRole(VersionRole.BACKUP);
     doReturn(null).when(store).getVersion(eq(1));
     ingestionTask.refreshIngestionContextIfChanged(store);
     verify(ingestionTask, never()).resubscribeForAllPartitions();
@@ -4787,14 +4789,14 @@ public abstract class StoreIngestionTaskTest {
       } else {
         // If the pcs is non-null, then we perform additional checks to ensure that it was not synced
         Assert.assertEquals(
-            pcs.getLatestProcessedVtPosition().getNumericOffset(),
-            p0.getNumericOffset(),
+            pcs.getLatestProcessedVtPosition(),
+            p0,
             "pcs.getLatestProcessedLocalVersionTopicOffset() for PARTITION_FOO is expected to be zero!");
         OffsetRecord offsetRecord = pcs.getOffsetRecord();
         assertNotNull(offsetRecord);
         Assert.assertEquals(
-            offsetRecord.getCheckpointedLocalVtPosition().getNumericOffset(),
-            p0.getNumericOffset(),
+            offsetRecord.getCheckpointedLocalVtPosition(),
+            p0,
             "offsetRecord.getCheckpointedLocalVtPosition() for PARTITION_FOO is expected to be zero!");
       }
 
@@ -4806,14 +4808,14 @@ public abstract class StoreIngestionTaskTest {
       assertNotNull(offsetRecord);
       Assert.assertEquals(pcs.getLatestProcessedVtPosition(), p2); // PCS updated
       // offsetRecord hasn't been updated yet
-      Assert.assertEquals(offsetRecord.getCheckpointedLocalVtPosition().getNumericOffset(), p0.getNumericOffset());
+      Assert.assertEquals(offsetRecord.getCheckpointedLocalVtPosition(), p0);
       storeIngestionTaskUnderTest.close();
 
       // Verify the OffsetRecord is synced up with pcs and get persisted only once during shutdown
       verify(mockStorageMetadataService, timeout(TEST_TIMEOUT_MS).times(1)).put(eq(topic), eq(PARTITION_FOO), any());
       Assert.assertEquals(
-          offsetRecord.getCheckpointedLocalVtPosition().getNumericOffset(),
-          p2.getNumericOffset(),
+          offsetRecord.getCheckpointedLocalVtPosition(),
+          p2,
           "offsetRecord.getCheckpointedLocalVtPosition() for PARTITION_FOO is expected to be 2!");
 
       // Verify that the underlying storage engine sync function is invoked.

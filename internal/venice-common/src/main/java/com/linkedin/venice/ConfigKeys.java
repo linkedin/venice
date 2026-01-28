@@ -3,6 +3,7 @@ package com.linkedin.venice;
 import com.linkedin.venice.pubsub.PubSubConstants;
 import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerConfig;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig;
+import com.linkedin.venice.server.VersionRole;
 
 
 public class ConfigKeys {
@@ -737,6 +738,32 @@ public class ConfigKeys {
    */
   public static final String SERVER_USE_METRICS_BASED_POSITION_IN_LAG_COMPUTATION =
       "server.use.metrics.based.position.in.lag.computation";
+
+  /**
+   * Controls whether to use upstreamPubSubPosition (with offset fallback) or upstreamOffset
+   * when deserializing positions from leader metadata during ingestion.
+   *
+   * Default: true (use upstreamPubSubPosition with fallback to upstreamOffset).
+   * When true, the server will attempt to deserialize the position from upstreamPubSubPosition
+   * and fall back to upstreamOffset if deserialization fails or the position is invalid.
+   * When false, the server will directly use upstreamOffset without attempting position deserialization.
+   *
+   * This provides a safety mechanism to revert to offset-only behavior if position deserialization
+   * causes issues in production.
+   */
+  public static final String SERVER_USE_UPSTREAM_PUBSUB_POSITIONS = "server.use.upstream.pubsub.positions";
+
+  /**
+   * Feature flag to control whether OffsetRecord should use PubSubPosition deserialization with offset fallback
+   * when reading checkpointed positions from PartitionState.
+   * When true (default), the server will attempt to deserialize PubSubPosition from wire format bytes
+   * and fall back to offset-based position if deserialization fails or the buffer is empty.
+   * When false, the server will directly use numeric offsets without attempting position deserialization.
+   *
+   * This provides a safety mechanism to revert to offset-only behavior if position deserialization
+   * causes issues in production when reading checkpointed state.
+   */
+  public static final String SERVER_USE_CHECKPOINTED_PUBSUB_POSITIONS = "server.use.checkpointed.pubsub.positions";
 
   public static final String SERVER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS =
       "server.netty.graceful.shutdown.period.seconds";
@@ -2171,6 +2198,12 @@ public class ConfigKeys {
       "use.da.vinci.specific.execution.status.for.error";
 
   /**
+   * When enabled, allows the use of the getProgressPercentage() method in TopicManager.
+   * This is disabled by default as it can be expensive to compute.
+   */
+  public static final String POSITIONAL_PROGRESS_LOGGING_ENABLED = "positional.progress.logging.enabled";
+
+  /**
    * If the config value is non-negative, da-vinci client will batch push statues among all partitions into one single
    * update events; DaVinciPushStatusUpdateTask will check the push status across all partitions in the same DaVinci
    * node, and decide whether to send a status update event. This config controls the interval between each check.
@@ -2437,7 +2470,7 @@ public class ConfigKeys {
   public static final String SERVER_SSL_HANDSHAKE_QUEUE_CAPACITY = "server.ssl.handshake.queue.capacity";
 
   /**
-   * Number of threads for online Venice producer controlling the number of concurrent write operations.
+   * Number of threads for online Venice producer controlling the number of concurrent processing operations.
    */
   public static final String CLIENT_PRODUCER_THREAD_NUM = "client.producer.thread.num";
 
@@ -2676,7 +2709,7 @@ public class ConfigKeys {
   /**
    * Server configs to enable the topic partition re-subscription during ingestion to let bottom ingestion service aware
    * of store version's ingestion context changed (workload type {#@link PartitionReplicaIngestionContext.WorkloadType} or
-   * {#@link VersionRole.WorkloadType} version role changed).
+   * {@link VersionRole} version role changed).
    */
   public static final String SERVER_RESUBSCRIPTION_TRIGGERED_BY_VERSION_INGESTION_CONTEXT_CHANGE_ENABLED =
       "server.resubscription.triggered.by.version.ingestion.context.change.enabled";
@@ -3085,4 +3118,11 @@ public class ConfigKeys {
    */
   public static final String SYSTEM_STORE_VERSION_RETENTION_COUNT = "store.version.retention.count.system.store";
   public static final int DEFAULT_SYSTEM_STORE_VERSION_RETENTION_COUNT = 5;
+
+  /**
+   * Whether storage node read quota will fail-open if CV is unavailable during initialization or it will try to use
+   * cluster's instance count to calculate a placeholder/fallback value until CV is available.
+   */
+  public static final String SERVER_READ_QUOTA_INITIALIZATION_FALLBACK_ENABLED =
+      "server.read.quota.initialization.fallback.enabled";
 }

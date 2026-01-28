@@ -857,7 +857,7 @@ public class VenicePushJob implements AutoCloseable {
 
       updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.JOB_STATUS_POLLING_COMPLETED);
       // Do not mark completed yet as for target region push it will be marked inside postValidationConsumption
-      if (!pushJobSetting.isTargetedRegionPushEnabled && !pushJobSetting.isTargetRegionPushWithDeferredSwapEnabled) {
+      if (!pushJobSetting.isTargetedRegionPushEnabled) {
         pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(PushJobDetailsStatus.COMPLETED.getValue()));
       }
       pushJobDetails.jobDurationInMs = LatencyUtils.getElapsedTimeFromMsToMs(pushJobSetting.jobStartTimeMs);
@@ -1119,11 +1119,12 @@ public class VenicePushJob implements AutoCloseable {
           c -> c.getStore(pushJobSetting.storeName));
       Map<String, ViewConfig> viewConfigMap =
           storeResponse.getStore().getVersion(pushJobSetting.version).get().getViewConfigs();
+      boolean isFlinkVeniceViewsEnabled = storeResponse.getStore().isFlinkVeniceViewsEnabled();
       viewConfigMap = viewConfigMap.entrySet()
           .stream()
           .filter(vc -> Objects.equals(vc.getValue().getViewClassName(), MaterializedView.class.getCanonicalName()))
           .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
-      if (!viewConfigMap.isEmpty()) {
+      if (!viewConfigMap.isEmpty() && !isFlinkVeniceViewsEnabled) {
         pushJobSetting.materializedViewConfigFlatMap = ViewUtils.flatViewConfigMapString(viewConfigMap);
       }
     } catch (Exception e) {
@@ -2380,7 +2381,8 @@ public class VenicePushJob implements AutoCloseable {
             setting.deferVersionSwap,
             setting.targetedRegions,
             pushJobSetting.repushSourceVersion,
-            setting.pushToSeparateRealtimeTopicEnabled));
+            setting.pushToSeparateRealtimeTopicEnabled,
+            props.getInt(REPUSH_TTL_SECONDS, -1)));
     if (versionCreationResponse.isError()) {
       handleVersionCreationError(versionCreationResponse);
       throw new VeniceException(
@@ -2653,12 +2655,12 @@ public class VenicePushJob implements AutoCloseable {
           if (versionSwapStartTimeMs == 0) {
             LOGGER.info("Starting to monitor version swap status for {}", pushJobSetting.topic);
             versionSwapStartTimeMs = System.currentTimeMillis();
+            updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.START_VERSION_SWAP);
           }
           StoreResponse parentStoreResponse = getStoreResponse(pushJobSetting.storeName, true);
 
           StoreInfo parentStoreInfo = parentStoreResponse.getStore();
-          int latestUsedVersionNumber = parentStoreInfo.getLargestUsedVersionNumber();
-          Optional<Version> parentVersionFromStore = parentStoreInfo.getVersion(latestUsedVersionNumber);
+          Optional<Version> parentVersionFromStore = parentStoreInfo.getVersion(pushJobSetting.version);
           if (!parentVersionFromStore.isPresent()) {
             LOGGER.warn("Failed to get parent version for store: {}", pushJobSetting.storeName);
             fetchParentVersionRetryCount++;
@@ -2692,6 +2694,8 @@ public class VenicePushJob implements AutoCloseable {
                 "Successfully pushed {} and it is being served in all regions. The version status is {}.",
                 pushJobSetting.topic,
                 parentVersionStatus);
+            updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.COMPLETE_VERSION_SWAP);
+            sendPushJobDetailsToController();
             return;
           }
 
@@ -2705,7 +2709,10 @@ public class VenicePushJob implements AutoCloseable {
                     + " minutes, version swap is still not complete.");
           }
 
-          LOGGER.info("Version status is {} and version swap is not complete yet", parentVersion.getStatus());
+          LOGGER.info(
+              "Version status is {} for {} and version swap is not complete yet",
+              parentVersion.getStatus(),
+              pushJobSetting.version);
         } else if (isTargetedRegionPush) {
           LOGGER.info("Successfully pushed {} to targeted region {}", pushJobSetting.topic, targetedRegions);
           return;

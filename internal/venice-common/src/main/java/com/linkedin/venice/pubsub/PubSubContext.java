@@ -19,6 +19,7 @@ public class PubSubContext {
   private final AsyncStoreChangeNotifier asyncStoreChangeNotifier;
   private final PubSubMessageDeserializer pubSubMessageDeserializer;
   private final PubSubClientsFactory pubSubClientsFactory;
+  private final boolean useCheckpointedPubSubPositionWithFallback;
 
   private PubSubContext(Builder builder) {
     this.topicManagerRepository = builder.topicManagerRepository;
@@ -28,6 +29,7 @@ public class PubSubContext {
     this.asyncStoreChangeNotifier = builder.asyncStoreChangeNotifier;
     this.pubSubMessageDeserializer = builder.pubSubMessageDeserializer;
     this.pubSubClientsFactory = builder.pubSubClientsFactory;
+    this.useCheckpointedPubSubPositionWithFallback = builder.useCheckpointedPubSubPositionWithFallback;
   }
 
   public TopicManager getTopicManager(String topicName) {
@@ -62,6 +64,10 @@ public class PubSubContext {
     return pubSubClientsFactory;
   }
 
+  public boolean isUseCheckpointedPubSubPositionWithFallbackEnabled() {
+    return useCheckpointedPubSubPositionWithFallback;
+  }
+
   // Builder for PubSubContext
   public static class Builder {
     private TopicManagerRepository topicManagerRepository;
@@ -71,6 +77,7 @@ public class PubSubContext {
     private AsyncStoreChangeNotifier asyncStoreChangeNotifier;
     private PubSubMessageDeserializer pubSubMessageDeserializer;
     private PubSubClientsFactory pubSubClientsFactory;
+    private boolean useCheckpointedPubSubPositionWithFallback = true; // Default to true
 
     public Builder setTopicManagerRepository(TopicManagerRepository topicManagerRepository) {
       this.topicManagerRepository = topicManagerRepository;
@@ -104,6 +111,11 @@ public class PubSubContext {
 
     public Builder setPubSubClientsFactory(PubSubClientsFactory pubSubClientsFactory) {
       this.pubSubClientsFactory = pubSubClientsFactory;
+      return this;
+    }
+
+    public Builder setUseCheckpointedPubSubPositionWithFallback(boolean useCheckpointedPubSubPositionWithFallback) {
+      this.useCheckpointedPubSubPositionWithFallback = useCheckpointedPubSubPositionWithFallback;
       return this;
     }
 

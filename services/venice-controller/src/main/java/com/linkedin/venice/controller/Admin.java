@@ -213,7 +213,8 @@ public interface Admin extends AutoCloseable, Closeable {
       long rewindTimeInSecondsOverride,
       int replicationMetadataVersionId,
       boolean versionSwapDeferred,
-      int repushSourceVersion);
+      int repushSourceVersion,
+      int repushTtlSeconds);
 
   default boolean hasWritePermissionToBatchJobHeartbeatStore(
       X509Certificate requesterCert,
@@ -250,6 +251,7 @@ public interface Admin extends AutoCloseable, Closeable {
         Optional.empty(),
         false,
         null,
+        -1,
         -1);
   }
 
@@ -285,7 +287,8 @@ public interface Admin extends AutoCloseable, Closeable {
         emergencySourceRegion,
         versionSwapDeferred,
         null,
-        repushSourceVersion);
+        repushSourceVersion,
+        -1);
   }
 
   Version incrementVersionIdempotent(
@@ -304,7 +307,8 @@ public interface Admin extends AutoCloseable, Closeable {
       Optional<String> emergencySourceRegion,
       boolean versionSwapDeferred,
       String targetedRegions,
-      int repushSourceVersion);
+      int repushSourceVersion,
+      int repushTtlSeconds);
 
   Version getIncrementalPushVersion(String clusterName, String storeName, String pushJobId);
 

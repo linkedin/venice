@@ -2,6 +2,7 @@ package com.linkedin.venice.controller.server;
 
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.ControllerRequestHandlerDependencies;
+import com.linkedin.venice.controller.StoreDeletedValidation;
 import com.linkedin.venice.protocols.controller.ClusterStoreGrpcInfo;
 import com.linkedin.venice.protocols.controller.CreateStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.CreateStoreGrpcResponse;
@@ -11,6 +12,8 @@ import com.linkedin.venice.protocols.controller.GetAclForStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.GetAclForStoreGrpcResponse;
 import com.linkedin.venice.protocols.controller.UpdateAclForStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.UpdateAclForStoreGrpcResponse;
+import com.linkedin.venice.protocols.controller.ValidateStoreDeletedGrpcRequest;
+import com.linkedin.venice.protocols.controller.ValidateStoreDeletedGrpcResponse;
 import java.util.Optional;
 import org.apache.commons.lang.StringUtils;
 import org.apache.logging.log4j.LogManager;
@@ -108,5 +111,25 @@ public class StoreRequestHandler {
         request.getStoreName(),
         request.getClusterName());
     admin.checkResourceCleanupBeforeStoreCreation(request.getClusterName(), request.getStoreName());
+  }
+
+  /**
+   * Validates whether a store has been successfully deleted.
+   * @param request the request containing cluster and store name
+   * @return response indicating if store is deleted and reason if not
+   */
+  public ValidateStoreDeletedGrpcResponse validateStoreDeleted(ValidateStoreDeletedGrpcRequest request) {
+    ClusterStoreGrpcInfo storeInfo = request.getStoreInfo();
+    ControllerRequestParamValidator.validateClusterStoreInfo(storeInfo);
+    String clusterName = storeInfo.getClusterName();
+    String storeName = storeInfo.getStoreName();
+    LOGGER.info("Validating store deleted for store: {} in cluster: {}", storeName, clusterName);
+    StoreDeletedValidation result = admin.validateStoreDeleted(clusterName, storeName);
+    ValidateStoreDeletedGrpcResponse.Builder responseBuilder =
+        ValidateStoreDeletedGrpcResponse.newBuilder().setStoreInfo(storeInfo).setStoreDeleted(result.isDeleted());
+    if (result.getError() != null) {
+      responseBuilder.setReason(result.getError());
+    }
+    return responseBuilder.build();
   }
 }

@@ -336,12 +336,19 @@ public class StoreBufferService extends AbstractStoreBufferService {
     return syncOffsetCmd.getCmdExecutedFuture();
   }
 
+  /**
+   * lastRecordPersistedFuture indicates whether the last record was persisted successfully and will have two sources.
+   * 1. From the follower code path, it is lastQueuedRecordPersistedFuture from the PCS set in putConsumeRecord().
+   * 2. From the leader side, it is the persistedToDBFuture from the LeaderProducedRecordContext from when the
+   *    LeaderProducerCallback was created.
+   */
   public void execSyncOffsetFromSnapshotAsync(
       PubSubTopicPartition topicPartition,
       PartitionTracker vtDivSnapshot,
+      CompletableFuture<Void> lastRecordPersistedFuture,
       StoreIngestionTask ingestionTask) throws InterruptedException {
     DefaultPubSubMessage fakeRecord = new FakePubSubMessage(topicPartition);
-    SyncVtDivNode syncDivNode = new SyncVtDivNode(fakeRecord, vtDivSnapshot, ingestionTask);
+    SyncVtDivNode syncDivNode = new SyncVtDivNode(fakeRecord, vtDivSnapshot, lastRecordPersistedFuture, ingestionTask);
     getDrainerForConsumerRecord(fakeRecord, topicPartition.getPartitionNumber()).put(syncDivNode);
   }
 
@@ -688,20 +695,31 @@ public class StoreBufferService extends AbstractStoreBufferService {
   /**
    * Allows the ConsumptionTask to command the Drainer to sync the VT DIV to the OffsetRecord.
    */
-  private static class SyncVtDivNode extends QueueNode {
+  static class SyncVtDivNode extends QueueNode {
     private static final int PARTIAL_CLASS_OVERHEAD = getClassOverhead(SyncVtDivNode.class);
 
-    private PartitionTracker vtDivSnapshot;
+    private final PartitionTracker vtDivSnapshot;
+    private final CompletableFuture<Void> lastRecordPersistedFuture;
 
     public SyncVtDivNode(
         DefaultPubSubMessage consumerRecord,
         PartitionTracker vtDivSnapshot,
+        CompletableFuture<Void> lastRecordPersistedFuture,
         StoreIngestionTask ingestionTask) {
       super(consumerRecord, ingestionTask, StringUtils.EMPTY, 0);
       this.vtDivSnapshot = vtDivSnapshot;
+      this.lastRecordPersistedFuture = lastRecordPersistedFuture;
     }
 
     public void execute() {
+      if (!lastRecordPersistedFuture.isDone() || lastRecordPersistedFuture.isCompletedExceptionally()) {
+        LOGGER.warn(
+            "event=globalRtDiv Skipping SyncVtDivNode for {} because preceding record failed (done={} exception={})",
+            getConsumerRecord().getTopicPartition(),
+            lastRecordPersistedFuture.isDone(),
+            lastRecordPersistedFuture.isCompletedExceptionally());
+        return;
+      }
       getIngestionTask().updateAndSyncOffsetFromSnapshot(vtDivSnapshot, getConsumerRecord().getTopicPartition());
     }
 
@@ -845,7 +863,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
     }
   }
 
-  private static class FakePubSubMessage implements DefaultPubSubMessage {
+  static class FakePubSubMessage implements DefaultPubSubMessage {
     private static final int SHALLOW_CLASS_OVERHEAD = ClassSizeEstimator.getClassOverhead(FakePubSubMessage.class);
     private final PubSubTopicPartition topicPartition;
 

@@ -97,7 +97,6 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.PubSubContext;
-import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.PubSubUtil;
@@ -119,6 +118,7 @@ import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.serializer.AvroGenericDeserializer;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
+import com.linkedin.venice.server.VersionRole;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.utils.ByteUtils;
@@ -404,7 +404,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private final String[] msgForLagMeasurement;
   protected final AtomicBoolean recordLevelMetricEnabled;
   protected final boolean isGlobalRtDivEnabled;
-  protected volatile PartitionReplicaIngestionContext.VersionRole versionRole;
+  protected volatile VersionRole versionRole;
   protected volatile PartitionReplicaIngestionContext.WorkloadType workloadType;
   protected final boolean batchReportIncPushStatusEnabled;
 
@@ -567,8 +567,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.bootstrapTimeoutInMs = pushTimeoutInMs;
     this.isIsolatedIngestion = isIsolatedIngestion;
     this.partitionCount = storeVersionPartitionCount;
-    this.ingestionNotificationDispatcher =
-        new IngestionNotificationDispatcher(notifiers, kafkaVersionTopic, isCurrentVersion);
+    this.ingestionNotificationDispatcher = new IngestionNotificationDispatcher(
+        notifiers,
+        kafkaVersionTopic,
+        isCurrentVersion,
+        this::getIngestionProgressPercentage);
     this.missingSOPCheckExecutor.execute(() -> waitForStateVersion(kafkaVersionTopic));
     this.cacheBackend = cacheBackend;
 
@@ -675,6 +678,15 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.parallelProcessingThreadPool = builder.getAAWCWorkLoadProcessingThreadPool();
     this.hostName = Utils.getHostName() + "_" + storeVersionConfig.getListenerPort();
     this.zkHelixAdmin = zkHelixAdmin;
+  }
+
+  @VisibleForTesting
+  final int getIngestionProgressPercentage(PartitionConsumptionState pcs) {
+    if (!getServerConfig().isIngestionProgressLoggingEnabled()) {
+      return -1;
+    }
+    return getTopicManager(localKafkaServer)
+        .getIngestionProgressPercentage(pcs.getReplicaTopicPartition(), pcs.getLatestProcessedVtPosition());
   }
 
   /** Package-private on purpose, only intended for tests. Do not use for production use cases. */
@@ -801,10 +813,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           long startTime = System.nanoTime();
           recordTransformer.onStartVersionIngestion(partitionNumber, isCurrentVersion.getAsBoolean());
           LOGGER.info(
-              "DaVinciRecordTransformer onStartVersionIngestion took {} ms for store version: {} and partition: {}",
+              "DaVinciRecordTransformer onStartVersionIngestion took {} ms for replica: {}",
               LatencyUtils.getElapsedTimeFromNSToMS(startTime),
-              storeVersionName,
-              partitionNumber);
+              getReplicaId(topicPartition));
 
           startTime = System.nanoTime();
           recordTransformer.internalOnRecovery(
@@ -1325,6 +1336,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           elapsedTimeForPuttingIntoQueue.setValue(
               elapsedTimeForPuttingIntoQueue.getValue() + LatencyUtils.getElapsedTimeFromNSToMS(queuePutStartTimeInNS));
         }
+
+        // Intentionally not protecting against exceptions thrown by putConsumerRecord()
+        // Only sync OffsetRecord if the message that triggered the sync was successfully enqueued into the drainer
+        syncOffsetFromSnapshotIfNeeded(record, topicPartition); // latest consumed VT position (LCVP) in offset record
         break;
       case PRODUCED_TO_KAFKA:
       case SKIPPED_MESSAGE:
@@ -1675,7 +1690,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
 
     boolean isWriteComputeEnabled = store.isWriteComputationEnabled();
-    PartitionReplicaIngestionContext.VersionRole newVersionRole =
+    VersionRole newVersionRole =
         PartitionReplicaIngestionContext.determineStoreVersionRole(versionNumber, currentVersionNumber);
     PartitionReplicaIngestionContext.WorkloadType newWorkloadType =
         PartitionReplicaIngestionContext.determineWorkloadType(isActiveActiveReplicationEnabled, isWriteComputeEnabled);
@@ -2337,18 +2352,22 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             subscribePosition,
             localKafkaServer);
 
-        LOGGER.info("Subscribed to: {} position: {}", topicPartition, subscribePosition);
-        if (isGlobalRtDivEnabled()) {
-          // TODO: remove. this is a temporary log for debugging while the feature is in its infancy
-          TopicManager topicManager = getTopicManager(localKafkaServer);
-          PubSubPosition endPosition = topicManager.getLatestPositionCached(topicPartition);
-          long diff = topicManager.diffPosition(topicPartition, endPosition, subscribePosition);
-          LOGGER.info(
-              "event=globalRtDiv Subscribed to: {} position: {} endPosition: {} diff: {}",
-              topicPartition,
-              subscribePosition,
-              endPosition,
-              diff);
+        if (getServerConfig().isIngestionProgressLoggingEnabled() && !subscribePosition.isSymbolic()) {
+          try {
+            TopicManager topicManager = getTopicManager(localKafkaServer);
+            int percentage = topicManager.getIngestionProgressPercentage(topicPartition, subscribePosition);
+            LOGGER.info(
+                "Subscribed to: {} position: {} latestPosition: {} progress: {}%",
+                topicPartition,
+                subscribePosition,
+                topicManager.getLatestPositionCached(topicPartition),
+                percentage);
+          } catch (Exception e) {
+            // this log message is best-effort. there is no point in throwing an exception for the sake of this.
+            LOGGER.warn("Swallowed an exception when trying to determine progress for {}", topicPartition, e);
+          }
+        } else { // no point in logging progress if it's symbolic (earliest or latest position)
+          LOGGER.info("Subscribed to: {} position: {}", topicPartition, subscribePosition);
         }
         storageUtilizationManager.initPartition(partition);
         break;
@@ -2806,6 +2825,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return syncBytesInterval > 0 && (getConsumedBytesSinceLastSync().getOrDefault(brokerUrl, 0L) >= syncBytesInterval);
   }
 
+  abstract void syncOffsetFromSnapshotIfNeeded(DefaultPubSubMessage record, PubSubTopicPartition topicPartition);
+
   /**
    * Update the offset metadata in OffsetRecord in the following cases:
    * 1. A ControlMessage other than Start_of_Segment and End_of_Segment is processed
@@ -2894,10 +2915,16 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     storageMetadataService.put(this.kafkaVersionTopic, partition, offsetRecord);
     pcs.resetProcessedRecordSizeSinceLastSync();
-    // TODO: update
-    String msg = "Offset synced for replica: " + pcs.getReplicaId() + " - localVtOffset: {}";
+
+    String msg = "Offset synced for replica: " + pcs.getReplicaId() + " - localVtPosition: {} progress: {}";
     if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
-      LOGGER.info(msg, offsetRecord.getCheckpointedLocalVtPosition());
+      final PubSubPosition position = offsetRecord.getCheckpointedLocalVtPosition();
+      int percentage = -1;
+      if (getServerConfig().isIngestionProgressLoggingEnabled()) {
+        final PubSubTopicPartition topicPartition = pcs.getReplicaTopicPartition();
+        percentage = getTopicManager(localKafkaServer).getIngestionProgressPercentage(topicPartition, position);
+      }
+      LOGGER.info(msg, position, percentage);
     }
   }
 
@@ -3363,10 +3390,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         EndOfPush endOfPush = (EndOfPush) controlMessage.controlMessageUnion;
         processEndOfPush(kafkaMessageEnvelope, offset, partitionConsumptionState, endOfPush);
         if (recordTransformer != null) {
-          recordTransformer.onControlMessage(partition, offset, controlMessage);
+          recordTransformer.onControlMessage(partition, offset, controlMessage, pubSubMessageTime);
         }
         break;
       case START_OF_SEGMENT:
+        if (recordTransformer != null && Arrays.equals(kafkaKey.getKey(), KafkaKey.HEART_BEAT.getKey())) {
+          recordTransformer.onControlMessage(partition, offset, controlMessage, pubSubMessageTime);
+        }
         break;
       case END_OF_SEGMENT:
         break;
@@ -3378,7 +3408,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           int futureVersion =
               Version.parseVersionFromVersionTopicName(versionSwap.getNewServingVersionTopic().toString());
           recordTransformer.onVersionSwap(currentVersion, futureVersion, partition);
-          recordTransformer.onControlMessage(partition, offset, controlMessage);
+          recordTransformer.onControlMessage(partition, offset, controlMessage, pubSubMessageTime);
         }
         break;
       case START_OF_INCREMENTAL_PUSH:
@@ -4087,7 +4117,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
                         consumerRecord.getPosition(),
                         // Calculate payload size after chunk assembly
                         keyLen + assembledRecord.value().limit(),
-                        put.getReplicationMetadataPayload())
+                        put.getReplicationMetadataPayload(),
+                        put.getReplicationMetadataVersionId())
                     : null;
             transformerResult = recordTransformer
                 .transformAndProcessPut(lazyKey, lazyValue, producedPartition, recordTransformerRecordMetadata);
@@ -4162,8 +4193,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
                     ? new DaVinciRecordTransformerRecordMetadata(
                         consumerRecord.getPubSubMessageTime(),
                         consumerRecord.getPosition(),
-                        consumerRecord.getPayloadSize(),
-                        null)
+                        consumerRecord.getPayloadSize())
                     : null;
             recordTransformer.processDelete(lazyKey, producedPartition, recordTransformerRecordMetadata);
           } catch (Exception e) {
@@ -4705,7 +4735,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
   }
 
-  public VeniceServerConfig getServerConfig() {
+  public final VeniceServerConfig getServerConfig() {
     return serverConfig;
   }
 
@@ -4882,9 +4912,16 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
     LeaderMetadata leaderMetadataFooter = consumerRecord.getValue().leaderMetadataFooter;
 
-    // always return upstreamOffset instead of upstreamPubSubPosition
-    // till we fix all the issues in offset to pubsubPosition migration
-    return PubSubUtil.fromKafkaOffset(leaderMetadataFooter.upstreamOffset);
+    // Check config to determine whether to use upstreamPubSubPosition with fallback or just upstreamOffset
+    if (storeVersionConfig.isUseUpstreamPubSubPositionWithFallbackEnabled()) {
+      return PubSubUtil.deserializePositionWithOffsetFallback(
+          leaderMetadataFooter.upstreamPubSubPosition,
+          leaderMetadataFooter.upstreamOffset,
+          pubSubContext.getPubSubPositionDeserializer());
+    } else {
+      // Directly use upstreamOffset without attempting position deserialization
+      return PubSubUtil.fromKafkaOffset(leaderMetadataFooter.upstreamOffset);
+    }
   }
 
   // extract the upstream cluster id from the given consumer record's leader metadata.
@@ -5007,7 +5044,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   // For unit test purpose.
-  void setVersionRole(PartitionReplicaIngestionContext.VersionRole versionRole) {
+  void setVersionRole(VersionRole versionRole) {
     this.versionRole = versionRole;
   }
 
@@ -5188,49 +5225,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   @VisibleForTesting
   PubSubContext getPubSubContext() {
     return pubSubContext;
-  }
-
-  PubSubPosition deserializePositionWithOffsetFallback(
-      PubSubPositionDeserializer pubSubPositionDeserializer,
-      PubSubTopicPartition topicPartition,
-      ByteBuffer wireFormatBytes,
-      long offset) {
-    // Fast path: nothing to deserialize
-    if (wireFormatBytes == null || !wireFormatBytes.hasRemaining()) {
-      return PubSubUtil.fromKafkaOffset(offset);
-    }
-
-    try {
-      final PubSubPosition position = pubSubPositionDeserializer.toPosition(wireFormatBytes);
-      // Guard against regressions: honor the caller-provided minimum offset.
-      if (offset > 0 && position.getNumericOffset() < offset) {
-        String context = String.format(" for: %s/%s", topicPartition, versionTopic);
-        if (!REDUNDANT_LOGGING_FILTER.isRedundantException(context)) {
-          LOGGER.warn(
-              "Deserialized position: {} is behind the provided offset: {}. Using offset-based position for: {}/{}",
-              position,
-              offset,
-              topicPartition,
-              versionTopic);
-        }
-        return PubSubUtil.fromKafkaOffset(offset);
-      }
-
-      return position;
-    } catch (Exception e) {
-      String context = String.format("%s/%s - %s", topicPartition, versionTopic, e.getMessage());
-      if (!REDUNDANT_LOGGING_FILTER.isRedundantException(context)) {
-        LOGGER.warn(
-            "Failed to deserialize PubSubPosition for: {}/{}. Using offset-based position (offset={}, bufferRem={}, bufferCap={}).",
-            topicPartition,
-            versionTopic,
-            offset,
-            wireFormatBytes.remaining(),
-            wireFormatBytes.capacity(),
-            e);
-      }
-      return PubSubUtil.fromKafkaOffset(offset);
-    }
   }
 
   /**

@@ -116,10 +116,14 @@ public class InternalDaVinciRecordTransformer<K, V, O> extends DaVinciRecordTran
    * On receiving a control message for a given partition and offset, we will process it here.
    * It is used for Version Specific CDC.
    */
-  public void onControlMessage(int partition, PubSubPosition offset, ControlMessage controlMessage) {
+  public void onControlMessage(
+      int partition,
+      PubSubPosition offset,
+      ControlMessage controlMessage,
+      long pubSubMessageTimestamp) {
     if (this.recordTransformer instanceof VeniceChangelogConsumerDaVinciRecordTransformerImpl.DaVinciRecordTransformerChangelogConsumer) {
       ((VeniceChangelogConsumerDaVinciRecordTransformerImpl.DaVinciRecordTransformerChangelogConsumer) this.recordTransformer)
-          .onControlMessage(partition, offset, controlMessage);
+          .onControlMessage(partition, offset, controlMessage, pubSubMessageTimestamp);
     }
   }
 

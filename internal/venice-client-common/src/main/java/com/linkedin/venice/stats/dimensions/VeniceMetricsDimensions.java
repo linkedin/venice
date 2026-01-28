@@ -7,6 +7,7 @@ import static com.linkedin.venice.stats.VeniceOpenTelemetryMetricNamingFormat.tr
 import static com.linkedin.venice.stats.VeniceOpenTelemetryMetricNamingFormat.validateMetricName;
 
 import com.google.common.annotations.VisibleForTesting;
+import com.linkedin.venice.server.VersionRole;
 import com.linkedin.venice.stats.VeniceOpenTelemetryMetricNamingFormat;
 
 
@@ -59,7 +60,19 @@ public enum VeniceMetricsDimensions {
   VENICE_INSTANCE_ERROR_TYPE("venice.instance.error_type"),
 
   /** Helix group id number */
-  VENICE_HELIX_GROUP_ID("venice.helix_group.id");
+  VENICE_HELIX_GROUP_ID("venice.helix_group.id"),
+
+  /** Region/datacenter name */
+  VENICE_REGION_NAME("venice.region.name"),
+
+  /** {@link VersionRole} */
+  VENICE_VERSION_ROLE("venice.version.role"),
+
+  /** {@link ReplicaType} */
+  VENICE_REPLICA_TYPE("venice.replica.type"),
+
+  /** {@link ReplicaState} */
+  VENICE_REPLICA_STATE("venice.replica.state");
 
   private final String[] dimensionName = new String[VeniceOpenTelemetryMetricNamingFormat.SIZE];
 

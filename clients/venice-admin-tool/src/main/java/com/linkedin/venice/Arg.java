@@ -255,6 +255,7 @@ public enum Arg {
   ), VIEW_NAME("view-name", "vn", true, "Name of a store view"),
   VIEW_CLASS("view-class", "vc", true, "Name of a store view class"),
   VIEW_PARAMS("view-params", "vp", true, "Additional parameter map of a store view class"),
+  FLINK_VENICE_VIEWS_ENABLED("flink-venice-views-enabled", "fvve", true, "Enable flink-based views"),
   REMOVE_VIEW("remove-view", "rv", false, "Optional config to specify to disable certain store view"),
   PARTITION_DETAIL_ENABLED(
       "partition-detail-enabled", "pde", true, "A flag to indicate whether to retrieve partition details"

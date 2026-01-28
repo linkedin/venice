@@ -28,6 +28,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENABLE_WR
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENUM_SCHEMA_EVOLUTION_ALLOWED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ETLED_PROXY_USER_ACCOUNT;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ETL_STRATEGY;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.FLINK_VENICE_VIEWS_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.FUTURE_VERSION_ETL_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.GLOBAL_RT_DIV_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.HYBRID_STORE_DISK_QUOTA_ENABLED;
@@ -1183,7 +1184,7 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   /**
-   * @see Admin#addVersionAndStartIngestion(String, String, String, int, int, Version.PushType, String, long, int, boolean, int)
+   * @see Admin#addVersionAndStartIngestion(String, String, String, int, int, Version.PushType, String, long, int, boolean, int, int)
    */
   @Override
   public void addVersionAndStartIngestion(
@@ -1197,7 +1198,8 @@ public class VeniceParentHelixAdmin implements Admin {
       long rewindTimeInSecondsOverride,
       int ignoredRmdVersionID,
       boolean versionSwapDeferred,
-      int repushSourceVersion) {
+      int repushSourceVersion,
+      int repushTtlSeconds) {
     // Parent controller will always pick the replicationMetadataVersionId from configs.
     final int replicationMetadataVersionId = getRmdVersionID(storeName, clusterName);
     int largestUsedRTVersionNumber = getStore(clusterName, storeName).getLargestUsedRTVersionNumber();
@@ -1789,7 +1791,8 @@ public class VeniceParentHelixAdmin implements Admin {
       Optional<String> emergencySourceRegion,
       boolean versionSwapDeferred,
       String targetedRegions,
-      int repushSourceVersion) {
+      int repushSourceVersion,
+      int repushTtlSeconds) {
     Store store = getStore(clusterName, storeName);
 
     Optional<String> currentPushTopic =
@@ -1890,7 +1893,8 @@ public class VeniceParentHelixAdmin implements Admin {
           versionSwapDeferred,
           targetedRegions,
           repushSourceVersion,
-          store.getLargestUsedRTVersionNumber());
+          store.getLargestUsedRTVersionNumber(),
+          repushTtlSeconds);
     }
     if (VeniceSystemStoreType.getSystemStoreType(storeName) == null) {
       if (pushType.isBatch()) {
@@ -1943,7 +1947,8 @@ public class VeniceParentHelixAdmin implements Admin {
       boolean versionSwapDeferred,
       String targetedRegions,
       int repushSourceVersion,
-      int largestUsedRTVersionNumber) {
+      int largestUsedRTVersionNumber,
+      int repushTtlSeconds) {
     final int replicationMetadataVersionId = getRmdVersionID(storeName, clusterName);
     Pair<Boolean, Version> result = getVeniceHelixAdmin().addVersionAndTopicOnly(
         clusterName,
@@ -1964,7 +1969,8 @@ public class VeniceParentHelixAdmin implements Admin {
         versionSwapDeferred,
         targetedRegions,
         repushSourceVersion,
-        largestUsedRTVersionNumber);
+        largestUsedRTVersionNumber,
+        repushTtlSeconds);
     Version newVersion = result.getSecond();
     if (result.getFirst()) {
       if (newVersion.isActiveActiveReplicationEnabled()) {
@@ -2051,6 +2057,7 @@ public class VeniceParentHelixAdmin implements Admin {
     addVersion.versionSwapDeferred = version.isVersionSwapDeferred();
     addVersion.repushSourceVersion = repushSourceVersion;
     addVersion.currentRTVersionNumber = largestUsedRTVersion;
+    addVersion.repushTtlSeconds = version.getRepushTtlSeconds();
     return addVersion;
   }
 
@@ -2677,6 +2684,7 @@ public class VeniceParentHelixAdmin implements Admin {
       Optional<Integer> latestSupersetSchemaId = params.getLatestSupersetSchemaId();
       Optional<Boolean> unusedSchemaDeletionEnabled = params.getUnusedSchemaDeletionEnabled();
       Optional<List<LifecycleHooksRecord>> storeLifecycleHooks = params.getStoreLifecycleHooks();
+      Optional<Boolean> flinkVeniceViewsEnabled = params.getFlinkVeniceViewsEnabled();
 
       /**
        * Check whether parent controllers will only propagate the update configs to child controller, or all unchanged
@@ -2775,6 +2783,11 @@ public class VeniceParentHelixAdmin implements Admin {
             validateAndDecorateStoreViewConfigs(storeViewConfig.get(), currStore);
         setStore.views = StoreViewUtils.convertViewConfigMapToStoreViewRecordMap(validatedViewConfigs);
         updatedConfigsList.add(STORE_VIEW);
+      }
+
+      if (flinkVeniceViewsEnabled.isPresent()) {
+        setStore.flinkVeniceViewsEnabled = flinkVeniceViewsEnabled.get();
+        updatedConfigsList.add(FLINK_VENICE_VIEWS_ENABLED);
       }
 
       // Only update fields that are set, other fields will be read from the original store's partitioner config.

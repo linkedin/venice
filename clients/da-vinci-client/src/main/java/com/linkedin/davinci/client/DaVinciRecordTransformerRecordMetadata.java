@@ -7,19 +7,16 @@ import com.linkedin.venice.pubsub.api.PubSubPosition;
  * Per record metadata wrapper for {@link DaVinciRecordTransformer}.
  */
 public class DaVinciRecordTransformerRecordMetadata {
-  public final static int SENTINEL_WRITER_SCHEMA_ID = -1;
+  public final static int UNSPECIFIED_SCHEMA_ID = -1;
   private final int writerSchemaId;
   private final long timestamp;
   private final PubSubPosition pubSubPosition;
   private final int payloadSize;
   private final java.nio.ByteBuffer replicationMetadataPayload;
+  private final int replicationMetadataVersionId;
 
-  public DaVinciRecordTransformerRecordMetadata(
-      long timestamp,
-      PubSubPosition pubSubPosition,
-      int payloadSize,
-      java.nio.ByteBuffer replicationMetadataPayload) {
-    this(SENTINEL_WRITER_SCHEMA_ID, timestamp, pubSubPosition, payloadSize, replicationMetadataPayload);
+  public DaVinciRecordTransformerRecordMetadata(long timestamp, PubSubPosition pubSubPosition, int payloadSize) {
+    this(UNSPECIFIED_SCHEMA_ID, timestamp, pubSubPosition, payloadSize, null, UNSPECIFIED_SCHEMA_ID);
   }
 
   public DaVinciRecordTransformerRecordMetadata(
@@ -27,17 +24,19 @@ public class DaVinciRecordTransformerRecordMetadata {
       long timestamp,
       PubSubPosition pubSubPosition,
       int payloadSize,
-      java.nio.ByteBuffer replicationMetadataPayload) {
+      java.nio.ByteBuffer replicationMetadataPayload,
+      int replicationMetadataVersionId) {
     this.writerSchemaId = writerSchemaId;
     this.timestamp = timestamp;
     this.pubSubPosition = pubSubPosition;
     this.payloadSize = payloadSize;
     this.replicationMetadataPayload = replicationMetadataPayload;
+    this.replicationMetadataVersionId = replicationMetadataVersionId;
   }
 
   /**
    * @return the schema ID that the record was written with if it's a PUT.
-   * If the record came from disk, or it's a DELETE, it will be {@link #SENTINEL_WRITER_SCHEMA_ID}.
+   * If the record came from disk, or it's a DELETE, it will be {@link #UNSPECIFIED_SCHEMA_ID}.
    */
   public int getWriterSchemaId() {
     return writerSchemaId;
@@ -72,5 +71,13 @@ public class DaVinciRecordTransformerRecordMetadata {
    */
   public java.nio.ByteBuffer getReplicationMetadataPayload() {
     return replicationMetadataPayload;
+  }
+
+  /**
+   * @return the corresponding replication metadata schema version id used to serialize the payload. If the payload is
+   * null the corresponding id will be -1.
+   */
+  public int getReplicationMetadataVersionId() {
+    return replicationMetadataVersionId;
   }
 }

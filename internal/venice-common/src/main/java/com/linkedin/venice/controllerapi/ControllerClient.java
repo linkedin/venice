@@ -53,6 +53,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.REGIONS_F
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REMOTE_KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REPLICATION_METADATA_VERSION_ID;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REPUSH_SOURCE_VERSION;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.REPUSH_TTL_SECONDS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REWIND_TIME_IN_SECONDS_OVERRIDE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.SCHEMA_COMPAT_TYPE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.SCHEMA_ID;
@@ -323,7 +324,8 @@ public class ControllerClient implements Closeable {
         false,
         null,
         -1,
-        false);
+        false,
+        -1);
   }
 
   public VersionCreationResponse requestTopicForWrites(
@@ -356,7 +358,8 @@ public class ControllerClient implements Closeable {
         deferVersionSwap,
         null,
         -1,
-        false);
+        false,
+        -1);
   }
 
   /**
@@ -382,6 +385,7 @@ public class ControllerClient implements Closeable {
    * @param deferVersionSwap            whether to defer version swap after the push is done
    * @param targetedRegions             the list of regions that is separated by comma for targeted region push.
    * @param repushSourceVersion
+   * @param repushTtlSeconds            TTL in seconds for repush operation, or -1 if not applicable
    * @return VersionCreationResponse includes topic and partitioning
    */
   public VersionCreationResponse requestTopicForWrites(
@@ -400,7 +404,8 @@ public class ControllerClient implements Closeable {
       boolean deferVersionSwap,
       String targetedRegions,
       int repushSourceVersion,
-      boolean pushToSeparateRealtimeTopic) {
+      boolean pushToSeparateRealtimeTopic,
+      int repushTtlSeconds) {
     QueryParams params = newParams().add(NAME, storeName)
         // TODO: Store size is not used anymore. Remove it after the next round of controller deployment.
         .add(STORE_SIZE, Long.toString(storeSize))
@@ -416,7 +421,8 @@ public class ControllerClient implements Closeable {
         .add(REWIND_TIME_IN_SECONDS_OVERRIDE, rewindTimeInSecondsOverride)
         .add(DEFER_VERSION_SWAP, deferVersionSwap)
         .add(REPUSH_SOURCE_VERSION, repushSourceVersion)
-        .add(SEPARATE_REAL_TIME_TOPIC_ENABLED, pushToSeparateRealtimeTopic);
+        .add(SEPARATE_REAL_TIME_TOPIC_ENABLED, pushToSeparateRealtimeTopic)
+        .add(REPUSH_TTL_SECONDS, repushTtlSeconds);
     if (StringUtils.isNotEmpty(targetedRegions)) {
       params.add(TARGETED_REGIONS, targetedRegions);
     }

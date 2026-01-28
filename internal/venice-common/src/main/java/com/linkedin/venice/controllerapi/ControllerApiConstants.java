@@ -123,6 +123,7 @@ public class ControllerApiConstants {
   public static final String STORE_VIEW_CLASS = "store_view_class";
   public static final String STORE_VIEW_PARAMS = "store_view_params";
   public static final String DISABLE_STORE_VIEW = "disable_store_view";
+  public static final String FLINK_VENICE_VIEWS_ENABLED = "flink_venice_views_enabled";
 
   public static final String NATIVE_REPLICATION_ENABLED = "native_replication_enabled";
   public static final String PUSH_STREAM_SOURCE_ADDRESS = "push_stream_source_address";
@@ -176,6 +177,8 @@ public class ControllerApiConstants {
   public static final String REPLICATION_METADATA_VERSION_ID = "replication_metadata_version_id";
 
   public static final String PARTITION_DETAIL_ENABLED = "partition_detail_enabled";
+
+  public static final String REPUSH_TTL_SECONDS = "repush_ttl_seconds";
 
   /**
    * How many records that one server could consume from Kafka at most in one second from the specified regions.

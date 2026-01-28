@@ -24,9 +24,9 @@ import com.linkedin.davinci.ingestion.IsolatedIngestionBackend;
 import com.linkedin.davinci.ingestion.main.MainIngestionStorageMetadataService;
 import com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
-import com.linkedin.davinci.kafka.consumer.StoreIngestionService;
 import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.repository.VeniceMetadataRepositoryBuilder;
+import com.linkedin.davinci.stats.AggBlobTransferStats;
 import com.linkedin.davinci.stats.AggVersionedBlobTransferStats;
 import com.linkedin.davinci.stats.AggVersionedStorageEngineStats;
 import com.linkedin.davinci.stats.HeartbeatMonitoringServiceStats;
@@ -115,6 +115,7 @@ public class DaVinciBackend implements Closeable {
   // Per-store client tracking
   private final Map<String, ClientType> storeClientTypes = new VeniceConcurrentHashMap<>();
   private final Map<String, Integer> versionSpecificStoreVersions = new VeniceConcurrentHashMap<>();
+  private final Map<String, Integer> storeClientRefCounts = new VeniceConcurrentHashMap<>();
   private VeniceConfigLoader configLoader;
   private SubscriptionBasedReadOnlyStoreRepository storeRepository;
   private final ReadOnlySchemaRepository schemaRepository;
@@ -138,6 +139,7 @@ public class DaVinciBackend implements Closeable {
   private final boolean writeBatchingPushStatus;
   private final HeartbeatMonitoringService heartbeatMonitoringService;
   private AggVersionedBlobTransferStats aggVersionedBlobTransferStats;
+  private AggBlobTransferStats aggBlobTransferStats;
 
   public DaVinciBackend(
       ClientConfig clientConfig,
@@ -326,7 +328,8 @@ public class DaVinciBackend implements Closeable {
       if (BlobTransferUtils.isBlobTransferManagerEnabled(backendConfig, isIsolatedIngestion())) {
         aggVersionedBlobTransferStats =
             new AggVersionedBlobTransferStats(metricsRepository, storeRepository, configLoader.getVeniceServerConfig());
-
+        aggBlobTransferStats =
+            new AggBlobTransferStats(aggVersionedBlobTransferStats, ingestionService.getHostLevelIngestionStats());
         P2PBlobTransferConfig p2PBlobTransferConfig = new P2PBlobTransferConfig(
             configLoader.getVeniceServerConfig().getDvcP2pBlobTransferServerPort(),
             configLoader.getVeniceServerConfig().getDvcP2pBlobTransferClientPort(),
@@ -350,13 +353,14 @@ public class DaVinciBackend implements Closeable {
             .setStorageMetadataService(storageMetadataService)
             .setReadOnlyStoreRepository(readOnlyStoreRepository)
             .setStorageEngineRepository(storageService.getStorageEngineRepository())
-            .setAggVersionedBlobTransferStats(aggVersionedBlobTransferStats)
+            .setAggBlobTransferStats(aggBlobTransferStats)
             .setBlobTransferSSLFactory(BlobTransferUtils.createSSLFactoryForBlobTransferInDVC(configLoader))
             .setBlobTransferAclHandler(BlobTransferUtils.createAclHandler(configLoader))
             .setPushStatusNotifierSupplier(() -> ingestionListener)
             .build();
       } else {
         aggVersionedBlobTransferStats = null;
+        aggBlobTransferStats = null;
         blobTransferManager = null;
       }
 
@@ -572,7 +576,7 @@ public class DaVinciBackend implements Closeable {
     return storageService;
   }
 
-  final StoreIngestionService getIngestionService() {
+  final KafkaStoreIngestionService getIngestionService() {
     return ingestionService;
   }
 
@@ -741,6 +745,9 @@ public class DaVinciBackend implements Closeable {
       }
     }
 
+    // Increment ref count for this store
+    storeClientRefCounts.merge(storeName, 1, Integer::sum);
+
     if (isVersionSpecific) {
       versionSpecificStoreVersions.put(storeName, storeVersion);
     }
@@ -749,9 +756,33 @@ public class DaVinciBackend implements Closeable {
   }
 
   public synchronized void unregisterStoreClient(String storeName, Integer storeVersion) {
-    storeClientTypes.remove(storeName);
-    if (storeVersion != null) {
-      versionSpecificStoreVersions.remove(storeName);
+    LOGGER.info("Unregistering store client: {} version: {}", storeName, storeVersion);
+
+    // Decrement ref count for this store
+    Integer currentCount = storeClientRefCounts.get(storeName);
+    if (currentCount == null) {
+      LOGGER.warn("Attempting to unregister store client for '{}' but no registration found", storeName);
+      return;
+    }
+
+    int newCount = currentCount - 1;
+
+    // Only remove tracking when the last client unregisters
+    if (newCount <= 0) {
+      storeClientRefCounts.remove(storeName);
+      storeClientTypes.remove(storeName);
+      if (storeVersion != null) {
+        versionSpecificStoreVersions.remove(storeName);
+      }
+
+      StoreBackend storeBackend = storeByNameMap.get(storeName);
+      if (storeBackend != null) {
+        // Stop ingestion tasks for this store without deleting store data
+        LOGGER.info("Closing StoreBackend for store: {}", storeName);
+        storeBackend.close();
+      }
+    } else {
+      storeClientRefCounts.put(storeName, newCount);
     }
   }
 
@@ -763,6 +794,11 @@ public class DaVinciBackend implements Closeable {
   @VisibleForTesting
   public Integer getVersionSpecificStoreVersion(String storeName) {
     return versionSpecificStoreVersions.get(storeName);
+  }
+
+  @VisibleForTesting
+  public Integer getStoreClientRefCount(String storeName) {
+    return storeClientRefCounts.get(storeName);
   }
 
   @VisibleForTesting

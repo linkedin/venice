@@ -50,6 +50,7 @@ import com.linkedin.venice.pubsub.PubSubContext;
 import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.PubSubUtil;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
@@ -1529,17 +1530,27 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
           // client should never go backwards.
           List<Long> localOffset = (List<Long>) currentVersionHighWatermarks
               .getOrDefault(pubSubTopicPartition.getPartitionNumber(), Collections.EMPTY_MAP)
-              .getOrDefault(upstreamPartition, Collections.EMPTY_LIST);
-          // safety checks
-          if (localOffset == null) {
-            localOffset = new ArrayList<>();
+              .getOrDefault(upstreamPartition, new ArrayList<>(4));
+
+          // Prefer position-based high watermarks if available, otherwise use legacy offset-based
+          List<ByteBuffer> positions = versionSwap.getLocalHighWatermarkPubSubPositions();
+          List<Long> highWatermarkOffsets;
+
+          if (positions != null && !positions.isEmpty()) {
+            List<Long> legacyOffsets = versionSwap.getLocalHighWatermarks();
+            highWatermarkOffsets = new ArrayList<>(positions.size());
+            for (int i = 0; i < positions.size(); i++) {
+              long fallbackOffset = (legacyOffsets != null && i < legacyOffsets.size()) ? legacyOffsets.get(i) : -1L;
+              PubSubPosition position = PubSubUtil
+                  .deserializePositionWithOffsetFallback(positions.get(i), fallbackOffset, pubSubPositionDeserializer);
+              highWatermarkOffsets.add(position.getNumericOffset());
+            }
+          } else {
+            highWatermarkOffsets = (versionSwap.getLocalHighWatermarks() != null)
+                ? versionSwap.getLocalHighWatermarks()
+                : Collections.emptyList();
           }
-          List<Long> highWatermarkOffsets = versionSwap.localHighWatermarkPubSubPositions == null
-              ? new ArrayList<>()
-              : versionSwap.getLocalHighWatermarkPubSubPositions()
-                  .stream()
-                  .map(bb -> pubSubPositionDeserializer.toPosition(bb).getNumericOffset())
-                  .collect(Collectors.toList());
+
           if (RmdUtils.hasOffsetAdvanced(localOffset, highWatermarkOffsets)) {
             currentVersionHighWatermarks
                 .putIfAbsent(pubSubTopicPartition.getPartitionNumber(), new ConcurrentHashMap<>());

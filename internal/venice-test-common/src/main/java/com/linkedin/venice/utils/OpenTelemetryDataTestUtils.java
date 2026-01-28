@@ -267,10 +267,11 @@ public abstract class OpenTelemetryDataTestUtils {
     assertEquals(histogramPointData.getMax(), expectedMax, "Histogram max value should be " + expectedMax);
     assertEquals(histogramPointData.getCount(), expectedCount, "Histogram count should be " + expectedCount);
     assertEquals(histogramPointData.getSum(), expectedSum, "Histogram sum should be " + expectedSum);
+    long expectedNumPositiveBuckets = (expectedMin > 0 || expectedMax > 0) ? expectedCount : 0;
     assertEquals(
         histogramPointData.getPositiveBuckets().getTotalCount(),
-        expectedCount,
-        "Histogram positive buckets total count should be " + expectedCount);
+        expectedNumPositiveBuckets,
+        "Histogram positive buckets total count should be " + expectedNumPositiveBuckets);
     assertEquals(histogramPointData.getAttributes(), expectedAttributes, "Histogram attributes should match");
   }
 
@@ -320,5 +321,24 @@ public abstract class OpenTelemetryDataTestUtils {
     assertEquals(histogramPointData.getCount(), expectedCount, "Histogram count should be " + expectedCount);
     assertEquals(histogramPointData.getSum(), expectedSum, "Histogram sum should be " + expectedSum);
     assertEquals(histogramPointData.getAttributes(), expectedAttributes, "Histogram attributes should match");
+  }
+
+  /**
+   * Validate observable counter value for a specific attribute combination.
+   * Observable counters report as Sum data in OpenTelemetry.
+   */
+  public static void validateObservableCounterValue(
+      InMemoryMetricReader inMemoryMetricReader,
+      long expectedValue,
+      Attributes expectedAttributes,
+      String metricName,
+      String metricPrefix) {
+    Collection<MetricData> metricsData = inMemoryMetricReader.collectAllMetrics();
+    assertFalse(metricsData.isEmpty());
+
+    LongPointData longPointData = getLongPointDataFromSum(metricsData, metricName, metricPrefix, expectedAttributes);
+    assertNotNull(longPointData, "LongPointData for observable counter should not be null");
+    assertEquals(longPointData.getValue(), expectedValue, "Observable counter value should be " + expectedValue);
+    assertEquals(longPointData.getAttributes(), expectedAttributes, "Observable counter attributes should match");
   }
 }

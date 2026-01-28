@@ -64,6 +64,18 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_HELIX_GROUP_ID:
           assertEquals(dimension.getDimensionName(format), "venice.helix_group.id");
           break;
+        case VENICE_REGION_NAME:
+          assertEquals(dimension.getDimensionName(format), "venice.region.name");
+          break;
+        case VENICE_VERSION_ROLE:
+          assertEquals(dimension.getDimensionName(format), "venice.version.role");
+          break;
+        case VENICE_REPLICA_TYPE:
+          assertEquals(dimension.getDimensionName(format), "venice.replica.type");
+          break;
+        case VENICE_REPLICA_STATE:
+          assertEquals(dimension.getDimensionName(format), "venice.replica.state");
+          break;
         default:
           throw new IllegalArgumentException("Unknown dimension: " + dimension);
       }
@@ -126,6 +138,18 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_HELIX_GROUP_ID:
           assertEquals(dimension.getDimensionName(format), "venice.helixGroup.id");
           break;
+        case VENICE_REGION_NAME:
+          assertEquals(dimension.getDimensionName(format), "venice.region.name");
+          break;
+        case VENICE_VERSION_ROLE:
+          assertEquals(dimension.getDimensionName(format), "venice.version.role");
+          break;
+        case VENICE_REPLICA_TYPE:
+          assertEquals(dimension.getDimensionName(format), "venice.replica.type");
+          break;
+        case VENICE_REPLICA_STATE:
+          assertEquals(dimension.getDimensionName(format), "venice.replica.state");
+          break;
         default:
           throw new IllegalArgumentException("Unknown dimension: " + dimension);
       }
@@ -187,6 +211,18 @@ public class VeniceMetricsDimensionsTest {
           break;
         case VENICE_HELIX_GROUP_ID:
           assertEquals(dimension.getDimensionName(format), "Venice.HelixGroup.Id");
+          break;
+        case VENICE_REGION_NAME:
+          assertEquals(dimension.getDimensionName(format), "Venice.Region.Name");
+          break;
+        case VENICE_VERSION_ROLE:
+          assertEquals(dimension.getDimensionName(format), "Venice.Version.Role");
+          break;
+        case VENICE_REPLICA_TYPE:
+          assertEquals(dimension.getDimensionName(format), "Venice.Replica.Type");
+          break;
+        case VENICE_REPLICA_STATE:
+          assertEquals(dimension.getDimensionName(format), "Venice.Replica.State");
           break;
         default:
           throw new IllegalArgumentException("Unknown dimension: " + dimension);

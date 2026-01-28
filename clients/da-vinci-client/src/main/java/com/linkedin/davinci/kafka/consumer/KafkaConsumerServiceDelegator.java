@@ -7,6 +7,7 @@ import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.server.VersionRole;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -321,7 +322,7 @@ public class KafkaConsumerServiceDelegator extends AbstractKafkaConsumerService 
     @Override
     public KafkaConsumerService delegateKafkaConsumerServiceFor(
         PartitionReplicaIngestionContext topicPartitionReplicaRole) {
-      PartitionReplicaIngestionContext.VersionRole versionRole = topicPartitionReplicaRole.getVersionRole();
+      VersionRole versionRole = topicPartitionReplicaRole.getVersionRole();
       PartitionReplicaIngestionContext.WorkloadType workloadType = topicPartitionReplicaRole.getWorkloadType();
       PubSubTopicPartition pubSubTopicPartition = topicPartitionReplicaRole.getPubSubTopicPartition();
       PubSubTopic pubSubTopic = pubSubTopicPartition.getPubSubTopic();
@@ -331,8 +332,7 @@ public class KafkaConsumerServiceDelegator extends AbstractKafkaConsumerService 
        * 2. If the workload type is active-active leader and write-computer leader.
        * 3. If the replica is ready to serve.
        */
-      if (versionRole.equals(PartitionReplicaIngestionContext.VersionRole.CURRENT)
-          && topicPartitionReplicaRole.isReadyToServe()) {
+      if (versionRole.equals(VersionRole.CURRENT) && topicPartitionReplicaRole.isReadyToServe()) {
         if (workloadType.equals(PartitionReplicaIngestionContext.WorkloadType.AA_OR_WRITE_COMPUTE)
             && pubSubTopic.isRealTime()) {
           return pubSubTopic.isSeparateRealTimeTopic()

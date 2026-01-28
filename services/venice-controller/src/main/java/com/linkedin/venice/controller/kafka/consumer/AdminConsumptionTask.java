@@ -66,6 +66,7 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -185,6 +186,9 @@ public class AdminConsumptionTask implements Runnable, Closeable {
    * that has the details about the exception and the position of the problematic admin message.
    */
   private final ConcurrentHashMap<String, AdminErrorInfo> problematicStores;
+
+  private final ConcurrentHashMap<String, AtomicInteger> inflightThreadsByStore;
+
   private final Queue<DefaultPubSubMessage> undelegatedRecords;
 
   private final Map<String, Map<PubSubPosition, Integer>> storeRetryCountMap;
@@ -297,6 +301,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
 
     this.adminOperationsByStore = new ConcurrentHashMap<>();
     this.problematicStores = new ConcurrentHashMap<>();
+    this.inflightThreadsByStore = new ConcurrentHashMap<>();
     // since we use an unbounded queue the core pool size is really the max pool size
     this.executorService = new ThreadPoolExecutor(
         maxWorkerThreadPoolSize,
@@ -565,7 +570,8 @@ public class AdminConsumptionTask implements Runnable, Closeable {
             executionIdAccessor,
             isParentController,
             stats,
-            regionName);
+            regionName,
+            inflightThreadsByStore);
         // Check if there is previously created scheduled task still occupying one thread from the pool.
         if (storesWithScheduledTask.add(storeName)) {
           // Log the store name and the position of the task being added into the task list
@@ -590,6 +596,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
         int pendingAdminMessagesCount = 0;
         int storesWithPendingAdminMessagesCount = 0;
         long adminExecutionTasksInvokeTime = System.currentTimeMillis();
+
         // Wait for the worker threads to finish processing the internal admin topics.
         List<Future<Void>> results =
             executorService.invokeAll(tasks, processingCycleTimeoutInMs, TimeUnit.MILLISECONDS);

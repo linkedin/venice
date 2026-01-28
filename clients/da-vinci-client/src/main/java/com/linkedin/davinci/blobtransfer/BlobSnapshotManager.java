@@ -8,6 +8,7 @@ import com.linkedin.davinci.store.AbstractStoragePartition;
 import com.linkedin.davinci.store.DelegatingStorageEngine;
 import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.davinci.store.rocksdb.RocksDBStoragePartition;
+import com.linkedin.venice.exceptions.PersistenceFailureException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.offsets.OffsetRecord;
@@ -434,7 +435,16 @@ public class BlobSnapshotManager {
       }
 
       LOGGER.info("Cleaning up stale snapshot for topic {} partition {}", topicName, partitionId);
-      cleanupSnapshot(topicName, partitionId);
+
+      try {
+        cleanupSnapshot(topicName, partitionId);
+      } catch (PersistenceFailureException e) {
+        LOGGER.warn(
+            "Failed to clean up snapshot for topic {} partition {} due to partition no longer exists, only removing from tracking.",
+            topicName,
+            partitionId);
+      }
+
       removeTrackingValues(topicName, partitionId);
 
       LOGGER.info("Successfully cleaned up snapshot for topic {} partition {}", topicName, partitionId);

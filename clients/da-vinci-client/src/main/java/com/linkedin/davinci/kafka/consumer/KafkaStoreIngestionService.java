@@ -82,6 +82,7 @@ import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.service.ICProvider;
+import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.system.store.ControllerClientBackedSystemSchemaInitializer;
 import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.throttle.EventThrottler;
@@ -377,6 +378,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         .setStoreChangeNotifier(asyncStoreChangeNotifier)
         .setPubSubMessageDeserializer(pubSubDeserializer)
         .setPubSubClientsFactory(pubSubClientsFactory)
+        .setUseCheckpointedPubSubPositionWithFallback(serverConfig.isUseCheckpointedPubSubPositionWithFallbackEnabled())
         .build();
 
     VeniceNotifier notifier = new LogNotifier();
@@ -541,6 +543,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         .build();
   }
 
+  private static final String PARTICIPANT_STORE_CLIENT_METRIC_PREFIX = "participant_store_client";
+
   @VisibleForTesting
   ParticipantStoreConsumptionTask initializeParticipantStoreConsumptionTask(
       VeniceServerConfig serverConfig,
@@ -557,11 +561,21 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       return null;
     }
 
+    MetricsRepository participantStoreMetricsRepository;
+    if (metricsRepository instanceof VeniceMetricsRepository) {
+      // Use a child metrics repository with a different prefix for participant store client metrics
+      // to distinguish them from server metrics
+      participantStoreMetricsRepository = ((VeniceMetricsRepository) metricsRepository)
+          .cloneWithNewMetricPrefix(PARTICIPANT_STORE_CLIENT_METRIC_PREFIX);
+    } else {
+      participantStoreMetricsRepository = metricsRepository;
+    }
+
     return new ParticipantStoreConsumptionTask(
         this,
         clusterInfoProvider,
         new ParticipantStoreConsumptionStats(metricsRepository, serverConfig.getClusterName()),
-        ClientConfig.cloneConfig(clientConfig.get()).setMetricsRepository(metricsRepository),
+        ClientConfig.cloneConfig(clientConfig.get()).setMetricsRepository(participantStoreMetricsRepository),
         serverConfig.getParticipantMessageConsumptionDelayMs(),
         icProvider);
   }
@@ -757,7 +771,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       // Create new store ingestion task atomically.
       AtomicBoolean createNewStoreIngestionTask = new AtomicBoolean(false);
       StoreIngestionTask storeIngestionTask = topicNameToIngestionTaskMap.compute(topic, (k, v) -> {
-        if ((v == null) || (!v.isIngestionTaskActive())) {
+        if (v == null || !v.isIngestionTaskActive()) {
           createNewStoreIngestionTask.set(true);
           return createStoreIngestionTask(veniceStore, partitionId);
         }
@@ -1466,6 +1480,11 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   }
 
   @VisibleForTesting
+  public ParticipantStoreConsumptionTask getParticipantStoreConsumptionTask() {
+    return participantStoreConsumptionTask;
+  }
+
+  @VisibleForTesting
   protected Map<String, StoreIngestionTask> getTopicNameToIngestionTaskMap() {
     return topicNameToIngestionTaskMap;
   }
@@ -1543,4 +1562,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     LOGGER.info("Added replica: {} to pending resubscribe queue.", Utils.getReplicaId(versionTopic, partition));
   }
 
+  public AggHostLevelIngestionStats getHostLevelIngestionStats() {
+    return hostLevelIngestionStats;
+  }
 }

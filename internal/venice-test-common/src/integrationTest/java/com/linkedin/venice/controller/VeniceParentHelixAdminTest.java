@@ -1038,6 +1038,7 @@ public class VeniceParentHelixAdminTest {
     testUpdateCompactionEnabled(parentControllerClient, childControllerClient);
     testUpdateCompactionThreshold(parentControllerClient, childControllerClient);
     testUpdateEnumSchemaEvolution(parentControllerClient, childControllerClient);
+    testUpdateStoreFlinkVeniceViewsEnable(parentControllerClient, childControllerClient);
   }
 
   /**
@@ -1180,6 +1181,14 @@ public class VeniceParentHelixAdminTest {
         childClient,
         params -> params.setEnumSchemaEvolutionAllowed(true),
         response -> Assert.assertTrue(response.getStore().isEnumSchemaEvolutionAllowed()));
+  }
+
+  private void testUpdateStoreFlinkVeniceViewsEnable(ControllerClient parentClient, ControllerClient childClient) {
+    testUpdateConfig(
+        parentClient,
+        childClient,
+        params -> params.setFlinkVeniceViewsEnabled(true),
+        response -> Assert.assertTrue(response.getStore().isFlinkVeniceViewsEnabled()));
   }
 
   private void testAddBadValueSchema(ControllerClient parentControllerClient) {
