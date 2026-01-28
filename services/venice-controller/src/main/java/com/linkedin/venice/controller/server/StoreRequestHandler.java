@@ -1,6 +1,7 @@
 package com.linkedin.venice.controller.server;
 
 import com.linkedin.venice.controller.Admin;
+import com.linkedin.venice.controller.AdminCommandExecutionTracker;
 import com.linkedin.venice.controller.ControllerRequestHandlerDependencies;
 import com.linkedin.venice.controller.StoreDeletedValidation;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -11,6 +12,8 @@ import com.linkedin.venice.protocols.controller.CreateStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.CreateStoreGrpcResponse;
 import com.linkedin.venice.protocols.controller.DeleteAclForStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.DeleteAclForStoreGrpcResponse;
+import com.linkedin.venice.protocols.controller.DeleteStoreGrpcRequest;
+import com.linkedin.venice.protocols.controller.DeleteStoreGrpcResponse;
 import com.linkedin.venice.protocols.controller.GetAclForStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.GetAclForStoreGrpcResponse;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcRequest;
@@ -254,5 +257,44 @@ public class StoreRequestHandler {
 
     LOGGER.info("Found {} stores in cluster: {}", selectedStoreNames.size(), clusterName);
     return ListStoresGrpcResponse.newBuilder().setClusterName(clusterName).addAllStoreNames(selectedStoreNames).build();
+  }
+
+  /**
+   * Deletes a store from the specified Venice cluster.
+   * @param request the request containing cluster name, store name, and optional migration cleanup flag
+   * @return response with store info and optional execution ID for tracking
+   */
+  public DeleteStoreGrpcResponse deleteStore(DeleteStoreGrpcRequest request) {
+    ClusterStoreGrpcInfo storeInfo = request.getStoreInfo();
+    ControllerRequestParamValidator.validateClusterStoreInfo(storeInfo);
+    String clusterName = storeInfo.getClusterName();
+    String storeName = storeInfo.getStoreName();
+    boolean isAbortMigrationCleanup = request.hasIsAbortMigrationCleanup() && request.getIsAbortMigrationCleanup();
+
+    LOGGER.info(
+        "Deleting store: {} in cluster: {} with isAbortMigrationCleanup: {}",
+        storeName,
+        clusterName,
+        isAbortMigrationCleanup);
+
+    DeleteStoreGrpcResponse.Builder responseBuilder = DeleteStoreGrpcResponse.newBuilder().setStoreInfo(storeInfo);
+
+    Optional<AdminCommandExecutionTracker> adminCommandExecutionTracker =
+        admin.getAdminCommandExecutionTracker(clusterName);
+
+    if (adminCommandExecutionTracker.isPresent()) {
+      // Lock the tracker to get the execution id for the last admin command.
+      // It will not make our performance worse, because we lock the whole cluster while handling the admin
+      // operation in parent admin.
+      synchronized (adminCommandExecutionTracker) {
+        admin.deleteStore(clusterName, storeName, isAbortMigrationCleanup, Store.IGNORE_VERSION, false);
+        responseBuilder.setExecutionId(adminCommandExecutionTracker.get().getLastExecutionId());
+      }
+    } else {
+      admin.deleteStore(clusterName, storeName, isAbortMigrationCleanup, Store.IGNORE_VERSION, false);
+    }
+
+    LOGGER.info("Successfully deleted store: {} in cluster: {}", storeName, clusterName);
+    return responseBuilder.build();
   }
 }

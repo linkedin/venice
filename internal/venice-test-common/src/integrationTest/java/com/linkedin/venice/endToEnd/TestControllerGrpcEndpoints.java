@@ -17,6 +17,8 @@ import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.protocols.controller.ClusterStoreGrpcInfo;
 import com.linkedin.venice.protocols.controller.CreateStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.CreateStoreGrpcResponse;
+import com.linkedin.venice.protocols.controller.DeleteStoreGrpcRequest;
+import com.linkedin.venice.protocols.controller.DeleteStoreGrpcResponse;
 import com.linkedin.venice.protocols.controller.DiscoverClusterGrpcRequest;
 import com.linkedin.venice.protocols.controller.DiscoverClusterGrpcResponse;
 import com.linkedin.venice.protocols.controller.LeaderControllerGrpcRequest;
@@ -247,6 +249,105 @@ public class TestControllerGrpcEndpoints {
     assertNotNull(response, "Response should not be null");
     assertEquals(response.getStoreInfo().getStoreName(), storeName);
     assertEquals(response.getStoreInfo().getClusterName(), veniceCluster.getClusterName());
+  }
+
+  @Test(timeOut = TIMEOUT_MS)
+  public void testDeleteStoreGrpcEndpoint() {
+    String storeName = Utils.getUniqueString("test_delete_store");
+    String controllerGrpcUrl = veniceCluster.getLeaderVeniceController().getControllerGrpcUrl();
+    ManagedChannel channel = Grpc.newChannelBuilder(controllerGrpcUrl, InsecureChannelCredentials.create()).build();
+    StoreGrpcServiceGrpc.StoreGrpcServiceBlockingStub storeBlockingStub = StoreGrpcServiceGrpc.newBlockingStub(channel);
+
+    ClusterStoreGrpcInfo storeGrpcInfo = ClusterStoreGrpcInfo.newBuilder()
+        .setClusterName(veniceCluster.getClusterName())
+        .setStoreName(storeName)
+        .build();
+
+    // Step 1: Create the store
+    CreateStoreGrpcRequest createStoreGrpcRequest = CreateStoreGrpcRequest.newBuilder()
+        .setStoreInfo(storeGrpcInfo)
+        .setOwner("owner")
+        .setKeySchema(DEFAULT_KEY_SCHEMA)
+        .setValueSchema("\"string\"")
+        .build();
+    CreateStoreGrpcResponse createResponse = storeBlockingStub.createStore(createStoreGrpcRequest);
+    assertNotNull(createResponse, "Response should not be null");
+    assertEquals(createResponse.getStoreInfo().getStoreName(), storeName);
+
+    // Step 2: Verify store exists
+    veniceCluster.useControllerClient(controllerClient -> {
+      StoreResponse storeResponse = TestUtils.assertCommand(controllerClient.getStore(storeName));
+      assertNotNull(storeResponse.getStore(), "Store should exist after creation");
+    });
+
+    // Step 3: Disable the store before deletion (required for deleteStore)
+    veniceCluster.useControllerClient(controllerClient -> {
+      TestUtils.assertCommand(controllerClient.enableStoreReadWrites(storeName, false));
+    });
+
+    // Step 4: Delete the store via gRPC
+    DeleteStoreGrpcRequest deleteStoreRequest = DeleteStoreGrpcRequest.newBuilder().setStoreInfo(storeGrpcInfo).build();
+    DeleteStoreGrpcResponse deleteResponse = storeBlockingStub.deleteStore(deleteStoreRequest);
+    assertNotNull(deleteResponse, "Response should not be null");
+    assertEquals(deleteResponse.getStoreInfo().getClusterName(), veniceCluster.getClusterName());
+    assertEquals(deleteResponse.getStoreInfo().getStoreName(), storeName);
+
+    // Step 5: Verify store is deleted
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+      ValidateStoreDeletedGrpcRequest validateRequest =
+          ValidateStoreDeletedGrpcRequest.newBuilder().setStoreInfo(storeGrpcInfo).build();
+      ValidateStoreDeletedGrpcResponse response = storeBlockingStub.validateStoreDeleted(validateRequest);
+      assertNotNull(response, "Response should not be null");
+      assertTrue(response.getStoreDeleted(), "Store should be marked as deleted after deletion");
+    });
+  }
+
+  @Test(timeOut = TIMEOUT_MS)
+  public void testDeleteStoreOverSecureGrpcChannel() {
+    String storeName = Utils.getUniqueString("test_delete_store_secure");
+    String controllerSecureGrpcUrl = veniceCluster.getLeaderVeniceController().getControllerSecureGrpcUrl();
+    ChannelCredentials credentials = GrpcUtils.buildChannelCredentials(sslFactory);
+    ManagedChannel channel = Grpc.newChannelBuilder(controllerSecureGrpcUrl, credentials).build();
+    StoreGrpcServiceGrpc.StoreGrpcServiceBlockingStub storeBlockingStub = StoreGrpcServiceGrpc.newBlockingStub(channel);
+
+    ClusterStoreGrpcInfo storeGrpcInfo = ClusterStoreGrpcInfo.newBuilder()
+        .setClusterName(veniceCluster.getClusterName())
+        .setStoreName(storeName)
+        .build();
+
+    // First, create the store with an insecure channel (creation requires allowlist)
+    mockDynamicAccessController.addResourceToAllowList(storeName);
+    CreateStoreGrpcRequest createStoreGrpcRequest = CreateStoreGrpcRequest.newBuilder()
+        .setStoreInfo(storeGrpcInfo)
+        .setOwner("owner")
+        .setKeySchema(DEFAULT_KEY_SCHEMA)
+        .setValueSchema("\"string\"")
+        .build();
+    CreateStoreGrpcResponse createResponse = storeBlockingStub.createStore(createStoreGrpcRequest);
+    assertNotNull(createResponse, "Response should not be null");
+
+    // Disable the store
+    veniceCluster.useControllerClient(controllerClient -> {
+      TestUtils.assertCommand(controllerClient.enableStoreReadWrites(storeName, false));
+    });
+
+    DeleteStoreGrpcRequest deleteRequest = DeleteStoreGrpcRequest.newBuilder().setStoreInfo(storeGrpcInfo).build();
+
+    // Case 1: User not in allowlist for the resource - should get permission denied
+    mockDynamicAccessController.removeResourceFromAllowList(storeName);
+    assertFalse(
+        mockDynamicAccessController.isAllowlistUsers(null, storeName, Method.GET.name()),
+        "User should not be in allowlist");
+    StatusRuntimeException exception =
+        Assert.expectThrows(StatusRuntimeException.class, () -> storeBlockingStub.deleteStore(deleteRequest));
+    assertEquals(exception.getStatus().getCode(), io.grpc.Status.Code.PERMISSION_DENIED);
+
+    // Case 2: User in allowlist - should succeed
+    mockDynamicAccessController.addResourceToAllowList(storeName);
+    DeleteStoreGrpcResponse deleteResponse = storeBlockingStub.deleteStore(deleteRequest);
+    assertNotNull(deleteResponse, "Response should not be null");
+    assertEquals(deleteResponse.getStoreInfo().getStoreName(), storeName);
+    assertEquals(deleteResponse.getStoreInfo().getClusterName(), veniceCluster.getClusterName());
   }
 
   @Test(timeOut = TIMEOUT_MS)

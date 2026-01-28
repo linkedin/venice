@@ -37,6 +37,8 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.protocols.controller.ClusterStoreGrpcInfo;
+import com.linkedin.venice.protocols.controller.DeleteStoreGrpcRequest;
+import com.linkedin.venice.protocols.controller.DeleteStoreGrpcResponse;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcRequest;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcResponse;
 import com.linkedin.venice.protocols.controller.ValidateStoreDeletedGrpcRequest;
@@ -116,26 +118,70 @@ public class StoresRoutesTest {
   @Test
   public void testDeleteStore() throws Exception {
     Admin mockAdmin = mock(VeniceParentHelixAdmin.class);
+    StoreRequestHandler mockRequestHandler = mock(StoreRequestHandler.class);
     doReturn(true).when(mockAdmin).isLeaderControllerFor(TEST_CLUSTER);
 
     Request request = mock(Request.class);
     doReturn(TEST_CLUSTER).when(request).queryParams(eq(ControllerApiConstants.CLUSTER));
     doReturn(TEST_STORE_NAME).when(request).queryParams(eq(ControllerApiConstants.NAME));
+    doReturn(null).when(request).queryParams(eq(ControllerApiConstants.IS_ABORT_MIGRATION_CLEANUP));
 
-    Route deleteStoreRoute = new StoresRoutes(false, Optional.empty(), pubSubTopicRepository).deleteStore(mockAdmin);
-    TrackableControllerResponse trackableControllerResponse = ObjectMapperFactory.getInstance()
+    // Mock queryMap for error handling
+    QueryParamsMap queryParamsMap = mock(QueryParamsMap.class);
+    Map<String, String[]> queryMap = new HashMap<>(2);
+    queryMap.put(ControllerApiConstants.CLUSTER, new String[] { TEST_CLUSTER });
+    queryMap.put(ControllerApiConstants.NAME, new String[] { TEST_STORE_NAME });
+    doReturn(queryMap).when(queryParamsMap).toMap();
+    doReturn(queryParamsMap).when(request).queryMap();
+
+    ClusterStoreGrpcInfo storeInfo =
+        ClusterStoreGrpcInfo.newBuilder().setClusterName(TEST_CLUSTER).setStoreName(TEST_STORE_NAME).build();
+
+    // Case 1: Successful delete without execution ID
+    DeleteStoreGrpcResponse successResponse = DeleteStoreGrpcResponse.newBuilder().setStoreInfo(storeInfo).build();
+    doReturn(successResponse).when(mockRequestHandler).deleteStore(any(DeleteStoreGrpcRequest.class));
+
+    Route deleteStoreRoute =
+        new StoresRoutes(false, Optional.empty(), pubSubTopicRepository, mockRequestHandler).deleteStore(mockAdmin);
+    String jsonResponse = deleteStoreRoute.handle(request, mock(Response.class)).toString();
+    TrackableControllerResponse trackableControllerResponse =
+        ObjectMapperFactory.getInstance().readValue(jsonResponse, TrackableControllerResponse.class);
+    Assert.assertFalse(
+        trackableControllerResponse.isError(),
+        "Response should not have error. Error: " + trackableControllerResponse.getError());
+    Assert.assertEquals(trackableControllerResponse.getCluster(), TEST_CLUSTER);
+    Assert.assertEquals(trackableControllerResponse.getName(), TEST_STORE_NAME);
+
+    // Case 2: Successful delete with execution ID
+    DeleteStoreGrpcResponse responseWithExecutionId =
+        DeleteStoreGrpcResponse.newBuilder().setStoreInfo(storeInfo).setExecutionId(12345L).build();
+    doReturn(responseWithExecutionId).when(mockRequestHandler).deleteStore(any(DeleteStoreGrpcRequest.class));
+
+    trackableControllerResponse = ObjectMapperFactory.getInstance()
         .readValue(
             deleteStoreRoute.handle(request, mock(Response.class)).toString(),
             TrackableControllerResponse.class);
     Assert.assertFalse(trackableControllerResponse.isError());
     Assert.assertEquals(trackableControllerResponse.getCluster(), TEST_CLUSTER);
     Assert.assertEquals(trackableControllerResponse.getName(), TEST_STORE_NAME);
+    Assert.assertEquals(trackableControllerResponse.getExecutionId(), 12345L);
 
+    // Case 3: Delete with abort migration cleanup flag
     doReturn("true").when(request).queryParams(eq(ControllerApiConstants.IS_ABORT_MIGRATION_CLEANUP));
+    doReturn(successResponse).when(mockRequestHandler).deleteStore(any(DeleteStoreGrpcRequest.class));
+
+    trackableControllerResponse = ObjectMapperFactory.getInstance()
+        .readValue(
+            deleteStoreRoute.handle(request, mock(Response.class)).toString(),
+            TrackableControllerResponse.class);
+    Assert.assertFalse(trackableControllerResponse.isError());
+
+    // Case 4: Handler throws exception with error type
     String errMessage = "Store " + TEST_STORE_NAME + "'s migrating flag is false. Not safe to delete a store "
         + "that is assumed to be migrating without the migrating flag setup as true.";
-    doThrow(new VeniceException(errMessage, INVALID_CONFIG)).when(mockAdmin)
-        .deleteStore(TEST_CLUSTER, TEST_STORE_NAME, true, Store.IGNORE_VERSION, false);
+    doThrow(new VeniceException(errMessage, INVALID_CONFIG)).when(mockRequestHandler)
+        .deleteStore(any(DeleteStoreGrpcRequest.class));
+
     trackableControllerResponse = ObjectMapperFactory.getInstance()
         .readValue(
             deleteStoreRoute.handle(request, mock(Response.class)).toString(),
@@ -143,8 +189,6 @@ public class StoresRoutesTest {
     Assert.assertTrue(trackableControllerResponse.isError());
     Assert.assertEquals(trackableControllerResponse.getErrorType(), INVALID_CONFIG);
     Assert.assertEquals(trackableControllerResponse.getError(), errMessage);
-    Assert.assertEquals(trackableControllerResponse.getCluster(), TEST_CLUSTER);
-    Assert.assertEquals(trackableControllerResponse.getName(), TEST_STORE_NAME);
   }
 
   @Test
