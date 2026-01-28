@@ -109,6 +109,8 @@ import com.linkedin.venice.meta.StoreDataAudit;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.protocols.controller.ClusterStoreGrpcInfo;
+import com.linkedin.venice.protocols.controller.GetStoreGrpcRequest;
+import com.linkedin.venice.protocols.controller.GetStoreGrpcResponse;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcRequest;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcResponse;
 import com.linkedin.venice.protocols.controller.ValidateStoreDeletedGrpcRequest;
@@ -118,6 +120,8 @@ import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.stats.dimensions.StoreRepushTriggerSource;
+import com.linkedin.venice.systemstore.schemas.StoreProperties;
+import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.Utils;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -275,7 +279,7 @@ public class StoresRoutes extends AbstractRoute {
   /**
    * @see Admin#getStore(String, String)
    */
-  public Route getStore(Admin admin) {
+  public Route getStore(Admin admin, StoreRequestHandler requestHandler) {
     return new VeniceRouteHandler<StoreResponse>(StoreResponse.class) {
       @Override
       public void internalHandle(Request request, StoreResponse veniceResponse) {
@@ -283,26 +287,23 @@ public class StoresRoutes extends AbstractRoute {
         AdminSparkServer.validateParams(request, STORE.getParams(), admin);
         String storeName = request.queryParams(NAME);
         String clusterName = request.queryParams(CLUSTER);
-        veniceResponse.setCluster(clusterName);
-        veniceResponse.setName(storeName);
-        Store store = admin.getStore(clusterName, storeName);
-        if (store == null) {
-          throw new VeniceNoStoreException(storeName);
-        }
-        StoreInfo storeInfo = StoreInfo.fromStore(store);
-        // Make sure store info will have right default retention time for Nuage UI display.
-        if (storeInfo.getBackupVersionRetentionMs() < 0) {
-          storeInfo.setBackupVersionRetentionMs(admin.getBackupVersionDefaultRetentionMs());
-        }
-        // This is the only place the default value of maxRecordSizeBytes is set for StoreResponse for VPJ and Consumer
-        if (storeInfo.getMaxRecordSizeBytes() < 0) {
-          storeInfo.setMaxRecordSizeBytes(admin.getDefaultMaxRecordSizeBytes());
-        }
-        storeInfo.setColoToCurrentVersions(admin.getCurrentVersionsForMultiColos(clusterName, storeName));
-        boolean isSSL = admin.isSSLEnabledForPush(clusterName, storeName);
-        storeInfo.setKafkaBrokerUrl(admin.getKafkaBootstrapServers(isSSL));
 
-        veniceResponse.setStore(storeInfo);
+        ClusterStoreGrpcInfo storeGrpcInfo =
+            ClusterStoreGrpcInfo.newBuilder().setClusterName(clusterName).setStoreName(storeName).build();
+        GetStoreGrpcRequest grpcRequest = GetStoreGrpcRequest.newBuilder().setStoreInfo(storeGrpcInfo).build();
+
+        GetStoreGrpcResponse grpcResponse = requestHandler.getStore(grpcRequest);
+
+        veniceResponse.setCluster(grpcResponse.getStoreInfo().getClusterName());
+        veniceResponse.setName(grpcResponse.getStoreInfo().getStoreName());
+
+        try {
+          StoreInfo storeInfo =
+              ObjectMapperFactory.getInstance().readValue(grpcResponse.getStoreInfoJson(), StoreInfo.class);
+          veniceResponse.setStore(storeInfo);
+        } catch (Exception e) {
+          throw new VeniceException("Failed to deserialize StoreInfo from JSON", e);
+        }
       }
     };
   }

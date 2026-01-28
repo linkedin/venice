@@ -12,6 +12,7 @@ import static org.testng.Assert.expectThrows;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.ControllerRequestHandlerDependencies;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.Store;
@@ -22,6 +23,8 @@ import com.linkedin.venice.protocols.controller.DeleteAclForStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.DeleteAclForStoreGrpcResponse;
 import com.linkedin.venice.protocols.controller.GetAclForStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.GetAclForStoreGrpcResponse;
+import com.linkedin.venice.protocols.controller.GetStoreGrpcRequest;
+import com.linkedin.venice.protocols.controller.GetStoreGrpcResponse;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcRequest;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcResponse;
 import com.linkedin.venice.protocols.controller.UpdateAclForStoreGrpcRequest;
@@ -357,5 +360,74 @@ public class StoreRequestHandlerTest {
     ListStoresGrpcResponse response = storeRequestHandler.listStores(request);
 
     assertEquals(response.getStoreNamesCount(), 0);
+  }
+
+  @Test
+  public void testGetStoreSuccess() throws Exception {
+    GetStoreGrpcRequest request = GetStoreGrpcRequest.newBuilder()
+        .setStoreInfo(ClusterStoreGrpcInfo.newBuilder().setClusterName("testCluster").setStoreName("testStore").build())
+        .build();
+
+    Store mockStore = mock(Store.class);
+    when(mockStore.getName()).thenReturn("testStore");
+    when(mockStore.getOwner()).thenReturn("testOwner");
+    when(mockStore.getCurrentVersion()).thenReturn(1);
+    when(mockStore.getVersions()).thenReturn(Collections.emptyList());
+    when(mockStore.getBackupVersionRetentionMs()).thenReturn(1000L);
+    when(mockStore.getMaxRecordSizeBytes()).thenReturn(1024);
+    when(admin.getStore("testCluster", "testStore")).thenReturn(mockStore);
+    when(admin.getBackupVersionDefaultRetentionMs()).thenReturn(2000L);
+    when(admin.getDefaultMaxRecordSizeBytes()).thenReturn(2048);
+    when(admin.getCurrentVersionsForMultiColos("testCluster", "testStore")).thenReturn(Collections.emptyMap());
+    when(admin.isSSLEnabledForPush("testCluster", "testStore")).thenReturn(false);
+    when(admin.getKafkaBootstrapServers(false)).thenReturn("localhost:9092");
+
+    GetStoreGrpcResponse response = storeRequestHandler.getStore(request);
+
+    verify(admin, times(1)).getStore("testCluster", "testStore");
+    assertEquals(response.getStoreInfo().getClusterName(), "testCluster");
+    assertEquals(response.getStoreInfo().getStoreName(), "testStore");
+    assertTrue(response.getStoreInfoJson().contains("testStore"));
+  }
+
+  @Test
+  public void testGetStoreNotFound() {
+    GetStoreGrpcRequest request = GetStoreGrpcRequest.newBuilder()
+        .setStoreInfo(
+            ClusterStoreGrpcInfo.newBuilder().setClusterName("testCluster").setStoreName("nonExistent").build())
+        .build();
+
+    when(admin.getStore("testCluster", "nonExistent")).thenReturn(null);
+
+    VeniceNoStoreException e = expectThrows(VeniceNoStoreException.class, () -> storeRequestHandler.getStore(request));
+    assertTrue(e.getMessage().contains("nonExistent"));
+  }
+
+  @Test
+  public void testGetStoreWithDefaultRetentionMs() throws Exception {
+    GetStoreGrpcRequest request = GetStoreGrpcRequest.newBuilder()
+        .setStoreInfo(ClusterStoreGrpcInfo.newBuilder().setClusterName("testCluster").setStoreName("testStore").build())
+        .build();
+
+    Store mockStore = mock(Store.class);
+    when(mockStore.getName()).thenReturn("testStore");
+    when(mockStore.getOwner()).thenReturn("testOwner");
+    when(mockStore.getCurrentVersion()).thenReturn(1);
+    when(mockStore.getVersions()).thenReturn(Collections.emptyList());
+    when(mockStore.getBackupVersionRetentionMs()).thenReturn(-1L);
+    when(mockStore.getMaxRecordSizeBytes()).thenReturn(-1);
+    when(admin.getStore("testCluster", "testStore")).thenReturn(mockStore);
+    when(admin.getBackupVersionDefaultRetentionMs()).thenReturn(86400000L);
+    when(admin.getDefaultMaxRecordSizeBytes()).thenReturn(1048576);
+    when(admin.getCurrentVersionsForMultiColos("testCluster", "testStore")).thenReturn(Collections.emptyMap());
+    when(admin.isSSLEnabledForPush("testCluster", "testStore")).thenReturn(true);
+    when(admin.getKafkaBootstrapServers(true)).thenReturn("localhost:9093");
+
+    GetStoreGrpcResponse response = storeRequestHandler.getStore(request);
+
+    verify(admin, times(1)).getBackupVersionDefaultRetentionMs();
+    verify(admin, times(1)).getDefaultMaxRecordSizeBytes();
+    assertTrue(response.getStoreInfoJson().contains("86400000"));
+    assertTrue(response.getStoreInfoJson().contains("1048576"));
   }
 }
