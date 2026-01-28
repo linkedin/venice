@@ -12,6 +12,8 @@ import static org.testng.Assert.expectThrows;
 
 import com.linkedin.venice.controller.grpc.GrpcRequestResponseConverter;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.protocols.controller.ClusterHealthInstancesGrpcRequest;
+import com.linkedin.venice.protocols.controller.ClusterHealthInstancesGrpcResponse;
 import com.linkedin.venice.protocols.controller.ControllerGrpcErrorType;
 import com.linkedin.venice.protocols.controller.DiscoverClusterGrpcRequest;
 import com.linkedin.venice.protocols.controller.DiscoverClusterGrpcResponse;
@@ -26,6 +28,8 @@ import io.grpc.Status;
 import io.grpc.StatusRuntimeException;
 import io.grpc.inprocess.InProcessChannelBuilder;
 import io.grpc.inprocess.InProcessServerBuilder;
+import java.util.HashMap;
+import java.util.Map;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -175,5 +179,61 @@ public class VeniceControllerGrpcServiceImplTest {
     assertFalse(errorInfo2.hasClusterName(), "Cluster name should not be present in the error info");
     assertEquals(errorInfo2.getErrorType(), ControllerGrpcErrorType.GENERAL_ERROR);
     assertTrue(errorInfo2.getErrorMessage().contains("Failed to discover cluster"));
+  }
+
+  @Test
+  public void testGetClusterHealthInstances() {
+    // Case 1: Successful response
+    Map<String, String> instancesStatusMap = new HashMap<>();
+    instancesStatusMap.put("instance1", "CONNECTED");
+    instancesStatusMap.put("instance2", "DISCONNECTED");
+
+    ClusterHealthInstancesGrpcResponse response = ClusterHealthInstancesGrpcResponse.newBuilder()
+        .setClusterName(TEST_CLUSTER)
+        .putAllInstancesStatusMap(instancesStatusMap)
+        .build();
+    doReturn(response).when(requestHandler).getClusterHealthInstances(any(ClusterHealthInstancesGrpcRequest.class));
+
+    ClusterHealthInstancesGrpcRequest request =
+        ClusterHealthInstancesGrpcRequest.newBuilder().setClusterName(TEST_CLUSTER).build();
+    ClusterHealthInstancesGrpcResponse actualResponse = blockingStub.getClusterHealthInstances(request);
+
+    assertNotNull(actualResponse, "Response should not be null");
+    assertEquals(actualResponse.getClusterName(), TEST_CLUSTER, "Cluster name should match");
+    assertEquals(actualResponse.getInstancesStatusMapMap().size(), 2, "Instances status map size should match");
+    assertEquals(actualResponse.getInstancesStatusMapMap().get("instance1"), "CONNECTED");
+    assertEquals(actualResponse.getInstancesStatusMapMap().get("instance2"), "DISCONNECTED");
+
+    // Case 2: Bad request as cluster name is missing
+    doThrow(new IllegalArgumentException("Cluster name is required for cluster health instances")).when(requestHandler)
+        .getClusterHealthInstances(any(ClusterHealthInstancesGrpcRequest.class));
+    ClusterHealthInstancesGrpcRequest requestWithoutClusterName =
+        ClusterHealthInstancesGrpcRequest.newBuilder().build();
+    StatusRuntimeException e = expectThrows(
+        StatusRuntimeException.class,
+        () -> blockingStub.getClusterHealthInstances(requestWithoutClusterName));
+    assertNotNull(e.getStatus(), "Status should not be null");
+    assertEquals(e.getStatus().getCode(), Status.INVALID_ARGUMENT.getCode());
+
+    VeniceControllerGrpcErrorInfo errorInfo = GrpcRequestResponseConverter.parseControllerGrpcError(e);
+    assertNotNull(errorInfo, "Error info should not be null");
+    assertFalse(errorInfo.hasStoreName(), "Store name should not be present in the error info");
+    assertEquals(errorInfo.getErrorType(), ControllerGrpcErrorType.BAD_REQUEST);
+    assertTrue(errorInfo.getErrorMessage().contains("Cluster name is required for cluster health instances"));
+
+    // Case 3: requestHandler throws an exception
+    doThrow(new VeniceException("Failed to get cluster health instances")).when(requestHandler)
+        .getClusterHealthInstances(any(ClusterHealthInstancesGrpcRequest.class));
+    StatusRuntimeException e2 =
+        expectThrows(StatusRuntimeException.class, () -> blockingStub.getClusterHealthInstances(request));
+    assertNotNull(e2.getStatus(), "Status should not be null");
+    assertEquals(e2.getStatus().getCode(), Status.INTERNAL.getCode());
+    VeniceControllerGrpcErrorInfo errorInfo2 = GrpcRequestResponseConverter.parseControllerGrpcError(e2);
+    assertNotNull(errorInfo2, "Error info should not be null");
+    assertTrue(errorInfo2.hasClusterName(), "Cluster name should be present in the error info");
+    assertEquals(errorInfo2.getClusterName(), TEST_CLUSTER);
+    assertFalse(errorInfo2.hasStoreName(), "Store name should not be present in the error info");
+    assertEquals(errorInfo2.getErrorType(), ControllerGrpcErrorType.GENERAL_ERROR);
+    assertTrue(errorInfo2.getErrorMessage().contains("Failed to get cluster health instances"));
   }
 }

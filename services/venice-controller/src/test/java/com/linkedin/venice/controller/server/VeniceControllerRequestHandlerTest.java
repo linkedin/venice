@@ -8,10 +8,14 @@ import static org.testng.Assert.assertTrue;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.ControllerRequestHandlerDependencies;
 import com.linkedin.venice.meta.Instance;
+import com.linkedin.venice.protocols.controller.ClusterHealthInstancesGrpcRequest;
+import com.linkedin.venice.protocols.controller.ClusterHealthInstancesGrpcResponse;
 import com.linkedin.venice.protocols.controller.DiscoverClusterGrpcRequest;
 import com.linkedin.venice.protocols.controller.DiscoverClusterGrpcResponse;
 import com.linkedin.venice.protocols.controller.LeaderControllerGrpcRequest;
 import com.linkedin.venice.protocols.controller.LeaderControllerGrpcResponse;
+import java.util.HashMap;
+import java.util.Map;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
@@ -83,5 +87,51 @@ public class VeniceControllerRequestHandlerTest {
   public void testIsSslEnabled() {
     boolean sslEnabled = requestHandler.isSslEnabled();
     assertTrue(sslEnabled);
+  }
+
+  @Test
+  public void testGetClusterHealthInstances() {
+    String clusterName = "testCluster";
+    Map<String, String> instancesStatus = new HashMap<>();
+    instancesStatus.put("instance1", "CONNECTED");
+    instancesStatus.put("instance2", "DISCONNECTED");
+
+    when(admin.getStorageNodesStatus(clusterName, false)).thenReturn(instancesStatus);
+
+    ClusterHealthInstancesGrpcRequest request =
+        ClusterHealthInstancesGrpcRequest.newBuilder().setClusterName(clusterName).build();
+
+    ClusterHealthInstancesGrpcResponse response = requestHandler.getClusterHealthInstances(request);
+
+    assertEquals(response.getClusterName(), clusterName);
+    assertEquals(response.getInstancesStatusMapMap().size(), 2);
+    assertEquals(response.getInstancesStatusMapMap().get("instance1"), "CONNECTED");
+    assertEquals(response.getInstancesStatusMapMap().get("instance2"), "DISCONNECTED");
+  }
+
+  @Test
+  public void testGetClusterHealthInstancesWithEnabledDisabledReplicas() {
+    String clusterName = "testCluster";
+    Map<String, String> instancesStatus = new HashMap<>();
+    instancesStatus.put("instance1", "CONNECTED");
+
+    when(admin.getStorageNodesStatus(clusterName, true)).thenReturn(instancesStatus);
+
+    ClusterHealthInstancesGrpcRequest request = ClusterHealthInstancesGrpcRequest.newBuilder()
+        .setClusterName(clusterName)
+        .setEnableDisabledReplicas(true)
+        .build();
+
+    ClusterHealthInstancesGrpcResponse response = requestHandler.getClusterHealthInstances(request);
+
+    assertEquals(response.getClusterName(), clusterName);
+    assertEquals(response.getInstancesStatusMapMap().size(), 1);
+    assertEquals(response.getInstancesStatusMapMap().get("instance1"), "CONNECTED");
+  }
+
+  @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = "Cluster name is required for cluster health instances")
+  public void testGetClusterHealthInstancesWithEmptyClusterName() {
+    ClusterHealthInstancesGrpcRequest request = ClusterHealthInstancesGrpcRequest.newBuilder().build();
+    requestHandler.getClusterHealthInstances(request);
   }
 }
