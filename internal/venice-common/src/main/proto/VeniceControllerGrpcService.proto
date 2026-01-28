@@ -14,6 +14,9 @@ service VeniceControllerGrpcService {
 
   // ControllerRoutes
   rpc getLeaderController(LeaderControllerGrpcRequest) returns (LeaderControllerGrpcResponse);
+
+  // NodesAndReplicas
+  rpc getClusterHealthInstances(ClusterHealthInstancesGrpcRequest) returns (ClusterHealthInstancesGrpcResponse);
 }
 
 message DiscoverClusterGrpcRequest {
@@ -39,4 +42,14 @@ message LeaderControllerGrpcResponse {
   string httpsUrl = 3;       // SSL-enabled leader controller URL
   string grpcUrl = 4;        // gRPC URL for leader controller
   string secureGrpcUrl = 5;  // Secure gRPC URL for leader controller
+}
+
+message ClusterHealthInstancesGrpcRequest {
+  string clusterName = 1;
+  optional bool enableDisabledReplicas = 2;
+}
+
+message ClusterHealthInstancesGrpcResponse {
+  string clusterName = 1;
+  map<string, string> instancesStatusMap = 2;
 }
