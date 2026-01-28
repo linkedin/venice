@@ -5,6 +5,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.SCHEMA_COMPAT_TYPE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.SCHEMA_ID;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VALUE_SCHEMA;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
@@ -17,18 +18,32 @@ import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.protocols.controller.ClusterStoreGrpcInfo;
+import com.linkedin.venice.protocols.controller.GetValueSchemaGrpcRequest;
+import com.linkedin.venice.protocols.controller.GetValueSchemaGrpcResponse;
 import com.linkedin.venice.schema.GeneratedSchemaID;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Optional;
+import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
+import spark.QueryParamsMap;
 import spark.Request;
 import spark.Response;
 import spark.Route;
 
 
 public class SchemaRoutesTest {
+  private SchemaRequestHandler schemaRequestHandler;
+
+  @BeforeMethod
+  public void setUp() {
+    schemaRequestHandler = mock(SchemaRequestHandler.class);
+  }
+
   @Test
   public void schemaMismatchErrorMessage() {
     String cluster = "cluster_name";
@@ -38,7 +53,7 @@ public class SchemaRoutesTest {
     Admin admin = mock(Admin.class);
     when(admin.getValueSchemaId(cluster, store, schemaStr)).thenReturn(SchemaData.INVALID_VALUE_SCHEMA_ID);
     when(admin.getStore(cluster, store)).thenReturn(null);
-    SchemaRoutes schemaRoutes = new SchemaRoutes(false, Optional.empty());
+    SchemaRoutes schemaRoutes = new SchemaRoutes(false, Optional.empty(), schemaRequestHandler);
     try {
       schemaRoutes.populateSchemaResponseForValueOrDerivedSchemaID(admin, cluster, store, schemaStr);
     } catch (VeniceNoStoreException e) {
@@ -98,10 +113,81 @@ public class SchemaRoutesTest {
     doReturn(new SchemaEntry(schemaId, schemaStr)).when(admin)
         .addValueSchema(cluster, store, schemaStr, schemaId, schemaCompatType);
 
-    SchemaRoutes schemaRoutes = new SchemaRoutes(false, Optional.empty());
+    SchemaRoutes schemaRoutes = new SchemaRoutes(false, Optional.empty(), schemaRequestHandler);
     Route route = schemaRoutes.addValueSchema(admin);
     route.handle(request, response);
     verify(response, times(0)).status(anyInt()); // no error
   }
 
+  @Test
+  public void testGetValueSchemaSuccess() throws Exception {
+    String cluster = "cluster_name";
+    String store = "store_name";
+    int schemaId = 1;
+    String schemaStr = "\"string\"";
+
+    Admin admin = mock(Admin.class);
+    Request request = mock(Request.class);
+    Response response = mock(Response.class);
+
+    doReturn(cluster).when(request).queryParams(CLUSTER);
+    doReturn(store).when(request).queryParams(NAME);
+    doReturn(Integer.toString(schemaId)).when(request).queryParams(SCHEMA_ID);
+    doReturn(true).when(admin).isLeaderControllerFor(cluster);
+
+    ClusterStoreGrpcInfo storeInfo =
+        ClusterStoreGrpcInfo.newBuilder().setClusterName(cluster).setStoreName(store).build();
+    GetValueSchemaGrpcResponse grpcResponse = GetValueSchemaGrpcResponse.newBuilder()
+        .setStoreInfo(storeInfo)
+        .setSchemaId(schemaId)
+        .setSchemaStr(schemaStr)
+        .build();
+    when(schemaRequestHandler.getValueSchema(any(GetValueSchemaGrpcRequest.class))).thenReturn(grpcResponse);
+
+    SchemaRoutes schemaRoutes = new SchemaRoutes(false, Optional.empty(), schemaRequestHandler);
+    Route route = schemaRoutes.getValueSchema(admin);
+    String result = (String) route.handle(request, response);
+
+    verify(schemaRequestHandler, times(1)).getValueSchema(any(GetValueSchemaGrpcRequest.class));
+    verify(response, times(0)).status(anyInt()); // no error
+    assertTrue(result.contains("\"schemaStr\":\"\\\"string\\\"\""), "Response should contain the schema string");
+    assertTrue(result.contains("\"id\":1"), "Response should contain the schema ID");
+  }
+
+  @Test
+  public void testGetValueSchemaNotFound() throws Exception {
+    String cluster = "cluster_name";
+    String store = "store_name";
+    int schemaId = 99;
+
+    Admin admin = mock(Admin.class);
+    Request request = mock(Request.class);
+    Response response = mock(Response.class);
+
+    doReturn(cluster).when(request).queryParams(CLUSTER);
+    doReturn(store).when(request).queryParams(NAME);
+    doReturn(Integer.toString(schemaId)).when(request).queryParams(SCHEMA_ID);
+    doReturn(true).when(admin).isLeaderControllerFor(cluster);
+
+    // Mock queryMap for handleError method
+    QueryParamsMap paramsMap = mock(QueryParamsMap.class);
+    Map<String, String[]> queryMapResult = new HashMap<>();
+    queryMapResult.put(CLUSTER, new String[] { cluster });
+    queryMapResult.put(NAME, new String[] { store });
+    queryMapResult.put(SCHEMA_ID, new String[] { Integer.toString(schemaId) });
+    doReturn(queryMapResult).when(paramsMap).toMap();
+    doReturn(paramsMap).when(request).queryMap();
+
+    when(schemaRequestHandler.getValueSchema(any(GetValueSchemaGrpcRequest.class)))
+        .thenThrow(new IllegalArgumentException("Value schema for schema id: 99 of store: store_name doesn't exist"));
+
+    SchemaRoutes schemaRoutes = new SchemaRoutes(false, Optional.empty(), schemaRequestHandler);
+    Route route = schemaRoutes.getValueSchema(admin);
+    String result = (String) route.handle(request, response);
+
+    verify(schemaRequestHandler, times(1)).getValueSchema(any(GetValueSchemaGrpcRequest.class));
+    assertTrue(
+        result.contains("Value schema for schema id: 99 of store: store_name doesn't exist"),
+        "Response should contain error message");
+  }
 }

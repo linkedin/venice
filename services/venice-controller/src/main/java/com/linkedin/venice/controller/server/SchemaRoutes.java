@@ -28,6 +28,9 @@ import com.linkedin.venice.exceptions.InvalidVeniceSchemaException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.protocols.controller.ClusterStoreGrpcInfo;
+import com.linkedin.venice.protocols.controller.GetValueSchemaGrpcRequest;
+import com.linkedin.venice.protocols.controller.GetValueSchemaGrpcResponse;
 import com.linkedin.venice.schema.GeneratedSchemaID;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
@@ -46,8 +49,14 @@ import spark.Route;
 
 
 public class SchemaRoutes extends AbstractRoute {
-  public SchemaRoutes(boolean sslEnabled, Optional<DynamicAccessController> accessController) {
+  private final SchemaRequestHandler schemaRequestHandler;
+
+  public SchemaRoutes(
+      boolean sslEnabled,
+      Optional<DynamicAccessController> accessController,
+      SchemaRequestHandler schemaRequestHandler) {
     super(sslEnabled, accessController);
+    this.schemaRequestHandler = schemaRequestHandler;
   }
 
   /**
@@ -198,19 +207,23 @@ public class SchemaRoutes extends AbstractRoute {
       try {
         // No ACL check on getting store metadata
         AdminSparkServer.validateParams(request, GET_VALUE_SCHEMA.getParams(), admin);
-        responseObject.setCluster(request.queryParams(CLUSTER));
-        responseObject.setName(request.queryParams(NAME));
-        String schemaId = request.queryParams(SCHEMA_ID);
-        SchemaEntry valueSchemaEntry = admin.getValueSchema(
-            responseObject.getCluster(),
-            responseObject.getName(),
-            Utils.parseIntFromString(schemaId, "schema id"));
-        if (valueSchemaEntry == null) {
-          throw new VeniceException(
-              "Value schema for schema id: " + schemaId + " of store: " + responseObject.getName() + " doesn't exist");
-        }
-        responseObject.setId(valueSchemaEntry.getId());
-        responseObject.setSchemaStr(valueSchemaEntry.getSchema().toString());
+        String clusterName = request.queryParams(CLUSTER);
+        String storeName = request.queryParams(NAME);
+        String schemaIdStr = request.queryParams(SCHEMA_ID);
+        int schemaId = Utils.parseIntFromString(schemaIdStr, "schema id");
+
+        // Build gRPC request and delegate to handler
+        ClusterStoreGrpcInfo storeInfo =
+            ClusterStoreGrpcInfo.newBuilder().setClusterName(clusterName).setStoreName(storeName).build();
+        GetValueSchemaGrpcRequest grpcRequest =
+            GetValueSchemaGrpcRequest.newBuilder().setStoreInfo(storeInfo).setSchemaId(schemaId).build();
+
+        GetValueSchemaGrpcResponse grpcResponse = schemaRequestHandler.getValueSchema(grpcRequest);
+
+        responseObject.setCluster(clusterName);
+        responseObject.setName(storeName);
+        responseObject.setId(grpcResponse.getSchemaId());
+        responseObject.setSchemaStr(grpcResponse.getSchemaStr());
       } catch (Throwable e) {
         responseObject.setError(e);
         AdminSparkServer.handleError(new VeniceException(e), request, response);
