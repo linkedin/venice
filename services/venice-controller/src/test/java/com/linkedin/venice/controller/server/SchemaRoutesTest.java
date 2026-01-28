@@ -8,23 +8,32 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.VALUE_SCH
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.controller.Admin;
+import com.linkedin.venice.controller.VeniceParentHelixAdmin;
+import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.protocols.controller.ClusterStoreGrpcInfo;
+import com.linkedin.venice.protocols.controller.GetAllValueSchemaGrpcRequest;
+import com.linkedin.venice.protocols.controller.GetAllValueSchemaGrpcResponse;
 import com.linkedin.venice.protocols.controller.GetValueSchemaGrpcRequest;
 import com.linkedin.venice.protocols.controller.GetValueSchemaGrpcResponse;
+import com.linkedin.venice.protocols.controller.SchemaGrpcInfo;
 import com.linkedin.venice.schema.GeneratedSchemaID;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
+import com.linkedin.venice.utils.ObjectMapperFactory;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -37,6 +46,9 @@ import spark.Route;
 
 
 public class SchemaRoutesTest {
+  private static final String TEST_CLUSTER = "test-cluster";
+  private static final String TEST_STORE = "test-store";
+
   private SchemaRequestHandler schemaRequestHandler;
 
   @BeforeMethod
@@ -189,5 +201,65 @@ public class SchemaRoutesTest {
     assertTrue(
         result.contains("Value schema for schema id: 99 of store: store_name doesn't exist"),
         "Response should contain error message");
+  }
+
+  @Test
+  public void testGetAllValueSchemaSuccess() throws Exception {
+    Admin mockAdmin = mock(VeniceParentHelixAdmin.class);
+    SchemaRequestHandler mockRequestHandler = mock(SchemaRequestHandler.class);
+    doReturn(true).when(mockAdmin).isLeaderControllerFor(TEST_CLUSTER);
+
+    Request request = mock(Request.class);
+    QueryParamsMap paramsMap = mock(QueryParamsMap.class);
+    doReturn(new HashMap<>()).when(paramsMap).toMap();
+    doReturn(paramsMap).when(request).queryMap();
+    doReturn(TEST_CLUSTER).when(request).queryParams(CLUSTER);
+    doReturn(TEST_STORE).when(request).queryParams(NAME);
+
+    ClusterStoreGrpcInfo storeInfo =
+        ClusterStoreGrpcInfo.newBuilder().setClusterName(TEST_CLUSTER).setStoreName(TEST_STORE).build();
+    GetAllValueSchemaGrpcResponse grpcResponse = GetAllValueSchemaGrpcResponse.newBuilder()
+        .setStoreInfo(storeInfo)
+        .addSchemas(SchemaGrpcInfo.newBuilder().setId(1).setSchemaStr("\"string\"").build())
+        .addSchemas(SchemaGrpcInfo.newBuilder().setId(2).setSchemaStr("\"int\"").build())
+        .setSuperSetSchemaId(2)
+        .build();
+    doReturn(grpcResponse).when(mockRequestHandler).getAllValueSchema(any(GetAllValueSchemaGrpcRequest.class));
+
+    Route route = new SchemaRoutes(false, Optional.empty(), mockRequestHandler).getAllValueSchema(mockAdmin);
+
+    MultiSchemaResponse response = ObjectMapperFactory.getInstance()
+        .readValue(route.handle(request, mock(Response.class)).toString(), MultiSchemaResponse.class);
+    assertFalse(response.isError());
+    assertEquals(response.getCluster(), TEST_CLUSTER);
+    assertEquals(response.getName(), TEST_STORE);
+    assertEquals(response.getSchemas().length, 2);
+    assertEquals(response.getSchemas()[0].getId(), 1);
+    assertEquals(response.getSchemas()[0].getSchemaStr(), "\"string\"");
+    assertEquals(response.getSchemas()[1].getId(), 2);
+    assertEquals(response.getSuperSetSchemaId(), 2);
+  }
+
+  @Test
+  public void testGetAllValueSchemaError() throws Exception {
+    Admin mockAdmin = mock(VeniceParentHelixAdmin.class);
+    SchemaRequestHandler mockRequestHandler = mock(SchemaRequestHandler.class);
+    doReturn(true).when(mockAdmin).isLeaderControllerFor(TEST_CLUSTER);
+
+    Request request = mock(Request.class);
+    QueryParamsMap paramsMap = mock(QueryParamsMap.class);
+    doReturn(new HashMap<>()).when(paramsMap).toMap();
+    doReturn(paramsMap).when(request).queryMap();
+    doReturn(TEST_CLUSTER).when(request).queryParams(CLUSTER);
+    doReturn(TEST_STORE).when(request).queryParams(NAME);
+
+    doThrow(new VeniceException("Failed to get schemas")).when(mockRequestHandler)
+        .getAllValueSchema(any(GetAllValueSchemaGrpcRequest.class));
+
+    Route route = new SchemaRoutes(false, Optional.empty(), mockRequestHandler).getAllValueSchema(mockAdmin);
+
+    MultiSchemaResponse response = ObjectMapperFactory.getInstance()
+        .readValue(route.handle(request, mock(Response.class)).toString(), MultiSchemaResponse.class);
+    assertTrue(response.isError());
   }
 }

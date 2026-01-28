@@ -330,6 +330,7 @@ public class VeniceController {
     VeniceControllerGrpcServiceImpl grpcService = new VeniceControllerGrpcServiceImpl(unsecureRequestHandler);
     StoreGrpcServiceImpl storeGrpcServiceGrpc = new StoreGrpcServiceImpl(
         unsecureRequestHandler.getStoreRequestHandler(),
+        unsecureRequestHandler.getSchemaRequestHandler(),
         unsecureRequestHandler.getControllerAccessManager());
     SchemaGrpcServiceImpl schemaGrpcService =
         new SchemaGrpcServiceImpl(unsecureRequestHandler.getSchemaRequestHandler());
@@ -361,6 +362,7 @@ public class VeniceController {
       VeniceControllerGrpcServiceImpl secureGrpcService = new VeniceControllerGrpcServiceImpl(secureRequestHandler);
       StoreGrpcServiceImpl secureStoreGrpcService = new StoreGrpcServiceImpl(
           secureRequestHandler.getStoreRequestHandler(),
+          secureRequestHandler.getSchemaRequestHandler(),
           secureRequestHandler.getControllerAccessManager());
       SchemaGrpcServiceImpl secureSchemaGrpcService =
           new SchemaGrpcServiceImpl(secureRequestHandler.getSchemaRequestHandler());

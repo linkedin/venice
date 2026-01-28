@@ -14,6 +14,9 @@ service StoreGrpcService {
   rpc checkResourceCleanupForStoreCreation(ClusterStoreGrpcInfo) returns (ResourceCleanupCheckGrpcResponse) {}
   rpc validateStoreDeleted(ValidateStoreDeletedGrpcRequest) returns (ValidateStoreDeletedGrpcResponse);
   rpc listStores(ListStoresGrpcRequest) returns (ListStoresGrpcResponse);
+
+  // Schema operations
+  rpc getAllValueSchema(GetAllValueSchemaGrpcRequest) returns (GetAllValueSchemaGrpcResponse);
 }
 
 message CreateStoreGrpcRequest {
@@ -82,4 +85,20 @@ message ListStoresGrpcRequest {
 message ListStoresGrpcResponse {
   string clusterName = 1;
   repeated string storeNames = 2;
+}
+
+message GetAllValueSchemaGrpcRequest {
+  ClusterStoreGrpcInfo storeInfo = 1;
+}
+
+message SchemaGrpcInfo {
+  int32 id = 1;
+  string schemaStr = 2;
+  optional int32 derivedSchemaId = 3;
+}
+
+message GetAllValueSchemaGrpcResponse {
+  ClusterStoreGrpcInfo storeInfo = 1;
+  repeated SchemaGrpcInfo schemas = 2;
+  int32 superSetSchemaId = 3;
 }
