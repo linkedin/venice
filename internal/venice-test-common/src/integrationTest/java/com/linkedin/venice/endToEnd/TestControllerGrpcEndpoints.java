@@ -20,6 +20,8 @@ import com.linkedin.venice.protocols.controller.CreateStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.CreateStoreGrpcResponse;
 import com.linkedin.venice.protocols.controller.DiscoverClusterGrpcRequest;
 import com.linkedin.venice.protocols.controller.DiscoverClusterGrpcResponse;
+import com.linkedin.venice.protocols.controller.GetClusterHealthStoresGrpcRequest;
+import com.linkedin.venice.protocols.controller.GetClusterHealthStoresGrpcResponse;
 import com.linkedin.venice.protocols.controller.LeaderControllerGrpcRequest;
 import com.linkedin.venice.protocols.controller.LeaderControllerGrpcResponse;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcRequest;
@@ -335,6 +337,66 @@ public class TestControllerGrpcEndpoints {
           store.startsWith("venice_system_store") || store.contains("push_status"),
           "Store list should not contain system stores: " + store);
     }
+  }
+
+  @Test(timeOut = TIMEOUT_MS)
+  public void testGetClusterHealthStoresGrpcEndpoint() {
+    String storeName1 = Utils.getUniqueString("test_health_stores_1");
+    String storeName2 = Utils.getUniqueString("test_health_stores_2");
+    String controllerGrpcUrl = veniceCluster.getLeaderVeniceController().getControllerGrpcUrl();
+    ManagedChannel channel = Grpc.newChannelBuilder(controllerGrpcUrl, InsecureChannelCredentials.create()).build();
+    StoreGrpcServiceGrpc.StoreGrpcServiceBlockingStub storeBlockingStub = StoreGrpcServiceGrpc.newBlockingStub(channel);
+
+    // Step 1: Create two stores
+    CreateStoreGrpcRequest createStoreRequest1 = CreateStoreGrpcRequest.newBuilder()
+        .setStoreInfo(
+            ClusterStoreGrpcInfo.newBuilder()
+                .setClusterName(veniceCluster.getClusterName())
+                .setStoreName(storeName1)
+                .build())
+        .setOwner("owner")
+        .setKeySchema(DEFAULT_KEY_SCHEMA)
+        .setValueSchema("\"string\"")
+        .build();
+    CreateStoreGrpcResponse createResponse1 = storeBlockingStub.createStore(createStoreRequest1);
+    assertNotNull(createResponse1, "Response should not be null");
+
+    CreateStoreGrpcRequest createStoreRequest2 = CreateStoreGrpcRequest.newBuilder()
+        .setStoreInfo(
+            ClusterStoreGrpcInfo.newBuilder()
+                .setClusterName(veniceCluster.getClusterName())
+                .setStoreName(storeName2)
+                .build())
+        .setOwner("owner")
+        .setKeySchema(DEFAULT_KEY_SCHEMA)
+        .setValueSchema("\"string\"")
+        .build();
+    CreateStoreGrpcResponse createResponse2 = storeBlockingStub.createStore(createStoreRequest2);
+    assertNotNull(createResponse2, "Response should not be null");
+
+    // Step 2: Get cluster health stores
+    GetClusterHealthStoresGrpcRequest healthRequest =
+        GetClusterHealthStoresGrpcRequest.newBuilder().setClusterName(veniceCluster.getClusterName()).build();
+
+    GetClusterHealthStoresGrpcResponse healthResponse = storeBlockingStub.getClusterHealthStores(healthRequest);
+    assertNotNull(healthResponse, "Response should not be null");
+    assertEquals(healthResponse.getClusterName(), veniceCluster.getClusterName());
+
+    // Verify the stores we created are in the status map
+    assertTrue(
+        healthResponse.getStoreStatusMapMap().containsKey(storeName1),
+        "Store status map should contain " + storeName1);
+    assertTrue(
+        healthResponse.getStoreStatusMapMap().containsKey(storeName2),
+        "Store status map should contain " + storeName2);
+
+    // Verify the statuses are not null/empty
+    assertNotNull(
+        healthResponse.getStoreStatusMapMap().get(storeName1),
+        "Status for " + storeName1 + " should not be null");
+    assertNotNull(
+        healthResponse.getStoreStatusMapMap().get(storeName2),
+        "Status for " + storeName2 + " should not be null");
   }
 
   private static class MockDynamicAccessController extends NoOpDynamicAccessController {

@@ -109,6 +109,8 @@ import com.linkedin.venice.meta.StoreDataAudit;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.protocols.controller.ClusterStoreGrpcInfo;
+import com.linkedin.venice.protocols.controller.GetClusterHealthStoresGrpcRequest;
+import com.linkedin.venice.protocols.controller.GetClusterHealthStoresGrpcResponse;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcRequest;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcResponse;
 import com.linkedin.venice.protocols.controller.ValidateStoreDeletedGrpcRequest;
@@ -228,9 +230,13 @@ public class StoresRoutes extends AbstractRoute {
       public void internalHandle(Request request, MultiStoreStatusResponse veniceResponse) {
         AdminSparkServer.validateParams(request, CLUSTER_HEALTH_STORES.getParams(), admin);
         String clusterName = request.queryParams(CLUSTER);
-        veniceResponse.setCluster(clusterName);
-        Map<String, String> storeStatusMap = admin.getAllStoreStatuses(clusterName);
-        veniceResponse.setStoreStatusMap(storeStatusMap);
+
+        GetClusterHealthStoresGrpcRequest grpcRequest =
+            GetClusterHealthStoresGrpcRequest.newBuilder().setClusterName(clusterName).build();
+        GetClusterHealthStoresGrpcResponse grpcResponse = storeRequestHandler.getClusterHealthStores(grpcRequest);
+
+        veniceResponse.setCluster(grpcResponse.getClusterName());
+        veniceResponse.setStoreStatusMap(grpcResponse.getStoreStatusMapMap());
       }
     };
   }
