@@ -25,6 +25,8 @@ import com.linkedin.venice.protocols.controller.DeleteAclForStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.DeleteAclForStoreGrpcResponse;
 import com.linkedin.venice.protocols.controller.GetAclForStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.GetAclForStoreGrpcResponse;
+import com.linkedin.venice.protocols.controller.GetStoreGrpcRequest;
+import com.linkedin.venice.protocols.controller.GetStoreGrpcResponse;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcRequest;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcResponse;
 import com.linkedin.venice.protocols.controller.ResourceCleanupCheckGrpcResponse;
@@ -444,5 +446,40 @@ public class StoreGrpcServiceImplTest {
     assertNotNull(actualResponse, "Response should not be null");
     assertEquals(actualResponse.getClusterName(), TEST_CLUSTER, "Cluster name should match");
     assertEquals(actualResponse.getStoreNamesCount(), 1, "Should have 1 store after filtering");
+  }
+
+  @Test
+  public void testGetStoreReturnsSuccessfulResponse() {
+    ClusterStoreGrpcInfo storeInfo =
+        ClusterStoreGrpcInfo.newBuilder().setClusterName(TEST_CLUSTER).setStoreName(TEST_STORE).build();
+    GetStoreGrpcRequest request = GetStoreGrpcRequest.newBuilder().setStoreInfo(storeInfo).build();
+    String storeInfoJson = "{\"name\":\"" + TEST_STORE + "\"}";
+    GetStoreGrpcResponse response =
+        GetStoreGrpcResponse.newBuilder().setStoreInfo(storeInfo).setStoreInfoJson(storeInfoJson).build();
+    when(storeRequestHandler.getStore(any(GetStoreGrpcRequest.class))).thenReturn(response);
+
+    GetStoreGrpcResponse actualResponse = blockingStub.getStore(request);
+
+    assertNotNull(actualResponse, "Response should not be null");
+    assertEquals(actualResponse.getStoreInfo(), storeInfo, "Store info should match");
+    assertEquals(actualResponse.getStoreInfoJson(), storeInfoJson, "Store info JSON should match");
+  }
+
+  @Test
+  public void testGetStoreReturnsErrorResponse() {
+    ClusterStoreGrpcInfo storeInfo =
+        ClusterStoreGrpcInfo.newBuilder().setClusterName(TEST_CLUSTER).setStoreName(TEST_STORE).build();
+    GetStoreGrpcRequest request = GetStoreGrpcRequest.newBuilder().setStoreInfo(storeInfo).build();
+    when(storeRequestHandler.getStore(any(GetStoreGrpcRequest.class)))
+        .thenThrow(new VeniceException("Store not found"));
+
+    StatusRuntimeException e = expectThrows(StatusRuntimeException.class, () -> blockingStub.getStore(request));
+
+    assertNotNull(e.getStatus(), "Status should not be null");
+    assertEquals(e.getStatus().getCode(), Status.INTERNAL.getCode());
+    VeniceControllerGrpcErrorInfo errorInfo = GrpcRequestResponseConverter.parseControllerGrpcError(e);
+    assertNotNull(errorInfo, "Error info should not be null");
+    assertEquals(errorInfo.getErrorType(), ControllerGrpcErrorType.GENERAL_ERROR);
+    assertTrue(errorInfo.getErrorMessage().contains("Store not found"));
   }
 }
