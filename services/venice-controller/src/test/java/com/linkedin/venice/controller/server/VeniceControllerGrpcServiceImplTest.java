@@ -17,6 +17,8 @@ import com.linkedin.venice.protocols.controller.DiscoverClusterGrpcRequest;
 import com.linkedin.venice.protocols.controller.DiscoverClusterGrpcResponse;
 import com.linkedin.venice.protocols.controller.LeaderControllerGrpcRequest;
 import com.linkedin.venice.protocols.controller.LeaderControllerGrpcResponse;
+import com.linkedin.venice.protocols.controller.ListChildClustersGrpcRequest;
+import com.linkedin.venice.protocols.controller.ListChildClustersGrpcResponse;
 import com.linkedin.venice.protocols.controller.VeniceControllerGrpcErrorInfo;
 import com.linkedin.venice.protocols.controller.VeniceControllerGrpcServiceGrpc;
 import com.linkedin.venice.protocols.controller.VeniceControllerGrpcServiceGrpc.VeniceControllerGrpcServiceBlockingStub;
@@ -26,6 +28,8 @@ import io.grpc.Status;
 import io.grpc.StatusRuntimeException;
 import io.grpc.inprocess.InProcessChannelBuilder;
 import io.grpc.inprocess.InProcessServerBuilder;
+import java.util.HashMap;
+import java.util.Map;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -175,5 +179,90 @@ public class VeniceControllerGrpcServiceImplTest {
     assertFalse(errorInfo2.hasClusterName(), "Cluster name should not be present in the error info");
     assertEquals(errorInfo2.getErrorType(), ControllerGrpcErrorType.GENERAL_ERROR);
     assertTrue(errorInfo2.getErrorMessage().contains("Failed to discover cluster"));
+  }
+
+  @Test
+  public void testListChildClustersReturnsSuccessfulResponse() {
+    Map<String, String> childUrlMap = new HashMap<>();
+    childUrlMap.put("dc1", "http://dc1-controller:8080");
+    childUrlMap.put("dc2", "http://dc2-controller:8080");
+    Map<String, String> childD2Map = new HashMap<>();
+    childD2Map.put("dc1", "d2://dc1-controller");
+    childD2Map.put("dc2", "d2://dc2-controller");
+
+    ListChildClustersGrpcResponse response = ListChildClustersGrpcResponse.newBuilder()
+        .setClusterName(TEST_CLUSTER)
+        .putAllChildDataCenterControllerUrlMap(childUrlMap)
+        .putAllChildDataCenterControllerD2Map(childD2Map)
+        .setD2ServiceName("VeniceController")
+        .build();
+    doReturn(response).when(requestHandler).listChildClusters(any(ListChildClustersGrpcRequest.class));
+
+    ListChildClustersGrpcRequest request =
+        ListChildClustersGrpcRequest.newBuilder().setClusterName(TEST_CLUSTER).build();
+    ListChildClustersGrpcResponse actualResponse = blockingStub.listChildClusters(request);
+
+    assertNotNull(actualResponse, "Response should not be null");
+    assertEquals(actualResponse.getClusterName(), TEST_CLUSTER, "Cluster name should match");
+    assertEquals(actualResponse.getChildDataCenterControllerUrlMapCount(), 2, "Should have 2 URL mappings");
+    assertEquals(
+        actualResponse.getChildDataCenterControllerUrlMapMap().get("dc1"),
+        "http://dc1-controller:8080",
+        "DC1 URL should match");
+    assertEquals(actualResponse.getChildDataCenterControllerD2MapCount(), 2, "Should have 2 D2 mappings");
+    assertEquals(actualResponse.getD2ServiceName(), "VeniceController", "D2 service name should match");
+  }
+
+  @Test
+  public void testListChildClustersReturnsEmptyForChildController() {
+    // Child controller returns empty maps
+    ListChildClustersGrpcResponse response =
+        ListChildClustersGrpcResponse.newBuilder().setClusterName(TEST_CLUSTER).build();
+    doReturn(response).when(requestHandler).listChildClusters(any(ListChildClustersGrpcRequest.class));
+
+    ListChildClustersGrpcRequest request =
+        ListChildClustersGrpcRequest.newBuilder().setClusterName(TEST_CLUSTER).build();
+    ListChildClustersGrpcResponse actualResponse = blockingStub.listChildClusters(request);
+
+    assertNotNull(actualResponse, "Response should not be null");
+    assertEquals(actualResponse.getClusterName(), TEST_CLUSTER, "Cluster name should match");
+    assertEquals(actualResponse.getChildDataCenterControllerUrlMapCount(), 0, "Should have no URL mappings");
+    assertEquals(actualResponse.getChildDataCenterControllerD2MapCount(), 0, "Should have no D2 mappings");
+    assertFalse(actualResponse.hasD2ServiceName(), "Should have no D2 service name");
+  }
+
+  @Test
+  public void testListChildClustersReturnsErrorResponse() {
+    doThrow(new VeniceException("Failed to list child clusters")).when(requestHandler)
+        .listChildClusters(any(ListChildClustersGrpcRequest.class));
+
+    ListChildClustersGrpcRequest request =
+        ListChildClustersGrpcRequest.newBuilder().setClusterName(TEST_CLUSTER).build();
+    StatusRuntimeException e =
+        expectThrows(StatusRuntimeException.class, () -> blockingStub.listChildClusters(request));
+
+    assertNotNull(e.getStatus(), "Status should not be null");
+    assertEquals(e.getStatus().getCode(), Status.INTERNAL.getCode());
+    VeniceControllerGrpcErrorInfo errorInfo = GrpcRequestResponseConverter.parseControllerGrpcError(e);
+    assertNotNull(errorInfo, "Error info should not be null");
+    assertEquals(errorInfo.getErrorType(), ControllerGrpcErrorType.GENERAL_ERROR);
+    assertTrue(errorInfo.getErrorMessage().contains("Failed to list child clusters"));
+  }
+
+  @Test
+  public void testListChildClustersReturnsBadRequestForMissingClusterName() {
+    doThrow(new IllegalArgumentException("Cluster name is required")).when(requestHandler)
+        .listChildClusters(any(ListChildClustersGrpcRequest.class));
+
+    ListChildClustersGrpcRequest request = ListChildClustersGrpcRequest.newBuilder().build();
+    StatusRuntimeException e =
+        expectThrows(StatusRuntimeException.class, () -> blockingStub.listChildClusters(request));
+
+    assertNotNull(e.getStatus(), "Status should not be null");
+    assertEquals(e.getStatus().getCode(), Status.INVALID_ARGUMENT.getCode());
+    VeniceControllerGrpcErrorInfo errorInfo = GrpcRequestResponseConverter.parseControllerGrpcError(e);
+    assertNotNull(errorInfo, "Error info should not be null");
+    assertEquals(errorInfo.getErrorType(), ControllerGrpcErrorType.BAD_REQUEST);
+    assertTrue(errorInfo.getErrorMessage().contains("Cluster name is required"));
   }
 }

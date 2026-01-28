@@ -16,6 +16,7 @@ import com.linkedin.venice.controller.InstanceRemovableStatuses;
 import com.linkedin.venice.controller.VeniceParentHelixAdmin;
 import com.linkedin.venice.controllerapi.AdminOperationProtocolVersionControllerResponse;
 import com.linkedin.venice.controllerapi.AggregatedHealthStatusRequest;
+import com.linkedin.venice.controllerapi.ChildAwareResponse;
 import com.linkedin.venice.controllerapi.ControllerApiConstants;
 import com.linkedin.venice.controllerapi.LeaderControllerResponse;
 import com.linkedin.venice.controllerapi.StoppableNodeStatusResponse;
@@ -257,5 +258,62 @@ public class ControllerRoutesTest {
     assertEquals(response.getControllerNameToVersionMap(), controllerNameToVersionMap);
     assertEquals(response.getLocalControllerName(), leaderControllerHost);
     assertEquals(response.getCluster(), TEST_CLUSTER);
+  }
+
+  @Test
+  public void testGetChildControllersForParentController() throws Exception {
+    doReturn(true).when(mockAdmin).isLeaderControllerFor(anyString());
+    doReturn(true).when(mockAdmin).isParent();
+
+    Map<String, String> childUrlMap = new HashMap<>();
+    childUrlMap.put("dc1", "http://dc1-controller:8080");
+    childUrlMap.put("dc2", "http://dc2-controller:8080");
+
+    Map<String, String> childD2Map = new HashMap<>();
+    childD2Map.put("dc1", "d2://dc1-controller");
+    childD2Map.put("dc2", "d2://dc2-controller");
+
+    doReturn(childUrlMap).when(mockAdmin).getChildDataCenterControllerUrlMap(TEST_CLUSTER);
+    doReturn(childD2Map).when(mockAdmin).getChildDataCenterControllerD2Map(TEST_CLUSTER);
+    doReturn("VeniceController").when(mockAdmin).getChildControllerD2ServiceName(TEST_CLUSTER);
+
+    Request request = mock(Request.class);
+    doReturn(TEST_CLUSTER).when(request).queryParams(eq(ControllerApiConstants.CLUSTER));
+
+    Route childControllersRoute = new ControllerRoutes(false, Optional.empty(), pubSubTopicRepository, requestHandler)
+        .getChildControllers(mockAdmin);
+    ChildAwareResponse response = OBJECT_MAPPER
+        .readValue(childControllersRoute.handle(request, mock(Response.class)).toString(), ChildAwareResponse.class);
+
+    assertEquals(response.getCluster(), TEST_CLUSTER);
+    assertEquals(response.getChildDataCenterControllerUrlMap().size(), 2);
+    assertEquals(response.getChildDataCenterControllerUrlMap().get("dc1"), "http://dc1-controller:8080");
+    assertEquals(response.getChildDataCenterControllerUrlMap().get("dc2"), "http://dc2-controller:8080");
+    assertEquals(response.getChildDataCenterControllerD2Map().size(), 2);
+    assertEquals(response.getChildDataCenterControllerD2Map().get("dc1"), "d2://dc1-controller");
+    assertEquals(response.getChildDataCenterControllerD2Map().get("dc2"), "d2://dc2-controller");
+    assertEquals(response.getD2ServiceName(), "VeniceController");
+  }
+
+  @Test
+  public void testGetChildControllersForChildController() throws Exception {
+    doReturn(true).when(mockAdmin).isLeaderControllerFor(anyString());
+    doReturn(false).when(mockAdmin).isParent();
+
+    Request request = mock(Request.class);
+    doReturn(TEST_CLUSTER).when(request).queryParams(eq(ControllerApiConstants.CLUSTER));
+
+    Route childControllersRoute = new ControllerRoutes(false, Optional.empty(), pubSubTopicRepository, requestHandler)
+        .getChildControllers(mockAdmin);
+    ChildAwareResponse response = OBJECT_MAPPER
+        .readValue(childControllersRoute.handle(request, mock(Response.class)).toString(), ChildAwareResponse.class);
+
+    assertEquals(response.getCluster(), TEST_CLUSTER);
+    assertTrue(
+        response.getChildDataCenterControllerUrlMap() == null
+            || response.getChildDataCenterControllerUrlMap().isEmpty());
+    assertTrue(
+        response.getChildDataCenterControllerD2Map() == null || response.getChildDataCenterControllerD2Map().isEmpty());
+    assertTrue(response.getD2ServiceName() == null);
   }
 }
