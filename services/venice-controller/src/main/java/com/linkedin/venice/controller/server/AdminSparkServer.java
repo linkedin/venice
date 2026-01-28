@@ -314,7 +314,8 @@ public class AdminSparkServer extends AbstractVeniceService {
         new RoutersClusterConfigRoutes(sslEnabled, accessController);
     MigrationRoutes migrationRoutes = new MigrationRoutes(sslEnabled, accessController);
     VersionRoute versionRoute = new VersionRoute(sslEnabled, accessController);
-    ClusterRoutes clusterRoutes = new ClusterRoutes(sslEnabled, accessController);
+    ClusterRoutes clusterRoutes =
+        new ClusterRoutes(sslEnabled, accessController, requestHandler.getClusterAdminOpsRequestHandler());
     NewClusterBuildOutRoutes newClusterBuildOutRoutes = new NewClusterBuildOutRoutes(sslEnabled, accessController);
     DataRecoveryRoutes dataRecoveryRoutes = new DataRecoveryRoutes(sslEnabled, accessController);
     AdminTopicMetadataRoutes adminTopicMetadataRoutes = new AdminTopicMetadataRoutes(sslEnabled, accessController);
