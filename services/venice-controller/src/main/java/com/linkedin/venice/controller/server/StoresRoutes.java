@@ -108,6 +108,8 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataAudit;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionImpl;
+import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.protocols.controller.ClusterStoreGrpcInfo;
 import com.linkedin.venice.protocols.controller.GetRepushInfoGrpcRequest;
 import com.linkedin.venice.protocols.controller.GetRepushInfoGrpcResponse;
@@ -116,6 +118,7 @@ import com.linkedin.venice.protocols.controller.ListStoresGrpcResponse;
 import com.linkedin.venice.protocols.controller.RepushInfoGrpc;
 import com.linkedin.venice.protocols.controller.ValidateStoreDeletedGrpcRequest;
 import com.linkedin.venice.protocols.controller.ValidateStoreDeletedGrpcResponse;
+import com.linkedin.venice.protocols.controller.VersionGrpc;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
@@ -283,8 +286,7 @@ public class StoresRoutes extends AbstractRoute {
         veniceResponse.setName(storeName);
 
         // Convert proto RepushInfo back to Java RepushInfo for HTTP response
-        RepushInfoGrpc repushInfoProto = grpcResponse.getRepushInfo();
-        RepushInfo repushInfo = admin.getRepushInfo(clusterName, storeName, Optional.ofNullable(fabricName));
+        RepushInfo repushInfo = mapGrpcRepushInfoToRepushInfo(grpcResponse.getRepushInfo(), storeName);
 
         veniceResponse.setRepushInfo(repushInfo);
       }
@@ -1244,5 +1246,35 @@ public class StoresRoutes extends AbstractRoute {
         }
       }
     };
+  }
+
+  /**
+   * Converts a gRPC RepushInfoGrpc message to a RepushInfo object.
+   * @param repushInfoProto the gRPC message
+   * @param storeName the store name needed for Version creation
+   * @return the converted RepushInfo object
+   */
+  RepushInfo mapGrpcRepushInfoToRepushInfo(RepushInfoGrpc repushInfoProto, String storeName) {
+    Version version = null;
+    if (repushInfoProto.hasVersion()) {
+      VersionGrpc versionProto = repushInfoProto.getVersion();
+      version = new VersionImpl(
+          storeName,
+          versionProto.getNumber(),
+          versionProto.getCreatedTime(),
+          versionProto.getPushJobId(),
+          versionProto.getPartitionCount(),
+          null,
+          null);
+      version.setStatus(VersionStatus.getVersionStatusFromInt(versionProto.getStatus()));
+    }
+
+    return RepushInfo.createRepushInfo(
+        version,
+        repushInfoProto.getKafkaBrokerUrl(),
+        repushInfoProto.hasSystemSchemaClusterD2ServiceName()
+            ? repushInfoProto.getSystemSchemaClusterD2ServiceName()
+            : null,
+        repushInfoProto.hasSystemSchemaClusterD2ZkHost() ? repushInfoProto.getSystemSchemaClusterD2ZkHost() : null);
   }
 }
