@@ -12,6 +12,9 @@ service StoreGrpcService {
   rpc getAclForStore(GetAclForStoreGrpcRequest) returns (GetAclForStoreGrpcResponse);
   rpc deleteAclForStore(DeleteAclForStoreGrpcRequest) returns (DeleteAclForStoreGrpcResponse);
   rpc checkResourceCleanupForStoreCreation(ClusterStoreGrpcInfo) returns (ResourceCleanupCheckGrpcResponse) {}
+
+  // Schema operations
+  rpc getAllValueSchema(GetAllValueSchemaGrpcRequest) returns (GetAllValueSchemaGrpcResponse);
 }
 
 message CreateStoreGrpcRequest {
@@ -58,4 +61,20 @@ message ResourceCleanupCheckGrpcResponse {
   ClusterStoreGrpcInfo storeInfo = 1;
   bool hasLingeringResources = 2;
   optional string description = 3;
+}
+
+message GetAllValueSchemaGrpcRequest {
+  ClusterStoreGrpcInfo storeInfo = 1;
+}
+
+message SchemaGrpcInfo {
+  int32 id = 1;
+  string schemaStr = 2;
+  optional int32 derivedSchemaId = 3;
+}
+
+message GetAllValueSchemaGrpcResponse {
+  ClusterStoreGrpcInfo storeInfo = 1;
+  repeated SchemaGrpcInfo schemas = 2;
+  int32 superSetSchemaId = 3;
 }

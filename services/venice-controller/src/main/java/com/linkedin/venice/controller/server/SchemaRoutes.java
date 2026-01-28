@@ -28,6 +28,10 @@ import com.linkedin.venice.exceptions.InvalidVeniceSchemaException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.protocols.controller.ClusterStoreGrpcInfo;
+import com.linkedin.venice.protocols.controller.GetAllValueSchemaGrpcRequest;
+import com.linkedin.venice.protocols.controller.GetAllValueSchemaGrpcResponse;
+import com.linkedin.venice.protocols.controller.SchemaGrpcInfo;
 import com.linkedin.venice.schema.GeneratedSchemaID;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
@@ -46,8 +50,14 @@ import spark.Route;
 
 
 public class SchemaRoutes extends AbstractRoute {
-  public SchemaRoutes(boolean sslEnabled, Optional<DynamicAccessController> accessController) {
+  private final SchemaRequestHandler schemaRequestHandler;
+
+  public SchemaRoutes(
+      boolean sslEnabled,
+      Optional<DynamicAccessController> accessController,
+      SchemaRequestHandler schemaRequestHandler) {
     super(sslEnabled, accessController);
+    this.schemaRequestHandler = schemaRequestHandler;
   }
 
   /**
@@ -326,25 +336,32 @@ public class SchemaRoutes extends AbstractRoute {
       try {
         // No ACL check on getting store metadata
         AdminSparkServer.validateParams(request, GET_ALL_VALUE_SCHEMA.getParams(), admin);
-        responseObject.setCluster(request.queryParams(CLUSTER));
-        responseObject.setName(request.queryParams(NAME));
-        Collection<SchemaEntry> valueSchemaEntries =
-            admin.getValueSchemas(responseObject.getCluster(), responseObject.getName())
-                .stream()
-                .sorted(Comparator.comparingInt(SchemaEntry::getId))
-                .collect(Collectors.toList());
-        Store store = admin.getStore(responseObject.getCluster(), responseObject.getName());
+        String clusterName = request.queryParams(CLUSTER);
+        String storeName = request.queryParams(NAME);
 
-        int schemaNum = valueSchemaEntries.size();
+        // Build gRPC request and delegate to handler
+        ClusterStoreGrpcInfo storeInfo =
+            ClusterStoreGrpcInfo.newBuilder().setClusterName(clusterName).setStoreName(storeName).build();
+        GetAllValueSchemaGrpcRequest grpcRequest =
+            GetAllValueSchemaGrpcRequest.newBuilder().setStoreInfo(storeInfo).build();
+
+        GetAllValueSchemaGrpcResponse grpcResponse = schemaRequestHandler.getAllValueSchema(grpcRequest);
+
+        responseObject.setCluster(clusterName);
+        responseObject.setName(storeName);
+
+        int schemaNum = grpcResponse.getSchemasCount();
         MultiSchemaResponse.Schema[] schemas = new MultiSchemaResponse.Schema[schemaNum];
-        int cur = 0;
-        for (SchemaEntry entry: valueSchemaEntries) {
-          schemas[cur] = new MultiSchemaResponse.Schema();
-          schemas[cur].setId(entry.getId());
-          schemas[cur].setSchemaStr(entry.getSchema().toString());
-          ++cur;
+        for (int i = 0; i < schemaNum; i++) {
+          SchemaGrpcInfo schemaInfo = grpcResponse.getSchemas(i);
+          schemas[i] = new MultiSchemaResponse.Schema();
+          schemas[i].setId(schemaInfo.getId());
+          schemas[i].setSchemaStr(schemaInfo.getSchemaStr());
+          if (schemaInfo.hasDerivedSchemaId()) {
+            schemas[i].setDerivedSchemaId(schemaInfo.getDerivedSchemaId());
+          }
         }
-        responseObject.setSuperSetSchemaId(store.getLatestSuperSetValueSchemaId());
+        responseObject.setSuperSetSchemaId(grpcResponse.getSuperSetSchemaId());
         responseObject.setSchemas(schemas);
       } catch (Throwable e) {
         responseObject.setError(e);
