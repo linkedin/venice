@@ -4,6 +4,7 @@ import static com.linkedin.venice.controller.grpc.ControllerGrpcConstants.GRPC_C
 
 import com.linkedin.venice.controller.grpc.GrpcRequestResponseConverter;
 import com.linkedin.venice.controller.server.VeniceControllerAccessManager;
+import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.exceptions.VeniceUnauthorizedAccessException;
 import com.linkedin.venice.protocols.controller.ClusterStoreGrpcInfo;
 import com.linkedin.venice.protocols.controller.ControllerGrpcErrorType;
@@ -62,6 +63,15 @@ public class ControllerGrpcServerUtils {
       GrpcRequestResponseConverter.sendErrorResponse(
           Status.Code.PERMISSION_DENIED,
           ControllerGrpcErrorType.UNAUTHORIZED,
+          e,
+          clusterName,
+          storeName,
+          responseObserver);
+    } catch (VeniceNoStoreException e) {
+      LOGGER.error("Store not found for method: {} on cluster: {}, store: {}", methodName, clusterName, storeName, e);
+      GrpcRequestResponseConverter.sendErrorResponse(
+          Status.Code.NOT_FOUND,
+          ControllerGrpcErrorType.STORE_NOT_FOUND,
           e,
           clusterName,
           storeName,
