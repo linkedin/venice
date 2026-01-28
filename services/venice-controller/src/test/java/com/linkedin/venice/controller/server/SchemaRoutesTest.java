@@ -133,8 +133,8 @@ public class SchemaRoutesTest {
         GetKeySchemaGrpcResponse.newBuilder().setStoreInfo(storeInfo).setSchemaId(1).setSchemaStr("\"string\"").build();
     when(storeRequestHandler.getKeySchema(any(GetKeySchemaGrpcRequest.class))).thenReturn(grpcResponse);
 
-    SchemaRoutes schemaRoutes = new SchemaRoutes(false, Optional.empty());
-    Route route = schemaRoutes.getKeySchema(admin, storeRequestHandler);
+    SchemaRoutes schemaRoutes = new SchemaRoutes(false, Optional.empty(), storeRequestHandler);
+    Route route = schemaRoutes.getKeySchemaWithHandler(admin);
     String result = (String) route.handle(request, response);
 
     verify(response, times(0)).status(anyInt()); // no error
@@ -171,8 +171,8 @@ public class SchemaRoutesTest {
     when(storeRequestHandler.getKeySchema(any(GetKeySchemaGrpcRequest.class)))
         .thenThrow(new VeniceException("Key schema doesn't exist for store: " + store));
 
-    SchemaRoutes schemaRoutes = new SchemaRoutes(false, Optional.empty());
-    Route route = schemaRoutes.getKeySchema(admin, storeRequestHandler);
+    SchemaRoutes schemaRoutes = new SchemaRoutes(false, Optional.empty(), storeRequestHandler);
+    Route route = schemaRoutes.getKeySchemaWithHandler(admin);
     String result = (String) route.handle(request, response);
 
     verify(storeRequestHandler, times(1)).getKeySchema(any(GetKeySchemaGrpcRequest.class));

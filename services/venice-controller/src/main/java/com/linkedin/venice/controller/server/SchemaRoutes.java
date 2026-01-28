@@ -49,8 +49,18 @@ import spark.Route;
 
 
 public class SchemaRoutes extends AbstractRoute {
+  private final StoreRequestHandler storeRequestHandler;
+
   public SchemaRoutes(boolean sslEnabled, Optional<DynamicAccessController> accessController) {
+    this(sslEnabled, accessController, null);
+  }
+
+  public SchemaRoutes(
+      boolean sslEnabled,
+      Optional<DynamicAccessController> accessController,
+      StoreRequestHandler storeRequestHandler) {
     super(sslEnabled, accessController);
+    this.storeRequestHandler = storeRequestHandler;
   }
 
   /**
@@ -84,9 +94,10 @@ public class SchemaRoutes extends AbstractRoute {
 
   /**
    * Route to handle retrieving key schema request using gRPC handler.
+   * Uses the storeRequestHandler passed to the constructor.
    * @see Admin#getKeySchema(String, String)
    */
-  public Route getKeySchema(Admin admin, StoreRequestHandler storeRequestHandler) {
+  public Route getKeySchemaWithHandler(Admin admin) {
     return (request, response) -> {
       SchemaResponse responseObject = new SchemaResponse();
       response.type(HttpConstants.JSON);
@@ -102,7 +113,7 @@ public class SchemaRoutes extends AbstractRoute {
         GetKeySchemaGrpcRequest grpcRequest = GetKeySchemaGrpcRequest.newBuilder().setStoreInfo(storeInfo).build();
 
         // Call the handler and convert the response
-        GetKeySchemaGrpcResponse grpcResponse = storeRequestHandler.getKeySchema(grpcRequest);
+        GetKeySchemaGrpcResponse grpcResponse = this.storeRequestHandler.getKeySchema(grpcRequest);
         responseObject.setCluster(clusterName);
         responseObject.setName(storeName);
         responseObject.setId(grpcResponse.getSchemaId());
