@@ -1086,4 +1086,60 @@ public class LeaderFollowerStoreIngestionTaskTest {
     verify(storeIngestionTask, times(0)).reportError(anyString(), eq(2), any());
     verify(storeIngestionTask, times(2)).reportError(anyString(), eq(3), any());
   }
+
+  @Test
+  public void testCanSwitchToLeaderTopicLogic() throws Exception {
+    // Test the boolean logic: (!isUserSystemStore() && pcs.isEndOfPushReceived()) ||
+    // isLocalVersionTopicPartitionFullyConsumed(pcs)
+
+    // Create mock and configure it to call the real canSwitchToLeaderTopic method
+    LeaderFollowerStoreIngestionTask task = mock(LeaderFollowerStoreIngestionTask.class);
+    PartitionConsumptionState mockPcs = mock(PartitionConsumptionState.class);
+    when(mockPcs.getPartition()).thenReturn(1);
+
+    // Configure mock to call the real canSwitchToLeaderTopic method
+    doCallRealMethod().when(task).canSwitchToLeaderTopic(any(PartitionConsumptionState.class));
+
+    // Mock inactive time check to always pass (old timestamp)
+    long oldTimestamp = System.currentTimeMillis() - (6 * 60 * 1000); // 6 minutes ago
+    doReturn(oldTimestamp).when(task).getLastConsumedMessageTimestamp(anyInt());
+
+    // Test Case 1: Regular store with push completed - should allow switch to leader
+    doReturn(false).when(task).isUserSystemStore();
+    when(mockPcs.isEndOfPushReceived()).thenReturn(true);
+    doReturn(false).when(task).isLocalVersionTopicPartitionFullyConsumed(mockPcs);
+    assertTrue(
+        task.canSwitchToLeaderTopic(mockPcs),
+        "Should return true when not user system store and end of push received");
+
+    // Test Case 2: Regular store with local partition fully consumed - should allow switch
+    doReturn(false).when(task).isUserSystemStore();
+    when(mockPcs.isEndOfPushReceived()).thenReturn(false);
+    doReturn(true).when(task).isLocalVersionTopicPartitionFullyConsumed(mockPcs);
+    assertTrue(
+        task.canSwitchToLeaderTopic(mockPcs),
+        "Should return true when local version topic partition is fully consumed");
+
+    // Test Case 3: User system store with push completed but local partition not done - should not switch
+    doReturn(true).when(task).isUserSystemStore();
+    when(mockPcs.isEndOfPushReceived()).thenReturn(true);
+    doReturn(false).when(task).isLocalVersionTopicPartitionFullyConsumed(mockPcs);
+    assertFalse(
+        task.canSwitchToLeaderTopic(mockPcs),
+        "Should return false when user system store and local version topic partition not fully consumed");
+
+    // Test Case 4: Regular store with push not completed and local partition not done - should not switch
+    doReturn(false).when(task).isUserSystemStore();
+    when(mockPcs.isEndOfPushReceived()).thenReturn(false);
+    doReturn(false).when(task).isLocalVersionTopicPartitionFullyConsumed(mockPcs);
+    assertFalse(task.canSwitchToLeaderTopic(mockPcs), "Should return false when neither condition is satisfied");
+
+    // Test Case 5: User system store with local partition fully consumed - should allow switch
+    doReturn(true).when(task).isUserSystemStore();
+    when(mockPcs.isEndOfPushReceived()).thenReturn(false);
+    doReturn(true).when(task).isLocalVersionTopicPartitionFullyConsumed(mockPcs);
+    assertTrue(
+        task.canSwitchToLeaderTopic(mockPcs),
+        "Should return true when local version topic partition is fully consumed, regardless of other conditions");
+  }
 }

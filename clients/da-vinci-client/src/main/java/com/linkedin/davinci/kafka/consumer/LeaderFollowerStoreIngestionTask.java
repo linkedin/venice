@@ -858,7 +858,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    *  Only after this confirmation should it switch to consuming from the real-time (RT) topic.
    *  This is part of the fast leadership handover project.
    */
-  private boolean canSwitchToLeaderTopic(PartitionConsumptionState pcs) {
+  boolean canSwitchToLeaderTopic(PartitionConsumptionState pcs) {
     /**
      * Potential risk: it's possible that Kafka consumer would starve one of the partitions for a long
      * time even though there are new messages in it, so it's possible that the old leader is still producing
@@ -883,11 +883,19 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
      * cannot consume anything from it (empty) nor update, thus
      *    RT end offset - offset in leader replica > threshold
      * and replica cannot become online {@link StoreIngestionTask#isReadyToServe}.
+     *
+     * For regular user stores, before EOP, consider this scenario: A follower did not consume all messages in the
+     * local VT topic (produced by the previous leader) before transitioning to the leader role. As the new leader,
+     * it will consume from an earlier offset in RT (already consumed and produced by the previous leader) and then
+     * produce to VT.
+     *
+     * When the original leader comes back online, the host falls back to the follower role and resubscribes to the
+     * local VT topic. The original leader might produce from where it left off in the VT topic and ignore all
+     * messages that were produced by the host. This happens because the sequence number produced by the host is
+     * less than the sequence number produced by the original leader. As a result, the host will report DIV data missing
+     * when it consumes the new messages produced by the original leader.
      */
-    if (isUserSystemStore() && !isLocalVersionTopicPartitionFullyConsumed(pcs)) {
-      return false;
-    }
-    return true;
+    return (!isUserSystemStore() && pcs.isEndOfPushReceived()) || isLocalVersionTopicPartitionFullyConsumed(pcs);
   }
 
   /**
@@ -1205,7 +1213,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    *
    * See {@link PartitionConsumptionState#getLatestMessageConsumedTimestampInMs} for details.
    */
-  private long getLastConsumedMessageTimestamp(int partition) {
+  long getLastConsumedMessageTimestamp(int partition) {
     // Consumption thread would update the last consumed message timestamp for the corresponding partition.
     PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(partition);
     return partitionConsumptionState.getLatestMessageConsumedTimestampInMs();
