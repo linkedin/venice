@@ -22,13 +22,17 @@ import com.linkedin.venice.protocols.controller.DeleteAclForStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.DeleteAclForStoreGrpcResponse;
 import com.linkedin.venice.protocols.controller.GetAclForStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.GetAclForStoreGrpcResponse;
+import com.linkedin.venice.protocols.controller.GetClusterHealthStoresGrpcRequest;
+import com.linkedin.venice.protocols.controller.GetClusterHealthStoresGrpcResponse;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcRequest;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcResponse;
 import com.linkedin.venice.protocols.controller.UpdateAclForStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.UpdateAclForStoreGrpcResponse;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -357,5 +361,53 @@ public class StoreRequestHandlerTest {
     ListStoresGrpcResponse response = storeRequestHandler.listStores(request);
 
     assertEquals(response.getStoreNamesCount(), 0);
+  }
+
+  @Test
+  public void testGetClusterHealthStoresSuccess() {
+    GetClusterHealthStoresGrpcRequest request =
+        GetClusterHealthStoresGrpcRequest.newBuilder().setClusterName("testCluster").build();
+
+    Map<String, String> storeStatusMap = new HashMap<>();
+    storeStatusMap.put("store1", "ONLINE");
+    storeStatusMap.put("store2", "DEGRADED");
+    storeStatusMap.put("store3", "UNAVAILABLE");
+    when(admin.getAllStoreStatuses("testCluster")).thenReturn(storeStatusMap);
+
+    GetClusterHealthStoresGrpcResponse response = storeRequestHandler.getClusterHealthStores(request);
+
+    verify(admin, times(1)).getAllStoreStatuses("testCluster");
+    assertEquals(response.getClusterName(), "testCluster");
+    assertEquals(response.getStoreStatusMapCount(), 3);
+    assertEquals(response.getStoreStatusMapMap().get("store1"), "ONLINE");
+    assertEquals(response.getStoreStatusMapMap().get("store2"), "DEGRADED");
+    assertEquals(response.getStoreStatusMapMap().get("store3"), "UNAVAILABLE");
+  }
+
+  @Test
+  public void testGetClusterHealthStoresEmptyMap() {
+    GetClusterHealthStoresGrpcRequest request =
+        GetClusterHealthStoresGrpcRequest.newBuilder().setClusterName("testCluster").build();
+
+    when(admin.getAllStoreStatuses("testCluster")).thenReturn(Collections.emptyMap());
+
+    GetClusterHealthStoresGrpcResponse response = storeRequestHandler.getClusterHealthStores(request);
+
+    verify(admin, times(1)).getAllStoreStatuses("testCluster");
+    assertEquals(response.getClusterName(), "testCluster");
+    assertEquals(response.getStoreStatusMapCount(), 0);
+  }
+
+  @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = "Cluster name is required")
+  public void testGetClusterHealthStoresMissingClusterName() {
+    GetClusterHealthStoresGrpcRequest request = GetClusterHealthStoresGrpcRequest.newBuilder().build();
+    storeRequestHandler.getClusterHealthStores(request);
+  }
+
+  @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = "Cluster name is required")
+  public void testGetClusterHealthStoresEmptyClusterName() {
+    GetClusterHealthStoresGrpcRequest request =
+        GetClusterHealthStoresGrpcRequest.newBuilder().setClusterName("").build();
+    storeRequestHandler.getClusterHealthStores(request);
   }
 }
