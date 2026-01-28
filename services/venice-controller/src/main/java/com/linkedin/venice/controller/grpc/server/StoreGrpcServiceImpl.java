@@ -4,7 +4,6 @@ import static com.linkedin.venice.controller.grpc.server.ControllerGrpcServerUti
 import static com.linkedin.venice.controller.grpc.server.ControllerGrpcServerUtils.isAllowListUser;
 import static com.linkedin.venice.controller.server.VeniceRouteHandler.ACL_CHECK_FAILURE_WARN_MESSAGE_PREFIX;
 
-import com.linkedin.venice.controller.server.SchemaRequestHandler;
 import com.linkedin.venice.controller.server.StoreRequestHandler;
 import com.linkedin.venice.controller.server.VeniceControllerAccessManager;
 import com.linkedin.venice.exceptions.VeniceUnauthorizedAccessException;
@@ -15,8 +14,6 @@ import com.linkedin.venice.protocols.controller.DeleteAclForStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.DeleteAclForStoreGrpcResponse;
 import com.linkedin.venice.protocols.controller.GetAclForStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.GetAclForStoreGrpcResponse;
-import com.linkedin.venice.protocols.controller.GetValueSchemaGrpcRequest;
-import com.linkedin.venice.protocols.controller.GetValueSchemaGrpcResponse;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcRequest;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcResponse;
 import com.linkedin.venice.protocols.controller.ResourceCleanupCheckGrpcResponse;
@@ -35,15 +32,10 @@ import org.apache.logging.log4j.Logger;
 public class StoreGrpcServiceImpl extends StoreGrpcServiceImplBase {
   private static final Logger LOGGER = LogManager.getLogger(StoreGrpcServiceImpl.class);
   private final StoreRequestHandler storeRequestHandler;
-  private final SchemaRequestHandler schemaRequestHandler;
   private final VeniceControllerAccessManager accessManager;
 
-  public StoreGrpcServiceImpl(
-      StoreRequestHandler storeRequestHandler,
-      SchemaRequestHandler schemaRequestHandler,
-      VeniceControllerAccessManager accessManager) {
+  public StoreGrpcServiceImpl(StoreRequestHandler storeRequestHandler, VeniceControllerAccessManager accessManager) {
     this.storeRequestHandler = storeRequestHandler;
-    this.schemaRequestHandler = schemaRequestHandler;
     this.accessManager = accessManager;
   }
 
@@ -154,18 +146,5 @@ public class StoreGrpcServiceImpl extends StoreGrpcServiceImplBase {
         responseObserver,
         clusterName,
         null);
-  }
-
-  @Override
-  public void getValueSchema(
-      GetValueSchemaGrpcRequest request,
-      StreamObserver<GetValueSchemaGrpcResponse> responseObserver) {
-    LOGGER.debug("Received getValueSchema with args: {}", request);
-    // No ACL check on getting store metadata (same as HTTP endpoint)
-    ControllerGrpcServerUtils.handleRequest(
-        StoreGrpcServiceGrpc.getGetValueSchemaMethod(),
-        () -> schemaRequestHandler.getValueSchema(request),
-        responseObserver,
-        request.getStoreInfo());
   }
 }

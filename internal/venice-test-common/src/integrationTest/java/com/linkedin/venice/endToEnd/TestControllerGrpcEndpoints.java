@@ -26,6 +26,7 @@ import com.linkedin.venice.protocols.controller.LeaderControllerGrpcRequest;
 import com.linkedin.venice.protocols.controller.LeaderControllerGrpcResponse;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcRequest;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcResponse;
+import com.linkedin.venice.protocols.controller.SchemaGrpcServiceGrpc;
 import com.linkedin.venice.protocols.controller.StoreGrpcServiceGrpc;
 import com.linkedin.venice.protocols.controller.StoreMigrationCheckGrpcRequest;
 import com.linkedin.venice.protocols.controller.StoreMigrationCheckGrpcResponse;
@@ -346,6 +347,8 @@ public class TestControllerGrpcEndpoints {
     String controllerGrpcUrl = veniceCluster.getLeaderVeniceController().getControllerGrpcUrl();
     ManagedChannel channel = Grpc.newChannelBuilder(controllerGrpcUrl, InsecureChannelCredentials.create()).build();
     StoreGrpcServiceGrpc.StoreGrpcServiceBlockingStub storeBlockingStub = StoreGrpcServiceGrpc.newBlockingStub(channel);
+    SchemaGrpcServiceGrpc.SchemaGrpcServiceBlockingStub schemaBlockingStub =
+        SchemaGrpcServiceGrpc.newBlockingStub(channel);
 
     ClusterStoreGrpcInfo storeGrpcInfo = ClusterStoreGrpcInfo.newBuilder()
         .setClusterName(veniceCluster.getClusterName())
@@ -367,7 +370,7 @@ public class TestControllerGrpcEndpoints {
     GetValueSchemaGrpcRequest getSchemaRequest =
         GetValueSchemaGrpcRequest.newBuilder().setStoreInfo(storeGrpcInfo).setSchemaId(1).build();
 
-    GetValueSchemaGrpcResponse getSchemaResponse = storeBlockingStub.getValueSchema(getSchemaRequest);
+    GetValueSchemaGrpcResponse getSchemaResponse = schemaBlockingStub.getValueSchema(getSchemaRequest);
     assertNotNull(getSchemaResponse, "Response should not be null");
     assertEquals(getSchemaResponse.getStoreInfo().getStoreName(), storeName);
     assertEquals(getSchemaResponse.getStoreInfo().getClusterName(), veniceCluster.getClusterName());
@@ -378,8 +381,8 @@ public class TestControllerGrpcEndpoints {
     GetValueSchemaGrpcRequest invalidSchemaRequest =
         GetValueSchemaGrpcRequest.newBuilder().setStoreInfo(storeGrpcInfo).setSchemaId(99).build();
 
-    StatusRuntimeException exception =
-        Assert.expectThrows(StatusRuntimeException.class, () -> storeBlockingStub.getValueSchema(invalidSchemaRequest));
+    StatusRuntimeException exception = Assert
+        .expectThrows(StatusRuntimeException.class, () -> schemaBlockingStub.getValueSchema(invalidSchemaRequest));
     assertEquals(exception.getStatus().getCode(), io.grpc.Status.Code.INVALID_ARGUMENT);
   }
 
