@@ -2,6 +2,8 @@ package com.linkedin.venice.controller.server;
 
 import static com.linkedin.venice.controller.grpc.server.ControllerGrpcServerUtils.handleRequest;
 
+import com.linkedin.venice.protocols.controller.ClusterHealthInstancesGrpcRequest;
+import com.linkedin.venice.protocols.controller.ClusterHealthInstancesGrpcResponse;
 import com.linkedin.venice.protocols.controller.DiscoverClusterGrpcRequest;
 import com.linkedin.venice.protocols.controller.DiscoverClusterGrpcResponse;
 import com.linkedin.venice.protocols.controller.LeaderControllerGrpcRequest;
@@ -51,5 +53,22 @@ public class VeniceControllerGrpcServiceImpl extends VeniceControllerGrpcService
         responseObserver,
         null,
         grpcRequest.getStoreName());
+  }
+
+  /**
+   * Gets the health status of all storage instances in a cluster.
+   * No ACL check; any user can get cluster health instances.
+   */
+  @Override
+  public void getClusterHealthInstances(
+      ClusterHealthInstancesGrpcRequest grpcRequest,
+      StreamObserver<ClusterHealthInstancesGrpcResponse> responseObserver) {
+    LOGGER.debug("Received getClusterHealthInstances with args: {}", grpcRequest);
+    handleRequest(
+        VeniceControllerGrpcServiceGrpc.getGetClusterHealthInstancesMethod(),
+        () -> requestHandler.getClusterHealthInstances(grpcRequest),
+        responseObserver,
+        grpcRequest.getClusterName(),
+        null);
   }
 }

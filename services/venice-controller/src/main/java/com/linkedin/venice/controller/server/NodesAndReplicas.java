@@ -29,11 +29,12 @@ import com.linkedin.venice.controllerapi.NodeReplicasReadinessState;
 import com.linkedin.venice.controllerapi.NodeStatusResponse;
 import com.linkedin.venice.exceptions.ErrorType;
 import com.linkedin.venice.helix.Replica;
+import com.linkedin.venice.protocols.controller.ClusterHealthInstancesGrpcRequest;
+import com.linkedin.venice.protocols.controller.ClusterHealthInstancesGrpcResponse;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.Utils;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import org.apache.http.HttpStatus;
@@ -47,11 +48,21 @@ public class NodesAndReplicas extends AbstractRoute {
   private static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER =
       RedundantExceptionFilter.getRedundantExceptionFilter();
 
+  private final VeniceControllerRequestHandler requestHandler;
+
   /**
    * TODO: Make sure services "venice-hooks-deployable" is also in allowlist
    */
   public NodesAndReplicas(boolean sslEnabled, Optional<DynamicAccessController> accessController) {
+    this(sslEnabled, accessController, null);
+  }
+
+  public NodesAndReplicas(
+      boolean sslEnabled,
+      Optional<DynamicAccessController> accessController,
+      VeniceControllerRequestHandler requestHandler) {
     super(sslEnabled, accessController);
+    this.requestHandler = requestHandler;
   }
 
   /**
@@ -89,11 +100,24 @@ public class NodesAndReplicas extends AbstractRoute {
       response.type(HttpConstants.JSON);
       try {
         AdminSparkServer.validateParams(request, ClUSTER_HEALTH_INSTANCES.getParams(), admin);
-        responseObject.setCluster(request.queryParams(CLUSTER));
+        String clusterName = request.queryParams(CLUSTER);
         String value = AdminSparkServer.getOptionalParameterValue(request, ENABLE_DISABLED_REPLICAS);
-        Map<String, String> nodesStatusesMap =
-            admin.getStorageNodesStatus(responseObject.getCluster(), Objects.equals(value, "true"));
-        responseObject.setInstancesStatusMap(nodesStatusesMap);
+        boolean enableDisabledReplicas = Objects.equals(value, "true");
+
+        // Build gRPC request from HTTP parameters
+        ClusterHealthInstancesGrpcRequest.Builder grpcRequestBuilder =
+            ClusterHealthInstancesGrpcRequest.newBuilder().setClusterName(clusterName);
+        if (enableDisabledReplicas) {
+          grpcRequestBuilder.setEnableDisabledReplicas(true);
+        }
+
+        // Call handler
+        ClusterHealthInstancesGrpcResponse grpcResponse =
+            requestHandler.getClusterHealthInstances(grpcRequestBuilder.build());
+
+        // Map response back to HTTP
+        responseObject.setCluster(grpcResponse.getClusterName());
+        responseObject.setInstancesStatusMap(grpcResponse.getInstancesStatusMapMap());
       } catch (Throwable e) {
         responseObject.setError(e);
         AdminSparkServer.handleError(e, request, response);
