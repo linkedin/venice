@@ -106,6 +106,9 @@ import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.ZKStore;
+import com.linkedin.venice.protocols.controller.ClusterStoreGrpcInfo;
+import com.linkedin.venice.protocols.controller.GetBackupVersionGrpcRequest;
+import com.linkedin.venice.protocols.controller.GetBackupVersionGrpcResponse;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
@@ -399,25 +402,26 @@ public class StoresRoutes extends AbstractRoute {
     };
   }
 
-  public Route getBackupVersion(Admin admin) {
+  public Route getBackupVersion(Admin admin, VeniceControllerRequestHandler requestHandler) {
     return new VeniceRouteHandler<MultiStoreStatusResponse>(MultiStoreStatusResponse.class) {
       @Override
       public void internalHandle(Request request, MultiStoreStatusResponse veniceResponse) {
         AdminSparkServer.validateParams(request, BACKUP_VERSION.getParams(), admin);
         String clusterName = request.queryParams(CLUSTER);
         String storeName = request.queryParams(NAME);
-        veniceResponse.setCluster(clusterName);
-        Store store = admin.getStore(clusterName, storeName);
-        if (store == null) {
-          throw new VeniceNoStoreException(storeName);
-        }
-        Map<String, String> storeStatusMap = admin.getBackupVersionsForMultiColos(clusterName, storeName);
-        if (storeStatusMap.isEmpty()) {
-          // Non parent controllers will return an empty map, so we'll just return the children version of this api
-          storeStatusMap =
-              Collections.singletonMap(storeName, String.valueOf(admin.getBackupVersion(clusterName, storeName)));
-        }
-        veniceResponse.setStoreStatusMap(storeStatusMap);
+
+        // Convert to gRPC request
+        ClusterStoreGrpcInfo storeInfo =
+            ClusterStoreGrpcInfo.newBuilder().setClusterName(clusterName).setStoreName(storeName).build();
+        GetBackupVersionGrpcRequest grpcRequest =
+            GetBackupVersionGrpcRequest.newBuilder().setStoreInfo(storeInfo).build();
+
+        // Call handler
+        GetBackupVersionGrpcResponse grpcResponse = requestHandler.getBackupVersion(grpcRequest);
+
+        // Map response back to HTTP
+        veniceResponse.setCluster(grpcResponse.getStoreInfo().getClusterName());
+        veniceResponse.setStoreStatusMap(grpcResponse.getStoreVersionMapMap());
       }
     };
   }

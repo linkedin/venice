@@ -2,12 +2,19 @@ package com.linkedin.venice.controller.server;
 
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.ControllerRequestHandlerDependencies;
+import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.Instance;
+import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.protocols.controller.ClusterStoreGrpcInfo;
 import com.linkedin.venice.protocols.controller.DiscoverClusterGrpcRequest;
 import com.linkedin.venice.protocols.controller.DiscoverClusterGrpcResponse;
+import com.linkedin.venice.protocols.controller.GetBackupVersionGrpcRequest;
+import com.linkedin.venice.protocols.controller.GetBackupVersionGrpcResponse;
 import com.linkedin.venice.protocols.controller.LeaderControllerGrpcRequest;
 import com.linkedin.venice.protocols.controller.LeaderControllerGrpcResponse;
 import com.linkedin.venice.utils.Pair;
+import java.util.Collections;
+import java.util.Map;
 import org.apache.commons.lang.StringUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -112,5 +119,38 @@ public class VeniceControllerRequestHandler {
 
   public VeniceControllerAccessManager getControllerAccessManager() {
     return accessManager;
+  }
+
+  /**
+   * Gets the backup version for a store in a cluster.
+   * For parent controllers, returns backup versions for all colos.
+   * For child controllers, returns the local backup version.
+   * @param request the request containing cluster and store name
+   * @return response containing a map of store/region to backup version
+   */
+  public GetBackupVersionGrpcResponse getBackupVersion(GetBackupVersionGrpcRequest request) {
+    ClusterStoreGrpcInfo storeInfo = request.getStoreInfo();
+    ControllerRequestParamValidator.validateClusterStoreInfo(storeInfo);
+    String clusterName = storeInfo.getClusterName();
+    String storeName = storeInfo.getStoreName();
+
+    LOGGER.info("Getting backup version for store: {} in cluster: {}", storeName, clusterName);
+
+    Store store = admin.getStore(clusterName, storeName);
+    if (store == null) {
+      throw new VeniceNoStoreException(storeName);
+    }
+
+    Map<String, String> storeVersionMap = admin.getBackupVersionsForMultiColos(clusterName, storeName);
+    if (storeVersionMap.isEmpty()) {
+      // Non parent controllers will return an empty map, so we'll just return the child version of this api
+      storeVersionMap =
+          Collections.singletonMap(storeName, String.valueOf(admin.getBackupVersion(clusterName, storeName)));
+    }
+
+    return GetBackupVersionGrpcResponse.newBuilder()
+        .setStoreInfo(storeInfo)
+        .putAllStoreVersionMap(storeVersionMap)
+        .build();
   }
 }
