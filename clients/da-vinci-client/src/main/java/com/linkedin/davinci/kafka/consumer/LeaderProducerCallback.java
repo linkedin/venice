@@ -27,6 +27,7 @@ public class LeaderProducerCallback implements ChunkAwareCallback {
   private static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER =
       RedundantExceptionFilter.getRedundantExceptionFilter();
   private static final Consumer<PubSubProduceResult> NO_OP = produceResult -> {};
+  private static final double LEADER_PRODUCER_COMPLETION_LATENCY_THRESHOLD_MS = 30000;
   private Consumer<PubSubProduceResult> onCompletionFunction = NO_OP; // ran before onCompletion() runs
   private Consumer<PubSubProduceResult> onCompletionCallback = NO_OP; // ran after onCompletion() runs
 
@@ -119,12 +120,24 @@ public class LeaderProducerCallback implements ChunkAwareCallback {
       // queuing to drainer.
       // this indicates how much time kafka took to deliver the message to broker.
       if (!ingestionTask.isUserSystemStore()) {
+        double leaderProducerCompletionLatencyMs = LatencyUtils.getElapsedTimeFromNSToMS(produceTimeNs);
         ingestionTask.getVersionIngestionStats()
             .recordLeaderProducerCompletionTime(
                 ingestionTask.getStoreName(),
                 ingestionTask.versionNumber,
-                LatencyUtils.getElapsedTimeFromNSToMS(produceTimeNs),
+                leaderProducerCompletionLatencyMs,
                 currentTimeForMetricsMs);
+        // Warn if producer completion latency exceeds threshold
+        if (leaderProducerCompletionLatencyMs > LEADER_PRODUCER_COMPLETION_LATENCY_THRESHOLD_MS) {
+          if (!REDUNDANT_LOGGING_FILTER
+              .isRedundantException(partitionConsumptionState.getReplicaId(), "HighProducerLatency")) {
+            LOGGER.warn(
+                "High leader producer completion latency detected for replica: {}, latency: {} ms, threshold: {} ms",
+                partitionConsumptionState.getReplicaId(),
+                leaderProducerCompletionLatencyMs,
+                LEADER_PRODUCER_COMPLETION_LATENCY_THRESHOLD_MS);
+          }
+        }
         if (ingestionTask.isHybridMode() && sourceConsumerRecord.getTopicPartition().getPubSubTopic().isRealTime()
             && partitionConsumptionState.hasLagCaughtUp()) {
           ingestionTask.getVersionIngestionStats()

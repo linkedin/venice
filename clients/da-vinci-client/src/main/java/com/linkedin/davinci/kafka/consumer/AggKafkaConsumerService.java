@@ -286,10 +286,26 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
         stringBuilder.append(CONSUMER_POLL_WARNING_MESSAGE_PREFIX);
         stringBuilder.append(consumerService.getKey());
         for (Map.Entry<PubSubTopicPartition, Long> staleTopicPartition: staleTopicPartitions.entrySet()) {
-          stringBuilder.append("\n topic: ");
-          stringBuilder.append(staleTopicPartition.getKey().getTopicName());
-          stringBuilder.append(" partition: ");
-          stringBuilder.append(staleTopicPartition.getKey().getPartitionNumber());
+          PubSubTopicPartition topicPartition = staleTopicPartition.getKey();
+          // Get consumer name for this topic partition
+          SharedKafkaConsumer consumer = consumerService.getValue()
+              .getConsumerAssignedToVersionTopicPartition(topicPartition.getPubSubTopic(), topicPartition);
+          String consumerName = "unknown";
+          if (consumer != null) {
+            Map<PubSubTopicPartition, TopicPartitionIngestionInfo> ingestionInfoMap =
+                consumerService.getValue().getIngestionInfoFor(topicPartition.getPubSubTopic(), topicPartition, true);
+            if (!ingestionInfoMap.isEmpty()) {
+              TopicPartitionIngestionInfo info = ingestionInfoMap.get(topicPartition);
+              if (info != null) {
+                consumerName = info.getConsumerIdStr();
+              }
+            }
+          }
+          stringBuilder.append(", replica: ");
+          stringBuilder
+              .append(Utils.getReplicaId(topicPartition.getPubSubTopic(), topicPartition.getPartitionNumber()));
+          stringBuilder.append(" consumer: ");
+          stringBuilder.append(consumerName);
           stringBuilder.append(" stale for: ");
           stringBuilder.append(now - staleTopicPartition.getValue());
           stringBuilder.append("ms");
@@ -331,7 +347,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
     String resolvedKafkaUrl = kafkaClusterUrlResolver == null ? kafkaUrl : kafkaClusterUrlResolver.apply(kafkaUrl);
     final AbstractKafkaConsumerService alreadyCreatedConsumerService = getKafkaConsumerService(resolvedKafkaUrl);
     if (alreadyCreatedConsumerService != null) {
-      LOGGER.warn("KafkaConsumerService has already been created for Kafka cluster with URL: {}", resolvedKafkaUrl);
+      LOGGER.info("KafkaConsumerService has already been created for Kafka cluster with URL: {}", resolvedKafkaUrl);
       return alreadyCreatedConsumerService;
     }
 

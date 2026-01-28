@@ -16,13 +16,17 @@ import static com.linkedin.davinci.stats.IngestionStats.INTERNAL_PREPROCESSING_L
 import static com.linkedin.davinci.stats.IngestionStats.LEADER_BYTES_CONSUMED_METRIC_NAME;
 import static com.linkedin.davinci.stats.IngestionStats.LEADER_BYTES_PRODUCED_METRIC_NAME;
 import static com.linkedin.davinci.stats.IngestionStats.LEADER_PREPROCESSING_LATENCY;
+import static com.linkedin.davinci.stats.IngestionStats.LEADER_PRODUCER_COMPLETION_LATENCY;
 import static com.linkedin.davinci.stats.IngestionStats.LEADER_RECORDS_CONSUMED_METRIC_NAME;
 import static com.linkedin.davinci.stats.IngestionStats.LEADER_RECORDS_PRODUCED_METRIC_NAME;
-import static com.linkedin.davinci.stats.IngestionStats.NEARLINE_LOCAL_BROKER_TO_READY_TO_SERVE_LATENCY;
+import static com.linkedin.davinci.stats.IngestionStats.LOCAL_BROKER_TO_FOLLOWER_CONSUMER_LATENCY;
 import static com.linkedin.davinci.stats.IngestionStats.NEARLINE_PRODUCER_TO_LOCAL_BROKER_LATENCY;
 import static com.linkedin.davinci.stats.IngestionStats.OFFSET_REGRESSION_DCR_ERROR;
 import static com.linkedin.davinci.stats.IngestionStats.PRODUCER_CALLBACK_LATENCY;
+import static com.linkedin.davinci.stats.IngestionStats.PRODUCER_TO_LOCAL_BROKER_LATENCY;
+import static com.linkedin.davinci.stats.IngestionStats.PRODUCER_TO_SOURCE_BROKER_LATENCY;
 import static com.linkedin.davinci.stats.IngestionStats.RECORDS_CONSUMED_METRIC_NAME;
+import static com.linkedin.davinci.stats.IngestionStats.SOURCE_BROKER_TO_LEADER_CONSUMER_LATENCY;
 import static com.linkedin.davinci.stats.IngestionStats.STORAGE_QUOTA_USED;
 import static com.linkedin.davinci.stats.IngestionStats.SUBSCRIBE_ACTION_PREP_LATENCY;
 import static com.linkedin.davinci.stats.IngestionStats.TIMESTAMP_REGRESSION_DCR_ERROR;
@@ -178,15 +182,17 @@ public class IngestionStatsReporter extends AbstractVeniceStatsReporter<Ingestio
               () -> getStats().getInternalPreprocessingLatencyAvg(),
               0,
               INTERNAL_PREPROCESSING_LATENCY + "_avg"));
-      registerLatencySensor("producer_to_source_broker", IngestionStats::getProducerSourceBrokerLatencySensor);
+      registerLatencySensor(PRODUCER_TO_SOURCE_BROKER_LATENCY, IngestionStats::getProducerSourceBrokerLatencySensor);
       registerLatencySensor(
-          "source_broker_to_leader_consumer",
+          SOURCE_BROKER_TO_LEADER_CONSUMER_LATENCY,
           IngestionStats::getSourceBrokerLeaderConsumerLatencySensor);
-      registerLatencySensor("producer_to_local_broker", IngestionStats::getProducerLocalBrokerLatencySensor);
+      registerLatencySensor(PRODUCER_TO_LOCAL_BROKER_LATENCY, IngestionStats::getProducerLocalBrokerLatencySensor);
       registerLatencySensor(
-          "local_broker_to_follower_consumer",
+          LOCAL_BROKER_TO_FOLLOWER_CONSUMER_LATENCY,
           IngestionStats::getLocalBrokerFollowerConsumerLatencySensor);
-      registerLatencySensor("leader_producer_completion", IngestionStats::getLeaderProducerCompletionLatencySensor);
+      registerLatencySensor(
+          LEADER_PRODUCER_COMPLETION_LATENCY,
+          IngestionStats::getLeaderProducerCompletionLatencySensor);
 
       registerSensor(
           new IngestionStatsGauge(this, () -> getStats().getBatchProcessingRequest(), 0, BATCH_PROCESSING_REQUEST));
@@ -244,18 +250,6 @@ public class IngestionStatsReporter extends AbstractVeniceStatsReporter<Ingestio
               () -> getStats().getNearlineProducerToLocalBrokerLatencyMax(),
               0,
               NEARLINE_PRODUCER_TO_LOCAL_BROKER_LATENCY + "_rt_max"));
-      registerSensor(
-          new IngestionStatsGauge(
-              this,
-              () -> getStats().getNearlineLocalBrokerToReadyToServeLatencyAvg(),
-              0,
-              NEARLINE_LOCAL_BROKER_TO_READY_TO_SERVE_LATENCY + "_rt_avg"));
-      registerSensor(
-          new IngestionStatsGauge(
-              this,
-              () -> getStats().getNearlineLocalBrokerToReadyToServeLatencyMax(),
-              0,
-              NEARLINE_LOCAL_BROKER_TO_READY_TO_SERVE_LATENCY + "_rt_max"));
     }
 
     if (getStats() == null) {
@@ -319,18 +313,12 @@ public class IngestionStatsReporter extends AbstractVeniceStatsReporter<Ingestio
   }
 
   protected void registerLatencySensor(
-      String sensorBaseName,
+      String latencyMetricName,
       Function<IngestionStats, WritePathLatencySensor> sensorFunction) {
     registerSensor(
-        new IngestionStatsGauge(
-            this,
-            () -> sensorFunction.apply(getStats()).getAvg(),
-            sensorBaseName + "_latency_avg_ms"));
+        new IngestionStatsGauge(this, () -> sensorFunction.apply(getStats()).getAvg(), latencyMetricName + "_avg_ms"));
     registerSensor(
-        new IngestionStatsGauge(
-            this,
-            () -> sensorFunction.apply(getStats()).getMax(),
-            sensorBaseName + "_latency_max_ms"));
+        new IngestionStatsGauge(this, () -> sensorFunction.apply(getStats()).getMax(), latencyMetricName + "_max_ms"));
   }
 
   protected static class IngestionStatsGauge extends AsyncGauge {
