@@ -63,10 +63,6 @@ public interface BlobTransferManager<T> extends AutoCloseable {
 
   /**
    * Cancel an ongoing blob transfer for the given storeName, version and partition.
-   * This is a blocking operation that waits until:
-   * 1. The active channel (if any) is closed
-   * 2. No more hosts will be tried in the sequential chain
-   * 3. Cleanup is complete
    *
    * @param storeName the name of the store
    * @param version the version of the store
@@ -80,8 +76,6 @@ public interface BlobTransferManager<T> extends AutoCloseable {
 
   /**
    * Check if a drop was requested for the given partition.
-   * This is used to prevent starting consumption after a successful blob transfer
-   * if a drop request arrived right after the transfer completed.
    *
    * @param storeName the name of the store
    * @param version the version of the store

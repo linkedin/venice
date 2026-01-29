@@ -118,32 +118,28 @@ public class DefaultIngestionBackend implements IngestionBackend {
 
       bootstrapFuture.whenComplete((result, throwable) -> {
         // Check if partition was dropped during OR after blob transfer
-        // We need to check the drop flag even if transfer succeeded, because drop could arrive
-        // right after successful completion but before runnable.run() executes
+        // 1. check scenario: drop arrive right after success
         if (blobTransferManager != null && blobTransferManager.isDropRequested(
             storeAndVersion.getStore().getName(),
             storeAndVersion.getVersion().getNumber(),
             partition)) {
           LOGGER.info(
-              "Partition drop was requested for store {} partition {}. Skipping consumption startup.",
+              "Partition drop was requested for store {} partition {} during blob transfer. Skipping consumption startup.",
               storeVersion,
               partition);
-          // Do NOT run consumption startup - partition is being dropped
-          // NOTE: Drop flag will be cleaned up at the end of dropStoragePartitionGracefully()
           return;
         }
 
-        // Also check if exception was VenicePartitionDroppedException
+        // 2. check if exception was VenicePartitionDroppedException for scenario, drop arrives during transfer
         if (throwable != null && throwable.getCause() instanceof VenicePartitionDroppedException) {
           LOGGER.info(
               "Partition drop was requested during blob transfer for store {} partition {}. Skipping consumption startup.",
               storeVersion,
               partition);
-          // NOTE: Drop flag will be cleaned up at the end of dropStoragePartitionGracefully()
           return;
         }
 
-        // For all other cases (success or other failures), proceed with consumption startup
+        // For all other cases, proceed with consumption startup
         runnable.run();
       });
     }
@@ -473,21 +469,12 @@ public class DefaultIngestionBackend implements IngestionBackend {
         String storeName = storeAndVersion.getStore().getName();
         int versionNumber = storeAndVersion.getVersion().getNumber();
 
-        // ALWAYS call cancelTransfer, even if blob transfer is not currently in progress
-        // This is critical because:
-        // 1. Blob transfer may have JUST completed (not in progress anymore)
-        // 2. But the bootstrapFuture.whenComplete() callback is about to run runnable.run()
-        // 3. cancelTransfer() sets the drop flag FIRST, preventing the race condition
         LOGGER.info(
             "Drop request for store {} version {} partition {}. Checking for blob transfer coordination.",
             storeName,
             versionNumber,
             partition);
 
-        // This call:
-        // 1. Sets the drop request flag FIRST (prevents consumption startup even if transfer just completed)
-        // 2. If transfer is ongoing: closes channel and blocks until complete
-        // 3. If transfer already completed: returns immediately (flag is already set)
         blobTransferManager.cancelTransfer(storeName, versionNumber, partition, timeoutInSeconds);
 
         LOGGER.info(
@@ -518,8 +505,6 @@ public class DefaultIngestionBackend implements IngestionBackend {
         getStoreIngestionService().dropStoragePartitionGracefully(storeConfig, partition);
 
     // Clean up the drop request flag after drop completes
-    // This is critical: the flag must be cleaned up after the drop operation, not in whenComplete()
-    // Otherwise, if drop arrives after consumption starts, the flag would never be cleaned up
     if (blobTransferManager != null) {
       dropFuture.whenComplete((result, throwable) -> {
         try {
