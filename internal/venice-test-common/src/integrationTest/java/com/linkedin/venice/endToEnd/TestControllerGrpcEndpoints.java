@@ -20,8 +20,11 @@ import com.linkedin.venice.protocols.controller.CreateStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.CreateStoreGrpcResponse;
 import com.linkedin.venice.protocols.controller.DiscoverClusterGrpcRequest;
 import com.linkedin.venice.protocols.controller.DiscoverClusterGrpcResponse;
+import com.linkedin.venice.protocols.controller.GetJobStatusGrpcRequest;
+import com.linkedin.venice.protocols.controller.GetJobStatusGrpcResponse;
 import com.linkedin.venice.protocols.controller.GetValueSchemaGrpcRequest;
 import com.linkedin.venice.protocols.controller.GetValueSchemaGrpcResponse;
+import com.linkedin.venice.protocols.controller.JobGrpcServiceGrpc;
 import com.linkedin.venice.protocols.controller.LeaderControllerGrpcRequest;
 import com.linkedin.venice.protocols.controller.LeaderControllerGrpcResponse;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcRequest;
@@ -271,6 +274,53 @@ public class TestControllerGrpcEndpoints {
     assertNotNull(response, "Response should not be null");
     assertEquals(response.getStoreInfo().getStoreName(), storeName);
     assertEquals(response.getStoreInfo().getClusterName(), veniceCluster.getClusterName());
+  }
+
+  @Test(timeOut = TIMEOUT_MS)
+  public void testGetJobStatusGrpcEndpoint() {
+    String storeName = Utils.getUniqueString("test_job_status_store");
+    String controllerGrpcUrl = veniceCluster.getLeaderVeniceController().getControllerGrpcUrl();
+    ManagedChannel channel = Grpc.newChannelBuilder(controllerGrpcUrl, InsecureChannelCredentials.create()).build();
+    StoreGrpcServiceGrpc.StoreGrpcServiceBlockingStub storeBlockingStub = StoreGrpcServiceGrpc.newBlockingStub(channel);
+    JobGrpcServiceGrpc.JobGrpcServiceBlockingStub jobBlockingStub = JobGrpcServiceGrpc.newBlockingStub(channel);
+
+    // Step 1: Create a store
+    CreateStoreGrpcRequest createStoreRequest = CreateStoreGrpcRequest.newBuilder()
+        .setStoreInfo(
+            ClusterStoreGrpcInfo.newBuilder()
+                .setClusterName(veniceCluster.getClusterName())
+                .setStoreName(storeName)
+                .build())
+        .setOwner("owner")
+        .setKeySchema(DEFAULT_KEY_SCHEMA)
+        .setValueSchema("\"string\"")
+        .build();
+    CreateStoreGrpcResponse createResponse = storeBlockingStub.createStore(createStoreRequest);
+    assertNotNull(createResponse, "Response should not be null");
+
+    // Step 2: Start an empty push to create version 1
+    veniceCluster.useControllerClient(controllerClient -> {
+      TestUtils.assertCommand(controllerClient.emptyPush(storeName, "test-push-id", 1000));
+    });
+
+    // Step 3: Query job status via gRPC
+    ClusterStoreGrpcInfo storeInfo = ClusterStoreGrpcInfo.newBuilder()
+        .setClusterName(veniceCluster.getClusterName())
+        .setStoreName(storeName)
+        .build();
+    GetJobStatusGrpcRequest jobStatusRequest =
+        GetJobStatusGrpcRequest.newBuilder().setStoreInfo(storeInfo).setVersion(1).build();
+
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+      GetJobStatusGrpcResponse jobStatusResponse = jobBlockingStub.getJobStatus(jobStatusRequest);
+      assertNotNull(jobStatusResponse, "Response should not be null");
+      assertEquals(jobStatusResponse.getStoreInfo().getStoreName(), storeName);
+      assertEquals(jobStatusResponse.getStoreInfo().getClusterName(), veniceCluster.getClusterName());
+      assertEquals(jobStatusResponse.getVersion(), 1);
+      assertNotNull(jobStatusResponse.getStatus(), "Status should not be null");
+      // Status could be STARTED, COMPLETED, or other valid states depending on timing
+      assertFalse(jobStatusResponse.getStatus().isEmpty(), "Status should not be empty");
+    });
   }
 
   @Test(timeOut = TIMEOUT_MS)

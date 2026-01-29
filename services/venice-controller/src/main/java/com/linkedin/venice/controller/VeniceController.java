@@ -9,6 +9,7 @@ import com.linkedin.venice.authorization.AuthorizerService;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controller.grpc.server.ClusterAdminOpsGrpcServiceImpl;
+import com.linkedin.venice.controller.grpc.server.JobGrpcServiceImpl;
 import com.linkedin.venice.controller.grpc.server.SchemaGrpcServiceImpl;
 import com.linkedin.venice.controller.grpc.server.StoreGrpcServiceImpl;
 import com.linkedin.venice.controller.grpc.server.interceptor.ControllerGrpcAuditLoggingInterceptor;
@@ -336,6 +337,7 @@ public class VeniceController {
     ClusterAdminOpsGrpcServiceImpl clusterAdminOpsGrpcService = new ClusterAdminOpsGrpcServiceImpl(
         unsecureRequestHandler.getClusterAdminOpsRequestHandler(),
         unsecureRequestHandler.getControllerAccessManager());
+    JobGrpcServiceImpl jobGrpcService = new JobGrpcServiceImpl(unsecureRequestHandler.getJobRequestHandler());
     grpcExecutor = ThreadPoolFactory.createThreadPool(
         multiClusterConfigs.getGrpcServerThreadCount(),
         CONTROLLER_GRPC_SERVER_THREAD_NAME,
@@ -349,6 +351,7 @@ public class VeniceController {
             .addService(storeGrpcServiceGrpc)
             .addService(schemaGrpcService)
             .addService(clusterAdminOpsGrpcService)
+            .addService(jobGrpcService)
             .setExecutor(grpcExecutor)
             .setInterceptors(interceptors)
             .build());
@@ -367,12 +370,14 @@ public class VeniceController {
       ClusterAdminOpsGrpcServiceImpl secureClusterAdminOpsGrpcService = new ClusterAdminOpsGrpcServiceImpl(
           secureRequestHandler.getClusterAdminOpsRequestHandler(),
           secureRequestHandler.getControllerAccessManager());
+      JobGrpcServiceImpl secureJobGrpcService = new JobGrpcServiceImpl(secureRequestHandler.getJobRequestHandler());
       adminSecureGrpcServer = new VeniceGrpcServer(
           new VeniceGrpcServerConfig.Builder().setPort(multiClusterConfigs.getAdminSecureGrpcPort())
               .addService(secureGrpcService)
               .addService(secureStoreGrpcService)
               .addService(secureSchemaGrpcService)
               .addService(secureClusterAdminOpsGrpcService)
+              .addService(secureJobGrpcService)
               .setExecutor(grpcExecutor)
               .setSslFactory(sslFactory)
               .setInterceptors(interceptors)
