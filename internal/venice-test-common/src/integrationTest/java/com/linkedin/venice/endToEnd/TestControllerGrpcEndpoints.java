@@ -14,6 +14,7 @@ import com.linkedin.venice.grpc.GrpcUtils;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.protocols.controller.ClusterAdminOpsGrpcServiceGrpc;
 import com.linkedin.venice.protocols.controller.ClusterStoreGrpcInfo;
 import com.linkedin.venice.protocols.controller.CreateStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.CreateStoreGrpcResponse;
@@ -24,6 +25,8 @@ import com.linkedin.venice.protocols.controller.LeaderControllerGrpcResponse;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcRequest;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcResponse;
 import com.linkedin.venice.protocols.controller.StoreGrpcServiceGrpc;
+import com.linkedin.venice.protocols.controller.StoreMigrationCheckGrpcRequest;
+import com.linkedin.venice.protocols.controller.StoreMigrationCheckGrpcResponse;
 import com.linkedin.venice.protocols.controller.ValidateStoreDeletedGrpcRequest;
 import com.linkedin.venice.protocols.controller.ValidateStoreDeletedGrpcResponse;
 import com.linkedin.venice.protocols.controller.VeniceControllerGrpcServiceGrpc;
@@ -215,6 +218,24 @@ public class TestControllerGrpcEndpoints {
       assertNotNull(response, "Response should not be null");
       Assert.assertTrue(response.getStoreDeleted(), "Store should be marked as deleted after deletion");
     });
+  }
+
+  @Test(timeOut = TIMEOUT_MS)
+  public void testIsStoreMigrationAllowedGrpcEndpoint() {
+    String controllerGrpcUrl = veniceCluster.getLeaderVeniceController().getControllerGrpcUrl();
+    ManagedChannel channel = Grpc.newChannelBuilder(controllerGrpcUrl, InsecureChannelCredentials.create()).build();
+    ClusterAdminOpsGrpcServiceGrpc.ClusterAdminOpsGrpcServiceBlockingStub blockingStub =
+        ClusterAdminOpsGrpcServiceGrpc.newBlockingStub(channel);
+
+    StoreMigrationCheckGrpcRequest request =
+        StoreMigrationCheckGrpcRequest.newBuilder().setClusterName(veniceCluster.getClusterName()).build();
+
+    StoreMigrationCheckGrpcResponse response = blockingStub.isStoreMigrationAllowed(request);
+
+    assertNotNull(response, "Response should not be null");
+    assertEquals(response.getClusterName(), veniceCluster.getClusterName());
+    // By default, store migration is allowed in test clusters
+    assertTrue(response.getStoreMigrationAllowed(), "Store migration should be allowed by default");
   }
 
   @Test(timeOut = TIMEOUT_MS)

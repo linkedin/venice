@@ -25,6 +25,8 @@ import com.linkedin.venice.protocols.controller.ClusterAdminOpsGrpcServiceGrpc;
 import com.linkedin.venice.protocols.controller.ClusterAdminOpsGrpcServiceGrpc.ClusterAdminOpsGrpcServiceBlockingStub;
 import com.linkedin.venice.protocols.controller.LastSuccessfulAdminCommandExecutionGrpcRequest;
 import com.linkedin.venice.protocols.controller.LastSuccessfulAdminCommandExecutionGrpcResponse;
+import com.linkedin.venice.protocols.controller.StoreMigrationCheckGrpcRequest;
+import com.linkedin.venice.protocols.controller.StoreMigrationCheckGrpcResponse;
 import com.linkedin.venice.protocols.controller.UpdateAdminOperationProtocolVersionGrpcRequest;
 import com.linkedin.venice.protocols.controller.UpdateAdminTopicMetadataGrpcRequest;
 import com.linkedin.venice.protocols.controller.VeniceControllerGrpcErrorInfo;
@@ -212,5 +214,52 @@ public class ClusterAdminOpsGrpcServiceImplTest {
     assertNotNull(actualResponse);
     assertEquals(actualResponse.getMetadata().getClusterName(), TEST_CLUSTER);
     assertEquals(actualResponse.getMetadata().getAdminOperationProtocolVersion(), 1L);
+  }
+
+  @Test
+  public void testIsStoreMigrationAllowedSuccess() {
+    StoreMigrationCheckGrpcResponse response = StoreMigrationCheckGrpcResponse.newBuilder()
+        .setClusterName(TEST_CLUSTER)
+        .setStoreMigrationAllowed(true)
+        .build();
+    doReturn(response).when(requestHandler).isStoreMigrationAllowed(any(StoreMigrationCheckGrpcRequest.class));
+
+    StoreMigrationCheckGrpcRequest request =
+        StoreMigrationCheckGrpcRequest.newBuilder().setClusterName(TEST_CLUSTER).build();
+
+    StoreMigrationCheckGrpcResponse actualResponse = blockingStub.isStoreMigrationAllowed(request);
+    assertNotNull(actualResponse);
+    assertEquals(actualResponse.getClusterName(), TEST_CLUSTER);
+    assertTrue(actualResponse.getStoreMigrationAllowed());
+  }
+
+  @Test
+  public void testIsStoreMigrationAllowedReturnsFalse() {
+    StoreMigrationCheckGrpcResponse response = StoreMigrationCheckGrpcResponse.newBuilder()
+        .setClusterName(TEST_CLUSTER)
+        .setStoreMigrationAllowed(false)
+        .build();
+    doReturn(response).when(requestHandler).isStoreMigrationAllowed(any(StoreMigrationCheckGrpcRequest.class));
+
+    StoreMigrationCheckGrpcRequest request =
+        StoreMigrationCheckGrpcRequest.newBuilder().setClusterName(TEST_CLUSTER).build();
+
+    StoreMigrationCheckGrpcResponse actualResponse = blockingStub.isStoreMigrationAllowed(request);
+    assertNotNull(actualResponse);
+    assertEquals(actualResponse.getClusterName(), TEST_CLUSTER);
+    assertFalse(actualResponse.getStoreMigrationAllowed());
+  }
+
+  @Test
+  public void testIsStoreMigrationAllowedError() {
+    StoreMigrationCheckGrpcRequest request =
+        StoreMigrationCheckGrpcRequest.newBuilder().setClusterName(TEST_CLUSTER).build();
+
+    doThrow(new VeniceException("Error")).when(requestHandler)
+        .isStoreMigrationAllowed(any(StoreMigrationCheckGrpcRequest.class));
+
+    StatusRuntimeException e =
+        expectThrows(StatusRuntimeException.class, () -> blockingStub.isStoreMigrationAllowed(request));
+    assertEquals(e.getStatus().getCode(), Status.INTERNAL.getCode());
   }
 }
