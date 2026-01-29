@@ -262,11 +262,11 @@ public class StoresRoutes extends AbstractRoute {
         String storeName = request.queryParams(NAME);
         String fabricName = request.queryParams(FABRIC);
 
+        Optional<String> fabric = fabricName != null ? Optional.of(fabricName) : Optional.empty();
+        RepushInfo repushInfo = admin.getRepushInfo(clusterName, storeName, fabric);
+
         veniceResponse.setCluster(clusterName);
         veniceResponse.setName(storeName);
-
-        RepushInfo repushInfo = admin.getRepushInfo(clusterName, storeName, Optional.ofNullable(fabricName));
-
         veniceResponse.setRepushInfo(repushInfo);
       }
     };
@@ -1226,4 +1226,5 @@ public class StoresRoutes extends AbstractRoute {
       }
     };
   }
+
 }

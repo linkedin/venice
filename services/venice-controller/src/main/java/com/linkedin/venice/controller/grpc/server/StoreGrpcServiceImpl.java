@@ -14,6 +14,8 @@ import com.linkedin.venice.protocols.controller.DeleteAclForStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.DeleteAclForStoreGrpcResponse;
 import com.linkedin.venice.protocols.controller.GetAclForStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.GetAclForStoreGrpcResponse;
+import com.linkedin.venice.protocols.controller.GetRepushInfoGrpcRequest;
+import com.linkedin.venice.protocols.controller.GetRepushInfoGrpcResponse;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcRequest;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcResponse;
 import com.linkedin.venice.protocols.controller.ResourceCleanupCheckGrpcResponse;
@@ -146,5 +148,17 @@ public class StoreGrpcServiceImpl extends StoreGrpcServiceImplBase {
         responseObserver,
         clusterName,
         null);
+  }
+
+  @Override
+  public void getRepushInfo(
+      GetRepushInfoGrpcRequest request,
+      StreamObserver<GetRepushInfoGrpcResponse> responseObserver) {
+    LOGGER.debug("Received getRepushInfo with args: {}", request);
+    ControllerGrpcServerUtils.handleRequest(
+        StoreGrpcServiceGrpc.getGetRepushInfoMethod(),
+        () -> storeRequestHandler.getRepushInfo(request),
+        responseObserver,
+        request.getStoreInfo());
   }
 }
