@@ -30,12 +30,17 @@ import org.apache.commons.lang.StringUtils;
  */
 public class DefaultSSLFactory implements SSLFactory {
   static final String[] CIPHER_SUITE_ALLOWLIST = {
-      // Preferred ciphersuites:
-      "TLS_RSA_WITH_AES_128_CBC_SHA256", "TLS_RSA_WITH_AES_128_GCM_SHA256",
-      // For java 1.6 support:
-      "TLS_RSA_WITH_AES_128_CBC_SHA",
-      // the remaining are for backwards compatibility and shouldn't be used by newer clients
-      "SSL_RSA_WITH_NULL_MD5", "SSL_RSA_WITH_NULL_SHA" };
+      // Modern ECDHE ciphers with Perfect Forward Secrecy (PFS) - required for Ubuntu 24.04+ / Java 17+
+      "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256",
+      "TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384",
+      "TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256",
+      "TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA384",
+      "TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256",
+      "TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384",
+      // Legacy RSA ciphers for backwards compatibility
+      "TLS_RSA_WITH_AES_128_GCM_SHA256",
+      "TLS_RSA_WITH_AES_128_CBC_SHA256",
+      "TLS_RSA_WITH_AES_128_CBC_SHA" };
   private SSLContext _context;
   private boolean _sslEnabled;
   private boolean _sslRequireClientCerts;
