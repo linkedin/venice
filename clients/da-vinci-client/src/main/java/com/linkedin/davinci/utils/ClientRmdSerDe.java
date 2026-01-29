@@ -6,8 +6,8 @@ import com.linkedin.venice.client.schema.StoreSchemaFetcher;
 import com.linkedin.venice.schema.rmd.v1.RmdSchemaGeneratorV1;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
-import com.linkedin.venice.utils.SparseConcurrentList;
 import com.linkedin.venice.utils.collections.BiIntKeyCache;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.nio.ByteBuffer;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
@@ -24,8 +24,8 @@ import org.apache.avro.generic.GenericRecord;
 public class ClientRmdSerDe {
   private static final RmdSchemaGeneratorV1 GENERATOR_V1 = new RmdSchemaGeneratorV1();
   private final StoreSchemaFetcher schemaFetcher;
-  private final SparseConcurrentList<Schema> rmdSchemaIndexedByValueSchemaId;
-  private final SparseConcurrentList<RecordSerializer<GenericRecord>> rmdSerializerIndexedByValueSchemaId;
+  private final VeniceConcurrentHashMap<Integer, Schema> rmdSchemaIndexedByValueSchemaId;
+  private final VeniceConcurrentHashMap<Integer, RecordSerializer<GenericRecord>> rmdSerializerIndexedByValueSchemaId;
   private final boolean fastAvroEnabled;
   private BiIntKeyCache<RecordDeserializer<GenericRecord>> deserializerCache;
 
@@ -36,8 +36,8 @@ public class ClientRmdSerDe {
   public ClientRmdSerDe(StoreSchemaFetcher schemaFetcher, boolean fastAvroEnabled) {
     this.schemaFetcher = schemaFetcher;
     this.fastAvroEnabled = fastAvroEnabled;
-    this.rmdSchemaIndexedByValueSchemaId = new SparseConcurrentList<>();
-    this.rmdSerializerIndexedByValueSchemaId = new SparseConcurrentList<>();
+    this.rmdSchemaIndexedByValueSchemaId = new VeniceConcurrentHashMap<>();
+    this.rmdSerializerIndexedByValueSchemaId = new VeniceConcurrentHashMap<>();
     this.deserializerCache = new BiIntKeyCache<>((writerSchemaId, readerSchemaId) -> {
       Schema rmdWriterSchema = generateRmdSchema(writerSchemaId);
       Schema rmdReaderSchema = generateRmdSchema(readerSchemaId);

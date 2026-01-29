@@ -5,6 +5,7 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.security.KeyStore;
+import java.util.Arrays;
 import java.util.Base64;
 import java.util.Collections;
 import java.util.HashSet;
@@ -100,7 +101,8 @@ public class DefaultSSLFactory implements SSLFactory {
     String[] allowedCiphersuites = supportedCiphers.toArray(new String[0]);
 
     if (allowedCiphersuites == null || allowedCiphersuites.length == 0) {
-      throw new SSLProtocolException("No Allowlisted SSL Ciphers Available.");
+      throw new SSLProtocolException(
+          String.format("No Allowlisted SSL Ciphers Available. Supported ciphers: %s", Arrays.toString(ciphersuites)));
     }
 
     return allowedCiphersuites;
