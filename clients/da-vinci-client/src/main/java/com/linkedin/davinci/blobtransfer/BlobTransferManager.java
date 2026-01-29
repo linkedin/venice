@@ -75,12 +75,12 @@ public interface BlobTransferManager<T> extends AutoCloseable {
       throws InterruptedException, java.util.concurrent.TimeoutException, java.util.concurrent.ExecutionException;
 
   /**
-   * Check if a drop was requested for the given partition.
+   * Check if blob transfer cancellation was requested for the given partition.
    *
    * @param storeName the name of the store
    * @param version the version of the store
    * @param partition the partition of the store
-   * @return true if drop was requested for this partition, false otherwise
+   * @return true if blob transfer cancellation was requested for this partition, false otherwise
    */
-  boolean isDropRequested(String storeName, int version, int partition);
+  boolean isBlobTransferCancelled(String storeName, int version, int partition);
 }

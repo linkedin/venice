@@ -12,7 +12,7 @@ import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.davinci.store.StoragePartitionAdjustmentTrigger;
 import com.linkedin.davinci.store.StoragePartitionConfig;
-import com.linkedin.venice.exceptions.VenicePartitionDroppedException;
+import com.linkedin.venice.exceptions.VeniceBlobTransferCancelledException;
 import com.linkedin.venice.exceptions.VenicePeersNotFoundException;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.Store;
@@ -117,23 +117,24 @@ public class DefaultIngestionBackend implements IngestionBackend {
           svsSupplier);
 
       bootstrapFuture.whenComplete((result, throwable) -> {
-        // Check if partition was dropped during OR after blob transfer
-        // 1. check scenario: drop arrive right after success
-        if (blobTransferManager != null && blobTransferManager.isDropRequested(
+        // Check if blob transfer was cancelled during OR after blob transfer
+        // 1. check scenario: cancellation request arrives right after success
+        if (blobTransferManager != null && blobTransferManager.isBlobTransferCancelled(
             storeAndVersion.getStore().getName(),
             storeAndVersion.getVersion().getNumber(),
             partition)) {
           LOGGER.info(
-              "Partition drop was requested for store {} partition {} during blob transfer. Skipping consumption startup.",
+              "Blob transfer cancellation was requested for store {} partition {} during blob transfer. Skipping consumption startup.",
               storeVersion,
               partition);
           return;
         }
 
-        // 2. check if exception was VenicePartitionDroppedException for scenario, drop arrives during transfer
-        if (throwable != null && throwable.getCause() instanceof VenicePartitionDroppedException) {
+        // 2. check if exception was VeniceBlobTransferCancelledException for scenario, cancellation arrives during
+        // transfer
+        if (throwable != null && throwable.getCause() instanceof VeniceBlobTransferCancelledException) {
           LOGGER.info(
-              "Partition drop was requested during blob transfer for store {} partition {}. Skipping consumption startup.",
+              "Blob transfer cancellation was requested during blob transfer for store {} partition {}. Skipping consumption startup.",
               storeVersion,
               partition);
           return;
@@ -504,24 +505,28 @@ public class DefaultIngestionBackend implements IngestionBackend {
     CompletableFuture<Void> dropFuture =
         getStoreIngestionService().dropStoragePartitionGracefully(storeConfig, partition);
 
-    // Clean up the drop request flag after drop completes
+    // Clean up the cancellation request flag after drop completes
     if (blobTransferManager != null) {
       dropFuture.whenComplete((result, throwable) -> {
         try {
           StoreVersionInfo storeAndVersion =
               Utils.waitStoreVersionOrThrow(storeVersion, getStoreIngestionService().getMetadataRepo());
           if (blobTransferManager instanceof NettyP2PBlobTransferManager) {
-            ((NettyP2PBlobTransferManager) blobTransferManager).clearDropRequestFlag(
+            ((NettyP2PBlobTransferManager) blobTransferManager).clearCancellationRequest(
                 storeAndVersion.getStore().getName(),
                 storeAndVersion.getVersion().getNumber(),
                 partition);
             LOGGER.info(
-                "Cleaned up drop request flag for store {} partition {} after drop completed",
+                "Cleaned up cancellation request flag for store {} partition {} after drop completed",
                 storeVersion,
                 partition);
           }
         } catch (Exception e) {
-          LOGGER.warn("Failed to clean up drop request flag for store {} partition {}", storeVersion, partition, e);
+          LOGGER.warn(
+              "Failed to clean up cancellation request flag for store {} partition {}",
+              storeVersion,
+              partition,
+              e);
         }
       });
     }

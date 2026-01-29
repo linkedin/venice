@@ -9,8 +9,8 @@ import com.linkedin.davinci.blobtransfer.server.P2PBlobTransferService;
 import com.linkedin.davinci.stats.AggVersionedBlobTransferStats;
 import com.linkedin.venice.blobtransfer.BlobFinder;
 import com.linkedin.venice.blobtransfer.BlobPeersDiscoveryResponse;
+import com.linkedin.venice.exceptions.VeniceBlobTransferCancelledException;
 import com.linkedin.venice.exceptions.VeniceBlobTransferFileNotFoundException;
-import com.linkedin.venice.exceptions.VenicePartitionDroppedException;
 import com.linkedin.venice.exceptions.VenicePeersAllFailedException;
 import com.linkedin.venice.exceptions.VenicePeersConnectionException;
 import com.linkedin.venice.exceptions.VenicePeersNotFoundException;
@@ -75,8 +75,8 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
   // Track ongoing blob transfers: <replicaId, perPartitionTransferFuture>
   private final Map<String, CompletableFuture<InputStream>> partitionLevelTransferStatus =
       new VeniceConcurrentHashMap<>();
-  // Track drop requests: <replicaId, drop requested flag>
-  private final Map<String, AtomicBoolean> partitionLevelDroppedFlag = new VeniceConcurrentHashMap<>();
+  // Track blob transfer cancellation requests: <replicaId, cancellation requested flag>
+  private final Map<String, AtomicBoolean> partitionLevelCancellationFlag = new VeniceConcurrentHashMap<>();
 
   public NettyP2PBlobTransferManager(
       P2PBlobTransferService blobTransferService,
@@ -116,13 +116,13 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
     // Initialize the partition level transfer future
     partitionLevelTransferStatus.put(replicaId, perPartitionTransferFuture);
 
-    // Initialize drop request flag as false
-    partitionLevelDroppedFlag.put(replicaId, new AtomicBoolean(false));
+    // Initialize cancellation request flag as false
+    partitionLevelCancellationFlag.put(replicaId, new AtomicBoolean(false));
 
     // Remove from tracking when complete
-    // NOTE: We do NOT remove dropRequestFlags here because we need to check it after transfer completes
-    // to prevent the race where: transfer completes -> drop arrives -> consumption starts
-    // The flag will be cleaned up later when new consumption starts or drop completes
+    // NOTE: We do NOT remove cancellation flags here because we need to check it after transfer completes
+    // to prevent the race where: transfer completes -> cancellation request arrives -> consumption starts
+    // The flag will be cleaned up later when new consumption starts or cancellation completes
     perPartitionTransferFuture.whenComplete((result, throwable) -> {
       partitionLevelTransferStatus.remove(replicaId);
     });
@@ -219,9 +219,9 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
       // Chain the next operation to the previous future
       chainOfPeersFuture = chainOfPeersFuture.thenComposeAsync(v -> {
 
-        // Check drop request flag, if partition drop was requested, skip all remaining hosts
-        AtomicBoolean dropRequestFlag = partitionLevelDroppedFlag.get(replicaId);
-        if (dropRequestFlag != null && dropRequestFlag.get()) {
+        // Check cancellation request flag, if blob transfer cancellation was requested, skip all remaining hosts
+        AtomicBoolean cancellationFlag = partitionLevelCancellationFlag.get(replicaId);
+        if (cancellationFlag != null && cancellationFlag.get()) {
           return CompletableFuture.completedFuture(null);
         }
 
@@ -257,16 +257,16 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
     }
 
     // After all hosts have been tried:
-    // - If drop was requested: complete with VenicePartitionDroppedException
+    // - If cancellation was requested: complete with VeniceBlobTransferCancelledException
     // - Otherwise if all failed: complete with VenicePeersAllFailedException
     chainOfPeersFuture.thenRun(() -> {
       if (!perPartitionTransferFuture.isDone()) {
-        AtomicBoolean dropRequestFlag = partitionLevelDroppedFlag.get(replicaId);
-        if (dropRequestFlag != null && dropRequestFlag.get()) {
+        AtomicBoolean cancellationFlag = partitionLevelCancellationFlag.get(replicaId);
+        if (cancellationFlag != null && cancellationFlag.get()) {
           String errorMsg = String.format(
-              "Partition drop was requested for replica %s while blob transfer was in progress. Aborting transfer.",
+              "Blob transfer cancellation was requested for replica %s while blob transfer was in progress. Aborting transfer.",
               replicaId);
-          perPartitionTransferFuture.completeExceptionally(new VenicePartitionDroppedException(errorMsg));
+          perPartitionTransferFuture.completeExceptionally(new VeniceBlobTransferCancelledException(errorMsg));
           LOGGER.info(errorMsg);
         } else {
           // All hosts failed, fall back to Kafka bootstrapping
@@ -306,13 +306,13 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
       throws InterruptedException, java.util.concurrent.TimeoutException, java.util.concurrent.ExecutionException {
     String replicaId = Utils.getReplicaId(Version.composeKafkaTopic(storeName, version), partition);
 
-    LOGGER.info("Partition drop request received for replica {}, starting cancel transfer. ", replicaId);
+    LOGGER.info("Blob transfer cancellation request received for replica {}, starting cancel transfer.", replicaId);
 
-    // Step 1: Set the drop request flag FIRST
-    AtomicBoolean dropRequestFlag = partitionLevelDroppedFlag.get(replicaId);
-    if (dropRequestFlag != null) {
-      dropRequestFlag.set(true);
-      LOGGER.info("Cancel step 1: Set drop request flag for replica {}", replicaId);
+    // Step 1: Set the cancellation request flag FIRST
+    AtomicBoolean cancellationFlag = partitionLevelCancellationFlag.get(replicaId);
+    if (cancellationFlag != null) {
+      cancellationFlag.set(true);
+      LOGGER.info("Cancel step 1: Set cancellation request flag for replica {}", replicaId);
     }
 
     // Step 2: Check if there's an ongoing transfer
@@ -322,9 +322,8 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
       return;
     }
 
-    LOGGER.info(
-        "Cancel step 2: Cancelling ongoing blob transfer for replica {} due to partition drop request",
-        replicaId);
+    LOGGER
+        .info("Cancel step 2: Cancelling ongoing blob transfer for replica {} due to cancellation request", replicaId);
 
     // Step 3: Close the current ongoing channel
     Channel currentChannel = nettyClient.getActiveChannel(storeName, version, partition);
@@ -338,10 +337,10 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
       perPartitionTransferFuture.get(timeoutInSeconds, TimeUnit.SECONDS);
       LOGGER.info("Cancel step 4: Blob transfer cancellation completed for replica {}", replicaId);
     } catch (java.util.concurrent.ExecutionException e) {
-      // Check if it's the expected VenicePartitionDroppedException
-      if (e.getCause() instanceof VenicePartitionDroppedException) {
+      // Check if it's the expected VeniceBlobTransferCancelledException
+      if (e.getCause() instanceof VeniceBlobTransferCancelledException) {
         LOGGER.info(
-            "Blob transfer cancelled for replica {} due to partition drop: {}",
+            "Blob transfer cancelled for replica {} due to cancellation request: {}",
             replicaId,
             e.getCause().getMessage());
       } else {
@@ -357,19 +356,19 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
   }
 
   @Override
-  public boolean isDropRequested(String storeName, int version, int partition) {
+  public boolean isBlobTransferCancelled(String storeName, int version, int partition) {
     String replicaId = Utils.getReplicaId(Version.composeKafkaTopic(storeName, version), partition);
-    AtomicBoolean dropRequestFlag = partitionLevelDroppedFlag.get(replicaId);
-    return dropRequestFlag != null && dropRequestFlag.get();
+    AtomicBoolean cancellationFlag = partitionLevelCancellationFlag.get(replicaId);
+    return cancellationFlag != null && cancellationFlag.get();
   }
 
   /**
-   * Clear the drop request flag for a partition.
-   * Should be called after consumption successfully starts or after drop completes.
+   * Clear the cancellation request flag for a partition.
+   * Should be called after consumption successfully starts or after cancellation completes.
    */
-  public void clearDropRequestFlag(String storeName, int version, int partition) {
+  public void clearCancellationRequest(String storeName, int version, int partition) {
     String replicaId = Utils.getReplicaId(Version.composeKafkaTopic(storeName, version), partition);
-    partitionLevelDroppedFlag.remove(replicaId);
+    partitionLevelCancellationFlag.remove(replicaId);
   }
 
   @Override
